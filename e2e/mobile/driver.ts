@@ -20,9 +20,12 @@ const inputFields: Record<string, string> = {
   "runtime-channel-input": "runtimeChannelInput",
 };
 const actionFields: Record<string, string> = {
+  "action-activate-remote-config": "updateActionResult",
   "action-apply-captured-update": "updateActionResult",
   "action-apply-cohort-input": "cohortActionResult",
   "action-capture-current-channel-update": "updateActionResult",
+  "action-fetch-and-activate-remote-config": "updateActionResult",
+  "action-fetch-remote-config": "updateActionResult",
   "action-install-current-channel-update": "updateActionResult",
   "action-install-fingerprint-update": "updateActionResult",
   "action-install-runtime-channel-update": "updateActionResult",

@@ -1,5 +1,6 @@
-import { HotUpdater } from "@hot-updater/react-native";
 import { useRef } from "react";
+
+import { hotUpdater } from "./runtime";
 
 export const useCapturedUpdateActions = ({
   refresh,
@@ -9,11 +10,11 @@ export const useCapturedUpdateActions = ({
   readonly setUpdateActionResult: (result: string) => Promise<void>;
 }) => {
   const capturedUpdateRef =
-    useRef<Awaited<ReturnType<typeof HotUpdater.checkForUpdate>>>(null);
+    useRef<Awaited<ReturnType<typeof hotUpdater.checkForUpdate>>>(null);
 
   const captureCurrentChannelUpdate = async () => {
     try {
-      const updateInfo = await HotUpdater.checkForUpdate({
+      const updateInfo = await hotUpdater.checkForUpdate({
         updateStrategy: "appVersion",
       });
       capturedUpdateRef.current = updateInfo;

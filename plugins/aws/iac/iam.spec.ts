@@ -128,6 +128,10 @@ describe("IAMManager DynamoDB access", () => {
               "insights_failures#*",
               "api_keys",
               "api_keys#*",
+              "remote_config_active",
+              "remote_config_active#*",
+              "remote_config_versions",
+              "remote_config_versions#*",
               ...[0, 1, 2, 3, 4, 5, 6, 7].flatMap((shard) => [
                 `aggregate_log_${shard}`,
                 `aggregate_log_${shard}#*`,

@@ -1,12 +1,12 @@
 ---
 title: "setReloadBehavior"
-description: "Control how HotUpdater.reload() is executed."
+description: "Control how hotUpdater.reload() is executed."
 icon: Settings2
 ---
 
 ## Usage
 
-Use `HotUpdater.setReloadBehavior()` to control how [`HotUpdater.reload()`](/docs/react-native-api/reload) is applied.
+Use `hotUpdater.setReloadBehavior()` to control how [`hotUpdater.reload()`](/docs/react-native-api/reload) is applied.
 
 The default is `processRestart`.
 This is a global setting, so calling it once during app startup is enough.
@@ -16,9 +16,9 @@ This is a global setting, so calling it once during app startup is enough.
 - `custom` works on both Android and iOS
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { hotUpdater } from "./hotUpdater";
 
-HotUpdater.setReloadBehavior("processRestart");
+hotUpdater.setReloadBehavior("processRestart");
 ```
 
 ## Why this exists
@@ -41,7 +41,7 @@ Depending on timing, the result can be a soft exception, blank screen, or full a
 - Best default for standalone Android apps
 
 ```tsx
-HotUpdater.setReloadBehavior("processRestart");
+hotUpdater.setReloadBehavior("processRestart");
 ```
 
 ### `reload`
@@ -51,7 +51,7 @@ HotUpdater.setReloadBehavior("processRestart");
 - Reloads the current React Native screen/runtime instead of restarting the whole app
 
 ```tsx
-HotUpdater.setReloadBehavior("reload");
+hotUpdater.setReloadBehavior("reload");
 ```
 
 ### `custom`
@@ -61,7 +61,7 @@ HotUpdater.setReloadBehavior("reload");
 - Best when a brownfield host app must reopen a specific native container or screen itself
 
 ```tsx
-HotUpdater.setReloadBehavior("custom", async () => {
+hotUpdater.setReloadBehavior("custom", async () => {
   await BrownfieldModule.reload();
 });
 ```
@@ -74,5 +74,4 @@ HotUpdater.setReloadBehavior("custom", async () => {
 
 ## Related APIs
 
-- [`HotUpdater.reload()`](/docs/react-native-api/reload)
-- [`HotUpdater.wrap()`](/docs/react-native-api/wrap)
+- [`hotUpdater.reload()`](/docs/react-native-api/reload)

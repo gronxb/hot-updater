@@ -23,7 +23,7 @@ configuration below. Managed setup applies the migration for you.
 The settings below connect to an initialized database; they do not create its
 tables or RPC function, and `hot-updater db migrate` does not run for
 Supabase. To prepare a project yourself, copy
-`20260818000000_hot-updater_1.0.0.sql` from the installed
+`0001_hot-updater_1.0.0.sql` from the installed
 `@hot-updater/supabase` package's `supabase/migrations` directory into your
 project's `supabase/migrations` directory, then apply it with the Supabase CLI
 linked to that project:
@@ -33,7 +33,8 @@ npx supabase db push
 ```
 
 The migration creates the tables of core and of the managed Edge Function's
-plugins, Insights and API keys, under the `hot_updater_v1_` prefix, with
+plugins, Insights, API keys, and Remote Config, under the `hot_updater_v1_`
+prefix, with
 row-level security on every table, the write guard table, and the
 `hot_updater_v1_apply` function, then writes the schema settings rows last.
 

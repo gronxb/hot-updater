@@ -2,7 +2,7 @@ import type {
   CatalogHighWater,
   PersistedSelectionReceipt,
 } from "@hot-updater/protocol";
-import { HotUpdater, insights } from "@hot-updater/react-native";
+import { HotUpdater, insights, remoteConfig } from "@hot-updater/react-native";
 import { TurboModuleRegistry, type TurboModule } from "react-native";
 import { proxy } from "valtio";
 
@@ -37,7 +37,7 @@ export type RuntimeSnapshot = {
   readonly generation: number | null;
   readonly highWater: string;
   readonly isChannelSwitched: boolean;
-  readonly manifest: ReturnType<typeof HotUpdater.getManifest>;
+  readonly manifest: ReturnType<typeof hotUpdater.getManifest>;
   readonly minBundleId: string;
   readonly scopeKey: string | null;
   readonly selectionContextHash: string | null;
@@ -53,9 +53,15 @@ type UpdateProgressDetails = {
   }[];
 };
 
-// Console Insights QA looks installations up by this user ID.
+// The plugins every init here sets up; each instance init returns sets them up
+// again, with its own state and API.
 const analytics = insights();
-analytics.setUser({ userId: "detox-e2e" });
+// The Remote Config scenario's parameters, with the defaults the app ships.
+// It fetches every time it is asked, so a scenario never waits out an interval.
+const remoteConfigPlugin = remoteConfig({
+  defaults: { e2e_flag: true, e2e_limit: 1, e2e_message: "in-app default" },
+  minimumFetchIntervalMs: 0,
+});
 
 // Runs at startup, and again from an E2E action as a root that initializes Hot
 // Updater when it mounts does. Each run shows its own read of this launch.
@@ -65,8 +71,8 @@ export const initializeHotUpdater = () => {
   notify.fromReleaseId = undefined;
   notify.toBundleId = undefined;
   notify.toReleaseId = undefined;
-  HotUpdater.init({
-    plugins: [analytics],
+  return HotUpdater.init({
+    plugins: [analytics, remoteConfigPlugin],
     baseURL: resolveHotUpdaterBaseURL,
     requestHeaders: HOT_UPDATER_API_KEY
       ? { "x-api-key": HOT_UPDATER_API_KEY }
@@ -85,24 +91,30 @@ export const initializeHotUpdater = () => {
   });
 };
 
-initializeHotUpdater();
+export const hotUpdater = initializeHotUpdater();
+
+// Console Insights QA looks installations up by this user ID.
+hotUpdater.insights.setUser({ userId: "detox-e2e" });
+
+// The Remote Config scenario reads its values through this plugin.
+export const e2eRemoteConfig = hotUpdater.remoteConfig;
 
 export const readRuntimeSnapshot = (): RuntimeSnapshot => ({
   activeReleaseId: null,
-  appVersion: HotUpdater.getAppVersion(),
+  appVersion: hotUpdater.getAppVersion(),
   catalogId: null,
   baseURL: fallbackHotUpdaterBaseURL,
-  bundleId: HotUpdater.getManifest().bundleId,
-  channel: HotUpdater.getChannel(),
-  cohort: HotUpdater.getCohort(),
-  crashHistory: HotUpdater.getCrashHistory(),
-  defaultChannel: HotUpdater.getDefaultChannel(),
-  fingerprintHash: HotUpdater.getFingerprintHash(),
+  bundleId: hotUpdater.getManifest().bundleId,
+  channel: hotUpdater.getChannel(),
+  cohort: hotUpdater.getCohort(),
+  crashHistory: hotUpdater.getCrashHistory(),
+  defaultChannel: hotUpdater.getDefaultChannel(),
+  fingerprintHash: hotUpdater.getFingerprintHash(),
   generation: null,
   highWater: "{}",
-  isChannelSwitched: HotUpdater.isChannelSwitched(),
-  manifest: HotUpdater.getManifest(),
-  minBundleId: HotUpdater.getMinBundleId(),
+  isChannelSwitched: hotUpdater.isChannelSwitched(),
+  manifest: hotUpdater.getManifest(),
+  minBundleId: hotUpdater.getMinBundleId(),
   scopeKey: null,
   selectionContextHash: null,
   selectionKind: null,

@@ -13,10 +13,8 @@ Automatic rollback prevents a bad OTA bundle from trapping users in a crash loop
 Hot Updater first launches a newly installed bundle in a temporary state, keeping the last known-good bundle as a fallback. It treats the new bundle as safe after startup succeeds.
 
 For a custom update flow, call [`HotUpdater.init()`](/docs/react-native-api/init)
-once at the top level of your app's entry module. The SDK waits for native
+once at the top level of its own module, such as `src/hotUpdater.ts`. The SDK waits for native
 launch verification internally; your app chooses when to check and stage updates.
-The optional [`HotUpdater.wrap()`](/docs/react-native-api/wrap) flow connects the
-same lifecycle handling to its automatic startup check.
 
 ## Core mechanism
 
@@ -53,8 +51,7 @@ Typical examples include:
 Native bundle loading starts crash monitoring and marks a launch successful
 when the first React Native content appears. Configure `HotUpdater.init()` at
 module scope to connect update requests and observe or report that native
-launch result. The optional `HotUpdater.wrap()` flow uses the same native
-recovery mechanism.
+launch result.
 
 When a launch of an unverified staging bundle can show UI, Hot Updater persists a
 launch-in-progress record: on Android once the process has a started activity,
@@ -91,8 +88,8 @@ When rollback happens, Hot Updater:
   leaves it one retry
 
 Observe the completed launch through
-[`onNotifyAppReady`](/docs/react-native-api/notifyAppReady) in your `init` or
-`wrap` configuration. A `RECOVERED` result identifies the failed artifact as
+[`onNotifyAppReady`](/docs/react-native-api/notifyAppReady) in your `init`
+configuration. A `RECOVERED` result identifies the failed artifact as
 `fromBundleId` and the restored artifact as `toBundleId`, with optional Release
 IDs for each side. The [Insights plugin](/docs/react-native-api/insights)
 reports these outcomes to the configured server for
@@ -108,10 +105,10 @@ Returns the artifact IDs that were marked as failed and rolled back. These match
 **Artifact ID** in the console's Advanced diagnostics.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { hotUpdater } from "./hotUpdater";
 
 function checkCrashedBundles() {
-  const crashedBundles = HotUpdater.getCrashHistory();
+  const crashedBundles = hotUpdater.getCrashHistory();
 
   if (crashedBundles.length > 0) {
     console.log("Crashed bundles:", crashedBundles);
@@ -131,10 +128,10 @@ You can use this to:
 Clears the crash history so a previously failed artifact ID can be retried.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { hotUpdater } from "./hotUpdater";
 
 async function retryFailedBundle() {
-  HotUpdater.clearCrashHistory();
+  hotUpdater.clearCrashHistory();
   console.log("Crash history cleared");
 }
 ```

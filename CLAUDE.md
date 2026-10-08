@@ -15,8 +15,8 @@ An adapter fills one slot of a config (`build`, `storage`, `database`, `signing`
 - **Database Adapters**: Handle metadata storage on one storage engine (Cloudflare D1, Supabase, DynamoDB, Firestore, PostgreSQL) - use the same directories as storage and build on plugin-core's database kit; the built-in Kysely, Drizzle, Prisma, and MongoDB adapters live in `packages/server/src/adapters/` (`@hot-updater/server/adapters/*`)
 - **Signing Adapters**: Sign bundle artifacts (local PEM, remote, AWS KMS, Google Cloud KMS) - `hot-updater/signing`
 - **Integration Plugins**: Wrap a build adapter to upload source maps (Sentry, Datadog, BugSnag) - `plugins/*-plugin/`
-- **Server Plugins**: Add tables, APIs, routes, and client auth to `createHotUpdater` with `definePlugin` from `@hot-updater/plugin-core` (source in `plugins/plugin-core/src/serverPlugin/`) - the official `insights()` and `apiKeys()` are the packages `plugins/insights/` (`@hot-updater/plugin-insights`) and `plugins/api-keys/` (`@hot-updater/plugin-api-keys`), re-exported by `@hot-updater/server/plugins/insights` and `@hot-updater/server/plugins/api-keys`
-- **Client Plugins**: Run in the React Native app with `defineClientPlugin` from `@hot-updater/protocol` (`packages/protocol/src/clientPlugin.ts`, beside the reference host `createPluginHost`) - the official `insights()` client is `plugins/insights/src/client/`, exported from the root of `@hot-updater/react-native`
+- **Server Plugins**: Add tables, APIs, routes, and client auth to `createHotUpdater` with `definePlugin` from `@hot-updater/plugin-core` (source in `plugins/plugin-core/src/serverPlugin/`) - the official `insights()`, `apiKeys()`, and `remoteConfig()` are the packages `plugins/insights/` (`@hot-updater/plugin-insights`), `plugins/api-keys/` (`@hot-updater/plugin-api-keys`), and `plugins/remote-config/` (`@hot-updater/plugin-remote-config`), re-exported by `@hot-updater/server/plugins/insights`, `@hot-updater/server/plugins/api-keys`, and `@hot-updater/server/plugins/remote-config`
+- **Client Plugins**: Run in the React Native app with `defineClientPlugin` from `@hot-updater/protocol` (`packages/protocol/src/clientPlugin.ts`, beside the reference host `createPluginHost`) - the official `insights()` and `remoteConfig()` clients are `plugins/insights/src/client/` and `plugins/remote-config/src/client/`, exported from the root of `@hot-updater/react-native`; a client plugin reaches the server only through its context's `fetch`, on the `baseURL` and headers of `HotUpdater.init`, and its `setup` returns `{ hooks, api }`, where `api` is `hotUpdater.<id>` on the instance `HotUpdater.init` returns
 
 ### Core Packages
 - `packages/protocol/`: `@hot-updater/protocol`, what crosses the device boundary (shared formats, pure computations, the client plugin contract and host)
@@ -43,10 +43,10 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
   - It runs wherever the server runs, and the app never imports it.
   - Official plugin packages take it as a peer, like third-party ones.
 - `@hot-updater/server` is the runtime host. Its root is `createHotUpdater`, its types, the handlers, and `toNodeHandler`.
-  - Its only subpaths are the built-in adapters (`./adapters/{kysely,drizzle,prisma,mongodb}`) and the built-in plugins (`./plugins/insights`, `./plugins/api-keys`).
+  - Its only subpaths are the built-in adapters (`./adapters/{kysely,drizzle,prisma,mongodb}`) and the built-in plugins (`./plugins/insights`, `./plugins/api-keys`, `./plugins/remote-config`).
   - Tooling reads a server definition only through its public read-only properties.
-- `@hot-updater/react-native` is the app SDK. Apps import everything from its root, including the built-in `insights` client. It has no subpaths.
-  - It imports `@hot-updater/protocol` and the Insights client, never plugin-core or server.
+- `@hot-updater/react-native` is the app SDK. Apps import everything from its root, including the built-in `insights` and `remoteConfig` clients. It has no subpaths.
+  - It imports `@hot-updater/protocol` and the Insights and Remote Config clients, never plugin-core or server.
   - Nothing in its install closure pulls plugin-core or server.
 - `@hot-updater/test-utils` holds all test-only code: adapter and plugin test suites, fixtures, `createMeasuredDatabase`, and test stores and executors.
   - It uses other packages' public API only.
@@ -73,7 +73,7 @@ Projects use `hot-updater.config.ts` (`defineConfig()`) for `build`, `storage`, 
 - `database` is the server's database adapter, or `standaloneRepository({ baseUrl, commonHeaders })` to reach a self-hosted server's admin API;
 - `plugins` lists the server plugins the server runs. Over a direct database, the CLI assembles core over `database` and `plugins` as `createHotUpdater` does, so the schema fence and retention pruning apply to its writes.
 
-Plugins are configured in three places: the server's `createHotUpdater({ plugins })`, `plugins` in `hot-updater.config.ts`, and the app's `HotUpdater.init({ plugins })`. A managed project uses two, the config and the app: its prebuilt server runs only the official `insights()` and `apiKeys()`, which the provider package exports as `plugins` and init writes into the config. A self-hosted app installs `@hot-updater/server` as a devDependency to import the official plugins. The Console's `defineConsoleConfig({ database, storage, plugins, console })` mirrors the server the same way. No config file calls `createHotUpdater`: servers do, and tooling calls it internally over a config's database, storage, and plugins (cli-tools `assembleServer` and the Console's own copy).
+Plugins are configured in three places: the server's `createHotUpdater({ plugins })`, `plugins` in `hot-updater.config.ts`, and the app's `HotUpdater.init({ plugins })`. A managed project uses two, the config and the app: its prebuilt server runs only the official `insights()`, `apiKeys()`, and `remoteConfig()`, which the provider package exports as `plugins` and init writes into the config. A self-hosted app installs `@hot-updater/server` as a devDependency to import the official plugins. The Console's `defineConsoleConfig({ database, storage, plugins, console })` mirrors the server the same way. No config file calls `createHotUpdater`: servers do, and tooling calls it internally over a config's database, storage, and plugins (cli-tools `assembleServer` and the Console's own copy).
 
 ## Common Commands
 

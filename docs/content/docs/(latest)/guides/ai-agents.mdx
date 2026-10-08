@@ -69,10 +69,8 @@ artifact and app checks. The agent completes the applicable checks separately
 and reports any outstanding work.
 
 [Connect your app](/docs/get-started/app-setup) is the canonical integration
-procedure. Prefer its custom `init` flow so check timing and reload behavior
-fit the app. `init` alone does not download updates; preserve an existing
-intentional wrapper flow or use `wrap` only when its automatic behavior is
-wanted. Do not combine both initialization APIs.
+procedure. Its `init` flow lets check timing and reload behavior fit the app.
+`init` alone does not download updates.
 [Test an OTA update](/docs/get-started/test-ota) defines the device checks. A generated scaffold, a successful doctor check or an uploaded bundle
 alone does not prove that a device applied an OTA update.
 

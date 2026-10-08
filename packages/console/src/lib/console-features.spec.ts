@@ -10,7 +10,7 @@ import {
 } from "./console-features";
 
 describe("consoleFeatures", () => {
-  it("maps each feature to a Hot Updater plugin, and only event reads to a self-hosted server", () => {
+  it("maps each feature to a Hot Updater plugin, and only event reads and Remote Config to a self-hosted server", () => {
     expect(consoleFeatures).toEqual({
       insights: { plugin: "insights", label: "Insights", remote: true },
       insightsAnalytics: {
@@ -19,6 +19,11 @@ describe("consoleFeatures", () => {
         remote: false,
       },
       apiKeys: { plugin: "apiKeys", label: "API keys", remote: false },
+      remoteConfig: {
+        plugin: "remoteConfig",
+        label: "Remote Config",
+        remote: true,
+      },
     });
   });
 });
@@ -26,36 +31,45 @@ describe("consoleFeatures", () => {
 describe("resolveConsoleFeatures", () => {
   it("turns on each feature whose plugin the database config runs", () => {
     expect(
-      resolveConsoleFeatures(["insights", "apiKeys"], { remote: false }),
+      resolveConsoleFeatures(["insights", "apiKeys", "remoteConfig"], {
+        remote: false,
+      }),
     ).toEqual({
       insights: true,
       insightsAnalytics: true,
       apiKeys: true,
+      remoteConfig: true,
     });
     expect(resolveConsoleFeatures(["insights"], { remote: false })).toEqual({
       insights: true,
       insightsAnalytics: true,
       apiKeys: false,
+      remoteConfig: false,
     });
     expect(resolveConsoleFeatures(["apiKeys"], { remote: false })).toEqual({
       insights: false,
       insightsAnalytics: false,
       apiKeys: true,
+      remoteConfig: false,
     });
   });
 
   it("serves only what a self-hosted server's admin API does", () => {
     expect(
-      resolveConsoleFeatures(["apiKeys", "insights"], { remote: true }),
+      resolveConsoleFeatures(["apiKeys", "insights", "remoteConfig"], {
+        remote: true,
+      }),
     ).toEqual({
       insights: true,
       insightsAnalytics: false,
       apiKeys: false,
+      remoteConfig: true,
     });
     expect(resolveConsoleFeatures(["apiKeys"], { remote: true })).toEqual({
       insights: false,
       insightsAnalytics: false,
       apiKeys: false,
+      remoteConfig: false,
     });
   });
 
@@ -64,6 +78,7 @@ describe("resolveConsoleFeatures", () => {
       insights: false,
       insightsAnalytics: false,
       apiKeys: false,
+      remoteConfig: false,
     };
 
     expect(resolveConsoleFeatures([], { remote: false })).toEqual(none);

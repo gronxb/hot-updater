@@ -18,11 +18,13 @@ const allOff: ConsoleFeatures = {
   insights: false,
   insightsAnalytics: false,
   apiKeys: false,
+  remoteConfig: false,
 };
 const allOn: ConsoleFeatures = {
   insights: true,
   insightsAnalytics: true,
   apiKeys: true,
+  remoteConfig: true,
 };
 
 let pathname = "/";

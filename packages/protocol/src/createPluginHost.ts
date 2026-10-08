@@ -3,6 +3,7 @@ import type {
   HotUpdaterClientContext,
   HotUpdaterClientHooks,
   HotUpdaterClientPlugin,
+  HotUpdaterClientSetup,
   HotUpdaterClientStorage,
 } from "./clientPlugin";
 
@@ -11,7 +12,7 @@ export type PluginHookPayload<K extends PluginHookName> = Parameters<
   NonNullable<HotUpdaterClientHooks[K]>
 >[0];
 
-/** The init or wrap settings plugins see through their context. */
+/** The init settings plugins see through their context. */
 export interface PluginHostConfig {
   readonly baseURL: HotUpdaterBaseURL;
   readonly requestHeaders?: Record<string, string>;
@@ -43,14 +44,14 @@ export interface PluginHostEnvironment {
 
 export interface PluginHost {
   /**
-   * Sets up the plugins of an init or wrap call. A plugin passed to an
-   * earlier call keeps its hooks, and a plugin left out stops receiving
-   * events.
+   * Sets up the plugins of an init call and returns their APIs by plugin
+   * id. A plugin passed to an earlier call keeps its hooks and its API, and
+   * a plugin left out stops receiving events.
    */
   configurePlugins(
     plugins: readonly HotUpdaterClientPlugin[] | undefined,
     config: PluginHostConfig,
-  ): void;
+  ): Readonly<Record<string, unknown>>;
   /** Whether any plugin listens to this hook, so callers build events only when one does. */
   hasPluginHook(name: PluginHookName): boolean;
   /**
@@ -89,10 +90,10 @@ export const createPluginHost = (
   environment: PluginHostEnvironment,
 ): PluginHost => {
   let config: PluginHostConfig | null = null;
-  /** Hooks by plugin, so a plugin configured again is not set up twice. */
+  /** Hooks and API by plugin, so a plugin configured again is not set up twice. */
   const setUpPlugins = new WeakMap<
     HotUpdaterClientPlugin,
-    HotUpdaterClientHooks
+    { readonly hooks: HotUpdaterClientHooks; readonly api: unknown }
   >();
   let activePlugins: readonly {
     readonly plugin: HotUpdaterClientPlugin;
@@ -120,7 +121,7 @@ export const createPluginHost = (
   ): Promise<Response> => {
     if (config === null) {
       throw new Error(
-        "[HotUpdater] Plugins can fetch only after init or wrap.",
+        "[HotUpdater] Plugins can fetch only after HotUpdater.init.",
       );
     }
     if (/^[a-z][a-z\d+.-]*:/i.test(path) || path.startsWith("//")) {
@@ -229,6 +230,32 @@ export const createPluginHost = (
     now: () => environment.now(),
   });
 
+  const setUpPlugin = (
+    plugin: HotUpdaterClientPlugin,
+  ): { readonly hooks: HotUpdaterClientHooks; readonly api: unknown } => {
+    let result: HotUpdaterClientSetup | void;
+    try {
+      result = plugin.setup(createContext(plugin.id));
+    } catch (error) {
+      reportHookError(`Plugin "${plugin.id}" failed in setup`, error);
+      return { hooks: {}, api: undefined };
+    }
+    if (result === undefined || result === null) {
+      return { hooks: {}, api: undefined };
+    }
+    const unknownKeys = Object.keys(result).filter(
+      (key) => key !== "hooks" && key !== "api",
+    );
+    if (unknownKeys.length > 0) {
+      // A plugin written for the contract that returned hooks directly.
+      reportHookError(
+        `Plugin "${plugin.id}" setup returned ${unknownKeys.map((key) => `"${key}"`).join(", ")}; setup returns { hooks, api }`,
+        new TypeError("Unexpected setup result"),
+      );
+    }
+    return { hooks: result.hooks ?? {}, api: result.api };
+  };
+
   const configurePlugins: PluginHost["configurePlugins"] = (
     plugins,
     nextConfig,
@@ -247,19 +274,18 @@ export const createPluginHost = (
     }
 
     config = nextConfig;
+    const apis: [string, unknown][] = [];
     activePlugins = (plugins ?? []).map((plugin) => {
-      let hooks = setUpPlugins.get(plugin);
-      if (hooks === undefined) {
-        try {
-          hooks = plugin.setup(createContext(plugin.id)) ?? {};
-        } catch (error) {
-          reportHookError(`Plugin "${plugin.id}" failed in setup`, error);
-          hooks = {};
-        }
-        setUpPlugins.set(plugin, hooks);
+      let setUp = setUpPlugins.get(plugin);
+      if (setUp === undefined) {
+        setUp = setUpPlugin(plugin);
+        setUpPlugins.set(plugin, setUp);
       }
-      return { plugin, hooks };
+      if (setUp.api !== undefined) apis.push([plugin.id, setUp.api]);
+      return { plugin, hooks: setUp.hooks };
     });
+    // Own properties for every id: assigning `__proto__` would set the prototype.
+    return Object.freeze(Object.fromEntries(apis));
   };
 
   const hasPluginHook: PluginHost["hasPluginHook"] = (name) =>

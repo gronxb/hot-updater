@@ -9,6 +9,7 @@
  * runtime.hooks.onAppReady(launch);
  * await runtime.settled();
  * expect(runtime.requests[0]?.json()).toEqual(expectedEvent);
+ * runtime.api.someMethod(); // the API the plugin adds as hotUpdater.<id>
  * ```
  *
  * It sets plugins up with the plugin host from `@hot-updater/protocol`,
@@ -25,6 +26,8 @@ import {
   resolveBaseURL,
   type AppReadyResult,
   type BundleDownloadedInfo,
+  type ClientPluginApi,
+  type ClientPluginApis,
   type HotUpdaterBaseURL,
   type HotUpdaterClientPlugin,
   type PluginHookName,
@@ -118,7 +121,14 @@ export interface ClientPluginTestHooks {
 }
 
 /** One JavaScript runtime with the plugins set up, as after `HotUpdater.init`. */
-export interface ClientPluginTestRuntime {
+export interface ClientPluginTestRuntime<
+  TApis = Readonly<Record<string, unknown>>,
+> {
+  /**
+   * The plugins' APIs by plugin id, as the instance `HotUpdater.init`
+   * returns has them.
+   */
+  readonly apis: TApis;
   /**
    * Calls a hook on every plugin that returned it, as the SDK does: without
    * waiting for it, and with a throw or rejection recorded in `errors`
@@ -233,10 +243,12 @@ const nextMacrotask = () =>
   });
 
 /** Sets plugins up as `HotUpdater.init({ plugins })` does, in a new runtime. */
-export const setupClientPlugins = (
-  plugins: readonly HotUpdaterClientPlugin[],
+export const setupClientPlugins = <
+  const TPlugins extends readonly HotUpdaterClientPlugin[],
+>(
+  plugins: TPlugins,
   options: ClientPluginTestOptions = {},
-): ClientPluginTestRuntime => {
+): ClientPluginTestRuntime<ClientPluginApis<TPlugins>> => {
   const storage = options.storage ?? createTestStorage();
   const items = storageItems.get(storage);
   if (items === undefined) {
@@ -347,7 +359,7 @@ export const setupClientPlugins = (
     now: () => (options.now ? options.now() : Date.now()),
   });
 
-  host.configurePlugins(plugins, {
+  const apis = host.configurePlugins(plugins, {
     baseURL,
     requestHeaders: options.requestHeaders,
     requestTimeout: options.requestTimeout,
@@ -365,6 +377,7 @@ export const setupClientPlugins = (
     };
 
   return {
+    apis: apis as ClientPluginApis<TPlugins>,
     hooks: {
       onAppReady: call("onAppReady"),
       onUpdateCheck: call("onUpdateCheck"),
@@ -386,8 +399,14 @@ export const setupClientPlugins = (
   };
 };
 
-/** Sets one plugin up; see `setupClientPlugins`. */
-export const setupClientPlugin = (
-  plugin: HotUpdaterClientPlugin,
+/** Sets one plugin up; see `setupClientPlugins`. `api` is the plugin's API. */
+export const setupClientPlugin = <const P extends HotUpdaterClientPlugin>(
+  plugin: P,
   options?: ClientPluginTestOptions,
-): ClientPluginTestRuntime => setupClientPlugins([plugin], options);
+): ClientPluginTestRuntime<ClientPluginApis<readonly [P]>> & {
+  readonly api: ClientPluginApi<P>;
+} => {
+  const runtime = setupClientPlugins([plugin] as const, options);
+  const apis: Readonly<Record<string, unknown>> = runtime.apis;
+  return { ...runtime, api: apis[plugin.id] as ClientPluginApi<P> };
+};

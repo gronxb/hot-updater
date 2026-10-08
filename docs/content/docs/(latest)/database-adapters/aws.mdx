@@ -53,7 +53,8 @@ aws dynamodb update-time-to-live \
 
 Then write the schema settings with `migrateDynamoDB`. It takes the same
 configuration as `dynamoDB`, and the plugins the server runs, such as
-`plugins` from `@hot-updater/aws`: the managed server's Insights and API keys.
+`plugins` from `@hot-updater/aws`: the managed server's Insights, API keys,
+and Remote Config.
 
 ```typescript
 import { migrateDynamoDB, plugins } from "@hot-updater/aws";
@@ -106,7 +107,7 @@ key-value helper over the table, behind the schema settings check:
 
 The table holds core's rows (Bundles, patches, Releases, Release Catalogs,
 Channels and their counters) and the rows of the plugins the server runs,
-such as Insights and API keys. `dispose()` closes the DynamoDB and CloudFront
+such as Insights, API keys, and Remote Config. `dispose()` closes the DynamoDB and CloudFront
 clients.
 
 ## Batched Insights totals

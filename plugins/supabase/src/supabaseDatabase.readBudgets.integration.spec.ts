@@ -2,6 +2,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { toolingTargetOf, createSqlAdapter } from "@hot-updater/plugin-core";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { insights } from "@hot-updater/server/plugins/insights";
+import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
 import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,
@@ -24,7 +25,11 @@ setupReadBudgetTestSuite({
     await db.exec(
       "CREATE ROLE anon; CREATE ROLE authenticated; CREATE ROLE service_role BYPASSRLS;",
     );
-    await db.exec(supabaseSchemaSql(toolingTargetOf([insights(), apiKeys()])));
+    await db.exec(
+      supabaseSchemaSql(
+        toolingTargetOf([insights(), apiKeys(), remoteConfig()]),
+      ),
+    );
     await db.exec(
       "GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; SET ROLE service_role;",
     );

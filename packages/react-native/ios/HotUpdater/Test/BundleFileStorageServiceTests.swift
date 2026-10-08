@@ -649,8 +649,8 @@ struct BundleFileStorageServiceTests {
             )
         )
 
-        // A root that mounts again, as HotUpdater.wrap does, reads this launch
-        // again. It must not wait for the staged bundle.
+        // A root that mounts again reads this launch again. It must not wait
+        // for the staged bundle.
         #expect(service.notifyAppReady()["status"] as? String == "UNCHANGED")
 
         let nextProcess = makeStorageService(documentsDirectory: workingDirectory, preferences: preferences)

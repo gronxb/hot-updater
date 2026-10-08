@@ -28,15 +28,22 @@ describe("renderAppSetup", () => {
     expect(source).toContain(
       '  requestHeaders: {\n    "x-api-key": "key\\"with-quote",\n  },',
     );
-    expect(source).toContain("HotUpdater.checkForUpdate");
-    expect(source).not.toContain("HotUpdater.wrap");
+    expect(source).toContain(
+      ["// App.tsx", 'import { hotUpdater } from "./src/hotUpdater";'].join(
+        "\n",
+      ),
+    );
+    expect(source).toContain(
+      'export default hotUpdater.wrap({ updateStrategy: "appVersion" })(App);',
+    );
+    expect(source).not.toMatch(/HotUpdater\.(?!init\()/);
   });
 
   it("sends no headers to public client routes", () => {
     const source = renderAppSetup({ baseURL: "https://example.com" });
 
     expect(source).toContain(
-      'HotUpdater.init({\n  baseURL: "https://example.com",\n});',
+      '// src/hotUpdater.ts\nimport { HotUpdater } from "@hot-updater/react-native";\n\nexport const hotUpdater = HotUpdater.init({\n  baseURL: "https://example.com",\n});',
     );
     expect(source).not.toContain("requestHeaders");
     expect(source).not.toContain("plugins");

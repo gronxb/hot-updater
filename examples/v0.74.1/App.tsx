@@ -24,7 +24,8 @@ import { proxy, useSnapshot } from "valtio";
 
 const notify = proxy<{
   status?: string;
-  crashedBundleId?: string;
+  fromBundleId?: string;
+  toBundleId?: string;
 }>({});
 
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
@@ -42,23 +43,42 @@ export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 };
 
+export const hotUpdater = HotUpdater.init({
+  baseURL: "http://localhost:3006/hot-updater",
+  plugins: [insights()],
+  onNotifyAppReady: (result) => {
+    notify.status = result.status;
+    if (result.status !== "UNCHANGED") {
+      notify.fromBundleId = result.fromBundleId;
+      notify.toBundleId = result.toBundleId;
+    }
+  },
+  onError: (error) => {
+    if (error instanceof Error) {
+      Alert.alert("Error", error.message);
+    } else {
+      Alert.alert("Error", "An unknown error occurred");
+    }
+  },
+});
+
 function App(): React.JSX.Element {
   const state = useSnapshot(notify);
   const [bundleId, setBundleId] = useState<string | null>(null);
 
   useEffect(() => {
-    const bundleId = HotUpdater.getBundleId();
+    const bundleId = hotUpdater.getBundleId();
     setBundleId(bundleId);
   }, []);
 
   const progress = useHotUpdaterStore((state) => state.progress);
   return (
     <SafeAreaView>
-      <Text>Babel {HotUpdater.getBundleId()}</Text>
-      <Text>Channel "{HotUpdater.getChannel()}"</Text>
-      <Text>App Version "{HotUpdater.getAppVersion()}"</Text>
+      <Text>Babel {hotUpdater.getBundleId()}</Text>
+      <Text>Channel "{hotUpdater.getChannel()}"</Text>
+      <Text>App Version "{hotUpdater.getAppVersion()}"</Text>
 
-      <Text>{extractFormatDateFromUUIDv7(HotUpdater.getBundleId())}</Text>
+      <Text>{extractFormatDateFromUUIDv7(hotUpdater.getBundleId())}</Text>
       <Text
         style={{
           marginVertical: 20,
@@ -101,7 +121,7 @@ function App(): React.JSX.Element {
       >
         Crash History:
       </Text>
-      {HotUpdater.getCrashHistory().map((crash) => (
+      {hotUpdater.getCrashHistory().map((crash) => (
         <Text
           key={crash}
           style={{
@@ -126,23 +146,17 @@ function App(): React.JSX.Element {
 
       <Text>{JSON.stringify(state, null, 2)}</Text>
 
-      <Button title="Reload" onPress={() => HotUpdater.reload()} />
+      <Button title="Reload" onPress={() => hotUpdater.reload()} />
       <Button
         title="Clear Crash History"
-        onPress={() => HotUpdater.clearCrashHistory()}
+        onPress={() => hotUpdater.clearCrashHistory()}
       />
     </SafeAreaView>
   );
 }
 
-export default HotUpdater.wrap({
-  baseURL: "http://localhost:3006/hot-updater",
+export default hotUpdater.wrap({
   updateStrategy: "appVersion",
-  plugins: [insights()],
-  onNotifyAppReady: (result) => {
-    notify.status = result.status;
-    notify.crashedBundleId = result.crashedBundleId;
-  },
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View
@@ -168,11 +182,4 @@ export default HotUpdater.wrap({
       </View>
     </Modal>
   ),
-  onError: (error) => {
-    if (error instanceof Error) {
-      Alert.alert("Error", error.message);
-    } else {
-      Alert.alert("Error", "An unknown error occurred");
-    }
-  },
 })(App);

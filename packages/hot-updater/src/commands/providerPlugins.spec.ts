@@ -31,7 +31,11 @@ describe.each([
       plugins,
     });
 
-    expect(Object.keys(server.api)).toEqual(["insights", "apiKeys"]);
+    expect(Object.keys(server.api)).toEqual([
+      "insights",
+      "apiKeys",
+      "remoteConfig",
+    ]);
     expect(clientAuthOf(server)?.plugin).toBe("apiKeys");
     expect(server.clientPlugins).toEqual([
       { module: "@hot-updater/react-native", name: "insights" },

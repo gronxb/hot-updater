@@ -16,6 +16,7 @@ import type {
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 import type { InsightsModel } from "@hot-updater/plugin-insights/server";
+import type { RemoteConfigApi } from "@hot-updater/plugin-remote-config/server";
 import type { Bundle } from "@hot-updater/protocol";
 
 import {
@@ -45,7 +46,11 @@ import {
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
-import { acquireFairFileLock, DEPLOY_LOCK_CAPACITY } from "./fair-file-lock.ts";
+import {
+  acquireFairFileLock,
+  DEPLOY_LOCK_CAPACITY,
+  type FairFileLock,
+} from "./fair-file-lock.ts";
 import {
   getFixtureResetChannels as resolveFixtureResetChannels,
   resetFixtureReleases,
@@ -53,6 +58,11 @@ import {
 import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
 import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
+import {
+  createRemoteConfigAdminClient,
+  type RemoteConfigAdminClient,
+} from "./remote-config-admin.ts";
+import { createRemoteConfigApiWriter } from "./remote-config-api-writer.ts";
 import {
   prepareE2eStartupCheck,
   readE2eScreenStateSnapshot,
@@ -945,7 +955,7 @@ async function applyAppScenario({
           CRASH_GUARD_START,
           `  const E2E_SAFE_BUNDLE_IDS = new Set(${JSON.stringify(safeBundleIds, null, 2)});`,
           `  const E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX = ${JSON.stringify(BUILT_IN_MIN_BUNDLE_ID_SUFFIX)};`,
-          "  const E2E_CURRENT_BUNDLE_ID = HotUpdater.getManifest().bundleId;",
+          "  const E2E_CURRENT_BUNDLE_ID = hotUpdater.getManifest().bundleId;",
           "  const E2E_IS_BUILT_IN_BUNDLE =",
           '    typeof E2E_CURRENT_BUNDLE_ID === "string" &&',
           "    E2E_CURRENT_BUNDLE_ID.endsWith(E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX);",
@@ -5543,6 +5553,47 @@ async function computeRolloutSample(releaseId: string) {
   };
 }
 
+/**
+ * Cohorts for a Remote Config percentage rule with `seed`: one inside
+ * `[0, percent)`, one that only `[0, widenedPercent)` adds, and one outside
+ * both. The rule shuffles the numeric cohorts as a rollout does.
+ */
+function computeRemoteConfigRolloutSample(args: {
+  seed: string;
+  percent: number;
+  widenedPercent: number;
+}) {
+  const included = getRolledOutNumericCohorts(
+    args.seed,
+    Math.round(args.percent * 10),
+  );
+  const widened = getRolledOutNumericCohorts(
+    args.seed,
+    Math.round(args.widenedPercent * 10),
+  );
+  const includedSet = new Set(included);
+  const widenedSet = new Set(widened);
+  const widenedCohort = widened.find((cohort) => !includedSet.has(cohort));
+  const excludedCohort = Array.from(
+    { length: 1000 },
+    (_, index) => index + 1,
+  ).find((cohort) => !widenedSet.has(cohort));
+  if (
+    included[0] === undefined ||
+    widenedCohort === undefined ||
+    excludedCohort === undefined
+  ) {
+    throw new Error(
+      `No Remote Config rollout sample for ${args.percent}% and ${args.widenedPercent}% of seed ${args.seed}`,
+    );
+  }
+  return {
+    includedCohort: String(included[0]),
+    widenedCohort: String(widenedCohort),
+    excludedCohort: String(excludedCohort),
+  };
+}
+
 async function waitForMetadata(
   bundleId: string,
   verificationPending: boolean,
@@ -6511,6 +6562,14 @@ export async function handleComputeRolloutSample(releaseId: string) {
   return computeRolloutSample(releaseId);
 }
 
+export async function handleComputeRemoteConfigRolloutSample(args: {
+  seed: string;
+  percent: number;
+  widenedPercent: number;
+}) {
+  return computeRemoteConfigRolloutSample(args);
+}
+
 export async function handleWaitForMetadata(
   bundleId: string,
   verificationPending: boolean,
@@ -6887,4 +6946,116 @@ export async function handleCleanup() {
 
 export async function handleVerifyConsoleInsights(args: { sinceMs: number }) {
   return verifyConfiguredConsoleInsights(args);
+}
+
+/**
+ * How long a template written to the database takes to reach devices: each
+ * server's 5 s template cache, then the shared cache's `s-maxage=5`.
+ */
+const REMOTE_CONFIG_PROPAGATION_MS = 12_000;
+
+/**
+ * Writes the server's Remote Config: in process over the config's database,
+ * as the CLI and the Console write a managed server's, which serves no admin
+ * routes; over standaloneRepository, through the server's admin routes. A
+ * server that publishes replaces its own cached template, so only a write
+ * to the database waits for the caches.
+ */
+async function writeRemoteConfig<T>(
+  write: (writer: RemoteConfigAdminClient) => Promise<T>,
+): Promise<T> {
+  return withConfiguredDatabase(async ({ database, plugins }) => {
+    // Remote Config alone, so the server's other plugins never gate a write.
+    const api = assembleServer({
+      database,
+      plugins: plugins.filter(({ id }) => id === "remoteConfig"),
+    }).api?.remoteConfig as RemoteConfigApi | undefined;
+    if (api === undefined) {
+      return write(
+        createRemoteConfigAdminClient({
+          baseUrl: `${getControllerReachableAppBaseUrl()}/admin`,
+          headers: getHotUpdaterAdminHeaders(),
+        }),
+      );
+    }
+    const result = await write(createRemoteConfigApiWriter(api));
+    await sleep(REMOTE_CONFIG_PROPAGATION_MS);
+    return result;
+  });
+}
+
+/**
+ * Where scenarios take turns with the server's Remote Config. A template is
+ * global to its server, and a managed profile's shards share one, so the
+ * lock is keyed by the server's URL and seen by every control server on the
+ * machine; standalone shards each have their own server, and never wait.
+ */
+function remoteConfigLockRoot() {
+  const serverHash = createHash("sha256")
+    .update(getControllerReachableAppBaseUrl())
+    .digest("hex")
+    .slice(0, 16);
+  return path.join(
+    os.tmpdir(),
+    "hot-updater-e2e-remote-config-lock",
+    serverHash,
+  );
+}
+
+let remoteConfigLock: FairFileLock | null = null;
+
+export function startAcquireRemoteConfigLockJob() {
+  return createJob(async (context) => {
+    if (remoteConfigLock !== null) return { acquired: true };
+    remoteConfigLock = await acquireFairFileLock({
+      capacity: 1,
+      lockRoot: remoteConfigLockRoot(),
+      onAbandoned: ({ ageMs, lockPath, owner, reason }) => {
+        logE2eFixture("remote config lock abandoned; removing", {
+          ageMs,
+          lockPath,
+          owner,
+          reason,
+        });
+      },
+      onWait: ({ owner, position }) => {
+        logE2eFixture("remote config lock waiting", { owner, position });
+      },
+      ownerLabel: fixtureSession.platform,
+      signal: context.signal,
+    });
+    logE2eFixture("remote config lock acquired", {
+      lockPath: remoteConfigLock.lockPath,
+    });
+    return { acquired: true };
+  });
+}
+
+export async function handleReleaseRemoteConfigLock() {
+  const lock = remoteConfigLock;
+  remoteConfigLock = null;
+  await lock?.release();
+  return { released: lock !== null };
+}
+
+export async function handlePublishRemoteConfig(args: {
+  template: unknown;
+  description?: string;
+}) {
+  const remoteConfigVersion = await writeRemoteConfig((writer) =>
+    writer.publish(args),
+  );
+  logE2eFixture("remote config published", { remoteConfigVersion });
+  return { remoteConfigVersion };
+}
+
+export async function handleRollbackRemoteConfig(args: { version: number }) {
+  const remoteConfigVersion = await writeRemoteConfig((writer) =>
+    writer.rollback(args.version),
+  );
+  logE2eFixture("remote config rolled back", {
+    remoteConfigVersion,
+    source: args.version,
+  });
+  return { remoteConfigVersion };
 }

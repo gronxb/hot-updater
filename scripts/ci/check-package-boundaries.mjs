@@ -43,6 +43,7 @@ const SERVER_EXPORTS = [
   "./adapters/prisma",
   "./plugins/api-keys",
   "./plugins/insights",
+  "./plugins/remote-config",
   "./package.json",
 ];
 

@@ -19,6 +19,7 @@ import {
   handleCaptureBuiltInBundleId,
   handleCaptureState,
   handleCleanup,
+  handleComputeRemoteConfigRolloutSample,
   handleComputeRolloutSample,
   handleConfigureProxy,
   handleLaunchHeadlessTask,
@@ -28,8 +29,11 @@ import {
   handleProxyRemoteAssetRequest,
   handleProxyState,
   handleProxyUpdateRequest,
+  handlePublishRemoteConfig,
+  handleReleaseRemoteConfigLock,
   handleResetLocalAppState,
   handleResetRemoteBundles,
+  handleRollbackRemoteConfig,
   handleRuntimeConfig,
   handleSeedCrashHistory,
   handleSeedLegacyMetadata,
@@ -39,6 +43,7 @@ import {
   handleWaitForMetadata,
   handleWriteSummary,
   ProxyAssertionError,
+  startAcquireRemoteConfigLockJob,
   startBootstrapJob,
   startCreateRepublishedReleaseJob,
   startDeployBundleJob,
@@ -102,6 +107,40 @@ app.post("/e2e/verify-console-insights", async (c) => {
       sinceMs: payload.sinceMs,
     }),
   );
+});
+
+app.post("/e2e/jobs/acquire-remote-config-lock", (c) => {
+  return c.json({ jobId: startAcquireRemoteConfigLockJob() });
+});
+
+app.post("/e2e/release-remote-config-lock", async (c) => {
+  return c.json(await handleReleaseRemoteConfigLock());
+});
+
+app.post("/e2e/publish-remote-config", async (c) => {
+  const payload = (await c.req.json()) as {
+    template?: unknown;
+    description?: unknown;
+  };
+  if (typeof payload.template !== "object" || payload.template === null) {
+    return c.json({ error: "template is required" }, 400);
+  }
+  return c.json(
+    await handlePublishRemoteConfig({
+      template: payload.template,
+      ...(typeof payload.description === "string"
+        ? { description: payload.description }
+        : {}),
+    }),
+  );
+});
+
+app.post("/e2e/rollback-remote-config", async (c) => {
+  const payload = (await c.req.json()) as { version?: unknown };
+  if (typeof payload.version !== "number") {
+    return c.json({ error: "version is required" }, 400);
+  }
+  return c.json(await handleRollbackRemoteConfig({ version: payload.version }));
 });
 
 app.all("/hot-updater/*", async (c) => {
@@ -513,6 +552,33 @@ app.post("/e2e/compute-rollout-sample", async (c) => {
   }
 
   return c.json(await handleComputeRolloutSample(payload.releaseId));
+});
+
+app.post("/e2e/compute-remote-config-rollout-sample", async (c) => {
+  const payload = (await c.req.json()) as {
+    seed?: string;
+    percent?: number;
+    widenedPercent?: number;
+  };
+  if (
+    typeof payload.seed !== "string" ||
+    typeof payload.percent !== "number" ||
+    typeof payload.widenedPercent !== "number" ||
+    payload.widenedPercent <= payload.percent
+  ) {
+    return c.json(
+      { error: "seed, percent, and a larger widenedPercent are required" },
+      400,
+    );
+  }
+
+  return c.json(
+    await handleComputeRemoteConfigRolloutSample({
+      seed: payload.seed,
+      percent: payload.percent,
+      widenedPercent: payload.widenedPercent,
+    }),
+  );
 });
 
 app.post("/e2e/wait-for-metadata", async (c) => {

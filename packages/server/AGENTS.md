@@ -13,8 +13,9 @@
 - `@hot-updater/server/adapters/*` holds the built-in database adapters
   (Kysely, Drizzle, Prisma, MongoDB), each its own entry so a server loads only
   the one it uses.
-- `@hot-updater/server/plugins/insights` and
-  `@hot-updater/server/plugins/api-keys` re-export the built-in plugins.
+- `@hot-updater/server/plugins/insights`,
+  `@hot-updater/server/plugins/api-keys`, and
+  `@hot-updater/server/plugins/remote-config` re-export the built-in plugins.
 - Nothing else: no tooling entry. `scripts/ci/check-package-boundaries.mjs`
   pins this list, and a new subpath needs a deliberate change there.
 

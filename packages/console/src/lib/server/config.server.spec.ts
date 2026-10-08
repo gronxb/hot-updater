@@ -92,6 +92,7 @@ describe("config.server", () => {
       insights: false,
       insightsAnalytics: false,
       apiKeys: true,
+      remoteConfig: false,
     });
     await expect(first.core.listChannels()).resolves.toEqual([]);
     expect(first.storage).toEqual([storageAdapter]);
@@ -117,6 +118,7 @@ describe("config.server", () => {
       insights: true,
       insightsAnalytics: false,
       apiKeys: false,
+      remoteConfig: false,
     });
     expect((await prepareConfig(request)).runtime).toBe(runtime);
     expect(fetchAdmin).not.toHaveBeenCalled();

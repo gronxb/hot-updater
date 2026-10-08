@@ -131,6 +131,7 @@
   "dependencies": {
     "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-insights": "workspace:*",
+    "@hot-updater/plugin-remote-config": "workspace:*",
     "use-sync-external-store": "1.5.0"
   }
 }

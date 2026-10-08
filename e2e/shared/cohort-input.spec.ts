@@ -44,10 +44,7 @@ function fixture() {
     exports,
     require: (name: string) => {
       if (name === "@hot-updater/react-native")
-        return {
-          HotUpdater: { getCohort: () => nativeCohort, setCohort },
-          useHotUpdaterStore: () => ({}),
-        };
+        return { useHotUpdaterStore: () => ({}) };
       if (name === "react")
         return {
           useCallback: (callback: unknown) => callback,
@@ -63,6 +60,7 @@ function fixture() {
       if (name === "valtio") return { useSnapshot: () => ({}) };
       if (name === "./runtime")
         return {
+          hotUpdater: { getCohort: () => nativeCohort, setCohort },
           readRuntimeSnapshot: () => ({}),
           refreshRuntimeSnapshot: async () => ({}),
           formatUpdateStoreDownloadPaths: () => "",
@@ -72,6 +70,8 @@ function fixture() {
       if (name === "./startup-check") return {};
       if (name === "./useCapturedUpdateActions")
         return { useCapturedUpdateActions: () => ({}) };
+      if (name === "./useRemoteConfigActions")
+        return { useRemoteConfigActions: () => ({}) };
       throw new Error(`Unexpected dependency: ${name}`);
     },
   });

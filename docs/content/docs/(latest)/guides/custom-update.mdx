@@ -12,13 +12,16 @@ foreground, or from a button.
 
 The [app setup example](/docs/get-started/app-setup) checks and applies an update
 with one button. Use this guide to download in the background, show progress or
-wait for the user to accept a restart.
+wait for the user to accept a restart. To check when the app's root mounts,
+with an optional loading screen, use [`hotUpdater.wrap`](/docs/react-native-api/wrap)
+instead; use one of the two for a launch.
 
 ## Initialize and prepare updates
 
-Import this module from your app entry point. Call `HotUpdater.init` at the top
-level, outside React components and effects. The SDK handles native startup
-verification internally.
+Call `HotUpdater.init` once, at the top level of this module, outside React
+components and effects, and export the instance it returns. Import the module
+from your app entry point. The SDK handles native startup verification
+internally.
 
 ```ts title="updates.ts"
 import { HotUpdater } from "@hot-updater/react-native";
@@ -27,7 +30,7 @@ function reportUpdateError(error: unknown) {
   console.error("Hot Updater:", error);
 }
 
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL: "https://your-update-server-url",
   requestHeaders: {
     "x-api-key": "<your-client-api-key>",
@@ -37,7 +40,7 @@ HotUpdater.init({
 
 export async function runUpdateFlow() {
   try {
-    const update = await HotUpdater.checkForUpdate({
+    const update = await hotUpdater.checkForUpdate({
       updateStrategy: "appVersion",
     });
 
@@ -52,7 +55,7 @@ export async function runUpdateFlow() {
     }
 
     if (update.shouldForceUpdate) {
-      await HotUpdater.reload();
+      await hotUpdater.reload();
     }
   } catch (error) {
     reportUpdateError(error);
@@ -77,7 +80,7 @@ app's restart prompt. Show the prompt only after `update.updateBundle()` returns
 ```ts title="updates.ts"
 async function restartToApply() {
   try {
-    await HotUpdater.reload();
+    await hotUpdater.reload();
   } catch (error) {
     reportUpdateError(error);
   }
@@ -137,5 +140,4 @@ to the channel embedded in the native build.
 
 - [Test an OTA update](/docs/get-started/test-ota)
 - [`HotUpdater.init()`](/docs/react-native-api/init)
-- [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
-- [`HotUpdater.wrap()`](/docs/react-native-api/wrap) for automatic launch-time checks
+- [`hotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)

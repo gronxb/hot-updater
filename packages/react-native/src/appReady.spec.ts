@@ -53,20 +53,24 @@ const recordingPlugin = (
   const events: unknown[] = [];
   const plugin: HotUpdaterClientPlugin = {
     id: "recorder",
-    setup: () => hooks(events),
+    setup: () => ({ hooks: hooks(events) }),
   };
   return { events, plugin };
 };
 
+/** An instance's plugin host with `plugins`, and the launch reporter on it. */
 const configure = async (
   plugins: HotUpdaterClientPlugin[],
   onError?: (error: unknown) => void,
 ) => {
-  const { configurePlugins } = await import("./pluginHost");
-  configurePlugins(plugins, {
+  const { createAppPluginHost } = await import("./pluginHost");
+  const { createLaunchReporter } = await import("./appReady");
+  const host = createAppPluginHost();
+  host.configurePlugins(plugins, {
     baseURL: "https://updates.example.com",
     ...(onError ? { onError } : {}),
   });
+  return createLaunchReporter(host);
 };
 
 describe("app-ready reporting to plugins", () => {
@@ -131,10 +135,9 @@ describe("app-ready reporting to plugins", () => {
         verificationPending: pending,
       });
       const { events, plugin } = recordingPlugin();
-      await configure([plugin]);
-      const { handleNotifyAppReady } = await import("./appReady");
+      const launch = await configure([plugin]);
 
-      const readiness = handleNotifyAppReady({});
+      const readiness = launch.read({});
       await vi.runOnlyPendingTimersAsync();
       await readiness;
 
@@ -170,11 +173,10 @@ describe("app-ready reporting to plugins", () => {
         ),
       );
       const { events, plugin } = recordingPlugin();
-      await configure([plugin]);
+      const launch = await configure([plugin]);
       const onNotifyAppReady = vi.fn();
-      const { handleNotifyAppReady } = await import("./appReady");
 
-      const readiness = handleNotifyAppReady({ onNotifyAppReady });
+      const readiness = launch.read({ onNotifyAppReady });
       await vi.runOnlyPendingTimersAsync();
       await readiness;
 
@@ -207,10 +209,9 @@ describe("app-ready reporting to plugins", () => {
       .mockReturnValueOnce(createNotifyReadResult(undefined, null, true))
       .mockReturnValue(createNotifyReadResult());
     const { events, plugin } = recordingPlugin();
-    await configure([plugin]);
-    const { handleNotifyAppReady } = await import("./appReady");
+    const launch = await configure([plugin]);
 
-    const readiness = handleNotifyAppReady({});
+    const readiness = launch.read({});
     await vi.runOnlyPendingTimersAsync();
     expect(events).toEqual([]);
     await vi.runAllTimersAsync();
@@ -220,19 +221,24 @@ describe("app-ready reporting to plugins", () => {
     expect(events).toHaveLength(1);
   });
 
-  it("reports the launch once per runtime while every init call gets readiness", async () => {
+  it("reports the launch once to each instance's plugins", async () => {
     stubNotifyFrame();
-    const { events, plugin } = recordingPlugin();
-    await configure([plugin]);
+    const first = recordingPlugin();
+    const second = recordingPlugin();
+    const firstLaunch = await configure([first.plugin]);
+    const secondLaunch = await configure([second.plugin]);
     const onNotifyAppReady = vi.fn();
-    const { handleNotifyAppReady } = await import("./appReady");
 
-    const first = handleNotifyAppReady({ onNotifyAppReady });
-    const second = handleNotifyAppReady({ onNotifyAppReady });
+    const reads = [
+      firstLaunch.read({ onNotifyAppReady }),
+      firstLaunch.read({ onNotifyAppReady }),
+      secondLaunch.read({ onNotifyAppReady }),
+    ];
     await vi.runOnlyPendingTimersAsync();
-    await Promise.all([first, second]);
+    await Promise.all(reads);
 
-    expect(events).toHaveLength(1);
+    expect(first.events).toHaveLength(1);
+    expect(second.events).toHaveLength(1);
     expect(onNotifyAppReady).toHaveBeenCalledTimes(2);
   });
 
@@ -249,11 +255,10 @@ describe("app-ready reporting to plugins", () => {
       ),
     );
     const { events, plugin } = recordingPlugin();
-    await configure([plugin]);
+    const launch = await configure([plugin]);
     const onNotifyAppReady = vi.fn();
-    const { handleNotifyAppReady } = await import("./appReady");
 
-    const readiness = handleNotifyAppReady({ onNotifyAppReady });
+    const readiness = launch.read({ onNotifyAppReady });
     await vi.runOnlyPendingTimersAsync();
     await readiness;
 
@@ -267,24 +272,27 @@ describe("app-ready reporting to plugins", () => {
     const throwing: HotUpdaterClientPlugin = {
       id: "throwing",
       setup: () => ({
-        onAppReady: () => {
-          throw new Error("hook failed");
+        hooks: {
+          onAppReady: () => {
+            throw new Error("hook failed");
+          },
         },
       }),
     };
     const rejecting: HotUpdaterClientPlugin = {
       id: "rejecting",
       setup: () => ({
-        onAppReady: async () => {
-          throw new Error("hook rejected");
+        hooks: {
+          onAppReady: async () => {
+            throw new Error("hook rejected");
+          },
         },
       }),
     };
-    await configure([throwing, rejecting], onError);
+    const launch = await configure([throwing, rejecting], onError);
     const onNotifyAppReady = vi.fn();
-    const { handleNotifyAppReady } = await import("./appReady");
 
-    const readiness = handleNotifyAppReady({ onNotifyAppReady });
+    const readiness = launch.read({ onNotifyAppReady });
     await vi.runOnlyPendingTimersAsync();
     await readiness;
     await vi.runAllTimersAsync();
@@ -307,12 +315,10 @@ describe("app-ready reporting to plugins", () => {
   it("delivers events after the launch, even when they happen first", async () => {
     stubNotifyFrame();
     const { events, plugin } = recordingPlugin();
-    await configure([plugin]);
-    const { emitAfterAppReady, handleNotifyAppReady } =
-      await import("./appReady");
+    const launch = await configure([plugin]);
 
-    const readiness = handleNotifyAppReady({});
-    emitAfterAppReady("onBundleDownloaded", () => ({
+    const readiness = launch.read({});
+    launch.emit("onBundleDownloaded", () => ({
       channel: "production",
       fromBundleId: "bundle-id",
       fromReleaseId: null,
@@ -335,10 +341,9 @@ describe("app-ready reporting to plugins", () => {
 
   it("builds no event when no plugin listens", async () => {
     stubNotifyFrame();
-    await configure([]);
-    const { handleNotifyAppReady } = await import("./appReady");
+    const launch = await configure([]);
 
-    const readiness = handleNotifyAppReady({});
+    const readiness = launch.read({});
     await vi.runOnlyPendingTimersAsync();
     await readiness;
 

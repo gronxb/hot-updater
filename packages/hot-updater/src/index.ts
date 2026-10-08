@@ -286,7 +286,7 @@ bundleCommand
 bundleCommand
   .command("show")
   .description("Show one bundle by ID")
-  .argument("<id>", "the ID shown in the console or HotUpdater.getBundleId()")
+  .argument("<id>", "the ID shown in the console or hotUpdater.getBundleId()")
   .option("--json", "output raw internal data as JSON")
   .action((id: string, options: { json?: boolean }) =>
     handleBundleShow(id, options),
@@ -338,7 +338,7 @@ addBundlePolicyOptions(
   bundleCommand
     .command("update")
     .description("Update bundle rollout and targeting")
-    .argument("<id>", "the ID shown in the console or HotUpdater.getBundleId()")
+    .argument("<id>", "the ID shown in the console or hotUpdater.getBundleId()")
     .option(
       "--dry-run",
       "validate the update and show the projected catalog without saving",
@@ -357,7 +357,7 @@ for (const [name, enabled] of [
         ? "Enable a bundle"
         : "Disable a bundle and re-resolve compatible delivery",
     )
-    .argument("<id>", "the ID shown in the console or HotUpdater.getBundleId()")
+    .argument("<id>", "the ID shown in the console or hotUpdater.getBundleId()")
     .option(
       "--expected-revision <revision>",
       "expected bundle revision",
@@ -379,7 +379,7 @@ for (const [name, enabled] of [
 bundleCommand
   .command("delete")
   .description("Delete a disabled bundle")
-  .argument("<id>", "the ID shown in the console or HotUpdater.getBundleId()")
+  .argument("<id>", "the ID shown in the console or hotUpdater.getBundleId()")
   .option(
     "--expected-revision <revision>",
     "expected bundle revision",

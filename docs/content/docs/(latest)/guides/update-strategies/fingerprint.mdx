@@ -206,7 +206,7 @@ out of the app.
 ```tsx title="updates.ts"
 import { HotUpdater } from "@hot-updater/react-native";
 
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL: "https://your-update-server.com",
   requestHeaders: {
     "x-api-key": "<your-client-api-key>",
@@ -216,7 +216,7 @@ HotUpdater.init({
 
 export async function checkForAppUpdate() {
   try {
-    const updateInfo = await HotUpdater.checkForUpdate({
+    const updateInfo = await hotUpdater.checkForUpdate({
       updateStrategy: "appVersion", // [!code --]
       updateStrategy: "fingerprint", // [!code ++]
     });
@@ -225,7 +225,7 @@ export async function checkForAppUpdate() {
 
     const didUpdate = await updateInfo.updateBundle();
     if (didUpdate && updateInfo.shouldForceUpdate) {
-      await HotUpdater.reload();
+      await hotUpdater.reload();
     }
   } catch (error) {
     console.error("Failed to prepare update:", error);

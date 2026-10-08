@@ -41,16 +41,18 @@ const reporter = (id = "reporter") =>
     id,
     setup(context) {
       return {
-        async onAppReady(result) {
-          const response = await context.fetch("events", {
-            method: "POST",
-            headers: { "content-type": "application/json" },
-            body: JSON.stringify({
-              status: result.status,
-              installId: context.installId,
-            }),
-          });
-          context.storage.set("lastStatus", String(response.status));
+        hooks: {
+          async onAppReady(result) {
+            const response = await context.fetch("events", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                status: result.status,
+                installId: context.installId,
+              }),
+            });
+            context.storage.set("lastStatus", String(response.status));
+          },
         },
       };
     },
@@ -194,12 +196,14 @@ describe("setupClientPlugin", () => {
       defineClientPlugin({
         id: "fetcher",
         setup: (context) => ({
-          onAppReady: () =>
-            Promise.all([
-              attempt(context, "offline"),
-              attempt(context, "slow"),
-              attempt(context, "https://elsewhere.example.com/x"),
-            ]).then(() => undefined),
+          hooks: {
+            onAppReady: () =>
+              Promise.all([
+                attempt(context, "offline"),
+                attempt(context, "slow"),
+                attempt(context, "https://elsewhere.example.com/x"),
+              ]).then(() => undefined),
+          },
         }),
       }),
       {
@@ -234,23 +238,27 @@ describe("setupClientPlugin", () => {
       defineClientPlugin({
         id: "failing",
         setup: () => ({
-          onAppReady() {
-            throw new Error("sync failure");
-          },
-          async onUpdateError() {
-            throw new Error("async failure");
-          },
-          async onBundleDownloaded() {
-            await new Promise((resolve) => setTimeout(resolve, 10));
-            slowHookDone = true;
+          hooks: {
+            onAppReady() {
+              throw new Error("sync failure");
+            },
+            async onUpdateError() {
+              throw new Error("async failure");
+            },
+            async onBundleDownloaded() {
+              await new Promise((resolve) => setTimeout(resolve, 10));
+              slowHookDone = true;
+            },
           },
         }),
       }),
       defineClientPlugin({
         id: "observer",
         setup: () => ({
-          onAppReady: (result) => {
-            calls.push(result.status);
+          hooks: {
+            onAppReady: (result) => {
+              calls.push(result.status);
+            },
           },
         }),
       }),
@@ -321,8 +329,32 @@ describe("setupClientPlugin", () => {
     );
   });
 
+  it("hands back each plugin's API under its id, as HotUpdater.init does", () => {
+    const counter = defineClientPlugin({
+      id: "counter",
+      setup(context) {
+        return {
+          api: {
+            increment: () => {
+              const next = Number(context.storage.get("count") ?? "0") + 1;
+              context.storage.set("count", String(next));
+              return next;
+            },
+          },
+        };
+      },
+    });
+
+    const runtime = setupClientPlugins([counter, reporter()]);
+    expect(runtime.apis.counter.increment()).toBe(1);
+    expect(Object.keys(runtime.apis)).toEqual(["counter"]);
+    // @ts-expect-error a plugin without an API adds no key
+    void runtime.apis.reporter;
+    expect(setupClientPlugin(counter).api.increment()).toBe(1);
+  });
+
   it("sets a plugin up once per runtime", () => {
-    const setup = vi.fn(() => ({ onAppReady: () => {} }));
+    const setup = vi.fn(() => ({ hooks: { onAppReady: () => {} } }));
     const plugin = defineClientPlugin({ id: "counted", setup });
 
     const runtime = setupClientPlugin(plugin);
@@ -340,9 +372,11 @@ describe("plugin storage", () => {
       id,
       setup(context) {
         return {
-          onAppReady: () => {
-            const launches = Number(context.storage.get("launches") ?? "0");
-            context.storage.set("launches", String(launches + 1));
+          hooks: {
+            onAppReady: () => {
+              const launches = Number(context.storage.get("launches") ?? "0");
+              context.storage.set("launches", String(launches + 1));
+            },
           },
         };
       },
@@ -376,8 +410,10 @@ describe("plugin storage", () => {
       defineClientPlugin({
         id: "large",
         setup: (context) => ({
-          onAppReady: () => {
-            context.storage.set("value", "x".repeat(64 * 1024 + 1));
+          hooks: {
+            onAppReady: () => {
+              context.storage.set("value", "x".repeat(64 * 1024 + 1));
+            },
           },
         }),
       }),

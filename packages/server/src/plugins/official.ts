@@ -15,7 +15,11 @@ const OFFICIAL = Symbol.for("@hot-updater/server/official-plugin");
  * The ids of Hot Updater's own plugins. The console and tooling tell
  * features apart by plugin id, so no other plugin may take one.
  */
-const OFFICIAL_IDS: ReadonlySet<string> = new Set(["insights", "apiKeys"]);
+const OFFICIAL_IDS: ReadonlySet<string> = new Set([
+  "insights",
+  "apiKeys",
+  "remoteConfig",
+]);
 
 /** Whether one of Hot Updater's own factories made `plugin`. */
 export const isOfficialPlugin = (plugin: unknown): boolean =>

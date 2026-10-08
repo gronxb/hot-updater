@@ -1,0 +1,7 @@
+{
+  "name": "@hot-updater/plugin-remote-config/client",
+  "private": true,
+  "main": "../dist/client/index.cjs",
+  "module": "../dist/client/index.mjs",
+  "types": "../dist/client/index.d.cts"
+}

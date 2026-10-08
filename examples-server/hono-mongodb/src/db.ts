@@ -7,6 +7,7 @@ import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { insights } from "@hot-updater/server/plugins/insights";
+import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
 import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
 
 import { client, closeDatabase as closeMongo, db } from "./mongodb";
@@ -21,7 +22,7 @@ if (existsSync(envFilePath)) {
 // Note: MongoDB connection must be established before using this instance
 export const hotUpdater = createHotUpdater({
   database: mongoAdapter({ client }),
-  plugins: [insights()],
+  plugins: [insights(), remoteConfig()],
   clientAccess: "public",
   storage: [
     process.env.NODE_ENV === "test"

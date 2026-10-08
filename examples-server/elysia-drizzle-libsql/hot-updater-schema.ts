@@ -320,6 +320,28 @@ export const insights_failures = sqliteTable("insights_failures", {
   index("insights_failures__retention").on(table["bucket_start_ms"], table["platform"], table["channel"], table["release_id"], table["stage"], table["reason"], table["detail"], table["_shard"]),
 ]);
 
+export const remote_config_active = sqliteTable("remote_config_active", {
+  "id": column("TEXT")("id").notNull(),
+  "version": column("INTEGER")("version").notNull(),
+  "template": column("TEXT")("template").notNull(),
+  "updated_at_ms": column("INTEGER")("updated_at_ms").notNull(),
+  "_v": column("INTEGER")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["id"]] }),
+]);
+
+export const remote_config_versions = sqliteTable("remote_config_versions", {
+  "version": column("INTEGER")("version").notNull(),
+  "template": column("TEXT")("template").notNull(),
+  "description": column("TEXT")("description"),
+  "update_type": column("TEXT")("update_type").notNull(),
+  "rollback_source": column("INTEGER")("rollback_source"),
+  "created_at_ms": column("INTEGER")("created_at_ms").notNull(),
+  "_v": column("INTEGER")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["version"]] }),
+]);
+
 export const private_hot_updater_settings = sqliteTable("private_hot_updater_settings", {
   "key": column("TEXT")("key").notNull(),
   "value": column("TEXT")("value").notNull(),

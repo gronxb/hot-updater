@@ -6,12 +6,18 @@ import {
   type InsightsApi,
   type InsightsModel,
 } from "@hot-updater/server/plugins/insights";
+import type { RemoteConfigApi } from "@hot-updater/server/plugins/remote-config";
 
 import type { ConsoleFeature } from "../console-features";
 import {
   type ConsoleInsightsReads,
   createAdminInsightsReads,
 } from "./adminInsights";
+import {
+  type ConsoleRemoteConfig,
+  createAdminRemoteConfig,
+  createLocalRemoteConfig,
+} from "./remoteConfig";
 
 /** A GET on a self-hosted server's admin handler. */
 export type FetchAdmin = RemoteDatabase["fetchAdmin"];
@@ -46,6 +52,11 @@ export const consoleFeatureApis = {
   }),
   apiKeys: featureApi({
     local: (api: ApiKeyManagementAPI) => api,
+  }),
+  remoteConfig: featureApi({
+    local: (api: RemoteConfigApi): ConsoleRemoteConfig =>
+      createLocalRemoteConfig(api),
+    remote: createAdminRemoteConfig,
   }),
 } satisfies {
   readonly [F in ConsoleFeature]: ConsoleFeatureApi<never, unknown>;

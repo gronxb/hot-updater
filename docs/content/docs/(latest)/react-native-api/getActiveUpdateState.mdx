@@ -6,13 +6,13 @@ icon: ListChecks
 
 ## Usage
 
-Use `HotUpdater.getActiveUpdateState()` for support diagnostics that need both
+Use `hotUpdater.getActiveUpdateState()` for support diagnostics that need both
 the Console update ID and the underlying artifact ID.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { hotUpdater } from "./hotUpdater";
 
-const state = await HotUpdater.getActiveUpdateState();
+const state = await hotUpdater.getActiveUpdateState();
 
 console.log({
   updateId: state.activeSelection?.releaseId,

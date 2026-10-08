@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { createElement, type ComponentType } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -11,7 +11,7 @@ import type {
   LaunchTransition,
   NotifyAppReadyResult,
 } from "./native";
-import type { HotUpdaterOptions } from "./wrap";
+import type { HotUpdaterWrapOptions, InternalWrapOptions } from "./wrap";
 
 vi.mock("react-native", () => ({
   Platform: {
@@ -45,43 +45,49 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("./checkForUpdate", () => ({
   checkForUpdate: mocks.checkForUpdate,
+  reportUpdateError: vi.fn(),
 }));
 
 vi.mock("./native", () => ({
   addListener: mocks.addListener,
+  clearCrashHistory: vi.fn(),
   getAppVersion: mocks.getAppVersion,
+  getBaseURL: vi.fn(() => null),
   getBundleId: mocks.getBundleId,
   getUpdateId: mocks.getUpdateId,
   getChannel: mocks.getChannel,
   getActiveUpdateState: mocks.getActiveUpdateState,
   getCohort: mocks.getCohort,
+  getCrashHistory: vi.fn(() => []),
+  getDefaultChannel: vi.fn(() => "production"),
   getFingerprintHash: mocks.getFingerprintHash,
   getInstallId: mocks.getInstallId,
+  getManifest: vi.fn(),
+  getMinBundleId: vi.fn(() => "min-bundle-id"),
+  getPublicActiveUpdateState: vi.fn(),
+  getStorageItem: vi.fn(() => null),
+  isChannelSwitched: vi.fn(() => false),
+  notifyAppReady: vi.fn(),
   readNotifyAppReady: mocks.readNotifyAppReady,
   reload: mocks.reload,
+  resetChannel: vi.fn(),
+  setCohort: vi.fn(),
+  setReloadBehavior: vi.fn(),
+  setStorageItem: vi.fn(),
+  stageBundle: vi.fn(),
 }));
 
-const createClient = () => ({
-  client: {
-    createSession: vi.fn(async () => ({
-      fetchReleaseCatalog: vi.fn(),
-      resolveArtifact: vi.fn(),
-    })),
-  },
+/** The settings the instance passes its wrap, as plain mocks. */
+const instanceOptions = (
+  overrides: Partial<InternalWrapOptions> = {},
+): Omit<InternalWrapOptions, keyof HotUpdaterWrapOptions> => ({
+  checkForUpdate: mocks.checkForUpdate,
+  appReady: async () => undefined,
+  onError: vi.fn(),
+  ...overrides,
 });
 
-const configureRecorder = async () => {
-  const { configurePlugins } = await import("./pluginHost");
-  const onAppReady = vi.fn();
-  const plugin: HotUpdaterClientPlugin = {
-    id: "recorder",
-    setup: () => ({ onAppReady }),
-  };
-  configurePlugins([plugin], { baseURL: "https://updates.example.com" });
-  return onAppReady;
-};
-
-describe("HotUpdater wrap initialization", () => {
+describe("hotUpdater.wrap", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.unstubAllGlobals();
@@ -110,13 +116,11 @@ describe("HotUpdater wrap initialization", () => {
 
   afterEach(cleanup);
 
-  it("reports the console ID when up to date and the launch to plugins", async () => {
-    const onAppReady = await configureRecorder();
+  it("reports the console ID when up to date", async () => {
     const onUpdateProcessCompleted = vi.fn();
-    const { client } = createClient();
     const { wrap } = await import("./wrap");
     const WrappedComponent = wrap({
-      client,
+      ...instanceOptions(),
       onUpdateProcessCompleted,
       updateStrategy: "appVersion",
     })(() => null);
@@ -131,17 +135,7 @@ describe("HotUpdater wrap initialization", () => {
         status: "UP_TO_DATE",
       }),
     );
-    expect(onAppReady).toHaveBeenCalledExactlyOnceWith({
-      status: "UNCHANGED",
-      channel: "production",
-      bundleId: "bundle-id",
-      releaseId: null,
-    });
-    expect(mocks.checkForUpdate).toHaveBeenCalledWith({
-      client,
-      onError: undefined,
-      requestHeaders: undefined,
-      requestTimeout: undefined,
+    expect(mocks.checkForUpdate).toHaveBeenCalledExactlyOnceWith({
       updateStrategy: "appVersion",
     });
   });
@@ -164,7 +158,7 @@ describe("HotUpdater wrap initialization", () => {
     const { wrap } = await import("./wrap");
     const onUpdateProcessCompleted = vi.fn();
     const Wrapped = wrap({
-      client: createClient().client,
+      ...instanceOptions(),
       updateStrategy: "appVersion",
       onUpdateProcessCompleted,
     })(() => null);
@@ -181,7 +175,137 @@ describe("HotUpdater wrap initialization", () => {
     complete(true);
   });
 
-  it("returns void from init and defers notifyAppReady to the next frame", async () => {
+  it("reloads for a forced update only after init has read the launch", async () => {
+    let finishLaunchRead!: () => void;
+    const appReady = new Promise<void>((resolve) => {
+      finishLaunchRead = resolve;
+    });
+    const download = vi.fn(async () => true);
+    mocks.checkForUpdate.mockResolvedValue({
+      id: "next",
+      status: "UPDATE",
+      shouldForceUpdate: true,
+      message: null,
+      updateBundle: download,
+    });
+    const { wrap } = await import("./wrap");
+    const Wrapped = wrap({
+      ...instanceOptions({ appReady: () => appReady }),
+      updateStrategy: "appVersion",
+    })(() => null);
+
+    render(createElement(Wrapped));
+
+    await waitFor(() => expect(mocks.checkForUpdate).toHaveBeenCalledOnce());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(download).not.toHaveBeenCalled();
+    expect(mocks.reload).not.toHaveBeenCalled();
+
+    finishLaunchRead();
+
+    await waitFor(() => expect(mocks.reload).toHaveBeenCalledOnce());
+    expect(download).toHaveBeenCalledOnce();
+  });
+
+  it("reports a failed forced download to init's onError and shows the app", async () => {
+    const onError = vi.fn();
+    mocks.checkForUpdate.mockResolvedValue({
+      id: "next",
+      status: "UPDATE",
+      shouldForceUpdate: true,
+      message: null,
+      updateBundle: vi.fn(async () => false),
+    });
+    const { wrap } = await import("./wrap");
+    const Wrapped = wrap({
+      ...instanceOptions({ onError }),
+      updateStrategy: "appVersion",
+      fallbackComponent: () => createElement("div", null, "updating"),
+    })(() => createElement("div", null, "app"));
+
+    render(createElement(Wrapped));
+
+    await screen.findByText("app");
+    expect(onError).toHaveBeenCalledExactlyOnceWith(
+      new Error("New update was found but failed to download the bundle."),
+    );
+    expect(mocks.reload).not.toHaveBeenCalled();
+  });
+
+  it("checks with init's settings and reads the launch once, in init", async () => {
+    const { HotUpdater } = await import("./index");
+    const onAppReady = vi.fn();
+    const recorder: HotUpdaterClientPlugin = {
+      id: "recorder",
+      setup: () => ({ hooks: { onAppReady } }),
+    };
+    const onError = vi.fn();
+    const onUpdateProcessCompleted = vi.fn();
+    const hotUpdater = HotUpdater.init({
+      baseURL: "https://updates.example.com",
+      onError,
+      plugins: [recorder],
+      requestHeaders: { "x-api-key": "client-key" },
+      requestTimeout: 1000,
+    });
+
+    render(
+      createElement(
+        hotUpdater.wrap({
+          onUpdateProcessCompleted,
+          updateStrategy: "fingerprint",
+        })(() => null),
+      ),
+    );
+
+    await waitFor(() =>
+      expect(onUpdateProcessCompleted).toHaveBeenCalledWith(
+        expect.objectContaining({ status: "UP_TO_DATE" }),
+      ),
+    );
+    expect(mocks.checkForUpdate).toHaveBeenCalledExactlyOnceWith(
+      expect.objectContaining({
+        onError,
+        requestHeaders: { "x-api-key": "client-key" },
+        requestTimeout: 1000,
+        updateStrategy: "fingerprint",
+      }),
+    );
+    expect(mocks.readNotifyAppReady).toHaveBeenCalledOnce();
+    expect(onAppReady).toHaveBeenCalledExactlyOnceWith({
+      status: "UNCHANGED",
+      channel: "production",
+      bundleId: "bundle-id",
+      releaseId: null,
+    });
+  });
+
+  it("gives each instance its own plugins, each told of the launch once", async () => {
+    const { HotUpdater } = await import("./index");
+    const first = vi.fn();
+    const second = vi.fn();
+
+    HotUpdater.init({
+      baseURL: "https://updates.example.com",
+      plugins: [
+        { id: "recorder", setup: () => ({ hooks: { onAppReady: first } }) },
+      ],
+    });
+    HotUpdater.init({
+      baseURL: "https://other.example.com",
+      plugins: [
+        { id: "recorder", setup: () => ({ hooks: { onAppReady: second } }) },
+      ],
+    });
+
+    await waitFor(() => {
+      expect(first).toHaveBeenCalledOnce();
+      expect(second).toHaveBeenCalledOnce();
+    });
+    expect(mocks.readNotifyAppReady).toHaveBeenCalledTimes(2);
+  });
+
+  it("has init defer reading the launch to the next frame", async () => {
     vi.useFakeTimers();
 
     const requestAnimationFrame = vi.fn(
@@ -191,20 +315,14 @@ describe("HotUpdater wrap initialization", () => {
       },
     );
     vi.stubGlobal("requestAnimationFrame", requestAnimationFrame);
-    const onAppReady = await configureRecorder();
+    const { HotUpdater } = await import("./index");
+    const onAppReady = vi.fn();
 
-    const { client } = createClient();
-    const { init } = await import("./wrap");
-
-    const result = init({
-      client,
-      requestHeaders: {
-        Authorization: "Bearer token",
-      },
-      requestTimeout: 1000,
+    HotUpdater.init({
+      baseURL: "https://updates.example.com",
+      plugins: [{ id: "recorder", setup: () => ({ hooks: { onAppReady } }) }],
     });
 
-    expect(result).toBeUndefined();
     expect(mocks.readNotifyAppReady).not.toHaveBeenCalled();
     expect(onAppReady).not.toHaveBeenCalled();
     expect(requestAnimationFrame).toHaveBeenCalled();
@@ -215,21 +333,12 @@ describe("HotUpdater wrap initialization", () => {
     expect(onAppReady).toHaveBeenCalledOnce();
   });
 
-  it("does not accept a manual wrap HOC", async () => {
-    const { wrap } = await import("./wrap");
-
-    wrap({
-      client: createClient().client,
-      updateStrategy: "appVersion",
-    });
-  });
-
   it("preserves wrapped component prop inference", async () => {
     const { wrap } = await import("./wrap");
     const Component: ComponentType<{ title: string }> = () => null;
 
     const WrappedComponent = wrap({
-      client: createClient().client,
+      ...instanceOptions(),
       updateStrategy: "appVersion",
     })(Component);
 
@@ -238,23 +347,21 @@ describe("HotUpdater wrap initialization", () => {
     expect(acceptsTitleProps).toBe(WrappedComponent);
   });
 
-  it("types public wrap options as automatic mode by default", () => {
-    const autoOptions = {
-      baseURL: "https://updates.example.com",
+  it("types wrap options as the update flow alone", () => {
+    const options = {
       updateStrategy: "appVersion",
-    } satisfies HotUpdaterOptions;
+    } satisfies HotUpdaterWrapOptions;
 
-    const assertRemovedOptionStaysRejected = () => {
-      const withInsights: HotUpdaterOptions = {
-        baseURL: "https://updates.example.com",
+    const assertConfigurationStaysInInit = () => {
+      const withBaseURL: HotUpdaterWrapOptions = {
         updateStrategy: "appVersion",
-        // @ts-expect-error Insights is the insights() plugin, not an option.
-        insights: true,
+        // @ts-expect-error the server is configured by HotUpdater.init.
+        baseURL: "https://updates.example.com",
       };
-      void withInsights;
+      void withBaseURL;
     };
 
-    expect(assertRemovedOptionStaysRejected).toBeTypeOf("function");
-    expect(autoOptions.updateStrategy).toBe("appVersion");
+    expect(assertConfigurationStaysInInit).toBeTypeOf("function");
+    expect(options.updateStrategy).toBe("appVersion");
   });
 });

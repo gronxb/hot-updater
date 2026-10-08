@@ -1,20 +1,20 @@
 ---
 title: "setCohort"
-description: "The `HotUpdater.setCohort()` function overrides the persisted cohort used for rollout decisions."
+description: "The `hotUpdater.setCohort()` function overrides the persisted cohort used for rollout decisions."
 icon: Pencil
 ---
 
 ## Usage
 
-Use `HotUpdater.setCohort()` to move a device into a specific numeric or custom
+Use `hotUpdater.setCohort()` to move a device into a specific numeric or custom
 cohort.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { hotUpdater } from "./hotUpdater";
 
 function assignQaCohort() {
-  HotUpdater.setCohort("qa");
-  console.log(HotUpdater.getCohort()); // "qa"
+  hotUpdater.setCohort("qa");
+  console.log(hotUpdater.getCohort()); // "qa"
 }
 ```
 
@@ -24,7 +24,7 @@ function assignQaCohort() {
 setCohort(cohort: string): void
 ```
 
-Numeric cohorts are passed as strings, for example `HotUpdater.setCohort("500")`.
+Numeric cohorts are passed as strings, for example `hotUpdater.setCohort("500")`.
 
 ## Behavior
 
@@ -36,7 +36,7 @@ Numeric cohorts are passed as strings, for example `HotUpdater.setCohort("500")`
 
 ## Important notes
 
-- Call `HotUpdater.getCohort()` first if you need to restore the previous value
+- Call `hotUpdater.getCohort()` first if you need to restore the previous value
   later.
 - Partial percentage rollout applies to numeric cohorts. At `100%`, a Bundle
   is also eligible for custom cohorts, even when they are absent from
@@ -47,5 +47,5 @@ Numeric cohorts are passed as strings, for example `HotUpdater.setCohort("500")`
 
 ## Related APIs
 
-- [`HotUpdater.getCohort()`](/docs/react-native-api/getCohort)
+- [`hotUpdater.getCohort()`](/docs/react-native-api/getCohort)
 - [Rollout & Cohorts](/docs/guides/rollout-cohorts)

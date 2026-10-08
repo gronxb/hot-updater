@@ -9,6 +9,11 @@ import {
   type BundleEventRow,
   type InsightsApi,
 } from "@hot-updater/server/plugins/insights";
+import {
+  remoteConfig,
+  type RemoteConfigApi,
+  type RemoteConfigTemplate,
+} from "@hot-updater/server/plugins/remote-config";
 
 type DemoReleaseFields = Pick<
   Release,
@@ -661,7 +666,7 @@ export const database = mockDatabase({ latency: { min: 150, max: 320 } });
 /** The demo's storage; the seed uploads no bundle files to it. */
 export const storage = mockStorage({});
 /** The plugins whose features the console shows; the seed writes through them too. */
-export const plugins = [insights(), apiKeys()];
+export const plugins = [insights(), apiKeys(), remoteConfig()];
 // Seeding writes through core and the plugins, assembled as the console
 // assembles them, over the same data without the delay the console sees.
 const seeding = assembleServer({
@@ -1233,4 +1238,81 @@ for (const [type, index] of [
     },
     received_at_ms: builtinDemoNow + 9 + index,
   });
+}
+
+// Remote Config's history: launch copy, then conditions, then a checkout
+// rollout to a quarter of installs.
+const remoteConfigApi = seeding.api.remoteConfig as RemoteConfigApi;
+const welcome = (beta: boolean): RemoteConfigTemplate["parameters"] => ({
+  welcome_message: {
+    valueType: "STRING",
+    description: "The home screen's greeting.",
+    defaultValue: { value: "Welcome back" },
+    ...(beta
+      ? { conditionalValues: { "Beta channel": { value: "Welcome, tester" } } }
+      : {}),
+  },
+  max_items: {
+    valueType: "NUMBER",
+    defaultValue: { value: "20" },
+    ...(beta
+      ? { conditionalValues: { "iOS 1.4 and later": { value: "30" } } }
+      : {}),
+  },
+});
+const demoConditions: RemoteConfigTemplate["conditions"] = [
+  {
+    name: "Beta channel",
+    rules: [{ type: "channel", channels: ["beta"] }],
+  },
+  {
+    name: "iOS 1.4 and later",
+    rules: [
+      { type: "platform", platforms: ["ios"] },
+      { type: "appVersion", range: ">=1.4.0" },
+    ],
+  },
+];
+for (const [baseVersion, template, description] of [
+  [0, { conditions: [], parameters: welcome(false) }, "Launch copy"],
+  [
+    1,
+    { conditions: demoConditions, parameters: welcome(true) },
+    "Beta greeting and a longer list on iOS",
+  ],
+  [
+    2,
+    {
+      conditions: [
+        ...demoConditions,
+        {
+          name: "Checkout rollout",
+          rules: [{ type: "percent", seed: "checkout", from: 0, to: 25 }],
+        },
+      ],
+      parameters: {
+        ...welcome(true),
+        new_checkout: {
+          valueType: "BOOLEAN",
+          description: "Shows the redesigned checkout.",
+          defaultValue: { value: "false" },
+          conditionalValues: {
+            "Beta channel": { value: "true" },
+            "Checkout rollout": { value: "true" },
+          },
+        },
+        onboarding_steps: {
+          valueType: "JSON",
+          defaultValue: { value: '["welcome","permissions","done"]' },
+        },
+        support_url: {
+          valueType: "STRING",
+          defaultValue: { useInAppDefault: true },
+        },
+      },
+    },
+    "Roll the new checkout out to 25% of installs",
+  ],
+] as const) {
+  await remoteConfigApi.publish({ template, baseVersion, description });
 }

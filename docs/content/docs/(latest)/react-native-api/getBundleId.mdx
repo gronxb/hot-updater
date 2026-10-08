@@ -6,14 +6,14 @@ icon: Tag
 
 ## Usage
 
-`HotUpdater.getBundleId()` returns the currently selected update's ID,
+`hotUpdater.getBundleId()` returns the currently selected update's ID,
 matching the ID shown in the console. Use it in support logs or a settings
 screen to find the update selected on a device.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { hotUpdater } from "./hotUpdater";
 
-console.log("ID:", HotUpdater.getBundleId());
+console.log("ID:", hotUpdater.getBundleId());
 ```
 
 You can inspect that update from the CLI:
@@ -35,7 +35,7 @@ until a catalog update is selected.
 
 After an update is staged, this ID can change before the app reloads. It
 identifies the selected update; it does not confirm that its code is already
-running. Call `HotUpdater.reload()` to start a staged update.
+running. Call `hotUpdater.reload()` to start a staged update.
 
 Promoting the same files to another channel creates a new ID. Changing delivery
 settings does not require uploading the files again.

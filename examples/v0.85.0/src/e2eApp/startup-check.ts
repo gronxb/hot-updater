@@ -1,6 +1,5 @@
-import { HotUpdater } from "@hot-updater/react-native";
-
 import { readE2eRuntimeConfig } from "../e2eRuntimeConfig";
+import { hotUpdater } from "./runtime";
 import { persistScreenState } from "./screen-state-persistence";
 
 export const runStartupUpdateCheck = async (isActive: () => boolean) => {
@@ -14,7 +13,7 @@ export const runStartupUpdateCheck = async (isActive: () => boolean) => {
       console.error(error);
     }
     if (!isActive()) return;
-    const updateInfo = await HotUpdater.checkForUpdate({
+    const updateInfo = await hotUpdater.checkForUpdate({
       updateStrategy: "appVersion",
     });
     if (!isActive() || !updateInfo?.shouldForceUpdate) return;
@@ -22,7 +21,7 @@ export const runStartupUpdateCheck = async (isActive: () => boolean) => {
       // The replacement runtime must complete its own startup check. The old
       // mount must not acknowledge readiness while native reload is starting.
       reloadStarted = true;
-      await HotUpdater.reload();
+      await hotUpdater.reload();
     }
   } catch (error) {
     console.error(error);

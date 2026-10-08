@@ -15,6 +15,12 @@ export const consoleFeatures = {
   insightsAnalytics: { plugin: "insights", label: "Insights", remote: false },
   /** API key management: `apiKeys()` mounts no admin routes to manage them. */
   apiKeys: { plugin: "apiKeys", label: "API keys", remote: false },
+  /** Template editing, publishing, and rollback, which the admin API serves too. */
+  remoteConfig: {
+    plugin: "remoteConfig",
+    label: "Remote Config",
+    remote: true,
+  },
 } as const satisfies Readonly<
   Record<
     string,

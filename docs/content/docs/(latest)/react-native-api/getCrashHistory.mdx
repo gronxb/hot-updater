@@ -6,13 +6,13 @@ icon: AlertTriangle
 
 ## Usage
 
-Use `HotUpdater.getCrashHistory()` in a support log or debug screen to inspect
+Use `hotUpdater.getCrashHistory()` in a support log or debug screen to inspect
 artifacts that crashed and triggered automatic rollback.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { hotUpdater } from "./hotUpdater";
 
-const crashedArtifacts = HotUpdater.getCrashHistory();
+const crashedArtifacts = hotUpdater.getCrashHistory();
 console.log("Rejected artifact IDs:", crashedArtifacts);
 ```
 
@@ -35,10 +35,10 @@ The list also holds an artifact whose launch ended before the first render,
 until a later session retries it once. See
 [automatic rollback](/docs/concepts/automatic-rollback#what-counts-as-a-failed-launch).
 
-Crash detection and app-ready reporting are configured through either
-[`wrap`](/docs/react-native-api/wrap) or [`init`](/docs/react-native-api/init).
-Use one of them, and see [automatic rollback](/docs/concepts/automatic-rollback)
-for the recovery lifecycle.
+Crash detection and app-ready reporting are configured through
+[`init`](/docs/react-native-api/init). See
+[automatic rollback](/docs/concepts/automatic-rollback) for the recovery
+lifecycle.
 
 ## Related APIs
 

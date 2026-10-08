@@ -6,6 +6,7 @@ export default defineConfig([
       "./src/index.ts",
       "./src/plugins/insights/index.ts",
       "./src/plugins/api-keys/index.ts",
+      "./src/plugins/remote-config/index.ts",
       "./src/adapters/kysely.ts",
       "./src/adapters/drizzle.ts",
       "./src/adapters/prisma.ts",

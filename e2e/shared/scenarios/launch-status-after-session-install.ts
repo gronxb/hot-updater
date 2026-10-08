@@ -2,8 +2,8 @@ import type { ScenarioDefinition } from "./types.ts";
 
 // A bundle installed during a session waits for the next launch. Reading this
 // session's launch again, as a root that initializes Hot Updater when it mounts
-// does (HotUpdater.wrap after its activity is recreated), must settle instead
-// of waiting for that bundle.
+// does after its activity is recreated, must settle instead of waiting for
+// that bundle.
 export const launchStatusAfterSessionInstallScenario: ScenarioDefinition = {
   name: "launch-status-after-session-install",
   run: async (app) => {

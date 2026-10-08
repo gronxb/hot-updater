@@ -2,7 +2,10 @@
   "jsPlugins": ["@shadcn/lint"],
   "overrides": [
     {
-      "files": ["packages/console/src/components/features/insights/**/*.tsx"],
+      "files": [
+        "packages/console/src/components/features/insights/**/*.tsx",
+        "packages/console/src/components/features/remote-config/**/*.tsx"
+      ],
       "rules": {
         "shadcn/no-raw-colors": "error",
         "shadcn/no-unknown-classes": "error",

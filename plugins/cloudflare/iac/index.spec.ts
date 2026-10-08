@@ -679,7 +679,11 @@ describe("Cloudflare init discovery", () => {
       unknown,
     ];
     expect(server.database.name).toBe("d1Database");
-    expect(server.plugins.map(({ id }) => id)).toEqual(["insights", "apiKeys"]);
+    expect(server.plugins.map(({ id }) => id)).toEqual([
+      "insights",
+      "apiKeys",
+      "remoteConfig",
+    ]);
     expect(input).toEqual({ env: {}, name: "Cloudflare init" });
     expect(mocks.makeEnv).toHaveBeenLastCalledWith({
       HOT_UPDATER_API_KEY: "app-api-key",

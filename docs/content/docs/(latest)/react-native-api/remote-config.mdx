@@ -1,0 +1,173 @@
+---
+title: "Remote Config Plugin"
+description: "Read values your server's Remote Config picks for this device, synchronously, with in-app defaults and a fetch and activate step, using the built-in `remoteConfig()` client plugin."
+icon: SlidersHorizontal
+---
+
+## Add the plugin
+
+`remoteConfig()` is a [client plugin](/docs/react-native-api/client-plugins)
+that `@hot-updater/react-native` exports from its root, from
+`@hot-updater/plugin-remote-config`, so there is nothing extra to install.
+Pass it to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init) with
+your in-app defaults; the instance `init` returns then has
+`hotUpdater.remoteConfig`, the API this page describes:
+
+```ts title="src/hotUpdater.ts"
+import { HotUpdater, remoteConfig } from "@hot-updater/react-native";
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: { "x-api-key": "<your-api-key>" },
+  plugins: [
+    remoteConfig({ // [!code ++:3]
+      defaults: { welcome_message: "Welcome back", max_items: 20 },
+    }),
+  ],
+});
+```
+
+The plugin requests `GET /remote-config` under `baseURL`, with the
+`requestHeaders` and `requestTimeout` of `init`. The server answers
+when it runs the `remoteConfig()`
+[server plugin](/docs/guides/remote-config#turn-on-the-server-plugin); the
+managed AWS, Cloudflare, Firebase, and Supabase servers run it. See the
+[Remote Config guide](/docs/guides/remote-config) to edit and publish values
+in the Console.
+
+## Options
+
+| Option                   | Type                                          | Default    | Description                                                                                                  |
+| ------------------------ | --------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------ |
+| `defaults`               | `Record<string, string \| number \| boolean>` | `{}`       | Values the app reads until it activates fetched ones, and for parameters the template leaves to the app.      |
+| `minimumFetchIntervalMs` | `number`                                      | `43200000` | The shortest time between fetches that reach the server: 12 hours. `0` fetches every time.                    |
+
+The keys of `defaults` type the keys `hotUpdater.remoteConfig`'s read methods
+suggest; any other key is accepted too.
+
+## Read values
+
+Every read on `hotUpdater.remoteConfig` is synchronous, and returns the first
+of these that has the key: the active remote value, then the in-app default,
+then `null`.
+
+| Method | Returns |
+| --- | --- |
+| `getValue(key)` | A `RemoteConfigValue` with `asString()`, `asNumber()`, `asBoolean()`, and `getSource()`, or `null`. |
+| `getString(key)` | `getValue(key)?.asString() ?? null` |
+| `getNumber(key)` | `getValue(key)?.asNumber() ?? null` |
+| `getBoolean(key)` | `getValue(key)?.asBoolean() ?? null` |
+| `getAll()` | Every key that `defaults` or the active values have, as `RemoteConfigValue`s. |
+
+`getSource()` is `"remote"` for a value the app activated and `"default"` for
+one from `defaults`. `false`, `0`, and `""` are values: a read returns them as
+they are, never `null`.
+
+A key `defaults` declares always has a value, so its reads are typed without
+`null`; any other key is typed `T | null`. Defaults typed as a map of any
+string, such as `RemoteConfigDefaults`, declare no key, so pass the object
+literal for typed keys. Give a nullable read a fallback where you read it:
+
+```ts
+const config = hotUpdater.remoteConfig;
+config.getNumber("max_items"); // number: max_items is in defaults
+config.getString("promo_code") ?? ""; // string | null without the fallback
+```
+
+When a later version leaves a key to the app, its reads return the default
+again, or `null` without one.
+
+Values travel as text. `asNumber()` is `Number(text)`, or `0`
+when that is not a number. `asBoolean()` is `true` for `1`, `true`, `t`, `yes`,
+`y`, and `on`, in any case, and `false` otherwise. A JSON parameter arrives as
+its text, for `JSON.parse(hotUpdater.remoteConfig.getString(key))`.
+
+`init` loads the values the app activated at an earlier launch from the
+device before it returns, so the first render already reads them.
+
+## Fetch and activate
+
+| Method | Does |
+| --- | --- |
+| `fetch(options?)` | Fetches this device's values and keeps them for `activate`. The values the app reads do not change. `{ force: true }` asks the server within `minimumFetchIntervalMs`. |
+| `activate()` | Makes the fetched values the ones reads return. Resolves `true` when they replaced other values, `false` when nothing changed. |
+| `fetchAndActivate(options?)` | `fetch(options)`, then `activate()`. Resolves as `activate()` does, and rejects as `fetch()` does, keeping the active values. |
+
+```ts
+// Apply as soon as they arrive:
+hotUpdater.remoteConfig.fetchAndActivate().catch(() => {});
+
+// Or apply at the next launch: activate what the last launch fetched,
+// then fetch for the next one.
+await hotUpdater.remoteConfig.activate();
+hotUpdater.remoteConfig.fetch().catch(() => {});
+```
+
+A fetch within `minimumFetchIntervalMs` of the last successful one keeps the
+values fetched last and sends nothing, unless the app's channel, native
+version, cohort, or fingerprint changed since: then it always asks the server.
+Calls made while a fetch is running share it. The plugin revalidates with the
+answer's `ETag`, so an unchanged answer costs a `304`. A failed fetch does not
+start the interval, so the next call asks the server again.
+
+Each fetch that reaches the server is a request your update server answers,
+so the interval caps them at two a day per device by default.
+`fetch({ force: true })` asks the server within the interval, for a moment the
+user asks for fresh values, such as pull to refresh. Each forced fetch is a
+request, a `304` when nothing changed, so a call that runs on every return to
+the app should force only when `fetchedAtMs` is old enough, as the guide's
+[kill switch](/docs/guides/remote-config#turn-a-feature-off-quickly) does.
+
+`fetch()` rejects, and the active values stay, when:
+
+- the request fails or times out;
+- the server answers `404`, because it runs without the `remoteConfig()`
+  server plugin, or any other error status;
+- the answer is not Remote Config values.
+
+Fetched and activated values are stored on the device with the plugin's
+[storage](/docs/react-native-api/client-plugins#store-values-on-the-device), outside device
+backups, and survive restarts and OTA updates. Fetching works in debug builds
+too.
+
+## Status
+
+| Property | Value |
+| --- | --- |
+| `lastFetchStatus` | `"no-fetch-yet"`, `"success"`, or `"failure"`, for any error. |
+| `fetchedAtMs` | When the last successful fetch ended, in milliseconds since the epoch, or `null`. |
+| `activeVersion` | The template version the active values come from, or `0`. |
+
+Both fetch fields persist across launches.
+
+## Re-render on activation
+
+`subscribe(listener)` calls `listener` whenever `activate()` replaces the active
+values. It returns a function that stops it.
+`getAll()` returns the same object until then, so it works with React's
+`useSyncExternalStore`:
+
+```tsx title="src/useRemoteConfig.ts"
+import { useSyncExternalStore } from "react";
+
+import { hotUpdater } from "./hotUpdater";
+
+export const useRemoteConfig = () =>
+  useSyncExternalStore(
+    hotUpdater.remoteConfig.subscribe,
+    hotUpdater.remoteConfig.getAll,
+  );
+```
+
+```tsx
+const values = useRemoteConfig();
+return <Text>{values.welcome_message?.asString()}</Text>;
+```
+
+## Types
+
+`@hot-updater/react-native` exports `RemoteConfigClient`, the type of
+`hotUpdater.remoteConfig`, `RemoteConfigPlugin`, `RemoteConfigOptions`,
+`RemoteConfigValue`, `RemoteConfigValueSource`, `RemoteConfigFetchStatus`,
+`RemoteConfigFetchOptions`,
+`RemoteConfigDefaults`, `RemoteConfigDefaultValue`, and `RemoteConfigKey`.

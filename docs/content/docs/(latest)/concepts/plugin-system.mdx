@@ -49,13 +49,13 @@ every project can reach.
 | [Storage adapter](#storage-adapter)    | Stores bundle artifacts and resolves their download URLs                            | CLI, Console, server           | Supabase, Cloudflare R2, AWS S3, Firebase, Standalone                               | [Create a storage adapter](/docs/storage-adapters/custom-storage)   |
 | [Database adapter](#database-adapter)  | Stores Bundles, Releases, Release Catalogs, Channels, and server plugins' tables    | CLI, Console, server           | Supabase, Cloudflare D1, DynamoDB, Firestore, Kysely, Drizzle, Prisma, MongoDB | [Create a database adapter](/docs/database-adapters/custom-database) |
 | [Signing adapter](#signing-adapter)    | Signs artifact hashes during deploy                                                 | CLI                            | [Local PEM](/docs/guides/signing/local), [AWS KMS](/docs/guides/signing/aws-kms), [Google Cloud KMS](/docs/guides/signing/google-cloud-kms), [remote](/docs/guides/signing/remote) | `BundleSigningAdapter` from `@hot-updater/plugin-core`              |
-| [Server plugin](#server-plugins)       | Adds tables, APIs, routes, and client authentication to the update server           | Server, and the CLI and Console over a direct database; [its tables](/docs/custom/server-plugins#create-the-plugins-tables) come from managed init or `hot-updater db` in the server project | [`insights()`](/docs/guides/insights), [`apiKeys()`](/docs/custom/api-key-authentication) | [Create a server plugin](/docs/custom/server-plugins)               |
-| [Client plugin](#client-plugins)       | Observes launches, update checks, downloads, and failures in the app, and calls the server | React Native app               | [Insights](/docs/react-native-api/insights)                                         | [Create a client plugin](/docs/react-native-api/client-plugins)     |
+| [Server plugin](#server-plugins)       | Adds tables, APIs, routes, and client authentication to the update server           | Server, and the CLI and Console over a direct database; [its tables](/docs/custom/server-plugins#create-the-plugins-tables) come from managed init or `hot-updater db` in the server project | [`insights()`](/docs/guides/insights), [`apiKeys()`](/docs/custom/api-key-authentication), [`remoteConfig()`](/docs/guides/remote-config) | [Create a server plugin](/docs/custom/server-plugins)               |
+| [Client plugin](#client-plugins)       | Observes launches, update checks, downloads, and failures in the app, and calls the server | React Native app               | [Insights](/docs/react-native-api/insights), [Remote Config](/docs/react-native-api/remote-config) | [Create a client plugin](/docs/react-native-api/client-plugins)     |
 | [Integration plugin](#integration-plugins) | Uploads source maps for the bundles a build adapter makes                       | CLI                            | [Sentry](/docs/integration-plugins/sentry), [Datadog](/docs/integration-plugins/datadog), [BugSnag](/docs/integration-plugins/bugsnag) | A function that wraps a build adapter                               |
 
 The managed Cloudflare, Supabase, AWS, and Firebase servers are prebuilt with
 their provider's storage and database adapters and the official server
-plugins, Insights and API keys. Other adapters and server plugins run on a
+plugins, Insights, API keys, and Remote Config. Other adapters and server plugins run on a
 [custom server](/docs/custom/overview). Client plugins run in any app.
 
 A feature can ship both halves, as Insights does: a server plugin that stores
@@ -86,7 +86,7 @@ Hot Updater's packages divide by where their code runs:
 | `@hot-updater/protocol`     | The device-safe, zero-dependency package for what crosses a boundary: the data formats and pure computations the app and the server share, and the contracts between a host and its extensions on the device, such as the client plugin contract. | The app, the server, the CLI, and client plugins         |
 | `@hot-updater/plugin-core`  | The kit that extends the server: the adapter and server plugin contracts and their helpers, and the storage engine they run on. It runs wherever the server runs, and depends on `@hot-updater/protocol`.                                       | Adapters and server plugins, including Hot Updater's own |
 | `@hot-updater/server`       | The runtime host: `createHotUpdater` and its handlers, with the built-in adapters and plugins it re-exports.                                                                                                                                      | The server, and `hot-updater.config.ts` for its plugins  |
-| `@hot-updater/react-native` | The app's SDK. It imports `@hot-updater/protocol` and the built-in Insights client, never `@hot-updater/plugin-core` or the server.                                                                                                               | The app                                                  |
+| `@hot-updater/react-native` | The app's SDK. It imports `@hot-updater/protocol` and the built-in Insights and Remote Config clients, never `@hot-updater/plugin-core` or the server.                                                                                         | The app                                                  |
 
 An adapter or a server plugin you write imports `@hot-updater/plugin-core`, and
 a client plugin imports `@hot-updater/protocol`, as Hot Updater's own plugin
@@ -147,7 +147,7 @@ To write one, see [Create a storage adapter](/docs/storage-adapters/custom-stora
 
 Database adapters persist immutable artifact metadata, Release policy,
 compiled Catalogs and Channels, and the tables of the server plugins a server
-runs, such as Insights and API keys. Deploy and administrative operations
+runs, such as Insights, API keys, and Remote Config. Deploy and administrative operations
 commit changes atomically. The server uses the same database for Catalog
 reads, artifact resolution and its plugins; the device selects an update from
 the returned Catalog.
@@ -220,14 +220,17 @@ Server plugins extend the update server rather than the CLI. They run inside
 `createHotUpdater`, own tables and aggregates on the server's database, and add
 APIs, routes and client authentication. Core has none of their tables or routes:
 a server has Insights only when it runs the `insights()` plugin, which records
-Insights reports, and `apiKeys()` protects client routes. Managed providers run
-both. To write one for a custom server, see
+Insights reports, `apiKeys()` protects client routes, and `remoteConfig()`
+serves [Remote Config](/docs/guides/remote-config). Managed providers run all
+three. To write one for a custom server, see
 [Create a server plugin](/docs/custom/server-plugins).
 
 Hot Updater's own plugins are packages built the same way:
-`@hot-updater/plugin-insights` and `@hot-updater/plugin-api-keys`.
-`@hot-updater/server/plugins/insights` and `@hot-updater/server/plugins/api-keys`
-re-export them, so a server installs nothing more. Each package has an entry
+`@hot-updater/plugin-insights`, `@hot-updater/plugin-api-keys`, and
+`@hot-updater/plugin-remote-config`. `@hot-updater/server/plugins/insights`,
+`@hot-updater/server/plugins/api-keys`, and
+`@hot-updater/server/plugins/remote-config` re-export them, so a server installs
+nothing more. Each package has an entry
 per side, the layout a plugin you publish follows; see
 [Ship both sides from one package](/docs/plugins/publish#ship-both-sides-from-one-package).
 
@@ -241,8 +244,13 @@ reaches people through its API and its routes.
 Client plugins run in the React Native app. They observe launches, update
 checks, downloads, and update failures, and can send requests to the update
 server with the app's base URL and headers. Pass them to `plugins` in
-`HotUpdater.init` or `HotUpdater.wrap`. The
+`HotUpdater.init`, which returns the app's HotUpdater instance with each
+plugin's API under the plugin's id, as the server's `hotUpdater.api` holds
+server plugins' APIs. The
 [Insights plugin](/docs/react-native-api/insights) reports to the server's
 `insights()` plugin; it is `@hot-updater/plugin-insights/client`, which
-`@hot-updater/react-native` exports from its root. To write one, see
+`@hot-updater/react-native` exports from its root. The
+[Remote Config plugin](/docs/react-native-api/remote-config), from
+`@hot-updater/plugin-remote-config/client`, fetches the values the server's
+`remoteConfig()` plugin picks and reads them synchronously. To write one, see
 [Create a client plugin](/docs/react-native-api/client-plugins).
