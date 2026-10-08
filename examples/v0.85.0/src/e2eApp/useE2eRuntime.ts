@@ -117,8 +117,7 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   }, []);
   const { applyCapturedUpdate, captureCurrentChannelUpdate } =
     useCapturedUpdateActions({ refresh, setUpdateActionResult });
-  const { activateRemoteConfig, fetchRemoteConfig, remoteConfigText } =
-    useRemoteConfigActions({ setUpdateActionResult });
+  const remoteConfigActions = useRemoteConfigActions({ setUpdateActionResult });
 
   const clearCrashHistory = async () => {
     hotUpdater.clearCrashHistory();
@@ -240,7 +239,7 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   };
 
   return {
-    activateRemoteConfig,
+    ...remoteConfigActions,
     applyCapturedUpdate,
     applyCohortInput,
     captureCurrentChannelUpdate,
@@ -248,7 +247,6 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
     clearCrashHistory,
     cohortActionResult,
     cohortInput,
-    fetchRemoteConfig,
     initialCohort,
     installRuntimeChannelUpdate,
     installUpdate,
@@ -261,7 +259,6 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
     } toBundleId=${notifyState.toBundleId ?? "null"}`,
     reinitializeHotUpdater,
     reloadApp,
-    remoteConfigText,
     resetRuntimeChannel,
     restoreInitialCohort,
     runtimeChannelInput,

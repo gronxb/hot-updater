@@ -13,7 +13,7 @@ const describeRemoteConfig = (
     return `${key.slice(4)}=${value.asString()}(${value.getSource()})`;
   }).join(" ");
 
-/** The Remote Config the app reads, and its fetch and activate actions. */
+/** The Remote Config the app reads, and its fetch, activate, and fetchAndActivate actions. */
 export const useRemoteConfigActions = ({
   setUpdateActionResult,
 }: {
@@ -46,8 +46,23 @@ export const useRemoteConfigActions = ({
     }
   };
 
+  const fetchAndActivateRemoteConfig = async () => {
+    try {
+      const activated = await e2eRemoteConfig.fetchAndActivate();
+      await setUpdateActionResult(
+        `remote-config fetchAndActivate -> ${activated}`,
+      );
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      await setUpdateActionResult(
+        `remote-config fetchAndActivate -> error ${message}`,
+      );
+    }
+  };
+
   return {
     activateRemoteConfig,
+    fetchAndActivateRemoteConfig,
     fetchRemoteConfig,
     remoteConfigText: describeRemoteConfig(values),
   };

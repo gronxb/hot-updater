@@ -86,6 +86,20 @@ const applyServerValues = async (app: ScenarioAppDriver, label: string) => {
   );
 };
 
+/** Fetches and activates in one call, as an app that applies values on arrival. */
+const fetchAndActivate = async (app: ScenarioAppDriver, label: string) => {
+  await app.tap(
+    `fetch and activate ${label}`,
+    "action-fetch-and-activate-remote-config",
+  );
+  await app.assertText(
+    `assert ${label} fetched and activated`,
+    "update-action-result",
+    "remote-config fetchAndActivate -> true",
+    { exactText: true },
+  );
+};
+
 const setCohort = async (
   app: ScenarioAppDriver,
   label: string,
@@ -229,7 +243,7 @@ export const remoteConfigFetchActivateScenario: ScenarioDefinition = {
       "/e2e/publish-remote-config",
       { template: SECOND_TEMPLATE, description: "E2E second version" },
     );
-    await applyServerValues(app, "the second version");
+    await fetchAndActivate(app, "the second version");
     await assertValues(
       app,
       "assert the second version's values",
@@ -243,7 +257,7 @@ export const remoteConfigFetchActivateScenario: ScenarioDefinition = {
       "/e2e/rollback-remote-config",
       { version: "$firstRemoteConfig" },
     );
-    await applyServerValues(app, "the rolled back version");
+    await fetchAndActivate(app, "the rolled back version");
     await assertValues(
       app,
       "assert the rolled back values",

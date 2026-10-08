@@ -14,6 +14,7 @@ export type E2eRuntimeModel = {
   readonly captureCurrentChannelUpdate: () => Promise<void>;
   readonly cohortActionResult: string;
   readonly cohortInput: string;
+  readonly fetchAndActivateRemoteConfig: () => Promise<void>;
   readonly fetchRemoteConfig: () => Promise<void>;
   readonly initialCohort: string;
   readonly installRuntimeChannelUpdate: () => Promise<void>;

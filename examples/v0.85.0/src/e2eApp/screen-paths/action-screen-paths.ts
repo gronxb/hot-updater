@@ -5,6 +5,8 @@ export const actionScreenPaths = {
   CaptureCurrentChannelUpdateAction:
     "e2e/action/capture-current-channel-update",
   ClearCrashHistoryAction: "e2e/action/clear-crash-history",
+  FetchAndActivateRemoteConfigAction:
+    "e2e/action/fetch-and-activate-remote-config",
   FetchRemoteConfigAction: "e2e/action/fetch-remote-config",
   InstallCurrentChannelUpdateAction:
     "e2e/action/install-current-channel-update",

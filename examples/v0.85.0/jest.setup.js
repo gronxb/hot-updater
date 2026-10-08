@@ -50,6 +50,7 @@ jest.mock("@hot-updater/react-native", () => {
     remoteConfig: {
       activate: jest.fn(() => Promise.resolve(false)),
       fetch: jest.fn(() => Promise.resolve()),
+      fetchAndActivate: jest.fn(() => Promise.resolve(false)),
       // A stable snapshot, as useSyncExternalStore needs.
       getAll: jest.fn(() => remoteConfigValues),
       getValue: jest.fn(() => ({
