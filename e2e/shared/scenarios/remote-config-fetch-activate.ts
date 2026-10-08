@@ -145,123 +145,137 @@ export const remoteConfigFetchActivateScenario: ScenarioDefinition = {
         },
       },
     );
+    // A template is global to its server; shards that share one take turns.
     await app.control(
-      "publish the first remote config",
-      "/e2e/publish-remote-config",
-      { template: FIRST_TEMPLATE, description: "E2E first version" },
-      { saveResultFieldsAs: { remoteConfigVersion: "firstRemoteConfig" } },
+      "take the server's Remote Config",
+      "/e2e/jobs/acquire-remote-config-lock",
+      {},
     );
-    await app.launch("launch the remote config app");
-    await assertValues(
-      app,
-      "assert in-app defaults before a fetch",
-      "message=in-app default(default) limit=1(default) flag=true(default)",
-    );
-    await setCohort(app, "a cohort outside the rollout", "$excludedCohort");
+    try {
+      await app.control(
+        "publish the first remote config",
+        "/e2e/publish-remote-config",
+        { template: FIRST_TEMPLATE, description: "E2E first version" },
+        { saveResultFieldsAs: { remoteConfigVersion: "firstRemoteConfig" } },
+      );
+      await app.launch("launch the remote config app");
+      await assertValues(
+        app,
+        "assert in-app defaults before a fetch",
+        "message=in-app default(default) limit=1(default) flag=true(default)",
+      );
+      await setCohort(app, "a cohort outside the rollout", "$excludedCohort");
 
-    // A fetch keeps the values for activate; reads change only on activation.
-    await app.tap("fetch the first version", "action-fetch-remote-config");
-    await app.assertText(
-      "assert the first version fetched",
-      "update-action-result",
-      "remote-config fetch -> success",
-      { exactText: true },
-    );
-    await assertValues(
-      app,
-      "assert a fetch leaves the reads unchanged",
-      "message=in-app default(default) limit=1(default) flag=true(default)",
-    );
-    await app.tap(
-      "activate the first version",
-      "action-activate-remote-config",
-    );
-    await app.assertText(
-      "assert the first version activated",
-      "update-action-result",
-      "remote-config activate -> true",
-      { exactText: true },
-    );
-    await assertValues(
-      app,
-      "assert the platform condition's value",
-      "message=platform value(remote) limit=7(remote) flag=true(default)",
-    );
+      // A fetch keeps the values for activate; reads change only on activation.
+      await app.tap("fetch the first version", "action-fetch-remote-config");
+      await app.assertText(
+        "assert the first version fetched",
+        "update-action-result",
+        "remote-config fetch -> success",
+        { exactText: true },
+      );
+      await assertValues(
+        app,
+        "assert a fetch leaves the reads unchanged",
+        "message=in-app default(default) limit=1(default) flag=true(default)",
+      );
+      await app.tap(
+        "activate the first version",
+        "action-activate-remote-config",
+      );
+      await app.assertText(
+        "assert the first version activated",
+        "update-action-result",
+        "remote-config activate -> true",
+        { exactText: true },
+      );
+      await assertValues(
+        app,
+        "assert the platform condition's value",
+        "message=platform value(remote) limit=7(remote) flag=true(default)",
+      );
 
-    // The activated values load at setup, before any request.
-    await app.reload("relaunch with the activated values");
-    await assertValues(
-      app,
-      "assert the activated values after relaunch",
-      "message=platform value(remote) limit=7(remote) flag=true(default)",
-    );
+      // The activated values load at setup, before any request.
+      await app.reload("relaunch with the activated values");
+      await assertValues(
+        app,
+        "assert the activated values after relaunch",
+        "message=platform value(remote) limit=7(remote) flag=true(default)",
+      );
 
-    // A cohort the seed's shuffle puts in the first 10% gets the rollout's
-    // value; one it puts between 10% and 25% gets it once the rollout widens.
-    await setCohort(app, "a cohort in the rollout", "$includedCohort");
-    await applyServerValues(app, "the rollout's values");
-    await assertValues(
-      app,
-      "assert the rollout's value",
-      "message=rollout value(remote) limit=7(remote) flag=true(default)",
-    );
-    await setCohort(app, "a cohort past the rollout", "$widenedCohort");
-    await applyServerValues(app, "the values past the rollout");
-    await assertValues(
-      app,
-      "assert the value past the rollout",
-      "message=platform value(remote) limit=7(remote) flag=true(default)",
-    );
-    await app.control(
-      "widen the rollout to 25%",
-      "/e2e/publish-remote-config",
-      { template: WIDENED_TEMPLATE, description: "E2E widened rollout" },
-    );
-    await applyServerValues(app, "the widened rollout's values");
-    await assertValues(
-      app,
-      "assert the widened rollout's value",
-      "message=rollout value(remote) limit=7(remote) flag=true(default)",
-    );
+      // A cohort the seed's shuffle puts in the first 10% gets the rollout's
+      // value; one it puts between 10% and 25% gets it once the rollout widens.
+      await setCohort(app, "a cohort in the rollout", "$includedCohort");
+      await applyServerValues(app, "the rollout's values");
+      await assertValues(
+        app,
+        "assert the rollout's value",
+        "message=rollout value(remote) limit=7(remote) flag=true(default)",
+      );
+      await setCohort(app, "a cohort past the rollout", "$widenedCohort");
+      await applyServerValues(app, "the values past the rollout");
+      await assertValues(
+        app,
+        "assert the value past the rollout",
+        "message=platform value(remote) limit=7(remote) flag=true(default)",
+      );
+      await app.control(
+        "widen the rollout to 25%",
+        "/e2e/publish-remote-config",
+        { template: WIDENED_TEMPLATE, description: "E2E widened rollout" },
+      );
+      await applyServerValues(app, "the widened rollout's values");
+      await assertValues(
+        app,
+        "assert the widened rollout's value",
+        "message=rollout value(remote) limit=7(remote) flag=true(default)",
+      );
 
-    // The QA cohort is listed first, so it wins once the device is in it.
-    await app.tap("join the qa cohort", "action-set-cohort-qa");
-    await app.assertText(
-      "assert the qa cohort applied",
-      "cohort-action-result",
-      "set -> qa",
-    );
-    await applyServerValues(app, "the qa cohort's values");
-    await assertValues(
-      app,
-      "assert the qa cohort's value",
-      "message=qa value(remote) limit=7(remote) flag=true(default)",
-    );
+      // The QA cohort is listed first, so it wins once the device is in it.
+      await app.tap("join the qa cohort", "action-set-cohort-qa");
+      await app.assertText(
+        "assert the qa cohort applied",
+        "cohort-action-result",
+        "set -> qa",
+      );
+      await applyServerValues(app, "the qa cohort's values");
+      await assertValues(
+        app,
+        "assert the qa cohort's value",
+        "message=qa value(remote) limit=7(remote) flag=true(default)",
+      );
 
-    await app.control(
-      "publish the second remote config",
-      "/e2e/publish-remote-config",
-      { template: SECOND_TEMPLATE, description: "E2E second version" },
-    );
-    await fetchAndActivate(app, "the second version");
-    await assertValues(
-      app,
-      "assert the second version's values",
-      "message=qa value(remote) limit=9(remote) flag=false(remote)",
-    );
+      await app.control(
+        "publish the second remote config",
+        "/e2e/publish-remote-config",
+        { template: SECOND_TEMPLATE, description: "E2E second version" },
+      );
+      await fetchAndActivate(app, "the second version");
+      await assertValues(
+        app,
+        "assert the second version's values",
+        "message=qa value(remote) limit=9(remote) flag=false(remote)",
+      );
 
-    // A rollback publishes the first version again: the flag is the app's
-    // own default once more.
-    await app.control(
-      "roll back to the first remote config",
-      "/e2e/rollback-remote-config",
-      { version: "$firstRemoteConfig" },
-    );
-    await fetchAndActivate(app, "the rolled back version");
-    await assertValues(
-      app,
-      "assert the rolled back values",
-      "message=qa value(remote) limit=7(remote) flag=true(default)",
-    );
+      // A rollback publishes the first version again: the flag is the app's
+      // own default once more.
+      await app.control(
+        "roll back to the first remote config",
+        "/e2e/rollback-remote-config",
+        { version: "$firstRemoteConfig" },
+      );
+      await fetchAndActivate(app, "the rolled back version");
+      await assertValues(
+        app,
+        "assert the rolled back values",
+        "message=qa value(remote) limit=7(remote) flag=true(default)",
+      );
+    } finally {
+      await app.control(
+        "release the server's Remote Config",
+        "/e2e/release-remote-config-lock",
+        {},
+      );
+    }
   },
 };

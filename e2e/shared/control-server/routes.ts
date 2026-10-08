@@ -30,6 +30,7 @@ import {
   handleProxyState,
   handleProxyUpdateRequest,
   handlePublishRemoteConfig,
+  handleReleaseRemoteConfigLock,
   handleResetLocalAppState,
   handleResetRemoteBundles,
   handleRollbackRemoteConfig,
@@ -42,6 +43,7 @@ import {
   handleWaitForMetadata,
   handleWriteSummary,
   ProxyAssertionError,
+  startAcquireRemoteConfigLockJob,
   startBootstrapJob,
   startCreateRepublishedReleaseJob,
   startDeployBundleJob,
@@ -105,6 +107,14 @@ app.post("/e2e/verify-console-insights", async (c) => {
       sinceMs: payload.sinceMs,
     }),
   );
+});
+
+app.post("/e2e/jobs/acquire-remote-config-lock", (c) => {
+  return c.json({ jobId: startAcquireRemoteConfigLockJob() });
+});
+
+app.post("/e2e/release-remote-config-lock", async (c) => {
+  return c.json(await handleReleaseRemoteConfigLock());
 });
 
 app.post("/e2e/publish-remote-config", async (c) => {
