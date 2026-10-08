@@ -73,6 +73,13 @@ jest.mock("@hot-updater/react-native", () => {
   };
 });
 
+// The provider renders nothing until it measures insets, which a test never
+// lays out; the library's mock gives it fixed metrics.
+jest.mock(
+  "react-native-safe-area-context",
+  () => require("react-native-safe-area-context/jest/mock").default,
+);
+
 jest.mock("react-native-bootsplash", () => ({
   hide: jest.fn(() => Promise.resolve()),
 }));

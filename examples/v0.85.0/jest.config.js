@@ -17,7 +17,7 @@ module.exports = {
     ),
   },
   transformIgnorePatterns: [
-    `${path.resolve(__dirname, "../../node_modules/.pnpm")}/(?!(react-native|jest-react-native|@react-native\\+.*|@react-native-community\\+.*|@react-navigation\\+.*)@)`,
-    "node_modules/(?!.pnpm|((jest-)?react-native|@react-native(-community)?|@react-navigation)/)",
+    `${path.resolve(__dirname, "../../node_modules/.pnpm")}/(?!(react-native|react-native-safe-area-context|jest-react-native|@react-native\\+.*|@react-native-community\\+.*|@react-navigation\\+.*)@)`,
+    "node_modules/(?!.pnpm|((jest-)?react-native|react-native-safe-area-context|@react-native(-community)?|@react-navigation)/)",
   ],
 };
