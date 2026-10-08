@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/plugin-api-keys",
   "type": "module",
-  "version": "1.0.0-rc.40",
+  "version": "1.0.0-rc.41",
   "description": "Hot Updater's API keys plugin: protects client routes with API keys and manages them",
   "exports": {
     "./server": {
