@@ -24,15 +24,8 @@ export type RemoteConfigDefaults = Readonly<
  */
 export type RemoteConfigValueSource = "default" | "remote";
 
-/**
- * How the last fetch ended: `throttle` when the server asked the app to
- * slow down (429), `failure` for any other error.
- */
-export type RemoteConfigFetchStatus =
-  | "no-fetch-yet"
-  | "success"
-  | "failure"
-  | "throttle";
+/** How the last fetch ended: `failure` for any error, a `429` included. */
+export type RemoteConfigFetchStatus = "no-fetch-yet" | "success" | "failure";
 
 /** A parameter's value, read as the type the app expects. */
 export interface RemoteConfigValue {
@@ -55,7 +48,7 @@ export interface RemoteConfigOptions<
   readonly defaults?: TDefaults;
   /**
    * The shortest time between fetches that reach the server; a fetch
-   * sooner keeps the values fetched last. Defaults to 12 hours. A fetch
+   * sooner keeps the values fetched last. Defaults to 1 hour. A fetch
    * always reaches the server after the app's channel, version, cohort, or
    * fingerprint changes.
    */
@@ -122,8 +115,8 @@ export interface RemoteConfigClient<
   /** Makes the fetched values active; true when they replaced other values. */
   activate(): Promise<boolean>;
   readonly lastFetchStatus: RemoteConfigFetchStatus;
-  /** When the last successful fetch ended, in ms since the epoch; -1 before one. */
-  readonly fetchTimeMillis: number;
+  /** When the last successful fetch ended, in ms since the epoch; `null` before one. */
+  readonly fetchedAtMs: number | null;
   /** The template version the active values come from; 0 before any. */
   readonly activeVersion: number;
   /** Calls `listener` whenever the active values change; returns the unsubscribe. */
@@ -135,7 +128,7 @@ export type RemoteConfigPlugin<
   TDefaults extends RemoteConfigDefaults = NoDefaults,
 > = HotUpdaterClientPlugin<"remoteConfig", RemoteConfigClient<TDefaults>>;
 
-const DEFAULT_MINIMUM_FETCH_INTERVAL_MS = 12 * 60 * 60 * 1000;
+const DEFAULT_MINIMUM_FETCH_INTERVAL_MS = 60 * 60 * 1000;
 const BOOLEAN_TRUTHY_VALUES = new Set(["1", "true", "t", "yes", "y", "on"]);
 const FETCHED_KEY = "fetched";
 const ACTIVE_KEY = "active";
@@ -192,7 +185,7 @@ const parseStored = <T extends StoredValues>(
 };
 
 const isFetchStatus = (value: unknown): value is RemoteConfigFetchStatus =>
-  value === "success" || value === "failure" || value === "throttle";
+  value === "success" || value === "failure";
 
 const deviceContext = (
   context: HotUpdaterClientContext,
@@ -362,7 +355,7 @@ const createRemoteConfigClient = <TDefaults extends RemoteConfigDefaults>(
       return;
     }
     if (!response.ok) {
-      setStatus(response.status === 429 ? "throttle" : "failure");
+      setStatus("failure");
       throw new Error(
         response.status === 404
           ? "[HotUpdater] The server answered 404 to GET /remote-config: it runs without the remoteConfig() plugin."
@@ -441,8 +434,8 @@ const createRemoteConfigClient = <TDefaults extends RemoteConfigDefaults>(
     get lastFetchStatus() {
       return lastFetchStatus;
     },
-    get fetchTimeMillis() {
-      return fetched?.fetchedAtMs ?? -1;
+    get fetchedAtMs() {
+      return fetched?.fetchedAtMs ?? null;
     },
     get activeVersion() {
       return active?.version ?? 0;

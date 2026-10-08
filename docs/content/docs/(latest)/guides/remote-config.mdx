@@ -118,9 +118,39 @@ ones reads return. Splitting them lets you choose when the app changes:
 The last one never changes values mid-session and never waits for the network,
 which suits values that change layouts.
 
-A fetch within `minimumFetchIntervalMs` of the last one, 12 hours by default,
+A fetch within `minimumFetchIntervalMs` of the last one, 1 hour by default,
 keeps the values fetched last without a request, unless the app's channel,
-version, cohort, or fingerprint changed since.
+version, cohort, or fingerprint changed since. Every other fetch is a request
+your update server answers, a `304` when nothing changed, so the interval is
+what bounds that traffic.
+
+### Turn a feature off quickly
+
+For a kill switch, keep the feature's parameter in `defaults` with the value
+that turns it on, and fetch and activate at launch and whenever the app comes
+back to the foreground:
+
+```ts title="src/remoteConfigRefresh.ts"
+import { AppState } from "react-native";
+
+import { hotUpdater } from "./hotUpdater";
+
+const refresh = () =>
+  hotUpdater.remoteConfig
+    .fetch()
+    .then(() => hotUpdater.remoteConfig.activate())
+    .catch(() => {});
+
+refresh();
+AppState.addEventListener("change", (state) => {
+  if (state === "active") refresh();
+});
+```
+
+Publish `false` for it, and devices turn the feature off at their next launch
+or return to the app, within the hour the default interval allows. A lower
+`minimumFetchIntervalMs` makes that sooner and sends more requests; to undo a
+bad bundle itself, [roll it back](/docs/guides/console#rollback) instead.
 
 ## Edit parameters and conditions
 
@@ -182,8 +212,13 @@ of it. The Console takes times in your time zone and stores them in UTC, and
 
 The server evaluates the rule with its own clock when a device fetches, so a
 device gets the change at its first fetch after the start. With the default
-12-hour `minimumFetchIntervalMs`, that can be up to 12 hours later; lower it
-for a value that must switch close to on time.
+1-hour `minimumFetchIntervalMs`, that can be up to an hour later; lower it for
+a value that must switch close to on time.
+
+The end works the same way: a device keeps a value whose time ran out until
+its next fetch, and while it is offline, until it is back online. An app that
+must stop showing something at an exact time should check that time itself
+too.
 
 ## Publish and roll back
 

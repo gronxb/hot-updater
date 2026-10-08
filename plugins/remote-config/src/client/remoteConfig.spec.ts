@@ -73,7 +73,7 @@ describe("remoteConfig() client plugin", () => {
     expect(config.getBoolean("dark_mode")).toBe(true);
     expect(config.getValue("welcome").getSource()).toBe("default");
     expect(config.lastFetchStatus).toBe("no-fetch-yet");
-    expect(config.fetchTimeMillis).toBe(-1);
+    expect(config.fetchedAtMs).toBeNull();
     expect(config.activeVersion).toBe(0);
   });
 
@@ -181,7 +181,7 @@ describe("remoteConfig() client plugin", () => {
     );
     expect(request!.headers["x-api-key"]).toBe("client-key");
     expect(config.lastFetchStatus).toBe("success");
-    expect(config.fetchTimeMillis).toBe(clock);
+    expect(config.fetchedAtMs).toBe(clock);
   });
 
   it("builds its request without the URL APIs React Native lacks", async () => {
@@ -257,7 +257,7 @@ describe("remoteConfig() client plugin", () => {
     expect(relaunch.getString("welcome")).toBe("Hey");
     expect(relaunch.activeVersion).toBe(4);
     expect(relaunch.lastFetchStatus).toBe("success");
-    expect(relaunch.fetchTimeMillis).toBe(clock);
+    expect(relaunch.fetchedAtMs).toBe(clock);
   });
 
   it("stages a fetch for the next launch without changing what the app reads now", async () => {
@@ -293,11 +293,11 @@ describe("remoteConfig() client plugin", () => {
     expect(requests).toHaveLength(3);
   });
 
-  it("waits 12 hours between fetches by default", async () => {
+  it("waits 1 hour between fetches by default", async () => {
     const { config } = launch();
     responses.push(() => values({ version: 1, values: {} }));
     await config.fetch();
-    clock += 12 * HOUR_MS - 1;
+    clock += HOUR_MS - 1;
     await config.fetch();
     expect(requests).toHaveLength(1);
     clock += 1;
@@ -318,7 +318,21 @@ describe("remoteConfig() client plugin", () => {
     expect(await config.activate()).toBe(false);
     expect(requests[1]!.headers["if-none-match"]).toBe('"abc"');
     expect(config.getString("a")).toBe("x");
-    expect(config.fetchTimeMillis).toBe(clock);
+    expect(config.fetchedAtMs).toBe(clock);
+  });
+
+  it("retries at the next fetch after a failure, which does not start the interval", async () => {
+    const { config } = launch();
+    responses.push(() => values({ version: 1, values: {} }));
+    await config.fetch();
+    clock += HOUR_MS;
+    responses.push(() => new Response(null, { status: 503 }));
+    await expect(config.fetch()).rejects.toThrow("HTTP 503");
+    responses.push(() => values({ version: 2, values: {} }));
+    await config.fetch();
+    expect(requests).toHaveLength(3);
+    expect(config.lastFetchStatus).toBe("success");
+    expect(config.fetchedAtMs).toBe(clock);
   });
 
   it("shares one request between concurrent fetches", async () => {
@@ -349,7 +363,7 @@ describe("remoteConfig() client plugin", () => {
 
     responses.push(() => new Response(null, { status: 429 }));
     await expect(config.fetch()).rejects.toThrow("HTTP 429");
-    expect(config.lastFetchStatus).toBe("throttle");
+    expect(config.lastFetchStatus).toBe("failure");
 
     responses.push(() => {
       throw new TypeError("Network request failed");
@@ -399,8 +413,10 @@ describe("remoteConfig() client plugin", () => {
   it("ignores stored values it cannot read", () => {
     storage.set("remoteConfig", "active", "{not json");
     storage.set("remoteConfig", "fetched", JSON.stringify({ version: 1 }));
+    storage.set("remoteConfig", "lastFetchStatus", "throttle");
     const { config } = launch({ defaults: { welcome: "Hi" } });
     expect(config.getString("welcome")).toBe("Hi");
     expect(config.lastFetchStatus).toBe("no-fetch-yet");
+    expect(config.fetchedAtMs).toBeNull();
   });
 });

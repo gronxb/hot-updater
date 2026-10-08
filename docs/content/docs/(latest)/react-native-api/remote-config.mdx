@@ -40,7 +40,7 @@ in the Console.
 | Option                   | Type                                          | Default    | Description                                                                                                  |
 | ------------------------ | --------------------------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------ |
 | `defaults`               | `Record<string, string \| number \| boolean>` | `{}`       | Values the app reads until it activates fetched ones, and for parameters the template leaves to the app.      |
-| `minimumFetchIntervalMs` | `number`                                      | `43200000` | The shortest time between fetches that reach the server: 12 hours. `0` fetches every time.                    |
+| `minimumFetchIntervalMs` | `number`                                      | `3600000`  | The shortest time between fetches that reach the server: 1 hour. `0` fetches every time.                      |
 
 The keys of `defaults` type the keys `hotUpdater.remoteConfig`'s read methods
 suggest; any other key is accepted too.
@@ -109,7 +109,12 @@ A fetch within `minimumFetchIntervalMs` of the last successful one keeps the
 values fetched last and sends nothing, unless the app's channel, native
 version, cohort, or fingerprint changed since: then it always asks the server.
 Calls made while a fetch is running share it. The plugin revalidates with the
-answer's `ETag`, so an unchanged answer costs a `304`.
+answer's `ETag`, so an unchanged answer costs a `304`. A failed fetch does not
+start the interval, so the next call asks the server again.
+
+Each fetch that reaches the server is a request your update server answers,
+so the interval caps them at one an hour per device by default. Lower it for
+values that must change sooner, at the cost of more requests.
 
 `fetch()` rejects, and the active values stay, when:
 
@@ -127,8 +132,8 @@ too.
 
 | Property | Value |
 | --- | --- |
-| `lastFetchStatus` | `"no-fetch-yet"`, `"success"`, `"failure"`, or `"throttle"`, when the server answered `429`. |
-| `fetchTimeMillis` | When the last successful fetch ended, in milliseconds since the epoch, or `-1`. |
+| `lastFetchStatus` | `"no-fetch-yet"`, `"success"`, or `"failure"`, for any error. |
+| `fetchedAtMs` | When the last successful fetch ended, in milliseconds since the epoch, or `null`. |
 | `activeVersion` | The template version the active values come from, or `0`. |
 
 Both fetch fields persist across launches.
