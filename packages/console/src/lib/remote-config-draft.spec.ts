@@ -1,6 +1,6 @@
 // @vitest-environment node
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   conditionalValueFor,
@@ -12,16 +12,21 @@ import {
   fromLocalDateTimeInput,
   toLocalDateTimeInput,
   createRule,
+  describeConditionChange,
+  describeParameterChange,
   describeRule,
   isSameTemplate,
   moveCondition,
   parameterKeyError,
   parametersUsing,
+  readStoredDraft,
+  type RemoteConfigCondition,
   removeCondition,
   removeParameter,
   type RemoteConfigTemplate,
   ruleError,
   splitList,
+  storeDraft,
   summarizeChanges,
   upsertCondition,
   upsertParameter,
@@ -304,5 +309,142 @@ describe("inline checks", () => {
 
   it("splits lists on commas and lines", () => {
     expect(splitList(" beta, qa\nbeta,, ")).toEqual(["beta", "qa"]);
+  });
+});
+
+describe("publish summary values", () => {
+  it("lists each field a parameter changes, from before to after", () => {
+    expect(
+      describeParameterChange(
+        {
+          valueType: "STRING",
+          defaultValue: { value: "Hello" },
+          conditionalValues: { "QA cohort": { value: "qa" } },
+        },
+        {
+          valueType: "STRING",
+          defaultValue: { useInAppDefault: true },
+          conditionalValues: { Default: { value: "" } },
+          description: "Greeting",
+        },
+      ),
+    ).toEqual([
+      { field: "Default", before: "Hello", after: "In-app default" },
+      { field: "When QA cohort", before: "qa", after: "Not set" },
+      { field: "When Default", before: "Not set", after: '""' },
+      { field: "Description", before: "Not set", after: "Greeting" },
+    ]);
+  });
+
+  it("lists a condition's rules when they change, and nothing otherwise", () => {
+    const qa: RemoteConfigCondition = {
+      name: "QA",
+      rules: [{ type: "cohort", cohorts: ["qa"] }],
+    };
+    expect(describeConditionChange(qa, qa)).toEqual([]);
+    expect(
+      describeConditionChange(qa, {
+        name: "QA",
+        rules: [{ type: "platform", platforms: ["ios"] }],
+      }),
+    ).toEqual([
+      {
+        field: "Rules",
+        before: describeRule(qa.rules[0]!),
+        after: describeRule({ type: "platform", platforms: ["ios"] }),
+      },
+    ]);
+  });
+});
+
+describe("drafts kept in the browser", () => {
+  const published = {
+    version: 3,
+    template: {
+      conditions: [],
+      parameters: {
+        theme: { valueType: "STRING", defaultValue: { value: "light" } },
+      },
+    } satisfies RemoteConfigTemplate,
+  };
+  const edited: RemoteConfigTemplate = {
+    conditions: [],
+    parameters: {
+      theme: { valueType: "STRING", defaultValue: { value: "dark" } },
+    },
+  };
+  const items = new Map<string, string>();
+  const useStorage = () =>
+    vi.stubGlobal("window", {
+      localStorage: {
+        getItem: (key: string) => items.get(key) ?? null,
+        setItem: (key: string, value: string) => items.set(key, value),
+        removeItem: (key: string) => items.delete(key),
+      },
+    });
+
+  afterEach(() => {
+    items.clear();
+    vi.unstubAllGlobals();
+  });
+
+  it("comes back only onto the version and template it started from", () => {
+    useStorage();
+    const draft = {
+      baseVersion: 3,
+      base: published.template,
+      template: edited,
+    };
+    expect(storeDraft(draft)).toBe(true);
+    expect(readStoredDraft(published)).toEqual(draft);
+    expect(readStoredDraft({ ...published, version: 4 })).toBeNull();
+    expect(
+      readStoredDraft({
+        version: 3,
+        template: { conditions: [], parameters: {} },
+      }),
+    ).toBeNull();
+    // A draft that publishes nothing new is not one.
+    storeDraft({ ...draft, template: published.template });
+    expect(readStoredDraft(published)).toBeNull();
+    expect(storeDraft(null)).toBe(true);
+    expect(readStoredDraft(published)).toBeNull();
+  });
+
+  it("ignores stored drafts it cannot render, and works without storage", () => {
+    useStorage();
+    for (const raw of [
+      "{not json",
+      JSON.stringify({ baseVersion: 3, base: published.template }),
+      JSON.stringify({
+        baseVersion: 3,
+        base: published.template,
+        template: {
+          conditions: [{ name: "x", rules: [{ type: "country" }] }],
+          parameters: {},
+        },
+      }),
+      JSON.stringify({
+        baseVersion: 3,
+        base: published.template,
+        template: {
+          conditions: [],
+          parameters: { a: { valueType: "STRING" } },
+        },
+      }),
+    ]) {
+      items.set("hot-updater:remote-config-draft", raw);
+      expect(readStoredDraft(published)).toBeNull();
+    }
+    vi.unstubAllGlobals();
+    // On the server, or where the browser refuses storage.
+    expect(readStoredDraft(published)).toBeNull();
+    expect(
+      storeDraft({
+        baseVersion: 3,
+        base: published.template,
+        template: edited,
+      }),
+    ).toBe(false);
   });
 });

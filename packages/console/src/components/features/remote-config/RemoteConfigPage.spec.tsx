@@ -96,6 +96,7 @@ beforeEach(() => {
   }).api.remoteConfig;
   state.toastSuccess.mockReset();
   state.toastError.mockReset();
+  window.localStorage.clear();
 });
 
 afterEach(cleanup);
@@ -257,6 +258,96 @@ describe("RemoteConfigPage", () => {
     expect(
       screen.queryByRole("button", { name: "Publish changes" }),
     ).toBeNull();
+  });
+
+  it("brings unpublished changes back after a reload, and shows each value they change", async () => {
+    await state.api!.publish({
+      template: {
+        parameters: {
+          theme: { valueType: "STRING", defaultValue: { value: "light" } },
+        },
+      },
+      baseVersion: 0,
+    });
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Edit theme" }));
+    fireEvent.change(lastDialog().getByLabelText("Default value"), {
+      target: { value: "dark" },
+    });
+    fireEvent.click(
+      lastDialog().getByRole("button", { name: "Save parameter" }),
+    );
+
+    // A reload: the page mounts again over the same server.
+    cleanup();
+    renderPage();
+    expect(
+      await screen.findByText("Your unpublished changes are back"),
+    ).toBeDefined();
+    const list = within(screen.getByRole("list", { name: "Parameters" }));
+    expect(list.getByText("dark")).toBeDefined();
+
+    fireEvent.click(screen.getByRole("button", { name: "Publish changes" }));
+    const publish = lastDialog();
+    expect(publish.getByText("theme")).toBeDefined();
+    expect(publish.getByText("Default")).toBeDefined();
+    expect(publish.getByTitle("light")).toBeDefined();
+    expect(publish.getByTitle("dark")).toBeDefined();
+    fireEvent.click(publish.getByRole("button", { name: "Publish version 2" }));
+    await waitFor(() =>
+      expect(state.toastSuccess).toHaveBeenCalledWith("Published version 2"),
+    );
+
+    // Published, the draft is gone from the browser too.
+    cleanup();
+    renderPage();
+    expect(await screen.findByText("dark")).toBeDefined();
+    expect(screen.queryByText("Your unpublished changes are back")).toBeNull();
+    expect(screen.queryByText("Unpublished changes")).toBeNull();
+  });
+
+  it("discards changes it brought back, and leaves other templates' drafts alone", async () => {
+    await state.api!.publish({
+      template: {
+        parameters: {
+          theme: { valueType: "STRING", defaultValue: { value: "light" } },
+        },
+      },
+      baseVersion: 0,
+    });
+    renderPage();
+    fireEvent.click(
+      (await screen.findAllByRole("button", { name: "Delete theme" }))[0]!,
+    );
+    cleanup();
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Discard them" }),
+    );
+    expect(screen.getByText("theme")).toBeDefined();
+    expect(window.localStorage.length).toBe(0);
+
+    // Another project's Console on this origin kept a draft for its own
+    // version 1: it never comes back onto this one.
+    fireEvent.click(screen.getByRole("button", { name: "Delete theme" }));
+    cleanup();
+    state.api = createHotUpdater({
+      database: { name: "memory", adapter: createMemoryAdapter() },
+      plugins: [remoteConfig()],
+      clientAccess: "public",
+    }).api.remoteConfig;
+    await state.api.publish({
+      template: {
+        parameters: {
+          theme: { valueType: "STRING", defaultValue: { value: "blue" } },
+        },
+      },
+      baseVersion: 0,
+    });
+    renderPage();
+    expect(await screen.findByText("blue")).toBeDefined();
+    expect(screen.queryByText("Your unpublished changes are back")).toBeNull();
+    expect(window.localStorage.length).toBe(1);
   });
 
   it("keeps the open view in the route", async () => {

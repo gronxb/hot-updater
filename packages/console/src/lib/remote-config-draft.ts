@@ -366,6 +366,155 @@ export const summarizeChanges = (
   };
 };
 
+/** One thing a changed parameter or condition changes, before and after. */
+export interface FieldChange {
+  readonly field: string;
+  readonly before: string;
+  readonly after: string;
+}
+
+const NOT_SET = "Not set";
+
+/** What changes in a parameter the draft changes, field by field. */
+export const describeParameterChange = (
+  before: RemoteConfigParameter,
+  after: RemoteConfigParameter,
+): readonly FieldChange[] => {
+  const changes: FieldChange[] = [];
+  const add = (field: string, from: string, to: string) => {
+    if (from !== to) changes.push({ field, before: from, after: to });
+  };
+  add(
+    "Type",
+    VALUE_TYPE_LABELS[before.valueType],
+    VALUE_TYPE_LABELS[after.valueType],
+  );
+  add(
+    "Default",
+    describeValue(before.defaultValue),
+    describeValue(after.defaultValue),
+  );
+  const conditionNames = new Set([
+    ...Object.keys(before.conditionalValues ?? {}),
+    ...Object.keys(after.conditionalValues ?? {}),
+  ]);
+  for (const name of conditionNames) {
+    const from = conditionalValueFor(before.conditionalValues, name);
+    const to = conditionalValueFor(after.conditionalValues, name);
+    add(
+      `When ${name}`,
+      from === undefined ? NOT_SET : describeValue(from),
+      to === undefined ? NOT_SET : describeValue(to),
+    );
+  }
+  add(
+    "Description",
+    before.description ?? NOT_SET,
+    after.description ?? NOT_SET,
+  );
+  return changes;
+};
+
+/** What changes in a condition the draft changes: its rules. */
+export const describeConditionChange = (
+  before: RemoteConfigCondition,
+  after: RemoteConfigCondition,
+  dateTimeText: DateTimeText = UTC_DATE_TIME_TEXT,
+): readonly FieldChange[] => {
+  const rules = (condition: RemoteConfigCondition) =>
+    condition.rules.map((rule) => describeRule(rule, dateTimeText)).join(" · ");
+  const from = rules(before);
+  const to = rules(after);
+  return from === to ? [] : [{ field: "Rules", before: from, after: to }];
+};
+
+/** Unpublished edits, the published template they started from, and its version. */
+export interface RemoteConfigDraft {
+  readonly baseVersion: number;
+  readonly base: RemoteConfigTemplate;
+  readonly template: RemoteConfigTemplate;
+}
+
+const DRAFT_STORAGE_KEY = "hot-updater:remote-config-draft";
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const isParameterValueShape = (value: unknown): boolean =>
+  isRecord(value) &&
+  (typeof value.value === "string" || value.useInAppDefault === true);
+
+/** Whether a stored value has a template's shape, so the page can render it. */
+const isTemplateShape = (value: unknown): value is RemoteConfigTemplate =>
+  isRecord(value) &&
+  isRecord(value.parameters) &&
+  Array.isArray(value.conditions) &&
+  Object.values(value.parameters).every(
+    (parameter) =>
+      isRecord(parameter) &&
+      Object.hasOwn(VALUE_TYPE_LABELS, String(parameter.valueType)) &&
+      isParameterValueShape(parameter.defaultValue) &&
+      (parameter.conditionalValues === undefined ||
+        (isRecord(parameter.conditionalValues) &&
+          Object.values(parameter.conditionalValues).every(
+            isParameterValueShape,
+          ))),
+  ) &&
+  value.conditions.every(
+    (condition) =>
+      isRecord(condition) &&
+      typeof condition.name === "string" &&
+      Array.isArray(condition.rules) &&
+      condition.rules.every(
+        (rule) =>
+          isRecord(rule) && Object.hasOwn(RULE_TYPE_LABELS, String(rule.type)),
+      ),
+  );
+
+/**
+ * The draft this browser kept for a server whose active version is
+ * `published`, or null. Several projects' Consoles can share one origin, so
+ * a draft comes back only onto the version and template it started from.
+ */
+export const readStoredDraft = (published: {
+  readonly version: number;
+  readonly template: RemoteConfigTemplate;
+}): RemoteConfigDraft | null => {
+  try {
+    const raw = window.localStorage.getItem(DRAFT_STORAGE_KEY);
+    if (raw === null) return null;
+    const stored: unknown = JSON.parse(raw);
+    if (
+      !isRecord(stored) ||
+      stored.baseVersion !== published.version ||
+      !isTemplateShape(stored.base) ||
+      !isTemplateShape(stored.template) ||
+      !isSameTemplate(stored.base, published.template) ||
+      isSameTemplate(stored.template, published.template)
+    ) {
+      return null;
+    }
+    return {
+      baseVersion: published.version,
+      base: stored.base,
+      template: stored.template,
+    };
+  } catch {
+    return null;
+  }
+};
+
+/** Keeps the draft in this browser, or forgets it; false when the browser refuses. */
+export const storeDraft = (draft: RemoteConfigDraft | null): boolean => {
+  try {
+    if (draft === null) window.localStorage.removeItem(DRAFT_STORAGE_KEY);
+    else window.localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify(draft));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
 const PARAMETER_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]{0,255}$/u;
 
 /** Why a parameter key cannot be used, or null. */

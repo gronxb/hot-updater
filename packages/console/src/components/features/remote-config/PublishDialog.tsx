@@ -1,4 +1,4 @@
-import { AlertTriangle, Loader2, Upload } from "lucide-react";
+import { AlertTriangle, ArrowRight, Loader2, Upload } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
 import { toast } from "sonner";
 
@@ -21,18 +21,67 @@ import {
 import { Input } from "@/components/ui/input";
 import { usePublishRemoteConfigMutation } from "@/lib/remote-config-api";
 import {
+  describeConditionChange,
+  describeParameterChange,
+  type FieldChange,
   type RemoteConfigTemplate,
   summarizeChanges,
   type TemplateChanges,
 } from "@/lib/remote-config-draft";
 import type { ConsolePublishResult } from "@/lib/remote-config-rpc";
 
+import { useDateTimeText } from "./useDateTimeText";
+
+/** A changed key, and each of its fields from before to after. */
+function ChangedKey({
+  name,
+  fields,
+}: {
+  readonly name: string;
+  readonly fields: readonly FieldChange[];
+}) {
+  return (
+    <li className="min-w-0">
+      <p className="break-words font-mono">{name}</p>
+      {fields.length === 0 ? null : (
+        <ul className="mt-0.5 flex flex-col gap-0.5">
+          {fields.map((change) => (
+            <li
+              className="flex min-w-0 flex-wrap items-center gap-x-1.5 text-muted-foreground"
+              key={change.field}
+            >
+              <span>{change.field}</span>
+              <span
+                className="max-w-full truncate font-mono line-through decoration-muted-foreground/60"
+                title={change.before}
+              >
+                {change.before}
+              </span>
+              <ArrowRight aria-hidden="true" className="size-3 shrink-0" />
+              <span className="sr-only">to</span>
+              <span
+                className="max-w-full truncate font-mono text-foreground"
+                title={change.after}
+              >
+                {change.after}
+              </span>
+            </li>
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}
+
 function ChangeList({
   label,
   changes,
+  describe,
 }: {
   readonly label: string;
   readonly changes: TemplateChanges;
+  /** The fields a changed key changes. */
+  readonly describe: (key: string) => readonly FieldChange[];
 }) {
   const rows = [
     ["Added", changes.added],
@@ -48,8 +97,18 @@ function ChangeList({
           keys.length === 0 ? null : (
             <div className="contents" key={title}>
               <dt className="text-muted-foreground">{title}</dt>
-              <dd className="min-w-0 break-words font-mono">
-                {keys.join(", ")}
+              <dd className="min-w-0">
+                {title === "Changed" ? (
+                  <ul className="flex flex-col gap-1.5">
+                    {keys.map((key) => (
+                      <ChangedKey fields={describe(key)} key={key} name={key} />
+                    ))}
+                  </ul>
+                ) : (
+                  <span className="break-words font-mono">
+                    {keys.join(", ")}
+                  </span>
+                )}
               </dd>
             </div>
           ),
@@ -86,7 +145,22 @@ export function PublishDialog({
   const publish = usePublishRemoteConfigMutation();
   const [description, setDescription] = useState("");
   const [result, setResult] = useState<ConsolePublishResult | null>(null);
+  const { dateTimeText } = useDateTimeText();
   const changes = summarizeChanges(base, draft);
+  const describeParameter = (key: string) => {
+    const before = base.parameters[key];
+    const after = draft.parameters[key];
+    return before === undefined || after === undefined
+      ? []
+      : describeParameterChange(before, after);
+  };
+  const describeCondition = (name: string) => {
+    const before = base.conditions.find((it) => it.name === name);
+    const after = draft.conditions.find((it) => it.name === name);
+    return before === undefined || after === undefined
+      ? []
+      : describeConditionChange(before, after, dateTimeText);
+  };
   const tooLong = description.trim().length > 256;
 
   const close = (next: boolean) => {
@@ -134,8 +208,16 @@ export function PublishDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-3 rounded-lg border p-3">
-            <ChangeList changes={changes.parameters} label="Parameters" />
-            <ChangeList changes={changes.conditions} label="Conditions" />
+            <ChangeList
+              changes={changes.parameters}
+              describe={describeParameter}
+              label="Parameters"
+            />
+            <ChangeList
+              changes={changes.conditions}
+              describe={describeCondition}
+              label="Conditions"
+            />
             {changes.reordered ? (
               <p className="text-xs text-muted-foreground">
                 Condition priority changed.

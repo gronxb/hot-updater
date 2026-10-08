@@ -2,6 +2,7 @@ import dayjs from "dayjs";
 import relativeTime from "dayjs/plugin/relativeTime";
 import {
   AlertTriangle,
+  History,
   RefreshCw,
   SlidersHorizontal,
   Undo2,
@@ -24,9 +25,12 @@ import { useRemoteConfigQuery } from "@/lib/remote-config-api";
 import {
   isSameTemplate,
   moveCondition,
+  readStoredDraft,
+  type RemoteConfigDraft,
   removeCondition,
   removeParameter,
   type RemoteConfigTemplate,
+  storeDraft,
   upsertCondition,
   upsertParameter,
 } from "@/lib/remote-config-draft";
@@ -52,12 +56,6 @@ export const REMOTE_CONFIG_TABS: readonly RemoteConfigTab[] = [
   "versions",
 ];
 
-/** Unpublished edits, and the version they started from. */
-interface Draft {
-  readonly baseVersion: number;
-  readonly template: RemoteConfigTemplate;
-}
-
 /**
  * Remote Config: edit the parameters and conditions of a draft, preview what
  * a device gets, publish the draft as a version, and roll back to an earlier
@@ -71,7 +69,9 @@ export function RemoteConfigPage({
   readonly onTabChange: (tab: RemoteConfigTab) => void;
 }) {
   const active = useRemoteConfigQuery();
-  const [draft, setDraft] = useState<Draft | null>(null);
+  const [draft, setDraft] = useState<RemoteConfigDraft | null>(null);
+  const [restoreChecked, setRestoreChecked] = useState(false);
+  const [restored, setRestored] = useState(false);
   const [publishing, setPublishing] = useState(false);
   const published = active.data;
   const template = draft?.template ?? published?.template;
@@ -82,20 +82,40 @@ export function RemoteConfigPage({
   const stale =
     dirty && published !== undefined && draft.baseVersion !== published.version;
 
-  // Leaving the page loses the draft; the browser asks first.
+  // A reload brings the draft back from this browser, onto the version and
+  // template it started from.
   useEffect(() => {
-    if (!dirty) return;
+    if (restoreChecked || published === undefined) return;
+    setRestoreChecked(true);
+    const stored = readStoredDraft(published);
+    if (stored === null) return;
+    setDraft(stored);
+    setRestored(true);
+  }, [published, restoreChecked]);
+
+  // The browser keeps every edit; when it refuses, leaving the page would
+  // lose the draft, so it asks first.
+  useEffect(() => {
+    if (draft === null || !dirty || storeDraft(draft)) return;
     const warn = (event: BeforeUnloadEvent) => event.preventDefault();
     window.addEventListener("beforeunload", warn);
     return () => window.removeEventListener("beforeunload", warn);
-  }, [dirty]);
+  }, [draft, dirty]);
+
+  const clearDraft = () => {
+    setDraft(null);
+    setRestored(false);
+    storeDraft(null);
+  };
 
   const edit = (
     change: (template: RemoteConfigTemplate) => RemoteConfigTemplate,
   ) => {
     if (published === undefined || template === undefined) return;
+    setRestored(false);
     setDraft({
       baseVersion: draft?.baseVersion ?? published.version,
+      base: draft?.base ?? published.template,
       template: change(template),
     });
   };
@@ -148,7 +168,7 @@ export function RemoteConfigPage({
             </Badge>
             <Button
               className="min-h-11 lg:min-h-7"
-              onClick={() => setDraft(null)}
+              onClick={clearDraft}
               variant="ghost"
             >
               <Undo2 data-icon="inline-start" />
@@ -186,6 +206,21 @@ export function RemoteConfigPage({
               </AlertAction>
             </Alert>
           ) : null}
+          {restored && dirty && draft !== null ? (
+            <Alert>
+              <History />
+              <AlertTitle>Your unpublished changes are back</AlertTitle>
+              <AlertDescription>
+                This browser kept them from your last visit, on version{" "}
+                {draft.baseVersion}.
+              </AlertDescription>
+              <AlertAction>
+                <Button onClick={clearDraft} size="xs" variant="outline">
+                  Discard them
+                </Button>
+              </AlertAction>
+            </Alert>
+          ) : null}
           {stale && draft !== null && published !== undefined ? (
             <Alert>
               <AlertTriangle />
@@ -198,11 +233,7 @@ export function RemoteConfigPage({
                 it.
               </AlertDescription>
               <AlertAction>
-                <Button
-                  onClick={() => setDraft(null)}
-                  size="xs"
-                  variant="outline"
-                >
+                <Button onClick={clearDraft} size="xs" variant="outline">
                   Load version {published.version}
                 </Button>
               </AlertAction>
@@ -290,7 +321,7 @@ export function RemoteConfigPage({
                   <VersionsCard
                     activeVersion={published.version}
                     hasDraft={dirty}
-                    onRolledBack={() => setDraft(null)}
+                    onRolledBack={clearDraft}
                     onStartEditing={() => onTabChange("parameters")}
                   />
                 </TabsContent>
@@ -304,12 +335,16 @@ export function RemoteConfigPage({
           base={published.template}
           baseVersion={draft.baseVersion}
           draft={draft.template}
-          onLoadLatest={() => setDraft(null)}
+          onLoadLatest={clearDraft}
           onOpenChange={setPublishing}
           onPublishOver={(version) =>
-            setDraft({ ...draft, baseVersion: version })
+            setDraft({
+              ...draft,
+              baseVersion: version,
+              base: published.template,
+            })
           }
-          onPublished={() => setDraft(null)}
+          onPublished={clearDraft}
           open={publishing}
         />
       ) : null}
