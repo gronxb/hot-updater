@@ -3456,8 +3456,9 @@ function ensureAndroidControlReverse() {
   logE2eFixture("android control reverse ready", { devicePort, hostPort });
 }
 
-export function getHotUpdaterControlEnv() {
+export function getHotUpdaterControlEnv(overrides: NodeJS.ProcessEnv = {}) {
   const baseEnv = {
+    ...overrides,
     ...RELEASE_BUNDLE_ENV,
     HOT_UPDATER_CONTROL_BASE_URL: getControllerReachableAppBaseUrl(),
   } satisfies NodeJS.ProcessEnv;
