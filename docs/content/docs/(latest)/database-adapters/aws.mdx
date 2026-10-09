@@ -58,9 +58,7 @@ Remote Config.
 
 ```typescript
 import { migrateDynamoDB } from "@hot-updater/aws";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
-import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 
 await migrateDynamoDB(
   { tableName: "hot-updater", region: "us-east-1" },
@@ -238,9 +236,7 @@ Use `dynamoDB` with `createHotUpdater` for self-hosted servers:
 ```typescript title="src/hotUpdater.ts"
 import { dynamoDB } from "@hot-updater/aws"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
-import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 
 export const hotUpdater = createHotUpdater({
   database: dynamoDB({ // [!code ++]

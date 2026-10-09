@@ -6,9 +6,8 @@ import { s3Storage } from "@hot-updater/aws";
 // import admin from "fZrebase-admin";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
-import { insights } from "@hot-updater/server/plugins/insights";
-import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
 import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
+import { insights, remoteConfig } from "@hot-updater/server/plugins";
 
 import { client, closeDatabase as closeMongo, db } from "./mongodb";
 

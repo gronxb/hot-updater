@@ -93,15 +93,9 @@ describe("public infrastructure scaffolding", () => {
           "utf8",
         );
         expect(definition).not.toContain('from "hot-updater/plugins"');
-        for (const [name, subpath] of [
-          ["apiKeys", "api-keys"],
-          ["insights", "insights"],
-          ["remoteConfig", "remote-config"],
-        ]) {
-          expect(definition).toContain(
-            `import { ${name} } from "@hot-updater/server/plugins/${subpath}";`,
-          );
-        }
+        expect(definition).toContain(
+          'import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";',
+        );
         const agentManifest = await json(agent.manifest);
         for (const [file, hash] of Object.entries(manifest.files)) {
           expect(agentManifest.files[file], file).toBe(hash);

@@ -5,8 +5,8 @@ import { fileURLToPath } from "url";
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
-import { insights } from "@hot-updater/server/plugins/insights";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
+import { insights } from "@hot-updater/server/plugins";
 import { Kysely, MysqlDialect, sql } from "kysely";
 import { createPool } from "mysql2";
 

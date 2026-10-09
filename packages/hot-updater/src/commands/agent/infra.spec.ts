@@ -154,15 +154,9 @@ describe("published agent infrastructure commands", () => {
         );
         expect(definition).not.toMatch(legacyPluginsImport);
         expect(definition).not.toContain('from "hot-updater/plugins"');
-        for (const [name, subpath] of [
-          ["apiKeys", "api-keys"],
-          ["insights", "insights"],
-          ["remoteConfig", "remote-config"],
-        ]) {
-          expect(definition).toContain(
-            `import { ${name} } from "@hot-updater/server/plugins/${subpath}";`,
-          );
-        }
+        expect(definition).toContain(
+          'import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";',
+        );
         expect(definition).toContain(
           "  plugins: [apiKeys(), insights(), remoteConfig()],\n",
         );

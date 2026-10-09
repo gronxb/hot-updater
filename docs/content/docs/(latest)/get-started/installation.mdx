@@ -119,7 +119,7 @@ Server dependencies belong in the server workspace when it is separate. The
 app's `hot-updater.config.ts` lists the server's plugins and imports the
 official `apiKeys`, `insights`, and `remoteConfig` factories from
 `hot-updater/plugins`, included with the CLI installed above. A custom server
-imports those factories from `@hot-updater/server/plugins/*` in its own workspace.
+imports those factories from `@hot-updater/server/plugins` in its own workspace.
 
 Complete the SDK, CLI, build and provider installations **before** running
 `init` or generating infrastructure so setup uses the packages selected for

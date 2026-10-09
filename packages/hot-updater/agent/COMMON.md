@@ -139,9 +139,10 @@ command or generated files alone do not prove that a remote step is complete.
 3. After the schema is ready, run app/provision-client-credential.mjs with
    app/hotUpdater.ts beside it, and app/migrate.ts where the scaffold has one
    (Firestore). app/hotUpdater.ts is the credential helper's server
-   definition, with the deployed server's database, storage, and plugins; it
-   stays in the scaffold. With app/migrate.ts, the script first writes the
-   schema settings of core and the plugins app/hotUpdater.ts runs; complete
+   definition, with the deployed server's database, storage, and plugins from
+   `@hot-updater/server/plugins`; it stays in the scaffold. With app/migrate.ts,
+   the script first writes the schema settings of core and the plugins
+   app/hotUpdater.ts runs; complete
    SETUP.md's database compatibility preflight before running it, since the
    helper does not reject every unsupported engine version. Run the script
    from the directory whose .env.hotupdater contains the target provider

@@ -17,7 +17,7 @@ For the server definition and app, use their runtime entries:
 
 ```ts
 // The server definition
-import { insights } from "@hot-updater/server/plugins/insights";
+import { insights } from "@hot-updater/server/plugins";
 
 // The app
 import { HotUpdater, insights } from "@hot-updater/react-native";
@@ -25,7 +25,7 @@ import { HotUpdater, insights } from "@hot-updater/react-native";
 
 | Entry      | Re-exported as                                                     |
 | ---------- | ------------------------------------------------------------------ |
-| `./server` | `@hot-updater/server/plugins/insights`                             |
+| `./server` | `@hot-updater/server/plugins`                             |
 | `./client` | `insights` and its types from the `@hot-updater/react-native` root |
 
 Its test suites, such as `insightsTestSuite`, are in `@hot-updater/test-utils`.

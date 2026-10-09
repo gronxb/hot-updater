@@ -5,8 +5,7 @@ import {
   createMemoryAdapter,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { apiKeys, insights } from "@hot-updater/server/plugins";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const { requireConsoleAccessMock, resolveConsoleConfigMock } = vi.hoisted(

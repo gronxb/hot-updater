@@ -1,9 +1,8 @@
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
-import { insights } from "@hot-updater/server/plugins/insights";
-import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma";
+import { insights, remoteConfig } from "@hot-updater/server/plugins";
 
 import { prisma } from "./prisma";
 

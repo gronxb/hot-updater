@@ -119,9 +119,7 @@ runtime boundary explicit:
 
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
-import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { supabaseDatabase } from "@hot-updater/supabase/edge"; // [!code ++]
 
 export const hotUpdater = createHotUpdater({

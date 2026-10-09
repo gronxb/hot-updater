@@ -1,7 +1,6 @@
 import { createMemoryAdapter, definePlugin } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { apiKeys, insights } from "@hot-updater/server/plugins";
 import { describe, expect, it } from "vitest";
 
 import { createMeasuredDatabase } from "./createMeasuredDatabase";

@@ -20,8 +20,8 @@ const { createHotUpdater } = await importPublished<
   typeof import("@hot-updater/server")
 >("@hot-updater/server");
 const { insights } = await importPublished<
-  typeof import("@hot-updater/server/plugins/insights")
->("@hot-updater/server/plugins/insights");
+  typeof import("@hot-updater/server/plugins")
+>("@hot-updater/server/plugins");
 
 describe("E2E Insights HTTP client", () => {
   it("loads under the Node strip-types mode used by the E2E control server", () => {

@@ -8,9 +8,7 @@ import {
   S3Client,
 } from "@aws-sdk/client-s3";
 import { migrateDynamoDB } from "@hot-updater/aws";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
-import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { standaloneRepository } from "@hot-updater/standalone";
 import {
   createHttpTestClient,

@@ -7,7 +7,7 @@ import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
 import {
   createInsightsModel,
   insights as insightsPlugin,
-} from "@hot-updater/server/plugins/insights";
+} from "@hot-updater/server/plugins";
 import {
   createHttpTestClient,
   setupReleaseCatalogTestSuite,

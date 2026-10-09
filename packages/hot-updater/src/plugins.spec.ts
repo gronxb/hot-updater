@@ -1,9 +1,11 @@
 import { assembleServer, clientAuthOf } from "@hot-updater/cli-tools";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys as serverApiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights as serverInsights } from "@hot-updater/server/plugins/insights";
-import { remoteConfig as serverRemoteConfig } from "@hot-updater/server/plugins/remote-config";
+import {
+  apiKeys as serverApiKeys,
+  insights as serverInsights,
+  remoteConfig as serverRemoteConfig,
+} from "@hot-updater/server/plugins";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { describe, expect, it } from "vitest";
 

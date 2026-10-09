@@ -1,4 +1,4 @@
-import type { InsightsReads } from "@hot-updater/server/plugins/insights";
+import type { InsightsReads } from "@hot-updater/server/plugins";
 
 import type {
   FailureReportsInput,

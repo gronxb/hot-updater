@@ -123,9 +123,7 @@ pass the native D1 binding at the `createHotUpdater` boundary:
 ```typescript title="src/hotUpdater.ts"
 import { d1Database } from "@hot-updater/cloudflare/worker"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
-import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { env } from "cloudflare:workers";
 
 export const hotUpdater = createHotUpdater({

@@ -1,7 +1,7 @@
 import type {
   InsightsModel,
   ReleaseReference,
-} from "@hot-updater/server/plugins/insights";
+} from "@hot-updater/server/plugins";
 
 import type { BundleActivityInput } from "../bundle-activity";
 

@@ -62,23 +62,10 @@ const renderCredentialDefinition = (scaffold, build) => {
           pkg !== "node:fs" &&
           pkg !== `@hot-updater/${build}`,
       )
-      .flatMap((entry) =>
+      .map((entry) =>
         entry.pkg === "hot-updater/plugins"
-          ? [
-              {
-                pkg: "@hot-updater/server/plugins/api-keys",
-                named: ["apiKeys"],
-              },
-              {
-                pkg: "@hot-updater/server/plugins/insights",
-                named: ["insights"],
-              },
-              {
-                pkg: "@hot-updater/server/plugins/remote-config",
-                named: ["remoteConfig"],
-              },
-            ]
-          : [entry],
+          ? { ...entry, pkg: "@hot-updater/server/plugins" }
+          : entry,
       ),
     { pkg: "@hot-updater/server", named: ["createHotUpdater"] },
   ];

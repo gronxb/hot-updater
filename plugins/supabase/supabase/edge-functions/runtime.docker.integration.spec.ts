@@ -25,12 +25,12 @@ import {
 import type { CoreReader } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import {
+  apiKeys,
   createInsightsModel,
   insights,
   type BundleEventRow,
-} from "@hot-updater/server/plugins/insights";
+} from "@hot-updater/server/plugins";
 import {
   runContentionHarness,
   setupDatabaseTestSuite,
@@ -1280,17 +1280,9 @@ const writeSupabaseRuntimeFiles = async ({
       "@hot-updater/server": pathToFileURL(
         path.join(WORKSPACE_ROOT, "packages/server/dist/index.mjs"),
       ).href,
-      ...Object.fromEntries(
-        ["api-keys", "insights"].map((plugin) => [
-          `@hot-updater/server/plugins/${plugin}`,
-          pathToFileURL(
-            path.join(
-              WORKSPACE_ROOT,
-              `packages/server/dist/plugins/${plugin}/index.mjs`,
-            ),
-          ).href,
-        ]),
-      ),
+      "@hot-updater/server/plugins": pathToFileURL(
+        path.join(WORKSPACE_ROOT, "packages/server/dist/plugins/index.mjs"),
+      ).href,
       "@hot-updater/supabase/edge": pathToFileURL(
         path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
       ).href,

@@ -86,7 +86,7 @@ it("runs the complete contract from the published test-utils package", async () 
       import { createHotUpdater } from "@hot-updater/server";
       import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
       import { toolingTargetOf } from "@hot-updater/plugin-core";
-      import { createInsightsModel, insights } from "@hot-updater/server/plugins/insights";
+      import { createInsightsModel, insights } from "@hot-updater/server/plugins";
       import { insightsTestSuite } from "@hot-updater/test-utils";
       import { setupDatabaseTestSuite, startHttpTestServer } from "@hot-updater/test-utils";
 

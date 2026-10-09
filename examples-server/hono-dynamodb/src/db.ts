@@ -4,9 +4,7 @@ import path from "path";
 import { dynamoDB, migrateDynamoDB, s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
-import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 
 const envFilePath = path.resolve(process.cwd(), ".env.hotupdater");
 if (existsSync(envFilePath)) {

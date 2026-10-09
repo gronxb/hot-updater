@@ -272,8 +272,8 @@ server code or plugins, update these boundaries before connecting a v1 app:
 | Instance methods such as `getBundleById`, `getBundles`, `insertBundle`, `updateBundleById`, `deleteBundleById` and `getChannels` | `hotUpdater.core` reads and typed operations, such as `getBundle`, `listBundles`, `deploy`, `updateBundle`, `deleteBundles` and `listChannels`. |
 | `storages`, `storagePlugins` | `storage: [storagePlugin]` in `createHotUpdater`. |
 | Database/storage `() => plugin` thunks | Pass database and storage objects directly to `createHotUpdater` and `defineConfig`. Built-in provider factories already return those objects. List the server's plugins in `plugins` of both. |
-| `features.clientAccessKeys` | `apiKeys()` from `@hot-updater/server/plugins/api-keys` in `plugins`. It requires `x-api-key`, or the `headerName` you pass. For public client routes, set `clientAccess: "public"` instead. |
-| `features`, `features.bundles`, `features.updateCheck`, server Insights flags and `queryAccess` | Mount the handler surfaces explicitly. `insights()` from `@hot-updater/server/plugins/insights` in `plugins` serves Insights; without it, the server has no Insights routes, which answer `404`. Apps report with the `insights()` client plugin from `@hot-updater/react-native`. |
+| `features.clientAccessKeys` | `apiKeys()` from `@hot-updater/server/plugins` in `plugins`. It requires `x-api-key`, or the `headerName` you pass. For public client routes, set `clientAccess: "public"` instead. |
+| `features`, `features.bundles`, `features.updateCheck`, server Insights flags and `queryAccess` | Mount the handler surfaces explicitly. `insights()` from `@hot-updater/server/plugins` in `plugins` serves Insights; without it, the server has no Insights routes, which answer `404`. Apps report with the `insights()` client plugin from `@hot-updater/react-native`. |
 | Server `basePath` | Let the framework own the mount path and use that client root as the app's `baseURL`. |
 | `authorityId`, server `cwd`, runtime request-context parameters | Remove these settings. Catalog identity is automatic; capture credentials, SDK clients and runtime bindings when constructing plugins. Handlers take one `Request`. |
 | `standaloneRepository.baseUrl` pointing at a shared client root | Use the exact admin root, such as `https://example.com/hot-updater/admin`. Remove custom `routes`: the repository speaks the admin API's protocol 2. |
@@ -283,8 +283,7 @@ A v1 server lists the plugins it runs; `plugins` defaults to none:
 ```ts title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { apiKeys, insights } from "@hot-updater/server/plugins";
 
 import { db } from "./db";
 import { storage } from "./storage";

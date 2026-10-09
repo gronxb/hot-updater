@@ -88,8 +88,7 @@ export function createLocalProfile(options: {
 export function localAppConfig(strategy: "appVersion" | "fingerprint"): string {
   return `import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
-import { insights } from "@hot-updater/server/plugins/insights";
-import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
+import { insights, remoteConfig } from "@hot-updater/server/plugins";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 

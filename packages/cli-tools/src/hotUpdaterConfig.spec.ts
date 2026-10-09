@@ -960,7 +960,7 @@ const commonOptions = {
     ).resolves.toMatchObject({ pluginsFile: "removed" });
     await expect(fs.access(pluginsPath)).rejects.toThrow();
 
-    const own = `import { insights } from "@hot-updater/server/plugins/insights";
+    const own = `import { insights } from "@hot-updater/server/plugins";
 
 export const plugins = [insights()];
 `;

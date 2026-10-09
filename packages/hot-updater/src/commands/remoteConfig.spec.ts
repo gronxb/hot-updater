@@ -15,12 +15,12 @@ import {
   type RemoteDatabase,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { insights } from "@hot-updater/server/plugins/insights";
 import {
+  insights,
   remoteConfig,
   type RemoteConfigApi,
   type RemoteConfigTemplate,
-} from "@hot-updater/server/plugins/remote-config";
+} from "@hot-updater/server/plugins";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {

@@ -45,9 +45,7 @@ database, storage, and server plugins:
 ```ts title="console.config.ts"
 import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { defineConsoleConfig } from "@hot-updater/console";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
-import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 
 const region = process.env.HOT_UPDATER_S3_REGION!;
 
@@ -74,7 +72,7 @@ with the console host's own credentials, and the
 [server plugins](/docs/custom/server-plugins) your backend runs. The AWS,
 Cloudflare, Firebase, and Supabase managed servers run
 `apiKeys()`, `insights()`, and `remoteConfig()`. Import those factories from
-`@hot-updater/server/plugins/*` in the Console configuration. Read credentials from the console
+`@hot-updater/server/plugins` in the Console configuration. Read credentials from the console
 host's runtime environment variables, and leave mobile build adapters and
 signing private keys in the app project.
 
@@ -100,8 +98,7 @@ install `@hot-updater/standalone`:
 ```ts title="console.config.ts"
 import { s3Storage } from "@hot-updater/aws";
 import { defineConsoleConfig } from "@hot-updater/console";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { apiKeys, insights } from "@hot-updater/server/plugins";
 import { standaloneRepository } from "@hot-updater/standalone";
 
 export default defineConsoleConfig({

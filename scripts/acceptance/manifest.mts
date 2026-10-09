@@ -570,7 +570,7 @@ export const domainImports = {
     "@hot-updater/protocol",
     "@hot-updater/server",
     "@hot-updater/plugin-core",
-    "@hot-updater/server/plugins/*",
+    "@hot-updater/server/plugins",
   ],
 };
 

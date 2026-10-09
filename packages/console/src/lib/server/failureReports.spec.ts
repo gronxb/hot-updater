@@ -1,4 +1,4 @@
-import type { InsightsReads } from "@hot-updater/server/plugins/insights";
+import type { InsightsReads } from "@hot-updater/server/plugins";
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 

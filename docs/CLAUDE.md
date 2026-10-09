@@ -54,7 +54,7 @@ development dependencies. A package used by both belongs in regular dependencies
 Install the SDK, CLI and selected build/provider packages before init/scaffold.
 In `hot-updater.config.ts`, import official server plugin factories from
 `hot-updater/plugins` and list calls explicitly in `plugins`. Server and hosted
-Console examples use `@hot-updater/server/plugins/*`; React Native client
+Console examples use `@hot-updater/server/plugins`; React Native client
 plugins come from `@hot-updater/react-native`.
 
 Prefer `HotUpdater.init` with `checkForUpdate`, the returned `updateBundle`

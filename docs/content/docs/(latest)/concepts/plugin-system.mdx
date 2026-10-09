@@ -97,7 +97,7 @@ packages do. A database adapter builds on the engine kit there too.
 
 Each package's API is its root. A subpath only sets apart a part some projects
 leave out: `@hot-updater/server/adapters/*` holds the Kysely, Drizzle, Prisma
-and MongoDB adapters, `@hot-updater/server/plugins/*` the built-in plugins, and
+and MongoDB adapters, `@hot-updater/server/plugins` the built-in plugins, and
 an official plugin package has one entry per side. No package has an internal
 entry, and a package uses another only through that package's API. Test
 helpers live in `@hot-updater/test-utils` alone.
@@ -229,9 +229,7 @@ three. To write one for a custom server, see
 
 Hot Updater's own plugins are packages built the same way:
 `@hot-updater/plugin-insights`, `@hot-updater/plugin-api-keys`, and
-`@hot-updater/plugin-remote-config`. `@hot-updater/server/plugins/insights`,
-`@hot-updater/server/plugins/api-keys`, and
-`@hot-updater/server/plugins/remote-config` re-export them for servers and
+`@hot-updater/plugin-remote-config`. `@hot-updater/server/plugins` re-exports them for servers and
 deployed Consoles. CLI configurations import these factories from
 `hot-updater/plugins`, which ships with the CLI. Each package has an entry
 per side, the layout a plugin you publish follows; see

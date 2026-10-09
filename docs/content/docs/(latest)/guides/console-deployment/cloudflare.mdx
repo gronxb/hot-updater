@@ -23,8 +23,8 @@ cp examples/cloudflare/wrangler.jsonc wrangler.jsonc
 
 Build the configuration from the Worker's bindings for each request, with
 `d1Database` and `r2Storage` from `@hot-updater/cloudflare/worker`. Import
-`apiKeys`, `insights`, and `remoteConfig` from their
-`@hot-updater/server/plugins/*` entries, and set
+`apiKeys`, `insights`, and `remoteConfig` from
+`@hot-updater/server/plugins`, and set
 `plugins: [apiKeys(), insights(), remoteConfig()]` to match the managed server.
 Install these runtime packages:
 
@@ -155,7 +155,7 @@ Rollback restores Worker code/configuration, not D1 or R2 data.
 | Symptom | Check |
 | --- | --- |
 | Bindings unavailable | Build and run the Worker preset, not Vite's Node server |
-| Insights missing from the navigation | `plugins` in `console.config.ts` includes `insights()` from `@hot-updater/server/plugins/insights` |
+| Insights missing from the navigation | `plugins` in `console.config.ts` includes `insights()` from `@hot-updater/server/plugins` |
 | Empty Insights | Correct D1 binding; local preview uses separate data |
 | Bucket mismatch | `BUCKET_NAME`, the R2 binding, and stored bundle URI use the same bucket |
 | Stale bindings | Edit root config, rebuild, and deploy the generated output |

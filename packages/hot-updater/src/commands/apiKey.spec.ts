@@ -18,8 +18,8 @@ import {
   type ApiKeyManagementAPI,
   type ApiKeyMetadata,
   apiKeys,
-} from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+  insights,
+} from "@hot-updater/server/plugins";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -335,7 +335,7 @@ describe("hot-updater api-key over a server definition", () => {
     });
 
     expect(log.error).toHaveBeenCalledWith(
-      `${path.join("src", "hotUpdater.ts")} lists no apiKeys() in plugins. Add apiKeys() to its plugins (import { apiKeys } from "@hot-updater/server/plugins/api-keys").`,
+      `${path.join("src", "hotUpdater.ts")} lists no apiKeys() in plugins. Add apiKeys() to its plugins (import { apiKeys } from "@hot-updater/server/plugins").`,
     );
     expect(process.exitCode).toBe(1);
     expect(loaded.dispose).toHaveBeenCalledOnce();

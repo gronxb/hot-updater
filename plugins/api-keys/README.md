@@ -14,7 +14,7 @@ import { apiKeys } from "hot-updater/plugins";
 In a `createHotUpdater` server definition, use the server's entry:
 
 ```ts
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { apiKeys } from "@hot-updater/server/plugins";
 ```
 
 See [API key authentication](https://hot-updater.dev/docs/custom/api-key-authentication).

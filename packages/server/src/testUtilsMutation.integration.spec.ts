@@ -111,7 +111,7 @@ it("rejects broken providers while the unmodified provider passes the public sui
         `
         import { createHotUpdater } from "@hot-updater/server";
         import { createMemoryAdapter } from "@hot-updater/plugin-core";
-        import { createInsightsModel, insights } from "@hot-updater/server/plugins/insights";
+        import { createInsightsModel, insights } from "@hot-updater/server/plugins";
         import { insightsTestSuite } from "@hot-updater/test-utils";
         import { setupDatabaseTestSuite, startHttpTestServer } from "@hot-updater/test-utils";
         // An empty memory adapter per test, behind one adapter a mutant may break.

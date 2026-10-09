@@ -35,9 +35,7 @@ The managed AWS, Cloudflare, Firebase, and Supabase servers already run
 
 ```ts title="src/hotUpdater.ts (excerpt)"
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
-import { remoteConfig } from "@hot-updater/server/plugins/remote-config"; // [!code ++]
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins"; // [!code ++]
 
 export const hotUpdater = createHotUpdater({
   database,

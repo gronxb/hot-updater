@@ -38,9 +38,7 @@ describe("runtime createHotUpdater", () => {
       "./adapters/mongodb",
       "./adapters/prisma",
       "./package.json",
-      "./plugins/api-keys",
-      "./plugins/insights",
-      "./plugins/remote-config",
+      "./plugins",
     ]);
   });
 
