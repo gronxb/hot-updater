@@ -247,10 +247,13 @@ const rootStorage = rootRuntime.r2Storage({
   },
 });
 if (rootStorage.name !== "r2Storage") throw new Error("invalid root r2Storage name");
-for (const operation of ["put", "get", "exists", "delete"]) {
+for (const operation of ["put", "get", "getDownloadUrl", "exists", "delete"]) {
   if (typeof rootStorage[operation] !== "function") throw new Error("missing root storage " + operation);
 }
-if ("getDownloadUrl" in rootStorage) throw new Error("unexpected root storage download capability");
+// No top-level await: the same lines run as CommonJS; a rejection fails the run.
+rootStorage.getDownloadUrl({ storageUri: "r2://updates/bundle.zip" }).then(({ url }) => {
+  if (!url.startsWith("https://account-id.r2.cloudflarestorage.com/updates/bundle.zip?")) throw new Error("unexpected root storage download URL " + url);
+});
 const databaseBinding = {
   prepare: () => ({ bind: () => ({ all: async () => ({ results: [] }) }) }),
   batch: async (statements) => Promise.all(statements.map((statement) => statement.all())),

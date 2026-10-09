@@ -65,9 +65,6 @@ export const hotUpdater = createHotUpdater({
                 forcePathStyle: true,
               }
             : {}),
-          downloadUrlSigningKey:
-            process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY ??
-            "development-storage-download-url-key",
         }),
 });
 

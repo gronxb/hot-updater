@@ -104,7 +104,11 @@ setupStorageAdapterTestSuite({
       storage: s3Storage({
         basePath: "ota",
         bucketName: BUCKET,
-        downloadUrlSigningKey: "test-signing-key",
+        // What presigning signs with; no request leaves the mocked client.
+        credentials: {
+          accessKeyId: "access-key-id",
+          secretAccessKey: "secret-access-key",
+        },
         region: "us-east-1",
       }),
       basePath: "ota",

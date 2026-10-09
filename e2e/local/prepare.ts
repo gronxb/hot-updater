@@ -284,7 +284,6 @@ export async function runLocal(
       storagePort,
       token: randomBytes(24).toString("hex"),
       storagePassword: randomBytes(24).toString("hex"),
-      signingKey: randomBytes(32).toString("hex"),
       env,
     });
     console.log(`Local E2E: ${platform} ${device}; results: ${runDir}`);

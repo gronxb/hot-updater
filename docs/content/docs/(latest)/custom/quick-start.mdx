@@ -94,7 +94,6 @@ export const hotUpdater = createHotUpdater({
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
     },
     bucketName: process.env.R2_BUCKET_NAME!,
-    downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
   }),
 });
 ```
@@ -103,8 +102,9 @@ export const hotUpdater = createHotUpdater({
 [server plugins](/docs/custom/server-plugins) add the rest of this setup:
 
 - `apiKeys()` requires an API key on update checks, artifact resolution,
-  Insights ingestion, and plugin client routes; `/version` and signed storage
-  downloads stay public. It stores each key's SHA-256 digest in the database.
+  Insights ingestion, and plugin client routes; `/version` stays public, and
+  devices download bundle files from the presigned URLs that artifact
+  resolution returns. It stores each key's SHA-256 digest in the database.
 - `insights()` records the reports that React Native apps send with the
   [Insights client plugin](/docs/react-native-api/insights) and serves the
   Insights reads on the admin handler. Without it, the server has no Insights
@@ -163,15 +163,14 @@ The admin routes under `/hot-updater/admin/*` are used by the CLI. They exist
 only where `handlers.admin` is explicitly mounted, and your framework
 middleware must protect every request before that mount. The server example
 above uses Bearer authentication for `/hot-updater/admin/*`.
-Create `.env.hotupdater` with the storage credentials, download URL signing
-key, and admin token used by this example. Add this file to `.gitignore`:
+Create `.env.hotupdater` with the storage credentials and admin token used by
+this example. Add this file to `.gitignore`:
 
 ```bash
 R2_ENDPOINT=https://<account-id>.r2.cloudflarestorage.com
 R2_ACCESS_KEY_ID=your-access-key-id
 R2_SECRET_ACCESS_KEY=your-secret-access-key
 R2_BUCKET_NAME=your-bucket-name
-HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY=your-download-url-signing-key
 HOT_UPDATER_ADMIN_TOKEN=your-secret-auth-token
 ```
 

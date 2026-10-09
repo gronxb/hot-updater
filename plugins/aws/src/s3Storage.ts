@@ -8,9 +8,9 @@ import {
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   createStorageAdapter,
-  createStorageDownloadUrl,
   createStorageKeyBuilder,
   createStorageUri,
   parseStorageUri,
@@ -25,49 +25,34 @@ export interface S3StorageConfig extends S3ClientConfig {
   bucketName: string;
   /** Base path where bundles will be stored in the bucket. */
   basePath?: string;
-  downloadUrlSigningKey?: string;
+  /**
+   * The URL devices download an object from, such as
+   * `cloudFrontDownloadUrl(...)`. Without it, a presigned S3 URL that
+   * expires in an hour.
+   */
   getDownloadUrl?: StorageAdapter["getDownloadUrl"];
 }
-
-export type S3StorageConfigWithDownloadUrl = S3StorageConfig &
-  (
-    | { downloadUrlSigningKey: string }
-    | { getDownloadUrl: NonNullable<StorageAdapter["getDownloadUrl"]> }
-  );
 
 type S3StorageOperations =
   | "put"
   | "get"
+  | "getDownloadUrl"
   | "exists"
   | "delete"
   | "listObjects"
   | "deleteObjects";
+
+/** Devices download right after the update check that returns the URL. */
+const PRESIGNED_URL_EXPIRES_IN_SECONDS = 3600;
 
 const isObjectNotFoundError = (error: unknown) =>
   error instanceof Error &&
   (error.name === "NotFound" || error.name === "NoSuchKey");
 
 export function s3Storage(
-  config: S3StorageConfigWithDownloadUrl,
-): StorageAdapterWith<S3StorageOperations | "getDownloadUrl">;
-export function s3Storage(
-  config: S3StorageConfig,
-): StorageAdapterWith<S3StorageOperations>;
-export function s3Storage(
   config: S3StorageConfig,
 ): StorageAdapterWith<S3StorageOperations> {
-  const {
-    bucketName,
-    basePath,
-    downloadUrlSigningKey,
-    getDownloadUrl: configuredGetDownloadUrl,
-    ...s3Config
-  } = config;
-  const getDownloadUrl =
-    configuredGetDownloadUrl ??
-    (downloadUrlSigningKey
-      ? createStorageDownloadUrl(downloadUrlSigningKey)
-      : undefined);
+  const { bucketName, basePath, getDownloadUrl, ...s3Config } = config;
   const client = new S3Client(applyS3RuntimeAwsConfig(s3Config));
   const normalizedBasePath = basePath?.replace(/^\/+|\/+$/g, "") ?? "";
   const getStorageKey = createStorageKeyBuilder(normalizedBasePath);
@@ -224,14 +209,17 @@ export function s3Storage(
         throw error;
       }
     },
-    ...(getDownloadUrl
-      ? {
-          async getDownloadUrl(input: { storageUri: string }) {
-            parseAndValidate(input.storageUri);
-            return getDownloadUrl(input);
-          },
-        }
-      : {}),
+    async getDownloadUrl({ storageUri }) {
+      const { key } = parseAndValidate(storageUri);
+      if (getDownloadUrl) return getDownloadUrl({ storageUri });
+      return {
+        url: await getSignedUrl(
+          client,
+          new GetObjectCommand({ Bucket: bucketName, Key: key }),
+          { expiresIn: PRESIGNED_URL_EXPIRES_IN_SECONDS },
+        ),
+      };
+    },
     async exists({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       try {

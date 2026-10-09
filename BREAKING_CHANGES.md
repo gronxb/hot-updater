@@ -745,12 +745,7 @@ import { apiKeys } from "@hot-updater/server/plugins";
 
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "postgresql" }), // a new, empty database
-  storage: s3Storage({
-    region,
-    credentials,
-    bucketName,
-    downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
-  }),
+  storage: s3Storage({ region, credentials, bucketName }),
   plugins: [apiKeys()], // or clientAccess: "public"
 });
 ```
@@ -763,11 +758,6 @@ export const hotUpdater = createHotUpdater({
   from apps: create one with
   `npx hot-updater api-key create --name <name> src/hotUpdater.ts` and send
   it from `HotUpdater.init`. Use one or the other.
-- Server storage must produce download URLs. v0 presigned them implicitly; v1
-  needs `downloadUrlSigningKey` (artifacts are then served by the client
-  handler's `/storage/...` route) or `getDownloadUrl`, such as
-  `cloudFrontDownloadUrl(...)`. Without either, the first use of
-  `hotUpdater.handlers` throws. The same applies to `r2Storage`.
 - `basePath`, `routes` and `cwd` are removed. The mounts in the next entry
   replace `basePath` and `routes`, and each plugin in `plugins` adds its own
   endpoints to them.
@@ -894,7 +884,6 @@ Client routes, relative to the `handlers.client` mount (v0: relative to
 | `GET /app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId[/:cohort]`      | `GET /release-catalogs/app-version/:platform/:channelKey/:appVersion`                   |
 | `GET /fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId[/:cohort]` | `GET /release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`              |
 | The artifact URL inside the update response                                             | `GET /artifacts/v1/:targetBundleId/from/:currentBundleId`                               |
-| Presigned storage URLs                                                                  | `GET /storage/:token/:signature`, when the storage adapter uses `downloadUrlSigningKey` |
 | `GET /version`                                                                          | `GET /version`                                                                          |
 
 - `:channelKey` is the base64url encoding of the UTF-8 channel name.

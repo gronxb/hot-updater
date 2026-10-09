@@ -291,7 +291,7 @@ describe("r2Storage", () => {
     ).toThrow("r2Storage requires S3-compatible credentials");
   });
 
-  it("does not add getDownloadUrl to a deploy-only configuration", () => {
+  it("presigns a download URL on the account's R2 endpoint for an hour", async () => {
     const storage = r2Storage({
       accountId: "account-id",
       bucketName: "test-bucket",
@@ -301,28 +301,19 @@ describe("r2Storage", () => {
       },
     });
 
-    expect(Reflect.has(storage, "getDownloadUrl")).toBe(false);
-  });
-
-  it("adds a signed download URL operation when configured for a server", async () => {
-    mockS3Client();
-    const storage = r2Storage({
-      accountId: "account-id",
-      bucketName: "test-bucket",
-      credentials: {
-        accessKeyId: "access-key-id",
-        secretAccessKey: "secret-access-key",
-      },
-      downloadUrlSigningKey: "test-signing-key",
+    const { url } = await storage.getDownloadUrl({
+      storageUri: "r2://test-bucket/releases/logo%402x.png",
     });
 
-    await expect(
-      storage.getDownloadUrl?.({
-        storageUri: "r2://test-bucket/releases/bundle.zip",
-      }),
-    ).resolves.toEqual({
-      url: expect.stringMatching(/^\/storage\//),
-    });
+    const presigned = new URL(url);
+    expect(presigned.origin).toBe(
+      "https://account-id.r2.cloudflarestorage.com",
+    );
+    expect(presigned.pathname).toBe("/test-bucket/releases/logo%402x.png");
+    expect(presigned.searchParams.get("X-Amz-Expires")).toBe("3600");
+    expect(presigned.searchParams.get("X-Amz-Signature")).toMatch(
+      /^[0-9a-f]{64}$/,
+    );
   });
 
   it("rejects downloads from a different bucket", async () => {

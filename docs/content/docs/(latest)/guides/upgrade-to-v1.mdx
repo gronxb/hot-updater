@@ -372,10 +372,6 @@ v0 mutable per-Bundle asset layout or its cleanup fallback.
 | `@hot-updater/plugin-core`: `createNodeStoragePlugin`, `createRuntimeStoragePlugin`, `createUniversalStoragePlugin` | `createStorageAdapter` with flat operations. |
 | `@hot-updater/plugin-core`: `createRequestUpdateBundleResolver`, `getRequestUpdateBundleSeeds` | None: core resolves an artifact with one batch read of both Bundles and one read of their patch. |
 
-Server-side `s3Storage` does not implicitly produce S3 presigned URLs. Configure
-`downloadUrlSigningKey` or an explicit `getDownloadUrl` implementation. CLI-only
-upload storage does not need a download URL resolver.
-
 ## Update app lifecycle handlers
 
 `HotUpdater` keeps only `init`, which returns the app's HotUpdater instance.

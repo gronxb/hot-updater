@@ -47,8 +47,5 @@ export const hotUpdater = createHotUpdater({
           bucketName: process.env.AWS_S3_BUCKET_NAME ?? "hot-updater-bundles",
           basePath: providerNamespace,
           forcePathStyle: true,
-          downloadUrlSigningKey:
-            process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY ??
-            "development-storage-download-url-key",
         }),
 });

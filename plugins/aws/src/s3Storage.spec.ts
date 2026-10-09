@@ -307,11 +307,37 @@ describe("s3Storage", () => {
     ]);
   });
 
-  it("returns a signed server download URL when configured", async () => {
+  it("presigns a download URL for an hour, keeping the key's encoding", async () => {
+    const storage = s3Storage({
+      bucketName: "updates",
+      credentials: {
+        accessKeyId: "access-key-id",
+        secretAccessKey: "secret-access-key",
+      },
+      region: "us-east-1",
+    });
+
+    const { url } = await storage.getDownloadUrl({
+      storageUri: "s3://updates/releases/logo%402x.png",
+    });
+
+    const presigned = new URL(url);
+    expect(presigned.origin).toBe("https://updates.s3.us-east-1.amazonaws.com");
+    expect(presigned.pathname).toBe("/releases/logo%402x.png");
+    expect(presigned.searchParams.get("X-Amz-Expires")).toBe("3600");
+    expect(presigned.searchParams.get("X-Amz-Signature")).toMatch(
+      /^[0-9a-f]{64}$/,
+    );
+  });
+
+  it("returns the configured getDownloadUrl's URL for its own bucket only", async () => {
+    const getDownloadUrl = vi.fn(async ({ storageUri }) => ({
+      url: `https://cdn.example.com/${encodeURIComponent(storageUri)}`,
+    }));
     const storage = s3Storage({
       bucketName: "updates",
       region: "us-east-1",
-      downloadUrlSigningKey: "test-signing-key",
+      getDownloadUrl,
     });
 
     await expect(
@@ -319,7 +345,11 @@ describe("s3Storage", () => {
         storageUri: "s3://updates/releases/bundle.zip",
       }),
     ).resolves.toEqual({
-      url: expect.stringMatching(/^\/storage\//),
+      url: "https://cdn.example.com/s3%3A%2F%2Fupdates%2Freleases%2Fbundle.zip",
     });
+    await expect(
+      storage.getDownloadUrl({ storageUri: "s3://other/releases/bundle.zip" }),
+    ).rejects.toThrow('Bucket name mismatch: expected "updates"');
+    expect(getDownloadUrl).toHaveBeenCalledOnce();
   });
 });

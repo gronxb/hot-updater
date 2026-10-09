@@ -63,6 +63,7 @@
     "@aws-sdk/credential-providers": "3.1066.0",
     "@aws-sdk/lib-storage": "3.1066.0",
     "@aws-sdk/lib-dynamodb": "3.1066.0",
+    "@aws-sdk/s3-request-presigner": "catalog:aws",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "hono": "catalog:hono"

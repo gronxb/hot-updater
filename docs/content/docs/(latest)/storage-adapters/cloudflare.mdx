@@ -36,7 +36,6 @@ interface R2S3StorageConfig extends S3ClientConfig {
   bucketName: string;
   credentials: NonNullable<S3ClientConfig["credentials"]>;
   basePath?: string;
-  downloadUrlSigningKey?: string;
 }
 ```
 
@@ -69,12 +68,11 @@ export default defineConfig({
 
 ## Runtime usage
 
-The root `r2Storage` adapter implements upload, read, existence-check, and
-exact-delete operations. When the same adapter is passed to a self-hosted
-`createHotUpdater` server, also provide `downloadUrlSigningKey`; it enables
-the signed download location required by the server while `get` reads the
-stored object. Without it, the adapter has no `getDownloadUrl`, and the first
-read of `hotUpdater.handlers` throws.
+The root `r2Storage` adapter implements upload, read, download URL,
+existence-check, and exact-delete operations. A download URL is an R2
+presigned URL that expires in an hour, signed with the adapter's S3-compatible
+credentials, so a self-hosted `createHotUpdater` server can take the same
+adapter: devices download from the bucket, which stays private.
 
 ### Cloudflare Worker bindings
 
