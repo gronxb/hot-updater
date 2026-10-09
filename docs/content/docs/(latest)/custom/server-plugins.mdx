@@ -712,9 +712,9 @@ export const deviceTokens = () =>
   });
 ```
 
-- `authenticate(headers)` runs for every client route except `/version` and
-  signed storage downloads. `false` answers 401; a thrown error answers 503 and
-  never falls back to public access.
+- `authenticate(headers)` runs for every client route except `/version`.
+  `false` answers 401; a thrown error answers 503 and never falls back to
+  public access.
 - `varyHeaders` names the request headers the decision reads. They are added to
   `Vary` on cacheable client responses.
 - `provides` is static, so the types count policy sources. A server runs

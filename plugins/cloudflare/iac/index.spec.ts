@@ -645,13 +645,14 @@ describe("Cloudflare init discovery", () => {
     expect(commands).toEqual([
       ["d1", "migrations", "apply", "ota", "--remote"],
       ["deploy", "--name", "hot-updater"],
-      [
-        "secret",
-        "put",
-        "STORAGE_DOWNLOAD_URL_SIGNING_KEY",
-        "--name",
-        "hot-updater",
-      ],
+      ["secret", "put", "R2_ACCESS_KEY_ID", "--name", "hot-updater"],
+      ["secret", "put", "R2_SECRET_ACCESS_KEY", "--name", "hot-updater"],
+    ]);
+    // The R2 credentials the config uploads with, which the Worker presigns
+    // download URLs with.
+    expect(secret.stdin.end.mock.calls).toEqual([
+      ["access-key-id"],
+      ["secret-access-key"],
     ]);
     // The prebuilt Worker on the resources init chose, and the package's
     // migration, which creates the tables of core and the Worker's plugins.
@@ -661,7 +662,7 @@ describe("Cloudflare init discovery", () => {
         { binding: "DB", database_id: "database-id", database_name: "ota" },
       ],
       r2_buckets: [{ binding: "BUCKET", bucket_name: "bundles" }],
-      vars: { BUCKET_NAME: "bundles" },
+      vars: { ACCOUNT_ID: "account-id", BUCKET_NAME: "bundles" },
     });
     expect(Object.keys(deployed.migrations ?? {})).toEqual([
       "0001_hot-updater_1.0.0.sql",

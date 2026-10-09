@@ -21,7 +21,9 @@ declare module "cloudflare:test" {
     DB: D1Database;
     BUCKET: R2Bucket;
     BUCKET_NAME: string;
-    STORAGE_DOWNLOAD_URL_SIGNING_KEY: string;
+    ACCOUNT_ID: string;
+    R2_ACCESS_KEY_ID: string;
+    R2_SECRET_ACCESS_KEY: string;
   }
 }
 

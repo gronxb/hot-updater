@@ -269,7 +269,8 @@ if ("d1WorkerDatabase" in runtime) throw new Error("unexpected d1WorkerDatabase"
 const storage = runtime.r2Storage({
   bucket: {},
   bucketName: "updates",
-  downloadUrlSigningKey: "test-signing-key",
+  accountId: "account-id",
+  credentials: { accessKeyId: "access-key-id", secretAccessKey: "secret-access-key" },
 });
 if (storage.name !== "r2Storage") throw new Error("invalid r2Storage name");
 for (const operation of ["put", "get", "getDownloadUrl", "exists", "delete"]) {

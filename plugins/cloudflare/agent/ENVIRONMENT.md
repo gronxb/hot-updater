@@ -26,11 +26,14 @@ provider credentials must never enter the React Native app.
 
 ## Worker settings
 
-`STORAGE_DOWNLOAD_URL_SIGNING_KEY` is a Worker secret, not a local plugin input.
-It signs private storage downloads. Follow SETUP.md to generate and persist it
-privately before uploading; reuse it for retries and upgrades.
+`R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` are Worker secrets: the values of
+`HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID` and
+`HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY`, with which the Worker presigns
+download URLs from the private bucket. Follow SETUP.md to upload them; reuse
+them for retries and upgrades.
 
-`DB` and `BUCKET` are resource bindings, and `BUCKET_NAME` is a Worker variable.
+`DB` and `BUCKET` are resource bindings, and `ACCOUNT_ID` and `BUCKET_NAME` are
+Worker variables.
 Fill them in worker/wrangler.json with the verified resource identities. Use
 the provider-reported Worker URL for the client base URL and deployment record.
 

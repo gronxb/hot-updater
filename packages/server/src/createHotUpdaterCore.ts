@@ -224,8 +224,7 @@ export function createHotUpdater<
 ): RuntimeHotUpdaterAPI<NoInfer<TPlugins>> {
   const database = databaseOf(options.database);
   const storage = storageOf(options.storage);
-  const { downloadStorageObject, readStorageText, resolveFileUrl } =
-    createStorageAccess(storage);
+  const { readStorageText, resolveFileUrl } = createStorageAccess(storage);
   const publicClients = isPublic(
     (options as { readonly clientAccess?: unknown }).clientAccess,
   );
@@ -262,7 +261,6 @@ export function createHotUpdater<
   const handlers = createHotUpdaterHandlers({
     api: { core: plugins.core },
     ...(clientPolicy === undefined ? {} : { clientPolicy }),
-    downloadStorageObject,
     endpoints: plugins.endpoints,
     plugins: Object.keys(plugins.api),
   });

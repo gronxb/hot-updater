@@ -35,6 +35,7 @@ describe("the managed Worker init deploys", () => {
     );
 
     await prepareWorkerDeployment(workerRoot, {
+      accountId: "account-id",
       d1DatabaseId: "database-id",
       d1DatabaseName: "ota",
       r2BucketName: "bundles",
@@ -51,7 +52,7 @@ describe("the managed Worker init deploys", () => {
         { binding: "DB", database_id: "database-id", database_name: "ota" },
       ],
       r2_buckets: [{ binding: "BUCKET", bucket_name: "bundles" }],
-      vars: { BUCKET_NAME: "bundles" },
+      vars: { ACCOUNT_ID: "account-id", BUCKET_NAME: "bundles" },
     });
   });
 });

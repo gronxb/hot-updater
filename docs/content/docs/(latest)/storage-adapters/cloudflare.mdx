@@ -91,20 +91,27 @@ export const hotUpdater = createHotUpdater({
   storage: r2Storage({
     bucket: env.BUCKET, // [!code ++]
     bucketName: env.BUCKET_NAME, // [!code ++]
-    downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY, // [!code ++]
+    accountId: env.ACCOUNT_ID, // [!code ++]
+    credentials: { // [!code ++]
+      accessKeyId: env.R2_ACCESS_KEY_ID, // [!code ++]
+      secretAccessKey: env.R2_SECRET_ACCESS_KEY, // [!code ++]
+    }, // [!code ++]
   }),
 });
 ```
 
 Configure `DB` and `BUCKET` as D1 and R2 bindings, set `BUCKET_NAME` to the
-actual bound bucket name, and store `STORAGE_DOWNLOAD_URL_SIGNING_KEY` as a
-Worker secret. The Worker uses its R2 binding for object access; S3-compatible
-access keys belong to the CLI configuration above. Use the same bucket and
-optional `basePath` in both configurations.
+actual bound bucket name and `ACCOUNT_ID` to your account ID, and store the
+CLI configuration's S3-compatible credentials as the Worker secrets
+`R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY`. The Worker reads and writes
+objects through its R2 binding and presigns download URLs with the
+credentials, as the root `r2Storage` does: devices download from the private
+bucket. Without `accountId` and `credentials`, the adapter has no download
+URLs, which a Console that only reads bundles does not need. Use the same
+bucket and optional `basePath` in both configurations.
 
 Mount `hotUpdater.handlers.client` through your
-[server framework](/docs/custom/overview#server-frameworks). It serves the
-signed storage-download URLs as well as the update protocol. Bindings are
+[server framework](/docs/custom/overview#server-frameworks). Bindings are
 already captured by the adapters; invoke a handler with only the `Request`.
 
 ## Protocol

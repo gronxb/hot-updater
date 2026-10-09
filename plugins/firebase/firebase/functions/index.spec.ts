@@ -96,7 +96,7 @@ describe("the prebuilt Cloud Function", () => {
       return new Response(new Uint8Array([0, 255, 128, 10]), { headers });
     });
 
-    const response = await get("/storage/token/signature");
+    const response = await get("/bundle.zip");
 
     expect(mocks.client).toHaveBeenCalledOnce();
     expect(response.status).toBe(200);

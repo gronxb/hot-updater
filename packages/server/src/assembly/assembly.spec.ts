@@ -109,7 +109,6 @@ describe("createHotUpdater with plugins", () => {
     });
     expect(listHotUpdaterRoutes(handlers)).toEqual([
       { method: "GET", path: "/version", access: "public" },
-      { method: "GET", path: "/storage/:token/:signature", access: "public" },
       {
         method: "GET",
         path: "/release-catalogs/app-version/:platform/:channelKey/:appVersion",

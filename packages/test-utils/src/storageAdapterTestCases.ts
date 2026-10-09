@@ -8,7 +8,6 @@ import {
   getBundleArchiveStorageUri,
   getContentAddressedAssetStoragePath,
   type ParsedStorageUri,
-  parseStorageDownloadPath,
   parseStorageUri,
   type StorageObject,
   type StorageOperation,
@@ -432,7 +431,7 @@ const storageCase = <const TOperations extends readonly StorageOperation[]>(
 /**
  * The storage adapter contract, from what its consumers rely on: deploy and
  * patch (`put`, `get`, `exists`, `delete`), the Console, the server's update
- * responses and signed downloads (`get`, `getDownloadUrl`), and
+ * responses and the URLs devices download from (`get`, `getDownloadUrl`), and
  * `storage prune` (`listObjects`, `deleteObjects`).
  */
 export const storageAdapterTestCases: readonly StorageAdapterTestCase[] = [
@@ -784,32 +783,21 @@ export const storageAdapterTestCases: readonly StorageAdapterTestCase[] = [
         const label = `getDownloadUrl("${storageUri}") returned "${url}"`;
 
         expect(typeof url, label).toBe("string");
-        if (/^[a-z][a-z\d+.-]*:/i.test(url)) {
-          expect(
-            ["http:", "https:"],
-            `${label}; a URL must use http(s)`,
-          ).toContain(new URL(url).protocol);
-          if (fetchDownloadUrls) {
-            const response = await fetch(url);
-            expect(response.status, `${label}, which answered`).toBe(200);
-            expectBytes(
-              new Uint8Array(await response.arrayBuffer()),
-              bytes,
-              `${label}, whose download`,
-            );
-          }
-          continue;
+        // Devices download from it, so it is absolute.
+        expect(
+          /^https?:\/\//i.test(url),
+          `${label}; a download URL must be an absolute http(s) URL`,
+        ).toBe(true);
+        expect(() => new URL(url), label).not.toThrow();
+        if (fetchDownloadUrls) {
+          const response = await fetch(url);
+          expect(response.status, `${label}, which answered`).toBe(200);
+          expectBytes(
+            new Uint8Array(await response.arrayBuffer()),
+            bytes,
+            `${label}, whose download`,
+          );
         }
-        // The server's client handler serves /storage/<uri>/<signature>.
-        expect(
-          parseStorageDownloadPath(url)?.storageUri,
-          `${label}; a path must be the /storage/ path of the same URI`,
-        ).toBe(storageUri);
-        // The handler signs the requested URI again and compares the paths.
-        expect(
-          (await storage.getDownloadUrl({ storageUri })).url,
-          `${label}, then another path`,
-        ).toBe(url);
       }
     },
   ),

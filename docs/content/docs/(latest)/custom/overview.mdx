@@ -60,7 +60,7 @@ middleware and mount ordering.
 Handlers match paths relative to their mount. For example, mounting the client
 handler at `/hot-updater` exposes `/hot-updater/version`; configure the app's
 `baseURL` as `https://example.com/hot-updater`. The framework owns the external
-prefix, including for signed storage-download URLs resolved against `baseURL`.
+prefix.
 
 ## Runtime policy
 
@@ -71,7 +71,7 @@ ingestion and plugin client routes, or explicitly set `clientAccess: "public"`.
 
 | Handler           | Routes and access                                                                                                                                                                                       |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `handlers.client` | Public `/version`; Release Catalogs, artifacts, `POST /events` and plugin client routes follow the client policy; signed storage-download routes are available when the storage provider supports them. |
+| `handlers.client` | Public `/version`; Release Catalogs, artifacts, `POST /events` and plugin client routes follow the client policy. Devices download artifacts from the URLs the storage adapter returns, not through this handler. |
 | `handlers.admin`  | Bundle, Release, catalog and Channel routes, Insights queries and plugin admin routes. Your framework authenticates every request before mounting this handler.                                         |
 
 Insights runs as the `insights()` plugin. React Native apps report to it when

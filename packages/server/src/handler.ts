@@ -46,8 +46,8 @@ export interface ClientRoutePolicy {
   readonly authenticate: (request: Request) => Promise<boolean>;
 }
 
-/** `/version` and storage downloads never pass through the client policy. */
-const PUBLIC_CLIENT_ROUTES = new Set(["version", "downloadStorageObject"]);
+/** `/version` never passes through the client policy. */
+const PUBLIC_CLIENT_ROUTES = new Set(["version"]);
 
 export type RouteAccess = "public" | "client" | "admin";
 
@@ -153,42 +153,10 @@ const createRequestHandler =
     }
   };
 
-const createDownloadStorageRouteHandler =
-  (
-    downloadStorageObject: (
-      token: string,
-      signature: string,
-    ) => Promise<Response | null>,
-  ): RouteHandler =>
-  async (params) => {
-    const token = params.token;
-    const signature = params.signature;
-    if (!token || !signature) {
-      return errorResponse("Not found", 404);
-    }
-    const response = await downloadStorageObject(token, signature);
-    if (!response) {
-      return errorResponse("Not found", 404);
-    }
-    const headers = new Headers(response.headers);
-    if (!headers.has("cache-control")) {
-      headers.set("cache-control", "public, max-age=31536000, immutable");
-    }
-    return new Response(response.body, {
-      headers,
-      status: response.status,
-      statusText: response.statusText,
-    });
-  };
-
 export interface HotUpdaterHandlersOptions {
   readonly api: HandlerAPI;
   /** Absent when `clientAccess` is `"public"`. */
   readonly clientPolicy?: ClientRoutePolicy;
-  readonly downloadStorageObject?: (
-    token: string,
-    signature: string,
-  ) => Promise<Response | null>;
   /** The plugins' endpoints; a route no plugin serves answers 404. */
   readonly endpoints?: readonly MountedEndpoint[];
   /** The ids of the plugins the server runs, which the admin `/version` lists. */
@@ -198,7 +166,6 @@ export interface HotUpdaterHandlersOptions {
 export function createHotUpdaterHandlers({
   api,
   clientPolicy,
-  downloadStorageObject,
   endpoints = [],
   plugins = [],
 }: HotUpdaterHandlersOptions): HotUpdaterHandlers {
@@ -206,13 +173,6 @@ export function createHotUpdaterHandlers({
     ...createVersionRouteHandlers(plugins),
     ...createReleaseCatalogRouteHandlers(),
     ...createAdminRouteHandlers(),
-    ...(downloadStorageObject === undefined
-      ? {}
-      : {
-          downloadStorageObject: createDownloadStorageRouteHandler(
-            downloadStorageObject,
-          ),
-        }),
   };
 
   const routes: HotUpdaterRoute[] = [];
@@ -242,13 +202,6 @@ export function createHotUpdaterHandlers({
   const clientRouter = createRouter<string>();
   const addClientRoute = mount(clientRouter, false);
   addClientRoute("GET", "/version", "version");
-  if (downloadStorageObject !== undefined) {
-    addClientRoute(
-      "GET",
-      "/storage/:token/:signature",
-      "downloadStorageObject",
-    );
-  }
   addClientRoute(
     "GET",
     "/release-catalogs/app-version/:platform/:channelKey/:appVersion",

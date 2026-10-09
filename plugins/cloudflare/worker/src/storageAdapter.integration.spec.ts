@@ -20,7 +20,6 @@ const createStorage = () =>
   r2Storage({
     bucket: env.BUCKET,
     bucketName: env.BUCKET_NAME,
-    downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
   });
 
 afterEach(async () => {

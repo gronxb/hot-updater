@@ -23,6 +23,7 @@
     }
   ],
   "vars": {
+    "ACCOUNT_ID": "00000000000000000000000000000000",
     "BUCKET_NAME": "user-buckets"
   }
 }

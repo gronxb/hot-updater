@@ -1,7 +1,4 @@
-import {
-  createStorageDownloadPath,
-  createStorageAdapter,
-} from "@hot-updater/plugin-core";
+import { createStorageAdapter } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createStorageAccess } from "./storageAccess";
@@ -89,52 +86,20 @@ describe("createStorageAccess", () => {
     expect(getDownloadUrl).toHaveBeenCalledWith({ storageUri });
   });
 
-  it("creates and serves a runtime-neutral delivery URL", async () => {
-    const storage = createStorageAdapter({
-      name: "r2Storage",
-      protocol: "r2",
-      get: vi.fn(
-        async () =>
-          ({
-            response: new Response("bundle", {
-              headers: { "content-type": "application/zip" },
-            }),
-          }) as const,
-      ),
-      getDownloadUrl: async ({ storageUri }) => ({
-        url: createStorageDownloadPath(storageUri, "test-signature"),
-      }),
-    });
-    const access = createStorageAccess(storage);
+  it("refuses a download URL that is not an absolute HTTP(S) URL", async () => {
+    for (const url of ["/storage/token/signature", "r2://bucket/bundle.zip"]) {
+      const storage = createStorageAdapter({
+        name: "r2Storage",
+        protocol: "r2",
+        get: async () => ({ response: null }),
+        getDownloadUrl: async () => ({ url }),
+      });
+      const { resolveFileUrl } = createStorageAccess(storage);
 
-    const fileUrl = await access.resolveFileUrl("r2://bucket/bundle.zip");
-    expect(fileUrl).toMatch(/^\/storage\//);
-    const segments = fileUrl!.split("/");
-    const token = segments.at(-2)!;
-    const signature = segments.at(-1)!;
-    const response = await access.downloadStorageObject!(token, signature);
-    await expect(response?.text()).resolves.toBe("bundle");
-    await expect(
-      access.downloadStorageObject!(token, `${signature}tampered`),
-    ).resolves.toBeNull();
-  });
-
-  it("lets a CDN resolver bypass built-in server delivery", async () => {
-    const resolveUrl = vi.fn(async () => ({
-      url: "https://cdn.example.com/bundle.zip",
-    }));
-    const storage = createStorageAdapter({
-      name: "s3Storage",
-      protocol: "s3",
-      get: async () => ({ response: null }),
-      getDownloadUrl: resolveUrl,
-    });
-    const access = createStorageAccess(storage);
-
-    await expect(access.resolveFileUrl("s3://bucket/bundle.zip")).resolves.toBe(
-      "https://cdn.example.com/bundle.zip",
-    );
-    expect(access.downloadStorageObject).toEqual(expect.any(Function));
+      await expect(resolveFileUrl("r2://bucket/bundle.zip")).rejects.toThrow(
+        "Storage getDownloadUrl must resolve to an absolute HTTP(S) URL.",
+      );
+    }
   });
 
   it("refuses a URI of a protocol other than the storage's", async () => {
