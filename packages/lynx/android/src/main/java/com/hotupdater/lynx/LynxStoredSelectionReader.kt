@@ -6,6 +6,9 @@ import java.io.File
 import java.util.UUID
 import org.json.JSONObject
 
+internal fun retainEmbeddedFailure(previous: CatalogPolicy.Receipt?, incoming: CatalogPolicy.Receipt): CatalogPolicy.Receipt =
+    previous?.takeIf { it.releaseId == null } ?: incoming
+
 /** Reads committed native state without running foreground recovery or publishing changes. */
 internal class LynxStoredSelectionReader(
     private val state: JSONObject,
@@ -75,7 +78,7 @@ internal class LynxStoredSelectionReader(
                         if (interrupted.bundleId != embedded.bundleId) crashed.add(interrupted.bundleId)
                     }
                     if (interrupted.bundleId == embedded.bundleId && (page != null || failure != null)) {
-                        failedEmbedded = interrupted
+                        failedEmbedded = retainEmbeddedFailure(failedEmbedded, interrupted)
                     }
                 }
             }

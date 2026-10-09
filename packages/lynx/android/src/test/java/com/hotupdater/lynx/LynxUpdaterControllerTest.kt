@@ -250,6 +250,471 @@ class LynxUpdaterControllerTest {
         LynxRuntimeHost(root, binary(root), embedded(root, background = true), config(),
             processIdentity = { "4321" }, processToken = token)
 
+    private fun seedRecoveryHistory(root: File, count: Int) {
+        val file = File(store(root), "state.json")
+        val state = JSONObject(file.readText())
+        state.put("unconfirmed", JSONArray((0 until count).map {
+            "01900000-0000-7000-8000-" + String.format("%012x", 1000 + it)
+        }))
+        file.writeText(state.toString())
+    }
+
+    @Test fun directControllerCannotBypassTasksAndReleasesItsRejectedOwnership() {
+        val root = temp()
+        var task: LynxBackgroundTask? = null
+        try {
+            val host = backgroundHost(root)
+            host.createForeground().also { it.close() }
+            task = host.beginBackground()
+            val file = File(store(root), "state.json")
+            val before = file.readBytes()
+            assertThrows(IllegalStateException::class.java) { controller(root) }
+            assertTrue(before.contentEquals(file.readBytes()))
+            // A rejected standalone constructor must release the journal file lock.
+            host.beginBackground().close()
+            task.close()
+            controller(root).close()
+        } finally {
+            task?.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun concurrentBackgroundTasksKeepIndependentRecoveryReservations() {
+        val root = temp()
+        val tasks = mutableListOf<LynxBackgroundTask>()
+        try {
+            val host = backgroundHost(root)
+            host.createForeground().also { it.close() }
+            seedRecoveryHistory(root, 127)
+            plantNext(root, releaseB, bundleB, "B", background = true)
+            val first = host.beginBackground().also(tasks::add)
+            val second = host.beginBackground().also(tasks::add)
+            assertEquals(releaseB, first.snapshot.selection.releaseId)
+            assertFalse(first.snapshot.taskId == second.snapshot.taskId)
+            val third = host.beginBackground().also(tasks::add)
+            val fourth = host.beginBackground().also(tasks::add)
+            assertEquals("Too many concurrent Lynx background tasks",
+                assertThrows(IllegalStateException::class.java) { host.beginBackground() }.message)
+            plantNext(root, releaseC, bundleC, "C", background = true)
+            val file = File(store(root), "state.json")
+            val before = file.readBytes()
+            assertThrows(IllegalStateException::class.java) { host.beginBackground() }
+            first.close()
+            assertThrows(IllegalStateException::class.java) { host.beginBackground() }
+            second.close()
+            third.close()
+            assertThrows(IllegalStateException::class.java) { host.beginBackground() }
+            fourth.close()
+            assertEquals(releaseC, host.beginBackground().also(tasks::add).snapshot.selection.releaseId)
+            assertTrue(before.contentEquals(file.readBytes()))
+        } finally {
+            tasks.forEach { it.close() }
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun backgroundCountsLiveTrialAndForegroundCountsBackgroundReservations() {
+        for (backgroundFirst in listOf(false, true)) {
+            val root = temp()
+            var foreground: LynxUpdaterController? = null
+            var task: LynxBackgroundTask? = null
+            try {
+                val host = backgroundHost(root)
+                host.createForeground().also { initial ->
+                    initial.pinPrimary().also { it.firstScreen = true; initial.confirm(it) }
+                    initial.close()
+                }
+                plantNext(root, releaseB, bundleB, "B", background = true)
+                host.createForeground().also { previous ->
+                    previous.pinPrimary().also { it.firstScreen = true; previous.confirm(it) }
+                    previous.close()
+                }
+                seedRecoveryHistory(root, 127)
+                if (backgroundFirst) task = host.beginBackground()
+                plantNext(root, releaseC, bundleC, "C", selectionCatalogId = "catalog-C", background = true)
+                val current = host.createForeground().also { foreground = it }
+                val page = current.pinPrimary()
+                assertEquals(if (backgroundFirst) bundleB else bundleC, current.diagnostics(page).bundleId)
+                if (!backgroundFirst) {
+                    // B is the background fallback while C is a live unconfirmed trial.
+                    assertThrows(IllegalStateException::class.java) { host.beginBackground() }
+                    page.firstScreen = true
+                    current.confirm(page)
+                    task = host.beginBackground()
+                    assertEquals(releaseC, task!!.snapshot.selection.releaseId)
+                }
+                assertEquals(127, journal(root).getJSONArray("unconfirmed").length())
+            } finally {
+                task?.close()
+                foreground?.close()
+                root.deleteRecursively()
+            }
+        }
+    }
+
+    @Test fun backgroundFatalTargetsItsReceiptAndPreservesAnotherForegroundAttempt() {
+        for (cold in listOf(false, true)) {
+            val root = temp()
+            var foreground: LynxUpdaterController? = null
+            var task: LynxBackgroundTask? = null
+            try {
+                val host = backgroundHost(root)
+                host.createForeground().also { it.close() }
+                plantNext(root, releaseB, bundleB, "B", background = true)
+                val background = host.beginBackground().also { task = it }
+                plantNext(root, releaseC, bundleC, "C", selectionCatalogId = "catalog-C", background = true)
+                val current = host.createForeground().also { foreground = it }
+                val page = current.pinPrimary()
+                assertEquals(bundleC, current.diagnostics(page).bundleId)
+                val before = journal(root)
+                if (cold) current.close()
+                assertTrue(background.fail("verified task B fatal"))
+                val after = journal(root)
+                for (key in listOf("pending", "active", "launchTransition", "logicalStack")) {
+                    assertEquals(key, before.opt(key).toString(), after.opt(key).toString())
+                }
+                assertEquals(listOf(releaseB), jsonStrings(after.getJSONArray("unconfirmed")))
+                assertEquals(listOf(bundleB), jsonStrings(after.getJSONArray("crashed")))
+                assertFalse(background.fail("duplicate fatal"))
+                if (cold) {
+                    val replacement = host.createForeground().also { foreground = it }
+                    replacement.pinPrimary()
+                    assertTrue(journal(root).getJSONObject("interruptedReleases").has(releaseC))
+                } else {
+                    page.firstScreen = true
+                    current.confirm(page)
+                    assertEquals(releaseC, journal(root).getJSONObject("confirmed").getString("releaseId"))
+                }
+            } finally {
+                task?.close()
+                foreground?.close()
+                root.deleteRecursively()
+            }
+        }
+    }
+
+    @Test fun primaryPinRechecksTaskCapacityAfterWaitingForRetention() {
+        val root = temp()
+        val executor = Executors.newFixedThreadPool(2)
+        val releasePruner = CountDownLatch(1)
+        var foreground: LynxUpdaterController? = null
+        var taskId: String? = null
+        val host = backgroundHost(root)
+        try {
+            host.createForeground().close()
+            plantNext(root, releaseB, bundleB, "B", background = true)
+            host.createForeground().also { previous ->
+                val page = previous.pinPrimary().also { it.firstScreen = true; previous.confirm(it) }
+                val detail = previous.pinSecondary("detail.lynx.bundle", emptyMap(), 1, page.generationId, sourceContextId = page.id)
+                detail.firstScreen = true
+                previous.admitSecondary(detail)
+                previous.close()
+            }
+            seedRecoveryHistory(root, 127)
+            plantNext(root, releaseC, bundleC, "C", selectionCatalogId = "catalog-C", includeDetailPage = false, background = true)
+            val background = host.backgroundSnapshot()
+            assertEquals(releaseC, background.selection.releaseId)
+            val current = host.createForeground().also { foreground = it }
+            val file = File(store(root), "state.json")
+            val before = file.readBytes()
+            val installer = LynxArtifactInstaller(File(store(root), "artifacts"), LynxInstallConfiguration(runtime))
+            val pruning = CountDownLatch(1)
+            val pruner = executor.submit {
+                installer.prune { pruning.countDown(); check(releasePruner.await(20, TimeUnit.SECONDS)) }
+            }
+            assertTrue(pruning.await(10, TimeUnit.SECONDS))
+            val worker = AtomicReference<Thread>()
+            val pin = executor.submit<LynxLaunchSession> {
+                worker.set(Thread.currentThread())
+                current.pinPrimary()
+            }
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+            while (System.nanoTime() < deadline && worker.get()?.let {
+                    it.state == Thread.State.BLOCKED && it.stackTrace.any { frame ->
+                        frame.className == LynxArtifactInstaller::class.java.name && frame.methodName.startsWith("retain$")
+                    }
+                } != true) Thread.yield()
+            assertEquals(Thread.State.BLOCKED, worker.get()?.state)
+            assertTrue(worker.get().stackTrace.any { it.methodName.startsWith("retain$") })
+            // Publish the native-verified C task while B's final pin is waiting.
+            synchronized(host.stateLock) {
+                host.reserveBackground(background, journal(root), null)
+                taskId = background.taskId
+            }
+            assertTrue(before.contentEquals(file.readBytes()))
+            releasePruner.countDown()
+            pruner.get(10, TimeUnit.SECONDS)
+            val error = assertThrows(ExecutionException::class.java) { pin.get(10, TimeUnit.SECONDS) }
+            assertEquals("Recovery capacity exhausted", error.cause?.message)
+            assertTrue(before.contentEquals(file.readBytes()))
+            host.finishBackground(background.taskId, null)
+            assertEquals(bundleB, current.diagnostics(current.pinPrimary()).bundleId)
+        } finally {
+            releasePruner.countDown()
+            executor.shutdown()
+            executor.awaitTermination(20, TimeUnit.SECONDS)
+            taskId?.let { host.finishBackground(it, null) }
+            foreground?.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun metadataAdoptionRechecksTasksAdmittedAfterPreparation() = kotlinx.coroutines.runBlocking {
+        val root = temp()
+        var foreground: LynxUpdaterController? = null
+        var task: LynxBackgroundTask? = null
+        try {
+            val host = backgroundHost(root)
+            host.createForeground().close()
+            plantNext(root, releaseB, bundleB, "B", background = true)
+            seedRecoveryHistory(root, 127)
+            val current = host.createForeground().also { foreground = it }
+            val page = current.pinPrimary().also { it.firstScreen = true; current.confirm(it) }
+            val updated = catalog(releaseC, bundleB, generation = 3, hash = "sha256:" + "b".repeat(64))
+            val old = catalog(releaseB, bundleB)
+            for (key in listOf("releases", "rollbackReleases")) updated.getJSONArray(key).put(old.getJSONArray(key).getJSONObject(0))
+            val state = current.state(page)
+            val guard = current.accept(page, JSONObject().put("catalog", updated)
+                .put("expectedRevision", state.getString("revision"))
+                .put("targetChannel", channel).put("explicitScopeSwitch", false)
+                .put("selectionContextHash", CatalogPolicy.selectionContextHash(nativeSnapshot(state), scopeKey)))
+            val selection = CatalogPolicy.Receipt("BUNDLE", releaseC, bundleB,
+                guard.getString("catalogId"), guard.getString("scopeKey"), guard.getLong("generation"),
+                guard.getString("catalogHash"), guard.getString("channel"), guard.getString("selectionContextHash")).toJson()
+            val params = JSONObject().put("guard", guard).put("selection", selection)
+            val prepared = current.prepare(page, params)
+            val file = File(store(root), "state.json")
+            val before = file.readBytes()
+            val background = host.beginBackground().also { task = it }
+            assertEquals(releaseB, background.snapshot.selection.releaseId)
+            assertTrue(before.contentEquals(file.readBytes()))
+            val error = runCatching { current.stage(page, prepared.getString("preparedId")) }.exceptionOrNull()
+            assertEquals("Recovery capacity exhausted", error?.message)
+            assertTrue(before.contentEquals(file.readBytes()))
+            background.close()
+            val retried = current.prepare(page, params)
+            assertEquals("ADOPTED", current.stage(page, retried.getString("preparedId" )).getString("status"))
+            assertEquals(releaseC, current.state(page).getJSONObject("runningSelection").getString("releaseId"))
+        } finally {
+            task?.close()
+            foreground?.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun failedBackgroundFatalWriteSurvivesCompletionAndGatesAnUnpinnedController() {
+        val root = temp()
+        var foreground: LynxUpdaterController? = null
+        var task: LynxBackgroundTask? = null
+        try {
+            val host = backgroundHost(root)
+            host.createForeground().also { it.close() }
+            plantNext(root, releaseB, bundleB, "B", background = true)
+            val background = host.beginBackground().also { task = it }
+            val current = host.createForeground().also { foreground = it }
+            val file = File(store(root), "state.json")
+            val saved = File(root, "saved-state.json")
+            val before = file.readBytes()
+            assertTrue(file.renameTo(saved))
+            assertTrue(file.mkdir())
+            try {
+                assertThrows(Throwable::class.java) { background.fail("native fatal") }
+                assertThrows(Throwable::class.java) { background.close() }
+                assertThrows(Throwable::class.java) { current.pinPrimary() }
+                assertTrue(before.contentEquals(saved.readBytes()))
+            } finally {
+                assertTrue(file.deleteRecursively())
+                assertTrue(saved.renameTo(file))
+            }
+            val page = current.pinPrimary()
+            assertEquals(embeddedId, current.diagnostics(page).bundleId)
+            assertEquals(listOf(releaseB), jsonStrings(journal(root).getJSONArray("unconfirmed")))
+            assertFalse(background.fail("already recorded"))
+        } finally {
+            task?.close()
+            foreground?.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun failedTaskWriteRevokesOnlyTheMatchingLiveGeneration() {
+        for (sameBundle in listOf(false, true)) {
+            val root = temp()
+            var foreground: LynxUpdaterController? = null
+            var task: LynxBackgroundTask? = null
+            try {
+                val host = backgroundHost(root)
+                host.createForeground().also { it.close() }
+                plantNext(root, releaseB, bundleB, "B", background = true)
+                val background = host.beginBackground().also { task = it }
+                if (!sameBundle) plantNext(root, releaseC, bundleC, "C", selectionCatalogId = "catalog-C", background = true)
+                val current = host.createForeground().also { foreground = it }
+                val page = current.pinPrimary().also { it.firstScreen = true; current.confirm(it) }
+                val file = File(store(root), "state.json")
+                val saved = File(root, "saved-state.json")
+                assertTrue(file.renameTo(saved))
+                assertTrue(file.mkdir())
+                try {
+                    assertThrows(Throwable::class.java) { background.fail("native fatal with unavailable storage") }
+                    assertEquals(sameBundle, current.generationFailed)
+                    if (sameBundle) {
+                        assertThrows(CatalogPolicy.Rejected::class.java) { current.confirm(page) }
+                    } else {
+                        assertEquals(bundleC, current.state(page).getJSONObject("runningSelection").getString("bundleId"))
+                        assertEquals("ALREADY_CONFIRMED", current.confirm(page).getString("status"))
+                    }
+                } finally {
+                    assertTrue(file.deleteRecursively())
+                    assertTrue(saved.renameTo(file))
+                }
+                background.close()
+                assertEquals(listOf(releaseB), jsonStrings(journal(root).getJSONArray("unconfirmed")))
+            } finally {
+                task?.close()
+                foreground?.close()
+                root.deleteRecursively()
+            }
+        }
+    }
+
+    @Test fun replacementControllerDoesNotHoldStateWhileWaitingForInstaller() {
+        val root = temp()
+        val executor = Executors.newFixedThreadPool(3)
+        val releasePruner = CountDownLatch(1)
+        val replacement = AtomicReference<LynxUpdaterController>()
+        try {
+            val host = backgroundHost(root)
+            host.createForeground().close()
+            val installer = LynxArtifactInstaller(File(store(root), "artifacts"), LynxInstallConfiguration(runtime))
+            val pruning = CountDownLatch(1)
+            val pruner = executor.submit {
+                installer.prune {
+                    pruning.countDown()
+                    check(releasePruner.await(20, TimeUnit.SECONDS))
+                }
+            }
+            assertTrue(pruning.await(10, TimeUnit.SECONDS))
+            val worker = AtomicReference<Thread>()
+            val creator = executor.submit {
+                worker.set(Thread.currentThread())
+                host.createForeground().also(replacement::set)
+            }
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+            while (System.nanoTime() < deadline && worker.get()?.let {
+                    it.state == Thread.State.BLOCKED && it.stackTrace.any { frame ->
+                        frame.className == LynxArtifactInstaller::class.java.name
+                    }
+                } != true) Thread.yield()
+            assertEquals(Thread.State.BLOCKED, worker.get()?.state)
+            assertTrue(worker.get().stackTrace.any { it.className == LynxArtifactInstaller::class.java.name })
+            // Old-generation pruning needs this same state lock before releasing installer.
+            executor.submit<Boolean> { synchronized(host.stateLock) { true } }.get(5, TimeUnit.SECONDS)
+            releasePruner.countDown()
+            pruner.get(10, TimeUnit.SECONDS)
+            creator.get(10, TimeUnit.SECONDS)
+        } finally {
+            releasePruner.countDown()
+            executor.shutdown()
+            executor.awaitTermination(20, TimeUnit.SECONDS)
+            replacement.get()?.close()
+            root.deleteRecursively()
+        }
+    }
+
+    private fun plantEmbeddedNext(root: File) {
+        plantNext(root, releaseB, embeddedId, "A", background = true)
+        val state = journal(root)
+        state.getJSONObject("next").put("kind", "EMBEDDED")
+        val catalog = JSONObject(state.getString("catalog"))
+        for (key in listOf("releases", "rollbackReleases")) {
+            catalog.getJSONArray(key).getJSONObject(0)
+                .put("kind", "EMBEDDED").put("bundleId", JSONObject.NULL)
+        }
+        state.put("catalog", catalog.toString())
+        state.getJSONObject("catalogs").put(digestString("$catalogId\u0000$scopeKey"), catalog.toString())
+        File(store(root), "state.json").writeText(state.toString())
+    }
+
+    @Test fun pendingEmbeddedPageCannotReplaceAnExistingFailedBuiltin() {
+        val root = temp()
+        var foreground: LynxUpdaterController? = null
+        var task: LynxBackgroundTask? = null
+        try {
+            val host = backgroundHost(root)
+            host.createForeground().also { initial ->
+                initial.pinPrimary().also { it.firstScreen = true; initial.confirm(it) }
+                initial.close()
+            }
+            val background = host.beginBackground().also { task = it }
+            plantEmbeddedNext(root)
+            val current = host.createForeground().also { foreground = it }
+            val page = current.pinPrimary().also { it.firstScreen = true; current.confirm(it) }
+            current.pinSecondary("detail.lynx.bundle", emptyMap(), 1, page.generationId, sourceContextId = page.id)
+            assertTrue(background.fail("verified builtin task fatal"))
+            current.close()
+            val file = File(store(root), "state.json")
+            val before = file.readBytes()
+            assertThrows(IllegalStateException::class.java) { host.backgroundSnapshot() }
+            assertTrue(before.contentEquals(file.readBytes()))
+            val recovered = host.createForeground().also { foreground = it }
+            assertEquals(JSONObject.NULL, journal(root).getJSONObject("failedEmbedded").get("releaseId"))
+            assertThrows(IllegalStateException::class.java) { recovered.pinPrimary() }
+        } finally {
+            task?.close()
+            foreground?.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun overlappingEmbeddedFailuresNeverResurrectAFailedBuiltin() {
+        for (builtinFirst in listOf(false, true)) {
+            val root = temp()
+            val tasks = mutableListOf<LynxBackgroundTask>()
+            try {
+                val host = backgroundHost(root)
+                host.createForeground().close()
+                val builtin = host.beginBackground().also(tasks::add)
+                plantEmbeddedNext(root)
+                val release = host.beginBackground().also(tasks::add)
+                assertEquals("EMBEDDED", release.snapshot.selection.kind)
+                assertEquals(releaseB, release.snapshot.selection.releaseId)
+                val ordered = if (builtinFirst) listOf(builtin, release) else listOf(release, builtin)
+                ordered.forEach { assertTrue(it.fail("native embedded failure")) }
+                assertEquals(JSONObject.NULL, journal(root).getJSONObject("failedEmbedded").get("releaseId"))
+                assertEquals(listOf(releaseB), jsonStrings(journal(root).getJSONArray("unconfirmed")))
+                assertThrows(IllegalStateException::class.java) { host.beginBackground() }
+            } finally {
+                tasks.forEach { it.close() }
+                root.deleteRecursively()
+            }
+        }
+    }
+
+    @Test fun taskFatalForTheLiveBundleRevokesForegroundReadiness() {
+        val root = temp()
+        var foreground: LynxUpdaterController? = null
+        var task: LynxBackgroundTask? = null
+        try {
+            val host = backgroundHost(root)
+            host.createForeground().also { it.close() }
+            plantNext(root, releaseB, bundleB, "B", background = true)
+            val background = host.beginBackground().also { task = it }
+            val current = host.createForeground().also { foreground = it }
+            val page = current.pinPrimary()
+            val pending = journal(root).getJSONObject("pending").toString()
+            assertTrue(background.fail("same bundle runtime fatal"))
+            page.firstScreen = true
+            assertThrows(CatalogPolicy.Rejected::class.java) { current.confirm(page) }
+            assertEquals(pending, journal(root).getJSONObject("pending").toString())
+            assertTrue(current.generationFailed)
+        } finally {
+            task?.close()
+            foreground?.close()
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun directlyClosingForegroundAllowsBackgroundAndNextGeneration() {
         val root = temp()
         try {

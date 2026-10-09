@@ -42,20 +42,28 @@ class LynxUpdaterController internal constructor(
         loadEmbedded(context, configuration),
         configuration,
     )
-    private val stateLock = Any()
+    private val stateLock = runtimeHost?.stateLock ?: Any()
     private val directory = lynxScopeDirectory(filesDir, binaryId, embedded, configuration)
     private val namespace = directory.name
     private val generationEventJournal = LynxGenerationEventJournal(filesDir)
-    private val store = LynxStateStore(directory)
+    private val store = LynxStateStore(directory).also { acquired ->
+        if (runtimeHost == null) try {
+            LynxRuntimeHost.requireNoBackgroundTasks(directory)
+        } catch (error: Throwable) {
+            try { acquired.close() } catch (cleanup: Throwable) { error.addSuppressed(cleanup) }
+            throw error
+        }
+    }
     private val installer = LynxArtifactInstaller(File(directory, "artifacts"), LynxInstallConfiguration(configuration.runtimeId, configuration.publicKeyPem))
     private var running = builtin()
     private var runningFiles = embedded
     private var runningConfirmed = false
     private var closed = false
     private var fatalSession: LynxLaunchSession? = null
+    private var backgroundFailed = false
     internal val generationFailed: Boolean
         get() = synchronized(stateLock) {
-            fatalSession != null || store.value.has("generationFailure")
+            backgroundFailed || fatalSession != null || store.value.has("generationFailure")
         }
     private var primary: LynxLaunchSession? = null
     private val members = linkedSetOf<LynxLaunchSession>()
@@ -225,7 +233,8 @@ class LynxUpdaterController internal constructor(
             failedEmbedded,
         )
         val confirmed = receipt("confirmed")?.takeIf(::eligible)
-        val atCapacity = reserved.size >= CAPACITY || crashed.size >= CAPACITY
+        val allReserved = reserved + (runtimeHost?.reservedReleases(store.value, liveReceipt()) ?: emptySet())
+        val atCapacity = allReserved.size >= CAPACITY || crashed.size >= CAPACITY
         val candidates = listOfNotNull(
             receipt("next"),
             receipt("active"),
@@ -235,7 +244,7 @@ class LynxUpdaterController internal constructor(
         for (candidate in candidates) {
             if (
                 !eligible(candidate) ||
-                atCapacity && candidate.releaseId !in reserved &&
+                atCapacity && candidate.releaseId !in allReserved &&
                     candidate.kind != "BUILTIN"
             ) {
                 continue
@@ -315,7 +324,7 @@ class LynxUpdaterController internal constructor(
             !benignConfirmedManagedReload &&
                 it.bundleId == embedded.bundleId &&
                 (pendingPage != null || generationFailure != null)
-        }
+        }?.let { retainEmbeddedFailure(receipt("failedEmbedded"), it) } ?: receipt("failedEmbedded")
         val fallback = if (benignConfirmedManagedReload) {
             null
         } else {
@@ -599,10 +608,28 @@ class LynxUpdaterController internal constructor(
     private fun installed(value: CatalogPolicy.Receipt): VerifiedLynxInstallation =
         storedReader().installed(value)
 
-    internal fun backgroundSnapshot(): LynxBackgroundSnapshot {
+    private fun liveReceipt(): CatalogPolicy.Receipt? = running.takeIf { members.any { it.live } }
+
+    internal fun replayBackgroundFailures() {
+        if (!backgroundFailed && liveReceipt() != null && runtimeHost?.hasPendingFailure(running.bundleId) == true) {
+            backgroundFailed = true
+            members.forEach { it.scheduleReadinessFlush() }
+        }
+        runtimeHost?.persistBackgroundFailures(store)
+    }
+
+    private fun requireRecoveryCapacity(selected: CatalogPolicy.Receipt, adopting: Boolean = false) {
+        val reserved = runtimeHost?.reservedReleases(store.value, liveReceipt().takeUnless { adopting })
+            ?: recoveryIdentities()
+        check((reserved + listOfNotNull(selected.releaseId)).size <= CAPACITY) { "Recovery capacity exhausted" }
+    }
+
+    internal fun backgroundSnapshot(reserve: Boolean = false): LynxBackgroundSnapshot {
         val plan = synchronized(stateLock) {
             check(!closed) { "The controller is closed" }
+            replayBackgroundFailures()
             rejectFailedGeneration()
+            if (reserve) checkNotNull(runtimeHost).requireTaskSlot()
             val selected = storedReader().backgroundSelection(processToken, cold = false)
             Triple(store.value.getString("revision"), selected.first, selected.second)
         }
@@ -613,8 +640,12 @@ class LynxUpdaterController internal constructor(
                 check(!closed && store.value.getString("revision") == plan.first) {
                     "Background selection changed during resource retention"
                 }
+                replayBackgroundFailures()
                 rejectFailedGeneration()
-                LynxBackgroundSnapshot.copy(plan.second, plan.third)
+                check(store.value.getString("revision") == plan.first) { "Background failure changed selection" }
+                LynxBackgroundSnapshot.copy(plan.second, plan.third).also {
+                    if (reserve) checkNotNull(runtimeHost).reserveBackground(it, store.value, liveReceipt())
+                }
             }
         } finally { lease.close() }
     }
@@ -629,6 +660,7 @@ class LynxUpdaterController internal constructor(
             check(primary == null) {
                 "A new controller generation is required"
             }
+            replayBackgroundFailures()
             val stack = retainedStack().let { retained ->
                 if (
                     store.value.has("logicalStack") ||
@@ -667,10 +699,12 @@ class LynxUpdaterController internal constructor(
         try {
             return synchronized(stateLock) {
                 check(!closed) { "The controller is closed" }
+                replayBackgroundFailures()
                 check(
                     primary == null &&
                         store.value.getString("revision") == plan.revision,
                 ) { "Primary selection changed during resource retention" }
+                requireRecoveryCapacity(plan.receipt)
                 running = plan.receipt
                 runningFiles = plan.files
                 runningConfirmed = plan.confirmed
@@ -1227,6 +1261,7 @@ class LynxUpdaterController internal constructor(
         fun publishSelection(authorization: CatalogPolicy.AuthorizedSelection, verified: VerifiedLynxInstallation? = null) {
             val selected = prepared.receipt
             val adoption = runningConfirmed && selected.bundleId == running.bundleId && selected.kind == "BUNDLE"
+            if (adoption) requireRecoveryCapacity(selected, adopting = true)
             mutate { next ->
                 authorization.rollbackAuthorization?.let { proof ->
                     val proofs = next.optJSONObject("rollbackProofs") ?: JSONObject()
@@ -1301,6 +1336,7 @@ class LynxUpdaterController internal constructor(
 
     private fun receiptKey(receipt: CatalogPolicy.Receipt) = digestString(receipt.toJson().toString())
     private fun authorize(session: LynxLaunchSession, guard: String, selected: CatalogPolicy.Receipt): CatalogPolicy.AuthorizedSelection {
+        replayBackgroundFailures()
         requireLive(session)
         val catalog = checkNotNull(accepted) { "No accepted native catalog" }
         return CatalogPolicy.verifySelection(

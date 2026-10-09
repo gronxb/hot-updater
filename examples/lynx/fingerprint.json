@@ -489,7 +489,7 @@
     ]
   },
   "android": {
-    "hash": "cd57453f40548d426a69135d54d73f27dee6c0a30f6fb76a6bc6cc921083ad8c",
+    "hash": "142f97a5dac67ac73a12566ed1974d36219e678e45842e7dfbf5ee35043836c7",
     "sources": [
       {
         "type": "file",
@@ -691,6 +691,17 @@
       },
       {
         "type": "file",
+        "filePath": "@hot-updater/lynx/android/src/main/java/com/hotupdater/lynx/LynxBackgroundTask.kt",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "e520a0803da308a32689e47e2cf3e1ca06f51f9c970f478000069b79a8df3091",
+        "debugInfo": {
+          "byteSize": 416
+        }
+      },
+      {
+        "type": "file",
         "filePath": "@hot-updater/lynx/android/src/main/java/com/hotupdater/lynx/LynxBridgeReplies.kt",
         "reasons": [
           "lynx-native-input"
@@ -772,9 +783,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "a6a2c96070abcb5f1001cfe85ad12bd215fc35d2aa96e42701a42450bab9441d",
+        "hash": "3c3db6b9f5f44057717640ac08b23f2aef8a2eb301a6f058a7df9490dd1f8a7b",
         "debugInfo": {
-          "byteSize": 3895
+          "byteSize": 10613
         }
       },
       {
@@ -794,9 +805,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "6278b877985c5886dffb092938c0598c1e701fe80e27e25b7ee4ebddd0951aaf",
+        "hash": "f809b380a7821a037b14973e8e150b4d7c545abb7bee512d556851ef7d70e199",
         "debugInfo": {
-          "byteSize": 9907
+          "byteSize": 10132
         }
       },
       {
@@ -805,9 +816,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "6eb0a8f6c882ab8793a55d0cae172aa92baff71305f1b95b4e716fbdf5bd40a9",
+        "hash": "ca1822f4a065f71f8fbb9c6bac06d18aa0fe68fc8a05a9ee48abf4bf23f6e351",
         "debugInfo": {
-          "byteSize": 82018
+          "byteSize": 84074
         }
       },
       {
