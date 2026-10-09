@@ -1,5 +1,9 @@
 import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
-import type { ReleaseCatalog } from "@hot-updater/protocol";
+import {
+  createReleaseCatalogScopeKey,
+  type ReleaseCatalog,
+  type ReleaseCatalogScopeKeyInput,
+} from "@hot-updater/protocol";
 
 import { requirePlatformParam, requireRouteParam } from "./handlerParameters";
 import type { RouteHandler } from "./handlerTypes";
@@ -40,6 +44,30 @@ const privateNotFound = (): Response =>
       headers: { "cache-control": "private, no-store" },
     },
   );
+
+const badRequest = (error: string): Response =>
+  Response.json(
+    { error },
+    {
+      status: 400,
+      headers: { "cache-control": "private, no-store" },
+    },
+  );
+
+/**
+ * A 400 for a catalog path whose scope is malformed, such as a channel name
+ * where its base64url key belongs; null for a well-formed scope.
+ */
+const invalidScope = (input: ReleaseCatalogScopeKeyInput): Response | null => {
+  try {
+    createReleaseCatalogScopeKey(input);
+    return null;
+  } catch (error) {
+    return badRequest(
+      error instanceof Error ? error.message : "Invalid Release Catalog scope",
+    );
+  }
+};
 
 /**
  * A scope with no catalog yet, such as a store version before its first
@@ -142,10 +170,7 @@ export const createReleaseCatalogRouteHandlers = (): Record<
       const rawAppVersion = requireRouteParam(params, "appVersion");
       const appVersion = canonicalizeAppVersion(rawAppVersion);
       if (appVersion === null || appVersion !== rawAppVersion) {
-        return Response.json(
-          { error: "Invalid app version" },
-          { status: 400, headers: { "cache-control": "private, no-store" } },
-        );
+        return badRequest("Invalid app version");
       }
       const input = {
         appVersion,
@@ -153,6 +178,8 @@ export const createReleaseCatalogRouteHandlers = (): Record<
         platform: requirePlatformParam(params),
         strategy: "APP_VERSION",
       } as const;
+      const invalid = invalidScope(input);
+      if (invalid) return invalid;
       return catalogResponse(
         await loadCatalog(`app-version:${JSON.stringify(input)}`, () =>
           core.getReleaseCatalog(input),
@@ -168,6 +195,8 @@ export const createReleaseCatalogRouteHandlers = (): Record<
         platform: requirePlatformParam(params),
         strategy: "FINGERPRINT",
       } as const;
+      const invalid = invalidScope(input);
+      if (invalid) return invalid;
       return catalogResponse(
         await loadCatalog(`fingerprint:${JSON.stringify(input)}`, () =>
           core.getReleaseCatalog(input),

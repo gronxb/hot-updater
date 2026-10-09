@@ -18,7 +18,7 @@ const version = (adminProtocol?: number) =>
     HttpResponse.json(
       adminProtocol === undefined
         ? { version: "0.30.0" }
-        : { version: "1.0.0", adminProtocol },
+        : { version: "1.0.0", adminProtocol, plugins: [] },
     ),
   );
 
@@ -52,13 +52,40 @@ describe("createStandaloneCoreApi", () => {
     );
   });
 
+  it("refuses a baseUrl at the client mount, whose /version lists no plugins, before any read", async () => {
+    let read = false;
+    server.use(
+      http.get(`${BASE_URL}/version`, () =>
+        HttpResponse.json({
+          adminProtocol: 2,
+          infrastructureGeneration: 1,
+          version: "1.0.0",
+        }),
+      ),
+      http.get(`${BASE_URL}/channels`, () => {
+        read = true;
+        return new HttpResponse(null, { status: 404 });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(core.listChannels()).rejects.toThrow(
+      `The server at ${BASE_URL} answered /version as its client mount, without the plugins list of handlers.admin.`,
+    );
+    expect(read).toBe(false);
+  });
+
   it("checks the protocol once and reads with protocol 2 parameters", async () => {
     let versionChecks = 0;
     const queries: URLSearchParams[] = [];
     server.use(
       http.get(`${BASE_URL}/version`, () => {
         versionChecks += 1;
-        return HttpResponse.json({ version: "1.0.0", adminProtocol: 2 });
+        return HttpResponse.json({
+          version: "1.0.0",
+          adminProtocol: 2,
+          plugins: [],
+        });
       }),
       http.get(`${BASE_URL}/release-catalogs`, ({ request }) => {
         queries.push(new URL(request.url).searchParams);

@@ -16,6 +16,8 @@ export const getConfigScaffold = (
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
     bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   })`,
+    // Older v0 configs passed the service-role key as supabaseAnonKey.
+    removedOptions: ["supabaseAnonKey"],
   };
   const databaseConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseDatabase"] }],
@@ -23,6 +25,7 @@ export const getConfigScaffold = (
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   })`,
+    removedOptions: ["supabaseAnonKey"],
   };
 
   return createHotUpdaterConfigScaffoldFromBuilder(

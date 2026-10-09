@@ -207,6 +207,25 @@ const databaseOf = (value: unknown): ToolingDatabase => {
   );
 };
 
+/**
+ * Options `createHotUpdater` no longer takes, each with its fix. Such a key
+ * fails here rather than being ignored when it reaches the server, say from
+ * options built in plain JavaScript: an ignored `storages` leaves the server
+ * without storage.
+ */
+const REMOVED_OPTIONS: Readonly<Record<string, string>> = {
+  authorityId:
+    "Remove authorityId from createHotUpdater options. Catalog identity is managed internally.",
+  catalogId:
+    "Remove catalogId from createHotUpdater options. Catalog identity is managed internally.",
+  storages: "Rename storages to storage in createHotUpdater options.",
+  storagePlugins:
+    "Rename storagePlugins to storage in createHotUpdater options.",
+  basePath:
+    "Remove basePath from createHotUpdater options. The framework mounts handlers.client and handlers.admin, and the app's baseURL is the client mount.",
+  cwd: "Remove cwd from createHotUpdater options.",
+};
+
 /** `"public"`, or nothing; a `clientAccess` object says what replaced it. */
 const isPublic = (value: unknown): boolean => {
   if (value === undefined) return false;
@@ -223,11 +242,9 @@ export function createHotUpdater<
 >(
   options: CreateHotUpdaterOptions<TPlugins>,
 ): RuntimeHotUpdaterAPI<NoInfer<TPlugins>> {
-  for (const key of ["authorityId", "catalogId"]) {
+  for (const [key, fix] of Object.entries(REMOVED_OPTIONS)) {
     if (Object.hasOwn(options, key)) {
-      throw new TypeError(
-        `Remove ${key} from createHotUpdater options. Catalog identity is managed internally.`,
-      );
+      throw new TypeError(fix);
     }
   }
   const database = databaseOf(options.database);

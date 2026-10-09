@@ -29,6 +29,22 @@ describe("runtime createHotUpdater", () => {
     ).toThrow(`Remove ${key}`);
   });
 
+  it.each([
+    ["storages", "Rename storages to storage"],
+    ["storagePlugins", "Rename storagePlugins to storage"],
+    ["basePath", "Remove basePath"],
+    ["cwd", "Remove cwd"],
+  ])("rejects the removed %s, which it would otherwise ignore", (key, fix) => {
+    // Built in a variable, as plain JavaScript or a spread passes them.
+    const options = {
+      clientAccess: "public",
+      database: createRuntimeDatabase(),
+      [key]: key === "basePath" ? "/hot-updater" : [],
+    } as const;
+
+    expect(() => createHotUpdater(options)).toThrow(fix);
+  });
+
   it("publishes the runtime, the built-in adapters, and the built-in plugins, and no tooling entry", () => {
     // Tooling reads a server through its definition's properties instead.
     expect(Object.keys(packageJson.exports).sort()).toEqual([

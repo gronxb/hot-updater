@@ -119,8 +119,8 @@ plugins: [insights(), apiKeys()], // the plugins the server lists
   `hot-updater api-key` and the Console's Insights and API key pages need
   this list.
 
-Fails silently: with the v0 client-root `baseUrl`, every list is empty and
-only writes report an error.
+With the v0 client-root `baseUrl`, the CLI stops before its first read and
+asks for the path of `handlers.admin`.
 
 ### Update `standaloneStorage`
 
@@ -164,14 +164,14 @@ refuses a v0 function, Worker, D1 database or CloudFront distribution. Copy the
 v0 values to the setup that keeps serving v0 apps, then change them before
 running `npx hot-updater init`:
 
-| Key                                                                                | Before v1 init                                                                            |
-| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `HOT_UPDATER_AWS_LAMBDA_NAME`, `HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID`            | Remove. Init creates a new Lambda@Edge function (`hot-updater-v1-edge`) and distribution. |
-| `HOT_UPDATER_DYNAMODB_TABLE_NAME`                                                  | New. Init writes it (`hot-updater-v1`); `init --from-env-file` requires it.               |
-| `HOT_UPDATER_CLOUDFLARE_WORKER_NAME`                                               | Set a new name. The v1 default is still `hot-updater`.                                    |
-| `HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID`, `HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME` | Point at a new D1 database.                                                               |
-| `HOT_UPDATER_SUPABASE_FUNCTION_NAME`                                               | Set `hot-updater-v1` (v0: `update-server`).                                               |
-| `HOT_UPDATER_SUPABASE_ANON_KEY`                                                    | Rename to `HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY`. The value stays the same.              |
+| Key                                                                                | Before v1 init                                                                                                                      |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `HOT_UPDATER_AWS_LAMBDA_NAME`, `HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID`            | Remove. Init creates a new Lambda@Edge function (`hot-updater-v1-edge`) and distribution.                                           |
+| `HOT_UPDATER_DYNAMODB_TABLE_NAME`                                                  | New. Init writes it (`hot-updater-v1`); `init --from-env-file` requires it.                                                         |
+| `HOT_UPDATER_CLOUDFLARE_WORKER_NAME`                                               | Set a new name. The v1 default is still `hot-updater`.                                                                              |
+| `HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID`, `HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME` | Point at a new D1 database.                                                                                                         |
+| `HOT_UPDATER_SUPABASE_FUNCTION_NAME`                                               | Set `hot-updater-v1` (v0: `update-server`).                                                                                         |
+| `HOT_UPDATER_SUPABASE_ANON_KEY`                                                    | Rename to `HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY`. v0 init stored the service-role key there; replace an anon key you set yourself. |
 
 Firebase keys stay the same; v1 uses the fixed function name `hot-updater-v1`
 and the Firestore collection `hot_updater_v1`. Storage buckets can be shared
@@ -753,9 +753,8 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-- `storages` and `storagePlugins` become `storage`. Fails silently: in
-  JavaScript, or when the options object is built in a variable, the old keys
-  are ignored and the server runs without storage.
+- `storages` and `storagePlugins` become `storage`. `createHotUpdater` throws
+  on the old keys, as it does on `basePath` and `cwd`.
 - Choose a client-access policy, or startup throws. `clientAccess: "public"`
   keeps v0's open client routes. `plugins: [apiKeys()]` requires an API key
   from apps: create one with

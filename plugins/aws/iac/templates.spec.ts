@@ -109,6 +109,69 @@ export default defineConfig({
     ).toHaveLength(1);
   });
 
+  it("moves a config v0 init wrote to DynamoDB, with storage off v0's commonOptions", async () => {
+    const tempDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-aws-config-v0-"),
+    );
+    tempDirs.push(tempDir);
+    const configPath = path.join(tempDir, "hot-updater.config.ts");
+    await fs.writeFile(
+      configPath,
+      `import { existsSync } from "node:fs";
+import { bare } from "@hot-updater/bare";
+import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
+import { s3Storage, s3Database } from "@hot-updater/aws";
+import { defineConfig } from "hot-updater";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
+const commonOptions = {
+  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  region: process.env.HOT_UPDATER_S3_REGION!,
+  credentials: fromNodeProviderChain(),
+};
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: s3Storage(commonOptions),
+  database: s3Database({
+    ...commonOptions,
+    // prettier-ignore
+    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+  }),
+  updateStrategy: "appVersion",
+});
+`,
+      "utf8",
+    );
+    const scaffold = getConfigScaffold("bare", {
+      mode: "local",
+      profile: null,
+    });
+
+    const result = await writeHotUpdaterConfig(scaffold, configPath);
+    const updated = await fs.readFile(configPath, "utf8");
+
+    expect(result.status).toBe("merged");
+    expect(updated).not.toContain("commonOptions");
+    expect(updated).not.toContain("s3Database");
+    expect(updated).toContain(`  storage: s3Storage({
+    ...awsOptions,
+    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  }),
+  database: dynamoDB({
+    ...awsOptions,
+    tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
+    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+  }),`);
+    expect(updated).toContain("credentials: fromNodeProviderChain()");
+
+    await writeHotUpdaterConfig(scaffold, configPath);
+    await expect(fs.readFile(configPath, "utf8")).resolves.toBe(updated);
+  });
+
   it("replaces stale credentials when the authentication mode changes", async () => {
     const tempDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-aws-auth-switch-"),

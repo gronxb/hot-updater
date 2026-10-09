@@ -35,6 +35,7 @@ const createSupabaseScaffold = (build: BuildType) => {
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
     bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
   })`,
+    removedOptions: ["supabaseAnonKey"],
   };
   const database: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseDatabase"] }],
@@ -42,6 +43,7 @@ const createSupabaseScaffold = (build: BuildType) => {
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   })`,
+    removedOptions: ["supabaseAnonKey"],
   };
 
   return createHotUpdaterConfigScaffoldFromBuilder(
@@ -631,6 +633,144 @@ export default defineConfig({
       'import { dynamoDB, s3Storage } from "@hot-updater/aws";',
     );
   });
+
+  it("deletes the options the scaffold's adapter dropped from the project's calls, and keeps the project's own", async () => {
+    const configPath = path.join(
+      await createTempDir(),
+      "hot-updater.config.ts",
+    );
+    await fs.writeFile(
+      configPath,
+      `import { bare } from "@hot-updater/bare";
+import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: supabaseStorage({
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY!, // from init
+    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
+    basePath: "app",
+  }),
+  database: supabaseDatabase({ supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!, supabaseAnonKey: process.env.HOT_UPDATER_SUPABASE_ANON_KEY! }),
+  updateStrategy: "appVersion",
+});
+`,
+      "utf-8",
+    );
+    const scaffold = createSupabaseScaffold("bare");
+
+    const result = await writeHotUpdaterConfig(scaffold, configPath);
+    const updated = await fs.readFile(configPath, "utf-8");
+
+    expect(result.status).toBe("merged");
+    expect(updated).not.toContain("supabaseAnonKey");
+    expect(updated).not.toContain("// from init");
+    expect(updated).toContain(`  storage: supabaseStorage({
+    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
+    basePath: "app",
+    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+  }),`);
+    expect(updated).toContain(
+      "database: supabaseDatabase({ supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!, supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY! }),",
+    );
+
+    await writeHotUpdaterConfig(scaffold, configPath);
+    await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(updated);
+  });
+
+  it.each([
+    ["passes the helper", "s3Storage(commonOptions)"],
+    ["spreads the helper", 's3Storage({ ...commonOptions, basePath: "app" })'],
+  ])(
+    "leaves no use of a helper the rebuilt config drops when a call %s",
+    async (_, storageCall) => {
+      const configPath = path.join(
+        await createTempDir(),
+        "hot-updater.config.ts",
+      );
+      await fs.writeFile(
+        configPath,
+        `import { s3Database, s3Storage } from "@hot-updater/aws";
+import { bare } from "@hot-updater/bare";
+import { defineConfig } from "hot-updater";
+
+const commonOptions = {
+  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  region: process.env.HOT_UPDATER_S3_REGION!,
+};
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: ${storageCall},
+  database: s3Database({
+    ...commonOptions,
+    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+  }),
+  updateStrategy: "appVersion",
+});
+`,
+        "utf-8",
+      );
+      const awsOptions: ManagedHelperStatement = {
+        name: "awsOptions",
+        strategy: "merge-object",
+        code: `const awsOptions = {
+  region: process.env.HOT_UPDATER_S3_REGION!,
+};`,
+      };
+      const scaffold = createHotUpdaterConfigScaffoldFromBuilder(
+        new ConfigBuilder()
+          .setBuildType("bare")
+          .setStorage({
+            imports: [{ pkg: "@hot-updater/aws", named: ["s3Storage"] }],
+            configString: `s3Storage({
+    ...awsOptions,
+    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  })`,
+          })
+          .setDatabase({
+            imports: [{ pkg: "@hot-updater/aws", named: ["dynamoDB"] }],
+            configString: `dynamoDB({
+    ...awsOptions,
+    tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
+  })`,
+          })
+          .setPlugins({
+            imports: [
+              {
+                pkg: "hot-updater/plugins",
+                named: ["apiKeys", "insights", "remoteConfig"],
+              },
+            ],
+            configString: "[apiKeys(), insights(), remoteConfig()]",
+          })
+          .setIntermediateCode(awsOptions.code),
+        { helperStatements: [awsOptions] },
+      );
+
+      const result = await writeHotUpdaterConfig(scaffold, configPath);
+      const updated = await fs.readFile(configPath, "utf-8");
+
+      expect(result.status).toBe("merged");
+      expect(updated).not.toContain("commonOptions");
+      expect(updated).toContain("const awsOptions = {");
+      expect(updated).toContain(
+        storageCall === "s3Storage(commonOptions)"
+          ? `  storage: s3Storage({
+    ...awsOptions,
+    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  }),`
+          : 'storage: s3Storage({ basePath: "app", ...awsOptions, bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME! }),',
+      );
+      expect(updated).toContain("database: dynamoDB({");
+
+      await writeHotUpdaterConfig(scaffold, configPath);
+      await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(updated);
+    },
+  );
 
   it.each(["...overrides", '["plugins"]: []', "plugins: []"])(
     "does not report success when %s can overwrite the scaffold's plugins",

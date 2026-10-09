@@ -123,6 +123,16 @@ export const createStandaloneCoreApi = (
         response.status,
       );
     }
+    // The client mount's /version reports the protocol too, but only the
+    // admin mount lists plugins. Without this, every read of the client
+    // mount answers 404 and reads as an empty server.
+    if (!isRecord(body) || !Array.isArray(body.plugins)) {
+      throw new StandaloneDatabaseError(
+        "request-failed",
+        `The server at ${config.baseUrl} answered /version as its client mount, without the plugins list of handlers.admin. Set baseUrl to the path where the server mounts handlers.admin, such as https://example.com/hot-updater/admin.`,
+        response.status,
+      );
+    }
   };
 
   /** One admin request's JSON body, or null for 204 and for a GET that finds nothing; `/version` is checked once before the first. */

@@ -244,6 +244,34 @@ describe("createHandlers client routes", () => {
     expect(getArtifactInfo).toHaveBeenCalledWith("target", "current", 1);
   });
 
+  it.each([
+    [
+      "a channel name where its key belongs",
+      "/release-catalogs/app-version/ios/production/1.0.0",
+    ],
+    [
+      "a channel key that is not canonically encoded",
+      "/release-catalogs/app-version/ios/cHJvZHVjdGlvbg==/1.0.0",
+    ],
+    [
+      "a fingerprint hash that is no URL-safe segment",
+      "/release-catalogs/fingerprint/ios/cHJvZHVjdGlvbg/hash%20with%20spaces",
+    ],
+  ])("answers 400 to %s without reading a catalog", async (_, path) => {
+    const api = createApi();
+    const getReleaseCatalog = vi.spyOn(api.core, "getReleaseCatalog");
+    const handler = createHandlers(api).client;
+
+    const response = await handler(new Request(`http://localhost${path}`));
+
+    expect(response.status).toBe(400);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    await expect(response.json()).resolves.toEqual({
+      error: expect.any(String),
+    });
+    expect(getReleaseCatalog).not.toHaveBeenCalled();
+  });
+
   it("does not expose provider errors from the public client handler", async () => {
     const api = createApi();
     vi.spyOn(api.core, "getReleaseCatalog").mockRejectedValue(
