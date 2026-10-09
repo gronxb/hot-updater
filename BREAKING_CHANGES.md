@@ -184,8 +184,11 @@ must send.
 Search for `s3Database`, `cloudflareApiToken` inside `r2Storage(`,
 `supabaseAnonKey`, and a provider config without `plugins`.
 
-After v1 init, check that `hot-updater.config.ts` has the shape below. Keep the
-v0 credentials setup (`fromNodeProviderChain`, `fromIni`, `fromSSO` or keys).
+After v1 init, check that `hot-updater.config.ts` has the shape below. Init
+adds a new option beside the old one it replaces, such as `credentials` beside
+`cloudflareApiToken`, and TypeScript then reports the old one: delete it. Keep
+the v0 credentials setup (`fromNodeProviderChain`, `fromIni`, `fromSSO` or
+keys).
 
 AWS:
 
