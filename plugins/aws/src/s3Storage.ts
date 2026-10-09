@@ -8,7 +8,6 @@ import {
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   createStorageAdapter,
   createStorageKeyBuilder,
@@ -212,6 +211,9 @@ export function s3Storage(
     async getDownloadUrl({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       if (getDownloadUrl) return getDownloadUrl({ storageUri });
+      // Loaded on the first presign: a server that passes getDownloadUrl,
+      // such as the managed Lambda with CloudFront, never loads it.
+      const { getSignedUrl } = await import("@aws-sdk/s3-request-presigner");
       return {
         url: await getSignedUrl(
           client,
