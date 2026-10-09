@@ -389,7 +389,17 @@ describe("Lynx public matrix runner", () => {
         "--launch-args=--ota-channel=qa",
         `--launch-args=--hot-updater-launch-configuration=${encoded}`,
       ]);
-      expect(androidMatrixLaunchArguments(framework, "qa", baseURL)).toEqual([
+      // adb shell joins its arguments before the device shell parses them.
+      const launch = spawnSync(
+        "/bin/sh",
+        [
+          "-c",
+          `set -- ${androidMatrixLaunchArguments(framework, "qa", baseURL).join(" ")}; printf '%s\\n' "$@"`,
+        ],
+        { encoding: "utf8" },
+      );
+      expect(launch.status, launch.stderr).toBe(0);
+      expect(launch.stdout.trimEnd().split("\n")).toEqual([
         "--es",
         "framework",
         framework,

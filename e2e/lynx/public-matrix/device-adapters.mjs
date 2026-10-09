@@ -4,8 +4,8 @@ import os from "node:os";
 import path from "node:path";
 
 import {
+  createLynxAndroidLaunchConfigurationArguments,
   createLynxNativeLaunchConfiguration,
-  HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
   HOT_UPDATER_LYNX_IOS_LAUNCH_CONFIGURATION_PREFIX,
   serializeLynxNativeLaunchConfiguration,
 } from "../native-launch-configuration.ts";
@@ -193,9 +193,7 @@ export function androidMatrixLaunchArguments(framework, channel, appBaseURL) {
     "--es",
     "channel",
     channel,
-    "--es",
-    HOT_UPDATER_LYNX_ANDROID_LAUNCH_CONFIGURATION_EXTRA,
-    configuration,
+    ...createLynxAndroidLaunchConfigurationArguments(configuration),
   ];
 }
 
