@@ -7,7 +7,6 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 
 import { isUUIDv7 } from "@hot-updater/protocol";
-import { createHotUpdater } from "@hot-updater/server";
 import { standaloneRepository } from "@hot-updater/standalone";
 
 const run = promisify(execFile);
@@ -28,12 +27,11 @@ export async function createPublicMatrixBundleDiff({
   assert.ok(releaseId.length > 0);
   const token = (await fs.readFile(tokenPath, "utf8")).trim();
   assert.ok(token.length > 0, "The matrix OTA admin token is empty");
-  const database = standaloneRepository({
+  const repository = standaloneRepository({
     baseUrl: `${origin}/hot-updater/admin`,
     commonHeaders: { authorization: `Bearer ${token}` },
   });
-  const server = createHotUpdater({ database, clientAccess: "public" });
-  const target = await server.core.getBundle(targetBundleId);
+  const target = await repository.core.getBundle(targetBundleId);
   assert.ok(
     target,
     "The target Bundle must be deployed before patch generation",
@@ -79,7 +77,6 @@ export default {
     );
   } finally {
     await fs.rm(cwd, { recursive: true, force: true });
-    await database.dispose?.();
   }
   const deliveryArtifactUrl = `${origin}/hot-updater/artifacts/v1/${targetBundleId}/from/${baseBundleId}`;
   const response = await fetch(deliveryArtifactUrl);
