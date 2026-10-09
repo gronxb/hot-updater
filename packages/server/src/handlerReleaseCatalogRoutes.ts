@@ -14,6 +14,23 @@ const ORIGIN_CACHE_MAX_ENTRIES = 128;
 const NO_CATALOG_HEADER = "x-hot-updater-catalog";
 /** A shared cache keeps a catalog, or a scope's lack of one, five seconds. */
 const CATALOG_CACHE_CONTROL = "public, max-age=0, s-maxage=5";
+/**
+ * The same five seconds for a CDN that reads `CDN-Cache-Control` (RFC 9213),
+ * such as Cloudflare's Workers Cache, which then ignores `Cache-Control`.
+ * `s-maxage` forbids serving stale, so there an expired catalog held requests
+ * at that location until the origin answered. Here, for five more seconds,
+ * the CDN answers with the expired copy while it revalidates in the
+ * background. `stale-if-error=0` keeps origin errors visible: without it,
+ * Cloudflare serves a stale copy on error indefinitely.
+ *
+ * A device can see a catalog up to 15 seconds after a deploy or a Roll back
+ * replaced it: the origin's 5-second catalog memo, then 5 seconds fresh and
+ * 5 stale at the CDN. A revoked API key can read a cached catalog up to
+ * 10 seconds. Devices and caches that don't read the header keep
+ * `Cache-Control`.
+ */
+const CATALOG_CDN_CACHE_CONTROL =
+  "public, max-age=5, stale-while-revalidate=5, stale-if-error=0";
 
 const privateNotFound = (): Response =>
   Response.json(
@@ -38,6 +55,7 @@ const missingCatalog = (): Response =>
       status: 404,
       headers: {
         "cache-control": CATALOG_CACHE_CONTROL,
+        "cdn-cache-control": CATALOG_CDN_CACHE_CONTROL,
         vary: "Accept-Encoding",
         [NO_CATALOG_HEADER]: "none",
       },
@@ -63,6 +81,7 @@ const catalogResponse = async (
   const etag = `"sha256:${await responseHash(body)}"`;
   const headers = {
     "cache-control": CATALOG_CACHE_CONTROL,
+    "cdn-cache-control": CATALOG_CDN_CACHE_CONTROL,
     "content-type": CATALOG_CONTENT_TYPE,
     etag,
     vary: "Accept-Encoding",

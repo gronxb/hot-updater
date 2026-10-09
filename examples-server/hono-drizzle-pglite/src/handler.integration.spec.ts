@@ -122,6 +122,9 @@ describe("Hot Updater Handler Integration Tests (Hono + Drizzle + PGlite)", () =
     expect(updateCheck.headers.get("cache-control")).toBe(
       "public, max-age=0, s-maxage=5",
     );
+    expect(updateCheck.headers.get("cdn-cache-control")).toBe(
+      "public, max-age=5, stale-while-revalidate=5, stale-if-error=0",
+    );
     expect(updateCheck.headers.get("x-hot-updater-catalog")).toBe("none");
     await expect(updateCheck.json()).resolves.toEqual({ error: "Not found" });
   });

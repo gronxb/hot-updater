@@ -109,6 +109,9 @@ export const setupReleaseCatalogTestSuite = (options: {
           expect(response.headers.get("cache-control")).toBe(
             "public, max-age=0, s-maxage=5",
           );
+          expect(response.headers.get("cdn-cache-control")).toBe(
+            "public, max-age=5, stale-while-revalidate=5, stale-if-error=0",
+          );
           const catalog = (await response.json()) as ReleaseCatalog;
           expect(catalog).toMatchObject({
             schemaVersion: 1,
@@ -359,6 +362,9 @@ export const setupReleaseCatalogTestSuite = (options: {
           expect(response.status).toBe(404);
           expect(response.headers.get("cache-control")).toBe(
             "public, max-age=0, s-maxage=5",
+          );
+          expect(response.headers.get("cdn-cache-control")).toBe(
+            "public, max-age=5, stale-while-revalidate=5, stale-if-error=0",
           );
           expect(response.headers.get("x-hot-updater-catalog")).toBe("none");
           await publish("121");

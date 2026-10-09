@@ -83,8 +83,8 @@ the device selects its update from the catalog.
 
 | Answer                                                                        | Status and headers                                                                                                                                                                                                                        |
 | ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| The scope's catalog                                                           | `200` with `cache-control: public, max-age=0, s-maxage=5`, an `etag`, and `vary: Accept-Encoding` plus the header of the plugin that provides client auth, such as `x-api-key` for `apiKeys()`. A matching `If-None-Match` answers `304`. |
-| No catalog for the scope                                                      | `404` with `x-hot-updater-catalog: none` and the catalog's `cache-control`, so a shared cache also answers a scope with no catalog yet. Clients read it as no update. |
+| The scope's catalog                                                           | `200` with `cache-control: public, max-age=0, s-maxage=5`, `cdn-cache-control: public, max-age=5, stale-while-revalidate=5, stale-if-error=0`, an `etag`, and `vary: Accept-Encoding` plus the header of the plugin that provides client auth, such as `x-api-key` for `apiKeys()`. A matching `If-None-Match` answers `304`. |
+| No catalog for the scope                                                      | `404` with `x-hot-updater-catalog: none` and the catalog's `cache-control` and `cdn-cache-control`, so a shared cache also answers a scope with no catalog yet. Clients read it as no update. |
 | An app version in a form other than its canonical one                         | `400`                                                                                                                                                                                                                                     |
 | A missing or invalid client key                                               | `401`                                                                                                                                                                                                                                     |
 | Client auth that cannot read its keys, or a database the schema fence refuses | `503`                                                                                                                                                                                                                                     |
@@ -100,6 +100,22 @@ each committed write that changes a catalog.
 
 A GraphQL, RPC or other transport needs an HTTP adapter or proxy that serves
 these routes with the same answers.
+
+### How long a replaced catalog stays visible
+
+A shared cache keeps a catalog fresh for five seconds. `s-maxage` in
+`Cache-Control` forbids serving it stale, so a cache that reads only
+`Cache-Control` revalidates an expired catalog while devices wait. A CDN that reads `CDN-Cache-Control` (RFC 9213), such as
+Cloudflare's Workers Cache, uses it instead: for five more seconds it answers
+with the expired catalog while it revalidates in the background, and
+`stale-if-error=0` still passes origin errors through.
+
+Each server also reuses a catalog it read for five seconds. Without a purge,
+a device can therefore read a catalog for up to 10 seconds after a deploy or a
+Roll back replaced it behind a cache that reads `Cache-Control`, and up to 15
+seconds behind one that reads `CDN-Cache-Control`. The stale window adds its
+five seconds only when a scope's checks are a few seconds apart; a busy scope
+refreshes in the background as soon as the catalog expires.
 
 ## Artifact responses
 
