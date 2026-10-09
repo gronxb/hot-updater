@@ -90,14 +90,19 @@ class LynxUpdaterController internal constructor(
         )
         synchronized(stateLock) {
             if (!store.value.has("revision")) store.update { it.put("revision", UUID.randomUUID().toString()) }
-            check(recoveryIdentities().size <= CAPACITY) { "Startup recovery capacity exhausted" }
-            interruptions().keys().forEach { releaseId ->
-                val record = interruptions().getJSONObject(releaseId)
-                check(UUID.fromString(releaseId).toString() == releaseId &&
-                    UUID.fromString(record.getString("bundleId")).toString() == record.getString("bundleId") &&
-                    UUID.fromString(record.getString("holdProcessToken")).toString() == record.getString("holdProcessToken") &&
-                    releaseId !in exclusions("unconfirmed")) { "Invalid interrupted launch identity" }
-                check(record.opt("retryReady") is Boolean) { "Invalid interrupted launch readiness" }
+            try {
+                check(recoveryIdentities().size <= CAPACITY) { "Startup recovery capacity exhausted" }
+                interruptions().keys().forEach { releaseId ->
+                    val record = interruptions().getJSONObject(releaseId)
+                    check(UUID.fromString(releaseId).toString() == releaseId &&
+                        UUID.fromString(record.getString("bundleId")).toString() == record.getString("bundleId") &&
+                        UUID.fromString(record.getString("holdProcessToken")).toString() == record.getString("holdProcessToken") &&
+                        releaseId !in exclusions("unconfirmed")) { "Invalid interrupted launch identity" }
+                    check(record.opt("retryReady") is Boolean) { "Invalid interrupted launch readiness" }
+                }
+            } catch (error: Throwable) {
+                try { store.close() } catch (cleanupError: Throwable) { error.addSuppressed(cleanupError) }
+                throw error
             }
             normalizeStoredLaunchTransition()
             recover()

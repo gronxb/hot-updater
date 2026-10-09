@@ -2368,6 +2368,10 @@ class LynxUpdaterControllerTest {
                 file.writeText(state.toString())
                 assertThrows(Exception::class.java) { controller(root) }
                 assertEquals(state.toString(), file.readText())
+                state.remove("interruptedReleases")
+                file.writeText(state.toString())
+                // Rejection must release ownership so repaired state can open.
+                withController(root) { it.pinPrimary() }
             } finally { root.deleteRecursively() }
         }
     }
