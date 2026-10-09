@@ -7,7 +7,10 @@ import "../../style.css";
 function Detail() {
   const [status, setStatus] = useState("Loading detail page…");
   useEffect(() => {
-    void HotUpdater.notifyAppReady()
+    void HotUpdater.getLaunchConfiguration()
+      .then(({ appBaseURL }) =>
+        HotUpdater.init({ baseURL: () => appBaseURL }).notifyAppReady(),
+      )
       .then(() => setStatus("Detail page ready."))
       .catch((error) => setStatus(`Detail failed: ${String(error)}`));
   }, []);

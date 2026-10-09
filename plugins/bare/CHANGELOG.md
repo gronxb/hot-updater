@@ -1,5 +1,63 @@
 # @hot-updater/bare
 
+## 1.0.0-rc.42
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.0.0-rc.42
+  - @hot-updater/plugin-core@1.0.0-rc.42
+
+## 1.0.0-rc.41
+
+### Patch Changes
+
+- Updated dependencies [545f059]
+  - @hot-updater/plugin-core@1.0.0-rc.41
+  - @hot-updater/cli-tools@1.0.0-rc.41
+
+## 1.0.0-rc.40
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.0.0-rc.40
+  - @hot-updater/plugin-core@1.0.0-rc.40
+
+## 1.0.0-rc.39
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.0.0-rc.39
+  - @hot-updater/plugin-core@1.0.0-rc.39
+
+## 1.0.0-rc.38
+
+### Patch Changes
+
+- 136dd83: Always build the bundle. The bare build adapter no longer reads `HOT_UPDATER_BARE_BUILD_CACHE_DIR` and `HOT_UPDATER_BARE_BUILD_CACHE_KEY`, an undocumented build cache that only the repository's E2E tests used.
+- @hot-updater/cli-tools@1.0.0-rc.38
+  - @hot-updater/plugin-core@1.0.0-rc.38
+
+## 1.0.0-rc.37
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.0.0-rc.37
+  - @hot-updater/plugin-core@1.0.0-rc.37
+
+## 1.0.0-rc.36
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.0.0-rc.36
+  - @hot-updater/plugin-core@1.0.0-rc.36
+
+## 1.0.0-rc.35
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.0.0-rc.35
+  - @hot-updater/plugin-core@1.0.0-rc.35
+
 ## 1.0.0-rc.34
 
 ### Patch Changes

@@ -32,11 +32,13 @@ const bucketRetention = (days: number): BucketRetention => ({
   days,
 });
 
+/** Every kind of row the table keeps belongs in installation history. */
 const MOVEMENTS = new Set([
   "UPDATE_DOWNLOADED",
   "UPDATE_APPLIED",
   "RECOVERED",
   "UPDATE_FAILED",
+  "UNCHANGED",
 ]);
 
 /** A failed update check: it names no target bundle, so no bundle list shows it. */
@@ -48,10 +50,76 @@ export const isFailedCheck = (row: {
   (row.metadata as { failure?: { stage?: unknown } } | null)?.failure?.stage ===
     "check";
 
+type StoredRow = {
+  readonly type: string;
+  readonly from_bundle_id: string | null;
+  readonly to_bundle_id: string;
+  readonly to_release_id: string | null;
+  readonly metadata: unknown;
+};
+
+const metadataOf = (row: { readonly metadata: unknown }) =>
+  (row.metadata ?? {}) as {
+    readonly change?: { readonly kinds?: readonly string[] };
+    readonly late?: true;
+  };
+
+/** A download or apply that arrived after its target ran: it counts nothing. */
+export const isLateEvent = (row: { readonly metadata: unknown }): boolean =>
+  metadataOf(row).late === true;
+
 /**
- * Downloads, applies, recoveries, and update failures, whole. An UNCHANGED
- * report counts as a launch and moves its installation's head, but no list
- * shows it, so no row keeps it.
+ * Whether a stored row launched its installation into a bundle release: an
+ * apply, or a kept UNCHANGED row that moved the installation to another
+ * bundle of a release, as when the apply report never arrived or a rollback
+ * to the built-in bundle took it there. A first report, a release change of
+ * the bundle already running, and a late row launch nothing.
+ */
+export const isLaunch = (row: StoredRow): boolean => {
+  if (isLateEvent(row)) return false;
+  if (row.type === "UPDATE_APPLIED") return true;
+  if (row.type !== "UNCHANGED") return false;
+  const kinds = metadataOf(row).change?.kinds ?? [];
+  return (
+    kinds.includes("bundle") &&
+    !kinds.includes("first_seen") &&
+    row.to_release_id !== null
+  );
+};
+
+/**
+ * The bundle a stored row's bundle filter matches: `from:<bundle>` for a
+ * recovery; `to:<bundle>` for a download, an apply, and an update failure;
+ * `on:<bundle>` for an UNCHANGED row that launched a bundle (`isLaunch`), a
+ * key no other row uses. None for a failed check, which targets no bundle, a
+ * late row, or any other UNCHANGED row.
+ */
+export const bundleRefsOf = (row: StoredRow): string[] => {
+  if (isFailedCheck(row) || isLateEvent(row)) return [];
+  if (row.type === "RECOVERED") return [`from:${row.from_bundle_id}`];
+  if (row.type === "UNCHANGED") {
+    return isLaunch(row) ? [`on:${row.to_bundle_id}`] : [];
+  }
+  return [`to:${row.to_bundle_id}`];
+};
+
+/** The key a bundle filter reads, as `bundleRefsOf` writes it. */
+export const bundleRefOfFilter = (filter: {
+  readonly type: string;
+  readonly fromBundleId?: string;
+  readonly toBundleId?: string;
+}): string =>
+  filter.type === "RECOVERED"
+    ? `from:${filter.fromBundleId}`
+    : filter.type === "UNCHANGED"
+      ? `on:${filter.toBundleId}`
+      : `to:${filter.toBundleId}`;
+
+/**
+ * Downloads, applies, recoveries, update failures, and the UNCHANGED
+ * reports that changed what their installation runs, whole. An UNCHANGED
+ * report that changes nothing counts as a launch and moves its
+ * installation's head, but no row keeps it.
  */
 const bundleEvents = (days: number) =>
   defineTable(
@@ -78,26 +146,16 @@ const bundleEvents = (days: number) =>
           type: "integer",
           compute: (row) => row.received_at_ms - (row.received_at_ms % DAY_MS),
         },
-        /** Set only for events that belong in installation history. */
+        /** Every stored event belongs in installation history. */
         movement_install_id: {
           type: "string",
           compute: (row) => (MOVEMENTS.has(row.type) ? row.install_id : null),
         },
-        /**
-         * The bundle a bundle filter matches: `from:<bundle>` for RECOVERED,
-         * none for a failed check, else `to:<bundle>`.
-         */
+        /** The bundle a bundle filter matches (`bundleRefsOf`). */
         bundle_ref: {
           type: "string",
           multi: true,
-          compute: (row) =>
-            isFailedCheck(row)
-              ? []
-              : [
-                  row.type === "RECOVERED" && row.from_bundle_id !== null
-                    ? `from:${row.from_bundle_id}`
-                    : `to:${row.to_bundle_id}`,
-                ],
+          compute: (row) => bundleRefsOf(row),
         },
       },
       indexes: {
@@ -305,6 +363,44 @@ const insightsDistribution = (retention: BucketRetention) =>
     },
   );
 
+/**
+ * The installations of `insights_distribution` that run their native build's
+ * built-in bundle, by its ID (`builtin_bundle_id`), within the same rows:
+ * reads move them out of the row of their release, or of no release.
+ */
+const insightsBuiltinDistribution = (retention: BucketRetention) =>
+  defineAggregate(
+    {
+      channel: { type: "string" },
+      platform: { type: "string", maxLength: 16 },
+      app_version: { type: "string" },
+      release_id: { type: "string", maxLength: 36 },
+      builtin_bundle_id: { type: "string", maxLength: 36 },
+      bucket_start_ms: { type: "integer" },
+    },
+    {
+      key: [
+        "channel",
+        "platform",
+        "app_version",
+        "release_id",
+        "builtin_bundle_id",
+        "bucket_start_ms",
+      ],
+      gauges: ["latest_installations"],
+      shards: GAUGE_SHARDS,
+      batched: true,
+      indexes: {
+        byScope: { eq: ["channel", "platform"], sort: ["bucket_start_ms"] },
+        byVersion: {
+          eq: ["channel", "platform", "app_version"],
+          sort: ["bucket_start_ms"],
+        },
+      },
+      retention,
+    },
+  );
+
 /** Latest events by the bundle they came from or went to, bucketed like the distribution. */
 const insightsLatestByBundle = (retention: BucketRetention) =>
   defineAggregate(
@@ -405,6 +501,7 @@ export const createInsightsSchema = ({
     insights_overview_lifetime: lifetimeCounters(),
     insights_sketches_lifetime: lifetimeSketches(),
     insights_distribution: insightsDistribution(daily),
+    insights_builtin_distribution: insightsBuiltinDistribution(daily),
     insights_latest_by_bundle: insightsLatestByBundle(daily),
     insights_outcomes: insightsOutcomes(hourly),
     insights_failures: insightsFailures(hourly),

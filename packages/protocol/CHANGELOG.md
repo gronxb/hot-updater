@@ -1,5 +1,41 @@
 # @hot-updater/protocol
 
+## 1.0.0-rc.42
+
+## 1.0.0-rc.41
+
+### Minor Changes
+
+- 545f059: `HotUpdater.init` returns the app's HotUpdater instance: every HotUpdater method, including `wrap`, and each client plugin's API under the plugin's id, typed from `plugins`.
+  - **Client plugin contract:** `setup(context)` returns `{ hooks, api }`, either of them, or nothing. `api` is what the app calls, as `hotUpdater.<id>`; a plugin id cannot be the name of an instance member, such as `reload` or `wrap`. A `setup` that returns hooks at the top level, as before, is reported through `onError` and gets no hooks. `ClientPluginApi`, `ClientPluginApis`, and `HotUpdaterClientSetup` type it; `HotUpdaterInstance` and `HotUpdaterCore` type the instance.
+  - **Insights:** `setUser` moves from the plugin object to `hotUpdater.insights.setUser`. `insights()` keeps its context, device state, and delivery queue per `setup`, so one plugin object set up by two instances reports through each instance's own server. The launch report waits for native launch verification, so a user set right after `init` is on the first report.
+  - **Remote Config:** the reads, `fetch`, `activate`, and `subscribe` are on `hotUpdater.remoteConfig`; the plugin object has only `id` and `setup`.
+  - **Tests:** `setupClientPlugin` returns the plugin's `api`, and `setupClientPlugins` the plugins' `apis` by id.
+
+### Patch Changes
+
+- 545f059: `HotUpdater` keeps only `init`; every other method is on the instance it returns. Call `HotUpdater.init` once at the top level of a module, export the instance, and call `hotUpdater.checkForUpdate()`, `hotUpdater.reload()`, `hotUpdater.getBundleId()`, and the rest on it. Each `init` call returns an independent instance with its own configuration, plugins, and launch report, and nothing is configured globally; create one per app.
+
+  `HotUpdater.wrap` becomes `hotUpdater.wrap`, which takes only the update flow: `updateStrategy`, `fallbackComponent`, `onProgress`, `reloadOnForceUpdate`, and `onUpdateProcessCompleted`. Move `baseURL`, `requestHeaders`, `requestTimeout`, `plugins`, `onError`, and `onNotifyAppReady` to `HotUpdater.init`. `HotUpdaterOptions` becomes `HotUpdaterWrapOptions`. `wrap` reads the launch through `init` instead of reading it again, and reloads for a forced update only after that read.
+
+## 1.0.0-rc.40
+
+## 1.0.0-rc.39
+
+## 1.0.0-rc.38
+
+## 1.0.0-rc.37
+
+## 1.0.0-rc.36
+
+### Patch Changes
+
+- c527bb2: Report installations on the built-in bundle. A client plugin's context has `minBundleId`, the ID of the bundle the native build ships, and the Insights client sends it with each report. Insights counts an installation that runs its build's built-in bundle again in the new `insights_builtin_distribution` gauge, by the release it runs and the bundle's ID, and `getAppUsage` returns `builtinBundleId` with each `bundleDistribution` row. The Console's **Distribution** shows **Built-in app** with the bundle ID under its app version, where it showed **Unknown bundle**, and event and installation details mark the built-in bundle. Reports from SDKs that do not send `minBundleId` count as before.
+
+  The Insights schema version stays 1.0.0 while the 1.0.0 baseline gains the `insights_builtin_distribution` table; existing tables don't change. On SQL databases, create it as the baseline does (Supabase prefixes it with `hot_updater_v1_` and enables row level security); Drizzle and Prisma projects regenerate their schema with `hot-updater db generate` and migrate it. On AWS the DynamoDB policy allows the new partition: rerun `hot-updater init`. Firestore and MongoDB need no change. Installations count in it from their first report after the upgrade.
+
+## 1.0.0-rc.35
+
 ## 1.0.0-rc.30
 
 ### Patch Changes

@@ -1,5 +1,76 @@
 # @hot-updater/postgres
 
+## 1.0.0-rc.42
+
+### Patch Changes
+
+- @hot-updater/server@1.0.0-rc.42
+  - @hot-updater/protocol@1.0.0-rc.42
+  - @hot-updater/plugin-core@1.0.0-rc.42
+
+## 1.0.0-rc.41
+
+### Patch Changes
+
+- Updated dependencies [545f059]
+- Updated dependencies [545f059]
+- Updated dependencies [545f059]
+  - @hot-updater/protocol@1.0.0-rc.41
+  - @hot-updater/server@1.0.0-rc.41
+  - @hot-updater/plugin-core@1.0.0-rc.41
+
+## 1.0.0-rc.40
+
+### Patch Changes
+
+- @hot-updater/protocol@1.0.0-rc.40
+  - @hot-updater/server@1.0.0-rc.40
+  - @hot-updater/plugin-core@1.0.0-rc.40
+
+## 1.0.0-rc.39
+
+### Patch Changes
+
+- Updated dependencies [2071bc6]
+  - @hot-updater/server@1.0.0-rc.39
+  - @hot-updater/plugin-core@1.0.0-rc.39
+  - @hot-updater/protocol@1.0.0-rc.39
+
+## 1.0.0-rc.38
+
+### Patch Changes
+
+- Updated dependencies [bbbdd8c]
+  - @hot-updater/server@1.0.0-rc.38
+  - @hot-updater/plugin-core@1.0.0-rc.38
+  - @hot-updater/protocol@1.0.0-rc.38
+
+## 1.0.0-rc.37
+
+### Patch Changes
+
+- Updated dependencies [5a5dd3e]
+  - @hot-updater/server@1.0.0-rc.37
+  - @hot-updater/plugin-core@1.0.0-rc.37
+  - @hot-updater/protocol@1.0.0-rc.37
+
+## 1.0.0-rc.36
+
+### Patch Changes
+
+- Updated dependencies [c527bb2]
+  - @hot-updater/protocol@1.0.0-rc.36
+  - @hot-updater/server@1.0.0-rc.36
+  - @hot-updater/plugin-core@1.0.0-rc.36
+
+## 1.0.0-rc.35
+
+### Patch Changes
+
+- @hot-updater/protocol@1.0.0-rc.35
+  - @hot-updater/server@1.0.0-rc.35
+  - @hot-updater/plugin-core@1.0.0-rc.35
+
 ## 1.0.0-rc.34
 
 ### Patch Changes

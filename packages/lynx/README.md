@@ -12,18 +12,18 @@ Call the SDK from Lynx background scripting after the native host registers the
 ```ts
 import { HotUpdater } from "@hot-updater/lynx";
 
-HotUpdater.init({
+const hotUpdater = HotUpdater.init({
   baseURL: "https://updates.example.com/hot-updater",
 });
 
-await HotUpdater.notifyAppReady();
+await hotUpdater.notifyAppReady();
 
-const update = await HotUpdater.checkForUpdate({
+const update = await hotUpdater.checkForUpdate({
   updateStrategy: "appVersion",
 });
 
 if (update && (await update.updateBundle()) && update.shouldForceUpdate) {
-  await HotUpdater.reload();
+  await hotUpdater.reload();
 }
 ```
 
@@ -33,8 +33,10 @@ page context. Secondary pages report their own readiness with
 context can apply an update while a detail page is open, rebuilding the full
 managed stack in the same process.
 
-Importing the package and calling `init()` do not call native code, register a
-listener, or open a network connection. The background runtime and native
+Importing the package does not call native code, register a listener, or open a
+network connection. `init()` creates a fresh instance and synchronously sets up
+its plugins, which may read the bound native context. It does not confirm
+readiness or start an update. The background runtime and native
 integration must provide `fetch`, `AbortController`, and a readable response
 stream through `response.body.getReader()`. Enable standard Fetch streaming in
 each page compiler with
@@ -44,10 +46,13 @@ reading, but it cannot replace streaming because reading the whole response at
 once cannot enforce the allocation bound. The packaged native integrations
 support this contract on Lynx 3.9.
 
-`init()` accepts the update server URL, optional request headers and timeout, and
+`init()` accepts the update server URL (or a function resolving it at request time),
+optional request headers and timeout, and
 an optional error callback, and client `plugins`. Plugins use the framework-neutral
-`@hot-updater/protocol` contract, also exported from this package. Setup runs
-once native state is available. Hooks observe readiness, checks, staged downloads,
+`@hot-updater/protocol` contract, also exported from this package. Setup runs once per instance and returns `{ hooks, api }`; the API is exposed as
+`hotUpdater[plugin.id]` immediately. Each instance owns its configuration and
+plugins. Native state getters read the current bound context, including changes
+made by another instance. Hooks observe readiness, checks, staged downloads,
 errors, and HTTP responses; the updater does not await their results. Only the
 primary page reports app readiness. Plugin storage and installation identity
 persist across OTA generations and stay outside device backups.
@@ -59,15 +64,17 @@ page (the server must also enable Insights):
 import { HotUpdater } from "@hot-updater/lynx";
 import { insights } from "@hot-updater/plugin-insights/client";
 
-HotUpdater.init({
+const hotUpdater = HotUpdater.init({
   baseURL: "https://updates.example.com/hot-updater",
   plugins: [insights()],
 });
 ```
 
-The public runtime surface is:
+The root exposes `HotUpdater.init()` and the stateless bootstrap reads
+`HotUpdater.getLaunchConfiguration()` and `HotUpdater.getRuntimeEvents()`.
+Configured operations belong to the instance returned by `init()`:
 
-- lifecycle: `init`, `checkForUpdate`, the returned update's `updateBundle`,
+- lifecycle: `checkForUpdate`, the returned update's `updateBundle`,
   `notifyAppReady`, `getLaunchInfo`, `reload`, and
   `setReloadBehavior("custom", handler)`;
 - state reads: `isUpdateDownloaded`, `getAppVersion`, `getActiveUpdateState`,
@@ -75,7 +82,7 @@ The public runtime surface is:
   `isChannelSwitched`, `getCohort`, `getFingerprintHash`, and `getCrashHistory`;
 - state changes: `setCohort`, `resetChannel`, and `clearCrashHistory`.
 
-The top-level `HotUpdater.updateBundle()` rejects with `USE_CHECK_FOR_UPDATE`;
+The instance method `hotUpdater.updateBundle()` rejects with `USE_CHECK_FOR_UPDATE`;
 installation belongs to the update returned by `checkForUpdate()`. The package
 does not expose a manifest, filesystem installation identifier, user mutation,
 event listener, or insights option because native cannot supply those values or
@@ -93,7 +100,7 @@ returned update object retains no native preparation capacity. Repeated calls to
 the same closure share one installation promise.
 
 Installation changes the next selection and never changes the bytes used by the
-current managed generation. `HotUpdater.reload()` asks the packaged host to
+current managed generation. `hotUpdater.reload()` asks the packaged host to
 replace every managed Lynx runtime and view in the same foreground OS process.
 All replacement contexts receive fresh identities and use one selected release.
 An ordinary next launch applies a staged selection independently of reload.
@@ -120,7 +127,7 @@ later readiness calls report `UNCHANGED`.
 Pass `channel` to `checkForUpdate()` only for an explicit scope switch:
 
 ```ts
-await HotUpdater.checkForUpdate({
+await hotUpdater.checkForUpdate({
   updateStrategy: "appVersion",
   channel: "beta",
 });
@@ -128,19 +135,18 @@ await HotUpdater.checkForUpdate({
 
 Native accepts the target catalog and channel switch under one state revision.
 Once switched away from the configured default channel, another cross-channel
-check is rejected. Call and await `HotUpdater.resetChannel()` before selecting a
+check is rejected. Call and await `hotUpdater.resetChannel()` before selecting a
 different channel. Reset clears channel-scoped accepted, staged, pending, and
 stable state atomically and returns to the configured default channel.
 
-`HotUpdater.getLaunchInfo()` reports the running and staged selections without
-exposing native filesystem paths. `HotUpdater.clearCrashHistory()` waits for the
-native mutation and refreshes the JS snapshot before resolving.
-`HotUpdater.isUpdateDownloaded()` reports whether that authoritative snapshot
-contains a staged next selection.
+`hotUpdater.getLaunchInfo()` reports the running and staged selections without
+exposing native filesystem paths. `hotUpdater.clearCrashHistory()` waits for the
+native mutation before resolving. `hotUpdater.isUpdateDownloaded()` reads
+the current native snapshot to determine whether a next selection is staged.
 
 `reload()` calls the packaged native host by default and propagates native
 failures to its caller. A custom integration must call
-`HotUpdater.setReloadBehavior("custom", handler)` with a handler; there are no
+`hotUpdater.setReloadBehavior("custom", handler)` with a handler; there are no
 public `reload` or `processRestart` behavior options.
 
 ## Artifact and delta contract

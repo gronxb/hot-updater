@@ -14,6 +14,8 @@ const ACTION_SCREEN_URLS = {
     "hotupdaterexample://e2e/action/install-runtime-channel-update",
   refreshRuntimeSnapshotAction:
     "hotupdaterexample://e2e/action/refresh-runtime-snapshot",
+  reinitializeHotUpdaterAction:
+    "hotupdaterexample://e2e/action/reinitialize-hot-updater",
   reloadAppAction: "hotupdaterexample://e2e/action/reload-app",
   resetRuntimeChannelAction:
     "hotupdaterexample://e2e/action/reset-runtime-channel",
@@ -34,6 +36,7 @@ const ACTION_TEST_ID_SCREEN_PATHS = {
   "action-install-runtime-channel-update":
     "installRuntimeChannelUpdateAction",
   "action-refresh-runtime-snapshot": "refreshRuntimeSnapshotAction",
+  "action-reinitialize-hot-updater": "reinitializeHotUpdaterAction",
   "action-reload-app": "reloadAppAction",
   "action-reset-runtime-channel": "resetRuntimeChannelAction",
   "action-restore-initial-cohort": "restoreInitialCohortAction",

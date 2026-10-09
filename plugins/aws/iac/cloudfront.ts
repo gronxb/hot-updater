@@ -15,9 +15,11 @@ import {
   buildDistributionConfigOverrides,
   buildOriginRequestPolicyConfig,
   buildReleaseCatalogCachePolicyConfig,
+  buildRemoteConfigCachePolicyConfig,
   buildSharedCachePolicyConfig,
   HOT_UPDATER_CACHE_BEHAVIOR_PATHS,
   HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS,
+  HOT_UPDATER_REMOTE_CONFIG_BEHAVIOR_PATHS,
 } from "./cloudfrontDistributionConfig";
 import {
   collectPaginatedCloudFrontList,
@@ -273,12 +275,14 @@ export class CloudFrontManager {
 
     const bucketDomain = `${options.bucketName}.s3.${this.region}.amazonaws.com`;
     let releaseCatalogCachePolicyId: string;
+    let remoteConfigCachePolicyId: string;
     let sharedCachePolicyId: string;
     let originRequestPolicyId: string;
     try {
       [
         sharedCachePolicyId,
         releaseCatalogCachePolicyId,
+        remoteConfigCachePolicyId,
         originRequestPolicyId,
       ] = await Promise.all([
         this.getOrCreateCachePolicy(
@@ -288,6 +292,10 @@ export class CloudFrontManager {
         this.getOrCreateCachePolicy(
           cloudfrontClient,
           buildReleaseCatalogCachePolicyConfig(options.clientHeaders),
+        ),
+        this.getOrCreateCachePolicy(
+          cloudfrontClient,
+          buildRemoteConfigCachePolicyConfig(options.clientHeaders),
         ),
         this.getOrCreateOriginRequestPolicy(
           cloudfrontClient,
@@ -310,6 +318,7 @@ export class CloudFrontManager {
       oacId,
       originRequestPolicyId,
       releaseCatalogCachePolicyId,
+      remoteConfigCachePolicyId,
       sharedCachePolicyId,
     });
 
@@ -347,10 +356,12 @@ export class CloudFrontManager {
             Paths: {
               Quantity:
                 HOT_UPDATER_CACHE_BEHAVIOR_PATHS.length +
-                HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS.length,
+                HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS.length +
+                HOT_UPDATER_REMOTE_CONFIG_BEHAVIOR_PATHS.length,
               Items: [
                 ...HOT_UPDATER_CACHE_BEHAVIOR_PATHS,
                 ...HOT_UPDATER_RELEASE_CATALOG_BEHAVIOR_PATHS,
+                ...HOT_UPDATER_REMOTE_CONFIG_BEHAVIOR_PATHS,
               ],
             },
           },
@@ -377,6 +388,7 @@ export class CloudFrontManager {
       oacId,
       originRequestPolicyId,
       releaseCatalogCachePolicyId,
+      remoteConfigCachePolicyId,
       sharedCachePolicyId,
     });
 

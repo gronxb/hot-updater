@@ -1,4 +1,4 @@
-export { HotUpdater } from "./client";
+export { HotUpdater, type HotUpdaterInstance } from "./client";
 export { managedResourceUrl } from "./managedResource";
 export { LynxUpdaterError } from "./native";
 export { LYNX_RUNTIME_EVENT_LIMITS } from "./types";
@@ -23,6 +23,10 @@ export type {
 
 export { defineClientPlugin } from "@hot-updater/protocol";
 export type {
+  HotUpdaterBaseURL,
+  ClientPluginApi,
+  ClientPluginApis,
+  HotUpdaterClientSetup,
   AppReadyResult,
   BundleDownloadedInfo,
   HotUpdaterClientContext,

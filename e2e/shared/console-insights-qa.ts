@@ -18,6 +18,8 @@ type InsightsEvent = {
     | "UPDATE_APPLIED"
     | "UPDATE_DOWNLOADED"
     | "UPDATE_FAILED";
+  /** It arrived after its installation already ran its bundle. */
+  readonly late?: true;
 };
 
 type Installation = {
@@ -180,7 +182,8 @@ export const verifyConsoleInsights = async (
   }
   // The server keeps downloads, applies, and recoveries as events. An
   // UNCHANGED report is a launch: it moves its installation's latest report,
-  // at most once a UTC day, and no list or event count holds it.
+  // at most once a UTC day, and is kept as an event only when it changes what
+  // the installation runs, so the QA checks it through the installation.
   const storedEvents = observedEvents.filter(
     (observed) => observed.type !== "UNCHANGED",
   );
@@ -283,6 +286,21 @@ export const verifyConsoleInsights = async (
   ]);
   const outcomePages = new Map<string, EventCursorPage>();
   const outcomeEvidence = [];
+  // A report that arrived after its installation already ran its bundle,
+  // as a reload can deliver one, is late: history keeps it, and it counts in
+  // no outcome.
+  const keptLate = async (observedOutcome: ObservedInsightsEvent) =>
+    (
+      await readCursorPagesUntil(
+        (cursor) => client.listEvents({ cursor, limit: PAGE_LIMIT }),
+        (row) =>
+          row.receivedAtMs >= (options.sinceMs ?? 0) &&
+          sameEvent(row, observedOutcome),
+        (rows) =>
+          options.sinceMs !== undefined &&
+          rows.some((row) => row.receivedAtMs < options.sinceMs!),
+      )
+    )?.late === true;
   for (const observedOutcome of storedEvents) {
     const bundleId =
       observedOutcome.type === "RECOVERED"
@@ -319,6 +337,7 @@ export const verifyConsoleInsights = async (
     }
     const count = selected.bundle?.[`${outcome}Reports`].count;
     if (selected.bundle?.bundleId !== bundleId || !count || count < 1) {
+      if (await keptLate(observedOutcome)) continue;
       throw new ConsoleInsightsQaError(
         "inconsistent-data",
         `Console Insights omitted the ${outcome} report for bundle ${bundleId}.`,
@@ -346,6 +365,7 @@ export const verifyConsoleInsights = async (
         sameEvent(row, observedOutcome),
     );
     if (!report) {
+      if (await keptLate(observedOutcome)) continue;
       throw new ConsoleInsightsQaError(
         "inconsistent-data",
         `Console Insights ${outcome} drill-down omitted its observed report.`,

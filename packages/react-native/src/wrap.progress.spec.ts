@@ -16,14 +16,6 @@ const mocks = vi.hoisted(() => ({
   reload: vi.fn(),
 }));
 
-vi.mock("./checkForUpdate", () => ({
-  checkForUpdate: mocks.checkForUpdate,
-}));
-
-vi.mock("./appReady", () => ({
-  handleNotifyAppReady: vi.fn().mockResolvedValue({ status: "UNCHANGED" }),
-}));
-
 vi.mock("./native", () => ({
   addListener: vi.fn(
     (eventName: string, listener: (event: HotUpdaterProgressEvent) => void) => {
@@ -89,7 +81,9 @@ describe("HotUpdater wrap progress subscription", () => {
       return createElement("div", null, "app");
     };
     const Wrapped = wrap({
-      client: { createSession: vi.fn() },
+      checkForUpdate: mocks.checkForUpdate,
+      appReady: async () => undefined,
+      onError: vi.fn(),
       updateStrategy: "appVersion",
       ...options,
     })(App);

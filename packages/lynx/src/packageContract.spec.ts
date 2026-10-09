@@ -24,11 +24,11 @@ describe("framework-independent Lynx package contract", () => {
 
   it("keeps the public runtime import inert and reports a missing native module", async () => {
     const { HotUpdater } = await import("@hot-updater/lynx");
-    HotUpdater.init({ baseURL: "https://updates.test" });
-    await expect(HotUpdater.getLaunchInfo()).rejects.toMatchObject({
+    const updater = HotUpdater.init({ baseURL: "https://updates.test" });
+    await expect(updater.getLaunchInfo()).rejects.toMatchObject({
       code: "NATIVE_MODULE_UNAVAILABLE",
     });
-    await expect(HotUpdater.notifyAppReady()).rejects.toMatchObject({
+    await expect(updater.notifyAppReady()).rejects.toMatchObject({
       code: "NATIVE_MODULE_UNAVAILABLE",
     });
   });

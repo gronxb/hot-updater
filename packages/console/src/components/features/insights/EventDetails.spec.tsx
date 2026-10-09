@@ -57,7 +57,7 @@ describe("Insights event details", () => {
     expect(screen.getByText("Downloaded")).toBeDefined();
     expect(screen.getByText("Running")).toBeDefined();
     expect(screen.getByText("Pending")).toBeDefined();
-    expect(screen.getByText(/Waiting for the app to restart/)).toBeDefined();
+    expect(screen.getByText(/It launches when the app restarts/)).toBeDefined();
   });
 
   it("shows no change without implying a file transition", () => {
@@ -74,9 +74,9 @@ describe("Insights event details", () => {
         />
       </>,
     );
-    expect(screen.getByText("No change")).toBeDefined();
+    expect(screen.getByText("Launch")).toBeDefined();
     expect(
-      screen.getByText("No download or apply was reported at this point."),
+      screen.getByText("The app launched; the report changed nothing."),
     ).toBeDefined();
     expect(screen.getByText("Current")).toBeDefined();
     expect(screen.queryByText("From")).toBeNull();
@@ -299,20 +299,134 @@ describe("Insights event details", () => {
     const view = render(
       <EventTypeDetails event={{ type: "UPDATE_APPLIED" }} />,
     );
-    expect(screen.getByText("Update applied")).toBeDefined();
-    expect(screen.getByText("Update applied").className).toContain(
-      "text-success",
-    );
+    expect(screen.getByText("Launched")).toBeDefined();
+    expect(screen.getByText("Launched").className).toContain("text-success");
 
     view.rerender(<EventTypeDetails event={{ type: "RECOVERED" }} />);
-    expect(screen.getByText("Recovered")).toBeDefined();
-    expect(screen.getByText("Recovered").className).toContain("text-warning");
+    expect(screen.getByText("Crashed")).toBeDefined();
+    expect(screen.getByText("Crashed").className).toContain("text-warning");
 
     view.rerender(<EventTypeDetails event={{ type: "UNCHANGED" }} />);
-    expect(screen.getByText("No change")).toBeDefined();
+    expect(screen.getByText("Launch")).toBeDefined();
     expect(
-      screen.getByText("No download or apply was reported at this point."),
+      screen.getByText("The app launched; the report changed nothing."),
     ).toBeDefined();
-    expect(screen.getByText("No change").className).toContain("bg-secondary");
+    expect(screen.getByText("Launch").className).toContain("bg-secondary");
+  });
+
+  it("names a kept launch report by what it changed, with the values before it", () => {
+    const view = render(
+      <EventTypeDetails
+        event={{
+          type: "UNCHANGED",
+          appVersion: "1.6.1",
+          channel: "production",
+          change: {
+            kinds: ["bundle", "release", "app_version"],
+            previous: {
+              bundleId: "builtin-1.6.0",
+              releaseId: null,
+              appVersion: "1.6.0",
+              channel: "production",
+            },
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText("App updated")).toBeDefined();
+    expect(screen.getByText("From app 1.6.0 to 1.6.1.")).toBeDefined();
+
+    for (const [kinds, label] of [
+      [["first_seen"], "First seen"],
+      [["bundle", "release"], "Launched"],
+      [["release"], "Release adopted"],
+      [["channel"], "Channel changed"],
+    ] as const) {
+      view.rerender(
+        <EventTypeDetails
+          event={{
+            type: "UNCHANGED",
+            appVersion: "1.6.1",
+            channel: "beta",
+            change: {
+              kinds,
+              previous: {
+                bundleId: "bundle-a",
+                releaseId: "release-a",
+                appVersion: "1.6.1",
+                channel: "production",
+              },
+            },
+          }}
+        />,
+      );
+      expect(screen.getByText(label)).toBeDefined();
+    }
+    expect(screen.getByText("From production to beta.")).toBeDefined();
+
+    // A kept launch says which report it stands in for: the restart's, which
+    // the event lists name Launched.
+    view.rerender(
+      <EventTypeDetails
+        event={{
+          type: "UNCHANGED",
+          appVersion: "1.6.1",
+          channel: "production",
+          change: {
+            kinds: ["bundle"],
+            previous: {
+              bundleId: "bundle-a",
+              releaseId: "release-a",
+              appVersion: "1.6.1",
+              channel: "production",
+            },
+          },
+        }}
+      />,
+    );
+    expect(
+      screen.getByText(
+        "Seen running this bundle; the report of the restart into it never arrived.",
+      ),
+    ).toBeDefined();
+  });
+
+  it("shows the bundle a kept launch report moved from, and notes late and implied reports", () => {
+    render(
+      <>
+        <EventBundleTransition
+          event={{
+            type: "UNCHANGED",
+            fromBundleId: null,
+            toBundleId: "bundle-b",
+            change: {
+              kinds: ["bundle", "release"],
+              previous: {
+                bundleId: "bundle-a",
+                releaseId: "release-a",
+                appVersion: "1.0.0",
+                channel: "production",
+              },
+            },
+          }}
+        />
+        <EventTypeDetails event={{ type: "UPDATE_DOWNLOADED", late: true }} />
+        <EventTypeDetails
+          event={{ type: "UPDATE_APPLIED", impliedDownload: true }}
+        />
+      </>,
+    );
+    expect(screen.getByText("From")).toBeDefined();
+    expect(screen.getByText("To")).toBeDefined();
+    expect(
+      screen.getByText(
+        "Counted nothing: the installation had already downloaded or run this bundle.",
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByText(
+        "Its download report never arrived; the download counted with it.",
+      ),
+    ).toBeDefined();
   });
 });

@@ -78,6 +78,14 @@ CREATE INDEX IF NOT EXISTS "insights_distribution_byVersion" ON "insights_distri
 
 CREATE INDEX IF NOT EXISTS "insights_distribution__retention" ON "insights_distribution" ("bucket_start_ms", "channel", "platform", "app_version", "release_id", "_shard");
 
+CREATE TABLE IF NOT EXISTS "insights_builtin_distribution" ("channel" TEXT NOT NULL, "platform" TEXT NOT NULL, "app_version" TEXT NOT NULL, "release_id" TEXT NOT NULL, "builtin_bundle_id" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "latest_installations" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("channel", "platform", "app_version", "release_id", "builtin_bundle_id", "bucket_start_ms", "_shard"));
+
+CREATE INDEX IF NOT EXISTS "insights_builtin_distribution_byScope" ON "insights_builtin_distribution" ("channel", "platform", "bucket_start_ms", "app_version", "release_id", "builtin_bundle_id", "_shard");
+
+CREATE INDEX IF NOT EXISTS "insights_builtin_distribution_byVersion" ON "insights_builtin_distribution" ("channel", "platform", "app_version", "bucket_start_ms", "release_id", "builtin_bundle_id", "_shard");
+
+CREATE INDEX IF NOT EXISTS "insights_builtin_distribution__retention" ON "insights_builtin_distribution" ("bucket_start_ms", "channel", "platform", "app_version", "release_id", "builtin_bundle_id", "_shard");
+
 CREATE TABLE IF NOT EXISTS "insights_latest_by_bundle" ("platform" TEXT NOT NULL, "channel" TEXT NOT NULL, "bundle_field" TEXT NOT NULL, "bundle_id" TEXT NOT NULL, "type" TEXT NOT NULL, "bucket_start_ms" INTEGER NOT NULL, "_shard" INTEGER NOT NULL, "installations" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("platform", "channel", "bundle_field", "bundle_id", "type", "bucket_start_ms", "_shard"));
 
 CREATE INDEX IF NOT EXISTS "insights_latest_by_bundle__retention" ON "insights_latest_by_bundle" ("bucket_start_ms", "platform", "channel", "bundle_field", "bundle_id", "type", "_shard");
@@ -96,6 +104,10 @@ CREATE INDEX IF NOT EXISTS "api_keys_byCreated" ON "api_keys" ("created_at_ms", 
 
 CREATE UNIQUE INDEX IF NOT EXISTS "api_keys_hash" ON "api_keys" ("hash");
 
+CREATE TABLE IF NOT EXISTS "remote_config_active" ("id" TEXT NOT NULL, "version" INTEGER NOT NULL, "template" TEXT NOT NULL, "updated_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));
+
+CREATE TABLE IF NOT EXISTS "remote_config_versions" ("version" INTEGER NOT NULL, "template" TEXT NOT NULL, "description" TEXT, "update_type" TEXT NOT NULL, "rollback_source" INTEGER, "created_at_ms" INTEGER NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("version"));
+
 CREATE TABLE IF NOT EXISTS "private_hot_updater_settings" ("key" TEXT NOT NULL, "value" TEXT NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("key"));
 
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.engine', '1', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
@@ -105,3 +117,5 @@ INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schem
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.insights', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
 
 INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.apiKeys', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";
+
+INSERT INTO "private_hot_updater_settings" ("key", "value", "_v") VALUES ('schema.remoteConfig', '1.0.0', 0) ON CONFLICT ("key") DO UPDATE SET "value" = excluded."value";

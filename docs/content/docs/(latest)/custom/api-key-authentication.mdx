@@ -79,10 +79,10 @@ committing it to source, and send it using `x-api-key`. The server's
 The database receives only the key's SHA-256 digest and non-secret metadata,
 including its prefix, name, creation time, and revocation time.
 
-```ts title="App.tsx"
+```ts title="src/hotUpdater.ts (React Native app)"
 import { HotUpdater } from "@hot-updater/react-native";
 
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL: "https://example.com/hot-updater",
   requestHeaders: { // [!code ++]
     "x-api-key": "<API key printed by api-key create>", // [!code ++]
@@ -91,7 +91,8 @@ HotUpdater.init({
 ```
 
 `HotUpdater.init` configures the client but does not start an update check.
-Continue with the [`init + checkForUpdate` flow](/docs/react-native-api/init).
+Check with [`hotUpdater.wrap`](/docs/react-native-api/wrap) or a
+[custom update flow](/docs/guides/custom-update).
 
 ## Configure a self-hosted cache
 

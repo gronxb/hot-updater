@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiKeysRouteImport } from './routes/api-keys'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as InstallationsRouteImport } from './routes/installations'
+import { Route as RemoteConfigRouteImport } from './routes/remote-config'
 import { Route as InsightsDistributionRouteImport } from './routes/insights_.distribution'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiBundlesBundleIdDownloadRouteImport } from './routes/api/bundles/$bundleId/download'
@@ -37,6 +38,11 @@ const InstallationsRoute = InstallationsRouteImport.update({
   path: '/installations',
   getParentRoute: () => rootRouteImport,
 } as any)
+const RemoteConfigRoute = RemoteConfigRouteImport.update({
+  id: '/remote-config',
+  path: '/remote-config',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const InsightsDistributionRoute = InsightsDistributionRouteImport.update({
   id: '/insights_/distribution',
   path: '/insights/distribution',
@@ -59,6 +65,7 @@ export interface FileRoutesByFullPath {
   '/api-keys': typeof ApiKeysRoute
   '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
+  '/remote-config': typeof RemoteConfigRoute
   '/insights/distribution': typeof InsightsDistributionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
@@ -68,6 +75,7 @@ export interface FileRoutesByTo {
   '/api-keys': typeof ApiKeysRoute
   '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
+  '/remote-config': typeof RemoteConfigRoute
   '/insights/distribution': typeof InsightsDistributionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
@@ -78,6 +86,7 @@ export interface FileRoutesById {
   '/api-keys': typeof ApiKeysRoute
   '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
+  '/remote-config': typeof RemoteConfigRoute
   '/insights_/distribution': typeof InsightsDistributionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
@@ -89,6 +98,7 @@ export interface FileRouteTypes {
     | '/api-keys'
     | '/insights'
     | '/installations'
+    | '/remote-config'
     | '/insights/distribution'
     | '/api/auth/$'
     | '/api/bundles/$bundleId/download'
@@ -98,6 +108,7 @@ export interface FileRouteTypes {
     | '/api-keys'
     | '/insights'
     | '/installations'
+    | '/remote-config'
     | '/insights/distribution'
     | '/api/auth/$'
     | '/api/bundles/$bundleId/download'
@@ -107,6 +118,7 @@ export interface FileRouteTypes {
     | '/api-keys'
     | '/insights'
     | '/installations'
+    | '/remote-config'
     | '/insights_/distribution'
     | '/api/auth/$'
     | '/api/bundles/$bundleId/download'
@@ -117,6 +129,7 @@ export interface RootRouteChildren {
   ApiKeysRoute: typeof ApiKeysRoute
   InsightsRoute: typeof InsightsRoute
   InstallationsRoute: typeof InstallationsRoute
+  RemoteConfigRoute: typeof RemoteConfigRoute
   InsightsDistributionRoute: typeof InsightsDistributionRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiBundlesBundleIdDownloadRoute: typeof ApiBundlesBundleIdDownloadRoute
@@ -152,6 +165,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InstallationsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/remote-config': {
+      id: '/remote-config'
+      path: '/remote-config'
+      fullPath: '/remote-config'
+      preLoaderRoute: typeof RemoteConfigRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/insights_/distribution': {
       id: '/insights_/distribution'
       path: '/insights/distribution'
@@ -181,6 +201,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiKeysRoute: ApiKeysRoute,
   InsightsRoute: InsightsRoute,
   InstallationsRoute: InstallationsRoute,
+  RemoteConfigRoute: RemoteConfigRoute,
   InsightsDistributionRoute: InsightsDistributionRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiBundlesBundleIdDownloadRoute: ApiBundlesBundleIdDownloadRoute,

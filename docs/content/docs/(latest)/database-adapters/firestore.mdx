@@ -74,7 +74,8 @@ await migrateFirebaseDatabase(
 
 `migrateFirebaseDatabase` takes the same configuration as `firebaseDatabase`,
 and the plugins the server runs: here `plugins` from `@hot-updater/firebase`,
-the managed server's Insights and API keys. `hot-updater init` and the managed
+the managed server's Insights, API keys, and Remote Config. `hot-updater init`
+and the managed
 setup's key script both run it. `hot-updater db migrate`, run with the file
 that exports a server's `hotUpdater`, writes the same settings for the
 server's [plugins](/docs/custom/server-plugins#create-the-plugins-tables),
@@ -109,7 +110,7 @@ schema settings check:
 
 The collection holds core's rows (Bundles, patches, Releases, Release Catalogs,
 Channels and their counters) and the rows of the plugins the server runs,
-such as Insights and API keys.
+such as Insights, API keys, and Remote Config.
 
 ## Batched Insights totals
 

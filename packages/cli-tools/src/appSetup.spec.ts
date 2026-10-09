@@ -28,8 +28,11 @@ describe("renderAppSetup", () => {
     expect(source).toContain(
       '  requestHeaders: {\n    "x-api-key": "key\\"with-quote",\n  },',
     );
-    expect(source).toContain("HotUpdater.checkForUpdate");
-    expect(source).not.toContain("HotUpdater.wrap");
+    expect(source).toContain(
+      'hotUpdater.checkForUpdate({ updateStrategy: "appVersion" })',
+    );
+    expect(source).not.toContain(".wrap(");
+    expect(source).not.toMatch(/HotUpdater\.(?!init\()/);
   });
 
   it("uses the selected integration's SDK and leaves selection explicit when absent", () => {
@@ -48,7 +51,7 @@ describe("renderAppSetup", () => {
     const source = renderAppSetup({ baseURL: "https://example.com" });
 
     expect(source).toContain(
-      'HotUpdater.init({\n  baseURL: "https://example.com",\n});',
+      '// src/hotUpdater.ts\n// Import HotUpdater from your application integration.\n\nexport const hotUpdater = HotUpdater.init({\n  baseURL: "https://example.com",\n});',
     );
     expect(source).not.toContain("requestHeaders");
     expect(source).not.toContain("plugins");

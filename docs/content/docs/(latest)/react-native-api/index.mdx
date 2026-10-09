@@ -11,18 +11,29 @@ app integration and first OTA, start with [app integration](/docs/get-started/ap
 
 ## Configure the app
 
-Start with `init` to control check timing and update UI in your app. `wrap` is
-an optional alternative for an automatic startup flow. Use one configuration
-API per app:
+Start with `HotUpdater.init`, which configures the update server and its
+[client plugins](#extend-with-plugins), such as the Insights and Remote Config
+plugins, and returns the app's HotUpdater instance. Call it once at the top
+level of a module and export the instance, `hotUpdater`. The other APIs on
+this page are methods of that instance, except the `useHotUpdaterStore` hook
+and the plugins, which `@hot-updater/react-native` exports:
+
+```tsx title="src/hotUpdater.ts"
+import { HotUpdater } from "@hot-updater/react-native";
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+});
+```
 
 | API | Use it to |
 | --- | --- |
-| [`init`](/docs/react-native-api/init) | Configure a custom flow and its plugins without starting an update check. |
-| [`wrap`](/docs/react-native-api/wrap) | Optionally check automatically at startup, stage standard updates, and reload force updates by default. |
-
-Both take [client plugins](#extend-with-plugins), such as the Insights plugin.
+| [`HotUpdater.init`](/docs/react-native-api/init) | Configure the update server, request settings, and client plugins once, and get the app's instance. |
+| [`wrap`](/docs/react-native-api/wrap) | Check for an update when the app's root mounts, with an optional loading screen, and reload for a forced update. |
 
 ## Check, stage, and reload
+
+For your own check timing instead of `wrap`, use these methods:
 
 | API | Use it to |
 | --- | --- |
@@ -74,7 +85,12 @@ See [Insights](/docs/guides/insights) for reporting limits and
 
 ## Extend with plugins
 
+Plugins go in `init`'s `plugins`, and each plugin's API is on the
+[instance `init` returns](/docs/react-native-api/init#use-the-instance-init-returns),
+such as `hotUpdater.remoteConfig`:
+
 | API | Use it to |
 | --- | --- |
 | [`insights`](/docs/react-native-api/insights) | Report launches, downloads, applies, recoveries, and update failures to Insights, optionally with your app's user ID. |
-| [`defineClientPlugin`](/docs/react-native-api/client-plugins) | Write a plugin that observes the update lifecycle and sends data to your server. Plugins import it from `@hot-updater/protocol`. |
+| [`remoteConfig`](/docs/react-native-api/remote-config) | Read values your server's Remote Config picks for the device, synchronously, with in-app defaults. |
+| [`defineClientPlugin`](/docs/react-native-api/client-plugins) | Write a plugin that observes the update lifecycle, sends data to your server, and adds an API to the instance. Plugins import it from `@hot-updater/protocol`. |

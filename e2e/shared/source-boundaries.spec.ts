@@ -1,6 +1,7 @@
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
+import { stripTypeScriptTypes } from "node:module";
 import path from "node:path";
 
 import { describe, expect, it } from "vitest";
@@ -40,10 +41,14 @@ const expectedScenarioModuleFiles = [
   "failed-download-same-generation-retry.ts",
   "fingerprint-initial-install.ts",
   "force-update-auto-reload.ts",
+  "headless-launch-keeps-staged-bundle.ts",
+  "interrupted-launch-retries-bundle.ts",
+  "launch-status-after-session-install.ts",
   "metadata-v1-migration.ts",
   "multi-asset-replacement.ts",
   "numeric-cohort-rollout.ts",
   "release-ota-recovery.ts",
+  "remote-config-fetch-activate.ts",
   "republished-crashed-bundle-skipped.ts",
   "runtime-channel-crash-restore.ts",
   "runtime-channel-switch-reset.ts",
@@ -96,6 +101,21 @@ describe("E2E source boundaries", () => {
     expect(
       activeE2eFiles.filter((file) => textScenarioFilePattern.test(file)),
     ).toEqual([]);
+  });
+
+  it("keeps E2E TypeScript erasable, since Node runs it by stripping types", async () => {
+    // Parameter properties, enums, and namespaces pass tsc here but stop the
+    // control server before it starts.
+    const unerasable: string[] = [];
+    for (const file of trackedE2eFiles().filter((it) => it.endsWith(".ts"))) {
+      const source = await fs.readFile(path.join(repoDir, file), "utf8");
+      try {
+        stripTypeScriptTypes(source);
+      } catch (error) {
+        unerasable.push(`${file}: ${(error as Error).message}`);
+      }
+    }
+    expect(unerasable).toEqual([]);
   });
 
   it("keeps example app ignore rules from hiding E2E source", async () => {

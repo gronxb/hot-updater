@@ -33,6 +33,7 @@ import {
   type InsightsIdentityParts,
 } from "./recordEvent";
 import {
+  bundleRefOfFilter,
   DAILY_EVENTS,
   DAY_MS,
   HOUR_MS,
@@ -96,16 +97,11 @@ const toEvent = (row: Readonly<Record<string, unknown>>): BundleEventRow =>
     EVENT_FIELDS.map((field) => [field, row[field]]),
   ) as unknown as BundleEventRow;
 
-const bundleRef = (filter: InsightsBundleEventFilter) =>
-  filter.type === "RECOVERED"
-    ? `from:${filter.fromBundleId}`
-    : `to:${filter.toBundleId}`;
-
 const scopeOf = (filter: InsightsBundleEventFilter) => ({
   platform: filter.platform,
   channel: filter.channel,
   type: filter.type,
-  bundle_ref: bundleRef(filter),
+  bundle_ref: bundleRefOfFilter(filter),
 });
 
 /** One UTC day of a global or bundle list, newest first. */
@@ -259,7 +255,11 @@ const countRaw = async (
   return total;
 };
 
-/** Whole hours from outcome counters; the partial hours at either edge from raw events. */
+/**
+ * Whole hours from outcome counters; the partial hours at either edge from
+ * raw events. A download filter's whole hours count the downloads a launch
+ * or crash implied too, which its raw events do not hold.
+ */
 export const countEvents = async (
   db: Db,
   input: InsightsCountEventsInput,
@@ -285,8 +285,9 @@ export const countEvents = async (
 };
 
 /**
- * A bundle filter's stored events in each interval of whole hours: one read
- * of its hourly counts, every interval present.
+ * A bundle filter's stored events in each interval of whole hours, and for a
+ * download filter the downloads a launch or crash implied: one read of its
+ * hourly counts, every interval present.
  */
 export const countEventSeries = async (
   db: Db,
@@ -619,6 +620,9 @@ export const getAppUsage = async (
   // the distribution covers every UTC day the window touches.
   const range = { gte: dayFloor(timeRange.start), lt: timeRange.end };
   const distribution = [];
+  // Installations on their build's built-in bundle, which `distribution`
+  // counts too, by the release they run and the bundle's ID.
+  const builtinDistribution = [];
   for (const platform of reported) {
     distribution.push(
       ...(await drain((page) =>
@@ -631,6 +635,29 @@ export const getAppUsage = async (
               ...page,
             })
           : db.findAggregates("insights_distribution", {
+              index: "byVersion",
+              where: {
+                channel: input.channel,
+                platform,
+                app_version: input.appVersion,
+              },
+              range,
+              limit: PAGE,
+              ...page,
+            }),
+      )),
+    );
+    builtinDistribution.push(
+      ...(await drain((page) =>
+        input.appVersion === undefined
+          ? db.findAggregates("insights_builtin_distribution", {
+              index: "byScope",
+              where: { channel: input.channel, platform },
+              range,
+              limit: PAGE,
+              ...page,
+            })
+          : db.findAggregates("insights_builtin_distribution", {
               index: "byVersion",
               where: {
                 channel: input.channel,
@@ -671,18 +698,42 @@ export const getAppUsage = async (
     string,
     InsightsGetAppUsageResult["bundleDistribution"][number]
   >();
-  for (const row of distribution) {
-    const count = row.latest_installations;
-    versions.set(row.app_version, (versions.get(row.app_version) ?? 0) + count);
-    platforms.set(row.platform, (platforms.get(row.platform) ?? 0) + count);
-    const releaseId = row.release_id === "" ? null : row.release_id;
-    const key = JSON.stringify([row.app_version, row.platform, releaseId]);
+  const countBundle = (
+    row: { readonly app_version: string; readonly platform: string },
+    releaseId: string | null,
+    builtinBundleId: string | null,
+    count: number,
+  ) => {
+    const key = JSON.stringify([
+      row.app_version,
+      row.platform,
+      releaseId,
+      builtinBundleId,
+    ]);
     bundles.set(key, {
       appVersion: row.app_version,
       platform: row.platform as "ios" | "android",
       releaseId,
+      builtinBundleId,
       installations: (bundles.get(key)?.installations ?? 0) + count,
     });
+  };
+  for (const row of distribution) {
+    const count = row.latest_installations;
+    versions.set(row.app_version, (versions.get(row.app_version) ?? 0) + count);
+    platforms.set(row.platform, (platforms.get(row.platform) ?? 0) + count);
+    countBundle(row, row.release_id || null, null, count);
+  }
+  // They move from the row of their release, or of none, to their own.
+  for (const row of builtinDistribution) {
+    const releaseId = row.release_id || null;
+    countBundle(row, releaseId, null, -row.latest_installations);
+    countBundle(
+      row,
+      releaseId,
+      row.builtin_bundle_id,
+      row.latest_installations,
+    );
   }
   const sortedVersions = byInstallations(versions);
   return {

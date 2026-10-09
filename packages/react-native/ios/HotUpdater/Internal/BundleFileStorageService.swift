@@ -293,6 +293,7 @@ public protocol BundleStorageService {
     func commitReleaseSelection(_ selection: PersistedSelection) -> Bool
 
     // Rollback support
+    func markLaunchStarted(bundleId: String?)
     func markLaunchCompleted(bundleId: String?)
     func notifyAppReady() -> [String: Any]
     func getCrashHistory() -> CrashedHistory
@@ -373,6 +374,13 @@ class BundleFileStorageService: BundleStorageService {
 
     private var hasPreparedLaunch = false
     private var currentLaunchReport: LaunchReport?
+    // The staged bundle this process launched before its first content. Only that
+    // launch is pending; a bundle staged later waits for the next launch.
+    private var pendingLaunchBundleId: String?
+    // Crash history is written at first content on the main thread while JavaScript can read it.
+    private let crashedHistoryLock = NSLock()
+    // A bundle waiting for its retry that this process keeps refusing, see InterruptedLaunch.
+    private var retryHeldBundleId: String?
     private let activeBundleMetadataLock = NSLock()
     private var activeBundleMetadataSnapshot: ActiveBundleMetadataSnapshot?
     private let builtInBundleIdProvider: () -> String
@@ -1308,8 +1316,10 @@ class BundleFileStorageService: BundleStorageService {
         )
     }
 
+    /// Rolls back the pending staging bundle. `unfinishedLaunch` means its launch
+    /// ended before first content without a crash marker.
     @discardableResult
-    private func rollbackPendingBundle(_ stagingId: String) -> Bool {
+    private func rollbackPendingBundle(_ stagingId: String, unfinishedLaunch: Bool = false) -> Bool {
         guard var metadata = loadMetadataOrNull(), metadata.stagingBundleId == stagingId else {
             return false
         }
@@ -1318,9 +1328,7 @@ class BundleFileStorageService: BundleStorageService {
         let pendingSelectionTransition = metadata.pendingSelectionTransition
         let stableSelection = metadata.stableSelection
 
-        var crashedHistory = loadCrashedHistory()
-        crashedHistory.addEntry(stagingId)
-        let _ = saveCrashedHistory(crashedHistory)
+        recordFailedLaunch(stagingId, unfinishedLaunch: unfinishedLaunch)
 
         let fallbackBundleId = metadata.stableBundleId.flatMap { candidate in
             if case .success(let storeDir) = bundleStoreDir() {
@@ -1988,14 +1996,12 @@ class BundleFileStorageService: BundleStorageService {
            metadata.verificationPending,
            metadata.launchInProgress,
            let stagingBundleId = metadata.stagingBundleId {
-            rollbackPendingBundle(stagingBundleId)
+            rollbackPendingBundle(stagingBundleId, unfinishedLaunch: true)
         }
         hasPreparedLaunch = true
+        // A launch is recorded only once it can show UI (markLaunchStarted).
         let selection = selectLaunch(bundle: bundle)
-        if selection.shouldRollbackOnCrash, var metadata = loadMetadataOrNull() {
-            metadata.launchInProgress = true
-            _ = saveMetadata(metadata)
-        }
+        pendingLaunchBundleId = selection.shouldRollbackOnCrash ? selection.launchedBundleId : nil
         return selection
     }
     
@@ -2011,8 +2017,7 @@ class BundleFileStorageService: BundleStorageService {
      */
     func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL? = nil, assets: [String: ChangedAssetDescriptor], progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<UpdateDelivery, Error>) -> Void) {
         // Check if bundle is in crashed history
-        let crashedHistory = loadCrashedHistory()
-        if crashedHistory.contains(bundleId) {
+        if getCrashHistory().contains(bundleId) {
             NSLog("[BundleStorage] Bundle '\(bundleId)' is in crashed history, rejecting update")
             completion(.failure(BundleStorageError.bundleInCrashedHistory(bundleId)))
             return
@@ -2786,7 +2791,24 @@ class BundleFileStorageService: BundleStorageService {
         }
     }
 
+    func markLaunchStarted(bundleId: String?) {
+        // Unlike prepareLaunch, this can run while JavaScript stages a newer bundle.
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
+        guard let bundleId,
+              var metadata = loadMetadataOrNull(),
+              metadata.verificationPending,
+              !metadata.launchInProgress,
+              metadata.stagingBundleId == bundleId else {
+            return
+        }
+        metadata.launchInProgress = true
+        _ = saveMetadata(metadata)
+    }
+
     func markLaunchCompleted(bundleId: String?) {
+        // Before the guard: content from the built-in bundle (nil) also counts.
+        readyInterruptedLaunchRetry(bundleId)
         guard let bundleId,
               var metadata = loadMetadataOrNull(),
               metadata.verificationPending,
@@ -2818,9 +2840,10 @@ class BundleFileStorageService: BundleStorageService {
 
     func notifyAppReady() -> [String: Any] {
         guard let report = loadLaunchReport() else {
-            if let metadata = loadMetadataOrNull(),
+            if let launchedBundleId = pendingLaunchBundleId,
+               let metadata = loadMetadataOrNull(),
                metadata.verificationPending,
-               metadata.stagingBundleId != nil {
+               metadata.stagingBundleId == launchedBundleId {
                 return ["status": "PENDING"]
             }
             return ["status": LaunchReportStatus.unchanged.rawValue]
@@ -2846,11 +2869,20 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     /**
-     * Returns the crashed bundle history.
+     * Returns the bundles this device refuses to install: crash history, plus a
+     * bundle waiting for its retry until a process that may retry it.
      * @return The crashed history object
      */
     func getCrashHistory() -> CrashedHistory {
-        return loadCrashedHistory()
+        crashedHistoryLock.lock()
+        defer { crashedHistoryLock.unlock() }
+        var history = loadCrashedHistory()
+        if let interrupted = history.interruptedLaunch,
+           !interrupted.retryReady || interrupted.bundleId == retryHeldBundleId,
+           !history.contains(interrupted.bundleId) {
+            history.bundles.append(CrashedBundleEntry(bundleId: interrupted.bundleId))
+        }
+        return history
     }
 
     /**
@@ -2858,9 +2890,55 @@ class BundleFileStorageService: BundleStorageService {
      * @return true if clearing was successful
      */
     func clearCrashHistory() -> Bool {
+        crashedHistoryLock.lock()
+        defer { crashedHistoryLock.unlock() }
         var history = loadCrashedHistory()
         history.clear()
+        retryHeldBundleId = nil
         return saveCrashedHistory(history)
+    }
+
+    /// A crash, or a second unfinished launch of the same bundle, adds the bundle
+    /// to crash history. A first unfinished launch cannot tell a hang from a user
+    /// leaving early, so it leaves the bundle one retry instead.
+    private func recordFailedLaunch(_ bundleId: String, unfinishedLaunch: Bool) {
+        crashedHistoryLock.lock()
+        defer { crashedHistoryLock.unlock() }
+        var history = loadCrashedHistory()
+        let interrupted = history.interruptedLaunch
+        if unfinishedLaunch, interrupted?.bundleId != bundleId {
+            NSLog("[BundleStorage] Launch of \(bundleId) ended before first content; it gets one retry")
+            history.interruptedLaunch = InterruptedLaunch(bundleId: bundleId)
+            retryHeldBundleId = bundleId
+        } else {
+            history.addEntry(bundleId)
+            if interrupted?.bundleId == bundleId {
+                history.interruptedLaunch = nil
+            }
+        }
+        _ = saveCrashedHistory(history)
+    }
+
+    /// First content appeared, so the app works again. A bundle waiting for its
+    /// retry may be installed from the next process on. This process keeps
+    /// refusing it, so the session that recovered never reloads into it. Content
+    /// from that bundle verifies it.
+    private func readyInterruptedLaunchRetry(_ currentBundleId: String?) {
+        crashedHistoryLock.lock()
+        defer { crashedHistoryLock.unlock() }
+        var history = loadCrashedHistory()
+        guard let interrupted = history.interruptedLaunch else {
+            return
+        }
+        if interrupted.bundleId == currentBundleId {
+            history.interruptedLaunch = nil
+        } else if interrupted.retryReady {
+            return
+        } else {
+            history.interruptedLaunch?.retryReady = true
+            retryHeldBundleId = interrupted.bundleId
+        }
+        _ = saveCrashedHistory(history)
     }
 
     func getInstallId() -> String {

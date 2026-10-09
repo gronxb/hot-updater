@@ -6,13 +6,13 @@ icon: Fingerprint
 
 ## Usage
 
-Use `HotUpdater.getInstallId()` to connect a support report to an installation
+Use `hotUpdater.getInstallId()` to connect a support report to an installation
 in [Insights](/docs/guides/insights).
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { hotUpdater } from "./hotUpdater";
 
-const installId = HotUpdater.getInstallId();
+const installId = hotUpdater.getInstallId();
 console.log("Hot Updater installation:", installId);
 ```
 

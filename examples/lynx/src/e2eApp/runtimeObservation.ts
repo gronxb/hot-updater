@@ -1,12 +1,12 @@
 import type {
   CheckForUpdateOptions,
   CheckForUpdateResult,
-  HotUpdater,
+  HotUpdaterInstance,
   NotifyAppReadyResult,
 } from "@hot-updater/lynx";
 
 type RuntimeClient = Pick<
-  typeof HotUpdater,
+  HotUpdaterInstance,
   | "getLaunchInfo"
   | "getActiveUpdateState"
   | "getChannel"
@@ -44,7 +44,7 @@ export async function readRuntimeSnapshot(client: RuntimeClient) {
 export type RuntimeSnapshot = Awaited<ReturnType<typeof readRuntimeSnapshot>>;
 
 export async function confirmRuntimeReady(
-  client: Pick<typeof HotUpdater, "notifyAppReady">,
+  client: Pick<HotUpdaterInstance, "notifyAppReady">,
   publish: (status: string, report: NotifyAppReadyResult) => Promise<void>,
 ): Promise<NotifyAppReadyResult> {
   const result = await client.notifyAppReady();
@@ -69,7 +69,7 @@ export async function bootstrapRuntimeReady(
 }
 
 export async function installCheckedUpdate(
-  client: Pick<typeof HotUpdater, "checkForUpdate">,
+  client: Pick<HotUpdaterInstance, "checkForUpdate">,
   options: CheckForUpdateOptions,
   actionLabel: string,
 ) {
@@ -94,7 +94,7 @@ function formatInstalledUpdate(update: CheckForUpdateResult, label: string) {
 
 export async function applyForcedUpdate(
   client: Pick<
-    typeof HotUpdater,
+    HotUpdaterInstance,
     "checkForUpdate" | "getLaunchInfo" | "reload"
   >,
   shouldStop: () => boolean,

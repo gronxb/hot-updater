@@ -1,5 +1,100 @@
 # @hot-updater/react-native
 
+## 1.0.0-rc.42
+
+### Patch Changes
+
+- Updated dependencies [72fd2de]
+  - @hot-updater/plugin-insights@1.0.0-rc.42
+  - @hot-updater/plugin-remote-config@1.0.0-rc.42
+  - @hot-updater/protocol@1.0.0-rc.42
+
+## 1.0.0-rc.41
+
+### Minor Changes
+
+- 545f059: `HotUpdater.init` returns the app's HotUpdater instance: every HotUpdater method, including `wrap`, and each client plugin's API under the plugin's id, typed from `plugins`.
+  - **Client plugin contract:** `setup(context)` returns `{ hooks, api }`, either of them, or nothing. `api` is what the app calls, as `hotUpdater.<id>`; a plugin id cannot be the name of an instance member, such as `reload` or `wrap`. A `setup` that returns hooks at the top level, as before, is reported through `onError` and gets no hooks. `ClientPluginApi`, `ClientPluginApis`, and `HotUpdaterClientSetup` type it; `HotUpdaterInstance` and `HotUpdaterCore` type the instance.
+  - **Insights:** `setUser` moves from the plugin object to `hotUpdater.insights.setUser`. `insights()` keeps its context, device state, and delivery queue per `setup`, so one plugin object set up by two instances reports through each instance's own server. The launch report waits for native launch verification, so a user set right after `init` is on the first report.
+  - **Remote Config:** the reads, `fetch`, `activate`, and `subscribe` are on `hotUpdater.remoteConfig`; the plugin object has only `id` and `setup`.
+  - **Tests:** `setupClientPlugin` returns the plugin's `api`, and `setupClientPlugins` the plugins' `apis` by id.
+
+- 545f059: `HotUpdater` keeps only `init`; every other method is on the instance it returns. Call `HotUpdater.init` once at the top level of a module, export the instance, and call `hotUpdater.checkForUpdate()`, `hotUpdater.reload()`, `hotUpdater.getBundleId()`, and the rest on it. Each `init` call returns an independent instance with its own configuration, plugins, and launch report, and nothing is configured globally; create one per app.
+
+  `HotUpdater.wrap` becomes `hotUpdater.wrap`, which takes only the update flow: `updateStrategy`, `fallbackComponent`, `onProgress`, `reloadOnForceUpdate`, and `onUpdateProcessCompleted`. Move `baseURL`, `requestHeaders`, `requestTimeout`, `plugins`, `onError`, and `onNotifyAppReady` to `HotUpdater.init`. `HotUpdaterOptions` becomes `HotUpdaterWrapOptions`. `wrap` reads the launch through `init` instead of reading it again, and reloads for a forced update only after that read.
+
+- 545f059: Add Remote Config: change values the app reads without a new build or bundle.
+  - **Server:** `remoteConfig()` from `@hot-updater/server/plugins/remote-config` stores templates of parameters (String, Number, Boolean, or JSON, each with a default value or the app's in-app default) and conditions on platform, channel, app version range, cohort, a percentage of installs over the numeric cohorts, fingerprint, and a date and time range on the server's clock. Conditions are ordered: the first one that matches and that a parameter has a value for decides it. Every publish is a version; `hotUpdater.api.remoteConfig` publishes against the version an edit started from (`conflict` otherwise), rolls back by publishing a copy, lists versions, and resolves what a device gets. Devices fetch `GET /remote-config` on the client handler, which answers only their values, cacheable for five seconds with an `ETag`, from one keyed read of the active template that each server reuses for five seconds. Admin routes manage templates for the Console. Templates are at most 60,000 characters of JSON. `hot-updater db migrate` creates its `remote_config_active` and `remote_config_versions` tables.
+  - **App:** `remoteConfig({ defaults, minimumFetchIntervalMs })` from `@hot-updater/react-native` goes in `HotUpdater.init`'s `plugins`, fetches on its `baseURL`, headers, and timeout, and is `hotUpdater.remoteConfig` on the instance `init` returns, typed by its `defaults`. `getValue`, `getString`, `getNumber`, `getBoolean`, and `getAll` read synchronously: the active remote value, else the in-app default, else `null`, with `remote` and `default` sources. `false`, `0`, and `""` are values; a key `defaults` declares is typed non-null and any other key `T | null`; `fetch`, `activate`, and `fetchAndActivate` move new values in, with a 12-hour minimum fetch interval, which a failed fetch does not start, and which `fetch({ force: true })` and a change of channel, app version, cohort, or fingerprint skip; `lastFetchStatus` and `fetchedAtMs` report the last fetch. Activated values persist on the device and load before `init` returns, and `subscribe` reports activations.
+  - **Console:** a Remote Config page edits a draft's parameters and conditions, previews what a device gets, publishes it with a summary of changes, and lists versions to view and roll back, over the database or a self-hosted server's admin API.
+  - **Managed servers:** the AWS, Cloudflare, Firebase, and Supabase servers run `remoteConfig()` beside `insights()` and `apiKeys()`, and their initialization schema creates its tables.
+  - **`standaloneRepository`:** `fetchAdmin(path, init?)` sends any method, body, and headers to the server's admin handler, after the repository's headers.
+
+### Patch Changes
+
+- Updated dependencies [545f059]
+- Updated dependencies [545f059]
+- Updated dependencies [545f059]
+  - @hot-updater/protocol@1.0.0-rc.41
+  - @hot-updater/plugin-insights@1.0.0-rc.41
+  - @hot-updater/plugin-remote-config@1.0.0-rc.41
+
+## 1.0.0-rc.40
+
+### Patch Changes
+
+- @hot-updater/protocol@1.0.0-rc.40
+  - @hot-updater/plugin-insights@1.0.0-rc.40
+
+## 1.0.0-rc.39
+
+### Patch Changes
+
+- Updated dependencies [2071bc6]
+  - @hot-updater/plugin-insights@1.0.0-rc.39
+  - @hot-updater/protocol@1.0.0-rc.39
+
+## 1.0.0-rc.38
+
+### Patch Changes
+
+- Updated dependencies [bbbdd8c]
+  - @hot-updater/plugin-insights@1.0.0-rc.38
+  - @hot-updater/protocol@1.0.0-rc.38
+
+## 1.0.0-rc.37
+
+### Patch Changes
+
+- Updated dependencies [5a5dd3e]
+  - @hot-updater/plugin-insights@1.0.0-rc.37
+  - @hot-updater/protocol@1.0.0-rc.37
+
+## 1.0.0-rc.36
+
+### Patch Changes
+
+- c527bb2: Report installations on the built-in bundle. A client plugin's context has `minBundleId`, the ID of the bundle the native build ships, and the Insights client sends it with each report. Insights counts an installation that runs its build's built-in bundle again in the new `insights_builtin_distribution` gauge, by the release it runs and the bundle's ID, and `getAppUsage` returns `builtinBundleId` with each `bundleDistribution` row. The Console's **Distribution** shows **Built-in app** with the bundle ID under its app version, where it showed **Unknown bundle**, and event and installation details mark the built-in bundle. Reports from SDKs that do not send `minBundleId` count as before.
+
+  The Insights schema version stays 1.0.0 while the 1.0.0 baseline gains the `insights_builtin_distribution` table; existing tables don't change. On SQL databases, create it as the baseline does (Supabase prefixes it with `hot_updater_v1_` and enables row level security); Drizzle and Prisma projects regenerate their schema with `hot-updater db generate` and migrate it. On AWS the DynamoDB policy allows the new partition: rerun `hot-updater init`. Firestore and MongoDB need no change. Installations count in it from their first report after the upgrade.
+
+- c527bb2: Read the iOS built-in bundle ID from the `HOT_UPDATER_MIN_BUNDLE_ID` build setting. The CLI passes that setting to `xcodebuild` and adds the `$(HOT_UPDATER_MIN_BUNDLE_ID)` slot to `Info.plist`, as Android takes `-PMIN_BUNDLE_ID`, but the native module read `HOT_UPDATER_BUILD_TIMESTAMP`, so iOS always fell back to the time `HotUpdater.mm` was compiled. A value that is not a UUID is ignored with a warning, and an unset build setting still falls back to the compile time. Requires rebuilding the native app.
+- Updated dependencies [c527bb2]
+  - @hot-updater/protocol@1.0.0-rc.36
+  - @hot-updater/plugin-insights@1.0.0-rc.36
+
+## 1.0.0-rc.35
+
+### Patch Changes
+
+- 52ac89a: Build the Android library for the New Architecture unless the app sets `newArchEnabled=false`, and read that setting from the library project. React Native 0.82 and later run only the New Architecture and set it to `true` there, so an app that still has `newArchEnabled=false` in `gradle.properties`, or has no such line, no longer gets the old architecture build, whose crash recovery asked the app for a `ReactNativeHost` that throws when the app has none. `ReactNativeHost` code now builds only for the React Native versions that use it: the old architecture, and the bridge that React Native 0.81 and older can run the New Architecture on. Builds for React Native 0.82 and later no longer compile against `ReactNativeHost`, which React Native deprecates for removal. An app on React Native 0.81 or older that runs the old architecture keeps `newArchEnabled=false` in `gradle.properties`, as its template has. Requires rebuilding the native app.
+- 52ac89a: Record a launch on Android when React Native loads inside an activity that was already started, as in a brownfield app that adds React Native to a screen on display. Android does not replay that activity start, so such a launch was never recorded, and a staged bundle that hung there was not rolled back on the next start. Requires rebuilding the native app.
+- ff87aed: Keep a pending bundle when a launch never shows UI. An Android headless JS task, such as a background push message, and an iOS background launch no longer record an unfinished launch, so the next launch no longer rolls a healthy bundle back, adds it to crash history, and reports `RECOVERED`. A launch is recorded when an activity starts on Android, and when the app is in the foreground on iOS. Requires rebuilding the native app.
+- 52ac89a: Give a bundle one retry after a launch that ends before the first render without a crash, such as a user leaving during the splash screen. The next start still rolls back and reports `RECOVERED`, but the bundle no longer goes into crash history at once: the session that recovered does not install it again, and a later session retries it. A second unfinished launch, or a crash, adds it to crash history as before. Requires rebuilding the native app.
+- 52ac89a: Keep a session's launch result final when an update downloads during that session. A root wrapped with `HotUpdater.wrap` that mounts again in the same process, for example after Android recreates its activity, no longer stays on its `fallbackComponent` waiting for the downloaded bundle, and `onNotifyAppReady` is called again with `UNCHANGED`. The next launch still applies the downloaded bundle. Requires rebuilding the native app.
+- @hot-updater/protocol@1.0.0-rc.35
+  - @hot-updater/plugin-insights@1.0.0-rc.35
+
 ## 1.0.0-rc.34
 
 ### Patch Changes

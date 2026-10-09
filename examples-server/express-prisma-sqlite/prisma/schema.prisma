@@ -242,6 +242,21 @@ model insights_distribution {
   @@index([channel, platform, app_version, bucket_start_ms, release_id, hu_shard], map: "insights_distribution_byVersion")
   @@index([bucket_start_ms, channel, platform, app_version, release_id, hu_shard], map: "insights_distribution__retention")
 }
+model insights_builtin_distribution {
+  channel String
+  platform String
+  app_version String
+  release_id String
+  builtin_bundle_id String
+  bucket_start_ms BigInt
+  hu_shard BigInt @map("_shard")
+  latest_installations BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([channel, platform, app_version, release_id, builtin_bundle_id, bucket_start_ms, hu_shard])
+  @@index([channel, platform, bucket_start_ms, app_version, release_id, builtin_bundle_id, hu_shard], map: "insights_builtin_distribution_byScope")
+  @@index([channel, platform, app_version, bucket_start_ms, release_id, builtin_bundle_id, hu_shard], map: "insights_builtin_distribution_byVersion")
+  @@index([bucket_start_ms, channel, platform, app_version, release_id, builtin_bundle_id, hu_shard], map: "insights_builtin_distribution__retention")
+}
 model insights_latest_by_bundle {
   platform String
   channel String
@@ -280,6 +295,24 @@ model insights_failures {
   hu_v BigInt @default(0) @map("_v")
   @@id([platform, channel, bucket_start_ms, release_id, stage, reason, detail, hu_shard])
   @@index([bucket_start_ms, platform, channel, release_id, stage, reason, detail, hu_shard], map: "insights_failures__retention")
+}
+model remote_config_active {
+  id String
+  version BigInt
+  template String
+  updated_at_ms BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([id])
+}
+model remote_config_versions {
+  version BigInt
+  template String
+  description String?
+  update_type String
+  rollback_source BigInt?
+  created_at_ms BigInt
+  hu_v BigInt @default(0) @map("_v")
+  @@id([version])
 }
 model private_hot_updater_settings {
   key String

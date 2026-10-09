@@ -8,6 +8,7 @@ import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
 import { insights } from "@hot-updater/server/plugins/insights";
+import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
 import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 
@@ -37,7 +38,7 @@ export const hotUpdater = createHotUpdater({
     db: kysely,
     provider: "postgresql",
   }),
-  plugins: [insights()],
+  plugins: [insights(), remoteConfig()],
   clientAccess: "public",
   storage: [
     process.env.NODE_ENV === "test"

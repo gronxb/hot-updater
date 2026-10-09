@@ -20,8 +20,12 @@ def reactNativeArchitectures() {
   return value ? value.split(",") : ["armeabi-v7a", "x86", "x86_64", "arm64-v8a"]
 }
 
+// The New Architecture is the default. React Native 0.82 and later run nothing
+// else and set newArchEnabled to true on every library project, whatever the
+// app's gradle.properties says, so only an older React Native app that sets
+// newArchEnabled=false builds the old architecture.
 def isNewArchitectureEnabled() {
-  return rootProject.hasProperty("newArchEnabled") && rootProject.getProperty("newArchEnabled") == "true"
+  return !project.hasProperty("newArchEnabled") || project.property("newArchEnabled").toString().toBoolean()
 }
 
 apply plugin: "com.android.library"
@@ -115,7 +119,11 @@ android {
           "src/newarch",
           // Codegen specs
           "generated/java",
-          "generated/jni"
+          "generated/jni",
+          // React Native 0.81 and older can run the New Architecture on the
+          // bridge. Later versions have none, so their builds never compile
+          // ReactNativeHost.
+          project.ext.reactNativeMinorVersion >= 82 ? "src/bridgeless" : "src/bridge"
         ]
       }
     }
@@ -146,6 +154,9 @@ dependencies {
   }
   implementation "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
   implementation "androidx.lifecycle:lifecycle-runtime-ktx:2.6.1"
+  // ProcessLifecycleOwner, for an activity that started before Hot Updater was created.
+  // React Native's AppCompat already brings it at runtime.
+  implementation "androidx.lifecycle:lifecycle-process:2.6.1"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3"
   implementation "org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3"
   implementation "org.apache.commons:commons-compress:1.27.1"

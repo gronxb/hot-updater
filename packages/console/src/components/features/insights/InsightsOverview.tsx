@@ -77,24 +77,47 @@ const cadenceOf = (intervalMs: number) =>
       : `Every ${intervalMs / HOUR} hours`;
 
 /** A bundle's crash numbers over the period, once both counts are read. */
-const crashesOf = ({ release, applied, recovered }: ComparedBundle) =>
-  applied === undefined || recovered === undefined
+const crashesOf = ({ release, launched, recovered }: ComparedBundle) =>
+  launched === undefined || recovered === undefined
     ? undefined
     : {
         crashes: recovered.total,
-        ...crashRateOf(applied.total, recovered.total),
+        ...crashRateOf(launched.total, recovered.total),
         recommended: recommendsRollback(
           release,
-          applied.total,
+          launched.total,
           recovered.total,
         ),
       };
 
+/** A line sample for the legend: solid or dashed, in the text color. */
+function LineSample({ dashed }: { readonly dashed?: boolean }) {
+  return (
+    <svg
+      aria-hidden="true"
+      className="h-3 w-6 shrink-0"
+      viewBox="0 0 24 12"
+      preserveAspectRatio="none"
+    >
+      <line
+        x1="0"
+        y1="6"
+        x2="24"
+        y2="6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeDasharray={dashed ? "6 4" : undefined}
+      />
+    </svg>
+  );
+}
+
 /**
  * Release health: how the newest bundles fare after their deployment, on
- * one timeline. Adoption shows installations applying each bundle; Crashes
- * shows them crashing back from it, and offers a rollback when a bundle
- * crashes for too many of them.
+ * one timeline, per interval. Adoption shows installations downloading each
+ * bundle (dashed) and launching it (solid), so the gap is the restarts still
+ * to come; Crashes shows them crashing back from it, and offers a rollback
+ * when a bundle crashes for too many of them.
  */
 export function InsightsOverview({
   input,
@@ -136,10 +159,14 @@ export function InsightsOverview({
       Show the newest {DEFAULT_ADOPTION_RELEASES}
     </Button>
   );
+  // Adoption draws each bundle's launches solid and its downloads dashed;
+  // Crashes draws its crashes.
   const seriesOf = (bundle: ComparedBundle) =>
-    chart === "adoption" ? bundle.applied : bundle.recovered;
+    chart === "adoption" ? bundle.launched : bundle.recovered;
   const loaded = (releases ?? []).filter(
-    (bundle) => seriesOf(bundle) !== undefined,
+    (bundle) =>
+      seriesOf(bundle) !== undefined &&
+      (chart !== "adoption" || bundle.downloaded !== undefined),
   );
   const failed =
     (releases ?? []).find(({ error }) => error !== null)?.error ?? null;
@@ -157,25 +184,38 @@ export function InsightsOverview({
     chart === "adoption" ? (
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-1 text-sm font-medium">
-          Installations applying each bundle
+          Installations downloading and launching each bundle
           <InsightsInfo label="About adoption">
-            Installations that started running each bundle, per interval. An
-            installation that applies it again counts again.
+            Dashed: installations that downloaded the bundle. Solid:
+            installations that launched it. After a forced update the two lines
+            meet.
           </InsightsInfo>
         </div>
-        <p className="text-xs text-muted-foreground">
-          {cadenceOf(period.intervalMs)} · last {lengthOf(period.durationMs)} ·
-          UTC
-        </p>
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
+          <p>
+            {cadenceOf(period.intervalMs)} · last {lengthOf(period.durationMs)}{" "}
+            · UTC
+          </p>
+          <ul aria-label="Line styles" className="flex items-center gap-3">
+            <li className="flex items-center gap-1.5">
+              <LineSample dashed />
+              Downloaded
+            </li>
+            <li className="flex items-center gap-1.5">
+              <LineSample />
+              Launched
+            </li>
+          </ul>
+        </div>
       </div>
     ) : (
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-1 text-sm font-medium">
           Crashes after each deployment
           <InsightsInfo label="About crashes">
-            Launches that crashed on a bundle and rolled back to the one before.
-            Crash rate = crashes ÷ (applies + crashes). A rollback is suggested
-            at {percent(CRASH_RATE_THRESHOLD)} once {CRASH_MIN_ATTEMPTS}{" "}
+            Installations that crashed on a bundle and rolled back. Crash rate =
+            crashed ÷ (launched + crashed). A rollback is suggested at{" "}
+            {percent(CRASH_RATE_THRESHOLD)} once {CRASH_MIN_ATTEMPTS}{" "}
             installations tried it.
           </InsightsInfo>
         </div>
@@ -222,18 +262,24 @@ export function InsightsOverview({
         <Skeleton aria-label="Loading release health" className="h-64" />
       );
     }
-    if (loaded.every((bundle) => seriesOf(bundle)!.total === 0)) {
+    if (
+      loaded.every(
+        (bundle) =>
+          seriesOf(bundle)!.total === 0 &&
+          (chart !== "adoption" || bundle.downloaded!.total === 0),
+      )
+    ) {
       return chart === "adoption" ? (
         <Empty className="min-h-48">
           <EmptyHeader>
             <EmptyTitle>
-              No installations applied these bundles in the last{" "}
+              No installation downloaded or launched these bundles in the last{" "}
               {lengthOf(period.durationMs)}
             </EmptyTitle>
             <EmptyDescription>
               {wider
-                ? "Choose a longer period, or refresh after apps apply them."
-                : "Refresh after apps apply them."}
+                ? "Choose a longer period, or refresh after apps download them."
+                : "Refresh after apps download them."}
             </EmptyDescription>
           </EmptyHeader>
           {wider ? (
@@ -267,13 +313,21 @@ export function InsightsOverview({
         lines={releases.map((bundle) => ({
           release: bundle.release,
           points: seriesOf(bundle)?.points,
+          ...(chart === "adoption"
+            ? { dashed: bundle.downloaded?.points }
+            : {}),
           measuredAtMs: seriesOf(bundle)?.measuredAtMs,
         }))}
         colorOf={colorOf}
         active={active}
+        names={
+          chart === "adoption"
+            ? { solid: "Launched", dashed: "Downloaded" }
+            : { solid: "Crashed" }
+        }
         label={
           chart === "adoption"
-            ? "Installations applying each bundle per interval"
+            ? "Installations downloading (dashed) and launching (solid) each bundle per interval"
             : "Crashes of each bundle per interval"
         }
       />
@@ -386,10 +440,13 @@ export function InsightsOverview({
                   <TableRow>
                     <TableHead>Bundle</TableHead>
                     {chart === "adoption" ? (
-                      <TableHead className="text-right">Applied</TableHead>
+                      <>
+                        <TableHead className="text-right">Downloaded</TableHead>
+                        <TableHead className="text-right">Launched</TableHead>
+                      </>
                     ) : (
                       <>
-                        <TableHead className="text-right">Crashes</TableHead>
+                        <TableHead className="text-right">Crashed</TableHead>
                         <TableHead className="text-right">Crash rate</TableHead>
                       </>
                     )}
@@ -453,9 +510,14 @@ export function InsightsOverview({
                           </div>
                         </TableCell>
                         {chart === "adoption" ? (
-                          <TableCell className="text-right font-medium whitespace-nowrap tabular-nums">
-                            {bundle.applied?.total.toLocaleString() ?? "—"}
-                          </TableCell>
+                          <>
+                            <TableCell className="text-right whitespace-nowrap tabular-nums">
+                              {bundle.downloaded?.total.toLocaleString() ?? "—"}
+                            </TableCell>
+                            <TableCell className="text-right font-medium whitespace-nowrap tabular-nums">
+                              {bundle.launched?.total.toLocaleString() ?? "—"}
+                            </TableCell>
+                          </>
                         ) : (
                           <>
                             <TableCell className="text-right whitespace-nowrap tabular-nums">

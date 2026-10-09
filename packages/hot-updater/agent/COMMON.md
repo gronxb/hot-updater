@@ -172,7 +172,7 @@ command or generated files alone do not prove that a remote step is complete.
 ## App integration
 
 When the requested setup includes app integration, connect the verified base URL
-to the existing HotUpdater.init or HotUpdater.wrap call.
+to the existing HotUpdater.init call.
 <!-- if credential -->
 Send the saved client {{CREDENTIAL_LABEL}} in its {{CREDENTIAL_HEADER}} request
 header.
@@ -280,7 +280,7 @@ separate validation result.
     ```ts
     {{APP_IMPORTS}}
 
-    HotUpdater.init({
+    export const hotUpdater = HotUpdater.init({
       baseURL: "<verified-base-url>",
       requestHeaders: {
         "{{CREDENTIAL_HEADER}}": "<registered-client-credential>",
@@ -297,23 +297,25 @@ separate validation result.
     ```ts
     {{APP_IMPORTS}}
 
-    HotUpdater.init({
+    export const hotUpdater = HotUpdater.init({
       baseURL: "<verified-base-url>",
       plugins: [{{CLIENT_PLUGINS}}],
     });
     ```
 <!-- end -->
 
-    Explain that this belongs at module scope and that init does not check for
-    updates.
+    Explain that this belongs in its own module, such as `src/hotUpdater.ts`,
+    that init runs once at its top level and returns the instance the app
+    imports, and that it does not check for updates by itself.
 <!-- if clientPlugins -->
     Without its client plugins, the app sends the server's plugins nothing.
 <!-- end -->
-    Show the next check call with the app's actual strategy, for example
-    `HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })` or
-    `HotUpdater.checkForUpdate({ updateStrategy: "fingerprint" })`.
-    Preserve existing initialization options and plugins; do not add init
-    alongside wrap.
+    Show the check with the app's actual strategy, for example
+    `export default hotUpdater.wrap({ updateStrategy: "appVersion" })(App);`
+    around the app's root, or
+    `hotUpdater.checkForUpdate({ updateStrategy: "fingerprint" })` in the
+    app's own update flow. Preserve existing initialization options and
+    plugins, and keep a single init call.
     Include this handoff for infrastructure-only setup too, with app integration
     and native OTA checks identified as remaining work. If registration or
     verification is blocked, report that blocker instead of a completed setup.

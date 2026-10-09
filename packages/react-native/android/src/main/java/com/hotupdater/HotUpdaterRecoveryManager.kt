@@ -234,141 +234,11 @@ internal class HotUpdaterRecoveryManager(
         }
     }
 
+    // Each architecture's source set reaches its own React instance, so the old
+    // architecture's ReactNativeHost is compiled only into old architecture builds.
     private fun installJavaScriptExceptionHooks() {
         val application = appContext as? ReactApplication ?: return
-
-        if (BuildConfig.IS_NEW_ARCHITECTURE_ENABLED) {
-            installReactHostExceptionHook(application)
-        } else {
-            installLegacyExceptionHook(application)
-        }
-    }
-
-    private fun installReactHostExceptionHook(application: ReactApplication) {
-        val reactHost = getReactHost(application) ?: return
-        val reactHostDelegate =
-            findField(reactHost.javaClass, "mReactHostDelegate")?.let { field ->
-                field.isAccessible = true
-                field.get(reactHost)
-            }
-                ?: findField(reactHost.javaClass, "reactHostDelegate")?.let { field ->
-                    field.isAccessible = true
-                    field.get(reactHost)
-                }
-                ?: return
-
-        val delegateIdentity = System.identityHashCode(reactHostDelegate)
-        if (patchedReactHostDelegateIds.add(delegateIdentity)) {
-            val exceptionHandlerField = findField(reactHostDelegate.javaClass, "exceptionHandler")
-            if (exceptionHandlerField == null) {
-                patchedReactHostDelegateIds.remove(delegateIdentity)
-                return
-            }
-
-            exceptionHandlerField.isAccessible = true
-            @Suppress("UNCHECKED_CAST")
-            val previousHandler =
-                exceptionHandlerField.get(reactHostDelegate) as? (Exception) -> Unit
-
-            exceptionHandlerField.set(reactHostDelegate) { exception: Exception ->
-                if (activeManager?.handleJavaScriptException(exception) != true) {
-                    previousHandler?.invoke(exception) ?: throw exception
-                }
-            }
-        }
-
-        val reactContext =
-            findMethod(reactHost.javaClass, "getCurrentReactContext")?.invoke(reactHost) as? ReactContext
-        reactContext?.let { patchReactContextExceptionHandler(it) }
-    }
-
-    private fun installLegacyExceptionHook(application: ReactApplication) {
-        val instanceManager = application.reactNativeHost.reactInstanceManager
-        val managerIdentity = System.identityHashCode(instanceManager)
-        if (patchedInstanceManagerIds.add(managerIdentity)) {
-            val exceptionHandlerField = findField(instanceManager.javaClass, "mJSExceptionHandler")
-            if (exceptionHandlerField == null) {
-                patchedInstanceManagerIds.remove(managerIdentity)
-                return
-            }
-
-            exceptionHandlerField.isAccessible = true
-            val previousHandler = exceptionHandlerField.get(instanceManager) as? JSExceptionHandler
-            exceptionHandlerField.set(instanceManager, RecoveryJSExceptionHandler(previousHandler))
-        }
-
-        instanceManager.currentReactContext?.let { reactContext ->
-            patchReactContextExceptionHandler(reactContext)
-            patchCatalystInstanceExceptionHandler(reactContext)
-        }
-    }
-
-    private fun patchReactContextExceptionHandler(reactContext: ReactContext) {
-        val contextIdentity = System.identityHashCode(reactContext)
-        if (!patchedReactContextIds.add(contextIdentity)) {
-            return
-        }
-
-        val previousHandler = reactContext.jsExceptionHandler
-        if (previousHandler is RecoveryJSExceptionHandler) {
-            return
-        }
-
-        reactContext.setJSExceptionHandler(RecoveryJSExceptionHandler(previousHandler))
-    }
-
-    private fun patchCatalystInstanceExceptionHandler(reactContext: ReactContext) {
-        val catalystInstance =
-            try {
-                reactContext.catalystInstance
-            } catch (_: Exception) {
-                null
-            } ?: return
-
-        val catalystIdentity = System.identityHashCode(catalystInstance)
-        if (!patchedCatalystInstanceIds.add(catalystIdentity)) {
-            return
-        }
-
-        val exceptionHandlerField = findField(catalystInstance.javaClass, "mJSExceptionHandler")
-        if (exceptionHandlerField == null) {
-            patchedCatalystInstanceIds.remove(catalystIdentity)
-            return
-        }
-
-        exceptionHandlerField.isAccessible = true
-        val previousHandler = exceptionHandlerField.get(catalystInstance) as? JSExceptionHandler
-        if (previousHandler is RecoveryJSExceptionHandler) {
-            return
-        }
-        exceptionHandlerField.set(catalystInstance, RecoveryJSExceptionHandler(previousHandler))
-    }
-
-    private fun getReactHost(application: ReactApplication): Any? =
-        try {
-            findMethod(application.javaClass, "getReactHost")?.invoke(application)
-        } catch (_: Exception) {
-            null
-        }
-
-    private fun findMethod(
-        clazz: Class<*>,
-        name: String,
-    ) = runCatching { clazz.getMethod(name) }.getOrNull()
-
-    private fun findField(
-        clazz: Class<*>,
-        name: String,
-    ): Field? {
-        var current: Class<*>? = clazz
-        while (true) {
-            val currentClass = current ?: break
-            runCatching { currentClass.getDeclaredField(name) }
-                .getOrNull()
-                ?.let { return it }
-            current = currentClass.superclass
-        }
-        return null
+        JavaScriptExceptionHooks.install(application)
     }
 
     private fun loadNativeLibrary(): Boolean {
@@ -395,11 +265,11 @@ internal class HotUpdaterRecoveryManager(
         shouldRollback: Boolean,
     )
 
-    private class RecoveryJSExceptionHandler(
+    internal class RecoveryJSExceptionHandler(
         private val previousHandler: JSExceptionHandler?,
     ) : JSExceptionHandler {
         override fun handleException(e: Exception) {
-            if (activeManager?.handleJavaScriptException(e) != true) {
+            if (!handleJavaScriptExceptionForRecovery(e)) {
                 previousHandler?.handleException(e) ?: throw e
             }
         }
@@ -432,10 +302,40 @@ internal class HotUpdaterRecoveryManager(
         @Volatile
         private var activeManager: HotUpdaterRecoveryManager? = null
 
-        private val patchedInstanceManagerIds = mutableSetOf<Int>()
-        private val patchedCatalystInstanceIds = mutableSetOf<Int>()
         private val patchedReactContextIds = mutableSetOf<Int>()
-        private val patchedReactHostDelegateIds = mutableSetOf<Int>()
+
+        /** Hands a JavaScript error to the monitored launch; false when it does not recover it. */
+        internal fun handleJavaScriptExceptionForRecovery(exception: Exception): Boolean =
+            activeManager?.handleJavaScriptException(exception) == true
+
+        internal fun patchReactContextExceptionHandler(reactContext: ReactContext) {
+            val contextIdentity = System.identityHashCode(reactContext)
+            if (!patchedReactContextIds.add(contextIdentity)) {
+                return
+            }
+
+            val previousHandler = reactContext.jsExceptionHandler
+            if (previousHandler is RecoveryJSExceptionHandler) {
+                return
+            }
+
+            reactContext.setJSExceptionHandler(RecoveryJSExceptionHandler(previousHandler))
+        }
+
+        internal fun findField(
+            clazz: Class<*>,
+            name: String,
+        ): Field? {
+            var current: Class<*>? = clazz
+            while (true) {
+                val currentClass = current ?: break
+                runCatching { currentClass.getDeclaredField(name) }
+                    .getOrNull()
+                    ?.let { return it }
+                current = currentClass.superclass
+            }
+            return null
+        }
 
         @JvmStatic
         fun handleRecoveryWatchdog(context: Context) {

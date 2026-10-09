@@ -380,11 +380,18 @@ export const registerInsightsModelTests = (
           [expected],
         );
       }
-      // An UNCHANGED report is a launch, kept as the installation's latest
-      // event but as no event of its own: no list or event count names it.
+      // An installation's first UNCHANGED report is kept as first seen: in
+      // the lists, but under no bundle, since it launched nothing new.
+      const firstSeen = {
+        ...unchanged,
+        metadata: {
+          ...unchanged.metadata,
+          change: { kinds: ["first_seen"], previous: null },
+        },
+      } as BundleEventRow;
       await expect(
         model.findLatestEvents({ installId: unchanged.install_id }),
-      ).resolves.toEqual([unchanged]);
+      ).resolves.toEqual([firstSeen]);
       await expectInsightsIndex(
         () =>
           model.listEvents({
@@ -393,21 +400,23 @@ export const registerInsightsModelTests = (
             beforeReceivedAtMs: 200,
             limit: 10,
           }),
-        // Newest first, ids breaking ties; no UNCHANGED row among them.
-        [excluded[4], recovered, excluded[3], excluded[2], applied],
+        // Newest first, ids breaking ties.
+        [firstSeen, excluded[4], recovered, excluded[3], excluded[2], applied],
       );
-      await expect(
-        model.countEvents({
-          filter: {
-            platform: "ios",
-            channel: "production",
-            type: "UNCHANGED",
-            toBundleId: bundleB,
-          } as unknown as InsightsBundleEventFilter,
-          sinceMs: 100,
-          beforeReceivedAtMs: 200,
-        }),
-      ).rejects.toThrow();
+      await expectInsightsIndex(
+        () =>
+          model.countEvents({
+            filter: {
+              platform: "ios",
+              channel: "production",
+              type: "UNCHANGED",
+              toBundleId: bundleB,
+            },
+            sinceMs: 100,
+            beforeReceivedAtMs: 200,
+          }),
+        0,
+      );
       // Latest events count whole UTC days: every head above lies in day 0.
       await expectInsightsIndex(
         () =>
@@ -608,12 +617,15 @@ export const registerInsightsModelTests = (
         install_id: "summary-install-b",
         received_at_ms: 2_100,
       };
+      // The launch of B crashed, and the installation went back to A.
       const recovered: BundleEventRow = {
         ...appliedA,
         id: createBundleEventRowFixture("9804", 3_000).id,
         type: "RECOVERED",
         from_release_id: releaseB,
+        from_bundle_id: base.to_bundle_id,
         to_release_id: releaseA,
+        to_bundle_id: base.from_bundle_id,
         received_at_ms: 3_000,
       };
       for (const event of [download, appliedA, appliedB, appliedB, recovered]) {
@@ -660,7 +672,7 @@ export const registerInsightsModelTests = (
           hourly({
             ...scope,
             type: "RECOVERED",
-            fromBundleId: base.from_bundle_id,
+            fromBundleId: base.to_bundle_id,
           }),
         points(1, 0, 0),
       );
@@ -678,16 +690,74 @@ export const registerInsightsModelTests = (
             appVersion: "1.0.0",
             platform: "ios",
             releaseId: releaseA,
+            builtinBundleId: null,
             installations: 1,
           },
           {
             appVersion: "1.0.0",
             platform: "ios",
             releaseId: releaseB,
+            builtinBundleId: null,
             installations: 1,
           },
         ]),
       );
+    });
+    it("distributes installations on their native build's built-in bundle by its ID", async () => {
+      const model = state.getDatabase();
+      const channel = "builtin-distribution";
+      const launch = (
+        suffix: string,
+        bundleId: string,
+        minBundleId: string,
+      ): BundleEventRow => {
+        const base = createBundleEventRowFixture(suffix, 1_000);
+        return {
+          ...base,
+          type: "UNCHANGED",
+          channel,
+          from_bundle_id: null,
+          to_bundle_id: bundleId,
+          metadata: {
+            ...base.metadata,
+            update_strategy: null,
+            min_bundle_id: minBundleId,
+          },
+        };
+      };
+      const builtin = createBundleEventRowFixture("9901", 0).id;
+      await record(model, launch("9902", builtin, builtin));
+      await record(model, launch("9903", builtin, builtin));
+      // A bundle without a release that is not the build's own is unknown.
+      await record(
+        model,
+        launch("9904", createBundleEventRowFixture("9905", 0).id, builtin),
+      );
+      const usage = await model.getAppUsage({
+        channel,
+        platform: "ios",
+        timeRange: { start: 0, end: 3_600_000 },
+        intervalMs: 3_600_000,
+      });
+      expect(usage.bundleDistribution).toEqual(
+        expect.arrayContaining([
+          {
+            appVersion: "1.0.0",
+            platform: "ios",
+            releaseId: null,
+            builtinBundleId: builtin,
+            installations: 2,
+          },
+          {
+            appVersion: "1.0.0",
+            platform: "ios",
+            releaseId: null,
+            builtinBundleId: null,
+            installations: 1,
+          },
+        ]),
+      );
+      expect(usage.bundleDistribution).toHaveLength(2);
     });
     it("pages insights events newest first with a stable cursor", async () => {
       const model = state.getDatabase();
@@ -736,16 +806,6 @@ export const registerInsightsModelTests = (
 
     it("filters installation movements before applying the page limit", async () => {
       const model = state.getDatabase();
-      const unchanged: BundleEventRow = {
-        ...createBundleEventRowFixture("711", 300),
-        type: "UNCHANGED",
-        install_id: "install-target",
-        from_bundle_id: null,
-        metadata: {
-          ...createBundleEventRowFixture("711", 300).metadata,
-          update_strategy: null,
-        },
-      };
       const unrelated = createMovementEvent(
         "712",
         250,
@@ -764,7 +824,18 @@ export const registerInsightsModelTests = (
         "RECOVERED",
         "install-target",
       );
-      for (const row of [unchanged, unrelated, applied, recovered]) {
+      // A launch on the bundle the apply moved to changes nothing, so no row
+      // keeps it.
+      const unchanged: BundleEventRow = {
+        ...applied,
+        id: createBundleEventRowFixture("711", 300).id,
+        type: "UNCHANGED",
+        from_bundle_id: null,
+        from_release_id: null,
+        metadata: { ...applied.metadata, update_strategy: null },
+        received_at_ms: 300,
+      };
+      for (const row of [recovered, unrelated, applied, unchanged]) {
         await model.recordEvent({
           event: row,
         });
@@ -797,6 +868,216 @@ export const registerInsightsModelTests = (
             limit: 1,
           }),
         [recovered],
+      );
+    });
+
+    it("keeps an UNCHANGED report only when it changes what its installation runs, and counts the release it launched", async () => {
+      const model = state.getDatabase();
+      const day = 86_400_000;
+      const releaseA = "00000000-0000-7000-8000-000000009a01";
+      const releaseB = "00000000-0000-7000-8000-000000009a02";
+      const base = createBundleEventRowFixture("9910", 1_000);
+      const launch = (
+        suffix: string,
+        receivedAtMs: number,
+        fields: Partial<BundleEventRow> = {},
+      ) =>
+        ({
+          ...base,
+          id: createBundleEventRowFixture(suffix, receivedAtMs).id,
+          type: "UNCHANGED",
+          install_id: "install-kept",
+          from_bundle_id: null,
+          from_release_id: null,
+          to_bundle_id: base.from_bundle_id,
+          to_release_id: releaseA,
+          metadata: { ...base.metadata, update_strategy: null },
+          received_at_ms: receivedAtMs,
+          ...fields,
+        }) as BundleEventRow;
+      const first = launch("9911", 1_000);
+      // The next day, on the same bundle: a launch that changes nothing.
+      const same = launch("9912", day + 1_000);
+      // A release the installation runs with no apply report for it.
+      const moved = launch("9913", day + 2_000, {
+        to_bundle_id: base.to_bundle_id,
+        to_release_id: releaseB,
+      });
+      for (const row of [first, same, moved]) await record(model, row);
+      await expectInsightsIndex(
+        () =>
+          model.listEvents({
+            filter: { kind: "installationMovement", installId: "install-kept" },
+            beforeReceivedAtMs: 2 * day,
+            limit: 10,
+          }),
+        [
+          {
+            ...moved,
+            metadata: {
+              ...moved.metadata,
+              // No download report of B came before it: its download counts
+              // with the launch.
+              implied_download: true,
+              change: {
+                kinds: ["bundle", "release"],
+                previous: {
+                  bundle_id: base.from_bundle_id,
+                  release_id: releaseA,
+                  app_version: base.app_version,
+                  channel: base.channel,
+                },
+              },
+            },
+          },
+          {
+            ...first,
+            metadata: {
+              ...first.metadata,
+              change: { kinds: ["first_seen"], previous: null },
+            },
+          },
+        ],
+      );
+      await expectInsightsIndex(
+        () =>
+          model.countEvents({
+            filter: {
+              platform: "ios",
+              channel: "production",
+              type: "UNCHANGED",
+              toBundleId: base.to_bundle_id,
+            },
+            sinceMs: 0,
+            beforeReceivedAtMs: 2 * day,
+          }),
+        1,
+      );
+      const activity = await model.getReleaseActivity({
+        releases: [
+          { releaseId: releaseA, platform: "ios", channel: "production" },
+          { releaseId: releaseB, platform: "ios", channel: "production" },
+        ],
+      });
+      // A first report launched nothing; the move launched releaseB and
+      // counted the download it implied.
+      expect(activity.data.map(({ metrics }) => metrics)).toEqual([
+        { downloads: 0, applies: 0, failedLaunches: 0 },
+        { downloads: 1, applies: 1, failedLaunches: 0 },
+      ]);
+    });
+
+    it("counts each launch and download once, so a bundle's launch and download series match its release, and its downloads cover launches and crashes", async () => {
+      const model = state.getDatabase();
+      const day = 86_400_000;
+      const releaseA = "00000000-0000-7000-8000-000000009b01";
+      const releaseB = "00000000-0000-7000-8000-000000009b02";
+      const base = createBundleEventRowFixture("9920", 1_000);
+      const bundleA = base.from_bundle_id;
+      const bundleB = base.to_bundle_id;
+      let sequence = 9920;
+      const report = (
+        install: string,
+        receivedAtMs: number,
+        fields: Partial<BundleEventRow>,
+      ) => {
+        sequence += 1;
+        return {
+          ...base,
+          id: createBundleEventRowFixture(String(sequence), receivedAtMs).id,
+          install_id: install,
+          from_release_id: releaseA,
+          to_release_id: releaseB,
+          received_at_ms: receivedAtMs,
+          ...fields,
+        } as BundleEventRow;
+      };
+      const launch = (install: string, at: number, bundle: string) =>
+        report(install, at, {
+          type: "UNCHANGED",
+          from_bundle_id: null,
+          from_release_id: null,
+          to_bundle_id: bundle,
+          to_release_id: bundle === bundleA ? releaseA : releaseB,
+          metadata: { ...base.metadata, update_strategy: null },
+        });
+      const download = (install: string, at: number) =>
+        report(install, at, { type: "UPDATE_DOWNLOADED" });
+      const apply = (install: string, at: number) =>
+        report(install, at, { type: "UPDATE_APPLIED" });
+      const rows = [
+        // A download and its apply.
+        launch("i1", 1_000, bundleA),
+        download("i1", 2_000),
+        apply("i1", 3_000),
+        // Neither report came: the next launch on B says it ran B.
+        launch("i2", 1_000, bundleA),
+        launch("i2", day + 1_000, bundleB),
+        // The apply report never came.
+        launch("i3", 1_000, bundleA),
+        download("i3", 2_000),
+        launch("i3", day + 2_000, bundleB),
+        // A forced update's download report arrives after its apply.
+        launch("i4", 1_000, bundleA),
+        apply("i4", 3_000),
+        download("i4", 4_000),
+        // A download whose launch crashed back to A.
+        launch("i5", 1_000, bundleA),
+        download("i5", 2_000),
+        report("i5", 3_000, {
+          type: "RECOVERED",
+          from_release_id: releaseB,
+          from_bundle_id: bundleB,
+          to_release_id: releaseA,
+          to_bundle_id: bundleA,
+        }),
+        // A download reported twice before its launch counts once.
+        launch("i6", 1_000, bundleA),
+        download("i6", 2_000),
+        download("i6", 2_500),
+        apply("i6", 3_000),
+      ];
+      for (const row of rows) await record(model, row);
+      const scope = { platform: "ios", channel: "production" } as const;
+      const range = { sinceMs: 0, beforeReceivedAtMs: 2 * day };
+      const count = (filter: InsightsBundleEventFilter) =>
+        model.countEvents({ filter, ...range });
+      const [{ metrics }] = (
+        await model.getReleaseActivity({
+          releases: [{ releaseId: releaseB, ...scope }],
+        })
+      ).data;
+      expect(metrics).toEqual({ downloads: 6, applies: 5, failedLaunches: 1 });
+      // The launches a bundle's chart adds equal its release's.
+      await expectInsightsIndex(
+        async () =>
+          (await count({
+            ...scope,
+            type: "UPDATE_APPLIED",
+            toBundleId: bundleB,
+          })) +
+          (await count({ ...scope, type: "UNCHANGED", toBundleId: bundleB })),
+        metrics!.applies,
+      );
+      // The download series counts the stored download rows and the
+      // downloads launches and crashes implied, so it equals the release's
+      // downloads; the late one counts nothing.
+      const listed = await model.listEvents({
+        filter: { kind: "all" },
+        ...range,
+        limit: 100,
+      });
+      const implied = listed.filter(
+        ({ metadata }) => metadata.implied_download === true,
+      ).length;
+      await expectInsightsIndex(
+        () =>
+          count({ ...scope, type: "UPDATE_DOWNLOADED", toBundleId: bundleB }),
+        metrics!.downloads,
+      );
+      expect(implied).toBe(2);
+      expect(metrics!.downloads).toBeGreaterThanOrEqual(
+        metrics!.applies + metrics!.failedLaunches,
       );
     });
 

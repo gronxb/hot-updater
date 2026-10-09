@@ -2,11 +2,19 @@ import {
   INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
   normalizeCohortValue,
+  resolveBaseURL,
   type UpdateError,
+  type ClientPluginApis,
+  type HotUpdaterClientPlugin,
 } from "@hot-updater/protocol";
 
 import { checkForUpdate } from "./checkForUpdate";
-import { callNative, LynxUpdaterError, normalizeNativeState } from "./native";
+import {
+  callNative,
+  callNativeSync,
+  LynxUpdaterError,
+  normalizeNativeState,
+} from "./native";
 import { createLynxPluginHost } from "./pluginHost";
 import { LYNX_RUNTIME_EVENT_LIMITS } from "./types";
 import type {
@@ -16,7 +24,6 @@ import type {
   ConfirmationResult,
   CustomReloadHandler,
   HotUpdaterInitOptions,
-  HotUpdaterOptions,
   LaunchInfo,
   LaunchConfiguration,
   LaunchTransitionReceipt,
@@ -27,14 +34,6 @@ import type {
   SelectionSummary,
   TransitionAcceptance,
 } from "./types";
-
-const missingInit = (methodName: string) =>
-  new Error(
-    `[HotUpdater] ${methodName} requires HotUpdater.init() to be used.\n\n` +
-      `  HotUpdater.init({\n` +
-      `    baseURL: "<your-update-server-url>",\n` +
-      `  });\n`,
-  );
 
 const summary = (selection: SelectionSummary): SelectionSummary => ({
   kind: selection.kind,
@@ -385,33 +384,52 @@ const isLaunchTransition = (
   return !sameSelectionIdentity(transition.from, transition.to);
 };
 
-function createHotUpdaterClient() {
-  const config: {
-    client: HotUpdaterOptions | null;
-    onError?: (error: Error) => void;
-  } = {
-    client: null,
+const bootstrapMethods = {
+  async getLaunchConfiguration(): Promise<LaunchConfiguration> {
+    const value = await callNative<LaunchConfiguration>(
+      "getLaunchConfiguration",
+    );
+    if (
+      value === null ||
+      typeof value !== "object" ||
+      Array.isArray(value) ||
+      Object.entries(value).some(
+        ([key, item]) => !key || typeof item !== "string",
+      )
+    ) {
+      throw new LynxUpdaterError(
+        "INVALID_NATIVE_REPLY",
+        "Native launch configuration must be a string map.",
+      );
+    }
+    return { ...value };
+  },
+  async getRuntimeEvents(): Promise<RuntimeEventsSnapshot> {
+    return validateRuntimeEvents(
+      await callNative<RuntimeEventsSnapshot>("getRuntimeEvents"),
+    );
+  },
+};
+
+function createHotUpdaterClient(options: HotUpdaterInitOptions) {
+  const config = {
+    client: {
+      baseURL: options.baseURL,
+      requestHeaders: options.requestHeaders
+        ? { ...options.requestHeaders }
+        : undefined,
+      requestTimeout: options.requestTimeout,
+    },
+    onError: options.onError,
   };
   let snapshot: NativeState | null = null;
   let customReload: CustomReloadHandler | null = null;
-  let pluginOptions: HotUpdaterInitOptions | undefined;
-  let pluginsConfigured = false;
   let didEmitAppReady = false;
-  const plugins = createLynxPluginHost(() => requireSnapshot((state) => state));
+  const readState = () =>
+    normalizeNativeState(callNativeSync<NativeState>("getStateSync"));
+  const plugins = createLynxPluginHost(readState);
   const observeState = (state: NativeState) => {
     snapshot = normalizeNativeState(state);
-    if (!pluginsConfigured && pluginOptions) {
-      plugins.configurePlugins(pluginOptions.plugins, {
-        ...pluginOptions,
-        onError: pluginOptions.onError
-          ? (error) =>
-              pluginOptions?.onError?.(
-                error instanceof Error ? error : new Error(String(error)),
-              )
-          : undefined,
-      });
-      pluginsConfigured = true;
-    }
   };
   const reportUpdateError = (
     error: unknown,
@@ -447,70 +465,23 @@ function createHotUpdaterClient() {
     }));
   };
 
-  const ensureClient = (methodName: string): HotUpdaterOptions => {
-    if (!config.client) throw missingInit(methodName);
-    return config.client;
-  };
-
   const refreshState = async () => {
     const next = await callNative<NativeState>("getState");
     observeState(next);
     return snapshot!;
   };
 
-  const requireSnapshot = <T>(read: (state: NativeState) => T): T => {
-    if (!snapshot) {
-      throw new LynxUpdaterError(
-        "NATIVE_STATE_UNAVAILABLE",
-        "Call HotUpdater.notifyAppReady() or HotUpdater.checkForUpdate() before reading native state.",
-      );
-    }
-    return read(snapshot);
-  };
+  const requireSnapshot = <T>(read: (state: NativeState) => T): T =>
+    read(readState());
 
-  return {
-    async getLaunchConfiguration(): Promise<LaunchConfiguration> {
-      const value = await callNative<LaunchConfiguration>(
-        "getLaunchConfiguration",
-      );
-      if (
-        value === null ||
-        typeof value !== "object" ||
-        Array.isArray(value) ||
-        Object.entries(value).some(
-          ([key, item]) => key.length === 0 || typeof item !== "string",
-        )
-      ) {
-        throw new LynxUpdaterError(
-          "INVALID_NATIVE_REPLY",
-          "Native launch configuration must be a string map.",
-        );
-      }
-      return { ...value };
-    },
-
-    async getRuntimeEvents(): Promise<RuntimeEventsSnapshot> {
-      return validateRuntimeEvents(
-        await callNative<RuntimeEventsSnapshot>("getRuntimeEvents"),
-      );
-    },
-
-    init: (options: HotUpdaterInitOptions): void => {
-      pluginOptions = options;
-      pluginsConfigured = false;
-      config.onError = options.onError;
-      config.client = {
-        baseURL: options.baseURL,
-        requestHeaders: options.requestHeaders
-          ? { ...options.requestHeaders }
-          : undefined,
-        requestTimeout: options.requestTimeout,
-      };
-    },
-
+  const instance = {
+    ...bootstrapMethods,
     async checkForUpdate(options: CheckForUpdateOptions) {
-      const client = ensureClient("checkForUpdate");
       try {
+        const client = {
+          ...config.client,
+          baseURL: await resolveBaseURL(config.client.baseURL),
+        };
         const result = await checkForUpdate({
           ...options,
           client,
@@ -808,6 +779,47 @@ function createHotUpdaterClient() {
       await refreshState();
     },
   };
+  return { instance, plugins, config };
 }
 
-export const HotUpdater = createHotUpdaterClient();
+export type HotUpdaterInstance<
+  TPlugins extends readonly HotUpdaterClientPlugin[] = readonly [],
+> = Readonly<ReturnType<typeof createHotUpdaterClient>["instance"]> &
+  ClientPluginApis<TPlugins>;
+
+export const HotUpdater = Object.freeze({
+  ...bootstrapMethods,
+  init: <
+    const TPlugins extends readonly HotUpdaterClientPlugin[] = readonly [],
+  >(
+    options: HotUpdaterInitOptions<TPlugins>,
+  ): HotUpdaterInstance<TPlugins> => {
+    if (!options.baseURL)
+      throw new LynxUpdaterError(
+        "INVALID_CONFIG",
+        "HotUpdater.init requires baseURL.",
+      );
+    const { instance, plugins, config } = createHotUpdaterClient(options);
+    const reservedIds = new Set([...Object.keys(instance), "init"]);
+    for (const plugin of options.plugins ?? []) {
+      if (reservedIds.has(plugin.id)) {
+        throw new Error(
+          `[HotUpdater] A plugin cannot use the id "${plugin.id}": the HotUpdater instance has its own "${plugin.id}".`,
+        );
+      }
+    }
+    const apis = plugins.configurePlugins(options.plugins, {
+      ...config.client,
+      onError: config.onError
+        ? (error) =>
+            config.onError?.(
+              error instanceof Error ? error : new Error(String(error)),
+            )
+        : undefined,
+    });
+    return Object.freeze({
+      ...instance,
+      ...apis,
+    }) as HotUpdaterInstance<TPlugins>;
+  },
+});

@@ -25,29 +25,37 @@ Use `HotUpdater.init()` and a custom update flow so your app chooses when to
 check, download and restart. Initialization configures the client and handles
 native startup verification; it does **not** check for or download an update.
 
-Initialize at the top level of your app entry module, outside the React
-component. The SDK handles native launch verification internally.
+Call `init` once, at the top level of its own module, outside React
+components. It returns the app's HotUpdater instance; export it, and import it
+wherever the app uses HotUpdater. The SDK handles native launch verification
+internally.
 
-This example has one button: **Check and apply update**. Tapping it checks for
-an update, downloads it, then restarts the app after a successful download.
+```tsx title="src/hotUpdater.ts"
+import { HotUpdater } from "@hot-updater/react-native";
+import { Alert } from "react-native";
 
-```tsx title="App.tsx"
-import { HotUpdater } from "@hot-updater/react-native"; // [!code ++]
-import { useState } from "react";
-import { Alert, Button, Text, View } from "react-native";
-
-function reportUpdateError(error: unknown) {
+export function reportUpdateError(error: unknown) {
   console.error("Hot Updater:", error);
   Alert.alert("Update failed", "Please try again.");
 }
 
-HotUpdater.init({ // [!code ++:7]
+export const hotUpdater = HotUpdater.init({
   baseURL: "https://your-update-server-url",
   requestHeaders: {
     "x-api-key": "<your-registered-client-api-key>",
   },
   onError: reportUpdateError,
 });
+```
+
+This example has one button: **Check and apply update**. Tapping it checks for
+an update, downloads it, then restarts the app after a successful download.
+
+```tsx title="App.tsx"
+import { useState } from "react";
+import { Button, Text, View } from "react-native";
+
+import { hotUpdater, reportUpdateError } from "./src/hotUpdater"; // [!code ++]
 
 export default function App() {
   const [isUpdating, setIsUpdating] = useState(false);
@@ -56,7 +64,7 @@ export default function App() {
     setIsUpdating(true);
 
     try {
-      const update = await HotUpdater.checkForUpdate({
+      const update = await hotUpdater.checkForUpdate({
         updateStrategy: "appVersion",
       });
 
@@ -70,7 +78,7 @@ export default function App() {
         throw new Error("Could not prepare the update");
       }
 
-      await HotUpdater.reload();
+      await hotUpdater.reload();
     } catch (error) {
       reportUpdateError(error);
     } finally {
@@ -81,7 +89,7 @@ export default function App() {
   return (
     <View>
       <Text>OTA baseline</Text>
-      <Text>Update ID: {HotUpdater.getBundleId()}</Text>
+      <Text>Update ID: {hotUpdater.getBundleId()}</Text>
       <Button
         title={isUpdating ? "Updating…" : "Check and apply update"}
         disabled={isUpdating}
@@ -92,9 +100,11 @@ export default function App() {
 }
 ```
 
-Keep `init` at module scope and export your component normally. It returns
-`void`; you do not need an effect, a readiness flag or an `onNotifyAppReady`
-callback for setup. Do not combine it with `wrap`.
+Export your component normally. You do not need an effect, a readiness flag or
+an `onNotifyAppReady` callback for setup. Each `init` call creates a separate
+instance with its own plugins, so keep the one call in `src/hotUpdater.ts`.
+[Client plugins](/docs/react-native-api/init#use-the-instance-init-returns)
+add their APIs to the same instance.
 
 The `onError` handler in `init` reports lifecycle and update-check errors.
 The button's `try/catch` handles rejected operations, including download and
@@ -108,7 +118,10 @@ based on that value alone.
 
 The button explicitly applies the update now, so it restarts for both normal
 and required updates. For background downloads or a separate restart prompt,
-see [Control update timing](/docs/guides/custom-update).
+see [Control update timing](/docs/guides/custom-update). To check when the app
+starts instead, with an optional loading screen, wrap the root with
+[`hotUpdater.wrap`](/docs/react-native-api/wrap):
+`export default hotUpdater.wrap({ updateStrategy: "appVersion" })(App)`.
 
 Replace the URL and client-key placeholders using your verified provider setup.
 Keep any provider base path; the SDK appends the catalog and artifact routes.
@@ -131,7 +144,7 @@ builds receive them, including CI or EAS.
 For Expo, replace the example's configuration with public app variables after
 checking that they are present:
 
-```ts
+```ts title="src/hotUpdater.ts"
 const baseURL = process.env.EXPO_PUBLIC_HOT_UPDATER_BASE_URL;
 const clientApiKey = process.env.EXPO_PUBLIC_HOT_UPDATER_API_KEY;
 
@@ -139,7 +152,7 @@ if (!baseURL || !clientApiKey) {
   throw new Error("Missing Hot Updater URL or client API key");
 }
 
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL,
   requestHeaders: { "x-api-key": clientApiKey },
   onError: reportUpdateError,
@@ -155,11 +168,11 @@ pipelines too. A missing URL or key must not silently disable initialization.
 To report launches and updates to [Insights](/docs/guides/insights), add the
 [Insights plugin](/docs/react-native-api/insights) to `plugins`:
 
-```tsx title="App.tsx (excerpt)"
+```tsx title="src/hotUpdater.ts (excerpt)"
 import { HotUpdater } from "@hot-updater/react-native"; // [!code --]
 import { HotUpdater, insights } from "@hot-updater/react-native"; // [!code ++]
 
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL: "https://your-update-server-url",
   requestHeaders: {
     "x-api-key": "<your-registered-client-api-key>",
@@ -177,13 +190,6 @@ received server reports are separate checks; confirm both after your first OTA.
 Use the [update store](/docs/react-native-api/useHotUpdaterStore) to render
 progress within your own UI. Your update flow can defer reload until navigation
 is idle or the user has saved their work.
-
-### Optional automatic wrapper
-
-[`HotUpdater.wrap()`](/docs/react-native-api/wrap) remains supported when you
-want its automatic launch check and update behavior. Use that wrapper instead
-of the `init` flow above, preserving the same URL, client key and strategy.
-Do not initialize with both APIs.
 
 ## Build configuration
 

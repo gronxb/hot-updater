@@ -26,26 +26,30 @@ import type { ReleaseColumn } from "../FeatureSlots";
 import { InsightsInfo } from "./InsightsInfo";
 
 const activityStats = [
-  { label: "Downloads", field: "downloads", color: "text-primary/85" },
-  { label: "Applied", field: "applied", color: "text-success/85" },
-  { label: "Known crashes", field: "failedLaunches", color: "text-warning/85" },
+  { label: "Downloaded", field: "downloads", color: "text-primary/85" },
+  { label: "Launched", field: "launched", color: "text-success/85" },
+  { label: "Crashed", field: "failedLaunches", color: "text-warning/85" },
 ] as const;
 
-// As Release health rates crashes: over applies plus crashes, since an
-// installation that crashes may never report its apply.
+// As Release health rates crashes: over launches plus crashes, since an
+// installation that crashes never reports running the bundle.
 const crashRate = (report: BundleActivityReport): string => {
-  const attempts = report.applied + report.failedLaunches;
+  const attempts = report.launched + report.failedLaunches;
   return attempts === 0
     ? "—"
     : `${((report.failedLaunches / attempts) * 100).toFixed(2)}%`;
 };
 
+/** Downloads that neither launched nor crashed yet: waiting for a restart, or passed over for a newer bundle. */
+const notLaunched = (report: BundleActivityReport) =>
+  Math.max(0, report.downloads - report.launched - report.failedLaunches);
+
 function ReleaseMetricsInfo() {
   return (
     <InsightsInfo label="About release insight metrics">
-      Applied: installations that started running this bundle. Known crashes:
-      launches that crashed on it and rolled back. Crash rate = crashes ÷
-      (applied + crashes).
+      Downloaded: got this bundle. Launched: ran it. Crashed: crashed on it and
+      rolled back. Once every installation restarts, Downloaded = Launched +
+      Crashed.
     </InsightsInfo>
   );
 }
@@ -76,6 +80,9 @@ export function BundleMovementSummary({
       </span>
     );
   }
+  // A release of the built-in bundle comes with the app: nothing downloads it.
+  const builtIn = input?.builtIn === true;
+  const waiting = builtIn ? 0 : notLaunched(report);
   const metrics = (
     <dl
       className={cn(
@@ -101,10 +108,16 @@ export function BundleMovementSummary({
               variant === "card"
                 ? "text-xl font-semibold"
                 : "text-sm font-medium",
-              report[field] > 0 ? color : "text-muted-foreground",
+              report[field] > 0 && !(field === "downloads" && builtIn)
+                ? color
+                : "text-muted-foreground",
             )}
           >
-            {report[field].toLocaleString()}
+            {field === "downloads" && builtIn ? (
+              <span title="The built-in bundle is never downloaded">—</span>
+            ) : (
+              report[field].toLocaleString()
+            )}
             {field === "failedLaunches" ? (
               <span className="text-xs font-normal text-muted-foreground">
                 ({crashRate(report)})
@@ -130,7 +143,7 @@ export function BundleMovementSummary({
             healthPlatform: input.platform,
             healthChannel: input.channel,
             releaseId: input.releaseId,
-            bundleWindow: "7d",
+            bundleWindow: adoptionWindow(input.releaseId),
           }}
         >
           {metrics}
@@ -138,6 +151,12 @@ export function BundleMovementSummary({
       ) : (
         metrics
       )}
+      {variant === "card" && waiting > 0 ? (
+        <p className="text-xs text-muted-foreground">
+          {waiting.toLocaleString()} downloaded but not launched yet: waiting
+          for a restart, or passed over for a newer bundle.
+        </p>
+      ) : null}
       {variant === "inline" ? <ReleaseMetricsInfo /> : null}
     </div>
   );
@@ -283,7 +302,7 @@ function ReleaseActivityCell({
   );
 }
 
-/** The Bundles page's Insights column: each release's downloads, applies, and known crashes. */
+/** The Bundles page's Insights column: each release's downloads, launches, and crashes. */
 export const releaseActivityColumn: ReleaseColumn = {
   Cell: ReleaseActivityCell,
 };

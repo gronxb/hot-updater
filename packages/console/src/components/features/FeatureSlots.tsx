@@ -9,12 +9,15 @@ import { useConsoleFeatures } from "@/lib/console-features-api";
 
 import { apiKeysFeatureUi } from "./api-keys/apiKeysFeatureUi";
 import { insightsFeatureUi } from "./insights/insightsFeatureUi";
+import { remoteConfigFeatureUi } from "./remote-config/remoteConfigFeatureUi";
 
 /** A release, as the Bundles page and the release editor hand it to slots. */
 export interface ReleaseSlotInput {
   readonly releaseId: string;
   readonly platform: "ios" | "android";
   readonly channel: string;
+  /** The release runs the native build's built-in bundle, which nothing downloads. */
+  readonly builtIn?: boolean;
 }
 
 /**
@@ -58,6 +61,7 @@ export type ConsoleFeatureUiRegistry = {
 const consoleFeatureUi: ConsoleFeatureUiRegistry = {
   ...insightsFeatureUi,
   ...apiKeysFeatureUi,
+  ...remoteConfigFeatureUi,
 };
 
 const featureIds = Object.keys(consoleFeatures) as ConsoleFeature[];

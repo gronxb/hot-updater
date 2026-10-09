@@ -16,7 +16,10 @@ function Detail() {
       console.log("HOT_UPDATER_DETAIL_UNCONFIRMED", variant);
       return;
     }
-    void HotUpdater.notifyAppReady()
+    void HotUpdater.getLaunchConfiguration()
+      .then(({ appBaseURL }) =>
+        HotUpdater.init({ baseURL: () => appBaseURL }).notifyAppReady(),
+      )
       .then((receipt) => {
         setStatus(`Detail bundle ${variant} ready`);
         console.log("HOT_UPDATER_DETAIL_READY", JSON.stringify(receipt));

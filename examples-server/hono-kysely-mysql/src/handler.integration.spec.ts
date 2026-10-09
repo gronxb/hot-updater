@@ -104,10 +104,14 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       ...createBundleEventRowFixture("9805", 100),
       user_id: "mysql-previous-user",
     };
+    // Each report moves the installation to another bundle: one that names
+    // the bundle it already runs is late and moves no head.
     const newer = {
       ...createBundleEventRowFixture("9801", 200),
       install_id: previous.install_id,
       user_id: "mysql-current-user",
+      from_bundle_id: previous.to_bundle_id,
+      to_bundle_id: "00000000-0000-7000-8000-000000009811",
     };
     await insights.recordEvent({ event: previous });
     await insights.recordEvent({ event: newer });
@@ -117,11 +121,14 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
     const tied = {
       ...newer,
       id: createBundleEventRowFixture("9802", 300).id,
+      from_bundle_id: newer.to_bundle_id,
+      to_bundle_id: "00000000-0000-7000-8000-000000009812",
       received_at_ms: 300,
     };
     const newest = {
       ...tied,
       id: createBundleEventRowFixture("9803", 300).id,
+      to_bundle_id: "00000000-0000-7000-8000-000000009813",
       channel: "preview",
       metadata: { ...tied.metadata, device: { locale: "ko-KR" } },
     };
@@ -248,8 +255,12 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         received_at_ms: day + 200,
       },
       {
+        // A launch reported from another channel moves the installation.
         ...moved,
         id: createBundleEventRowFixture("9828", 200).id,
+        type: "UNCHANGED" as const,
+        from_bundle_id: null,
+        metadata: { ...moved.metadata, update_strategy: null },
         channel: "mysql-count-elsewhere",
         received_at_ms: day + 200,
       },

@@ -103,7 +103,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 import { runInit } from "./index";
 import { inputSupabaseDeploymentInputs } from "./supabaseInitInputs";
 
-const MIGRATION = "20260818000000_hot-updater_1.0.0.sql";
+const MIGRATION = "0001_hot-updater_1.0.0.sql";
 const CREDENTIAL = {
   label: "API key",
   header: "x-api-key",
@@ -251,7 +251,7 @@ describe("Supabase init", () => {
     const [server, input] = mocks.provisionClientCredential.mock.calls[0]!;
     expect(
       (server as { plugins: { id: string }[] }).plugins.map(({ id }) => id),
-    ).toEqual(["insights", "apiKeys"]);
+    ).toEqual(["insights", "apiKeys", "remoteConfig"]);
     expect((server as { api: Record<string, unknown> }).api).toHaveProperty(
       "apiKeys",
     );

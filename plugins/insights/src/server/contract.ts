@@ -6,6 +6,7 @@ import {
   validateBundleEventFields,
 } from "./eventRow";
 import type { InsightsEventFilter, InsightsModel } from "./modelTypes";
+import { bundleRefOfFilter, bundleRefsOf } from "./schema";
 
 const encoder = new TextEncoder();
 
@@ -59,7 +60,8 @@ const isBundleFilter = (value: unknown, withKind = false): boolean => {
         hasOnlyKeys(value, [...keys, "fromBundleId"])
     : (value.type === "UPDATE_DOWNLOADED" ||
         value.type === "UPDATE_APPLIED" ||
-        value.type === "UPDATE_FAILED") &&
+        value.type === "UPDATE_FAILED" ||
+        value.type === "UNCHANGED") &&
         isText(value.toBundleId) &&
         hasOnlyKeys(value, [...keys, "toBundleId"]);
 };
@@ -103,14 +105,18 @@ const validateRow = (
 export const assertBundleEventRow = (row: unknown): void =>
   validateRow("bundle_events", row);
 
-/** Downloads, applies, recoveries, and failed updates belong in installation history. */
+/**
+ * Downloads, applies, recoveries, failed updates, and the UNCHANGED rows
+ * kept for a change belong in installation history.
+ */
 export const isInsightsMovementEvent = (
   event: Pick<BundleEventRow, "type">,
 ): boolean =>
   event.type === "UPDATE_DOWNLOADED" ||
   event.type === "UPDATE_APPLIED" ||
   event.type === "RECOVERED" ||
-  event.type === "UPDATE_FAILED";
+  event.type === "UPDATE_FAILED" ||
+  event.type === "UNCHANGED";
 
 export const matchesInsightsEventFilter = (
   event: BundleEventRow,
@@ -122,16 +128,14 @@ export const matchesInsightsEventFilter = (
       event.install_id === filter.installId && isInsightsMovementEvent(event)
     );
   }
-  // A failed check's `to_bundle_id` is the running bundle, not a target, so
-  // no bundle filter matches it.
+  // The same bundle a stored row is indexed under (`bundleRefsOf`): none
+  // for a failed check, whose `to_bundle_id` is the running bundle, a late
+  // row, or an UNCHANGED row that launched nothing.
   return (
     event.type === filter.type &&
     event.platform === filter.platform &&
     event.channel === filter.channel &&
-    (filter.type === "RECOVERED"
-      ? event.from_bundle_id === filter.fromBundleId
-      : event.to_bundle_id === filter.toBundleId &&
-        event.metadata.failure?.stage !== "check")
+    bundleRefsOf(event).includes(bundleRefOfFilter(filter))
   );
 };
 

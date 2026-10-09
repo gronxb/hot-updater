@@ -14,6 +14,8 @@ describe("Firebase Functions build configuration", () => {
         "@hot-updater/server",
         "@hot-updater/server/plugins/api-keys",
         "@hot-updater/server/plugins/insights",
+        "@hot-updater/server/plugins/remote-config",
+        "@hot-updater/plugin-remote-config/server",
       ]),
     );
   });

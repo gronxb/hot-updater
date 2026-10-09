@@ -13,7 +13,7 @@ function fixture() {
   );
   const reader = createIosAlertReader(
     { session: "owned-run", deviceId: "leased-udid" },
-    () => controller.signal,
+    controller.signal,
     client,
   );
   return { reader, transport, controller };

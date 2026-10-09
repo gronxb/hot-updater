@@ -1,6 +1,7 @@
 import type { UpdateHttpResponse } from "@hot-updater/protocol";
 
 import type {
+  BundleEventChangeKind,
   BundleEventFailure,
   BundleEventFailureReason,
   BundleEventFailureStage,
@@ -49,6 +50,12 @@ export type CreateBundleEventRequestBase = {
   readonly cohort: string;
   readonly fingerprintHash: string | null;
   readonly sdkVersion?: string | null;
+  /**
+   * The bundle ID the native build ships as its built-in bundle. A report
+   * whose running bundle is this one, with no Release, runs the built-in
+   * bundle. Older SDKs leave it out.
+   */
+  readonly minBundleId?: string | null;
   readonly fromReleaseId: string | null;
   readonly toReleaseId: string | null;
 };
@@ -87,9 +94,28 @@ export type CreateBundleEventRequest =
 
 export type ActiveInstallationWindow = "24h" | "7d" | "30d";
 
+/**
+ * What a kept UNCHANGED report changed against its installation's previous
+ * report: the running bundle or release, the app version, or the channel,
+ * with the previous values; `first_seen` alone for an installation's first
+ * report to this server.
+ */
+export type EventHistoryChange = {
+  readonly kinds: readonly BundleEventChangeKind[];
+  readonly previous?: {
+    readonly bundleId: string;
+    readonly releaseId: string | null;
+    readonly appVersion: string;
+    readonly channel: string;
+    readonly minBundleId?: string;
+  };
+};
+
 export type EventHistoryRow = {
   readonly toReleaseId?: string;
   readonly sdkVersion?: string;
+  /** The native build's built-in bundle ID, when the SDK reported it. */
+  readonly minBundleId?: string;
   readonly id: string;
   readonly installId: string;
   readonly type:
@@ -113,16 +139,30 @@ export type EventHistoryRow = {
   readonly delivery?: NonNullable<DatabaseBundleEventMetadata["delivery"]>;
   /** `UPDATE_DOWNLOADED`: a patch failed, and the files or the archive came instead. */
   readonly patchFallback?: true;
+  /** `UNCHANGED`: what the report changed, the reason it was kept. */
+  readonly change?: EventHistoryChange;
+  /** A download or apply of a target already run or already downloaded: it counted nothing. */
+  readonly late?: true;
+  /** A launch or crash whose download report never arrived, counted with it. */
+  readonly impliedDownload?: true;
 };
 
-export type InstallationHistoryRow = EventHistoryRow & {
-  readonly type:
-    | "UPDATE_DOWNLOADED"
-    | "UPDATE_APPLIED"
-    | "RECOVERED"
-    | "UPDATE_FAILED";
-  readonly fromBundleId: string;
-};
+export type InstallationHistoryRow = EventHistoryRow &
+  (
+    | {
+        readonly type:
+          | "UPDATE_DOWNLOADED"
+          | "UPDATE_APPLIED"
+          | "RECOVERED"
+          | "UPDATE_FAILED";
+        readonly fromBundleId: string;
+      }
+    | {
+        readonly type: "UNCHANGED";
+        readonly fromBundleId: null;
+        readonly change: EventHistoryChange;
+      }
+  );
 
 export type InsightsHttpResponse = UpdateHttpResponse & {
   readonly receivedAtMs: number;
@@ -130,6 +170,8 @@ export type InsightsHttpResponse = UpdateHttpResponse & {
 
 export type InstallationRow = {
   readonly httpResponse?: InsightsHttpResponse;
+  /** The native build's built-in bundle ID, when the SDK reported it. */
+  readonly minBundleId?: string;
   readonly installId: string;
   readonly userId: string | null;
   readonly lastKnownBundleId: string;
@@ -171,6 +213,10 @@ export type ReportingOverview = InsightsScope & {
   readonly bundle?: {
     readonly bundleId: string;
     readonly reportingInstallations: InsightsCountMeasurement;
+    /**
+     * Download reports of the bundle, and in whole hours the downloads a
+     * launch or crash implied when its download report never arrived.
+     */
     readonly downloadedReports: InsightsCountMeasurement;
     readonly appliedReports: InsightsCountMeasurement;
     readonly recoveredReports: InsightsCountMeasurement;

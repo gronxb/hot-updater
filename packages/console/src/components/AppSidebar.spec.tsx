@@ -18,11 +18,13 @@ const allOff: ConsoleFeatures = {
   insights: false,
   insightsAnalytics: false,
   apiKeys: false,
+  remoteConfig: false,
 };
 const allOn: ConsoleFeatures = {
   insights: true,
   insightsAnalytics: true,
   apiKeys: true,
+  remoteConfig: true,
 };
 
 let pathname = "/";
@@ -128,15 +130,28 @@ describe("AppSidebar navigation", () => {
       { ...allOff, insights: true },
     ],
     ["apiKeys()", ["Bundles", "API keys"], { ...allOff, apiKeys: true }],
-    ["every plugin", ["Bundles", "Insights", "API keys"], allOn],
+    [
+      "remoteConfig()",
+      ["Bundles", "Remote Config"],
+      { ...allOff, remoteConfig: true },
+    ],
+    // Remote Config sits between Insights and API keys.
+    [
+      "every plugin",
+      ["Bundles", "Insights", "Remote Config", "API keys"],
+      allOn,
+    ],
     ["the features still loading", ["Bundles"], undefined],
   ] as const)("with %s, shows %j", (_case, labels, served) => {
     features = served;
     render(<AppSidebar />);
 
-    const shown = ["Bundles", "Insights", "API keys"].filter(
-      (label) => screen.queryByRole("link", { name: label }) !== null,
-    );
+    const shown = screen
+      .getAllByRole("link")
+      .map((link) => link.textContent?.trim() ?? "")
+      .filter((label) =>
+        ["Bundles", "Insights", "Remote Config", "API keys"].includes(label),
+      );
     expect(shown).toEqual(labels);
     expect(screen.queryByRole("link", { name: /installations/i })).toBeNull();
   });

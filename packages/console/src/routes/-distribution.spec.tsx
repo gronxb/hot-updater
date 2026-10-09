@@ -80,9 +80,16 @@ const report: AppUsageReport = {
       appVersion: "2.0.0",
       platform: "ios" as const,
       releaseId: `bundle-${i}`,
+      builtinBundleId: null,
       installations: 1,
     })),
-    { appVersion: "1.0.0", platform: "ios", releaseId: null, installations: 2 },
+    {
+      appVersion: "1.0.0",
+      platform: "ios",
+      releaseId: null,
+      builtinBundleId: null,
+      installations: 2,
+    },
   ],
 };
 function renderPage() {
@@ -158,6 +165,59 @@ describe("Distribution details", () => {
         },
       }),
     );
+  });
+  it("shows each app version's built-in bundle by its ID, apart from unknown bundles", async () => {
+    const builtin = "019a0000-0000-7000-8000-000000000000";
+    mocks.usage.mockResolvedValue({
+      ...report,
+      versions: [{ name: "1.0.0", installations: 10 }],
+      bundleDistribution: [
+        {
+          appVersion: "1.0.0",
+          platform: "ios",
+          releaseId: null,
+          builtinBundleId: builtin,
+          installations: 6,
+        },
+        {
+          appVersion: "1.0.0",
+          platform: "ios",
+          releaseId: "release-rollback",
+          builtinBundleId: builtin,
+          installations: 3,
+        },
+        {
+          appVersion: "1.0.0",
+          platform: "ios",
+          releaseId: null,
+          builtinBundleId: null,
+          installations: 1,
+        },
+      ],
+    });
+    renderPage();
+    const list = await screen.findByRole("list", {
+      name: "Bundle distribution",
+    });
+    const [running, adopted, unknown] = within(list).getAllByRole("listitem");
+    expect(within(running!).getByText("Built-in bundle")).toBeDefined();
+    expect(within(running!).getByText(builtin)).toBeDefined();
+    expect(within(running!).queryByRole("link")).toBeNull();
+    expect(within(running!).queryByText("Unknown bundle")).toBeNull();
+    expect(
+      within(running!).getByRole("progressbar", {
+        name: `Built-in bundle ${builtin} share in 1.0.0 on ios`,
+      }),
+    ).toBeDefined();
+    // A release that selected the built-in bundle links to it and still says so.
+    expect(
+      within(adopted!).getByRole("link", {
+        name: "Review bundle release-rollback for app version 1.0.0",
+      }),
+    ).toBeDefined();
+    expect(within(adopted!).getByText("Built-in bundle")).toBeDefined();
+    expect(within(unknown!).getByText("Unknown bundle")).toBeDefined();
+    expect(within(unknown!).queryByText("Built-in bundle")).toBeNull();
   });
   it("keeps retry and empty states usable and labels partial counts", async () => {
     mocks.usage.mockRejectedValueOnce(new Error("Offline"));

@@ -1,0 +1,145 @@
+---
+title: "Remote Config Plugin"
+description: "Read values your server's Remote Config picks for this device, synchronously, with in-app defaults and a fetch and activate step, using the built-in `remoteConfig()` client plugin."
+icon: SlidersHorizontal
+---
+
+## Add the plugin
+
+`remoteConfig()` is a [client plugin](/docs/react-native-api/client-plugins)
+exported from `@hot-updater/react-native`. Pass it to `plugins` in
+[`HotUpdater.init`](/docs/react-native-api/init) with your in-app defaults,
+and use it as `hotUpdater.remoteConfig` on the instance `init` returns:
+
+```ts title="src/hotUpdater.ts"
+import { HotUpdater, remoteConfig } from "@hot-updater/react-native";
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: { "x-api-key": "<your-api-key>" },
+  plugins: [
+    remoteConfig({ // [!code ++:3]
+      defaults: { welcome_message: "Welcome back", max_items: 20 },
+    }),
+  ],
+});
+```
+
+It fetches `GET /remote-config` under `baseURL`, with the `requestHeaders` and
+`requestTimeout` of `init`, from a server that runs the `remoteConfig()`
+[server plugin](/docs/guides/remote-config#turn-on-the-server-plugin), as the
+managed servers do. The [Remote Config guide](/docs/guides/remote-config)
+covers publishing values.
+
+## Options
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `defaults` | `Record<string, string \| number \| boolean>` | `{}` | What reads return until the app activates fetched values, and for keys a template leaves to the app. |
+| `minimumFetchIntervalMs` | `number` | `43200000` (12 hours) | The shortest time between fetches that reach the server. `0` fetches every time. |
+
+## Read values
+
+Reads are synchronous and return the first of these that has the key:
+
+1. the value the app activated last, stored on the device;
+2. the key's value in `defaults`;
+3. `null`.
+
+A fresh install has activated nothing, so it reads `defaults`, and `null` for
+any other key, until its first fetch and activate succeed. `init` loads the
+values an earlier launch activated before it returns, so later launches render
+them from the first frame.
+
+| Method | Returns |
+| --- | --- |
+| `getString(key)` | The value as text, or `null`. |
+| `getNumber(key)` | `Number(text)`, `0` when that is not a number, or `null`. |
+| `getBoolean(key)` | `true` for `1`, `true`, `t`, `yes`, `y`, and `on` in any case, `false` otherwise, or `null`. |
+| `getValue(key)` | A `RemoteConfigValue` with `asString()`, `asNumber()`, `asBoolean()`, and `getSource()` (`"remote"` or `"default"`), or `null`. |
+| `getAll()` | Every key in `defaults` or the active values, as `RemoteConfigValue`s. |
+
+Keys declared in `defaults` always have a value, so their reads are typed
+without `null`; other keys are typed `T | null`:
+
+```ts
+const config = hotUpdater.remoteConfig;
+config.getNumber("max_items"); // number: max_items is in defaults
+config.getString("promo_code") ?? ""; // string | null without the fallback
+```
+
+`false`, `0`, and `""` are values, never `null`. A JSON parameter arrives as
+text: `JSON.parse(config.getString("layout"))`. When a later version leaves a
+key to the app, reads return its default again, or `null` without one.
+
+## Fetch and activate
+
+| Method | Does |
+| --- | --- |
+| `fetch(options?)` | Downloads this device's values and keeps them for `activate`. Reads don't change. |
+| `activate()` | Switches reads to the fetched values. Resolves `true` when they changed, `false` otherwise. |
+| `fetchAndActivate(options?)` | `fetch(options)`, then `activate()`. |
+
+```ts
+// Apply as soon as they arrive:
+hotUpdater.remoteConfig.fetchAndActivate().catch(() => {});
+
+// Or apply at the next launch: activate what the last launch fetched,
+// then fetch for the next one.
+await hotUpdater.remoteConfig.activate();
+hotUpdater.remoteConfig.fetch().catch(() => {});
+```
+
+- A fetch within `minimumFetchIntervalMs` of the last successful one reuses
+  the values fetched last and sends nothing, unless the channel, native
+  version, cohort, or fingerprint changed. `{ force: true }` asks the server
+  anyway; every forced fetch is a request, so use it for a moment such as pull
+  to refresh, or as the guide's
+  [kill switch](/docs/guides/remote-config#turn-a-feature-off-quickly) does.
+- Concurrent calls share one fetch, and an unchanged answer is a `304`.
+- `fetch()` rejects, and the active values stay, when the request fails or
+  times out, or the server answers an error, such as `404` from a server
+  without `remoteConfig()`. A failed fetch doesn't start the interval.
+- Fetched and active values are stored on the device, outside backups, and
+  survive restarts and OTA updates. Fetching works in debug builds too.
+
+## Status
+
+| Property | Value |
+| --- | --- |
+| `lastFetchStatus` | `"no-fetch-yet"`, `"success"`, or `"failure"`. |
+| `fetchedAtMs` | When the last successful fetch ended, in milliseconds since the epoch, or `null`. |
+| `activeVersion` | The template version of the active values, or `0` before the first activate. |
+
+These persist across launches.
+
+## Re-render on activation
+
+`subscribe(listener)` calls `listener` whenever `activate()` changes the
+values, and returns a function that stops it. `getAll()` returns the same
+object until then, so the pair works with `useSyncExternalStore`:
+
+```tsx title="src/useRemoteConfig.ts"
+import { useSyncExternalStore } from "react";
+
+import { hotUpdater } from "./hotUpdater";
+
+export const useRemoteConfig = () =>
+  useSyncExternalStore(
+    hotUpdater.remoteConfig.subscribe,
+    hotUpdater.remoteConfig.getAll,
+  );
+```
+
+```tsx
+const values = useRemoteConfig();
+return <Text>{values.welcome_message?.asString()}</Text>;
+```
+
+## Types
+
+`@hot-updater/react-native` exports `RemoteConfigClient` (the type of
+`hotUpdater.remoteConfig`), `RemoteConfigPlugin`, `RemoteConfigOptions`,
+`RemoteConfigValue`, `RemoteConfigValueSource`, `RemoteConfigFetchStatus`,
+`RemoteConfigFetchOptions`, `RemoteConfigDefaults`, `RemoteConfigDefaultValue`,
+and `RemoteConfigKey`.

@@ -58,6 +58,7 @@ describe("CloudFrontManager", () => {
     oacId: "existing-oac-id",
     originRequestPolicyId: "existing-origin-request-policy-id",
     releaseCatalogCachePolicyId: "existing-release-catalog-cache-policy-id",
+    remoteConfigCachePolicyId: "existing-remote-config-cache-policy-id",
     sharedCachePolicyId: "existing-shared-cache-policy-id",
   });
   const mockMatchingDistribution = ({
@@ -182,6 +183,20 @@ describe("CloudFrontManager", () => {
         ],
       },
     });
+    mockCloudFront.listCachePolicies.mockResolvedValueOnce({
+      CachePolicyList: {
+        Items: [
+          {
+            CachePolicy: {
+              Id: "remote-config-cache-policy-id",
+              CachePolicyConfig: {
+                Name: "HotUpdaterRemoteConfigV1",
+              },
+            },
+          },
+        ],
+      },
+    });
 
     const manager = new CloudFrontManager("ap-northeast-2", {
       accessKeyId: "test-access-key",
@@ -255,6 +270,11 @@ describe("CloudFrontManager", () => {
                 CachePolicyId: "release-catalog-cache-policy-id",
                 OriginRequestPolicyId: "origin-request-policy-id",
               }),
+              expect.objectContaining({
+                PathPattern: "/remote-config",
+                CachePolicyId: "remote-config-cache-policy-id",
+                OriginRequestPolicyId: "origin-request-policy-id",
+              }),
             ]),
           }),
         }),
@@ -265,8 +285,14 @@ describe("CloudFrontManager", () => {
       InvalidationBatch: {
         CallerReference: expect.any(String),
         Paths: {
-          Quantity: 4,
-          Items: ["/events", "/artifacts/*", "/version", "/release-catalogs/*"],
+          Quantity: 5,
+          Items: [
+            "/events",
+            "/artifacts/*",
+            "/version",
+            "/release-catalogs/*",
+            "/remote-config",
+          ],
         },
       },
     });

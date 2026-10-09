@@ -197,6 +197,7 @@ describe("AWS init", () => {
         plugins: [
           expect.objectContaining({ id: "insights" }),
           expect.objectContaining({ id: "apiKeys" }),
+          expect.objectContaining({ id: "remoteConfig" }),
         ],
       }),
       { env: SAVED_ENV, name: "AWS init" },

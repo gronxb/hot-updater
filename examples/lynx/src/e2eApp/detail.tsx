@@ -2,7 +2,9 @@ import { HotUpdater } from "@hot-updater/lynx";
 import { close } from "@hot-updater/lynx-sparkling";
 import { root, useEffect, useState } from "@lynx-js/react";
 
-import { analytics } from "./insights";
+import { createE2eUpdater } from "./insights";
+
+let hotUpdater: ReturnType<typeof createE2eUpdater>;
 import { resolveE2eLaunchConfiguration } from "./launchConfiguration";
 import { E2E_SCENARIO_MARKER } from "./patchSurface";
 import { createPendingActionPoller } from "./pendingActionPoller";
@@ -36,7 +38,7 @@ const actionHandlers: Record<string, (text?: string) => Promise<void>> = {
     await closeDetailPage();
   },
   "action-capture-generation-events": async () => {
-    const snapshot = await HotUpdater.getRuntimeEvents();
+    const snapshot = await hotUpdater.getRuntimeEvents();
     await patchScreenState({
       generationEvents: JSON.stringify(snapshot),
       updateActionResult: `generation-events -> ${snapshot.latestSequence}`,
@@ -66,11 +68,7 @@ const configure = async () => {
     /\/screen-state$/,
     "/pending-action",
   );
-  HotUpdater.init({
-    plugins: [analytics],
-    baseURL: endpoints.appBaseURL,
-    requestTimeout: 15_000,
-  });
+  hotUpdater = createE2eUpdater(endpoints.appBaseURL);
   return typeof native.title === "string" ? native.title : null;
 };
 
@@ -80,14 +78,14 @@ function Detail() {
   useEffect(() => {
     void configure()
       .then(async (pageTitle) => {
-        const launch = await HotUpdater.getLaunchInfo();
+        const launch = await hotUpdater.getLaunchInfo();
         setTitle(pageTitle);
         await patchScreenState({
           detailPageMarker: E2E_SCENARIO_MARKER,
           detailPageTitle: pageTitle,
         });
         poller.start();
-        const confirmation = await HotUpdater.notifyAppReady();
+        const confirmation = await hotUpdater.notifyAppReady();
         console.log(
           "HOT_UPDATER_E2E_DETAIL_READY",
           JSON.stringify({ launch, confirmation, pageTitle }),

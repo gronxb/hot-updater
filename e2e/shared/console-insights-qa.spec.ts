@@ -288,8 +288,8 @@ describe("console insights E2E QA", () => {
   });
 
   it("verifies a launch without an update through its installation's latest report", async () => {
-    // Given: the app reports a launch without changing its bundle, which the
-    // server keeps as the installation's latest report, not as an event.
+    // Given: the app reports a launch that changes nothing, which the server
+    // keeps as the installation's latest report, not as an event.
     const client = createClient();
     const unchanged = {
       ...observedTransition,
@@ -317,6 +317,50 @@ describe("console insights E2E QA", () => {
       channel: event.channel,
       platform: event.platform,
       window: "24h",
+    });
+  });
+
+  it("checks no outcome of a report the server kept as late", async () => {
+    // Given: a reload delivered the download report after its apply, so the
+    // server kept it in history as late, outside the downloaded outcome.
+    const client = createClient();
+    const lateDownload = {
+      ...event,
+      id: "event-late",
+      receivedAtMs: event.receivedAtMs + 1,
+      type: "UPDATE_DOWNLOADED" as const,
+      late: true as const,
+    };
+    vi.mocked(client.listEvents).mockImplementation(async (input) => ({
+      ...emptyEventPage,
+      data:
+        input?.bundle === undefined
+          ? [lateDownload, event]
+          : input.bundle.outcome === "applied"
+            ? [event]
+            : [],
+    }));
+    vi.mocked(client.listInstallationEvents).mockResolvedValue({
+      ...emptyEventPage,
+      data: [lateDownload, event],
+    });
+
+    // When / Then: the apply's outcome is checked, and the late download's
+    // missing outcome is no error.
+    await expect(
+      verifyConsoleInsights(client, {
+        observedEvents: [
+          observedTransition,
+          {
+            ...observedTransition,
+            observedAtMs: observedTransition.observedAtMs + 1,
+            type: "UPDATE_DOWNLOADED",
+          },
+        ],
+      }),
+    ).resolves.toMatchObject({
+      eventId: lateDownload.id,
+      outcomes: [{ bundleId, count: 1, eventId: event.id, outcome: "applied" }],
     });
   });
 

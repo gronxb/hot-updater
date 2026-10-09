@@ -180,7 +180,7 @@ const createSession = (
   },
 });
 
-/** Creates the private HTTP client used by HotUpdater.init and HotUpdater.wrap. */
+/** Creates the private HTTP client HotUpdater.init configures. */
 export const createHttpClient = (
   baseURL: HotUpdaterBaseURL,
   onResponse?: (response: UpdateHttpResponse) => void,

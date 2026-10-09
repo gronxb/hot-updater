@@ -54,9 +54,24 @@ import { handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import { handleCreateFingerprint } from "./commands/fingerprint";
 import { generate } from "./commands/generate";
+import {
+  handleInsightsEvents,
+  handleInsightsFailures,
+  handleInsightsInstallations,
+  handleInsightsOverview,
+  INSIGHTS_OUTCOMES,
+  INSIGHTS_WINDOWS,
+} from "./commands/insights";
 import { keysExportPublic, keysGenerate, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
 import { handlePromote } from "./commands/promote";
+import {
+  handleRemoteConfigPreview,
+  handleRemoteConfigPublish,
+  handleRemoteConfigRollback,
+  handleRemoteConfigShow,
+  handleRemoteConfigVersions,
+} from "./commands/remoteConfig";
 import {
   DEFAULT_STORAGE_PRUNE_PROTECTION_MS,
   handleStoragePrune,
@@ -252,6 +267,215 @@ apiKeyCommand
       handleApiKeyRevoke(id, { ...options, serverPath }),
   );
 
+/** An option's whole number from `min` to `max`. */
+const integerFrom =
+  (min: number, max = Number.MAX_SAFE_INTEGER) =>
+  (value: string): number => {
+    const n = Number(value);
+    if (
+      !/^\d+$/u.test(value) ||
+      !Number.isSafeInteger(n) ||
+      n < min ||
+      n > max
+    ) {
+      throw new InvalidArgumentError(
+        max === Number.MAX_SAFE_INTEGER
+          ? `must be an integer of at least ${min}`
+          : `must be an integer from ${min} to ${max}`,
+      );
+    }
+    return n;
+  };
+
+const remoteConfigCommand = program
+  .command("remote-config")
+  .description("Show, publish, and roll back Remote Config templates");
+
+remoteConfigCommand
+  .command("show")
+  .description("Show the active template, or a published version's")
+  .option("--version-number <n>", "show this published version", integerFrom(1))
+  .option("--json", "output the template and its version as JSON")
+  .argument("[serverPath]", SERVER_PATH_HELP)
+  .action((serverPath: string | undefined, options) =>
+    handleRemoteConfigShow({ ...options, serverPath }),
+  );
+
+remoteConfigCommand
+  .command("versions")
+  .description("List published versions, newest first")
+  .option(
+    "--limit <n>",
+    "versions per page, from 1 to 100",
+    integerFrom(1, 100),
+    20,
+  )
+  .option("--cursor <cursor>", "the next page, as the last page printed it")
+  .option("--json", "output the page as JSON")
+  .argument("[serverPath]", SERVER_PATH_HELP)
+  .action((serverPath: string | undefined, options) =>
+    handleRemoteConfigVersions({ ...options, serverPath }),
+  );
+
+remoteConfigCommand
+  .command("publish")
+  .description("Publish a template file as the next version")
+  .argument(
+    "<file>",
+    "a template JSON file, or what show --json prints; - reads stdin",
+  )
+  .argument("[serverPath]", SERVER_PATH_HELP)
+  .option("--description <text>", "a note for the version")
+  .option(
+    "--expected-version <n>",
+    "fail if the active version is not this one (default: the version show --json printed, else the active one)",
+    integerFrom(0),
+  )
+  .option("--dry-run", "validate and show the changes without publishing")
+  .option("-y, --yes", "skip confirmation prompt")
+  .option("--json", "output the result as JSON")
+  .action((file: string, serverPath: string | undefined, options) =>
+    handleRemoteConfigPublish(file, { ...options, serverPath }),
+  );
+
+remoteConfigCommand
+  .command("rollback")
+  .description("Publish a copy of an earlier version as the next version")
+  .argument("<version>", "the version to copy", integerFrom(1))
+  .argument("[serverPath]", SERVER_PATH_HELP)
+  .option("--description <text>", "a note for the version")
+  .option(
+    "--expected-version <n>",
+    "fail if the active version is not this one",
+    integerFrom(0),
+  )
+  .option("-y, --yes", "skip confirmation prompt")
+  .option("--json", "output the result as JSON")
+  .action((version: number, serverPath: string | undefined, options) =>
+    handleRemoteConfigRollback(version, { ...options, serverPath }),
+  );
+
+remoteConfigCommand
+  .command("preview")
+  .description("Show the values a device gets")
+  .addOption(platformCommandOption)
+  .option("-c, --channel <channel>", "the device's channel")
+  .option("--app-version <version>", "the device's app version")
+  .option("--cohort <cohort>", "the device's cohort")
+  .option("--fingerprint-hash <hash>", "the device's fingerprint hash")
+  .option("--at <date-time>", "when, as an ISO 8601 date-time (default: now)")
+  .addOption(
+    new Option(
+      "--version-number <n>",
+      "preview this published version (default: the active one)",
+    )
+      .argParser(integerFrom(1))
+      .conflicts("file"),
+  )
+  .option("--file <file>", "preview a template file before publishing it")
+  .option("--json", "output the values as JSON")
+  .argument("[serverPath]", SERVER_PATH_HELP)
+  .action((serverPath: string | undefined, options) =>
+    handleRemoteConfigPreview({
+      ...options,
+      platform: options.platform as "ios" | "android" | undefined,
+      serverPath,
+    }),
+  );
+
+const insightsCommand = program
+  .command("insights")
+  .description("Read Insights: reporting devices, update failures, and events");
+
+const insightsWindowOption = () =>
+  new Option("--window <window>", "the period that ends with the current hour")
+    .choices(INSIGHTS_WINDOWS)
+    .default("24h" as const);
+
+const addInsightsScope = <
+  TArgs extends unknown[],
+  TOptions extends Record<string, unknown>,
+  TGlobalOptions extends Record<string, unknown>,
+>(
+  command: Command<TArgs, TOptions, TGlobalOptions>,
+) =>
+  command
+    .option(
+      "--bundle <id>",
+      "a bundle, by the ID shown in the console or hotUpdater.getBundleId()",
+    )
+    .addOption(platformCommandOption)
+    .option("-c, --channel <channel>", "the channel, with --platform")
+    .addOption(insightsWindowOption())
+    .option("--json", "output the result as JSON")
+    .argument("[serverPath]", SERVER_PATH_HELP);
+
+addInsightsScope(
+  insightsCommand
+    .command("overview")
+    .description("Count a channel's reporting devices, or a bundle's reports"),
+).action((serverPath: string | undefined, options) =>
+  handleInsightsOverview({
+    ...options,
+    platform: options.platform as "ios" | "android" | undefined,
+    serverPath,
+  }),
+);
+
+addInsightsScope(
+  insightsCommand
+    .command("failures")
+    .description("Show a channel's or a bundle's update failures"),
+).action((serverPath: string | undefined, options) =>
+  handleInsightsFailures({
+    ...options,
+    platform: options.platform as "ios" | "android" | undefined,
+    serverPath,
+  }),
+);
+
+insightsCommand
+  .command("events")
+  .description(
+    "List reports, newest first: all, a bundle's, or an installation's",
+  )
+  .option("--bundle <id>", "a bundle's reports, with --outcome")
+  .addOption(
+    new Option("--outcome <outcome>", "which of the bundle's reports").choices(
+      Object.keys(INSIGHTS_OUTCOMES) as (keyof typeof INSIGHTS_OUTCOMES)[],
+    ),
+  )
+  .option("--install <id>", "an installation's reports")
+  .option(
+    "--limit <n>",
+    "events per page, from 1 to 100",
+    integerFrom(1, 100),
+    20,
+  )
+  .option("--cursor <cursor>", "the next page, as the last page printed it")
+  .option("--json", "output the page as JSON")
+  .argument("[serverPath]", SERVER_PATH_HELP)
+  .action((serverPath: string | undefined, options) =>
+    handleInsightsEvents({ ...options, serverPath }),
+  );
+
+insightsCommand
+  .command("installations")
+  .description("Find an installation by its install ID, or by user ID")
+  .argument("<id>", "an install ID, or the user ID the app set")
+  .argument("[serverPath]", SERVER_PATH_HELP)
+  .option(
+    "--limit <n>",
+    "installations per page, from 1 to 100",
+    integerFrom(1, 100),
+    20,
+  )
+  .option("--cursor <cursor>", "the next page, as the last page printed it")
+  .option("--json", "output the installations as JSON")
+  .action((id: string, serverPath: string | undefined, options) =>
+    handleInsightsInstallations(id, { ...options, serverPath }),
+  );
+
 const bundleCommand = program.command("bundle").description("Manage bundles");
 
 bundleCommand
@@ -281,7 +505,7 @@ bundleCommand
 bundleCommand
   .command("show")
   .description("Show one bundle by ID")
-  .argument("<id>", "the ID shown in the console or HotUpdater.getBundleId()")
+  .argument("<id>", "the ID shown in the console or hotUpdater.getBundleId()")
   .option("--json", "output raw internal data as JSON")
   .action((id: string, options: { json?: boolean }) =>
     handleBundleShow(id, options),
@@ -333,7 +557,7 @@ addBundlePolicyOptions(
   bundleCommand
     .command("update")
     .description("Update bundle rollout and targeting")
-    .argument("<id>", "the ID shown in the console or HotUpdater.getBundleId()")
+    .argument("<id>", "the ID shown in the console or hotUpdater.getBundleId()")
     .option(
       "--dry-run",
       "validate the update and show the projected catalog without saving",
@@ -352,7 +576,7 @@ for (const [name, enabled] of [
         ? "Enable a bundle"
         : "Disable a bundle and re-resolve compatible delivery",
     )
-    .argument("<id>", "the ID shown in the console or HotUpdater.getBundleId()")
+    .argument("<id>", "the ID shown in the console or hotUpdater.getBundleId()")
     .option(
       "--expected-revision <revision>",
       "expected bundle revision",
@@ -374,7 +598,7 @@ for (const [name, enabled] of [
 bundleCommand
   .command("delete")
   .description("Delete a disabled bundle")
-  .argument("<id>", "the ID shown in the console or HotUpdater.getBundleId()")
+  .argument("<id>", "the ID shown in the console or hotUpdater.getBundleId()")
   .option(
     "--expected-revision <revision>",
     "expected bundle revision",

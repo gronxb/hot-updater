@@ -1,14 +1,15 @@
 import type { BundleEventRow } from "./eventRow";
+import { isLateEvent, isLaunch } from "./schema";
 
 export type InsightsOverviewIdentity = {
-  readonly scopeKind: "release" | "channel" | "usage" | "distribution";
-  readonly releaseKind: "all" | "specific" | "embedded";
+  readonly scopeKind: "release" | "channel" | "usage";
+  readonly releaseKind: "all" | "specific";
   readonly releaseId: string;
   readonly channel: string;
   readonly platform: "all" | "ios" | "android";
   readonly appVersionKind: "all" | "specific";
   readonly appVersion: string;
-  readonly periodKind: "lifetime" | "hour" | "latest";
+  readonly periodKind: "lifetime" | "hour";
   readonly bucketStartMs: number;
 };
 
@@ -67,30 +68,6 @@ export const insightsOverviewValues = (identity: InsightsOverviewIdentity) => ({
 
 const hour = (value: number): number =>
   Math.floor(value / 3_600_000) * 3_600_000;
-
-export const currentInsightsReleaseId = (
-  event: BundleEventRow,
-): string | null =>
-  event.type === "UPDATE_DOWNLOADED"
-    ? event.from_release_id
-    : event.to_release_id;
-
-export const insightsDistributionIdentity = (
-  event: BundleEventRow,
-): InsightsOverviewIdentity => {
-  const releaseId = currentInsightsReleaseId(event);
-  return {
-    scopeKind: "distribution",
-    releaseKind: releaseId === null ? "embedded" : "specific",
-    releaseId: releaseId ?? "",
-    channel: event.channel,
-    platform: event.platform,
-    appVersionKind: "specific",
-    appVersion: event.app_version,
-    periodKind: "latest",
-    bucketStartMs: hour(event.received_at_ms),
-  };
-};
 
 export const insightsOverviewDeltas = (
   event: BundleEventRow,
@@ -163,25 +140,33 @@ export const insightsOverviewDeltas = (
     );
   };
 
-  // A launch report changes no release's counters: the installation only
-  // keeps running its bundle. A failed update is counted by recordEvent itself.
-  if (event.type === "UPDATE_DOWNLOADED") {
+  // `applies` counts launches (`isLaunch`): an apply, or a kept UNCHANGED
+  // row that moved the installation to a release with no apply report. A
+  // launch or crash whose download report never arrived counts that download
+  // too, so a release's downloads cover its launches and crashes. A late
+  // download or apply counts nothing: its target was counted when it ran. A
+  // failed update is counted by recordEvent itself.
+  const implied =
+    (event.metadata as { implied_download?: true }).implied_download === true
+      ? 1
+      : 0;
+  if (!isLateEvent(event) && event.type === "UPDATE_DOWNLOADED") {
     metric(event.to_release_id, {
       downloads: 1,
       applies: 0,
       failedLaunches: 0,
     });
-  } else if (event.type === "UPDATE_APPLIED") {
+  } else if (!isLateEvent(event) && isLaunch(event)) {
     metric(event.to_release_id, {
-      downloads: 0,
+      downloads: implied,
       applies: 1,
       failedLaunches: 0,
     });
-  } else if (event.type === "RECOVERED") {
+  } else if (!isLateEvent(event) && event.type === "RECOVERED") {
     // The launch crashed on the bundle it left; returning to the one before
-    // is no apply.
+    // is no launch.
     metric(event.from_release_id, {
-      downloads: 0,
+      downloads: implied,
       applies: 0,
       failedLaunches: 1,
     });

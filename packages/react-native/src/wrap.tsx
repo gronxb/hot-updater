@@ -1,30 +1,20 @@
 import React, { useEffect, useState } from "react";
 
-import { handleNotifyAppReady } from "./appReady";
-import { checkForUpdate } from "./checkForUpdate";
 import { useEventCallback } from "./hooks/useEventCallback";
 import { getUpdateId, reload } from "./native";
 import { useHotUpdaterStore } from "./store";
 import type {
   HotUpdaterFallbackComponentProps,
-  InternalInitOptions,
   InternalWrapOptions,
   UpdateStatus,
 } from "./wrap.types";
 
 export type {
-  AutoUpdateOptions,
   HotUpdaterFallbackComponentProps,
-  HotUpdaterInitOptions,
-  HotUpdaterOptions,
-  InternalInitOptions,
+  HotUpdaterWrapOptions,
   InternalWrapOptions,
   RunUpdateProcessResponse,
 } from "./wrap.types";
-
-export function init(options: InternalInitOptions): void {
-  void handleNotifyAppReady(options);
-}
 
 export function wrap(
   options: InternalWrapOptions,
@@ -81,16 +71,12 @@ export function wrap(
         try {
           setUpdateStatus("CHECK_FOR_UPDATE");
 
-          const readiness = handleNotifyAppReady(restOptions);
-          const updateInfo = await checkForUpdate({
-            client: restOptions.client,
+          const updateInfo = await restOptions.checkForUpdate({
             updateStrategy: restOptions.updateStrategy,
-            requestHeaders: restOptions.requestHeaders,
-            requestTimeout: restOptions.requestTimeout,
-            onError: restOptions.onError,
           });
 
-          await readiness;
+          // A forced update reloads only after init has read this launch.
+          await restOptions.appReady();
           setMessage(updateInfo?.message ?? null);
 
           if (!updateInfo) {
@@ -106,7 +92,7 @@ export function wrap(
 
           if (updateInfo.shouldForceUpdate === false) {
             void updateInfo.updateBundle().catch((error: unknown) => {
-              restOptions.onError?.(error);
+              restOptions.onError(error);
             });
 
             restOptions.onUpdateProcessCompleted?.({
@@ -143,7 +129,7 @@ export function wrap(
         } catch (error) {
           const normalizedError =
             error instanceof Error ? error : new Error(String(error));
-          restOptions.onError?.(normalizedError);
+          restOptions.onError(normalizedError);
           setUpdateStatus("UPDATE_PROCESS_COMPLETED");
         }
       });

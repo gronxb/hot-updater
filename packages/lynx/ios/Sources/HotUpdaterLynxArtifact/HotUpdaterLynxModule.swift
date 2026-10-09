@@ -70,6 +70,7 @@ public final class HotUpdaterLynxModuleContext {
         ["getPluginInfo": NSStringFromSelector(#selector(getPluginInfo)),
          "getPluginStorageItem": NSStringFromSelector(#selector(getPluginStorageItem(_:))),
          "setPluginStorageItem": NSStringFromSelector(#selector(setPluginStorageItem(_:value:))),
+         "getStateSync": NSStringFromSelector(#selector(getStateSync)),
          "getState": NSStringFromSelector(#selector(getState(_:))),
          "getLaunchConfiguration": NSStringFromSelector(#selector(getLaunchConfiguration(_:))),
          "getRuntimeEvents": NSStringFromSelector(#selector(getRuntimeEvents(_:))),
@@ -91,6 +92,9 @@ public final class HotUpdaterLynxModuleContext {
         return context
     }
     private func failure(_ error: Error, _ callback: LynxCallbackBlock?) {
+        callback?(failureReply(error))
+    }
+    private func failureReply(_ error: Error) -> [String: Any] {
         let code: String
         if let policy = error as? LynxPolicyError { code = policy.code }
         else if let signature = error as? SignatureVerificationError { code = signature.errorCodeString }
@@ -99,7 +103,7 @@ public final class HotUpdaterLynxModuleContext {
         else if case LynxArtifactError.authorizationRequired = error { code = "STALE_SELECTION" }
         else if error.localizedDescription.hasPrefix("STALE_CONTEXT:") { code = "CONTEXT_REJECTED" }
         else { code = "NATIVE_ERROR" }
-        callback?(["ok": false, "error": ["code": code, "message": error.localizedDescription]])
+        return ["ok": false, "error": ["code": code, "message": error.localizedDescription]]
     }
     private func pluginReply(_ operation: () throws -> Any) -> [String: Any] {
         do {
@@ -108,6 +112,12 @@ public final class HotUpdaterLynxModuleContext {
         } catch {
             return ["ok": false, "error": ["code": "PLUGIN_STORAGE_ERROR", "message": error.localizedDescription]]
         }
+    }
+    @objc public func getStateSync() -> [String: Any] {
+        do {
+            let value = try bound()
+            return ["ok": true, "data": try value.controller.getState(value.launch)]
+        } catch { return failureReply(error) }
     }
     @objc public func getPluginInfo() -> [String: Any] {
         pluginReply {

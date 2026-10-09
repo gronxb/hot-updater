@@ -1,5 +1,84 @@
 # @hot-updater/expo
 
+## 1.0.0-rc.42
+
+### Patch Changes
+
+- Updated dependencies [72fd2de]
+  - hot-updater@1.0.0-rc.42
+  - @hot-updater/cli-tools@1.0.0-rc.42
+  - @hot-updater/bare@1.0.0-rc.42
+  - @hot-updater/plugin-core@1.0.0-rc.42
+
+## 1.0.0-rc.41
+
+### Patch Changes
+
+- Updated dependencies [545f059]
+  - @hot-updater/plugin-core@1.0.0-rc.41
+  - @hot-updater/cli-tools@1.0.0-rc.41
+  - hot-updater@1.0.0-rc.41
+  - @hot-updater/bare@1.0.0-rc.41
+
+## 1.0.0-rc.40
+
+### Patch Changes
+
+- hot-updater@1.0.0-rc.40
+  - @hot-updater/cli-tools@1.0.0-rc.40
+  - @hot-updater/bare@1.0.0-rc.40
+  - @hot-updater/plugin-core@1.0.0-rc.40
+
+## 1.0.0-rc.39
+
+### Patch Changes
+
+- Updated dependencies [2071bc6]
+  - hot-updater@1.0.0-rc.39
+  - @hot-updater/cli-tools@1.0.0-rc.39
+  - @hot-updater/plugin-core@1.0.0-rc.39
+  - @hot-updater/bare@1.0.0-rc.39
+
+## 1.0.0-rc.38
+
+### Patch Changes
+
+- Updated dependencies [136dd83]
+- Updated dependencies [bbbdd8c]
+  - @hot-updater/bare@1.0.0-rc.38
+  - hot-updater@1.0.0-rc.38
+  - @hot-updater/cli-tools@1.0.0-rc.38
+  - @hot-updater/plugin-core@1.0.0-rc.38
+
+## 1.0.0-rc.37
+
+### Patch Changes
+
+- Updated dependencies [5a5dd3e]
+  - hot-updater@1.0.0-rc.37
+  - @hot-updater/cli-tools@1.0.0-rc.37
+  - @hot-updater/plugin-core@1.0.0-rc.37
+  - @hot-updater/bare@1.0.0-rc.37
+
+## 1.0.0-rc.36
+
+### Patch Changes
+
+- Updated dependencies [c527bb2]
+  - hot-updater@1.0.0-rc.36
+  - @hot-updater/cli-tools@1.0.0-rc.36
+  - @hot-updater/plugin-core@1.0.0-rc.36
+  - @hot-updater/bare@1.0.0-rc.36
+
+## 1.0.0-rc.35
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.0.0-rc.35
+  - hot-updater@1.0.0-rc.35
+  - @hot-updater/bare@1.0.0-rc.35
+  - @hot-updater/plugin-core@1.0.0-rc.35
+
 ## 1.0.0-rc.34
 
 ### Patch Changes

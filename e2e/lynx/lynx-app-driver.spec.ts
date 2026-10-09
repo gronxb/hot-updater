@@ -17,7 +17,7 @@ function createDriver(readScreenState: () => Record<string, unknown>) {
     baseUrl: "http://control.test",
     fetch,
   });
-  return { driver: new LynxAppDriver(client, "ios", {}), fetch };
+  return { driver: new LynxAppDriver(client, "ios", {}), fetch, client };
 }
 
 function mockAndroidCommands(
@@ -658,6 +658,28 @@ describe("Lynx managed page evidence actions", () => {
 });
 
 describe("Lynx update actions", () => {
+  it("waits for reinitialization acknowledgement even when an earlier launch status already matches", async () => {
+    const { driver, client } = createDriver(() => ({
+      launchStatus: "Current Launch Status: UNCHANGED",
+      updateActionResult: "idle",
+    }));
+    const wait = vi
+      .spyOn(client, "waitForScreenStateField")
+      .mockRejectedValue(new Error("No reinitialization acknowledgement"));
+    await expect(
+      driver.tap("reinitialize", "action-reinitialize-hot-updater"),
+    ).rejects.toThrow("No reinitialization acknowledgement");
+    expect(wait).toHaveBeenCalledWith(
+      "reinitialize: wait updateActionResult",
+      "updateActionResult",
+      {
+        expectedValue: "reinitialize -> completed",
+        failSubstrings: [" -> error"],
+        rejectSubstrings: [" -> checking"],
+        rejectValues: ["idle"],
+      },
+    );
+  });
   it("rejects an update action error by default", async () => {
     const { driver } = createDriver(() => ({
       updateActionResult: "current-channel -> error download failed",

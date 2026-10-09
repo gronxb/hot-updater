@@ -79,8 +79,10 @@ Every admin path is fixed relative to `baseUrl`. The repository is
 
 - `core` is core's API for Bundles, Releases, Release Catalogs and Channels,
   sent over the admin API. The CLI's commands and the Console use it.
-- `fetchAdmin(path)` sends a GET to the admin handler with the same headers.
-  The Console reads the server's Insights through it.
+- `fetchAdmin(path, init?)` sends a request to the admin handler with the
+  same headers: a GET, unless `init` names another method, with `init`'s
+  headers added. The Console reads the server's Insights and edits its
+  Remote Config through it.
 
 Before its first request, `core` reads `GET /version` from the admin handler.
 A server that reports an `adminProtocol` below 2, or none, fails with a
@@ -304,10 +306,12 @@ routes. Protect that mount with framework middleware and configure matching
 opt-in; there is no built-in admin authenticator.
 
 <Callout type="warn">
-  Through `standaloneRepository`, the Console manages Bundles, Releases and
-  Channels, and reads the server's Insights overview, events, installations,
-  update failures and retention periods. It cannot show usage or Release
-  activity, and it does not manage the server's API keys; manage them with
+  Through `standaloneRepository`, the Console manages Bundles, Releases,
+  Channels and Remote Config, and reads the server's Insights overview,
+  events, installations, update failures and retention periods; the CLI's
+  `remote-config` and `insights` commands use the same routes. The Console
+  cannot show usage or Release activity, and it does not manage the server's
+  API keys; manage them with
   [`hot-updater api-key`](/docs/custom/api-key-authentication) against the
   server's `createHotUpdater` module. A hosted Console must protect its browser
   session separately and keep the admin bearer token in server-side

@@ -79,6 +79,9 @@ const runtimeConfigPath = path.join(
 );
 const defaultScenarioNames = [
   "startup-hang-recovery",
+  "headless-launch-keeps-staged-bundle",
+  "interrupted-launch-retries-bundle",
+  "launch-status-after-session-install",
   "release-ota-recovery",
   "multi-asset-replacement",
   "bspatch-builtin-to-diff-ota",
@@ -105,6 +108,7 @@ const defaultScenarioNames = [
   "runtime-channel-crash-restore",
   "metadata-v1-migration",
   "ten-crash-history-safe-bundle",
+  "remote-config-fetch-activate",
 ] as const;
 const standaloneDatabaseProfileSources = [
   "examples-server/elysia-drizzle-libsql/src/db.ts",
@@ -242,19 +246,20 @@ async function controlStepDefinition(
 }
 
 describe("E2E scenario contract", () => {
-  it("keeps Console Insights enabled for every standalone database profile", async () => {
+  it("keeps Console Insights and Remote Config enabled for every standalone database profile", async () => {
     // Given: Console Insights is an acceptance checkpoint after each device
-    // scenario and every standalone adapter implements the insights model.
+    // scenario, every standalone adapter implements the insights model, and
+    // the Remote Config scenario publishes through the server's admin routes.
     const sources = await Promise.all(
       standaloneDatabaseProfileSources.map((sourcePath) =>
         fs.readFile(sourcePath, "utf8"),
       ),
     );
 
-    // When / Then: every profile runs the insights() plugin and declares its
-    // client access policy explicitly.
+    // When / Then: every profile runs the insights() and remoteConfig()
+    // plugins and declares its client access policy explicitly.
     for (const source of sources) {
-      expect(source).toContain("plugins: [insights()],");
+      expect(source).toContain("plugins: [insights(), remoteConfig()],");
       expect(source).toContain('clientAccess: "public",');
       expect(source).not.toContain("clientAccess: { type:");
       expect(source).not.toContain("insights: true");
@@ -267,7 +272,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(27);
+    expect(new Set(listScenarioNames()).size).toBe(31);
   });
 
   it("keeps repeated catalog checks as no-ops while already built-in", async () => {
@@ -586,7 +591,7 @@ describe("E2E scenario contract", () => {
     const helpers = [
       source.slice(
         source.indexOf("function stripAnsi("),
-        source.indexOf("function bareBuildCacheRoot("),
+        source.indexOf("function deployProcessLockRoot("),
       ),
       source.slice(
         source.indexOf("async function fetchProviderBundleById("),
@@ -663,23 +668,23 @@ describe("E2E scenario contract", () => {
         "../e2eBuildConfig": { HOT_UPDATER_API_KEY: "" },
         "@hot-updater/react-native": {
           HotUpdater: {
-            init: () => {},
-            getAppVersion: () => "1.0.0",
-            getBundleId: () => updateId,
-            getChannel: () => "production",
-            getCohort: () => "123",
-            getCrashHistory: () => [],
-            getDefaultChannel: () => "production",
-            getFingerprintHash: () => null,
-            getManifest: () => manifest,
-            getMinBundleId: () => minBundleId,
-            isChannelSwitched: () => false,
+            init: () => ({
+              insights: { setUser: () => {} },
+              remoteConfig: {},
+              getAppVersion: () => "1.0.0",
+              getBundleId: () => updateId,
+              getChannel: () => "production",
+              getCohort: () => "123",
+              getCrashHistory: () => [],
+              getDefaultChannel: () => "production",
+              getFingerprintHash: () => null,
+              getManifest: () => manifest,
+              getMinBundleId: () => minBundleId,
+              isChannelSwitched: () => false,
+            }),
           },
-          insights: () => ({
-            id: "insights",
-            setup: () => {},
-            setUser: () => {},
-          }),
+          insights: () => ({ id: "insights", setup: () => {} }),
+          remoteConfig: () => ({ id: "remoteConfig", setup: () => {} }),
         },
         "react-native": {},
         valtio: { proxy: (value: unknown) => value },
@@ -757,7 +762,7 @@ describe("E2E scenario contract", () => {
       const guard = new Script(guardSource);
       const runGuard = () =>
         guard.runInNewContext({
-          HotUpdater: {
+          hotUpdater: {
             getBundleId: () => updateId,
             getManifest: () => ({ bundleId }),
           },
@@ -823,14 +828,23 @@ describe("E2E scenario contract", () => {
     // Console Insights QA needs the Insights client plugin and finds the
     // installation by this user ID.
     expect(e2eRuntimeSource).toContain(
-      'import { HotUpdater, insights } from "@hot-updater/react-native";',
+      'import { HotUpdater, insights, remoteConfig } from "@hot-updater/react-native";',
     );
-    expect(e2eRuntimeSource).toContain("plugins: [analytics],");
+    // The Remote Config scenario reads its values through this plugin, on the
+    // instance init returns.
     expect(e2eRuntimeSource).toContain(
-      'analytics.setUser({ userId: "detox-e2e" });',
+      "plugins: [analytics, remoteConfigPlugin],",
+    );
+    expect(e2eRuntimeSource).toContain(
+      "export const e2eRemoteConfig = hotUpdater.remoteConfig;",
+    );
+    expect(e2eRuntimeSource).toContain(
+      'hotUpdater.insights.setUser({ userId: "detox-e2e" });',
     );
     expect(e2eRuntimeSource).not.toContain("insights: true");
     expect(e2eRuntimeSource).not.toContain("HotUpdater.setUser");
+    // HotUpdater has only init; the app calls the instance it returns.
+    expect(e2eRuntimeSource).not.toMatch(/HotUpdater\.(?!init\b)/);
     expect(e2eRuntimeSource).not.toContain("username");
     expect(exampleAppSource).not.toContain("react-native-launch-arguments");
     expect(exampleAppSource).not.toContain('from "@env"');

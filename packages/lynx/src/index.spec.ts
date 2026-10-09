@@ -7,6 +7,12 @@ import {
   type NativeState,
 } from "./types";
 
+const stateBridge = (read: () => Partial<NativeState>) => ({
+  getState: (callback: (reply: NativeReply<Partial<NativeState>>) => void) =>
+    callback({ ok: true, data: read() }),
+  getStateSync: () => ({ ok: true, data: read() }),
+});
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.resetModules();
@@ -410,7 +416,8 @@ describe("Lynx public controller", () => {
   });
 
   it("omits public APIs without truthful native behavior", async () => {
-    const { HotUpdater } = await import("./index");
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     expect("getManifest" in HotUpdater).toBe(false);
     expect("getInstallId" in HotUpdater).toBe(false);
     expect("addListener" in HotUpdater).toBe(false);
@@ -419,7 +426,8 @@ describe("Lynx public controller", () => {
 
   it("propagates missing native managed reload support", async () => {
     vi.stubGlobal("NativeModules", undefined);
-    const { HotUpdater } = await import("./index");
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     await expect(HotUpdater.reload()).rejects.toMatchObject({
       code: "NATIVE_MODULE_UNAVAILABLE",
     });
@@ -438,7 +446,8 @@ describe("Lynx public controller", () => {
           }),
       },
     });
-    const { HotUpdater } = await import("./index");
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     await expect(HotUpdater.reload()).resolves.toEqual({
       status: "TRANSITION_ACCEPTED",
       transitionId: "transition-reload",
@@ -452,14 +461,16 @@ describe("Lynx public controller", () => {
           callback({ ok: true, data: { status: "RELOADED" } }),
       },
     });
-    const { HotUpdater } = await import("./index");
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     await expect(HotUpdater.reload()).rejects.toMatchObject({
       code: "INVALID_NATIVE_REPLY",
     });
   });
 
   it("requires a real handler for the only custom reload behavior", async () => {
-    const { HotUpdater } = await import("./index");
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     const setReloadBehavior = HotUpdater.setReloadBehavior as unknown as (
       behavior: string,
       handler?: () => void | Promise<void>,
@@ -487,8 +498,8 @@ describe("Lynx public controller", () => {
     );
     const fetch = vi.fn();
     vi.stubGlobal("fetch", fetch);
-    const { HotUpdater } = await import("./index");
-    HotUpdater.init({ baseURL: "https://updates.test" });
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     expect(readModule).not.toHaveBeenCalled();
     expect(fetch).not.toHaveBeenCalled();
     await expect(HotUpdater.getLaunchInfo()).rejects.toThrow(
@@ -507,23 +518,17 @@ describe("Lynx public controller", () => {
     const next = { ...running, bundleId: "B", releaseId: "release-B" };
     vi.stubGlobal("NativeModules", {
       HotUpdaterLynx: {
-        getState: (
-          callback: (reply: NativeReply<Partial<NativeState>>) => void,
-        ) =>
-          callback({
-            ok: true,
-            data: {
-              platform: "android",
-              runtimeId: "runtime",
-              runningSelection: running as NativeState["runningSelection"],
-              runningConfirmed: true,
-              nextSelection: next as NativeState["nextSelection"],
-            },
-          }),
+        ...stateBridge(() => ({
+          platform: "android",
+          runtimeId: "runtime",
+          runningSelection: running as NativeState["runningSelection"],
+          runningConfirmed: true,
+          nextSelection: next as NativeState["nextSelection"],
+        })),
       },
     });
-    const { HotUpdater } = await import("./index");
-    HotUpdater.init({ baseURL: "https://updates.test" });
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     const info = await HotUpdater.getLaunchInfo();
     expect(info).toEqual({
       platform: "android",
@@ -539,7 +544,7 @@ describe("Lynx public controller", () => {
     expect(HotUpdater.getBundleId()).toBe("release-A");
   });
 
-  it("invalidates its snapshot without racing generation teardown after reset", async () => {
+  it("rejects reads of the retired generation after reset without another async query", async () => {
     const running = {
       kind: "BUNDLE" as const,
       bundleId: "A",
@@ -555,6 +560,7 @@ describe("Lynx public controller", () => {
       crashedBundleIds: [],
       unconfirmedReleaseIds: [],
     } as unknown as NativeState;
+    let retired = false;
     const getState = vi.fn(
       (callback: (reply: NativeReply<NativeState>) => void) => {
         if (getState.mock.calls.length > 1) {
@@ -572,9 +578,20 @@ describe("Lynx public controller", () => {
     );
     vi.stubGlobal("NativeModules", {
       HotUpdaterLynx: {
+        getStateSync: () =>
+          retired
+            ? {
+                ok: false,
+                error: {
+                  code: "GENERATION_RETIRED",
+                  message: "The reset generation has been destroyed.",
+                },
+              }
+            : { ok: true, data: state },
         getState,
         resetChannel: (callback: (reply: NativeReply<unknown>) => void) => {
           state.nextSelection = null;
+          retired = true;
           callback({
             ok: true,
             data: {
@@ -586,8 +603,8 @@ describe("Lynx public controller", () => {
         },
       },
     });
-    const { HotUpdater } = await import("./index");
-    HotUpdater.init({ baseURL: "https://updates.test" });
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
 
     await HotUpdater.getLaunchInfo();
     expect(HotUpdater.isUpdateDownloaded()).toBe(true);
@@ -598,11 +615,11 @@ describe("Lynx public controller", () => {
     });
     expect(getState).toHaveBeenCalledOnce();
     expect(() => HotUpdater.isUpdateDownloaded()).toThrow(
-      "Call HotUpdater.notifyAppReady() or HotUpdater.checkForUpdate()",
+      "The reset generation has been destroyed.",
     );
   });
 
-  it("propagates reset failure and invalidates potentially stale state", async () => {
+  it("propagates reset failure and keeps reading the authoritative native state", async () => {
     const running = {
       kind: "BUNDLE" as const,
       bundleId: "A",
@@ -626,6 +643,7 @@ describe("Lynx public controller", () => {
     );
     vi.stubGlobal("NativeModules", {
       HotUpdaterLynx: {
+        getStateSync: () => ({ ok: true, data: state }),
         getState,
         resetChannel: (callback: (reply: NativeReply<unknown>) => void) =>
           callback({
@@ -637,8 +655,8 @@ describe("Lynx public controller", () => {
           }),
       },
     });
-    const { HotUpdater } = await import("./index");
-    HotUpdater.init({ baseURL: "https://updates.test" });
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
 
     await HotUpdater.getLaunchInfo();
     expect(HotUpdater.getChannel()).toBe("beta");
@@ -647,12 +665,8 @@ describe("Lynx public controller", () => {
       code: "STATE_WRITE_FAILED",
     });
     expect(getState).toHaveBeenCalledOnce();
-    expect(() => HotUpdater.getChannel()).toThrow(
-      "Call HotUpdater.notifyAppReady() or HotUpdater.checkForUpdate()",
-    );
-    expect(() => HotUpdater.isUpdateDownloaded()).toThrow(
-      "Call HotUpdater.notifyAppReady() or HotUpdater.checkForUpdate()",
-    );
+    expect(HotUpdater.getChannel()).toBe("beta");
+    expect(HotUpdater.isUpdateDownloaded()).toBe(true);
   });
 
   it("reports a native recovery receipt once without reusing durable crash history", async () => {
@@ -690,25 +704,19 @@ describe("Lynx public controller", () => {
     );
     vi.stubGlobal("NativeModules", {
       HotUpdaterLynx: {
-        getState: (
-          callback: (reply: NativeReply<Partial<NativeState>>) => void,
-        ) =>
-          callback({
-            ok: true,
-            data: {
-              platform: "ios",
-              runtimeId: "runtime",
-              runningSelection: running as NativeState["runningSelection"],
-              runningConfirmed: true,
-              crashedBundleIds: ["crash"],
-              embeddedBundleId: "embedded",
-            },
-          }),
+        ...stateBridge(() => ({
+          platform: "ios",
+          runtimeId: "runtime",
+          runningSelection: running as NativeState["runningSelection"],
+          runningConfirmed: true,
+          crashedBundleIds: ["crash"],
+          embeddedBundleId: "embedded",
+        })),
         notifyAppReady,
       },
     });
-    const { HotUpdater } = await import("./index");
-    HotUpdater.init({ baseURL: "https://updates.test" });
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     await expect(HotUpdater.notifyAppReady()).resolves.toEqual({
       status: "RECOVERED",
       transitionId: "transition-recovery",
@@ -736,20 +744,14 @@ describe("Lynx public controller", () => {
     expect(typeof (crashedBundleIds as { at?: unknown }).at).toBe("undefined");
     vi.stubGlobal("NativeModules", {
       HotUpdaterLynx: {
-        getState: (
-          callback: (reply: NativeReply<Partial<NativeState>>) => void,
-        ) =>
-          callback({
-            ok: true,
-            data: {
-              platform: "android",
-              runtimeId: "runtime",
-              runningSelection: running as NativeState["runningSelection"],
-              runningConfirmed: true,
-              crashedBundleIds,
-              embeddedBundleId: "embedded",
-            },
-          }),
+        ...stateBridge(() => ({
+          platform: "android",
+          runtimeId: "runtime",
+          runningSelection: running as NativeState["runningSelection"],
+          runningConfirmed: true,
+          crashedBundleIds,
+          embeddedBundleId: "embedded",
+        })),
         notifyAppReady: (
           callback: (reply: NativeReply<ConfirmationResult>) => void,
         ) =>
@@ -763,8 +765,8 @@ describe("Lynx public controller", () => {
           }),
       },
     });
-    const { HotUpdater } = await import("./index");
-    HotUpdater.init({ baseURL: "https://updates.test" });
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     await expect(HotUpdater.notifyAppReady()).resolves.toEqual({
       status: "UNCHANGED",
     });
@@ -790,27 +792,21 @@ describe("Lynx public controller", () => {
     };
     vi.stubGlobal("NativeModules", {
       HotUpdaterLynx: {
-        getState: (
-          callback: (reply: NativeReply<Partial<NativeState>>) => void,
-        ) =>
-          callback({
-            ok: true,
-            data: {
-              platform: "android",
-              runtimeId: "runtime",
-              runningSelection: running as NativeState["runningSelection"],
-              runningConfirmed: true,
-              crashedBundleIds: [],
-              embeddedBundleId: "embedded",
-            },
-          }),
+        ...stateBridge(() => ({
+          platform: "android",
+          runtimeId: "runtime",
+          runningSelection: running as NativeState["runningSelection"],
+          runningConfirmed: true,
+          crashedBundleIds: [],
+          embeddedBundleId: "embedded",
+        })),
         notifyAppReady: (
           callback: (reply: NativeReply<ConfirmationResult>) => void,
         ) => callback({ ok: true, data: admission }),
       },
     });
-    const { HotUpdater } = await import("./index");
-    HotUpdater.init({ baseURL: "https://updates.test" });
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     await expect(HotUpdater.notifyAppReady()).resolves.toEqual({
       status: "UNCHANGED",
     });
@@ -825,20 +821,14 @@ describe("Lynx public controller", () => {
     };
     vi.stubGlobal("NativeModules", {
       HotUpdaterLynx: {
-        getState: (
-          callback: (reply: NativeReply<Partial<NativeState>>) => void,
-        ) =>
-          callback({
-            ok: true,
-            data: {
-              platform: "android",
-              runtimeId: "runtime",
-              runningSelection: running as NativeState["runningSelection"],
-              runningConfirmed: true,
-              crashedBundleIds: [],
-              embeddedBundleId: "embedded",
-            },
-          }),
+        ...stateBridge(() => ({
+          platform: "android",
+          runtimeId: "runtime",
+          runningSelection: running as NativeState["runningSelection"],
+          runningConfirmed: true,
+          crashedBundleIds: [],
+          embeddedBundleId: "embedded",
+        })),
         notifyAppReady: (callback: (reply: NativeReply<unknown>) => void) =>
           callback({
             ok: true,
@@ -850,8 +840,8 @@ describe("Lynx public controller", () => {
           }),
       },
     });
-    const { HotUpdater } = await import("./index");
-    HotUpdater.init({ baseURL: "https://updates.test" });
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     await expect(HotUpdater.notifyAppReady()).rejects.toMatchObject({
       code: "INVALID_NATIVE_REPLY",
     });
@@ -888,19 +878,13 @@ describe("Lynx public controller", () => {
       };
       vi.stubGlobal("NativeModules", {
         HotUpdaterLynx: {
-          getState: (
-            callback: (reply: NativeReply<Partial<NativeState>>) => void,
-          ) =>
-            callback({
-              ok: true,
-              data: {
-                platform: "ios",
-                runtimeId: "runtime",
-                runningSelection: running as NativeState["runningSelection"],
-                runningConfirmed: true,
-                crashedBundleIds: [],
-              },
-            }),
+          ...stateBridge(() => ({
+            platform: "ios",
+            runtimeId: "runtime",
+            runningSelection: running as NativeState["runningSelection"],
+            runningConfirmed: true,
+            crashedBundleIds: [],
+          })),
           notifyAppReady: (callback: (reply: NativeReply<unknown>) => void) =>
             callback({
               ok: true,
@@ -912,8 +896,8 @@ describe("Lynx public controller", () => {
             }),
         },
       });
-      const { HotUpdater } = await import("./index");
-      HotUpdater.init({ baseURL: "https://updates.test" });
+      const { HotUpdater: factory } = await import("./index");
+      const HotUpdater = factory.init({ baseURL: "https://updates.test" });
       await expect(HotUpdater.notifyAppReady()).rejects.toMatchObject({
         code: "INVALID_NATIVE_REPLY",
       });
@@ -950,19 +934,13 @@ describe("Lynx public controller", () => {
       };
       vi.stubGlobal("NativeModules", {
         HotUpdaterLynx: {
-          getState: (
-            callback: (reply: NativeReply<Partial<NativeState>>) => void,
-          ) =>
-            callback({
-              ok: true,
-              data: {
-                platform: "ios",
-                runtimeId: "runtime",
-                runningSelection: running as NativeState["runningSelection"],
-                runningConfirmed: false,
-                crashedBundleIds: [],
-              },
-            }),
+          ...stateBridge(() => ({
+            platform: "ios",
+            runtimeId: "runtime",
+            runningSelection: running as NativeState["runningSelection"],
+            runningConfirmed: false,
+            crashedBundleIds: [],
+          })),
           notifyAppReady: (
             callback: (reply: NativeReply<ConfirmationResult>) => void,
           ) =>
@@ -980,8 +958,8 @@ describe("Lynx public controller", () => {
             }),
         },
       });
-      const { HotUpdater } = await import("./index");
-      HotUpdater.init({ baseURL: "https://updates.test" });
+      const { HotUpdater: factory } = await import("./index");
+      const HotUpdater = factory.init({ baseURL: "https://updates.test" });
       await expect(HotUpdater.notifyAppReady()).resolves.toEqual({
         status: "UPDATE_APPLIED",
         transitionId: "transition-update",
@@ -1002,19 +980,13 @@ describe("Lynx public controller", () => {
     };
     vi.stubGlobal("NativeModules", {
       HotUpdaterLynx: {
-        getState: (
-          callback: (reply: NativeReply<Partial<NativeState>>) => void,
-        ) =>
-          callback({
-            ok: true,
-            data: {
-              platform: "android",
-              runtimeId: "runtime",
-              runningSelection: running as NativeState["runningSelection"],
-              runningConfirmed: true,
-              crashedBundleIds: [],
-            },
-          }),
+        ...stateBridge(() => ({
+          platform: "android",
+          runtimeId: "runtime",
+          runningSelection: running as NativeState["runningSelection"],
+          runningConfirmed: true,
+          crashedBundleIds: [],
+        })),
         notifyAppReady: (
           callback: (reply: NativeReply<ConfirmationResult>) => void,
         ) =>
@@ -1032,8 +1004,8 @@ describe("Lynx public controller", () => {
           }),
       },
     });
-    const { HotUpdater } = await import("./index");
-    HotUpdater.init({ baseURL: "https://updates.test" });
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     await expect(HotUpdater.notifyAppReady()).resolves.toEqual({
       status: "UNCHANGED",
       transitionId: "transition-adopt",
@@ -1051,19 +1023,13 @@ describe("Lynx public controller", () => {
     };
     vi.stubGlobal("NativeModules", {
       HotUpdaterLynx: {
-        getState: (
-          callback: (reply: NativeReply<Partial<NativeState>>) => void,
-        ) =>
-          callback({
-            ok: true,
-            data: {
-              platform: "ios",
-              runtimeId: "runtime",
-              runningSelection: running as NativeState["runningSelection"],
-              runningConfirmed: true,
-              crashedBundleIds: [],
-            },
-          }),
+        ...stateBridge(() => ({
+          platform: "ios",
+          runtimeId: "runtime",
+          runningSelection: running as NativeState["runningSelection"],
+          runningConfirmed: true,
+          crashedBundleIds: [],
+        })),
         notifyAppReady: (
           callback: (reply: NativeReply<ConfirmationResult>) => void,
         ) =>
@@ -1081,8 +1047,8 @@ describe("Lynx public controller", () => {
           }),
       },
     });
-    const { HotUpdater } = await import("./index");
-    HotUpdater.init({ baseURL: "https://updates.test" });
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     await expect(HotUpdater.notifyAppReady()).rejects.toMatchObject({
       code: "INVALID_NATIVE_REPLY",
     });
@@ -1097,19 +1063,13 @@ describe("Lynx public controller", () => {
     };
     vi.stubGlobal("NativeModules", {
       HotUpdaterLynx: {
-        getState: (
-          callback: (reply: NativeReply<Partial<NativeState>>) => void,
-        ) =>
-          callback({
-            ok: true,
-            data: {
-              platform: "android",
-              runtimeId: "runtime",
-              runningSelection: running as NativeState["runningSelection"],
-              runningConfirmed: true,
-              crashedBundleIds: [],
-            },
-          }),
+        ...stateBridge(() => ({
+          platform: "android",
+          runtimeId: "runtime",
+          runningSelection: running as NativeState["runningSelection"],
+          runningConfirmed: true,
+          crashedBundleIds: [],
+        })),
         notifyAppReady: (
           callback: (reply: NativeReply<ConfirmationResult>) => void,
         ) =>
@@ -1127,8 +1087,8 @@ describe("Lynx public controller", () => {
           }),
       },
     });
-    const { HotUpdater } = await import("./index");
-    HotUpdater.init({ baseURL: "https://updates.test" });
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     await expect(HotUpdater.notifyAppReady()).rejects.toMatchObject({
       code: "INVALID_NATIVE_REPLY",
     });
@@ -1143,24 +1103,18 @@ describe("Lynx public controller", () => {
     };
     vi.stubGlobal("NativeModules", {
       HotUpdaterLynx: {
-        getState: (
-          callback: (reply: NativeReply<Partial<NativeState>>) => void,
-        ) =>
-          callback({
-            ok: true,
-            data: {
-              platform: "android",
-              runtimeId: "runtime",
-              channel: "beta",
-              defaultChannel: "production",
-              runningSelection: running as NativeState["runningSelection"],
-              runningConfirmed: true,
-            },
-          }),
+        ...stateBridge(() => ({
+          platform: "android",
+          runtimeId: "runtime",
+          channel: "beta",
+          defaultChannel: "production",
+          runningSelection: running as NativeState["runningSelection"],
+          runningConfirmed: true,
+        })),
       },
     });
-    const { HotUpdater } = await import("./index");
-    HotUpdater.init({ baseURL: "https://updates.test" });
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     await HotUpdater.getLaunchInfo();
     expect(HotUpdater.getChannel()).toBe("beta");
     expect(HotUpdater.getDefaultChannel()).toBe("production");
@@ -1185,9 +1139,14 @@ describe("Lynx public controller", () => {
         callback({ ok: true, data: state });
       },
     );
-    vi.stubGlobal("NativeModules", { HotUpdaterLynx: { setCohort } });
-    const { HotUpdater } = await import("./index");
-    HotUpdater.init({ baseURL: "https://updates.test" });
+    vi.stubGlobal("NativeModules", {
+      HotUpdaterLynx: {
+        getStateSync: () => ({ ok: true, data: state }),
+        setCohort,
+      },
+    });
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
 
     await HotUpdater.setCohort(" QA-Group ");
 
@@ -1208,6 +1167,7 @@ describe("Lynx public controller", () => {
     } as unknown as NativeState;
     vi.stubGlobal("NativeModules", {
       HotUpdaterLynx: {
+        getStateSync: () => ({ ok: true, data: state }),
         setCohort: (
           params: { cohort: string },
           callback: (reply: NativeReply<NativeState>) => void,
@@ -1217,8 +1177,8 @@ describe("Lynx public controller", () => {
         },
       },
     });
-    const { HotUpdater } = await import("./index");
-    HotUpdater.init({ baseURL: "https://updates.test" });
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
 
     await HotUpdater.setCohort(" QA-Group ");
 
@@ -1231,8 +1191,8 @@ describe("Lynx public controller", () => {
     async (cohort) => {
       const setCohort = vi.fn();
       vi.stubGlobal("NativeModules", { HotUpdaterLynx: { setCohort } });
-      const { HotUpdater } = await import("./index");
-      HotUpdater.init({ baseURL: "https://updates.test" });
+      const { HotUpdater: factory } = await import("./index");
+      const HotUpdater = factory.init({ baseURL: "https://updates.test" });
 
       expect(() => HotUpdater.setCohort(cohort)).toThrow(
         "Invalid cohort. Use 1-1000",
@@ -1266,6 +1226,7 @@ describe("Lynx public controller", () => {
     });
     vi.stubGlobal("NativeModules", {
       HotUpdaterLynx: {
+        getStateSync: () => ({ ok: true, data: state() }),
         getState: (
           callback: (reply: NativeReply<Partial<NativeState>>) => void,
         ) => {
@@ -1283,8 +1244,8 @@ describe("Lynx public controller", () => {
         },
       },
     });
-    const { HotUpdater } = await import("./index");
-    HotUpdater.init({ baseURL: "https://updates.test" });
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     await HotUpdater.getLaunchInfo();
 
     let resolved = false;
@@ -1308,8 +1269,8 @@ describe("Lynx public controller", () => {
 
   it("fails explicitly on a method call when native integration is absent", async () => {
     vi.stubGlobal("NativeModules", undefined);
-    const { HotUpdater } = await import("./index");
-    HotUpdater.init({ baseURL: "https://updates.test" });
+    const { HotUpdater: factory } = await import("./index");
+    const HotUpdater = factory.init({ baseURL: "https://updates.test" });
     await expect(HotUpdater.notifyAppReady()).rejects.toMatchObject({
       code: "NATIVE_MODULE_UNAVAILABLE",
     });

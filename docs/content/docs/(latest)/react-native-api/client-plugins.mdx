@@ -1,6 +1,6 @@
 ---
 title: "Create a client plugin"
-description: "Observe launches, update checks, downloads, and update failures in the app, and send data to your server, with defineClientPlugin."
+description: "Observe launches, update checks, downloads, and update failures in the app, send data to your server, and add an API to the HotUpdater instance, with defineClientPlugin."
 icon: Plug
 ---
 
@@ -9,15 +9,17 @@ icon: Plug
 A client plugin runs in the app next to the SDK. It is told about the launch
 outcome, each update check, each staged download, and each failed check,
 download, or install. It can send requests to your update server with the
-app's base URL and headers, and keep small values on the device. The built-in
-[Insights plugin](/docs/react-native-api/insights) uses the same contract;
+app's base URL and headers, keep small values on the device, and add an API
+that the app calls on the instance `HotUpdater.init` returns. The built-in
+[Insights](/docs/react-native-api/insights) and
+[Remote Config](/docs/react-native-api/remote-config) plugins use the same
+contract;
 [server plugins](/docs/custom/server-plugins) extend the server side.
 
-Pass plugins to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init)
-or [`HotUpdater.wrap`](/docs/react-native-api/wrap):
+Pass plugins to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init):
 
-```tsx title="App.tsx (excerpt)"
-HotUpdater.init({
+```tsx title="src/hotUpdater.ts (excerpt)"
+export const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>",
   plugins: [insights(), launchLogger()], // [!code ++]
 });
@@ -42,23 +44,30 @@ export const launchLogger = () =>
     id: "launch-logger",
     setup(context) {
       return {
-        onAppReady(result) {
-          console.log(`Launch on ${context.platform}:`, result.status);
+        hooks: {
+          onAppReady(result) {
+            console.log(`Launch on ${context.platform}:`, result.status);
+          },
         },
       };
     },
   });
 ```
 
-- `id` is a non-empty string, unique among the app's plugins; `init` and
-  `wrap` throw when two plugins share one. It also scopes the plugin's
-  [storage](#store-values-on-the-device).
-- `setup(context)` runs once per plugin object, when `init` or `wrap` first
-  receives it, and returns the plugin's hooks, or nothing. Passing the same
-  object to a later `init` or `wrap` keeps its hooks; a plugin left out of a
-  later call stops receiving events.
-- A plugin object can carry its own methods, as `insights()` does with
-  `setUser`.
+- `id` is a non-empty string, unique among the app's plugins; `init` throws
+  when two plugins share one. It also scopes the plugin's
+  [storage](#store-values-on-the-device), and names the plugin's API on the
+  instance, so it cannot be one of the instance's own members, such as
+  `reload`.
+- `setup(context)` runs once for each instance, when `init` creates the
+  instance, and returns `{ hooks, api }`, either of them, or nothing. Each
+  instance has its own plugins: the same plugin object passed to two `init`
+  calls is set up twice, with hooks and an API for each instance.
+- `api` is what the app calls. `init` puts it on the instance it returns, under
+  the plugin's id, as `insights()` adds `hotUpdater.insights` and
+  `remoteConfig()` adds `hotUpdater.remoteConfig`. Its type follows from
+  `setup`, so the instance is typed without declarations; see
+  [the feedback example](#example-send-feedback-with-the-running-bundle).
 - Import `defineClientPlugin` and the plugin types from
   `@hot-updater/protocol`. It loads neither React Native nor the native
   module, so the plugin's [tests](#test-the-plugin) run in plain Node. The app
@@ -222,12 +231,11 @@ Hooks observe the update flow and cannot delay or change it:
 - The SDK calls a hook without waiting for it and ignores what it returns. An
   `async` hook runs in the background.
 - A hook that throws or rejects, or a `setup` that throws, is passed to the
-  `onError` of `init` or `wrap` as an `Error` whose `cause` is the thrown
+  `onError` of `init` as an `Error` whose `cause` is the thrown
   value, or logged with `console.warn` when there is no `onError`. The update
   continues, and a plugin whose `setup` threw gets no hooks.
 
-Errors from a plugin's own methods, such as a failed request, reach whoever
-called them.
+Errors from a plugin's API, such as a failed request, reach whoever called it.
 
 ## The context
 
@@ -240,8 +248,9 @@ called them.
 | `platform`               | `"ios"` or `"android"`.                                                                                             |
 | `appVersion`             | The native app version, or `null` when the build has none.                                                          |
 | `sdkVersion`             | The version of `@hot-updater/react-native`.                                                                         |
+| `minBundleId`            | The ID of the bundle the native build ships. `getBundleId()` returns it while the app runs that built-in bundle.    |
 | `isDebugBuild`           | `true` in a debug build, where `__DEV__` is `true`.                                                                 |
-| `getBundleId()`          | The bundle native reports as current. This is an artifact ID, not the update ID that `HotUpdater.getBundleId()` returns. |
+| `getBundleId()`          | The bundle native reports as current. This is an artifact ID, not the update ID that `hotUpdater.getBundleId()` returns. |
 | `getChannel()`           | The effective channel.                                                                                              |
 | `getCohort()`            | The rollout cohort.                                                                                                 |
 | `getFingerprintHash()`   | The native fingerprint, or `null`.                                                                                  |
@@ -259,8 +268,8 @@ and a standard `RequestInit`. It resolves a `baseURL` function on each call,
 sends the configured `requestHeaders`, with headers from the `RequestInit`
 taking precedence, and rejects with `Request timed out` once the configured
 `requestTimeout` passes, 5000 ms by default. An absolute URL rejects with a
-`TypeError`. A plugin gets its context in `setup`, so a plugin method called
-before `HotUpdater.init` or `wrap` has no `fetch` yet.
+`TypeError`. A plugin creates its API in `setup`, from the context, so the API
+always has `fetch`.
 
 A route for the plugin lives in a [server plugin](/docs/custom/server-plugins)
 on the same server. On `handlers.client`, it sits behind the same client-route
@@ -293,58 +302,52 @@ This plugin pairs with the `feedback()`
 installation with each thread, and mentions the latest update failure:
 
 ```ts title="src/feedback.ts"
-import {
-  defineClientPlugin,
-  type HotUpdaterClientContext,
-} from "@hot-updater/protocol";
+import { defineClientPlugin } from "@hot-updater/protocol";
 
-export const feedback = () => {
-  let context: HotUpdaterClientContext | null = null;
-
-  return defineClientPlugin({
+export const feedback = () =>
+  defineClientPlugin({
     id: "feedback",
-    setup(pluginContext) {
-      context = pluginContext;
+    setup(context) {
       return {
-        onUpdateError(error) {
-          pluginContext.storage.set(
-            "lastUpdateError",
-            `${error.stage}: ${error.reason}`,
-          );
+        hooks: {
+          onUpdateError(error) {
+            context.storage.set(
+              "lastUpdateError",
+              `${error.stage}: ${error.reason}`,
+            );
+          },
+        },
+        api: {
+          /** Opens a feedback thread and returns its ID. */
+          async open(title: string, body: string): Promise<string> {
+            const lastUpdateError = context.storage.get("lastUpdateError");
+            const response = await context.fetch("feedback", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                clientRef: `${context.installId}-${context.now()}`,
+                bundleId: context.getBundleId(),
+                installId: context.installId,
+                title,
+                body:
+                  lastUpdateError === null
+                    ? body
+                    : `${body}\n\nLast update error: ${lastUpdateError}`,
+              }),
+            });
+            if (response.status !== 201) {
+              throw new Error(`Feedback was not sent: HTTP ${response.status}`);
+            }
+            const { id } = (await response.json()) as { id: string };
+            return id;
+          },
         },
       };
     },
-    /** Opens a feedback thread and returns its ID. */
-    async open(title: string, body: string): Promise<string> {
-      if (context === null) {
-        throw new Error("Call HotUpdater.init before sending feedback.");
-      }
-      const lastUpdateError = context.storage.get("lastUpdateError");
-      const response = await context.fetch("feedback", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          clientRef: `${context.installId}-${context.now()}`,
-          bundleId: context.getBundleId(),
-          installId: context.installId,
-          title,
-          body:
-            lastUpdateError === null
-              ? body
-              : `${body}\n\nLast update error: ${lastUpdateError}`,
-        }),
-      });
-      if (response.status !== 201) {
-        throw new Error(`Feedback was not sent: HTTP ${response.status}`);
-      }
-      const { id } = (await response.json()) as { id: string };
-      return id;
-    },
   });
-};
 ```
 
-Register it, and call its method from your UI:
+Register it, and call its API on the instance from your UI:
 
 ```tsx title="App.tsx"
 import { HotUpdater } from "@hot-updater/react-native";
@@ -352,14 +355,12 @@ import { Button } from "react-native";
 
 import { feedback } from "./src/feedback";
 
-const appFeedback = feedback();
-
-HotUpdater.init({
+const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>",
   requestHeaders: {
     "x-api-key": "<your-api-key>",
   },
-  plugins: [appFeedback],
+  plugins: [feedback()],
 });
 
 export default function App() {
@@ -367,7 +368,7 @@ export default function App() {
     <Button
       title="Report a problem"
       onPress={() => {
-        appFeedback
+        hotUpdater.feedback
           .open("Problem report", "The screen stays blank after the update.")
           .then((id) => console.log("Feedback thread:", id))
           .catch((error: unknown) => console.warn(error));
@@ -405,8 +406,7 @@ import { feedback } from "./feedback";
 const bundleId = "0199a0c3-6f6e-7c3a-9a3e-1b2c3d4e5f60";
 
 it("sends the running bundle and the last update failure", async () => {
-  const plugin = feedback();
-  const runtime = setupClientPlugin(plugin, {
+  const runtime = setupClientPlugin(feedback(), {
     bundleId,
     requestHeaders: { "x-api-key": "test-key" },
     respond: () =>
@@ -425,9 +425,9 @@ it("sends the running bundle and the last update failure", async () => {
   });
   await runtime.settled();
 
-  await expect(plugin.open("Problem report", "Blank screen")).resolves.toBe(
-    "thread-1",
-  );
+  await expect(
+    runtime.api.open("Problem report", "Blank screen"),
+  ).resolves.toBe("thread-1");
   const [request] = runtime.requests;
   expect(request?.path).toBe("/feedback");
   expect(request?.headers["x-api-key"]).toBe("test-key");
@@ -443,6 +443,7 @@ The runtime it returns:
 
 | Member          | Meaning                                                                                                                                                           |
 | --------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `api`           | The plugin's API, as `hotUpdater.<id>` is in the app.                                                                                                             |
 | `hooks`         | `onAppReady`, `onUpdateCheck`, `onBundleDownloaded`, `onUpdateError`, and `onHttpResponse`. A call returns without waiting for the hook, as in the app.                             |
 | `settled()`     | Waits for the hooks called so far and the requests they started. It does not run timers; advance fake timers to reach a retry or a delay.                         |
 | `requests`      | Each `context.fetch` as the server receives it: `url`, `path` after `baseURL`, `method`, lowercase `headers` with `requestHeaders` applied, `body`, and `json()`. |
@@ -458,6 +459,7 @@ The options set up the server and the device:
 - `baseURL`, `requestHeaders`, and `requestTimeout` are the ones `init` takes.
 - The device's values have fixed defaults: `installId`, `platform` (`ios`),
   `appVersion` (`1.0.0`), `sdkVersion`, `isDebugBuild` (`false`), `bundleId`,
+  `minBundleId` (the same as `bundleId`, so the app runs its built-in bundle),
   `channel` (`production`), `cohort` (`1`), `fingerprintHash` (`null`), and
   `now` (`Date.now`, so fake timers move it). `installId`, `appVersion`,
   `bundleId`, `channel`, `cohort`, and `fingerprintHash` also take a function,
@@ -467,7 +469,7 @@ The options set up the server and the device:
   `createTestStorage()`.
 
 `setupClientPlugins(plugins, options)` sets several plugins up together and
-rejects two with one id, as `init` does. Before you publish, also run the
+rejects two with one id, as `init` does; its `apis` holds their APIs by id. Before you publish, also run the
 plugin in a release build of an app against a server with its routes.
 
 ## Publish the plugin
@@ -481,6 +483,7 @@ server plugin ships from the same package, from a `./client` entry beside
 ## Related
 
 - [Insights Plugin](/docs/react-native-api/insights)
+- [Remote Config Plugin](/docs/react-native-api/remote-config)
 - [Server Plugins](/docs/custom/server-plugins)
 - [Test and publish a plugin](/docs/plugins/publish)
 - [`HotUpdater.init`](/docs/react-native-api/init)

@@ -66,7 +66,8 @@ pnpm test # Uses @cloudflare/vitest-pool-workers
 - `src/serverPlugin`: `definePlugin` and its CLI metadata (`clientCredential`,
   `clientPlugin`), the schema DSL, the typed database handle, the explicit
   `CoreReads` interface, and the errors plugins handle, all from the root.
-  The official plugin packages (`plugins/insights`, `plugins/api-keys`) take
+  The official plugin packages (`plugins/insights`, `plugins/api-keys`,
+  `plugins/remote-config`) take
   this package as a peer, as third-party plugins do. The official-plugin
   brand is a convention, not an export: each package that needs it keeps a
   local helper over `Symbol.for("@hot-updater/server/official-plugin")`.

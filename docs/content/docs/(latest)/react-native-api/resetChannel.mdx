@@ -1,20 +1,20 @@
 ---
 title: "resetChannel"
-description: "The `HotUpdater.resetChannel()` function clears the runtime channel switch and restores the original bundle."
+description: "The `hotUpdater.resetChannel()` function clears the runtime channel switch and restores the original bundle."
 icon: RotateCcw
 ---
 
 ## Usage
 
-Use `HotUpdater.resetChannel()` to clear downloaded OTA state,
+Use `hotUpdater.resetChannel()` to clear downloaded OTA state,
 leave any runtime channel switch, and go back to the app's original bundle.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { hotUpdater } from "./hotUpdater";
 
 async function handleResetChannel() {
-  await HotUpdater.resetChannel();
-  await HotUpdater.reload();
+  await hotUpdater.resetChannel();
+  await hotUpdater.reload();
 }
 ```
 
@@ -23,15 +23,15 @@ async function handleResetChannel() {
 - Clears the runtime channel switch
 - Clears downloaded OTA state and restores the original bundle selection
 - Makes the build-time default channel active again after reload
-- Runs even when `HotUpdater.isChannelSwitched()` is already `false`
+- Runs even when `hotUpdater.isChannelSwitched()` is already `false`
 
 ## Example
 
 ```tsx
-const didReset = await HotUpdater.resetChannel();
+const didReset = await hotUpdater.resetChannel();
 
 if (didReset) {
-  await HotUpdater.reload();
+  await hotUpdater.reload();
 }
 ```
 
@@ -43,6 +43,6 @@ if (didReset) {
 
 ## Related APIs
 
-- [`HotUpdater.getChannel()`](/docs/react-native-api/getChannel)
-- [`HotUpdater.isChannelSwitched()`](/docs/react-native-api/isChannelSwitched)
-- [`HotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
+- [`hotUpdater.getChannel()`](/docs/react-native-api/getChannel)
+- [`hotUpdater.isChannelSwitched()`](/docs/react-native-api/isChannelSwitched)
+- [`hotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)

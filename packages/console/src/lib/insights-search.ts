@@ -10,7 +10,7 @@ const readText = (value: unknown) =>
     : undefined;
 const readWindow = (value: unknown): InsightsWindow | undefined =>
   value === "24h" || value === "7d" || value === "30d" ? value : undefined;
-/** Release health's chart: whether bundles are applied, or crash. */
+/** Release health's chart: whether bundles are launched, or crash. */
 export type HealthChart = "adoption" | "crashes";
 const readHealthChart = (value: unknown): HealthChart | undefined =>
   value === "adoption" || value === "crashes" ? value : undefined;

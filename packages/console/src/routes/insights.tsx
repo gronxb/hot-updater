@@ -36,7 +36,7 @@ function InsightsPage() {
   const navigate = Route.useNavigate();
   const retention = useInsightsRetention();
   const usageWindow = search.window ?? "24h";
-  const bundleWindow = search.bundleWindow ?? "7d";
+  const bundleWindow = search.bundleWindow ?? "24h";
   const channel = search.channel ?? search.healthChannel ?? "production";
   const scope: AppUsageScope = {
     platform: search.platform ?? "all",

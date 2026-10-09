@@ -104,9 +104,13 @@ export function callNative<T>(
   });
 }
 
-/** Lynx's synchronous native methods are used only for small plugin metadata. */
-export function callPluginNative<T>(
-  method: "getPluginInfo" | "getPluginStorageItem" | "setPluginStorageItem",
+/** Small, context-bound state and plugin storage reads on background scripting. */
+export function callNativeSync<T>(
+  method:
+    | "getStateSync"
+    | "getPluginInfo"
+    | "getPluginStorageItem"
+    | "setPluginStorageItem",
   ...args: (string | null)[]
 ): T {
   const module =

@@ -41,10 +41,16 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
                 .put("code", "PLUGIN_STORAGE_ERROR").put("message", it.message ?: "Plugin storage failed")) },
         ),
     )
+    @LynxMethod fun getStateSync(): JavaOnlyMap = nativeReply(runCatching {
+        // Release the registry lock before entering the controller's state lock.
+        val session = boundSession() ?: throw CatalogPolicy.Rejected("NO_CONTEXT", "No registered native context")
+        session.controller.state(session)
+    })
+    private fun boundSession(): LynxLaunchSession? = synchronized(registryLock) { sessions[mContext] }
     @LynxMethod fun getState(callback: Callback) = call(callback) { session -> session.controller.state(session) }
     @LynxMethod fun getLaunchConfiguration(callback: Callback) {
         Handler(Looper.getMainLooper()).post {
-            val session = sessions[mContext]
+            val session = boundSession()
             if (session == null) {
                 reply(callback, Result.failure(CatalogPolicy.Rejected(
                     "NO_CONTEXT",
@@ -52,7 +58,7 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
                 )))
             } else {
                 reply(callback, Result.success(JSONObject(
-                    launchConfigurations[mContext] ?: emptyMap<String, String>(),
+                    synchronized(registryLock) { launchConfigurations[mContext] } ?: emptyMap<String, String>(),
                 )))
             }
         }
@@ -72,7 +78,7 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
         Handler(Looper.getMainLooper()).post {
             val once = LynxOnceReply<JSONObject> { reply(callback, it) }
             val result = runCatching {
-                val session = sessions[mContext] ?: throw CatalogPolicy.Rejected(
+                val session = boundSession() ?: throw CatalogPolicy.Rejected(
                     "CONTEXT_REJECTED",
                     "No registered native context",
                 )
@@ -96,7 +102,7 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
         Handler(Looper.getMainLooper()).post {
             val once = LynxOnceReply<JSONObject> { reply(callback, it) }
             val result = runCatching {
-                val session = sessions[mContext] ?: throw CatalogPolicy.Rejected(
+                val session = boundSession() ?: throw CatalogPolicy.Rejected(
                     "CONTEXT_REJECTED",
                     "No registered native context",
                 )
@@ -110,7 +116,7 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
     }
     @LynxMethod fun notifyAppReady(callback: Callback) {
         Handler(Looper.getMainLooper()).post {
-            val session = sessions[mContext]
+            val session = boundSession()
             if (session == null) reply(callback, Result.failure(CatalogPolicy.Rejected("NO_CONTEXT", "No registered native context")))
             else {
                 val ticket = session.beginBridgeReply { reply(callback, it) }
@@ -123,7 +129,7 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
     }
     private fun call(callback: Callback, operation: suspend (LynxLaunchSession) -> JSONObject) {
         Handler(Looper.getMainLooper()).post {
-            val session = sessions[mContext]
+            val session = boundSession()
             if (session == null) reply(callback, Result.failure(CatalogPolicy.Rejected("NO_CONTEXT", "No registered native context")))
             else {
                 val ticket = session.beginBridgeReply { reply(callback, it) }
@@ -139,13 +145,16 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
     }
     private fun json(map: ReadableMap) = lynxBridgeJson(map)
     private fun reply(callback: Callback, result: Result<JSONObject>) {
+        callback.invoke(nativeReply(result))
+    }
+    private fun nativeReply(result: Result<JSONObject>): JavaOnlyMap {
         val envelope = result.fold(
             { JSONObject().put("ok", true).put("data", it) },
             { error -> JSONObject().put("ok", false).put("error", JSONObject()
                 .put("code", when (error) { is CatalogPolicy.Rejected -> error.code; is LynxNativeOperationException -> error.code; is LynxIncompatibleArtifactException -> "INCOMPATIBLE"; else -> "NATIVE_ERROR" })
                 .put("message", error.message ?: "Native operation failed")) },
         )
-        callback.invoke(toMap(envelope))
+        return toMap(envelope)
     }
     private fun toMap(value: JSONObject): JavaOnlyMap = JavaOnlyMap.from(value.keys().asSequence().associateWith { key -> toBridge(value.get(key)) })
     private fun toBridge(value: Any): Any? = when (value) {
@@ -155,18 +164,19 @@ class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
         else -> value
     }
     companion object {
+        private val registryLock = Any()
         private val sessions = IdentityHashMap<Context, LynxLaunchSession>()
         private val launchConfigurations = IdentityHashMap<Context, Map<String, String>>()
         internal fun bind(
             context: Context,
             session: LynxLaunchSession,
             launchConfiguration: Map<String, String> = emptyMap(),
-        ) {
+        ) = synchronized(registryLock) {
             check(!sessions.containsKey(context))
             sessions[context] = session
             launchConfigurations[context] = launchConfiguration.toMap()
         }
-        internal fun unbind(context: Context) {
+        internal fun unbind(context: Context) = synchronized(registryLock) {
             sessions.remove(context)
             launchConfigurations.remove(context)
         }

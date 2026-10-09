@@ -60,6 +60,7 @@ type AndroidRuntimeJournalAcquisitionFailureReason =
   | "screen.evidence-read-unavailable";
 
 const ACTION_RESULT_FIELDS: Record<string, string> = {
+  "action-reinitialize-hot-updater": "updateActionResult",
   "action-arm-next-detail-fatal": "updateActionResult",
   "action-arm-next-detail-pending": "updateActionResult",
   "action-capture-stale-authorities": "updateActionResult",
@@ -372,6 +373,9 @@ export class LynxAppDriver implements ScenarioAppDriver {
           `${stage}: wait ${actionResultField}`,
           actionResultField,
           {
+            ...(testID === "action-reinitialize-hot-updater"
+              ? { expectedValue: "reinitialize -> completed" }
+              : {}),
             ...(actionResultField === "updateActionResult" &&
             options.allowErrorResult !== true
               ? { failSubstrings: [" -> error"] }

@@ -1,6 +1,6 @@
 ---
 title: "Console"
-description: "Manage bundles and Insights locally, or deploy an authenticated console for your team."
+description: "Manage bundles, Insights, and Remote Config locally, or deploy an authenticated console for your team."
 icon: Terminal
 ---
 
@@ -10,6 +10,7 @@ Use the console for:
 - Bundle disable and force-update controls
 - Advanced immutable artifact inspection
 - Quick access to git history for updates
+- [Remote Config](#remote-config) parameters, conditions, and versions
 
 <video src={"/docs/console/console.mp4"} controls autoPlay loop muted />
 
@@ -59,7 +60,7 @@ the same list as
 ## Usage
 
 The Bundles list and its detail sheet show an **ID** that matches
-[`HotUpdater.getBundleId()`](/docs/react-native-api/getBundleId) on the device.
+[`hotUpdater.getBundleId()`](/docs/react-native-api/getBundleId) on the device.
 Promoted updates have their own IDs even when they reuse the same files.
 
 Start the local console:
@@ -143,14 +144,22 @@ workflow previews and deletes them.
 
 ## Insights
 
-The Bundles list and detail show lifetime **Downloads**, **Applied**, and
-**Known crashes**, with a crash rate, and the detail shows **Download
+The Bundles list and detail show lifetime **Downloaded**, **Launched**, and
+**Crashed** installations, with a crash rate, and the detail shows **Download
 failures** with their rate. Open Insights to inspect release health and update
 failures for a selected period, reporting installations, and event history.
 Events are kept for 90 days and daily totals for 13 months.
 
 Follow the [Insights guide](/docs/guides/insights) to configure reporting,
 identify an installation, verify an applied update, and interpret the counts.
+
+## Remote Config
+
+**Remote Config** edits the parameters and conditions of a draft, previews the
+values a device would get, publishes the draft as a version, and rolls back to
+an earlier one. It shows when the configuration lists `remoteConfig()`; the
+managed servers run it. Follow the [Remote Config guide](/docs/guides/remote-config)
+to read the values in the app.
 
 ## Rollback
 
@@ -166,9 +175,8 @@ confirming.
 
 Setting a bundle's `shouldForceUpdate` value to `true` marks it for immediate
 application when selected. In the [custom update flow](/docs/guides/custom-update),
-check `shouldForceUpdate` and call `HotUpdater.reload()` after a successful
-download. The optional [`HotUpdater.wrap`](/docs/react-native-api/wrap) flow
-reloads after staging by default; `reloadOnForceUpdate: false` defers it.
+check `shouldForceUpdate` and call `hotUpdater.reload()` after a successful
+download.
 
 <img src={"/docs/console/force_update.png"} />
 

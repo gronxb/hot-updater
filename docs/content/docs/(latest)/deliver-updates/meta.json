@@ -8,6 +8,7 @@
     "../guides/channel-management",
     "../guides/runtime-channel-switch",
     "../guides/rollout-cohorts",
+    "../guides/remote-config",
     "../guides/update-strategies",
     "../guides/bundle-diffing",
     "../policy/app-review"

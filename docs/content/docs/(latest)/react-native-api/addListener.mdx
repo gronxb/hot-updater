@@ -16,9 +16,9 @@ side effects.
 function.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { hotUpdater } from "./hotUpdater";
 
-const unsubscribe = HotUpdater.addListener("onProgress", (event) => {
+const unsubscribe = hotUpdater.addListener("onProgress", (event) => {
   console.log(`Update progress: ${Math.round(event.progress * 100)}%`);
 });
 
@@ -56,9 +56,9 @@ type HotUpdaterEvent = {
 Use `details` when you need per-file progress.
 
 ```tsx
-import { HotUpdater } from "@hot-updater/react-native";
+import { hotUpdater } from "./hotUpdater";
 
-HotUpdater.addListener("onProgress", (event) => {
+hotUpdater.addListener("onProgress", (event) => {
   console.log(
     "Diff progress",
     event.details.completedFilesCount,
@@ -80,11 +80,12 @@ Call the returned function when the listener is no longer needed.
 
 ```tsx
 import { useEffect } from "react";
-import { HotUpdater } from "@hot-updater/react-native";
+
+import { hotUpdater } from "./hotUpdater";
 
 function UpdateProgressLogger() {
   useEffect(() => {
-    const unsubscribe = HotUpdater.addListener("onProgress", (event) => {
+    const unsubscribe = hotUpdater.addListener("onProgress", (event) => {
       console.log(Math.round(event.progress * 100));
     });
 

@@ -1,6 +1,7 @@
 import {
   HotUpdater,
   LynxUpdaterError,
+  type HotUpdaterInstance,
   type CheckForUpdateResult,
 } from "@hot-updater/lynx";
 import { navigate } from "@hot-updater/lynx-sparkling";
@@ -17,6 +18,7 @@ declare const TextCodecHelper: {
 export const variant = __SPIKE_VARIANT__;
 export const resources = __SDK_RESOURCES__;
 export const imageUrl = `${__SPIKE_ASSET_PREFIX__}assets/probe.png`;
+let hotUpdater: HotUpdaterInstance;
 let initialized = false;
 let imageReady = false;
 let completeImage: (() => void) | undefined;
@@ -52,14 +54,14 @@ export async function startSdk(
       evidenceOrigin = evidenceOriginFrom(
         launchConfiguration.appBaseURL ?? "http://localhost:3007/hot-updater",
       );
-      HotUpdater.init({
+      hotUpdater = HotUpdater.init({
         plugins: [insights()],
         baseURL:
           launchConfiguration.appBaseURL ?? "http://localhost:3007/hot-updater",
       });
       initialized = true;
     }
-    const launch = await HotUpdater.getLaunchInfo();
+    const launch = await hotUpdater.getLaunchInfo();
     console.log("HOT_UPDATER_SDK_LAUNCH", JSON.stringify(launch));
     console.log(
       "HOT_UPDATER_SDK_TRANSPORT",
@@ -94,10 +96,10 @@ export async function startSdk(
     }
     // Font registration is not loading. Native must hold this callback until
     // its actual essential font/image loaders and initial content succeed.
-    const confirmation = await HotUpdater.notifyAppReady();
+    const confirmation = await hotUpdater.notifyAppReady();
     console.log("HOT_UPDATER_SDK_READY", JSON.stringify(confirmation));
     if (__SPIKE_BEHAVIOR__ === "double-ready") {
-      const repeated = await HotUpdater.notifyAppReady();
+      const repeated = await hotUpdater.notifyAppReady();
       console.log(
         "HOT_UPDATER_SDK_REPEATED_READY",
         JSON.stringify({ confirmation, repeated }),
@@ -125,7 +127,7 @@ export async function checkSdkUpdate(
   canInstall(false);
   status("Checking for an update…");
   try {
-    prepared = await HotUpdater.checkForUpdate({
+    prepared = await hotUpdater.checkForUpdate({
       updateStrategy: "appVersion",
     });
     console.log(
@@ -154,7 +156,7 @@ export async function captureRuntimeEvents(
   status: (value: string) => void,
 ): Promise<void> {
   try {
-    const snapshot = await HotUpdater.getRuntimeEvents();
+    const snapshot = await hotUpdater.getRuntimeEvents();
     if (
       snapshot.schemaVersion !== 1 ||
       (snapshot.latestSequence !== null &&
@@ -271,11 +273,11 @@ export async function installSdkUpdateWithDetail(
 export async function reloadSdkWithDetail() {
   if (busy) throw new Error("An SDK update action is already running");
   await openAdmittedDetail();
-  return HotUpdater.reload();
+  return hotUpdater.reload();
 }
 
 async function openAdmittedDetail() {
-  const before = await HotUpdater.getRuntimeEvents();
+  const before = await hotUpdater.getRuntimeEvents();
   const primary = before.events
     .slice()
     .reverse()
@@ -299,7 +301,7 @@ async function openAdmittedDetail() {
   });
   const deadline = Date.now() + 30_000;
   while (Date.now() < deadline) {
-    const snapshot = await HotUpdater.getRuntimeEvents();
+    const snapshot = await hotUpdater.getRuntimeEvents();
     const admitted = snapshot.events.find(
       (event) =>
         event.name === "pageAdmitted" &&
@@ -359,7 +361,7 @@ export async function installSdkUpdateAndReload(
     throw error;
   }
   busy = false;
-  return HotUpdater.reload().catch((error) => {
+  return hotUpdater.reload().catch((error) => {
     status(`Install and reload failed: ${String(error)}`);
     console.error("HOT_UPDATER_SDK_RELOAD_FAILURE", String(error));
     throw error;

@@ -27,7 +27,9 @@ import {
   styles,
   type ScreenName,
 } from "./e2eStack";
-import { analytics } from "./insights";
+import { createE2eUpdater } from "./insights";
+
+let hotUpdater: ReturnType<typeof createE2eUpdater>;
 import { readE2eLaunchConfiguration } from "./launchConfiguration";
 import {
   E2E_SCENARIO_MARKER,
@@ -162,7 +164,7 @@ function App() {
     if (screen) setCurrentScreen(screen);
   };
   const capturedUpdate = useRef<Awaited<
-    ReturnType<typeof HotUpdater.checkForUpdate>
+    ReturnType<typeof hotUpdater.checkForUpdate>
   > | null>(null);
 
   const setUpdateActionResult = async (result: string) => {
@@ -190,7 +192,7 @@ function App() {
     await setUpdateActionResult(`${actionLabel} -> checking`);
     try {
       const result = await installCheckedUpdate(
-        HotUpdater,
+        hotUpdater,
         {
           updateStrategy: strategy,
           requestTimeout: 5000,
@@ -207,8 +209,8 @@ function App() {
   };
 
   const applyCohortValue = async (nextCohort: string) => {
-    await HotUpdater.setCohort(nextCohort);
-    const applied = HotUpdater.getCohort();
+    await hotUpdater.setCohort(nextCohort);
+    const applied = hotUpdater.getCohort();
     setCohortInputState(applied);
     await publishRuntimeSnapshot();
     await patchScreenState({ cohortInput: applied });
@@ -234,7 +236,7 @@ function App() {
     },
     "action-reset-runtime-channel": async () => {
       await patchScreenState({ runtimeScenarioMarker: null });
-      await HotUpdater.resetChannel();
+      await hotUpdater.resetChannel();
       await setChannelActionResult("reset -> accepted");
     },
     "action-apply-cohort-input": () => applyCohortValue(cohortInput),
@@ -243,14 +245,26 @@ function App() {
       if (initialCohort.current === null)
         throw new Error("Initial cohort is unavailable");
       await applyCohortValue(initialCohort.current);
-      await setCohortActionResult(`restore -> ${HotUpdater.getCohort()}`);
+      await setCohortActionResult(`restore -> ${hotUpdater.getCohort()}`);
     },
     "action-clear-crash-history": async () => {
-      await HotUpdater.clearCrashHistory();
+      await hotUpdater.clearCrashHistory();
       await publishRuntimeSnapshot();
     },
+    "action-reinitialize-hot-updater": async () => {
+      await patchScreenState({
+        launchStatus: "Current Launch Status: STARTING",
+        nativeLaunchReport: null,
+      });
+      hotUpdater = createE2eUpdater(await resolveAppBaseURL());
+      await confirmRuntimeReady(hotUpdater, async (status, report) => {
+        setLaunchStatus(status);
+        await publishRuntimeSnapshot(status, report);
+      });
+      await setUpdateActionResult("reinitialize -> completed");
+    },
     "action-reload-app": async () => {
-      await HotUpdater.reload();
+      await hotUpdater.reload();
     },
     "action-open-detail-page": () =>
       new Promise<void>((resolve, reject) => {
@@ -374,7 +388,7 @@ function App() {
       await setUpdateActionResult("stale-authorities -> verified rejected");
     },
     "action-capture-generation-events": async () => {
-      const snapshot = await HotUpdater.getRuntimeEvents();
+      const snapshot = await hotUpdater.getRuntimeEvents();
       await patchScreenState({ generationEvents: JSON.stringify(snapshot) });
       await setUpdateActionResult(
         `generation-events -> ${snapshot.latestSequence}`,
@@ -384,7 +398,7 @@ function App() {
       await publishRuntimeSnapshot();
     },
     "action-capture-current-channel-update": async () => {
-      const updateInfo = await HotUpdater.checkForUpdate({
+      const updateInfo = await hotUpdater.checkForUpdate({
         updateStrategy: "appVersion",
       });
       capturedUpdate.current = updateInfo;
@@ -454,7 +468,7 @@ function App() {
     nativeReport?: NotifyAppReadyResult,
   ) => {
     try {
-      const snapshot = await readRuntimeSnapshot(HotUpdater);
+      const snapshot = await readRuntimeSnapshot(hotUpdater);
       setRuntimeSnapshot(snapshot);
       setSnapshotError(null);
       if (initialCohort.current === null)
@@ -509,8 +523,9 @@ function App() {
         // Inject startup failure before resource warmup can emit diagnostics
         // for a generation that deliberately never confirms readiness.
         if (
-          await maybeCrashForE2E((bundleId) =>
-            patchScreenState({ startupHangBundleId: bundleId }),
+          await maybeCrashForE2E(
+            (bundleId) => patchScreenState({ startupHangBundleId: bundleId }),
+            hotUpdater,
           )
         )
           return;
@@ -535,7 +550,7 @@ function App() {
             });
           },
           async () => {
-            await confirmRuntimeReady(HotUpdater, async (status, report) => {
+            await confirmRuntimeReady(hotUpdater, async (status, report) => {
               setLaunchStatus(status);
               await publishRuntimeSnapshot(status, report);
             });
@@ -546,7 +561,7 @@ function App() {
         if (automaticForceUpdate) {
           timer = setTimeout(() => {
             void applyForcedUpdate(
-              HotUpdater,
+              hotUpdater,
               () => !active || handledScenarioAction,
             ).catch((error) => reportActionError("force-update", error));
           }, 2500);
@@ -769,11 +784,7 @@ const configureE2eRuntime = async (): Promise<boolean> => {
     /\/screen-state$/,
     "/pending-action",
   );
-  HotUpdater.init({
-    plugins: [analytics],
-    baseURL: await resolveAppBaseURL(),
-    requestTimeout: 15000,
-  });
+  hotUpdater = createE2eUpdater(await resolveAppBaseURL());
   return true;
 };
 

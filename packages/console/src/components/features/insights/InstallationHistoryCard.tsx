@@ -30,6 +30,7 @@ import type {
   InsightsViewPage,
 } from "@/lib/insights-view";
 
+import { BuiltinBundleBadge, isBuiltinBundle } from "./BuiltinBundle";
 import {
   EventBundleTransition,
   EventTimestamp,
@@ -160,7 +161,7 @@ export function InstallationHistoryCard({
                   <dt className="text-xs text-muted-foreground">
                     Last known bundle
                   </dt>
-                  <dd className="mt-1 font-mono text-xs">
+                  <dd className="mt-1 flex min-w-0 flex-wrap items-center gap-2 font-mono text-xs">
                     {lastKnownBundleId ? (
                       <HashValueDisplay
                         value={lastKnownBundleId}
@@ -169,12 +170,18 @@ export function InstallationHistoryCard({
                     ) : (
                       "—"
                     )}
+                    {isBuiltinBundle(
+                      lastKnownBundleId,
+                      selectedEvent.minBundleId,
+                    ) ? (
+                      <BuiltinBundleBadge />
+                    ) : null}
                   </dd>
                 </div>
                 {pendingBundleId ? (
                   <div className="col-span-2 min-w-0">
                     <dt className="text-xs text-muted-foreground">
-                      Downloaded · Pending apply
+                      Downloaded · Not launched yet
                     </dt>
                     <dd className="mt-1 text-xs">
                       <HashValueDisplay value={pendingBundleId} />

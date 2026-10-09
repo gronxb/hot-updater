@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { recordAttempt } from "./attempt.ts";
 import { createNativeBuildPlan } from "./build.ts";
 import type { MobileContext } from "./context.ts";
 import { mobileResultIdentity } from "./result.ts";
@@ -48,12 +49,12 @@ function successfulReport(context: MobileContext) {
       status: "passed",
       exitCode: 0,
       vcs: { commit: context.headSha },
-      runner: { name: "e2e", version: "0.16.0" },
+      runner: { name: "e2e", version: "0.18.0" },
       targets: [
         {
           id: context.platform,
           platform: context.platform,
-          engine: { name: "mobile", version: "0.9.1" },
+          engine: { name: "mobile", version: "0.10.0" },
         },
       ],
       serialGroups: [],
@@ -174,30 +175,16 @@ describe("mobile wrapper resource lifecycle", () => {
                 report,
               }),
             );
-            await fs.writeFile(
-              path.join(context.resultsDir, "scenario-evidence.json"),
-              JSON.stringify({
-                schemaVersion: 1,
-                scenarios: context.scenarioNames.map((name) => ({
-                  name,
-                  bodyCompleted: true,
-                  cleanupCompleted: true,
-                  expectedLaunchFailures: 0,
-                  consoleInsights: { installId: "fixture-installation" },
-                })),
-              }),
-            );
+            // Each attempt's teardown files its own record, as the workers do.
             if (!omitCleanupEvidence) {
-              await fs.writeFile(
-                path.join(context.resultsDir, "cleanup-evidence.json"),
-                JSON.stringify({
+              for (const name of context.scenarioNames)
+                recordAttempt(context.resultsDir, name, {
                   schemaVersion: 1,
-                  attempts: context.scenarioNames.map((name) => ({
-                    name,
-                    cleanupCompleted: true,
-                  })),
-                }),
-              );
+                  name,
+                  cleanupCompleted: true,
+                  consoleInsights: { installId: "fixture-installation" },
+                  expectedLaunchFailures: 0,
+                });
             }
             child.emit("exit", 0);
           })().catch((error) => child.emit("error", error));

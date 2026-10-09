@@ -144,24 +144,25 @@ describe("BundlesPage", () => {
       mocks.isMobile.mockReturnValue(mobile);
       render(<BundlesPage />);
       const summary = screen.getByRole("link", {
-        name: /Downloads 107 Applied 98 Known crashes 2/,
+        name: /Downloaded 107 Launched 98 Crashed 2/,
       });
       expect(
         within(summary)
           .getAllByRole("term")
           .map((term) => term.textContent),
-      ).toEqual(["Downloads", "Applied", "Known crashes"]);
+      ).toEqual(["Downloaded", "Launched", "Crashed"]);
       expect(
         within(summary)
           .getAllByRole("definition")
           .map((value) => value.textContent),
-        // Crashes over applies plus crashes: 2 of 98 + 2.
+        // Crashes over launches plus crashes: 2 of 98 + 2.
       ).toEqual(["107", "98", "2(2.00%)"]);
       expect(mocks.activity).toHaveBeenCalledWith([
         {
           platform: "ios",
           channel: "e2e-job-20260812132427-qy22fi-android-s2-production",
           releaseId: "release-1",
+          builtIn: false,
         },
       ]);
     },
@@ -174,7 +175,7 @@ describe("BundlesPage", () => {
       render(<BundlesPage />);
 
       expect(screen.queryByText("Insights")).toBeNull();
-      expect(screen.queryByText(/Downloads/)).toBeNull();
+      expect(screen.queryByText(/Downloaded/)).toBeNull();
       expect(
         screen.queryByLabelText("Release insights unavailable"),
       ).toBeNull();
@@ -185,13 +186,13 @@ describe("BundlesPage", () => {
       }
     },
   );
-  it("explains applied beside release insights", async () => {
+  it("explains launched beside release insights", async () => {
     render(<BundlesPage />);
     fireEvent.click(
       screen.getByRole("button", { name: "About release insight metrics" }),
     );
     expect((await screen.findByRole("tooltip")).textContent).toContain(
-      "Applied: installations that started running this bundle.",
+      "Launched: ran it.",
     );
   });
   it("keeps bundle management usable when activity is unavailable", () => {
@@ -207,7 +208,7 @@ describe("BundlesPage", () => {
       data: {
         "release-1": {
           downloads: 107,
-          applied: 98,
+          launched: 98,
           failedLaunches: 2,
           measuredAtMs: Date.UTC(2026, 6, 19),
         },
@@ -247,6 +248,36 @@ describe("BundlesPage", () => {
       search: { releaseId: "release-1" },
       to: "/",
     });
+  });
+
+  it("opens a Bundle from anywhere on its mobile card, except the card's controls", () => {
+    mocks.isMobile.mockReturnValue(true);
+    render(<BundlesPage />);
+    const card = screen.getByRole("article", { name: "Bundle release-1" });
+
+    fireEvent.click(within(card).getByText("Platform"));
+
+    expect(mocks.navigate).toHaveBeenCalledWith({
+      resetScroll: false,
+      search: { releaseId: "release-1" },
+      to: "/",
+    });
+
+    mocks.navigate.mockClear();
+    const insights = within(card).getByRole("link", {
+      name: /Downloaded 107 Launched 98 Crashed 2/,
+    });
+    // jsdom can't follow a link; the card must still leave it alone.
+    insights.addEventListener("click", (event) => event.preventDefault());
+    fireEvent.click(insights);
+    fireEvent.click(
+      within(card).getByRole("button", {
+        name: "Show advanced artifact diagnostics",
+      }),
+    );
+
+    expect(mocks.navigate).not.toHaveBeenCalled();
+    expect(screen.getByText("Advanced artifact diagnostics")).toBeDefined();
   });
 
   it("keeps a default Bundle row focused on delivery decisions", () => {

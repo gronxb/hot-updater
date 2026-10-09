@@ -41,6 +41,7 @@ describe("insights retention", () => {
       insights_overview_lifetime: null,
       insights_sketches_lifetime: null,
       insights_distribution: 400,
+      insights_builtin_distribution: 400,
       insights_latest_by_bundle: 400,
       insights_outcomes: 90,
       insights_failures: 90,
@@ -57,6 +58,7 @@ describe("insights retention", () => {
       insights_overview_daily: 60,
       insights_overview_lifetime: null,
       insights_distribution: 60,
+      insights_builtin_distribution: 60,
       insights_outcomes: 30,
     });
     const tables = (value: ReturnType<typeof insights>) =>

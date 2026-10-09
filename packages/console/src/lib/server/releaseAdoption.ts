@@ -1,5 +1,8 @@
 import type { HotUpdaterCoreApi, ReleaseRow } from "@hot-updater/plugin-core";
-import type { InsightsModel } from "@hot-updater/server/plugins/insights";
+import type {
+  InsightsBundleEventFilter,
+  InsightsModel,
+} from "@hot-updater/server/plugins/insights";
 
 import { insightsPeriodEnd, recoveryWindows } from "../insights-recovery";
 import {
@@ -93,8 +96,12 @@ export async function getAdoptionRelease(
 }
 
 /**
- * One bundle's reports of one type in each interval of the period: one read
- * of their hourly counts, never the events or the release table.
+ * One bundle's counts of one type in each interval of the period, from
+ * their hourly counts, never the events or the release table. Downloads are
+ * the bundle's download hours, which count the downloads a launch or crash
+ * implied too. Launches add two series: apply reports, and the kept
+ * UNCHANGED reports that moved an installation to the bundle with no apply
+ * report.
  */
 export async function getBundleEvents(
   model: Pick<InsightsModel, "countEventSeries">,
@@ -105,14 +112,38 @@ export async function getBundleEvents(
     readBundleEventsInput(input);
   const { durationMs, intervalMs } = recoveryWindows[window];
   const end = Math.min(endMs, insightsPeriodEnd(now));
-  const points = await model.countEventSeries({
-    filter:
-      type === "RECOVERED"
-        ? { platform, channel, type, fromBundleId: bundleId }
-        : { platform, channel, type, toBundleId: bundleId },
-    timeRange: { start: Math.max(0, end - durationMs), end },
-    intervalMs,
-  });
+  const timeRange = { start: Math.max(0, end - durationMs), end };
+  const series = (filter: InsightsBundleEventFilter) =>
+    model.countEventSeries({ filter, timeRange, intervalMs });
+  const points =
+    type === "RECOVERED"
+      ? await series({ platform, channel, type, fromBundleId: bundleId })
+      : type === "DOWNLOADED"
+        ? await series({
+            platform,
+            channel,
+            type: "UPDATE_DOWNLOADED",
+            toBundleId: bundleId,
+          })
+        : await Promise.all([
+            series({
+              platform,
+              channel,
+              type: "UPDATE_APPLIED",
+              toBundleId: bundleId,
+            }),
+            series({
+              platform,
+              channel,
+              type: "UNCHANGED",
+              toBundleId: bundleId,
+            }),
+          ]).then(([applied, moved]) =>
+            applied.map((point, index) => ({
+              startMs: point.startMs,
+              events: point.events + (moved[index]?.events ?? 0),
+            })),
+          );
   return {
     bundleId,
     type,

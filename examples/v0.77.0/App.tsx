@@ -28,22 +28,28 @@ export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
 };
 
+export const hotUpdater = HotUpdater.init({
+  // Replace with your public update server URL.
+  baseURL: "https://your-project.supabase.co/functions/v1/update-server",
+  plugins: [insights()],
+});
+
 function App(): React.JSX.Element {
   const [bundleId, setBundleId] = useState<string | null>(null);
 
   useEffect(() => {
-    const bundleId = HotUpdater.getBundleId();
+    const bundleId = hotUpdater.getBundleId();
     setBundleId(bundleId);
   }, []);
 
   const progress = useHotUpdaterStore((state) => state.progress);
   return (
     <SafeAreaView>
-      <Text>Babel {HotUpdater.getBundleId()}</Text>
-      <Text>Channel "{HotUpdater.getChannel()}"</Text>
-      <Text>App Version "{HotUpdater.getAppVersion()}"</Text>
+      <Text>Babel {hotUpdater.getBundleId()}</Text>
+      <Text>Channel "{hotUpdater.getChannel()}"</Text>
+      <Text>App Version "{hotUpdater.getAppVersion()}"</Text>
 
-      <Text>{extractFormatDateFromUUIDv7(HotUpdater.getBundleId())}</Text>
+      <Text>{extractFormatDateFromUUIDv7(hotUpdater.getBundleId())}</Text>
       <Text
         style={{
           marginVertical: 20,
@@ -85,16 +91,13 @@ function App(): React.JSX.Element {
         // source={require("./src/test/_image.png")}
       />
 
-      <Button title="Reload" onPress={() => HotUpdater.reload()} />
+      <Button title="Reload" onPress={() => hotUpdater.reload()} />
     </SafeAreaView>
   );
 }
 
-export default HotUpdater.wrap({
-  // Replace with your public update server URL.
-  baseURL: "https://your-project.supabase.co/functions/v1/update-server",
+export default hotUpdater.wrap({
   updateStrategy: "appVersion", // or "fingerprint"
-  plugins: [insights()],
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

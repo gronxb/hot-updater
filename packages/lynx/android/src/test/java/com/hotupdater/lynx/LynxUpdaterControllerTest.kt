@@ -328,6 +328,34 @@ class LynxUpdaterControllerTest {
         }
     }
 
+    @Test fun synchronousBridgeReadsLiveStateWithoutConfirmingAndRejectsRetiredContexts() {
+        val root = temp()
+        val context = android.content.ContextWrapper(null)
+        try {
+            withController(root) { controller ->
+                val module = HotUpdaterLynxModule(context)
+                assertEquals("NO_CONTEXT", module.getStateSync().getMap("error").getString("code"))
+                val primary = controller.pinPrimary()
+                HotUpdaterLynxModule.bind(context, primary)
+                try {
+                    val initial = module.getStateSync()
+                    assertTrue(initial.getBoolean("ok"))
+                    assertFalse(initial.getMap("data").getBoolean("runningConfirmed"))
+                    assertEquals("1", initial.getMap("data").getString("cohort"))
+                    controller.setCohort("qa")
+                    assertEquals("qa", module.getStateSync().getMap("data").getString("cohort"))
+                    primary.close()
+                    assertEquals("STALE_CONTEXT", module.getStateSync().getMap("error").getString("code"))
+                } finally {
+                    HotUpdaterLynxModule.unbind(context)
+                }
+                assertEquals("NO_CONTEXT", module.getStateSync().getMap("error").getString("code"))
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun coldUpdatePersistsAndAtomicallyConsumesLaunchTransitionId() {
         val root = temp()
         try {

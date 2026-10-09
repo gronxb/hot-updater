@@ -111,8 +111,8 @@ want to serve from their source artifacts; v0 policy is not backfilled.
 
 ### 3. Update the app URL, client key and build environment
 
-Update the app's `HotUpdater.init()` or `HotUpdater.wrap()` configuration to use
-the v1 server base URL. For example, replace a v0 URL ending in
+Update the app's `HotUpdater.init()` configuration to use the v1 server base
+URL. For example, replace a v0 URL ending in
 `/api/check-update` with the new v1 base URL. The SDK appends the Release Catalog
 and artifact routes itself. Preserve any base path required by your provider
 or custom server.
@@ -126,7 +126,7 @@ machine or server.
 For an Expo app using public environment variables, the resulting setup can
 look like this:
 
-```tsx title="App.tsx"
+```tsx title="src/hotUpdater.ts"
 import { HotUpdater } from "@hot-updater/react-native";
 
 const baseURL = process.env.EXPO_PUBLIC_HOT_UPDATER_BASE_URL;
@@ -137,7 +137,7 @@ if (!baseURL || !clientApiKey) {
   throw new Error("Missing Hot Updater URL or client API key");
 }
 
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL,
   // [!code ++:3]
   requestHeaders: {
@@ -373,10 +373,42 @@ upload storage does not need a download URL resolver.
 
 ## Update app lifecycle handlers
 
-Use `HotUpdater.init` with the [custom update flow](/docs/guides/custom-update),
-or keep `HotUpdater.wrap` for automatic startup updates. Do not configure both;
-mixed usage reports a one-time `console.error`. Replace any old
-`wrap({ updateMode: "manual" })` integration with `init + checkForUpdate`.
+`HotUpdater` keeps only `init`, which returns the app's HotUpdater instance.
+Every other method is on that instance: call `init` once at the top level of a
+module, export the instance, and replace each `HotUpdater.<method>` call with
+`hotUpdater.<method>`, such as `hotUpdater.checkForUpdate()` and
+`hotUpdater.getBundleId()`.
+
+`wrap` is on the instance too, and takes only the update flow:
+`updateStrategy`, `fallbackComponent`, `onProgress`, `reloadOnForceUpdate`,
+and `onUpdateProcessCompleted`. Move `baseURL`, `requestHeaders`,
+`requestTimeout`, `plugins`, `onError`, and `onNotifyAppReady` to
+`HotUpdater.init`:
+
+```tsx title="src/hotUpdater.ts"
+import { HotUpdater } from "@hot-updater/react-native";
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+});
+```
+
+```tsx title="App.tsx"
+import { HotUpdater } from "@hot-updater/react-native"; // [!code --]
+import { hotUpdater } from "./src/hotUpdater"; // [!code ++]
+
+export default HotUpdater.wrap({ // [!code --]
+export default hotUpdater.wrap({ // [!code ++]
+  baseURL: "<your-update-server-url>", // [!code --]
+  updateStrategy: "appVersion",
+  fallbackComponent: Splash,
+})(App);
+```
+
+An app that checks from its own flow instead keeps `init` and calls
+`hotUpdater.checkForUpdate()`, as the
+[custom update flow](/docs/guides/custom-update) shows. Each `init` call
+creates an independent instance, so keep the one call in its own module.
 
 Remove `resolver`, client `authorityId`, `HotUpdaterResolver`, resolver helper
 types and `createDefaultResolver`. A custom GraphQL/RPC backend must expose the
@@ -392,8 +424,7 @@ before reading transition fields.
 
 To report to Insights, add the
 [Insights client plugin](/docs/react-native-api/insights) to `plugins` in
-`HotUpdater.init` or `HotUpdater.wrap`. An app without it sends no Insights
-reports.
+`HotUpdater.init`. An app without it sends no Insights reports.
 
 The positional `updateBundle(bundleId, fileUrl)` overload is removed. Prefer
 `updateInfo.updateBundle()` from `checkForUpdate`, which resolves the selected
@@ -403,7 +434,7 @@ to the [direct API](/docs/react-native-api/updateBundle).
 ## Update deployment automation
 
 The public CLI keeps the v0 Bundle workflow. The ID printed by deploy is the
-same ID shown in the Console and returned by `HotUpdater.getBundleId()`:
+same ID shown in the Console and returned by `hotUpdater.getBundleId()`:
 
 | v0 command or assumption | v1 command or meaning |
 | --- | --- |

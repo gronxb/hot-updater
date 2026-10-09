@@ -101,6 +101,7 @@ export function localAppConfig(strategy: "appVersion" | "fingerprint"): string {
   return `import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { insights } from "@hot-updater/server/plugins/insights";
+import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
 
@@ -123,7 +124,7 @@ export default defineConfig({
     baseUrl: process.env.HOT_UPDATER_CONTROL_BASE_URL! + "/admin",
     commonHeaders: { Authorization: "Bearer " + process.env.HOT_UPDATER_ADMIN_TOKEN! },
   }),
-  plugins: [insights()],
+  plugins: [insights(), remoteConfig()],
   fingerprint: { debug: true },
   /* E2E_AUTO_PATCH_CONFIG_START */
   patch: { enabled: true, maxBaseBundles: 2 },

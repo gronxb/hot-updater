@@ -1,3 +1,5 @@
+import type { InsightsReads } from "@hot-updater/server/plugins/insights";
+
 import type {
   FailureReportsInput,
   FailureReportsPage,
@@ -5,11 +7,10 @@ import type {
 import { readFailureReportsInput } from "../insights-errors";
 import { recoveryWindows } from "../insights-recovery";
 import type { InsightsEventRow } from "../insights-view";
-import type { ConsoleInsightsReads } from "./adminInsights";
 
 /** Bounded raw-event reads, with continuation even when a batch finds no failures. */
 export async function listFailureReports(
-  reads: Pick<ConsoleInsightsReads, "listEvents" | "getRetention">,
+  reads: Pick<InsightsReads, "listEvents" | "getRetention">,
   input: FailureReportsInput,
 ): Promise<FailureReportsPage> {
   readFailureReportsInput(input);

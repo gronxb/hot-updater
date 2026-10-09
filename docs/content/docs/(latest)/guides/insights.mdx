@@ -1,29 +1,32 @@
 ---
 title: "Insights"
-description: "Add app reporting, verify update adoption, and diagnose a reporting installation."
+description: "See whether updates reach devices, launch, or crash, why updates fail, and what one device runs."
 icon: ChartNoAxesCombined
 ---
 
-## Monitor app activity
+Insights answers the questions you have after shipping an update:
 
-Insights shows activity received from app installations: the last reported
-update, completed downloads waiting to apply, successful applications, and
-recoveries. Use it after [verifying your first OTA](/docs/get-started/test-ota)
-and while operating a rollout.
+| Question | Where to look |
+| --- | --- |
+| Did devices download and launch it? | [Release health](#release-health) → **Adoption**, and the Bundles list |
+| Is it crashing? Should I roll it back? | [Release health](#release-health) → **Crashes** |
+| Why do updates fail? | [Update failures](#update-failures) |
+| What does this user's device run? | **All events** → search an installation or user ID |
+| How many devices use the app, on which versions? | **App usage** and **Distribution** |
 
-Reporting has two parts: the `insights()` server plugin stores reports, and the
-[Insights client plugin](/docs/react-native-api/insights) sends them from the
-app. Both come from `@hot-updater/plugin-insights`, which `@hot-updater/server`
-and `@hot-updater/react-native` depend on and re-export, so there is nothing
-extra to install.
+The app's `insights()` client plugin sends reports, and the server's
+`insights()` plugin stores and counts them. The numbers are **reports
+received**, not your whole install base: a device that never reports, or runs
+a debug build, is not counted.
 
-## Turn on the server plugin
+## Set up
 
-The server records reports through the `insights()`
-[server plugin](/docs/custom/server-plugins). The managed AWS, Cloudflare,
-Firebase, and Supabase servers run it. A custom server lists it in
-`createHotUpdater`, and the app's `hot-updater.config.ts` lists it in `plugins`
-too:
+### Turn on the server plugin
+
+The managed AWS, Cloudflare, Firebase, and Supabase servers already run
+`insights()`. On a self-hosted server, add it to `createHotUpdater` and to
+`plugins` in `hot-updater.config.ts`, then run `hot-updater db migrate` in the
+server's project:
 
 ```ts title="src/hotUpdater.ts (excerpt)"
 import { createHotUpdater } from "@hot-updater/server";
@@ -36,536 +39,277 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-`insights()` accepts `POST /events` on the client handler and serves the
-Insights queries on the admin handler. `hot-updater db migrate` creates its
-tables for a server that runs it, and the migrations of the managed Cloudflare,
-Supabase, AWS, and Firebase servers include them. Without `insights()`, the
-server has no Insights routes: they answer `404`, and the app's reports are not
-stored. An app with the Insights plugin then stops reporting for 24 hours at a
-time; see
-[when the server has Insights off](/docs/react-native-api/insights#when-the-server-has-insights-off).
-On the server, `insights({ retention })` sets how long the plugin keeps data;
-see [How long Insights keeps data](#how-long-insights-keeps-data).
+It accepts reports at `POST /events` and serves the Console's reads on the
+admin handler. A server without it answers `404`, and an app that gets that
+answer stops reporting for 24 hours, then tries again.
 
 <span id="configure-reporting" />
 
-## Add the client plugin
+### Add the client plugin
 
-Pass `insights()` from `@hot-updater/react-native` to `plugins` in
-[`HotUpdater.init`](/docs/react-native-api/init). Configure the client handler
-URL and the client API key from your infrastructure setup:
+Add `insights()` to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init).
+It reports to the `baseURL` with the headers you already pass:
 
-```tsx title="App.tsx"
-import { HotUpdater } from "@hot-updater/react-native"; // [!code --]
-import { HotUpdater, insights } from "@hot-updater/react-native"; // [!code ++]
+```tsx title="src/hotUpdater.ts"
+import { HotUpdater, insights } from "@hot-updater/react-native";
 
-HotUpdater.init({
+export const hotUpdater = HotUpdater.init({
   baseURL: "<your-update-server-url>",
-  requestHeaders: {
-    "x-api-key": "<client-api-key>",
-  },
+  requestHeaders: { "x-api-key": "<client-api-key>" },
   plugins: [insights()], // [!code ++]
 });
 ```
 
-Call `init` once at the top level of your app's entry module. It configures
-reporting without starting an update check; use
-[custom update flows](/docs/guides/custom-update) to check, download, and apply
-updates at your chosen time. The optional automatic
-[`wrap`](/docs/react-native-api/wrap) flow takes the same `plugins` option. Use
-one configuration API per app. If your custom server intentionally uses
-`clientAccess: "public"` instead of `apiKeys()`, omit the client-key header.
-See [API key authentication](/docs/custom/api-key-authentication).
-
-An app without the plugin sends no Insights reports. Native launch
-verification and crash recovery run either way. Debug builds, where `__DEV__`
-is `true`, send nothing unless you create the plugin with
-`insights({ debug: true })`, so development sessions stay out of production
-Insights. The [plugin reference](/docs/react-native-api/insights) covers its
-options, `setUser`, and the report format.
-
-## What the app reports
-
-The plugin reports these outcomes:
-
-| Outcome | Meaning |
-| --- | --- |
-| `UNCHANGED` | A launch with no download or apply to report. This also reports a successful same-artifact Release adoption, which requires neither. |
-| `UPDATE_DOWNLOADED` | The SDK verified and staged the bundle. The current runtime still runs the previous bundle until restart/reload. |
-| `UPDATE_APPLIED` | Native app-ready state reports that an OTA transition became active. |
-| `RECOVERED` | Native app-ready state reports recovery from a failed update. |
-| `UPDATE_FAILED` | An update check, download, or install failed, with its stage and reason. A server that does not accept this type answers `400`, and the plugin skips it. |
-
-The plugin sends `UNCHANGED` at most once a UTC day per installation. A later
-launch or update check that day sends nothing, unless the channel, app
-version, bundle, Release, or user ID changed, or a download or failure report
-reached the server in between. Downloads, applies, and recoveries are not
-limited this way. Each update failure, by stage, reason, target bundle, and original error message, is
-reported at most once a UTC day, and a check that failed because the device was
-offline is not reported. See
-[what the plugin reports](/docs/react-native-api/insights#what-it-reports) for
-the exact rules.
-
-The server counts an installation's `UNCHANGED` reports once a UTC day. A
-report that repeats the installation's latest report on the same UTC day, with
-the same channel, platform, app version, bundle, Release, and user, records
-nothing. An `UNCHANGED` report updates the installation's latest report and the
-launch metrics, but the server keeps no event row for it, so event lists show
-downloads, applies, recoveries, and update failures.
-
-Reporting is best effort and does not trigger rollback. A report that fails
-with a network error, a timeout, `429`, or a `5xx` is retried in the
-background, so a retry never delays app startup or an update. Every attempt
-carries the same client `eventId`, so the server counts a retried report once;
-see [delivery](/docs/react-native-api/insights#delivery) for the timing.
-`onNotifyAppReady` receives local native state; it is not confirmation that
-the server received an event.
-
-When the server answers that Insights is off, the plugin sends nothing more in
-that JavaScript runtime and nothing for 24 hours, then sends its next report.
-After you turn on `insights()`, installations resume reporting within a day.
-
-The Console summarizes these reports in **App usage** and **Release health**.
-Use an installation's event history to check whether a reported download was
-followed by an apply or recovery report. A download count does not tell you how
-many installations are still waiting to apply it.
-
-## Investigate update failures
-
-In **Update failures**, compare the attempt and check failure rates with the
-previous period of the same length. Changes are percentage points; unavailable
-or partial previous data is not treated as zero. Check failures use affected
-installations over active installations, while attempt failures use failed
-reports over failed reports plus completed downloads.
-
-**Errors to investigate** groups reports by their exact original message and
-reported stage, reason, resource, HTTP status, origin code, and transport.
-Select a message to inspect its stack, app and SDK versions, bundle, and
-installation history. Select another occurrence to inspect that report's
-context, or use **Copy report** to share its original fields for debugging.
-
-These groups count only loaded raw reports, not the period's aggregate totals.
-The Console reviews up to 500 recent events per request and offers **Load older
-events** while more remain. The raw-history start is shown, respects retention,
-and never extends beyond 90 days. The app also deduplicates daily failures, so
-report counts are not the number of every exception thrown on devices.
-
-Update the app's Insights plugin, server, and Console to collect and inspect
-original messages and stacks. Existing reports that lack these fields cannot
-recover the original cause; the Console labels those missing diagnostics.
-This addition uses existing event metadata and needs no database migration.
-
-## Inspect HTTP responses
-
-Existing lifecycle reports can include the most recent catalog or artifact API
-response, including successful, cached, and failed responses. In **All events**,
-installation history, or an installation's latest report, select its HTTP status
-to inspect the request path, original response text, and response timestamp.
-Error investigation also shows the server response beside the client error.
-
-The client keeps one bounded response snapshot locally, scoped to the app version
-and channel, and attaches it only when an existing report is sent. Response
-collection adds no requests, timers, or event records, and does not bypass launch
-or failure deduplication. If the launch report was already sent before the update
-check, that check's response appears on the next eligible report. The response
-timestamp distinguishes that earlier response from the report's receipt time.
-This is a diagnostic snapshot, not a complete request history.
-
-Bodies are capped at 4 KiB of JSON-encoded text and marked when truncated. Empty
-bodies and bodies that could not be read have different labels. Request headers
-and URL query parameters are omitted. Native binary file downloads and Insights'
-own reporting requests are not captured. Older servers ignore the extra metadata;
-upgrade the server and Console to store and inspect it. No database migration is
-required.
-
-## How the server accepts reports
-
-`POST /events` takes one report as a JSON body of at most 16 KB. Fields the
-server does not know are ignored, so a report from a newer SDK still records on
-an older server; a known field with an invalid value is refused.
-
-A report can carry an `eventId`: a lowercase UUIDv7 that the client creates
-once for the report and sends again with every retry. The server stores the
-report under that ID, so a retried report counts once, and a report under an
-ID the server already stored changes nothing. Without an `eventId`, the server
-creates the ID, and a retry counts as another report.
-
-| Status | Meaning |
-| --- | --- |
-| `204` | Recorded, or already recorded under the same `eventId` |
-| `400` | A missing or invalid field, including an `eventId` that is not a UUIDv7 |
-| `413` | The body is larger than 16 KB |
-| `503` | The database is busy; send the report again after the `Retry-After` seconds |
-
-## Identify an installation
-
-Read [`HotUpdater.getInstallId()`](/docs/react-native-api/getInstallId) in a
-support log or debug screen. This random ID identifies one installation; it is
-independent of the signed-in user.
-
-Optionally attach your application's user ID with the plugin's
-[`setUser`](/docs/react-native-api/insights#set-the-user). Keep the plugin
-object that you pass to `plugins`, then call it from your sign-in flow:
-
-```ts
-// `analytics` is the insights() plugin passed to HotUpdater.init.
-analytics.setUser({ userId: "user-123" });
-
-// On logout, clear the user attached to later reports.
-analytics.setUser(null);
-```
-
-These calls illustrate separate login and logout actions. `setUser` persists
-the ID on the device for later reports; it does not send a report by itself. It
-works before `HotUpdater.init`, so the first report of a restored session can
-carry it.
-
-In **Insights → All events**, search by **User ID or installation ID**, then
-select an installation to inspect its latest report and apply/recovery history.
-Multiple installations associated with one user remain separate records.
-
-Reports include installation ID, platform, app version, channel, cohort,
-fingerprint when present, SDK version, and Bundle/Release transition
-identifiers. They also include the user ID you set. Keep it consistent with
-your app's data policy and protect server access as described in
-[Security](/docs/policy/security).
+- Debug builds report nothing unless you pass `insights({ debug: true })`, so
+  development stays out of production numbers.
+- To find a user's device later, attach your user ID at sign-in with
+  [`hotUpdater.insights.setUser({ userId })`](/docs/react-native-api/insights#set-the-user),
+  and clear it with `setUser(null)` at sign-out. Reports then carry that ID,
+  so choose one that fits your data policy; see [Security](/docs/policy/security).
+- Reporting never delays startup or an update, and never triggers a rollback.
 
 ## Verify reporting
 
-1. Launch a native build configured with the SDK, the Insights plugin, a
-   reachable client handler, and a valid client key. Use a release build, or
-   create the plugin with `insights({ debug: true })` in a debug build. Copy
-   its `getInstallId()` value.
-2. In the Console's **Insights → All events**, search for that installation
-   ID and open it. Its latest report shows the app version, channel, and
-   platform. An `UNCHANGED` report is enough to verify startup reporting
-   before the first OTA; it appears as the installation's latest report, not
-   in the event list.
-3. Deploy and apply a test update using the
-   [OTA verification workflow](/docs/get-started/test-ota). Confirm the changed
-   UI after the runtime restarts, then inspect its `UPDATE_APPLIED` event and
-   reported update ID.
+1. Launch a release build (or a debug build with `insights({ debug: true })`)
+   and note its [`hotUpdater.getInstallId()`](/docs/react-native-api/getInstallId).
+2. In the Console, open **Insights → All events**, search that installation ID,
+   and open it. Its latest report shows the app version, channel, and
+   platform.
+3. [Deploy and apply a test update](/docs/get-started/test-ota). After the app
+   restarts into it, the installation shows a **Launched** event.
 
-Only the first launch of a UTC day reports while nothing changes. Relaunching
-the same build later that day sends nothing, so look up the installation by
-its ID instead of waiting for another launch report.
+A device reports a plain launch once per UTC day, so relaunching the same build
+sends nothing new; look the installation up by ID instead of waiting. A bundle
+ID in the app is not proof either: [`getBundleId()`](/docs/react-native-api/getBundleId)
+can name a staged bundle before it runs, so confirm the visible change and the
+**Launched** event.
 
-[`getBundleId()`](/docs/react-native-api/getBundleId) and
-[`getActiveUpdateState()`](/docs/react-native-api/getActiveUpdateState) can
-reflect a staged selection before its code is running. A selected ID alone is
-not an applied-update check. Combine the running app's visible change with the
-app-ready outcome and the server's received report.
-
-If an expected report is absent, check that the app passes the Insights plugin
-to `init` or `wrap` (a debug build also needs `insights({ debug: true })`), the
-app reached readiness, the server runs `insights()`, and the handler URL and
-client header match the deployed server. Inspect app logs for Insights
-warnings. An app that reported to a server without `insights()` waits up to 24
-hours before it reports again; reinstall it to test right away. Server
-availability and filters affect what the Console can show; a missing report
-does not prove that the update failed.
+**No report?** Check that the app passes `insights()` to `init`, the server
+runs `insights()`, and the `baseURL` and client key match the server. An app
+that reported to a server without `insights()` waits 24 hours before trying
+again; reinstall it to test right away.
 
 ## Read the Console
 
-Use [the local or deployed Console](/docs/guides/console). It shows Insights
-when its configuration lists `insights()` in `plugins`, as the server runs it:
-`hot-updater console` reads `hot-updater.config.ts`, and a deployed Console its
-[configuration](/docs/guides/console-deployment#connect-your-backend). Where
-it reads Insights depends on its `database`:
+Open **Insights** in the [Console](/docs/guides/console). It shows Insights
+when its configuration lists `insights()` in `plugins`. Over
+`standaloneRepository` it reads the overview, events, installations, update
+failures, and retention from the server's admin handler; **App usage**,
+**Release health**, and bundle activity need the server's database as
+`database`.
 
-- With a direct database, it runs `insights()` over that database, as the
-  server does.
-- With `standaloneRepository`, it reads the Insights overview, events,
-  installations, update failures, and retention periods from the server's
-  admin handler. App usage, Release health, and bundle activity need a direct
-  database configuration.
+Choose a **Channel**, a platform, and a period (**24h**, **7d**, or **30d**),
+and optionally a **Release ID** to focus on one release. Periods end with the
+current UTC hour. Numbers marked **≈** are estimates, typically within 3%;
+report counts are exact.
 
-The Bundles list and detail show lifetime **Downloads**, **Applied**, and
-**Known crashes** for each Release ID. These count received download reports,
-apply reports, sent when an installation starts running the release, and
-launches that crashed on the release and recovered to the bundle before it.
-Their rate is known crashes divided by applied plus known crashes, as in
-Release health. Select
-the summary, or **View adoption** in the bundle detail, to open
-[Release health](#release-health) on that release and the one deployed before
-it. The bundle detail also shows
-**Download failures** since the release's first report, with their rate; see
-[Update failures](#update-failures).
+### Bundles list
 
-Insights opens on the `production` channel. **App usage** starts with
-**All platforms** and a 24-hour period; **Release health** starts with **iOS**
-and **7d**. Each card has its own **24h**, **7d**, or **30d** period selector,
-and App usage also offers **12m**.
+Each bundle shows lifetime **Downloaded**, **Launched**, and **Crashed**,
+counting each installation once:
 
-Choose a **Channel** for both cards. **Usage platform** and **App version**
-filter App usage; **Health platform** filters Release health and Update
-failures, and the optional **Release ID** focuses both on one release. Choose
-**Apply filters** to update the reports.
+- **Downloaded**: got the bundle.
+- **Launched**: ran it.
+- **Crashed**: crashed on it and rolled back to the bundle before.
 
-App usage shows one metric for the selected period: **DAU** for the last 24
-hours, **WAU** for the last 7 days, **MAU** for the last 30 days, or **YAU** for
-the last 12 months. Each counts unique app installations with at least one
-matching activity report in that window. The 24h, 7d, and 30d windows roll by
-the hour; 12m covers 52 weeks of whole UTC days, ending with today, because
-hourly totals are kept for 90 days and daily totals for 13 months. Multiple installations belonging to the same person count
-separately. All event types count, including **No change**, as do reports
-without a known bundle ID. Hover over, focus, or tap the metric's info icon to
-see its definition.
+Once every installation has restarted, Downloaded equals Launched plus Crashed;
+the difference is downloads waiting for a restart or passed over for a newer
+bundle. **View adoption** opens Release health on the release and the one
+before it.
 
-The usage chart counts unique reporting installations in each interval: hourly
-for 24h, every six hours for 7d, daily for 30d, and weekly for 12m. The period total deduplicates
-installations across intervals, so it is not the sum of the chart points.
-Distributions count each installation once, using the app version and platform
-of its latest matching report. The server counts latest reports by UTC day, so a
-distribution covers every UTC day the period touches, from 00:00 UTC of its
-first day; the Console shows that date.
+### Release health
 
-Select an app version in **Distribution**, or choose **View distribution**, to
-see its bundle IDs, platforms, active installation counts, and share within each
-app version. The detail view keeps the overview's reporting scope, supports
-20 rows per page, and links each known ID to its bundle details. **Unknown bundle**
-accounts for installations whose reported file has no observed deployment ID.
-Period and filter selections survive navigation back to the overview.
+Release health follows the newest bundle deployments on a timeline, up to four
+at a time; **Add a bundle** compares another.
+
+- **Adoption** draws each bundle's downloads (dashed) and launches (solid) per
+  interval. Launches follow downloads as apps restart; after a forced update
+  the lines nearly meet. When a new bundle ships, its lines rise and the one
+  it replaced stops being launched.
+- **Crashes** counts launches that crashed and recovered to the bundle before.
+  **Crash rate** is crashed divided by launched plus crashed. Once at least 20
+  installations tried a bundle and 5% crashed, Release health recommends
+  **Roll back**, which disables the release so devices return to the previous
+  bundle at their next update check.
+
+Insights counts crashes but keeps no crash reports. To see why a launch
+crashed, use a crash reporter with an
+[integration plugin](/docs/integration-plugins/sentry).
+
+![Release health comparing a new bundle with the one it replaced, with sample data](/docs/console/insights-release-health.jpg)
+
+### Update failures
+
+An update check, download, or install that fails sends a report with its
+`stage` (`check`, `download`, `install`) and `reason` (`network`, `http`,
+`invalid_response`, `hash_mismatch`, `signature`, `patch`, `extract`,
+`storage`, or `unknown`), plus the HTTP status, storage error code, network
+failure, error message, and stack when known.
+
+- **Downloads & installs** is the share of update attempts that failed:
+  failures divided by failures plus downloads.
+- **Update checks**, for a whole channel, is the share of active installations
+  with a failed check. A check that failed because the device was offline is
+  not reported.
+- Each rate shows its change from the previous period.
+- **Failures by stage and reason** breaks them down; expand one for HTTP
+  statuses, error codes, and resources.
+- **Errors to investigate** groups reports by their original message. Open one
+  for its stack, app and SDK versions, the latest server response the device
+  saw, and the installation's history; **Copy report** shares it.
+
+A device reports each kind of failure at most once per UTC day, so the counts
+are not every retry or exception thrown. A failure doesn't change what
+an installation runs, so it never counts as a launch.
+
+### App usage and Distribution
+
+**App usage** shows **DAU**, **WAU**, **MAU**, or **YAU** for the period:
+unique installations that reported at least once, with a chart per interval.
+The period total is not the sum of the chart points, since an installation
+counts once.
+
+**Distribution** shows which bundles each app version runs, by each
+installation's latest report. **Built-in bundle** is the bundle a native build
+shipped with; **Unknown bundle** is installations that never reported a
+deployed bundle.
 
 ![Bundle distribution by app version with sample data](/docs/console/insights-distribution.png)
 
-**Release health** follows bundle deployments after they ship: whether
-installations apply them, and whether they crash. See
-[Release health](#release-health).
+### Events and installations
 
-Open **All events** in the header, or **Event history** on Release health, to
-browse downloads, applies, recoveries, and update failures from newest to
-oldest, 20 per page.
-The Console starts with **7d**; select **30d** or **90d** for older reports.
-Paging stops at the start of the selected range. A launch without an update is
-not listed: it counts in App usage and Release health and shows as its
-installation's latest report.
+**All events** lists downloads, launches of a new bundle, crashes, update
+failures, and changes such as a first report or a new app version, newest
+first, over up to 90 days. A launch that changes nothing isn't listed; it
+counts in App usage and shows as the installation's latest report.
 
-Like other analytics tools, event lists show raw reports only inside a time
-range of at most 90 days: the admin `GET /events` route takes `sinceMs` and
-`beforeReceivedAtMs`, lists the 90 days before `beforeReceivedAtMs` (by
-default, now) when `sinceMs` is left out, and answers `400` for a longer
-range. The server also counts reports per day, so a list skips quiet days
-instead of reading each one.
+Search by **user ID or installation ID** to open an installation: its latest
+report, what it runs, and its history. Several installations of one user stay
+separate.
 
-These counts reflect received reports, not the full installed population. Every
-overview period ends with the current UTC hour, so a report counts as soon as
-the server records it, and a chart's last interval is still filling. The Console reads
-hourly and daily totals that the server updates as it records each report; it
-does not scan raw events. On DynamoDB and Firestore, the server updates these
-totals in batches (see [What Insights writes](#what-insights-writes)), and a
-read applies pending batches first. A Console that cannot write to the database,
-such as one with read-only credentials, shows totals that can leave out up to
-one batching window of the latest reports, a minute by default. DAU, WAU, MAU, active users per interval, and active
-installations are estimates from HyperLogLog sketches, typically within about
-3%, and show with **≈**. Report counts and distributions are exact.
+## Read from the CLI
 
-## Update failures
+`hot-updater insights` reads the same numbers from a terminal, CI, or an
+agent, on the server [`hot-updater api-key`](/docs/custom/api-key-authentication#manage-api-keys)
+finds: `database` and `plugins` in `hot-updater.config.ts`, the admin handler
+through `standaloneRepository`, or the server file you pass last.
 
-An app reports `UPDATE_FAILED` when an update check, download, or install
-fails. Its `metadata.failure` says where (`stage`: `check`, `download`, or
-`install`) and why (`reason`: `network`, `http`, `invalid_response`,
-`hash_mismatch`, `signature`, `patch`, `extract`, `storage`, or `unknown`), and
-what else the client knew: the `resource` it was fetching, the `httpStatus`,
-the storage origin's `originCode` (such as `ExpiredToken`), and the network
-`transport` failure (such as `timeout`). A download report can say how the
-bundle arrived (`delivery`: `patch`, `manifest`, or `archive`) and whether a
-patch fell back (`patchFallback`).
+```bash
+# How is this bundle doing?
+npx hot-updater insights overview --bundle <id>
+npx hot-updater insights failures --bundle <id> --window 7d
 
-The server never refuses a failure for what it cannot read: a value it does not
-know reads as `unknown`, a missing or malformed `failure` counts as an unknown
-stage and reason, and a malformed optional field is left out. It refuses only
-a report without its identity, bundles, or a valid event ID. A failure changes
-nothing an installation runs, so it is no launch and does not replace the
-installation's latest report. Event lists and installation history show it with
-its stage and reason. A failed check names the running bundle instead of a
-target, so it counts for its channel and appears in no bundle's list.
+# Which installations crashed on it?
+npx hot-updater insights events --bundle <id> --outcome crashed
 
-In the Console, **Update failures** follows Release health's channel, platform,
-Release ID, and period:
+# What does this user's device run?
+npx hot-updater insights installations <install-or-user-id>
+npx hot-updater insights events --install <install-id>
+```
 
-- **Failed updates** counts failed downloads and installs. A client reports a
-  failure at most once a UTC day for each stage, reason, and target bundle.
-- **Attempt failure rate** is the failure rate of update attempts: failed
-  updates divided by themselves plus download reports.
-- **Failed installations** estimates the distinct installations with such a
-  failure.
-- **Patch fallback rate** is the share of downloads that tried a patch and
-  fell back to the changed files or the full archive.
-- Without a Release ID, **Failed checks** counts failed update checks, and
-  **Check failure rate** divides the installations with one by the channel's
-  active installations. A check that gets no response, because the device is
-  offline or the request timed out or was cancelled, is not reported.
-- **Failures by stage and reason** lists each stage and reason with its share;
-  expand one to see its HTTP statuses, origin codes, transports, and resources.
+`--bundle` takes the ID shown in the Console or by `getBundleId()`; without it,
+pass `-p <platform> -c <channel>`. `--window` is `24h` (default), `7d`, or
+`30d`. Every command takes `--json`, for example to gate a rollout in CI on
+the failure rate. App usage and Release health charts stay in the Console.
 
-The bundle detail's **Download failures** counts the release's failed
-downloads and installs since its first report, with the same rate. On a
-self-hosted server, the admin route
-`GET /failures?platform=ios&channel=production&releaseId=<id>` answers a
-release's failures since its first report; add `start` and `end`, in epoch
-milliseconds, for a period of at most 30 days, which a channel without
-`releaseId` needs. The server API is
-`hotUpdater.api.insights.getUpdateFailures(input)`.
+## What the app reports
+
+| Report | When | Console |
+| --- | --- | --- |
+| `UNCHANGED` | The app launched, or a check found nothing to install. | **Launch**, or the change it made |
+| `UPDATE_DOWNLOADED` | A bundle was downloaded, verified, and staged. The app runs the old bundle until it restarts. | **Downloaded** |
+| `UPDATE_APPLIED` | The app restarted into the new bundle. | **Launched** |
+| `RECOVERED` | The app crashed on the new bundle and rolled back. | **Crashed** |
+| `UPDATE_FAILED` | An update check, download, or install failed. | **Update failed** |
+
+- A plain launch is reported at most once per UTC day, unless the channel, app
+  version, bundle, Release, or user changed. Downloads, launches of a new
+  bundle, and crashes are always reported.
+- Failed reports are retried in the background with the same ID, so the server
+  counts each once.
+- A launch report that changes what an installation runs is kept as an event:
+  **First seen**, **App updated**, **Launched** (another bundle without an
+  `UPDATE_APPLIED` report), **Release adopted**, or **Channel changed**.
+
+The [plugin reference](/docs/react-native-api/insights#what-it-reports) has
+the exact rules and the report format.
 
 ## How long Insights keeps data
 
-`insights()` keeps each kind of data for a period, then deletes it:
-
 | Data | Kept by default |
 | --- | --- |
-| Downloads, applies, recoveries, and update failures (raw events) | 90 days |
-| Hourly totals, unique-installation sketches, and the update failure breakdown | 90 days |
-| Daily totals, sketches, and latest-report distributions | 13 months (400 days) |
-| An installation's latest report | 13 months after the installation last reports |
-| Lifetime counters and failed installations per Release ID (Bundles list and detail) | Kept |
+| Raw events, hourly totals, and the failure breakdown | 90 days |
+| Daily totals and distributions | 13 months (400 days) |
+| An installation's latest report | 13 months after it last reports |
+| Lifetime counts per release (Bundles list) | Forever |
 
-A managed server runs the official plugins with their default settings,
-retention included. In a managed project, keep `plugins` in
-`hot-updater.config.ts` as init writes it, the provider package's list:
-plugins with other settings there would make the CLI prune with settings the
-server doesn't use.
-
-On a self-hosted server, set the periods on the plugin in the server's
-`createHotUpdater`, and give the plugin the same settings in
-`hot-updater.config.ts`, so the CLI prunes as the server does:
+On a self-hosted server, change the periods on the plugin, in both the server's
+`createHotUpdater` and `hot-updater.config.ts`, so the CLI prunes as the
+server does:
 
 ```ts
 insights({ retention: { rawDays: 30, dailyDays: 400 } });
 ```
 
-`rawDays` covers raw events and hourly totals; `dailyDays` covers daily
-totals, distributions, and latest reports. Each is a whole number of days, at
-least 1, and `dailyDays` is at least `rawDays`; lifetime counters are always
-kept. A changed period applies at the next pruning pass on SQL databases. On
-DynamoDB, Firestore, and MongoDB, which stamp each row's expiry as they write
-it, rows already written keep theirs, and later writes take the new period.
+Both are whole days, at least 1, with `dailyDays` at least `rawDays`. On
+DynamoDB, Firestore, and MongoDB, rows already written keep the expiry they
+were written with. Managed servers use the defaults; keep `plugins` in their
+config as init wrote it.
 
-Periods follow from what reads them. Event lists cover at most the raw
-period, and overview periods up to 30 days read hourly totals. The 12m App
-usage period reads daily totals. A read that reaches past what is kept says
-so: the Console shows **Partial history** and marks totals as a lower bound.
-An installation that stops reporting leaves the distributions when its latest
-report expires. The Console reads the server's periods, including a
-self-hosted server's through its admin API.
-
-No scheduler is needed: expired data leaves by native TTL or during writes.
-
-- **DynamoDB** deletes expired items with Time to Live on `_ttl`, at no write
-  cost, usually within a few days of expiry. `hot-updater db migrate` and the
-  managed AWS setup turn TTL on for the table.
-- **Firestore** deletes expired documents with a TTL policy on `expireAt`,
-  usually within 24 hours of expiry. The managed Firebase setup deploys the
-  policy with `firestore.indexes.json`.
-- **MongoDB** deletes expired documents with a TTL index on `_expireAt`,
-  usually within a minute of expiry. `hot-updater db migrate` creates it.
-- **PostgreSQL, MySQL, SQLite, Cloudflare D1, and Supabase** delete expired
-  rows during writes. The write that takes the hourly lease in the settings
-  table first deletes up to 500 expired rows a table, oldest first; other
-  servers skip. While a pass still finds a full batch, the next one runs a
-  minute later.
-
-Reads never depend on deletion: expired rows that remain are outside every
-period the Console reads.
+Expired data leaves without a scheduler: DynamoDB, Firestore, and MongoDB
+delete it with their TTL features (which `hot-updater db migrate` or the
+managed setup turns on), and SQL databases, D1, and Supabase delete up to 500
+expired rows a table during writes, hourly. A Console view that reaches past
+what is kept shows **Partial history**.
 
 ## What Insights writes
 
-Most reports are launches. The Insights plugin sends an installation's launch
-at most once a UTC day while nothing changes, and the server writes for an
-installation's launches once a UTC day. Each report the server records is one
-transaction. On DynamoDB, where a transactional write costs 2 write request
-units (WRU) per KB of each item, one installation's reports cost the following
-when its totals are written in that transaction, as with
-`aggregateBatching: false`:
+Most reports are launches, and a device sends at most one plain launch per UTC
+day. Each report the server records is one transaction. On DynamoDB, without
+batching (`aggregateBatching: false`), an installation costs about:
 
-| Report | Items | WRU |
-| --- | --- | --- |
-| First launch of a new installation | 10 | 28 |
-| A later launch the same UTC day, on the same bundle | 0 | 0 |
-| First launch of a later UTC day | 14 | 36 |
-| `UPDATE_DOWNLOADED` | 18 | 40 |
-| `UPDATE_APPLIED` | 21 | 42 |
-| `RECOVERED` | 26 | 56 |
-| `UPDATE_FAILED` for a download or install | 13 | 34 |
-| `UPDATE_FAILED` for an update check | 8 | 20 |
+| Report | Write request units (WRU) |
+| --- | --- |
+| First launch of a UTC day | 36 |
+| Another launch the same day, same bundle | 0 |
+| `UPDATE_DOWNLOADED` | 40 |
+| `UPDATE_APPLIED` | 42 |
+| `RECOVERED` | 56 |
+| `UPDATE_FAILED` (download or install / check) | 34 / 20 |
+| A launch on another bundle, without `UPDATE_APPLIED` | 58 |
 
-A first launch the day after an apply or a recovery takes 16 items and 40 WRU,
-since it also moves the update's latest-report rows. A download's patch
-counters share the items that count it. An update failure moves no latest-report rows.
-Up to four items of a report are HyperLogLog sketches of about 1 KB, at 4 WRU
-apiece; every other item takes 2. A download, apply, recovery, or update
-failure stores its event with its index copies; a launch stores none. Latest-report gauges count each installation in
-the UTC day of its latest report, so they move only when that day or the
-installation's bundle changes. An installation that launches every day
-without updating sends one report and costs about 36 WRU a day, however often
-it launches: 10,000 such installations write about 360,000 WRU a day. On
-Firestore each item is one document write; SQL databases keep indexes
-themselves, so they write fewer rows.
+So 10,000 devices that open the app every day cost about 360,000 WRU a day.
+DynamoDB and Firestore **batch** totals by default, which cuts a report to
+about 8 WRU at 10 or more reports per second; a long-lived server can keep
+totals in memory with `aggregateBatching: { mode: "memory" }` (about 5 WRU, and
+call `hotUpdater.flush()` before the process exits). See
+[DynamoDB](/docs/database-adapters/aws#batched-insights-totals) and
+[Firestore](/docs/database-adapters/firestore#batched-insights-totals). The
+managed AWS table caps writes at 100 WRU per second, about 12 reports per
+second with batching; a throttled report answers `503`, and the app sends it
+again.
 
-DynamoDB and Firestore batch the totals by default. A report's transaction
-writes its own items and one compressed log item of under 1 KB (2 WRU). A
-compaction then applies many reports' totals together, one write for each total.
-It runs after a report once a minute has passed since the last one, or before a
-read. It then deletes the log items with `BatchWriteItem`, at 1 WRU each. A
-long-lived server can set `aggregateBatching: { mode: "memory" }` to keep totals
-in the process and write them every 15 seconds, with no log items. A crash
-there loses up to one window; call `hotUpdater.flush()` before the process
-exits. On DynamoDB Local, in 60 seconds of returning installations' first
-launches of the day, with one report in ten a download or an apply:
+## Server reference
 
-| Reports per second | WRU per report, transactional | Log (default) | Memory |
-| --- | --- | --- | --- |
-| 1 | 38.1 | 10.5 | 10.8 |
-| 10 | 35.5 | 8.1 | 5.5 |
-| 100 | 29.9 | 8.0 | 4.9 |
+### How the server accepts reports
 
-Each report's own items take 5 WRU of these. The rest is its totals, which fall
-from 25–33 WRU to about 3 WRU in log mode at 10 or more reports per second.
-See [DynamoDB](/docs/database-adapters/aws#batched-insights-totals) and
-[Firestore](/docs/database-adapters/firestore#batched-insights-totals).
+`POST /events` takes one report of at most 16 KB. Unknown fields are ignored,
+so a newer SDK's report still records on an older server.
 
-The managed AWS table caps writes at 100 WRU per second. With batching, that is
-about 12 reports per second; with totals in each transaction, almost three
-first launches of a day per second. A report the table throttles answers `503`, and
-the plugin sends it again.
+| Status | Meaning |
+| --- | --- |
+| `204` | Recorded, or already recorded under the same `eventId` |
+| `400` | A missing or invalid field |
+| `413` | The body is larger than 16 KB |
+| `503` | The database is busy; retry after `Retry-After` seconds |
 
-## Release health
+### Admin routes and API
 
-Release health follows bundle deployments of a channel and health platform
-after they ship, on the card's timeline: hourly for **24h**, every six hours
-for **7d**, and daily for **30d**. It starts with the two newest bundle
-deployments; with a **Release ID**, it starts with that release and the one
-deployed before it. Remove a bundle with its row's **×**, or choose **Add a
-bundle** from the ten newest deployments; up to four bundles compare at once,
-and **Show the newest 2** returns to the default. Each bundle is named by its
-ID, as on the Bundles page, and keeps one color in both tabs; a vertical line
-marks its deployment, and hovering or focusing its row highlights its line. Each point counts the interval that ends there, so
-a bundle's line starts after its deployment. The bundles and the open tab are kept in the page
-URL. Rollbacks to the built-in bundle are not listed, since nothing applies
-them.
-
-**Adoption** counts the installations that applied each bundle in each
-interval, from their `UPDATE_APPLIED` reports. After a new bundle is deployed,
-its line rises and the bundle it replaced stops being applied; a rollout to
-part of the installations keeps both. Its table shows each bundle's applies
-in the period; [Update failures](#update-failures) has the failed updates.
-
-**Crashes** counts the launches that crashed on each bundle and recovered to
-the bundle before, from their `RECOVERED` reports. Its table shows each
-bundle's crashes and **Crash rate**: crashes divided by applies plus crashes,
-since an installation that crashes may never report the apply. When a bundle
-crashes for **5%** of the installations that tried it, once at least 20 did,
-Release health recommends rolling it back. **Roll back** disables its release,
-as its bundle details do, so installations running it return to the previous
-enabled bundle on their next update check; enable it again there to undo.
-Insights counts crashes but keeps no crash reports: to see why a launch
-crashed, use a crash reporter with an
-[integration plugin](/docs/integration-plugins/sentry), which uploads each OTA
-bundle's source maps.
-
-Applies and crashes count reports, not distinct installations. Release health
-reads the hourly counts the server keeps for event lists, one bundle and
-report type at a time, so adding a bundle reads only that bundle; it needs no
-database migration.
-
-![Release health comparing a new bundle with the one it replaced, with sample data](/docs/console/insights-release-health.jpg)
+The admin handler serves the Console's reads: `GET /overview`, `GET /events`
+(at most 90 days per request), `GET /installations/:id` and its `/events`,
+`GET /installations?userId=`, `GET /failures`, and `GET /retention`.
+`GET /failures?platform=ios&channel=production&releaseId=<id>` answers a
+release's failures since its first report; add `start` and `end` in epoch
+milliseconds, at most 30 days apart, which a channel without `releaseId`
+needs. Server code reads the same through `hotUpdater.api.insights`, such as
+`getUpdateFailures(input)`.

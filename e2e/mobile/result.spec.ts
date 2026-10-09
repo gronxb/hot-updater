@@ -27,8 +27,7 @@ const context: MobileContext = {
   appId: "example.app",
   scenarioNames: ["production-update", "crash-recovery"],
   controlBaseUrl: "http://127.0.0.1:3107",
-  scenarioTimeoutMs: 100,
-  setupTimeoutMs: 100,
+  testTimeoutMs: 100,
   cleanupTimeoutMs: 100,
 };
 
@@ -39,12 +38,12 @@ function reportFixture() {
       status: "passed",
       exitCode: 0,
       vcs: { commit: context.headSha },
-      runner: { name: "e2e", version: "0.16.0" },
+      runner: { name: "e2e", version: "0.18.0" },
       targets: [
         {
           id: "ios",
           platform: "ios",
-          engine: { name: "mobile", version: "0.9.1" },
+          engine: { name: "mobile", version: "0.10.0" },
         },
       ],
       serialGroups: [],
@@ -124,9 +123,9 @@ describe("mobile result contract", () => {
       cleanupStatus: "passed",
       errors: [],
       runnerVersions: {
-        e2e: "0.16.0",
-        mobile: "0.9.1",
-        agentDevice: "0.21.18",
+        e2e: "0.18.0",
+        mobile: "0.10.0",
+        agentDevice: "0.21.22",
       },
       scenarios: context.scenarioNames.map((name) => ({
         name,

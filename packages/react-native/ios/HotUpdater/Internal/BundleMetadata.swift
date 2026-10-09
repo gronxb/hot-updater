@@ -222,6 +222,37 @@ public struct CrashedBundleEntry: Codable {
     }
 }
 
+// MARK: - InterruptedLaunch
+
+/// A bundle whose launch ended before first content without a crash, waiting
+/// for its one retry. Such a launch cannot tell a hang from a user leaving
+/// early, so the bundle is offered again instead of entering crash history.
+/// A second unfinished launch of it adds it there.
+///
+/// `retryReady` turns true once a later launch shows content. The retry starts
+/// with the next process, so the session that recovered never reloads into the
+/// same bundle.
+public struct InterruptedLaunch: Codable {
+    let bundleId: String
+    var retryReady: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case bundleId
+        case retryReady
+    }
+
+    init(bundleId: String, retryReady: Bool = false) {
+        self.bundleId = bundleId
+        self.retryReady = retryReady
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        bundleId = try values.decode(String.self, forKey: .bundleId)
+        retryReady = try values.decodeIfPresent(Bool.self, forKey: .retryReady) ?? false
+    }
+}
+
 // MARK: - CrashedHistory
 
 /// History of crashed bundles
@@ -231,10 +262,30 @@ public struct CrashedHistory: Codable {
 
     var bundles: [CrashedBundleEntry]
     var maxHistorySize: Int
+    var interruptedLaunch: InterruptedLaunch?
 
-    init(bundles: [CrashedBundleEntry] = [], maxHistorySize: Int = CrashedHistory.defaultMaxHistorySize) {
+    enum CodingKeys: String, CodingKey {
+        case bundles
+        case maxHistorySize
+        case interruptedLaunch
+    }
+
+    init(
+        bundles: [CrashedBundleEntry] = [],
+        maxHistorySize: Int = CrashedHistory.defaultMaxHistorySize,
+        interruptedLaunch: InterruptedLaunch? = nil
+    ) {
         self.bundles = bundles
         self.maxHistorySize = maxHistorySize
+        self.interruptedLaunch = interruptedLaunch
+    }
+
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        bundles = try values.decode([CrashedBundleEntry].self, forKey: .bundles)
+        maxHistorySize = try values.decode(Int.self, forKey: .maxHistorySize)
+        // A malformed retry record must not drop the crash history.
+        interruptedLaunch = try? values.decodeIfPresent(InterruptedLaunch.self, forKey: .interruptedLaunch)
     }
 
     static func load(from file: URL) -> CrashedHistory {
@@ -298,6 +349,7 @@ public struct CrashedHistory: Codable {
 
     mutating func clear() {
         bundles.removeAll()
+        interruptedLaunch = nil
     }
 }
 

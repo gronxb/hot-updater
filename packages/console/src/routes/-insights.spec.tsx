@@ -167,17 +167,19 @@ describe("Insights dashboard", () => {
         ).getByText("3"),
       ).toBeDefined(),
     );
+    // Both cards start on 24 hours.
     expect(
       screen.getAllByRole("tab", { name: "24 hours", selected: true }),
-    ).toHaveLength(1);
+    ).toHaveLength(2);
+    expect(eventReads()).toContain("bundle-release-new LAUNCHED 24h");
     fireEvent.click(
       within(screen.getByRole("region", { name: "Release health" })).getByRole(
         "tab",
-        { name: "24 hours" },
+        { name: "7 days" },
       ),
     );
     await waitFor(() =>
-      expect(eventReads()).toContain("bundle-release-new UPDATE_APPLIED 24h"),
+      expect(eventReads()).toContain("bundle-release-new LAUNCHED 7d"),
     );
     expect(mocks.usage).toHaveBeenCalledTimes(1);
     expect(
@@ -205,7 +207,7 @@ describe("Insights dashboard", () => {
     expect(
       within(screen.getByRole("region", { name: "Release health" })).getByRole(
         "tab",
-        { name: "24 hours", selected: true },
+        { name: "7 days", selected: true },
       ),
     ).toBeDefined();
     expect(mocks.releases).toHaveBeenCalledOnce();
@@ -259,8 +261,8 @@ describe("Insights dashboard", () => {
     await waitFor(() =>
       expect(eventReads()).toEqual(
         expect.arrayContaining([
-          "bundle-release-a UPDATE_APPLIED 24h",
-          "bundle-release-before-a UPDATE_APPLIED 24h",
+          "bundle-release-a LAUNCHED 7d",
+          "bundle-release-before-a LAUNCHED 7d",
         ]),
       ),
     );
@@ -356,24 +358,27 @@ describe("Insights dashboard", () => {
     expect(mocks.releases).toHaveBeenCalledExactlyOnceWith({
       data: { platform: "ios", channel: "production" },
     });
-    // Adoption reads each bundle's applies, over the same hours.
+    // Adoption reads each bundle's downloads and launches, over the same
+    // hours.
     expect(eventReads().sort()).toEqual([
-      "bundle-release-new UPDATE_APPLIED 7d",
-      "bundle-release-old UPDATE_APPLIED 7d",
+      "bundle-release-new DOWNLOADED 24h",
+      "bundle-release-new LAUNCHED 24h",
+      "bundle-release-old DOWNLOADED 24h",
+      "bundle-release-old LAUNCHED 24h",
     ]);
     expect(
       new Set(mocks.events.mock.calls.map(([{ data }]) => data.endMs)).size,
     ).toBe(1);
 
-    // Crashes add each bundle's recoveries and reuse its applies.
+    // Crashes add each bundle's recoveries and reuse its launches.
     fireEvent.click(screen.getByRole("tab", { name: "Crashes" }));
     expect(mocks.navigate).toHaveBeenLastCalledWith({
       search: { healthChart: "crashes" },
     });
-    await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(4));
-    expect(eventReads().slice(2).sort()).toEqual([
-      "bundle-release-new RECOVERED 7d",
-      "bundle-release-old RECOVERED 7d",
+    await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(6));
+    expect(eventReads().slice(4).sort()).toEqual([
+      "bundle-release-new RECOVERED 24h",
+      "bundle-release-old RECOVERED 24h",
     ]);
 
     // Adding a bundle reads only it; the bundle list is not read again.
@@ -387,10 +392,10 @@ describe("Insights dashboard", () => {
         bundles: "release-new,release-old,release-oldest",
       },
     });
-    await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(6));
-    expect(eventReads().slice(4).sort()).toEqual([
-      "bundle-release-oldest RECOVERED 7d",
-      "bundle-release-oldest UPDATE_APPLIED 7d",
+    await waitFor(() => expect(mocks.events).toHaveBeenCalledTimes(8));
+    expect(eventReads().slice(6).sort()).toEqual([
+      "bundle-release-oldest LAUNCHED 24h",
+      "bundle-release-oldest RECOVERED 24h",
     ]);
     expect(mocks.releases).toHaveBeenCalledOnce();
   });

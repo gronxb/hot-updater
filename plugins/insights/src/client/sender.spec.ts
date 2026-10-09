@@ -19,6 +19,7 @@ const unchangedEvent = (): InsightsEventBody => ({
   installId: "install-id",
   platform: "ios",
   sdkVersion: "test-sdk-version",
+  minBundleId: "min-bundle-id",
   toBundleId: "bundle-id",
   toReleaseId: null,
   type: "UNCHANGED",

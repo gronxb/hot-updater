@@ -46,7 +46,7 @@ type ActiveBundleSnapshotCacheValues = {
 type ActiveBundleSnapshotCacheKey = keyof ActiveBundleSnapshotCacheValues;
 
 /**
- * Built-in reload behaviors used by `HotUpdater.reload()`.
+ * Built-in reload behaviors used by `hotUpdater.reload()`.
  *
  * - `reload`: In-process React Native reload.
  * - `processRestart`: Android-only cold restart. On iOS the same call behaves like `reload`.
@@ -578,7 +578,7 @@ export const reload = async () => {
 };
 
 /**
- * Configures how `HotUpdater.reload()` should behave.
+ * Configures how `hotUpdater.reload()` should behave.
  *
  * This API is available on both Android and iOS so app code can stay symmetric.
  * By default, HotUpdater uses `processRestart`.
@@ -959,7 +959,7 @@ export const readNotifyAppReady = (): {
  *
  * @example
  * ```ts
- * const result = HotUpdater.notifyAppReady();
+ * const result = hotUpdater.notifyAppReady();
  *
  * if (result.status === "RECOVERED") {
  *   console.log(result.fromBundleId, result.toBundleId);

@@ -39,7 +39,14 @@ vi.mock("@hot-updater/lynx", () => ({
       next: null,
       running: { bundleId: "embedded", releaseId: null },
     })),
-    init: vi.fn(),
+    init: vi.fn(() => ({
+      insights: { setUser: vi.fn() },
+      getLaunchInfo: vi.fn(async () => ({
+        next: null,
+        running: { bundleId: "embedded", releaseId: null },
+      })),
+      notifyAppReady: vi.fn(async () => ({ status: "UNCHANGED" })),
+    })),
     notifyAppReady: vi.fn(async () => ({ status: "UNCHANGED" })),
   },
 }));

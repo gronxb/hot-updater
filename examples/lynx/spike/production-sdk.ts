@@ -1,5 +1,11 @@
-import { HotUpdater, type CheckForUpdateResult } from "@hot-updater/lynx";
+import {
+  HotUpdater,
+  type HotUpdaterInstance,
+  type CheckForUpdateResult,
+} from "@hot-updater/lynx";
 import { insights } from "@hot-updater/plugin-insights/client";
+
+let hotUpdater: HotUpdaterInstance;
 
 const assetPrefix = "hot-updater:///";
 
@@ -52,7 +58,13 @@ export async function startProductionSdk(
   try {
     const launchConfiguration = await HotUpdater.getLaunchConfiguration();
     const baseURL = launchConfiguration.appBaseURL;
-    if (baseURL) HotUpdater.init({ plugins: [insights()], baseURL });
+    hotUpdater = HotUpdater.init({
+      plugins: baseURL ? [insights()] : [],
+      baseURL: () => {
+        if (baseURL) return baseURL;
+        throw new Error(configurationRequired);
+      },
+    });
     if (!imageReady) {
       await new Promise<void>((resolve) => {
         completeImage = resolve;
@@ -61,7 +73,7 @@ export async function startProductionSdk(
     await loadProductionFont();
     fontRegistered();
     await Promise.all([loadProductionExternal(), loadProductionDynamic()]);
-    await HotUpdater.notifyAppReady();
+    await hotUpdater.notifyAppReady();
     if (!baseURL) {
       unavailableReason = configurationRequired;
       setStatus(configurationRequired);
@@ -89,7 +101,7 @@ export async function checkProductionUpdate(
   setCanInstall(false);
   setStatus("Checking for an update…");
   try {
-    prepared = await HotUpdater.checkForUpdate({
+    prepared = await hotUpdater.checkForUpdate({
       updateStrategy: "appVersion",
     });
     setCanInstall(prepared !== null);
@@ -116,7 +128,7 @@ export async function installProductionUpdate(
     setCanInstall(false);
     if (reload) {
       setStatus("Update installed. Reloading…");
-      await HotUpdater.reload();
+      await hotUpdater.reload();
     } else {
       setStatus("Update installed for the next launch.");
     }

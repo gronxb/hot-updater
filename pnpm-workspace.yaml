@@ -86,5 +86,6 @@ onlyBuiltDependencies:
   - workerd
 
 minimumReleaseAgeExclude:
-  - '@e2e-dev/mobile@0.9.1'
-  - e2e@0.16.0
+  - '@e2e-dev/mobile@0.10.0'
+  - agent-device@0.21.22
+  - e2e@0.18.0

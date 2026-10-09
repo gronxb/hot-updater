@@ -8,11 +8,7 @@ import {
   type NotifyAppReadyResult,
   readNotifyAppReady,
 } from "./native";
-import {
-  buildPluginEvent,
-  dispatchPluginHook,
-  emitPluginHook,
-} from "./pluginHost";
+import type { PluginHost } from "./pluginHost";
 
 export type NotifyAppReadyOptions = {
   onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
@@ -20,10 +16,6 @@ export type NotifyAppReadyOptions = {
 };
 
 type RequestAnimationFrame = (callback: (timestamp: number) => void) => number;
-
-let didEmitAppReady = false;
-/** Settles once this runtime's launch was read, whether it was reported or failed. */
-let appReadyRead: Promise<unknown> | null = null;
 
 const waitForNextFrame = () =>
   new Promise<void>((resolve) => {
@@ -87,6 +79,7 @@ const toAppReadyResult = (
 };
 
 const notifyAppReady = async (
+  host: PluginHost,
   options: NotifyAppReadyOptions,
 ): Promise<NotifyAppReadyResult | undefined> => {
   try {
@@ -97,10 +90,9 @@ const notifyAppReady = async (
     } while (nativeReadResult.pending);
 
     const { result, transition } = nativeReadResult;
-    if (!didEmitAppReady) {
-      didEmitAppReady = true;
-      emitPluginHook("onAppReady", () => toAppReadyResult(result, transition));
-    }
+    host.emitPluginHook("onAppReady", () =>
+      toAppReadyResult(result, transition),
+    );
 
     options.onNotifyAppReady?.(result);
     return result;
@@ -113,29 +105,43 @@ const notifyAppReady = async (
   }
 };
 
-/** Reads this runtime's launch once native finalizes it and reports it to plugins. */
-export const handleNotifyAppReady = (
-  options: NotifyAppReadyOptions,
-): Promise<NotifyAppReadyResult | undefined> => {
-  const readiness = notifyAppReady(options);
-  appReadyRead ??= readiness;
-  return readiness;
-};
+/** An instance's launch: read once, and reported to the instance's plugins. */
+export interface LaunchReporter {
+  /**
+   * Reads this launch once native finalizes it and reports it to the
+   * plugins, once. It rejects only if `onError` throws.
+   */
+  read(
+    options: NotifyAppReadyOptions,
+  ): Promise<NotifyAppReadyResult | undefined>;
+  /** Settles once the launch was read, whether it was reported or failed. */
+  readonly appReady: Promise<unknown>;
+  /**
+   * Calls a plugin hook after the instance's `onAppReady`, so plugins see the
+   * launch before anything that followed it. The event is built now, from the
+   * state it describes, and only when a plugin listens.
+   */
+  emit: PluginHost["emitPluginHook"];
+}
 
-/**
- * Calls a plugin hook after this runtime's `onAppReady`, so plugins see the
- * launch before anything that followed it. The event is built now, from the
- * state it describes, and only when a plugin listens.
- */
-export const emitAfterAppReady: typeof emitPluginHook = (
-  name,
-  createPayload,
-) => {
-  const payload = buildPluginEvent(name, createPayload);
-  if (payload === null) return;
-  if (appReadyRead === null) {
-    dispatchPluginHook(name, payload);
-    return;
-  }
-  void appReadyRead.then(() => dispatchPluginHook(name, payload));
+export const createLaunchReporter = (host: PluginHost): LaunchReporter => {
+  let launchRead: Promise<NotifyAppReadyResult | undefined> | null = null;
+  return {
+    read: (options) => {
+      launchRead ??= notifyAppReady(host, options);
+      return launchRead;
+    },
+    get appReady() {
+      return launchRead ?? Promise.resolve();
+    },
+    emit: (name, createPayload) => {
+      const payload = host.buildPluginEvent(name, createPayload);
+      if (payload === null) return;
+      if (launchRead === null) {
+        host.dispatchPluginHook(name, payload);
+        return;
+      }
+      void launchRead.then(() => host.dispatchPluginHook(name, payload));
+    },
+  };
 };

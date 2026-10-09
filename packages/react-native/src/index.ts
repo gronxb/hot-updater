@@ -1,11 +1,12 @@
-import { emitAfterAppReady } from "./appReady";
+import { createLaunchReporter, type LaunchReporter } from "./appReady";
 import {
   type CheckForUpdateOptions,
   checkForUpdate,
-  type InternalCheckForUpdateOptions,
   reportUpdateError,
 } from "./checkForUpdate";
+import type { ClientPluginApis, HotUpdaterClientPlugin } from "./clientPlugin";
 import { createHttpClient, type HotUpdaterHttpClient } from "./httpClient";
+import type { HotUpdaterInitOptions } from "./init.types";
 import {
   addListener,
   getPublicActiveUpdateState,
@@ -32,25 +33,20 @@ import {
   stageBundle,
   type UpdateParams,
 } from "./native";
-import { configurePlugins } from "./pluginHost";
+import { createAppPluginHost } from "./pluginHost";
 import { hotUpdaterStore } from "./store";
-import {
-  type AutoUpdateOptions,
-  type HotUpdaterInitOptions,
-  type HotUpdaterOptions,
-  init,
-  type InternalInitOptions,
-  type InternalWrapOptions,
-  wrap,
-} from "./wrap";
+import { type HotUpdaterWrapOptions, wrap } from "./wrap";
 
 export {
   defineClientPlugin,
   type AppReadyResult,
   type BundleDownloadedInfo,
+  type ClientPluginApi,
+  type ClientPluginApis,
   type HotUpdaterClientContext,
   type HotUpdaterClientHooks,
   type HotUpdaterClientPlugin,
+  type HotUpdaterClientSetup,
   type HotUpdaterClientStorage,
   type ReleaseTransitionKind,
   type UpdateCheckResult,
@@ -63,10 +59,25 @@ export {
 // The built-in Insights client plugin, for HotUpdater.init({ plugins }).
 export {
   insights,
+  type InsightsClient,
   type InsightsOptions,
   type InsightsPlugin,
   type InsightsUser,
 } from "@hot-updater/plugin-insights/client";
+// The built-in Remote Config client plugin, for HotUpdater.init({ plugins }).
+export {
+  remoteConfig,
+  type RemoteConfigClient,
+  type RemoteConfigDefaults,
+  type RemoteConfigDefaultValue,
+  type RemoteConfigFetchOptions,
+  type RemoteConfigFetchStatus,
+  type RemoteConfigKey,
+  type RemoteConfigOptions,
+  type RemoteConfigPlugin,
+  type RemoteConfigValue,
+  type RemoteConfigValueSource,
+} from "@hot-updater/plugin-remote-config/client";
 export type {
   CustomReloadHandler,
   HotUpdaterEvent,
@@ -86,10 +97,10 @@ export {
   isSignatureVerificationError,
   type SignatureVerificationFailure,
 } from "./types";
+export type { HotUpdaterInitOptions } from "./init.types";
 export type {
   HotUpdaterFallbackComponentProps,
-  HotUpdaterInitOptions,
-  HotUpdaterOptions,
+  HotUpdaterWrapOptions,
   RunUpdateProcessResponse,
 } from "./wrap";
 
@@ -111,343 +122,240 @@ const registerGlobalGetBaseURL = () => {
 // Call registration immediately on module load
 registerGlobalGetBaseURL();
 
-type HotUpdaterWrap = {
-  (options: AutoUpdateOptions): ReturnType<typeof wrap>;
-  (options: HotUpdaterOptions): ReturnType<typeof wrap>;
+const createMissingNetworkConfigError = () =>
+  new Error(
+    `[HotUpdater] baseURL must be provided.\n\n` +
+      `Configure HotUpdater with the standard baseURL setup:\n\n` +
+      `  export const hotUpdater = HotUpdater.init({\n` +
+      `    baseURL: "<your-update-server-url>",\n` +
+      `  });\n\n` +
+      `See https://hot-updater.dev/docs/react-native-api/init`,
+  );
+
+/** The methods that read or change native state, the same on every instance. */
+const nativeMethods = {
+  /**
+   * Reloads the app.
+   */
+  reload,
+
+  /**
+   * Configures how `hotUpdater.reload()` behaves.
+   *
+   * This can be called unconditionally on both platforms.
+   * The default is `processRestart`.
+   *
+   * - `reload`: built-in React Native reload on both platforms
+   * - `processRestart`: Android process restart, iOS behaves like normal reload
+   * - `custom`: run a custom JS handler on both platforms
+   */
+  setReloadBehavior,
+
+  /**
+   * Returns whether an update has finished downloading in this app session.
+   *
+   * When it returns true, calling `hotUpdater.reload()` (or restarting the app)
+   * will apply the downloaded update bundle.
+   *
+   * - Derived from `progress` reaching 1.0
+   * - Resets to false when a new download starts (progress < 1)
+   *
+   * @returns {boolean} True if a downloaded update is ready to apply
+   * @example
+   * ```ts
+   * if (hotUpdater.isUpdateDownloaded()) {
+   *   await hotUpdater.reload();
+   * }
+   * ```
+   */
+  isUpdateDownloaded: () => hotUpdaterStore.getSnapshot().isUpdateDownloaded,
+
+  /**
+   * Fetches the current app version.
+   */
+  getAppVersion,
+
+  /** Reads the active and stable Release/Bundle state. */
+  getActiveUpdateState: async () => getPublicActiveUpdateState(),
+
+  /**
+   * Returns the selected update ID, matching the ID shown in the console.
+   * A staged update can change this ID before the app reloads.
+   */
+  getBundleId: getUpdateId,
+
+  /** Returns the minimum bundle ID based on the native app build time. */
+  getMinBundleId,
+
+  /**
+   * Fetches the current manifest for the active bundle.
+   */
+  getManifest,
+
+  /**
+   * Fetches the current channel of the app.
+   *
+   * If no channel is specified, the app is assigned to the 'production' channel.
+   *
+   * @returns {string} The current release channel of the app
+   * @default "production"
+   * @example
+   * ```ts
+   * const channel = hotUpdater.getChannel();
+   * console.log(`Current channel: ${channel}`);
+   * ```
+   */
+  getChannel,
+
+  /**
+   * Fetches the build-time default channel of the app.
+   *
+   * This value does not change when a runtime channel override is active.
+   *
+   * @returns {string} The default release channel embedded in the app
+   * @example
+   * ```ts
+   * const defaultChannel = hotUpdater.getDefaultChannel();
+   * console.log(`Default channel: ${defaultChannel}`);
+   * ```
+   */
+  getDefaultChannel,
+
+  /**
+   * Returns whether the app is currently using a runtime channel override.
+   *
+   * @returns {boolean} true when a non-default channel has been applied
+   */
+  isChannelSwitched,
+
+  /**
+   * Sets the persisted cohort used for rollout calculations.
+   * Call `getCohort()` first if you need to restore the initial value later.
+   */
+  setCohort,
+
+  /**
+   * Gets the persisted cohort used for rollout calculations.
+   */
+  getCohort,
+
+  /**
+   * Adds a listener to HotUpdater events.
+   *
+   * @param {keyof HotUpdaterEvent} eventName - The name of the event to listen for
+   * @param {(event: HotUpdaterEvent[T]) => void} listener - The callback function to handle the event
+   * @returns {() => void} A cleanup function that removes the event listener
+   *
+   * @example
+   * ```ts
+   * const unsubscribe = hotUpdater.addListener("onProgress", ({ progress }) => {
+   *   console.log(`Update progress: ${progress * 100}%`);
+   * });
+   *
+   * // Unsubscribe when no longer needed
+   * unsubscribe();
+   * ```
+   */
+  addListener,
+
+  /**
+   * Clears the runtime channel override and restores the original bundle.
+   *
+   * @returns {Promise<boolean>} Resolves with true if reset was successful
+   */
+  resetChannel: async () => {
+    const ok = await resetChannel();
+    if (ok) {
+      hotUpdaterStore.setState({
+        artifactType: null,
+        details: null,
+        isUpdateDownloaded: false,
+        progress: 0,
+      });
+    }
+    return ok;
+  },
+
+  /**
+   * Fetches the fingerprint of the app.
+   *
+   * @returns {string} The fingerprint of the app
+   *
+   * @example
+   * ```ts
+   * const fingerprint = hotUpdater.getFingerprintHash();
+   * console.log(`Fingerprint: ${fingerprint}`);
+   * ```
+   */
+  getFingerprintHash,
+
+  /**
+   * Fetches the persisted install id for this app installation.
+   */
+  getInstallId,
+
+  /**
+   * Reads the native launch report for the current process.
+   */
+  notifyAppReady,
+
+  /**
+   * Gets the list of bundle IDs that have been marked as crashed.
+   * These bundles will be rejected if attempted to install again.
+   *
+   * @returns {string[]} Array of crashed bundle IDs
+   *
+   * @example
+   * ```ts
+   * const crashedBundles = hotUpdater.getCrashHistory();
+   * console.log("Crashed bundles:", crashedBundles);
+   * ```
+   */
+  getCrashHistory,
+
+  /**
+   * Clears the crashed bundle history, allowing previously crashed bundles
+   * to be installed again.
+   *
+   * @returns {boolean} true if clearing was successful
+   *
+   * @example
+   * ```ts
+   * // Clear crash history to allow retrying a previously failed bundle
+   * hotUpdater.clearCrashHistory();
+   * ```
+   */
+  clearCrashHistory,
 };
 
-/**
- * Creates a HotUpdater client instance with all update management methods.
- * This function is called once on module initialization to create a singleton instance.
- */
-function createHotUpdaterClient() {
-  let configurationAPI: "init" | "wrap" | null = null;
-  let mixedConfigurationReported = false;
+/** What an instance's own methods use: its server, settings, and launch. */
+interface InstanceConfig {
+  readonly client: HotUpdaterHttpClient;
+  readonly requestHeaders?: Record<string, string>;
+  readonly requestTimeout?: number;
+  readonly onError?: (error: unknown) => void;
+  readonly launch: LaunchReporter;
+}
 
-  // Global configuration stored from wrap
-  const globalConfig: {
-    client: HotUpdaterHttpClient | null;
-    requestHeaders?: Record<string, string>;
-    requestTimeout?: number;
-    onError?: (error: unknown) => void;
-  } = {
-    client: null,
-  };
-
-  const createMissingNetworkConfigError = (apiName: "init" | "wrap") => {
-    if (apiName === "init") {
-      return new Error(
-        `[HotUpdater] baseURL must be provided.\n\n` +
-          `Configure HotUpdater before calling update APIs with the standard baseURL setup:\n\n` +
-          `  HotUpdater.init({\n` +
-          `    baseURL: "<your-update-server-url>",\n` +
-          `  });\n\n` +
-          `For manual update flows, visit: https://hot-updater.dev/docs/guides/custom-update`,
-      );
-    }
-
-    const baseURLExample =
-      `  export default HotUpdater.wrap({\n` +
-      `    baseURL: "<your-update-server-url>",\n` +
-      `    updateStrategy: "appVersion"\n` +
-      `  })(App);\n\n`;
-
-    return new Error(
-      `[HotUpdater] baseURL must be provided.\n\n` +
-        `Configure HotUpdater.wrap with the standard baseURL setup:\n\n` +
-        baseURLExample +
-        `For manual update flows, use HotUpdater.init() and visit: ` +
-        `https://hot-updater.dev/docs/guides/custom-update`,
-    );
-  };
-
-  const normalizeOptions = (
-    options: HotUpdaterOptions,
-  ): InternalWrapOptions => {
-    const incoming = options as HotUpdaterOptions & {
-      updateMode?: unknown;
-    };
-    if (incoming.updateMode === "manual") {
-      throw new Error(
-        '[HotUpdater] HotUpdater.wrap({ updateMode: "manual" }) was removed. ' +
-          "Call HotUpdater.init({ ... }) instead, export your root component " +
-          "directly, and use HotUpdater.checkForUpdate(...) for the manual " +
-          "update flow. See https://hot-updater.dev/docs/guides/custom-update",
-      );
-    }
-
-    const autoOptions = incoming as AutoUpdateOptions;
-
-    if (autoOptions.baseURL) {
-      const { baseURL, plugins: _plugins, ...rest } = autoOptions;
-      return {
-        ...rest,
-        client: createHttpClient(baseURL, (response) => {
-          emitAfterAppReady("onHttpResponse", () => response);
-        }),
-      };
-    }
-
-    throw createMissingNetworkConfigError("wrap");
-  };
-
-  const normalizeInitOptions = (
-    options: HotUpdaterInitOptions,
-  ): InternalInitOptions => {
-    const { updateMode: _updateMode, ...rest } =
-      options as HotUpdaterInitOptions & {
-        updateMode?: unknown;
-      };
-
-    if (rest.baseURL) {
-      const { baseURL, plugins: _plugins, ...baseURLRest } = rest;
-      return {
-        ...baseURLRest,
-        client: createHttpClient(baseURL, (response) => {
-          emitAfterAppReady("onHttpResponse", () => response);
-        }),
-      };
-    }
-
-    throw createMissingNetworkConfigError("init");
-  };
-
-  const configureGlobal = (
-    normalizedOptions: InternalInitOptions | InternalWrapOptions,
-    options: HotUpdaterOptions | HotUpdaterInitOptions,
-  ) => {
-    // Plugins are set up before init or wrap reads the launch they observe.
-    configurePlugins(options.plugins, {
-      baseURL: options.baseURL,
-      requestHeaders: options.requestHeaders,
-      requestTimeout: options.requestTimeout,
-      onError: options.onError,
+/** The methods that use the instance's own configuration and plugins. */
+const createConfiguredMethods = (config: InstanceConfig) => {
+  const check = (options: CheckForUpdateOptions) =>
+    checkForUpdate({
+      ...options,
+      client: config.client,
+      emit: config.launch.emit,
+      requestHeaders: {
+        ...config.requestHeaders,
+        ...options.requestHeaders,
+      },
+      requestTimeout: options.requestTimeout ?? config.requestTimeout,
+      onError: options.onError ?? config.onError,
     });
-    globalConfig.client = normalizedOptions.client;
-    globalConfig.requestHeaders = options.requestHeaders;
-    globalConfig.requestTimeout = options.requestTimeout;
-    globalConfig.onError = options.onError;
-  };
-
-  const reportMixedConfiguration = (nextAPI: "init" | "wrap") => {
-    if (
-      configurationAPI !== null &&
-      configurationAPI !== nextAPI &&
-      !mixedConfigurationReported
-    ) {
-      mixedConfigurationReported = true;
-      console.error(
-        "[HotUpdater] HotUpdater.init() and HotUpdater.wrap() must not be used together. " +
-          "For custom or manual update flows, use HotUpdater.init() with " +
-          "HotUpdater.checkForUpdate(). For the automatic HOC flow, use " +
-          "HotUpdater.wrap().",
-      );
-    }
-    configurationAPI ??= nextAPI;
-  };
-
-  const ensureGlobalClient = (methodName: string) => {
-    if (!globalConfig.client) {
-      throw new Error(
-        `[HotUpdater] ${methodName} requires HotUpdater.wrap() or HotUpdater.init() to be used.\n\n` +
-          `To fix this issue, configure HotUpdater before calling ${methodName}:\n\n` +
-          `Option 1: With HotUpdater.wrap()\n` +
-          `  export default HotUpdater.wrap({\n` +
-          `    baseURL: "<your-update-server-url>",\n` +
-          `    updateStrategy: "appVersion"\n` +
-          `  })(App);\n\n` +
-          `Option 2: With HotUpdater.init() for custom runtimes\n` +
-          `  HotUpdater.init({\n` +
-          `    baseURL: "<your-update-server-url>",\n` +
-          `  });\n\n` +
-          `For manual update flows, visit: https://hot-updater.dev/docs/guides/custom-update`,
-      );
-    }
-    return globalConfig.client;
-  };
 
   return {
     /**
-     * `HotUpdater.wrap` checks for updates at the entry point, and if there is a bundle to update, it downloads the bundle and applies the update strategy.
-     *
-     * @param {object} options - Configuration options
-     * @param {string} options.source - Update server URL
-     * @param {object} [options.requestHeaders] - Request headers
-     * @param {React.ComponentType} [options.fallbackComponent] - Component to display during updates
-     * @param {boolean} [options.reloadOnForceUpdate=true] - Whether to automatically reload the app on force updates
-     * @param {Function} [options.onUpdateProcessCompleted] - Callback after update process completes
-     * @param {Function} [options.onProgress] - Callback to track bundle download progress
-     * @returns {Function} Higher-order component that wraps the app component
-     *
-     * @example
-     * ```tsx
-     * export default HotUpdater.wrap({
-     *   baseURL: "<your-update-server-url>",
-     *   updateStrategy: "appVersion",
-     *   requestHeaders: {
-     *     "x-api-key": "<your-api-key>",
-     *   },
-     * })(App);
-     * ```
-     */
-    wrap: (options: HotUpdaterOptions) => {
-      const normalizedOptions = normalizeOptions(options);
-      reportMixedConfiguration("wrap");
-      configureGlobal(normalizedOptions, options);
-
-      return wrap(normalizedOptions);
-    },
-
-    /**
-     * Initializes HotUpdater without wrapping a React component.
-     *
-     * Use this for manual update flows in runtimes where a root component HOC
-     * is not convenient. Use this instead of wrapping the root component.
-     *
-     * @example
-     * ```tsx
-     * HotUpdater.init({
-     *   baseURL: "<your-update-server-url>",
-     * });
-     *
-     * export default App;
-     * ```
-     */
-    init: (options: HotUpdaterInitOptions): void => {
-      const normalizedOptions = normalizeInitOptions(options);
-
-      reportMixedConfiguration("init");
-      configureGlobal(normalizedOptions, options);
-
-      init(normalizedOptions);
-    },
-
-    /**
-     * Reloads the app.
-     */
-    reload,
-
-    /**
-     * Configures how `HotUpdater.reload()` behaves.
-     *
-     * This can be called unconditionally on both platforms.
-     * The default is `processRestart`.
-     *
-     * - `reload`: built-in React Native reload on both platforms
-     * - `processRestart`: Android process restart, iOS behaves like normal reload
-     * - `custom`: run a custom JS handler on both platforms
-     */
-    setReloadBehavior,
-
-    /**
-     * Returns whether an update has finished downloading in this app session.
-     *
-     * When it returns true, calling `HotUpdater.reload()` (or restarting the app)
-     * will apply the downloaded update bundle.
-     *
-     * - Derived from `progress` reaching 1.0
-     * - Resets to false when a new download starts (progress < 1)
-     *
-     * @returns {boolean} True if a downloaded update is ready to apply
-     * @example
-     * ```ts
-     * if (HotUpdater.isUpdateDownloaded()) {
-     *   await HotUpdater.reload();
-     * }
-     * ```
-     */
-    isUpdateDownloaded: () => hotUpdaterStore.getSnapshot().isUpdateDownloaded,
-
-    /**
-     * Fetches the current app version.
-     */
-    getAppVersion,
-
-    /** Reads the active and stable Release/Bundle state. */
-    getActiveUpdateState: async () => getPublicActiveUpdateState(),
-
-    /**
-     * Returns the selected update ID, matching the ID shown in the console.
-     * A staged update can change this ID before the app reloads.
-     */
-    getBundleId: getUpdateId,
-
-    /** Returns the minimum bundle ID based on the native app build time. */
-    getMinBundleId,
-
-    /**
-     * Fetches the current manifest for the active bundle.
-     */
-    getManifest,
-
-    /**
-     * Fetches the current channel of the app.
-     *
-     * If no channel is specified, the app is assigned to the 'production' channel.
-     *
-     * @returns {string} The current release channel of the app
-     * @default "production"
-     * @example
-     * ```ts
-     * const channel = HotUpdater.getChannel();
-     * console.log(`Current channel: ${channel}`);
-     * ```
-     */
-    getChannel,
-
-    /**
-     * Fetches the build-time default channel of the app.
-     *
-     * This value does not change when a runtime channel override is active.
-     *
-     * @returns {string} The default release channel embedded in the app
-     * @example
-     * ```ts
-     * const defaultChannel = HotUpdater.getDefaultChannel();
-     * console.log(`Default channel: ${defaultChannel}`);
-     * ```
-     */
-    getDefaultChannel,
-
-    /**
-     * Returns whether the app is currently using a runtime channel override.
-     *
-     * @returns {boolean} true when a non-default channel has been applied
-     */
-    isChannelSwitched,
-
-    /**
-     * Sets the persisted cohort used for rollout calculations.
-     * Call `getCohort()` first if you need to restore the initial value later.
-     */
-    setCohort,
-
-    /**
-     * Gets the persisted cohort used for rollout calculations.
-     */
-    getCohort,
-
-    /**
-     * Adds a listener to HotUpdater events.
-     *
-     * @param {keyof HotUpdaterEvent} eventName - The name of the event to listen for
-     * @param {(event: HotUpdaterEvent[T]) => void} listener - The callback function to handle the event
-     * @returns {() => void} A cleanup function that removes the event listener
-     *
-     * @example
-     * ```ts
-     * const unsubscribe = HotUpdater.addListener("onProgress", ({ progress }) => {
-     *   console.log(`Update progress: ${progress * 100}%`);
-     * });
-     *
-     * // Unsubscribe when no longer needed
-     * unsubscribe();
-     * ```
-     */
-    addListener,
-
-    /**
-     * Manually checks for updates.
+     * Checks for an update, with this instance's server and request
+     * settings.
      *
      * @param {Object} config - Update check configuration
      * @param {string} [config.channel] - Optional channel override for this update check
@@ -457,7 +365,7 @@ function createHotUpdaterClient() {
      *
      * @example
      * ```ts
-     * const updateInfo = await HotUpdater.checkForUpdate({
+     * const updateInfo = await hotUpdater.checkForUpdate({
      *   updateStrategy: "appVersion",
      *   requestHeaders: {
      *     "x-api-key": "<your-api-key>",
@@ -471,26 +379,11 @@ function createHotUpdaterClient() {
      *
      * await updateInfo.updateBundle();
      * if (updateInfo.shouldForceUpdate) {
-     *   await HotUpdater.reload();
+     *   await hotUpdater.reload();
      * }
      * ```
      */
-    checkForUpdate: (config: CheckForUpdateOptions) => {
-      const client = ensureGlobalClient("checkForUpdate");
-
-      const mergedConfig: InternalCheckForUpdateOptions = {
-        ...config,
-        client,
-        requestHeaders: {
-          ...globalConfig.requestHeaders,
-          ...config.requestHeaders,
-        },
-        requestTimeout: config.requestTimeout ?? globalConfig.requestTimeout,
-        onError: config.onError ?? globalConfig.onError,
-      };
-
-      return checkForUpdate(mergedConfig);
-    },
+    checkForUpdate: check,
 
     /**
      * Updates the bundle of the app.
@@ -501,7 +394,7 @@ function createHotUpdaterClient() {
      *
      * @example
      * ```ts
-     * const updateInfo = await HotUpdater.checkForUpdate({
+     * const updateInfo = await hotUpdater.checkForUpdate({
      *   updateStrategy: "appVersion",
      *   requestHeaders: {
      *     "x-api-key": "<your-api-key>",
@@ -516,12 +409,11 @@ function createHotUpdaterClient() {
      *
      * await updateInfo.updateBundle();
      * if (updateInfo.shouldForceUpdate) {
-     *   await HotUpdater.reload();
+     *   await hotUpdater.reload();
      * }
      * ```
      */
     updateBundle: async (params: UpdateParams) => {
-      ensureGlobalClient("updateBundle");
       const fromBundleId = getBundleId();
       const state = getActiveUpdateState();
       const active = state.activeSelection;
@@ -538,7 +430,7 @@ function createHotUpdaterClient() {
       try {
         delivery = await stageBundle(params);
       } catch (error) {
-        reportUpdateError(error, "download", undefined, {
+        reportUpdateError(config.launch.emit, error, "download", undefined, {
           bundleId: fromBundleId,
           channel,
           targetBundleId: params.bundleId,
@@ -553,7 +445,7 @@ function createHotUpdaterClient() {
         throw error;
       }
       if (delivery !== null && params.bundleId !== fromBundleId) {
-        emitAfterAppReady("onBundleDownloaded", () => {
+        config.launch.emit("onBundleDownloaded", () => {
           const selection = getActiveUpdateState().activeSelection;
           return {
             channel,
@@ -570,81 +462,111 @@ function createHotUpdaterClient() {
     },
 
     /**
-     * Clears the runtime channel override and restores the original bundle.
-     *
-     * @returns {Promise<boolean>} Resolves with true if reset was successful
-     */
-    resetChannel: async () => {
-      const ok = await resetChannel();
-      if (ok) {
-        hotUpdaterStore.setState({
-          artifactType: null,
-          details: null,
-          isUpdateDownloaded: false,
-          progress: 0,
-        });
-      }
-      return ok;
-    },
-
-    /**
-     * Fetches the fingerprint of the app.
-     *
-     * @returns {string} The fingerprint of the app
+     * Wraps the app's root: when it mounts, it checks for an update with
+     * this instance's configuration, downloads one, and reloads for a
+     * forced update. A `fallbackComponent` replaces the root until the
+     * check and a forced update finish.
      *
      * @example
-     * ```ts
-     * const fingerprint = HotUpdater.getFingerprintHash();
-     * console.log(`Fingerprint: ${fingerprint}`);
+     * ```tsx
+     * export default hotUpdater.wrap({
+     *   updateStrategy: "appVersion",
+     *   fallbackComponent: ({ progress }) => <Splash progress={progress} />,
+     * })(App);
      * ```
      */
-    getFingerprintHash,
-
-    /**
-     * Fetches the persisted install id for this app installation.
-     */
-    getInstallId,
-
-    /**
-     * Reads the native launch report for the current process.
-     */
-    notifyAppReady,
-
-    /**
-     * Gets the list of bundle IDs that have been marked as crashed.
-     * These bundles will be rejected if attempted to install again.
-     *
-     * @returns {string[]} Array of crashed bundle IDs
-     *
-     * @example
-     * ```ts
-     * const crashedBundles = HotUpdater.getCrashHistory();
-     * console.log("Crashed bundles:", crashedBundles);
-     * ```
-     */
-    getCrashHistory,
-
-    /**
-     * Clears the crashed bundle history, allowing previously crashed bundles
-     * to be installed again.
-     *
-     * @returns {boolean} true if clearing was successful
-     *
-     * @example
-     * ```ts
-     * // Clear crash history to allow retrying a previously failed bundle
-     * HotUpdater.clearCrashHistory();
-     * ```
-     */
-    clearCrashHistory,
+    wrap: (options: HotUpdaterWrapOptions) =>
+      wrap({
+        ...options,
+        checkForUpdate: check,
+        appReady: () => config.launch.appReady,
+        onError: (error) => config.onError?.(error),
+      }),
   };
-}
-
-type HotUpdaterClient = Omit<
-  ReturnType<typeof createHotUpdaterClient>,
-  "wrap"
-> & {
-  wrap: HotUpdaterWrap;
 };
 
-export const HotUpdater: HotUpdaterClient = createHotUpdaterClient();
+/** The methods of every instance `HotUpdater.init` returns. */
+export type HotUpdaterCore = typeof nativeMethods &
+  ReturnType<typeof createConfiguredMethods>;
+
+/**
+ * The instance `HotUpdater.init` returns: HotUpdater's methods, and each
+ * plugin's API under the plugin's id.
+ */
+export type HotUpdaterInstance<
+  TPlugins extends readonly HotUpdaterClientPlugin[] = readonly [],
+> = Readonly<HotUpdaterCore> & ClientPluginApis<TPlugins>;
+
+export const HotUpdater = {
+  /**
+   * Creates the app's HotUpdater instance: the update server, its request
+   * settings, and the client plugins. Each call returns an independent
+   * instance with its own configuration and plugins, so create one, at the
+   * top level of a module, and export it.
+   *
+   * The instance has every HotUpdater method, such as `wrap`,
+   * `checkForUpdate`, and `reload`, and each plugin's API under the
+   * plugin's id, such as `hotUpdater.remoteConfig` for `remoteConfig()`.
+   *
+   * @example
+   * ```tsx
+   * export const hotUpdater = HotUpdater.init({
+   *   baseURL: "<your-update-server-url>",
+   *   plugins: [remoteConfig({ defaults: { welcome_message: "Hi" } })],
+   * });
+   *
+   * hotUpdater.remoteConfig.getString("welcome_message");
+   * ```
+   */
+  init: <
+    const TPlugins extends readonly HotUpdaterClientPlugin[] = readonly [],
+  >(
+    options: HotUpdaterInitOptions<TPlugins>,
+  ): HotUpdaterInstance<TPlugins> => {
+    const {
+      baseURL,
+      plugins,
+      requestHeaders,
+      requestTimeout,
+      onError,
+      onNotifyAppReady,
+    } = options;
+    if (!baseURL) throw createMissingNetworkConfigError();
+
+    const host = createAppPluginHost();
+    const launch = createLaunchReporter(host);
+    const instance = {
+      ...nativeMethods,
+      ...createConfiguredMethods({
+        client: createHttpClient(baseURL, (response) => {
+          launch.emit("onHttpResponse", () => response);
+        }),
+        requestHeaders,
+        requestTimeout,
+        onError,
+        launch,
+      }),
+    };
+    const reservedIds = new Set([...Object.keys(instance), "init"]);
+    for (const plugin of plugins ?? []) {
+      if (reservedIds.has(plugin.id)) {
+        throw new Error(
+          `[HotUpdater] A plugin cannot use the id "${plugin.id}": the HotUpdater instance has its own "${plugin.id}".`,
+        );
+      }
+    }
+
+    // Plugins are set up before the instance reads the launch they observe.
+    const apis = host.configurePlugins(plugins, {
+      baseURL,
+      requestHeaders,
+      requestTimeout,
+      onError,
+    });
+    void launch.read({ onNotifyAppReady, onError });
+    return Object.freeze({
+      ...instance,
+      ...apis,
+    }) as HotUpdaterInstance<TPlugins>;
+  },
+};

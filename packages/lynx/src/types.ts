@@ -1,5 +1,6 @@
 import type {
   ArtifactInfo,
+  HotUpdaterBaseURL,
   HotUpdaterClientPlugin,
   ArtifactAsset,
   PersistedSelectionReceipt,
@@ -12,9 +13,13 @@ export interface HotUpdaterOptions {
   requestTimeout?: number;
 }
 
-export type HotUpdaterInitOptions = HotUpdaterOptions & {
+export type HotUpdaterInitOptions<
+  TPlugins extends readonly HotUpdaterClientPlugin[] =
+    readonly HotUpdaterClientPlugin[],
+> = Omit<HotUpdaterOptions, "baseURL"> & {
+  baseURL: HotUpdaterBaseURL;
   onError?: (error: Error) => void;
-  plugins?: readonly HotUpdaterClientPlugin[];
+  plugins?: TPlugins;
 };
 
 export interface CheckForUpdateOptions {
@@ -227,6 +232,7 @@ export interface HotUpdaterLynxNative {
   getPluginInfo(): NativeReply<{ installId: string; isDebugBuild: boolean }>;
   getPluginStorageItem(key: string): NativeReply<string | null>;
   setPluginStorageItem(key: string, value: string | null): NativeReply<boolean>;
+  getStateSync(): NativeReply<NativeState>;
   getState(callback: Callback<NativeState>): void;
   getLaunchConfiguration(callback: Callback<LaunchConfiguration>): void;
   getRuntimeEvents(callback: Callback<RuntimeEventsSnapshot>): void;

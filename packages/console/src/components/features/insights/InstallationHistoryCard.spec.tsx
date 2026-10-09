@@ -42,7 +42,7 @@ describe("InstallationHistoryCard", () => {
         selectedInstallId="install-1"
       />,
     );
-    expect(screen.getByText("Downloaded · Pending apply")).toBeDefined();
+    expect(screen.getByText("Downloaded · Not launched yet")).toBeDefined();
     expect(screen.getAllByText("bundle-old").length).toBeGreaterThan(0);
     expect(screen.getAllByText("bundle-new").length).toBeGreaterThan(0);
   });
@@ -63,7 +63,7 @@ describe("InstallationHistoryCard", () => {
     );
 
     expect(screen.getByText("user-1")).toBeDefined();
-    expect(screen.getAllByText("Update applied").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Launched").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Next" }));
     expect(onNext).toHaveBeenCalledOnce();
   });

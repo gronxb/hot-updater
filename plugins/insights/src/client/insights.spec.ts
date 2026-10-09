@@ -34,13 +34,8 @@ const sentTypes = () => sentEvents().map(({ type }) => type);
 const disabledResponse = () => new Response(null, { status: 404 });
 
 /** Starts a JavaScript runtime with the plugin on the test's device. */
-const launch = async (
-  options: InsightsOptions = {},
-  beforeInit?: (plugin: ReturnType<typeof insights>) => void,
-) => {
-  const plugin = insights(options);
-  beforeInit?.(plugin);
-  const runtime = setupClientPlugin(plugin, {
+const launch = async (options: InsightsOptions = {}) => {
+  const runtime = setupClientPlugin(insights(options), {
     baseURL: "https://updates.example.com/hot-updater",
     requestHeaders: { "x-api-key": "client-key" },
     respond: (request) => {
@@ -61,7 +56,8 @@ const launch = async (
     fingerprintHash: "fingerprint-hash",
   });
   return {
-    plugin,
+    // What `hotUpdater.insights` is on the instance init returns.
+    insights: runtime.api,
     runtime,
     appReady: runtime.hooks.onAppReady,
     updateCheck: runtime.hooks.onUpdateCheck,
@@ -253,6 +249,43 @@ describe("insights() client plugin", () => {
     ).toBe(true);
   });
 
+  it("keeps each instance's reports on its own server when one plugin object is set up twice", async () => {
+    const plugin = insights();
+    const runtimeFor = (baseURL: string) =>
+      setupClientPlugin(plugin, {
+        baseURL,
+        respond: (request) => {
+          sent.push(request);
+          return new Response(null, { status: 204 });
+        },
+        storage: createTestStorage(),
+        installId,
+        appVersion,
+        sdkVersion: "test-sdk-version",
+        isDebugBuild,
+        bundleId: "bundle-a",
+        channel: "production",
+        cohort: "123",
+        fingerprintHash: "fingerprint-hash",
+      });
+    const first = runtimeFor("https://first.example.com");
+    const second = runtimeFor("https://second.example.com");
+
+    first.hooks.onAppReady?.(unchangedLaunch());
+    await flush();
+    second.hooks.onAppReady?.(unchangedLaunch({ releaseId: "release-b" }));
+    await flush();
+
+    expect(sent.map((request) => request.url)).toEqual([
+      "https://first.example.com/events",
+      "https://second.example.com/events",
+    ]);
+    expect(sentEvents().map(({ toReleaseId }) => toReleaseId)).toEqual([
+      "release-a",
+      "release-b",
+    ]);
+  });
+
   it("posts a launch as UNCHANGED with the app's identity", async () => {
     const app = await launch();
 
@@ -275,6 +308,7 @@ describe("insights() client plugin", () => {
       fromBundleId: null,
       fromReleaseId: null,
       installId: "install-id",
+      minBundleId: "00000000-0000-0000-0000-000000000000",
       platform: "ios",
       sdkVersion: "test-sdk-version",
       toBundleId: "bundle-a",
@@ -326,7 +360,7 @@ describe("insights() client plugin", () => {
       await flush();
 
       const app = await launch();
-      app.plugin.setUser({ userId: "user-1" });
+      app.insights.setUser({ userId: "user-1" });
       app.appReady(unchangedLaunch());
       await flush();
 
@@ -792,17 +826,17 @@ describe("insights() client plugin", () => {
   });
 
   describe("user", () => {
-    it("attaches a user set before init and keeps it across launches", async () => {
-      (await launch({}, (plugin) => plugin.setUser({ userId: 42 }))).appReady(
-        unchangedLaunch(),
-      );
+    it("attaches the user and keeps it across launches", async () => {
+      const first = await launch();
+      first.insights.setUser({ userId: 42 });
+      first.appReady(unchangedLaunch());
       await flush();
 
       (await launch()).appReady(appliedLaunch);
       await flush();
 
       const app = await launch();
-      app.plugin.setUser(null);
+      app.insights.setUser(null);
       app.appReady(unchangedLaunch({ bundleId: "bundle-c" }));
       await flush();
 
@@ -831,6 +865,8 @@ describe("insights() client plugin", () => {
       isDebugBuild = true;
       const app = await launch(debug === undefined ? {} : { debug });
 
+      // App code calls setUser in every build.
+      app.insights.setUser({ userId: "user-1" });
       app.appReady(unchangedLaunch());
       await flush();
 

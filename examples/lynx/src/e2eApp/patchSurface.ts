@@ -1,4 +1,4 @@
-import { HotUpdater } from "@hot-updater/lynx";
+import type { HotUpdaterInstance } from "@hot-updater/lynx";
 import { navigate } from "@hot-updater/lynx-sparkling";
 
 import { callE2eDiagnostic } from "./diagnostics";
@@ -13,7 +13,6 @@ const Image = {
   resolveAssetSource: (asset: unknown) => asset,
 };
 
-void HotUpdater;
 void Image;
 void callE2eDiagnostic;
 void navigate;
@@ -52,8 +51,10 @@ export async function loadE2EStartupResources(loaders: {
 
 export async function maybeCrashForE2E(
   onStartupHang: (bundleId: string) => Promise<void>,
+  hotUpdater: Pick<HotUpdaterInstance, "getLaunchInfo">,
 ): Promise<boolean> {
   void onStartupHang;
+  void hotUpdater;
   /* E2E_CRASH_GUARD_START */
   return false;
   /* E2E_CRASH_GUARD_END */

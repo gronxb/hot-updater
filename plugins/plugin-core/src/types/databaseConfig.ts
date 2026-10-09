@@ -58,8 +58,12 @@ export interface RemoteDatabase {
   readonly name: string;
   /** Core's reads and typed operations over the server's admin API. */
   readonly core: HotUpdaterCoreApi;
-  /** A GET on the server's admin handler, for admin routes core does not cover. */
-  readonly fetchAdmin: (path: string) => Promise<Response>;
+  /**
+   * A request to the server's admin handler, for admin routes core does not
+   * cover, such as its plugins' routes: a GET unless `init` names another
+   * method. The database's headers come first; `init.headers` add to them.
+   */
+  readonly fetchAdmin: (path: string, init?: RequestInit) => Promise<Response>;
   dispose?(): Promise<void>;
 }
 

@@ -1,11 +1,10 @@
 import type React from "react";
 
-import type { HotUpdaterClientPlugin } from "./clientPlugin";
-import type { HotUpdaterError } from "./error";
-import type { HotUpdaterHttpClient } from "./httpClient";
-import type { NotifyAppReadyResult } from "./native";
+import type {
+  CheckForUpdateOptions,
+  CheckForUpdateResult,
+} from "./checkForUpdate";
 import type { HotUpdaterState } from "./store";
-import type { HotUpdaterBaseURL } from "./types";
 
 export interface RunUpdateProcessResponse {
   status: "ROLLBACK" | "UPDATE" | "UP_TO_DATE";
@@ -27,50 +26,24 @@ export type HotUpdaterFallbackComponentProps = {
   details: HotUpdaterState["details"];
 };
 
-interface CommonHotUpdaterOptions {
-  /**
-   * Client plugins, such as `insights()` from `@hot-updater/react-native`.
-   * Each plugin's `setup` runs
-   * once, and its hooks observe launches, update checks, downloads, and
-   * update failures. Plugin ids must be unique.
-   */
-  plugins?: readonly HotUpdaterClientPlugin[];
-  /** Base URL of a server exposing the Hot Updater v1 client HTTP protocol. */
-  baseURL: HotUpdaterBaseURL;
-  requestHeaders?: Record<string, string>;
-  requestTimeout?: number;
-  onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
-  onError?: (error: HotUpdaterError | Error | unknown) => void;
+/**
+ * The update flow `hotUpdater.wrap` runs when the wrapped root mounts. The
+ * server, request settings, and plugins come from `HotUpdater.init`.
+ */
+export interface HotUpdaterWrapOptions {
+  updateStrategy: "fingerprint" | "appVersion";
+  fallbackComponent?: React.FC<HotUpdaterFallbackComponentProps>;
+  onProgress?: (progress: number) => void;
+  reloadOnForceUpdate?: boolean;
+  onUpdateProcessCompleted?: (response: RunUpdateProcessResponse) => void;
 }
 
-export type AutoUpdateOptions = CommonHotUpdaterOptions & {
-  updateStrategy: "fingerprint" | "appVersion";
-  fallbackComponent?: React.FC<HotUpdaterFallbackComponentProps>;
-  onProgress?: (progress: number) => void;
-  reloadOnForceUpdate?: boolean;
-  onUpdateProcessCompleted?: (response: RunUpdateProcessResponse) => void;
+export type InternalWrapOptions = HotUpdaterWrapOptions & {
+  /** The instance's check, over the configuration of `HotUpdater.init`. */
+  checkForUpdate: (
+    options: Pick<CheckForUpdateOptions, "updateStrategy">,
+  ) => Promise<CheckForUpdateResult | null>;
+  /** Settles once `HotUpdater.init` has read this launch. */
+  appReady: () => Promise<unknown>;
+  onError: (error: unknown) => void;
 };
-
-export type HotUpdaterInitOptions = CommonHotUpdaterOptions;
-
-export type HotUpdaterOptions = AutoUpdateOptions;
-
-type InternalCommonOptions = {
-  client: HotUpdaterHttpClient;
-  requestHeaders?: Record<string, string>;
-  requestTimeout?: number;
-  onNotifyAppReady?: (result: NotifyAppReadyResult) => void;
-  onError?: (error: HotUpdaterError | Error | unknown) => void;
-};
-
-type InternalAutoUpdateOptions = InternalCommonOptions & {
-  updateStrategy: "fingerprint" | "appVersion";
-  fallbackComponent?: React.FC<HotUpdaterFallbackComponentProps>;
-  onProgress?: (progress: number) => void;
-  reloadOnForceUpdate?: boolean;
-  onUpdateProcessCompleted?: (response: RunUpdateProcessResponse) => void;
-};
-
-export type InternalInitOptions = InternalCommonOptions;
-
-export type InternalWrapOptions = InternalAutoUpdateOptions;

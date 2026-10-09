@@ -1,3 +1,5 @@
+import type { InsightsReads } from "@hot-updater/server/plugins/insights";
+
 import {
   checkFailureRate,
   failureRate,
@@ -6,11 +8,10 @@ import {
   type UpdateFailuresReport,
 } from "../insights-failures";
 import { insightsPeriodEnd, recoveryWindows } from "../insights-recovery";
-import type { ConsoleInsightsReads } from "./adminInsights";
 
 /** A release's or a channel's update failures over a period that ends with the current hour. */
 export async function getUpdateFailuresReport(
-  reads: Pick<ConsoleInsightsReads, "getUpdateFailures">,
+  reads: Pick<InsightsReads, "getUpdateFailures">,
   input: UpdateFailuresInput,
   now = Date.now(),
 ): Promise<UpdateFailuresReport> {

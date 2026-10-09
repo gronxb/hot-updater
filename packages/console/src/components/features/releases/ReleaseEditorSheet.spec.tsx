@@ -230,6 +230,7 @@ describe("ReleaseEditorSheet", () => {
         platform: "ios",
         channel: "production",
         releaseId: "release-1",
+        builtIn: false,
       },
     });
 
@@ -313,7 +314,7 @@ describe("ReleaseEditorSheet", () => {
       expect(diagnostics.open).toBe(false);
       expect(
         within(diagnostics).getByText(
-          kind === "BUNDLE" ? bundle.id : "Built-in app",
+          kind === "BUNDLE" ? bundle.id : "Built-in bundle",
         ),
       ).toBeDefined();
     },

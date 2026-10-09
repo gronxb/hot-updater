@@ -67,7 +67,17 @@ const TestLynxUpdaterError = vi.hoisted(
 );
 
 vi.mock("@hot-updater/lynx", () => ({
-  HotUpdater: native,
+  HotUpdater: {
+    getLaunchConfiguration: native.getLaunchConfiguration,
+    init: native.init.mockImplementation(() => ({
+      checkForUpdate: native.checkForUpdate,
+      getLaunchConfiguration: native.getLaunchConfiguration,
+      getLaunchInfo: native.getLaunchInfo,
+      getRuntimeEvents: native.getRuntimeEvents,
+      notifyAppReady: native.notifyAppReady,
+      reload: native.reload,
+    })),
+  },
   LynxUpdaterError: TestLynxUpdaterError,
 }));
 vi.mock("@hot-updater/lynx-sparkling", () => ({

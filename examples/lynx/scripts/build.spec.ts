@@ -571,7 +571,7 @@ describe("production native update endpoint", () => {
 
   it("confirms embedded readiness before reporting an absent endpoint", async () => {
     const source = await fs.readFile(productionSdkPath, "utf8");
-    const readiness = source.indexOf("await HotUpdater.notifyAppReady()");
+    const readiness = source.indexOf("await hotUpdater.notifyAppReady()");
     const absentEndpoint = source.indexOf("if (!baseURL)");
     const configurationState = source.indexOf(
       "Production update endpoint is not configured in the native build.",

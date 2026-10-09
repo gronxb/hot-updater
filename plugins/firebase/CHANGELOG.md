@@ -1,5 +1,106 @@
 # @hot-updater/firebase
 
+## 1.0.0-rc.42
+
+### Patch Changes
+
+- @hot-updater/server@1.0.0-rc.42
+  - @hot-updater/cli-tools@1.0.0-rc.42
+  - @hot-updater/protocol@1.0.0-rc.42
+  - @hot-updater/plugin-core@1.0.0-rc.42
+
+## 1.0.0-rc.41
+
+### Minor Changes
+
+- 545f059: Add Remote Config: change values the app reads without a new build or bundle.
+  - **Server:** `remoteConfig()` from `@hot-updater/server/plugins/remote-config` stores templates of parameters (String, Number, Boolean, or JSON, each with a default value or the app's in-app default) and conditions on platform, channel, app version range, cohort, a percentage of installs over the numeric cohorts, fingerprint, and a date and time range on the server's clock. Conditions are ordered: the first one that matches and that a parameter has a value for decides it. Every publish is a version; `hotUpdater.api.remoteConfig` publishes against the version an edit started from (`conflict` otherwise), rolls back by publishing a copy, lists versions, and resolves what a device gets. Devices fetch `GET /remote-config` on the client handler, which answers only their values, cacheable for five seconds with an `ETag`, from one keyed read of the active template that each server reuses for five seconds. Admin routes manage templates for the Console. Templates are at most 60,000 characters of JSON. `hot-updater db migrate` creates its `remote_config_active` and `remote_config_versions` tables.
+  - **App:** `remoteConfig({ defaults, minimumFetchIntervalMs })` from `@hot-updater/react-native` goes in `HotUpdater.init`'s `plugins`, fetches on its `baseURL`, headers, and timeout, and is `hotUpdater.remoteConfig` on the instance `init` returns, typed by its `defaults`. `getValue`, `getString`, `getNumber`, `getBoolean`, and `getAll` read synchronously: the active remote value, else the in-app default, else `null`, with `remote` and `default` sources. `false`, `0`, and `""` are values; a key `defaults` declares is typed non-null and any other key `T | null`; `fetch`, `activate`, and `fetchAndActivate` move new values in, with a 12-hour minimum fetch interval, which a failed fetch does not start, and which `fetch({ force: true })` and a change of channel, app version, cohort, or fingerprint skip; `lastFetchStatus` and `fetchedAtMs` report the last fetch. Activated values persist on the device and load before `init` returns, and `subscribe` reports activations.
+  - **Console:** a Remote Config page edits a draft's parameters and conditions, previews what a device gets, publishes it with a summary of changes, and lists versions to view and roll back, over the database or a self-hosted server's admin API.
+  - **Managed servers:** the AWS, Cloudflare, Firebase, and Supabase servers run `remoteConfig()` beside `insights()` and `apiKeys()`, and their initialization schema creates its tables.
+  - **`standaloneRepository`:** `fetchAdmin(path, init?)` sends any method, body, and headers to the server's admin handler, after the repository's headers.
+
+### Patch Changes
+
+- Updated dependencies [545f059]
+- Updated dependencies [545f059]
+- Updated dependencies [545f059]
+  - @hot-updater/protocol@1.0.0-rc.41
+  - @hot-updater/server@1.0.0-rc.41
+  - @hot-updater/plugin-core@1.0.0-rc.41
+  - @hot-updater/cli-tools@1.0.0-rc.41
+
+## 1.0.0-rc.40
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.0.0-rc.40
+  - @hot-updater/protocol@1.0.0-rc.40
+  - @hot-updater/server@1.0.0-rc.40
+  - @hot-updater/plugin-core@1.0.0-rc.40
+
+## 1.0.0-rc.39
+
+### Patch Changes
+
+- 2071bc6: Release health's **Adoption** draws each bundle's downloads as a dashed line beside its launches, solid, in the bundle's color, per interval, and its table shows both counts for the period. After a forced update the two lines nearly meet; otherwise launches follow downloads as apps restart. The **Per interval** and **Cumulative** switch is gone, with its `adoptionTotal` URL value. The Console uses one vocabulary, Downloaded, Launched, and Crashed: event lists name `UPDATE_APPLIED` **Launched** and `RECOVERED` **Crashed**, Release health's crash count is **Crashed**, a download waiting for a restart is **Not launched yet**, and the Release health and bundle tooltips are a sentence or two.
+
+  A download that a launch or crash implied, when its download report never arrived, now counts in the bundle's `UPDATE_DOWNLOADED` outcome counter too, in the hour of that launch or crash. So `countEventSeries` and `countEvents` for a bundle's downloads cover the downloads its release counts, and the reporting overview's `downloadedReports` counts them in whole hours. The launch or crash stays the row, so a download filter's counter can exceed the download rows its hour holds. No table changes: no migration is needed.
+
+- Updated dependencies [2071bc6]
+  - @hot-updater/server@1.0.0-rc.39
+  - @hot-updater/cli-tools@1.0.0-rc.39
+  - @hot-updater/plugin-core@1.0.0-rc.39
+  - @hot-updater/protocol@1.0.0-rc.39
+
+## 1.0.0-rc.38
+
+### Patch Changes
+
+- bbbdd8c: Insights no longer miscounts two report orders. A launch report made, by its event ID, before the installation's latest report is late even after a later report, such as a user switch or the next day's launch, replaced the apply it preceded: it no longer counts a launch and a download of the bundle the installation left, or moves the installation back to it. A download that repeats the installation's pending one, from the same bundle to the same bundle, counts nothing, so a download reported twice before its launch counts once and the launch implies no second one. Both are kept in history as late reports, as before; the Console notes that the installation had already downloaded or run the bundle. Event IDs are made on the device, so a device whose clock jumps back has its launch reports judged late until its clock passes its latest report.
+- Updated dependencies [bbbdd8c]
+  - @hot-updater/server@1.0.0-rc.38
+  - @hot-updater/cli-tools@1.0.0-rc.38
+  - @hot-updater/plugin-core@1.0.0-rc.38
+  - @hot-updater/protocol@1.0.0-rc.38
+
+## 1.0.0-rc.37
+
+### Patch Changes
+
+- 5a5dd3e: Keep an `UNCHANGED` report as an event when it changes what its installation runs, and count each release's downloads, launches, and crashes once per installation. The server compares a report with the installation's latest report and keeps it when it is the installation's first report (**First seen**), a new app version or native build (**App updated**), another bundle with no apply report for it (**Launched**), another Release of the bundle it already runs (**Release adopted**), or another channel. A user switch, and a launch that changes nothing, keep no event, so daily launches cost what they did. All Events and installation history show each change once, with what came before.
+
+  A release's launches count its apply reports and the kept reports that moved an installation onto it when no apply report came. A launch or crash whose download report never arrived counts that download too. A download or apply that arrives after its installation already ran the bundle, as a reload can deliver it, counts nothing and moves no latest report. Once every installation restarts, a release's downloads equal its launches plus crashes. The Console's Bundles list shows **Downloaded**, **Launched**, and **Crashed**, and the bundle detail shows downloads not launched yet; a release of the built-in bundle shows no downloads. Release health's **Adoption** counts launches per interval or as a running total, and the crash rate is crashes ÷ (launches + crashes). `InsightsBundleEventFilter` accepts `UNCHANGED`, under a new `on:` key that `UNCHANGED` rows kept by older servers never used, so those count as no launch. No table changes: no migration is needed.
+
+- Updated dependencies [5a5dd3e]
+  - @hot-updater/server@1.0.0-rc.37
+  - @hot-updater/cli-tools@1.0.0-rc.37
+  - @hot-updater/plugin-core@1.0.0-rc.37
+  - @hot-updater/protocol@1.0.0-rc.37
+
+## 1.0.0-rc.36
+
+### Patch Changes
+
+- c527bb2: Report installations on the built-in bundle. A client plugin's context has `minBundleId`, the ID of the bundle the native build ships, and the Insights client sends it with each report. Insights counts an installation that runs its build's built-in bundle again in the new `insights_builtin_distribution` gauge, by the release it runs and the bundle's ID, and `getAppUsage` returns `builtinBundleId` with each `bundleDistribution` row. The Console's **Distribution** shows **Built-in app** with the bundle ID under its app version, where it showed **Unknown bundle**, and event and installation details mark the built-in bundle. Reports from SDKs that do not send `minBundleId` count as before.
+
+  The Insights schema version stays 1.0.0 while the 1.0.0 baseline gains the `insights_builtin_distribution` table; existing tables don't change. On SQL databases, create it as the baseline does (Supabase prefixes it with `hot_updater_v1_` and enables row level security); Drizzle and Prisma projects regenerate their schema with `hot-updater db generate` and migrate it. On AWS the DynamoDB policy allows the new partition: rerun `hot-updater init`. Firestore and MongoDB need no change. Installations count in it from their first report after the upgrade.
+
+- Updated dependencies [c527bb2]
+  - @hot-updater/protocol@1.0.0-rc.36
+  - @hot-updater/server@1.0.0-rc.36
+  - @hot-updater/cli-tools@1.0.0-rc.36
+  - @hot-updater/plugin-core@1.0.0-rc.36
+
+## 1.0.0-rc.35
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.0.0-rc.35
+  - @hot-updater/protocol@1.0.0-rc.35
+  - @hot-updater/server@1.0.0-rc.35
+  - @hot-updater/plugin-core@1.0.0-rc.35
+
 ## 1.0.0-rc.34
 
 ### Patch Changes

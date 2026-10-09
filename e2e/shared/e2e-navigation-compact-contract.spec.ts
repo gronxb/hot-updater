@@ -281,6 +281,7 @@ describe("E2E navigation compact surface contract", () => {
       "runtime-large-asset-screen.tsx",
       "runtime-marker-screen.tsx",
       "runtime-release-state-screen.tsx",
+      "runtime-remote-config-screen.tsx",
     ]);
 
     for (const fileName of [
@@ -471,6 +472,7 @@ describe("E2E navigation compact surface contract", () => {
       "index.js",
       "input-screen-routes.js",
       "ready-screen-routes.js",
+      "remote-config-screen-routes.js",
       "result-screen-routes.js",
       "runtime-screen-routes.js",
       "status-screen-routes.js",
@@ -482,7 +484,7 @@ describe("E2E navigation compact surface contract", () => {
         "utf8",
       );
       expect(source, fileName).not.toContain("ScrollView");
-      expect(sourceCodeLineCount(source), fileName).toBeLessThanOrEqual(42);
+      expect(sourceCodeLineCount(source), fileName).toBeLessThanOrEqual(44);
     }
   });
 });

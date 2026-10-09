@@ -16,6 +16,7 @@ import type {
   ReleaseRow,
 } from "@hot-updater/plugin-core";
 import type { InsightsModel } from "@hot-updater/plugin-insights/server";
+import type { RemoteConfigApi } from "@hot-updater/plugin-remote-config/server";
 import type { Bundle } from "@hot-updater/protocol";
 
 import { lynxE2eRuntimeId } from "../../lynx/embedded-bundle.ts";
@@ -58,7 +59,11 @@ import {
   createDeployAssetGuardSource,
 } from "./deploy-asset-guard.ts";
 import { restoreDeployFixtures } from "./deploy-fixture-reset.ts";
-import { acquireFairFileLock, DEPLOY_LOCK_CAPACITY } from "./fair-file-lock.ts";
+import {
+  acquireFairFileLock,
+  DEPLOY_LOCK_CAPACITY,
+  type FairFileLock,
+} from "./fair-file-lock.ts";
 import {
   getFixtureResetChannels as resolveFixtureResetChannels,
   resetFixtureReleases,
@@ -94,6 +99,11 @@ import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
 import { resetPendingE2eAction } from "./pending-action.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
 import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
+import {
+  createRemoteConfigAdminClient,
+  type RemoteConfigAdminClient,
+} from "./remote-config-admin.ts";
+import { createRemoteConfigApiWriter } from "./remote-config-api-writer.ts";
 import {
   prepareE2eStartupCheck,
   readE2eScreenStateSnapshot,
@@ -133,7 +143,11 @@ const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 
 type JobResult = Record<string, unknown>;
 
-type DeployMode = "crash" | "hang" | "reset";
+// "slow-start" holds JavaScript before the first render, then renders: a healthy
+// bundle that a user can leave before it shows anything.
+type DeployMode = "crash" | "hang" | "reset" | "slow-start";
+
+const SLOW_START_HOLD_MS = 30_000;
 
 type DeployedBundleRecord = {
   bundleId: string;
@@ -236,28 +250,6 @@ const E2E_PATCH_SOURCE_FILE = path.join(
 );
 const HOT_UPDATER_ENV_FILE = path.join(EXAMPLE_DIR, ".env.hotupdater");
 const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
-const BARE_BUILD_CACHE_VERSION = 1;
-const BARE_BUILD_CACHE_LOCK_STALE_MS = 45 * 60 * 1000;
-const BARE_BUILD_CACHE_LOCK_WAIT_MS = 500;
-const BARE_BUILD_CACHE_INPUT_PATHS = [
-  "package.json",
-  "pnpm-lock.yaml",
-  "examples/v0.85.0/.env.hotupdater",
-  "examples/v0.85.0/App.tsx",
-  "examples/v0.85.0/index.js",
-  "examples/v0.85.0/package.json",
-  "examples/v0.85.0/babel.config.js",
-  "examples/v0.85.0/metro.config.js",
-  "examples/v0.85.0/rspack.config.mjs",
-  "examples/v0.85.0/e2e-build-config.cjs",
-  "examples/v0.85.0/src/e2eApp",
-  "examples/v0.85.0/src/e2eRuntimeConfig.ts",
-  "examples/v0.85.0/src/test",
-  "plugins/bare",
-  "packages/protocol",
-  "packages/hot-updater/src/utils/bundleManifest.ts",
-  "packages/react-native",
-];
 const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
 const EMPTY_CRASH_HISTORY = {
   bundles: [],
@@ -450,10 +442,6 @@ function formatErrorCause(error: unknown) {
   }
 
   return String(cause);
-}
-
-function hashText(value: string) {
-  return createHash("sha256").update(value).digest("hex");
 }
 
 const platform = process.env.HOT_UPDATER_E2E_PLATFORM as Platform | undefined;
@@ -760,15 +748,6 @@ function extractDeployReleaseId(output: string) {
   return match?.[1] ?? null;
 }
 
-function bareBuildCacheRoot() {
-  const cacheDir = process.env.HOT_UPDATER_E2E_BARE_BUILD_CACHE_DIR;
-  if (!cacheDir) {
-    return null;
-  }
-
-  return path.resolve(REPO_DIR, cacheDir);
-}
-
 function deployProcessLockRoot() {
   const lockDir = process.env[DEPLOY_PROCESS_LOCK_DIR_ENV_KEY];
   if (lockDir) {
@@ -780,61 +759,6 @@ function deployProcessLockRoot() {
     .digest("hex")
     .slice(0, 16);
   return path.join(os.tmpdir(), "hot-updater-e2e-deploy-lock", worktreeHash);
-}
-
-function readGitTrackedInputFiles(inputPaths: string[]) {
-  const output = captureCommand(
-    "git",
-    ["ls-files", "-z", "--", ...inputPaths],
-    {
-      cwd: REPO_DIR,
-      maxBuffer: 32 * 1024 * 1024,
-    },
-  );
-
-  return output.split("\0").filter(Boolean).sort();
-}
-
-function readCacheInputFiles(inputPaths: string[]) {
-  const files = new Set(readGitTrackedInputFiles(inputPaths));
-  for (const relativePath of inputPaths) {
-    const absolutePath = path.join(REPO_DIR, relativePath);
-    if (fs.existsSync(absolutePath) && fs.statSync(absolutePath).isFile()) {
-      files.add(relativePath);
-    }
-  }
-
-  return [...files].sort();
-}
-
-function hashCacheInputFiles(inputPaths: string[]) {
-  const hash = createHash("sha256");
-  for (const relativePath of readCacheInputFiles(inputPaths)) {
-    const absolutePath = path.join(REPO_DIR, relativePath);
-    if (!fs.existsSync(absolutePath) || !fs.statSync(absolutePath).isFile()) {
-      continue;
-    }
-
-    hash.update(relativePath);
-    hash.update("\0");
-    hash.update(fs.readFileSync(absolutePath));
-    hash.update("\0");
-  }
-
-  return hash.digest("hex");
-}
-
-function hashBareBuildInputs() {
-  return hashCacheInputFiles(BARE_BUILD_CACHE_INPUT_PATHS);
-}
-
-function bareBuildConfigFingerprint() {
-  const source = fs.existsSync(HOT_UPDATER_CONFIG_FILE)
-    ? fs.readFileSync(HOT_UPDATER_CONFIG_FILE, "utf8")
-    : "";
-  const match = source.match(BARE_BUILD_INLINE_PATTERN);
-
-  return hashText(match?.[0] ?? "missing");
 }
 
 async function exportNativePublicKeyFromSigningKey() {
@@ -1094,7 +1018,7 @@ async function applyAppScenario({
             ]
           : mode === "hang"
             ? [
-                "  const { running } = await HotUpdater.getLaunchInfo();",
+                "  const { running } = await hotUpdater.getLaunchInfo();",
                 "  await onStartupHang(running.bundleId);",
                 "  const hangUntil = Date.now() + 600_000;",
                 "  while (Date.now() < hangUntil) {}",
@@ -1108,16 +1032,16 @@ async function applyAppScenario({
           CRASH_GUARD_START,
           `  const E2E_SAFE_BUNDLE_IDS = new Set(${JSON.stringify(safeBundleIds, null, 2)});`,
           `  const E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX = ${JSON.stringify(BUILT_IN_MIN_BUNDLE_ID_SUFFIX)};`,
-          "  const E2E_CURRENT_BUNDLE_ID = HotUpdater.getManifest().bundleId;",
+          "  const E2E_CURRENT_BUNDLE_ID = hotUpdater.getManifest().bundleId;",
           "  const E2E_IS_BUILT_IN_BUNDLE =",
           '    typeof E2E_CURRENT_BUNDLE_ID === "string" &&',
           "    E2E_CURRENT_BUNDLE_ID.endsWith(E2E_BUILT_IN_MIN_BUNDLE_ID_SUFFIX);",
           "",
           "  if (!E2E_IS_BUILT_IN_BUNDLE && !E2E_SAFE_BUNDLE_IDS.has(E2E_CURRENT_BUNDLE_ID)) {",
-          ...(mode === "hang"
+          ...(mode === "hang" || mode === "slow-start"
             ? [
                 '    console.log("HotUpdaterE2EStartupHang:" + E2E_CURRENT_BUNDLE_ID);',
-                "    const hangUntil = Date.now() + 600_000;",
+                `    const hangUntil = Date.now() + ${mode === "hang" ? 600_000 : SLOW_START_HOLD_MS};`,
                 "    while (Date.now() < hangUntil) {}",
               ]
             : ['    throw new Error("hot-updater e2e crash bundle");']),
@@ -2476,19 +2400,47 @@ function assertLaunchReport(
   }
 }
 
+function crashHistoryHolds(
+  history: Record<string, unknown> | null,
+  bundleId: string,
+) {
+  const bundles = Array.isArray(history?.bundles) ? history.bundles : [];
+  return bundles.some((entry) => {
+    if (!entry || typeof entry !== "object") {
+      return false;
+    }
+    return (entry as { bundleId?: string }).bundleId === bundleId;
+  });
+}
+
+// The bundle an unfinished launch left one retry instead of crash history.
+function retryingBundleId(history: Record<string, unknown>) {
+  const interrupted = history.interruptedLaunch;
+  if (!interrupted || typeof interrupted !== "object") {
+    return null;
+  }
+  return (interrupted as { bundleId?: string }).bundleId ?? null;
+}
+
 function assertCrashHistoryContains(filePath: string, bundleId: string) {
   const history = readJson(filePath);
-  const bundles = Array.isArray(history.bundles) ? history.bundles : [];
 
-  if (
-    !bundles.some((entry) => {
-      if (!entry || typeof entry !== "object") {
-        return false;
-      }
-      return (entry as { bundleId?: string }).bundleId === bundleId;
-    })
-  ) {
+  if (!crashHistoryHolds(history, bundleId)) {
     throw new Error(`Crash history is missing bundle ${bundleId}`);
+  }
+  if (retryingBundleId(history) === bundleId) {
+    throw new Error(`Bundle ${bundleId} still waits for its retry`);
+  }
+}
+
+function assertCrashHistoryAwaitsRetry(filePath: string, bundleId: string) {
+  const history = readJson(filePath);
+
+  if (crashHistoryHolds(history, bundleId)) {
+    throw new Error(`Crash history already holds bundle ${bundleId}`);
+  }
+  if (retryingBundleId(history) !== bundleId) {
+    throw new Error(`Bundle ${bundleId} does not wait for its retry`);
   }
 }
 
@@ -3534,11 +3486,8 @@ function ensureAndroidControlReverse() {
   logE2eFixture("android control reverse ready", { devicePort, hostPort });
 }
 
-export function getHotUpdaterControlEnv(
-  env: NodeJS.ProcessEnv | undefined = undefined,
-) {
+export function getHotUpdaterControlEnv() {
   const baseEnv = {
-    ...env,
     ...RELEASE_BUNDLE_ENV,
     HOT_UPDATER_CONTROL_BASE_URL: getControllerReachableAppBaseUrl(),
   } satisfies NodeJS.ProcessEnv;
@@ -5975,143 +5924,6 @@ async function captureBuiltInBundleId() {
   return { builtInBundleId };
 }
 
-function bareBuildCacheEnv({
-  bundleProfile,
-  request,
-}: {
-  bundleProfile: BundleProfile;
-  request: DeployBundleRequest;
-}) {
-  const cacheRoot = bareBuildCacheRoot();
-  if (!cacheRoot) {
-    return undefined;
-  }
-
-  const cacheKey = hashText(
-    JSON.stringify({
-      bundleProfile,
-      cacheVersion: BARE_BUILD_CACHE_VERSION,
-      configHash: bareBuildConfigFingerprint(),
-      crossProvenance: request.crossProvenance === true,
-      inputHash: hashBareBuildInputs(),
-      marker: request.marker,
-      mode: request.mode,
-      platform: fixtureSession.platform,
-      safeBundleIds: request.safeBundleIds,
-    }),
-  );
-
-  return {
-    HOT_UPDATER_BARE_BUILD_CACHE_DIR: cacheRoot,
-    HOT_UPDATER_BARE_BUILD_CACHE_KEY: cacheKey,
-  };
-}
-
-function isProcessRunning(pid: number) {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function acquireBareBuildCacheLock(
-  env: NodeJS.ProcessEnv | undefined,
-  signal?: AbortSignal,
-) {
-  const cacheDir = env?.HOT_UPDATER_BARE_BUILD_CACHE_DIR;
-  const cacheKey = env?.HOT_UPDATER_BARE_BUILD_CACHE_KEY;
-  if (!cacheDir || !cacheKey) {
-    return null;
-  }
-
-  const lockRoot = path.join(cacheDir, ".locks");
-  const lockPath = path.join(lockRoot, `${cacheKey}.lock`);
-  await fsPromises.mkdir(lockRoot, { recursive: true });
-  let loggedWait = false;
-
-  const readOwner = async () => {
-    try {
-      return JSON.parse(
-        await fsPromises.readFile(path.join(lockPath, "owner.json"), "utf8"),
-      ) as { pid?: unknown; platform?: unknown; startedAt?: unknown };
-    } catch {
-      return null;
-    }
-  };
-
-  const isOwnerAlive = (owner: Awaited<ReturnType<typeof readOwner>>) => {
-    if (
-      !owner ||
-      typeof owner.pid !== "number" ||
-      !Number.isInteger(owner.pid)
-    ) {
-      return true;
-    }
-
-    return isProcessRunning(owner.pid);
-  };
-
-  while (true) {
-    throwIfAborted(signal);
-    try {
-      await fsPromises.mkdir(lockPath);
-      await fsPromises.writeFile(
-        path.join(lockPath, "owner.json"),
-        JSON.stringify(
-          {
-            pid: process.pid,
-            platform: fixtureSession.platform,
-            startedAt: new Date().toISOString(),
-          },
-          null,
-          2,
-        ),
-      );
-      logE2eFixture("bare build cache lock acquired", { cacheKey });
-      return lockPath;
-    } catch (error) {
-      if (
-        !error ||
-        typeof error !== "object" ||
-        !("code" in error) ||
-        error.code !== "EEXIST"
-      ) {
-        throw error;
-      }
-
-      const stats = await fsPromises.stat(lockPath).catch(() => null);
-      const ageMs = stats ? Date.now() - stats.mtimeMs : 0;
-      const owner = await readOwner();
-      if (!isOwnerAlive(owner)) {
-        logE2eFixture("bare build cache lock owner exited; removing", {
-          cacheKey,
-          owner,
-        });
-        await fsPromises.rm(lockPath, { force: true, recursive: true });
-        loggedWait = false;
-        continue;
-      }
-
-      if (stats && ageMs > BARE_BUILD_CACHE_LOCK_STALE_MS) {
-        logE2eFixture("bare build cache lock stale; removing", {
-          ageMs,
-          cacheKey,
-        });
-        await fsPromises.rm(lockPath, { force: true, recursive: true });
-        continue;
-      }
-
-      if (!loggedWait) {
-        logE2eFixture("bare build cache lock waiting", { cacheKey });
-        loggedWait = true;
-      }
-      await abortableSleep(BARE_BUILD_CACHE_LOCK_WAIT_MS, signal);
-    }
-  }
-}
-
 async function deployFixtureBundle(
   request: DeployBundleRequest,
   context?: JobExecutionContext,
@@ -6183,7 +5995,6 @@ async function deployFixtureBundle(
   );
   logE2eFixture("deploy start", {
     bundleProfile,
-    bareBuildCache: Boolean(bareBuildCacheRoot()),
     channel: request.channel,
     channelNamespace,
     command: `node ${args.join(" ")}`,
@@ -6194,17 +6005,15 @@ async function deployFixtureBundle(
     remoteChannel,
     targetAppVersion: request.targetAppVersion,
   });
-  const cacheEnv = bareBuildCacheEnv({ bundleProfile, request });
   if (request.crossProvenance && !isLynxE2eApp()) {
     throw new Error("crossProvenance is only supported by the Lynx E2E app");
   }
   const deployEnv = request.crossProvenance
     ? {
-        ...cacheEnv,
         HOT_UPDATER_E2E_BUILD_MODE: "cross-provenance",
         HOT_UPDATER_E2E_RUNTIME_ID_OVERRIDE: `${lynxE2eRuntimeId(fixtureSession.platform)}-cross-provenance-rejected`,
       }
-    : cacheEnv;
+    : undefined;
   const deployProcessLock = await acquireFairFileLock({
     capacity: DEPLOY_LOCK_CAPACITY,
     lockRoot: deployProcessLockRoot(),
@@ -6226,18 +6035,14 @@ async function deployFixtureBundle(
     },
     ownerLabel: fixtureSession.platform,
     signal,
-    staleMs: BARE_BUILD_CACHE_LOCK_STALE_MS,
-    waitIntervalMs: BARE_BUILD_CACHE_LOCK_WAIT_MS,
   });
   logE2eFixture("deploy process lock acquired", {
     lockPath: deployProcessLock.lockPath,
     platform: fixtureSession.platform,
   });
-  let bareBuildLockPath: string | null = null;
   let deployDurationMs = 0;
   const deployOutput = await (async () => {
     try {
-      bareBuildLockPath = await acquireBareBuildCacheLock(deployEnv, signal);
       const deployStartedAt = Date.now();
       const output = await runLoggedCommand("node", args, {
         cwd: fixtureSession.exampleDir,
@@ -6249,12 +6054,6 @@ async function deployFixtureBundle(
       deployDurationMs = Date.now() - deployStartedAt;
       return output;
     } finally {
-      if (bareBuildLockPath) {
-        await fsPromises.rm(bareBuildLockPath, {
-          force: true,
-          recursive: true,
-        });
-      }
       await deployProcessLock.release();
     }
   })();
@@ -6585,6 +6384,47 @@ async function computeRolloutSample(releaseId: string) {
     excludedCohort,
     includedCohort: String(rolloutCohorts[0]),
     rolloutCohortCount: release.rollout_cohort_count,
+  };
+}
+
+/**
+ * Cohorts for a Remote Config percentage rule with `seed`: one inside
+ * `[0, percent)`, one that only `[0, widenedPercent)` adds, and one outside
+ * both. The rule shuffles the numeric cohorts as a rollout does.
+ */
+function computeRemoteConfigRolloutSample(args: {
+  seed: string;
+  percent: number;
+  widenedPercent: number;
+}) {
+  const included = getRolledOutNumericCohorts(
+    args.seed,
+    Math.round(args.percent * 10),
+  );
+  const widened = getRolledOutNumericCohorts(
+    args.seed,
+    Math.round(args.widenedPercent * 10),
+  );
+  const includedSet = new Set(included);
+  const widenedSet = new Set(widened);
+  const widenedCohort = widened.find((cohort) => !includedSet.has(cohort));
+  const excludedCohort = Array.from(
+    { length: 1000 },
+    (_, index) => index + 1,
+  ).find((cohort) => !widenedSet.has(cohort));
+  if (
+    included[0] === undefined ||
+    widenedCohort === undefined ||
+    excludedCohort === undefined
+  ) {
+    throw new Error(
+      `No Remote Config rollout sample for ${args.percent}% and ${args.widenedPercent}% of seed ${args.seed}`,
+    );
+  }
+  return {
+    includedCohort: String(included[0]),
+    widenedCohort: String(widenedCohort),
+    excludedCohort: String(excludedCohort),
   };
 }
 
@@ -7660,7 +7500,7 @@ async function assertLaunchReportState({
   return {};
 }
 
-async function assertCrashHistory(bundleId: string) {
+async function assertCrashHistory(bundleId: string, awaitingRetry: boolean) {
   if (isLynxE2eApp()) {
     const crashHistoryPath = path.join(
       fixtureSession.resultsDir,
@@ -7669,7 +7509,11 @@ async function assertCrashHistory(bundleId: string) {
     if (!writeLynxSnapshotFile("crashed-history.json", crashHistoryPath)) {
       throw new Error("Lynx crash history is missing");
     }
-    assertCrashHistoryContains(crashHistoryPath, bundleId);
+    if (awaitingRetry) {
+      assertCrashHistoryAwaitsRetry(crashHistoryPath, bundleId);
+    } else {
+      assertCrashHistoryContains(crashHistoryPath, bundleId);
+    }
     return {};
   }
   const crashHistoryPath =
@@ -7684,7 +7528,11 @@ async function assertCrashHistory(bundleId: string) {
     );
   }
 
-  assertCrashHistoryContains(crashHistoryPath, bundleId);
+  if (awaitingRetry) {
+    assertCrashHistoryAwaitsRetry(crashHistoryPath, bundleId);
+  } else {
+    assertCrashHistoryContains(crashHistoryPath, bundleId);
+  }
   return {};
 }
 
@@ -7715,6 +7563,7 @@ async function writeSummary({
 }
 
 async function cleanup() {
+  await handleReleaseRemoteConfigLock();
   remoteAssetProxyTargets.clear();
   if (!fixtureSession.appBackupPath) {
     return {};
@@ -7853,6 +7702,14 @@ export async function handleComputeRolloutSample(releaseId: string) {
   return computeRolloutSample(releaseId);
 }
 
+export async function handleComputeRemoteConfigRolloutSample(args: {
+  seed: string;
+  percent: number;
+  widenedPercent: number;
+}) {
+  return computeRemoteConfigRolloutSample(args);
+}
+
 export async function handleWaitForMetadata(
   bundleId: string,
   verificationPending: boolean,
@@ -7933,8 +7790,11 @@ export async function handleAssertLaunchReport(
   return assertLaunchReportState(assertion);
 }
 
-export async function handleAssertCrashHistory(bundleId: string) {
-  return assertCrashHistory(bundleId);
+export async function handleAssertCrashHistory(
+  bundleId: string,
+  awaitingRetry = false,
+) {
+  return assertCrashHistory(bundleId, awaitingRetry);
 }
 
 export async function handleSeedCrashHistory(bundleIds: readonly string[]) {
@@ -8100,7 +7960,8 @@ export async function handleLaunchStartupHang(bundleId: string) {
       metadata.stagingBundleId !== bundleId ||
       metadata.verificationPending !== true ||
       diagnostics.crashMarker.exists ||
-      diagnostics.crashHistory.exists ||
+      // A retry after an unfinished launch finds its own record there.
+      crashHistoryHolds(diagnostics.crashHistory.value, bundleId) ||
       diagnostics.launchReport.exists
     ) {
       throw createEndpointError(
@@ -8119,6 +7980,155 @@ export async function handleLaunchStartupHang(bundleId: string) {
   }
 }
 
+// Run the staged bundle in a launch that never shows UI, as a background push
+// does. Android runs a headless JS task through HeadlessJsTaskService while the
+// app has no activity. On iOS a silent push launches the app in the
+// background, and the example renders nothing for that launch.
+export async function handleLaunchHeadlessTask(bundleId: string) {
+  const ios = fixtureSession.platform === "ios";
+  const marker = `HotUpdaterE2EHeadlessTask:${bundleId}`;
+  const adb = (...args: string[]) =>
+    captureCommand("adb", ["-s", deviceId as string, ...args]);
+  const logs = spawn(
+    ios ? "xcrun" : "adb",
+    ios
+      ? [
+          "simctl",
+          "spawn",
+          deviceId as string,
+          "log",
+          "stream",
+          "--level",
+          "debug",
+          "--style",
+          "compact",
+          "--predicate",
+          'eventMessage CONTAINS "HotUpdaterE2EHeadlessTask:"',
+        ]
+      : [
+          "-s",
+          deviceId as string,
+          "logcat",
+          "-v",
+          "brief",
+          "HotUpdaterE2E:I",
+          "ReactNativeJS:I",
+          "*:S",
+        ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  let output = "";
+  let logError: Error | undefined;
+  logs.on("error", (error) => {
+    logError = error;
+  });
+  logs.stdout.on("data", (chunk) => {
+    output += chunk.toString();
+  });
+  logs.stderr.on("data", (chunk) => {
+    output += chunk.toString();
+  });
+  const waitForOutput = async (text: () => string, deadline: number) => {
+    while (!text() && Date.now() < deadline && !logError) {
+      await sleep(E2E_POLL_INTERVAL_MS);
+    }
+    if (logError) throw logError;
+  };
+  // logcat replays its buffer first; only lines after this one are this run's.
+  // log stream shows only entries logged after it attached.
+  const startMarker = `HotUpdaterE2EHeadlessStart:${randomUUID()}`;
+  const currentRun = () => {
+    if (ios) return output;
+    const start = output.lastIndexOf(startMarker);
+    return start < 0 ? "" : output.slice(start);
+  };
+  try {
+    if (ios) {
+      await waitForOutput(
+        () => (output.includes("Filtering the log data") ? output : ""),
+        Date.now() + 10_000,
+      );
+      const payloadPath = writeResultDiagnosticFile(
+        "headless-task-push.json",
+        JSON.stringify({ aps: { "content-available": 1 } }),
+      );
+      captureCommand("xcrun", [
+        "simctl",
+        "push",
+        deviceId as string,
+        fixtureSession.appId,
+        payloadPath,
+      ]);
+    } else {
+      ensureAndroidReverse();
+      ensureAndroidControlReverse();
+      adb("shell", "log", "-t", "HotUpdaterE2E", startMarker);
+      // A high-priority push grants this allowlist, so its receiver can start
+      // a service while the app is in the background.
+      adb(
+        "shell",
+        "cmd",
+        "deviceidle",
+        "tempwhitelist",
+        "-d",
+        "60000",
+        fixtureSession.appId,
+      );
+      adb(
+        "shell",
+        "am",
+        "broadcast",
+        "--include-stopped-packages",
+        "-n",
+        `${fixtureSession.appId}/.HeadlessTaskReceiver`,
+      );
+    }
+    // The example reads launch arguments at module scope, and that module
+    // waits up to 20 seconds for an Android activity that never starts.
+    await waitForOutput(
+      () => (currentRun().includes(marker) ? currentRun() : ""),
+      Date.now() + 60_000,
+    );
+    const run = currentRun();
+    if (!run.includes(marker)) {
+      throw new Error(`Headless task did not run bundle ${bundleId}`);
+    }
+    // The Android process that ran the task must not have started the app.
+    const pid = ios
+      ? null
+      : new RegExp(`\\((\\s*\\d+)\\): ${marker}`).exec(run)?.[1];
+    const diagnostics = ios
+      ? readIosRecoveryDiagnostics()
+      : readAndroidRecoveryDiagnostics({
+          metadata: "headless-task-metadata.json",
+          launchReport: "headless-task-launch-report.json",
+          crashMarker: "headless-task-crash-marker.json",
+          crashHistory: "headless-task-crashed-history.json",
+        });
+    const metadata = getMetadataState(diagnostics.metadata.value);
+    if (
+      (!ios && (!pid || run.includes(`(${pid}): Running "`))) ||
+      metadata.stagingBundleId !== bundleId ||
+      metadata.verificationPending !== true ||
+      diagnostics.crashMarker.exists ||
+      diagnostics.crashHistory.exists
+    ) {
+      throw createEndpointError(
+        "Expected a launch without UI and without crash recovery",
+        diagnostics,
+      );
+    }
+    await captureState("headless-task");
+    return {};
+  } finally {
+    logs.kill();
+    await fsPromises.writeFile(
+      path.join(fixtureSession.resultsDir, "headless-task.log"),
+      output,
+    );
+  }
+}
+
 export async function handleWriteSummary(args: {
   scenario: string;
   status: string;
@@ -8132,4 +8142,116 @@ export async function handleCleanup() {
 
 export async function handleVerifyConsoleInsights(args: { sinceMs: number }) {
   return verifyConfiguredConsoleInsights(args);
+}
+
+/**
+ * How long a template written to the database takes to reach devices: each
+ * server's 5 s template cache, then the shared cache's `s-maxage=5`.
+ */
+const REMOTE_CONFIG_PROPAGATION_MS = 12_000;
+
+/**
+ * Writes the server's Remote Config: in process over the config's database,
+ * as the CLI and the Console write a managed server's, which serves no admin
+ * routes; over standaloneRepository, through the server's admin routes. A
+ * server that publishes replaces its own cached template, so only a write
+ * to the database waits for the caches.
+ */
+async function writeRemoteConfig<T>(
+  write: (writer: RemoteConfigAdminClient) => Promise<T>,
+): Promise<T> {
+  return withConfiguredDatabase(async ({ database, plugins }) => {
+    // Remote Config alone, so the server's other plugins never gate a write.
+    const api = assembleServer({
+      database,
+      plugins: plugins.filter(({ id }) => id === "remoteConfig"),
+    }).api?.remoteConfig as RemoteConfigApi | undefined;
+    if (api === undefined) {
+      return write(
+        createRemoteConfigAdminClient({
+          baseUrl: `${getControllerReachableAppBaseUrl()}/admin`,
+          headers: getHotUpdaterAdminHeaders(),
+        }),
+      );
+    }
+    const result = await write(createRemoteConfigApiWriter(api));
+    await sleep(REMOTE_CONFIG_PROPAGATION_MS);
+    return result;
+  });
+}
+
+/**
+ * Where scenarios take turns with the server's Remote Config. A template is
+ * global to its server, and a managed profile's shards share one, so the
+ * lock is keyed by the server's URL and seen by every control server on the
+ * machine; standalone shards each have their own server, and never wait.
+ */
+function remoteConfigLockRoot() {
+  const serverHash = createHash("sha256")
+    .update(getControllerReachableAppBaseUrl())
+    .digest("hex")
+    .slice(0, 16);
+  return path.join(
+    os.tmpdir(),
+    "hot-updater-e2e-remote-config-lock",
+    serverHash,
+  );
+}
+
+let remoteConfigLock: FairFileLock | null = null;
+
+export function startAcquireRemoteConfigLockJob() {
+  return createJob(async (context) => {
+    if (remoteConfigLock !== null) return { acquired: true };
+    remoteConfigLock = await acquireFairFileLock({
+      capacity: 1,
+      lockRoot: remoteConfigLockRoot(),
+      onAbandoned: ({ ageMs, lockPath, owner, reason }) => {
+        logE2eFixture("remote config lock abandoned; removing", {
+          ageMs,
+          lockPath,
+          owner,
+          reason,
+        });
+      },
+      onWait: ({ owner, position }) => {
+        logE2eFixture("remote config lock waiting", { owner, position });
+      },
+      ownerLabel: fixtureSession.platform,
+      signal: context.signal,
+    });
+    logE2eFixture("remote config lock acquired", {
+      lockPath: remoteConfigLock.lockPath,
+    });
+    return { acquired: true };
+  });
+}
+
+export async function handleReleaseRemoteConfigLock() {
+  const lock = remoteConfigLock;
+  remoteConfigLock = null;
+  await lock?.release();
+  return { released: lock !== null };
+}
+
+export async function handlePublishRemoteConfig(args: {
+  template: unknown;
+  description?: string;
+}) {
+  const remoteConfigVersion = await writeRemoteConfig((writer) =>
+    writer.publish(args),
+  );
+  logE2eFixture("remote config published", { remoteConfigVersion });
+  return { remoteConfigVersion };
+}
+
+export async function handleRollbackRemoteConfig(args: { version: number }) {
+  const remoteConfigVersion = await writeRemoteConfig((writer) =>
+    writer.rollback(args.version),
+  );
+  logE2eFixture("remote config rolled back", {
+    remoteConfigVersion,
+    source: args.version,
+  });
+  return { remoteConfigVersion };
 }

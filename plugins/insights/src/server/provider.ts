@@ -363,6 +363,30 @@ const eventDetails = ({ type, metadata }: BundleEventRow) => ({
   ...(type === "UPDATE_DOWNLOADED" && metadata.patch_fallback === true
     ? { patchFallback: true as const }
     : {}),
+  ...(type === "UNCHANGED" && metadata.change !== undefined
+    ? {
+        change: {
+          kinds: metadata.change.kinds,
+          ...(metadata.change.previous === null
+            ? {}
+            : {
+                previous: {
+                  bundleId: metadata.change.previous.bundle_id,
+                  releaseId: metadata.change.previous.release_id,
+                  appVersion: metadata.change.previous.app_version,
+                  channel: metadata.change.previous.channel,
+                  ...(metadata.change.previous.min_bundle_id === undefined
+                    ? {}
+                    : { minBundleId: metadata.change.previous.min_bundle_id }),
+                },
+              }),
+        },
+      }
+    : {}),
+  ...(metadata.late === true ? { late: true as const } : {}),
+  ...(metadata.implied_download === true
+    ? { impliedDownload: true as const }
+    : {}),
 });
 
 const toEventHistoryRow = (row: BundleEventRow): EventHistoryRow => ({
@@ -370,6 +394,9 @@ const toEventHistoryRow = (row: BundleEventRow): EventHistoryRow => ({
   ...(row.metadata.sdk_version == null
     ? {}
     : { sdkVersion: row.metadata.sdk_version }),
+  ...(row.metadata.min_bundle_id === undefined
+    ? {}
+    : { minBundleId: row.metadata.min_bundle_id }),
   appVersion: row.app_version,
   channel: row.channel,
   cohort: row.metadata.cohort,
@@ -388,6 +415,9 @@ const toInstallationRow = (row: BundleEventRow): InstallationRow => ({
   ...(eventDetails(row).httpResponse
     ? { httpResponse: eventDetails(row).httpResponse }
     : {}),
+  ...(row.metadata.min_bundle_id === undefined
+    ? {}
+    : { minBundleId: row.metadata.min_bundle_id }),
   appVersion: row.app_version,
   channel: row.channel,
   cohort: row.metadata.cohort,

@@ -32,6 +32,7 @@
     "getCrashHistory",
     "clearCrashHistory",
     "---Plugins---",
-    "insights"
+    "insights",
+    "remote-config"
   ]
 }

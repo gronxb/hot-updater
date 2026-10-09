@@ -18,6 +18,7 @@ const mocks = vi.hoisted(() => {
     getCohort: vi.fn(() => "123"),
     getFingerprintHash: vi.fn<() => string | null>(() => null),
     getInstallId: vi.fn(() => "install-id"),
+    getMinBundleId: vi.fn(() => "min-bundle-id"),
     getStorageItem: vi.fn<(key: string) => string | null>(() => null),
     setStorageItem: vi.fn<(key: string, value: string | null) => void>(),
   };
@@ -25,7 +26,8 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("./native", () => mocks);
 
-const importHost = () => import("./pluginHost");
+const importHost = async () =>
+  (await import("./pluginHost")).createAppPluginHost();
 
 const capture = (id = "example") => {
   let context!: HotUpdaterClientContext;
@@ -64,7 +66,7 @@ describe("client plugin host", () => {
     const onAppReady = vi.fn();
     const plugin: HotUpdaterClientPlugin = {
       id: "example",
-      setup: vi.fn(() => ({ onAppReady })),
+      setup: vi.fn(() => ({ hooks: { onAppReady } })),
     };
     const config = { baseURL: "https://updates.example.com" };
 
@@ -86,6 +88,64 @@ describe("client plugin host", () => {
 
     expect(plugin.setup).toHaveBeenCalledOnce();
     expect(onAppReady).toHaveBeenCalledOnce();
+  });
+
+  it("returns each plugin's API by id, the same one when configured again", async () => {
+    const { configurePlugins } = await importHost();
+    const api = { read: () => "value" };
+    const withApi: HotUpdaterClientPlugin = {
+      id: "withApi",
+      setup: vi.fn(() => ({ api })),
+    };
+    const config = { baseURL: "https://updates.example.com" };
+
+    const first = configurePlugins(
+      [withApi, capture("hooksOnly").plugin],
+      config,
+    );
+    const second = configurePlugins([withApi], config);
+
+    expect(first).toEqual({ withApi: api });
+    expect(second.withApi).toBe(api);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(withApi.setup).toHaveBeenCalledOnce();
+  });
+
+  it("keeps the API of a plugin whose id is __proto__ as its own property", async () => {
+    const { configurePlugins } = await importHost();
+    const api = { read: () => "value" };
+
+    const apis = configurePlugins(
+      [{ id: "__proto__", setup: () => ({ api }) }],
+      { baseURL: "https://updates.example.com" },
+    );
+
+    expect(Object.getOwnPropertyDescriptor(apis, "__proto__")?.value).toBe(api);
+    expect(Object.getPrototypeOf(apis)).toBe(Object.prototype);
+    expect(
+      Object.getOwnPropertyDescriptor({ ...apis }, "__proto__")?.value,
+    ).toBe(api);
+  });
+
+  it("reports a setup that returns its hooks without { hooks }", async () => {
+    const onError = vi.fn();
+    const { configurePlugins } = await importHost();
+    const plugin = {
+      id: "legacy",
+      setup: () => ({ onAppReady: () => {} }),
+    } as unknown as HotUpdaterClientPlugin;
+
+    configurePlugins([plugin], {
+      baseURL: "https://updates.example.com",
+      onError,
+    });
+
+    expect(onError).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message:
+          '[HotUpdater] Plugin "legacy" setup returned "onAppReady"; setup returns { hooks, api }',
+      }),
+    );
   });
 
   it("warns without onError when setup throws, and keeps other plugins", async () => {
@@ -116,9 +176,10 @@ describe("client plugin host", () => {
   it("never waits for a hook", async () => {
     const { configurePlugins, emitPluginHook } = await importHost();
     const onUpdateCheck = vi.fn(() => new Promise<void>(() => {}));
-    configurePlugins([{ id: "slow", setup: () => ({ onUpdateCheck }) }], {
-      baseURL: "https://updates.example.com",
-    });
+    configurePlugins(
+      [{ id: "slow", setup: () => ({ hooks: { onUpdateCheck } }) }],
+      { baseURL: "https://updates.example.com" },
+    );
 
     const result = emitPluginHook("onUpdateCheck", () => ({
       status: "UNCHANGED",
@@ -162,6 +223,7 @@ describe("client plugin host", () => {
       fingerprintHash: context.getFingerprintHash(),
       installId: context.installId,
       isDebugBuild: context.isDebugBuild,
+      minBundleId: context.minBundleId,
       now: context.now(),
       platform: context.platform,
       sdkVersion: context.sdkVersion,
@@ -173,6 +235,7 @@ describe("client plugin host", () => {
       fingerprintHash: null,
       installId: "install-id",
       isDebugBuild: true,
+      minBundleId: "min-bundle-id",
       now: 1_700_000_000_000,
       platform: "android",
       sdkVersion: "test-sdk-version",

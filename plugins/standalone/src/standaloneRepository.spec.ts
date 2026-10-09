@@ -51,6 +51,44 @@ describe("standaloneRepository", () => {
     expect(url).toBe(`${BASE_URL}/events?limit=1`);
   });
 
+  it("sends a plugin route's method, body, and headers after the repository's", async () => {
+    let received: {
+      method: string;
+      authorization: string | null;
+      contentType: string | null;
+      body: unknown;
+    } | null = null;
+    server.use(
+      http.put(`${BASE_URL}/remote-config/template`, async ({ request }) => {
+        received = {
+          method: request.method,
+          authorization: request.headers.get("authorization"),
+          contentType: request.headers.get("content-type"),
+          body: await request.json(),
+        };
+        return HttpResponse.json({ version: 1 });
+      }),
+    );
+    const repository = standaloneRepository({
+      baseUrl: BASE_URL,
+      commonHeaders: { Authorization: "Bearer token" },
+    });
+
+    const response = await repository.fetchAdmin("/remote-config/template", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ baseVersion: 0 }),
+    });
+
+    expect(response.status).toBe(200);
+    expect(received).toEqual({
+      method: "PUT",
+      authorization: "Bearer token",
+      contentType: "application/json",
+      body: { baseVersion: 0 },
+    });
+  });
+
   it("reads the plugins the server runs from its admin /version, fresh each time", async () => {
     let cacheControl: string | null = null;
     server.use(

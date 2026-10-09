@@ -1,8 +1,8 @@
+import type { InsightsReads } from "@hot-updater/server/plugins/insights";
 // @vitest-environment node
 import { describe, expect, it, vi } from "vitest";
 
 import type { InsightsEventRow } from "../insights-view";
-import type { ConsoleInsightsReads } from "./adminInsights";
 import { listFailureReports } from "./failureReports";
 
 const DAY = 86_400_000;
@@ -31,7 +31,7 @@ const getRetention = async () => ({ rawDays: 90, dailyDays: 400 });
 
 describe("failure report investigation", () => {
   it("keeps scope and release attribution consistent with failure metrics", async () => {
-    const listEvents = vi.fn<ConsoleInsightsReads["listEvents"]>(async () => ({
+    const listEvents = vi.fn<InsightsReads["listEvents"]>(async () => ({
       beforeReceivedAtMs: input.beforeReceivedAtMs,
       nextCursor: null,
       data: [
@@ -61,7 +61,7 @@ describe("failure report investigation", () => {
 
   it("bounds scans through successful events and preserves continuation through an empty result", async () => {
     let calls = 0;
-    const listEvents = vi.fn<ConsoleInsightsReads["listEvents"]>(async () => ({
+    const listEvents = vi.fn<InsightsReads["listEvents"]>(async () => ({
       beforeReceivedAtMs: input.beforeReceivedAtMs,
       nextCursor: `cursor-${++calls}`,
       data: Array.from({ length: 100 }, () => ({
@@ -95,7 +95,7 @@ describe("failure report investigation", () => {
   });
 
   it("limits raw history to retention even when aggregate history covers longer", async () => {
-    const listEvents = vi.fn<ConsoleInsightsReads["listEvents"]>(async () => ({
+    const listEvents = vi.fn<InsightsReads["listEvents"]>(async () => ({
       beforeReceivedAtMs: 20 * DAY,
       nextCursor: null,
       data: [],

@@ -12,10 +12,14 @@ import { disabledBundleRollbackToPreviousOtaScenario } from "./scenarios/disable
 import { failedDownloadSameGenerationRetryScenario } from "./scenarios/failed-download-same-generation-retry.ts";
 import { fingerprintInitialInstallScenario } from "./scenarios/fingerprint-initial-install.ts";
 import { forceUpdateAutoReloadScenario } from "./scenarios/force-update-auto-reload.ts";
+import { headlessLaunchKeepsStagedBundleScenario } from "./scenarios/headless-launch-keeps-staged-bundle.ts";
+import { interruptedLaunchRetriesBundleScenario } from "./scenarios/interrupted-launch-retries-bundle.ts";
+import { launchStatusAfterSessionInstallScenario } from "./scenarios/launch-status-after-session-install.ts";
 import { metadataV1MigrationScenario } from "./scenarios/metadata-v1-migration.ts";
 import { multiAssetReplacementScenario } from "./scenarios/multi-asset-replacement.ts";
 import { numericCohortRolloutScenario } from "./scenarios/numeric-cohort-rollout.ts";
 import { releaseOtaRecoveryScenario } from "./scenarios/release-ota-recovery.ts";
+import { remoteConfigFetchActivateScenario } from "./scenarios/remote-config-fetch-activate.ts";
 import { republishedCrashedBundleSkippedScenario } from "./scenarios/republished-crashed-bundle-skipped.ts";
 import { runtimeChannelCrashRestoreScenario } from "./scenarios/runtime-channel-crash-restore.ts";
 import { runtimeChannelSwitchResetScenario } from "./scenarios/runtime-channel-switch-reset.ts";
@@ -37,6 +41,9 @@ export type {
 
 const registeredScenarios: readonly ScenarioDefinition[] = [
   startupHangRecoveryScenario,
+  headlessLaunchKeepsStagedBundleScenario,
+  interruptedLaunchRetriesBundleScenario,
+  launchStatusAfterSessionInstallScenario,
   releaseOtaRecoveryScenario,
   multiAssetReplacementScenario,
   bspatchBuiltinToDiffOtaScenario,
@@ -63,6 +70,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   runtimeChannelCrashRestoreScenario,
   metadataV1MigrationScenario,
   tenCrashHistorySafeBundleScenario,
+  remoteConfigFetchActivateScenario,
 ];
 
 const scenarioByName = new Map(

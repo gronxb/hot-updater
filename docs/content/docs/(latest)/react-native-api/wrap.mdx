@@ -1,38 +1,20 @@
 ---
 title: "wrap"
-description: "`HotUpdater.wrap` stages standard updates for the next app start and reloads force updates by default."
+description: "`hotUpdater.wrap` checks for an update when the app's root mounts, stages standard updates for the next start, and reloads forced updates by default."
 icon: Package
 ---
 
 ## Usage
 
-> Configure Hot Updater with either `HotUpdater.wrap` or
-> [`HotUpdater.init`](/docs/react-native-api/init) before calling update APIs.
-> This enables automatic crash detection and rollback. Update methods will
-> throw an error if neither API is used. Do not use both configuration APIs in
-> the same app; Hot Updater reports mixed usage with `console.error`.
+`wrap` is a method of the instance [`HotUpdater.init`](/docs/react-native-api/init)
+returns. Wrap the app's root with it, and it checks for an update when the root
+mounts. The update server, request headers, plugins, and `onError` come from
+`HotUpdater.init`; `wrap` takes only the update flow.
 
-`HotUpdater.wrap` always runs the automatic update flow. `updateMode` is not
-accepted. For a manual flow, use
-[`HotUpdater.init`](/docs/react-native-api/init).
+```tsx title="App.tsx"
+import { Text, View } from "react-native";
 
-A standard update is prepared and staged without reloading the React Native
-runtime currently in use. Once staging finishes successfully, it becomes active
-the next time that runtime starts, normally on the next cold app launch. In the
-automatic `HotUpdater.wrap` flow, responses with `shouldForceUpdate: true`,
-including bundle-changing server-directed rollbacks, prepare the selected
-transition and then reload by default. Set `reloadOnForceUpdate: false` when the
-current session must remain uninterrupted.
-
-### Automatic updates
-
-Use this optional integration when you want automatic startup checks and
-wrapper-managed staging/reload. For app-controlled check and apply timing,
-follow the [`init` custom flow](/docs/guides/custom-update).
-
-```tsx
-import { HotUpdater, insights } from "@hot-updater/react-native"; // [!code ++]
-import { View, Text } from "react-native";
+import { hotUpdater } from "./src/hotUpdater"; // [!code ++]
 
 function App() {
   return (
@@ -43,74 +25,49 @@ function App() {
 }
 
 export default App; // [!code --]
-export default HotUpdater.wrap({ // [!code ++:9]
-  baseURL: "<your-update-server-url>",
+export default hotUpdater.wrap({ // [!code ++:3]
   updateStrategy: "appVersion", // or "fingerprint"
-  plugins: [insights()],
-  // If you need to send request headers, you can use the `requestHeaders` option.
-  requestHeaders: {
-    "x-api-key": "<your-api-key>",
-  },
 })(App);
 ```
 
-The [Insights plugin](/docs/react-native-api/insights) in `plugins` reports
-launches, downloads, and update results to [Insights](/docs/guides/insights).
-Leave it out to send no Insights reports. `plugins` takes any
-[client plugin](/docs/react-native-api/client-plugins); plugin ids must be
-unique.
+`src/hotUpdater.ts` is the module that calls `HotUpdater.init` and exports the
+instance, as [`init`](/docs/react-native-api/init#use-the-instance-init-returns)
+shows.
 
-### Manual updates
+A standard update is prepared and staged without reloading the React Native
+runtime currently in use. It becomes active the next time that runtime starts,
+normally on the next cold app launch. An update with `shouldForceUpdate: true`,
+including a bundle-changing server-directed rollback, is prepared and then
+reloads the app by default. Set `reloadOnForceUpdate: false` when the current
+session must remain uninterrupted.
 
-For checks triggered by your own app lifecycle, use
-[`HotUpdater.init`](/docs/react-native-api/init) and follow the
-[custom update flow](/docs/guides/custom-update). Choose one configuration API;
-`wrap` always performs its automatic startup check.
+To choose when the app checks, call
+[`hotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate) from
+your own flow instead, as the [custom update guide](/docs/guides/custom-update)
+shows. Use one of the two for a launch, so the app does not check twice.
 
 ## Configuration reference
 
-Configure the automatic update flow with `HotUpdater.wrap`.
+| Option                     | Type                                         | Required | Description                                                |
+| -------------------------- | -------------------------------------------- | -------- | ---------------------------------------------------------- |
+| `updateStrategy`           | `"appVersion" \| "fingerprint"`              | Yes      | Update detection strategy                                  |
+| `fallbackComponent`        | `React.FC<HotUpdaterFallbackComponentProps>` | No       | UI shown instead of the root during a check and a forced update |
+| `onProgress`               | `(progress: number) => void`                 | No       | Callback fired during bundle download (0-1)                |
+| `reloadOnForceUpdate`      | `boolean`                                    | No       | Reload after a forced update is prepared (default: true)   |
+| `onUpdateProcessCompleted` | `(response) => void`                         | No       | Callback when the update process completes                 |
 
-### Common options
+Errors during the flow go to the `onError` handler of `HotUpdater.init`.
 
-| Option             | Type                                          | Required | Description                                                                   |
-| ------------------ | --------------------------------------------- | -------- | ----------------------------------------------------------------------------- |
-| `baseURL`          | `string \| (() => string \| Promise<string>)` | Yes      | Your client handler URL                                                       |
-| `plugins`          | `HotUpdaterClientPlugin[]`                    | No       | [Client plugins](/docs/react-native-api/client-plugins), such as `insights()` |
-| `requestHeaders`   | `Record<string, string>`                      | No       | Custom HTTP headers for update requests and plugin requests                   |
-| `requestTimeout`   | `number`                                      | No       | Request timeout in milliseconds (default: 5000)                               |
-| `onNotifyAppReady` | `(result: NotifyAppReadyResult) => void`      | No       | Callback invoked after native launch verification finishes                    |
+### `fallbackComponent`
 
-`baseURL` is the only React Native transport configuration. It may resolve at
-runtime, but every resolved URL must expose the Hot Updater HTTP protocol.
-Hot Updater expands handler-relative artifact paths against this URL.
+While the update check runs, the fallback replaces the app's root.
 
-See [`NotifyAppReadyResult`](/docs/react-native-api/notifyAppReady#return-value)
-for the `UNCHANGED`, `UPDATE_APPLIED`, and `RECOVERED` result shapes and a
-callback example. A callback result describes local native state; it does not
-confirm Insights delivery to the server.
+- For a forced update, the fallback stays until the bundle is downloaded, and
+  progress updates as it downloads.
+- For a standard update, the fallback shows only during the update check.
 
-### Automatic mode options
-
-| Option                     | Type                                         | Required | Description                                     |
-| -------------------------- | -------------------------------------------- | -------- | ----------------------------------------------- |
-| `updateStrategy`           | `"appVersion" \| "fingerprint"`              | Yes      | Update detection strategy                       |
-| `requestHeaders`           | `Record<string, string>`                     | No       | Custom HTTP headers for update requests         |
-| `requestTimeout`           | `number`                                     | No       | Request timeout in milliseconds (default: 5000) |
-| `fallbackComponent`        | `React.FC<HotUpdaterFallbackComponentProps>` | No       | UI component shown during updates               |
-| `onProgress`               | `(progress: number) => void`                 | No       | Callback fired during bundle download (0-1)     |
-| `reloadOnForceUpdate`      | `boolean`                                    | No       | Auto-reload on force updates (default: true)    |
-| `onUpdateProcessCompleted` | `(response) => void`                         | No       | Callback when update process completes          |
-| `onError`                  | `(error) => void`                            | No       | Error handler for update failures               |
-
-#### `fallbackComponent`
-
-During an update check, access to the entry point is temporarily blocked while communicating with the server.
-
-- For a force update, the entry point remains blocked, and progress updates as the bundle downloads.
-- For a standard update, the entry point is only blocked during the update check.
-
-Without a `fallbackComponent`, the bundle downloads without blocking the screen.
+Without a `fallbackComponent`, the root renders at once and the bundle
+downloads without blocking the screen.
 
 Props:
 
@@ -123,11 +80,10 @@ Props:
 The progress fields have the same shape as
 [`useHotUpdaterStore`](/docs/react-native-api/useHotUpdaterStore).
 
-Example:
+```tsx title="App.tsx"
+import { Text, View } from "react-native";
 
-```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import { View, Text, Modal } from "react-native";
+import { hotUpdater } from "./src/hotUpdater";
 
 function App() {
   return (
@@ -137,9 +93,8 @@ function App() {
   );
 }
 
-export default HotUpdater.wrap({
-  baseURL: "<your-update-server-url>",
-  updateStrategy: "appVersion", // or "fingerprint"
+export default hotUpdater.wrap({
+  updateStrategy: "appVersion",
   fallbackComponent: ({ progress, status, message }) => ( // [!code ++:28]
     <View
       style={{
@@ -171,78 +126,32 @@ export default HotUpdater.wrap({
 })(App);
 ```
 
-#### `reloadOnForceUpdate`
+### `reloadOnForceUpdate`
 
-When the automatic `HotUpdater.wrap` flow receives an update with
-`shouldForceUpdate: true`, it prepares the selected transition and reloads the
-app by default. Bundle-changing server-directed rollbacks also use this path.
+When `wrap` receives an update with `shouldForceUpdate: true`, it prepares the
+selected transition and reloads the app, after `HotUpdater.init` has read the
+current launch. Bundle-changing server-directed rollbacks also use this path.
 If set to `false`, the current React Native runtime keeps running and the staged
-update becomes active on the next runtime start or after a later explicit
-`HotUpdater.reload()` call.
+update becomes active on the next runtime start or after a later
+`hotUpdater.reload()` call.
 
-This option only controls the automatic `HotUpdater.wrap` flow.
-`updateBundle()` never reloads the app by itself.
+This option only controls `wrap`. `updateBundle()` never reloads the app by
+itself. The reload follows
+[`hotUpdater.setReloadBehavior()`](/docs/react-native-api/setReloadBehavior).
 
-The actual reload behavior follows [`HotUpdater.setReloadBehavior()`](/docs/react-native-api/setReloadBehavior).
-
-Example with auto-reload:
-
-```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import { View, Text } from "react-native";
-
-function App() {
-  return (
-    <View>
-      <Text>Hello World</Text>
-    </View>
-  );
-}
-
-export default HotUpdater.wrap({
-  baseURL: "<your-update-server-url>",
-  updateStrategy: "appVersion", // or "fingerprint"
-  // If you need to send request headers, you can use the `requestHeaders` option.
-  requestHeaders: {
-    "x-api-key": "<your-api-key>",
-  },
-  reloadOnForceUpdate: true, // Automatically reload the app on force updates // [!code ++]
-})(App);
-```
-
-Example without auto-reload:
-
-```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import { View, Text } from "react-native";
-
-function App() {
-  return (
-    <View>
-      <Text>Hello World</Text>
-    </View>
-  );
-}
-
-export default HotUpdater.wrap({
-  baseURL: "<your-update-server-url>",
-  updateStrategy: "appVersion", // or "fingerprint"
-  // If you need to send request headers, you can use the `requestHeaders` option.
-  requestHeaders: {
-    "x-api-key": "<your-api-key>",
-  },
-  reloadOnForceUpdate: true, // [!code --]
+```tsx title="App.tsx"
+export default hotUpdater.wrap({
+  updateStrategy: "appVersion",
   reloadOnForceUpdate: false, // Keep the current session running // [!code ++]
 })(App);
 ```
 
-#### `onUpdateProcessCompleted`
+### `onUpdateProcessCompleted`
 
-Reports when automatic update handling has finished from the wrapper's
-perspective.
+Reports when `wrap` has finished handling the update.
 
-For a non-force update, the automatic flow invokes this callback after starting
-the non-blocking download, not after the download finishes. Do not use it as a
+For a standard update, `wrap` invokes this callback after starting the
+non-blocking download, not after the download finishes. Do not use it as a
 download-readiness signal.
 
 Callback arguments:
@@ -254,52 +163,14 @@ Callback arguments:
 | `id`                | string                                 | The selected update's console ID     |
 | `message`           | string \| null                         | The message of the update process    |
 
-```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import { View, Text } from "react-native";
-
-function App() {
-  return (
-    <View>
-      <Text>Hello World</Text>
-    </View>
-  );
-}
-
-export default HotUpdater.wrap({
-  baseURL: "<your-update-server-url>",
-  updateStrategy: "appVersion", // or "fingerprint"
-  // If you need to send request headers, you can use the `requestHeaders` option.
-  requestHeaders: {
-    "x-api-key": "<your-api-key>",
-  },
-  onUpdateProcessCompleted: ({ status, shouldForceUpdate, id, message }) => { // [!code ++:3]
-    console.log("Bundle updated:", status, shouldForceUpdate, id, message);
-  },
-
-  // If you need to show the progress while downloading the new bundle, you can use the `onProgress` option.
-  onProgress: (progress) => { // [!code ++:3]
-    console.log("Bundle downloading progress:", progress);
-  },
-})(App);
-```
-
-#### `onError`
-
-Handles all errors during the update process.
-
-Example:
-
-```tsx
-import { HotUpdater } from "@hot-updater/react-native";
-import App from "./App";
-
-export default HotUpdater.wrap({
-  baseURL: "<your-update-server-url>",
+```tsx title="App.tsx"
+export default hotUpdater.wrap({
   updateStrategy: "appVersion",
-  onError: (error) => { // [!code ++:4]
-    // Handle other errors
-    console.error("Update error:", error);
+  onUpdateProcessCompleted: ({ status, shouldForceUpdate, id, message }) => { // [!code ++:3]
+    console.log("Update process completed:", status, shouldForceUpdate, id, message);
+  },
+  onProgress: (progress) => { // [!code ++:3]
+    console.log("Bundle download progress:", progress);
   },
 })(App);
 ```
@@ -310,15 +181,15 @@ The client reads a shared Release Catalog, selects a transition on the device,
 and resolves the artifact when staging is needed. See
 [how updates work](/docs/concepts/how-it-works) for the full lifecycle.
 
-## Custom backends
-
-Point `baseURL` at a server exposing the standard Hot Updater HTTP protocol.
-A GraphQL or RPC backend needs an HTTP adapter or proxy for these routes;
-see the [Release Catalog contract](/docs/concepts/release-catalog-contract).
-
 ## Flag behavior
 
-| Update Response            | Runtime Behavior                                                                                                            | How to Enable                                                                  |
-| -------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
-| `shouldForceUpdate: false` | Stages the selected bundle without reloading the current runtime; it becomes active on the next runtime start.              | Default setting                                                                |
-| `shouldForceUpdate: true`  | `HotUpdater.wrap` reloads after preparing the selected transition; `reloadOnForceUpdate: false` defers it to a later start. | Use `--force-update` or the console; bundle-changing rollbacks also return it. |
+| Update Response            | Runtime Behavior                                                                                                      | How to Enable                                                                  |
+| -------------------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
+| `shouldForceUpdate: false` | Stages the selected bundle without reloading the current runtime; it becomes active on the next runtime start.        | Default setting                                                                |
+| `shouldForceUpdate: true`  | `wrap` reloads after preparing the selected transition; `reloadOnForceUpdate: false` defers it to a later start.      | Use `--force-update` or the console; bundle-changing rollbacks also return it. |
+
+## Related
+
+- [`HotUpdater.init`](/docs/react-native-api/init)
+- [`hotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
+- [Custom update flow](/docs/guides/custom-update)

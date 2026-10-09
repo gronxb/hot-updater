@@ -93,6 +93,41 @@ interface ReadBudgetInsights {
   }>;
 }
 
+/** The `remoteConfig()` API the budgets call, typed here, so test-utils needs no peer on its package. */
+interface ReadBudgetRemoteConfig {
+  publish(input: {
+    readonly template: unknown;
+    readonly baseVersion: number;
+    readonly description?: string;
+  }): Promise<{ readonly status: string }>;
+  listVersions(input: {
+    readonly limit: number;
+  }): Promise<{ readonly versions: readonly { readonly version: number }[] }>;
+  resolve(context: {
+    readonly platform?: "ios" | "android";
+    readonly channel?: string;
+    readonly appVersion?: string;
+    readonly cohort?: string;
+  }): Promise<{
+    readonly version: number;
+    readonly values: Readonly<Record<string, string>>;
+  }>;
+}
+
+/** A published template: a greeting that beta devices get another value of. */
+const remoteConfigTemplate = (greeting: string) => ({
+  conditions: [
+    { name: "Beta", rules: [{ type: "channel", channels: ["beta"] }] },
+  ],
+  parameters: {
+    greeting: {
+      valueType: "STRING",
+      defaultValue: { value: greeting },
+      conditionalValues: { Beta: { value: `${greeting}, tester` } },
+    },
+  },
+});
+
 interface ReadBudgetApiKeys {
   create(input: {
     readonly name: string;
@@ -246,16 +281,18 @@ const storage: MeasuredDatabaseStorage = {
 };
 
 /**
- * Core's bundles, releases, channels, and a client API key, and 25 Insights
+ * Core's bundles, releases, channels, and a client API key, and 26 Insights
  * events: installs 1–24 ten minutes apart from T0, then install 1 again two
- * days later; and the day of history before T0, as a production database
- * holds, so a read that scans beyond its window examines more rows.
+ * days later, back on bundle-a and then on bundle-b; and the day of history
+ * before T0, as a production database holds, so a read that scans beyond its
+ * window examines more rows.
  */
 const seed = async (database: MeasuredDatabase) => {
   const core = database.core as ReadBudgetCore;
   const api = database.api as {
     readonly insights: ReadBudgetInsights;
     readonly apiKeys: ReadBudgetApiKeys;
+    readonly remoteConfig: ReadBudgetRemoteConfig;
   };
   for (const name of ["staging", "beta", "canary", "nightly"]) {
     await core.ensureChannel(name);
@@ -283,8 +320,25 @@ const seed = async (database: MeasuredDatabase) => {
   await deploy(bundleOf("092"), "staging");
   const { apiKey } = await api.apiKeys.create({ name: "Read budgets" });
   for (let n = 1; n <= 24; n += 1) await api.insights.recordEvent(eventOf(n));
+  // Install 1 leaves bundle-b before it applies it again: an apply of the
+  // bundle an installation already runs is a late report, which counts
+  // nothing.
   await api.insights.recordEvent(
-    eventOf(25, { install_id: "install-1", received_at_ms: T0 + 2 * DAY }),
+    eventOf(25, {
+      install_id: "install-1",
+      from_release_id: "release-b",
+      from_bundle_id: "bundle-b",
+      to_release_id: "release-a",
+      to_bundle_id: "bundle-a",
+      received_at_ms: T0 + 2 * DAY,
+    }),
+  );
+  await api.insights.recordEvent(
+    eventOf(26, {
+      install_id: "install-1",
+      user_id: "user-odd",
+      received_at_ms: T0 + 2 * DAY + 10 * 60_000,
+    }),
   );
   for (let n = 1; n <= 72; n += 1) {
     await api.insights.recordEvent(historyOf(n));
@@ -292,12 +346,20 @@ const seed = async (database: MeasuredDatabase) => {
   await api.insights.recordEvent(failureOf(1, 3));
   await api.insights.recordEvent(failureOf(2, 5));
   await api.insights.recordEvent(failureOf(3, 7, true));
+  // Three Remote Config versions; the last is active.
+  for (const [baseVersion, greeting] of ["Hi", "Hello", "Hey"].entries()) {
+    await api.remoteConfig.publish({
+      template: remoteConfigTemplate(greeting),
+      baseVersion,
+    });
+  }
   const channel = (name: string) =>
     core.findChannelByName(name).then((found) => found!);
   const productionId = (await channel("production")).id;
   return {
     core,
     insights: api.insights,
+    remoteConfig: api.remoteConfig,
     clientAuth: database.clientAuth,
     apiKey,
     productionId,
@@ -366,6 +428,29 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     adapter: reads(1, 1, 1, 1),
     engine: { calls: 2, rows: 2 },
     check: (catalog) => expect(catalog?.releases).toHaveLength(4),
+  }),
+  budget({
+    // The fetch's first read on this server; later ones within five seconds
+    // read nothing, which the plugin's own spec pins.
+    api: "remote config fetch: 1 point read of the active template",
+    read: ({ remoteConfig }) =>
+      remoteConfig.resolve({ platform: "ios", channel: "beta" }),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    check: (resolved) =>
+      expect(resolved).toEqual({
+        version: 3,
+        values: { greeting: "Hey, tester" },
+      }),
+  }),
+  budget({
+    api: "remote config versions page: limit rows from one query",
+    read: ({ remoteConfig }) => remoteConfig.listVersions({ limit: 2 }),
+    adapter: reads(0, 0, 1, 2),
+    engine: { calls: 1, rows: 2 },
+    returned: (page) => page.versions.length,
+    check: (page) =>
+      expect(page.versions.map(({ version }) => version)).toEqual([3, 2]),
   }),
   budget({
     api: "artifact resolution: 1 batch get of 2 bundles and 1 unique patch read",
@@ -479,7 +564,7 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "list events across a gap: limit rows, one empty day, and one outcome row",
-    // Day 2 holds event 25 and day 1 nothing, so one outcome row, hour 4 of
+    // Day 2 holds event 26 and day 1 nothing, so one outcome row, hour 4 of
     // day 0, names the day below it: a query for its newest shard row and a
     // batch get of the 7 others. Day 0 then holds the other four.
     read: ({ insights }) =>
@@ -605,7 +690,8 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     api: "app usage: nonzero distribution and usage-sketch rows in the window, all used",
     // Every platform merges the iOS and Android usage sketches: iOS's of days
     // 0 and 2 (14 shards and 1). The iOS latest events of days 0 and 2 (14
-    // gauge shards and 1); none on Android.
+    // gauge shards and 1); none on Android. Each platform also reads the
+    // built-in bundle gauge, which no installation here runs.
     read: ({ insights }) =>
       insights.getAppUsage({
         channel: "production",
@@ -613,8 +699,8 @@ const READ_BUDGETS: readonly ReadBudget[] = [
         timeRange: { start: T0, end: T0 + 3 * DAY },
         intervalMs: DAY,
       }),
-    adapter: reads(0, 0, 4, 30),
-    engine: { calls: 4, rows: 4 },
+    adapter: reads(0, 0, 6, 30),
+    engine: { calls: 6, rows: 4 },
     check: ({ versions }) =>
       expect(versions).toEqual([{ name: "1.0.0", installations: 24 }]),
   }),
@@ -708,16 +794,24 @@ const READ_BUDGETS: readonly ReadBudget[] = [
   }),
   budget({
     api: "record an insights event: 2 dependent rounds of batch gets and 1 write",
-    // The event and install 2's head; then the event's 4 sketch rows, in one
-    // batch get per aggregate: its platform's usage of every app version and
-    // of its own by hour, and by day, which keeps its own retention. The head
-    // moves within its UTC day, so its gauge rows stay as they are and none
-    // is read.
+    // The event and install 2's head; then, in one batch get per aggregate,
+    // the event's 4 sketch rows (its platform's usage of every app version
+    // and of its own by hour, and by day, which keeps its own retention) and
+    // the gauge rows its head leaves and enters as it moves on to bundle-c:
+    // 2 of the distribution, and 6 by bundle, for its from, to and pair.
     read: ({ insights }) =>
       insights.recordEvent(
-        eventOf(26, { install_id: "install-2", received_at_ms: T0 + 3 * HOUR }),
+        eventOf(27, {
+          install_id: "install-2",
+          user_id: "user-even",
+          from_release_id: "release-b",
+          from_bundle_id: "bundle-b",
+          to_release_id: "release-c",
+          to_bundle_id: "bundle-c",
+          received_at_ms: T0 + 3 * HOUR,
+        }),
       ),
-    adapter: reads(4, 6, 0, 0),
+    adapter: reads(6, 14, 0, 0),
     engine: { calls: 2, rows: 1 },
     writes: 1,
   }),
@@ -742,11 +836,12 @@ export const setupReadBudgetTestSuite = (
 
     beforeAll(async () => {
       // The server's built-in plugins, whose reads have budgets.
-      const [{ insights }, { apiKeys }] = await Promise.all([
+      const [{ insights }, { apiKeys }, { remoteConfig }] = await Promise.all([
         import("@hot-updater/server/plugins/insights"),
         import("@hot-updater/server/plugins/api-keys"),
+        import("@hot-updater/server/plugins/remote-config"),
       ]);
-      const plugins = [insights(), apiKeys()];
+      const plugins = [insights(), apiKeys(), remoteConfig()];
       created = await options.createAdapter({
         tables: [...toolingTargetOf(plugins).schema.tables, SETTINGS_TABLE],
         nativePageSize: NATIVE_PAGE_SIZE,

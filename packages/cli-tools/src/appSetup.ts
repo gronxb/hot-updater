@@ -53,9 +53,11 @@ export const renderAppImports = (
 };
 
 /**
- * The App.tsx code init prints: `HotUpdater.init` with the server's URL,
- * the header that carries the client credential when the server takes one,
- * and the client plugins the server's plugins ask for.
+ * The app code init prints: `src/hotUpdater.ts`, which exports the instance
+ * `HotUpdater.init` returns with the server's URL, the header that carries
+ * the client credential when the server takes one, and the client plugins
+ * the server's plugins ask for. Each application integration owns its
+ * framework-specific startup and UI lifecycle.
  */
 export const renderAppSetup = ({
   baseURL,
@@ -64,10 +66,10 @@ export const renderAppSetup = ({
   clientPlugins = [],
 }: AppSetup & { readonly baseURL: string }): string =>
   [
-    "// Add this to your application startup",
+    "// src/hotUpdater.ts",
     ...renderAppImports(clientPlugins, sdkModule),
     "",
-    "HotUpdater.init({",
+    "export const hotUpdater = HotUpdater.init({",
     `  baseURL: ${JSON.stringify(baseURL)},`,
     ...(credential === undefined
       ? []
@@ -83,11 +85,11 @@ export const renderAppSetup = ({
         ]),
     "});",
     "",
-    '// Call HotUpdater.checkForUpdate({ updateStrategy: "appVersion" })',
+    '// Call hotUpdater.checkForUpdate({ updateStrategy: "appVersion" })',
     "// when your app is ready to check.",
   ].join("\n");
 
-/** Prints the App.tsx code, when the URL is known, and the app's credential. */
+/** Prints the app code, when the URL is known, and the app's credential. */
 export const printAppSetup = ({
   baseURL,
   ...setup

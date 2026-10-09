@@ -372,7 +372,7 @@ export function ReleaseEditorSheet({
                     />
                     {!release.bundle_id ? (
                       <span className="text-xs text-foreground">
-                        Built-in app
+                        Built-in bundle
                       </span>
                     ) : null}
                   </span>
@@ -418,6 +418,7 @@ export function ReleaseEditorSheet({
                       platform: release.platform,
                       channel: channelName,
                       releaseId: release.id,
+                      builtIn: !release.bundle_id,
                     }}
                   />
                 ) : null}
@@ -665,7 +666,7 @@ export function ReleaseEditorSheet({
                     <div className="sm:col-span-2">
                       <dt>Artifact ID</dt>
                       <dd className="mt-1 break-all font-mono text-foreground">
-                        {release.bundle_id ?? "Built-in app"}
+                        {release.bundle_id ?? "Built-in bundle"}
                       </dd>
                     </div>
                     <div>

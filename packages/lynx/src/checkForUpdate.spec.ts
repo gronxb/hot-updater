@@ -106,6 +106,7 @@ function setup(
     releases,
   };
   const native = {
+    getStateSync: () => ({ ok: true as const, data: state }),
     getState: vi.fn<HotUpdaterLynxNative["getState"]>((callback) =>
       callback({ ok: true, data: state }),
     ),
@@ -151,13 +152,13 @@ function setup(
       ),
   );
   vi.stubGlobal("fetch", fetch);
-  HotUpdater.init({ baseURL: "https://updates.test" });
+  const updater = HotUpdater.init({ baseURL: "https://updates.test" });
   const prepared = () =>
     native.prepareSelection.mock.calls[0]![0] as PrepareSelectionParams;
   const validated = () =>
     native.validateSelection.mock.calls[0]![0] as PrepareSelectionParams;
   return {
-    updater: HotUpdater,
+    updater,
     state,
     catalog,
     native,
@@ -917,7 +918,7 @@ describe("Lynx plugin update observations", () => {
   it.each(["patch", "manifest", "archive"] as const)(
     "reports native %s delivery once after staging, with real HTTP observations",
     async (delivery) => {
-      const { updater, native } = setup();
+      const { native } = setup();
       Object.assign(native, {
         getPluginInfo: () => ({
           ok: true,
@@ -926,14 +927,16 @@ describe("Lynx plugin update observations", () => {
       });
       const downloaded = vi.fn();
       const response = vi.fn();
-      updater.init({
+      const updater = HotUpdater.init({
         baseURL: "https://updates.test",
         plugins: [
           {
             id: "observer",
             setup: () => ({
-              onBundleDownloaded: downloaded,
-              onHttpResponse: response,
+              hooks: {
+                onBundleDownloaded: downloaded,
+                onHttpResponse: response,
+              },
             }),
           },
         ],
@@ -972,7 +975,7 @@ describe("Lynx plugin update observations", () => {
   );
 
   it("reports a failed native installation once and never reports a download", async () => {
-    const { updater, native } = setup();
+    const { native } = setup();
     Object.assign(native, {
       getPluginInfo: () => ({
         ok: true,
@@ -981,14 +984,16 @@ describe("Lynx plugin update observations", () => {
     });
     const failed = vi.fn();
     const downloaded = vi.fn();
-    updater.init({
+    const updater = HotUpdater.init({
       baseURL: "https://updates.test",
       plugins: [
         {
           id: "observer",
           setup: () => ({
-            onUpdateError: failed,
-            onBundleDownloaded: downloaded,
+            hooks: {
+              onUpdateError: failed,
+              onBundleDownloaded: downloaded,
+            },
           }),
         },
       ],

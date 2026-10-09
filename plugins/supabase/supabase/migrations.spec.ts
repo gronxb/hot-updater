@@ -32,7 +32,7 @@ import {
 } from "../src/supabaseSchema";
 
 const MIGRATIONS = path.resolve("plugins/supabase/supabase/migrations");
-const MIGRATION = path.join(MIGRATIONS, "20260818000000_hot-updater_1.0.0.sql");
+const MIGRATION = path.join(MIGRATIONS, "0001_hot-updater_1.0.0.sql");
 /** The managed server's tables: core's, and its plugins' (Insights and API keys). */
 const managed = toolingTargetOf(plugins);
 
@@ -116,6 +116,7 @@ describe("Supabase schema", () => {
       "schema.core",
       "schema.engine",
       "schema.insights",
+      "schema.remoteConfig",
     ]);
     await db.close();
   });

@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/react-native",
-  "version": "1.0.0-rc.34",
+  "version": "1.0.0-rc.42",
   "description": "React Native OTA solution for self-hosted",
   "source": "./src/index.ts",
   "main": "./lib/commonjs/index.js",
@@ -131,6 +131,7 @@
   "dependencies": {
     "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-insights": "workspace:*",
+    "@hot-updater/plugin-remote-config": "workspace:*",
     "use-sync-external-store": "1.5.0"
   }
 }

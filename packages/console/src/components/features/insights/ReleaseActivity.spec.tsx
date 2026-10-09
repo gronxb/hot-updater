@@ -80,6 +80,44 @@ describe("release Insights sections", () => {
     });
   });
 
+  it("opens Release health from a bundle row's summary over the same period as View adoption", () => {
+    const hour = 3_600_000;
+    vi.useFakeTimers({ now: 30 * 86_400_000 });
+    const releaseOf = (ageMs: number) => {
+      const deployed = (30 * 86_400_000 - ageMs).toString(16).padStart(12, "0");
+      return `${deployed.slice(0, 8)}-${deployed.slice(8)}-7000-8000-000000000001`;
+    };
+    const report: BundleActivityReport = {
+      downloads: 3,
+      launched: 2,
+      failedLaunches: 0,
+      measuredAtMs: 0,
+    };
+    const windowOf = () =>
+      new URL(
+        screen.getByRole("link").getAttribute("href")!,
+        "http://console",
+      ).searchParams.get("bundleWindow");
+    const view = render(
+      <BundleMovementSummary
+        report={report}
+        variant="inline"
+        input={{ ...input, releaseId: releaseOf(5 * hour) }}
+      />,
+    );
+    // Deployed 5 hours ago: 24 hours holds its first hours.
+    expect(windowOf()).toBe("24h");
+    view.rerender(
+      <BundleMovementSummary
+        report={report}
+        variant="inline"
+        input={{ ...input, releaseId: releaseOf(3 * 24 * hour) }}
+      />,
+    );
+    vi.useRealTimers();
+    expect(windowOf()).toBe("7d");
+  });
+
   it("shows download failures alone where the console reads no release activity", () => {
     features.insightsAnalytics = false;
     render(<ReleaseFailuresSection input={input} />);
@@ -98,7 +136,7 @@ describe("release Insights sections", () => {
     (variant) => {
       const report: BundleActivityReport = {
         downloads: 1234,
-        applied: 98,
+        launched: 98,
         failedLaunches: 2,
         measuredAtMs: 0,
       };
@@ -106,10 +144,43 @@ describe("release Insights sections", () => {
 
       expect(
         screen.getAllByRole("term").map((term) => term.textContent),
-      ).toEqual(["Downloads", "Applied", "Known crashes"]);
+      ).toEqual(["Downloaded", "Launched", "Crashed"]);
       expect(
         screen.getAllByRole("definition").map((value) => value.textContent),
       ).toEqual([report.downloads.toLocaleString(), "98", "2(2.00%)"]);
     },
   );
+
+  it("shows no download count for a release of the built-in bundle, and names downloads not launched yet", () => {
+    const report: BundleActivityReport = {
+      downloads: 120,
+      launched: 98,
+      failedLaunches: 2,
+      measuredAtMs: 0,
+    };
+    const view = render(
+      <BundleMovementSummary report={report} variant="card" />,
+    );
+    expect(
+      screen.getByText(
+        "20 downloaded but not launched yet: waiting for a restart, or passed over for a newer bundle.",
+      ),
+    ).toBeDefined();
+    view.rerender(
+      <BundleMovementSummary
+        report={{ ...report, downloads: 0 }}
+        variant="card"
+        input={{
+          releaseId: "release-embedded",
+          platform: "ios",
+          channel: "production",
+          builtIn: true,
+        }}
+      />,
+    );
+    expect(
+      screen.getByTitle("The built-in bundle is never downloaded"),
+    ).toBeDefined();
+    expect(screen.queryByText(/not launched yet/)).toBeNull();
+  });
 });

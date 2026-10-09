@@ -1,14 +1,14 @@
 import { createPluginHost } from "@hot-updater/protocol";
 
 import { version } from "../package.json";
-import { callPluginNative, LynxUpdaterError } from "./native";
+import { callNativeSync, LynxUpdaterError } from "./native";
 import type { NativeState } from "./types";
 
 export function createLynxPluginHost(readState: () => NativeState) {
   let info: { installId: string; isDebugBuild: boolean } | undefined;
   const pluginInfo = () => {
     if (!info) {
-      const value = callPluginNative<{
+      const value = callNativeSync<{
         installId: string;
         isDebugBuild: boolean;
       }>("getPluginInfo");
@@ -38,12 +38,13 @@ export function createLynxPluginHost(readState: () => NativeState) {
     sdkVersion: version,
     getInstallId: () => pluginInfo().installId,
     getAppVersion: () => readState().appVersion,
+    getMinBundleId: () => readState().embeddedBundleId,
     getBundleId: () => readState().runningSelection.bundleId,
     getChannel: () => readState().channel,
     getCohort: () => readState().cohort,
     getFingerprintHash: () => readState().fingerprintHash ?? null,
     getStorageItem: (key) => {
-      const value = callPluginNative<unknown>("getPluginStorageItem", key);
+      const value = callNativeSync<unknown>("getPluginStorageItem", key);
       if (value !== null && typeof value !== "string")
         throw new LynxUpdaterError(
           "INVALID_NATIVE_REPLY",
@@ -52,9 +53,7 @@ export function createLynxPluginHost(readState: () => NativeState) {
       return value;
     },
     setStorageItem: (key, value) => {
-      if (
-        callPluginNative<unknown>("setPluginStorageItem", key, value) !== true
-      )
+      if (callNativeSync<unknown>("setPluginStorageItem", key, value) !== true)
         throw new LynxUpdaterError(
           "INVALID_NATIVE_REPLY",
           "Native plugin storage write was not confirmed.",
