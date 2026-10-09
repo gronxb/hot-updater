@@ -127,7 +127,7 @@ describe("doctor scaffold contract", () => {
     );
   });
 
-  it.each(["missing DB", "wrong bucket", "invalid JSON"])(
+  it.each(["missing DB", "wrong bucket", "wrong account", "invalid JSON"])(
     "rejects %s without printing configuration values",
     async (failure) => {
       const scaffold = await prepare();
@@ -136,6 +136,8 @@ describe("doctor scaffold contract", () => {
       if (failure === "missing DB") config.d1_databases = [];
       else if (failure === "wrong bucket")
         config.vars.BUCKET_NAME = "sensitive-test-value";
+      else if (failure === "wrong account")
+        config.vars.ACCOUNT_ID = "sensitive-test-value";
       if (failure === "invalid JSON")
         await writeFile(file, '{"secret":"sensitive-test-value"');
       else await saveJson(file, config);

@@ -242,6 +242,7 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
     config.d1_databases[0].database_id = placeholder("D1_DATABASE_ID");
     config.d1_databases[0].database_name = placeholder("D1_DATABASE_NAME");
     config.r2_buckets[0].bucket_name = placeholder("BUCKET_NAME");
+    config.vars.ACCOUNT_ID = placeholder("ACCOUNT_ID");
     config.vars.BUCKET_NAME = placeholder("BUCKET_NAME");
     await save(path.join(output, "worker/wrangler.json"), config);
     await save(path.join(output, "worker/package.json"), {
