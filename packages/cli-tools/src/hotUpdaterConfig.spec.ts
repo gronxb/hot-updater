@@ -677,14 +677,14 @@ export default defineConfig({ plugins: [], ${override} });
 });
 
 describe("writeHotUpdaterConfig imports", () => {
-  it("preserves type-only plugin namespaces when migrating server imports", async () => {
+  it("preserves type-only plugin namespaces when init runs again", async () => {
     const configPath = path.join(
       await createTempDir(),
       "hot-updater.config.ts",
     );
     await fs.writeFile(
       configPath,
-      `import type * as Insights from "@hot-updater/server/plugins/insights";
+      `import type * as Insights from "@hot-updater/server/plugins";
 import { defineConfig } from "hot-updater";
 export const options: Insights.InsightsOptions = { retention: { rawDays: 7 } };
 export default defineConfig({});
@@ -704,15 +704,15 @@ export default defineConfig({});
     await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(updated);
   });
 
-  it("moves preserved plugin helpers, aliases, and types off removed server subpaths", async () => {
+  it("preserves plugin helpers, aliases, and types when init runs again", async () => {
     const configPath = path.join(
       await createTempDir(),
       "hot-updater.config.ts",
     );
     await fs.writeFile(
       configPath,
-      `import { insights as projectInsights, type InsightsOptions } from "@hot-updater/server/plugins/insights";
-import { EMPTY_REMOTE_CONFIG_TEMPLATE } from "@hot-updater/server/plugins/remote-config";
+      `import { insights as projectInsights, type InsightsOptions } from "@hot-updater/server/plugins";
+import { EMPTY_REMOTE_CONFIG_TEMPLATE } from "@hot-updater/server/plugins";
 import { defineConfig } from "hot-updater";
 const options: InsightsOptions = { retention: { rawDays: 7 } };
 export const projectPlugin = projectInsights(options);
@@ -726,7 +726,6 @@ export default defineConfig({ plugins: [projectPlugin] });
     const updated = await fs.readFile(configPath, "utf-8");
 
     expect(result.status).toBe("merged");
-    expect(updated).not.toContain("@hot-updater/server/plugins/");
     expect(updated).toContain(
       'import { EMPTY_REMOTE_CONFIG_TEMPLATE, insights as projectInsights, type InsightsOptions } from "@hot-updater/server/plugins";',
     );
@@ -740,21 +739,16 @@ export default defineConfig({ plugins: [projectPlugin] });
     await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(updated);
   });
 
-  it.each([
-    ["@hot-updater/server/plugins", "insights"],
-    ["@hot-updater/server/plugins/api-keys", "apiKeys"],
-    ["@hot-updater/server/plugins/insights", "insights"],
-    ["@hot-updater/server/plugins/remote-config", "remoteConfig"],
-  ])("migrates %s factories when init runs again", async (pkg, factory) => {
+  it("reuses the official server factory through the CLI entry when init runs again", async () => {
     const configPath = path.join(
       await createTempDir(),
       "hot-updater.config.ts",
     );
     await fs.writeFile(
       configPath,
-      `import { ${factory} } from "${pkg}";
+      `import { insights } from "@hot-updater/server/plugins";
 import { defineConfig } from "hot-updater";
-const configuredPlugin = ${factory}();
+const configuredPlugin = insights();
 export default defineConfig({ plugins: [configuredPlugin] });
 `,
     );
@@ -764,11 +758,11 @@ export default defineConfig({ plugins: [configuredPlugin] });
     const updated = await fs.readFile(configPath, "utf-8");
 
     expect(result.status).toBe("merged");
-    expect(updated).not.toContain(pkg);
+    expect(updated).not.toContain("@hot-updater/server/plugins");
     expect(updated).toContain(
       'import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";',
     );
-    expect(updated).toContain(`const configuredPlugin = ${factory}();`);
+    expect(updated).toContain("const configuredPlugin = insights();");
     expect(updated).toContain(
       "plugins: [apiKeys(), insights(), remoteConfig()]",
     );

@@ -85,14 +85,7 @@ export type WriteHotUpdaterConfigResult = {
 
 const HOT_UPDATER_CONFIG_PATH = "hot-updater.config.ts";
 const CONFIG_FILE_NAME = "hot-updater.config.ts";
-const SERVER_PLUGIN_PACKAGES = new Set([
-  "@hot-updater/server/plugins",
-  "@hot-updater/server/plugins/api-keys",
-  "@hot-updater/server/plugins/insights",
-  "@hot-updater/server/plugins/remote-config",
-]);
 const MANAGED_IMPORT_PACKAGES = new Set([
-  ...SERVER_PLUGIN_PACKAGES,
   "firebase-admin",
   "firebase-admin/app",
   "hot-updater",
@@ -105,6 +98,7 @@ const MANAGED_IMPORT_PACKAGES = new Set([
   "@hot-updater/expo",
   "@hot-updater/firebase",
   "@hot-updater/rock",
+  "@hot-updater/server/plugins",
   "@hot-updater/supabase",
 ]);
 const MANAGED_HELPER_NAMES = new Set([
@@ -831,9 +825,7 @@ const keptManagedImports = (
   const texts: string[] = [];
   const references = usedIdentifiers(usedText);
   for (const declaration of declarations) {
-    const pkg = SERVER_PLUGIN_PACKAGES.has(declaration.source.value)
-      ? "@hot-updater/server/plugins"
-      : declaration.source.value;
+    const pkg = declaration.source.value;
     const named: string[] = [];
     let defaultName: string | undefined;
     let namespaceName: string | undefined;
@@ -1183,7 +1175,7 @@ const mergeHotUpdaterConfigText = (
           (scaffoldImport.pkg !== pkg &&
             !(
               scaffoldImport.pkg === "hot-updater/plugins" &&
-              SERVER_PLUGIN_PACKAGES.has(pkg)
+              pkg === "@hot-updater/server/plugins"
             )))
       ) {
         return {
