@@ -30,7 +30,7 @@ with this model.
 Do not deliver v1 `@hot-updater/react-native` JavaScript to a v0 native binary
 by OTA. Receipt and rollback behavior requires the v1 native module.
 
-Remove `compressStrategy` and `HOT_UPDATER_BUNDLE_MODE` from v1 configuration.
+Remove `compressStrategy` from v1 configuration.
 The updater chooses between individual manifest files and one `tar.br` bulk
 download after checking local reuse. ZIP and gzip OTA archives are not supported.
 `updateStrategy` still selects app-version or fingerprint compatibility; it is
@@ -199,12 +199,10 @@ Native, have the agent export the public key to the native projects with
 `hot-updater keys export-public`. Verify that the native key matches the
 deployment signer before building. See [Bundle Signing](/docs/guides/bundle-signing).
 
-Remove `publicKeyPath` from any local, KMS or remote `signing` configuration;
-the signer derives its own public identity. Expo's app-plugin configuration
-owns the native public file. Retaining the same signing key still requires a
-new native build with the v1 SDK and endpoint. If the key changes, ship that
-new native trust anchor before serving artifacts signed by the replacement
-key to that app population.
+Expo's app-plugin configuration owns the native public file. Retaining the
+same signing key still requires a new native build with the v1 SDK and
+endpoint. If the key changes, ship that new native trust anchor before serving
+artifacts signed by the replacement key to that app population.
 
 ### 5. Verify infrastructure and build the native app
 
@@ -268,14 +266,14 @@ server code or plugins, update these boundaries before connecting a v1 app:
 | v0 surface | v1 replacement |
 | --- | --- |
 | Unified `createHandler`, `createHotUpdater().handler`, `HandlerOptions` | `createHotUpdater().handlers.client` and `.admin`. Mount the admin handler behind framework authentication before the broader client mount. |
-| `toNodeHandler(hotUpdater)` | Pass the individual handler, such as `toNodeHandler(hotUpdater.handlers.admin)`. |
+| `toNodeHandler(hotUpdater)` from `@hot-updater/server/node` | Import it from `@hot-updater/server` and pass the individual handler, such as `toNodeHandler(hotUpdater.handlers.admin)`. |
 | Instance methods such as `getBundleById`, `getBundles`, `insertBundle`, `updateBundleById`, `deleteBundleById` and `getChannels` | `hotUpdater.core` reads and typed operations, such as `getBundle`, `listBundles`, `deploy`, `updateBundle`, `deleteBundles` and `listChannels`. |
 | `storages`, `storagePlugins` | `storage: [storagePlugin]` in `createHotUpdater`. |
 | Database/storage `() => plugin` thunks | Pass database and storage objects directly to `createHotUpdater` and `defineConfig`. Built-in provider factories already return those objects. List the server's plugins in `plugins` of both. |
-| `features.clientAccessKeys` | `apiKeys()` from `@hot-updater/server/plugins` in `plugins`. It requires `x-api-key`, or the `headerName` you pass. For public client routes, set `clientAccess: "public"` instead. |
-| `features`, `features.bundles`, `features.updateCheck`, server Insights flags and `queryAccess` | Mount the handler surfaces explicitly. `insights()` from `@hot-updater/server/plugins` in `plugins` serves Insights; without it, the server has no Insights routes, which answer `404`. Apps report with the `insights()` client plugin from `@hot-updater/react-native`. |
+| Client routes without authentication | Choose a policy: `apiKeys()` from `@hot-updater/server/plugins` in `plugins` requires `x-api-key`, or the `headerName` you pass. To keep the v0 behavior, set `clientAccess: "public"` instead. |
+| `routes: { updateCheck, bundles }` and the authentication on `/api/*` | Mount the handler surfaces explicitly: `handlers.client` for update checks, and `handlers.admin` for Bundle management behind the authentication that guarded `/api/*`. |
 | Server `basePath` | Let the framework own the mount path and use that client root as the app's `baseURL`. |
-| `authorityId`, server `cwd`, runtime request-context parameters | Remove these settings. Catalog identity is automatic; capture credentials, SDK clients and runtime bindings when constructing plugins. Handlers take one `Request`. |
+| Server `cwd`, runtime request-context parameters | Remove these settings. Capture credentials, SDK clients and runtime bindings when constructing adapters. Handlers take one `Request`. |
 | `standaloneRepository.baseUrl` pointing at a shared client root | Use the exact admin root, such as `https://example.com/hot-updater/admin`. Remove custom `routes`: the repository speaks the admin API's protocol 2. |
 
 A v1 server lists the plugins it runs; `plugins` defaults to none:
