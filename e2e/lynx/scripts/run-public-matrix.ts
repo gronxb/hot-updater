@@ -1056,7 +1056,7 @@ async function rejectRawDetailTarget(
   adapter.clickText("Check update");
   await adapter.waitForText("Update available. Ready to install.");
   const requestsBefore = serverRequests(detail.url);
-  const nativeLogsBefore = adapter.readNativeLogs();
+  const nativeLogsBefore = await adapter.readNativeLogs();
   const failureCursor =
     readSdkInstallFailureEvidence(installFailuresPath).length;
   const fallbackCountBefore = nativeLogsBefore.split(fallbackMarker).length - 1;
@@ -1100,7 +1100,7 @@ async function rejectRawDetailTarget(
       ),
     `${mode} detail unexpectedly activated the rejected target`,
   );
-  const nativeLogsAfter = adapter.readNativeLogs();
+  const nativeLogsAfter = await adapter.readNativeLogs();
   const fallbackCountAfter = nativeLogsAfter.split(fallbackMarker).length - 1;
   assert.equal(fallbackCountAfter, fallbackCountBefore);
   assert.ok(consumedRequests.length >= 1, `${mode} detail was not requested`);
@@ -1326,6 +1326,7 @@ async function runCell(
   await fsp.mkdir(cellDir, { recursive: true });
   adapter.resultsDir = cellDir;
   adapter.resetCell();
+  await adapter.startNativeLogs?.();
   const channel = `lynx-matrix-${runId}-${cellId}`;
   const binaryInstalled = await adapter.installedBinaryHash();
   const runtimeEventLedger = new GenerationEventLedger();
@@ -1458,7 +1459,7 @@ async function runCell(
   await adapter.waitForText("Update available. Ready to install.");
   adapter.clickText("Install next launch");
   await adapter.waitForText("Update installed. Close and reopen the app.");
-  const bDeltaLogs = adapter.readNativeLogs();
+  const bDeltaLogs = await adapter.readNativeLogs();
 
   await stopServer();
   const originProbe = await assertOriginUnused();
@@ -1556,7 +1557,7 @@ async function runCell(
   );
   adapter.clickText("Verify stale after reload");
   await waitForStaleContextRejections(adapter, cursor, B.bundleId);
-  const deltaLogs = adapter.readNativeLogs();
+  const deltaLogs = await adapter.readNativeLogs();
   await adapter.screenshot(`${cellId}-delta-C-reload`);
 
   const incompatibleDeployment = await deploy({
@@ -1831,7 +1832,7 @@ async function runCell(
     "B",
     "back",
   );
-  const cToBLogs = adapter.readNativeLogs();
+  const cToBLogs = await adapter.readNativeLogs();
   assert.equal(adapter.processId(), rollbackProcess);
   await setReleaseEnabled(B.releaseId, false);
   const bToARejections = [];
@@ -1861,7 +1862,7 @@ async function runCell(
     "A",
     "close",
   );
-  const bToALogs = adapter.readNativeLogs();
+  const bToALogs = await adapter.readNativeLogs();
   await checkpointRuntimeEvents(
     adapter,
     runtimeEventLedger,
@@ -1913,7 +1914,9 @@ async function runCell(
 
   const allEvents = adapter.readEvents();
   validateAttributedDiagnostics(allEvents);
-  const allLogs = adapter.readNativeLogs();
+  const allLogs = adapter.finishNativeLogs
+    ? await adapter.finishNativeLogs()
+    : await adapter.readNativeLogs();
   assertNoManagedResourceEngineErrors(allLogs);
   const managedResourceEngineErrorCodes =
     findManagedResourceEngineErrorCodes(allLogs);
@@ -2303,12 +2306,16 @@ try {
     );
     for (const framework of frameworks) {
       await resetServerState();
-      receipts.push(await runCell(adapter, framework, platform));
+      try {
+        receipts.push(await runCell(adapter, framework, platform));
+      } finally {
+        await adapter.stopNativeLogs?.();
+      }
     }
   }
 } finally {
   try {
-    for (const adapter of adapters.values()) adapter.close?.();
+    for (const adapter of adapters.values()) await adapter.close?.();
   } finally {
     await stopServer();
   }

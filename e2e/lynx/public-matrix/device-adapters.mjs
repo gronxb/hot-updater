@@ -14,6 +14,7 @@ import {
   deterministicArtifactSha256,
   iosArtifactAppId,
 } from "./native-artifact-evidence.mjs";
+import { startNativeLogCapture } from "./native-log-capture.mjs";
 
 const APP_ID = "com.hotupdater.lynxmatrix";
 const EVENT_MARKER = "HOT_UPDATER_MATRIX_EVENT ";
@@ -534,6 +535,39 @@ class AndroidAdapter {
     this.adb(["logcat", "-c"]);
   }
 
+  async startNativeLogs() {
+    this.nativeLogs = await startNativeLogCapture({
+      command: "adb",
+      args: [
+        "-s",
+        this.deviceId,
+        "logcat",
+        "-b",
+        "main",
+        "-v",
+        "threadtime",
+        "HotUpdaterLynx:I",
+        "chatty:I",
+        "*:S",
+      ],
+      directory: this.resultsDir,
+      writeMarker: (marker) =>
+        this.adb(["shell", "log", "-p", "i", "-t", "HotUpdaterLynx", marker]),
+    });
+  }
+
+  async finishNativeLogs() {
+    return this.nativeLogs.finish();
+  }
+
+  async close() {
+    await this.stopNativeLogs();
+  }
+
+  async stopNativeLogs() {
+    await this.nativeLogs?.close();
+  }
+
   launch(framework, channel) {
     this.terminate();
     this.adb([
@@ -674,8 +708,9 @@ class AndroidAdapter {
       }));
   }
 
-  readNativeLogs() {
-    return this.adb(["logcat", "-d", "-s", "HotUpdaterLynx:I"]);
+  async readNativeLogs() {
+    if (!this.nativeLogs) throw new Error("Native log capture has not started");
+    return this.nativeLogs.checkpoint();
   }
 
   readDiagnostics() {
