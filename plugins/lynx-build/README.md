@@ -16,5 +16,10 @@ The compiler callback can also declare `backgroundEntry`, a canonical relative
 separate from `pageEntries`. The adapter and native artifact validators reject
 missing, empty, malformed UTF-8, NUL-containing, or over-16-MiB scripts.
 Declaring the asset alone does not register an OS background task or execute it.
+For Lynx 3.9's standalone runtime, the script must evaluate to an object with
+`init({ tt })`; call `tt.NativeModules.HotUpdaterBackground.complete(value)`
+from that function. Bundle dependencies into the entry. See the device SDK's
+[viewless task contract](../../packages/lynx/README.md#viewless-tasks-on-android)
+for completion, native integration, and runtime limits.
 
 The `/integration` entry contains CLI init metadata. Run `hot-updater init --build lynx-build` with a `hot-updater.lynx.ts` compiler callback in the app.

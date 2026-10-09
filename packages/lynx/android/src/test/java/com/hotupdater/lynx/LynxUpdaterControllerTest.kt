@@ -314,6 +314,32 @@ class LynxUpdaterControllerTest {
         }
     }
 
+    @Test fun persistedFatalStillOccupiesAnEngineSlotUntilNativeDetach() {
+        val root = temp()
+        val tasks = mutableListOf<LynxBackgroundTask>()
+        try {
+            val host = backgroundHost(root)
+            host.createForeground().also { it.close() }
+            plantNext(root, releaseB, bundleB, "B", background = true)
+            val failed = host.beginBackground().also(tasks::add)
+            repeat(3) { host.beginBackground().also(tasks::add) }
+            failed.reportFatal("native fatal before engine teardown")
+            assertEquals(listOf(releaseB), jsonStrings(journal(root).getJSONArray("unconfirmed")))
+            plantNext(root, releaseC, bundleC, "C", background = true)
+            val revision = journal(root).getString("revision")
+            assertEquals("Too many concurrent Lynx background tasks",
+                assertThrows(IllegalStateException::class.java) { host.beginBackground() }.message)
+            failed.reportFatal("duplicate callback before detach")
+            assertEquals(revision, journal(root).getString("revision"))
+            failed.close()
+            assertEquals(releaseC, host.beginBackground().also(tasks::add).snapshot.selection.releaseId)
+            assertEquals(revision, journal(root).getString("revision"))
+        } finally {
+            tasks.forEach { it.close() }
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun backgroundCountsLiveTrialAndForegroundCountsBackgroundReservations() {
         for (backgroundFirst in listOf(false, true)) {
             val root = temp()
@@ -369,14 +395,15 @@ class LynxUpdaterControllerTest {
                 assertEquals(bundleC, current.diagnostics(page).bundleId)
                 val before = journal(root)
                 if (cold) current.close()
-                assertTrue(background.fail("verified task B fatal"))
+                assertTrue(background.reportFatal("verified task B fatal"))
                 val after = journal(root)
                 for (key in listOf("pending", "active", "launchTransition", "logicalStack")) {
                     assertEquals(key, before.opt(key).toString(), after.opt(key).toString())
                 }
                 assertEquals(listOf(releaseB), jsonStrings(after.getJSONArray("unconfirmed")))
                 assertEquals(listOf(bundleB), jsonStrings(after.getJSONArray("crashed")))
-                assertFalse(background.fail("duplicate fatal"))
+                background.close() // The native engine has now detached.
+                assertFalse(background.reportFatal("duplicate fatal"))
                 if (cold) {
                     val replacement = host.createForeground().also { foreground = it }
                     replacement.pinPrimary()
@@ -448,13 +475,13 @@ class LynxUpdaterControllerTest {
             val error = assertThrows(ExecutionException::class.java) { pin.get(10, TimeUnit.SECONDS) }
             assertEquals("Recovery capacity exhausted", error.cause?.message)
             assertTrue(before.contentEquals(file.readBytes()))
-            host.finishBackground(background.taskId, null)
+            host.finishBackground(background.taskId, null, detached = true)
             assertEquals(bundleB, current.diagnostics(current.pinPrimary()).bundleId)
         } finally {
             releasePruner.countDown()
             executor.shutdown()
             executor.awaitTermination(20, TimeUnit.SECONDS)
-            taskId?.let { host.finishBackground(it, null) }
+            taskId?.let { host.finishBackground(it, null, detached = true) }
             foreground?.close()
             root.deleteRecursively()
         }
@@ -519,7 +546,7 @@ class LynxUpdaterControllerTest {
             assertTrue(file.renameTo(saved))
             assertTrue(file.mkdir())
             try {
-                assertThrows(Throwable::class.java) { background.fail("native fatal") }
+                assertThrows(Throwable::class.java) { background.reportFatal("native fatal") }
                 assertThrows(Throwable::class.java) { background.close() }
                 assertThrows(Throwable::class.java) { current.pinPrimary() }
                 assertTrue(before.contentEquals(saved.readBytes()))
@@ -530,7 +557,7 @@ class LynxUpdaterControllerTest {
             val page = current.pinPrimary()
             assertEquals(embeddedId, current.diagnostics(page).bundleId)
             assertEquals(listOf(releaseB), jsonStrings(journal(root).getJSONArray("unconfirmed")))
-            assertFalse(background.fail("already recorded"))
+            assertFalse(background.reportFatal("already recorded"))
         } finally {
             task?.close()
             foreground?.close()
@@ -556,7 +583,7 @@ class LynxUpdaterControllerTest {
                 assertTrue(file.renameTo(saved))
                 assertTrue(file.mkdir())
                 try {
-                    assertThrows(Throwable::class.java) { background.fail("native fatal with unavailable storage") }
+                    assertThrows(Throwable::class.java) { background.reportFatal("native fatal with unavailable storage") }
                     assertEquals(sameBundle, current.generationFailed)
                     if (sameBundle) {
                         assertThrows(CatalogPolicy.Rejected::class.java) { current.confirm(page) }
@@ -651,7 +678,7 @@ class LynxUpdaterControllerTest {
             val current = host.createForeground().also { foreground = it }
             val page = current.pinPrimary().also { it.firstScreen = true; current.confirm(it) }
             current.pinSecondary("detail.lynx.bundle", emptyMap(), 1, page.generationId, sourceContextId = page.id)
-            assertTrue(background.fail("verified builtin task fatal"))
+            assertTrue(background.reportFatal("verified builtin task fatal"))
             current.close()
             val file = File(store(root), "state.json")
             val before = file.readBytes()
@@ -680,7 +707,7 @@ class LynxUpdaterControllerTest {
                 assertEquals("EMBEDDED", release.snapshot.selection.kind)
                 assertEquals(releaseB, release.snapshot.selection.releaseId)
                 val ordered = if (builtinFirst) listOf(builtin, release) else listOf(release, builtin)
-                ordered.forEach { assertTrue(it.fail("native embedded failure")) }
+                ordered.forEach { assertTrue(it.reportFatal("native embedded failure")) }
                 assertEquals(JSONObject.NULL, journal(root).getJSONObject("failedEmbedded").get("releaseId"))
                 assertEquals(listOf(releaseB), jsonStrings(journal(root).getJSONArray("unconfirmed")))
                 assertThrows(IllegalStateException::class.java) { host.beginBackground() }
@@ -703,7 +730,7 @@ class LynxUpdaterControllerTest {
             val current = host.createForeground().also { foreground = it }
             val page = current.pinPrimary()
             val pending = journal(root).getJSONObject("pending").toString()
-            assertTrue(background.fail("same bundle runtime fatal"))
+            assertTrue(background.reportFatal("same bundle runtime fatal"))
             page.firstScreen = true
             assertThrows(CatalogPolicy.Rejected::class.java) { current.confirm(page) }
             assertEquals(pending, journal(root).getJSONObject("pending").toString())

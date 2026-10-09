@@ -36,9 +36,18 @@ class LynxRuntimeHost internal constructor(
     private val ownerLock = Any()
     // Controller admission and task reservations share one linearization point.
     internal val stateLock = Any()
-    private data class Task(val snapshot: LynxBackgroundSnapshot, var fatal: String? = null)
+    private data class Task(
+        val snapshot: LynxBackgroundSnapshot,
+        var fatal: String? = null,
+        var persisted: Boolean = false,
+        var detached: Boolean = false,
+    )
     private val tasks = linkedMapOf<String, Task>()
     private var foreground: LynxUpdaterController? = null
+
+    /** Runs the declared standalone background entry; closing requests cancellation, never readiness. */
+    fun runBackground(context: Context, completion: (Result<LynxBackgroundResult>) -> Unit): AutoCloseable =
+        LynxBackgroundExecutor(context, this, completion)
 
     fun createForeground(): LynxUpdaterController = synchronized(ownerLock) {
         synchronized(stateLock) {
@@ -103,19 +112,21 @@ class LynxRuntimeHost internal constructor(
         requireTaskSlot()
         val ids = reservedReleases(state, live) + listOfNotNull(snapshot.selection.releaseId)
         check(ids.size <= LynxStoredSelectionReader.RECOVERY_CAPACITY) { "Background recovery capacity exhausted" }
-        check(tasks.values.none { it.fatal != null }) { "A background failure has not been persisted" }
+        check(tasks.values.none { it.fatal != null && !it.persisted }) { "A background failure has not been persisted" }
         check(tasks.put(snapshot.taskId, Task(snapshot)) == null)
         synchronized(hosts) { retainedHosts.add(this) }
     }
 
-    internal fun finishBackground(taskId: String, fatal: String?) = synchronized(ownerLock) {
+    internal fun finishBackground(taskId: String, fatal: String?, detached: Boolean) = synchronized(ownerLock) {
         synchronized(stateLock) taskLock@{
             val task = tasks[taskId] ?: return@taskLock false
             if (fatal != null && task.fatal == null) task.fatal = fatal
+            if (detached) task.detached = true
             // Normal completion cannot discard a failed runtime's pending write.
-            if (task.fatal != null) {
+            if (task.fatal != null && !task.persisted) {
                 foreground?.replayBackgroundFailures() ?: replayColdFailures()
-            } else {
+            }
+            if (task.detached && (task.fatal == null || task.persisted)) {
                 tasks.remove(taskId)
                 releaseRetentionIfIdle()
             }
@@ -125,7 +136,7 @@ class LynxRuntimeHost internal constructor(
 
     private fun replayColdFailures() {
         check(Thread.holdsLock(stateLock))
-        if (tasks.values.none { it.fatal != null }) return
+        if (tasks.values.none { it.fatal != null && !it.persisted }) return
         val store = LynxStateStore(directory)
         try { persistBackgroundFailures(store) } finally { store.close() }
     }
@@ -138,7 +149,7 @@ class LynxRuntimeHost internal constructor(
     /** Does not consume or replace another runtime's pending/readiness/transition records. */
     internal fun persistBackgroundFailures(store: LynxStateStore) {
         check(Thread.holdsLock(stateLock))
-        val failed = tasks.filterValues { it.fatal != null }
+        val failed = tasks.filterValues { it.fatal != null && !it.persisted }
         if (failed.isEmpty()) return
         store.update { next ->
             val permanent = next.optJSONArray("unconfirmed")
@@ -174,7 +185,10 @@ class LynxRuntimeHost internal constructor(
             next.put("interruptedReleases", retries)
             next.put("revision", UUID.randomUUID().toString())
         }
-        failed.keys.forEach(tasks::remove)
+        failed.forEach { (id, task) ->
+            task.persisted = true
+            if (task.detached) tasks.remove(id)
+        }
         releaseRetentionIfIdle()
     }
 

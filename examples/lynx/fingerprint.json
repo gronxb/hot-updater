@@ -489,7 +489,7 @@
     ]
   },
   "android": {
-    "hash": "142f97a5dac67ac73a12566ed1974d36219e678e45842e7dfbf5ee35043836c7",
+    "hash": "9150f7ee794deca879d7cf7dc4e86efe8799e89cd119792986772c8634812caa",
     "sources": [
       {
         "type": "file",
@@ -647,6 +647,17 @@
       },
       {
         "type": "file",
+        "filePath": "@hot-updater/lynx/android/src/main/java/com/hotupdater/lynx/HotUpdaterBackgroundModule.kt",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "888097d16400364878fa4d0d1b393f767c2d41cfdc351c6da9d5ed4aa806a7e1",
+        "debugInfo": {
+          "byteSize": 1378
+        }
+      },
+      {
+        "type": "file",
         "filePath": "@hot-updater/lynx/android/src/main/java/com/hotupdater/lynx/HotUpdaterLynxModule.kt",
         "reasons": [
           "lynx-native-input"
@@ -680,6 +691,39 @@
       },
       {
         "type": "file",
+        "filePath": "@hot-updater/lynx/android/src/main/java/com/hotupdater/lynx/LynxBackgroundExecutor.kt",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "d8b6ab6729c67e5743c7d59ecb5ecb2f3f950e1ecdf5ba5089cad66778960b3a",
+        "debugInfo": {
+          "byteSize": 6496
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx/android/src/main/java/com/hotupdater/lynx/LynxBackgroundLifecycle.kt",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "af94ae9bfc5ce7a147a7400d3a02741b4f53db9834d7cac0bb3213421bd187dd",
+        "debugInfo": {
+          "byteSize": 2325
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx/android/src/main/java/com/hotupdater/lynx/LynxBackgroundResources.kt",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "e3c76febdd17bf077f2e7d4d873647790377930be89779569bad6ecc91d1423a",
+        "debugInfo": {
+          "byteSize": 1914
+        }
+      },
+      {
+        "type": "file",
         "filePath": "@hot-updater/lynx/android/src/main/java/com/hotupdater/lynx/LynxBackgroundSnapshot.kt",
         "reasons": [
           "lynx-native-input"
@@ -695,9 +739,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "e520a0803da308a32689e47e2cf3e1ca06f51f9c970f478000069b79a8df3091",
+        "hash": "345920d70ea14750661a55885cba404e74713d2267585ee122168dfd3d38ae47",
         "debugInfo": {
-          "byteSize": 416
+          "byteSize": 554
         }
       },
       {
@@ -783,9 +827,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "3c3db6b9f5f44057717640ac08b23f2aef8a2eb301a6f058a7df9490dd1f8a7b",
+        "hash": "5a552db7e1e4bfd7fcb755f84497b0f177d75774cb7a1c7fac202a184ce0ba2d",
         "debugInfo": {
-          "byteSize": 10613
+          "byteSize": 11281
         }
       },
       {

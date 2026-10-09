@@ -4,6 +4,41 @@ OTA updates for applications running on the Lynx engine. ReactLynx, VueLynx,
 and OctaneLynx use the same runtime API, build contract, and native controllers
 on iOS and Android. The package does not depend on any of those UI frameworks.
 
+## Viewless tasks on Android
+
+An Android native entry point can call
+`LynxRuntimeHost.get(context, configuration).runBackground(context) { result -> ... }`
+after the application's normal Lynx initialization. Use the same native
+configuration as the foreground host. The returned `AutoCloseable` requests
+cancellation. Completion runs on the main thread and contains the script's
+string output plus the selection receipt captured by native code.
+
+Declare one self-contained UTF-8 script with `backgroundEntry` in the build
+adapter. Lynx 3.9 standalone scripts return an object with an `init` function:
+
+```js
+({
+  init({ tt }) {
+    tt.NativeModules.HotUpdaterBackground.complete("computed result");
+  },
+});
+```
+
+This separate runtime cannot consume a staged update, confirm a foreground
+launch, or call application-wide native modules. Its completion bridge accepts
+one string of at most 16 Ki characters. Additional script, bytecode, template,
+and stream fetches are rejected; bundle dependencies into the declared entry.
+Lynx's built-in APK asset loader remains available, so this is not a sandbox
+for untrusted JavaScript.
+
+Native completion waits for runtime detach. Cancellation or the 25-second
+deadline reports failure and requests destruction. Lynx cannot forcibly
+interrupt synchronous JavaScript: the task continues occupying one of the
+scope's four slots until native detach. Grouped Lynx threads keep work off the
+default JS thread but use a shared pool. Native fatal errors are recorded
+against the task's pinned receipt, including errors queued before detach after
+cancellation. Task completion never signals application readiness.
+
 ## Runtime API
 
 Call the SDK from Lynx background scripting after the native host registers the
