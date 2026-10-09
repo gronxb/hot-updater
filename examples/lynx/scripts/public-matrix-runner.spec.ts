@@ -626,6 +626,7 @@ describe("Lynx public matrix runner", () => {
         vi.stubGlobal("__SPIKE_BEHAVIOR__", "normal");
         vi.stubGlobal("__SPIKE_ASSET_PREFIX__", "hu://");
         vi.stubGlobal("__SDK_RESOURCES__", false);
+        vi.stubGlobal("__MATRIX_STABLE_MAIN__", "");
         native.getLaunchInfo.mockResolvedValue({ running: { bundleId: "B" } });
         native.notifyAppReady.mockResolvedValue({ status: "CONFIRMED" });
         native.navigate.mockImplementation((_options, complete) =>
@@ -737,6 +738,7 @@ describe("Lynx public matrix runner", () => {
     vi.stubGlobal("__SPIKE_BEHAVIOR__", "normal");
     vi.stubGlobal("__SPIKE_ASSET_PREFIX__", "hot-updater:///");
     vi.stubGlobal("__SDK_RESOURCES__", false);
+    vi.stubGlobal("__MATRIX_STABLE_MAIN__", "");
     native.getLaunchConfiguration.mockResolvedValue({
       appBaseURL: "https://updates.test",
     });
@@ -781,6 +783,7 @@ describe("Lynx public matrix runner", () => {
     vi.stubGlobal("__SPIKE_BEHAVIOR__", "normal");
     vi.stubGlobal("__SPIKE_ASSET_PREFIX__", "hu://");
     vi.stubGlobal("__SDK_RESOURCES__", false);
+    vi.stubGlobal("__MATRIX_STABLE_MAIN__", "");
     native.getLaunchInfo.mockResolvedValue({
       running: { bundleId: "bundle-b", releaseId: "release-b" },
     });
@@ -817,6 +820,7 @@ describe("Lynx public matrix runner", () => {
     vi.stubGlobal("__SPIKE_BEHAVIOR__", "normal");
     vi.stubGlobal("__SPIKE_ASSET_PREFIX__", "hu://");
     vi.stubGlobal("__SDK_RESOURCES__", false);
+    vi.stubGlobal("__MATRIX_STABLE_MAIN__", "");
     vi.stubGlobal("TextCodecHelper", {
       encode: (value: string) => new TextEncoder().encode(value).buffer,
     });

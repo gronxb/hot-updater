@@ -12,6 +12,7 @@ declare const __SPIKE_VARIANT__: string;
 declare const __SPIKE_BEHAVIOR__: string;
 declare const __SPIKE_ASSET_PREFIX__: string;
 declare const __SDK_RESOURCES__: boolean;
+declare const __MATRIX_STABLE_MAIN__: string;
 declare const TextCodecHelper: {
   encode(value: string): ArrayBuffer;
 };
@@ -52,6 +53,14 @@ export async function startSdk(
 ) {
   try {
     if (!initialized) {
+      if (__MATRIX_STABLE_MAIN__) {
+        let checksum = 0;
+        for (let index = 0; index < __MATRIX_STABLE_MAIN__.length; index++) {
+          checksum =
+            (checksum + __MATRIX_STABLE_MAIN__.charCodeAt(index)) >>> 0;
+        }
+        console.log("HOT_UPDATER_MATRIX_STABLE_MAIN", checksum);
+      }
       const launchConfiguration = await HotUpdater.getLaunchConfiguration();
       if (__SDK_RESOURCES__) {
         fontUrl = managedResourceUrl(

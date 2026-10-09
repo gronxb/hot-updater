@@ -48,6 +48,7 @@ import {
   resourcePaths,
   validateAttributedDiagnostics,
 } from "../public-matrix/evidence.mjs";
+import { verifyMatrixMixedTransfer } from "../public-matrix/mixed-transfer.mjs";
 import {
   expectedRawDetailNativeFailure,
   MISSING_ASSET_RESPONSE_SHA256,
@@ -397,6 +398,7 @@ async function compile(
     "--behavior",
     behavior,
     "--matrix-stable-font",
+    "--matrix-stable-main",
     ...(octaneSource ? ["--octane-source", octaneSource] : []),
   ]);
   const compilerReceipt = JSON.parse(
@@ -1327,6 +1329,16 @@ async function runCell(
   const channel = `lynx-matrix-${runId}-${cellId}`;
   const binaryInstalled = await adapter.installedBinaryHash();
   const runtimeEventLedger = new GenerationEventLedger();
+  const mixedTransfers = [];
+  const preflightTransfer = async (base: any, target: any, delivery?: any) => {
+    mixedTransfers.push(
+      await verifyMatrixMixedTransfer(base, target, delivery),
+    );
+    await fsp.writeFile(
+      path.join(cellDir, "transfer-preflight.json"),
+      `${JSON.stringify(mixedTransfers, null, 2)}\n`,
+    );
+  };
 
   const [
     aSource,
@@ -1387,6 +1399,7 @@ async function runCell(
     embeddedReceipt,
     runtimeId: runtimeId(platform),
   });
+  await preflightTransfer(aDeployment, bDeployment);
   const serverA = normalizeBuild({
     role: "A",
     compilerReceipt: aSource.compilerReceipt,
@@ -1491,6 +1504,7 @@ async function runCell(
     deploymentReceipt: cDeployment,
     runtimeId: runtimeId(platform),
   });
+  await preflightTransfer(bDeployment, cDeployment);
   adapter.clickText("Close detail page");
   await adapter.waitForText("Bundle B ready");
   const cRejections = [];
@@ -1778,6 +1792,16 @@ async function runCell(
     releaseId: serverA.releaseId,
     targetBundleId: serverA.bundleId,
   });
+  await preflightTransfer(
+    cDeployment,
+    bDeployment,
+    cToBDeployment.deliveryArtifactResponse,
+  );
+  await preflightTransfer(
+    bDeployment,
+    aDeployment,
+    bToADeployment.deliveryArtifactResponse,
+  );
   await setReleaseEnabled(C.releaseId, false);
   const cToBRejections = [];
   for (const mode of ["missing", "corrupt"] as const) {

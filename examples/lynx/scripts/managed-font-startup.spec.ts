@@ -24,6 +24,7 @@ beforeEach(() => {
   vi.stubGlobal("__SPIKE_BEHAVIOR__", "normal");
   vi.stubGlobal("__SPIKE_ASSET_PREFIX__", "hot-updater:///");
   vi.stubGlobal("__SDK_RESOURCES__", true);
+  vi.stubGlobal("__MATRIX_STABLE_MAIN__", "");
 });
 
 afterEach(() => vi.unstubAllGlobals());

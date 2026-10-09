@@ -76,6 +76,7 @@ export async function buildPublic({
   behavior = "normal",
   octaneSource,
   matrixStableFont = false,
+  matrixStableMain = false,
 }) {
   if (!["react", "vue", "octane"].includes(framework))
     throw new Error("Choose react, vue, or octane.");
@@ -112,6 +113,7 @@ export async function buildPublic({
     HOT_UPDATER_SPIKE_SDK: "1",
     HOT_UPDATER_SPIKE_RESOURCES: "sdk3",
     HOT_UPDATER_SPIKE_STABLE_FONT: matrixStableFont ? "1" : "0",
+    HOT_UPDATER_MATRIX_STABLE_MAIN: matrixStableMain ? "1" : "0",
     HOT_UPDATER_SPIKE_ASSET_PREFIX: "hot-updater:///",
   };
   try {
@@ -187,6 +189,7 @@ if (
       "octane-source": { type: "string" },
       behavior: { type: "string" },
       "matrix-stable-font": { type: "boolean", default: false },
+      "matrix-stable-main": { type: "boolean", default: false },
     },
   });
   const [framework, variant = "A", octaneSource, behavior = "normal"] =
@@ -200,6 +203,7 @@ if (
     outDir,
     octaneSource: values["octane-source"] ?? octaneSource,
     matrixStableFont: values["matrix-stable-font"],
+    matrixStableMain: values["matrix-stable-main"],
   });
   console.log(
     JSON.stringify(

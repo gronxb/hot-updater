@@ -6,6 +6,7 @@ import {
   compilerPageGraphPlugin,
   compilerPageResourceEntries,
 } from "../spike/compiler-page-graph.mjs";
+import { matrixStableMain } from "../spike/matrix-stable-main.mjs";
 
 const isPublic = process.env.HOT_UPDATER_SPIKE_SDK !== "0";
 const resourceSet =
@@ -19,6 +20,7 @@ export default defineConfig({
       main: isPublic ? "./vue/src/sdk.ts" : "./vue/src/index.ts",
     },
     define: {
+      __MATRIX_STABLE_MAIN__: JSON.stringify(matrixStableMain()),
       __SDK_RESOURCES__: JSON.stringify(["sdk2", "sdk3"].includes(resourceSet)),
       __SPIKE_VARIANT__: JSON.stringify(
         process.env.HOT_UPDATER_SPIKE_VARIANT ?? "A",

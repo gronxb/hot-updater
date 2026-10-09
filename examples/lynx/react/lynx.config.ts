@@ -6,6 +6,7 @@ import {
   compilerPageGraphPlugin,
   compilerPageResourceEntries,
 } from "../spike/compiler-page-graph.mjs";
+import { matrixStableMain } from "../spike/matrix-stable-main.mjs";
 
 const isPublic = process.env.HOT_UPDATER_SPIKE_SDK !== "0";
 const isProduction = process.env.HOT_UPDATER_SPIKE_PROFILE === "production";
@@ -26,6 +27,7 @@ export default defineConfig({
           : "./react/src/index.tsx",
     },
     define: {
+      __MATRIX_STABLE_MAIN__: JSON.stringify(matrixStableMain()),
       __SDK_RESOURCES__: JSON.stringify(["sdk2", "sdk3"].includes(resourceSet)),
       __SPIKE_VARIANT__: JSON.stringify(
         process.env.HOT_UPDATER_SPIKE_VARIANT ?? "A",
