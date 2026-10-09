@@ -60,7 +60,7 @@ final class LynxControllerLocalTests: XCTestCase {
     }
 
     @discardableResult
-    private func writeTree(at directory: URL, bundleId: String, marker: String, managedPages: Bool = false) throws -> String {
+    private func writeTree(at directory: URL, bundleId: String, marker: String, managedPages: Bool = false, background: Bool = false) throws -> String {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         var metadataObject: [String: Any] = [
             "schemaVersion": 1, "bundleId": bundleId, "platform": "ios",
@@ -73,6 +73,7 @@ final class LynxControllerLocalTests: XCTestCase {
                 ["entry": "main.lynx.bundle", "resources": ["main.lynx.bundle"]],
             ]
         }
+        if background { metadataObject["backgroundEntry"] = "background.js" }
         let metadata = try JSONSerialization.data(withJSONObject: metadataObject, options: [.sortedKeys]) + Data("\n".utf8)
         var files: [String: Data] = [
             "main.lynx.bundle": Data("entry-\(marker)".utf8),
@@ -82,6 +83,7 @@ final class LynxControllerLocalTests: XCTestCase {
             "dynamic/component.lynx.bundle": Data("dyn-\(marker)".utf8),
             "hot-updater-lynx.json": metadata,
         ]
+        if background { files["background.js"] = Data("globalThis.marker = '\(marker)';".utf8) }
         if managedPages { files["detail.lynx.bundle"] = Data("detail-\(marker)".utf8) }
         var assets: [String: [String: String]] = [:]
         for (name, bytes) in files {
@@ -195,9 +197,9 @@ final class LynxControllerLocalTests: XCTestCase {
             selectionContextHash: contextHash)
     }
 
-    private func plantNext(_ config: LynxControllerConfiguration, releaseId: String, bundleId: String, marker: String, managedPages: Bool = false) throws {
+    private func plantNext(_ config: LynxControllerConfiguration, releaseId: String, bundleId: String, marker: String, managedPages: Bool = false, background: Bool = false) throws {
         let store = try home(config.root)
-        let digest = try writeTree(at: store.appendingPathComponent("bundles/\(bundleId)"), bundleId: bundleId, marker: marker, managedPages: managedPages)
+        let digest = try writeTree(at: store.appendingPathComponent("bundles/\(bundleId)"), bundleId: bundleId, marker: marker, managedPages: managedPages, background: background)
         let journal = LynxControllerJournal(file: store.appendingPathComponent("state.json"))
         var state = try journal.load()
         let snapshot = LynxPolicySnapshot(
@@ -2030,5 +2032,404 @@ final class LynxControllerLocalTests: XCTestCase {
         XCTAssertEqual(try controller!.getState(context)["cohort"] as? String, "2")
         XCTAssertEqual(try controller!.getState(context)["unconfirmedReleaseIds"] as? [String], [releaseB])
         XCTAssertEqual(controller!.runningSelection.bundleId, embeddedId)
+    }
+}
+
+extension LynxControllerLocalTests {
+    private func backgroundFixture() throws -> (URL, LynxControllerConfiguration, LynxRuntimeHost, LynxControllerJournal) {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-background-\(UUID().uuidString)")
+        let embedded = root.appendingPathComponent("embedded")
+        let digest = try writeTree(at: embedded, bundleId: embeddedId, marker: "A", background: true)
+        let config = configuration(root: root.appendingPathComponent("store"), embedded: embedded, digest: digest)
+        let host = try LynxRuntimeHost.get(configuration: config)
+        let controller = try host.createForeground()
+        try controller.close()
+        return (root, config, host, LynxControllerJournal(file: host.scope.home.appendingPathComponent("state.json")))
+    }
+
+    func testColdBackgroundCopiesStagedSelectionWithoutConsumingJournalOrForegroundApply() throws {
+        let (root, config, host, journal) = try backgroundFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B", background: true)
+        let before = try Data(contentsOf: journal.file)
+        let task = try host.beginBackground()
+        XCTAssertEqual(task.snapshot.selection.releaseId, releaseB)
+        XCTAssertEqual(task.snapshot.source, "globalThis.marker = 'B';")
+        XCTAssertEqual(try Data(contentsOf: journal.file), before)
+        let controller = try host.createForeground()
+        let context = controller.createContext(primary: true)
+        XCTAssertEqual(try controller.begin(context).bundleId, bundleB)
+        try confirm(controller, context)
+        try task.executionEnded()
+        try controller.close()
+        XCTAssertEqual(try journal.load().confirmed?.policy.releaseId, releaseB)
+    }
+
+    func testBackgroundKeepsLivePendingEligibleButColdCaptureProjectsItsInterruption() throws {
+        let (root, config, host, journal) = try backgroundFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B", background: true)
+        let controller = try host.createForeground()
+        _ = try controller.begin(controller.createContext(primary: true))
+        let before = try Data(contentsOf: journal.file)
+        let live = try host.beginBackground()
+        XCTAssertEqual(live.snapshot.selection.releaseId, releaseB)
+        try controller.close()
+        let cold = try host.beginBackground()
+        XCTAssertEqual(cold.snapshot.selection.kind, "BUILTIN")
+        XCTAssertEqual(try Data(contentsOf: journal.file), before)
+        try live.executionEnded()
+        try cold.executionEnded()
+        let recovered = try host.createForeground()
+        XCTAssertEqual(recovered.runningSelection.kind, "BUILTIN")
+        XCTAssertEqual(try journal.load().interruptedReleases?[releaseB]?.retryReady, false)
+        try recovered.close()
+    }
+
+    func testColdBackgroundPreservesConfirmedManagedReloadIncludingLegacyPendingIdentity() throws {
+        for legacy in [false, true] {
+            let (root, config, host, journal) = try backgroundFixture()
+            defer { try? FileManager.default.removeItem(at: root) }
+            try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B", background: true)
+            var state = try journal.load()
+            let selected = try XCTUnwrap(state.next)
+            let transitionId = UUID().uuidString
+            state.confirmed = selected
+            state.managedTransition = .init(transitionId: transitionId, trigger: "reload",
+                source: selected, target: selected, stack: [.init(entry: "main.lynx.bundle", parameters: [])])
+            state.pending = .init(selection: selected, attemptId: UUID().uuidString,
+                contextId: UUID().uuidString, transitionId: legacy ? nil : transitionId)
+            try journal.save(state)
+            let before = try Data(contentsOf: journal.file)
+            let task = try host.beginBackground()
+            XCTAssertEqual(task.snapshot.selection.releaseId, releaseB)
+            XCTAssertEqual(try Data(contentsOf: journal.file), before)
+            try task.executionEnded()
+        }
+    }
+
+    func testBackgroundFourTaskBoundIsAtomicAndSameReleaseTasksEndIndependently() throws {
+        let (root, _, host, _) = try backgroundFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let group = DispatchGroup()
+        let resultsLock = NSLock()
+        var tasks: [LynxBackgroundTask] = []
+        var rejected = 0
+        for _ in 0..<12 {
+            group.enter()
+            DispatchQueue.global().async {
+                defer { group.leave() }
+                do {
+                    let task = try host.beginBackground()
+                    resultsLock.lock(); tasks.append(task); resultsLock.unlock()
+                } catch {
+                    resultsLock.lock(); rejected += 1; resultsLock.unlock()
+                }
+            }
+        }
+        XCTAssertEqual(group.wait(timeout: .now() + 10), .success)
+        XCTAssertEqual(tasks.count, 4)
+        XCTAssertEqual(rejected, 8)
+        XCTAssertEqual(Set(tasks.map { $0.snapshot.taskId }).count, 4)
+        try tasks[0].executionEnded()
+        let replacement = try host.beginBackground()
+        try tasks[0].executionEnded()
+        XCTAssertThrowsError(try host.beginBackground())
+        for task in tasks.dropFirst() { try task.executionEnded() }
+        try replacement.executionEnded()
+    }
+
+    func testBackgroundCopySurvivesFileRemovalAndRejectsChangedEmbeddedBytes() throws {
+        let (root, config, host, _) = try backgroundFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B", background: true)
+        let task = try host.beginBackground()
+        try FileManager.default.removeItem(at: host.scope.home.appendingPathComponent("bundles/\(bundleB)"))
+        XCTAssertEqual(task.snapshot.source, "globalThis.marker = 'B';")
+        try task.executionEnded()
+        try Data("globalThis.marker = 'tampered';".utf8).write(to: config.embeddedDirectory.appendingPathComponent("background.js"))
+        XCTAssertThrowsError(try host.beginBackground())
+    }
+
+    func testBackgroundFatalPersistsPinnedReceiptWithoutChangingOtherForegroundPending() throws {
+        let (root, config, host, journal) = try backgroundFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B", background: true)
+        let task = try host.beginBackground()
+        try plantNext(config, releaseId: releaseC, bundleId: bundleC, marker: "C", background: true)
+        let controller = try host.createForeground()
+        let context = controller.createContext(primary: true)
+        _ = try controller.begin(context)
+        let before = try journal.load()
+        try task.reportFatal()
+        let after = try journal.load()
+        XCTAssertEqual(after.pending?.attemptId, before.pending?.attemptId)
+        XCTAssertEqual(try after.pending?.selection.policy.releaseId, releaseC)
+        XCTAssertEqual(try after.launchTransition?.policy.to.releaseId, releaseC)
+        XCTAssertEqual(after.unconfirmedReleaseIds, [releaseB])
+        XCTAssertEqual(after.crashedBundleIds, [bundleB])
+        XCTAssertEqual(try controller.getState(context)["runningConfirmed"] as? Bool, false)
+        try confirm(controller, context)
+        try task.executionEnded()
+        try controller.close()
+    }
+
+    func testFailedBackgroundWriteRetainsIntentButUnrelatedConfirmedForegroundCanReadAndNotify() throws {
+        let (root, config, host, journal) = try backgroundFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B", background: true)
+        let task = try host.beginBackground()
+        try plantNext(config, releaseId: releaseC, bundleId: bundleC, marker: "C", background: true)
+        let controller = try host.createForeground()
+        let context = controller.createContext(primary: true)
+        _ = try controller.begin(context)
+        try confirm(controller, context)
+        let backup = journal.file.appendingPathExtension("backup")
+        try FileManager.default.moveItem(at: journal.file, to: backup)
+        try FileManager.default.createDirectory(at: journal.file, withIntermediateDirectories: false)
+        XCTAssertThrowsError(try task.reportFatal())
+        XCTAssertThrowsError(try task.executionEnded())
+        XCTAssertThrowsError(try host.beginBackground())
+        XCTAssertEqual(try controller.getState(context)["runningConfirmed"] as? Bool, true)
+        var status: String?
+        controller.notifyAppReady(context) { status = try? $0.get().status }
+        XCTAssertEqual(status, "ALREADY_CONFIRMED")
+        try controller.close()
+        XCTAssertThrowsError(try host.createForeground())
+        try FileManager.default.removeItem(at: journal.file)
+        try FileManager.default.moveItem(at: backup, to: journal.file)
+        let recovered = try host.createForeground()
+        XCTAssertEqual(recovered.runningSelection.releaseId, releaseC)
+        XCTAssertEqual(try journal.load().unconfirmedReleaseIds, [releaseB])
+        try recovered.close()
+        // Replaying the closed failed task released its independent task slot.
+        let tasks = try (0..<4).map { _ in try host.beginBackground() }
+        for task in tasks { try task.executionEnded() }
+    }
+
+    func testSameBundleBackgroundFatalInvalidatesReadinessBeforeFailedPersistence() throws {
+        let (root, config, host, journal) = try backgroundFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B", background: true)
+        let controller = try host.createForeground()
+        let context = controller.createContext(primary: true)
+        _ = try controller.begin(context)
+        var failed = false
+        controller.notifyAppReady(context) { if case .failure = $0 { failed = true } }
+        let task = try host.beginBackground()
+        let backup = journal.file.appendingPathExtension("backup")
+        try FileManager.default.moveItem(at: journal.file, to: backup)
+        try FileManager.default.createDirectory(at: journal.file, withIntermediateDirectories: false)
+        XCTAssertThrowsError(try task.reportFatal())
+        XCTAssertTrue(failed)
+        XCTAssertThrowsError(try controller.observedContent(context))
+        XCTAssertThrowsError(try host.beginBackground())
+        try FileManager.default.removeItem(at: journal.file)
+        try FileManager.default.moveItem(at: backup, to: journal.file)
+        try task.executionEnded()
+        XCTAssertEqual(try journal.load().unconfirmedReleaseIds, [releaseB])
+        try controller.close()
+    }
+
+    func testRetiredControllerDoubleCloseCannotReleaseNewForegroundOwner() throws {
+        let (root, config, host, _) = try backgroundFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let retired = try host.createForeground()
+        try retired.close()
+        let current = try host.createForeground()
+        try retired.close()
+        XCTAssertThrowsError(try LynxController(configuration: config))
+        let task = try host.beginBackground()
+        try task.executionEnded()
+        try current.close()
+    }
+
+    func testBackgroundReservationCountsAgainstLaterForegroundSelection() throws {
+        let (root, config, host, journal) = try backgroundFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B", background: true)
+        var state = try journal.load()
+        state.unconfirmedReleaseIds = (0..<127).map { "01900000-0000-7000-8000-" + String(format: "%012x", 1000 + $0) }
+        try journal.save(state)
+        let task = try host.beginBackground()
+        XCTAssertEqual(task.snapshot.selection.releaseId, releaseB)
+        try plantNext(config, releaseId: releaseC, bundleId: bundleC, marker: "C", background: true)
+        let controller = try host.createForeground()
+        XCTAssertEqual(controller.runningSelection.kind, "BUILTIN")
+        try controller.close()
+        try task.reportFatal()
+        XCTAssertEqual(try journal.load().unconfirmedReleaseIds.count, 128)
+        try task.executionEnded()
+    }
+
+    func testBuiltinFailureMarkerSurvivesSignedEmbeddedFatalAndBlocksForegroundFallback() throws {
+        let (root, _, host, journal) = try backgroundFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let task = try host.beginBackground()
+        try task.reportFatal()
+        try task.executionEnded()
+        var state = try journal.load()
+        let signed = try LynxStoredSelection(receipt(releaseId: releaseB, bundleId: embeddedId,
+            contextHash: "v1:0000000000000000", kind: "EMBEDDED"), manifestDigest: host.scope.embeddedArtifact.manifestDigest)
+        try state.recordFatal(signed, embeddedBundleId: embeddedId)
+        try journal.save(state)
+        XCTAssertEqual(try journal.load().failedEmbedded?.policy.kind, "BUILTIN")
+        XCTAssertEqual(try journal.load().unconfirmedReleaseIds, [releaseB])
+        XCTAssertThrowsError(try host.beginBackground())
+        XCTAssertThrowsError(try host.createForeground())
+    }
+}
+
+extension LynxControllerLocalTests {
+    func testBackgroundReservationAfterPreparationBlocksSameByteAdoptionUntilTaskEnds() async throws {
+        let (root, config, host, journal) = try backgroundFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B", background: true)
+        var stored = try journal.load()
+        stored.unconfirmedReleaseIds = (0..<127).map { "01900000-0000-7000-8000-" + String(format: "%012x", 1000 + $0) }
+        try journal.save(stored)
+        let controller = try host.createForeground()
+        let context = controller.createContext(primary: true)
+        _ = try controller.begin(context)
+        try confirm(controller, context)
+        let native = try snapshot(controller, context, config)
+        let bytes = try catalogJSON(releases: [(releaseC, bundleB), (releaseB, bundleB)], generation: 3)
+        let accepted = try controller.acceptCatalog(bytes, expectedRevision: native.revision,
+            contextHash: LynxCatalogPolicy.contextHash(snapshot: native), context: context)
+        let selected = receipt(releaseId: releaseC, bundleId: bundleB,
+            contextHash: accepted.selectionContextHash, generation: 3)
+        let prepared = try await controller.prepareSelection(guard: accepted, receipt: selected, artifact: nil, context: context)
+        let revision = try journal.load().revision
+        let task = try host.beginBackground()
+        XCTAssertEqual(task.snapshot.selection.releaseId, releaseB)
+        XCTAssertEqual(try journal.load().revision, revision)
+        XCTAssertThrowsError(try controller.stageSelection(prepared, context: context))
+        XCTAssertEqual(controller.runningSelection.releaseId, releaseB)
+        XCTAssertEqual(try journal.load().unconfirmedReleaseIds.count, 127)
+        try task.executionEnded()
+        let retry = try await controller.prepareSelection(guard: accepted, receipt: selected, artifact: nil, context: context)
+        XCTAssertEqual(try controller.stageSelection(retry, context: context)["status"] as? String, "ADOPTED")
+        XCTAssertEqual(controller.runningSelection.releaseId, releaseC)
+        try controller.close()
+    }
+
+    func testBackgroundAndForegroundScopesRejectConflictingNativeConfiguration() throws {
+        let (root, config, host, _) = try backgroundFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let alias = LynxControllerConfiguration(root: config.root.appendingPathComponent("."),
+            runtimeId: config.runtimeId, binaryIdentity: config.binaryIdentity,
+            embeddedDirectory: config.embeddedDirectory, embeddedBundleId: config.embeddedBundleId,
+            embeddedManifestDigest: config.embeddedManifestDigest, minimumBundleId: config.minimumBundleId,
+            appVersion: config.appVersion, channel: config.channel, cohort: config.cohort)
+        XCTAssertTrue(try LynxRuntimeHost.get(configuration: alias) === host)
+        let conflict = LynxControllerConfiguration(root: config.root,
+            runtimeId: config.runtimeId, binaryIdentity: config.binaryIdentity,
+            embeddedDirectory: config.embeddedDirectory, embeddedBundleId: config.embeddedBundleId,
+            embeddedManifestDigest: config.embeddedManifestDigest, minimumBundleId: config.minimumBundleId,
+            appVersion: config.appVersion, channel: config.channel, cohort: config.cohort,
+            fingerprintHash: "different-binary-fingerprint")
+        XCTAssertThrowsError(try LynxRuntimeHost.get(configuration: conflict))
+        XCTAssertThrowsError(try LynxController(configuration: conflict))
+        let task = try host.beginBackground()
+        try task.executionEnded()
+    }
+}
+
+extension LynxControllerLocalTests {
+    func testRetiredControllerCannotReplayTaskFailureOverReplacementJournal() throws {
+        let (root, config, host, journal) = try backgroundFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let retired = try host.createForeground()
+        let staleContext = retired.createContext(primary: true)
+        try retired.close()
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B", background: true)
+        let current = try host.createForeground()
+        let context = current.createContext(primary: true)
+        _ = try current.begin(context)
+        let task = try host.beginBackground()
+        let backup = journal.file.appendingPathExtension("backup")
+        try FileManager.default.moveItem(at: journal.file, to: backup)
+        try FileManager.default.createDirectory(at: journal.file, withIntermediateDirectories: false)
+        XCTAssertThrowsError(try task.reportFatal())
+        try FileManager.default.removeItem(at: journal.file)
+        try FileManager.default.moveItem(at: backup, to: journal.file)
+        let before = try Data(contentsOf: journal.file)
+        XCTAssertThrowsError(try retired.begin(staleContext))
+        XCTAssertEqual(try Data(contentsOf: journal.file), before)
+        try task.executionEnded()
+        XCTAssertEqual(try journal.load().pending?.contextId, context.id)
+        XCTAssertEqual(try journal.load().unconfirmedReleaseIds, [releaseB])
+        try current.close()
+    }
+
+    func testAuthenticatedBundleReleaseOnEmbeddedBytesCanPersistFatalAndRecoverBuiltin() async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-embedded-bundle-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let embedded = root.appendingPathComponent("embedded")
+        let digest = try writeTree(at: embedded, bundleId: bundleB, marker: "A", background: true)
+        let config = LynxControllerConfiguration(root: root.appendingPathComponent("store"), runtimeId: runtime,
+            binaryIdentity: "registered-embedded-binary", embeddedDirectory: embedded, embeddedBundleId: bundleB,
+            embeddedManifestDigest: digest, minimumBundleId: embeddedId, appVersion: "1.0.0", channel: channel, cohort: "1")
+        let host = try LynxRuntimeHost.get(configuration: config)
+        let journal = LynxControllerJournal(file: host.scope.home.appendingPathComponent("state.json"))
+        let controller = try host.createForeground()
+        let context = controller.createContext(primary: true)
+        _ = try controller.begin(context)
+        try confirm(controller, context)
+        let native = try snapshot(controller, context, config)
+        let accepted = try controller.acceptCatalog(try catalogJSON(releases: [(releaseB, config.embeddedBundleId)]),
+            expectedRevision: native.revision, contextHash: LynxCatalogPolicy.contextHash(snapshot: native), context: context)
+        let selected = receipt(releaseId: releaseB, bundleId: config.embeddedBundleId, contextHash: accepted.selectionContextHash)
+        let token = try await controller.prepareSelection(guard: accepted, receipt: selected, artifact: nil, context: context)
+        XCTAssertEqual(try controller.stageSelection(token, context: context)["status"] as? String, "ADOPTED")
+        let task = try host.beginBackground()
+        XCTAssertEqual(task.snapshot.selection.kind, "BUNDLE")
+        try task.reportFatal()
+        try task.executionEnded()
+        XCTAssertEqual(try journal.load().failedEmbedded?.policy.kind, "BUNDLE")
+        try controller.close()
+        let recovered = try host.createForeground()
+        XCTAssertEqual(recovered.runningSelection.kind, "BUILTIN")
+        try recovered.close()
+    }
+}
+
+extension LynxControllerLocalTests {
+    func testColdBackgroundRespectsRetryHoldWithoutArmingOrConsumingIt() throws {
+        for (ready, sameProcess, expectedBundle) in [(false, false, embeddedId), (true, true, embeddedId), (true, false, bundleB)] {
+            let (root, config, host, journal) = try backgroundFixture()
+            defer { try? FileManager.default.removeItem(at: root) }
+            try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B", background: true)
+            var state = try journal.load()
+            state.interruptedReleases = [releaseB: .init(bundleId: bundleB, retryReady: ready,
+                holdProcessToken: sameProcess ? LynxController.processToken : UUID().uuidString)]
+            try journal.save(state)
+            let before = try Data(contentsOf: journal.file)
+            let task = try host.beginBackground()
+            XCTAssertEqual(task.snapshot.selection.bundleId, expectedBundle)
+            try task.executionEnded()
+            XCTAssertEqual(try Data(contentsOf: journal.file), before)
+        }
+    }
+
+    func testSameReleaseBackgroundTasksKeepFinalRecoverySlotUntilLastExecutionEnds() throws {
+        let (root, config, host, journal) = try backgroundFixture()
+        defer { try? FileManager.default.removeItem(at: root) }
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B", background: true)
+        var state = try journal.load()
+        state.unconfirmedReleaseIds = (0..<127).map { "01900000-0000-7000-8000-" + String(format: "%012x", 1000 + $0) }
+        try journal.save(state)
+        let tasks = try (0..<4).map { _ in try host.beginBackground() }
+        XCTAssertTrue(tasks.allSatisfy { $0.snapshot.selection.releaseId == releaseB })
+        try plantNext(config, releaseId: releaseC, bundleId: bundleC, marker: "C", background: true)
+        let before = try Data(contentsOf: journal.file)
+        for task in tasks.dropLast() { try task.executionEnded() }
+        XCTAssertThrowsError(try host.beginBackground())
+        XCTAssertEqual(try Data(contentsOf: journal.file), before)
+        try tasks.last!.executionEnded()
+        let next = try host.beginBackground()
+        XCTAssertEqual(next.snapshot.selection.releaseId, releaseC)
+        XCTAssertEqual(try Data(contentsOf: journal.file), before)
+        try next.executionEnded()
     }
 }

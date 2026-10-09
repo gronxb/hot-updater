@@ -227,6 +227,7 @@ struct LynxControllerState: Codable {
     var unconfirmedReleaseIds: [String] = []
     var interruptedReleases: [String: LynxInterruptedRelease]?
     var crashedBundleIds: [String] = []
+    var failedEmbedded: LynxStoredSelection?
     // Oldest first. Persisting the admission order lets a full cache evict one
     // entry without permanently denying future artifacts.
     var incompatibleArtifacts: [String] = []
@@ -235,6 +236,37 @@ struct LynxControllerState: Codable {
     var catalogAcceptances: [String: LynxStoredCatalogAcceptance]?
     var launchTransition: LynxStoredLaunchTransition?
     var installedDigests: [String: String] = [:]
+
+    func excludesEmbedded(_ receipt: LynxPolicyReceipt) -> Bool {
+        guard let failed = try? failedEmbedded?.policy else { return false }
+        return receipt.bundleId == failed.bundleId && receipt.releaseId == failed.releaseId
+    }
+
+    mutating func retainEmbeddedFailure(_ selection: LynxStoredSelection) {
+        if let previous = try? failedEmbedded?.policy, previous.releaseId == nil { return }
+        failedEmbedded = selection
+    }
+
+    mutating func recordFatal(_ selection: LynxStoredSelection, embeddedBundleId: String) throws {
+        let receipt = try selection.policy
+        if receipt.bundleId == embeddedBundleId {
+            retainEmbeddedFailure(selection)
+        } else {
+            crashedBundleIds.removeAll { $0 == receipt.bundleId }
+            crashedBundleIds.append(receipt.bundleId)
+            if crashedBundleIds.count > 10 { crashedBundleIds.removeFirst(crashedBundleIds.count - 10) }
+        }
+        var failedIds = Set(unconfirmedReleaseIds)
+        if let id = receipt.releaseId { failedIds.insert(id) }
+        for (id, record) in interruptedReleases ?? [:] where record.bundleId == receipt.bundleId {
+            failedIds.insert(id)
+        }
+        guard failedIds.union((interruptedReleases ?? [:]).keys).count <= 128 else {
+            throw LynxArtifactError.invalid("Missing reserved native recovery capacity")
+        }
+        unconfirmedReleaseIds += failedIds.subtracting(Set(unconfirmedReleaseIds)).sorted()
+        for id in failedIds { interruptedReleases?.removeValue(forKey: id) }
+    }
 
     var recoveryIdentities: Set<String> {
         Set(unconfirmedReleaseIds).union((interruptedReleases ?? [:]).keys)
@@ -273,6 +305,13 @@ final class LynxControllerJournal {
         guard FileManager.default.fileExists(atPath: file.path) else { return LynxControllerState() }
         let bytes = try StrictMetadataJSON.read(file, limit: 24 * 1024 * 1024)
         let state = try JSONDecoder().decode(LynxControllerState.self, from: bytes)
+        if let failure = state.failedEmbedded {
+            let receipt = try failure.policy
+            guard ["BUILTIN", "EMBEDDED", "BUNDLE"].contains(receipt.kind),
+                  failure.manifestDigest.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil else {
+                throw LynxArtifactError.invalid("Invalid native embedded failure receipt")
+            }
+        }
         if let launchTransition = state.launchTransition {
             _ = try launchTransition.policy
             guard launchTransition.transitionId.map(lynxValidTransitionId) != false else {

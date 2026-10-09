@@ -2,7 +2,7 @@ import CryptoKit
 import Foundation
 
 /// Supply these values from the native binary/host, never downloaded JavaScript.
-public struct LynxControllerConfiguration {
+public struct LynxControllerConfiguration: Equatable {
     public let root: URL
     public let runtimeId: String
     public let binaryIdentity: String
@@ -146,7 +146,8 @@ public final class LynxController {
     private let identity = UUID()
     static let processToken = UUID().uuidString
     private let launchProcessToken: String
-    private let lock = NSRecursiveLock()
+    let runtimeHost: LynxRuntimeHost
+    private let lock: NSRecursiveLock
     private let installer: LynxArtifactInstaller
     private let journal: LynxControllerJournal
     private let builtin: LynxStoredSelection
@@ -186,51 +187,22 @@ public final class LynxController {
          journalDirectorySync: ((URL) throws -> Void)? = nil,
          processToken: String = LynxController.processToken) throws {
         launchProcessToken = processToken
-        guard !config.runtimeId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-              !config.binaryIdentity.isEmpty, !config.channel.isEmpty, config.channel == config.channel.trimmingCharacters(in: .whitespacesAndNewlines),
-              config.channel.utf8.elementsEqual(config.channel.precomposedStringWithCanonicalMapping.utf8),
-              config.appVersion.range(of: "^[0-9]+\\.[0-9]+\\.[0-9]+([+-][0-9A-Za-z.-]+)?$", options: .regularExpression) != nil,
-              UUID(uuidString: config.embeddedBundleId) != nil, UUID(uuidString: config.minimumBundleId) != nil else {
-            throw LynxArtifactError.invalid("Invalid native Lynx controller configuration")
-        }
+        let host = try LynxRuntimeHost.get(configuration: config)
+        host.ownerLock.lock()
+        defer { host.ownerLock.unlock() }
+        try host.prepareForeground()
+        runtimeHost = host
+        lock = host.stateLock
         configuration = config
         runtimeCohort = try LynxCatalogPolicy.normalizedCohort(config.cohort)
         runtimeChannel = config.channel
+        let scope = host.scope
         let profile = LynxArtifactConfiguration(runtimeId: config.runtimeId, publicKeyPEM: config.publicKeyPEM)
-        // The binary's embedded digest is its trust anchor; downloaded signatures are a separate policy.
-        let embeddedRoot = config.embeddedDirectory.standardizedFileURL.resolvingSymlinksInPath()
-        let embedded = try VerifiedLynxTree.verify(at: embeddedRoot, bundleId: config.embeddedBundleId, manifestToken: nil,
-            configuration: .init(runtimeId: config.runtimeId), expectedDigest: config.embeddedManifestDigest)
-        let embeddedArtifactValue = LynxInstalledArtifact(
-            bundleId: config.embeddedBundleId,
-            directory: embeddedRoot,
-            entry: embedded.entry,
-            backgroundEntry: embedded.backgroundEntry,
-            hasManagedPageMetadata: embedded.hasManagedPageMetadata,
-            pageEntries: embedded.pageEntries,
-            pageEssentialResources: embedded.pageEssentialResources,
-            manifestDigest: embedded.digest,
-            files: embedded.files
-        )
+        let embeddedArtifactValue = scope.embeddedArtifact
         embeddedArtifact = embeddedArtifactValue
-        guard let embeddedMainResources = embeddedArtifactValue.essentialResources(
-            for: embedded.entry
-        ),
-        config.startupResourcePaths.isEmpty || config.startupResourcePaths
-            .isSubset(of: Set(embedded.hasManagedPageMetadata
-                ? embeddedMainResources
-                : Array(embedded.files.keys))) else {
-            throw LynxArtifactError.invalid(
-                "Native startup resources must be declared by the embedded page"
-            )
-        }
-        let builtinPolicy = LynxPolicyReceipt(kind: "BUILTIN", releaseId: nil, bundleId: config.embeddedBundleId,
-            catalogId: nil, scopeKey: nil, generation: nil, catalogHash: nil, channel: config.channel, selectionContextHash: nil)
-        builtin = try LynxStoredSelection(builtinPolicy, manifestDigest: embedded.digest)
-        let scope = Self.hash(try JSONSerialization.data(withJSONObject: [config.binaryIdentity, config.runtimeId,
-            config.embeddedBundleId, embedded.digest, config.appVersion, config.channel,
-            config.minimumBundleId, Self.hash(Data((config.publicKeyPEM ?? "unsigned").utf8))]))
-        let home = config.root.appendingPathComponent(scope)
+        builtin = scope.builtin
+        let builtinPolicy = try builtin.policy
+        let home = scope.home
         generationEventJournalURL = home.appendingPathComponent(
             "generation-events.json"
         )
@@ -252,6 +224,8 @@ public final class LynxController {
         } else {
             journal = LynxControllerJournal(file: journalFile)
         }
+        host.stateLock.lock()
+        defer { host.stateLock.unlock() }
         var recovered = try journal.load()
         var recoveredChanged = false
         if let launchTransition = recovered.launchTransition,
@@ -423,21 +397,10 @@ public final class LynxController {
             }
             let snapshot = nativeSnapshot(receipt)
             guard Self.storedEligible(candidate, state: recovered, snapshot: snapshot),
-                  (receipt.releaseId == nil || recovered.recoveryIdentities.count < 128
-                    || recovered.recoveryIdentities.contains(receipt.releaseId ?? "")) else { continue }
+                  host.canAdmit(receipt, state: recovered, live: nil) else { continue }
             let tree: LynxInstalledArtifact?
             if receipt.bundleId == config.embeddedBundleId {
-                tree = .init(
-                    bundleId: config.embeddedBundleId,
-                    directory: embeddedRoot,
-                    entry: embedded.entry,
-                    backgroundEntry: embedded.backgroundEntry,
-                    hasManagedPageMetadata: embedded.hasManagedPageMetadata,
-                    pageEntries: embedded.pageEntries,
-                    pageEssentialResources: embedded.pageEssentialResources,
-                    manifestDigest: embedded.digest,
-                    files: embedded.files
-                )
+                tree = embeddedArtifactValue
             } else {
                 tree = try? installer.inspectInstalled(bundleId: receipt.bundleId, expectedManifestDigest: candidate.manifestDigest)
             }
@@ -461,7 +424,8 @@ public final class LynxController {
                Self.sameIdentity(interrupted, builtinPolicy) {
                 embeddedPageInterruptionHasNoFallback = true
             }
-            guard !embeddedPageInterruptionHasNoFallback,
+            guard !recovered.excludesEmbedded(builtinPolicy),
+                  !embeddedPageInterruptionHasNoFallback,
                   recoveredPages.isEmpty || recoveredPages.allSatisfy({
                       embeddedArtifactValue.pageEntries.contains($0.entry)
                   }) else {
@@ -530,11 +494,12 @@ public final class LynxController {
             .map { try $0.dictionary }
         runningConfirmed = Self.sameIdentity(runningSelection, try recovered.confirmed?.policy)
         try? cleanupUnusedArtifacts()
+        host.foreground = self
     }
 
     private static func hash(_ bytes: Data) -> String { SHA256.hash(data: bytes).map { String(format: "%02x", $0) }.joined() }
     private static func key(_ catalogId: String, _ scope: String) -> String { hash(Data((catalogId + "\u{0}" + scope).utf8)) }
-    private static func sameIdentity(_ a: LynxPolicyReceipt?, _ b: LynxPolicyReceipt?) -> Bool {
+    static func sameIdentity(_ a: LynxPolicyReceipt?, _ b: LynxPolicyReceipt?) -> Bool {
         guard let a, let b else { return false }
         return a.kind == b.kind && a.bundleId == b.bundleId && a.releaseId == b.releaseId && a.channel == b.channel
     }
@@ -668,8 +633,8 @@ public final class LynxController {
         }
         return (transition, transitionId)
     }
-    private static func storedEligible(_ stored: LynxStoredSelection, state: LynxControllerState, snapshot: LynxPolicySnapshot) -> Bool {
-        guard let receipt = try? stored.policy else { return false }
+    static func storedEligible(_ stored: LynxStoredSelection, state: LynxControllerState, snapshot: LynxPolicySnapshot) -> Bool {
+        guard let receipt = try? stored.policy, !state.excludesEmbedded(receipt) else { return false }
         if receipt.kind == "BUILTIN", receipt.catalogId == nil { return receipt.bundleId == snapshot.embeddedBundleId }
         guard let catalogId = receipt.catalogId, let scope = receipt.scopeKey else { return false }
         let key = key(catalogId, scope)
@@ -765,7 +730,8 @@ public final class LynxController {
         sourceContextId: String? = nil
     ) throws -> LynxInstalledArtifact {
         lock.lock(); defer { lock.unlock() }
-        guard context.owner == identity,
+        try replayBackgroundFailures()
+        guard !closed, context.owner == identity,
               contexts[ObjectIdentifier(context)] === context,
               context.active, !context.started, !fatal, fatalContext == nil,
               !readinessAuthorityRevoked,
@@ -777,6 +743,9 @@ public final class LynxController {
                   for: pageEntry
               ) else {
             throw LynxArtifactError.invalid("Invalid managed page launch context")
+        }
+        guard runtimeHost.canAdmit(runningSelection, state: state, live: liveReceipt) else {
+            throw LynxArtifactError.invalid("Startup recovery capacity exhausted")
         }
         if context.primary {
             guard primary == nil, pageEntry == runningArtifact.entry else {
@@ -889,8 +858,9 @@ public final class LynxController {
 
     /// Invalidates every context before releasing this generation's store lease.
     public func close() throws {
+        runtimeHost.ownerLock.lock()
         lock.lock()
-        guard !closed else { lock.unlock(); return }
+        guard !closed else { lock.unlock(); runtimeHost.ownerLock.unlock(); return }
         closed = true
         fatal = true
         contexts.values.forEach { $0.active = false }
@@ -906,6 +876,8 @@ public final class LynxController {
         lock.unlock()
         discarded.forEach { try? installer.discard($0) }
         installer.close()
+        if runtimeHost.foreground === self { runtimeHost.foreground = nil }
+        runtimeHost.ownerLock.unlock()
         callbacks.forEach {
             $0(.failure(LynxArtifactError.invalid("STALE_CONTEXT: Generation closed")))
         }
@@ -998,6 +970,7 @@ public final class LynxController {
         return accepted.selectionGuard
     }
     @discardableResult private func authorize(_ guardValue: LynxPolicyGuard, _ receipt: LynxPolicyReceipt) throws -> LynxPolicyAuthorization {
+        try replayBackgroundFailures()
         let key = Self.key(guardValue.catalogId, guardValue.scopeKey)
         guard let bytes = state.catalogs[key],
               let accepted = state.catalogAcceptances?[key],
@@ -1010,7 +983,7 @@ public final class LynxController {
         )
         let catalog = try LynxCatalogPolicy.parseCatalog(json: bytes, snapshot: current)
         let authorization = try LynxCatalogPolicy.authorize(catalog: catalog, snapshot: current, selectionGuard: guardValue, requestedReceipt: receipt)
-        guard !state.effectiveUnconfirmed(processToken: launchProcessToken).contains(receipt.releaseId ?? ""), !state.crashedBundleIds.contains(receipt.bundleId) else { throw LynxArtifactError.authorizationRequired }
+        guard !state.effectiveUnconfirmed(processToken: launchProcessToken).contains(receipt.releaseId ?? ""), !state.crashedBundleIds.contains(receipt.bundleId), !state.excludesEmbedded(receipt) else { throw LynxArtifactError.authorizationRequired }
         return authorization
     }
     public func prepareSelection(guard guardValue: LynxPolicyGuard, receipt: LynxPolicyReceipt, artifact: LynxArtifactRequest?, context: LynxLaunchContext) async throws -> String {
@@ -1153,6 +1126,11 @@ public final class LynxController {
         let adopt = value.receipt.kind == "BUNDLE"
             && value.receipt.bundleId == runningSelection.bundleId && runningConfirmed
         func publishState() throws {
+            try replayBackgroundFailures()
+            try validate(context, primaryRequired: true)
+            if adopt, !runtimeHost.canAdmit(value.receipt, state: state, live: nil) {
+                throw LynxArtifactError.invalid("Adoption recovery capacity exhausted")
+            }
             var next = state
             let selection = try LynxStoredSelection(value.receipt, manifestDigest: value.digest, rollback: authorization.rollback)
             next.selectionChannel = value.receipt.channel
@@ -1725,34 +1703,47 @@ public final class LynxController {
     private func recordFatalSelectionFailure(
         in next: inout LynxControllerState
     ) throws {
-        if runningSelection.bundleId != configuration.embeddedBundleId {
-            next.crashedBundleIds.removeAll {
-                $0 == runningSelection.bundleId
-            }
-            next.crashedBundleIds.append(runningSelection.bundleId)
-            if next.crashedBundleIds.count > 10 {
-                next.crashedBundleIds.removeFirst(
-                    next.crashedBundleIds.count - 10
-                )
-            }
+        try next.recordFatal(running, embeddedBundleId: configuration.embeddedBundleId)
+    }
+
+    private var liveReceipt: LynxPolicyReceipt? {
+        contexts.values.contains { $0.active && $0.started } ? runningSelection : nil
+    }
+
+    // The host and controller share this lock. No snapshot ever reads the live journal directly.
+    func beginBackground() throws -> LynxBackgroundTask {
+        lock.lock(); defer { lock.unlock() }
+        try replayBackgroundFailures()
+        guard !closed, !fatal, fatalContext == nil, !readinessAuthorityRevoked else {
+            throw LynxArtifactError.invalid("Failed or retired foreground cannot provide a background snapshot")
         }
-        if let releaseId = runningSelection.releaseId,
-           !next.unconfirmedReleaseIds.contains(releaseId) {
-            guard next.recoveryIdentities.contains(releaseId)
-                || next.recoveryIdentities.count < 128 else {
-                throw LynxArtifactError.invalid(
-                    "Startup suppression capacity exhausted"
-                )
-            }
-            next.unconfirmedReleaseIds.append(releaseId)
-            next.interruptedReleases?.removeValue(forKey: releaseId)
+        try runtimeHost.requireTaskSlot()
+        let snapshot = try LynxStoredSelectionReader.copy(
+            state: state, scope: runtimeHost.scope, configuration: configuration,
+            installer: installer, cold: false, processToken: launchProcessToken
+        )
+        return try runtimeHost.reserve(snapshot, state: state, live: liveReceipt)
+    }
+
+    func replayBackgroundFailures() throws {
+        guard !closed, runtimeHost.foreground === self else {
+            throw LynxArtifactError.invalid("STALE_CONTEXT: Retired controller cannot persist background failures")
         }
-        for (releaseId, record) in next.interruptedReleases ?? [:]
-            where record.bundleId == runningSelection.bundleId {
-            next.unconfirmedReleaseIds.append(releaseId)
-            next.interruptedReleases?.removeValue(forKey: releaseId)
+        try runtimeHost.persistFailures(state: &state, journal: journal)
+    }
+
+    /// Publish the in-memory guard before a fallible write, without changing other attempts.
+    func invalidateBackgroundFailure(bundleId: String) -> [() -> Void] {
+        guard !closed, runningSelection.bundleId == bundleId else { return [] }
+        fatal = true
+        let callbacks = readyCallbacks + pageReadyCallbacks.values.flatMap { $0 }
+        readyCallbacks.removeAll()
+        pageReadyCallbacks.removeAll()
+        return callbacks.map { callback in
+            { callback(.failure(LynxArtifactError.invalid("Native background runtime failed"))) }
         }
     }
+
     @discardableResult
     public func reportFailure(
         _ context: LynxLaunchContext,
