@@ -19,8 +19,11 @@ export const blog = loader({
 });
 
 export const getBlogPosts = () =>
-  [...blog.getPages()].sort((left, right) =>
-    right.data.date.localeCompare(left.data.date),
+  [...blog.getPages()].sort(
+    (left, right) =>
+      right.data.date.localeCompare(left.data.date) ||
+      // Same-day posts keep a stable order: by slug, descending.
+      right.url.localeCompare(left.url),
   );
 
 export const formatBlogDate = (date: string) =>

@@ -1,0 +1,880 @@
+{
+  "startedAt": "2026-10-09T07:01:25.390Z",
+  "finishedAt": "2026-10-09T07:03:11.862Z",
+  "totalRequests": 81000,
+  "groups": {
+    "hot": {
+      "requests": 36000,
+      "success": 36000,
+      "cacheHitPercent": 98.64444444444445,
+      "medianP50": 51.611,
+      "medianP95": 81.411,
+      "medianP99": 180.337,
+      "pooledP95": 83.39958299999125,
+      "p95Range": [
+        81.411,
+        80.331,
+        91.959
+      ],
+      "payloadBytes": [
+        724
+      ],
+      "maxSchedulingLagP99": 6.006,
+      "pooledP99": 184.2023329999938
+    },
+    "patch": {
+      "requests": 36000,
+      "success": 36000,
+      "cacheHitPercent": 100,
+      "medianP50": 50.854,
+      "medianP95": 78.921,
+      "medianP99": 93.802,
+      "pooledP95": 79.11408300000039,
+      "p95Range": [
+        79.706,
+        78.921,
+        78.538
+      ],
+      "payloadBytes": [
+        289
+      ],
+      "maxSchedulingLagP99": 5.616,
+      "pooledP99": 95.3583340000041
+    }
+  },
+  "runs": [
+    {
+      "target": "hot",
+      "offeredRps": 250,
+      "seconds": 6,
+      "repetition": 0,
+      "requests": 1500,
+      "correctResponses": 1500,
+      "statuses": {
+        "200": 1500
+      },
+      "cache": {
+        "HIT": 1452,
+        "UPDATING": 48
+      },
+      "pops": {
+        "NRT": 250,
+        "HKG": 1250
+      },
+      "sendDurationMs": 5998.226,
+      "drainMs": 63.873,
+      "completedRpsIncludingDrain": 247.37,
+      "p50Ms": 50.413,
+      "p95Ms": 77.868,
+      "p99Ms": 81.935,
+      "maxMs": 104.24,
+      "scheduledP95Ms": 78.943,
+      "scheduleLagP99Ms": 3.17,
+      "distinctOriginResponsesObserved": 2,
+      "responseBytes": [
+        724
+      ]
+    },
+    {
+      "target": "patch",
+      "offeredRps": 250,
+      "seconds": 6,
+      "repetition": 0,
+      "requests": 1500,
+      "correctResponses": 1500,
+      "statuses": {
+        "200": 1500
+      },
+      "cache": {
+        "HIT": 1500
+      },
+      "pops": {
+        "NRT": 250,
+        "HKG": 1250
+      },
+      "sendDurationMs": 5997.923,
+      "drainMs": 65.531,
+      "completedRpsIncludingDrain": 247.3,
+      "p50Ms": 51.323,
+      "p95Ms": 79.254,
+      "p99Ms": 86.309,
+      "maxMs": 148.214,
+      "scheduledP95Ms": 80.514,
+      "scheduleLagP99Ms": 3.403,
+      "distinctOriginResponsesObserved": 0,
+      "responseBytes": [
+        289
+      ]
+    },
+    {
+      "target": "patch",
+      "offeredRps": 500,
+      "seconds": 6,
+      "repetition": 0,
+      "requests": 3000,
+      "correctResponses": 3000,
+      "statuses": {
+        "200": 3000
+      },
+      "cache": {
+        "HIT": 3000
+      },
+      "pops": {
+        "NRT": 500,
+        "HKG": 2500
+      },
+      "sendDurationMs": 5998.968,
+      "drainMs": 71.12,
+      "completedRpsIncludingDrain": 494.14,
+      "p50Ms": 50.933,
+      "p95Ms": 79.434,
+      "p99Ms": 86.5,
+      "maxMs": 130.555,
+      "scheduledP95Ms": 80.937,
+      "scheduleLagP99Ms": 3.564,
+      "distinctOriginResponsesObserved": 0,
+      "responseBytes": [
+        289
+      ]
+    },
+    {
+      "target": "hot",
+      "offeredRps": 500,
+      "seconds": 6,
+      "repetition": 0,
+      "requests": 3000,
+      "correctResponses": 3000,
+      "statuses": {
+        "200": 3000
+      },
+      "cache": {
+        "HIT": 2906,
+        "UPDATING": 94
+      },
+      "pops": {
+        "NRT": 500,
+        "HKG": 2500
+      },
+      "sendDurationMs": 5998.545,
+      "drainMs": 68.523,
+      "completedRpsIncludingDrain": 494.35,
+      "p50Ms": 50.996,
+      "p95Ms": 76.787,
+      "p99Ms": 80.709,
+      "maxMs": 106.02,
+      "scheduledP95Ms": 78.111,
+      "scheduleLagP99Ms": 3.907,
+      "distinctOriginResponsesObserved": 2,
+      "responseBytes": [
+        724
+      ]
+    },
+    {
+      "target": "hot",
+      "offeredRps": 1000,
+      "seconds": 12,
+      "repetition": 1,
+      "requests": 12000,
+      "correctResponses": 12000,
+      "statuses": {
+        "200": 12000
+      },
+      "cache": {
+        "HIT": 11763,
+        "UPDATING": 237
+      },
+      "pops": {
+        "NRT": 2000,
+        "HKG": 10000
+      },
+      "sendDurationMs": 12001.217,
+      "drainMs": 72.628,
+      "completedRpsIncludingDrain": 993.98,
+      "p50Ms": 51.611,
+      "p95Ms": 81.411,
+      "p99Ms": 180.337,
+      "maxMs": 287.703,
+      "scheduledP95Ms": 83.147,
+      "scheduleLagP99Ms": 4.408,
+      "distinctOriginResponsesObserved": 2,
+      "responseBytes": [
+        724
+      ]
+    },
+    {
+      "target": "patch",
+      "offeredRps": 1000,
+      "seconds": 12,
+      "repetition": 1,
+      "requests": 12000,
+      "correctResponses": 12000,
+      "statuses": {
+        "200": 12000
+      },
+      "cache": {
+        "HIT": 12000
+      },
+      "pops": {
+        "NRT": 2000,
+        "HKG": 10000
+      },
+      "sendDurationMs": 11999.268,
+      "drainMs": 78.218,
+      "completedRpsIncludingDrain": 993.52,
+      "p50Ms": 52.174,
+      "p95Ms": 79.706,
+      "p99Ms": 93.802,
+      "maxMs": 315.033,
+      "scheduledP95Ms": 81.128,
+      "scheduleLagP99Ms": 5.088,
+      "distinctOriginResponsesObserved": 0,
+      "responseBytes": [
+        289
+      ]
+    },
+    {
+      "target": "patch",
+      "offeredRps": 1000,
+      "seconds": 12,
+      "repetition": 2,
+      "requests": 12000,
+      "correctResponses": 12000,
+      "statuses": {
+        "200": 12000
+      },
+      "cache": {
+        "HIT": 12000
+      },
+      "pops": {
+        "NRT": 2000,
+        "HKG": 10000
+      },
+      "sendDurationMs": 11999.318,
+      "drainMs": 97.121,
+      "completedRpsIncludingDrain": 991.97,
+      "p50Ms": 50.631,
+      "p95Ms": 78.921,
+      "p99Ms": 93.185,
+      "maxMs": 208.674,
+      "scheduledP95Ms": 80.386,
+      "scheduleLagP99Ms": 3.853,
+      "distinctOriginResponsesObserved": 0,
+      "responseBytes": [
+        289
+      ]
+    },
+    {
+      "target": "hot",
+      "offeredRps": 1000,
+      "seconds": 12,
+      "repetition": 2,
+      "requests": 12000,
+      "correctResponses": 12000,
+      "statuses": {
+        "200": 12000
+      },
+      "cache": {
+        "HIT": 11893,
+        "UPDATING": 107
+      },
+      "pops": {
+        "NRT": 2000,
+        "HKG": 10000
+      },
+      "sendDurationMs": 11999.708,
+      "drainMs": 70.19,
+      "completedRpsIncludingDrain": 994.18,
+      "p50Ms": 50.818,
+      "p95Ms": 80.331,
+      "p99Ms": 133.32,
+      "maxMs": 269.643,
+      "scheduledP95Ms": 82.258,
+      "scheduleLagP99Ms": 5.385,
+      "distinctOriginResponsesObserved": 2,
+      "responseBytes": [
+        724
+      ]
+    },
+    {
+      "target": "hot",
+      "offeredRps": 1000,
+      "seconds": 12,
+      "repetition": 3,
+      "requests": 12000,
+      "correctResponses": 12000,
+      "statuses": {
+        "200": 12000
+      },
+      "cache": {
+        "HIT": 11856,
+        "UPDATING": 144
+      },
+      "pops": {
+        "NRT": 2000,
+        "HKG": 10000
+      },
+      "sendDurationMs": 12000.577,
+      "drainMs": 72.397,
+      "completedRpsIncludingDrain": 994,
+      "p50Ms": 51.725,
+      "p95Ms": 91.959,
+      "p99Ms": 221.518,
+      "maxMs": 302.339,
+      "scheduledP95Ms": 93.731,
+      "scheduleLagP99Ms": 6.006,
+      "distinctOriginResponsesObserved": 2,
+      "responseBytes": [
+        724
+      ]
+    },
+    {
+      "target": "patch",
+      "offeredRps": 1000,
+      "seconds": 12,
+      "repetition": 3,
+      "requests": 12000,
+      "correctResponses": 12000,
+      "statuses": {
+        "200": 12000
+      },
+      "cache": {
+        "HIT": 12000
+      },
+      "pops": {
+        "NRT": 2000,
+        "HKG": 10000
+      },
+      "sendDurationMs": 12001.282,
+      "drainMs": 76.45,
+      "completedRpsIncludingDrain": 993.67,
+      "p50Ms": 50.854,
+      "p95Ms": 78.538,
+      "p99Ms": 98.211,
+      "maxMs": 155.768,
+      "scheduledP95Ms": 80.203,
+      "scheduleLagP99Ms": 5.616,
+      "distinctOriginResponsesObserved": 0,
+      "responseBytes": [
+        289
+      ]
+    }
+  ],
+  "versions": {
+    "hotUpdaterCommit": "becff8b37d6f95b5edb85d5159ea16c114ae32d0",
+    "serverVersion": "1.0.0-rc.43",
+    "codemagicCommit": "3d4ad8b7a7d4ebedbe7cd0513742c1418625221c",
+    "files": {
+      "packages/server/src/handlerReleaseCatalogRoutes.ts": "807e7103ca2edae7c5c7d17680ffcf81340c389174b98a270bd07d8690e6f58a",
+      "packages/server/src/handler.ts": "0185aafb591c6453589c1a8e7b101b3a1106fd85646cc3725f392b1c9a6c2407",
+      "plugins/api-keys/src/server/apiKeys.ts": "fafa5be5879b47c7098337f757c3cb9db983940498c9000785fa63b7507aaa30",
+      "packages/server/src/db/releaseCatalog.ts": "eca62429c083f234632e0cd6c1749e1347f457be61a5254d72dbea40a43587be",
+      "plugins/cloudflare/worker/wrangler.json": "e0d28d09708302417bffb7c509764d1cbdda7f43ccba415df1ea7932991a02e6",
+      "plugins/cloudflare/src/worker/d1Database.ts": "a38090d2b6c30694b7def28485c3c71be53f0afdd0ad806ea1ba4de2ce723d76",
+      "plugins/cloudflare/worker/migrations/0001_hot-updater_1.0.0.sql": "ed96ee68fe1511d77fcec2cdd704389a68f13976814467b45a07fbfae4b3612f"
+    }
+  },
+  "environment": {
+    "os": "Darwin 27.0.0 arm64",
+    "cpu": "Apple M4",
+    "cpuCores": 10,
+    "ramGiB": 24,
+    "node": "v24.15.0",
+    "pnpm": "11.6.0",
+    "wrangler": "4.99.0",
+    "requestConnections": 12,
+    "protocol": "HTTP/2",
+    "acceptEncoding": "identity",
+    "d1LocationHint": "APAC",
+    "d1ImportColo": "SIN",
+    "compatibilityDate": "2026-08-13",
+    "templateCompatibilityDate": "2026-08-13",
+    "workersCache": true,
+    "accountPlan": "not recorded",
+    "resourcesDeleted": true
+  },
+  "publicDataNote": "Deployment origin omitted. Only update-metadata delivery was measured; the Codemagic manifest was hosted on Static Assets, not R2 or a full Patch deployment. Catalog responses carry CDN-Cache-Control: public, max-age=5, stale-while-revalidate=5, stale-if-error=0 beside the unchanged Cache-Control. cacheHitPercent counts only CF-Cache-Status HIT; UPDATING responses, served from cache during background revalidation, are listed in details.nonHit.",
+  "requestData": {
+    "file": "results.json.gz",
+    "compression": "gzip",
+    "sha256": "945d1812c61ceaf9d50401d1aa702a50d31806cd5ecdb216105787f7b33143da",
+    "bytes": 1897268,
+    "requests": 81000
+  },
+  "details": {
+    "hot": {
+      "hits": 35512,
+      "nonHit": {
+        "UPDATING": 488
+      },
+      "failures": 0,
+      "over150Ms": 510,
+      "over150MsByPop": {
+        "HKG": 510
+      },
+      "pops": {
+        "NRT": 6000,
+        "HKG": 30000
+      },
+      "drainMsRange": [
+        70.19,
+        72.628
+      ],
+      "completedRpsRange": [
+        993.98,
+        994.18
+      ]
+    },
+    "patch": {
+      "hits": 36000,
+      "nonHit": {},
+      "failures": 0,
+      "over150Ms": 29,
+      "over150MsByPop": {
+        "NRT": 23,
+        "HKG": 6
+      },
+      "pops": {
+        "NRT": 6000,
+        "HKG": 30000
+      },
+      "drainMsRange": [
+        76.45,
+        97.121
+      ],
+      "completedRpsRange": [
+        991.97,
+        993.67
+      ]
+    }
+  },
+  "control": {
+    "note": "Same Worker and D1, redeployed immediately after the published run with BENCH_STRIP_CDN_CACHE_CONTROL=1, so responses had no CDN-Cache-Control, as before the branch. load.mjs unchanged.",
+    "startedAt": "2026-10-09T07:13:52.693Z",
+    "finishedAt": "2026-10-09T07:15:38.093Z",
+    "totalRequests": 81000,
+    "groups": {
+      "hot": {
+        "requests": 36000,
+        "success": 36000,
+        "cacheHitPercent": 99.97777777777777,
+        "medianP50": 49.072,
+        "medianP95": 75.643,
+        "medianP99": 157.147,
+        "pooledP95": 76.52195900000515,
+        "p95Range": [
+          75.643,
+          86.295,
+          74.622
+        ],
+        "payloadBytes": [
+          724
+        ],
+        "maxSchedulingLagP99": 4.964,
+        "pooledP99": 184.42466699999932
+      },
+      "patch": {
+        "requests": 36000,
+        "success": 36000,
+        "cacheHitPercent": 100,
+        "medianP50": 47.912,
+        "medianP95": 72.715,
+        "medianP99": 75.999,
+        "pooledP95": 72.7118330000012,
+        "p95Range": [
+          72.561,
+          72.715,
+          72.816
+        ],
+        "payloadBytes": [
+          289
+        ],
+        "maxSchedulingLagP99": 6.726,
+        "pooledP99": 76.4517909999995
+      }
+    },
+    "runs": [
+      {
+        "target": "hot",
+        "offeredRps": 250,
+        "seconds": 6,
+        "repetition": 0,
+        "requests": 1500,
+        "correctResponses": 1500,
+        "statuses": {
+          "200": 1500
+        },
+        "cache": {
+          "HIT": 1498,
+          "REVALIDATED": 2
+        },
+        "pops": {
+          "NRT": 250,
+          "KIX": 250,
+          "HKG": 1000
+        },
+        "sendDurationMs": 5997.055,
+        "drainMs": 52.935,
+        "completedRpsIncludingDrain": 247.81,
+        "p50Ms": 48.195,
+        "p95Ms": 73.852,
+        "p99Ms": 112.332,
+        "maxMs": 227.297,
+        "scheduledP95Ms": 75.277,
+        "scheduleLagP99Ms": 3.168,
+        "distinctOriginResponsesObserved": 3,
+        "responseBytes": [
+          724
+        ]
+      },
+      {
+        "target": "patch",
+        "offeredRps": 250,
+        "seconds": 6,
+        "repetition": 0,
+        "requests": 1500,
+        "correctResponses": 1500,
+        "statuses": {
+          "200": 1500
+        },
+        "cache": {
+          "HIT": 1500
+        },
+        "pops": {
+          "NRT": 250,
+          "KIX": 250,
+          "HKG": 1000
+        },
+        "sendDurationMs": 5998.659,
+        "drainMs": 54.029,
+        "completedRpsIncludingDrain": 247.77,
+        "p50Ms": 47.765,
+        "p95Ms": 72.881,
+        "p99Ms": 76.012,
+        "maxMs": 92.906,
+        "scheduledP95Ms": 74.271,
+        "scheduleLagP99Ms": 3.176,
+        "distinctOriginResponsesObserved": 0,
+        "responseBytes": [
+          289
+        ]
+      },
+      {
+        "target": "patch",
+        "offeredRps": 500,
+        "seconds": 6,
+        "repetition": 0,
+        "requests": 3000,
+        "correctResponses": 3000,
+        "statuses": {
+          "200": 3000
+        },
+        "cache": {
+          "HIT": 3000
+        },
+        "pops": {
+          "NRT": 500,
+          "KIX": 500,
+          "HKG": 2000
+        },
+        "sendDurationMs": 5999.25,
+        "drainMs": 62.596,
+        "completedRpsIncludingDrain": 494.84,
+        "p50Ms": 48.463,
+        "p95Ms": 73.105,
+        "p99Ms": 75.966,
+        "maxMs": 122.402,
+        "scheduledP95Ms": 74.282,
+        "scheduleLagP99Ms": 3.169,
+        "distinctOriginResponsesObserved": 0,
+        "responseBytes": [
+          289
+        ]
+      },
+      {
+        "target": "hot",
+        "offeredRps": 500,
+        "seconds": 6,
+        "repetition": 0,
+        "requests": 3000,
+        "correctResponses": 3000,
+        "statuses": {
+          "200": 3000
+        },
+        "cache": {
+          "HIT": 2998,
+          "REVALIDATED": 2
+        },
+        "pops": {
+          "NRT": 500,
+          "KIX": 500,
+          "HKG": 2000
+        },
+        "sendDurationMs": 5999.051,
+        "drainMs": 65.974,
+        "completedRpsIncludingDrain": 494.56,
+        "p50Ms": 48.256,
+        "p95Ms": 73.906,
+        "p99Ms": 154.718,
+        "maxMs": 297.442,
+        "scheduledP95Ms": 75.441,
+        "scheduleLagP99Ms": 3.592,
+        "distinctOriginResponsesObserved": 3,
+        "responseBytes": [
+          724
+        ]
+      },
+      {
+        "target": "hot",
+        "offeredRps": 1000,
+        "seconds": 12,
+        "repetition": 1,
+        "requests": 12000,
+        "correctResponses": 12000,
+        "statuses": {
+          "200": 12000
+        },
+        "cache": {
+          "HIT": 11996,
+          "REVALIDATED": 4
+        },
+        "pops": {
+          "NRT": 2000,
+          "KIX": 2000,
+          "HKG": 8000
+        },
+        "sendDurationMs": 12000.27,
+        "drainMs": 82.452,
+        "completedRpsIncludingDrain": 993.18,
+        "p50Ms": 49.072,
+        "p95Ms": 75.643,
+        "p99Ms": 155.472,
+        "maxMs": 306.618,
+        "scheduledP95Ms": 77.27,
+        "scheduleLagP99Ms": 4.964,
+        "distinctOriginResponsesObserved": 3,
+        "responseBytes": [
+          724
+        ]
+      },
+      {
+        "target": "patch",
+        "offeredRps": 1000,
+        "seconds": 12,
+        "repetition": 1,
+        "requests": 12000,
+        "correctResponses": 12000,
+        "statuses": {
+          "200": 12000
+        },
+        "cache": {
+          "HIT": 12000
+        },
+        "pops": {
+          "NRT": 2000,
+          "KIX": 2000,
+          "HKG": 8000
+        },
+        "sendDurationMs": 12000.414,
+        "drainMs": 67.407,
+        "completedRpsIncludingDrain": 994.41,
+        "p50Ms": 48.719,
+        "p95Ms": 72.561,
+        "p99Ms": 75.771,
+        "maxMs": 155.87,
+        "scheduledP95Ms": 73.791,
+        "scheduleLagP99Ms": 4.633,
+        "distinctOriginResponsesObserved": 0,
+        "responseBytes": [
+          289
+        ]
+      },
+      {
+        "target": "patch",
+        "offeredRps": 1000,
+        "seconds": 12,
+        "repetition": 2,
+        "requests": 12000,
+        "correctResponses": 12000,
+        "statuses": {
+          "200": 12000
+        },
+        "cache": {
+          "HIT": 12000
+        },
+        "pops": {
+          "NRT": 2000,
+          "KIX": 2000,
+          "HKG": 8000
+        },
+        "sendDurationMs": 12001.522,
+        "drainMs": 67.858,
+        "completedRpsIncludingDrain": 994.38,
+        "p50Ms": 47.912,
+        "p95Ms": 72.715,
+        "p99Ms": 75.999,
+        "maxMs": 153.241,
+        "scheduledP95Ms": 74.032,
+        "scheduleLagP99Ms": 3.197,
+        "distinctOriginResponsesObserved": 0,
+        "responseBytes": [
+          289
+        ]
+      },
+      {
+        "target": "hot",
+        "offeredRps": 1000,
+        "seconds": 12,
+        "repetition": 2,
+        "requests": 12000,
+        "correctResponses": 12000,
+        "statuses": {
+          "200": 12000
+        },
+        "cache": {
+          "HIT": 11998,
+          "REVALIDATED": 2
+        },
+        "pops": {
+          "NRT": 2000,
+          "KIX": 2000,
+          "HKG": 8000
+        },
+        "sendDurationMs": 11999.726,
+        "drainMs": 69.148,
+        "completedRpsIncludingDrain": 994.27,
+        "p50Ms": 49.665,
+        "p95Ms": 86.295,
+        "p99Ms": 202.67,
+        "maxMs": 323.816,
+        "scheduledP95Ms": 88.397,
+        "scheduleLagP99Ms": 4.655,
+        "distinctOriginResponsesObserved": 3,
+        "responseBytes": [
+          724
+        ]
+      },
+      {
+        "target": "hot",
+        "offeredRps": 1000,
+        "seconds": 12,
+        "repetition": 3,
+        "requests": 12000,
+        "correctResponses": 12000,
+        "statuses": {
+          "200": 12000
+        },
+        "cache": {
+          "HIT": 11998,
+          "REVALIDATED": 2
+        },
+        "pops": {
+          "NRT": 2000,
+          "KIX": 2000,
+          "HKG": 8000
+        },
+        "sendDurationMs": 12001.402,
+        "drainMs": 72.309,
+        "completedRpsIncludingDrain": 994.01,
+        "p50Ms": 48.421,
+        "p95Ms": 74.622,
+        "p99Ms": 157.147,
+        "maxMs": 305.864,
+        "scheduledP95Ms": 75.866,
+        "scheduleLagP99Ms": 3.423,
+        "distinctOriginResponsesObserved": 3,
+        "responseBytes": [
+          724
+        ]
+      },
+      {
+        "target": "patch",
+        "offeredRps": 1000,
+        "seconds": 12,
+        "repetition": 3,
+        "requests": 12000,
+        "correctResponses": 12000,
+        "statuses": {
+          "200": 12000
+        },
+        "cache": {
+          "HIT": 12000
+        },
+        "pops": {
+          "NRT": 2000,
+          "KIX": 2000,
+          "HKG": 8000
+        },
+        "sendDurationMs": 12000.466,
+        "drainMs": 68.265,
+        "completedRpsIncludingDrain": 994.34,
+        "p50Ms": 47.842,
+        "p95Ms": 72.816,
+        "p99Ms": 77.722,
+        "maxMs": 169.63,
+        "scheduledP95Ms": 74.21,
+        "scheduleLagP99Ms": 6.726,
+        "distinctOriginResponsesObserved": 0,
+        "responseBytes": [
+          289
+        ]
+      }
+    ],
+    "details": {
+      "hot": {
+        "hits": 35992,
+        "nonHit": {
+          "REVALIDATED": 8
+        },
+        "failures": 0,
+        "over150Ms": 591,
+        "over150MsByPop": {
+          "HKG": 279,
+          "NRT": 165,
+          "KIX": 147
+        },
+        "pops": {
+          "NRT": 6000,
+          "KIX": 6000,
+          "HKG": 24000
+        },
+        "drainMsRange": [
+          69.148,
+          82.452
+        ],
+        "completedRpsRange": [
+          993.18,
+          994.27
+        ]
+      },
+      "patch": {
+        "hits": 36000,
+        "nonHit": {},
+        "failures": 0,
+        "over150Ms": 4,
+        "over150MsByPop": {
+          "HKG": 4
+        },
+        "pops": {
+          "NRT": 6000,
+          "KIX": 6000,
+          "HKG": 24000
+        },
+        "drainMsRange": [
+          67.407,
+          68.265
+        ],
+        "completedRpsRange": [
+          994.34,
+          994.41
+        ]
+      }
+    },
+    "requestData": {
+      "file": "results-control.json.gz",
+      "compression": "gzip",
+      "sha256": "6840287733a498326154e6b2b04dbe40bdc579207da643abc7eb5086ed1c4dc5",
+      "bytes": 1902139,
+      "requests": 81000
+    }
+  }
+}
