@@ -163,7 +163,8 @@ export type CreateHotUpdaterOptions<
   readonly database: ToolingDatabase;
   /**
    * Where bundles are stored, the same adapter `hot-updater.config.ts`
-   * uploads with: the server reads and signs the URIs of its protocol.
+   * uploads with: the server reads the URIs of its protocol and returns
+   * their download URLs.
    */
   readonly storage: StorageAdapter;
   /** The plugins the server runs; at most one provides clientAuth. Defaults to none. */
