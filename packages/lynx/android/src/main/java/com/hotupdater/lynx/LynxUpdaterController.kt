@@ -3,9 +3,7 @@ package com.hotupdater.lynx
 import android.content.Context
 import android.os.Process
 import android.util.Log
-import com.hotupdater.lynx.internal.ArchiveIntegrity
 import com.hotupdater.lynx.internal.HashUtils
-import com.hotupdater.lynx.internal.LynxArtifactVerifier
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -35,6 +33,8 @@ class LynxUpdaterController internal constructor(
         Process.myPid().toString()
     },
     private val processToken: String = PROCESS_TOKEN,
+    internal val runtimeHost: LynxRuntimeHost? = null,
+    private val binaryId: String = HashUtils.calculateSHA256(packageCodePath),
 ) {
     constructor(context: Context, configuration: LynxHostConfiguration) : this(
         context.filesDir,
@@ -43,11 +43,8 @@ class LynxUpdaterController internal constructor(
         configuration,
     )
     private val stateLock = Any()
-    private val binaryId = HashUtils.calculateSHA256(packageCodePath)
-    private val keyIdentity = ArchiveIntegrity(configuration.publicKeyPem).keyIdentity
-    private val namespace = digestString(listOf(binaryId, configuration.runtimeId, configuration.channel,
-        configuration.appVersion, embedded.bundleId, embedded.manifestHash, keyIdentity).joinToString("\n"))
-    private val directory = File(filesDir, "hot-updater-lynx/scopes/$namespace").canonicalFile
+    private val directory = lynxScopeDirectory(filesDir, binaryId, embedded, configuration)
+    private val namespace = directory.name
     private val generationEventJournal = LynxGenerationEventJournal(filesDir)
     private val store = LynxStateStore(directory)
     private val installer = LynxArtifactInstaller(File(directory, "artifacts"), LynxInstallConfiguration(configuration.runtimeId, configuration.publicKeyPem))
@@ -91,15 +88,7 @@ class LynxUpdaterController internal constructor(
         synchronized(stateLock) {
             if (!store.value.has("revision")) store.update { it.put("revision", UUID.randomUUID().toString()) }
             try {
-                check(recoveryIdentities().size <= CAPACITY) { "Startup recovery capacity exhausted" }
-                interruptions().keys().forEach { releaseId ->
-                    val record = interruptions().getJSONObject(releaseId)
-                    check(UUID.fromString(releaseId).toString() == releaseId &&
-                        UUID.fromString(record.getString("bundleId")).toString() == record.getString("bundleId") &&
-                        UUID.fromString(record.getString("holdProcessToken")).toString() == record.getString("holdProcessToken") &&
-                        releaseId !in exclusions("unconfirmed")) { "Invalid interrupted launch identity" }
-                    check(record.opt("retryReady") is Boolean) { "Invalid interrupted launch readiness" }
-                }
+                storedReader().validateRetryRecords()
             } catch (error: Throwable) {
                 try { store.close() } catch (cleanupError: Throwable) { error.addSuppressed(cleanupError) }
                 throw error
@@ -197,32 +186,13 @@ class LynxUpdaterController internal constructor(
     private fun mutate(change: (JSONObject) -> Unit) = store.update { change(it); it.put("revision", UUID.randomUUID().toString()) }
     private fun catalogKey(catalogId: String, scopeKey: String) =
         digestString("$catalogId\u0000$scopeKey")
-    private fun parseHighWater(value: JSONObject) = CatalogPolicy.HighWater(
-        value.getString("catalogId"),
-        value.getString("scopeKey"),
-        value.getLong("generation"),
-        value.getString("catalogHash"),
-    )
     private fun highWaterMark(value: CatalogPolicy.HighWater) = JSONObject()
         .put("catalogId", value.catalogId)
         .put("scopeKey", value.scopeKey)
         .put("generation", value.generation)
         .put("catalogHash", value.catalogHash)
-    private fun highWater(catalogId: String? = null, scopeKey: String? = null): CatalogPolicy.HighWater? {
-        if (!catalogId.isNullOrEmpty() && !scopeKey.isNullOrEmpty()) {
-            store.value.optJSONObject("highWaters")?.optJSONObject(catalogKey(catalogId, scopeKey))
-                ?.let { return parseHighWater(it) }
-        }
-        val single = store.value.optJSONObject("highWater") ?: return null
-        if (
-            catalogId.isNullOrEmpty() ||
-            scopeKey.isNullOrEmpty() ||
-            (single.optString("catalogId") == catalogId && single.optString("scopeKey") == scopeKey)
-        ) {
-            return parseHighWater(single)
-        }
-        return null
-    }
+    private fun highWater(catalogId: String? = null, scopeKey: String? = null) =
+        storedReader().highWater(catalogId, scopeKey)
 
     private data class StoredFallback(
         val receipt: CatalogPolicy.Receipt,
@@ -230,76 +200,16 @@ class LynxUpdaterController internal constructor(
         val confirmed: CatalogPolicy.Receipt?,
     )
 
+    private fun storedReader() = LynxStoredSelectionReader(
+        store.value, directory, embedded, configuration, binaryId,
+    )
+
     private fun eligibleStored(
         candidate: CatalogPolicy.Receipt,
         crashed: List<String>,
         unconfirmed: List<String>,
         failedEmbedded: CatalogPolicy.Receipt?,
-    ): Boolean {
-        if (
-            candidate.releaseId in unconfirmed ||
-            candidate.bundleId in crashed ||
-            failedEmbedded != null && sameRelease(candidate, failedEmbedded)
-        ) {
-            return false
-        }
-        if (candidate.kind == "BUILTIN" && candidate.catalogId == null) {
-            return true
-        }
-        val catalogId = candidate.catalogId ?: return false
-        val scope = candidate.scopeKey ?: return false
-        val key = catalogKey(catalogId, scope)
-        val raw = store.value.optJSONObject("catalogs")?.optString(key)
-            ?.takeIf(String::isNotEmpty)
-            ?: store.value.optString("catalog").takeIf { value ->
-                if (value.isEmpty()) return@takeIf false
-                val stored = JSONObject(value)
-                stored.optString("catalogId") == catalogId &&
-                    stored.optString("scopeKey") == scope
-            }
-            ?: return false
-        val candidateSnapshot = CatalogPolicy.NativeSnapshot(
-            store.value.getString("revision"),
-            configuration.appVersion,
-            candidate.channel,
-            configuration.runtimeId,
-            embedded.bundleId,
-            configuration.minimumBundleId,
-            store.value.optString("cohort").ifEmpty { configuration.cohort },
-            candidate,
-            null,
-            crashed,
-            unconfirmed,
-            configuration.fingerprintHash ?: binaryId,
-        )
-        val catalog = runCatching {
-            CatalogPolicy.accept(
-                raw,
-                candidateSnapshot,
-                candidateSnapshot.revision,
-                CatalogPolicy.selectionContextHash(candidateSnapshot, scope),
-                highWater(catalogId, scope),
-            )
-        }.getOrNull() ?: return false
-        val mark = highWater(catalog.guard.catalogId, catalog.guard.scopeKey)
-            ?: return false
-        val proof = store.value.optJSONObject("rollbackProofs")
-            ?.optJSONObject(receiptKey(candidate))?.let {
-                CatalogPolicy.RollbackAuthorization(
-                    CatalogPolicy.parseReceipt(it.getJSONObject("receipt")),
-                    CatalogPolicy.parseReceipt(
-                        it.getJSONObject("fromSelection"),
-                    ),
-                )
-            }
-        return CatalogPolicy.isStoredSelectionEligible(
-            catalog,
-            candidateSnapshot,
-            candidate,
-            mark,
-            proof,
-        )
-    }
+    ): Boolean = storedReader().eligible(candidate, crashed, unconfirmed, failedEmbedded)
 
     private fun storedFallback(
         stack: List<LynxLogicalPage>,
@@ -686,24 +596,27 @@ class LynxUpdaterController internal constructor(
         .put("bundleId", value.bundleId)
         .put("manifestFileHash", value.manifestFileHash ?: JSONObject.NULL)
         .put("manifestBacked", verified.manifestBacked)
-    private fun installed(value: CatalogPolicy.Receipt): VerifiedLynxInstallation {
-        if (value.bundleId == embedded.bundleId) return embedded
-        val record = checkNotNull(store.value.optJSONObject("artifacts")?.optJSONObject(value.bundleId)) { "No verified artifact receipt" }
-        val root = File(directory, "artifacts/installations/${value.bundleId}")
-        val integrity = ArchiveIntegrity(configuration.publicKeyPem)
-        val manifestToken = record.opt("manifestFileHash").let {
-            if (it == null || it == JSONObject.NULL) null else it as? String
-                ?: error("Invalid installed manifest token")
+    private fun installed(value: CatalogPolicy.Receipt): VerifiedLynxInstallation =
+        storedReader().installed(value)
+
+    internal fun backgroundSnapshot(): LynxBackgroundSnapshot {
+        val plan = synchronized(stateLock) {
+            check(!closed) { "The controller is closed" }
+            rejectFailedGeneration()
+            val selected = storedReader().backgroundSelection(processToken, cold = false)
+            Triple(store.value.getString("revision"), selected.first, selected.second)
         }
-        val manifestBacked = true
-        require(!manifestToken.isNullOrBlank()) { "Installed artifact lost its manifest trust token" }
-        val request = LynxArtifactRequest(value.bundleId, manifestFileHash = manifestToken)
-        return LynxArtifactVerifier(
-            LynxInstallConfiguration(configuration.runtimeId, configuration.publicKeyPem),
-            integrity,
-        ).verify(File(root, "payload"), request, manifestBacked).also {
-            check(it.manifestHash == record.getString("verifiedManifestHash")) { "Installed manifest differs from the verified archive" }
-        }
+        // Pruning takes installer before controller state. Retain outside stateLock.
+        val lease = installer.retain(plan.third)
+        try {
+            return synchronized(stateLock) {
+                check(!closed && store.value.getString("revision") == plan.first) {
+                    "Background selection changed during resource retention"
+                }
+                rejectFailedGeneration()
+                LynxBackgroundSnapshot.copy(plan.second, plan.third)
+            }
+        } finally { lease.close() }
     }
 
     /** Call before creating/evaluating the designated primary Lynx view. */
@@ -1918,6 +1831,11 @@ class LynxUpdaterController internal constructor(
         }.onFailure { Log.e(TAG, "Unused cache cleanup deferred", it) }
     }
     fun close() {
+        val owner = runtimeHost
+        if (owner != null) owner.closeForeground(this) else closeOwned()
+    }
+
+    internal fun closeOwned() {
         val prepared = synchronized(stateLock) {
             if (closed) return
             closed = true
@@ -1938,9 +1856,9 @@ class LynxUpdaterController internal constructor(
         }
     }
     companion object {
-        private val PROCESS_TOKEN = UUID.randomUUID().toString()
+        internal val PROCESS_TOKEN = UUID.randomUUID().toString()
         private const val TAG = "HotUpdaterLynx"
-        private const val CAPACITY = 128
+        private const val CAPACITY = LynxStoredSelectionReader.RECOVERY_CAPACITY
         private const val MAX_MANAGED_PAGES = 16
         private const val PAGE_ATTEMPT_TERMINAL_CAPACITY = 256
     }

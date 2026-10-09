@@ -11,6 +11,11 @@ import org.junit.Assert.fail
 import org.junit.Test
 import java.io.File
 import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.ExecutionException
+import java.util.concurrent.atomic.AtomicReference
 
 class LynxUpdaterControllerTest {
     private val runtime = "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1"
@@ -28,7 +33,7 @@ class LynxUpdaterControllerTest {
 
     private fun binary(root: File): File = File(root, "binary").apply { writeBytes(byteArrayOf(1, 2, 3, 4)) }
 
-    private fun embedded(root: File): VerifiedLynxInstallation {
+    private fun embedded(root: File, background: Boolean = false): VerifiedLynxInstallation {
         val directory = File(root, "embedded").apply { mkdirs() }
         val entry = File(directory, "main.lynx.bundle").apply {
             writeText("entry-A")
@@ -36,12 +41,14 @@ class LynxUpdaterControllerTest {
         val detail = File(directory, "detail.lynx.bundle").apply {
             writeText("detail-A")
         }
+        val script = File(directory, "task.js").apply { if (background) writeText("globalThis.marker = 'A';") }
         return VerifiedLynxInstallation(
             embeddedId, directory, "main.lynx.bundle", runtime, "e".repeat(64),
             mapOf(
                 "main.lynx.bundle" to HashUtils.calculateSHA256(entry),
                 "detail.lynx.bundle" to HashUtils.calculateSHA256(detail),
-            ),
+            ) + if (background) mapOf("task.js" to HashUtils.calculateSHA256(script)) else emptyMap(),
+            backgroundEntry = if (background) "task.js" else null,
             pageEntries = listOf("detail.lynx.bundle", "main.lynx.bundle"),
             pageEssentialResources = listOf(
                 LynxPageEssentialResources(
@@ -116,6 +123,7 @@ class LynxUpdaterControllerTest {
         bundleId: String,
         marker: String,
         includeDetailPage: Boolean = true,
+        background: Boolean = false,
     ): String {
         val root = payload.canonicalFile
         root.mkdirs()
@@ -146,7 +154,9 @@ class LynxUpdaterControllerTest {
                     JSONArray().put("main.lynx.bundle"),
                 ),
         )
+        if (background) files["task.js"] = "globalThis.marker = '$marker';".toByteArray()
         files["hot-updater-lynx.json"] = JSONObject()
+            .apply { if (background) put("backgroundEntry", "task.js") }
             .put("schemaVersion", 1).put("bundleId", bundleId).put("platform", "android")
             .put("entry", "main.lynx.bundle").put("runtimeId", runtime)
             .put("pageEntries", pageEntries)
@@ -175,11 +185,12 @@ class LynxUpdaterControllerTest {
         generation: Long = 2,
         hash: String = catalogHash,
         includeDetailPage: Boolean = true,
+        background: Boolean = false,
     ) {
         val home = store(root)
         val install = File(home, "artifacts/installations/$bundleId").canonicalFile
         val payload = File(install, "payload")
-        val digest = writeTree(payload, bundleId, marker, includeDetailPage)
+        val digest = writeTree(payload, bundleId, marker, includeDetailPage, background)
         val archive = File(install, "archive")
         val fileHash = if (manifestBacked) null else {
             archive.writeText("archive-$marker")
@@ -233,6 +244,246 @@ class LynxUpdaterControllerTest {
         state.put("highWaters", waters)
         state.put("next", receipt)
         file.writeText(state.toString())
+    }
+
+    private fun backgroundHost(root: File, token: String = "10000000-0000-4000-8000-000000000001") =
+        LynxRuntimeHost(root, binary(root), embedded(root, background = true), config(),
+            processIdentity = { "4321" }, processToken = token)
+
+    @Test fun directlyClosingForegroundAllowsBackgroundAndNextGeneration() {
+        val root = temp()
+        try {
+            val host = backgroundHost(root)
+            val first = host.createForeground()
+            first.pinPrimary().also { it.firstScreen = true; first.confirm(it) }
+            first.close()
+            assertEquals(embeddedId, host.backgroundSnapshot().selection.bundleId)
+            val replacement = host.createForeground()
+            // A repeated close on a retired generation must not close its replacement.
+            first.close()
+            val page = replacement.pinPrimary()
+            assertEquals(embeddedId, replacement.diagnostics(page).bundleId)
+            replacement.close()
+            assertEquals(embeddedId, host.backgroundSnapshot().selection.bundleId)
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun liveEmbeddedFatalRejectsBackgroundEvenWhenPersistenceFails() {
+        for (failWrite in listOf(false, true)) {
+            val root = temp()
+            try {
+                val host = backgroundHost(root)
+                val foreground = host.createForeground()
+                val page = foreground.pinPrimary().also { it.firstScreen = true; foreground.confirm(it) }
+                val file = File(store(root), "state.json")
+                if (failWrite) {
+                    val saved = File(root, "saved-state.json")
+                    assertTrue(file.renameTo(saved))
+                    assertTrue(file.mkdir())
+                    try {
+                        assertThrows(Throwable::class.java) {
+                            foreground.fail(page, "verified fatal", allowConfirmed = true)
+                        }
+                    } finally {
+                        assertTrue(file.deleteRecursively())
+                        assertTrue(saved.renameTo(file))
+                    }
+                    assertFalse(journal(root).has("generationFailure"))
+                } else {
+                    assertTrue(foreground.fail(page, "verified fatal", allowConfirmed = true))
+                    assertTrue(journal(root).has("generationFailure"))
+                }
+                val before = file.readBytes()
+                assertThrows(CatalogPolicy.Rejected::class.java) { host.backgroundSnapshot() }
+                assertTrue(before.contentEquals(file.readBytes()))
+                foreground.close()
+            } finally { root.deleteRecursively() }
+        }
+    }
+
+    @Test fun backgroundRechecksUnpersistedFatalAfterWaitingForArtifactRetention() {
+        val root = temp()
+        val executor = Executors.newFixedThreadPool(2)
+        val releasePruner = CountDownLatch(1)
+        var foreground: LynxUpdaterController? = null
+        try {
+            val host = backgroundHost(root)
+            host.createForeground().also { first ->
+                first.pinPrimary().also { it.firstScreen = true; first.confirm(it) }
+                first.close()
+            }
+            plantNext(root, releaseB, bundleB, "B", background = true)
+            val controller = host.createForeground().also { foreground = it }
+            val page = controller.pinPrimary().also { it.firstScreen = true; controller.confirm(it) }
+            val pruner = LynxArtifactInstaller(File(store(root), "artifacts"), LynxInstallConfiguration(runtime))
+            val pruning = CountDownLatch(1)
+            val pruningTask = executor.submit {
+                pruner.prune {
+                    pruning.countDown()
+                    check(releasePruner.await(10, TimeUnit.SECONDS))
+                }
+            }
+            assertTrue(pruning.await(10, TimeUnit.SECONDS))
+            val worker = AtomicReference<Thread>()
+            val snapshot = executor.submit<LynxBackgroundSnapshot> {
+                worker.set(Thread.currentThread())
+                host.backgroundSnapshot()
+            }
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+            while (System.nanoTime() < deadline && worker.get()?.let {
+                    it.state == Thread.State.BLOCKED && it.stackTrace.any { frame ->
+                        frame.className == LynxArtifactInstaller::class.java.name && frame.methodName.startsWith("retain$")
+                    }
+                } != true) Thread.yield()
+            assertEquals(Thread.State.BLOCKED, worker.get()?.state)
+            assertTrue(worker.get().stackTrace.any { it.methodName.startsWith("retain$") })
+
+            val file = File(store(root), "state.json")
+            val before = file.readBytes()
+            val saved = File(root, "saved-state.json")
+            assertTrue(file.renameTo(saved))
+            assertTrue(file.mkdir())
+            try {
+                assertThrows(Throwable::class.java) {
+                    controller.fail(page, "fatal while retaining", allowConfirmed = true)
+                }
+            } finally {
+                assertTrue(file.deleteRecursively())
+                assertTrue(saved.renameTo(file))
+            }
+            assertTrue(before.contentEquals(file.readBytes()))
+            releasePruner.countDown()
+            pruningTask.get(10, TimeUnit.SECONDS)
+            val failure = assertThrows(ExecutionException::class.java) { snapshot.get(10, TimeUnit.SECONDS) }
+            assertTrue(failure.cause is CatalogPolicy.Rejected)
+            assertTrue(before.contentEquals(file.readBytes()))
+        } finally {
+            releasePruner.countDown()
+            executor.shutdownNow()
+            executor.awaitTermination(10, TimeUnit.SECONDS)
+            foreground?.close()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun coldBackgroundCopiesStagedCodeWithoutConsumingForegroundState() {
+        val root = temp()
+        try {
+            val host = backgroundHost(root)
+            val first = host.createForeground()
+            first.pinPrimary().also { it.firstScreen = true; first.confirm(it) }
+            host.closeForeground(first)
+            plantNext(root, releaseB, bundleB, "B", background = true)
+            val file = File(store(root), "state.json")
+            val before = file.readBytes()
+
+            val task = host.backgroundSnapshot()
+            assertEquals(bundleB, task.selection.bundleId)
+            assertEquals(releaseB, task.selection.releaseId)
+            assertEquals("globalThis.marker = 'B';", task.source)
+            assertTrue(before.contentEquals(file.readBytes()))
+            assertFalse(journal(root).has("pending"))
+
+            val foreground = host.createForeground()
+            val page = foreground.pinPrimary()
+            assertEquals(bundleB, foreground.state(page).getJSONObject("runningSelection").getString("bundleId"))
+            assertEquals("UPDATE_APPLIED", journal(root).getJSONObject("launchTransition").getString("kind"))
+            page.firstScreen = true
+            foreground.confirm(page)
+            assertFalse(journal(root).has("pending"))
+            host.closeForeground(foreground)
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun backgroundLeavesLivePendingAndColdInterruptionUntouched() {
+        val root = temp()
+        try {
+            val host = backgroundHost(root)
+            val first = host.createForeground()
+            first.pinPrimary().also { it.firstScreen = true; first.confirm(it) }
+            host.closeForeground(first)
+            plantNext(root, releaseB, bundleB, "B", background = true)
+            val trial = host.createForeground()
+            trial.pinPrimary()
+            val file = File(store(root), "state.json")
+            val pending = file.readBytes()
+            // A live foreground trial is neither another background candidate nor an interruption.
+            assertEquals(embeddedId, host.backgroundSnapshot().selection.bundleId)
+            assertTrue(pending.contentEquals(file.readBytes()))
+            host.closeForeground(trial)
+            // Cold snapshot projects the abandoned trial without persisting recovery or retry holds.
+            assertEquals(embeddedId, host.backgroundSnapshot().selection.bundleId)
+            assertTrue(pending.contentEquals(file.readBytes()))
+            assertFalse(journal(root).has("interruptedReleases"))
+            val fallback = host.createForeground()
+            val page = fallback.pinPrimary()
+            assertEquals(embeddedId, fallback.state(page).getJSONObject("runningSelection").getString("bundleId"))
+            assertTrue(journal(root).getJSONObject("interruptedReleases").has(releaseB))
+            host.closeForeground(fallback)
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun backgroundRespectsRetryHoldsAndDoesNotArmThem() {
+        val root = temp()
+        try {
+            val host = backgroundHost(root)
+            val initial = host.createForeground()
+            initial.pinPrimary().also { it.firstScreen = true; initial.confirm(it) }
+            host.closeForeground(initial)
+            plantNext(root, releaseB, bundleB, "B", background = true)
+            val file = File(store(root), "state.json")
+            val state = JSONObject(file.readText()).put("interruptedReleases", JSONObject()
+                .put(releaseB, JSONObject().put("bundleId", bundleB).put("retryReady", false)
+                    .put("holdProcessToken", "10000000-0000-4000-8000-000000000001")))
+            file.writeText(state.toString())
+            var before = file.readBytes()
+            assertEquals(embeddedId, host.backgroundSnapshot().selection.bundleId)
+            assertTrue(before.contentEquals(file.readBytes()))
+            state.getJSONObject("interruptedReleases").getJSONObject(releaseB).put("retryReady", true)
+            file.writeText(state.toString())
+            before = file.readBytes()
+            assertEquals(embeddedId, host.backgroundSnapshot().selection.bundleId)
+            val later = backgroundHost(root, "10000000-0000-4000-8000-000000000002")
+            assertEquals(bundleB, later.backgroundSnapshot().selection.bundleId)
+            assertTrue(before.contentEquals(file.readBytes()))
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun rejectedColdJournalReleasesOwnershipAndNeverInitializesMissingState() {
+        val root = temp()
+        try {
+            val host = backgroundHost(root)
+            assertEquals(embeddedId, host.backgroundSnapshot().selection.bundleId)
+            val file = File(store(root), "state.json")
+            assertFalse(file.exists())
+            file.writeText("invalid json")
+            assertThrows(Exception::class.java) { host.backgroundSnapshot() }
+            assertEquals("invalid json", file.readText())
+            assertTrue(file.delete())
+            assertEquals(embeddedId, host.backgroundSnapshot().selection.bundleId)
+            assertFalse(file.exists())
+            val first = host.createForeground()
+            host.closeForeground(first)
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun detachedScriptSurvivesFilePruningAndMissingEntryDoesNotRunAnotherRelease() {
+        val root = temp()
+        try {
+            val host = backgroundHost(root)
+            val first = host.createForeground()
+            first.pinPrimary().also { it.firstScreen = true; first.confirm(it) }
+            host.closeForeground(first)
+            plantNext(root, releaseB, bundleB, "B", background = true)
+            val task = host.backgroundSnapshot()
+            File(store(root), "artifacts/installations/$bundleB").deleteRecursively()
+            assertEquals("globalThis.marker = 'B';", task.source)
+            plantNext(root, releaseC, bundleC, "C", background = false)
+            val file = File(store(root), "state.json")
+            val before = file.readBytes()
+            assertThrows(IllegalStateException::class.java) { host.backgroundSnapshot() }
+            assertTrue(before.contentEquals(file.readBytes()))
+        } finally { root.deleteRecursively() }
     }
 
     @Test fun manifestBackedInstallationStartsLaterWithoutAnArchiveFile() {

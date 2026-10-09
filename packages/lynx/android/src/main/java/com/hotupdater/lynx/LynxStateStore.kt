@@ -11,6 +11,7 @@ import java.util.UUID
 internal class LynxStateStore(
     private val directory: File,
     private val syncDirectory: (File) -> Unit = DurableFiles::syncDirectory,
+    private val readOnly: Boolean = false,
 ) {
     private val ownerFile: RandomAccessFile
     @Suppress("unused") private val processLock: java.nio.channels.FileLock
@@ -21,14 +22,25 @@ internal class LynxStateStore(
     init {
         DurableFiles.directory(directory)
         ownerFile = RandomAccessFile(File(directory, "state.lock"), "rw")
-        processLock = checkNotNull(ownerFile.channel.tryLock()) { "Another process owns this Lynx scope" }
-        value = if (stateFile.exists()) JSONObject(stateFile.readText()) else JSONObject()
-        directory.listFiles().orEmpty().filter {
-            it.name.startsWith("state.next-") || it.name.startsWith("state.rollback-")
-        }.forEach { check(it.delete()) }
+        processLock = try {
+            checkNotNull(ownerFile.channel.tryLock()) { "Another process owns this Lynx scope" }
+        } catch (error: Throwable) {
+            ownerFile.close()
+            throw error
+        }
+        try {
+            value = if (stateFile.exists()) JSONObject(stateFile.readText()) else JSONObject()
+            if (!readOnly) directory.listFiles().orEmpty().filter {
+                it.name.startsWith("state.next-") || it.name.startsWith("state.rollback-")
+            }.forEach { check(it.delete()) }
+        } catch (error: Throwable) {
+            try { processLock.release() } finally { ownerFile.close() }
+            throw error
+        }
     }
     @Synchronized fun update(change: (JSONObject) -> Unit) {
         check(!closed) { "The Lynx state store is closed" }
+        check(!readOnly) { "The Lynx state store is read-only" }
         val next = JSONObject(value.toString())
         change(next)
         val staging = File(directory, "state.next-${UUID.randomUUID()}")

@@ -17,7 +17,7 @@ import com.hotupdater.lynx.LynxLaunchSession
 import com.hotupdater.lynx.LynxLogicalPage
 import com.hotupdater.lynx.LynxNativeOperationException
 import com.hotupdater.lynx.LynxPageCancelReason
-import com.hotupdater.lynx.LynxUpdaterController
+import com.hotupdater.lynx.LynxRuntimeHost
 import com.lynx.jsbridge.RuntimeLifecycleListener
 import com.lynx.tasm.LynxViewBuilder
 import com.tiktok.sparkling.SparklingContext
@@ -98,6 +98,7 @@ class HotUpdaterSparklingHost(
     private val hostId = UUID.randomUUID().toString()
     internal val eventSink = SparklingRuntimeEventSink(applicationContext, events)
     internal val pages = mutableListOf<ManagedPage>()
+    private val runtimeHost = LynxRuntimeHost.get(applicationContext, configuration.lynx)
     internal var controller = newController()
     internal var generationEvents = SparklingGenerationEvents(eventSink)
     internal var pageCreatedObserver: ((ManagedPage) -> Unit)? = null
@@ -1143,10 +1144,7 @@ class HotUpdaterSparklingHost(
         )
     }
 
-    private fun newController() = LynxUpdaterController(
-        applicationContext,
-        configuration.lynx,
-    )
+    private fun newController() = runtimeHost.createForeground()
 
     private fun transitionError(code: String, message: String) =
         LynxNativeOperationException(code, message)

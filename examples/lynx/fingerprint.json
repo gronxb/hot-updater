@@ -489,7 +489,7 @@
     ]
   },
   "android": {
-    "hash": "44061c345f3ddaaa5998cb4df75003ae9045c379973b87f423462fc520796b79",
+    "hash": "2b3fccf50102e857106e1263d41ab3b92ba8beded7ebbdd423ca3fbaea2d571f",
     "sources": [
       {
         "type": "file",
@@ -541,9 +541,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "c2a887c33a7f964e706c7dd19abf0f333ed371ae246abeff2d84f3f0694b4c16",
+        "hash": "cb5fb487f9f32731cbff7e2083211dd176ffd90b0b6a10f3ecc83d09845f7f72",
         "debugInfo": {
-          "byteSize": 53098
+          "byteSize": 53128
         }
       },
       {
@@ -680,6 +680,17 @@
       },
       {
         "type": "file",
+        "filePath": "@hot-updater/lynx/android/src/main/java/com/hotupdater/lynx/LynxBackgroundSnapshot.kt",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "4f04638f58be9ae61d2758b3f0b9a42a9f04ef4e1fdb4132f086a94aef8d3520",
+        "debugInfo": {
+          "byteSize": 899
+        }
+      },
+      {
+        "type": "file",
         "filePath": "@hot-updater/lynx/android/src/main/java/com/hotupdater/lynx/LynxBridgeReplies.kt",
         "reasons": [
           "lynx-native-input"
@@ -757,13 +768,35 @@
       },
       {
         "type": "file",
+        "filePath": "@hot-updater/lynx/android/src/main/java/com/hotupdater/lynx/LynxRuntimeHost.kt",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "a6a2c96070abcb5f1001cfe85ad12bd215fc35d2aa96e42701a42450bab9441d",
+        "debugInfo": {
+          "byteSize": 3895
+        }
+      },
+      {
+        "type": "file",
         "filePath": "@hot-updater/lynx/android/src/main/java/com/hotupdater/lynx/LynxStateStore.kt",
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "02e68957558f51c74b35e590790e6bb64adf0d19f830db8dce852bb966b4a56e",
+        "hash": "ddfbf80caea01099f7a2cf0991ebdf6ae98a75e4f8d03f95be11b359f3c1e7b1",
         "debugInfo": {
-          "byteSize": 3208
+          "byteSize": 3623
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx/android/src/main/java/com/hotupdater/lynx/LynxStoredSelectionReader.kt",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "6278b877985c5886dffb092938c0598c1e701fe80e27e25b7ee4ebddd0951aaf",
+        "debugInfo": {
+          "byteSize": 9907
         }
       },
       {
@@ -772,9 +805,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "920b1af5df58bce0d03ab25d82ed5649f181d83b2837f8d9b35236f856213d97",
+        "hash": "0e034b1d9902e377b1e81bcc4fb331022f6be51a02a797992d92f029c0b4ea65",
         "debugInfo": {
-          "byteSize": 86221
+          "byteSize": 82044
         }
       },
       {
