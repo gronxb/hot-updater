@@ -155,6 +155,7 @@ try {
   console.log(
     JSON.stringify(
       await finishSpike(outDir, "octane", variant, {
+        framework: `@octanejs/rspeedy-plugin#${pin}`,
         repository: octaneRepository.replace(/\.git$/, ""),
         commit: pin,
         rspeedy: "0.16.0",
