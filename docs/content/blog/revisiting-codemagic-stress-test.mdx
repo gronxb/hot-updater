@@ -1,253 +1,230 @@
 ---
-title: "Hot Updater v1.0 and Codemagic Patch: Beyond the Stress Test"
-description: "Why choose Hot Updater v1.0 when cached metadata delivery looks similar: use your platform's database, storage, and functions, or add OTA to your existing backend."
-date: "2026-09-10"
+title: "Revisiting the Codemagic Stress Test with Hot Updater v1.0"
+description: "We reran the cached update-check path that Codemagic's stress test highlighted, and wrote down where Hot Updater and Codemagic Patch each fit."
+date: "2026-10-09"
 author: "gronxb"
-image: "/blog/revisiting-codemagic-stress-test.webp"
+image: "/blog/codemagic-stress-test-2026-10-09/cover.webp"
 ---
 
-In [Codemagic's stress-test video](https://www.youtube.com/watch?v=-sYn7MZDw78),
-an earlier Hot Updater deployment slowed down at around 250 requests per
-second, while Patch handled 1,000 requests per second. Codemagic attributed
-the gap to Hot Updater querying a database for each check and Patch serving
-a pre-generated manifest through a CDN.
+Codemagic published a [stress-test video](https://www.youtube.com/watch?v=-sYn7MZDw78)
+comparing an earlier Hot Updater deployment with Codemagic Patch. Hot Updater
+slowed down at around 250 requests per second, while Patch handled 1,000.
+Codemagic traced the gap to Hot Updater querying a database on each check,
+where Patch serves a pre-generated manifest through a CDN.
 
-Hot Updater v1.0 has since changed that request path. Its
-[Release Catalogs](/blog/v1) can serve shared update metadata through a CDN,
-as they do in the Cloudflare configuration we tested. A cache hit no
-longer needs a database lookup, so the video's explanation of the gap
-doesn't describe this v1.0 configuration.
+That was a fair point. In Hot Updater v1.0,
+[Release Catalogs](/blog/v1) serve shared update metadata that a shared
+cache can answer, so a cache hit doesn't touch the database.
 
-## Revisiting the cached read path
+We wanted to see how the two cached paths compare today, so we measured
+them at the same 1,000 requests per second.
 
-We maintain Hot Updater and ran this test ourselves, using the Hot Updater
-v1.0 release candidate `1.0.0-rc.14` with real Cloudflare D1 and the preset's
-client API-key policy. For the control, we generated a synthetic manifest
-with Codemagic's serializer and served it through Cloudflare Workers Static
-Assets. Both paths shared a hostname and connection pool to reduce
-transport differences. We did not run a Patch deployment or reproduce its
-storage, publishing, or SDK behavior.
+## Measuring the cached read path
+
+We maintain Hot Updater, so take this as our own measurement. We ran Hot
+Updater v1.0 on Cloudflare, with real D1 and the preset's client API-key
+policy.
+
+We didn't run a Patch deployment. Instead, we built a control: a synthetic
+manifest made with Patch's own serializer, served from Cloudflare Workers
+Static Assets. It stands in for Patch's CDN delivery, not for Patch's
+storage, publishing, or SDK. Both paths shared a hostname and connection
+pool to keep transport differences small.
 
 We scheduled 1,000 requests per second for each path in three 12-second runs.
-Each path completed all 36,000 requests with HTTP 200 and the expected
-Bundle ID or package hash.
+Each path answered all 36,000 of its requests with HTTP 200 and the expected Bundle
+ID or package hash.
 
-| Metric at 1,000 requests/s | Hot Updater v1.0 on Cloudflare | Codemagic Patch |
+| Metric at 1,000 requests/s | Hot Updater v1.0 on Cloudflare | Static manifest (Patch format, our hosting) |
 | --- | ---: | ---: |
 | HTTP 200 + expected identifier | 36,000 / 36,000 | 36,000 / 36,000 |
 | HTTP, timeout, or payload failures | 0 | 0 |
-| p50, median of the three runs | 60.4 ms | 62.8 ms |
-| p95, all three runs pooled | 176.7 ms | 176.5 ms |
-| p99, all three runs pooled | 271.8 ms | 243.3 ms |
-| CDN `HIT` responses | 35,981 (99.947%) | 36,000 (100%) |
+| p50, median of the three runs | 51.6 ms | 50.9 ms |
+| p95, all three runs pooled | 83.4 ms | 79.1 ms |
+| p99, all three runs pooled | 184.2 ms | 95.4 ms |
+| Served from cache | 36,000 (100%) | 36,000 (100%) |
 
-*Codemagic Patch results are from the static manifest control described
-above, not a full Patch deployment.*
+*The right column is a manifest in Patch's format, with Patch's own cache
+headers, that we hosted ourselves. It is not a Patch deployment.*
 
 All 81,000 measured requests passed, including the 250 and 500 requests/s
-stages. Median latency and p95 were close; the static control had a lower
-pooled p99. With one warmed URL per path, v1.0's cached Catalog delivery
-kept up with the static manifest control at 1,000 requests per second.
+stages, and every response on both paths came from cache. Median and p95
+latency were within a few milliseconds of each other.
 
-These short runs cover cached metadata delivery, not maximum capacity or
-performance across the complete products under sustained production
-traffic. Within that scope, the results are close enough that we'd choose
-based on how OTA fits the infrastructure our team already uses.
+The p99 differs. Hot Updater keeps a Catalog fresh for five seconds, so the
+edge refreshes it from the Worker every five seconds, while the static
+manifest stayed cached for the whole run. At 250 and 500 requests/s that
+refresh did not show up in the tail: Hot Updater's p99 was 82 and 81 ms,
+against 86 and 87 ms for the static control. At 1,000 requests/s, one edge
+location (Hong Kong) still saw short bursts of slower responses, mostly around a
+refresh, which put Hot Updater's pooled p99 at 184 ms. The Tokyo edge, which
+served the other sixth of the traffic, had a 91 ms p99, against 119 ms for the
+static control there.
 
-## Use your platform's database, storage, and functions
+The five-second window is a deliberate trade. A new release or a rollback
+reaches devices within about 15 seconds without any CDN purge integration. Patch's
+manifest is cached for up to 300 seconds and relies on a CDN purge when you
+publish to show a new release sooner.
 
-Hot Updater's philosophy is to be infrastructure-agnostic: your team chooses
-where OTA runs, which database it uses, and where bundles live. We provide
-integrations for managed cloud services and for existing backends, so that
-choice reaches the services OTA actually uses.
+Both paths served one warmed URL, which is the best case for any cache.
+Real traffic spreads across more apps, versions, and keys, and these short
+runs don't measure maximum capacity or either product end to end. Within
+that scope, the cached check no longer shows the gap from the video. The bigger
+difference is how each one fits the platform you already use.
 
-Hot Updater's [provider presets](/docs/get-started/choose-provider) connect
-OTA to services your team may already operate. The
-[Supabase preset](/docs/managed/supabase) uses PostgreSQL, Storage, and Edge
-Functions. The [Firebase preset](/docs/managed/firebase) uses Firestore,
-Storage, and Cloud Functions. Each supplies the database and storage
-integration together with the function that handles client requests.
+## Use the database your platform already has
 
-The setup tools apply the provider's schema or indexes and deploy the
-function. You still configure access and connect your app, but the
-integration code is supplied. These deployments don't need a separate
-Docker host for the OTA server. Each preset has its own deployment and
-caching behavior; the benchmark above covers one configuration.
+Hot Updater is built to fit the provider you're on. Its
+[provider presets](/docs/get-started/choose-provider) use each platform's own
+database, storage, and functions, and the setup tools deploy them, so there's
+no server or VM to run. A [custom server](/docs/custom/overview) mounts the
+same handlers in your existing backend.
 
-Patch takes an integrated approach. Its
-[documented default installation](https://patch.codemagic.io/docs/install)
-requires an SSH-accessible server with Docker and Docker Compose v2. It
-runs Caddy, the API and release worker, PostgreSQL, and MinIO on that host.
-The installer gives a team a defined stack for management and publishing,
-while storage and a CDN can deliver published updates independently of
-the API.
+Patch takes an integrated approach: its API and release worker run as a
+Node.js service with PostgreSQL. The
+[default installation](https://patch.codemagic.io/docs/install) runs that
+stack with Docker Compose on one host, together with Caddy and MinIO. Bundles
+can move to [S3-compatible storage or Google Cloud Storage](https://patch.codemagic.io/docs/setup/infrastructure),
+and the database can be an
+[external PostgreSQL](https://patch.codemagic.io/docs/reference/configuration).
+Either way, the service runs on a host you provide.
 
-Patch can connect to [external PostgreSQL](https://patch.codemagic.io/docs/reference/configuration),
-so the database does not have to run inside Compose. Its
-[storage and delivery adapters](https://patch.codemagic.io/docs/setup/infrastructure)
-also let you change object storage and CDN services around its application
-stack: a
-[Node.js server](https://github.com/codemagic-ci-cd/codemagic-patch/blob/f22294f7c2599b79979b8620e5cb6db4bf3bdf0a/server/package.json)
-that [uses PostgreSQL directly](https://github.com/codemagic-ci-cd/codemagic-patch/blob/f22294f7c2599b79979b8620e5cb6db4bf3bdf0a/server/src/db/client.ts).
-That gives Patch flexibility in hosting, storage, and delivery, while its
-database and server runtime remain more prescribed than Hot Updater's.
+Here is what that means on each platform:
 
-For the commit we compared, Patch's
-[custom-deployment guide](https://github.com/codemagic-ci-cd/codemagic-patch/blob/f22294f7c2599b79979b8620e5cb6db4bf3bdf0a/docs/custom-deployment.md)
-identifies Compose as the only supported self-hosting path. Deployments
-outside Compose are reference material; separate API and worker services
-are work in progress. An operator could adapt Patch to another hosting
-platform, but that requires its own deployment and verification work.
+| You're on | Hot Updater uses | Running Patch there |
+| --- | --- | --- |
+| [Firebase](/docs/managed/firebase) | Firestore, Storage, Cloud Functions | PostgreSQL and a host for the service; bundles can go to Cloud Storage |
+| [Cloudflare](/docs/managed/cloudflare) | D1, R2, a Worker with a shared cache | PostgreSQL and a host for the service; bundles can go to R2 |
+| [AWS](/docs/managed/aws) | DynamoDB, S3, Lambda@Edge behind CloudFront | PostgreSQL and a host for the service; bundles can go to S3 |
+| [Supabase](/docs/managed/supabase) | PostgreSQL, Storage, an Edge Function | A host for its API and worker, with Supabase's PostgreSQL as its external database |
+| Your own backend | Handlers in Hono, Express, or Elysia, with Kysely, Drizzle, Prisma, or MongoDB | Its own service alongside your backend, using PostgreSQL (yours or a new one) |
 
-For a Firebase team, this makes a practical difference. Using a GCS bucket
-with Patch leaves its PostgreSQL-backed API and release worker to host.
-Hot Updater supplies the Firestore and Cloud Functions integration too.
-Using Firestore for Patch's metadata would require changes to its data
-layer; the version we reviewed doesn't provide that integration.
+For a Firebase team, Hot Updater keeps OTA metadata in Firestore next to the
+rest of the app's data and answers devices from Cloud Functions. For an
+Express and Prisma team, its schema goes through the existing migrations and
+its admin routes sit behind the existing authentication. A team on
+[MongoDB](/docs/custom/database/mongodb) or
+[SQLite](/docs/custom/database/kysely) keeps using it. Storage and database
+are separate adapters, and a provider we don't support yet can implement the
+[database contract](/docs/database-adapters/custom-database).
 
-Both setups still need upgrades, credential management, and data recovery;
-we haven't measured the maintenance effort for either.
+We measured the Cloudflare preset above. The AWS preset caches Catalogs in
+CloudFront, while Supabase and Firebase run the function on every check.
 
-## Fit OTA into an existing backend when you need to
+Patch's stack has its own advantages: one known setup to install, published
+manifests and bundles that Codemagic has
+[shown staying available with the API offline](https://blog.codemagic.io/designing-scalable-ota-update-architecture/#simulated-crash-test),
+and [commercial support and optional hosting](https://patch.codemagic.io/docs/introduction/pricing)
+from Codemagic.
 
-If your team already has a backend it wants to reuse, you can run
-Hot Updater [inside that server](/docs/custom/overview). Its handlers mount
-in Hono, Express, or Elysia. Database integrations cover Kysely, Drizzle,
-Prisma, and MongoDB. The [plugin system](/docs/concepts/plugin-system) lets
-you choose database and storage independently.
+## What comes with the server
 
-That includes database choices such as [SQLite](/docs/custom/database/kysely)
-and [MongoDB](/docs/custom/database/mongodb). A team with a transaction-capable
-MongoDB deployment can keep OTA metadata there. An Express and Prisma team
-can add Hot Updater's schema through its existing migration process and
-protect management routes with its authentication middleware. The team
-implements the admin access policy in the backend it already reviews and
-deploys.
+Beyond delivering updates, Hot Updater v1.0's server runs plugins, and the
+managed presets include the official ones:
 
-You can use [Docker](/docs/custom/hosting/docker) if containers fit your
-operations, or deploy to a [serverless host](/docs/custom/hosting/vercel).
-The same design leaves room for more providers: implement the
-[database contract](/docs/database-adapters/custom-database) and storage
-operations, then connect the request handlers to a compatible runtime.
-A new integration still needs implementation and validation, but can reuse
-Hot Updater's OTA logic with that provider's services.
+- [Insights](/docs/guides/insights) shows downloads, launches, crashes, and
+  failed updates for each bundle, with rollback from the Console.
+- [Remote Config](/docs/guides/remote-config) changes app values without a
+  new bundle.
+- [Client API keys](/docs/custom/api-key-authentication) protect the app's
+  routes.
 
-The [Console](/docs/guides/console) gives your team a UI for managing rollout
-and targeting, disabling bundles, and inspecting artifacts. Run it locally,
-or [deploy an authenticated Console](/docs/guides/console-deployment) for
-your team using the same backend resources.
+[Bundle diffing](/docs/guides/bundle-diffing) reuses unchanged files on the
+device and sends a binary patch for a changed Hermes bundle, and [bundle signing](/docs/guides/bundle-signing) works with a
+local key, AWS KMS, Google Cloud KMS, or a remote signer. The
+[Console](/docs/guides/console-deployment) can be deployed for your team on
+Cloudflare, Docker, Netlify, or Vercel.
 
-## An MIT license without a usage threshold
+## Licenses
 
-For teams extending these integrations, the license matters too.
-Hot Updater uses the [MIT license](https://github.com/gronxb/hot-updater/blob/0dbbefb4c536053fb6369d51722d3c72b43a26a7/LICENSE).
-You can use it commercially, modify it, and redistribute it as long as you
-meet its notice requirements. There is no MAU-based license fee or
-restriction on competing products. You still pay for your infrastructure.
+Most Hot Updater packages use the
+[MIT license](https://github.com/gronxb/hot-updater/blob/95ec8ff068d5358d9881ca9fcb2d90af99dfb7af/LICENSE).
+`@hot-updater/server` and `@hot-updater/console` use
+[MIT with one condition](https://github.com/gronxb/hot-updater/blob/95ec8ff068d5358d9881ca9fcb2d90af99dfb7af/packages/server/LICENSE):
+if you offer them to others as a hosted update service, you show "Powered by
+hot-updater" with a link. Running them for your own apps, or for apps you
+build or operate for clients, needs nothing extra.
 
-Patch's SDK and CLI use Apache 2.0. Its server has different terms: the
-[licensing summary for the commit we compared](https://github.com/codemagic-ci-cd/codemagic-patch/blob/f22294f7c2599b79979b8620e5cb6db4bf3bdf0a/LICENSING.md)
-allows free use up to 1,000,000 monthly active devices requesting updates.
-Above that, you need a commercial license. The server license restricts
-competing use, though you can self-host it for your own commercial apps
-within those terms. It also provides for a later transition to Apache 2.0,
-under the
-[full change-date terms](https://github.com/codemagic-ci-cd/codemagic-patch/blob/f22294f7c2599b79979b8620e5cb6db4bf3bdf0a/LICENSE)
-in the license. We're comparing the terms that apply to this pinned
-version now.
+Patch's SDK and CLI use Apache 2.0. Its server uses the
+[Codemagic Server License](https://github.com/codemagic-ci-cd/codemagic-patch/blob/3d4ad8b7a7d4ebedbe7cd0513742c1418625221c/LICENSING.md),
+which is free up to 1,000,000 monthly active users (unique devices that
+request an update) and needs a commercial
+license above that. It doesn't allow offering a competing service, and each
+version becomes Apache 2.0 two years after it's published.
 
-<span id="where-patch-remains-a-strong-choice" />
+## Choosing
 
-## When Patch fits
+Hot Updater fits when you want OTA to use the database, storage, and functions
+of the platform you're already on, whether that's Cloudflare, AWS, Supabase,
+Firebase, or your own backend, with Insights, Remote Config, bundle diffing,
+and signing on the same server. Patch fits a
+team that wants one self-contained stack on its own host, with commercial
+support from Codemagic.
 
-Patch offers an integrated installer and dashboard, plus
-[commercial support and optional vendor hosting](https://patch.codemagic.io/docs/introduction/pricing).
-For a team comfortable with PostgreSQL and containers, that can be a
-practical fit, with help available for adoption and operation.
+Thanks to the Codemagic team for the original video. It pushed us to measure
+the read path more carefully than we would have on our own.
 
-Patch keeps published manifests and bundle URLs separate from the
-management API. Codemagic [demonstrates delivery with that API offline](https://blog.codemagic.io/designing-scalable-ota-update-architecture/#simulated-crash-test),
-while storage and the CDN remain available. Hot Updater's origin
-dependencies vary by deployment. We didn't test whether the two systems
-behave alike during an outage.
-
-## Why we'd choose Hot Updater
-
-The earlier video raised a useful question about the cost of checking for
-updates. Hot Updater v1.0's cached Catalog path now handles the workload we
-tested with latency close to the static manifest control. Those results
-give us little reason to choose between these cached paths on speed alone.
-
-We'd choose Hot Updater when the team wants OTA to fit its existing
-infrastructure. It can use a managed platform's database and functions,
-or run the handlers in a backend with its own framework and authentication.
-The database and storage contracts also let the team implement further
-integrations as its needs change. The MIT license allows those extensions
-without a usage threshold or competing-product restriction.
-
-[Choose a provider preset](/docs/get-started/choose-provider) to set up the
-OTA server in your cloud account, or follow the
-[custom-server guide](/docs/custom/overview) to connect it to your backend.
+[Choose a provider preset](/docs/get-started/choose-provider) to set up OTA
+in your cloud account, or follow the
+[custom-server guide](/docs/custom/overview) to add it to your backend.
 
 ## Measurement record
 
-Download the [summary](/blog/codemagic-stress-test-2026-09-10/summary.json),
-[request-level results (gzip)](/blog/codemagic-stress-test-2026-09-10/results.json.gz),
-and [test harness with reproduction instructions](/blog/codemagic-stress-test-2026-09-10/harness.tar.gz).
-We removed deployment identifiers and credentials from the public files.
-They retain the request timings, statuses, cache observations, and source hashes.
+Download the [summary](/blog/codemagic-stress-test-2026-10-09/summary.json),
+[request-level results (gzip)](/blog/codemagic-stress-test-2026-10-09/results.json.gz),
+and [test harness with reproduction instructions](/blog/codemagic-stress-test-2026-10-09/harness.tar.gz).
+A [same-deployment control without `CDN-Cache-Control`](/blog/codemagic-stress-test-2026-10-09/results-control.json.gz)
+is summarized under `control` in the summary. We removed deployment
+identifiers and credentials from the public files.
+They keep the request timings, statuses, cache observations, and source hashes.
 
 <details>
 <summary>Read path and comparison limits</summary>
 
 ### Why v1.0 behaves differently
 
-[Release Catalogs](/blog/v1) compile release policy when it changes.
-Devices fetch a shared Catalog and evaluate their installation state locally.
-The [managed Cloudflare template](https://github.com/gronxb/hot-updater/blob/0dbbefb4c536053fb6369d51722d3c72b43a26a7/plugins/cloudflare/worker/wrangler.json)
+[Release Catalogs](/blog/v1) are compiled when release settings change.
+Devices fetch a shared Catalog and evaluate their own state locally. The
+[managed Cloudflare template](https://github.com/gronxb/hot-updater/blob/becff8b37d6f95b5edb85d5159ea16c114ae32d0/plugins/cloudflare/worker/wrangler.json)
 enables Workers Cache. A Catalog response uses:
 
 ```http
 Cache-Control: public, max-age=0, s-maxage=5
+CDN-Cache-Control: public, max-age=5, stale-while-revalidate=5, stale-if-error=0
 Vary: Accept-Encoding, x-api-key
 ```
 
 On a [Workers Cache hit](https://developers.cloudflare.com/workers/cache/),
-Cloudflare returns the response without running the Worker or looking up
-anything in D1. On a miss, API-key validation reads D1, and a cold Catalog
-adds another lookup. The server keeps a five-second Catalog cache and
-merges concurrent loads of the same Catalog.
-
-Codemagic also [clarified that the observed throughput was not a hard limit](https://www.reddit.com/r/reactnative/comments/1v2esog/hot_updater_vs_patch_ota_stress_test/).
+Cloudflare returns the response without running the Worker or querying D1.
+Workers Cache reads `CDN-Cache-Control` first: when a Catalog expires, it
+keeps answering from cache (`CF-Cache-Status: UPDATING`) while the Worker
+revalidates it in the background. A revalidation reads the client API key
+and the Catalog from D1, and the server keeps its own five-second Catalog
+cache and merges concurrent loads of the same Catalog.
 
 ### Scope
 
 We tested one warmed URL per path, one API key, and one synthetic release
-for a short period. That gives both paths plenty of cache reuse. v1.0 had
-a five-second freshness window. We gave the static manifest a 300-second
-window through a header in the harness; we didn't measure that value as
-a Patch deployment default. The 12-second stages crossed v1.0's TTL but
-never reached the manifest's expiry. Patch supports purging manifests
-when publishing. We did not measure how long either system takes to get
-a published update to a device.
+for a short period, which gives both paths plenty of cache reuse. Hot
+Updater had a five-second freshness window. The static manifest used the
+300-second window from Patch's own manifest cache policy
+(`CDN_MANIFEST_CACHE_CONTROL`). The 12-second stages crossed Hot Updater's TTL but
+never reached the manifest's expiry. With a CDN adapter configured, Patch
+purges manifests when publishing.
+We did not measure how long either system takes to get a published update
+to a device.
 
 The test also left out traffic across many apps or versions, cache purges
 after publishing, rollout changes, origin failures, Insights reporting,
-artifact resolution, downloads, and patch generation. A complete v1.0
+artifact resolution, downloads, and patch generation. A complete Hot Updater
 update may need a separate artifact request, and the two response bodies
-contain different information. We can't infer full SDK equivalence,
-hosting costs, or outage behavior from these results.
+carry different information. These results don't show SDK equivalence,
+hosting costs, or outage behavior.
 
-In the Cloudflare configuration we tested, a Catalog request that reaches
-the origin needs the Worker and D1. An update can also require a separate
-artifact lookup. We didn't test how these dependencies affect delivery
-during an outage.
-
-The video doesn't identify the Hot Updater commit it tested or give enough
-detail about its fixtures and request distribution for an exact rerun.
-Our test can't explain that earlier slowdown or measure a speedup between
-versions. It does show that v1.0 on Cloudflare can serve Catalog cache hits
-without database work on each request.
+v1.0 changed the read path after the version shown in the video, so this
+test can't explain the earlier slowdown or measure a speedup between
+versions. It does show that v1.0 on Cloudflare serves every Catalog request
+from cache, without database work on each request.
 
 </details>
 
@@ -258,43 +235,43 @@ without database work on each request.
 
 | Setting | Recorded value |
 | --- | --- |
-| Measurement interval | September 10, 2026, 13:34:31.712–13:36:22.933 UTC, including warmup and drain |
-| Hot Updater packages | `1.0.0-rc.14`; core, plugin-core, and server rebuilt from the checkout |
-| Hot Updater commit | `0dbbefb4c536053fb6369d51722d3c72b43a26a7` |
-| Codemagic commit | `f22294f7c2599b79979b8620e5cb6db4bf3bdf0a` |
-| Load generator | One Node.js `v24.15.0` process on a Mac mini in South Korea; Apple M4, 10 CPU cores, 24 GiB RAM; Darwin 25.3.0 arm64 |
+| Measurement interval | October 9, 2026, 07:01:25.390–07:03:11.862 UTC, including warmup and drain |
+| Hot Updater packages | `1.0.0-rc.43`; protocol, plugin-core, the official plugins, and server rebuilt from the checkout |
+| Hot Updater commit | `becff8b37d6f95b5edb85d5159ea16c114ae32d0` |
+| Codemagic commit | `3d4ad8b7a7d4ebedbe7cd0513742c1418625221c` |
+| Load generator | One Node.js `v24.15.0` process on a Mac mini in South Korea; Apple M4, 10 CPU cores, 24 GiB RAM; Darwin 27.0.0 arm64 |
 | Tooling | pnpm `11.6.0`, Wrangler `4.99.0` |
 | Hosting | One temporary Cloudflare Worker with D1 and Static Assets in the same account, using one `workers.dev` hostname |
-| D1 placement | APAC location hint; initial import reported KIX |
-| Worker compatibility | `2026-09-10`, `nodejs_compat`; the pinned managed template uses `2026-08-13` |
+| D1 placement | APAC location hint; initial import reported SIN |
+| Worker compatibility | `2026-08-13`, `nodejs_compat`, the same as the managed template |
 | Worker configuration | `cache.enabled=true`; observability enabled with `head_sampling_rate=0.01`; no explicit CPU override |
 | Account plan and infrastructure size | Account billing tier and managed Worker hardware were not recorded; no dedicated VM was used |
-| Edge distribution, each target | HKG 75%, NRT 16.67%, DEN 8.33%, from `CF-Ray` suffixes |
+| Edge distribution, each target | HKG 83.33%, NRT 16.67%, from `CF-Ray` suffixes |
 
-The v1.0 handler used the actual `createHotUpdater`, `d1Database`, and Hono
-request path. We added a D1 wrapper and diagnostic response headers to
+The Hot Updater handler used the actual `createHotUpdater`, D1 adapter,
+`apiKeys()` plugin, and Hono request path. We added a D1 wrapper and diagnostic response headers to
 observe each request, leaving authentication, Catalog selection, and cache
 logic unchanged. We omitted storage because the Catalog GET doesn't use it.
 
-We applied the repository's D1 schema and inserted one channel, one compiled
-Catalog, and one client API-key record. We compiled the Catalog from one
+We applied the repository's D1 migration and inserted one channel, one
+compiled Catalog, and one client API-key record. We compiled the Catalog from one
 enabled iOS Release with 100% rollout, no custom cohorts, and
 `targetAppVersion: "*"`. We left Bundle and Release rows empty because the
 fixture only needed to read persisted metadata. Publishing and artifact
 resolution were outside the test.
 
-| Request or fixture | Hot Updater v1.0 on Cloudflare | Codemagic Patch |
+| Request or fixture | Hot Updater v1.0 on Cloudflare | Static manifest (Patch format, our hosting) |
 | --- | --- | --- |
 | Request path | `/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0` | `/patch/production/1.0.0/manifest.json` |
 | App target | iOS, `production`, app version `1.0.0` | Synthetic manifest for the same version and channel |
 | Client authentication | One registered `x-api-key` shared by all requests | Public static object |
 | Stored document | 426-byte compiled Catalog; 724-byte HTTP body including forward and rollback candidates | 289-byte JSON from Codemagic's `manifestSerializer.ts` |
 | Shared cache TTL | 5 seconds | 300 seconds |
-| Cache-Control | `public, max-age=0, s-maxage=5` | `public, max-age=0, s-maxage=300, must-revalidate` |
+| Cache headers | `Cache-Control: public, max-age=0, s-maxage=5`; `CDN-Cache-Control: public, max-age=5, stale-while-revalidate=5, stale-if-error=0` | `Cache-Control: public, max-age=0, s-maxage=300, must-revalidate` |
 
 Cloudflare served the static asset before the Worker handler. The test ran
 without a Codemagic API, PostgreSQL, release worker, R2 bucket, or
-DigitalOcean VM. The manifest's bundle URL was a placeholder; we never
+VM. The manifest's bundle URL was a placeholder; we never
 downloaded it. After measurement, we removed the temporary Worker, D1
 database, and local client-key file.
 
@@ -305,7 +282,7 @@ database, and local client-key file.
 - Each target received 250 requests/s for six seconds, 500 requests/s for
   six seconds, then three runs of 1,000 requests/s for twelve seconds each:
   40,500 measured requests per target. Stages ran sequentially. The order
-  was v1.0/static, static/v1.0, v1.0/static, static/v1.0, then v1.0/static.
+  alternated between the two targets, starting with Hot Updater.
 - A clock-based scheduler sent due requests approximately every two
   milliseconds, without waiting for earlier responses. After scheduling
   ended, it waited for pending responses. The harness used a ten-second
@@ -319,16 +296,19 @@ database, and local client-key file.
   records dispatch lag and scheduled-to-completion latency.
 - Percentiles use nearest rank. We calculated the headline p95 from all
   36,000 request timings per target, rather than averaging the three p95 values.
-- At 1,000 requests/s, the largest per-stage p99 dispatch lag was 7.54 ms.
-  The final response arrived 163–347 ms after the nominal twelve-second
-  window. Including that drain, completed throughput was 972–987 requests/s.
+- At 1,000 requests/s, the largest per-stage p99 dispatch lag was 6.01 ms.
+  The final response arrived 70–97 ms after the nominal twelve-second
+  window. Including that drain, completed throughput was 992–994 requests/s.
 - We counted a sample as successful if it returned HTTP 200, parseable JSON,
   and the expected first Catalog Bundle ID or manifest target package hash.
   That check doesn't validate full SDK selection, rollback, or installation.
-- All 19 non-HIT v1.0 responses in the 1,000 requests/s stages were
-  `REVALIDATED`. CDN revalidation can retain diagnostic headers, so we can't
-  use their D1 counters to calculate total queries, CPU consumption, or savings.
-  One cold preflight response reported two D1 queries and two rows read.
+- Hot Updater answered 35,512 responses as `HIT` and 488 as `UPDATING`
+  (served from cache while the Worker revalidated), with no `REVALIDATED`,
+  `EXPIRED`, or `MISS`. The static control answered all 36,000 as `HIT`.
+  Cached responses can repeat an origin run's diagnostic headers, so we don't
+  sum their D1 counters into totals.
+- 510 Hot Updater responses took longer than 150 ms, all at HKG, against 29
+  for the static control.
 
 Both targets had the same POP proportions, though network conditions could
 still vary between stages. We didn't calculate confidence intervals or run
@@ -341,19 +321,19 @@ latency distributions.
 <summary>Every measured stage</summary>
 
 All times are milliseconds. Rows follow execution order; warmup is excluded.
-Codemagic Patch rows show the same static manifest control described above.
+"Static control" is the manifest in Patch's format that we hosted ourselves.
 
-| Offered requests/s | Run | Target | Correct / sent | p50 | p95 | p99 | CDN HIT |
+| Offered requests/s | Run | Target | Correct / sent | p50 | p95 | p99 | HIT + UPDATING |
 | ---: | --- | --- | ---: | ---: | ---: | ---: | ---: |
-| 250 | Ramp | Hot Updater v1.0 on Cloudflare | 1,500 / 1,500 | 65.5 | 273.5 | 401.4 | 99.800% |
-| 250 | Ramp | Codemagic Patch | 1,500 / 1,500 | 66.3 | 187.1 | 257.5 | 100.000% |
-| 500 | Ramp | Codemagic Patch | 3,000 / 3,000 | 60.4 | 172.2 | 177.5 | 100.000% |
-| 500 | Ramp | Hot Updater v1.0 on Cloudflare | 3,000 / 3,000 | 60.2 | 177.0 | 325.3 | 99.867% |
-| 1,000 | 1 | Hot Updater v1.0 on Cloudflare | 12,000 / 12,000 | 60.4 | 185.8 | 379.2 | 99.942% |
-| 1,000 | 1 | Codemagic Patch | 12,000 / 12,000 | 65.4 | 175.3 | 190.7 | 100.000% |
-| 1,000 | 2 | Codemagic Patch | 12,000 / 12,000 | 62.8 | 177.0 | 236.1 | 100.000% |
-| 1,000 | 2 | Hot Updater v1.0 on Cloudflare | 12,000 / 12,000 | 60.8 | 174.2 | 203.6 | 99.950% |
-| 1,000 | 3 | Hot Updater v1.0 on Cloudflare | 12,000 / 12,000 | 59.2 | 175.4 | 202.0 | 99.950% |
-| 1,000 | 3 | Codemagic Patch | 12,000 / 12,000 | 62.4 | 177.4 | 287.8 | 100.000% |
+| 250 | Ramp | Hot Updater v1.0 | 1,500 / 1,500 | 50.4 | 77.9 | 81.9 | 1,452 + 48 |
+| 250 | Ramp | Static control | 1,500 / 1,500 | 51.3 | 79.3 | 86.3 | 1,500 |
+| 500 | Ramp | Static control | 3,000 / 3,000 | 50.9 | 79.4 | 86.5 | 3,000 |
+| 500 | Ramp | Hot Updater v1.0 | 3,000 / 3,000 | 51.0 | 76.8 | 80.7 | 2,906 + 94 |
+| 1,000 | 1 | Hot Updater v1.0 | 12,000 / 12,000 | 51.6 | 81.4 | 180.3 | 11,763 + 237 |
+| 1,000 | 1 | Static control | 12,000 / 12,000 | 52.2 | 79.7 | 93.8 | 12,000 |
+| 1,000 | 2 | Static control | 12,000 / 12,000 | 50.6 | 78.9 | 93.2 | 12,000 |
+| 1,000 | 2 | Hot Updater v1.0 | 12,000 / 12,000 | 50.8 | 80.3 | 133.3 | 11,893 + 107 |
+| 1,000 | 3 | Hot Updater v1.0 | 12,000 / 12,000 | 51.7 | 92.0 | 221.5 | 11,856 + 144 |
+| 1,000 | 3 | Static control | 12,000 / 12,000 | 50.9 | 78.5 | 98.2 | 12,000 |
 
 </details>
