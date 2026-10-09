@@ -1055,7 +1055,9 @@ async function rejectRawDetailTarget(
     readSdkInstallFailureEvidence(installFailuresPath).length;
   const fallbackCountBefore = nativeLogsBefore.split(fallbackMarker).length - 1;
   const moved = `${detail.file}.${process.pid}.${Date.now()}.missing`;
-  const corruptBytes = Buffer.from("corrupt-detail");
+  assert.ok(original.length > 0, "Raw detail must not be empty");
+  const corruptBytes = Buffer.from(original);
+  corruptBytes[corruptBytes.length - 1] ^= 1;
   let nativeInstallError = "";
   let nativeInstallFailure: any;
   let consumedRequests: any[] = [];
