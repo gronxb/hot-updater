@@ -107,9 +107,12 @@ database lookup.
   origin. Requests with missing or different keys must never reuse another
   key's cached response.
 - **Keep the shared TTL short.** Honor the server's
-  `Cache-Control: public, max-age=0, s-maxage=5`. Do not extend the five-second
-  shared TTL or serve stale responses. A revoked key can still receive a
-  previously cached catalog until that entry expires.
+  `Cache-Control: public, max-age=0, s-maxage=5`, or, on a CDN that reads it,
+  `CDN-Cache-Control: public, max-age=5, stale-while-revalidate=5,
+  stale-if-error=0`. Do not extend the five-second shared TTL or the
+  five-second stale window. A revoked key can still receive a previously
+  cached catalog until that entry expires: up to 5 seconds under
+  `Cache-Control`, and up to 10 under `CDN-Cache-Control`.
 - **Never cache authentication failures.** Preserve
   `Cache-Control: private, no-store` for `401`, `403`, and other error responses.
   The one cacheable `404` is a scope with no catalog yet, marked

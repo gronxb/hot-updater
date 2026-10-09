@@ -242,6 +242,9 @@ describe("Hot Updater Handler Integration Tests (Hono + DynamoDB)", () => {
     expect(authorized.headers.get("cache-control")).toBe(
       "public, max-age=0, s-maxage=5",
     );
+    expect(authorized.headers.get("cdn-cache-control")).toBe(
+      "public, max-age=5, stale-while-revalidate=5, stale-if-error=0",
+    );
     expect(authorized.headers.get("x-hot-updater-catalog")).toBe("none");
     await expect(authorized.json()).resolves.toEqual({ error: "Not found" });
   });

@@ -67,6 +67,11 @@ describe("Release catalog routes", () => {
     expect(response.headers.get("cache-control")).toBe(
       "public, max-age=0, s-maxage=5",
     );
+    // A CDN that reads CDN-Cache-Control serves an expired catalog while it
+    // revalidates; s-maxage would forbid that.
+    expect(response.headers.get("cdn-cache-control")).toBe(
+      "public, max-age=5, stale-while-revalidate=5, stale-if-error=0",
+    );
     expect(response.headers.get("content-type")).toBe(
       "application/vnd.hot-updater.release-catalog+json; version=1",
     );
@@ -99,6 +104,9 @@ describe("Release catalog routes", () => {
     );
     expect(revalidated.status).toBe(304);
     expect(await revalidated.text()).toBe("");
+    expect(revalidated.headers.get("cdn-cache-control")).toBe(
+      response.headers.get("cdn-cache-control"),
+    );
     expect(catalogReads()).toBe(1);
 
     const nonCanonicalVersion = await hotUpdater.handlers.client(
@@ -124,6 +132,9 @@ describe("Release catalog routes", () => {
     expect(otherChannel.status).toBe(404);
     expect(otherChannel.headers.get("cache-control")).toBe(
       "public, max-age=0, s-maxage=5",
+    );
+    expect(otherChannel.headers.get("cdn-cache-control")).toBe(
+      "public, max-age=5, stale-while-revalidate=5, stale-if-error=0",
     );
     expect(otherChannel.headers.get("x-hot-updater-catalog")).toBe("none");
     expect(catalogReads()).toBe(2);
