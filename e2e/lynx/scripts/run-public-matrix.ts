@@ -782,6 +782,9 @@ async function exerciseNativeDiagnostics(adapter: any, displayVariant: string) {
   validateNavigationStackBoundary(navigationStackBoundary);
   const closeCursor = eventCursor(adapter);
   for (let depth = 16; depth > 1; depth -= 1) {
+    // The logical pop is recorded before Android finishes its window transition.
+    // Wait for the visible detail page before sending the next native back input.
+    await adapter.waitForText("Close detail page");
     adapter.nativeBack();
     await waitForEvent(
       adapter,
