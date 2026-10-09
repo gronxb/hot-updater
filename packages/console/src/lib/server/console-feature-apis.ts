@@ -1,18 +1,18 @@
 import type { RemoteDatabase } from "@hot-updater/plugin-core";
 import type { ApiKeyManagementAPI } from "@hot-updater/server/plugins/api-keys";
 import {
+  createInsightsAdminReads,
   createInsightsModel,
-  createInsightsProvider,
+  createInsightsReads,
   type InsightsApi,
   type InsightsModel,
 } from "@hot-updater/server/plugins/insights";
 import type { RemoteConfigApi } from "@hot-updater/server/plugins/remote-config";
 
-import type { ConsoleFeature } from "../console-features";
 import {
-  type ConsoleInsightsReads,
-  createAdminInsightsReads,
-} from "./adminInsights";
+  type ConsoleFeature,
+  ConsoleFeatureUnavailableError,
+} from "../console-features";
 import {
   type ConsoleRemoteConfig,
   createAdminRemoteConfig,
@@ -40,12 +40,12 @@ const featureApi = <TPluginApi, TApi>(
 /** What serves each console feature, keyed like `consoleFeatures`. */
 export const consoleFeatureApis = {
   insights: featureApi({
-    local: (api: InsightsApi): ConsoleInsightsReads => ({
-      ...createInsightsProvider(createInsightsModel(api)),
-      getRetention: async () => api.retention,
-      getUpdateFailures: api.getUpdateFailures,
-    }),
-    remote: createAdminInsightsReads,
+    local: createInsightsReads,
+    remote: (fetchAdmin: FetchAdmin) =>
+      createInsightsAdminReads(fetchAdmin, {
+        unavailable: () =>
+          new ConsoleFeatureUnavailableError("insights", { remote: true }),
+      }),
   }),
   insightsAnalytics: featureApi({
     local: (api: InsightsApi): InsightsModel => createInsightsModel(api),

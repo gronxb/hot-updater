@@ -162,6 +162,56 @@ describe("CLI commands", () => {
     expect(help("api-key", "revoke")).toContain("-y, --yes");
   });
 
+  it("manages Remote Config with remote-config, by version number", () => {
+    expect(help()).toMatch(
+      /^\s+remote-config\s+Show, publish, and roll back Remote Config templates$/m,
+    );
+    const remoteConfig = help("remote-config");
+    expect(remoteConfig).toMatch(/^\s+show \[options\] \[serverPath\]/m);
+    expect(remoteConfig).toMatch(/^\s+versions \[options\] \[serverPath\]/m);
+    expect(remoteConfig).toMatch(
+      /^\s+publish \[options\] <file> \[serverPath\]/m,
+    );
+    expect(remoteConfig).toMatch(
+      /^\s+rollback \[options\] <version> \[serverPath\]/m,
+    );
+    expect(remoteConfig).toMatch(/^\s+preview \[options\] \[serverPath\]/m);
+    // --version is the CLI's own: it would print the CLI's version.
+    expect(help("remote-config", "show")).toContain("--version-number <n>");
+    expect(help("remote-config", "preview")).toContain("--version-number <n>");
+    const publish = help("remote-config", "publish");
+    expect(publish).toContain("--expected-version <n>");
+    expect(publish).toContain("--dry-run");
+    expect(publish).toContain("-y, --yes");
+
+    const rollback = run("remote-config", "rollback", "latest");
+    expect(rollback.status).toBe(1);
+    expect(rollback.stderr).toContain("must be an integer of at least 1");
+  });
+
+  it("reads Insights with insights, in the console's words", () => {
+    expect(help()).toMatch(/^\s+insights\s+Read Insights:/m);
+    const insights = help("insights");
+    for (const command of ["overview", "failures", "events"]) {
+      expect(insights).toMatch(
+        new RegExp(`^\\s+${command} \\[options\\] \\[serverPath\\]`, "m"),
+      );
+    }
+    expect(insights).toMatch(
+      /^\s+installations \[options\] <id> \[serverPath\]/m,
+    );
+    expect(help("insights", "overview")).toContain("--bundle <id>");
+    // Help wraps long lines.
+    const oneLine = (...command: string[]) =>
+      help(...command).replace(/\s+/gu, " ");
+    expect(oneLine("insights", "events")).toContain(
+      'choices: "downloaded", "launched", "crashed", "failed"',
+    );
+    expect(oneLine("insights", "failures")).toContain(
+      'choices: "24h", "7d", "30d"',
+    );
+  });
+
   it("requires a name to create an API key", () => {
     const missing = run("api-key", "create");
     expect(missing.status).toBe(1);

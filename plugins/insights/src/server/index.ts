@@ -41,6 +41,12 @@ import {
   RAW_RETENTION_DAYS,
 } from "./schema";
 
+export {
+  createInsightsAdminReads,
+  createInsightsReads,
+  type InsightsAdminReadsOptions,
+  type InsightsReads,
+} from "./adminReads";
 export type * from "./domain";
 export type {
   BundleEventFailure,

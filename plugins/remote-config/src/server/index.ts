@@ -6,6 +6,11 @@ import { createRemoteConfigEndpoints } from "./routes";
 import { remoteConfigSchema } from "./schema";
 
 export {
+  createRemoteConfigAdminApi,
+  type RemoteConfigAdminApi,
+  type RemoteConfigAdminApiOptions,
+} from "./admin";
+export {
   type RemoteConfigActive,
   type RemoteConfigApi,
   RemoteConfigInputError,
