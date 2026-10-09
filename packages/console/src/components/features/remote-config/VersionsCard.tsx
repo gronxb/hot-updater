@@ -51,6 +51,7 @@ import {
   useRemoteConfigVersionsQuery,
   useRollbackRemoteConfigMutation,
 } from "@/lib/remote-config-api";
+import { useDialogTarget } from "@/lib/use-dialog-target";
 
 /** A publish time: the date and time, with the exact UTC time on hover. */
 function PublishedAt({ ms }: { readonly ms: number }) {
@@ -67,9 +68,12 @@ function PublishedAt({ ms }: { readonly ms: number }) {
 }
 
 function VersionDialog({
+  open,
   version,
   onOpenChange,
 }: {
+  readonly open: boolean;
+  /** Kept while the dialog animates closed. */
   readonly version: number | null;
   readonly onOpenChange: (open: boolean) => void;
 }) {
@@ -79,7 +83,7 @@ function VersionDialog({
       ? null
       : JSON.stringify(detail.data.template, null, 2);
   return (
-    <Dialog onOpenChange={onOpenChange} open={version !== null}>
+    <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-h-[calc(100svh-2rem)] grid-rows-[auto_minmax(0,1fr)] sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>Version {version}</DialogTitle>
@@ -153,7 +157,15 @@ export function VersionsCard({
   const versions = useRemoteConfigVersionsQuery({ enabled: true });
   const rollback = useRollbackRemoteConfigMutation();
   const [viewing, setViewing] = useState<number | null>(null);
-  const [restoring, setRestoring] = useState<number | null>(null);
+  // The version to restore and the one the rollback publishes, taken when
+  // the dialog opens.
+  const [restoring, setRestoring] = useState<{
+    readonly source: number;
+    readonly next: number;
+  } | null>(null);
+  // Kept while each dialog animates closed.
+  const shownViewing = useDialogTarget(viewing);
+  const shownRestoring = useDialogTarget(restoring);
   const rows = versions.data?.pages.flatMap((page) => page.versions) ?? [];
 
   const restore = async (event: MouseEvent<HTMLButtonElement>) => {
@@ -161,12 +173,12 @@ export function VersionsCard({
     if (restoring === null) return;
     try {
       const result = await rollback.mutateAsync({
-        version: restoring,
-        baseVersion: activeVersion,
+        version: restoring.source,
+        baseVersion: restoring.next - 1,
       });
       if (result.status === "published") {
         toast.success(
-          `Version ${result.version.version} restores version ${restoring}`,
+          `Version ${result.version.version} restores version ${restoring.source}`,
         );
         onRolledBack();
       } else if (result.status === "conflict") {
@@ -261,7 +273,11 @@ export function VersionsCard({
                     </div>
                     <p className="mt-0.5 text-xs text-muted-foreground">
                       <PublishedAt ms={row.createdAtMs} />
-                      {row.description === null ? null : (
+                      {row.description === null ||
+                      // The default a rollback gets, which the badge says.
+                      (row.updateType === "ROLLBACK" &&
+                        row.description ===
+                          `Rollback to version ${row.rollbackSource}`) ? null : (
                         <> · {row.description}</>
                       )}
                     </p>
@@ -281,7 +297,12 @@ export function VersionsCard({
                       aria-label={`Roll back to version ${row.version}`}
                       className="min-h-11 md:min-h-7"
                       disabled={row.version === activeVersion}
-                      onClick={() => setRestoring(row.version)}
+                      onClick={() =>
+                        setRestoring({
+                          source: row.version,
+                          next: activeVersion + 1,
+                        })
+                      }
                       size="sm"
                       variant="outline"
                     >
@@ -317,7 +338,8 @@ export function VersionsCard({
         onOpenChange={(open) => {
           if (!open) setViewing(null);
         }}
-        version={viewing}
+        open={viewing !== null}
+        version={shownViewing}
       />
       <AlertDialog
         onOpenChange={(open) => {
@@ -328,11 +350,12 @@ export function VersionsCard({
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>
-              Roll back to version {restoring}?
+              Roll back to version {shownRestoring?.source}?
             </AlertDialogTitle>
             <AlertDialogDescription>
-              Version {activeVersion + 1} will publish a copy of version{" "}
-              {restoring}, and devices get its values on their next fetch.
+              Version {shownRestoring?.next} will publish a copy of version{" "}
+              {shownRestoring?.source}, and devices get its values on their next
+              fetch.
               {hasDraft ? " Your unpublished changes are discarded." : ""}
             </AlertDialogDescription>
           </AlertDialogHeader>

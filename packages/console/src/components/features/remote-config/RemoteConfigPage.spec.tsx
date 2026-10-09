@@ -70,7 +70,9 @@ vi.mock("@/components/ui/dialog", async () => {
   };
 });
 
-const renderPage = (tab: "parameters" | "conditions" = "parameters") => {
+const renderPage = (
+  tab: "parameters" | "conditions" | "versions" = "parameters",
+) => {
   const onTabChange = vi.fn();
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
@@ -128,6 +130,8 @@ describe("RemoteConfigPage", () => {
     fireEvent.click(screen.getByRole("button", { name: "Publish changes" }));
     const publish = lastDialog();
     expect(publish.getByText("welcome_message")).toBeDefined();
+    // An added parameter shows what it sets.
+    expect(publish.getByTitle("Hello")).toBeDefined();
     fireEvent.change(publish.getByLabelText("Description"), {
       target: { value: "Launch copy" },
     });
@@ -348,6 +352,98 @@ describe("RemoteConfigPage", () => {
     expect(await screen.findByText("blue")).toBeDefined();
     expect(screen.queryByText("Your unpublished changes are back")).toBeNull();
     expect(window.localStorage.length).toBe(1);
+  });
+
+  it("brings back a value removed in the same edit when its condition is added again", async () => {
+    await state.api!.publish({
+      template: {
+        conditions: [
+          { name: "QA", rules: [{ type: "cohort", cohorts: ["qa"] }] },
+        ],
+        parameters: {
+          greeting: {
+            valueType: "STRING",
+            defaultValue: { value: "Hi" },
+            conditionalValues: { QA: { value: "Hi, QA" } },
+          },
+        },
+      },
+      baseVersion: 0,
+    });
+    renderPage();
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Edit greeting" }),
+    );
+    const dialog = lastDialog();
+    expect(dialog.getByLabelText("Value for QA")).toHaveProperty(
+      "value",
+      "Hi, QA",
+    );
+
+    fireEvent.click(
+      dialog.getByRole("button", { name: "Remove the value for QA" }),
+    );
+    expect(dialog.queryByLabelText("Value for QA")).toBeNull();
+    // The condition stays: removing a value is not deleting the condition.
+    fireEvent.click(
+      dialog.getByRole("combobox", { name: "Add a value for a condition" }),
+    );
+    fireEvent.click(await screen.findByRole("option", { name: "QA" }));
+    expect(lastDialog().getByLabelText("Value for QA")).toHaveProperty(
+      "value",
+      "Hi, QA",
+    );
+  });
+
+  it("lets a condition named after its rules follow them when edited", async () => {
+    await state.api!.publish({
+      template: {
+        conditions: [
+          {
+            name: "Cohort is qa",
+            rules: [{ type: "cohort", cohorts: ["qa"] }],
+          },
+          { name: "Testers", rules: [{ type: "cohort", cohorts: ["7"] }] },
+        ],
+        parameters: {},
+      },
+      baseVersion: 0,
+    });
+    renderPage("conditions");
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Edit Cohort is qa" }),
+    );
+    const named = lastDialog().getByLabelText("Name");
+    expect(named).toHaveProperty("value", "");
+    expect(named.getAttribute("placeholder")).toBe("Cohort is qa");
+    fireEvent.click(lastDialog().getByRole("button", { name: "Cancel" }));
+
+    // A name someone chose stays.
+    fireEvent.click(screen.getByRole("button", { name: "Edit Testers" }));
+    expect(lastDialog().getByLabelText("Name")).toHaveProperty(
+      "value",
+      "Testers",
+    );
+  });
+
+  it("shows a rollback's default description once, as its badge", async () => {
+    await state.api!.publish({
+      template: { parameters: {} },
+      baseVersion: 0,
+    });
+    await state.api!.publish({
+      template: {
+        parameters: {
+          theme: { valueType: "STRING", defaultValue: { value: "dark" } },
+        },
+      },
+      baseVersion: 1,
+    });
+    await state.api!.rollback({ version: 1, baseVersion: 2 });
+    renderPage("versions");
+
+    expect(await screen.findByText("Rollback to v1")).toBeDefined();
+    expect(screen.queryByText(/Rollback to version 1/u)).toBeNull();
   });
 
   it("keeps the open view in the route", async () => {

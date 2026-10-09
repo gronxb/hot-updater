@@ -336,6 +336,32 @@ describe("publish summary values", () => {
     ]);
   });
 
+  it("lists what an added parameter or condition sets, with no before", () => {
+    expect(
+      describeParameterChange(null, {
+        valueType: "NUMBER",
+        defaultValue: { value: "25" },
+        conditionalValues: { QA: { useInAppDefault: true } },
+      }),
+    ).toEqual([
+      { field: "Type", before: null, after: "Number" },
+      { field: "Default", before: null, after: "25" },
+      { field: "When QA", before: null, after: "In-app default" },
+    ]);
+    expect(
+      describeConditionChange(null, {
+        name: "QA",
+        rules: [{ type: "cohort", cohorts: ["qa"] }],
+      }),
+    ).toEqual([
+      {
+        field: "Rules",
+        before: null,
+        after: describeRule({ type: "cohort", cohorts: ["qa"] }),
+      },
+    ]);
+  });
+
   it("lists a condition's rules when they change, and nothing otherwise", () => {
     const qa: RemoteConfigCondition = {
       name: "QA",

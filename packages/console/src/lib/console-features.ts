@@ -6,21 +6,22 @@
  * Navigation, route guards, and server functions all read this registry. Its
  * other halves, keyed by the same features, hold what serves each feature on
  * the server (`server/console-feature-apis.ts`) and what each adds to pages
- * (`components/features/console-feature-ui.tsx`).
+ * (`components/features/FeatureSlots.tsx`). Their order is the sidebar's,
+ * below Bundles.
  */
 export const consoleFeatures = {
   /** Event history and installation lookups, which the admin API serves too. */
   insights: { plugin: "insights", label: "Insights", remote: true },
   /** App usage, distribution, and release activity, read from the database. */
   insightsAnalytics: { plugin: "insights", label: "Insights", remote: false },
-  /** API key management: `apiKeys()` mounts no admin routes to manage them. */
-  apiKeys: { plugin: "apiKeys", label: "API keys", remote: false },
   /** Template editing, publishing, and rollback, which the admin API serves too. */
   remoteConfig: {
     plugin: "remoteConfig",
     label: "Remote Config",
     remote: true,
   },
+  /** API key management: `apiKeys()` mounts no admin routes to manage them. */
+  apiKeys: { plugin: "apiKeys", label: "API keys", remote: false },
 } as const satisfies Readonly<
   Record<
     string,

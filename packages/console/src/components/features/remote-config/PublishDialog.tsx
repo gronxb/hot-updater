@@ -32,7 +32,7 @@ import type { ConsolePublishResult } from "@/lib/remote-config-rpc";
 
 import { useDateTimeText } from "./useDateTimeText";
 
-/** A changed key, and each of its fields from before to after. */
+/** A changed or added key, and each of its fields: before to after, or as added. */
 function ChangedKey({
   name,
   fields,
@@ -51,14 +51,18 @@ function ChangedKey({
               key={change.field}
             >
               <span>{change.field}</span>
-              <span
-                className="max-w-full truncate font-mono line-through decoration-muted-foreground/60"
-                title={change.before}
-              >
-                {change.before}
-              </span>
-              <ArrowRight aria-hidden="true" className="size-3 shrink-0" />
-              <span className="sr-only">to</span>
+              {change.before === null ? null : (
+                <>
+                  <span
+                    className="max-w-full truncate font-mono line-through decoration-muted-foreground/60"
+                    title={change.before}
+                  >
+                    {change.before}
+                  </span>
+                  <ArrowRight aria-hidden="true" className="size-3 shrink-0" />
+                  <span className="sr-only">to</span>
+                </>
+              )}
               <span
                 className="max-w-full truncate font-mono text-foreground"
                 title={change.after}
@@ -80,7 +84,7 @@ function ChangeList({
 }: {
   readonly label: string;
   readonly changes: TemplateChanges;
-  /** The fields a changed key changes. */
+  /** The fields a changed key changes, or an added key sets. */
   readonly describe: (key: string) => readonly FieldChange[];
 }) {
   const rows = [
@@ -98,7 +102,7 @@ function ChangeList({
             <div className="contents" key={title}>
               <dt className="text-muted-foreground">{title}</dt>
               <dd className="min-w-0">
-                {title === "Changed" ? (
+                {title !== "Removed" ? (
                   <ul className="flex flex-col gap-1.5">
                     {keys.map((key) => (
                       <ChangedKey fields={describe(key)} key={key} name={key} />
@@ -148,16 +152,18 @@ export function PublishDialog({
   const { dateTimeText } = useDateTimeText();
   const changes = summarizeChanges(base, draft);
   const describeParameter = (key: string) => {
-    const before = base.parameters[key];
-    const after = draft.parameters[key];
-    return before === undefined || after === undefined
-      ? []
-      : describeParameterChange(before, after);
+    const before = Object.hasOwn(base.parameters, key)
+      ? base.parameters[key]!
+      : null;
+    const after = Object.hasOwn(draft.parameters, key)
+      ? draft.parameters[key]!
+      : null;
+    return after === null ? [] : describeParameterChange(before, after);
   };
   const describeCondition = (name: string) => {
-    const before = base.conditions.find((it) => it.name === name);
-    const after = draft.conditions.find((it) => it.name === name);
-    return before === undefined || after === undefined
+    const before = base.conditions.find((it) => it.name === name) ?? null;
+    const after = draft.conditions.find((it) => it.name === name) ?? null;
+    return after === null
       ? []
       : describeConditionChange(before, after, dateTimeText);
   };

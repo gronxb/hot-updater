@@ -39,6 +39,7 @@ import {
   type RemoteConfigCondition,
   type RemoteConfigTemplate,
 } from "@/lib/remote-config-draft";
+import { useDialogTarget } from "@/lib/use-dialog-target";
 
 import { ConditionDialog } from "./ConditionDialog";
 import { RuleSummary } from "./RuleSummary";
@@ -59,19 +60,25 @@ export function ConditionsCard({
   readonly onRemoveCondition: (name: string) => void;
   readonly onMoveCondition: (index: number, offset: -1 | 1) => void;
 }) {
+  // What each dialog shows is taken when it opens, so it holds still while
+  // it animates closed after the draft changed.
   const [editing, setEditing] = useState<{
-    readonly name: string | null;
+    readonly condition: RemoteConfigCondition | null;
   } | null>(null);
-  const [removing, setRemoving] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<{
+    readonly name: string;
+    readonly users: readonly string[];
+  } | null>(null);
+  const shownEditing = useDialogTarget(editing);
+  const shownRemoving = useDialogTarget(removing);
   const { dateTimeText } = useDateTimeText();
   const { conditions } = template;
-  const editingName = editing?.name ?? null;
-  const removingUsers =
-    removing === null ? [] : parametersUsing(template, removing);
+  const editingName = shownEditing?.condition?.name ?? null;
 
   const remove = (name: string) => {
-    if (parametersUsing(template, name).length === 0) onRemoveCondition(name);
-    else setRemoving(name);
+    const users = parametersUsing(template, name);
+    if (users.length === 0) onRemoveCondition(name);
+    else setRemoving({ name, users });
   };
 
   return (
@@ -87,7 +94,7 @@ export function ConditionsCard({
         </div>
         <Button
           className="min-h-11 sm:min-h-7"
-          onClick={() => setEditing({ name: null })}
+          onClick={() => setEditing({ condition: null })}
         >
           <Plus data-icon="inline-start" />
           Add condition
@@ -109,7 +116,7 @@ export function ConditionsCard({
             <EmptyContent>
               <Button
                 className="min-h-11 sm:min-h-7"
-                onClick={() => setEditing({ name: null })}
+                onClick={() => setEditing({ condition: null })}
               >
                 <Plus data-icon="inline-start" />
                 Add condition
@@ -169,7 +176,7 @@ export function ConditionsCard({
                     <Button
                       aria-label={`Edit ${condition.name}`}
                       className="min-h-11 md:min-h-7"
-                      onClick={() => setEditing({ name: condition.name })}
+                      onClick={() => setEditing({ condition })}
                       size="sm"
                       variant="outline"
                     >
@@ -193,11 +200,7 @@ export function ConditionsCard({
         )}
       </CardContent>
       <ConditionDialog
-        condition={
-          editingName === null
-            ? null
-            : (conditions.find(({ name }) => name === editingName) ?? null)
-        }
+        condition={shownEditing?.condition ?? null}
         onOpenChange={(open) => {
           if (!open) setEditing(null);
         }}
@@ -215,13 +218,13 @@ export function ConditionsCard({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {removing}?</AlertDialogTitle>
+            <AlertDialogTitle>Delete {shownRemoving?.name}?</AlertDialogTitle>
             <AlertDialogDescription>
-              {removingUsers.length === 1
+              {shownRemoving?.users.length === 1
                 ? "1 parameter has a value for it"
-                : `${removingUsers.length} parameters have a value for it`}{" "}
-              ({removingUsers.join(", ")}). Those values are removed too, so
-              matching devices get the default value after you publish.
+                : `${shownRemoving?.users.length} parameters have a value for it`}{" "}
+              ({shownRemoving?.users.join(", ")}). Those values are removed too,
+              so matching devices get the default value after you publish.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -229,7 +232,7 @@ export function ConditionsCard({
             <AlertDialogAction
               onClick={(event: MouseEvent<HTMLButtonElement>) => {
                 event.preventDefault();
-                if (removing !== null) onRemoveCondition(removing);
+                if (removing !== null) onRemoveCondition(removing.name);
                 setRemoving(null);
               }}
               variant="destructive"
