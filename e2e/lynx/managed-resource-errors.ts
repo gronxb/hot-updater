@@ -13,7 +13,7 @@ const MANAGED_RESOURCE_PREFIX = "hot-updater:///";
 const SHA256 = /^[0-9a-f]{64}$/;
 const POSITIVE_DECIMAL = /^[1-9][0-9]*$/;
 const THREADTIME_ENVELOPE =
-  /^\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}[ ]+(\d+)[ ]+\d+ I HotUpdaterLynx: (.*)$/;
+  /^\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}[ ]+(\d+)[ ]+(\d+) I HotUpdaterLynx: (.*)$/;
 const BRIEF_ENVELOPE = /^I\/HotUpdaterLynx\([ ]*(\d+)\): (.*)$/;
 const ACTIVE_GENERATION_BOUNDARIES = new Set([
   "generationWillEvaluate",
@@ -35,6 +35,7 @@ type LogRecord = {
   readonly line: string;
   readonly envelope: {
     readonly processId: string;
+    readonly threadId: string | null;
     readonly payload: string;
   } | null;
 };
@@ -101,8 +102,18 @@ export type AndroidFontDiagnosticEligibilityResult =
     );
 
 function parseEnvelope(line: string): LogRecord["envelope"] {
-  const match = line.match(THREADTIME_ENVELOPE) ?? line.match(BRIEF_ENVELOPE);
-  return match ? { processId: match[1], payload: match[2] } : null;
+  const threadtime = line.match(THREADTIME_ENVELOPE);
+  if (threadtime) {
+    return {
+      processId: threadtime[1],
+      threadId: threadtime[2],
+      payload: threadtime[3],
+    };
+  }
+  const brief = line.match(BRIEF_ENVELOPE);
+  return brief
+    ? { processId: brief[1], threadId: null, payload: brief[2] }
+    : null;
 }
 
 function parseJsonObject(value: string): Record<string, unknown> | null {
@@ -262,8 +273,81 @@ function stopsRecoveryAtBoundary(
     return false;
   }
   if (TERMINAL_GENERATION_BOUNDARIES.has(event.event)) return true;
+  if (isSiblingPageEvaluation(event, boundIdentity)) return false;
   const identity = managedIdentity(event);
   return identity === null || !sameIdentity(boundIdentity, identity);
+}
+
+function isSiblingPageEvaluation(
+  event: MatrixEvent,
+  boundIdentity: ManagedIdentity,
+): boolean {
+  const identity = managedIdentity(event);
+  return (
+    event.event === "generationWillEvaluate" &&
+    event.primary === false &&
+    identity !== null &&
+    event.pageAttemptId === identity.contextId &&
+    identity.contextId !== boundIdentity.contextId &&
+    sameIdentity(
+      { ...identity, contextId: boundIdentity.contextId },
+      boundIdentity,
+    )
+  );
+}
+
+function nativeFontDiagnosticIdentity(
+  records: readonly LogRecord[],
+  engineError: LogRecord,
+  relativePath: string,
+): ManagedIdentity | null {
+  const envelope = engineError.envelope;
+  if (!envelope?.threadId) return null;
+  // onReceivedError synchronously emits the attributed diagnostic after the raw
+  // error. Only the next record on that native thread can belong to this call.
+  const next = records
+    .slice(engineError.index + 1)
+    .find(
+      (record) =>
+        record.envelope?.processId === envelope.processId &&
+        record.envelope.threadId === envelope.threadId,
+    );
+  const diagnostic = next && parseMatrixEvent(next);
+  const identity = diagnostic && managedIdentity(diagnostic);
+  if (
+    diagnostic?.event !== "engineDiagnostic" ||
+    diagnostic.fatal !== false ||
+    diagnostic.code !== 302 ||
+    diagnostic.subcode !== 30201 ||
+    diagnostic.type !== "font" ||
+    diagnostic.path !== relativePath ||
+    !identity ||
+    identity.processId !== envelope.processId
+  )
+    return null;
+
+  // Sibling page events can interleave, but the diagnostic still needs its own
+  // active generation; a retired or replaced generation cannot recover it.
+  for (let index = engineError.index - 1; index >= 0; index -= 1) {
+    const record = records[index];
+    if (
+      record.envelope?.processId !== envelope.processId ||
+      !record.envelope.payload.startsWith(MATRIX_EVENT_MARKER)
+    )
+      continue;
+    const event = parseMatrixEvent(record);
+    const preceding = event && managedIdentity(event);
+    if (!event || !preceding || preceding.processId !== envelope.processId)
+      return null;
+    if (GENERATION_BOUNDARIES.has(event.event)) {
+      if (isSiblingPageEvaluation(event, identity)) continue;
+      return ACTIVE_GENERATION_BOUNDARIES.has(event.event) &&
+        sameIdentity(identity, preceding)
+        ? identity
+        : null;
+    }
+  }
+  return null;
 }
 
 function isRecoveredFontDiagnostic(
@@ -294,7 +378,9 @@ function isRecoveredFontDiagnostic(
       ).recovered
     );
   }
-  const boundIdentity = precedingIdentity(records, engineError);
+  const boundIdentity =
+    nativeFontDiagnosticIdentity(records, engineError, relativePath) ??
+    precedingIdentity(records, engineError);
   if (boundIdentity === null) return false;
   const laterRecords = records.slice(engineError.index + 1);
   if (

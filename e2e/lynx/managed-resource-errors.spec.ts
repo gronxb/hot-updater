@@ -112,6 +112,42 @@ function expectRejected(logs: string, code = 302): void {
   );
 }
 
+function interleavedFontRecovery(
+  diagnostic: Record<string, unknown> = {},
+  diagnosticEnvelope: LogEnvelope = log,
+): string[] {
+  const sibling = {
+    contextId: "context-detail",
+    pageAttemptId: "context-detail",
+    primary: false,
+  };
+  return [
+    matrixEvent("generationWillEvaluate"),
+    matrixEvent("generationWillEvaluate", sibling),
+    matrixEvent("firstContent", sibling),
+    matrixEvent("resourceLoaded", { path: "dynamic/component.lynx.bundle" }),
+    engineError({
+      src: "hot-updater:///assets/probe.ttf?hot-updater-generation=10",
+    }),
+    matrixEvent(
+      "engineDiagnostic",
+      {
+        fatal: false,
+        code: 302,
+        subcode: 30201,
+        type: "font",
+        path: "assets/probe.ttf",
+        ...diagnostic,
+      },
+      diagnosticEnvelope,
+    ),
+    matrixEvent("pageAdmitted", sibling),
+    matrixEvent("fontLoaded", { path: "assets/probe.ttf", sha256: SHA }),
+    matrixEvent("pageAttemptTerminal", sibling),
+    matrixEvent("jsReady", { confirmation: { status: "CONFIRMED" } }),
+  ];
+}
+
 function canonical(value: unknown): string {
   if (value === null || typeof value !== "object") return JSON.stringify(value);
   if (Array.isArray(value)) return `[${value.map(canonical).join(",")}]`;
@@ -260,6 +296,99 @@ function capturedEvidence(
 }
 
 describe("managed Lynx resource engine errors", () => {
+  it("binds a recovered main-page font diagnostic despite interleaved sibling events", () => {
+    expect(
+      findManagedResourceEngineErrorCodes(interleavedFontRecovery().join("\n")),
+    ).toEqual([]);
+  });
+
+  it.each([
+    [
+      "another thread",
+      {},
+      (message: string) =>
+        log(message).replace("  1234  1234 ", "  1234  9999 "),
+    ],
+    ["another process", {}, (message: string) => log(message, "9999")],
+    ["another context", { contextId: "context-detail" }, log],
+    ["another generation", { generationId: "generation-B" }, log],
+    ["another path", { path: "assets/other.ttf" }, log],
+    ["a fatal diagnostic", { fatal: true }, log],
+    ["another code", { code: 301 }, log],
+    ["another subcode", { subcode: 30202 }, log],
+    ["another resource type", { type: "image" }, log],
+  ] as const)(
+    "rejects interleaved recovery attributed to %s",
+    (_case, diagnostic, envelope) => {
+      expectRejected(interleavedFontRecovery(diagnostic, envelope).join("\n"));
+    },
+  );
+
+  it("does not reuse the next diagnostic for two errors on one thread", () => {
+    const records = interleavedFontRecovery();
+    records.splice(5, 0, engineError());
+    expect(findManagedResourceEngineErrorCodes(records.join("\n"))).toEqual([
+      302,
+    ]);
+  });
+
+  it("allows an attributed sibling page to begin between the diagnostic and recovery", () => {
+    const records = interleavedFontRecovery();
+    const siblingStart = records.splice(1, 2);
+    records.splice(4, 0, ...siblingStart);
+    expect(findManagedResourceEngineErrorCodes(records.join("\n"))).toEqual([]);
+  });
+
+  it("prefers native main-page attribution when the preceding identity belongs to a sibling", () => {
+    const records = interleavedFontRecovery().filter(
+      (record) => !record.includes('"event":"resourceLoaded"'),
+    );
+    expect(findManagedResourceEngineErrorCodes(records.join("\n"))).toEqual([]);
+  });
+
+  it.each([
+    { primary: true },
+    { pageAttemptId: "unrelated-page" },
+    { generationId: "generation-B" },
+    { attemptId: "attempt-B" },
+    { bundleId: "bundle-B" },
+  ])(
+    "rejects a sibling boundary with inconsistent ownership %j",
+    (overrides) => {
+      const records = interleavedFontRecovery();
+      records[1] = matrixEvent("generationWillEvaluate", {
+        contextId: "context-detail",
+        pageAttemptId: "context-detail",
+        primary: false,
+        ...overrides,
+      });
+      expectRejected(records.join("\n"));
+    },
+  );
+
+  it.each(["generationWillRetire", "generationRetired"])(
+    "rejects interleaved recovery after %s",
+    (boundary) => {
+      const records = interleavedFontRecovery();
+      records.splice(3, 0, matrixEvent(boundary));
+      expectRejected(records.join("\n"));
+    },
+  );
+
+  it("requires the attributed context's font and confirmed readiness", () => {
+    for (const missing of [
+      "fontLoaded",
+      "jsReady",
+      "engineDiagnostic",
+      "generationWillEvaluate",
+    ]) {
+      const records = interleavedFontRecovery().filter(
+        (record) => !record.includes(`"event":"${missing}"`),
+      );
+      expectRejected(records.join("\n"));
+    }
+  });
+
   it("accepts the ynqb7p Android shape with its exact PID-scoped diagnostic journaled", () => {
     expect(
       crypto.createHash("sha256").update(YNQB7P_JOURNAL).digest("hex"),
