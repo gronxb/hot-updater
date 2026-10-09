@@ -67,6 +67,11 @@ the entry, image, font, external JavaScript, and dynamic component against one
 verified installation. A missing managed dependency fails that release instead
 of reading another installed or embedded release.
 
+Both the production example and matrix SDK qualify the font source with
+`managedResourceUrl()` and the native launch's `runtimeGenerationEpoch`.
+This avoids reusing a previous generation's process-cached font after reload;
+native font verification and readiness are still required.
+
 The tested VueLynx and OctaneLynx framework-generated `import()` output calls
 `lynx.loadLazyBundle`, which those runtimes do not currently expose. The example
 therefore uses an independently compiled background module through the Lynx core

@@ -3,11 +3,13 @@ package com.hotupdater.lynx.sparkling
 import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
+import java.util.concurrent.atomic.AtomicLong
 import org.json.JSONObject
 
 /** String launch properties exposed to the managed Lynx application. */
 object HotUpdaterSparklingLaunchConfiguration {
     const val EXTRA = "hotUpdaterLaunchConfiguration"
+    private val nextRuntimeEpoch = AtomicLong()
 
     fun from(context: Context): Map<String, String> {
         val encoded = context.activity()?.intent?.getStringExtra(EXTRA)
@@ -49,11 +51,11 @@ object HotUpdaterSparklingLaunchConfiguration {
         allowDiagnosticIntent: Boolean,
         context: Context,
         page: Map<String, String>,
-        runtimeGenerationEpoch: String,
     ): Map<String, String> = merge(
         host,
         if (allowDiagnosticIntent) from(context) else emptyMap(),
         page,
-        runtimeGenerationEpoch,
+        // Lynx caches fonts across hosts and retained-Activity runtime rebinds.
+        nextRuntimeEpoch.incrementAndGet().toString(),
     )
 }

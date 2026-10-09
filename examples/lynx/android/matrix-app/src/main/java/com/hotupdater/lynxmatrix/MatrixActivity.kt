@@ -21,6 +21,7 @@ import com.hotupdater.lynx.sparkling.captureDiagnosticAuthorities
 import com.hotupdater.lynx.sparkling.exerciseNavigationStackBoundaryForDiagnostics
 import com.hotupdater.lynx.sparkling.triggerReloadForDiagnostics
 import java.io.File
+import java.lang.ref.WeakReference
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -31,15 +32,17 @@ import org.json.JSONObject
 /** QA-only entry Activity; managed navigation uses packaged page Activities. */
 class MatrixActivity : Activity() {
     private var host: HotUpdaterSparklingHost? = null
-    private var staleProbe: HotUpdaterSparklingStaleProbe? = null
+    private var events: MatrixEvents? = null
     private var controls: LinearLayout? = null
     private val runtimeJournal by lazy { RuntimeJournalDiagnostics(filesDir) }
 
     override fun onCreate(state: Bundle?) {
         super.onCreate(state)
-        (lastNonConfigurationInstance as? HotUpdaterSparklingHost)?.let { retained ->
-            host = retained
-            setContentView(retained.reattachPrimary(this))
+        (lastNonConfigurationInstance as? MatrixEvents)?.let { retained ->
+            events = retained
+            retained.activity = WeakReference(this)
+            host = retained.host
+            setContentView(retained.host.reattachPrimary(this))
             installDiagnosticControls()
             return
         }
@@ -47,6 +50,10 @@ class MatrixActivity : Activity() {
         require(framework in setOf("react", "vue", "octane"))
         val embedded = JSONObject(BuildConfig.LYNX_EMBEDDED_DESCRIPTORS)
             .getJSONObject(framework)
+        val owner = MatrixEvents(applicationContext.filesDir, framework).also {
+            it.activity = WeakReference(this)
+            events = it
+        }
         val managedHost = HotUpdaterSparklingHost(
             applicationContext,
             HotUpdaterSparklingConfiguration(
@@ -64,44 +71,56 @@ class MatrixActivity : Activity() {
                 ),
                 allowDiagnosticIntentLaunchConfiguration = true,
             ),
-            HotUpdaterSparklingEventListener { name, details ->
-                if (name == "generationWillRetire" && details["reason"] == "reload") {
-                    staleProbe = checkNotNull(host).captureDiagnosticAuthorities()
-                }
-                val event = JSONObject(details)
-                    .put("event", name)
-                    .put("observedAt", observedAt())
-                    .put("framework", framework)
-                val encoded = event.toString()
-                appendRecord("matrix-events.jsonl", encoded)
-                Log.i(
-                    "HotUpdaterLynx",
-                    "HOT_UPDATER_MATRIX_EVENT $encoded",
-                )
-                if (name == "generationStarted") {
-                    runOnUiThread(::installDiagnosticControls)
-                }
-            },
+            owner,
         )
+        owner.host = managedHost
         host = managedHost
         setContentView(managedHost.createView(this))
         installDiagnosticControls()
     }
 
-    private fun observedAt(): String =
-        SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).run {
-            timeZone = TimeZone.getTimeZone("UTC")
-            format(Date())
+    private class MatrixEvents(
+        private val filesDir: File,
+        private val framework: String,
+    ) : HotUpdaterSparklingEventListener {
+        lateinit var host: HotUpdaterSparklingHost
+        var activity = WeakReference<MatrixActivity>(null)
+        var staleProbe: HotUpdaterSparklingStaleProbe? = null
+
+        override fun onEvent(name: String, details: Map<String, Any?>) {
+            if (name == "generationWillRetire" && details["reason"] == "reload") {
+                staleProbe = host.captureDiagnosticAuthorities()
+            }
+            val encoded = JSONObject(details)
+                .put("event", name)
+                .put("observedAt", observedAt())
+                .put("framework", framework)
+                .toString()
+            appendRecord(filesDir, "matrix-events.jsonl", encoded)
+            Log.i("HotUpdaterLynx", "HOT_UPDATER_MATRIX_EVENT $encoded")
+            if (name == "generationStarted") {
+                activity.get()?.let { current ->
+                    current.window.decorView.post {
+                        if (activity.get() === current) {
+                            current.installDiagnosticControls()
+                        }
+                    }
+                }
+            }
         }
+    }
 
     private fun installDiagnosticControls() {
         (controls?.parent as? ViewGroup)?.removeView(controls)
         controls = LinearLayout(this).also { row ->
             row.orientation = LinearLayout.HORIZONTAL
             row.setBackgroundColor(0xccffffff.toInt())
+            row.addView(action("Recreate Activity") { recreate() })
+            row.addView(action("Finish Activity") { finish() })
             row.addView(action("Verify stale after reload") {
-                checkNotNull(staleProbe).verifyStaleAuthorities()
-                staleProbe = null
+                val owner = checkNotNull(events)
+                checkNotNull(owner.staleProbe).verifyStaleAuthorities()
+                owner.staleProbe = null
             })
             row.addView(action("Fail secondary") {
                 val managedHost = checkNotNull(host)
@@ -244,21 +263,29 @@ class MatrixActivity : Activity() {
             },
         )
         val encoded = record.put("processId", Process.myPid().toString()).toString()
-        appendRecord("matrix-diagnostics.jsonl", encoded)
+        appendRecord(filesDir, "matrix-diagnostics.jsonl", encoded)
         Log.i("HotUpdaterLynx", "HOT_UPDATER_MATRIX_DIAGNOSTIC $encoded")
     }
 
-    private fun appendRecord(name: String, encoded: String) {
-        synchronized(MatrixActivity::class.java) {
-            val destination = File(filesDir, name)
-            val pending = File(filesDir, "$name.pending")
-            pending.outputStream().use { output ->
-                if (destination.exists()) {
-                    destination.inputStream().use { it.copyTo(output) }
-                }
-                output.write("$encoded\n".toByteArray(Charsets.UTF_8))
+    private companion object {
+        fun observedAt(): String =
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).run {
+                timeZone = TimeZone.getTimeZone("UTC")
+                format(Date())
             }
-            check(pending.renameTo(destination)) { "Could not publish $name" }
+
+        fun appendRecord(filesDir: File, name: String, encoded: String) {
+            synchronized(MatrixActivity::class.java) {
+                val destination = File(filesDir, name)
+                val pending = File(filesDir, "$name.pending")
+                pending.outputStream().use { output ->
+                    if (destination.exists()) {
+                        destination.inputStream().use { it.copyTo(output) }
+                    }
+                    output.write("$encoded\n".toByteArray(Charsets.UTF_8))
+                }
+                check(pending.renameTo(destination)) { "Could not publish $name" }
+            }
         }
     }
 
@@ -268,11 +295,12 @@ class MatrixActivity : Activity() {
         } else {
             host?.close()
         }
+        events?.takeIf { it.activity.get() === this }?.activity?.clear()
         host = null
-        staleProbe = null
+        events = null
         controls = null
         super.onDestroy()
     }
 
-    override fun onRetainNonConfigurationInstance(): Any? = host
+    override fun onRetainNonConfigurationInstance(): Any? = events
 }

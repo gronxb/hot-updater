@@ -6,6 +6,7 @@ import com.hotupdater.lynx.LynxHostConfiguration
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.Robolectric
@@ -13,6 +14,29 @@ import org.robolectric.RobolectricTestRunner
 
 @RunWith(RobolectricTestRunner::class)
 class HotUpdaterSparklingLaunchConfigurationTest {
+    @Test
+    fun freshBindingsCannotReuseCallerSuppliedFontCacheEpochs() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        activity.intent = Intent().putExtra(
+            HotUpdaterSparklingLaunchConfiguration.EXTRA,
+            """{"runtimeGenerationEpoch":"diagnostic","title":"Intent"}""",
+        )
+        val epochs = listOf("first-host", "first-host", "replacement-host").map { host ->
+            val launch = HotUpdaterSparklingLaunchConfiguration.resolve(
+                host = mapOf("host" to host, "runtimeGenerationEpoch" to "host"),
+                allowDiagnosticIntent = true,
+                context = activity,
+                page = mapOf("title" to "Page", "runtimeGenerationEpoch" to "page"),
+            )
+            assertEquals(host, launch["host"])
+            assertEquals("Page", launch["title"])
+            checkNotNull(launch["runtimeGenerationEpoch"]).also {
+                assertTrue(it.matches(Regex("^[1-9][0-9]*$")))
+            }
+        }
+        assertEquals(3, epochs.toSet().size)
+    }
+
     @Test
     fun mergesHostThenDiagnosticsThenPageConfiguration() {
         assertEquals(
@@ -65,7 +89,6 @@ class HotUpdaterSparklingLaunchConfigurationTest {
             mapOf(
                 "appBaseURL" to "https://updates.company.com/hot-updater",
                 "title" to "Detail",
-                "runtimeGenerationEpoch" to "1",
             ),
             HotUpdaterSparklingLaunchConfiguration.resolve(
                 host = configuration.launchConfiguration,
@@ -73,8 +96,7 @@ class HotUpdaterSparklingLaunchConfigurationTest {
                     configuration.allowDiagnosticIntentLaunchConfiguration,
                 context = activity,
                 page = mapOf("title" to "Detail"),
-                runtimeGenerationEpoch = "1",
-            ),
+            ) - "runtimeGenerationEpoch",
         )
     }
 
@@ -92,7 +114,6 @@ class HotUpdaterSparklingLaunchConfigurationTest {
             mapOf(
                 "appBaseURL" to "http://diagnostics.test/hot-updater",
                 "title" to "Page",
-                "runtimeGenerationEpoch" to "4",
             ),
             HotUpdaterSparklingLaunchConfiguration.resolve(
                 host = mapOf(
@@ -102,8 +123,7 @@ class HotUpdaterSparklingLaunchConfigurationTest {
                 allowDiagnosticIntent = true,
                 context = activity,
                 page = mapOf("title" to "Page"),
-                runtimeGenerationEpoch = "4",
-            ),
+            ) - "runtimeGenerationEpoch",
         )
     }
 

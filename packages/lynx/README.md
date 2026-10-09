@@ -160,6 +160,18 @@ replace every managed Lynx runtime and view in the same foreground OS process.
 All replacement contexts receive fresh identities and use one selected release.
 An ordinary next launch applies a staged selection independently of reload.
 
+Register managed fonts with the exported
+`managedResourceUrl("assets/font.ttf", runtimeGenerationEpoch)` helper. Read
+the epoch from `HotUpdater.getLaunchConfiguration()` for the current runtime;
+it must be a canonical positive decimal string. Lynx can cache font sources
+for the process lifetime. Each new runtime binding in that process receives a
+distinct epoch, including Activity rebinds within the same managed release
+generation. Page parameters cannot override this native value; do not persist
+or synthesize it.
+The helper adds the generation query while native code resolves and verifies
+the same manifest path. A missing or invalid epoch must fail startup rather
+than reuse an unqualified font URL.
+
 Startup confirmation requires all of the following from the live primary
 context:
 

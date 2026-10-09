@@ -6,6 +6,21 @@ final class SparklingManagedNavigationTests: XCTestCase {
         "detail.lynx.bundle", "main.lynx.bundle",
     ]
 
+    func testFreshBindingsCannotReuseCallerSuppliedFontCacheEpochs() throws {
+        let epochs = try ["first-host", "first-host", "replacement-host"].map { host in
+            let launch = HotUpdaterSparklingPageLaunchConfiguration.resolve(
+                host: ["host": host, "runtimeGenerationEpoch": "host"],
+                page: ["title": "Page", "runtimeGenerationEpoch": "page"]
+            )
+            XCTAssertEqual(launch["host"], host)
+            XCTAssertEqual(launch["title"], "Page")
+            let epoch = try XCTUnwrap(launch["runtimeGenerationEpoch"])
+            XCTAssertNotNil(epoch.range(of: "^[1-9][0-9]*$", options: .regularExpression))
+            return epoch
+        }
+        XCTAssertEqual(Set(epochs).count, 3)
+    }
+
     func testPageParametersAreExposedAsLaunchConfiguration() {
         XCTAssertEqual(
             HotUpdaterSparklingPageLaunchConfiguration.merge(

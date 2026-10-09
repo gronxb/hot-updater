@@ -1,6 +1,7 @@
 import {
   HotUpdater,
   LynxUpdaterError,
+  managedResourceUrl,
   type HotUpdaterInstance,
   type CheckForUpdateResult,
 } from "@hot-updater/lynx";
@@ -26,6 +27,7 @@ let prepared: CheckForUpdateResult | null = null;
 let busy = false;
 let ready = false;
 let evidenceOrigin: string | null = null;
+let fontUrl: string;
 
 const jsonBody = (value: unknown) =>
   TextCodecHelper.encode(JSON.stringify(value));
@@ -51,6 +53,12 @@ export async function startSdk(
   try {
     if (!initialized) {
       const launchConfiguration = await HotUpdater.getLaunchConfiguration();
+      if (__SDK_RESOURCES__) {
+        fontUrl = managedResourceUrl(
+          "assets/probe.ttf",
+          launchConfiguration.runtimeGenerationEpoch ?? "",
+        );
+      }
       evidenceOrigin = evidenceOriginFrom(
         launchConfiguration.appBaseURL ?? "http://localhost:3007/hot-updater",
       );
@@ -76,7 +84,7 @@ export async function startSdk(
         completeImage = resolve;
       });
     if (__SDK_RESOURCES__) {
-      await loadFont(`${__SPIKE_ASSET_PREFIX__}assets/probe.ttf`);
+      await loadFont(fontUrl);
       fontRegistered();
       const [external, dynamic] = await Promise.all([
         loadExternal(`${__SPIKE_ASSET_PREFIX__}assets/bootstrap.js`),

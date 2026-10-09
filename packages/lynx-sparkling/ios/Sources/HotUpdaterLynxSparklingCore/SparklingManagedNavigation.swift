@@ -47,6 +47,24 @@ public struct HotUpdaterSparklingParameter: Codable, Equatable {
 }
 
 enum HotUpdaterSparklingPageLaunchConfiguration {
+    private static let epochLock = NSLock()
+    private static var nextRuntimeEpoch: UInt64 = 0
+
+    static func resolve(
+        host: [String: String],
+        page: [String: String]
+    ) -> [String: String] {
+        // Font caches can outlive both the host and an individual runtime binding.
+        epochLock.lock()
+        defer { epochLock.unlock() }
+        nextRuntimeEpoch += 1
+        return merge(
+            host: host,
+            page: page,
+            runtimeGenerationEpoch: String(nextRuntimeEpoch)
+        )
+    }
+
     static func merge(
         host: [String: String],
         page: [String: String],

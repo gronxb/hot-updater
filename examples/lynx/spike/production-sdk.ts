@@ -1,5 +1,6 @@
 import {
   HotUpdater,
+  managedResourceUrl,
   type HotUpdaterInstance,
   type CheckForUpdateResult,
 } from "@hot-updater/lynx";
@@ -24,12 +25,12 @@ export function productionImageLoaded() {
   completeImage?.();
 }
 
-export async function loadProductionFont(): Promise<void> {
+export async function loadProductionFont(fontUrl: string): Promise<void> {
   return new Promise((resolve) => {
     lynx.addFont(
       {
         "font-family": "ReleaseProbe",
-        src: `url("${assetPrefix}assets/probe.ttf")`,
+        src: `url("${fontUrl}")`,
       },
       resolve,
     );
@@ -57,6 +58,10 @@ export async function startProductionSdk(
 ): Promise<void> {
   try {
     const launchConfiguration = await HotUpdater.getLaunchConfiguration();
+    const fontUrl = managedResourceUrl(
+      "assets/probe.ttf",
+      launchConfiguration.runtimeGenerationEpoch ?? "",
+    );
     const baseURL = launchConfiguration.appBaseURL;
     hotUpdater = HotUpdater.init({
       plugins: baseURL ? [insights()] : [],
@@ -70,7 +75,7 @@ export async function startProductionSdk(
         completeImage = resolve;
       });
     }
-    await loadProductionFont();
+    await loadProductionFont(fontUrl);
     fontRegistered();
     await Promise.all([loadProductionExternal(), loadProductionDynamic()]);
     await hotUpdater.notifyAppReady();
