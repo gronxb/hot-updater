@@ -14,6 +14,10 @@ Lynx relocates its actual JVM bytecode again to
 application includes both integrations. The two JAR class inventories were
 compared and have no intersection.
 
+The Android library publishes consumer shrinker rules for this namespace so
+R8 preserves the decoder's reflective `DictionaryData` lookup and static
+initialization in consuming applications.
+
 Reproduction uses `org.pantsbuild:jarjar:1.7.2`, with `org.ow2.asm:asm:9.7.1`
 and `org.ow2.asm:asm-commons:9.7.1` on its Java classpath:
 

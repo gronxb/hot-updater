@@ -4,7 +4,10 @@ apply plugin: 'kotlin-android'
 android {
     namespace 'com.hotupdater.lynx'
     compileSdkVersion rootProject.ext.has('compileSdkVersion') ? rootProject.ext.compileSdkVersion : 34
-    defaultConfig { minSdkVersion 24 }
+    defaultConfig {
+        minSdkVersion 24
+        consumerProguardFiles 'proguard-rules.pro'
+    }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_1_8
         targetCompatibility JavaVersion.VERSION_1_8
