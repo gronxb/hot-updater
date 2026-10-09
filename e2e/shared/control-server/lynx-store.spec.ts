@@ -13,6 +13,7 @@ import {
   readLynxLaunchReport,
   assertLynxStartupHang,
   assertLynxStartupInterruption,
+  assertLynxAwaitingRetry,
   synthesizeLynxMetadata,
 } from "./lynx-store.ts";
 
@@ -29,6 +30,53 @@ const receipt = {
 };
 
 describe("Lynx E2E store projection", () => {
+  it.each(["ios", "android"] as const)(
+    "requires an armed native %s retry record, not synthesized crash history",
+    (platform) => {
+      const exclusions =
+        platform === "ios"
+          ? { unconfirmedReleaseIds: [], crashedBundleIds: [] }
+          : { unconfirmed: [], crashed: [] };
+      const record = {
+        bundleId: "bundle-pending",
+        retryReady: true,
+        holdProcessToken: "10000000-0000-4000-8000-000000000001",
+      };
+      const journal = {
+        ...exclusions,
+        interruptedReleases: { "release-pending": record },
+      };
+      expect(() =>
+        assertLynxAwaitingRetry(journal, platform, record.bundleId),
+      ).not.toThrow();
+      for (const interruptedReleases of [
+        undefined,
+        {},
+        { "release-pending": { ...record, retryReady: false } },
+        { "release-pending": { ...record, holdProcessToken: "invalid" } },
+        { "release-pending": { ...record, bundleId: "different" } },
+      ]) {
+        expect(() =>
+          assertLynxAwaitingRetry(
+            { ...exclusions, interruptedReleases },
+            platform,
+            record.bundleId,
+          ),
+        ).toThrow();
+      }
+      const permanentlyExcluded =
+        platform === "ios"
+          ? { unconfirmedReleaseIds: ["release-pending"], crashedBundleIds: [] }
+          : { unconfirmed: ["release-pending"], crashed: [] };
+      expect(() =>
+        assertLynxAwaitingRetry(
+          { ...journal, ...permanentlyExcluded },
+          platform,
+          record.bundleId,
+        ),
+      ).toThrow();
+    },
+  );
   it.each(["ios", "android"] as const)(
     "reads %s interruption exclusions without promoting an unconfirmed Release to a crashed Bundle",
     (platform) => {

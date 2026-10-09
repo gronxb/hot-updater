@@ -144,6 +144,8 @@ public final class LynxController {
     public private(set) var recoveryPages: [LynxManagedLogicalPage] = []
     public private(set) var recoveredPageAttemptTerminals: [[String: Any]] = []
     private let identity = UUID()
+    static let processToken = UUID().uuidString
+    private let launchProcessToken: String
     private let lock = NSRecursiveLock()
     private let installer: LynxArtifactInstaller
     private let journal: LynxControllerJournal
@@ -181,7 +183,9 @@ public final class LynxController {
 
     init(configuration config: LynxControllerConfiguration,
          artifactFetch: LynxArtifactFetch?,
-         journalDirectorySync: ((URL) throws -> Void)? = nil) throws {
+         journalDirectorySync: ((URL) throws -> Void)? = nil,
+         processToken: String = LynxController.processToken) throws {
+        launchProcessToken = processToken
         guard !config.runtimeId.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !config.binaryIdentity.isEmpty, !config.channel.isEmpty, config.channel == config.channel.trimmingCharacters(in: .whitespacesAndNewlines),
               config.channel.utf8.elementsEqual(config.channel.precomposedStringWithCanonicalMapping.utf8),
@@ -287,16 +291,33 @@ public final class LynxController {
             let confirmedReceipt = try recovered.confirmed?.policy
             let wasConfirmedManagedReload = recoveredTransitionId != nil
                 && Self.sameIdentity(receipt, confirmedReceipt)
+                && pending.failed != true
             if wasConfirmedManagedReload {
                 recovered.launchTransition = nil
             } else {
                 failedPendingSelection = pending.selection
             }
             if !wasConfirmedManagedReload,
-               let releaseId = receipt.releaseId,
-               !recovered.unconfirmedReleaseIds.contains(releaseId) {
-                guard recovered.unconfirmedReleaseIds.count < 128 else { throw LynxArtifactError.invalid("Missing reserved startup recovery capacity") }
-                recovered.unconfirmedReleaseIds.append(releaseId)
+               let releaseId = receipt.releaseId {
+                guard recovered.recoveryIdentities.contains(releaseId)
+                    || recovered.recoveryIdentities.count < 128 else {
+                    throw LynxArtifactError.invalid("Missing reserved startup recovery capacity")
+                }
+                if pending.failed != true,
+                   recovered.pendingPages?.isEmpty != false,
+                   !recovered.unconfirmedReleaseIds.contains(releaseId),
+                   !recovered.crashedBundleIds.contains(receipt.bundleId),
+                   recovered.interruptedReleases?[releaseId] == nil {
+                    var records = recovered.interruptedReleases ?? [:]
+                    records[releaseId] = .init(bundleId: receipt.bundleId,
+                        retryReady: false, holdProcessToken: processToken)
+                    recovered.interruptedReleases = records
+                } else {
+                    recovered.interruptedReleases?.removeValue(forKey: releaseId)
+                    if !recovered.unconfirmedReleaseIds.contains(releaseId) {
+                        recovered.unconfirmedReleaseIds.append(releaseId)
+                    }
+                }
             }
             recovered.pending = nil
             recoveredChanged = true
@@ -311,12 +332,14 @@ public final class LynxController {
             let receipt = try interrupted.selection.policy
             if let releaseId = receipt.releaseId,
                !recovered.unconfirmedReleaseIds.contains(releaseId) {
-                guard recovered.unconfirmedReleaseIds.count < 128 else {
+                guard recovered.recoveryIdentities.contains(releaseId)
+                    || recovered.recoveryIdentities.count < 128 else {
                     throw LynxArtifactError.invalid(
                         "Missing reserved page recovery capacity"
                     )
                 }
                 recovered.unconfirmedReleaseIds.append(releaseId)
+                recovered.interruptedReleases?.removeValue(forKey: releaseId)
             }
             recoveredPages = interrupted.stack.map {
                 LynxManagedLogicalPage(
@@ -386,7 +409,8 @@ public final class LynxController {
             LynxPolicySnapshot(revision: recovered.revision, platform: "ios", appVersion: config.appVersion,
                 channel: base.channel, embeddedBundleId: config.embeddedBundleId, minimumBundleId: config.minimumBundleId,
                 cohort: snapshotCohort, runningSelection: base, nextSelection: nil,
-                crashedBundleIds: recovered.crashedBundleIds, unconfirmedReleaseIds: recovered.unconfirmedReleaseIds,
+                crashedBundleIds: recovered.crashedBundleIds,
+                unconfirmedReleaseIds: recovered.effectiveUnconfirmed(processToken: processToken),
                 fingerprintHash: config.fingerprintHash)
         }
         var selected: (LynxStoredSelection, LynxInstalledArtifact)?
@@ -398,7 +422,9 @@ public final class LynxController {
             }
             let snapshot = nativeSnapshot(receipt)
             guard Self.storedEligible(candidate, state: recovered, snapshot: snapshot),
-                  try (recovered.unconfirmedReleaseIds.count < 128 || Self.sameIdentity(receipt, recovered.confirmed?.policy)) else { continue }
+                  try (recovered.recoveryIdentities.count < 128
+                    || recovered.recoveryIdentities.contains(receipt.releaseId ?? "")
+                    || Self.sameIdentity(receipt, recovered.confirmed?.policy)) else { continue }
             let tree: LynxInstalledArtifact?
             if receipt.bundleId == config.embeddedBundleId {
                 tree = .init(
@@ -653,7 +679,8 @@ public final class LynxController {
         .init(revision: state.revision, platform: "ios", appVersion: configuration.appVersion, channel: runtimeChannel,
               embeddedBundleId: configuration.embeddedBundleId, minimumBundleId: configuration.minimumBundleId,
               cohort: runtimeCohort, runningSelection: runningSelection, nextSelection: try state.next?.policy,
-              crashedBundleIds: state.crashedBundleIds, unconfirmedReleaseIds: state.unconfirmedReleaseIds,
+              crashedBundleIds: state.crashedBundleIds,
+              unconfirmedReleaseIds: state.effectiveUnconfirmed(processToken: launchProcessToken),
               fingerprintHash: configuration.fingerprintHash)
     }
     private func selectionSnapshot(targetChannel: String, explicitScopeSwitch: Bool,
@@ -682,7 +709,7 @@ public final class LynxController {
                 minimumBundleId: configuration.minimumBundleId, cohort: runtimeCohort,
                 runningSelection: minimumBase, nextSelection: nil,
                 crashedBundleIds: state.crashedBundleIds,
-                unconfirmedReleaseIds: state.unconfirmedReleaseIds,
+                unconfirmedReleaseIds: state.effectiveUnconfirmed(processToken: launchProcessToken),
                 fingerprintHash: configuration.fingerprintHash
             )
         }
@@ -765,7 +792,11 @@ public final class LynxController {
                         runningSelection,
                         confirmedReceipt
                     ) {
-                guard next.pending == nil, next.unconfirmedReleaseIds.count < 128 else { throw LynxArtifactError.invalid("Startup trial capacity exhausted") }
+                guard next.pending == nil,
+                      next.recoveryIdentities.count < 128
+                        || next.recoveryIdentities.contains(runningSelection.releaseId ?? "") else {
+                    throw LynxArtifactError.invalid("Startup trial capacity exhausted")
+                }
                 next.pending = .init(
                     selection: running,
                     attemptId: attemptId,
@@ -934,7 +965,8 @@ public final class LynxController {
                 "pageAttemptTerminalCount": state.pageAttemptTerminalCount ?? 0,
                 "managedTerminalFailure": try state.managedTerminalFailure?
                     .dictionary as Any? ?? NSNull(),
-                "crashedBundleIds": state.crashedBundleIds, "unconfirmedReleaseIds": state.unconfirmedReleaseIds,
+                "crashedBundleIds": state.crashedBundleIds,
+                "unconfirmedReleaseIds": state.effectiveUnconfirmed(processToken: launchProcessToken),
                 "fingerprintHash": configuration.fingerprintHash]
     }
     public func acceptCatalog(_ json: Data, expectedRevision: String, contextHash: String,
@@ -977,7 +1009,7 @@ public final class LynxController {
         )
         let catalog = try LynxCatalogPolicy.parseCatalog(json: bytes, snapshot: current)
         let authorization = try LynxCatalogPolicy.authorize(catalog: catalog, snapshot: current, selectionGuard: guardValue, requestedReceipt: receipt)
-        guard !state.unconfirmedReleaseIds.contains(receipt.releaseId ?? ""), !state.crashedBundleIds.contains(receipt.bundleId) else { throw LynxArtifactError.authorizationRequired }
+        guard !state.effectiveUnconfirmed(processToken: launchProcessToken).contains(receipt.releaseId ?? ""), !state.crashedBundleIds.contains(receipt.bundleId) else { throw LynxArtifactError.authorizationRequired }
         return authorization
     }
     public func prepareSelection(guard guardValue: LynxPolicyGuard, receipt: LynxPolicyReceipt, artifact: LynxArtifactRequest?, context: LynxLaunchContext) async throws -> String {
@@ -1278,7 +1310,8 @@ public final class LynxController {
             do {
                 var next = state
                 if let pending = next.pending {
-                    guard pending.contextId == context.id,
+                    guard pending.failed != true,
+                          pending.contextId == context.id,
                           pending.attemptId == attemptId,
                           Self.sameIdentity(
                             try pending.selection.policy,
@@ -1298,8 +1331,16 @@ public final class LynxController {
                 let (transition, transitionId) = try launchConfirmation(
                     from: next
                 )
+                readyRequested = true
+                if contentObserved,
+                   context.requiredResources.isSubset(of: context.loadedResources),
+                   next.pendingPages?.isEmpty != false {
+                    next.confirmInterruptedLaunch(releaseId: runningSelection.releaseId,
+                        processToken: launchProcessToken)
+                }
                 if next.pending != nil || next.launchTransition != nil
-                    || next.managedTransition != nil {
+                    || next.managedTransition != nil
+                    || next.interruptedReleases != state.interruptedReleases {
                     next.pending = nil
                     next.launchTransition = nil
                     next.managedTransition = nil
@@ -1313,6 +1354,7 @@ public final class LynxController {
                 )
                 deliveries.append { completion(.success(confirmation)) }
             } catch {
+                readyRequested = false
                 deliveries.append { completion(.failure(error)) }
             }
             return
@@ -1329,15 +1371,26 @@ public final class LynxController {
     private func confirmIfReady(
         _ deliveries: inout [CallbackDelivery]
     ) throws {
-        guard !runningConfirmed, contentObserved, readyRequested, let primary,
+        guard contentObserved, readyRequested, let primary,
               primary.requiredResources.isSubset(of: primary.loadedResources),
               state.pendingPages?.isEmpty != false
         else { return }
         do {
         try validate(primary, primaryRequired: true)
         var next = state
+        if runningConfirmed {
+            if next.interruptedReleases?[runningSelection.releaseId ?? ""] != nil
+                || (next.interruptedReleases ?? [:]).values.contains(where: { !$0.retryReady }) {
+                next.confirmInterruptedLaunch(releaseId: runningSelection.releaseId,
+                    processToken: launchProcessToken)
+                next.revision = UUID().uuidString
+                try save(next)
+            }
+            return
+        }
         if let pending = next.pending {
-            guard pending.contextId == primary.id, pending.attemptId == attemptId,
+            guard pending.failed != true,
+                  pending.contextId == primary.id, pending.attemptId == attemptId,
                   Self.sameIdentity(try pending.selection.policy, runningSelection) else { throw LynxArtifactError.invalid("Startup attempt changed") }
         } else if runningSelection.kind != "BUILTIN", !Self.sameIdentity(runningSelection, try state.confirmed?.policy) {
             throw LynxArtifactError.invalid("No pending startup attempt")
@@ -1346,6 +1399,8 @@ public final class LynxController {
         next.confirmed = running; next.pending = nil
         next.launchTransition = nil
         next.managedTransition = nil
+        next.confirmInterruptedLaunch(releaseId: runningSelection.releaseId,
+            processToken: launchProcessToken)
         next.revision = UUID().uuidString
         try save(next)
         runningConfirmed = true
@@ -1651,6 +1706,9 @@ public final class LynxController {
             }
         )
         next.managedTerminalFailure = record
+        if next.pending?.attemptId == attemptId {
+            next.pending?.failed = true
+        }
         try Self.terminalizePendingPages(
             as: "verified-fatal",
             reason: "failClosed",
@@ -1659,6 +1717,7 @@ public final class LynxController {
         )
         next.revision = UUID().uuidString
         try save(next)
+        readinessAuthorityRevoked = true
         return try record.dictionary
     }
 
@@ -1678,12 +1737,19 @@ public final class LynxController {
         }
         if let releaseId = runningSelection.releaseId,
            !next.unconfirmedReleaseIds.contains(releaseId) {
-            guard next.unconfirmedReleaseIds.count < 128 else {
+            guard next.recoveryIdentities.contains(releaseId)
+                || next.recoveryIdentities.count < 128 else {
                 throw LynxArtifactError.invalid(
                     "Startup suppression capacity exhausted"
                 )
             }
             next.unconfirmedReleaseIds.append(releaseId)
+            next.interruptedReleases?.removeValue(forKey: releaseId)
+        }
+        for (releaseId, record) in next.interruptedReleases ?? [:]
+            where record.bundleId == runningSelection.bundleId {
+            next.unconfirmedReleaseIds.append(releaseId)
+            next.interruptedReleases?.removeValue(forKey: releaseId)
         }
     }
     @discardableResult

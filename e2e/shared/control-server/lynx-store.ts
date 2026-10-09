@@ -188,6 +188,38 @@ export function synthesizeLynxCrashHistory(
   };
 }
 
+export function assertLynxAwaitingRetry(
+  journal: Record<string, unknown>,
+  platform: "ios" | "android",
+  bundleId: string,
+): void {
+  const exclusions = lynxStoredExclusions(journal, platform);
+  const records = asRecord(journal.interruptedReleases);
+  const waiting = Object.entries(records ?? {}).some(([releaseId, value]) => {
+    const record = asRecord(value);
+    return (
+      releaseId.length > 0 &&
+      record?.bundleId === bundleId &&
+      record.retryReady === true &&
+      typeof record.holdProcessToken === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        record.holdProcessToken,
+      ) &&
+      Array.isArray(exclusions.unconfirmedReleaseIds) &&
+      !exclusions.unconfirmedReleaseIds.includes(releaseId)
+    );
+  });
+  if (
+    !waiting ||
+    !Array.isArray(exclusions.crashedBundleIds) ||
+    exclusions.crashedBundleIds.includes(bundleId)
+  ) {
+    throw new Error(
+      `Native Lynx journal does not permit a later retry of ${bundleId}`,
+    );
+  }
+}
+
 // The app transports the native notifyAppReady reply unchanged. Crash history
 // cannot establish which transition this launch actually completed.
 export function readLynxLaunchReport(screen: {

@@ -547,6 +547,195 @@ final class LynxControllerLocalTests: XCTestCase {
         XCTAssertEqual(controller!.runningSelection.kind, "BUILTIN")
     }
 
+    func testFailedFallbackReadinessWriteRequiresANewApplicationSignal() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-retry-write-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let embedded = root.appendingPathComponent("embedded")
+        let digest = try writeTree(at: embedded, bundleId: embeddedId, marker: "A")
+        let config = configuration(root: root.appendingPathComponent("store"), embedded: embedded, digest: digest)
+        let initial = try LynxController(configuration: config)
+        let initialContext = initial.createContext(primary: true)
+        _ = try initial.begin(initialContext)
+        try confirm(initial, initialContext)
+        try initial.close()
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B")
+        let trial = try LynxController(configuration: config)
+        _ = try trial.begin(trial.createContext(primary: true))
+        try trial.close()
+        let recovery = try LynxController(configuration: config)
+        let context = recovery.createContext(primary: true)
+        _ = try recovery.begin(context)
+        try recovery.observedContent(context)
+        let file = try home(config.root).appendingPathComponent("state.json")
+        let backup = file.appendingPathExtension("backup")
+        let journal = LynxControllerJournal(file: file)
+        try FileManager.default.moveItem(at: file, to: backup)
+        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: false)
+        var failure: Error?
+        recovery.notifyAppReady(context) { if case .failure(let error) = $0 { failure = error } }
+        XCTAssertNotNil(failure)
+        try FileManager.default.removeItem(at: file)
+        try FileManager.default.moveItem(at: backup, to: file)
+        try recovery.observedResource("assets/probe.png", context: context)
+        try recovery.observedContent(context)
+        XCTAssertEqual(try journal.load().interruptedReleases?[releaseB]?.retryReady, false)
+        var status: String?
+        recovery.notifyAppReady(context) { status = (try? $0.get())?.status }
+        XCTAssertEqual(status, "ALREADY_CONFIRMED")
+        XCTAssertEqual(try journal.load().interruptedReleases?[releaseB]?.retryReady, true)
+        try recovery.close()
+    }
+
+    func testInvalidInterruptedProcessTokenFailsClosedWithoutRewritingState() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-invalid-retry-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let embedded = root.appendingPathComponent("embedded")
+        let digest = try writeTree(at: embedded, bundleId: embeddedId, marker: "A")
+        let config = configuration(root: root.appendingPathComponent("store"), embedded: embedded, digest: digest)
+        let initial = try LynxController(configuration: config)
+        try initial.close()
+        let file = try home(config.root).appendingPathComponent("state.json")
+        let journal = LynxControllerJournal(file: file)
+        var state = try journal.load()
+        state.interruptedReleases = [releaseB: .init(bundleId: bundleB, retryReady: true, holdProcessToken: "invalid")]
+        try journal.save(state)
+        let original = try Data(contentsOf: file)
+        XCTAssertThrowsError(try LynxController(configuration: config))
+        XCTAssertEqual(try Data(contentsOf: file), original)
+    }
+
+    func testManagedFailClosedPrimaryNeverReceivesAnInterruptionRetry() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-failed-retry-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let embedded = root.appendingPathComponent("embedded")
+        let digest = try writeTree(at: embedded, bundleId: embeddedId, marker: "A")
+        let config = configuration(root: root.appendingPathComponent("store"), embedded: embedded, digest: digest)
+        let initial = try LynxController(configuration: config)
+        let initialContext = initial.createContext(primary: true)
+        _ = try initial.begin(initialContext)
+        try confirm(initial, initialContext)
+        try initial.close()
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B")
+        let trial = try LynxController(configuration: config)
+        let context = trial.createContext(primary: true)
+        _ = try trial.begin(context)
+        _ = try trial.recordManagedFailClosed(reason: "reconstructionFailed", message: "Managed generation cannot run",
+            stack: [.init(entry: "main.lynx.bundle", parameters: [])])
+        XCTAssertThrowsError(try trial.observedContent(context))
+        var readinessFailed = false
+        trial.notifyAppReady(context) { if case .failure = $0 { readinessFailed = true } }
+        XCTAssertTrue(readinessFailed)
+        try trial.close()
+        let recovery = try LynxController(configuration: config)
+        let fallback = recovery.createContext(primary: true)
+        _ = try recovery.begin(fallback)
+        XCTAssertEqual(recovery.runningSelection.bundleId, embeddedId)
+        XCTAssertEqual(try recovery.getState(fallback)["unconfirmedReleaseIds"] as? [String], [releaseB])
+        let journal = LynxControllerJournal(file: try home(config.root).appendingPathComponent("state.json"))
+        XCTAssertNil(try journal.load().interruptedReleases?[releaseB])
+        try recovery.close()
+    }
+
+    func testFatalRepublishedBytesSuppressOlderInterruptedReleases() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-fatal-retry-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let embedded = root.appendingPathComponent("embedded")
+        let digest = try writeTree(at: embedded, bundleId: embeddedId, marker: "A")
+        let config = configuration(root: root.appendingPathComponent("store"), embedded: embedded, digest: digest)
+        let initial = try LynxController(configuration: config)
+        try initial.close()
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B")
+        let trial = try LynxController(configuration: config)
+        _ = try trial.begin(trial.createContext(primary: true))
+        try trial.close()
+        let recovery = try LynxController(configuration: config)
+        try recovery.close()
+        try plantNext(config, releaseId: releaseC, bundleId: bundleB, marker: "B")
+        let republished = try LynxController(configuration: config)
+        let context = republished.createContext(primary: true)
+        _ = try republished.begin(context)
+        XCTAssertEqual(republished.runningSelection.releaseId, releaseC)
+        try republished.reportFailure(context, fatal: true)
+        try republished.close()
+        let journal = LynxControllerJournal(file: try home(config.root).appendingPathComponent("state.json"))
+        let state = try journal.load()
+        XCTAssertEqual(Set(state.unconfirmedReleaseIds), Set([releaseB, releaseC]))
+        XCTAssertEqual(state.crashedBundleIds, [bundleB])
+        XCTAssertTrue(state.interruptedReleases?.isEmpty != false)
+    }
+
+    func testInterruptedPrimaryWaitsForFallbackResourcesAndANewProcess() throws {
+        try assertInterruptedPrimaryRetry(retryConfirms: true)
+    }
+
+    func testSecondInterruptedPrimaryBecomesPermanent() throws {
+        try assertInterruptedPrimaryRetry(retryConfirms: false)
+    }
+
+    private func assertInterruptedPrimaryRetry(retryConfirms: Bool) throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-retry-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let embedded = root.appendingPathComponent("embedded")
+        let digest = try writeTree(at: embedded, bundleId: embeddedId, marker: "A")
+        let config = configuration(root: root.appendingPathComponent("store"), embedded: embedded,
+            digest: digest, resources: ["assets/probe.png"])
+        let p1 = UUID().uuidString, p2 = UUID().uuidString
+        let p3 = UUID().uuidString, p4 = UUID().uuidString
+        func start(_ token: String) throws -> (LynxController, LynxLaunchContext) {
+            let controller = try LynxController(configuration: config, artifactFetch: nil, processToken: token)
+            let context = controller.createContext(primary: true)
+            _ = try controller.begin(context)
+            return (controller, context)
+        }
+        let (initial, initialContext) = try start(p1)
+        try confirm(initial, initialContext, resource: "assets/probe.png")
+        try initial.close()
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B")
+        let (trial, _) = try start(p1)
+        XCTAssertEqual(trial.runningSelection.bundleId, bundleB)
+        try trial.close()
+        let journal = LynxControllerJournal(file: try home(config.root).appendingPathComponent("state.json"))
+        // The first recovery process also exits before its fallback is ready.
+        let (recovery, _) = try start(p2)
+        XCTAssertEqual(recovery.runningSelection.bundleId, embeddedId)
+        XCTAssertEqual(try journal.load().interruptedReleases?[releaseB]?.retryReady, false)
+        try recovery.close()
+        let (laterRecovery, context) = try start(p3)
+        laterRecovery.notifyAppReady(context) { XCTAssertEqual((try? $0.get())?.status, "ALREADY_CONFIRMED") }
+        XCTAssertEqual(try journal.load().interruptedReleases?[releaseB]?.retryReady, false)
+        try laterRecovery.observedContent(context)
+        XCTAssertEqual(try journal.load().interruptedReleases?[releaseB]?.retryReady, false)
+        try laterRecovery.observedResource("assets/probe.png", context: context)
+        let armed = try journal.load()
+        XCTAssertEqual(armed.interruptedReleases?[releaseB]?.retryReady, true)
+        XCTAssertEqual(armed.interruptedReleases?[releaseB]?.holdProcessToken, p3)
+        XCTAssertEqual(try laterRecovery.getState(context)["unconfirmedReleaseIds"] as? [String], [releaseB])
+        // Late native resource observations must not invalidate accepted receipts.
+        try laterRecovery.observedResource("assets/probe.png", context: context)
+        laterRecovery.notifyAppReady(context) { XCTAssertEqual((try? $0.get())?.status, "ALREADY_CONFIRMED") }
+        XCTAssertEqual(try journal.load().revision, armed.revision)
+        try laterRecovery.close()
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B")
+        let (recreated, _) = try start(p3)
+        XCTAssertEqual(recreated.runningSelection.bundleId, embeddedId)
+        try recreated.close()
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B")
+        let (retry, retryContext) = try start(p4)
+        XCTAssertEqual(retry.runningSelection.bundleId, bundleB)
+        XCTAssertEqual(try retry.getState(retryContext)["unconfirmedReleaseIds"] as? [String], [])
+        if retryConfirms {
+            try confirm(retry, retryContext, resource: "assets/probe.png")
+            XCTAssertNil(try journal.load().interruptedReleases)
+        }
+        try retry.close()
+        let (after, afterContext) = try start(UUID().uuidString)
+        XCTAssertEqual(after.runningSelection.bundleId, retryConfirms ? bundleB : embeddedId)
+        XCTAssertEqual(try after.getState(afterContext)["unconfirmedReleaseIds"] as? [String], retryConfirms ? [] : [releaseB])
+        XCTAssertEqual(try after.getState(afterContext)["crashedBundleIds"] as? [String], [])
+        XCTAssertNil(try journal.load().interruptedReleases?[releaseB])
+        try after.close()
+    }
+
     func testUnconfirmedBThenCCannotReenableB() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-local-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }

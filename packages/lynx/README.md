@@ -33,6 +33,16 @@ page context. Secondary pages report their own readiness with
 context can apply an update while a detail page is open, rebuilding the full
 managed stack in the same process.
 
+If a primary launch exits before readiness without a recorded failure, native
+recovery selects a fallback and holds that Release. Once the fallback's current
+screen, required resources, and application readiness are confirmed, a later
+process may select that Release for one retry. Recreating managed runtimes in
+the recovering process does not release the hold. Successful confirmation clears
+the retry record; a second unfinished attempt permanently excludes that Release.
+Verified fatal failures and interrupted secondary-page admission remain excluded.
+These Release holds are separate from `getCrashHistory()`; publishing a new,
+authorized Release can retry cached bytes unless that Bundle has fatally failed.
+
 Importing the package does not call native code, register a listener, or open a
 network connection. `init()` creates a fresh instance and synchronously sets up
 its plugins, which may read the bound native context. It does not confirm

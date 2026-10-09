@@ -79,6 +79,7 @@ import {
   readLynxLaunchReport,
   assertLynxStartupHang,
   assertLynxStartupInterruption,
+  assertLynxAwaitingRetry,
   synthesizeLynxMetadata,
 } from "./lynx-store.ts";
 import {
@@ -7500,8 +7501,18 @@ async function assertLaunchReportState({
   return {};
 }
 
-async function assertCrashHistory(bundleId: string, awaitingRetry: boolean) {
+async function assertCrashHistory(bundleId: string, awaitingRetry = false) {
   if (isLynxE2eApp()) {
+    if (awaitingRetry) {
+      const journal = readLynxJournalValue();
+      if (!journal) throw new Error("Lynx native state is unavailable");
+      fs.writeFileSync(
+        path.join(fixtureSession.resultsDir, "native-retry-state-assert.json"),
+        `${JSON.stringify(journal, null, 2)}\n`,
+      );
+      assertLynxAwaitingRetry(journal, fixtureSession.platform, bundleId);
+      return {};
+    }
     const crashHistoryPath = path.join(
       fixtureSession.resultsDir,
       "crash-history-assert.json",
@@ -7509,11 +7520,7 @@ async function assertCrashHistory(bundleId: string, awaitingRetry: boolean) {
     if (!writeLynxSnapshotFile("crashed-history.json", crashHistoryPath)) {
       throw new Error("Lynx crash history is missing");
     }
-    if (awaitingRetry) {
-      assertCrashHistoryAwaitsRetry(crashHistoryPath, bundleId);
-    } else {
-      assertCrashHistoryContains(crashHistoryPath, bundleId);
-    }
+    assertCrashHistoryContains(crashHistoryPath, bundleId);
     return {};
   }
   const crashHistoryPath =

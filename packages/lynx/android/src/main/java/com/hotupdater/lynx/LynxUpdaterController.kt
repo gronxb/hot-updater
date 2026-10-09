@@ -34,6 +34,7 @@ class LynxUpdaterController internal constructor(
     private val processIdentity: () -> String = {
         Process.myPid().toString()
     },
+    private val processToken: String = PROCESS_TOKEN,
 ) {
     constructor(context: Context, configuration: LynxHostConfiguration) : this(
         context.filesDir,
@@ -89,6 +90,15 @@ class LynxUpdaterController internal constructor(
         )
         synchronized(stateLock) {
             if (!store.value.has("revision")) store.update { it.put("revision", UUID.randomUUID().toString()) }
+            check(recoveryIdentities().size <= CAPACITY) { "Startup recovery capacity exhausted" }
+            interruptions().keys().forEach { releaseId ->
+                val record = interruptions().getJSONObject(releaseId)
+                check(UUID.fromString(releaseId).toString() == releaseId &&
+                    UUID.fromString(record.getString("bundleId")).toString() == record.getString("bundleId") &&
+                    UUID.fromString(record.getString("holdProcessToken")).toString() == record.getString("holdProcessToken") &&
+                    releaseId !in exclusions("unconfirmed")) { "Invalid interrupted launch identity" }
+                check(record.opt("retryReady") is Boolean) { "Invalid interrupted launch readiness" }
+            }
             normalizeStoredLaunchTransition()
             recover()
             if (!store.value.has("channel")) mutate { it.put("channel", configuration.channel) }
@@ -101,7 +111,30 @@ class LynxUpdaterController internal constructor(
     private fun builtin() = CatalogPolicy.Receipt("BUILTIN", null, embedded.bundleId, null, null, null, null, configuration.channel, null)
     private fun receipt(key: String) = store.value.optJSONObject(key)?.let(CatalogPolicy::parseReceipt)
     private fun exclusions(key: String): List<String> = store.value.optJSONArray(key)?.let { array -> (0 until array.length()).map { array.getString(it) } } ?: emptyList()
-    private fun eligible(value: CatalogPolicy.Receipt) = value.releaseId !in exclusions("unconfirmed") &&
+    private fun heldReleases(records: JSONObject = interruptions()): List<String> =
+        records.keys().asSequence().filter { releaseId ->
+            val record = records.getJSONObject(releaseId)
+            !record.getBoolean("retryReady") || record.getString("holdProcessToken") == processToken
+        }.toList()
+    private fun interruptions(): JSONObject = if (store.value.has("interruptedReleases")) {
+        store.value.getJSONObject("interruptedReleases")
+    } else JSONObject()
+    private fun unconfirmedReleases(): List<String> =
+        (exclusions("unconfirmed") + heldReleases()).distinct()
+    private fun recoveryIdentities(): Set<String> =
+        exclusions("unconfirmed").toSet() + interruptions().keys().asSequence().toSet()
+    private fun confirmInterruptedLaunch(next: JSONObject) {
+        val records = next.optJSONObject("interruptedReleases") ?: return
+        running.releaseId?.let(records::remove)
+        records.keys().asSequence().toList().forEach { releaseId ->
+            val record = records.getJSONObject(releaseId)
+            if (!record.getBoolean("retryReady")) {
+                record.put("retryReady", true).put("holdProcessToken", processToken)
+            }
+        }
+        if (records.length() == 0) next.remove("interruptedReleases")
+    }
+    private fun eligible(value: CatalogPolicy.Receipt) = value.releaseId !in unconfirmedReleases() &&
         (value.bundleId == embedded.bundleId || value.bundleId !in exclusions("crashed"))
     private var runtimeCohort: String =
         store.value.optString("cohort").ifEmpty { configuration.cohort }
@@ -109,7 +142,7 @@ class LynxUpdaterController internal constructor(
         store.value.optString("channel").ifEmpty { configuration.channel }
     private fun snapshot() = CatalogPolicy.NativeSnapshot(store.value.getString("revision"), configuration.appVersion,
         runtimeChannel, configuration.runtimeId, embedded.bundleId, configuration.minimumBundleId, runtimeCohort,
-        running, receipt("next"), exclusions("crashed"), exclusions("unconfirmed"),
+        running, receipt("next"), exclusions("crashed"), unconfirmedReleases(),
         configuration.fingerprintHash ?: binaryId)
     private fun selectionSnapshot(
         targetChannel: String,
@@ -152,7 +185,7 @@ class LynxUpdaterController internal constructor(
             minimumBase,
             null,
             exclusions("crashed"),
-            exclusions("unconfirmed"),
+            unconfirmedReleases(),
             configuration.fingerprintHash ?: binaryId,
         )
     }
@@ -268,6 +301,7 @@ class LynxUpdaterController internal constructor(
         crashed: List<String>,
         unconfirmed: List<String>,
         failedEmbedded: CatalogPolicy.Receipt?,
+        reserved: Set<String> = recoveryIdentities(),
     ): StoredFallback? {
         fun eligible(candidate: CatalogPolicy.Receipt) = eligibleStored(
             candidate,
@@ -276,7 +310,7 @@ class LynxUpdaterController internal constructor(
             failedEmbedded,
         )
         val confirmed = receipt("confirmed")?.takeIf(::eligible)
-        val atCapacity = unconfirmed.size >= CAPACITY || crashed.size >= CAPACITY
+        val atCapacity = reserved.size >= CAPACITY || crashed.size >= CAPACITY
         val candidates = listOfNotNull(
             receipt("next"),
             receipt("active"),
@@ -286,7 +320,8 @@ class LynxUpdaterController internal constructor(
         for (candidate in candidates) {
             if (
                 !eligible(candidate) ||
-                atCapacity && candidate != confirmed && candidate.kind != "BUILTIN"
+                atCapacity && candidate.releaseId !in reserved &&
+                    candidate != confirmed && candidate.kind != "BUILTIN"
             ) {
                 continue
             }
@@ -339,8 +374,24 @@ class LynxUpdaterController internal constructor(
             generationFailure?.optBoolean("fatal") == true
         val nextUnconfirmed = exclusions("unconfirmed").toMutableSet()
         val nextCrashed = exclusions("crashed").toMutableSet()
+        val nextInterruptions = JSONObject(interruptions().toString())
         if (!benignConfirmedManagedReload && selected.releaseId != null) {
-            nextUnconfirmed.add(checkNotNull(selected.releaseId))
+            val releaseId = checkNotNull(selected.releaseId)
+            check(releaseId in recoveryIdentities() || recoveryIdentities().size < CAPACITY) {
+                "Missing reserved startup recovery capacity"
+            }
+            if (pending != null && pendingPage == null && generationFailure == null &&
+                !fatal && releaseId !in nextUnconfirmed && selected.bundleId !in nextCrashed &&
+                !nextInterruptions.has(releaseId)
+            ) {
+                nextInterruptions.put(releaseId, JSONObject()
+                    .put("bundleId", selected.bundleId)
+                    .put("retryReady", false)
+                    .put("holdProcessToken", processToken))
+            } else {
+                nextUnconfirmed.add(releaseId)
+                nextInterruptions.remove(releaseId)
+            }
         }
         if (fatal && selected.bundleId != embedded.bundleId) {
             nextCrashed.add(selected.bundleId)
@@ -356,8 +407,9 @@ class LynxUpdaterController internal constructor(
             storedFallback(
                 retainedStack(),
                 nextCrashed.toList(),
-                nextUnconfirmed.toList(),
+                (nextUnconfirmed + heldReleases(nextInterruptions)).toList(),
                 failedEmbedded,
+                nextUnconfirmed + nextInterruptions.keys().asSequence().toSet(),
             )
         }
         val recoveryTransition = fallback?.receipt?.let {
@@ -380,6 +432,7 @@ class LynxUpdaterController internal constructor(
             }
             if (!benignConfirmedManagedReload && selected.releaseId != null) {
                 next.put("unconfirmed", JSONArray(nextUnconfirmed.toList()))
+                next.put("interruptedReleases", nextInterruptions)
             }
             if (fatal && selected.bundleId != embedded.bundleId) {
                 next.put("crashed", JSONArray(nextCrashed.toList()))
@@ -672,7 +725,7 @@ class LynxUpdaterController internal constructor(
                 storedFallback(
                     stack,
                     exclusions("crashed"),
-                    exclusions("unconfirmed"),
+                    unconfirmedReleases(),
                     store.value.optJSONObject("failedEmbedded")
                         ?.let(CatalogPolicy::parseReceipt),
                 ),
@@ -1506,12 +1559,17 @@ class LynxUpdaterController internal constructor(
             }
             if (
                 pending != null || transition != null ||
-                store.value.has("managedTransition")
+                store.value.has("managedTransition") ||
+                interruptions().has(running.releaseId ?: "") ||
+                interruptions().keys().asSequence().any {
+                    !interruptions().getJSONObject(it).getBoolean("retryReady")
+                }
             ) {
                 mutate {
                     it.remove("pending")
                     it.remove("launchTransition")
                     it.remove("managedTransition")
+                    confirmInterruptedLaunch(it)
                 }
             }
             return JSONObject()
@@ -1526,6 +1584,7 @@ class LynxUpdaterController internal constructor(
             it.put("confirmed", running.toJson())
             it.remove("launchTransition")
             it.remove("managedTransition")
+            confirmInterruptedLaunch(it)
         }
         runningConfirmed = true
         Log.i(TAG, "confirmed bundle=${running.bundleId} release=${running.releaseId} attempt=${session.id}")
@@ -1776,8 +1835,16 @@ class LynxUpdaterController internal constructor(
                     next.put("crashed", JSONArray(crashed))
                 }
                 if (running.releaseId != null) {
+                    next.optJSONObject("interruptedReleases")?.remove(running.releaseId)
                     val unconfirmed = exclusions("unconfirmed").toMutableList()
                     if (running.releaseId !in unconfirmed) unconfirmed.add(running.releaseId!!)
+                    val records = next.optJSONObject("interruptedReleases")
+                    records?.keys()?.asSequence()?.toList()?.forEach { releaseId ->
+                        if (records.getJSONObject(releaseId).getString("bundleId") == running.bundleId) {
+                            unconfirmed.add(releaseId)
+                            records.remove(releaseId)
+                        }
+                    }
                     next.put("unconfirmed", JSONArray(unconfirmed))
                 }
             }
@@ -1866,6 +1933,7 @@ class LynxUpdaterController internal constructor(
         }
     }
     companion object {
+        private val PROCESS_TOKEN = UUID.randomUUID().toString()
         private const val TAG = "HotUpdaterLynx"
         private const val CAPACITY = 128
         private const val MAX_MANAGED_PAGES = 16

@@ -42,6 +42,7 @@ struct LynxControllerPending: Codable {
     let attemptId: String
     let contextId: String
     let transitionId: String?
+    var failed: Bool? = nil
 }
 struct LynxStoredPageParameter: Codable, Equatable {
     let name: String
@@ -205,6 +206,12 @@ struct LynxStoredLaunchTransition: Codable {
         try .init(policy, transitionId: transitionId)
     }
 }
+struct LynxInterruptedRelease: Codable, Equatable {
+    let bundleId: String
+    var retryReady: Bool
+    var holdProcessToken: String
+}
+
 struct LynxControllerState: Codable {
     var revision = UUID().uuidString
     var selectionChannel: String?
@@ -218,6 +225,7 @@ struct LynxControllerState: Codable {
     var managedTransition: LynxControllerManagedTransition?
     var managedTerminalFailure: LynxControllerManagedFailure?
     var unconfirmedReleaseIds: [String] = []
+    var interruptedReleases: [String: LynxInterruptedRelease]?
     var crashedBundleIds: [String] = []
     // Oldest first. Persisting the admission order lets a full cache evict one
     // entry without permanently denying future artifacts.
@@ -227,6 +235,25 @@ struct LynxControllerState: Codable {
     var catalogAcceptances: [String: LynxStoredCatalogAcceptance]?
     var launchTransition: LynxStoredLaunchTransition?
     var installedDigests: [String: String] = [:]
+
+    var recoveryIdentities: Set<String> {
+        Set(unconfirmedReleaseIds).union((interruptedReleases ?? [:]).keys)
+    }
+
+    func effectiveUnconfirmed(processToken: String) -> [String] {
+        Array(Set(unconfirmedReleaseIds).union((interruptedReleases ?? [:])
+            .filter { !$0.value.retryReady || $0.value.holdProcessToken == processToken }
+            .keys)).sorted()
+    }
+
+    mutating func confirmInterruptedLaunch(releaseId: String?, processToken: String) {
+        if let releaseId { interruptedReleases?.removeValue(forKey: releaseId) }
+        for (id, record) in interruptedReleases ?? [:] where !record.retryReady {
+            interruptedReleases?[id]?.retryReady = true
+            interruptedReleases?[id]?.holdProcessToken = processToken
+        }
+        if interruptedReleases?.isEmpty == true { interruptedReleases = nil }
+    }
 }
 
 // Save the next complete state before exposing it in memory. A failed write keeps
@@ -268,6 +295,13 @@ final class LynxControllerJournal {
             }
         }
         guard state.unconfirmedReleaseIds.count <= 128, state.crashedBundleIds.count <= 10,
+              state.recoveryIdentities.count <= 128,
+              (state.interruptedReleases ?? [:]).allSatisfy({
+                  UUID(uuidString: $0.key) != nil
+                      && UUID(uuidString: $0.value.bundleId) != nil
+                      && UUID(uuidString: $0.value.holdProcessToken) != nil
+                      && !state.unconfirmedReleaseIds.contains($0.key)
+              }),
               state.incompatibleArtifacts.count <= 128, state.highWater.count <= 32, state.catalogs.count <= 32,
               (state.catalogAcceptances?.count ?? 0) <= 32,
               (state.pendingPages?.count ?? 0) <= lynxManagedPageStackCapacity,

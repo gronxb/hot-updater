@@ -65,13 +65,14 @@ class LynxUpdaterControllerTest {
         cohort = "1",
     )
 
-    private fun controller(root: File) =
+    private fun controller(root: File, processToken: String = "10000000-0000-4000-8000-000000000001") =
         LynxUpdaterController(
             root,
             binary(root),
             embedded(root),
             config(),
             processIdentity = { "4321" },
+            processToken = processToken,
         )
 
     private fun withController(
@@ -2349,6 +2350,155 @@ class LynxUpdaterControllerTest {
                 root.deleteRecursively()
             }
         }
+
+    @Test fun malformedInterruptedStateCannotSilentlyReenableARelease() {
+        val validRecord = JSONObject().put("bundleId", bundleB).put("retryReady", true)
+            .put("holdProcessToken", "10000000-0000-4000-8000-000000000001")
+        val malformed = listOf<Any>(
+            "not-an-object",
+            JSONObject().put(releaseB, JSONObject(validRecord.toString()).put("holdProcessToken", "invalid")),
+            JSONObject().put(releaseB, JSONObject(validRecord.toString()).put("retryReady", "true")),
+        )
+        for (value in malformed) {
+            val root = temp()
+            try {
+                withController(root) { }
+                val state = journal(root).put("interruptedReleases", value)
+                val file = File(store(root), "state.json")
+                file.writeText(state.toString())
+                assertThrows(Exception::class.java) { controller(root) }
+                assertEquals(state.toString(), file.readText())
+            } finally { root.deleteRecursively() }
+        }
+    }
+
+    @Test fun recoveryReservesTheInterruptedReleaseBeforeChoosingAnotherCandidate() {
+        val root = temp()
+        try {
+            withController(root) { initial ->
+                val session = initial.pinPrimary()
+                session.firstScreen = true
+                initial.confirm(session)
+            }
+            plantNext(root, releaseB, bundleB, "B")
+            withController(root) { it.pinPrimary() }
+            plantNext(root, releaseC, bundleC, "C")
+            val persisted = journal(root)
+            persisted.put("unconfirmed", JSONArray((1..127).map { "01900000-0000-7000-8000-%012d".format(1000 + it) }))
+            File(store(root), "state.json").writeText(persisted.toString())
+            withController(root) { recovery ->
+                val session = recovery.pinPrimary()
+                assertEquals(embeddedId, session.installation.bundleId)
+                session.firstScreen = true
+                val transition = recovery.confirm(session).getJSONObject("transition")
+                assertEquals(bundleB, transition.getJSONObject("from").getString("bundleId"))
+                assertEquals(embeddedId, transition.getJSONObject("to").getString("bundleId"))
+                assertEquals(128, recovery.state(session).getJSONArray("unconfirmedReleaseIds").length())
+            }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun fatalRepublishedBytesPermanentlySuppressOlderInterruptedReleases() {
+        val root = temp()
+        try {
+            withController(root) { it.pinPrimary() }
+            plantNext(root, releaseB, bundleB, "B")
+            withController(root) { it.pinPrimary() }
+            withController(root) { it.pinPrimary() }
+            plantNext(root, releaseC, bundleB, "B")
+            withController(root) { trial ->
+                val session = trial.pinPrimary()
+                assertEquals(bundleB, session.installation.bundleId)
+                trial.fail(session, "verified fatal republished bundle")
+            }
+            withController(root) { recovery ->
+                val state = recovery.state(recovery.pinPrimary())
+                assertEquals(setOf(releaseB, releaseC), jsonStrings(state.getJSONArray("unconfirmedReleaseIds")).toSet())
+                assertEquals(listOf(bundleB), jsonStrings(state.getJSONArray("crashedBundleIds")))
+                assertEquals(0, journal(root).optJSONObject("interruptedReleases")?.length() ?: 0)
+            }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun interruptedPrimaryRetriesOnlyAfterReadyFallbackAndANewProcess() {
+        assertInterruptedPrimaryRetry(retryConfirms = true)
+    }
+
+    @Test fun secondInterruptedPrimaryBecomesPermanent() {
+        assertInterruptedPrimaryRetry(retryConfirms = false)
+    }
+
+    private fun assertInterruptedPrimaryRetry(retryConfirms: Boolean) {
+        val root = temp()
+        val p1 = java.util.UUID.randomUUID().toString()
+        val p2 = java.util.UUID.randomUUID().toString()
+        val p3 = java.util.UUID.randomUUID().toString()
+        val p4 = java.util.UUID.randomUUID().toString()
+        try {
+            controller(root, p1).also { initial ->
+                val session = initial.pinPrimary()
+                session.firstScreen = true
+                initial.confirm(session)
+                initial.close()
+            }
+            plantNext(root, releaseB, bundleB, "B")
+            controller(root, p1).also { trial ->
+                assertEquals(bundleB, trial.pinPrimary().installation.bundleId)
+                trial.close()
+            }
+            // Recovery itself can be interrupted before its fallback is ready.
+            controller(root, p2).also { recovery ->
+                val session = recovery.pinPrimary()
+                assertEquals(embeddedId, session.installation.bundleId)
+                assertThrows(IllegalStateException::class.java) { recovery.confirm(session) }
+                assertFalse(journal(root).getJSONObject("interruptedReleases")
+                    .getJSONObject(releaseB).getBoolean("retryReady"))
+                recovery.close()
+            }
+            controller(root, p3).also { recovery ->
+                val session = recovery.pinPrimary()
+                assertEquals(listOf(releaseB), jsonStrings(recovery.state(session).getJSONArray("unconfirmedReleaseIds")))
+                session.firstScreen = true
+                recovery.confirm(session)
+                val record = journal(root).getJSONObject("interruptedReleases").getJSONObject(releaseB)
+                assertTrue(record.getBoolean("retryReady"))
+                assertEquals(p3, record.getString("holdProcessToken"))
+                val revision = recovery.state(session).getString("revision")
+                recovery.confirm(session)
+                assertEquals(revision, recovery.state(session).getString("revision"))
+                assertEquals(0, recovery.state(session).getJSONArray("crashedBundleIds").length())
+                recovery.close()
+            }
+            plantNext(root, releaseB, bundleB, "B")
+            controller(root, p3).also { recreated ->
+                val session = recreated.pinPrimary()
+                assertEquals(embeddedId, session.installation.bundleId)
+                assertEquals(listOf(releaseB), jsonStrings(recreated.state(session).getJSONArray("unconfirmedReleaseIds")))
+                recreated.close()
+            }
+            plantNext(root, releaseB, bundleB, "B")
+            controller(root, p4).also { retry ->
+                val session = retry.pinPrimary()
+                assertEquals(bundleB, session.installation.bundleId)
+                assertEquals(emptyList<String>(), jsonStrings(retry.state(session).getJSONArray("unconfirmedReleaseIds")))
+                if (retryConfirms) {
+                    session.firstScreen = true
+                    retry.confirm(session)
+                    assertFalse(journal(root).has("interruptedReleases"))
+                }
+                retry.close()
+            }
+            controller(root, java.util.UUID.randomUUID().toString()).also { after ->
+                val session = after.pinPrimary()
+                assertEquals(if (retryConfirms) bundleB else embeddedId, session.installation.bundleId)
+                assertEquals(if (retryConfirms) emptyList<String>() else listOf(releaseB),
+                    jsonStrings(after.state(session).getJSONArray("unconfirmedReleaseIds")))
+                assertEquals(0, after.state(session).getJSONArray("crashedBundleIds").length())
+                assertFalse(journal(root).optJSONObject("interruptedReleases")?.has(releaseB) ?: false)
+                after.close()
+            }
+        } finally { root.deleteRecursively() }
+    }
 
     @Test fun unconfirmedBThenCCannotReenableB() {
         val root = temp()
