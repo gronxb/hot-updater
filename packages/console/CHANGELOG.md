@@ -1,5 +1,28 @@
 # @hot-updater/console
 
+## 1.0.0-rc.42
+
+### Patch Changes
+
+- 72fd2de: The CLI manages Remote Config and reads Insights, as the Console does, on the server `hot-updater api-key` finds: `database` and `plugins` in `hot-updater.config.ts`, the server's admin routes through `standaloneRepository`, or the server file passed last.
+  - **`hot-updater remote-config`:** `show` (`--version-number` for a published version), `versions`, `publish <file>`, `rollback <version>`, and `preview`. `publish` takes a template or what `show --json` printed, validates it, lists what it adds, changes, and removes, and asks first (`-y` to skip, `--dry-run` to stop before it). It publishes after the version the file was read at, or `--expected-version`, so a newer publish is never replaced, and the active template publishes nothing. `preview` evaluates the active template, a version, or a `--file` for a device's platform, channel, app version, cohort, fingerprint, and time.
+  - **`hot-updater insights`:** `overview`, `failures`, `events`, and `installations`, with the Console's words: a bundle's Downloaded, Launched, and Crashed reports, update failure rates and their stages and reasons, reports by outcome or installation, and installations by install or user ID. `--bundle` takes the ID shown in the Console and reads the bundle's platform and channel; `--window` is `24h`, `7d`, or `30d`.
+  - **Plugins:** `createRemoteConfigAdminApi(fetchAdmin)` is Remote Config over a server's admin routes, answering as `RemoteConfigApi` does, and `createInsightsAdminReads(fetchAdmin)` and `createInsightsReads(api)` are the Insights reads over the admin routes or the plugin's API. The Console and the CLI share them.
+
+- 1451d4a: Console fixes from a pass over Remote Config:
+  - In the parameter editor, a condition's value now has a **Remove value** button instead of a trash icon, and the help text says the condition stays. A value removed in the same edit comes back when you add its condition again, instead of starting empty.
+  - Dialogs keep their content while they close: deleting a condition no longer flashes "Delete ?" and "0 parameters", and the version, rollback, channel, parameter and condition dialogs no longer empty or switch to their "Add" state on the way out.
+  - A condition named after its rules keeps following them: editing its rules renames it, and parameters' values follow the new name.
+  - Publish changes lists what an added parameter or condition sets, and a rollback's version row no longer repeats "Rollback to version N" beside its badge.
+  - The pickers for adding a condition value or a rule open below their button; invalid values outline their field; condition names and values in the parameter list wrap to two lines instead of being cut off on a phone.
+  - The sidebar lists Bundles, Insights, Remote Config, then API keys.
+
+- @hot-updater/server@1.0.0-rc.42
+  - @hot-updater/cli-tools@1.0.0-rc.42
+  - @hot-updater/bsdiff@1.0.0-rc.42
+  - @hot-updater/protocol@1.0.0-rc.42
+  - @hot-updater/plugin-core@1.0.0-rc.42
+
 ## 1.0.0-rc.41
 
 ### Minor Changes
