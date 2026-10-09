@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { type FormEvent, useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
@@ -37,6 +37,7 @@ import {
   type RemoteConfigValueType,
   VALUE_TYPE_LABELS,
 } from "@/lib/remote-config-draft";
+import { useOpenSession } from "@/lib/use-dialog-target";
 
 import { ConditionDialog } from "./ConditionDialog";
 import { RuleSummary } from "./RuleSummary";
@@ -90,23 +91,25 @@ export function ParameterDialog({
   readonly onSave: (key: string, parameter: RemoteConfigParameter) => void;
   readonly onAddCondition: (condition: RemoteConfigCondition) => void;
 }) {
+  // The form stays while the dialog animates closed, and starts over on
+  // each opening.
+  const session = useOpenSession(open);
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto data-nested-dialog-open:after:absolute data-nested-dialog-open:after:inset-0 data-nested-dialog-open:after:rounded-xl data-nested-dialog-open:after:bg-background/70 sm:max-w-2xl">
-        {open ? (
-          <ParameterForm
-            conditions={conditions}
-            onAddCondition={onAddCondition}
-            onCancel={() => onOpenChange(false)}
-            onSave={(key, next) => {
-              onSave(key, next);
-              onOpenChange(false);
-            }}
-            parameter={parameter}
-            parameterKey={parameterKey}
-            takenKeys={takenKeys}
-          />
-        ) : null}
+        <ParameterForm
+          conditions={conditions}
+          key={session}
+          onAddCondition={onAddCondition}
+          onCancel={() => onOpenChange(false)}
+          onSave={(key, next) => {
+            onSave(key, next);
+            onOpenChange(false);
+          }}
+          parameter={parameter}
+          parameterKey={parameterKey}
+          takenKeys={takenKeys}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -144,6 +147,11 @@ function ParameterForm({
   const [conditionalValues, setConditionalValues] = useState<
     Readonly<Record<string, RemoteConfigParameterValue>>
   >(parameter?.conditionalValues ?? {});
+  // Values removed in this edit, so a condition added back gets its value
+  // again instead of an empty one.
+  const [removedValues, setRemovedValues] = useState<
+    Readonly<Record<string, RemoteConfigParameterValue>>
+  >({});
   const [submitted, setSubmitted] = useState(false);
   const [addingCondition, setAddingCondition] = useState(false);
 
@@ -174,11 +182,24 @@ function ParameterForm({
     );
   };
 
-  const addValueFor = (name: string) =>
+  const addValueFor = (name: string) => {
+    const removed = conditionalValueFor(removedValues, name);
     setConditionalValues({
       ...conditionalValues,
-      [name]: { value: initialValueText(valueType) },
+      [name]:
+        removed === undefined
+          ? { value: initialValueText(valueType) }
+          : retype(removed, valueType),
     });
+  };
+
+  const removeValueFor = (name: string) => {
+    const { [name]: removed, ...rest } = conditionalValues;
+    if (removed !== undefined) {
+      setRemovedValues({ ...removedValues, [name]: removed });
+    }
+    setConditionalValues(rest);
+  };
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -287,7 +308,8 @@ function ParameterForm({
             <FieldLegend variant="label">Conditional values</FieldLegend>
             <FieldDescription>
               Devices that match a condition get its value. When several match,
-              the first in the Conditions list wins.
+              the first in the Conditions list wins. Removing a value keeps the
+              condition, and its devices get the default value.
             </FieldDescription>
             {valued.length > 0 ? (
               <ul className="flex flex-col gap-3">
@@ -305,17 +327,14 @@ function ParameterForm({
                       </div>
                       <Button
                         aria-label={`Remove the value for ${condition.name}`}
-                        className="size-11 sm:size-7"
-                        onClick={() => {
-                          const { [condition.name]: _removed, ...rest } =
-                            conditionalValues;
-                          setConditionalValues(rest);
-                        }}
-                        size="icon-sm"
+                        className="min-h-11 shrink-0 text-muted-foreground sm:min-h-7"
+                        onClick={() => removeValueFor(condition.name)}
+                        size="sm"
                         type="button"
                         variant="ghost"
                       >
-                        <Trash2 />
+                        <X data-icon="inline-start" />
+                        Remove value
                       </Button>
                     </div>
                     <ValueInput
@@ -360,7 +379,7 @@ function ParameterForm({
                     <Plus aria-hidden="true" className="size-3.5" />
                     <SelectValue placeholder="Add a value for a condition" />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent alignItemWithTrigger={false}>
                     <SelectGroup>
                       {unvalued.map(({ name }) => (
                         <SelectItem key={name} value={name}>

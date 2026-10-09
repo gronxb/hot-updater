@@ -369,62 +369,76 @@ export const summarizeChanges = (
 /** One thing a changed parameter or condition changes, before and after. */
 export interface FieldChange {
   readonly field: string;
-  readonly before: string;
+  /** Null for a field of a parameter or condition the draft adds. */
+  readonly before: string | null;
   readonly after: string;
 }
 
 const NOT_SET = "Not set";
 
-/** What changes in a parameter the draft changes, field by field. */
+/**
+ * What changes in a parameter the draft changes, field by field, or what a
+ * parameter the draft adds sets, with `before` null.
+ */
 export const describeParameterChange = (
-  before: RemoteConfigParameter,
+  before: RemoteConfigParameter | null,
   after: RemoteConfigParameter,
 ): readonly FieldChange[] => {
   const changes: FieldChange[] = [];
-  const add = (field: string, from: string, to: string) => {
-    if (from !== to) changes.push({ field, before: from, after: to });
+  const add = (field: string, from: string | null, to: string) => {
+    if (from === null ? to !== NOT_SET : from !== to) {
+      changes.push({ field, before: from, after: to });
+    }
   };
   add(
     "Type",
-    VALUE_TYPE_LABELS[before.valueType],
+    before === null ? null : VALUE_TYPE_LABELS[before.valueType],
     VALUE_TYPE_LABELS[after.valueType],
   );
   add(
     "Default",
-    describeValue(before.defaultValue),
+    before === null ? null : describeValue(before.defaultValue),
     describeValue(after.defaultValue),
   );
   const conditionNames = new Set([
-    ...Object.keys(before.conditionalValues ?? {}),
+    ...Object.keys(before?.conditionalValues ?? {}),
     ...Object.keys(after.conditionalValues ?? {}),
   ]);
   for (const name of conditionNames) {
-    const from = conditionalValueFor(before.conditionalValues, name);
+    const from = conditionalValueFor(before?.conditionalValues, name);
     const to = conditionalValueFor(after.conditionalValues, name);
     add(
       `When ${name}`,
-      from === undefined ? NOT_SET : describeValue(from),
+      before === null
+        ? null
+        : from === undefined
+          ? NOT_SET
+          : describeValue(from),
       to === undefined ? NOT_SET : describeValue(to),
     );
   }
   add(
     "Description",
-    before.description ?? NOT_SET,
+    before === null ? null : (before.description ?? NOT_SET),
     after.description ?? NOT_SET,
   );
   return changes;
 };
 
-/** What changes in a condition the draft changes: its rules. */
+/**
+ * What changes in a condition the draft changes, its rules, or the rules of
+ * a condition the draft adds, with `before` null.
+ */
 export const describeConditionChange = (
-  before: RemoteConfigCondition,
+  before: RemoteConfigCondition | null,
   after: RemoteConfigCondition,
   dateTimeText: DateTimeText = UTC_DATE_TIME_TEXT,
 ): readonly FieldChange[] => {
   const rules = (condition: RemoteConfigCondition) =>
     condition.rules.map((rule) => describeRule(rule, dateTimeText)).join(" · ");
-  const from = rules(before);
   const to = rules(after);
+  if (before === null) return [{ field: "Rules", before: null, after: to }];
+  const from = rules(before);
   return from === to ? [] : [{ field: "Rules", before: from, after: to }];
 };
 

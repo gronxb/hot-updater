@@ -28,6 +28,7 @@ import {
   useCreateChannelMutation,
   useDeleteChannelMutation,
 } from "@/lib/api";
+import { useDialogTarget } from "@/lib/use-dialog-target";
 
 interface ChannelManagementDialogProps {
   open: boolean;
@@ -42,6 +43,8 @@ export function ChannelManagementDialog({
   const [channelToDelete, setChannelToDelete] = useState<ChannelRow | null>(
     null,
   );
+  // Kept while the confirmation animates closed.
+  const shownChannelToDelete = useDialogTarget(channelToDelete);
   const { data: channels = [], isPending: isLoadingChannels } =
     useChannelsQuery();
   const createChannel = useCreateChannelMutation();
@@ -196,7 +199,9 @@ export function ChannelManagementDialog({
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete {channelToDelete?.name}?</AlertDialogTitle>
+            <AlertDialogTitle>
+              Delete {shownChannelToDelete?.name}?
+            </AlertDialogTitle>
             <AlertDialogDescription>
               Only empty channels can be removed. The server checks this when
               you delete it, and the channel can be created again later with a

@@ -25,14 +25,15 @@ import {
   type RemoteConfigTemplate,
   VALUE_TYPE_LABELS,
 } from "@/lib/remote-config-draft";
+import { useDialogTarget } from "@/lib/use-dialog-target";
 
 import { ParameterDialog } from "./ParameterDialog";
 
-/** A value's text in one line, as the list shows it. */
+/** A value's text in up to two lines, as the list shows it; a phone has no hover for the rest. */
 function ValueText({ text }: { readonly text: string }) {
   return (
     <span
-      className="block min-w-0 truncate font-mono text-xs text-foreground"
+      className="line-clamp-2 block min-w-0 break-words font-mono text-xs text-foreground"
       title={text}
     >
       {text}
@@ -75,10 +76,13 @@ function ParameterRow({
           </p>
         )}
       </div>
-      <dl className="grid min-w-0 grid-cols-[minmax(0,7rem)_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
+      <dl className="grid min-w-0 grid-cols-[minmax(0,9rem)_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-xs">
         {conditional.map(({ name }) => (
           <div className="contents" key={name}>
-            <dt className="truncate text-muted-foreground" title={name}>
+            <dt
+              className="line-clamp-2 break-words text-muted-foreground"
+              title={name}
+            >
               {name}
             </dt>
             <dd className="min-w-0">
@@ -140,15 +144,18 @@ export function ParametersCard({
   readonly onRemoveParameter: (key: string) => void;
   readonly onAddCondition: (condition: RemoteConfigCondition) => void;
 }) {
+  // Taken when the dialog opens, so it holds still while it animates closed.
   const [editing, setEditing] = useState<{
     readonly key: string | null;
+    readonly parameter: RemoteConfigParameter | null;
   } | null>(null);
+  const shownEditing = useDialogTarget(editing);
   const [filter, setFilter] = useState("");
   const keys = Object.keys(template.parameters);
   const shown = keys.filter((key) =>
     key.toLowerCase().includes(filter.trim().toLowerCase()),
   );
-  const editingKey = editing?.key ?? null;
+  const editingKey = shownEditing?.key ?? null;
 
   return (
     <Card className="overflow-hidden shadow-sm">
@@ -173,7 +180,7 @@ export function ParametersCard({
           ) : null}
           <Button
             className="min-h-11 sm:min-h-7"
-            onClick={() => setEditing({ key: null })}
+            onClick={() => setEditing({ key: null, parameter: null })}
           >
             <Plus data-icon="inline-start" />
             Add parameter
@@ -196,7 +203,7 @@ export function ParametersCard({
             <EmptyContent>
               <Button
                 className="min-h-11 sm:min-h-7"
-                onClick={() => setEditing({ key: null })}
+                onClick={() => setEditing({ key: null, parameter: null })}
               >
                 <Plus data-icon="inline-start" />
                 Add parameter
@@ -216,7 +223,12 @@ export function ParametersCard({
               <ParameterRow
                 conditions={template.conditions}
                 key={key}
-                onEdit={() => setEditing({ key })}
+                onEdit={() =>
+                  setEditing({
+                    key,
+                    parameter: template.parameters[key] ?? null,
+                  })
+                }
                 onRemove={() => onRemoveParameter(key)}
                 parameter={template.parameters[key]!}
                 parameterKey={key}
@@ -233,9 +245,7 @@ export function ParametersCard({
         }}
         onSave={(key, parameter) => onSaveParameter(editingKey, key, parameter)}
         open={editing !== null}
-        parameter={
-          editingKey === null ? null : (template.parameters[editingKey] ?? null)
-        }
+        parameter={shownEditing?.parameter ?? null}
         parameterKey={editingKey}
         takenKeys={keys.filter((key) => key !== editingKey)}
       />

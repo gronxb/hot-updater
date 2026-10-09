@@ -50,13 +50,13 @@ export const consoleFeatureApis = {
   insightsAnalytics: featureApi({
     local: (api: InsightsApi): InsightsModel => createInsightsModel(api),
   }),
-  apiKeys: featureApi({
-    local: (api: ApiKeyManagementAPI) => api,
-  }),
   remoteConfig: featureApi({
     local: (api: RemoteConfigApi): ConsoleRemoteConfig =>
       createLocalRemoteConfig(api),
     remote: createAdminRemoteConfig,
+  }),
+  apiKeys: featureApi({
+    local: (api: ApiKeyManagementAPI) => api,
   }),
 } satisfies {
   readonly [F in ConsoleFeature]: ConsoleFeatureApi<never, unknown>;

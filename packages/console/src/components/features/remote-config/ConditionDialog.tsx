@@ -54,6 +54,7 @@ import {
   suggestConditionName,
   toLocalDateTimeInput,
 } from "@/lib/remote-config-draft";
+import { useOpenSession } from "@/lib/use-dialog-target";
 
 import { useDateTimeText } from "./useDateTimeText";
 
@@ -386,20 +387,22 @@ export function ConditionDialog({
   readonly takenNames: readonly string[];
   readonly onSave: (condition: RemoteConfigCondition) => void;
 }) {
+  // The form stays while the dialog animates closed, and starts over on
+  // each opening.
+  const session = useOpenSession(open);
   return (
     <Dialog onOpenChange={onOpenChange} open={open}>
       <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-xl">
-        {open ? (
-          <ConditionForm
-            condition={condition}
-            onCancel={() => onOpenChange(false)}
-            onSave={(next) => {
-              onSave(next);
-              onOpenChange(false);
-            }}
-            takenNames={takenNames}
-          />
-        ) : null}
+        <ConditionForm
+          condition={condition}
+          key={session}
+          onCancel={() => onOpenChange(false)}
+          onSave={(next) => {
+            onSave(next);
+            onOpenChange(false);
+          }}
+          takenNames={takenNames}
+        />
       </DialogContent>
     </Dialog>
   );
@@ -418,7 +421,15 @@ function ConditionForm({
 }) {
   const id = useId();
   const { dateTimeText, timeZone } = useDateTimeText();
-  const [name, setName] = useState(condition?.name ?? "");
+  // A condition named after its rules keeps following them: its name starts
+  // empty, so it saves as the rules after an edit too.
+  const [name, setName] = useState(() =>
+    condition === null ||
+    condition.name ===
+      suggestConditionName(condition.rules, takenNames, dateTimeText)
+      ? ""
+      : condition.name,
+  );
   const [rules, setRules] = useState<RemoteConfigRule[]>(
     condition === null ? [createRule("platform")] : [...condition.rules],
   );
@@ -555,7 +566,7 @@ function ConditionForm({
                 <Plus aria-hidden="true" className="size-3.5" />
                 <SelectValue placeholder="Add a rule" />
               </SelectTrigger>
-              <SelectContent>
+              <SelectContent alignItemWithTrigger={false}>
                 <SelectGroup>
                   {unused.map((type) => (
                     <SelectItem key={type} value={type}>

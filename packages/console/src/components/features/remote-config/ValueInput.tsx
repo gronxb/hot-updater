@@ -105,6 +105,7 @@ export function ValueInput({
         </ToggleGroup>
       ) : valueType === "NUMBER" ? (
         <Input
+          aria-invalid={error !== null || undefined}
           autoComplete="off"
           className="min-h-11 font-mono sm:min-h-9"
           id={id}
@@ -115,6 +116,7 @@ export function ValueInput({
       ) : valueType === "JSON" ? (
         <div className="flex flex-col gap-2">
           <Textarea
+            aria-invalid={error !== null || undefined}
             className="min-h-24 font-mono text-xs"
             id={id}
             onChange={(event) => setText(event.target.value)}
@@ -135,6 +137,7 @@ export function ValueInput({
         </div>
       ) : (
         <Textarea
+          aria-invalid={error !== null || undefined}
           className="min-h-11 text-sm sm:min-h-9"
           id={id}
           onChange={(event) => setText(event.target.value)}
