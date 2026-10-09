@@ -57,6 +57,7 @@ internal class LynxArtifactVerifier(private val config: LynxInstallConfiguration
             manifestHash = HashUtils.calculateSHA256(manifestFile),
             managedFileHashes = fileHashes,
             manifestBacked = manifestBacked,
+            backgroundEntry = metadata.backgroundEntry,
             pageEntries = metadata.pageEntries,
             pageEssentialResources = metadata.pageEssentialResources,
         )
@@ -65,6 +66,7 @@ internal class LynxArtifactVerifier(private val config: LynxInstallConfiguration
     data class Metadata(
         val entry: String,
         val runtimeId: String,
+        val backgroundEntry: String?,
         val pageEntries: List<String>,
         val pageEssentialResources: List<LynxPageEssentialResources>,
     )
@@ -93,7 +95,8 @@ internal class LynxArtifactVerifier(private val config: LynxInstallConfiguration
             require(bundleId == request.bundleId && entry in paths && ManagedPaths.normalize(entry) == entry) { "Invalid Lynx Bundle identity or entry" }
             val pages = pages(metadata, entry, paths, root.takeIf { verifyPageFiles })
             if (platform != config.platform || runtime != config.runtimeId) throw LynxIncompatibleArtifactException("Native Lynx compatibility mismatch")
-            return Metadata(entry, runtime, pages.first, pages.second)
+            val backgroundEntry = LynxBackgroundScript.entry(metadata, paths, root.takeIf { verifyPageFiles })
+            return Metadata(entry, runtime, backgroundEntry, pages.first, pages.second)
         } catch (error: LynxIncompatibleArtifactException) { throw error }
         catch (error: Exception) { throw LynxIncompatibleArtifactException(error.message ?: "Invalid Lynx metadata") }
     }

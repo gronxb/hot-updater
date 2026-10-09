@@ -1,6 +1,6 @@
 {
   "ios": {
-    "hash": "7c1e9f3a07f5a237dc7c8f847a4a1bbd41a70c45c6279ae5a34bb8a8c545649d",
+    "hash": "0e92a2b621ef41742840d8129d8e29f9213fd7f0c41741ab1c1be46388f15350",
     "sources": [
       {
         "type": "file",
@@ -184,9 +184,20 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "96f013b5bbf030c7ec9c12397b589c6949b814e316d8ec74067589c49064fce4",
+        "hash": "a030eb6a528c9c765c2eed71743dec0f739ce570d284863e79f6b34059439761",
         "debugInfo": {
-          "byteSize": 36220
+          "byteSize": 36738
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx/ios/Sources/HotUpdaterLynxArtifact/LynxBackgroundScript.swift",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "78ba3b3ac81913991dd20ad5e175e87720795631b54b173d7842f7a56b40ae3e",
+        "debugInfo": {
+          "byteSize": 2273
         }
       },
       {
@@ -217,9 +228,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "2391644ad3b7047eb47cf6a959549c1b8faf76626f627bb602a2849a3841c79b",
+        "hash": "fbfb8708c8555de1d30ee83dda5904e56f1627a3acdebcc40f15e7d6cc402dc6",
         "debugInfo": {
-          "byteSize": 81961
+          "byteSize": 82079
         }
       },
       {
@@ -478,7 +489,7 @@
     ]
   },
   "android": {
-    "hash": "de9abde9265508a1018de3ea25a88250fe9eee31c55bc3f7c530c619735d3974",
+    "hash": "44061c345f3ddaaa5998cb4df75003ae9045c379973b87f423462fc520796b79",
     "sources": [
       {
         "type": "file",
@@ -651,9 +662,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "244d6dc83628f0b7814be625b82bcd348521cbc007e8dc577419233f319e1aba",
+        "hash": "2bbacab3d5676c86ea63e1e2c76dafd918aec5d183da4bd40224a4846e11eef5",
         "debugInfo": {
-          "byteSize": 8688
+          "byteSize": 8729
         }
       },
       {
@@ -849,9 +860,20 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "02b5b05a0a89a4e5c3c7f48e6b6186565fb19f9c728dddaf95fd1c6fedfede87",
+        "hash": "7e137037ab0d074b82952923be7042e69a373cf09da051cb60bf9cd0fc7a84a2",
         "debugInfo": {
-          "byteSize": 10389
+          "byteSize": 10611
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx/android/src/main/java/com/hotupdater/lynx/internal/LynxBackgroundScript.kt",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "cc14cc3bab063e788c36cd558fb10921bba0d1f3ea68d3fce61651dae6c43082",
+        "debugInfo": {
+          "byteSize": 2291
         }
       },
       {

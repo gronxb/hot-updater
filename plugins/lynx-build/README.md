@@ -10,4 +10,11 @@ installed dependencies and hashes its native inputs. When installed, the
 optional `@hot-updater/lynx-sparkling` host contributes its native sources too.
 Neither the device SDK nor this adapter requires a JavaScript UI framework.
 
+The compiler callback can also declare `backgroundEntry`, a canonical relative
+`.js` path to one self-contained UTF-8 script. The adapter includes this entry in
+`hot-updater-lynx.json`; the script remains an ordinary manifest-covered asset,
+separate from `pageEntries`. The adapter and native artifact validators reject
+missing, empty, malformed UTF-8, NUL-containing, or over-16-MiB scripts.
+Declaring the asset alone does not register an OS background task or execute it.
+
 The `/integration` entry contains CLI init metadata. Run `hot-updater init --build lynx-build` with a `hot-updater.lynx.ts` compiler callback in the app.

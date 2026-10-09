@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   lynx,
+  MAX_LYNX_BACKGROUND_SCRIPT_BYTES,
   type LynxBuildContext,
   type LynxBuildOutput,
   MAX_LYNX_RUNTIME_ID_UTF8_BYTES,
@@ -163,6 +164,71 @@ describe("framework-independent Lynx artifacts", () => {
       ).bundleId,
     ).toBe(embeddedId);
   });
+
+  it("packages an explicitly declared background script separately from page entries", async () => {
+    build.mockImplementation(async ({ outDir }) => {
+      await fs.writeFile(path.join(outDir, "main.lynx.bundle"), binary);
+      await fs.writeFile(
+        path.join(outDir, "task.js"),
+        "globalThis.marker = 'B';",
+      );
+      return { ...singlePageOutput(), backgroundEntry: "task.js" };
+    });
+    const result = await lynx({ build })({ cwd }).build({
+      platform: "android",
+    });
+    const metadata = JSON.parse(
+      await fs.readFile(
+        path.join(result.buildPath, "hot-updater-lynx.json"),
+        "utf8",
+      ),
+    );
+    expect(metadata.backgroundEntry).toBe("task.js");
+    expect(metadata.pageEntries).toEqual(["main.lynx.bundle"]);
+    expect(result.artifacts.map((asset) => asset.name)).toContain("task.js");
+  });
+
+  it.each([
+    { name: "undeclared file", entry: "missing.js", bytes: null },
+    { name: "page bundle", entry: "main.lynx.bundle", bytes: null },
+    {
+      name: "noncanonical path",
+      entry: "./task.js",
+      bytes: Buffer.from("valid"),
+    },
+    { name: "empty script", entry: "task.js", bytes: Buffer.alloc(0) },
+    {
+      name: "binary script",
+      entry: "task.js",
+      bytes: Buffer.from([0xff, 0x80]),
+    },
+    {
+      name: "script truncated by the native string bridge",
+      entry: "task.js",
+      bytes: Buffer.from(
+        "globalThis.marker = 'A';//\0\nglobalThis.marker = 'B';",
+      ),
+    },
+    {
+      name: "oversized script",
+      entry: "task.js",
+      bytes: Buffer.alloc(MAX_LYNX_BACKGROUND_SCRIPT_BYTES + 1, 32),
+    },
+  ])(
+    "rejects a background $name before publishing metadata",
+    async ({ entry, bytes }) => {
+      build.mockImplementation(async ({ outDir }) => {
+        await fs.writeFile(path.join(outDir, "main.lynx.bundle"), binary);
+        if (bytes !== null)
+          await fs.writeFile(path.join(outDir, "task.js"), bytes);
+        return { ...singlePageOutput(), backgroundEntry: entry };
+      });
+      await expect(
+        lynx({ build })({ cwd }).build({ platform: "ios" }),
+      ).rejects.toThrow();
+      expect(await fs.readdir(path.join(cwd, ".hot-updater/lynx"))).toEqual([]);
+    },
+  );
 
   it("orders artifact names by locale-independent UTF-16 code units", async () => {
     build.mockImplementation(async ({ outDir }) => {

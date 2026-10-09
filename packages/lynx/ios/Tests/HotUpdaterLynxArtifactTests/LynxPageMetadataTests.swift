@@ -8,6 +8,45 @@ final class LynxPageMetadataTests: XCTestCase {
     private let runtimeId =
         "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1"
 
+    func testBackgroundScriptIsDeclaredAndCopiedWithoutDependingOnInstalledFiles() throws {
+        let root = try makeTree(metadataPages: ["backgroundEntry": "assets/shared.js"])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let tree = try verify(root)
+        XCTAssertEqual(tree.backgroundEntry, "assets/shared.js")
+        XCTAssertEqual(tree.pageEntries, ["main.lynx.bundle"])
+        let copied = try LynxBackgroundScript.read(root: root, entry: tree.backgroundEntry!,
+            expectedHash: tree.files["assets/shared.js"]!)
+        try Data("untrusted".utf8).write(to: root.appendingPathComponent("assets/shared.js"))
+        XCTAssertThrowsError(try LynxBackgroundScript.read(root: root, entry: tree.backgroundEntry!,
+            expectedHash: tree.files["assets/shared.js"]!))
+        try FileManager.default.removeItem(at: root)
+        XCTAssertEqual(copied, "shared")
+    }
+
+    func testInvalidBackgroundDeclarationOrBytesFailClosed() throws {
+        for entry: Any in ["missing.js", "./assets/shared.js", "main.lynx.bundle", NSNull(), 1] {
+            let root = try makeTree(metadataPages: ["backgroundEntry": entry])
+            defer { try? FileManager.default.removeItem(at: root) }
+            XCTAssertThrowsError(try verify(root))
+        }
+        for bytes in [Data(), Data([0xff, 0x80]), Data("globalThis.marker = 'A';//\0\nglobalThis.marker = 'B';".utf8), Data(repeating: 32, count: LynxBackgroundScript.maximumBytes + 1)] {
+            let root = try makeTree(metadataPages: ["backgroundEntry": "assets/shared.js"], backgroundBytes: bytes)
+            defer { try? FileManager.default.removeItem(at: root) }
+            XCTAssertThrowsError(try verify(root))
+        }
+    }
+
+    func testMetadataCheckDoesNotRequireDownloadingBackgroundScript() throws {
+        let root = try makeTree(metadataPages: ["backgroundEntry": "assets/shared.js"])
+        defer { try? FileManager.default.removeItem(at: root) }
+        let tree = try verify(root)
+        try FileManager.default.removeItem(at: root.appendingPathComponent("assets/shared.js"))
+        let metadata = try VerifiedLynxTree.validateMetadata(at: root, bundleId: bundleId,
+            files: tree.files, configuration: .init(runtimeId: runtimeId), verifyPageFiles: false)
+        XCTAssertEqual(metadata.backgroundEntry, "assets/shared.js")
+        XCTAssertThrowsError(try verify(root))
+    }
+
     func testSchemaV1PagesAndManifestCoveredResourcesAreAccepted() throws {
         let root = try makeTree(metadataPages: validPages)
         defer { try? FileManager.default.removeItem(at: root) }
@@ -33,6 +72,7 @@ final class LynxPageMetadataTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: root) }
         let tree = try verify(root)
         XCTAssertFalse(tree.hasManagedPageMetadata)
+        XCTAssertNil(tree.backgroundEntry)
         XCTAssertEqual(tree.pageEntries, ["main.lynx.bundle"])
         XCTAssertEqual(tree.pageEssentialResources, [
             .init(
@@ -86,7 +126,7 @@ final class LynxPageMetadataTests: XCTestCase {
         ]
     }
 
-    private func makeTree(metadataPages: [String: Any]) throws -> URL {
+    private func makeTree(metadataPages: [String: Any], backgroundBytes: Data = Data("shared".utf8)) throws -> URL {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent(
             "lynx-pages-\(UUID().uuidString)"
         )
@@ -110,7 +150,7 @@ final class LynxPageMetadataTests: XCTestCase {
             "main.lynx.bundle": Data("main".utf8),
             "detail.lynx.bundle": Data("detail".utf8),
             "assets/detail.png": Data([0x89, 0x50, 0x4e, 0x47]),
-            "assets/shared.js": Data("shared".utf8),
+            "assets/shared.js": backgroundBytes,
             "hot-updater-lynx.json": metadataBytes,
         ]
         var assets: [String: [String: String]] = [:]

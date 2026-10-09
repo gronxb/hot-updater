@@ -169,6 +169,7 @@ class VerifiedLynxInstallation internal constructor(
     val manifestHash: String,
     managedFileHashes: Map<String, String>,
     internal val manifestBacked: Boolean = false,
+    val backgroundEntry: String? = null,
     pageEntries: List<String> = listOf(entry),
     pageEssentialResources: List<LynxPageEssentialResources> = listOf(
         LynxPageEssentialResources(entry, listOf(entry)),

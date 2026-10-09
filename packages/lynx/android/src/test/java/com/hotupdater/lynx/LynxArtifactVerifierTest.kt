@@ -3,6 +3,7 @@ package com.hotupdater.lynx
 import com.hotupdater.lynx.internal.ArchiveIntegrity
 import com.hotupdater.lynx.internal.HashUtils
 import com.hotupdater.lynx.internal.LynxArtifactVerifier
+import com.hotupdater.lynx.internal.LynxBackgroundScript
 import org.json.JSONObject
 import org.json.JSONArray
 import org.junit.Assert.assertEquals
@@ -17,6 +18,64 @@ import java.util.zip.ZipOutputStream
 class LynxArtifactVerifierTest {
     private val runtime = "android-sparkling-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ota-v2"
     private val bundleId = "01900000-0000-7000-8000-000000000020"
+
+    @Test fun backgroundScriptIsDeclaredVerifiedAndCopiedBeforeInstalledFilesDisappear() {
+        val root = Files.createTempDirectory("lynx-background-").toFile().canonicalFile
+        try {
+            writeTree(root)
+            addManagedFile(root, "task.js", "globalThis.marker = 'B';".toByteArray())
+            assertEquals(null, verifier().verify(root, request(root)).backgroundEntry)
+            rewriteMetadata(root) { it.put("backgroundEntry", "task.js") }
+            val verified = verifier().verify(root, request(root))
+            assertEquals("task.js", verified.backgroundEntry)
+            assertEquals(listOf("main.lynx.bundle"), verified.pageEntries)
+            val copied = LynxBackgroundScript.read(root, verified.backgroundEntry!!,
+                verified.managedFileHashes.getValue("task.js"))
+            File(root, "task.js").writeText("globalThis.marker = 'untrusted';")
+            try {
+                LynxBackgroundScript.read(root, "task.js", verified.managedFileHashes.getValue("task.js"))
+                fail("Changed background script accepted")
+            } catch (_: IllegalArgumentException) {}
+            root.deleteRecursively()
+            assertEquals("globalThis.marker = 'B';", copied)
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun invalidBackgroundDeclarationOrBytesRejectInstallation() {
+        val cases = listOf(
+            "missing.js" to "valid".toByteArray(),
+            "./task.js" to "valid".toByteArray(),
+            "main.lynx.bundle" to "valid".toByteArray(),
+            "task.js" to byteArrayOf(),
+            "task.js" to byteArrayOf(0xff.toByte(), 0x80.toByte()),
+            "task.js" to "globalThis.marker = 'A';//\u0000\nglobalThis.marker = 'B';".toByteArray(),
+            "task.js" to ByteArray(LynxBackgroundScript.MAX_BYTES + 1) { 32 },
+        )
+        for ((entry, bytes) in cases) {
+            val root = Files.createTempDirectory("lynx-background-invalid-").toFile().canonicalFile
+            try {
+                writeTree(root)
+                addManagedFile(root, "task.js", bytes)
+                rewriteMetadata(root) { it.put("backgroundEntry", entry) }
+                try {
+                    verifier().verify(root, request(root))
+                    fail("Invalid background script accepted: $entry (${bytes.size} bytes)")
+                } catch (_: LynxIncompatibleArtifactException) {}
+            } finally { root.deleteRecursively() }
+        }
+    }
+
+    @Test fun metadataCheckDoesNotDownloadBackgroundScript() {
+        val root = Files.createTempDirectory("lynx-background-metadata-").toFile().canonicalFile
+        try {
+            writeTree(root)
+            rewriteMetadata(root) { it.put("backgroundEntry", "task.js") }
+            val paths = setOf("main.lynx.bundle", "hot-updater-lynx.json", "task.js")
+            val metadata = verifier().verifyMetadata(root, request(root), paths, verifyPageFiles = false)
+            assertEquals("task.js", metadata.backgroundEntry)
+            assertTrue(!File(root, "task.js").exists())
+        } finally { root.deleteRecursively() }
+    }
 
     private fun writeTree(root: File, runtimeId: String = runtime, entry: String = "main.lynx.bundle"): String {
         root.mkdirs()

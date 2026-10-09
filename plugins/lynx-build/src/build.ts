@@ -19,6 +19,7 @@ import { uuidv7 } from "uuidv7";
 import { createLynxNativeFingerprint } from "./buildFingerprint";
 
 export const MAX_LYNX_SIDECAR_BYTES = 16 * 1024;
+export const MAX_LYNX_BACKGROUND_SCRIPT_BYTES = 16 * 1024 * 1024;
 // This leaves room for worst-case JSON escaping and a maximum-size entry path.
 export const MAX_LYNX_RUNTIME_ID_UTF8_BYTES = 2 * 1024;
 
@@ -33,6 +34,8 @@ export interface LynxBuildContext {
 export interface LynxBuildOutput {
   /** POSIX path to the native Lynx entry, relative to outDir. */
   readonly entry: string;
+  /** Optional self-contained UTF-8 JavaScript entry for viewless execution. */
+  readonly backgroundEntry?: string;
   /** Complete, deterministic allowlist of full-page Lynx entries. */
   readonly pageEntries: readonly string[];
   /** Resources required before each page can be admitted as ready. */
@@ -86,6 +89,8 @@ const isRelativeFilePath = (value: string): boolean =>
 
 const PAGE_ENTRY_PATTERN =
   /^(?:[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?\/)*[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\.lynx\.bundle$/;
+const BACKGROUND_ENTRY_PATTERN =
+  /^(?:[a-z0-9](?:[a-z0-9_-]*[a-z0-9])?\/)*[a-z0-9](?:[a-z0-9._-]*[a-z0-9])?\.js$/;
 
 const assertPortablePath = (value: unknown, label: string): string => {
   if (typeof value !== "string" || !isRelativeFilePath(value)) {
@@ -151,6 +156,7 @@ export const lynx =
         });
         const {
           entry,
+          backgroundEntry,
           pageEntries,
           pageEssentialResources,
           runtimeId,
@@ -318,12 +324,40 @@ export const lynx =
         if (!entryStat || entryStat.size === 0) {
           throw new Error("Lynx entry must be a non-empty file.");
         }
+        if (backgroundEntry !== undefined) {
+          assertPortablePath(backgroundEntry, "Lynx background entry");
+          if (!BACKGROUND_ENTRY_PATTERN.test(backgroundEntry)) {
+            throw new Error(
+              "Lynx background entry must be a canonical .js path.",
+            );
+          }
+          const stat = artifactStats.get(backgroundEntry);
+          if (
+            !stat ||
+            stat.size === 0 ||
+            stat.size > MAX_LYNX_BACKGROUND_SCRIPT_BYTES
+          ) {
+            throw new Error(
+              "Lynx background entry must be a non-empty file of at most 16 MiB.",
+            );
+          }
+          const source = new TextDecoder("utf-8", { fatal: true }).decode(
+            await fs.readFile(path.join(buildPath, backgroundEntry)),
+          );
+          // Lynx's iOS standalone runtime passes source through a C string.
+          if (source.includes("\0")) {
+            throw new Error(
+              "Lynx background scripts must not contain NUL characters.",
+            );
+          }
+        }
         const sidecar = `${JSON.stringify(
           {
             schemaVersion: 1,
             bundleId,
             platform,
             entry,
+            ...(backgroundEntry === undefined ? {} : { backgroundEntry }),
             pageEntries: validatedPageEntries,
             pageEssentialResources: validatedPageEssentialResources,
             runtimeId,

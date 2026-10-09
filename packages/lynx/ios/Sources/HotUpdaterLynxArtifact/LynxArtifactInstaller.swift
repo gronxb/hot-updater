@@ -119,6 +119,7 @@ public struct LynxInstalledArtifact {
     public let bundleId: String
     public let directory: URL
     public let entry: String
+    public let backgroundEntry: String?
     public let hasManagedPageMetadata: Bool
     public let pageEntries: [String]
     public let pageEssentialResources: [LynxPageEssentialResources]
@@ -129,6 +130,7 @@ public struct LynxInstalledArtifact {
         bundleId: String,
         directory: URL,
         entry: String,
+        backgroundEntry: String? = nil,
         hasManagedPageMetadata: Bool = false,
         pageEntries: [String]? = nil,
         pageEssentialResources: [LynxPageEssentialResources]? = nil,
@@ -138,6 +140,7 @@ public struct LynxInstalledArtifact {
         self.bundleId = bundleId
         self.directory = directory
         self.entry = entry
+        self.backgroundEntry = backgroundEntry
         self.hasManagedPageMetadata = hasManagedPageMetadata
         self.pageEntries = pageEntries ?? [entry]
         self.pageEssentialResources = pageEssentialResources ?? [
@@ -257,6 +260,7 @@ struct LynxManifest: Decodable {
 
 struct VerifiedLynxTree {
     let entry: String
+    let backgroundEntry: String?
     let hasManagedPageMetadata: Bool
     let pageEntries: [String]
     let pageEssentialResources: [LynxPageEssentialResources]
@@ -312,6 +316,7 @@ struct VerifiedLynxTree {
         let pages = metadata.pages
         return Self(
             entry: metadata.entry,
+            backgroundEntry: metadata.backgroundEntry,
             hasManagedPageMetadata: pages.isPresent,
             pageEntries: pages.entries,
             pageEssentialResources: pages.essentialResources,
@@ -322,7 +327,7 @@ struct VerifiedLynxTree {
 
     static func validateMetadata(at root: URL, bundleId: String, files: [String: String],
                                  configuration: LynxArtifactConfiguration,
-                                 verifyPageFiles: Bool) throws -> (entry: String, pages: LynxPageMetadata.Parsed) {
+                                 verifyPageFiles: Bool) throws -> (entry: String, backgroundEntry: String?, pages: LynxPageMetadata.Parsed) {
         let metadataBytes = try StrictMetadataJSON.read(
             root.appendingPathComponent("hot-updater-lynx.json"),
             limit: 16 * 1024
@@ -340,7 +345,10 @@ struct VerifiedLynxTree {
             files: files,
             root: verifyPageFiles ? root : nil
         )
-        return (metadata.entry, pages)
+        let backgroundEntry = try LynxBackgroundScript.entry(
+            metadata: metadataBytes, files: files, root: verifyPageFiles ? root : nil
+        )
+        return (metadata.entry, backgroundEntry, pages)
     }
 
 }
@@ -628,6 +636,7 @@ public final class LynxArtifactInstaller {
             bundleId: bundleId,
             directory: directory,
             entry: tree.entry,
+            backgroundEntry: tree.backgroundEntry,
             hasManagedPageMetadata: tree.hasManagedPageMetadata,
             pageEntries: tree.pageEntries,
             pageEssentialResources: tree.pageEssentialResources,
@@ -689,6 +698,7 @@ public final class LynxArtifactInstaller {
             bundleId: token.bundleId,
             directory: destination,
             entry: tree.entry,
+            backgroundEntry: tree.backgroundEntry,
             hasManagedPageMetadata: tree.hasManagedPageMetadata,
             pageEntries: tree.pageEntries,
             pageEssentialResources: tree.pageEssentialResources,
