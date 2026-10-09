@@ -15,37 +15,37 @@ export function App() @{
 
   <view class="page sdk-page">
     <text class="eyebrow">{"HOT UPDATER / OCTANELYNX SDK"}</text>
-    <text class="title">{"Bundle " + variant}</text>
+    <text flatten={false} accessibility-element={true} class="title">{"Bundle " + variant}</text>
     <image class="probe" src={imageUrl} bindload={sdkImageLoaded} />
     @if (resources && fontReady) {
       <text class="font-probe">{"RELEASE FONT"}</text>
     }
-    <text class="description">{status}</text>
-    <view class="action" bindtap={openDetail}>
-      <text class="action-label">{"Open detail page"}</text>
+    <text flatten={false} accessibility-element={true} class="description">{status}</text>
+    <view flatten={false} accessibility-element={true} accessibility-label="Open detail page" accessibility-traits="button" class="action" bindtap={openDetail}>
+      <text accessibility-element={false} class="action-label">{"Open detail page"}</text>
     </view>
-    <view class="action" bindtap={() => { void verifyNavigationBoundary(setStatus); }}>
-      <text class="action-label">{"Verify navigation boundary"}</text>
+    <view flatten={false} accessibility-element={true} accessibility-label="Verify navigation boundary" accessibility-traits="button" class="action" bindtap={() => { void verifyNavigationBoundary(setStatus); }}>
+      <text accessibility-element={false} class="action-label">{"Verify navigation boundary"}</text>
     </view>
-    <view class="action" bindtap={() => { void reloadSdkWithDetail(); }}>
-      <text class="action-label">{"Reload with detail open"}</text>
+    <view flatten={false} accessibility-element={true} accessibility-label="Reload with detail open" accessibility-traits="button" class="action" bindtap={() => { void reloadSdkWithDetail(); }}>
+      <text accessibility-element={false} class="action-label">{"Reload with detail open"}</text>
     </view>
-    <view class="action" bindtap={() => { void captureRuntimeEvents(setStatus); }}>
-      <text class="action-label">{"Capture runtime events"}</text>
+    <view flatten={false} accessibility-element={true} accessibility-label="Capture runtime events" accessibility-traits="button" class="action" bindtap={() => { void captureRuntimeEvents(setStatus); }}>
+      <text accessibility-element={false} class="action-label">{"Capture runtime events"}</text>
     </view>
-    <view class="action" bindtap={() => { void checkSdkUpdate(setStatus, setCanInstall); }}>
-      <text class="action-label">{"Check update"}</text>
+    <view flatten={false} accessibility-element={true} accessibility-label="Check update" accessibility-traits="button" class="action" bindtap={() => { void checkSdkUpdate(setStatus, setCanInstall); }}>
+      <text accessibility-element={false} class="action-label">{"Check update"}</text>
     </view>
     @if (canInstall) {
       <view>
-        <view class="action" bindtap={() => { void installSdkUpdate(setStatus, setCanInstall); }}>
-          <text class="action-label">{"Install next launch"}</text>
+        <view flatten={false} accessibility-element={true} accessibility-label="Install next launch" accessibility-traits="button" class="action" bindtap={() => { void installSdkUpdate(setStatus, setCanInstall); }}>
+          <text accessibility-element={false} class="action-label">{"Install next launch"}</text>
         </view>
-        <view class="action" bindtap={() => { void installSdkUpdateAndReload(setStatus, setCanInstall); }}>
-          <text class="action-label">{"Install and reload"}</text>
+        <view flatten={false} accessibility-element={true} accessibility-label="Install and reload" accessibility-traits="button" class="action" bindtap={() => { void installSdkUpdateAndReload(setStatus, setCanInstall); }}>
+          <text accessibility-element={false} class="action-label">{"Install and reload"}</text>
         </view>
-        <view class="action" bindtap={() => { void installSdkUpdateWithDetail(setStatus, setCanInstall); }}>
-          <text class="action-label">{"Install with detail open"}</text>
+        <view flatten={false} accessibility-element={true} accessibility-label="Install with detail open" accessibility-traits="button" class="action" bindtap={() => { void installSdkUpdateWithDetail(setStatus, setCanInstall); }}>
+          <text accessibility-element={false} class="action-label">{"Install with detail open"}</text>
         </view>
       </view>
     }

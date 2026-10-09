@@ -540,6 +540,7 @@ class AndroidAdapter {
       "shell",
       "am",
       "start",
+      "-W",
       "-n",
       `${APP_ID}/.MatrixActivity`,
       ...androidMatrixLaunchArguments(framework, channel, this.appBaseURL),

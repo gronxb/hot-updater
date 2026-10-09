@@ -29,10 +29,10 @@ export function Detail() @{
 
   <view class="page">
     <text class="eyebrow">{"HOT UPDATER / OCTANELYNX DETAIL"}</text>
-    <text class="title">{"Detail " + variant}</text>
-    <text class="description">{status}</text>
-    <view class="action" bindtap={closeDetail}>
-      <text class="action-label">{"Close detail page"}</text>
+    <text flatten={false} accessibility-element={true} class="title">{"Detail " + variant}</text>
+    <text flatten={false} accessibility-element={true} class="description">{status}</text>
+    <view flatten={false} accessibility-element={true} accessibility-label="Close detail page" accessibility-traits="button" class="action" bindtap={closeDetail}>
+      <text accessibility-element={false} class="action-label">{"Close detail page"}</text>
     </view>
   </view>
 }

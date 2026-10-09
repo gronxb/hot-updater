@@ -30,9 +30,21 @@ function Detail() {
   return (
     <view className="page">
       <text className="eyebrow">HOT UPDATER / REACTLYNX DETAIL</text>
-      <text className="title">Detail {variant}</text>
-      <text className="description">{status}</text>
+      <text flatten={false} accessibility-element={true} className="title">
+        Detail {variant}
+      </text>
+      <text
+        flatten={false}
+        accessibility-element={true}
+        className="description"
+      >
+        {status}
+      </text>
       <view
+        flatten={false}
+        accessibility-element={true}
+        accessibility-label="Close detail page"
+        accessibility-traits="button"
         className="action"
         bindtap={() =>
           close({ animated: false }, (result) =>
@@ -40,7 +52,9 @@ function Detail() {
           )
         }
       >
-        <text className="action-label">Close detail page</text>
+        <text accessibility-element={false} className="action-label">
+          Close detail page
+        </text>
       </view>
     </view>
   );
