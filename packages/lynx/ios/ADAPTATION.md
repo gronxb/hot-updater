@@ -64,6 +64,8 @@ levels. Native bulk extraction checks exact manifest membership and logical
 sizes before writing. TAR framing, checksums, padding and local PAX records are
 validated; links and unsupported metadata reject the artifact. iOS platform
 identity is fixed by native code; blank runtime profiles reject initialization.
+TAR numeric fields accept unsigned octal only, matching the current React Native
+extractor; binary and signed encodings reject before writing a file.
 
 The unused copied automatic-format service, strategy wrappers and format-sniffing
 helpers are not shipped. The installer uses the strict extractors directly.

@@ -89,6 +89,52 @@ final class StrictArchiveTests: XCTestCase {
         }
     }
 
+    func testRejectsNonOctalHeaderNumbersBeforeWritingManifestFiles() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let payload = Data("data".utf8)
+        let file = tarEntry("entry", payload: payload)
+        let end = Data(repeating: 0, count: 1024)
+        let input = root.appendingPathComponent("input.tar")
+        let validOutput = root.appendingPathComponent("valid")
+        try (file + end).write(to: input)
+        try TarArchiveExtractor.extract(from: input.path, to: validOutput.path,
+            strict: true, expectedFiles: ["entry": 4], progressHandler: { _ in })
+        XCTAssertEqual(try Data(contentsOf: validOutput.appendingPathComponent("entry")), payload)
+
+        var binarySize = file
+        binarySize.replaceSubrange(124..<136, with: Data(repeating: 0, count: 12))
+        binarySize[124] = 0x80
+        binarySize[135] = UInt8(payload.count)
+        checksum(&binarySize)
+
+        var signedSize = file
+        signedSize.replaceSubrange(124..<136, with: ("+" + String(repeating: "0", count: 9) + "4\0").utf8)
+        checksum(&signedSize)
+
+        // Keep the checksum's numeric value correct so only its encoding differs.
+        var binaryChecksum = file
+        let sum = file.prefix(512).enumerated().reduce(UInt64(0)) { sum, item in
+            sum + UInt64((148..<156).contains(item.offset) ? 32 : item.element)
+        }
+        for offset in 0..<8 {
+            binaryChecksum[155 - offset] = UInt8(truncatingIfNeeded: sum >> (offset * 8))
+        }
+        binaryChecksum[148] |= 0x80
+
+        for (name, bytes) in [("binary-size", binarySize), ("signed-size", signedSize), ("binary-checksum", binaryChecksum)] {
+            try (bytes + end).write(to: input)
+            let output = root.appendingPathComponent(name)
+            XCTAssertThrowsError(try TarArchiveExtractor.extract(from: input.path, to: output.path,
+                strict: true, expectedFiles: ["entry": 4], progressHandler: { _ in }), name) { error in
+                XCTAssertEqual((error as NSError).domain, "TarArchiveExtractor", name)
+                XCTAssertEqual((error as NSError).code, 2, name)
+            }
+            XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: output.path), [], name)
+        }
+    }
+
     func testAppliesPaxPathAndSizeToTheFollowingFileOnly() throws {
         let name = "pages/" + String(repeating: "nested-", count: 20) + "detail.bundle"
         let payload = Data("data".utf8)

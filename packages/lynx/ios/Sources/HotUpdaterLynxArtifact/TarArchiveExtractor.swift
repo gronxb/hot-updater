@@ -297,20 +297,11 @@ public enum TarArchiveExtractor {
             return 0
         }
 
-        if let first = bytes.first, first & 0x80 != 0 {
-            guard first & 0x40 == 0 else { throw ArchiveLimits.reject("Negative TAR size") }
-            var value: UInt64 = UInt64(first & 0x7F)
-            for byte in bytes.dropFirst() {
-                guard value <= (UInt64.max - UInt64(byte)) / 256 else { throw ArchiveLimits.reject("TAR size overflow") }
-                value = value * 256 + UInt64(byte)
-            }
-            return value
-        }
-
         let stringValue = String(bytes: bytes, encoding: .ascii)?
             .trimmingCharacters(in: CharacterSet(charactersIn: "\0 "))
 
         guard let stringValue, !stringValue.isEmpty,
+              stringValue.utf8.allSatisfy({ (48...55).contains($0) }),
               let parsedValue = UInt64(stringValue, radix: 8) else {
             throw NSError(
                 domain: "TarArchiveExtractor",
