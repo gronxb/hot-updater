@@ -1019,8 +1019,9 @@ final class LynxControllerLocalTests: XCTestCase {
         let journal = LynxControllerJournal(file: store.appendingPathComponent("state.json"))
         var state = try journal.load()
         state.unconfirmedReleaseIds = (0..<128).map { index in
-            "01900000-0000-7000-8000-" + String(format: "%012x", 200 + index)
+            "01900000-0000-7000-8000-" + String(format: "%012x", 1000 + index)
         }
+        XCTAssertFalse(state.unconfirmedReleaseIds.contains(releaseB))
         try journal.save(state)
         try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B")
         controller = nil
@@ -1029,6 +1030,42 @@ final class LynxControllerLocalTests: XCTestCase {
         XCTAssertEqual(try controller!.begin(context).bundleId, embeddedId)
         XCTAssertEqual(try controller!.getState(context)["runningConfirmed"] as? Bool, true)
         XCTAssertEqual((try controller!.getState(context)["unconfirmedReleaseIds"] as! [String]).count, 128)
+    }
+
+    func testConfirmedOtaNeverExceedsRecoveryCapacity() throws {
+        for historySize in [127, 128] {
+            let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-local-\(UUID().uuidString)")
+            defer { try? FileManager.default.removeItem(at: root) }
+            let embedded = root.appendingPathComponent("embedded")
+            let digest = try writeTree(at: embedded, bundleId: embeddedId, marker: "A")
+            let config = configuration(root: root.appendingPathComponent("store"), embedded: embedded, digest: digest)
+            var controller: LynxController? = try LynxController(configuration: config)
+            var context = controller!.createContext(primary: true)
+            _ = try controller!.begin(context)
+            try confirm(controller!, context)
+            controller = nil
+            try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B")
+            controller = try LynxController(configuration: config)
+            context = controller!.createContext(primary: true)
+            _ = try controller!.begin(context)
+            try confirm(controller!, context)
+            controller = nil
+            let journal = LynxControllerJournal(file: try home(config.root).appendingPathComponent("state.json"))
+            var state = try journal.load()
+            XCTAssertEqual(try state.confirmed?.policy.releaseId, releaseB)
+            let excluded = (0..<historySize).map { "01900000-0000-7000-8000-" + String(format: "%012x", 1000 + $0) }
+            XCTAssertFalse(excluded.contains(releaseB))
+            state.unconfirmedReleaseIds = excluded
+            try journal.save(state)
+            controller = try LynxController(configuration: config)
+            context = controller!.createContext(primary: true)
+            XCTAssertEqual(try controller!.begin(context).bundleId, historySize == 127 ? bundleB : embeddedId)
+            XCTAssertEqual(try controller!.getState(context)["unconfirmedReleaseIds"] as? [String], excluded)
+            if historySize == 127 {
+                XCTAssertTrue(try controller!.reportFailure(context, fatal: true, allowConfirmed: true))
+                XCTAssertEqual(try journal.load().unconfirmedReleaseIds, excluded + [releaseB])
+            }
+        }
     }
 
     func testDestroyedPrimaryCannotConfirmAStaleReady() throws {

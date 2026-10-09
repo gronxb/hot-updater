@@ -236,7 +236,7 @@ class LynxUpdaterController internal constructor(
             if (
                 !eligible(candidate) ||
                 atCapacity && candidate.releaseId !in reserved &&
-                    candidate != confirmed && candidate.kind != "BUILTIN"
+                    candidate.kind != "BUILTIN"
             ) {
                 continue
             }

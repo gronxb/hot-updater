@@ -3116,8 +3116,9 @@ class LynxUpdaterControllerTest {
             val state = JSONObject(file.readText())
             val excluded = JSONArray()
             repeat(128) { index ->
-                excluded.put("01900000-0000-7000-8000-" + String.format("%012x", 200 + index))
+                excluded.put("01900000-0000-7000-8000-" + String.format("%012x", 1000 + index))
             }
+            assertFalse(jsonStrings(excluded).contains(releaseB))
             state.put("unconfirmed", excluded)
             file.writeText(state.toString())
             plantNext(root, releaseB, bundleB, "B")
@@ -3128,6 +3129,39 @@ class LynxUpdaterControllerTest {
             assertEquals(128, snapshot.getJSONArray("unconfirmedReleaseIds").length())
             recovered.close()
         } finally { root.deleteRecursively() }
+    }
+
+    @Test fun confirmedOtaNeverExceedsRecoveryCapacity() {
+        for (historySize in listOf(127, 128)) {
+            val root = temp()
+            try {
+                withController(root) { first ->
+                    first.pinPrimary().also { it.firstScreen = true; first.confirm(it) }
+                }
+                plantNext(root, releaseB, bundleB, "B")
+                withController(root) { trial ->
+                    trial.pinPrimary().also { it.firstScreen = true; trial.confirm(it) }
+                }
+                val file = File(store(root), "state.json")
+                val state = JSONObject(file.readText())
+                assertEquals(releaseB, state.getJSONObject("confirmed").getString("releaseId"))
+                val excluded = (0 until historySize).map {
+                    "01900000-0000-7000-8000-" + String.format("%012x", 1000 + it)
+                }
+                assertFalse(excluded.contains(releaseB))
+                state.put("unconfirmed", JSONArray(excluded))
+                file.writeText(state.toString())
+                withController(root) { restarted ->
+                    val page = restarted.pinPrimary()
+                    assertEquals(if (historySize == 127) bundleB else embeddedId, restarted.diagnostics(page).bundleId)
+                    assertEquals(excluded, jsonStrings(restarted.state(page).getJSONArray("unconfirmedReleaseIds")))
+                    if (historySize == 127) {
+                        assertTrue(restarted.fail(page, "confirmed fatal", allowConfirmed = true))
+                        assertEquals(excluded + releaseB, jsonStrings(journal(root).getJSONArray("unconfirmed")))
+                    }
+                }
+            } finally { root.deleteRecursively() }
+        }
     }
 
     @Test fun pinPrimaryFallsBackToBuiltinWhenPersistedCatalogScopeDoesNotMatch() {

@@ -423,9 +423,8 @@ public final class LynxController {
             }
             let snapshot = nativeSnapshot(receipt)
             guard Self.storedEligible(candidate, state: recovered, snapshot: snapshot),
-                  try (recovered.recoveryIdentities.count < 128
-                    || recovered.recoveryIdentities.contains(receipt.releaseId ?? "")
-                    || Self.sameIdentity(receipt, recovered.confirmed?.policy)) else { continue }
+                  (receipt.releaseId == nil || recovered.recoveryIdentities.count < 128
+                    || recovered.recoveryIdentities.contains(receipt.releaseId ?? "")) else { continue }
             let tree: LynxInstalledArtifact?
             if receipt.bundleId == config.embeddedBundleId {
                 tree = .init(
