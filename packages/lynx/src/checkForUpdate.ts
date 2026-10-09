@@ -204,7 +204,12 @@ async function checkForUpdateAttempt(
     channel: targetChannel,
     selectionContextHash: guard.selectionContextHash ?? selectionContextHash,
   };
-  if (sameReceipt(current, selection) && !hasCoveredBundle) return null;
+  if (
+    sameReceipt(current, selection) &&
+    (selection.kind !== "BUILTIN" || !hasCoveredBundle)
+  ) {
+    return null;
+  }
   const authorization = authorizeReleaseTransition({
     active: authenticated ? current : null,
     desired: selection,

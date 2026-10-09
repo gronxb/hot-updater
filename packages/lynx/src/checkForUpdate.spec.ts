@@ -171,6 +171,42 @@ function setup(
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Lynx catalog controller (mock native transport)", () => {
+  it.each(["confirmed", "staged"] as const)(
+    "returns no update when the %s receipt already matches the safe catalog selection after recovery",
+    async (location) => {
+      const stable = { ...receipt(B, releaseB), generation: 2 };
+      const { updater, native, fetch, state } = setup(
+        {
+          runningSelection: location === "confirmed" ? stable : receipt(),
+          confirmedSelection: location === "confirmed" ? stable : null,
+          nextSelection: location === "staged" ? stable : null,
+          unconfirmedReleaseIds: [releaseC],
+        },
+        [release(releaseC, C), release(releaseB, B)],
+      );
+      stable.selectionContextHash = createReleaseSelectionContextHash({
+        activeBundleId: B,
+        activeReleaseId: releaseB,
+        cohort: state.cohort,
+        minimumReleaseId: A,
+        strategy: "APP_VERSION",
+        strategyValue: state.appVersion,
+        crashedBundleIds: [],
+        unconfirmedReleaseIds: [releaseC],
+      });
+
+      await expect(
+        updater.checkForUpdate({ updateStrategy: "appVersion" }),
+      ).resolves.toBeNull();
+      expect(native.acceptCatalog).toHaveBeenCalledOnce();
+      expect(native.validateSelection).not.toHaveBeenCalled();
+      expect(native.prepareSelection).not.toHaveBeenCalled();
+      expect(native.stageSelection).not.toHaveBeenCalled();
+      expect(fetch).toHaveBeenCalledOnce();
+      expect(state.unconfirmedReleaseIds).toEqual([releaseC]);
+    },
+  );
+
   it("retains no native preparation until updateBundle prepares and stages once", async () => {
     const { updater, native, prepared, validated } = setup();
     const update = await updater.checkForUpdate({
