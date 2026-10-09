@@ -1,125 +1,254 @@
 ---
-title: "Hot Updater 1.0: The Read Path Should Be Boring"
-description: "Release Catalogs replace per-installation decisions with shared reads, while Insights shows the latest Bundle reported by each installation."
-date: "2026-08-19"
+title: "Hot Updater v1.0"
+description: "Update checks become one shared, cacheable read, and Insights, Remote Config, and client API keys arrive as plugins."
+date: "2026-10-09"
 author: "gronxb"
 image: "/blog/release-catalog.webp"
 ---
 
-Hot Updater 1.0 changes update checks from a fresh server-side decision for
-every device to a shared read.
+Hot Updater v1.0 is out. Hot Updater delivers JavaScript and asset updates to
+React Native apps over the air, on infrastructure you choose: Cloudflare,
+Supabase, AWS, Firebase, or your own server.
 
-Before 1.0, each check sent installation-specific state to the server. The
-server combined the current Bundle, rollout cohort, platform, channel, and
-compatibility target, then asked the configured database provider what that
-installation should receive. It worked, but the answer was difficult to share.
+The biggest change is how an app checks for an update. Instead of computing an
+answer for each device, the server publishes one shared, cacheable answer, and
+each device picks its own update from it. Around that read path, v1.0 adds
+Insights to show what devices did, Remote Config to change app behavior
+without a bundle, and client API keys. All three are plugins, and you can
+write your own.
 
-Hot Updater 1.0 uses a hybrid model. When Release policy changes, the server
-compiles the relevant update candidates and delivery policies into a
-Release Catalog that can be cached and shared. Each device selects an
-update using its local state, and built-in Insights reports what happened
-after the app is ready.
+New to Hot Updater? [Start here](/docs/get-started/introduction). Running a
+v0 app? Read [Move from v0 to v1](/docs/guides/upgrade-to-v1) first, because
+v1.0 runs beside your v0 setup instead of upgrading it in place.
 
-## What changed in 1.0
+## How we got here
 
-- Update checks are shared reads. Installations on the same platform,
-  channel, and compatibility scope request the same Release Catalog.
-- Policy is separate from bytes. Bundles remain immutable artifacts;
-  Releases own rollout, targeting, promotion, and rollback.
-- Insights shows the latest Bundle reported by each installation and whether
-  updates were applied or recovered.
+The first commit landed in October 2023. When Microsoft retired App Center,
+and the hosted CodePush service with it, in March 2025, many React Native teams went looking for
+an OTA tool they could host themselves. Hot Updater's answer has stayed the
+same: you decide where updates live and which database and storage they use.
 
-The device now handles installation-specific selection, removing that work
-from the server's hot path.
+v0 proved that model, but every update check ran a fresh database query
+built from that installation's state, so responses were hard to cache.
+v1.0 redesigned the check so the answer no longer depends on
+the device asking, and it went through a long release-candidate cycle before
+this release.
 
-## Compile policy once, share the result
+## Update checks are shared reads
 
-Hot Updater 1.0 separates installable content from delivery policy:
+A deployment creates a Bundle with one ID. It belongs to a channel, platform,
+and compatibility scope, and carries delivery settings such as rollout,
+target cohorts, and whether it's enabled. The installable bytes are a
+separate, immutable artifact.
 
-- A Bundle is immutable installable content: archives, assets, patches,
-  hashes, manifests, and signing identity.
-- A Release points to a Bundle and owns delivery policy: channel,
-  compatibility, rollout, cohort targeting, enablement, force update, and
-  message.
-- A Release Catalog is the deterministic projection of those Releases for
-  a platform, channel, and compatibility scope.
+When a Bundle or its settings change, the server compiles a
+[Release Catalog](/docs/concepts/release-catalog-contract): one document per
+platform, channel, and compatibility scope. A device never sees new settings
+without the Catalog that matches them.
 
-Deploying a Release or changing its policy compiles the affected Catalog. The
-Release mutation and Catalog generation commit together, so a client cannot
-observe new policy without its matching projection.
+An update check then works like this:
 
-Each update check follows these steps:
+1. The app requests the Catalog for its platform, channel, and app version or
+   fingerprint.
+2. Every installation in that scope gets the same response, so a shared cache
+   such as Workers Cache or CloudFront can serve it.
+3. The device evaluates its current Bundle, rollout bucket, cohorts, and crash
+   history against the Catalog.
+4. It downloads only what changed after reusing local files, either file by
+   file or as one `tar.br` archive when that is the smaller transfer.
 
-1. Read one Catalog for the client's platform, channel, and compatibility
-   scope.
-2. Reuse the cached response across installations.
-3. Let the device evaluate its current Bundle, rollout bucket, cohort, and
-   crash history.
-4. Download an artifact only when the selected Bundle bytes differ.
+Because settings and bytes are separate, changing a rollout doesn't touch the
+artifact, and promoting a Bundle to another channel doesn't upload it again.
+Disabling a Bundle moves affected devices to the previous compatible enabled
+Bundle, or back to the one built into the app.
 
-Multiple Releases can reuse a Bundle. Promoting to another channel creates
-policy that references the same bytes instead of copying them. Changing a
-rollout recompiles the Catalog without rewriting the artifact. Disabling a
-Release moves affected devices to the previous compatible enabled Release or
-back to the built-in Bundle.
+We measured the difference on October 9, 2026. We deployed v0 (`0.36.18`)
+and v1.0 side by side in one Cloudflare account, gave both the same 16
+bundles, and sent each 1,000 update checks at 10 requests per second from an
+installation that already had the newest bundle. Every v1.0 check was served
+from Workers Cache without waiting on the Worker, and neither deployment
+returned an error.
 
-## A live Cloudflare measurement
-
-On September 8, 2026, we sent 1,000 update checks to each of two existing
-Cloudflare deployments, at 10 requests per second per deployment. In the
-v1 run, p95 update-check response time decreased by 75.3%, from 283.2 ms
-to 70.0 ms. Workers Cache served 969 checks (96.9%) without running the
-Worker. Both deployments completed all checks without errors.
-
-| Response time | v0 (`0.35.2`) | v1 (`1.0.0-rc.3`) |
+| Response time | v0 (`0.36.18`) | v1.0 |
 | --- | ---: | ---: |
-| Median (p50) | 228.4 ms | 45.4 ms |
-| p95 | 283.2 ms | 70.0 ms |
+| Median (p50) | 301.3 ms | 50.0 ms |
+| p95 | 371.4 ms | 118.9 ms |
+| p99 | 415.2 ms | 135.5 ms |
 
-These are observations from that workload, not a guarantee of overall
-server-load or cost reduction. The deployments had different datasets and
-edge routing; the test covered checks from already-updated installations
-and excluded artifact delivery and Insights reporting. Read the
-[measurement conditions and raw results](https://github.com/gronxb/hot-updater/blob/530cca5dd70615eaa34988f4796cdcc2d9f5c9f2/docs/architecture/cloudflare-update-check-measurement-2026-09-08.md)
-before applying the numbers to another deployment.
+This is one workload, and it doesn't predict your server load or cost. The
+two Workers reached the client through different edge locations (on the Hong
+Kong edge alone, v0's median was 221 ms), and the test
+covered already-updated installations only, without downloads or Insights
+reports. The [summary](/blog/update-check-v0-v1-2026-10-09/summary.json),
+[request log](/blog/update-check-v0-v1-2026-10-09/requests.csv), and
+[harness](/blog/update-check-v0-v1-2026-10-09/harness.tar.gz) have the
+details.
 
-## Insights closes the loop
+## Insights shows what devices did
 
-Moving installation-specific selection to the device makes the read path
-cheaper, but operators still need to know what devices actually did.
+When devices choose their own updates, the server no longer sees who got
+what. [Insights](/docs/guides/insights) lets apps report back.
 
-Apps report with the `insights()` client plugin. After the app is ready, it
-reports its outcome to the server, a launch at most once a day. Reporting is
-best-effort: a reporting failure never blocks startup or triggers a rollback.
-An app without the plugin sends nothing.
+Add the `insights()` client plugin to `HotUpdater.init`, and the app reports
+downloads, launches of a new bundle, crash recoveries, and failed update
+attempts. A plain launch with nothing new is reported at most once a UTC day.
+Reporting is best-effort: a failed report never blocks startup or causes a
+rollback. Debug builds (`__DEV__`) send nothing unless you create the plugin
+with `insights({ debug: true })`.
 
-The Console answers three kinds of questions:
+The Console shows those reports in four views:
 
-- Fleet: How many unique installations successfully reported during the
-  last 24 hours, 7 days, or 30 days? Which Bundle did each installation most
-  recently report?
-- Adoption: How is the latest reported Bundle distribution changing among
-  reporting installations? Did installations report `UPDATE_APPLIED` or move
-  away from a Bundle with `RECOVERED`?
-- Diagnosis: Search by installation ID or user ID, then inspect
-  the last reported Bundle and recorded apply or recovery history.
+- **App usage**: estimated daily, weekly, monthly, and yearly active
+  installations, and how they spread across app versions and bundles,
+  including the bundle built into the app.
+- **Release health**: downloads next to launches for each bundle, plus
+  crashes and crash rate. Once a bundle crashes for 5% of at least 20
+  installations that tried it, the Console offers to roll it back.
+- **Update failures**: failed checks, downloads, and installs, grouped by
+  stage and error.
+- **All events**: one device's history, found by installation ID or user ID.
 
-These numbers are operational evidence, not a claim about every installed copy
-of an app. They cover installations that opted in and successfully reached the
-server. An observed Bundle share is therefore a signal for investigating a
-rollout, not proof that its configured eligibility exactly matches global
-adoption.
+<img
+  className="dark:hidden"
+  src="/blog/v1/release-health-adoption-light.webp"
+  alt="Release health comparing a new bundle's downloads and launches with the bundle it replaced, with sample data"
+/>
+<img
+  className="hidden dark:block"
+  src="/blog/v1/release-health-adoption-dark.webp"
+  alt="Release health comparing a new bundle's downloads and launches with the bundle it replaced, with sample data"
+/>
 
-## Upgrading to 1.0
+<img
+  className="dark:hidden"
+  src="/blog/v1/release-health-crashes-light.webp"
+  alt="Release health's Crashes tab suggesting a rollback for a bundle that crashed for 6.4% of installations, with sample data"
+/>
+<img
+  className="hidden dark:block"
+  src="/blog/v1/release-health-crashes-dark.webp"
+  alt="Release health's Crashes tab suggesting a rollback for a bundle that crashed for 6.4% of installations, with sample data"
+/>
 
-Version 1.0 uses a separate protocol. Existing v0 installations
-continue using their v0 endpoint while you provision fresh v1 resources,
-upgrade the Hot Updater packages together, verify the new endpoint, and ship a
-native build with the v1 SDK.
+## Remote Config changes behavior without a bundle
+
+[Remote Config](/docs/guides/remote-config) changes values your app reads,
+such as a feature flag or a list size, without a new bundle or native build.
+The app keeps in-app defaults and reads values synchronously. On the server, a
+template holds parameters whose values can depend on channel, platform, app
+version range, or a share of installs. Every publish is a version you can roll
+back to.
+
+## Plugins on the server and in the app
+
+Insights, Remote Config, and API keys are built the same way: a server plugin
+that adds tables and routes, and a client plugin that runs in the app.
+`HotUpdater.init` returns an instance, and client plugins can add their own
+API to it:
+
+```ts title="src/hotUpdater.ts"
+import { HotUpdater, insights, remoteConfig } from "@hot-updater/react-native";
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: "<your-update-server-url>",
+  requestHeaders: { "x-api-key": "<client-api-key>" },
+  plugins: [
+    insights(),
+    remoteConfig({ defaults: { show_new_checkout: false } }),
+  ],
+});
+
+hotUpdater.remoteConfig.fetchAndActivate().catch(() => {});
+hotUpdater.remoteConfig.getBoolean("show_new_checkout");
+```
+
+- [Server plugins](/docs/custom/server-plugins) are written with
+  `definePlugin` and listed in `createHotUpdater({ plugins })`.
+- [Client plugins](/docs/react-native-api/client-plugins) are written with
+  `defineClientPlugin` and passed to `HotUpdater.init({ plugins })`.
+- [`apiKeys()`](/docs/custom/api-key-authentication) puts the app's routes
+  behind a client API key, managed with `hot-updater api-key create`, `list`,
+  and `revoke`.
+
+The managed Cloudflare, Supabase, AWS, and Firebase servers run all three
+official plugins. A custom server lists the ones it wants.
+
+What fills a config slot is now called an adapter: build, storage, database,
+and signing. The [plugin system](/docs/concepts/plugin-system) page explains
+how to write either kind.
+
+## Also in v1.0
+
+- `hot-updater doctor --fix` checks a project and repairs what it can.
+- A coding agent can [set up a project](/docs/guides/ai-agents) and
+  [provision infrastructure](/docs/guides/agent-infrastructure).
+- [Bundle signing](/docs/guides/bundle-signing) works with AWS KMS, Google
+  Cloud KMS, or a remote signer, as well as a local key.
+- The [Console can be deployed](/docs/guides/console-deployment) for your team
+  on Cloudflare, Docker, Netlify, or Vercel, with sign-in.
+- Custom servers can use Kysely, Drizzle, Prisma, or MongoDB, and
+  `hot-updater db migrate` creates the schema.
+
+## Upgrading from v0
+
+v1.0 uses a new protocol and database layout. Keep your v0 endpoint running
+for the binaries already in the stores, provision v1 alongside it, redeploy
+the bundles you want to serve, and ship a native build with the v1 SDK.
 
 Do not deliver v1 `@hot-updater/react-native` JavaScript to a v0 native binary
-through OTA. The v1 receipt and rollback model requires the v1 native module.
+by OTA. Receipt and rollback behavior requires the v1 native module.
 
-Read the [v1 upgrade guide](/docs/guides/upgrade-to-v1) for the migration
-sequence, or explore [how Release Catalogs work](/docs/concepts/how-it-works)
-in detail.
+The changes you'll touch in app code and scripts:
+
+- `HotUpdater.init` returns an instance. Call it once in its own module and
+  export it; every method moves to it, as in `hotUpdater.checkForUpdate()`.
+- The optional automatic flow is `hotUpdater.wrap(...)`, which keeps only
+  update-flow options. `baseURL`, `requestHeaders`, `plugins`, `onError`, and
+  `onNotifyAppReady` go in `init`.
+- `onNotifyAppReady` results changed: `STABLE` is now `UNCHANGED`, and
+  recoveries report `fromBundleId` and `toBundleId`.
+- Managed providers require a client API key in the `x-api-key` header.
+- The Expo config plugin moved to `@hot-updater/expo`.
+- `compressStrategy` is gone; the updater picks per-file or archive downloads
+  on its own.
+- In scripts, `rollback <channel>` is now `bundle disable <id>`, and the
+  `--json` output of `bundle list` and `bundle show` changed.
+
+Custom servers have more to change, such as `handlers.client` and
+`handlers.admin` replacing `createHandler`. The
+[upgrade guide](/docs/guides/upgrade-to-v1) covers every step, and the
+Hot Updater agent skill can do most of the migration for you.
+
+## What v1.0 doesn't do
+
+- OTA updates carry JavaScript and assets only. Native code changes still
+  need a store build, and store policies still apply; see
+  [Native Compatibility and App Review](/docs/policy/app-review).
+- Supabase and Firebase have no shared cache in front of the update check,
+  so every check runs the function. Pick Cloudflare or AWS if you expect
+  heavy check traffic.
+- Insights counts only installations that run its client plugin and reach
+  your server. Treat its numbers as evidence for a rollout decision, not a
+  count of every installed copy.
+
+## Thank you
+
+Thanks to everyone who filed issues, tested release candidates on real apps,
+and sent pull requests. More than 60 people have contributed code across v0
+and v1.0, and many more shaped this release through bug reports and feedback.
+If Hot Updater saves your team time, you can
+[sponsor the project on GitHub](https://github.com/sponsors/gronxb).
+
+Most packages are MIT-licensed. `@hot-updater/server` and
+`@hot-updater/console` add one condition: if you offer them to others as a
+hosted update service, show "Powered by hot-updater" with a link. Running them
+for your own apps, or for apps you build or operate for clients, needs nothing
+extra.
+
+## Get started
+
+[Install the packages](/docs/get-started/installation), then follow
+[Start here](/docs/get-started/introduction) to set up your first OTA update.
+The code is on [GitHub](https://github.com/gronxb/hot-updater), and
+[How does it work?](/docs/concepts/how-it-works) explains update checks in
+more depth.
