@@ -41,6 +41,12 @@ vi.mock("@hot-updater/lynx", () => ({
     })),
     init: vi.fn(() => ({
       insights: { setUser: vi.fn() },
+      remoteConfig: {
+        getValue: vi.fn(() => ({
+          asString: () => "in-app default",
+          getSource: () => "default",
+        })),
+      },
       getLaunchInfo: vi.fn(async () => ({
         next: null,
         running: { bundleId: "embedded", releaseId: null },
@@ -157,6 +163,10 @@ describe("Lynx E2E page entry bootstrap", () => {
       plugins: [
         expect.objectContaining({
           id: "insights",
+          setup: expect.any(Function),
+        }),
+        expect.objectContaining({
+          id: "remoteConfig",
           setup: expect.any(Function),
         }),
       ],

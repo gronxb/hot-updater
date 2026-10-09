@@ -60,6 +60,9 @@ type AndroidRuntimeJournalAcquisitionFailureReason =
   | "screen.evidence-read-unavailable";
 
 const ACTION_RESULT_FIELDS: Record<string, string> = {
+  "action-fetch-remote-config": "updateActionResult",
+  "action-activate-remote-config": "updateActionResult",
+  "action-fetch-and-activate-remote-config": "updateActionResult",
   "action-reinitialize-hot-updater": "updateActionResult",
   "action-arm-next-detail-fatal": "updateActionResult",
   "action-arm-next-detail-pending": "updateActionResult",
@@ -82,6 +85,7 @@ const ACTION_RESULT_FIELDS: Record<string, string> = {
 };
 
 const SCREEN_TEXT_FIELDS: Record<string, string> = {
+  "runtime-remote-config": "remoteConfigText",
   "channel-action-result": "channelActionResult",
   "cohort-action-result": "cohortActionResult",
   "launch-status-result": "launchStatus",

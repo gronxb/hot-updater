@@ -53,6 +53,10 @@ export type ScreenName =
   | "RuntimeInitialCohort"
   | "RuntimeMarker"
   | "RuntimeReleaseState"
+  | "RuntimeRemoteConfig"
+  | "FetchRemoteConfigAction"
+  | "ActivateRemoteConfigAction"
+  | "FetchAndActivateRemoteConfigAction"
   | "CrashHistoryCount"
   | "LaunchStatus"
   | "ChannelActionResult"
@@ -83,6 +87,11 @@ export const SCREEN_PATHS: Record<ScreenName, string> = {
   RuntimeInitialCohort: "e2e/runtime-initial-cohort",
   RuntimeMarker: "e2e/runtime-marker",
   RuntimeReleaseState: "e2e/runtime-release-state",
+  RuntimeRemoteConfig: "e2e/runtime-remote-config",
+  FetchRemoteConfigAction: "e2e/action/fetch-remote-config",
+  ActivateRemoteConfigAction: "e2e/action/activate-remote-config",
+  FetchAndActivateRemoteConfigAction:
+    "e2e/action/fetch-and-activate-remote-config",
   CrashHistoryCount: "e2e/crash-history-count",
   LaunchStatus: "e2e/launch-status",
   ChannelActionResult: "e2e/channel-action-result",
@@ -118,6 +127,11 @@ export const TEST_ID_TO_SCREEN: Record<string, ScreenName> = {
   "runtime-initial-cohort": "RuntimeInitialCohort",
   "runtime-scenario-marker": "RuntimeMarker",
   "runtime-release-state": "RuntimeReleaseState",
+  "runtime-remote-config": "RuntimeRemoteConfig",
+  "action-fetch-remote-config": "FetchRemoteConfigAction",
+  "action-activate-remote-config": "ActivateRemoteConfigAction",
+  "action-fetch-and-activate-remote-config":
+    "FetchAndActivateRemoteConfigAction",
   "crash-history-count": "CrashHistoryCount",
   "launch-status-result": "LaunchStatus",
   "channel-action-result": "ChannelActionResult",
@@ -140,6 +154,10 @@ export const TEST_ID_TO_SCREEN: Record<string, ScreenName> = {
 };
 
 export const NAV_ITEMS: { name: ScreenName; title: string }[] = [
+  { name: "RuntimeRemoteConfig", title: "Remote Config values" },
+  { name: "FetchRemoteConfigAction", title: "Fetch Remote Config" },
+  { name: "ActivateRemoteConfigAction", title: "Activate Remote Config" },
+  { name: "FetchAndActivateRemoteConfigAction", title: "Fetch and Activate" },
   { name: "RuntimeMarker", title: "Runtime marker" },
   { name: "LaunchStatus", title: "Launch status" },
   { name: "UpdateActionResult", title: "Update result" },

@@ -40,6 +40,7 @@ import {
   maybeCrashForE2E,
 } from "./patchSurface";
 import { createPendingActionPoller } from "./pendingActionPoller";
+import { describeRemoteConfig, runRemoteConfigAction } from "./remoteConfig";
 import {
   applyForcedUpdate,
   bootstrapRuntimeReady,
@@ -81,6 +82,7 @@ type ScreenState = {
   startupHangBundleId: string | null;
   runtimeChannelInput: string;
   runtimeScenarioMarker: string | null;
+  remoteConfigText: string | null;
   stagingBundleId: string | null;
   stagingReleaseId: string | null;
   stableBundleId: string | null;
@@ -157,6 +159,7 @@ function App() {
   const [runtimeSnapshot, setRuntimeSnapshot] =
     useState<RuntimeSnapshot | null>(null);
   const [snapshotError, setSnapshotError] = useState<string | null>(null);
+  const [remoteConfigText, setRemoteConfigText] = useState<string | null>(null);
   const initialCohort = useRef<string | null>(null);
   const [currentScreen, setCurrentScreen] = useState<ScreenName>("Ready");
   navigateToTestId.current = (testID) => {
@@ -178,6 +181,20 @@ function App() {
   const setCohortActionResult = async (result: string) => {
     setCohortActionResultState(result);
     await patchScreenState({ cohortActionResult: result });
+  };
+  const applyRemoteConfigAction = async (
+    action: "fetch" | "activate" | "fetchAndActivate",
+  ) => {
+    const result = await runRemoteConfigAction(hotUpdater.remoteConfig, action);
+    const text = describeRemoteConfig(hotUpdater.remoteConfig);
+    setRemoteConfigText(text);
+    setUpdateActionResultState(result);
+    // Publish values and acknowledgement together so the driver cannot observe
+    // completion before the activated values have reached screen state.
+    await patchScreenState({
+      remoteConfigText: text,
+      updateActionResult: result,
+    });
   };
 
   const installUpdate = async ({
@@ -263,6 +280,10 @@ function App() {
       });
       await setUpdateActionResult("reinitialize -> completed");
     },
+    "action-fetch-remote-config": () => applyRemoteConfigAction("fetch"),
+    "action-activate-remote-config": () => applyRemoteConfigAction("activate"),
+    "action-fetch-and-activate-remote-config": () =>
+      applyRemoteConfigAction("fetchAndActivate"),
     "action-reload-app": async () => {
       await hotUpdater.reload();
     },
@@ -469,12 +490,15 @@ function App() {
   ) => {
     try {
       const snapshot = await readRuntimeSnapshot(hotUpdater);
+      const configText = describeRemoteConfig(hotUpdater.remoteConfig);
+      setRemoteConfigText(configText);
       setRuntimeSnapshot(snapshot);
       setSnapshotError(null);
       if (initialCohort.current === null)
         initialCohort.current = snapshot.currentCohort;
       await patchScreenState({
         ...snapshot,
+        remoteConfigText: configText,
         runtimeScenarioMarker:
           launchStatusValue === "Current Launch Status: STARTING"
             ? null
@@ -642,6 +666,8 @@ function App() {
       valueScreen("runtime-bundle-id", bundleId)
     ) : currentScreen === "RuntimeReleaseState" ? (
       valueScreen("runtime-release-state", releaseId)
+    ) : currentScreen === "RuntimeRemoteConfig" ? (
+      valueScreen("runtime-remote-config", remoteConfigText ?? unavailable)
     ) : currentScreen === "RuntimeCurrentChannel" ? (
       valueScreen("runtime-current-channel", currentChannel)
     ) : currentScreen === "RuntimeDefaultChannel" ? (
@@ -682,6 +708,15 @@ function App() {
       actionScreen("action-clear-crash-history", "Clear Crash History")
     ) : currentScreen === "ReloadAppAction" ? (
       actionScreen("action-reload-app", "Reload")
+    ) : currentScreen === "FetchRemoteConfigAction" ? (
+      actionScreen("action-fetch-remote-config", "Fetch Remote Config")
+    ) : currentScreen === "ActivateRemoteConfigAction" ? (
+      actionScreen("action-activate-remote-config", "Activate Remote Config")
+    ) : currentScreen === "FetchAndActivateRemoteConfigAction" ? (
+      actionScreen(
+        "action-fetch-and-activate-remote-config",
+        "Fetch and Activate",
+      )
     ) : currentScreen === "RefreshRuntimeSnapshotAction" ? (
       actionScreen("action-refresh-runtime-snapshot", "Refresh Snapshot")
     ) : currentScreen === "CaptureCurrentChannelUpdateAction" ? (

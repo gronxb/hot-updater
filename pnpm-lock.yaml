@@ -812,6 +812,9 @@ importers:
       '@hot-updater/plugin-insights':
         specifier: workspace:*
         version: link:../../plugins/insights
+      '@hot-updater/plugin-remote-config':
+        specifier: workspace:*
+        version: link:../../plugins/remote-config
       '@lynx-js/react':
         specifier: 0.116.5
         version: 0.116.5(@lynx-js/types@3.7.0)(@types/react@18.3.20)

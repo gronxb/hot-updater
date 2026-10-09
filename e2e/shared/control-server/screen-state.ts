@@ -20,6 +20,7 @@ export type E2eScreenState = {
   readonly startupHangBundleId: string | null;
   readonly runtimeChannelInput: string;
   readonly runtimeScenarioMarker: string | null;
+  readonly remoteConfigText: string | null;
   readonly stagingBundleId: string | null;
   readonly stagingReleaseId: string | null;
   readonly stableBundleId: string | null;
@@ -52,6 +53,7 @@ const defaultE2eScreenState = {
   startupHangBundleId: null,
   runtimeChannelInput: "beta",
   runtimeScenarioMarker: null,
+  remoteConfigText: null,
   stagingBundleId: null,
   stagingReleaseId: null,
   stableBundleId: null,
@@ -189,6 +191,10 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     payload,
     "runtimeScenarioMarker",
   );
+  const remoteConfigText = parseOptionalNullableString(
+    payload,
+    "remoteConfigText",
+  );
   const stagingBundleId = parseOptionalNullableString(
     payload,
     "stagingBundleId",
@@ -231,6 +237,7 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     ...(startupHangBundleId === undefined ? {} : { startupHangBundleId }),
     ...(runtimeChannelInput === undefined ? {} : { runtimeChannelInput }),
     ...(runtimeScenarioMarker === undefined ? {} : { runtimeScenarioMarker }),
+    ...(remoteConfigText === undefined ? {} : { remoteConfigText }),
     ...(stagingBundleId === undefined ? {} : { stagingBundleId }),
     ...(stagingReleaseId === undefined ? {} : { stagingReleaseId }),
     ...(stableBundleId === undefined ? {} : { stableBundleId }),

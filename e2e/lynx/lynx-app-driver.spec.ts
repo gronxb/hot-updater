@@ -305,6 +305,7 @@ describe("Lynx app text assertions", () => {
     ["runtime-release-state", "currentReleaseId", "release-A"],
     ["runtime-current-cohort", "currentCohort", "qa"],
     ["crash-history-count", "crashHistoryCount", "10"],
+    ["runtime-remote-config", "remoteConfigText", "message=qa(remote)"],
   ])(
     "accepts the actual published %s value",
     async (testID, field, expected) => {
@@ -680,17 +681,23 @@ describe("Lynx update actions", () => {
       },
     );
   });
-  it("rejects an update action error by default", async () => {
-    const { driver } = createDriver(() => ({
-      updateActionResult: "current-channel -> error download failed",
-    }));
+  it.each([
+    "action-install-current-channel-update",
+    "action-fetch-remote-config",
+    "action-activate-remote-config",
+    "action-fetch-and-activate-remote-config",
+  ])(
+    "rejects an error from %s instead of acknowledging success",
+    async (testID) => {
+      const { driver } = createDriver(() => ({
+        updateActionResult: "current-channel -> error download failed",
+      }));
 
-    await expect(
-      driver.tap("install update", "action-install-current-channel-update"),
-    ).rejects.toThrow(
-      'install update: wait updateActionResult observed failed updateActionResult: "current-channel -> error download failed"',
-    );
-  });
+      await expect(driver.tap("install update", testID)).rejects.toThrow(
+        'install update: wait updateActionResult observed failed updateActionResult: "current-channel -> error download failed"',
+      );
+    },
+  );
 
   it("allows an intentional update failure to be asserted by the scenario", async () => {
     const { driver } = createDriver(() => ({

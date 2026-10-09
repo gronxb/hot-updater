@@ -21,6 +21,7 @@
   "dependencies": {
     "@hot-updater/lynx": "workspace:*",
     "@hot-updater/plugin-insights": "workspace:*",
+    "@hot-updater/plugin-remote-config": "workspace:*",
     "@lynx-js/react": "0.116.5",
     "@tanstack/react-router": "1.167.0",
     "sparkling-navigation": "2.1.0-rc.12",

@@ -1016,13 +1016,13 @@ async function applyAppScenario({
               '  navigate({path: "detail.lynx.bundle"}, () => undefined);',
               "  return true;",
             ]
-          : mode === "hang"
+          : mode === "hang" || mode === "slow-start"
             ? [
                 "  const { running } = await hotUpdater.getLaunchInfo();",
                 "  await onStartupHang(running.bundleId);",
-                "  const hangUntil = Date.now() + 600_000;",
+                `  const hangUntil = Date.now() + ${mode === "hang" ? 600_000 : SLOW_START_HOLD_MS};`,
                 "  while (Date.now() < hangUntil) {}",
-                "  return true;",
+                `  return ${mode === "hang"};`,
               ]
             : ["  return false;"]),
         CRASH_GUARD_END,
