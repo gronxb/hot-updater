@@ -32,7 +32,7 @@ Options:
   -t, --target-app-version <targetAppVersion>  specify the target app version (semver format e.g. 1.0.0, 1.x.x)
   -d, --disabled                               create the bundle disabled (default: false)
   -f, --force-update                           force update the app (default: false)
-  -o, --bundle-output-path <bundleOutputPath>  the directory where bundle artifacts will be generated
+  -o, --bundle-output-path <bundleOutputPath>  the directory where bundle archives will be generated
   -r, --rollout <percentage>                   specify the rollout percentage for the new bundle (0-100) (default: 100)
   -i, --interactive                            interactive mode (default: false)
   -c, --channel <channel>                      specify the channel to deploy (default: "production")
@@ -185,9 +185,9 @@ Run the following command:
 npx hot-updater deploy -p <"ios" | "android"> -r 25
 ```
 
-Use `1` to `99` for gradual rollout, `100` for a full rollout, and `0` when
-you want to create the Bundle without exposing it to numeric rollout until you
-edit the same Bundle later.
+Use whole percentages from `1` to `99` for gradual rollout, `100` for a full
+rollout, and `0` when you want to create the Bundle without exposing it to
+numeric rollout until you edit the same Bundle later.
 
 Hot Updater maps rollout percentages to `1..1000` numeric cohorts internally.
 For example, `-r 25` means 250 of 1000 numeric cohorts are eligible for that

@@ -7,6 +7,8 @@ icon: Settings
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
+## Prepare the console
+
 Host the console with [Nitro](https://nitro.build/deploy) and connect it to your existing Hot Updater backend.
 
 You need Node.js 22+ (npm 11+ if using npm), backend credentials, and a GitHub or Google OAuth application.
@@ -183,7 +185,10 @@ For another host, select its preset from [Nitro's deployment catalog](https://ni
 
 1. Open the HTTPS URL: sign-in should appear before any management data.
 2. Sign in with an allowlisted account: check Bundles and Insights. If Insights is missing from the navigation, add `insights()` to `plugins` in `console.config.ts`, as your server runs it.
-3. Download a bundle, then sign out: management data should no longer be accessible.
+3. Open a Bundle's details and use **Download manifest** to verify access to its `manifest.json`. Then sign out: management data should no longer be accessible.
+
+The manifest download checks console access to metadata. Verify OTA delivery
+separately with [Test an OTA update](/docs/get-started/test-ota).
 
 </Step>
 </Steps>

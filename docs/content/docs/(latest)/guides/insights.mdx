@@ -40,8 +40,9 @@ export const hotUpdater = createHotUpdater({
 ```
 
 It accepts reports at `POST /events` and serves the Console's reads on the
-admin handler. A server without it answers `404`, and an app that gets that
-answer stops reporting for 24 hours, then tries again.
+admin handler. A server without it answers `404`. The app then stops reporting
+for the rest of that runtime. A later runtime can report once 24 hours have
+passed since the `404`.
 
 <span id="configure-reporting" />
 
@@ -85,9 +86,9 @@ can name a staged bundle before it runs, so confirm the visible change and the
 **Launched** event.
 
 **No report?** Check that the app passes `insights()` to `init`, the server
-runs `insights()`, and the `baseURL` and client key match the server. An app
-that reported to a server without `insights()` waits 24 hours before trying
-again; reinstall it to test right away.
+runs `insights()`, and the `baseURL` and client key match the server. After a
+`404`, restart the app once 24 hours have passed to resume reporting, or
+reinstall it to test right away.
 
 ## Read the Console
 

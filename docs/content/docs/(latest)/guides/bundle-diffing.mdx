@@ -101,9 +101,10 @@ manifest-based diffing.
 A diff-enabled runtime means the native app was built with a Hot Updater version
 that includes bundle diffing support.
 
-Hermes binary patch optimization is also enabled by default:
+Hermes binary patch optimization is also enabled by default. Keep your existing
+build, storage, database, and plugins settings when changing this option:
 
-```ts title="hot-updater.config.ts"
+```ts title="hot-updater.config.ts (partial)"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
@@ -163,8 +164,8 @@ Notes:
 - Defaults to `3`.
 - Compatible patch bases are artifacts used by older enabled Bundles in the
   same channel and platform.
-- Hot Updater also matches by fingerprint when fingerprinting is used, or by
-  target app version when fingerprinting is not used.
+- Hot Updater also requires the same fingerprint, or overlapping target app
+  version ranges when using the App Version strategy.
 - Higher values increase the range of OTA versions covered by patches. Deploy
   creates at most one patch per selected base, so patch-generation time and
   storage work grow roughly with the number of selected bases rather than

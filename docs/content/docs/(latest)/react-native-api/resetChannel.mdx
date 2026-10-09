@@ -22,7 +22,9 @@ async function handleResetChannel() {
 
 - Clears the runtime channel switch
 - Clears downloaded OTA state and restores the original bundle selection
-- Makes the build-time default channel active again after reload
+- Makes `getChannel()` return the build-time default channel and
+  `isChannelSwitched()` return `false` as soon as the reset succeeds
+- Keeps the current JavaScript runtime running until you reload or restart
 - Runs even when `hotUpdater.isChannelSwitched()` is already `false`
 
 ## Example

@@ -13,9 +13,10 @@ explicit version targeting over automated native compatibility checks.
 
 ## Setup
 
-Configure the strategy in your Hot Updater config:
+Set the strategy in your existing Hot Updater config, keeping its build,
+storage, database, and plugins settings:
 
-```typescript title="hot-updater.config.ts"
+```typescript title="hot-updater.config.ts (partial)"
 import { defineConfig } from "hot-updater";
 
 export default defineConfig({
@@ -51,6 +52,10 @@ Examples:
 - `npx hot-updater deploy -p ios -t "1.0.0"` - Only version 1.0.0
 - `npx hot-updater deploy -p android -t ">=1.2.0"` - Version 1.2.0 and above
 - `npx hot-updater deploy -p ios -t "*"` - All versions
+
+Without `-t`, deploy reads the selected platform's version from the native
+project. Every targeted version must be compatible with the update's JavaScript;
+a broad range does not check native compatibility for you.
 
 ## Client Setup
 

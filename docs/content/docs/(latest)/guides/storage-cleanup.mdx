@@ -46,8 +46,10 @@ npx hot-updater bundle delete <id> --yes
 Multiple bundle IDs can share one immutable artifact, such as a promoted
 bundle and its source. Deleting the last bundle that uses an artifact deletes
 the artifact's record too, with every patch to or from it, so a device running
-that bundle downloads its next update in full. `bundle delete` says so, and its
-`--json` output names the artifact in `deletedArtifactId`.
+that bundle can no longer use it as a Hermes patch base. Unchanged files can
+still be reused from the device; changed files download in full.
+`bundle delete` reports the artifact deletion, and its `--json` output names
+the artifact in `deletedArtifactId`.
 
 `hot-updater doctor` reports artifact records no bundle uses as
 `UNREFERENCED_ARTIFACTS`, and `doctor --fix` deletes them so the prune below can

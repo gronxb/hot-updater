@@ -125,17 +125,19 @@ import { d1Database } from "@hot-updater/cloudflare/worker"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { insights } from "@hot-updater/server/plugins/insights";
+import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
 import { env } from "cloudflare:workers";
 
 export const hotUpdater = createHotUpdater({
   database: d1Database(env.DB), // [!code ++]
-  plugins: [insights(), apiKeys()],
+  plugins: [insights(), apiKeys(), remoteConfig()],
   // ... other options
 });
 ```
 
-`insights()` records app events, and `apiKeys()` protects client routes with
-the `x-api-key` header. The managed Worker runs the same list, which
+`insights()` records app events, `apiKeys()` protects client routes with
+the `x-api-key` header, and `remoteConfig()` serves Remote Config. The managed
+Worker runs the same list, which
 `@hot-updater/cloudflare/worker` exports as `plugins`.
 
 `hot-updater.config.ts` runs in Node, where `cloudflare:workers` doesn't exist.

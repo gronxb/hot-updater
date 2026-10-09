@@ -235,12 +235,14 @@ Lambda@Edge. Apps send reports only with the
 [Insights client plugin](/docs/react-native-api/insights): at most one launch
 report a UTC day per installation while nothing changes, plus downloads,
 applies, recoveries, and update failures. An app without the plugin sends
-none. A report the server records is one DynamoDB transaction of 8 to
-26 items, 20 to 56 write request units: the aggregate counters, sketches, and
-gauges it changes, the installation's latest-report row unless it is an update
-failure, and, for any report but a launch, the event with its index copies. A
-launch that repeats the installation's latest report on the same UTC day writes
-nothing; see [What Insights writes](/docs/guides/insights#what-insights-writes).
+none. The managed database batches Insights counters, sketches, and gauges
+through durable log items. Each report transaction writes its event or
+installation rows and a compressed log item; periodic compaction applies the
+pending aggregate changes together. Read costs and write costs depend on the
+report kind, traffic, and compaction frequency; see
+[Batched Insights totals](/docs/database-adapters/aws#batched-insights-totals).
+A launch that repeats the installation's latest report on the same UTC day
+writes nothing; see [What Insights writes](/docs/guides/insights#what-insights-writes).
 Review the [DynamoDB pricing model](https://aws.amazon.com/dynamodb/pricing/) and
 [Lambda@Edge pricing](https://aws.amazon.com/lambda/pricing/).
 

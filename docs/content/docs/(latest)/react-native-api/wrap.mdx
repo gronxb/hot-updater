@@ -154,6 +154,10 @@ For a standard update, `wrap` invokes this callback after starting the
 non-blocking download, not after the download finishes. Do not use it as a
 download-readiness signal.
 
+`UP_TO_DATE` means the check returned no transition. A failed check can also
+return `null` after calling `init.onError`, so this status alone does not prove
+that the server was reached or the app is current.
+
 Callback arguments:
 
 | Property            | Type                                   | Description                          |

@@ -41,8 +41,13 @@ npm install @hot-updater/server @hot-updater/test-utils vitest --save-dev
 implement it, and the `EngineDatabase` type that a provider returns. A
 published adapter lists it in `peerDependencies`, so the server and the
 adapter share one copy. The tests run the adapter behind
-`@hot-updater/server`. The examples run PostgreSQL through `pg`; use your own
-driver in its place.
+`@hot-updater/server`. The examples run PostgreSQL through `pg`; install its
+driver and types to follow them, or use your own driver in its place:
+
+```package-install
+npm install pg
+npm install @types/pg --save-dev
+```
 
 ## How the pieces fit
 
@@ -457,7 +462,7 @@ runs. Register all three:
 | -------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------- |
 | `setupDatabaseAdapterConformanceSuite` | the [adapter contract](/docs/database-adapters/adapter-contract), case by case                   | your adapter, on three test tables       |
 | `setupReadBudgetTestSuite`             | what each read of core and the plugins it measures costs                                         | your adapter, on their tables            |
-| `setupDatabaseTestSuite`               | core, Bundles, the Release Catalog contract and Insights, through the admin and client HTTP APIs | your database, behind `createHotUpdater` |
+| `setupDatabaseTestSuite`               | core, Bundles, the Release Catalog contract and opted-in plugin suites, through the admin and client HTTP APIs | your database, behind `createHotUpdater` |
 
 The examples expect `TEST_DATABASE_URL` to name an empty PostgreSQL database.
 Each suite creates its own tables, and the specs drop or empty them through
@@ -514,7 +519,7 @@ setupDatabaseAdapterConformanceSuite({
 | `createAdapter` | Returns `{ adapter, cleanup? }` over newly created, empty `tables`, for each case; `cleanup` runs after the case. One case passes `nativePageSize: 2`: fetch at most that many rows per native page. A backend without native pages ignores it. |
 | `maxOps`        | The most ops one write accepts. The suite then checks that `fits` refuses one more op and that nothing is written. Omit it when the backend has no limit.                                                                                       |
 | `writers`       | Concurrent writers in the contention cases (default 32)                                                                                                                                                                                         |
-| `retention`     | How the backend deletes rows past a table's retention: `"prune"` (default) checks the adapter's `prune`, and `"ttl"` checks the expiry the adapter stamps on every item instead.                                                               |
+| `retention`     | `"prune"` (default) checks the adapter's `prune`. `"ttl"` checks that `prune` is absent and expired rows remain readable until the backend deletes them. Test the provider's TTL settings and expiry fields separately. |
 
 The cases cover value round-trips, point reads in key order, each op's guard,
 all-or-nothing writes with a failure at every position, unique indexes and the
@@ -698,7 +703,7 @@ import it. Add `clientHeaders` when the server's client routes need a key.
 ## Publish the adapter
 
 Publish the factory and its migration from one package, as `dynamoDB` and
-`migrateDynamoDB` ship together. List `@hot-updater/server` in
+`migrateDynamoDB` ship together. List `@hot-updater/plugin-core` in
 `peerDependencies`, so the adapter runs on the project's copy of the engine,
 and keep the three suites in your CI. See
 [Test and publish](/docs/plugins/publish) for the package layout,

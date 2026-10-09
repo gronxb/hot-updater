@@ -126,8 +126,8 @@ event's transaction:
   or counts one twice.
 - After an event, the server compacts when a minute has passed since the last
   compaction. A read of the totals, such as the Console's, compacts first. If
-  it cannot write, it shows the stored totals, which can leave out up to one
-  window of the latest events.
+  it cannot write, it shows the stored totals, which can leave out pending
+  events until a later compaction succeeds.
 
 Set `aggregateBatching: { mode: "memory" }` on a long-lived server to keep
 totals in the process and write them every 15 seconds, without log documents.
@@ -219,6 +219,7 @@ import { firebaseDatabase } from "@hot-updater/firebase"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import { insights } from "@hot-updater/server/plugins/insights";
+import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
 import { applicationDefault } from "firebase-admin/app";
 
 export const hotUpdater = createHotUpdater({
@@ -226,13 +227,14 @@ export const hotUpdater = createHotUpdater({
     projectId: process.env.FIREBASE_PROJECT_ID!, // [!code ++]
     credential: applicationDefault(), // [!code ++]
   }), // [!code ++]
-  plugins: [insights(), apiKeys()],
+  plugins: [insights(), apiKeys(), remoteConfig()],
   // ... other options
 });
 ```
 
-`insights()` records app events, and `apiKeys()` protects client routes with
-the `x-api-key` header. The managed Cloud Function runs the same list, which
+`insights()` records app events, `apiKeys()` protects client routes with
+the `x-api-key` header, and `remoteConfig()` serves Remote Config. The managed
+Cloud Function runs the same list, which
 `@hot-updater/firebase` exports as `plugins`. List the server's plugins in
 `hot-updater.config.ts` too; see
 [CLI Configuration](/docs/custom/cli-configuration#mirror-the-server).

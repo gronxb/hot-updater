@@ -125,8 +125,9 @@ async function restoreDefaultChannel() {
   switching.
 - The app does not switch channels just by checking.
 - If no update is returned, the app stays on the current channel.
-- After `updateInfo.updateBundle()` succeeds and the app reloads,
-  `hotUpdater.getChannel()` returns the effective runtime channel.
+- After `updateInfo.updateBundle()` succeeds, `hotUpdater.getChannel()`
+  returns the selected runtime channel and `hotUpdater.isChannelSwitched()`
+  reflects it, even before reload. Reload to start the selected code.
 - `hotUpdater.getDefaultChannel()` still returns the embedded default channel.
 - If a runtime channel switch is already active, `checkForUpdate({ channel: "..." })`
   cannot move directly to a different runtime channel. Call

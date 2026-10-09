@@ -10,7 +10,9 @@ import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 ## Overview
 
 Hot Updater uses cohorts to decide whether a device is eligible for a Bundle.
-The selected Bundle then points to the immutable Bundle the device installs.
+The selected Bundle points to the immutable artifact containing its files.
+The device must also match the platform, channel, and compatibility target.
+For a forward update, it selects the newest eligible enabled Bundle.
 
 - Every install gets a persisted numeric cohort from `1` to `1000`.
 - `npx hot-updater deploy -r <percentage>` maps `1..100` to those numeric
@@ -34,9 +36,18 @@ Use `-r` during deploy:
 
 ```package-install
 npx hot-updater deploy -p ios -r 10
-npx hot-updater deploy -p ios -r 25
-npx hot-updater deploy -p ios -r 100
 ```
+
+Record the deployed Bundle's ID. Increase that same Bundle's rollout after
+verification:
+
+```package-install
+npx hot-updater bundle update <id> --rollout-cohort-count 250 -y
+npx hot-updater bundle update <id> --rollout-cohort-count 1000 -y
+```
+
+Each `deploy` creates a new Bundle and rollout seed. Use `bundle update` to
+expand an existing rollout without changing its selected cohort order.
 
 - `-r 10` targets 100 of 1000 numeric cohorts.
 - `-r 25` targets 250 of 1000 numeric cohorts.

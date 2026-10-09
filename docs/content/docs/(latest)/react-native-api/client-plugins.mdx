@@ -78,7 +78,7 @@ export const launchLogger = () =>
 
 | Hook                       | Called                                                                   |
 | -------------------------- | ------------------------------------------------------------------------ |
-| `onAppReady(result)`       | Once per JavaScript runtime, after native launch verification finishes. |
+| `onAppReady(result)`       | Once per instance in a JavaScript runtime, after native launch verification finishes. |
 | `onUpdateCheck(result)`    | After each update check, and after a same-bundle Release adoption commits. |
 | `onBundleDownloaded(info)` | After the SDK downloads, verifies, and stages a new bundle.              |
 | `onHttpResponse(response)` | After each catalog or artifact HTTP response, including successful and cached responses. |

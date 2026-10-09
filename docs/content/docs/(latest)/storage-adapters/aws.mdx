@@ -25,23 +25,21 @@ you do not need to provision the provider's database and server to use this adap
 ## Configuration
 
 ```typescript
-interface S3StorageConfig {
-  region: string; // AWS region or 'auto' for R2
+import type { S3ClientConfig } from "@aws-sdk/client-s3";
+
+interface S3StorageConfig extends S3ClientConfig {
   bucketName: string; // S3 bucket name
   basePath?: string; // Optional base path within bucket
-  endpoint?: string; // Custom endpoint for S3-compatible services
-  credentials?: {
-    accessKeyId: string;
-    secretAccessKey: string;
-  };
   downloadUrlSigningKey?: string;
   getDownloadUrl?: (input: { storageUri: string }) => Promise<{ url: string }>;
 }
 ```
 
-If `credentials` is omitted, the AWS SDK default credential chain is used. This
-lets you rely on local AWS CLI sessions, `AWS_PROFILE`, shared config files, or
-other standard AWS credential sources.
+The inherited AWS SDK options include `region`, `endpoint`, and `credentials`
+(including credential providers and temporary session tokens). If `credentials`
+is omitted, the AWS SDK default credential chain is used. This lets you rely
+on local AWS CLI sessions, `AWS_PROFILE`, shared config files, or other
+standard AWS credential sources.
 
 ## Usage
 

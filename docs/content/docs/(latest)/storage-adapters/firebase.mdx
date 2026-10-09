@@ -22,12 +22,10 @@ you do not need to provision the provider's database and server to use this adap
 ## Configuration
 
 ```typescript
-import type { Credential } from "firebase-admin/app";
+import type { AppOptions } from "firebase-admin/app";
 
-interface FirebaseStorageConfig {
-  projectId: string; // Firebase project ID
+interface FirebaseStorageConfig extends AppOptions {
   storageBucket: string; // Storage bucket name
-  credential: Credential; // Firebase credential
   basePath?: string; // Optional base path within bucket
   cdnUrl?: string; // Optional CDN URL
   signedUrlExpiresIn?: number; // Default: 3600 seconds

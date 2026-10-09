@@ -47,10 +47,11 @@ export default hotUpdater.wrap({
 })(App);
 ```
 
-Each call returns an independent instance with its own configuration and
-plugins; nothing is configured globally. Create one instance per app: keep the
-call in its own module, at the top level, so it runs once per app start. Two
-instances each read the launch and report it through their own plugins.
+Each call returns an instance with its own server configuration and plugins.
+Native update state, progress, and reload behavior are shared across instances.
+Create one instance per app: keep the call in its own module, at the top level,
+so it runs once per app start. Two instances each read the launch and report it
+through their own plugins.
 
 Point `baseURL` at the client handler root, for example
 `https://example.com/hot-updater`. Never embed the admin bearer token in a
@@ -136,7 +137,7 @@ export const hotUpdater = HotUpdater.init({
 | `requestHeaders`   | `Record<string, string>`                      | No       | Shared headers used by update checks and plugin requests                             |
 | `requestTimeout`   | `number`                                      | No       | Request timeout in milliseconds (default: 5000)                                      |
 | `onNotifyAppReady` | `(result: NotifyAppReadyResult) => void`      | No       | Callback invoked after native launch verification finishes                           |
-| `onError`          | `(error) => void`                             | No       | Default error handler for initialization, `wrap`, update checks, and plugin errors   |
+| `onError`          | `(error) => void`                             | No       | Default error handler for native launch reporting, `wrap`, update checks, and plugin errors   |
 
 `baseURL` is the only React Native transport configuration. A GraphQL, RPC,
 or other custom backend must expose the Hot Updater HTTP protocol through an
