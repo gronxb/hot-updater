@@ -1,5 +1,6 @@
 package com.hotupdater.lynx.sparkling
 
+import android.app.Activity
 import android.content.Context
 import android.os.Handler
 import android.os.Looper
@@ -45,6 +46,10 @@ fun HotUpdaterSparklingHost.triggerReloadForDiagnostics(
 ) {
     reload(generationEvents, "reload", completion)
 }
+
+/** Identifies the real managed page before attaching QA-only Activity controls. */
+fun HotUpdaterSparklingHost.ownsSecondaryActivityForDiagnostics(activity: Activity) =
+    pages.any { !it.primary && it.activity.get() === activity }
 
 /** Fails the next real public-navigation page before its readiness boundary. */
 fun HotUpdaterSparklingHost.armNextPageFatalFailureForDiagnostics(

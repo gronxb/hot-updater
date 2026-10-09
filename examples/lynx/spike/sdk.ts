@@ -153,7 +153,11 @@ export async function checkSdkUpdate(
       prepared ? "Update available. Ready to install." : "No update available.",
     );
   } catch (error) {
-    status(`Update check failed: ${String(error)}`);
+    const message =
+      error instanceof LynxUpdaterError
+        ? `[${error.code}] ${error.message}`
+        : String(error);
+    status(`Update check failed: ${message}`);
     console.error("HOT_UPDATER_SDK_CHECK_FAILURE", String(error));
   } finally {
     busy = false;

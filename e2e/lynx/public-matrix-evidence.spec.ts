@@ -10,6 +10,7 @@ import {
   collectInvalidatedContexts,
   collectPendingDetailLaunch,
   collectProcessInterruption,
+  collectProcessRecovery,
   collectReadyLaunch,
   collectSecondaryFatalFailure,
   hasCompleteAlreadyRunningDetailEvents,
@@ -18,6 +19,7 @@ import {
   normalizeBuild,
   pageEntries,
   pageEssentialResources,
+  persistedExclusions,
   resourcePaths,
   validateAttributedDiagnostics,
 } from "./public-matrix/evidence.mjs";
@@ -200,6 +202,120 @@ function reconstructedEvents(platform: "ios" | "android") {
 }
 
 describe("Lynx public matrix native event evidence", () => {
+  it("reads persisted exclusions without confusing API projections or retry holds", () => {
+    expect(persistedExclusions({}, "android", "fatal")).toEqual([]);
+    expect(persistedExclusions({}, "android", "unconfirmed")).toEqual([]);
+    expect(
+      persistedExclusions(
+        {
+          crashed: ["fatal-bundle"],
+          unconfirmed: ["interrupted-release"],
+          crashedBundleIds: ["api-only"],
+          unconfirmedReleaseIds: ["api-only"],
+          interruptedReleases: { "retry-held-release": { retryReady: false } },
+        },
+        "android",
+        "unconfirmed",
+      ),
+    ).toEqual(["interrupted-release"]);
+    expect(
+      persistedExclusions({ crashed: ["fatal-bundle"] }, "android", "fatal"),
+    ).toEqual(["fatal-bundle"]);
+    expect(
+      persistedExclusions({ crashedBundleIds: [] }, "ios", "fatal"),
+    ).toEqual([]);
+    expect(
+      persistedExclusions(
+        { unconfirmedReleaseIds: ["interrupted-release"] },
+        "ios",
+        "unconfirmed",
+      ),
+    ).toEqual(["interrupted-release"]);
+    expect(() => persistedExclusions({}, "ios", "fatal")).toThrow();
+    for (const crashed of [null, "bundle", {}, [1], [""]]) {
+      expect(() =>
+        persistedExclusions({ crashed }, "android", "fatal"),
+      ).toThrow();
+    }
+  });
+
+  it("orders cold recovery against the durable terminal in the same native snapshot", () => {
+    const pendingEvents = evidenceEvents().filter(
+      (candidate) =>
+        candidate.event !== "pageAdmitted" &&
+        candidate.event !== "pageAttemptTerminal" &&
+        !candidate.event.startsWith("generationRetir") &&
+        candidate.event !== "resourceLeaseReleased" &&
+        candidate.event !== "staleContextRejected",
+    );
+    const candidateLaunch = collectPendingDetailLaunch({
+      phaseEvents: pendingEvents,
+      allEvents: pendingEvents,
+      build,
+      processId: identity.processId,
+      primaryReady: true,
+    });
+    const terminal = event("pageAttemptTerminal", {
+      contextId: secondaryContextId,
+      pageAttemptId: "page-attempt-b",
+      terminal: "process-interruption",
+    });
+    const recoveredEvents = JSON.parse(
+      JSON.stringify(evidenceEvents())
+        .replaceAll('"101"', '"202"')
+        .replaceAll("generation-b", "generation-recovered")
+        .replaceAll("context-b", "context-recovered")
+        .replaceAll("attempt-b", "attempt-recovered"),
+    );
+    const recover = (events: ReturnType<typeof event>[]) =>
+      collectProcessRecovery({
+        snapshot: {
+          schemaVersion: 1,
+          oldestSequence: "501",
+          latestSequence: String(500 + events.length),
+          truncated: true,
+          events: events.map(({ event: name, ...details }, index) => ({
+            sequence: String(501 + index),
+            name,
+            details,
+          })),
+        },
+        candidateLaunch,
+        build,
+        processId: "202",
+      });
+    const result = recover([terminal, ...recoveredEvents]);
+    expect(result.failureEvent).toMatchObject({
+      processId: "101",
+      contextId: secondaryContextId,
+      terminalSequence: 0,
+    });
+    expect(result.recovered).toMatchObject({
+      identity: { processId: "202", generationId: "generation-recovered" },
+      evaluationSequence: 1,
+    });
+    // The app observer contains the recovered launch but never the replayed terminal.
+    expect(() => recover(recoveredEvents)).toThrow(
+      "durable process-interruption",
+    );
+    expect(() => recover([...recoveredEvents, terminal])).toThrow(
+      "must follow",
+    );
+    expect(() => recover([terminal, terminal, ...recoveredEvents])).toThrow(
+      "exactly one durable terminal",
+    );
+    expect(() =>
+      recover([{ ...terminal, contextId: "unrelated" }, ...recoveredEvents]),
+    ).toThrow("durable process-interruption");
+    expect(() =>
+      recover([
+        { ...terminal, event: "runtimeFailed" },
+        terminal,
+        ...recoveredEvents,
+      ]),
+    ).toThrow("verified fatal failure");
+  });
+
   it.each(["ios", "android"] as const)(
     "accepts a newly admitted %s detail after the reconstructed detail closes",
     (platform) => {

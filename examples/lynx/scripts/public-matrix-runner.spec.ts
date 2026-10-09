@@ -730,6 +730,50 @@ describe("Lynx public matrix runner", () => {
     },
   );
 
+  it("reports an incompatible check and discards the previously prepared update", async () => {
+    vi.clearAllMocks();
+    vi.resetModules();
+    vi.stubGlobal("__SPIKE_VARIANT__", "C");
+    vi.stubGlobal("__SPIKE_BEHAVIOR__", "normal");
+    vi.stubGlobal("__SPIKE_ASSET_PREFIX__", "hot-updater:///");
+    vi.stubGlobal("__SDK_RESOURCES__", false);
+    native.getLaunchConfiguration.mockResolvedValue({
+      appBaseURL: "https://updates.test",
+    });
+    native.getLaunchInfo.mockResolvedValue({ running: { bundleId: "C" } });
+    native.notifyAppReady.mockResolvedValue({ status: "CONFIRMED" });
+    const updateBundle = vi.fn();
+    native.checkForUpdate
+      .mockResolvedValueOnce({ id: "old-selection", updateBundle })
+      .mockRejectedValueOnce(
+        new TestLynxUpdaterError(
+          "INCOMPATIBLE",
+          "Native Lynx compatibility mismatch",
+        ),
+      )
+      .mockResolvedValueOnce(null);
+    const sdk = await import("../spike/sdk");
+    const status = vi.fn();
+    const canInstall = vi.fn();
+    sdk.sdkImageLoaded();
+    await sdk.startSdk(status, vi.fn(), vi.fn(), vi.fn(), vi.fn());
+    await sdk.checkSdkUpdate(status, canInstall);
+    expect(canInstall).toHaveBeenLastCalledWith(true);
+
+    await sdk.checkSdkUpdate(status, canInstall);
+    expect(status).toHaveBeenLastCalledWith(
+      "Update check failed: [INCOMPATIBLE] Native Lynx compatibility mismatch",
+    );
+    expect(canInstall).toHaveBeenLastCalledWith(false);
+    await sdk.installSdkUpdate(status, canInstall);
+    expect(updateBundle).not.toHaveBeenCalled();
+    expect(native.reload).not.toHaveBeenCalled();
+
+    await sdk.checkSdkUpdate(status, canInstall);
+    expect(status).toHaveBeenLastCalledWith("No update available.");
+    expect(native.checkForUpdate).toHaveBeenCalledTimes(3);
+  });
+
   it("keeps a failed public SDK install as a failure and never reloads", async () => {
     vi.clearAllMocks();
     vi.resetModules();

@@ -37,13 +37,14 @@ import {
   collectFatalPendingDetailLaunch,
   collectInvalidatedContexts,
   collectPendingDetailLaunch,
-  collectProcessInterruption,
+  collectProcessRecovery,
   collectReadyLaunch,
   collectSecondaryFatalFailure,
   hasCompleteAlreadyRunningDetailEvents,
   hasCompletePendingDetailEvents,
   hasCompleteReadyEvents,
   normalizeBuild,
+  persistedExclusions,
   resourcePaths,
   validateAttributedDiagnostics,
 } from "../public-matrix/evidence.mjs";
@@ -1310,13 +1311,6 @@ function stateForChannel(adapter: any, channel: string) {
   return state.value;
 }
 
-function exclusions(state: any, kind: "fatal" | "unconfirmed") {
-  const key = kind === "fatal" ? "crashedBundleIds" : "unconfirmedReleaseIds";
-  const result = state[key];
-  assert.ok(Array.isArray(result), `Native state is missing ${key}`);
-  return result.map(String);
-}
-
 async function runCell(
   adapter: any,
   framework: LynxMatrixFramework,
@@ -1664,8 +1658,7 @@ async function runCell(
   );
   adapter.clickText("Close detail page");
   await adapter.waitForText("Bundle A ready");
-  const confirmedInterruptionRecoveryEvents = eventsSince(adapter, cursor);
-  await checkpointRuntimeEvents(
+  const confirmedInterruptionRecoverySnapshot = await checkpointRuntimeEvents(
     adapter,
     runtimeEventLedger,
     `${cellId}: confirmed interruption recovery`,
@@ -1765,8 +1758,7 @@ async function runCell(
   await waitForReadyEvents(adapter, cursor, C, unconfirmedRecoveryProcess);
   adapter.clickText("Close detail page");
   await adapter.waitForText("Bundle C ready");
-  const unconfirmedRecoveryEvents = eventsSince(adapter, cursor);
-  await checkpointRuntimeEvents(
+  const unconfirmedRecoverySnapshot = await checkpointRuntimeEvents(
     adapter,
     runtimeEventLedger,
     `${cellId}: pre-confirm process recovery`,
@@ -1996,13 +1988,12 @@ async function runCell(
     processId: interruptedProcess,
     primaryReady: true,
   });
-  const confirmedInterruptionFailure = collectProcessInterruption(
-    allEvents,
-    confirmedInterruptionLaunch,
-  );
-  const confirmedInterruptionRecovered = collectReadyLaunch({
-    phaseEvents: confirmedInterruptionRecoveryEvents,
-    allEvents,
+  const {
+    failureEvent: confirmedInterruptionFailure,
+    recovered: confirmedInterruptionRecovered,
+  } = collectProcessRecovery({
+    snapshot: confirmedInterruptionRecoverySnapshot,
+    candidateLaunch: confirmedInterruptionLaunch,
     build: A,
     processId: confirmedInterruptionRecoveryProcess,
   });
@@ -2035,16 +2026,13 @@ async function runCell(
     processId: processUnconfirmedAttempt,
     primaryReady: false,
   });
-  const unconfirmedFailure = collectProcessInterruption(
-    allEvents,
-    unconfirmedCandidateLaunch,
-  );
-  const unconfirmedRecovered = collectReadyLaunch({
-    phaseEvents: unconfirmedRecoveryEvents,
-    allEvents,
-    build: C,
-    processId: unconfirmedRecoveryProcess,
-  });
+  const { failureEvent: unconfirmedFailure, recovered: unconfirmedRecovered } =
+    collectProcessRecovery({
+      snapshot: unconfirmedRecoverySnapshot,
+      candidateLaunch: unconfirmedCandidateLaunch,
+      build: C,
+      processId: unconfirmedRecoveryProcess,
+    });
   const rollbackB = collectReadyLaunch({
     phaseEvents: rollbackBEvents,
     allEvents,
@@ -2145,11 +2133,16 @@ async function runCell(
       },
       confirmedDetailFatal: {
         baseline: confirmedFatalBaseline,
-        persistedExclusions: exclusions(
+        persistedExclusions: persistedExclusions(
           confirmedDetailFatalState,
+          platform,
           "unconfirmed",
         ),
-        crashedBundleIds: exclusions(confirmedDetailFatalState, "fatal"),
+        crashedBundleIds: persistedExclusions(
+          confirmedDetailFatalState,
+          platform,
+          "fatal",
+        ),
         beforeFailure: confirmedDetailFatalPending,
         failureEvent: confirmedDetailFatalFailure,
         generationRetirement: confirmedDetailFatalRetirement,
@@ -2165,11 +2158,16 @@ async function runCell(
         failureEvent: confirmedInterruptionFailure,
         candidateLaunch: confirmedInterruptionLaunch,
         recovered: confirmedInterruptionRecovered,
-        persistedExclusions: exclusions(
+        persistedExclusions: persistedExclusions(
           confirmedInterruptionState,
+          platform,
           "unconfirmed",
         ),
-        crashedBundleIds: exclusions(confirmedInterruptionState, "fatal"),
+        crashedBundleIds: persistedExclusions(
+          confirmedInterruptionState,
+          platform,
+          "fatal",
+        ),
         candidateRetried: false,
       },
       fatalRecovery: {
@@ -2183,7 +2181,7 @@ async function runCell(
         candidateLaunch: fatalCandidateLaunch,
         generationRetirement: fatalGenerationRetirement,
         recovered: fatalRecovered,
-        persistedExclusions: exclusions(fatalState, "fatal"),
+        persistedExclusions: persistedExclusions(fatalState, platform, "fatal"),
         candidateRetried: false,
       },
       unconfirmedRecovery: {
@@ -2196,7 +2194,11 @@ async function runCell(
         failureEvent: unconfirmedFailure,
         candidateLaunch: unconfirmedCandidateLaunch,
         recovered: unconfirmedRecovered,
-        persistedExclusions: exclusions(unconfirmedState, "unconfirmed"),
+        persistedExclusions: persistedExclusions(
+          unconfirmedState,
+          platform,
+          "unconfirmed",
+        ),
         candidateRetried: false,
       },
       reverseRollback: {

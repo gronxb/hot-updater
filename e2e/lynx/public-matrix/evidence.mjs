@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import { createRequire } from "node:module";
 
+import { validateGenerationEventsSnapshot } from "../generation-events.ts";
+
 const SPARKLING_NAVIGATION_PROVENANCE = createRequire(import.meta.url)(
   "@hot-updater/lynx-sparkling/package.json",
 ).sparklingNavigation;
@@ -1022,6 +1024,53 @@ export function collectProcessInterruption(events, candidateLaunch) {
     terminal: terminal.terminal,
     terminalSequence: eventSequence(events, terminal),
   };
+}
+
+export function collectProcessRecovery({
+  snapshot,
+  candidateLaunch,
+  build,
+  processId,
+}) {
+  // Cold recovery replays terminals into the native journal, outside the app
+  // observer. Both sequence offsets must come from this one validated snapshot.
+  const events = validateGenerationEventsSnapshot(snapshot, {
+    allowTruncated: true,
+  }).events.map(({ name, details }) => ({ ...details, event: name }));
+  const failureEvent = collectProcessInterruption(events, candidateLaunch);
+  const recovered = collectReadyLaunch({
+    phaseEvents: events.filter((event) => event.processId === processId),
+    allEvents: events,
+    build,
+    processId,
+  });
+  assert.ok(
+    failureEvent.terminalSequence < recovered.evaluationSequence,
+    "Recovery evaluation must follow the durable process interruption",
+  );
+  return { failureEvent, recovered };
+}
+
+export function persistedExclusions(state, platform, kind) {
+  assert.ok(platform === "android" || platform === "ios");
+  assert.ok(kind === "fatal" || kind === "unconfirmed");
+  const key =
+    platform === "android"
+      ? kind === "fatal"
+        ? "crashed"
+        : "unconfirmed"
+      : kind === "fatal"
+        ? "crashedBundleIds"
+        : "unconfirmedReleaseIds";
+  // Android creates these arrays on the first exclusion. iOS always encodes them.
+  if (platform === "android" && !Object.hasOwn(state, key)) return [];
+  const result = state[key];
+  assert.ok(
+    Array.isArray(result) &&
+      result.every((item) => typeof item === "string" && item.length > 0),
+    `Native state has invalid ${key}`,
+  );
+  return [...result];
 }
 
 export function collectInvalidatedContexts(

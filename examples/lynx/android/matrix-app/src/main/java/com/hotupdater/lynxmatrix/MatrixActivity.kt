@@ -1,6 +1,7 @@
 package com.hotupdater.lynxmatrix
 
 import android.app.Activity
+import android.app.Application
 import android.os.Bundle
 import android.os.Process
 import android.util.Log
@@ -19,6 +20,7 @@ import com.hotupdater.lynx.sparkling.armNextPageFatalFailureForDiagnostics
 import com.hotupdater.lynx.sparkling.armNextPageAdmissionPendingForDiagnostics
 import com.hotupdater.lynx.sparkling.captureDiagnosticAuthorities
 import com.hotupdater.lynx.sparkling.exerciseNavigationStackBoundaryForDiagnostics
+import com.hotupdater.lynx.sparkling.ownsSecondaryActivityForDiagnostics
 import com.hotupdater.lynx.sparkling.triggerReloadForDiagnostics
 import java.io.File
 import java.lang.ref.WeakReference
@@ -50,7 +52,7 @@ class MatrixActivity : Activity() {
         require(framework in setOf("react", "vue", "octane"))
         val embedded = JSONObject(BuildConfig.LYNX_EMBEDDED_DESCRIPTORS)
             .getJSONObject(framework)
-        val owner = MatrixEvents(applicationContext.filesDir, framework).also {
+        val owner = MatrixEvents(application, framework).also {
             it.activity = WeakReference(this)
             events = it
         }
@@ -74,20 +76,76 @@ class MatrixActivity : Activity() {
             owner,
         )
         owner.host = managedHost
+        application.registerActivityLifecycleCallbacks(owner)
         host = managedHost
         setContentView(managedHost.createView(this))
         installDiagnosticControls()
     }
 
     private class MatrixEvents(
-        private val filesDir: File,
+        private val application: Application,
         private val framework: String,
-    ) : HotUpdaterSparklingEventListener {
+    ) : HotUpdaterSparklingEventListener, Application.ActivityLifecycleCallbacks {
         lateinit var host: HotUpdaterSparklingHost
         var activity = WeakReference<MatrixActivity>(null)
         var staleProbe: HotUpdaterSparklingStaleProbe? = null
+        private var pageControl = WeakReference<Button>(null)
+
+        fun close() {
+            removePageControl()
+            application.unregisterActivityLifecycleCallbacks(this)
+        }
+
+        private fun removePageControl() {
+            pageControl.get()?.let { control ->
+                (control.parent as? ViewGroup)?.removeView(control)
+            }
+            pageControl.clear()
+        }
+
+        override fun onActivityResumed(current: Activity) {
+            removePageControl()
+            if (!host.ownsSecondaryActivityForDiagnostics(current)) return
+            val target = WeakReference(current)
+            val control = Button(current).apply {
+                text = "Reload pending"
+                contentDescription = "Reload pending"
+                setOnClickListener {
+                    val page = target.get() ?: return@setOnClickListener
+                    if (!host.ownsSecondaryActivityForDiagnostics(page)) return@setOnClickListener
+                    host.triggerReloadForDiagnostics { result ->
+                        result.exceptionOrNull()?.let { error ->
+                            Log.e("HotUpdaterLynx", "Pending reload failed", error)
+                        }
+                    }
+                }
+            }
+            pageControl = WeakReference(control)
+            current.addContentView(
+                control,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP or Gravity.END,
+                ),
+            )
+        }
+
+        override fun onActivityPaused(current: Activity) {
+            if (pageControl.get()?.context === current) removePageControl()
+        }
+
+        override fun onActivityDestroyed(current: Activity) {
+            if (pageControl.get()?.context === current) removePageControl()
+        }
+
+        override fun onActivityCreated(current: Activity, state: Bundle?) = Unit
+        override fun onActivityStarted(current: Activity) = Unit
+        override fun onActivityStopped(current: Activity) = Unit
+        override fun onActivitySaveInstanceState(current: Activity, state: Bundle) = Unit
 
         override fun onEvent(name: String, details: Map<String, Any?>) {
+            if (name == "generationWillRetire") removePageControl()
             if (name == "generationWillRetire" && details["reason"] == "reload") {
                 staleProbe = host.captureDiagnosticAuthorities()
             }
@@ -96,7 +154,7 @@ class MatrixActivity : Activity() {
                 .put("observedAt", observedAt())
                 .put("framework", framework)
                 .toString()
-            appendRecord(filesDir, "matrix-events.jsonl", encoded)
+            appendRecord(application.filesDir, "matrix-events.jsonl", encoded)
             Log.i("HotUpdaterLynx", "HOT_UPDATER_MATRIX_EVENT $encoded")
             if (name == "generationStarted") {
                 activity.get()?.let { current ->
@@ -294,6 +352,7 @@ class MatrixActivity : Activity() {
             host?.primaryActivityDetachedForRecreation(this)
         } else {
             host?.close()
+            events?.close()
         }
         events?.takeIf { it.activity.get() === this }?.activity?.clear()
         host = null
