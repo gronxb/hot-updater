@@ -1,5 +1,7 @@
 # @hot-updater/protocol
 
+## 1.0.0-rc.42
+
 ## 1.0.0-rc.41
 
 ### Minor Changes

@@ -1,5 +1,16 @@
 # @hot-updater/server
 
+## 1.0.0-rc.42
+
+### Patch Changes
+
+- Updated dependencies [72fd2de]
+  - @hot-updater/plugin-insights@1.0.0-rc.42
+  - @hot-updater/plugin-remote-config@1.0.0-rc.42
+  - @hot-updater/protocol@1.0.0-rc.42
+  - @hot-updater/plugin-api-keys@1.0.0-rc.42
+  - @hot-updater/plugin-core@1.0.0-rc.42
+
 ## 1.0.0-rc.41
 
 ### Minor Changes
