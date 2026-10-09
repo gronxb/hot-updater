@@ -6,12 +6,10 @@ icon: Activity
 
 ## Add the plugin
 
-`insights()` is a [client plugin](/docs/react-native-api/client-plugins) that
-`@hot-updater/react-native` exports from its root, from
-`@hot-updater/plugin-insights`, so there is nothing extra to install. Metro
-bundles it into every app, about 4 KB gzipped, but it reports nothing until the
-app adds it to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init),
-which then has `hotUpdater.insights` on the instance it returns:
+`insights()` is a [client plugin](/docs/react-native-api/client-plugins)
+exported from `@hot-updater/react-native`. It reports nothing until you add it
+to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init); the instance
+`init` returns then has `hotUpdater.insights`:
 
 ```ts title="src/hotUpdater.ts"
 import { HotUpdater, insights } from "@hot-updater/react-native";
@@ -25,13 +23,11 @@ export const hotUpdater = HotUpdater.init({
 });
 ```
 
-The plugin sends each report to `POST /events` under `baseURL`, with the
-`requestHeaders` and `requestTimeout` of `init`. The server stores
-reports when it runs the `insights()`
-[server plugin](/docs/guides/insights#turn-on-the-server-plugin); the managed
-AWS, Cloudflare, Firebase, and Supabase servers run it. See the
-[Insights guide](/docs/guides/insights) to verify reporting and read the
-Console.
+It sends each report to `POST /events` under `baseURL`, with the
+`requestHeaders` and `requestTimeout` of `init`, to a server that runs the
+`insights()` [server plugin](/docs/guides/insights#turn-on-the-server-plugin),
+as the managed servers do. The [Insights guide](/docs/guides/insights) covers
+verifying reports and reading them.
 
 ## Options
 
@@ -58,11 +54,10 @@ hotUpdater.insights.setUser(null);
 ```
 
 `setUser` stores the ID on the device, and every later report carries it as
-`userId` until `setUser(null)` clears it. A number becomes a string, and
-surrounding whitespace is trimmed; an empty ID clears the user. The call sends
-nothing by itself. The launch report waits for native launch verification, so
-a session restored right after `init` is attached to the first report. A new user counts as a change for
-[launch reports](#launch-reports). The
+`userId` until `setUser(null)` clears it. It sends nothing by itself; a
+session restored right after `init` is still on the first launch report. A
+number becomes a string, and an empty ID clears the user. A new user counts as
+a change for [launch reports](#launch-reports); the
 [installation ID](/docs/react-native-api/getInstallId) stays the same.
 
 In the Console, **Insights → All events** searches by user ID or installation
@@ -108,21 +103,16 @@ installations. See [how the server counts reports](/docs/guides/insights#what-th
 
 ### HTTP responses
 
-The plugin stores the most recent catalog or artifact response locally and adds
-it to the next eligible lifecycle report as `metadata.httpResponse`. This applies
-to 200, 304, and error responses alike. No extra request or event is sent, and
-existing launch and failure deduplication stays unchanged. A response received
-after a launch report was sent waits for the next eligible report, possibly a
-later launch. Only the latest response is retained, within the same app version
-and channel; this is not a full request log.
+The plugin keeps the latest catalog or artifact response (`200`, `304`, or an
+error) and attaches it to the next report it sends anyway, as
+`metadata.httpResponse`. It sends no extra request or report, and keeps only
+one response per app version and channel, so it is a snapshot, not a request
+log.
 
-The snapshot contains `resource`, request `path`, `status`, raw text `body`,
-`bodyTruncated`, and `receivedAtMs` (the response observation time). Bodies are
-capped at 4 KiB of JSON-encoded text without splitting Unicode. An empty body is
-`""`; a body that could not be read is `null`. Headers and URL query parameters
-are omitted. Earlier servers ignore the extra metadata without refusing the
-existing report. Native file downloads, requests with no HTTP response, and
-telemetry requests are excluded.
+The snapshot has `resource`, `path`, `status`, the raw `body` (up to 4 KiB,
+with `bodyTruncated`), and `receivedAtMs`. An empty body is `""`, and one that
+could not be read is `null`. Headers, query parameters, native file downloads,
+and Insights' own requests are left out.
 
 ### Update failures
 
@@ -160,18 +150,9 @@ history, and a selection that a newer check replaced are
 [not update failures](/docs/react-native-api/client-plugins#onupdateerror), so
 the plugin reports none of them.
 
-Console event history shows the original message and an expandable stack trace.
-For Release Catalog and artifact API requests, `metadata.httpResponse` carries
-the latest HTTP status and response body separately from the error message.
-JSON responses remain JSON text, bounded to 4 KiB. If the body cannot be read,
-the HTTP status is still available. This snapshot is attached to an existing
-report; it does not create an additional event or bypass failure deduplication. These are client-observed errors, not the
-server's internal logs or stack traces unless it returns them in its response.
-Error text is not categorized or redacted; only oversized text is truncated,
-with an ellipsis. Reports from older clients remain readable, but missing error
-text cannot be reconstructed. Upgrade the Insights client, server plugin, and
-Console to collect and display it. The fields use existing JSON metadata and
-require no database migration.
+The Console shows the original message, an expandable stack, and the latest
+server response beside it. These are errors the device saw, not server logs.
+Error text is not redacted; only oversized text is cut, with an ellipsis.
 
 ## Delivery
 
