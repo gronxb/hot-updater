@@ -1,39 +1,37 @@
 ---
 title: "Remote Config"
-description: "Change app behavior without a new bundle: parameters with in-app defaults, conditions that pick values per device, and versions you publish and roll back."
+description: "Change values your app reads, such as copy, limits, and feature flags, without a new native build or OTA bundle."
 icon: SlidersHorizontal
 ---
 
-## What Remote Config does
+import { Callout } from "fumadocs-ui/components/callout";
 
-Remote Config changes values your app reads, such as a greeting, a list size,
-or whether a new checkout shows, without a new native build or OTA bundle:
+Remote Config changes values your app reads without a new native build or OTA
+bundle: a greeting, a list size, whether a new checkout shows. You publish a
+template of **parameters** on the server, with values per **condition** such
+as a channel, an app version, or a share of installs. Each device fetches the
+values that match it, and switches to them when the app activates them.
 
-- The app defines **in-app defaults** and reads values synchronously.
-- A **template** on the server holds **parameters**, each with a default value
-  and values for **conditions**, such as a channel, a platform, an app version
-  range, or a share of installs.
-- The app **fetches** the values the server picks for it, then **activates**
-  them when it is ready to use them.
-- Every publish is a **version** you can view and roll back to.
+**Know these limits before you rely on it:**
 
-It has two halves, both from `@hot-updater/plugin-remote-config`, which
-`@hot-updater/server` and `@hot-updater/react-native` depend on and re-export,
-so there is nothing extra to install:
+- **Values start as your in-app defaults.** A fresh install has no remote
+  values until its first fetch and activate succeed. Until then, and on a first
+  launch offline, a key you read that isn't in `defaults` returns `null`.
+- **Changes are not real-time.** A device gets new values at its next fetch,
+  at most every 12 hours by default.
+- **Targeting is per device, not per user.** Conditions match platform,
+  channel, app version, cohort, share of installs, fingerprint, and time; there
+  are no user properties, countries, or languages.
+- **Every matching device receives the values.** Keep secrets out of them.
 
-- the `remoteConfig()` [server plugin](/docs/custom/server-plugins) stores
-  templates and answers devices;
-- the [`remoteConfig()` client plugin](/docs/react-native-api/remote-config)
-  fetches and keeps values in the app.
+## Set up
 
-## Turn on the server plugin
+### Turn on the server plugin
 
-The managed AWS, Cloudflare, Firebase, and Supabase servers run
-`remoteConfig()`, and their initialization schema creates its tables.
-
-A custom server lists it in `createHotUpdater`, and the app's
-`hot-updater.config.ts` lists it in `plugins` too, so the CLI and the Console
-know the server runs it:
+The managed AWS, Cloudflare, Firebase, and Supabase servers already run
+`remoteConfig()`. On a self-hosted server, add it to `createHotUpdater` and to
+`plugins` in `hot-updater.config.ts`, then run `hot-updater db migrate` (or
+`db generate`) in the server's project to create its two tables:
 
 ```ts title="src/hotUpdater.ts (excerpt)"
 import { createHotUpdater } from "@hot-updater/server";
@@ -47,22 +45,14 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
-Then run `hot-updater db migrate` (or `db generate`) in the server's project to
-create the `remote_config_active` and `remote_config_versions` tables. See
-[mirror the server](/docs/custom/cli-configuration#mirror-the-server) for the
-config side.
+Devices fetch from `GET /remote-config`, behind the same client-route policy as
+update checks, such as `apiKeys()`.
 
-`remoteConfig()` serves `GET /remote-config` on the client handler, behind the
-same client-route policy as update checks, such as `apiKeys()`, and template
-management on the admin handler.
+### Add the client plugin
 
-## Add the client plugin
-
-Add `remoteConfig()` with your in-app defaults to `plugins` in
-[`HotUpdater.init`](/docs/react-native-api/init), and read it from the
-instance `init` returns, as `hotUpdater.remoteConfig`. It fetches from the
-`baseURL`, `requestHeaders`, and `requestTimeout` you configure there, so it
-needs no URL or key of its own:
+Add `remoteConfig()` to `plugins` in [`HotUpdater.init`](/docs/react-native-api/init)
+with a default for **every key the app reads**. It uses the `baseURL` and
+headers you already pass to `init`:
 
 ```ts title="src/hotUpdater.ts"
 import { HotUpdater, remoteConfig } from "@hot-updater/react-native";
@@ -82,14 +72,11 @@ export const hotUpdater = HotUpdater.init({
 });
 
 hotUpdater.remoteConfig.fetchAndActivate().catch(() => {
-  // Offline or unreachable: the app keeps its last active values.
+  // Offline or unreachable: the app keeps the values it has.
 });
 ```
 
-Reads are synchronous. As soon as `init` returns,
-`hotUpdater.remoteConfig.getString(...)` returns the value the app activated
-last, stored on the device, else the key's default, else `null`. Keys declared
-in `defaults` read without `null`:
+Read values anywhere, synchronously:
 
 ```tsx
 import { hotUpdater } from "./hotUpdater";
@@ -98,36 +85,75 @@ const title = hotUpdater.remoteConfig.getString("welcome_message");
 const showNewCheckout = hotUpdater.remoteConfig.getBoolean("new_checkout");
 ```
 
+<Callout type="warn" title="The first launch reads your defaults">
+  A read returns the value the app activated last, else the key's default,
+  else `null`. A fresh install has activated nothing, so the first render
+  reads `defaults`, and a key without a default is `null` until the first
+  fetch and activate succeed, which may be never on a first launch offline.
+  Give every key you read a default, or a fallback where you read it, such as
+  `getString("promo") ?? ""`.
+</Callout>
+
 The [plugin reference](/docs/react-native-api/remote-config) covers every
-method, how text becomes numbers and booleans, and re-rendering on activation.
+method, value types, and re-rendering when values change.
 
 ## Choose when new values apply
 
-`fetch()` stores the values the server picks, `activate()` makes them the
-ones reads return, and `fetchAndActivate()` does one after the other. Calling
-them apart lets you choose when the app changes:
+`fetch()` downloads values, `activate()` switches reads to them, and
+`fetchAndActivate()` does both. Pick when the app changes:
 
-| Strategy | Code | The app changes |
+| You want | Call | The app changes |
 | --- | --- | --- |
-| Apply on load | `fetchAndActivate()` without waiting | As soon as the fetch ends, possibly while the user looks at the screen. |
-| Wait behind a loading screen | `await fetchAndActivate()` before showing the screen | Before the first screen, at the cost of a network round trip. |
-| Apply at the next launch | `await activate(); fetch();` at startup | At the next launch: this launch activates what the last one fetched. |
+| New values as soon as possible | `fetchAndActivate()` at launch, not awaited | When the fetch ends, possibly on screen. |
+| Server values on the first screen | `await fetchAndActivate()` behind a loading screen | Before the first screen, after a network round trip; defaults when it fails. |
+| No changes mid-session | `await activate()`, then `fetch()`, at launch | At the next launch, which activates what this one fetched. |
 
-The last one never changes values mid-session and never waits for the network,
-which suits values that change layouts.
+A fetch within 12 hours of the last one (`minimumFetchIntervalMs`) reuses the
+values fetched last and sends nothing, unless the app's channel, version,
+cohort, or fingerprint changed. `fetchAndActivate({ force: true })` asks the
+server anyway. Every fetch that reaches the server is a request it answers, a
+`304` when nothing changed, so force only when you need fresh values.
 
-A fetch within `minimumFetchIntervalMs` of the last one, 12 hours by default,
-keeps the values fetched last without a request, unless the app's channel,
-version, cohort, or fingerprint changed since, or the call passes
-`{ force: true }`. Every other fetch is a request your update server answers,
-a `304` when nothing changed, so the interval is what bounds that traffic.
+## Edit and publish
+
+Open **Remote Config** in the [Console](/docs/guides/console). Edits stay a
+draft until you publish them.
+
+- **Parameters** have a key, a type (String, Number, Boolean, or JSON), a
+  default value, and a value per condition. **Use in-app default** leaves a
+  value to the app's `defaults`. The type checks values in the Console;
+  devices receive every value as text.
+- **Conditions** match devices whose every rule matches. When several match,
+  the first in the list wins, so order them by priority.
+- **Preview** shows what a device with a given platform, channel, app version,
+  cohort, fingerprint, and time gets, and which condition chose each value.
+- **Publish changes** lists what the draft adds, changes, and removes, then
+  publishes the next version. If someone published while you edited, it says
+  so instead of replacing their version.
+- **Versions** lists every publish. **Roll back** publishes a copy of an
+  earlier version, so the history keeps both.
+
+| Rule | A device matches when |
+| --- | --- |
+| Platform | It runs on one of the platforms. |
+| Channel | Its [channel](/docs/guides/channel-management) is one of the channels. |
+| App version | Its native app version satisfies a range, such as `>=1.4.0` or `2.x`. |
+| Percentage of installs | Its [cohort](/docs/guides/rollout-cohorts) falls in a range, such as 0–10%. |
+| Cohort | Its cohort is one of the numbers or custom names. |
+| Fingerprint | Its native build's fingerprint is one of the hashes. |
+| Date and time | The server's clock is in a range; either end can be open. |
+
+Percentages are stable per installation and need no user ID. With one seed,
+`0–10%` and `10–20%` never share an installation, and widening `0–10%` to
+`0–25%` keeps the first 10%. Custom cohorts match only a Cohort rule.
+
+## Recipes
 
 ### Turn a feature off quickly
 
-For a kill switch, keep the feature's parameter in `defaults` with the value
-that turns it on. At launch and whenever the app comes back to the foreground,
-fetch and activate, forcing past the interval only once the values are 10
-minutes old:
+Keep the feature's flag in `defaults` with the value that turns it on, and
+refresh when the app comes back to the foreground, forcing past the 12-hour
+interval only once the values are 10 minutes old:
 
 ```ts title="src/remoteConfigRefresh.ts"
 import { AppState } from "react-native";
@@ -149,127 +175,60 @@ AppState.addEventListener("change", (state) => {
 });
 ```
 
-Publish `false` for it, and devices turn the feature off the first time they
-open or return to the app 10 minutes after their last fetch. A user who
-switches apps all day sends at most one request every 10 minutes, a `304`
-while nothing changed. Without a check like this, keep `force` for a moment
-the user asks for fresh values, such as pull to refresh, since every forced
-fetch is a request. To undo a bad bundle itself,
-[roll it back](/docs/guides/console#rollback) instead.
-
-## Edit parameters and conditions
-
-Open **Remote Config** in the [Console](/docs/guides/console). Edits form a
-draft until you publish them:
-
-- **Parameters** have a key, a type (String, Number, Boolean, or JSON), a
-  default value, and a value per condition. Either value can be **Use in-app
-  default**: devices then keep the value from `defaults`. The type only checks
-  values in the Console; devices receive every value as text.
-- **Conditions** have a name and rules that a device must all match. Their
-  order is their priority: when several conditions that a parameter has values
-  for match a device, the first one in the list decides.
-- **Preview** shows what a device gets: enter a platform, channel, app version,
-  cohort, and fingerprint, and each parameter shows its value and the
-  condition that chose it.
-
-A rule tests one thing:
-
-| Rule | A device matches when |
-| --- | --- |
-| Platform | It runs on one of the platforms. |
-| Channel | Its [channel](/docs/guides/channel-management) is one of the channels. |
-| App version | Its native app version satisfies a semver range, such as `>=1.4.0` or `2.x`, as release targets do. |
-| Percentage of installs | Its numeric [cohort](/docs/guides/rollout-cohorts) falls in a range, such as 0–10%, of the 1,000 cohorts shuffled by the rule's seed. |
-| Cohort | Its cohort is one of the numbers or custom cohort names. |
-| Fingerprint | Its native build's fingerprint is one of the hashes. |
-| Date and time | The server's clock is in a range, such as from Oct 8, 10:00 to Oct 9, 10:00, either end open. |
-
-Percentages build on cohorts, so they are stable per installation and need no
-user ID. Rules with the same seed pick from the same order: `0–10%` and
-`10–20%` never share an installation, and widening `0–10%` to `0–25%` keeps
-the first 10%. A new seed picks other installations. Custom cohorts match only
-a Cohort rule, never a percentage, as in rollouts.
+Publish `false`, and devices turn the feature off the next time they open or
+return to the app once their values are 10 minutes old. Each device sends at
+most one request every 10 minutes. To undo a bad bundle instead of a value,
+[roll the bundle back](/docs/guides/console#rollback).
 
 ### Roll out a value gradually
 
-1. Add a condition with a **Percentage of installs** rule from 0% to a small
-   share, such as 5%, and give the parameter its new value for that
-   condition. List it after conditions that must win, such as a QA cohort.
-2. Publish. Installations in that share get the new value on their next fetch;
-   the rest keep the default value.
-3. Widen the range, to 25%, 50%, and then 100%, and publish each step. Each
-   step keeps the installations already in it, because the seed stays the same.
-4. To try the value on a device first, put it in a numeric cohort the rule
-   matches with [`hotUpdater.setCohort`](/docs/react-native-api/setCohort),
-   or add a Cohort rule for a custom cohort such as `qa`.
+1. Add a condition with a **Percentage of installs** rule, such as 0–5%, and
+   give the parameter its new value for it.
+2. Publish. That share gets the new value at its next fetch.
+3. Widen the range to 25%, 50%, and 100%, publishing each step.
 
-To undo a step, narrow the range or roll back to an earlier version. Narrowing
-removes the installations past the new end of the range, since the order
-never changes.
+To test on your own device first, put it in a numeric cohort the rule matches
+with [`hotUpdater.setCohort`](/docs/react-native-api/setCohort), or add a
+Cohort rule for a custom cohort such as `qa`, listed first. To undo, narrow
+the range or roll back.
 
 ### Schedule a value
 
-A **Date and time** rule switches a value without anyone publishing at that
-moment: publish a condition from the start time, or until the end time, ahead
-of it. The Console takes times in your time zone and stores them in UTC, and
-**Preview** takes a time to check the schedule.
-
-The server evaluates the rule with its own clock when a device fetches, so a
-device gets the change at its first fetch after the start. With the default
-12-hour `minimumFetchIntervalMs`, that can be up to 12 hours later; lower it,
-or force a fetch, for a value that must switch close to on time.
-
-The end works the same way: a device keeps a value whose time ran out until
-its next fetch, and while it is offline, until it is back online. An app that
-must stop showing something at an exact time should check that time itself
-too.
-
-## Publish and roll back
-
-**Publish changes** shows what the draft adds, changes, and removes, and
-publishes it as the next version with an optional description. Devices get
-its values on their next fetch. If someone else published while you edited,
-the Console says so and lets you load their version or publish yours after it.
-
-**Versions** lists every publish, newest first. **View** shows a version's
-template as JSON, and **Roll back** publishes a copy of it as a new version, so
-the history keeps both.
+Publish a **Date and time** condition ahead of time. The server checks its
+clock when a device fetches, so a device switches at its first fetch after the
+start, up to 12 hours later by default; lower `minimumFetchIntervalMs` or force
+a fetch for a value that must switch on time. A device keeps an expired value
+until its next fetch, so an app that must hide something at an exact time
+should check the time itself too.
 
 ### From the CLI
 
-`hot-updater remote-config` does the same from a terminal, CI, or an agent. It
-finds the server as [`hot-updater api-key`](/docs/custom/api-key-authentication#manage-api-keys)
-does: `database` and `plugins` in `hot-updater.config.ts`, the admin routes
-below through `standaloneRepository`, or the server file you pass last, such as
-`src/hotUpdater.ts`.
+`hot-updater remote-config` does the Console's work from a terminal, CI, or an
+agent, on the server [`hot-updater api-key`](/docs/custom/api-key-authentication#manage-api-keys)
+finds: `database` and `plugins` in `hot-updater.config.ts`, the admin routes
+through `standaloneRepository`, or the server file you pass last.
 
 ```bash
 npx hot-updater remote-config show --json > remote-config.json
-# Edit remote-config.json, then:
+# Edit remote-config.json, then check and publish it:
+npx hot-updater remote-config preview --file remote-config.json -p ios -c production
 npx hot-updater remote-config publish remote-config.json --dry-run
 npx hot-updater remote-config publish remote-config.json --description "Longer list on iOS"
 ```
 
-- `show` prints the active template, or a published version's with
-  `--version-number <n>`.
-- `publish <file>` takes a template, or what `show --json` printed; `-` reads
-  stdin. It validates the template, lists what it adds, changes, and removes,
-  and asks before publishing. `-y` skips the question, which a shell without a
-  terminal needs, and `--dry-run` stops before it. A file from `show --json`
-  publishes only after the version it was read at, so a newer publish is never
-  replaced; `--expected-version` sets that version for any file. The active
-  template publishes nothing.
-- `versions` lists versions newest first, and `rollback <version>` publishes a
-  copy of one.
-- `preview` shows each value a device gets, from `-p`, `-c`, `--app-version`,
-  `--cohort`, `--fingerprint-hash`, and `--at` for the time; `--file` previews
-  a template before you publish it.
+- `publish` validates the file, lists its changes, and asks first (`-y` in CI).
+  It refuses to replace a version published after you read the file, and
+  publishes nothing when the file matches the active template.
+- `versions` lists the history, `rollback <version>` publishes a copy of one,
+  and `show --version-number <n>` prints one.
+- `preview` evaluates a device's values, with `--at` for a time.
 
-Every command takes `--json`. A refused publish, such as an invalid template or
-a conflict, exits with `1`, and a declined one with `2`.
+Every command takes `--json`.
 
-A server or script can do the same through `hotUpdater.api.remoteConfig`:
+## Server API
+
+Server code, such as a script that imports your `hotUpdater`, uses
+`hotUpdater.api.remoteConfig`:
 
 ```ts title="scripts/publish-remote-config.ts"
 import { hotUpdater } from "../src/hotUpdater";
@@ -291,16 +250,14 @@ if (result.status === "conflict") {
 }
 ```
 
-`publish` validates the template and throws `RemoteConfigValidationError`,
-with every problem in `issues`, for an invalid one, and
-`RemoteConfigInputError`, a `TypeError`, for an argument it refuses, such as a
-negative `baseVersion`. It answers `conflict` when the active version is no
-longer `baseVersion`. `rollback`, `listVersions`, and
-`getVersion` cover the history, and `resolve(context)` returns what a device
-with that context receives.
+- `publish` throws `RemoteConfigValidationError`, with every problem in
+  `issues`, for an invalid template, and answers `conflict` when the active
+  version is no longer `baseVersion`.
+- `rollback`, `listVersions`, and `getVersion` cover the history.
+- `resolve(context)` returns what a device with that context receives.
 
 A self-hosted server's admin handler serves the same operations, which the
-Console and the CLI use over [`standaloneRepository`](/docs/database-adapters/standalone):
+Console and the CLI use through [`standaloneRepository`](/docs/database-adapters/standalone):
 
 | Route | Does |
 | --- | --- |
@@ -312,43 +269,25 @@ Console and the CLI use over [`standaloneRepository`](/docs/database-adapters/st
 
 ## How devices get values
 
-The client plugin requests `GET /remote-config` under `baseURL` with the
-device's platform, app version, channel, cohort, and fingerprint as query
-parameters. The server evaluates the conditions and answers only the values,
-`{ "version": 3, "values": { "welcome_message": "Welcome back" } }`; a
-parameter whose value is the in-app default is left out. Conditions and other
-devices' values never reach the app.
-
-- The answer depends only on the query, so it is cacheable: like the Release
-  Catalog, it carries `cache-control: public, max-age=0, s-maxage=5` and an
-  `ETag`, and varies by the client-route policy's headers. The plugin sends
-  `If-None-Match`, and an unchanged answer is a `304`.
-- Each server reads the active template with one keyed read and reuses it for
-  5 seconds, so a publish reaches devices within seconds plus any shared-cache
-  time.
-- A server without `remoteConfig()` answers `404`, and `fetch()` rejects; the
-  app keeps its active values.
+- The app requests `GET /remote-config` with its platform, app version,
+  channel, cohort, and fingerprint. The server answers only that device's
+  values, such as `{ "version": 3, "values": { "welcome_message": "Hi" } }`;
+  conditions and other devices' values never reach the app, and a value left
+  to the app's default is left out.
+- The answer is cacheable: `s-maxage=5` with an `ETag`, so an unchanged answer
+  is a `304`. Each server also reuses the active template for 5 seconds, so a
+  publish reaches devices that fetch within seconds.
+- Values are stored on the device and survive restarts and OTA updates.
+- A server without `remoteConfig()` answers `404`; `fetch()` rejects and the
+  app keeps its values.
 
 ## Limits
 
 | Limit | Value |
 | --- | --- |
-| Template size | 60,000 characters of JSON, so a device can store its values. |
-| Parameters | 2,000. Keys start with a letter or `_` and use up to 256 letters, digits, and `_`. |
-| Conditions | 500, with unique names of up to 100 characters. |
-| Rule values | 100 per rule; channel, cohort, and fingerprint values of up to 128 characters. |
-| Percentages | From 0 to 100 in steps of 0.1, one numeric cohort each. |
-| Descriptions | 256 characters, for parameters and versions. |
-
-## What it does not do
-
-- **Real-time updates:** values change on the app's next fetch;
-  [`subscribe`](/docs/react-native-api/remote-config#re-render-on-activation)
-  reports activations, not server changes.
-- **A/B tests and personalization:** conditions match a device's platform,
-  channel, app version, cohort, share of installs, and fingerprint, and the
-  server's date and time; there are no user properties, countries, or
-  languages.
-
-Remote Config values travel to every matching device, so keep secrets such as
-API keys out of them.
+| Template size | 60,000 characters of JSON |
+| Parameters | 2,000; keys start with a letter or `_`, up to 256 letters, digits, and `_` |
+| Conditions | 500, with unique names of up to 100 characters |
+| Rule values | 100 per rule; channel, cohort, and fingerprint values up to 128 characters |
+| Percentages | 0 to 100 in steps of 0.1 |
+| Descriptions | 256 characters, for parameters and versions |
