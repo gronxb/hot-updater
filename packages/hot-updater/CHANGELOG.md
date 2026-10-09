@@ -1,5 +1,19 @@
 # hot-updater
 
+## 1.0.0-rc.43
+
+### Patch Changes
+
+- Updated dependencies [23c14fa]
+  - @hot-updater/server@1.0.0-rc.43
+  - @hot-updater/cli-tools@1.0.0-rc.43
+  - @hot-updater/console@1.0.0-rc.43
+  - @hot-updater/android-helper@1.0.0-rc.43
+  - @hot-updater/apple-helper@1.0.0-rc.43
+  - @hot-updater/bsdiff@1.0.0-rc.43
+  - @hot-updater/protocol@1.0.0-rc.43
+  - @hot-updater/plugin-core@1.0.0-rc.43
+
 ## 1.0.0-rc.42
 
 ### Minor Changes

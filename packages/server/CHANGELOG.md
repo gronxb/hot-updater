@@ -1,5 +1,16 @@
 # @hot-updater/server
 
+## 1.0.0-rc.43
+
+### Patch Changes
+
+- 23c14fa: Release Catalog responses add `CDN-Cache-Control: public, max-age=5, stale-while-revalidate=5, stale-if-error=0`. `s-maxage` forbids serving stale, so Cloudflare's Workers Cache held update checks at a location while it revalidated an expired catalog; it now answers with the expired catalog for up to five more seconds while it revalidates in the background. `Cache-Control` is unchanged for devices and other caches. Behind Workers Cache, a deploy or a Roll back reaches devices within 15 seconds instead of 10.
+- @hot-updater/protocol@1.0.0-rc.43
+  - @hot-updater/plugin-api-keys@1.0.0-rc.43
+  - @hot-updater/plugin-insights@1.0.0-rc.43
+  - @hot-updater/plugin-core@1.0.0-rc.43
+  - @hot-updater/plugin-remote-config@1.0.0-rc.43
+
 ## 1.0.0-rc.42
 
 ### Patch Changes
