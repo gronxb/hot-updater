@@ -193,9 +193,10 @@ internal class LynxDeltaAssembler(private val integrity: ArchiveIntegrity, priva
                     require(changed.fileHash.equals(expectedHash, ignoreCase = true)) { "Changed asset hash differs from target manifest" }
                     var patched = false
                     changed.patch?.let { patch ->
+                        if (patch.baseBundleId != base?.bundleId || source == null ||
+                            !baseHash.equals(patch.baseFileHash, ignoreCase = true)) return@let
                         try {
                             require(patch.algorithm == "bsdiff") { "Unsupported patch algorithm" }
-                            require(patch.baseBundleId == base?.bundleId && source != null && baseHash.equals(patch.baseFileHash, ignoreCase = true)) { "Patch base does not match the native running Bundle" }
                             verifyHash(source, patch.baseFileHash)
                             val patchFile = File(scratch, "patch")
                             download(patch.patchUrl, patchFile)

@@ -631,65 +631,67 @@ class LynxArtifactInstallerDeltaTest {
         }
 
     @Test
-    fun unusablePatchFallsBackToVerifiedOriginalAndKeepsManifestAuthority() =
+    fun patchFallbackRequiresAnAttemptAndKeepsManifestAuthority() =
         runBlocking {
-            val root = Files.createTempDirectory("lynx-delta-archive-").toFile()
-            try {
-                val baseRoot = root.resolve("running")
-                val baseFiles = files(baseId, BASE_ENTRY)
-                val baseManifest = writeTree(baseRoot, baseId, baseFiles)
-                val base = verifier().verify(
-                    baseRoot,
-                    LynxArtifactRequest(baseId,
-                            manifestFileHash = baseManifest.hash),
-                )
-                val targetFiles = files(targetId, TARGET_ENTRY)
-                val targetManifest = manifest(targetId, targetFiles)
-                val invalidPatch = "not-a-bsdiff-patch".toByteArray()
-                FixtureServer(
-                    mapOf(
-                        "/manifest" to targetManifest,
-                        "/patch" to invalidPatch,
-                        "/original" to TARGET_ENTRY,
-                        "/metadata" to targetFiles.getValue("hot-updater-lynx.json"),
-                    ),
-                ).use { server ->
-                    val request = LynxArtifactRequest(targetId,
-                            manifestUrl = server.url("/manifest"),
-                            manifestFileHash = targetManifest.hash,
-                            assets = mapOf(
-                            "main.lynx.bundle" to LynxChangedAsset(
-                                targetFiles.hash("main.lynx.bundle"),
-                                file = LynxChangedFile(server.url("/original")),
-                                patch = LynxAssetPatch(
-                                    "bsdiff",
-                                    baseId,
-                                    baseFiles.hash("main.lynx.bundle"),
-                                    invalidPatch.hash,
-                                    server.url("/patch"),
+            for (mode in listOf("corrupt-patch", "different-bundle", "different-source", "no-base")) {
+                val root = Files.createTempDirectory("lynx-delta-archive-").toFile()
+                try {
+                    val baseRoot = root.resolve("running")
+                    val baseFiles = files(baseId, BASE_ENTRY)
+                    val baseManifest = writeTree(baseRoot, baseId, baseFiles)
+                    val base = verifier().verify(
+                        baseRoot,
+                        LynxArtifactRequest(baseId,
+                                manifestFileHash = baseManifest.hash),
+                    )
+                    val targetFiles = files(targetId, TARGET_ENTRY)
+                    val targetManifest = manifest(targetId, targetFiles)
+                    val invalidPatch = "not-a-bsdiff-patch".toByteArray()
+                    FixtureServer(
+                        mapOf(
+                            "/manifest" to targetManifest,
+                            "/patch" to invalidPatch,
+                            "/original" to TARGET_ENTRY,
+                            "/metadata" to targetFiles.getValue("hot-updater-lynx.json"),
+                        ),
+                    ).use { server ->
+                        val request = LynxArtifactRequest(targetId,
+                                manifestUrl = server.url("/manifest"),
+                                manifestFileHash = targetManifest.hash,
+                                assets = mapOf(
+                                "main.lynx.bundle" to LynxChangedAsset(
+                                    targetFiles.hash("main.lynx.bundle"),
+                                    file = LynxChangedFile(server.url("/original")),
+                                    patch = LynxAssetPatch(
+                                        "bsdiff",
+                                        if (mode == "different-bundle") "01900000-0000-7000-8000-000000000022" else baseId,
+                                        if (mode == "different-source") "f".repeat(64) else baseFiles.hash("main.lynx.bundle"),
+                                        invalidPatch.hash,
+                                        server.url("/patch"),
+                                    ),
+                                ),
+                                "hot-updater-lynx.json" to LynxChangedAsset(
+                                    targetFiles.hash("hot-updater-lynx.json"),
+                                    LynxChangedFile(server.url("/metadata")),
                                 ),
                             ),
-                            "hot-updater-lynx.json" to LynxChangedAsset(
-                                targetFiles.hash("hot-updater-lynx.json"),
-                                LynxChangedFile(server.url("/metadata")),
-                            ),
-                        ),
-                            archiveUrl = server.url("/archive"))
-                    val installer = LynxArtifactInstaller(root.resolve("store"), config())
-                    val prepared = installer.prepare(request, base)
-                    assertTrue(prepared.manifestBacked)
-                    assertFalse(prepared.usedArchive)
-                    assertTrue(prepared.patchedAssets.isEmpty())
-                    assertTrue(prepared.patchFallback)
-                    assertTrue(server.requested("/patch"))
-                    assertTrue(server.requested("/original"))
-                    assertFalse(server.requested("/archive"))
-                    val installed = installer.commitPrepared(prepared) { publish -> publish() }
-                    assertFalse(installed.directory.parentFile.resolve("archive").exists())
-                    assertArrayEquals(TARGET_ENTRY, installed.directory.resolve("main.lynx.bundle").readBytes())
+                                archiveUrl = server.url("/archive"))
+                        val installer = LynxArtifactInstaller(root.resolve("store"), config())
+                        val prepared = installer.prepare(request, if (mode == "no-base") null else base)
+                        assertTrue(prepared.manifestBacked)
+                        assertFalse(prepared.usedArchive)
+                        assertTrue(prepared.patchedAssets.isEmpty())
+                        assertEquals(mode, mode == "corrupt-patch", prepared.patchFallback)
+                        assertEquals(mode, mode == "corrupt-patch", server.requested("/patch"))
+                        assertTrue(server.requested("/original"))
+                        assertFalse(server.requested("/archive"))
+                        val installed = installer.commitPrepared(prepared) { publish -> publish() }
+                        assertFalse(installed.directory.parentFile.resolve("archive").exists())
+                        assertArrayEquals(TARGET_ENTRY, installed.directory.resolve("main.lynx.bundle").readBytes())
+                    }
+                } finally {
+                    root.deleteRecursively()
                 }
-            } finally {
-                root.deleteRecursively()
             }
         }
 

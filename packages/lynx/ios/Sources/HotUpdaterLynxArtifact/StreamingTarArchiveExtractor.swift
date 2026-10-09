@@ -110,6 +110,14 @@ public enum StreamingTarArchiveExtractor {
             }
 
             if streamStatus == COMPRESSION_STATUS_END {
+                guard stream.src_size == 0,
+                      try ArchiveExtractionUtilities.readUpToCount(from: inputHandle, count: 1)?.isEmpty != false else {
+                    throw NSError(
+                        domain: "StreamingTarArchiveExtractor",
+                        code: 10,
+                        userInfo: [NSLocalizedDescriptionKey: "Brotli stream contains trailing compressed bytes"]
+                    )
+                }
                 reachedStreamEnd = true
             } else if chunk.isEmpty {
                 throw NSError(
@@ -151,6 +159,8 @@ public enum StreamingTarArchiveExtractor {
                         Data(bytes: outputBuffer, count: producedBytes)
                     )
                 }
+
+                if lastStatus == COMPRESSION_STATUS_END { return lastStatus }
 
                 if finalize,
                    lastStatus == COMPRESSION_STATUS_OK,

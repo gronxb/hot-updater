@@ -10,6 +10,41 @@ final class StrictArchiveTests: XCTestCase {
         ("Straße", "strasse"),
     ]
 
+    func testBrotliRejectsTrailingBytesBeyondTheInputBuffer() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        var seed: UInt32 = 0x12345678
+        let payload = Data((0..<65_532).map { _ -> UInt8 in
+            seed ^= seed << 13
+            seed ^= seed >> 17
+            seed ^= seed << 5
+            return UInt8(truncatingIfNeeded: seed)
+        })
+        // Node zlib Brotli quality=0, lgwin=22 emits this uncompressed block
+        // for the deterministic payload. The complete stream is exactly 64 KiB.
+        let compressed = Data([0x8b, 0xfd, 0xff]) + payload + Data([0x03])
+        XCTAssertEqual(compressed.count, 65_536)
+        let input = root.appendingPathComponent("input.br")
+        let output = root.appendingPathComponent("output")
+        let anotherStream = Data(base64Encoded: "CwmAYnJvdGxpLXRhcmdldC1hc3NldAM=")!
+        for (stream, expected) in [(compressed, payload), (anotherStream, Data("brotli-target-asset".utf8))] {
+            try stream.write(to: input)
+            try StreamingTarArchiveExtractor.decompressBrotliFile(
+                from: input.path, to: output.path, maximumOutputBytes: UInt64(expected.count)
+            )
+            XCTAssertEqual(try Data(contentsOf: output), expected)
+            for suffix in [Data([0]), anotherStream] {
+                try (stream + suffix).write(to: input)
+                XCTAssertThrowsError(try StreamingTarArchiveExtractor.decompressBrotliFile(
+                    from: input.path, to: output.path, maximumOutputBytes: UInt64(expected.count)
+                )) { error in
+                    XCTAssertEqual((error as NSError).code, 10)
+                }
+            }
+        }
+    }
+
     func testRejectsMalformedTarTerminationPaddingAndExtensions() throws {
         let file = tarEntry("entry", payload: Data("data".utf8))
         let end = Data(repeating: 0, count: 1024)
