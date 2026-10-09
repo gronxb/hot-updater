@@ -56,8 +56,7 @@ Create the Hot Updater instance:
 ```typescript title="src/hotUpdater.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { prismaAdapter } from "@hot-updater/server/adapters/prisma"; // [!code ++]
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { apiKeys, insights } from "@hot-updater/server/plugins";
 import { s3Storage } from "@hot-updater/aws";
 import { prisma } from "./prisma";
 

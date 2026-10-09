@@ -53,9 +53,14 @@ export default defineConfig({
 <Tab value="Expo">
 
 ```ts title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { withBugsnag } from "@hot-updater/bugsnag-plugin"; // [!code ++]
 import { defineConfig } from "hot-updater";
 import { expo } from "@hot-updater/expo";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export default defineConfig({
   build: withBugsnag( // [!code ++]
@@ -76,9 +81,14 @@ export default defineConfig({
 <Tab value="Rock">
 
 ```ts title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { withBugsnag } from "@hot-updater/bugsnag-plugin"; // [!code ++]
 import { defineConfig } from "hot-updater";
 import { rock } from "@hot-updater/rock";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export default defineConfig({
   build: withBugsnag( // [!code ++]
@@ -104,7 +114,11 @@ With a [managed provider](/docs/get-started/choose-provider#set-up-a-provider-pr
 database, and plugins in `hot-updater.config.ts`.
 
 <Callout title="Automatic Upload">
-`withBugsnag()` uploads all generated sourcemaps to BugSnag during `hot-updater deploy`. Each upload is identified by a `codeBundleId`, which defaults to the bundle id hot-updater generates for the deploy.
+`withBugsnag()` uploads one bundle and its sourcemap during `hot-updater deploy`,
+using the Hermes bundle and map when available. Additional bundles or chunk
+maps require separate uploads through BugSnag's tooling. Each upload uses a
+`codeBundleId`, which defaults to the artifact ID recorded in the generated
+manifest.
 </Callout>
 
 ## Step 2: Set the `codeBundleId` in your app

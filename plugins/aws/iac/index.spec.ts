@@ -4,7 +4,7 @@ import {
 } from "@hot-updater/cli-tools";
 import type { EngineDatabase } from "@hot-updater/plugin-core";
 import { toolingTargetOf, createMemoryAdapter } from "@hot-updater/plugin-core";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { apiKeys } from "@hot-updater/server/plugins";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({

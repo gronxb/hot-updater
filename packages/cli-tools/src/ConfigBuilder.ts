@@ -99,6 +99,7 @@ export type BuildConfig = ProviderConfig & { clientModule?: string };
 
 export type ConfigBuilderScaffold = {
   imports: ImportInfo[];
+  buildImports: ImportInfo[];
   buildConfigString: string;
   storageConfigString: string;
   databaseConfigString: string;
@@ -161,7 +162,7 @@ export class ConfigBuilder {
     return this;
   }
 
-  /** Sets the plugins the server runs, such as a provider package's `plugins`. */
+  /** Sets the server's plugin factory array and its imports. */
   setPlugins(pluginsConfig: ProviderConfig): this {
     this.pluginsInfo = pluginsConfig;
     this.imports.push(...pluginsConfig.imports);
@@ -206,6 +207,7 @@ ${this.intermediateCode ? `${this.intermediateCode}\n\n` : ""}export default def
 
     return {
       imports,
+      buildImports: normalizeImportInfos(this.buildInfo.imports),
       buildConfigString,
       storageConfigString: this.storageInfo.configString,
       databaseConfigString: this.databaseInfo.configString,

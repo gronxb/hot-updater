@@ -142,8 +142,8 @@ const { assembleServer, loadConfig } = await importPublished<
   typeof import("@hot-updater/cli-tools")
 >("@hot-updater/cli-tools");
 const { createInsightsModel, createInsightsProvider } = await importPublished<
-  typeof import("@hot-updater/server/plugins/insights")
->("@hot-updater/server/plugins/insights");
+  typeof import("@hot-updater/server/plugins")
+>("@hot-updater/server/plugins");
 
 type Platform = "ios" | "android";
 const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";

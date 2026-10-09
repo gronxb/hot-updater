@@ -141,8 +141,10 @@ npx expo prebuild
 plugin validates the RSA SPKI key and embeds it in the iOS and Android native
 configuration. The file is also included automatically in both native
 fingerprints, so changing the trust anchor requires a new native target. The
-plugin never reads `hot-updater.config.ts` signing credentials, private keys,
-or KMS providers.
+plugin evaluates `hot-updater.config.ts` for the update strategy, but reads the
+trust anchor only from `publicKeyPath`. It does not call the configured signer
+or load its private key. Keep config evaluation independent of signing
+credentials so native builds can run without them.
 
 The deploy and doctor commands resolve the evaluated Expo config and compare
 this trust anchor with the signing provider's `getPublicKey()` result. Missing,
@@ -218,11 +220,15 @@ Or add the public key manually.
 
 Build and release the native app before deploying its first signed OTA bundle.
 
-Remove embedded public keys with:
+For React Native CLI projects, remove embedded public keys with:
 
 ```bash
 npx hot-updater keys remove [--yes]
 ```
+
+For Expo, remove `publicKeyPath` from the `@hot-updater/expo` app plugin and
+run `npx expo prebuild`. The plugin removes the embedded keys; `keys remove`
+alone does not change the Expo configuration and prebuild would restore them.
 
 Removing the key from local native files does not change already installed
 apps; they still require signed bundles. To disable verification for a future

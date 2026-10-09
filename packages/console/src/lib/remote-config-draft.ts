@@ -6,7 +6,7 @@ import type {
   RemoteConfigRuleType,
   RemoteConfigTemplate,
   RemoteConfigValueType,
-} from "@hot-updater/server/plugins/remote-config";
+} from "@hot-updater/server/plugins";
 
 /**
  * The edits the Remote Config page makes to a draft template before a

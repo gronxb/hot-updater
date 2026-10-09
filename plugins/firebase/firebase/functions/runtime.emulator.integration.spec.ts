@@ -21,7 +21,7 @@ import {
   createInsightsModel,
   createInsightsProvider,
   type InsightsProvider,
-} from "@hot-updater/server/plugins/insights";
+} from "@hot-updater/server/plugins";
 import {
   assertCommandAvailable,
   findOpenPort,

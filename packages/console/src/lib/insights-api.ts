@@ -1,4 +1,4 @@
-import type { InsightsEventPageInput } from "@hot-updater/server/plugins/insights";
+import type { InsightsEventPageInput } from "@hot-updater/server/plugins";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
 import type { FailureReportsInput } from "./insights-errors";

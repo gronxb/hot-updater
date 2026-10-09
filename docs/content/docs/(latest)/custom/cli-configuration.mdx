@@ -20,10 +20,10 @@ are built, stored, and tracked, and it mirrors the server:
 ## Basic configuration
 
 Install the CLI dependencies in your React Native project. The config imports
-the official plugins from `@hot-updater/server`:
+the official server plugins from `hot-updater/plugins`:
 
 ```package-install
-npm install --save-dev @hot-updater/bare @hot-updater/aws @hot-updater/server @hot-updater/standalone hot-updater
+npm install --save-dev @hot-updater/bare @hot-updater/aws @hot-updater/standalone hot-updater
 ```
 
 Create `.env.hotupdater` in that project with the server's `R2_*` storage values
@@ -35,10 +35,9 @@ import { existsSync } from "node:fs";
 
 import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys"; // [!code ++]
-import { insights } from "@hot-updater/server/plugins/insights"; // [!code ++]
 import { standaloneRepository } from "@hot-updater/standalone"; // [!code ++]
 import { defineConfig } from "hot-updater";
+import { apiKeys, insights } from "hot-updater/plugins"; // [!code ++]
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");

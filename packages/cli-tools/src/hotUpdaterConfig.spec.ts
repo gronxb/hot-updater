@@ -2,6 +2,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
+import { parseSync } from "oxc-parser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ConfigBuilder, type ProviderConfig } from "./ConfigBuilder";
@@ -13,12 +14,22 @@ import {
 } from "./hotUpdaterConfig";
 import { p } from "./prompts";
 
-type TestBuildName = "bare" | "rock";
+type TestBuildName = "bare" | "rock" | "lynx";
 
-const testBuildConfig = (name: TestBuildName): ProviderConfig => ({
-  imports: [{ pkg: `@hot-updater/${name}`, named: [name] }],
-  configString: name === "bare" ? "bare({ enableHermes: true })" : "rock()",
-});
+const testBuildConfig = (name: TestBuildName): ProviderConfig =>
+  name === "lynx"
+    ? {
+        imports: [
+          { pkg: "@hot-updater/lynx-build", named: ["lynx"] },
+          { pkg: "./hot-updater.lynx", named: ["createLynxBuild"] },
+        ],
+        configString: "lynx({ build: createLynxBuild })",
+      }
+    : {
+        imports: [{ pkg: `@hot-updater/${name}`, named: [name] }],
+        configString:
+          name === "bare" ? "bare({ enableHermes: true })" : "rock()",
+      };
 
 const tempDirs: string[] = [];
 
@@ -53,8 +64,13 @@ const createSupabaseScaffold = (build: TestBuildName) => {
       .setStorage(storage)
       .setDatabase(database)
       .setPlugins({
-        imports: [{ pkg: "@hot-updater/supabase", named: ["plugins"] }],
-        configString: "plugins",
+        imports: [
+          {
+            pkg: "hot-updater/plugins",
+            named: ["apiKeys", "insights", "remoteConfig"],
+          },
+        ],
+        configString: "[apiKeys(), insights(), remoteConfig()]",
       }),
   );
 };
@@ -107,8 +123,13 @@ const createAwsScaffold = (
     .setStorage(storage)
     .setDatabase(database)
     .setPlugins({
-      imports: [{ pkg: "@hot-updater/aws", named: ["plugins"] }],
-      configString: "plugins",
+      imports: [
+        {
+          pkg: "hot-updater/plugins",
+          named: ["apiKeys", "insights", "remoteConfig"],
+        },
+      ],
+      configString: "[apiKeys(), insights(), remoteConfig()]",
     })
     .setIntermediateCode(
       helperStatements.map((statement) => statement.code.trim()).join("\n\n"),
@@ -152,8 +173,13 @@ const createFirebaseScaffold = (build: TestBuildName) => {
   })`,
     })
     .setPlugins({
-      imports: [{ pkg: "@hot-updater/firebase", named: ["plugins"] }],
-      configString: "plugins",
+      imports: [
+        {
+          pkg: "hot-updater/plugins",
+          named: ["apiKeys", "insights", "remoteConfig"],
+        },
+      ],
+      configString: "[apiKeys(), insights(), remoteConfig()]",
     })
     .addImport({ pkg: "firebase-admin/app", named: ["applicationDefault"] })
     .setIntermediateCode(helperStatements[0]!.code);
@@ -200,6 +226,35 @@ afterEach(async () => {
 });
 
 describe("writeHotUpdaterConfig", () => {
+  it.each([
+    ["Supabase", () => createSupabaseScaffold("bare")],
+    ["AWS", () => createAwsScaffold("bare", { profile: null })],
+    ["Firebase", () => createFirebaseScaffold("bare")],
+  ] as const)(
+    "keeps one plugin factory import across repeated %s init",
+    async (_, createScaffold) => {
+      const configPath = path.join(
+        await createTempDir(),
+        "hot-updater.config.ts",
+      );
+      const scaffold = createScaffold();
+      await writeHotUpdaterConfig(scaffold, configPath);
+      await writeHotUpdaterConfig(scaffold, configPath);
+      const updated = await fs.readFile(configPath, "utf-8");
+
+      expect(updated.match(/from "hot-updater\/plugins"/gu)).toHaveLength(1);
+      expect(updated).toContain(
+        'import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";',
+      );
+      expect(updated).toContain(
+        "plugins: [apiKeys(), insights(), remoteConfig()]",
+      );
+
+      await writeHotUpdaterConfig(scaffold, configPath);
+      await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(updated);
+    },
+  );
+
   it("creates and updates config without a user-managed Catalog identity", async () => {
     const configPath = path.join(
       await createTempDir(),
@@ -280,9 +335,11 @@ export default defineConfig({
       "bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!",
     );
     expect(updatedConfig).toContain(
-      'import { plugins, supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";',
+      'import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";',
     );
-    expect(updatedConfig).toContain("  plugins,\n}");
+    expect(updatedConfig).toContain(
+      "  plugins: [apiKeys(), insights(), remoteConfig()],\n}",
+    );
     expect(updatedConfig).not.toContain('updateStrategy: "appVersion"');
   });
 
@@ -366,33 +423,33 @@ export default defineConfig({
       "hot-updater.config.ts",
     );
     const scaffold = createSupabaseScaffold("bare");
-    // As rc.20's init wrote it, beside hotUpdater.plugins.ts.
+    // A config written before init added the server plugin list.
     await fs.writeFile(
       configPath,
-      `${scaffold.text.replace("  plugins,\n", "")}\n`,
+      `${scaffold.text.replace("  plugins: [apiKeys(), insights(), remoteConfig()],\n", "")}\n`,
       "utf-8",
     );
 
     await writeHotUpdaterConfig(scaffold, configPath);
     const added = await fs.readFile(configPath, "utf-8");
     expect(added).toContain(
-      '  updateStrategy: "appVersion", // or "fingerprint"\n  plugins,\n});',
+      '  updateStrategy: "appVersion", // or "fingerprint"\n  plugins: [apiKeys(), insights(), remoteConfig()],\n});',
     );
     expect(added).toContain(
-      'import { plugins, supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";',
+      'import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";',
     );
     await writeHotUpdaterConfig(scaffold, configPath);
     await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(added);
 
     await fs.writeFile(
       configPath,
-      `${scaffold.text.replace("  plugins,\n", "  plugins: [...plugins, notes()],\n")}\n`,
+      `${scaffold.text.replace("  plugins: [apiKeys(), insights(), remoteConfig()],\n", "  plugins: [apiKeys(), insights({}), remoteConfig(), notes()],\n")}\n`,
       "utf-8",
     );
     await writeHotUpdaterConfig(scaffold, configPath);
     const replaced = await fs.readFile(configPath, "utf-8");
     expect(replaced).toContain(
-      '  }),\n  plugins,\n  updateStrategy: "appVersion", // or "fingerprint"\n});',
+      '  }),\n  plugins: [apiKeys(), insights(), remoteConfig()],\n  updateStrategy: "appVersion", // or "fingerprint"\n});',
     );
     expect(replaced).not.toContain("notes()");
   });
@@ -423,8 +480,9 @@ export default defineConfig({
 
     await expect(fs.readFile(configPath, "utf-8")).resolves
       .toBe(`import { bare } from "@hot-updater/bare";
-import { plugins, supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
 import { defineConfig } from "hot-updater";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 
 export default defineConfig({
   build: bare({ enableHermes: true }),
@@ -437,7 +495,7 @@ export default defineConfig({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
-  plugins,
+  plugins: [apiKeys(), insights(), remoteConfig()],
 });
 `);
   });
@@ -532,7 +590,9 @@ export default defineConfig({
     );
     expect(updatedConfig).not.toContain("@hot-updater/rock");
     expect(updatedConfig).toContain("supabaseStorage({");
-    expect(updatedConfig).toContain("  plugins,\n");
+    expect(updatedConfig).toContain(
+      "  plugins: [apiKeys(), insights(), remoteConfig()],\n",
+    );
   });
 
   it("merges AWS helper and database fields for same-provider re-init", async () => {
@@ -582,9 +642,33 @@ export default defineConfig({
       "cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!",
     );
     expect(updatedConfig).toContain(
-      'import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";',
+      'import { dynamoDB, s3Storage } from "@hot-updater/aws";',
     );
   });
+
+  it.each(["...overrides", '["plugins"]: []', "plugins: []"])(
+    "does not report success when %s can overwrite the scaffold's plugins",
+    async (override) => {
+      const configPath = path.join(
+        await createTempDir(),
+        "hot-updater.config.ts",
+      );
+      const original = `import { defineConfig } from "hot-updater";
+const overrides = { plugins: [] };
+export default defineConfig({ plugins: [], ${override} });
+`;
+      await fs.writeFile(configPath, original);
+
+      const result = await writeHotUpdaterConfig(
+        createSupabaseScaffold("bare"),
+        configPath,
+      );
+
+      expect(result.status).toBe("skipped");
+      expect(result.reason).toContain("overwrite plugins");
+      await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(original);
+    },
+  );
 
   it("skips unsupported dynamic config shapes", async () => {
     const configPath = path.join(
@@ -607,6 +691,183 @@ export default defineConfig({
 });
 
 describe("writeHotUpdaterConfig imports", () => {
+  it("preserves type-only plugin namespaces when init runs again", async () => {
+    const configPath = path.join(
+      await createTempDir(),
+      "hot-updater.config.ts",
+    );
+    await fs.writeFile(
+      configPath,
+      `import type * as Insights from "@hot-updater/server/plugins";
+import { defineConfig } from "hot-updater";
+export const options: Insights.InsightsOptions = { retention: { rawDays: 7 } };
+export default defineConfig({});
+`,
+    );
+
+    const scaffold = createSupabaseScaffold("bare");
+    const result = await writeHotUpdaterConfig(scaffold, configPath);
+    const updated = await fs.readFile(configPath, "utf-8");
+
+    expect(result.status).toBe("merged");
+    expect(updated).toContain(
+      'import type * as Insights from "@hot-updater/server/plugins";',
+    );
+    expect(updated).toContain("export const options: Insights.InsightsOptions");
+    await writeHotUpdaterConfig(scaffold, configPath);
+    await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(updated);
+  });
+
+  it("preserves plugin helpers, aliases, and types when init runs again", async () => {
+    const configPath = path.join(
+      await createTempDir(),
+      "hot-updater.config.ts",
+    );
+    await fs.writeFile(
+      configPath,
+      `import { insights as projectInsights, type InsightsOptions } from "@hot-updater/server/plugins";
+import { EMPTY_REMOTE_CONFIG_TEMPLATE } from "@hot-updater/server/plugins";
+import { defineConfig } from "hot-updater";
+const options: InsightsOptions = { retention: { rawDays: 7 } };
+export const projectPlugin = projectInsights(options);
+export const template = EMPTY_REMOTE_CONFIG_TEMPLATE;
+export default defineConfig({ plugins: [projectPlugin] });
+`,
+    );
+
+    const scaffold = createSupabaseScaffold("bare");
+    const result = await writeHotUpdaterConfig(scaffold, configPath);
+    const updated = await fs.readFile(configPath, "utf-8");
+
+    expect(result.status).toBe("merged");
+    expect(updated).toContain(
+      'import { EMPTY_REMOTE_CONFIG_TEMPLATE, insights as projectInsights, type InsightsOptions } from "@hot-updater/server/plugins";',
+    );
+    expect(updated).toContain(
+      "export const projectPlugin = projectInsights(options);",
+    );
+    expect(updated).toContain(
+      "export const template = EMPTY_REMOTE_CONFIG_TEMPLATE;",
+    );
+    await writeHotUpdaterConfig(scaffold, configPath);
+    await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(updated);
+  });
+
+  it("reuses the official server factory through the CLI entry when init runs again", async () => {
+    const configPath = path.join(
+      await createTempDir(),
+      "hot-updater.config.ts",
+    );
+    await fs.writeFile(
+      configPath,
+      `import { insights } from "@hot-updater/server/plugins";
+import { defineConfig } from "hot-updater";
+const configuredPlugin = insights();
+export default defineConfig({ plugins: [configuredPlugin] });
+`,
+    );
+
+    const scaffold = createSupabaseScaffold("bare");
+    const result = await writeHotUpdaterConfig(scaffold, configPath);
+    const updated = await fs.readFile(configPath, "utf-8");
+
+    expect(result.status).toBe("merged");
+    expect(updated).not.toContain("@hot-updater/server/plugins");
+    expect(updated).toContain(
+      'import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";',
+    );
+    expect(updated).toContain("const configuredPlugin = insights();");
+    expect(updated).toContain(
+      "plugins: [apiKeys(), insights(), remoteConfig()]",
+    );
+    await writeHotUpdaterConfig(scaffold, configPath);
+    await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(updated);
+  });
+
+  it.each([
+    "const insights = {};",
+    "function insights() {}",
+    "class insights {}",
+    "const { insights } = { insights: {} };",
+  ])(
+    "keeps the original when a factory import conflicts with %s",
+    async (declaration) => {
+      const configPath = path.join(
+        await createTempDir(),
+        "hot-updater.config.ts",
+      );
+      const existing = `import { defineConfig } from "hot-updater";
+${declaration}
+export default defineConfig({});
+`;
+      await fs.writeFile(configPath, existing);
+
+      const result = await writeHotUpdaterConfig(
+        createSupabaseScaffold("bare"),
+        configPath,
+      );
+
+      expect(result.status).toBe("skipped");
+      expect(result.reason).toContain("The declaration of insights conflicts");
+      await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(existing);
+    },
+  );
+
+  it.each([
+    'import { cert as insights } from "firebase-admin/app";',
+    'import { remoteConfig as insights } from "hot-updater/plugins";',
+    'import { remoteConfig as insights } from "@hot-updater/server/plugins";',
+  ])(
+    "keeps an alias used by preserved code from being rebound: %s",
+    async (importLine) => {
+      const configPath = path.join(
+        await createTempDir(),
+        "hot-updater.config.ts",
+      );
+      const existing = `${importLine}
+import { defineConfig } from "hot-updater";
+const existingValue = insights();
+export default defineConfig({});
+`;
+      await fs.writeFile(configPath, existing);
+
+      const result = await writeHotUpdaterConfig(
+        createSupabaseScaffold("bare"),
+        configPath,
+      );
+
+      expect(result.status).toBe("skipped");
+      expect(result.reason).toContain("The import of insights");
+      await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(existing);
+    },
+  );
+
+  it("drops a managed alias whose only use was in the replaced plugin list", async () => {
+    const configPath = path.join(
+      await createTempDir(),
+      "hot-updater.config.ts",
+    );
+    await fs.writeFile(
+      configPath,
+      `import { remoteConfig as insights } from "hot-updater/plugins";
+import { defineConfig } from "hot-updater";
+export default defineConfig({ plugins: [insights()] });
+`,
+    );
+
+    const result = await writeHotUpdaterConfig(
+      createSupabaseScaffold("bare"),
+      configPath,
+    );
+    const updated = await fs.readFile(configPath, "utf-8");
+
+    expect(result.status).toBe("merged");
+    expect(updated).not.toContain("remoteConfig as insights");
+    expect(updated).toContain(
+      'import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";',
+    );
+  });
+
   it("keeps a managed package's import that the project's own kept helper uses", async () => {
     const configPath = path.join(
       await createTempDir(),
@@ -639,8 +900,8 @@ describe("writeHotUpdaterConfig imports", () => {
     );
     const existing = FIREBASE_CERT_CONFIG.replace(
       'import { firebaseDatabase, firebaseStorage, plugins } from "@hot-updater/firebase";',
-      'import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";\nimport { plugins } from "./serverPlugins";',
-    );
+      'import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";\nimport { insights } from "./serverPlugins";',
+    ).replace("  plugins,", "  plugins: [insights()],");
     await fs.writeFile(configPath, existing);
     vi.spyOn(p.log, "warn").mockImplementation(() => {});
 
@@ -652,6 +913,72 @@ describe("writeHotUpdaterConfig imports", () => {
     expect(result.status).not.toBe("merged");
     expect(await fs.readFile(configPath, "utf-8")).toBe(existing);
   });
+
+  it("migrates provider plugin shorthand without keeping imports used only as property names or text", async () => {
+    const configPath = path.join(
+      await createTempDir(),
+      "hot-updater.config.ts",
+    );
+    await fs.writeFile(
+      configPath,
+      FIREBASE_CERT_CONFIG.replace(
+        "export default defineConfig({",
+        `// plugins remain a config property.
+const metadata = { plugins: "plugins" };
+const label = metadata.plugins;
+
+export default defineConfig({`,
+      ),
+    );
+
+    const result = await writeHotUpdaterConfig(
+      createFirebaseScaffold("bare"),
+      configPath,
+    );
+    const updated = await fs.readFile(configPath, "utf-8");
+
+    expect(result.status).toBe("merged");
+    expect(updated).toContain(
+      'import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";',
+    );
+    expect(updated).toContain('const metadata = { plugins: "plugins" };');
+    expect(updated).toContain("const label = metadata.plugins;");
+    expect(updated).toContain(
+      "plugins: [apiKeys(), insights(), remoteConfig()]",
+    );
+  });
+
+  it.each(["[...plugins]", "{ plugins }", "{ [plugins.length]: true }"])(
+    "keeps a provider plugin import still referenced by %s outside managed settings",
+    async (expression) => {
+      const configPath = path.join(
+        await createTempDir(),
+        "hot-updater.config.ts",
+      );
+      await fs.writeFile(
+        configPath,
+        FIREBASE_CERT_CONFIG.replace(
+          "export default defineConfig({",
+          `const projectPlugins = ${expression};\n\nexport default defineConfig({`,
+        ),
+      );
+
+      const result = await writeHotUpdaterConfig(
+        createFirebaseScaffold("bare"),
+        configPath,
+      );
+      const updated = await fs.readFile(configPath, "utf-8");
+
+      expect(result.status).toBe("merged");
+      expect(updated).toContain(
+        'import { firebaseDatabase, firebaseStorage, plugins } from "@hot-updater/firebase";',
+      );
+      expect(updated).toContain(`const projectPlugins = ${expression};`);
+      expect(updated).toContain(
+        "plugins: [apiKeys(), insights(), remoteConfig()]",
+      );
+    },
+  );
 
   it("drops a managed package's import once the rebuilt config no longer uses it", async () => {
     const configPath = path.join(
@@ -670,12 +997,98 @@ describe("writeHotUpdaterConfig imports", () => {
     expect(updatedConfig).not.toContain("firebase-admin/app");
     expect(updatedConfig).not.toContain("const credential");
     expect(updatedConfig).toContain(
-      'import { plugins, supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";',
+      'import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";',
     );
   });
 });
 
 describe("writeHotUpdaterFiles", () => {
+  it.each(
+    ["lynx(buildOptions)", "lynx({ build: createLynxBuild })"].flatMap(
+      (buildExpression) =>
+        ["@hot-updater/server/plugins", "./project-plugins"].map(
+          (pluginSource) => [buildExpression, pluginSource],
+        ),
+    ),
+  )(
+    "preserves %s when reinitializing factories from %s",
+    async (buildExpression, pluginSource) => {
+      const cwd = await createTempDir();
+      const configPath = path.join(cwd, "hot-updater.config.ts");
+      const original = `import { defineConfig } from "hot-updater";
+import { lynx } from "@hot-updater/lynx-build";
+import { createLynxBuild } from "./hot-updater.lynx";
+import { apiKeys, insights, remoteConfig } from "${pluginSource}";
+const buildOptions = { build: createLynxBuild };
+export default defineConfig({
+  build: ${buildExpression},
+  plugins: [apiKeys(), insights(), remoteConfig()],
+});
+`;
+      await fs.writeFile(configPath, original);
+      const result = await writeHotUpdaterConfig(
+        createSupabaseScaffold("lynx"),
+        configPath,
+      );
+      const updated = await fs.readFile(configPath, "utf8");
+      if (pluginSource === "./project-plugins") {
+        expect(result.status).toBe("skipped");
+        expect(result.reason).toContain("takes the name init imports");
+        expect(updated).toBe(original);
+      } else {
+        expect(result.status).toBe("merged");
+        expect(updated).toContain('from "hot-updater/plugins"');
+        expect(updated).not.toContain('from "@hot-updater/server/plugins"');
+        expect(updated.match(/from "@hot-updater\/lynx-build"/g)).toHaveLength(
+          1,
+        );
+        expect(updated.match(/from "\.\/hot-updater.lynx"/g)).toHaveLength(1);
+        expect(
+          parseSync(configPath, updated, { showSemanticErrors: true }).errors,
+        ).toEqual([]);
+        expect(updated).toContain(
+          "const buildOptions = { build: createLynxBuild }",
+        );
+        expect(updated).toContain(`build: ${buildExpression}`);
+      }
+    },
+  );
+
+  it.each(["defineConfig(() => ({ plugins }))", "defineConfig({ plugins })"])(
+    "keeps a legacy plugins file still imported by %s",
+    async (expression) => {
+      const cwd = await createTempDir();
+      const original = `import { defineConfig } from "hot-updater";
+import { plugins } from "./hotUpdater.plugins";
+export default ${expression};
+`;
+      const pluginsPath = path.join(cwd, "hotUpdater.plugins.ts");
+      const pluginsText = 'export { plugins } from "@hot-updater/supabase";\n';
+      await fs.writeFile(path.join(cwd, "hot-updater.config.ts"), original);
+      await fs.writeFile(pluginsPath, pluginsText);
+      const warn = vi.spyOn(p.log, "warn").mockImplementation(() => undefined);
+      vi.spyOn(p.log, "success").mockImplementation(() => undefined);
+
+      const result = await writeHotUpdaterFiles(
+        createSupabaseScaffold("bare"),
+        { cwd, settings: "Supabase" },
+      );
+
+      expect(result.pluginsFile).toBe("kept");
+      await expect(fs.readFile(pluginsPath, "utf-8")).resolves.toBe(
+        pluginsText,
+      );
+      expect(warn).not.toHaveBeenCalledWith(
+        expect.stringContaining("Nothing reads"),
+      );
+      if (result.config.status === "skipped") {
+        await expect(fs.readFile(result.config.path, "utf-8")).resolves.toBe(
+          original,
+        );
+      }
+    },
+  );
+
   it("writes the config and says so", async () => {
     const cwd = await createTempDir();
     const success = vi
@@ -725,8 +1138,9 @@ export default defineConfig(getConfig());
       .toHaveBeenCalledWith(`Kept existing 'hot-updater.config.ts' unchanged: Existing config is not a supported \`export default defineConfig({ ... })\` shape.
 Set storage, database, and plugins in its config, as init writes them for AWS:
 
-import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
+import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { fromSSO } from "@aws-sdk/credential-provider-sso";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 
 const commonOptions = {
   bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
@@ -739,7 +1153,7 @@ const commonOptions = {
     ...commonOptions,
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
-  plugins,`);
+  plugins: [apiKeys(), insights(), remoteConfig()],`);
   });
 
   it("removes the plugins file an older init wrote, and names one the project wrote", async () => {
@@ -764,7 +1178,7 @@ const commonOptions = {
     ).resolves.toMatchObject({ pluginsFile: "removed" });
     await expect(fs.access(pluginsPath)).rejects.toThrow();
 
-    const own = `import { insights } from "@hot-updater/server/plugins/insights";
+    const own = `import { insights } from "@hot-updater/server/plugins";
 
 export const plugins = [insights()];
 `;

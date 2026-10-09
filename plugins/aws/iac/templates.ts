@@ -93,8 +93,13 @@ const awsOptions = {
     .setStorage(storageConfig)
     .setDatabase(databaseConfig)
     .setPlugins({
-      imports: [{ pkg: "@hot-updater/aws", named: ["plugins"] }],
-      configString: "plugins",
+      imports: [
+        {
+          pkg: "hot-updater/plugins",
+          named: ["apiKeys", "insights", "remoteConfig"],
+        },
+      ],
+      configString: "[apiKeys(), insights(), remoteConfig()]",
     })
     .setIntermediateCode(
       helperStatements.map((statement) => statement.code.trim()).join("\n\n"),

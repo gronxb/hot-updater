@@ -1,19 +1,45 @@
-import * as pluginCore from "@hot-updater/plugin-core";
-import * as plugins from "@hot-updater/plugin-core";
+import { createRequire } from "node:module";
+
+import { createMemoryAdapter } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
+import * as plugins from "@hot-updater/server/plugins";
 import { describe, expect, it } from "vitest";
 
-// Plugin authors import the authoring API from @hot-updater/plugin-core. This
-// entry exports the same functions and classes until it is removed, so a
-// plugin written against either runs on the same server.
-describe("@hot-updater/plugin-core", () => {
-  it("exports what @hot-updater/plugin-core does, as the same values", () => {
-    const names = Object.keys(plugins);
-    expect(names.length).toBeGreaterThan(0);
-    for (const name of names) {
-      expect(pluginCore, name).toHaveProperty(name);
-      expect((pluginCore as Record<string, unknown>)[name], name).toBe(
-        (plugins as Record<string, unknown>)[name],
-      );
-    }
-  });
+const require = createRequire(import.meta.url);
+
+describe("@hot-updater/server/plugins", () => {
+  it.each([
+    ["ESM", plugins],
+    ["CommonJS", require("@hot-updater/server/plugins") as typeof plugins],
+  ])(
+    "assembles official plugins from the %s entry with their options",
+    (_, entry) => {
+      const server = createHotUpdater({
+        database: { name: "memory", adapter: createMemoryAdapter() },
+        plugins: [
+          entry.apiKeys({ headerName: "x-client-key" }),
+          entry.insights({ retention: { rawDays: 7, dailyDays: 30 } }),
+          entry.remoteConfig(),
+        ],
+      });
+
+      expect(Object.keys(server.api)).toEqual([
+        "apiKeys",
+        "insights",
+        "remoteConfig",
+      ]);
+      expect(server.clientAuth?.varyHeaders).toEqual(["x-client-key"]);
+      expect(server.api.insights.retention).toEqual({
+        rawDays: 7,
+        dailyDays: 30,
+      });
+      expect(server.clientPlugins).toEqual([
+        { module: "@hot-updater/react-native", name: "insights" },
+      ]);
+      expect(entry.createInsightsModel).toBeTypeOf("function");
+      expect(entry.createApiKeyModel).toBeTypeOf("function");
+      expect(entry.validateRemoteConfigTemplate).toBeTypeOf("function");
+      expect(entry).not.toHaveProperty("definePlugin");
+    },
+  );
 });

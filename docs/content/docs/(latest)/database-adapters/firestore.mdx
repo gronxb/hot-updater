@@ -60,7 +60,8 @@ their expiry. Declare it too if you set `collection`.
 Then write the schema settings the database checks before its first read:
 
 ```typescript
-import { migrateFirebaseDatabase, plugins } from '@hot-updater/firebase';
+import { migrateFirebaseDatabase } from '@hot-updater/firebase';
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { applicationDefault } from 'firebase-admin/app';
 
 await migrateFirebaseDatabase(
@@ -68,13 +69,13 @@ await migrateFirebaseDatabase(
     projectId: 'your-project-id',
     credential: applicationDefault(),
   },
-  plugins,
+  [apiKeys(), insights(), remoteConfig()],
 );
 ```
 
 `migrateFirebaseDatabase` takes the same configuration as `firebaseDatabase`,
-and the plugins the server runs: here `plugins` from `@hot-updater/firebase`,
-the managed server's Insights, API keys, and Remote Config. `hot-updater init`
+and an explicit array of the plugins the server runs: here the managed
+server's API keys, Insights, and Remote Config. `hot-updater init`
 and the managed
 setup's key script both run it. `hot-updater db migrate`, run with the file
 that exports a server's `hotUpdater`, writes the same settings for the
@@ -126,8 +127,8 @@ event's transaction:
   or counts one twice.
 - After an event, the server compacts when a minute has passed since the last
   compaction. A read of the totals, such as the Console's, compacts first. If
-  it cannot write, it shows the stored totals, which can leave out up to one
-  window of the latest events.
+  it cannot write, it shows the stored totals, which can leave out pending
+  events until a later compaction succeeds.
 
 Set `aggregateBatching: { mode: "memory" }` on a long-lived server to keep
 totals in the process and write them every 15 seconds, without log documents.
@@ -183,7 +184,8 @@ runs:
 ```typescript title="hot-updater.config.ts"
 import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
-import { firebaseDatabase, firebaseStorage, plugins } from "@hot-updater/firebase";
+import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { applicationDefault } from "firebase-admin/app";
 import { defineConfig } from "hot-updater";
 
@@ -205,7 +207,7 @@ export default defineConfig({
     projectId: process.env.FIREBASE_PROJECT_ID!,
     credential,
   }),
-  plugins,
+  plugins: [apiKeys(), insights(), remoteConfig()],
   updateStrategy: "appVersion",
 });
 ```
@@ -217,8 +219,7 @@ Use `firebaseDatabase` with `createHotUpdater` for self-hosted servers:
 ```typescript title="src/hotUpdater.ts"
 import { firebaseDatabase } from "@hot-updater/firebase"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { applicationDefault } from "firebase-admin/app";
 
 export const hotUpdater = createHotUpdater({
@@ -226,14 +227,14 @@ export const hotUpdater = createHotUpdater({
     projectId: process.env.FIREBASE_PROJECT_ID!, // [!code ++]
     credential: applicationDefault(), // [!code ++]
   }), // [!code ++]
-  plugins: [insights(), apiKeys()],
+  plugins: [insights(), apiKeys(), remoteConfig()],
   // ... other options
 });
 ```
 
-`insights()` records app events, and `apiKeys()` protects client routes with
-the `x-api-key` header. The managed Cloud Function runs the same list, which
-`@hot-updater/firebase` exports as `plugins`. List the server's plugins in
+`insights()` records app events, `apiKeys()` protects client routes with
+the `x-api-key` header, and `remoteConfig()` serves Remote Config. The managed
+Cloud Function runs the same list. List the server's plugins in
 `hot-updater.config.ts` too; see
 [CLI Configuration](/docs/custom/cli-configuration#mirror-the-server).
 

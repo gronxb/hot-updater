@@ -34,8 +34,13 @@ const createSupabaseScaffold = () =>
 })`,
     },
     plugins: {
-      imports: [{ pkg: "@hot-updater/supabase", named: ["plugins"] }],
-      configString: "plugins",
+      imports: [
+        {
+          pkg: "hot-updater/plugins",
+          named: ["apiKeys", "insights", "remoteConfig"],
+        },
+      ],
+      configString: "[apiKeys(), insights(), remoteConfig()]",
     },
   });
 
@@ -128,6 +133,8 @@ export default defineConfig({
     expect(updatedConfig).toContain(
       "supabaseUrl: process.env.CUSTOM_SUPABASE_URL!",
     );
-    expect(updatedConfig).toContain("  plugins,\n});");
+    expect(updatedConfig).toContain(
+      "  plugins: [apiKeys(), insights(), remoteConfig()],\n});",
+    );
   });
 });

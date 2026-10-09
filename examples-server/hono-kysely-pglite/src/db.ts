@@ -7,8 +7,7 @@ import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
-import { insights } from "@hot-updater/server/plugins/insights";
-import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
+import { insights, remoteConfig } from "@hot-updater/server/plugins";
 import { Kysely, sql } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 

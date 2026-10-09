@@ -103,10 +103,15 @@ export default defineConfig({
 <Tab value="Expo">
 
 ```ts title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { withDatadog } from "@hot-updater/datadog-plugin"; // [!code ++]
 import { defineConfig } from "hot-updater";
 import { datadogReleaseVersion } from "./datadog-release";
 import { expo } from "@hot-updater/expo";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export default defineConfig({
   build: withDatadog( // [!code ++]
@@ -131,10 +136,15 @@ export default defineConfig({
 <Tab value="Rock">
 
 ```ts title="hot-updater.config.ts"
+import { existsSync } from "node:fs";
 import { withDatadog } from "@hot-updater/datadog-plugin"; // [!code ++]
 import { defineConfig } from "hot-updater";
 import { datadogReleaseVersion } from "./datadog-release";
 import { rock } from "@hot-updater/rock";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
 
 export default defineConfig({
   build: withDatadog( // [!code ++]

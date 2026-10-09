@@ -1120,12 +1120,8 @@ describe("resolveEdgeFunctionDenoConfig", () => {
         "@noble/hashes/utils.js": "npm:@noble/hashes@2.2.0/utils.js",
         "@hot-updater/server":
           "./_hot-updater/hot-updater-server/dist/index.mjs",
-        "@hot-updater/server/plugins/api-keys":
-          "./_hot-updater/hot-updater-server/dist/plugins/api-keys/index.mjs",
-        "@hot-updater/server/plugins/insights":
-          "./_hot-updater/hot-updater-server/dist/plugins/insights/index.mjs",
-        "@hot-updater/server/plugins/remote-config":
-          "./_hot-updater/hot-updater-server/dist/plugins/remote-config/index.mjs",
+        "@hot-updater/server/plugins":
+          "./_hot-updater/hot-updater-server/dist/plugins/index.mjs",
         "@hot-updater/supabase/edge":
           "./_hot-updater/hot-updater-supabase/dist/edge.mjs",
         "@hot-updater/protocol":

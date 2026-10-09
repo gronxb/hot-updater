@@ -491,8 +491,7 @@ Add the plugin to `plugins` next to Hot Updater's own:
 
 ```ts title="src/hotUpdater.ts (excerpt)"
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { apiKeys, insights } from "@hot-updater/server/plugins";
 
 import { feedback } from "./feedback";
 
@@ -511,7 +510,9 @@ plugins, and `AnyHotUpdaterPlugin` types any plugin in such a list.
 [create the plugin's tables](#create-the-plugins-tables).
 
 List the plugin in the `plugins` of `hot-updater.config.ts` too, beside the
-server's other plugins, so the CLI and the Console know the server runs it; see
+server's other plugins, so the CLI and the Console know the server runs it.
+Import the official factories in that CLI configuration from
+`hot-updater/plugins`, and your own plugin from its package or module; see
 [CLI Configuration](/docs/custom/cli-configuration#mirror-the-server).
 
 ## Write in a transaction

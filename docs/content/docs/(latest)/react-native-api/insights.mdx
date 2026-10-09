@@ -176,9 +176,10 @@ and answers `404`. After that answer, the plugin sends nothing more in that
 JavaScript runtime, and nothing for 24 hours. Reports made during the pause
 are dropped, not sent later.
 
-After 24 hours, the plugin sends its next report. Once the server stores a
-report, reporting continues as usual. If you turn on `insights()` later,
-installations resume reporting within a day without an app update.
+A later JavaScript runtime can send reports once at least 24 hours have
+passed since the `404`. Once the server stores a report, reporting continues
+as usual. Enabling `insights()` on the server does not require an app update,
+but the runtime that received the `404` must restart before reporting resumes.
 
 ## Report format
 
@@ -197,6 +198,7 @@ field:
   "cohort": "412",
   "fingerprintHash": null,
   "sdkVersion": "1.0.0",
+  "minBundleId": "01929d00-0000-7000-8000-000000000000",
   "fromBundleId": "01929e11-6c2d-7f40-b8a5-3e7d1c9f0a42",
   "fromReleaseId": "01929e11-7a90-7c3e-9f21-8b4d2e6a1c57",
   "toBundleId": "01929f2a-1d5e-7b8c-a3f6-4c9e2b7d0f18",
@@ -217,6 +219,7 @@ field:
 | Field                           | Value                                                                                                                                                                  |
 | ------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `userId`                        | The ID from `setUser`; absent without one.                                                                                                                             |
+| `minBundleId`                   | The bundle identifier embedded in the native build. |
 | `fromBundleId`, `fromReleaseId` | The bundle and Release the app ran before the transition; for `UPDATE_FAILED`, the ones it runs. For `UNCHANGED`, `fromBundleId` is `null`, and `fromReleaseId` is the Release a same-bundle adoption replaced, or `null`. |
 | `toBundleId`, `toReleaseId`     | The bundle and Release the transition moved to; for `UNCHANGED`, the ones the app runs; for `UPDATE_FAILED`, the update's target, or the running bundle for a failed check. `toReleaseId` is `null` without a Release. |
 | `updateStrategy`                | `appVersion` or `fingerprint`; `null` for `UNCHANGED`.                                                                                                                 |

@@ -1,5 +1,5 @@
 import { createHotUpdater } from "@hot-updater/server";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { insights } from "@hot-updater/server/plugins";
 import { createBundleEventRowFixture } from "@hot-updater/test-utils";
 import { createBundleFixture } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";

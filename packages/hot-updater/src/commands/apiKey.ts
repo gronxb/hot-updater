@@ -2,7 +2,7 @@ import { p } from "@hot-updater/cli-tools";
 import type {
   ApiKeyManagementAPI,
   ApiKeyMetadata,
-} from "@hot-updater/server/plugins/api-keys";
+} from "@hot-updater/server/plugins";
 
 import { printBanner } from "@/utils/printBanner";
 
@@ -29,7 +29,8 @@ export interface ApiKeyRevokeOptions extends ApiKeyCommandOptions {
 const API_KEYS = {
   id: "apiKeys",
   call: "apiKeys()",
-  importLine: 'import { apiKeys } from "@hot-updater/server/plugins/api-keys"',
+  importLine: 'import { apiKeys } from "hot-updater/plugins"',
+  serverImportLine: 'import { apiKeys } from "@hot-updater/server/plugins"',
 } as const;
 
 /** Runs `run` over the API of the apiKeys() the server runs. */

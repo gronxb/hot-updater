@@ -4,6 +4,7 @@ export default defineConfig({
   entry: {
     config: "./src/config.ts",
     index: "./src/index.ts",
+    plugins: "./src/plugins.ts",
     signing: "./src/signing.ts",
   },
   deps: {
@@ -20,13 +21,18 @@ export default defineConfig({
         import: "./dist/config.mjs",
         require: "./dist/config.mjs",
       },
+      "./plugins": {
+        types: "./dist/plugins.d.mts",
+        import: "./dist/plugins.mjs",
+        require: "./dist/plugins.mjs",
+      },
       "./signing": {
         types: "./dist/signing.d.mts",
         import: "./dist/signing.mjs",
         require: "./dist/signing.mjs",
       },
     },
-    exclude: ["index", "signing"],
+    exclude: ["index", "plugins", "signing"],
     inlinedDependencies: true,
     legacy: true,
   },

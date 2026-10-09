@@ -35,8 +35,9 @@ The list also holds an artifact whose launch ended before the first render,
 until a later session retries it once. See
 [automatic rollback](/docs/concepts/automatic-rollback#what-counts-as-a-failed-launch).
 
-Crash detection and app-ready reporting are configured through
-[`init`](/docs/react-native-api/init). See
+Native bundle loading starts crash detection. Configure
+[`init`](/docs/react-native-api/init) to observe the completed launch through
+`onNotifyAppReady` and client plugins. See
 [automatic rollback](/docs/concepts/automatic-rollback) for the recovery
 lifecycle.
 

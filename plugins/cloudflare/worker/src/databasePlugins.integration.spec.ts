@@ -5,10 +5,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import { isMultiIndex, toolingTargetOf } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  createInsightsModel,
-  insights,
-} from "@hot-updater/server/plugins/insights";
+import { createInsightsModel, insights } from "@hot-updater/server/plugins";
 import {
   createHandlerHttpTestClient,
   setupDatabaseTestSuite,

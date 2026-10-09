@@ -1,13 +1,13 @@
 import type { RemoteDatabase } from "@hot-updater/plugin-core";
-import type { ApiKeyManagementAPI } from "@hot-updater/server/plugins/api-keys";
 import {
+  type ApiKeyManagementAPI,
   createInsightsAdminReads,
   createInsightsModel,
   createInsightsReads,
   type InsightsApi,
   type InsightsModel,
-} from "@hot-updater/server/plugins/insights";
-import type { RemoteConfigApi } from "@hot-updater/server/plugins/remote-config";
+  type RemoteConfigApi,
+} from "@hot-updater/server/plugins";
 
 import {
   type ConsoleFeature,

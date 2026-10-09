@@ -16,7 +16,7 @@ import {
   type ConfiguredDatabase,
 } from "@hot-updater/plugin-core";
 import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { insights } from "@hot-updater/server/plugins";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { packageJsonData } from "../packageJson";

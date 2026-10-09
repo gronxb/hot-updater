@@ -35,15 +35,16 @@ The managed AWS, Cloudflare, Firebase, and Supabase servers already run
 
 ```ts title="src/hotUpdater.ts (excerpt)"
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
-import { remoteConfig } from "@hot-updater/server/plugins/remote-config"; // [!code ++]
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins"; // [!code ++]
 
 export const hotUpdater = createHotUpdater({
   database,
   plugins: [insights(), apiKeys(), remoteConfig()], // [!code ++]
 });
 ```
+
+In `hot-updater.config.ts`, import `remoteConfig` from `hot-updater/plugins`
+and add `remoteConfig()` to the existing server plugin list.
 
 Devices fetch from `GET /remote-config`, behind the same client-route policy as
 update checks, such as `apiKeys()`.
@@ -123,8 +124,9 @@ draft until you publish them.
   default value, and a value per condition. **Use in-app default** leaves a
   value to the app's `defaults`. The type checks values in the Console;
   devices receive every value as text.
-- **Conditions** match devices whose every rule matches. When several match,
-  the first in the list wins, so order them by priority.
+- **Conditions** match devices whose every rule matches. For each parameter,
+  the first matching condition with a value for that parameter wins, so order
+  them by priority.
 - **Preview** shows what a device with a given platform, channel, app version,
   cohort, fingerprint, and time gets, and which condition chose each value.
 - **Publish changes** lists what the draft adds, changes, and removes, then
@@ -175,9 +177,11 @@ AppState.addEventListener("change", (state) => {
 });
 ```
 
-Publish `false`, and devices turn the feature off the next time they open or
-return to the app once their values are 10 minutes old. Each device sends at
-most one request every 10 minutes. To undo a bad bundle instead of a value,
+Publish `false`, and devices turn the feature off after their next successful
+fetch when they open or return to the app with values at least 10 minutes old.
+Successful fetches suppress another request for 10 minutes unless the device's
+targeting context changes. A failed fetch can retry at the next foreground
+event. To undo a bad bundle instead of a value,
 [roll the bundle back](/docs/guides/console#rollback).
 
 ### Roll out a value gradually

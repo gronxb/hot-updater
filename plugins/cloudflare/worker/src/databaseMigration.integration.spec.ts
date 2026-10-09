@@ -3,8 +3,8 @@ import { createHotUpdater } from "@hot-updater/server";
 import {
   createInsightsModel,
   insights,
-} from "@hot-updater/server/plugins/insights";
-import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
+  remoteConfig,
+} from "@hot-updater/server/plugins";
 import { createBundleEventRowFixture } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import { expect, inject, it } from "vitest";

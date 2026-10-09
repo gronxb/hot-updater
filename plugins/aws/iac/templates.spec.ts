@@ -31,12 +31,17 @@ describe("AWS managed config scaffold", () => {
     );
 
     expect(scaffold.text).toContain(
-      'import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";',
+      'import { dynamoDB, s3Storage } from "@hot-updater/aws";',
+    );
+    expect(scaffold.text).toContain(
+      'import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";',
     );
     expect(scaffold.text).toContain(
       "tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!",
     );
-    expect(scaffold.text).toContain("\n  plugins,\n");
+    expect(scaffold.text).toContain(
+      "\n  plugins: [apiKeys(), insights(), remoteConfig()],\n",
+    );
     // The managed server runs in AWS: the config names no server code.
     expect(scaffold.text).not.toContain("@hot-updater/server");
     expect(scaffold.text).not.toContain("server:");
@@ -104,9 +109,16 @@ export default defineConfig({
     expect(updated).toContain("HOT_UPDATER_E2E_ENV_TARGET_PATH");
     expect(updated).toContain("basePath: providerNamespace");
     expect(updated).toContain(
-      'import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";',
+      'import { dynamoDB, s3Storage } from "@hot-updater/aws";',
     );
-    expect(updated.match(/^\s*plugins,$/gmu)).toHaveLength(1);
+    expect(updated).toContain(
+      'import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";',
+    );
+    expect(
+      updated.match(
+        /^\s*plugins: \[apiKeys\(\), insights\(\), remoteConfig\(\)\],$/gmu,
+      ),
+    ).toHaveLength(1);
   });
 
   it("replaces stale credentials when the authentication mode changes", async () => {

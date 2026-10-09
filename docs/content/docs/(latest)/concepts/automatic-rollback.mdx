@@ -153,8 +153,9 @@ To deploy a fixed version:
 Promoting the same files or editing delivery policy does not clear a file's
 crash history.
 
-If you need to retry the same artifact ID:
+If you need to retry the same artifact ID after investigating the failure:
 
-1. Verify the bundle is fixed
-2. Call `clearCrashHistory()` to reset the blocked list
-3. Redeploy the bundle
+1. Confirm it is safe to retry the existing files. Code fixes need a new artifact.
+2. Call `clearCrashHistory()` on the affected device to reset the blocked list.
+3. Check again, call the returned `updateBundle()` helper, and reload after it
+   succeeds. The Release must still be enabled and eligible for that device.

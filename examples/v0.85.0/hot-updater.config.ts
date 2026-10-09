@@ -1,8 +1,9 @@
 import { existsSync } from "node:fs";
 
 import { bare } from "@hot-updater/bare";
-import { d1Database, plugins, r2Storage } from "@hot-updater/cloudflare";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { defineConfig } from "hot-updater";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 
 const envFilePath =
   process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH ?? ".env.hotupdater";
@@ -54,7 +55,7 @@ export default defineConfig({
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
-  plugins,
+  plugins: [apiKeys(), insights(), remoteConfig()],
   fingerprint: {
     debug: true,
   },

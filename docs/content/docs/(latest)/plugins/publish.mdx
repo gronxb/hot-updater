@@ -81,7 +81,7 @@ Hot Updater's own Insights does. The server plugin names the client one in
 A feature with a server plugin and a client plugin ships both from one
 package, with an entry per side. Hot Updater's own
 `@hot-updater/plugin-insights` has `./server` and `./client`, which
-`@hot-updater/server/plugins/insights` and the `@hot-updater/react-native` root
+`@hot-updater/server/plugins` and the `@hot-updater/react-native` root
 re-export:
 
 ```json title="package.json"
@@ -195,8 +195,8 @@ Choose them once:
   Bundles.
 - **Server plugin `id`.** It prefixes the plugin's tables and names its API,
   `hotUpdater.api.<id>`, and each id appears once per server. `core`,
-  `insights`, and `apiKeys` are reserved for Hot Updater. Prefer an id
-  that names your package, such as `acme_feedback`, over a generic one such
+  `insights`, `apiKeys`, and `remoteConfig` are reserved for Hot Updater. Prefer
+  an id that names your package, such as `acme_feedback`, over a generic one such
   as `feedback`. Keep the prefix: with `namespace: false` the declared table
   names must stay clear of core's and every other plugin's.
 - **Server plugin routes.** A route that collides with another plugin's stops

@@ -7,7 +7,8 @@ import {
   HeadBucketCommand,
   S3Client,
 } from "@aws-sdk/client-s3";
-import { migrateDynamoDB, plugins } from "@hot-updater/aws";
+import { migrateDynamoDB } from "@hot-updater/aws";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { standaloneRepository } from "@hot-updater/standalone";
 import {
   createHttpTestClient,
@@ -75,7 +76,7 @@ async function createTable() {
       credentials,
       tableName,
     },
-    plugins,
+    [apiKeys(), insights(), remoteConfig()],
   );
 }
 

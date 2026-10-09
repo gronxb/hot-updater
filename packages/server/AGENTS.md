@@ -13,9 +13,8 @@
 - `@hot-updater/server/adapters/*` holds the built-in database adapters
   (Kysely, Drizzle, Prisma, MongoDB), each its own entry so a server loads only
   the one it uses.
-- `@hot-updater/server/plugins/insights`,
-  `@hot-updater/server/plugins/api-keys`, and
-  `@hot-updater/server/plugins/remote-config` re-export the built-in plugins.
+- `@hot-updater/server/plugins` re-exports the built-in plugin factories,
+  their types, and helpers through one entry.
 - Nothing else: no tooling entry. `scripts/ci/check-package-boundaries.mjs`
   pins this list, and a new subpath needs a deliberate change there.
 
@@ -48,6 +47,8 @@ tooling entry when tooling needs more.
 - Server definition examples, such as `src/hotUpdater.ts`, import
   `createHotUpdater` from `@hot-updater/server`. `hot-updater.config.ts`
   never does: it lists the server's `database`, `storage`, and `plugins`.
+  Its built-in plugin factories come from `hot-updater/plugins`; server
+  definitions use the `@hot-updater/server/plugins` runtime entry.
 - CLI database commands derive migration and schema capability from the
   definition's `database` through `@hot-updater/cli-tools`, not through
   methods on the root instance.

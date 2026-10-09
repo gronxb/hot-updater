@@ -16,9 +16,7 @@ export default defineConfig([
     deps: {
       alwaysBundle: [
         "@hot-updater/server",
-        "@hot-updater/server/plugins/api-keys",
-        "@hot-updater/server/plugins/insights",
-        "@hot-updater/server/plugins/remote-config",
+        "@hot-updater/server/plugins",
         "@hot-updater/plugin-core",
         "@hot-updater/plugin-api-keys/server",
         "@hot-updater/plugin-insights/server",

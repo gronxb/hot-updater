@@ -8,9 +8,7 @@ import {
   generateEngineSql,
 } from "@hot-updater/plugin-core";
 import { kyselyExecutor } from "@hot-updater/server/adapters/kysely";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
-import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,

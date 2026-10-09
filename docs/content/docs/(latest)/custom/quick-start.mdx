@@ -35,14 +35,14 @@ npm install --save-dev hot-updater @types/better-sqlite3 tsx
 ```
 
 In your React Native project, install the client and CLI dependencies. The CLI
-configuration imports the server's plugins from `@hot-updater/server`:
+configuration imports the server's plugins from `hot-updater/plugins`:
 
 ```package-install
 npm install @hot-updater/react-native
 ```
 
 ```package-install
-npm install --save-dev @hot-updater/bare @hot-updater/aws @hot-updater/server @hot-updater/standalone hot-updater
+npm install --save-dev @hot-updater/bare @hot-updater/aws @hot-updater/standalone hot-updater
 ```
 
 ## Database setup
@@ -75,8 +75,7 @@ below load this file.
 import { existsSync } from "node:fs";
 import { createHotUpdater } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { apiKeys, insights } from "@hot-updater/server/plugins";
 import { s3Storage } from "@hot-updater/aws";
 import { db } from "./kysely";
 
@@ -229,10 +228,9 @@ the same storage adapter, the server's admin handler through
 import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
 import { s3Storage } from "@hot-updater/aws";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
+import { apiKeys, insights } from "hot-updater/plugins";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");

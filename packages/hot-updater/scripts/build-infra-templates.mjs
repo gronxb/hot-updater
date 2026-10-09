@@ -84,12 +84,18 @@ const indentFollowingLines = (text, spaces) =>
  */
 const renderCredentialDefinition = (scaffold, build) => {
   const imports = [
-    ...scaffold.imports.filter(
-      ({ pkg }) =>
-        pkg !== "hot-updater" &&
-        pkg !== "node:fs" &&
-        !build.imports.some((entry) => entry.pkg === pkg),
-    ),
+    ...scaffold.imports
+      .filter(
+        ({ pkg }) =>
+          pkg !== "hot-updater" &&
+          pkg !== "node:fs" &&
+          !build.imports.some((entry) => entry.pkg === pkg),
+      )
+      .map((entry) =>
+        entry.pkg === "hot-updater/plugins"
+          ? { ...entry, pkg: "@hot-updater/server/plugins" }
+          : entry,
+      ),
     { pkg: "@hot-updater/server", named: ["createHotUpdater"] },
   ];
   const helpers = scaffold.helperStatements.map(({ code }) => code.trim());

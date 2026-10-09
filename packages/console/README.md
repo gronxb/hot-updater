@@ -160,8 +160,9 @@ export default {
 };
 ```
 
-Add `plugins`, such as `[insights(), apiKeys()]`, to show their pages. Mock
-data is held in memory and resets when the configuration is reloaded.
+Import the built-in factories from `hot-updater/plugins` and add `plugins`,
+such as `[insights(), apiKeys()]`, to show their pages. Mock data is held in
+memory and resets when the configuration is reloaded.
 
 ## 🌈 Theming
 

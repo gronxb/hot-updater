@@ -7,6 +7,8 @@ icon: cloudflare
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
+## Prerequisites
+
 Complete [Basics](/docs/guides/console-deployment) first. This guide uses native D1/R2 bindings.
 
 <Steps>
@@ -19,12 +21,15 @@ cp examples/cloudflare/console.config.ts.example console.config.ts
 cp examples/cloudflare/wrangler.jsonc wrangler.jsonc
 ```
 
-The template builds its configuration from the Worker's bindings for each
-request, with `d1Database`, `r2Storage`, and `plugins` from
-`@hot-updater/cloudflare/worker`. Install the package it imports:
+Build the configuration from the Worker's bindings for each request, with
+`d1Database` and `r2Storage` from `@hot-updater/cloudflare/worker`. Import
+`apiKeys`, `insights`, and `remoteConfig` from
+`@hot-updater/server/plugins`, and set
+`plugins: [apiKeys(), insights(), remoteConfig()]` to match the managed server.
+Install these runtime packages:
 
 ```package-install
-npm install @hot-updater/cloudflare
+npm install @hot-updater/cloudflare @hot-updater/server
 ```
 
 Then sign in to Wrangler, which the console repository includes:
@@ -150,7 +155,7 @@ Rollback restores Worker code/configuration, not D1 or R2 data.
 | Symptom | Check |
 | --- | --- |
 | Bindings unavailable | Build and run the Worker preset, not Vite's Node server |
-| Insights missing from the navigation | `plugins` in `console.config.ts` includes `insights()`, such as `plugins` from `@hot-updater/cloudflare/worker` |
+| Insights missing from the navigation | `plugins` in `console.config.ts` includes `insights()` from `@hot-updater/server/plugins` |
 | Empty Insights | Correct D1 binding; local preview uses separate data |
 | Bucket mismatch | `BUCKET_NAME`, the R2 binding, and stored bundle URI use the same bucket |
 | Stale bindings | Edit root config, rebuild, and deploy the generated output |

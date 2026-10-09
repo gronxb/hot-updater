@@ -13,7 +13,7 @@ import {
   RemoteConfigValidationError,
   type RemoteConfigVersion,
   validateRemoteConfigTemplate,
-} from "@hot-updater/server/plugins/remote-config";
+} from "@hot-updater/server/plugins";
 
 import { printBanner } from "@/utils/printBanner";
 
@@ -69,8 +69,9 @@ export interface RemoteConfigPreviewOptions extends RemoteConfigCommandOptions {
 const REMOTE_CONFIG = {
   id: "remoteConfig",
   call: "remoteConfig()",
-  importLine:
-    'import { remoteConfig } from "@hot-updater/server/plugins/remote-config"',
+  importLine: 'import { remoteConfig } from "hot-updater/plugins"',
+  serverImportLine:
+    'import { remoteConfig } from "@hot-updater/server/plugins"',
 } as const;
 
 /**

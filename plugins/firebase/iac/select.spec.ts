@@ -85,7 +85,10 @@ describe("setEnv", () => {
     // The config lists the storage, database, and plugins the function runs,
     // with the credential helper they read, and names no server code.
     expect(scaffold?.text).toContain(
-      'import { firebaseDatabase, firebaseStorage, plugins } from "@hot-updater/firebase";\nimport { applicationDefault } from "firebase-admin/app";',
+      'import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";\nimport { applicationDefault } from "firebase-admin/app";',
+    );
+    expect(scaffold?.text).toContain(
+      'import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";',
     );
     expect(scaffold?.text).toContain(
       "// Reuse working application-default credentials (ADC).",
@@ -93,10 +96,29 @@ describe("setEnv", () => {
     expect(scaffold?.text).toContain(
       "const credential = applicationDefault();",
     );
-    expect(scaffold?.text).toContain("  plugins,\n");
+    expect(scaffold?.text).toContain(
+      "  plugins: [apiKeys(), insights(), remoteConfig()],\n",
+    );
     expect(scaffold?.text).not.toContain("createHotUpdater");
     expect(scaffold?.text).not.toContain("server:");
     expect(options).toMatchObject({ settings: "Firebase" });
+  });
+
+  it("propagates config write failures so init cannot continue without its config", async () => {
+    const error = Object.assign(
+      new Error("EACCES: permission denied, open 'hot-updater.config.ts'"),
+      { code: "EACCES" },
+    );
+    vi.mocked(writeHotUpdaterFiles).mockRejectedValueOnce(error);
+
+    await expect(
+      setEnv({
+        projectId: "demo-project",
+        storageBucket: "demo-bucket",
+        build: bareBuild,
+        region: "asia-northeast3",
+      }),
+    ).rejects.toBe(error);
   });
 });
 

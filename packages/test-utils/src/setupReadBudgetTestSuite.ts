@@ -836,11 +836,8 @@ export const setupReadBudgetTestSuite = (
 
     beforeAll(async () => {
       // The server's built-in plugins, whose reads have budgets.
-      const [{ insights }, { apiKeys }, { remoteConfig }] = await Promise.all([
-        import("@hot-updater/server/plugins/insights"),
-        import("@hot-updater/server/plugins/api-keys"),
-        import("@hot-updater/server/plugins/remote-config"),
-      ]);
+      const { insights, apiKeys, remoteConfig } =
+        await import("@hot-updater/server/plugins");
       const plugins = [insights(), apiKeys(), remoteConfig()];
       created = await options.createAdapter({
         tables: [...toolingTargetOf(plugins).schema.tables, SETTINGS_TABLE],

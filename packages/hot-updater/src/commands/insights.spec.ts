@@ -9,8 +9,7 @@ import {
   type RemoteDatabase,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { apiKeys, insights } from "@hot-updater/server/plugins";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -298,7 +297,7 @@ describe("hot-updater insights over hot-updater.config.ts", () => {
     await handleInsightsEvents();
 
     expect(log.error).toHaveBeenCalledWith(
-      'hot-updater.config.ts lists no insights() in plugins. Add insights() to plugins, the same plugin your server runs (import { insights } from "@hot-updater/server/plugins/insights"). A managed config gets it from the provider\'s plugins.',
+      'hot-updater.config.ts lists no insights() in plugins. Add insights() to plugins, the same plugin your server runs (import { insights } from "hot-updater/plugins").',
     );
     expect(process.exitCode).toBe(1);
   });

@@ -28,17 +28,9 @@
       "import": "./dist/adapters/prisma.mjs",
       "require": "./dist/adapters/prisma.cjs"
     },
-    "./plugins/api-keys": {
-      "import": "./dist/plugins/api-keys/index.mjs",
-      "require": "./dist/plugins/api-keys/index.cjs"
-    },
-    "./plugins/insights": {
-      "import": "./dist/plugins/insights/index.mjs",
-      "require": "./dist/plugins/insights/index.cjs"
-    },
-    "./plugins/remote-config": {
-      "import": "./dist/plugins/remote-config/index.mjs",
-      "require": "./dist/plugins/remote-config/index.cjs"
+    "./plugins": {
+      "import": "./dist/plugins/index.mjs",
+      "require": "./dist/plugins/index.cjs"
     },
     "./package.json": "./package.json"
   },

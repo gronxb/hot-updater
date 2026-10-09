@@ -3,17 +3,15 @@ import { createHash } from "node:crypto";
 import { assembleServer } from "@hot-updater/cli-tools";
 import { mockDatabase, mockStorage } from "@hot-updater/mock";
 import type { Bundle, Release } from "@hot-updater/protocol";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import {
+  apiKeys,
   insights,
   type BundleEventRow,
   type InsightsApi,
-} from "@hot-updater/server/plugins/insights";
-import {
   remoteConfig,
   type RemoteConfigApi,
   type RemoteConfigTemplate,
-} from "@hot-updater/server/plugins/remote-config";
+} from "@hot-updater/server/plugins";
 
 type DemoReleaseFields = Pick<
   Release,

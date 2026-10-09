@@ -4,6 +4,8 @@ description: "Stage a selected transition without reloading the current React Na
 icon: Download
 ---
 
+## Usage
+
 Use the pre-filled `updateBundle()` helper returned by `checkForUpdate()`. It
 resolves the protocol v1 manifest artifact, stages the selected transition, and
 does not reload the currently running React Native runtime.
@@ -42,15 +44,17 @@ supplies them after resolving the artifact endpoint.
 | `status` | `"UPDATE" \| "ROLLBACK"` | Yes | Transition direction. |
 | `manifestUrl` | `string` | Yes | Target manifest URL. |
 | `manifestFileHash` | `string` | Yes | SHA256 hash or `sig:<base64_signature>` for the manifest. |
+| `archiveUrl` | `string \| null` | No | Full `tar.br` archive URL; integrity and sizes come from the verified manifest. |
 | `assets` | `Record<string, ArtifactAsset>` | Yes | Original descriptor for every target file, with optional Hermes patches. |
 | `channel` | `string` | No | Channel committed with the staged selection. |
 | `selection` | `object \| null` | No | Release Catalog selection receipt. |
 
-The runtime downloads and verifies the manifest, then resolves each target path
-in this order: current OTA file, matching built-in file, optional Hermes patch,
-and complete original file. A patch failure falls back to the original file.
-The staged directory is committed atomically only after every target hash is
-verified.
+The runtime downloads and verifies the manifest, then reuses matching current
+OTA or built-in files. For remaining files, it can choose a full archive based
+on download cost when `archiveUrl` is available. Otherwise it tries an optional
+Hermes patch, then the complete original file. An archive failure falls back to
+individual files; a patch failure falls back to the original file. The staged
+directory is committed atomically only after every target hash is verified.
 
 `updateBundle` never reloads the app by itself. Call `hotUpdater.reload()` to
 start the staged transition immediately.

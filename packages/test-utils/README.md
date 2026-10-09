@@ -37,10 +37,7 @@ Connect your database's lifecycle and the real server:
 
 ```ts
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  createInsightsModel,
-  insights,
-} from "@hot-updater/server/plugins/insights";
+import { createInsightsModel, insights } from "@hot-updater/server/plugins";
 
 import {
   insightsTestSuite,

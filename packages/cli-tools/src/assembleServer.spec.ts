@@ -10,8 +10,7 @@ import {
   migrateCoreSchema,
   type RemoteDatabase,
 } from "@hot-updater/plugin-core";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { apiKeys, insights } from "@hot-updater/server/plugins";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import { assembleServer } from "./assembleServer";

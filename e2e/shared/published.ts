@@ -44,7 +44,7 @@ const importTarget = (entry: unknown): string | undefined => {
 
 /**
  * Imports one of a package's published entries, such as
- * `@hot-updater/server/plugins/insights`, from what the example app
+ * `@hot-updater/server/plugins`, from what the example app
  * installs. A subpath the package does not export is refused, as Node
  * refuses it for the app.
  */

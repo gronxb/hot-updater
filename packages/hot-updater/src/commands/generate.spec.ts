@@ -11,7 +11,7 @@ import { tmpdir } from "os";
 import path from "path";
 
 import type { ServerDefinition } from "@hot-updater/cli-tools";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { insights } from "@hot-updater/server/plugins";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { generate } from "./generate";

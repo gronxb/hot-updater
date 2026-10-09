@@ -8,12 +8,12 @@ import type {
 } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
 import {
+  apiKeys,
   insights,
   type BundleEventRow,
-} from "@hot-updater/server/plugins/insights";
-import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
+  remoteConfig,
+} from "@hot-updater/server/plugins";
 import { describe, expect, it, vi } from "vitest";
 
 import { ConsoleFeatureUnavailableError } from "../console-features";

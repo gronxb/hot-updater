@@ -2,7 +2,7 @@
 import {
   createInsightsProvider,
   type InsightsModel,
-} from "@hot-updater/server/plugins/insights";
+} from "@hot-updater/server/plugins";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { getAppUsageReport } from "./insightsUsage";

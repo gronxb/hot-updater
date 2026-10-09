@@ -4,10 +4,7 @@ import { fileURLToPath } from "url";
 import { toolingTargetOf } from "@hot-updater/plugin-core";
 import { createHotUpdater, type HotUpdaterAPI } from "@hot-updater/server";
 import { kyselyAdapter } from "@hot-updater/server/adapters/kysely";
-import {
-  createInsightsModel,
-  insights,
-} from "@hot-updater/server/plugins/insights";
+import { createInsightsModel, insights } from "@hot-updater/server/plugins";
 import {
   createHttpTestClient,
   setupReleaseCatalogTestSuite,

@@ -73,7 +73,9 @@ the app's root mounts.
 | `onError`        | `(error: Error) => void`          | ❌       | Called when a check fails, including failures that return `null`. |
 
 The update source is always from `HotUpdater.init()`; it cannot be overridden
-in `checkForUpdate`.
+in `checkForUpdate`. Per-check `requestHeaders` merge with the headers from
+`init`, overriding matching keys. An omitted `requestTimeout` uses the value
+from `init`, or 5000 ms when neither call sets one.
 
 A requested channel switch is persisted only after the returned update applies
 successfully. If a different runtime channel is already active, call

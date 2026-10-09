@@ -121,8 +121,9 @@ refreshes in the background as soon as the catalog expires.
 
 An artifact response for protocol 1 has the target manifest's URL and hash, an
 optional archive URL, and the original file for every asset of the target
-manifest. The Hermes bundle may also carry a patch from the current Bundle when
-the patch is smaller than the original. The original stays in the response, so
+manifest. The Hermes bundle may also carry a patch from the current Bundle.
+When both download sizes are known, the server includes the patch only if it
+is smaller than the original. The original stays in the response, so
 a device can recover from a missing or corrupt base file or a failed patch. See
 [bundle diffing](/docs/guides/bundle-diffing) for patches and the manifest's
 download fields.
