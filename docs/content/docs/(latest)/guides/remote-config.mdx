@@ -236,6 +236,39 @@ the Console says so and lets you load their version or publish yours after it.
 template as JSON, and **Roll back** publishes a copy of it as a new version, so
 the history keeps both.
 
+### From the CLI
+
+`hot-updater remote-config` does the same from a terminal, CI, or an agent. It
+finds the server as [`hot-updater api-key`](/docs/custom/api-key-authentication#manage-api-keys)
+does: `database` and `plugins` in `hot-updater.config.ts`, the admin routes
+below through `standaloneRepository`, or the server file you pass last, such as
+`src/hotUpdater.ts`.
+
+```bash
+npx hot-updater remote-config show --json > remote-config.json
+# Edit remote-config.json, then:
+npx hot-updater remote-config publish remote-config.json --dry-run
+npx hot-updater remote-config publish remote-config.json --description "Longer list on iOS"
+```
+
+- `show` prints the active template, or a published version's with
+  `--version-number <n>`.
+- `publish <file>` takes a template, or what `show --json` printed; `-` reads
+  stdin. It validates the template, lists what it adds, changes, and removes,
+  and asks before publishing. `-y` skips the question, which a shell without a
+  terminal needs, and `--dry-run` stops before it. A file from `show --json`
+  publishes only after the version it was read at, so a newer publish is never
+  replaced; `--expected-version` sets that version for any file. The active
+  template publishes nothing.
+- `versions` lists versions newest first, and `rollback <version>` publishes a
+  copy of one.
+- `preview` shows each value a device gets, from `-p`, `-c`, `--app-version`,
+  `--cohort`, `--fingerprint-hash`, and `--at` for the time; `--file` previews
+  a template before you publish it.
+
+Every command takes `--json`. A refused publish, such as an invalid template or
+a conflict, exits with `1`, and a declined one with `2`.
+
 A server or script can do the same through `hotUpdater.api.remoteConfig`:
 
 ```ts title="scripts/publish-remote-config.ts"
@@ -267,7 +300,7 @@ longer `baseVersion`. `rollback`, `listVersions`, and
 with that context receives.
 
 A self-hosted server's admin handler serves the same operations, which the
-Console uses over [`standaloneRepository`](/docs/database-adapters/standalone):
+Console and the CLI use over [`standaloneRepository`](/docs/database-adapters/standalone):
 
 | Route | Does |
 | --- | --- |
@@ -275,7 +308,7 @@ Console uses over [`standaloneRepository`](/docs/database-adapters/standalone):
 | `PUT /remote-config/template` | Publishes `{ template, baseVersion, description? }`: `200` with the version, `409` with `currentVersion`, or `400` with `issues`. |
 | `GET /remote-config/versions?limit&cursor` | A page of versions, newest first. |
 | `GET /remote-config/versions/:version` | One version with its template. |
-| `POST /remote-config/versions/:version/rollback` | Publishes a copy of the version, from `{ baseVersion }`. |
+| `POST /remote-config/versions/:version/rollback` | Publishes a copy of the version, from `{ baseVersion, description? }`. |
 
 ## How devices get values
 

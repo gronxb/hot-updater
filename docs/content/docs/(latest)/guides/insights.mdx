@@ -390,6 +390,38 @@ one batching window of the latest reports, a minute by default. DAU, WAU, MAU, a
 installations are estimates from HyperLogLog sketches, typically within about
 3%, and show with **≈**. Report counts and distributions are exact.
 
+## Read from the CLI
+
+`hot-updater insights` reads the same Insights from a terminal, CI, or an
+agent. It finds the server as
+[`hot-updater api-key`](/docs/custom/api-key-authentication#manage-api-keys)
+does: `database` and `plugins` in `hot-updater.config.ts`, the server's admin
+handler through `standaloneRepository`, or the server file you pass last, such
+as `src/hotUpdater.ts`.
+
+```bash
+npx hot-updater insights overview -p ios -c production --window 7d
+npx hot-updater insights failures --bundle <id>
+npx hot-updater insights events --bundle <id> --outcome crashed
+npx hot-updater insights installations <install-or-user-id>
+```
+
+- `overview` counts a channel's reporting installations and, with `--bundle`,
+  the bundle's **Downloaded**, **Launched**, **Crashed**, and failed reports.
+- `failures` shows the update failure rate, downloads and patch fallbacks, a
+  channel's failed update checks, and failures by stage and reason.
+- `events` lists reports newest first: all of them, a bundle's of one
+  `--outcome` (`downloaded`, `launched`, `crashed`, or `failed`), or an
+  installation's with `--install`. `--cursor` reads the next page.
+- `installations` finds an installation by its install ID, and the
+  installations whose user ID it is.
+
+`--bundle` takes the ID shown in the Console or by `getBundleId()`, and reads
+the platform and channel from the bundle; otherwise pass `-p` and `-c`.
+`overview` and `failures` cover `--window`: `24h` by default, `7d`, or `30d`,
+ending with the current UTC hour as the Console's periods do. Every command
+takes `--json`. App usage and Release health stay in the Console.
+
 ## Update failures
 
 An app reports `UPDATE_FAILED` when an update check, download, or install
