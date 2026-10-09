@@ -19,6 +19,27 @@ class LynxArtifactVerifierTest {
     private val runtime = "android-sparkling-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ota-v2"
     private val bundleId = "01900000-0000-7000-8000-000000000020"
 
+    @Test fun schemaCompatibilityIsCheckedWithoutPagePayloadsAtTheSameRuntimeId() {
+        val root = Files.createTempDirectory("lynx-schema-gate-").toFile().canonicalFile
+        try {
+            writeTree(root)
+            val request = request(root)
+            val paths = setOf("main.lynx.bundle", "hot-updater-lynx.json")
+            root.resolve("main.lynx.bundle").delete()
+            for (version in listOf(1, 2)) {
+                rewriteMetadata(root) { it.put("schemaVersion", version) }
+                assertEquals(runtime, verifier().verifyMetadata(root, request, paths, false).runtimeId)
+                assertTrue(!root.resolve("main.lynx.bundle").exists())
+            }
+            for (version in listOf<Any>(3, "2", true, 1.5)) {
+                rewriteMetadata(root) { it.put("schemaVersion", version) }
+                org.junit.Assert.assertThrows(LynxIncompatibleArtifactException::class.java) {
+                    verifier().verifyMetadata(root, request, paths, false)
+                }
+            }
+        } finally { root.deleteRecursively() }
+    }
+
     @Test fun backgroundScriptIsDeclaredVerifiedAndCopiedBeforeInstalledFilesDisappear() {
         val root = Files.createTempDirectory("lynx-background-").toFile().canonicalFile
         try {

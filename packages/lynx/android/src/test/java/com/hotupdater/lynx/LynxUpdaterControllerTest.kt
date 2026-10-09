@@ -1987,6 +1987,115 @@ class LynxUpdaterControllerTest {
         }
     }
 
+    @Test fun admittedPageRebindWaitsForFreshReadinessWithoutReadmitting() {
+        val root = temp()
+        try {
+            withController(root) { controller ->
+                val primary = controller.pinPrimary(generationId = "generation-rebind")
+                primary.firstScreen = true
+                primary.notifyReady { }
+                val secondary = controller.pinSecondary("detail.lynx.bundle", emptyMap(), 1, "generation-rebind")
+                secondary.requireResourceBeforeReady(secondary.pageEntry)
+                secondary.setResourceObserver { _, _, _ -> }
+                secondary.firstScreen = true
+                secondary.resolveEssential(secondary.pageEntry)
+                var original: JSONObject? = null
+                secondary.notifyReady { original = it.getOrThrow() }
+                assertEquals("PAGE_ADMITTED", checkNotNull(original).getString("status"))
+                // Move the controller's last admission to another page. Recreating
+                // this older page must reuse its receipt, not admit it a second time.
+                val later = controller.pinSecondary("detail.lynx.bundle", mapOf("page" to "later"), 2, "generation-rebind")
+                later.firstScreen = true
+                later.notifyReady { assertTrue(it.isSuccess) }
+                val persisted = journal(root).toString()
+                LynxLaunchSession::class.java.getDeclaredField("context").apply {
+                    isAccessible = true
+                    set(secondary, android.app.Application())
+                }
+                secondary.prepareForRebind()
+                secondary.setResourceObserver { _, _, _ -> }
+                var duplicateAdmissionEvents = 0
+                secondary.setReadinessHandlers({}, { duplicateAdmissionEvents++ })
+                var reply: Result<JSONObject>? = null
+                secondary.notifyReady { reply = it }
+                assertEquals(null, reply)
+                secondary.firstScreen = true
+                secondary.flushReady()
+                assertEquals(null, reply)
+                secondary.resolveEssential(secondary.pageEntry)
+                assertEquals(original.toString(), checkNotNull(reply).getOrThrow().toString())
+                assertEquals(0, duplicateAdmissionEvents)
+                assertEquals(persisted, journal(root).toString())
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun rebindDrainsOldResourcesBeforeResettingReadiness() {
+        val root = temp()
+        val executor = Executors.newFixedThreadPool(2)
+        val release = CountDownLatch(1)
+        try {
+            withController(root) { controller ->
+                val session = controller.pinPrimary(generationId = "generation-rebind")
+                val entry = session.pageEntry
+                session.requireResourceBeforeReady(entry)
+                val oldResources = session.resources
+                val snapshot = oldResources.resolve(session.entryUrl)
+                val entered = CountDownLatch(1)
+                session.setResourceObserver { _, _, _ ->
+                    entered.countDown()
+                    check(release.await(5, TimeUnit.SECONDS))
+                }
+                // Resource ownership does not require a JVM-mocked LynxView.
+                LynxLaunchSession::class.java.getDeclaredField("context").apply {
+                    isAccessible = true
+                    set(session, android.app.Application())
+                }
+                val load = executor.submit { oldResources.loadBytes(session.entryUrl) {} }
+                assertTrue(entered.await(5, TimeUnit.SECONDS))
+                val rebinding = CountDownLatch(1)
+                val rebind = executor.submit {
+                    rebinding.countDown()
+                    session.prepareForRebind()
+                }
+                assertTrue(rebinding.await(5, TimeUnit.SECONDS))
+                try {
+                    assertThrows(java.util.concurrent.TimeoutException::class.java) {
+                        rebind.get(100, TimeUnit.MILLISECONDS)
+                    }
+                } finally {
+                    release.countDown()
+                }
+                load.get(5, TimeUnit.SECONDS)
+                rebind.get(5, TimeUnit.SECONDS)
+                assertTrue(oldResources !== session.resources)
+                assertEquals("entry-A", snapshot.readText())
+                val freshSnapshot = session.resources.resolve(session.entryUrl)
+                assertTrue(snapshot != freshSnapshot)
+                assertThrows(IllegalStateException::class.java) {
+                    oldResources.resolve(session.entryUrl)
+                }
+                session.setResourceObserver { _, _, _ -> }
+                session.firstScreen = true
+                var reply: Result<JSONObject>? = null
+                session.notifyReady { reply = it }
+                assertEquals(null, reply)
+                session.resolveEssential(entry)
+                assertTrue(checkNotNull(reply).isSuccess)
+                session.close()
+                assertFalse(snapshot.exists())
+                assertFalse(freshSnapshot.exists())
+            }
+        } finally {
+            release.countDown()
+            executor.shutdownNow()
+            executor.awaitTermination(5, TimeUnit.SECONDS)
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun secondaryAdmissionWaitsForResolvedEssentialPageEntry() {
         val root = temp()
         try {

@@ -23,7 +23,7 @@ class LynxLaunchSession internal constructor(
     internal val id: String,
     val isPrimary: Boolean,
     internal val launchReleaseId: String?,
-    snapshotDirectory: File = File(
+    private val snapshotDirectory: File = File(
         installation.directory.parentFile,
         ".hot-updater-resource-$id",
     ),
@@ -43,7 +43,7 @@ class LynxLaunchSession internal constructor(
     private var secondaryAdmission: JSONObject? = null
     private var bridgeReplies = LynxBridgeReplies()
     private var context: Context? = null
-    private var bindingEpoch = 0L
+    @Volatile private var bindingEpoch = 0L
     private val requiredResources = mutableSetOf<String>()
     private val loadedResources = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var reloadHandler:
@@ -53,16 +53,19 @@ class LynxLaunchSession internal constructor(
     private var confirmedHandler: ((JSONObject) -> Unit)? = null
     private var engineDiagnosticHandler: ((Map<String, Any?>) -> Unit)? = null
     private var readinessGate: (() -> Boolean)? = null
-    val resources = LynxReleaseResources(
+    private val retiredResources = mutableListOf<LynxReleaseResources>()
+    var resources = newResources()
+        private set
+    val entryUrl = "hot-updater:///" + pageEntry
+
+    private fun newResources() = LynxReleaseResources(
         installation.directory,
         installation.bundleId,
         installation.managedFileHashes,
-        snapshotDirectory,
-    )
-    val entryUrl = "hot-updater:///" + pageEntry
-    init {
-        resources.isLive = { live && !controller.generationFailed }
-        resources.onFailure = { message -> notifyFailure(message) }
+        File(snapshotDirectory, java.util.UUID.randomUUID().toString()),
+    ).also {
+        it.isLive = { live && !controller.generationFailed }
+        it.onFailure = { message -> notifyFailure(message) }
     }
     private fun notifyFailure(
         message: String,
@@ -144,10 +147,13 @@ class LynxLaunchSession internal constructor(
     /** Observes verified managed resources without exposing filesystem authority. */
     fun setResourceObserver(observer: (event: String, path: String, sha256: String) -> Unit) {
         check(live && resources.onLoaded == null)
-        resources.onLoaded = { event, path, sha256 ->
+        val observingResources = resources
+        observingResources.onLoaded = { event, path, sha256 ->
             observer(event, path, sha256)
-            loadedResources.add(path)
-            handler.post { flushReady() }
+            if (resources === observingResources) {
+                loadedResources.add(path)
+                handler.post { flushReady() }
+            }
         }
     }
     internal fun reloadAction():
@@ -194,7 +200,7 @@ class LynxLaunchSession internal constructor(
         check(context == null && live)
         val epoch = ++bindingEpoch
         context = view.lynxContext
-        resources.bindImageContext(view.lynxContext)
+        resources.bindContext(view.lynxContext)
         HotUpdaterLynxModule.bind(
             view.lynxContext,
             this,
@@ -234,25 +240,23 @@ class LynxLaunchSession internal constructor(
         val previous = context
         previous?.let(HotUpdaterLynxModule::unbind)
         context = null
+        val previousResources = resources
+        previousResources.prepareForRebind()
+        retiredResources.add(previousResources)
+        resources = newResources()
         ready.clear()
         firstScreen = false
         loadedResources.clear()
         bridgeReplies.close()
         bridgeReplies = LynxBridgeReplies()
-        resources.prepareForRebind()
         reloadHandler = null
         firstContentHandler = null
         confirmedHandler = null
         engineDiagnosticHandler = null
-        resources.onFailure = { message -> notifyFailure(message) }
         return previous
     }
     internal fun notifyReady(callback: (Result<JSONObject>) -> Unit) {
         if (!live || failed || controller.generationFailed) { callback(Result.failure(CatalogPolicy.Rejected("STALE_CONTEXT", "Context cannot confirm startup"))); return }
-        secondaryAdmission?.let {
-            callback(Result.success(JSONObject(it.toString())))
-            return
-        }
         ready.add(callback); flushReady()
     }
     internal fun scheduleReadinessFlush() {
@@ -267,7 +271,9 @@ class LynxLaunchSession internal constructor(
                     readinessGate?.invoke() == false
             )
         ) return
+        val existingAdmission = if (authorized && !isPrimary) secondaryAdmission else null
         val confirmation = runCatching {
+            existingAdmission?.let { return@runCatching JSONObject(it.toString()) }
             if (isPrimary && authorized && !controller.primaryAdmissionReady(this)) {
                 return
             }
@@ -281,10 +287,12 @@ class LynxLaunchSession internal constructor(
         }
         val callbacks = ready.toList().also { ready.clear() }
         try {
-            confirmation.getOrNull()?.let { confirmedHandler?.invoke(it) }
+            if (existingAdmission == null) {
+                confirmation.getOrNull()?.let { confirmedHandler?.invoke(it) }
+            }
             callbacks.forEach { callback -> callback(confirmation) }
         } finally {
-            if (!isPrimary && confirmation.isSuccess) {
+            if (!isPrimary && existingAdmission == null && confirmation.isSuccess) {
                 controller.flushPrimaryReadinessAfterHostEvent()
             }
         }
@@ -295,6 +303,8 @@ class LynxLaunchSession internal constructor(
         ready.clear()
         bridgeReplies.close()
         resources.close()
+        retiredResources.forEach { it.close() }
+        retiredResources.clear()
         installationLease.close()
         controller.destroy(this)
         context?.let(HotUpdaterLynxModule::unbind)
@@ -323,6 +333,15 @@ internal fun managedEngineDiagnostic(
     val type = payload.opt("type") as? String ?: return null
     if (type.isEmpty()) return null
     val source = payload.opt("src") as? String ?: return null
+    if (ManagedFontUrl.owns(source)) {
+        if (type != "font") return null
+        val path = runCatching { ManagedFontUrl.path(source) }.getOrNull() ?: return null
+        if (path !in managedPaths) return null
+        return linkedMapOf(
+            "fatal" to fatal, "code" to code, "subcode" to subcode,
+            "type" to type, "path" to path,
+        )
+    }
     if (!source.startsWith("hot-updater:///")) return null
     val uri = runCatching { URI(source) }.getOrNull() ?: return null
     if (

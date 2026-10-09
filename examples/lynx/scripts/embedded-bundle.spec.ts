@@ -236,6 +236,7 @@ describe("Lynx E2E embedded bundle packaging", () => {
       expect(manifest.assets["hot-updater-lynx.json"]).toBeDefined();
       expect(manifest.assets["manifest.json"]).toBeUndefined();
       expect(metadata).toMatchObject({
+        schemaVersion: 2,
         bundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
         entry: "main.lynx.bundle",
         pageEntries: LYNX_E2E_PAGE_ENTRIES,
@@ -560,6 +561,42 @@ describe("Lynx E2E embedded bundle packaging", () => {
       await fs.rm(publicBuildRoot, { recursive: true, force: true });
     }
   }, 300_000);
+
+  it("rejects unsupported embedded sidecars even with matching hashes and runtime identity", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "lynx-embedded-schema-"),
+    );
+    try {
+      await writeSdk3Fixture(root, "original");
+      await packageLynxEmbeddedDirectory({
+        root,
+        platform: "ios",
+        bundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
+        runtimeId: lynxE2eRuntimeId("ios"),
+      });
+      const metadataPath = path.join(root, "hot-updater-lynx.json");
+      const metadata = JSON.parse(await fs.readFile(metadataPath, "utf8"));
+      const manifestPath = path.join(root, "manifest.json");
+      const manifest = JSON.parse(await fs.readFile(manifestPath, "utf8"));
+      for (const version of [1, 3, "2", true]) {
+        const bytes = JSON.stringify({ ...metadata, schemaVersion: version });
+        await fs.writeFile(metadataPath, bytes);
+        manifest.assets["hot-updater-lynx.json"].fileHash = createHash("sha256")
+          .update(bytes)
+          .digest("hex");
+        await fs.writeFile(manifestPath, JSON.stringify(manifest));
+        await expect(
+          validateLynxEmbeddedDirectory({
+            root,
+            platform: "ios",
+            expectedRuntimeId: lynxE2eRuntimeId("ios"),
+          }),
+        ).rejects.toThrow("Generated Lynx embedded identity is invalid");
+      }
+    } finally {
+      await fs.rm(root, { recursive: true, force: true });
+    }
+  });
 
   it("rejects a stale generated tree whose payload no longer matches its manifest", async () => {
     const root = await fs.mkdtemp(path.join(os.tmpdir(), "lynx-e2e-stale-"));

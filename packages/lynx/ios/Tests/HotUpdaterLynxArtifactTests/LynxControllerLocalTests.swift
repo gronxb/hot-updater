@@ -541,6 +541,12 @@ final class LynxControllerLocalTests: XCTestCase {
         XCTAssertThrowsError(try controller.resource("file:///tmp/outside.png", context: context))
         let bytes = try controller.resource("hot-updater:///main.lynx.bundle", context: context)
         XCTAssertEqual(bytes, Data("entry-A".utf8))
+        XCTAssertEqual(try controller.resource(
+            "https://hot-updater-font.invalid/main.lynx.bundle?hot-updater-generation=2", context: context), bytes)
+        XCTAssertThrowsError(try controller.resource(
+            "https://hot-updater-font.invalid:443/main.lynx.bundle?hot-updater-generation=2", context: context))
+        XCTAssertThrowsError(try controller.resource(
+            "https://hot-updater-font.invalid/missing.ttf?hot-updater-generation=2", context: context))
         XCTAssertEqual(
             try controller.resource(
                 "hot-updater:///main.lynx.bundle?hot-updater-generation=2",

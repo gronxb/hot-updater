@@ -1,6 +1,6 @@
 import {
   HotUpdater,
-  managedResourceUrl,
+  managedFontUrl,
   type NotifyAppReadyResult,
 } from "@hot-updater/lynx";
 import { navigate } from "@hot-updater/lynx-sparkling";
@@ -559,7 +559,7 @@ function App() {
             await loadE2EStartupResources({
               ...(runtimeGenerationEpoch
                 ? {
-                    fontUrl: managedResourceUrl(
+                    fontUrl: managedFontUrl(
                       "assets/probe.ttf",
                       runtimeGenerationEpoch,
                     ),

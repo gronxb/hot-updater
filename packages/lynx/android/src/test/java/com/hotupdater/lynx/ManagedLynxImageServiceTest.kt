@@ -325,6 +325,44 @@ class ManagedLynxImageServiceTest {
     }
 
     @Test
+    fun retiredOwnerRejectsImageAdmissionWithoutPublishingFailure() {
+        withFixture { resources, context, snapshotRoot ->
+            var delegated = 0
+            var clientFailures = 0
+            var resourceFailures = 0
+            val service = managed(
+                imageService { method, _ ->
+                    if (method == "fetchImage") delegated += 1
+                    null
+                },
+                resources,
+                context,
+            )
+            resources.onFailure = { resourceFailures += 1 }
+
+            // Keep the captured service mapping across the retirement/unregister gap.
+            // The logical session is still live while its old binding is retired.
+            resources.prepareForRebind()
+            assertTrue(resources.isLive())
+            service.fetchImage(
+                request(),
+                imageListener(onFailure = { clientFailures += 1 }),
+                null,
+                context,
+            )
+
+            assertEquals(0, clientFailures)
+            assertEquals(0, resourceFailures)
+            assertEquals(0, delegated)
+            assertEquals(0, service.activeRequestCount())
+            assertFalse(snapshotRoot.exists())
+            service.unregister(context, resources)
+            service.releaseOwner(resources)
+            resources.close()
+        }
+    }
+
+    @Test
     fun retirementDiscardsLateSuccessWithoutThrowingAndDrainsLease() {
         withFixture { resources, context, snapshotRoot ->
             var translated: ImageRequestInfo? = null

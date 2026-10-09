@@ -54,3 +54,21 @@ export function managedResourceUrl(
     `?hot-updater-generation=${runtimeGenerationEpoch}`
   );
 }
+
+/** A locally verified font URL accepted by Lynx's native font dispatcher. */
+export function managedFontUrl(
+  relativePath: string,
+  runtimeGenerationEpoch: string,
+): string {
+  managedResourceUrl(relativePath, runtimeGenerationEpoch);
+  const encodedPath = relativePath
+    .split("/")
+    .map((part) =>
+      encodeURIComponent(part).replace(
+        /[!'()*]/g,
+        (character) => `%${character.charCodeAt(0).toString(16).toUpperCase()}`,
+      ),
+    )
+    .join("/");
+  return `https://hot-updater-font.invalid/${encodedPath}?hot-updater-generation=${runtimeGenerationEpoch}`;
+}

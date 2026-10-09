@@ -353,7 +353,7 @@ export const lynx =
         }
         const sidecar = `${JSON.stringify(
           {
-            schemaVersion: 1,
+            schemaVersion: 2,
             bundleId,
             platform,
             entry,

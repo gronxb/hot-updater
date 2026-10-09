@@ -104,7 +104,7 @@ export async function packageLynxEmbeddedDirectory(options: {
     path.join(options.root, "hot-updater-lynx.json"),
     `${JSON.stringify(
       {
-        schemaVersion: 1,
+        schemaVersion: 2,
         bundleId: options.bundleId,
         platform: options.platform,
         entry,
@@ -166,6 +166,7 @@ export async function validateLynxEmbeddedDirectory(options: {
     fs.readFile(manifestPath),
   ]);
   const metadata = JSON.parse(metadataBytes.toString("utf8")) as {
+    schemaVersion?: number;
     bundleId?: string;
     entry?: string;
     pageEntries?: string[];
@@ -178,6 +179,7 @@ export async function validateLynxEmbeddedDirectory(options: {
     assets?: Record<string, { fileHash?: string }>;
   };
   if (
+    metadata.schemaVersion !== 2 ||
     !metadata.bundleId ||
     manifest.bundleId !== metadata.bundleId ||
     metadata.platform !== options.platform ||

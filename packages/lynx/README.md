@@ -161,16 +161,28 @@ All replacement contexts receive fresh identities and use one selected release.
 An ordinary next launch applies a staged selection independently of reload.
 
 Register managed fonts with the exported
-`managedResourceUrl("assets/font.ttf", runtimeGenerationEpoch)` helper. Read
+`managedFontUrl("assets/font.ttf", runtimeGenerationEpoch)` helper. Read
 the epoch from `HotUpdater.getLaunchConfiguration()` for the current runtime;
 it must be a canonical positive decimal string. Lynx can cache font sources
 for the process lifetime. Each new runtime binding in that process receives a
 distinct epoch, including Activity rebinds within the same managed release
 generation. Page parameters cannot override this native value; do not persist
 or synthesize it.
-The helper adds the generation query while native code resolves and verifies
-the same manifest path. A missing or invalid epoch must fail startup rather
+Android context recreation also replaces its resource providers. Retired providers
+cannot publish resource success or failure into the replacement context. Already
+handed-out snapshots remain available until the managed session closes; the new
+context must observe its own first content and required resources before readiness.
+The helper uses `https://hot-updater-font.invalid` with the generation query.
+This reserved origin is resolved locally from the verified release; it never
+uses a network or host fallback. Ordinary resources continue to use
+`managedResourceUrl()`. A missing or invalid epoch must fail startup rather
 than reuse an unqualified font URL.
+
+Use matching versions of the SDK, Lynx build adapter, and native integration.
+Current builds emit Lynx sidecar schema version 2; older native readers reject
+it during compatibility checking even when the application runtime ID matches.
+Current native readers also accept supported version 1 artifacts. Mixing a new
+SDK with an old build adapter is unsupported.
 
 Startup confirmation requires all of the following from the live primary
 context:

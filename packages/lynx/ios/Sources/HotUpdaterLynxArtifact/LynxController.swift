@@ -1782,10 +1782,15 @@ public final class LynxController {
     /// All contexts retain the same generation-pinned immutable tree; no resource uses next selection.
     public func resource(_ rawURL: String, context: LynxLaunchContext) throws -> Data {
         lock.lock(); defer { lock.unlock() }; try validate(context)
-        guard let url = URL(string: rawURL), url.scheme == "hot-updater", url.host == nil || url.host == "",
-              Self.isManagedGenerationQuery(url.query), url.fragment == nil,
-              let decoded = url.path.removingPercentEncoding else { throw LynxArtifactError.invalid("Unsupported managed resource URL") }
-        let name = String(decoded.drop(while: { $0 == "/" }))
+        let name: String
+        if LynxManagedFontURL.owns(rawURL) {
+            name = try LynxManagedFontURL.relativePath(rawURL)
+        } else {
+            guard let url = URL(string: rawURL), url.scheme == "hot-updater", url.host == nil || url.host == "",
+                  Self.isManagedGenerationQuery(url.query), url.fragment == nil,
+                  let decoded = url.path.removingPercentEncoding else { throw LynxArtifactError.invalid("Unsupported managed resource URL") }
+            name = String(decoded.drop(while: { $0 == "/" }))
+        }
         guard ArchiveExtractionUtilities.normalizedRelativePath(from: name) == name,
               let digest = runningArtifact.files[name] else { throw LynxArtifactError.invalid("Unlisted managed resource") }
         let file = runningArtifact.directory.appendingPathComponent(name)

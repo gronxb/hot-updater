@@ -1,6 +1,6 @@
 import {
   HotUpdater,
-  managedResourceUrl,
+  managedFontUrl,
   type HotUpdaterInstance,
   type CheckForUpdateResult,
 } from "@hot-updater/lynx";
@@ -58,7 +58,7 @@ export async function startProductionSdk(
 ): Promise<void> {
   try {
     const launchConfiguration = await HotUpdater.getLaunchConfiguration();
-    const fontUrl = managedResourceUrl(
+    const fontUrl = managedFontUrl(
       "assets/probe.ttf",
       launchConfiguration.runtimeGenerationEpoch ?? "",
     );

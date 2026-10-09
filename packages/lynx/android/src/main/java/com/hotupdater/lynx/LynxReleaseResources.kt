@@ -1,6 +1,7 @@
 package com.hotupdater.lynx
 
 import android.graphics.Typeface
+import android.os.Build
 import android.util.Log
 import com.hotupdater.lynx.internal.HashUtils
 import com.hotupdater.lynx.internal.ManagedPaths
@@ -74,6 +75,9 @@ class LynxReleaseResources(
     internal var unmanagedTemplate: LynxTemplateResourceFetcher? = null
     private var unmanagedMedia: LynxMediaResourceFetcher? = null
     private var unmanagedFontPath: LynxResourceProvider<Any, String>? = null
+    private val operationLock = Any()
+    @Volatile private var retired = false
+    private var fontBinding: BoundFontLoader? = null
     private var unmanagedExternalScript: LynxResourceProvider<Any, ByteArray>? = null
     var onFailure: ((String) -> Unit)? = null
     internal var onLoaded: ((String, String, String) -> Unit)? = null
@@ -86,7 +90,7 @@ class LynxReleaseResources(
     private var imageServiceRegistration: ManagedLynxImageServices.Registration? = null
 
     internal fun isManaged(url: String): Boolean =
-        url.startsWith("hot-updater:///")
+        url.startsWith("hot-updater:///") || ManagedFontUrl.owns(url)
 
     internal fun owns(url: String): Boolean {
         if (isManaged(url) || snapshotForUrl(url) != null) return true
@@ -101,19 +105,34 @@ class LynxReleaseResources(
         return file.relativeTo(root.canonicalFile).invariantSeparatorsPath in verifiedPaths
     }
 
-    private fun isRemote(url: String): Boolean =
-        runCatching { URI(url).scheme in setOf("http", "https") }
-            .getOrDefault(false)
+    private fun requireActive() {
+        if (retired || !isLive()) throw StaleResourceContext()
+    }
 
-    internal fun failed(error: Exception) {
-        onFailure?.invoke(error.message ?: "Managed resource failure")
+    internal fun failed(error: Exception) = synchronized(operationLock) {
+        if (!retired && isLive() && error !is StaleResourceContext) {
+            onFailure?.invoke(error.message ?: "Managed resource failure")
+        }
     }
 
     private fun <T> tracked(operation: () -> T): T {
+        val gate = synchronized(operationLock) {
+            requireActive()
+            resourceGate
+        }
         var result: Result<T>? = null
-        val run = { result = runCatching(operation) }
+        val run: () -> Unit = {
+            synchronized(operationLock) {
+                result = runCatching {
+                    requireActive()
+                    operation()
+                }
+            }
+        }
         try {
-            resourceGate?.invoke(run) ?: run()
+            // The generation gate must precede the resource lock. Retirement
+            // drains admitted operations without entering a queued gate.
+            gate?.invoke(run) ?: run()
         } catch (error: Exception) {
             if (result == null) throw StaleResourceContext()
             throw error
@@ -121,25 +140,40 @@ class LynxReleaseResources(
         return (result ?: throw StaleResourceContext()).getOrThrow()
     }
 
-    val font = object : LynxFontFaceLoader.Loader() {
+    private fun decodeFont(file: File): Typeface {
+        // API 26+ createFromFile silently returns DEFAULT for an undecodable
+        // existing file. Builder without a fallback returns null instead.
+        val decoded = if (Build.VERSION.SDK_INT >= 26) Typeface.Builder(file).build()
+            else Typeface.createFromFile(file)
+        return checkNotNull(decoded) { "Managed font could not be decoded" }.also {
+            check(it !== Typeface.DEFAULT) { "Managed font used a system fallback" }
+        }
+    }
+
+    val font: LynxFontFaceLoader.Loader
+        get() = synchronized(operationLock) { checkNotNull(fontBinding) }
+
+    private inner class BoundFontLoader(
+        val boundContext: LynxContext,
+        override val hostDelegate: LynxFontFaceLoader.Loader?,
+    ) : LynxFontFaceLoader.Loader(), ManagedWrapper {
         override fun onLoadFontFace(
             context: LynxContext,
             type: FontFace.TYPE,
             src: String,
-        ): Typeface? {
-            if (isRemote(src)) return null
-            return try {
-                tracked {
-                    val snapshot = snapshotForUrl(src) ?: snapshot(src, "font")
-                    Typeface.createFromFile(snapshot.file).also {
-                        loaded("fontLoaded", snapshot)
-                    }
-                }
-            } catch (error: Exception) {
-                failed(error)
-                Log.e("HotUpdaterLynx", "font-failed release=$releaseId src=$src", error)
-                null
+        ): Typeface? = try {
+            tracked {
+                if (fontBinding !== this || context !== boundContext) throw StaleResourceContext()
+                if (!owns(src)) return@tracked hostDelegate?.loadFontFace(context, type, src)
+                val snapshot = snapshotForUrl(src) ?: snapshot(src, "font")
+                decodeFont(snapshot.file).also { loaded("fontLoaded", snapshot) }
             }
+        } catch (error: Exception) {
+            failed(error)
+            if (error !is StaleResourceContext) {
+                Log.e("HotUpdaterLynx", "font-failed release=$releaseId src=$src", error)
+            }
+            null
         }
     }
 
@@ -151,49 +185,49 @@ class LynxReleaseResources(
             request: com.lynx.tasm.provider.LynxResourceRequest<Any>,
             callback: com.lynx.tasm.provider.LynxResourceCallback<String>,
         ) {
-            if (!owns(request.url)) {
-                unmanagedFontPath?.let {
-                    it.request(request, callback)
-                    return
-                }
-                val delegate = unmanagedGeneric
-                if (delegate == null) {
-                    callback.onResponse(
-                        com.lynx.tasm.provider.LynxResourceResponse.success<String>(
-                            request.url,
-                        ),
-                    )
-                    return
-                }
-                delegate.fetchResourcePath(
-                    LynxResourceRequest(
-                        request.url,
-                        LynxResourceRequest.LynxResourceType.LynxResourceTypeFont,
-                    ),
-                    object : LynxResourceCallback<String> {
-                        override fun onResponse(response: LynxResourceResponse<String>) {
-                            callback.onResponse(
-                                if (response.state == LynxResourceResponse.ResponseState.SUCCESS) {
-                                    com.lynx.tasm.provider.LynxResourceResponse.success<String>(
-                                        response.data,
-                                    )
-                                } else {
-                                    com.lynx.tasm.provider.LynxResourceResponse.failed(
-                                        -1,
-                                        response.error,
-                                    ) as com.lynx.tasm.provider.LynxResourceResponse<String>
-                                },
-                            )
-                        }
-                    },
-                )
-                return
-            }
             try {
                 tracked {
+                    if (!owns(request.url)) {
+                        unmanagedFontPath?.let {
+                            it.request(request, callback)
+                            return@tracked
+                        }
+                        val delegate = unmanagedGeneric
+                        if (delegate == null) {
+                            callback.onResponse(
+                                com.lynx.tasm.provider.LynxResourceResponse.success<String>(
+                                    request.url,
+                                ),
+                            )
+                            return@tracked
+                        }
+                        delegate.fetchResourcePath(
+                            LynxResourceRequest(
+                                request.url,
+                                LynxResourceRequest.LynxResourceType.LynxResourceTypeFont,
+                            ),
+                            object : LynxResourceCallback<String> {
+                                override fun onResponse(response: LynxResourceResponse<String>) {
+                                    callback.onResponse(
+                                        if (response.state == LynxResourceResponse.ResponseState.SUCCESS) {
+                                            com.lynx.tasm.provider.LynxResourceResponse.success<String>(
+                                                response.data,
+                                            )
+                                        } else {
+                                            com.lynx.tasm.provider.LynxResourceResponse.failed(
+                                                -1,
+                                                response.error,
+                                            ) as com.lynx.tasm.provider.LynxResourceResponse<String>
+                                        },
+                                    )
+                                }
+                            },
+                        )
+                        return@tracked
+                    }
                     val snapshot = snapshotForUrl(request.url)
                         ?: snapshot(request.url, "font")
-                    Typeface.createFromFile(snapshot.file)
+                    decodeFont(snapshot.file)
                     callback.onResponse(
                         com.lynx.tasm.provider.LynxResourceResponse.success<String>(
                             snapshot.file.toLynxFileUri(),
@@ -214,11 +248,13 @@ class LynxReleaseResources(
     }
 
     fun resolve(url: String, purpose: String = "resource"): File =
-        snapshot(url, purpose).file
+        tracked { snapshot(url, purpose).file }
 
     private fun resolveSource(url: String): File {
-        check(isLive()) { "Native resource context is no longer live" }
-        val relative = if (url.startsWith("hot-updater:///")) {
+        requireActive()
+        val relative = if (ManagedFontUrl.owns(url)) {
+            ManagedFontUrl.path(url)
+        } else if (url.startsWith("hot-updater:///")) {
             val uri = URI(url)
             require(
                 uri.authority.isNullOrEmpty() &&
@@ -280,9 +316,9 @@ class LynxReleaseResources(
         }
 
         fun accept(consume: () -> Unit): Boolean {
-            if (!isLive()) return false
+            if (retired || !isLive()) return false
             return try {
-                tracked(consume)
+                tracked(operation = consume)
                 true
             } catch (_: StaleResourceContext) {
                 false
@@ -299,8 +335,8 @@ class LynxReleaseResources(
         }
     }
 
-    internal fun beginImage(): ManagedImageLease =
-        ManagedImageLease(acquireAsynchronousLease())
+    internal fun beginImage(): ManagedImageLease? =
+        acquireAsynchronousLease()?.let { ManagedImageLease(it) }
 
     private fun snapshotForUrl(url: String): Snapshot? {
         val uri = runCatching { URI(url) }.getOrNull() ?: return null
@@ -319,11 +355,9 @@ class LynxReleaseResources(
         return Snapshot(file, relative, expected.lowercase())
     }
 
-    private fun acquireAsynchronousLease(): AutoCloseable {
+    private fun acquireAsynchronousLease(): AutoCloseable? {
         synchronized(leaseLock) {
-            check(!closeRequested && isLive()) {
-                "Native resource context is no longer live"
-            }
+            if (closeRequested || retired || !isLive()) return null
             asynchronousLeases += 1
         }
         val released = AtomicBoolean()
@@ -350,7 +384,7 @@ class LynxReleaseResources(
             .invariantSeparatorsPath
         val expected = checkNotNull(verifiedFileHashes[relative])
         val target = synchronized(snapshotLock) {
-            check(isLive()) { "Native resource context is no longer live" }
+            requireActive()
             if (!snapshotRoot.exists()) {
                 check(snapshotRoot.mkdirs()) {
                     "Cannot create managed resource snapshot directory"
@@ -459,18 +493,24 @@ class LynxReleaseResources(
     val media: LynxMediaResourceFetcher = object : LynxMediaResourceFetcher(), ManagedWrapper {
         override val hostDelegate: Any? get() = unmanagedMedia
 
-        override fun isLocalResource(url: String): OptionalBool =
-            when {
-                isManaged(url) -> OptionalBool.FALSE
-                snapshotForUrl(url) != null -> OptionalBool.TRUE
-                else -> unmanagedMedia?.isLocalResource(url) ?: OptionalBool.UNDEFINED
+        override fun isLocalResource(url: String): OptionalBool = try {
+            tracked {
+                when {
+                    isManaged(url) -> OptionalBool.FALSE
+                    snapshotForUrl(url) != null -> OptionalBool.TRUE
+                    else -> unmanagedMedia?.isLocalResource(url) ?: OptionalBool.UNDEFINED
+                }
             }
+        } catch (error: Exception) {
+            failed(error)
+            OptionalBool.FALSE
+        }
 
         override fun shouldRedirectUrl(request: LynxResourceRequest): String = try {
-            if (!owns(request.url)) {
-                unmanagedMedia?.shouldRedirectUrl(request) ?: request.url
-            } else {
-                tracked {
+            tracked {
+                if (!owns(request.url)) {
+                    unmanagedMedia?.shouldRedirectUrl(request) ?: request.url
+                } else {
                     val snapshot = snapshotForUrl(request.url)
                         ?: snapshot(request.url, "image")
                     snapshot.file.toLynxFileUri()
@@ -497,18 +537,18 @@ class LynxReleaseResources(
             request: LynxResourceRequest,
             callback: LynxResourceCallback<TemplateProviderResult>,
         ) {
-            if (!owns(request.url)) {
-                val delegate = unmanagedTemplate
-                if (delegate != null) delegate.fetchTemplate(request, callback)
-                else callback.onResponse(
-                    LynxResourceResponse.onFailed(
-                        IllegalArgumentException("Unmanaged template requires a host resource fetcher"),
-                    ) as LynxResourceResponse<TemplateProviderResult>,
-                )
-                return
-            }
             try {
                 tracked {
+                    if (!owns(request.url)) {
+                        val delegate = unmanagedTemplate
+                        if (delegate != null) delegate.fetchTemplate(request, callback)
+                        else callback.onResponse(
+                            LynxResourceResponse.onFailed(
+                                IllegalArgumentException("Unmanaged template requires a host resource fetcher"),
+                            ) as LynxResourceResponse<TemplateProviderResult>,
+                        )
+                        return@tracked
+                    }
                     val (file, bytes) = readBytes(request.url)
                     callback.onResponse(
                         LynxResourceResponse.onSuccess(
@@ -545,18 +585,29 @@ class LynxReleaseResources(
             request: LynxResourceRequest,
             callback: LynxResourceCallback<ByteArray>,
         ) {
-            if (!owns(request.url)) {
-                val delegate = unmanagedGeneric
-                if (delegate != null) delegate.fetchResource(request, callback)
-                else callback.onResponse(
-                    LynxResourceResponse.onFailed(
-                        IllegalArgumentException("Unmanaged resource requires a host resource fetcher"),
-                    ) as LynxResourceResponse<ByteArray>,
-                )
-                return
-            }
             try {
                 tracked {
+                    if (!owns(request.url)) {
+                        val delegate = unmanagedGeneric
+                        if (delegate != null) delegate.fetchResource(request, callback)
+                        else callback.onResponse(
+                            LynxResourceResponse.onFailed(
+                                IllegalArgumentException("Unmanaged resource requires a host resource fetcher"),
+                            ) as LynxResourceResponse<ByteArray>,
+                        )
+                        return@tracked
+                    }
+                    if (ManagedFontUrl.owns(request.url)) {
+                        val snapshot = snapshot(request.url, "font")
+                        decodeFont(snapshot.file)
+                        val bytes = snapshot.file.readBytes()
+                        require(HashUtils.calculateSHA256(bytes).equals(snapshot.hash, ignoreCase = true)) {
+                            "Managed font changed after verification"
+                        }
+                        callback.onResponse(LynxResourceResponse.onSuccess(bytes))
+                        loaded("fontLoaded", snapshot)
+                        return@tracked
+                    }
                     val (file, bytes) = readBytes(request.url)
                     callback.onResponse(
                         LynxResourceResponse.onSuccess(bytes),
@@ -575,19 +626,21 @@ class LynxReleaseResources(
             request: LynxResourceRequest,
             callback: LynxResourceCallback<String>,
         ) {
-            if (!owns(request.url)) {
-                val delegate = unmanagedGeneric
-                if (delegate != null) delegate.fetchResourcePath(request, callback)
-                else callback.onResponse(
-                    LynxResourceResponse.onFailed(
-                        IllegalArgumentException("Unmanaged resource requires a host resource fetcher"),
-                    ) as LynxResourceResponse<String>,
-                )
-                return
-            }
             try {
-                loadPath(request.url) { path ->
-                    callback.onResponse(LynxResourceResponse.onSuccess(path))
+                tracked {
+                    if (!owns(request.url)) {
+                        val delegate = unmanagedGeneric
+                        if (delegate != null) delegate.fetchResourcePath(request, callback)
+                        else callback.onResponse(
+                            LynxResourceResponse.onFailed(
+                                IllegalArgumentException("Unmanaged resource requires a host resource fetcher"),
+                            ) as LynxResourceResponse<String>,
+                        )
+                        return@tracked
+                    }
+                    val snapshot = snapshot(request.url, "resource")
+                    callback.onResponse(LynxResourceResponse.onSuccess(snapshot.file.path))
+                    loaded("resourceLoaded", snapshot)
                 }
             } catch (error: Exception) {
                 failed(error)
@@ -606,55 +659,53 @@ class LynxReleaseResources(
             request: com.lynx.tasm.provider.LynxResourceRequest<Any>,
             callback: com.lynx.tasm.provider.LynxResourceCallback<ByteArray>,
         ) {
-            if (!owns(request.url)) {
-                unmanagedExternalScript?.let {
-                    it.request(request, callback)
-                    return
-                }
-                val delegate = unmanagedGeneric
-                if (delegate == null) {
-                    callback.onResponse(
-                        com.lynx.tasm.provider.LynxResourceResponse.failed(
-                            -1,
-                            IllegalArgumentException(
-                                "Unmanaged external script requires a host resource fetcher",
-                            ),
-                        ) as com.lynx.tasm.provider.LynxResourceResponse<ByteArray>,
-                    )
-                    return
-                }
-                delegate.fetchResource(
-                    LynxResourceRequest(
-                        request.url,
-                        LynxResourceRequest.LynxResourceType
-                            .LynxResourceTypeExternalJSSource,
-                    ),
-                    object : LynxResourceCallback<ByteArray> {
-                        override fun onResponse(response: LynxResourceResponse<ByteArray>) {
-                            callback.onResponse(
-                                if (response.state == LynxResourceResponse.ResponseState.SUCCESS) {
-                                    com.lynx.tasm.provider.LynxResourceResponse.success<ByteArray>(
-                                        response.data,
-                                    )
-                                } else {
-                                    com.lynx.tasm.provider.LynxResourceResponse.failed(
-                                        -1,
-                                        response.error,
-                                    ) as com.lynx.tasm.provider.LynxResourceResponse<ByteArray>
-                                },
-                            )
-                        }
-                    },
-                )
-                return
-            }
             try {
-                loadBytes(request.url) { bytes ->
-                    callback.onResponse(
-                        com.lynx.tasm.provider.LynxResourceResponse.success<ByteArray>(
-                            bytes,
-                        ),
-                    )
+                tracked {
+                    if (!owns(request.url)) {
+                        unmanagedExternalScript?.let {
+                            it.request(request, callback)
+                            return@tracked
+                        }
+                        val delegate = unmanagedGeneric
+                        if (delegate == null) {
+                            callback.onResponse(
+                                com.lynx.tasm.provider.LynxResourceResponse.failed(
+                                    -1,
+                                    IllegalArgumentException(
+                                        "Unmanaged external script requires a host resource fetcher",
+                                    ),
+                                ) as com.lynx.tasm.provider.LynxResourceResponse<ByteArray>,
+                            )
+                            return@tracked
+                        }
+                        delegate.fetchResource(
+                            LynxResourceRequest(
+                                request.url,
+                                LynxResourceRequest.LynxResourceType
+                                    .LynxResourceTypeExternalJSSource,
+                            ),
+                            object : LynxResourceCallback<ByteArray> {
+                                override fun onResponse(response: LynxResourceResponse<ByteArray>) {
+                                    callback.onResponse(
+                                        if (response.state == LynxResourceResponse.ResponseState.SUCCESS) {
+                                            com.lynx.tasm.provider.LynxResourceResponse.success<ByteArray>(
+                                                response.data,
+                                            )
+                                        } else {
+                                            com.lynx.tasm.provider.LynxResourceResponse.failed(
+                                                -1,
+                                                response.error,
+                                            ) as com.lynx.tasm.provider.LynxResourceResponse<ByteArray>
+                                        },
+                                    )
+                                }
+                            },
+                        )
+                        return@tracked
+                    }
+                    val (file, bytes) = readBytes(request.url)
+                    callback.onResponse(com.lynx.tasm.provider.LynxResourceResponse.success<ByteArray>(bytes))
+                    loaded("resourceLoaded", file)
                 }
             } catch (error: Exception) {
                 failed(error)
@@ -669,6 +720,7 @@ class LynxReleaseResources(
     }
 
     internal fun configure(builder: LynxViewBuilder) {
+        requireActive()
         check(imageServiceRegistration == null) {
             "Native resource context is already configured"
         }
@@ -677,6 +729,7 @@ class LynxReleaseResources(
     }
 
     internal fun configureBuilder(builder: LynxViewBuilder) {
+        requireActive()
         val runtimeOptions = builder.lynxRuntimeOptions
         unmanagedGeneric = originalHostDelegate(
             unmanagedGeneric ?: builder.lynxGenericResourceFetcher,
@@ -722,20 +775,40 @@ class LynxReleaseResources(
         )
     }
 
-    internal fun bindImageContext(context: LynxContext) {
+    internal fun bindContext(context: LynxContext) {
+        requireActive()
         checkNotNull(imageServiceRegistration).bind(context)
+        bindFontContext(context)
     }
 
+    internal fun bindFontContext(context: LynxContext) {
+        synchronized(operationLock) {
+            requireActive()
+            fontBinding?.let {
+                check(it.boundContext === context) { "Native font context is already bound" }
+                return
+            }
+            val delegate = originalHostDelegate(LynxFontFaceLoader.getLoader(context))
+            fontBinding = BoundFontLoader(context, delegate).also(context::setFontLoader)
+        }
+    }
+
+    /** Retire callbacks now; path consumers retain snapshots until session close. */
     internal fun prepareForRebind() {
-        imageServiceRegistration?.close()
-        imageServiceRegistration = null
-        onLoaded = null
-        resourceGate = null
+        val registration = synchronized(operationLock) {
+            retired = true
+            fontBinding = null
+            onFailure = null
+            onLoaded = null
+            resourceGate = null
+            imageServiceRegistration.also { imageServiceRegistration = null }
+        }
+        // Image cancellation can synchronously call back into tracked().
+        registration?.close()
     }
 
     internal fun close() {
-        imageServiceRegistration?.close()
-        imageServiceRegistration = null
+        prepareForRebind()
         val delete = synchronized(leaseLock) {
             closeRequested = true
             asynchronousLeases == 0

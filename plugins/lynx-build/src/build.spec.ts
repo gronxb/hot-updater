@@ -77,7 +77,7 @@ describe("framework-independent Lynx artifacts", () => {
       ).toBe(
         `${JSON.stringify(
           {
-            schemaVersion: 1,
+            schemaVersion: 2,
             bundleId: result.bundleId,
             platform,
             entry: "main.lynx.bundle",

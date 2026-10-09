@@ -82,12 +82,13 @@ internal class LynxArtifactVerifier(private val config: LynxInstallConfiguration
             require(file.length() in 1..MAX_LYNX_METADATA_BYTES) { "Lynx metadata size exceeds limit" }
             val metadata = StrictJson.read(file)
             val version = metadata.opt("schemaVersion")
-            val schemaOne = when (version) {
-                is BigDecimal -> version.compareTo(BigDecimal.ONE) == 0
-                is Number -> version.toDouble() == 1.0
+            val supportedSchema = when (version) {
+                is BigDecimal -> version.compareTo(BigDecimal.ONE) == 0 ||
+                    version.compareTo(BigDecimal(2)) == 0
+                is Number -> version.toDouble() in setOf(1.0, 2.0)
                 else -> false
             }
-            if (!schemaOne) throw LynxIncompatibleArtifactException("Unsupported Lynx metadata schema")
+            if (!supportedSchema) throw LynxIncompatibleArtifactException("Unsupported Lynx metadata schema")
             val bundleId = StrictJson.string(metadata, "bundleId")
             val platform = StrictJson.string(metadata, "platform")
             val runtime = StrictJson.string(metadata, "runtimeId")

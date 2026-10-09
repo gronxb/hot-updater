@@ -7,7 +7,6 @@ import com.lynx.tasm.LynxBooleanOption
 import com.lynx.tasm.LynxViewBuilder
 import com.lynx.tasm.behavior.LynxContext
 import com.lynx.tasm.fontface.FontFace
-import com.lynx.tasm.fontface.FontFaceManager
 import com.lynx.tasm.group.ILynxViewGroup
 import com.lynx.tasm.loader.LynxFontFaceLoader
 import com.lynx.tasm.provider.LynxProviderRegistry
@@ -23,6 +22,9 @@ import com.lynx.tasm.resourceprovider.template.TemplateProviderResult
 import java.io.File
 import java.lang.reflect.Proxy
 import java.nio.file.Files
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -33,6 +35,224 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LynxReleaseResourcesTest {
+    @Test
+    fun retiredFontBindingCannotInvokeReplacementCallbacks() {
+        withResources(emptyMap()) { resources, _ ->
+            fun context() = object : LynxContext(android.app.Application(), android.util.DisplayMetrics()) {
+                override fun handleException(error: Exception) { throw error }
+            }
+            val first = context()
+            resources.bindFontContext(first)
+            val retained = LynxFontFaceLoader.getLoader(first)
+            resources.prepareForRebind()
+            var replacementGate = 0
+            var replacementFailure = 0
+            resources.resourceGate = { operation -> replacementGate++; operation() }
+            resources.onFailure = { replacementFailure++ }
+            val second = context()
+            assertThrows(IllegalStateException::class.java) { resources.bindFontContext(second) }
+            val missing = "https://hot-updater-font.invalid/assets/missing.ttf?hot-updater-generation=2"
+            assertNull(retained.loadFontFace(first, FontFace.TYPE.URL, missing))
+            assertEquals(0, replacementGate)
+            assertEquals(0, replacementFailure)
+            resources.close()
+            assertNull(retained.loadFontFace(first, FontFace.TYPE.URL, missing))
+            assertEquals(0, replacementGate)
+            assertEquals(0, replacementFailure)
+        }
+    }
+
+    @Test
+    fun queuedFontGateCannotPublishAfterAReplacementBinding() {
+        withResources(emptyMap()) { resources, _ ->
+            fun context() = object : LynxContext(android.app.Application(), android.util.DisplayMetrics()) {
+                override fun handleException(error: Exception) { throw error }
+            }
+            val entered = CountDownLatch(1)
+            val release = CountDownLatch(1)
+            resources.resourceGate = { operation ->
+                entered.countDown()
+                check(release.await(5, TimeUnit.SECONDS))
+                operation()
+            }
+            val first = context()
+            resources.bindFontContext(first)
+            val retained = LynxFontFaceLoader.getLoader(first)
+            val error = AtomicReference<Throwable?>()
+            val worker = Thread {
+                try {
+                    assertNull(retained.loadFontFace(first, FontFace.TYPE.URL,
+                        "https://hot-updater-font.invalid/assets/missing.ttf?hot-updater-generation=2"))
+                } catch (failure: Throwable) { error.set(failure) }
+            }
+            worker.start()
+            try {
+                assertTrue(entered.await(5, TimeUnit.SECONDS))
+                resources.prepareForRebind()
+                var replacementCallbacks = 0
+                resources.resourceGate = { operation -> replacementCallbacks++; operation() }
+                resources.onFailure = { replacementCallbacks++ }
+                resources.onLoaded = { _, _, _ -> replacementCallbacks++ }
+                assertThrows(IllegalStateException::class.java) { resources.bindFontContext(context()) }
+                release.countDown()
+                worker.join(5_000)
+                assertFalse(worker.isAlive)
+                assertNull(error.get())
+                assertEquals(0, replacementCallbacks)
+            } finally {
+                release.countDown()
+                worker.join(5_000)
+            }
+        }
+    }
+
+    @Test
+    fun retiredProvidersFailManagedSnapshotAndHostRequestsWithoutCallbacksOrDelegation() {
+        val bytes = "verified resource".toByteArray()
+        withResources(mapOf("assets/probe.txt" to HashUtils.calculateSHA256(bytes))) { resources, root ->
+            root.resolve("assets/probe.txt").apply { parentFile.mkdirs(); writeBytes(bytes) }
+            val snapshot = resources.resolve("hot-updater:///assets/probe.txt")
+            var delegated = 0
+            resources.unmanagedGeneric = object : LynxGenericResourceFetcher() {
+                override fun fetchResource(
+                    request: com.lynx.tasm.resourceprovider.LynxResourceRequest,
+                    callback: com.lynx.tasm.resourceprovider.LynxResourceCallback<ByteArray>,
+                ) { delegated++ }
+                override fun fetchResourcePath(
+                    request: com.lynx.tasm.resourceprovider.LynxResourceRequest,
+                    callback: com.lynx.tasm.resourceprovider.LynxResourceCallback<String>,
+                ) { delegated++ }
+            }
+            resources.prepareForRebind()
+            var authorityCalls = 0
+            // Even accidental reassignment cannot resurrect a retired owner.
+            resources.isLive = { true }
+            resources.resourceGate = { operation -> authorityCalls++; operation() }
+            resources.onFailure = { authorityCalls++ }
+            resources.onLoaded = { _, _, _ -> authorityCalls++ }
+            val urls = listOf(
+                "hot-updater:///assets/probe.txt",
+                "https://hot-updater-font.invalid/assets/probe.txt?hot-updater-generation=2",
+                snapshot.toLynxFileUri(),
+                "https://host.example/font.ttf",
+            )
+            var responses = 0
+            for (url in urls) {
+                val request = com.lynx.tasm.resourceprovider.LynxResourceRequest(url, LynxResourceType.LynxResourceTypeFont)
+                resources.generic.fetchResource(request, object : com.lynx.tasm.resourceprovider.LynxResourceCallback<ByteArray> {
+                    override fun onResponse(response: com.lynx.tasm.resourceprovider.LynxResourceResponse<ByteArray>) {
+                        responses++
+                        assertTrue(response.error is IllegalStateException)
+                        assertNull(response.data)
+                    }
+                })
+                resources.generic.fetchResourcePath(request, object : com.lynx.tasm.resourceprovider.LynxResourceCallback<String> {
+                    override fun onResponse(response: com.lynx.tasm.resourceprovider.LynxResourceResponse<String>) {
+                        responses++
+                        assertTrue(response.error is IllegalStateException)
+                        assertNull(response.data)
+                    }
+                })
+                resources.fontPath.request(LynxResourceRequest<Any>(url), object : LynxResourceCallback<String>() {
+                    override fun onResponse(response: LynxResourceResponse<String>) {
+                        responses++
+                        assertTrue(response.error is IllegalStateException)
+                        assertNull(response.data)
+                    }
+                })
+            }
+            assertEquals(12, responses)
+            assertEquals(0, authorityCalls)
+            assertEquals(0, delegated)
+            assertEquals("verified resource", snapshot.readText())
+            resources.close()
+            assertFalse(snapshot.exists())
+        }
+    }
+
+    @Test
+    fun reservedFontFailuresNeverDelegateAcrossNativeFallbackRoutes() {
+        withResources(mapOf("assets/probe.ttf" to HashUtils.calculateSHA256(byteArrayOf(1, 2, 3)))) { resources, root ->
+            root.resolve("assets/probe.ttf").apply { parentFile.mkdirs(); writeBytes(byteArrayOf(1, 2, 3)) }
+            val delegated = mutableListOf<String>()
+            resources.unmanagedGeneric = object : LynxGenericResourceFetcher() {
+                override fun fetchResource(
+                    request: com.lynx.tasm.resourceprovider.LynxResourceRequest,
+                    callback: com.lynx.tasm.resourceprovider.LynxResourceCallback<ByteArray>,
+                ) { delegated += request.url }
+                override fun fetchResourcePath(
+                    request: com.lynx.tasm.resourceprovider.LynxResourceRequest,
+                    callback: com.lynx.tasm.resourceprovider.LynxResourceCallback<String>,
+                ) { delegated += request.url }
+            }
+            val context = object : LynxContext(android.app.Application(), android.util.DisplayMetrics()) {
+                override fun handleException(error: Exception) { throw error }
+            }
+            context.setFontLoader(object : LynxFontFaceLoader.Loader() {
+                override fun onLoadFontFace(context: LynxContext, type: FontFace.TYPE, src: String): Typeface? {
+                    delegated += src
+                    return null
+                }
+            })
+            resources.bindFontContext(context)
+            resources.bindFontContext(context)
+            root.resolve("assets/probe.ttf").writeBytes(byteArrayOf(9))
+            val canonical = "https://hot-updater-font.invalid/assets/probe.ttf?hot-updater-generation=2"
+            val failures = listOf(
+                canonical,
+                canonical.replace("probe.ttf", "missing.ttf"),
+                canonical.replace(".invalid/", ".invalid:443/"),
+                canonical.replace(".invalid/", ".invalid:bad/"),
+                canonical.replace("https://", "https://user@"),
+                canonical.replace("https://", "https:/"),
+                canonical.replace("https://", "https:///"),
+                canonical.replace("https://", "https:\\\\"),
+                canonical.replace(".invalid", "。invalid"),
+                canonical.replace("hot-updater-font", "ｈot-updater-font"),
+                canonical.replace("/assets/", "/../assets/"),
+                canonical.replace("probe.ttf", "%70robe.ttf"),
+                canonical.replace("=2", "=0"),
+                canonical.substringBefore('?'),
+                "$canonical#fragment",
+            )
+            for (url in failures) {
+                assertTrue(url, resources.owns(url))
+                var genericFailure = false
+                resources.generic.fetchResource(
+                    com.lynx.tasm.resourceprovider.LynxResourceRequest(url, LynxResourceType.LynxResourceTypeFont),
+                    typedResponseCallback { genericFailure = it.state == com.lynx.tasm.resourceprovider.LynxResourceResponse.ResponseState.FAILED },
+                )
+                assertTrue(url, genericFailure)
+                var legacyFailed = false
+                resources.fontPath.request(LynxResourceRequest(url), responseCallback { legacyFailed = it.data == null })
+                assertTrue(url, legacyFailed)
+                assertNull(LynxFontFaceLoader.getLoader(context).loadFontFace(context, FontFace.TYPE.URL, url))
+            }
+            assertEquals(emptyList<String>(), delegated)
+            val external = "https://example.test/font.ttf"
+            assertFalse(resources.owns(external))
+            assertFalse(resources.owns("https://hot-updater-font.invalid.example/font.ttf"))
+            LynxFontFaceLoader.getLoader(context).loadFontFace(context, FontFace.TYPE.URL, external)
+            assertEquals(listOf(external), delegated)
+
+            resources.isLive = { false }
+            assertNull(resources.font.loadFontFace(context, FontFace.TYPE.URL, canonical))
+            assertNull(resources.font.loadFontFace(context, FontFace.TYPE.URL, external))
+            assertEquals(listOf(external), delegated)
+        }
+    }
+
+    @Test
+    fun fontAliasResolvesOnlyTheVerifiedContextTree() {
+        withResources(mapOf("assets/probe.ttf" to HashUtils.calculateSHA256(byteArrayOf(1, 2, 3)))) { resources, root ->
+            root.resolve("assets/probe.ttf").apply { parentFile.mkdirs(); writeBytes(byteArrayOf(1, 2, 3)) }
+            val url = "https://hot-updater-font.invalid/assets/probe.ttf?hot-updater-generation=2"
+            assertArrayEquals(byteArrayOf(1, 2, 3), resources.resolve(url).readBytes())
+            resources.isLive = { false }
+            assertThrows(IllegalStateException::class.java) { resources.resolve(url) }
+        }
+    }
+
     @Test
     fun coldProcessCleanupRemovesOrphansOnlyOnceForSnapshotParent() {
         val parent = Files.createTempDirectory("lynx-resource-orphans-").toFile()
@@ -210,7 +430,7 @@ class LynxReleaseResourcesTest {
     }
 
     @Test
-    fun pinnedFontManagerConsumesExactVerifiedFileUriFromProvider() {
+    fun undecodableManagedFontDoesNotReturnAPathOrEmitSuccess() {
         val root = Files.createTempDirectory("lynx-resource-font-").toFile()
         try {
             val file = root.resolve("assets/probe.ttf").apply {
@@ -224,29 +444,21 @@ class LynxReleaseResourcesTest {
             val events = mutableListOf<String>()
             resources.onLoaded = { event, path, _ -> events += "$event:$path" }
 
-            val getPath = FontFaceManager::class.java.getDeclaredMethod(
-                "getPathFromFontResourceProvider",
-                LynxResourceProvider::class.java,
-                LynxContext::class.java,
-                FontFace.TYPE::class.java,
-                String::class.java,
-            ).also { it.isAccessible = true }
-            val result = checkNotNull(
-                getPath.invoke(
-                    FontFaceManager.getInstance(),
-                    resources.fontPath,
-                    null,
-                    FontFace.TYPE.URL,
-                    "hot-updater:///assets/probe.ttf",
-                ) as String?,
-            )
-
-            assertTrue(result.startsWith("file:///"))
-            val snapshot = File(java.net.URI(result))
-            assertTrue(snapshot.isFile)
-            assertTrue(snapshot.canonicalFile != file.canonicalFile)
-            assertEquals(file.readBytes().toList(), snapshot.readBytes().toList())
-            assertEquals(listOf("fontLoaded:assets/probe.ttf"), events)
+            for (url in listOf("hot-updater:///assets/probe.ttf",
+                "https://hot-updater-font.invalid/assets/probe.ttf?hot-updater-generation=2")) {
+                var response: LynxResourceResponse<String>? = null
+                resources.fontPath.request(LynxResourceRequest(url), responseCallback { response = it })
+                assertNull(checkNotNull(response).data)
+                var genericFailed = false
+                if (ManagedFontUrl.owns(url)) {
+                    resources.generic.fetchResource(
+                        com.lynx.tasm.resourceprovider.LynxResourceRequest(url, LynxResourceType.LynxResourceTypeFont),
+                        typedResponseCallback { genericFailed = it.state == com.lynx.tasm.resourceprovider.LynxResourceResponse.ResponseState.FAILED },
+                    )
+                    assertTrue(genericFailed)
+                }
+            }
+            assertEquals(emptyList<String>(), events)
         } finally {
             root.deleteRecursively()
         }
@@ -679,7 +891,9 @@ class LynxReleaseResourcesTest {
             assertArrayEquals(releaseBytes, File(java.net.URI(redirected)).readBytes())
             assertArrayEquals(releaseBytes, checkNotNull(template).templateBinary)
             assertArrayEquals(releaseBytes, checkNotNull(script).data)
-            assertArrayEquals(releaseBytes, File(java.net.URI(checkNotNull(font).data)).readBytes())
+            // These bytes are not a font. Native font decoding must not count
+            // a system fallback as a verified font load.
+            assertNull(checkNotNull(font).data)
             assertEquals(emptyList<String>(), callerRequests)
             assertEquals(5, tracked)
             assertEquals(
@@ -687,7 +901,6 @@ class LynxReleaseResourcesTest {
                     "resourceLoaded:assets/member.bin",
                     "resourceLoaded:assets/member.bin",
                     "resourceLoaded:assets/member.bin",
-                    "fontLoaded:assets/member.bin",
                 ),
                 loaded,
             )
@@ -738,7 +951,9 @@ class LynxReleaseResourcesTest {
                 ),
                 callerRequests,
             )
-            assertEquals(5, tracked)
+            // Each of the five managed and five host loads enters the generation
+            // gate once; wrapped delegates must not re-enter an older owner.
+            assertEquals(10, tracked)
         } finally {
             root.deleteRecursively()
             oldRoot.deleteRecursively()

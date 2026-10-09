@@ -8,6 +8,26 @@ final class LynxPageMetadataTests: XCTestCase {
     private let runtimeId =
         "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1"
 
+    func testSchemaCompatibilityWithTheSameRuntimeIdBeforePagePayloads() throws {
+        for version: Any in [1, 2, 3, "2", true, 1.5] {
+            let root = try makeTree(metadataPages: ["schemaVersion": version])
+            defer { try? FileManager.default.removeItem(at: root) }
+            let metadataData = try Data(contentsOf: root.appendingPathComponent("hot-updater-lynx.json"))
+            try FileManager.default.removeItem(at: root.appendingPathComponent("main.lynx.bundle"))
+            let verifyMetadata = {
+                try VerifiedLynxTree.validateMetadata(at: root, bundleId: self.bundleId,
+                    files: ["main.lynx.bundle": String(repeating: "a", count: 64),
+                            "hot-updater-lynx.json": self.hash(metadataData)],
+                    configuration: .init(runtimeId: self.runtimeId), verifyPageFiles: false)
+            }
+            if let value = version as? Int, type(of: version) == Int.self, [1, 2].contains(value) {
+                XCTAssertNoThrow(try verifyMetadata())
+            } else {
+                XCTAssertThrowsError(try verifyMetadata())
+            }
+        }
+    }
+
     func testBackgroundScriptIsDeclaredAndCopiedWithoutDependingOnInstalledFiles() throws {
         let root = try makeTree(metadataPages: ["backgroundEntry": "assets/shared.js"])
         defer { try? FileManager.default.removeItem(at: root) }

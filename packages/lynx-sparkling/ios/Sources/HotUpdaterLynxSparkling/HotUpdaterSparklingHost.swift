@@ -1848,8 +1848,9 @@ private final class HotUpdaterSparklingResourceLoader: NSObject,
         do {
             let data = try resolve(
                 path: path,
-                kind: resourceKind(path),
-                image: false
+                kind: LynxManagedFontURL.owns(managed.absoluteString) ? "fontLoaded" : resourceKind(path),
+                image: false,
+                rawURL: managed.absoluteString
             )
             completion(HotUpdaterSparklingResource(data), nil)
         } catch {
@@ -1871,7 +1872,8 @@ private final class HotUpdaterSparklingResourceLoader: NSObject,
             let data = try resolve(
                 path: path,
                 kind: "imageLoaded",
-                image: true
+                image: true,
+                rawURL: managed.absoluteString
             )
             guard let image = UIImage(data: data) else {
                 throw HotUpdaterSparklingError.reconstructionFailed(
@@ -1889,11 +1891,12 @@ private final class HotUpdaterSparklingResourceLoader: NSObject,
     private func resolve(
         path: String,
         kind: String,
-        image: Bool
+        image: Bool,
+        rawURL: String? = nil
     ) throws -> Data {
         try generation.resourceOperation {
             let data = try controller.resource(
-                "hot-updater:///\(path)",
+                rawURL ?? "hot-updater:///\(path)",
                 context: context
             )
             if !image, kind == "fontLoaded" {
@@ -1933,6 +1936,7 @@ private final class HotUpdaterSparklingResourceLoader: NSObject,
     private func managedURL(_ url: URL?) -> URL? {
         guard let url else { return nil }
         if url.scheme == "hot-updater" { return url }
+        if LynxManagedFontURL.owns(url.absoluteString) { return url }
         let root = controller.runningArtifact.directory.path + "/"
         guard url.isFileURL, url.path.hasPrefix(root) else { return nil }
         return URL(

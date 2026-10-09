@@ -336,7 +336,7 @@ struct VerifiedLynxTree {
             LynxMetadata.self,
             from: metadataBytes
         )
-        guard metadata.schemaVersion == 1, metadata.bundleId == bundleId,
+        guard [1, 2].contains(metadata.schemaVersion), metadata.bundleId == bundleId,
               files[metadata.entry] != nil, ArchiveExtractionUtilities.normalizedRelativePath(from: metadata.entry) == metadata.entry else { throw LynxArtifactError.invalid("Lynx metadata/entry mismatch") }
         guard metadata.platform == configuration.platform, metadata.runtimeId == configuration.runtimeId else { throw LynxArtifactError.incompatible }
         let pages = try LynxPageMetadata.parse(

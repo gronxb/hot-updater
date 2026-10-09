@@ -89,15 +89,7 @@ internal class ManagedLynxImageService(
             return
         }
 
-        val lease = try {
-            resources.beginImage()
-        } catch (error: Exception) {
-            if (resources.isLive()) {
-                resources.failed(error)
-                listener.onFailure(LynxSubErrorCode.E_RESOURCE_IMAGE_EXCEPTION, error)
-            }
-            return
-        }
+        val lease = resources.beginImage() ?: return
         val managed = ManagedRequest(
             resources,
             request,
@@ -147,12 +139,7 @@ internal class ManagedLynxImageService(
         if (resources == null || !resources.owns(url)) {
             return extension.createBackgroundImageDrawable(context, url)
         }
-        val lease = try {
-            resources.beginImage()
-        } catch (error: Exception) {
-            if (resources.isLive()) resources.failed(error)
-            return null
-        }
+        val lease = resources.beginImage() ?: return null
         return try {
             val translated = lease.prepare(url)
             val drawable = extension.createBackgroundImageDrawable(context, translated)

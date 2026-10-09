@@ -99,7 +99,7 @@ describe.each(["matrix", "production"] as const)(
         expect(run.status).not.toHaveBeenCalled();
         confirm({ status: "CONFIRMED" });
         await run.started;
-        const url = `hot-updater:///assets/probe.ttf?hot-updater-generation=${runtimeGenerationEpoch}`;
+        const url = `https://hot-updater-font.invalid/assets/probe.ttf?hot-updater-generation=${runtimeGenerationEpoch}`;
         expect(run.loadFont).toHaveBeenCalledExactlyOnceWith(
           example === "production" ? `url("${url}")` : url,
         );

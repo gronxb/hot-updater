@@ -40,6 +40,28 @@ class LynxEngineDiagnosticTest {
     }
 
     @Test
+    fun attributesCanonicalFontAliasesToTheirVerifiedManifestPath() {
+        val path = "assets/한글 font.ttf"
+        val alias = message.replace(
+            "hot-updater:///assets/probe.ttf",
+            "https://hot-updater-font.invalid/assets/%ED%95%9C%EA%B8%80%20font.ttf?hot-updater-generation=2",
+        )
+        assertEquals(
+            path,
+            managedEngineDiagnostic(false, 302, alias, setOf(path))?.get("path"),
+        )
+        for (invalid in listOf(
+            alias.replace("\"font\"", "\"image\""),
+            alias.replace("https://", "https:/"),
+            alias.replace(".invalid/", ".invalid:443/"),
+            alias.replace("=2", "=0"),
+        )) {
+            assertNull(managedEngineDiagnostic(false, 302, invalid, setOf(path)))
+        }
+        assertNull(managedEngineDiagnostic(false, 302, alias, emptySet()))
+    }
+
+    @Test
     fun rejectsUnboundOrNoncanonicalDiagnosticPayloads() {
         listOf(
             message.replace("30201", "\"30201\""),

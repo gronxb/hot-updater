@@ -68,7 +68,7 @@ verified installation. A missing managed dependency fails that release instead
 of reading another installed or embedded release.
 
 Both the production example and matrix SDK qualify the font source with
-`managedResourceUrl()` and the native launch's `runtimeGenerationEpoch`.
+`managedFontUrl()` and the native launch's `runtimeGenerationEpoch`.
 This avoids reusing a previous generation's process-cached font after reload;
 native font verification and readiness are still required.
 
