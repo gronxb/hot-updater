@@ -264,9 +264,14 @@ describe("Supabase init", () => {
       "utf-8",
     );
     expect(config).toContain(
-      'import { plugins, supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";',
+      'import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";',
     );
-    expect(config).toContain("  plugins,\n");
+    expect(config).toContain(
+      'import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";',
+    );
+    expect(config).toContain(
+      "  plugins: [apiKeys(), insights(), remoteConfig()],\n",
+    );
     expect(config).not.toContain("createHotUpdater");
   });
 

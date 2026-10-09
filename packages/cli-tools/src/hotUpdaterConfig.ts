@@ -3,6 +3,8 @@ import path from "path";
 
 import {
   parseSync,
+  type BindingPattern,
+  type BindingRestElement,
   type CallExpression,
   type ExportDefaultDeclaration,
   type Expression,
@@ -13,6 +15,7 @@ import {
   type Span,
   type VariableDeclaration,
   type VariableDeclarator,
+  Visitor,
 } from "oxc-parser";
 
 import {
@@ -66,7 +69,7 @@ export type HotUpdaterConfigScaffold = {
     initializer: string;
     callee: string;
   };
-  /** The plugins the server runs, such as a provider package's `plugins`. */
+  /** The server's plugin factory array. */
   plugins: {
     initializer: string;
   };
@@ -86,6 +89,7 @@ const MANAGED_IMPORT_PACKAGES = new Set([
   "firebase-admin",
   "firebase-admin/app",
   "hot-updater",
+  "hot-updater/plugins",
   "@aws-sdk/credential-provider-sso",
   "@aws-sdk/credential-providers",
   "@hot-updater/aws",
@@ -773,9 +777,28 @@ const getManagedHelperName = (statement: TopLevelStatement) => {
   return declaration.id.name;
 };
 
-/** Whether `text` refers to `name` as an identifier. */
-const usesIdentifier = (text: string, name: string) =>
-  new RegExp(`(?<![\\w$])${name.replace(/\$/g, "\\$")}(?![\\w$])`).test(text);
+/** Identifier uses, excluding static property names, strings, and comments. */
+const usedIdentifiers = (text: string) => {
+  const source = parseConfigSource(text);
+  if (!source) return null;
+
+  const names = new Set<string>();
+  const propertyNames = new Set<number>();
+  new Visitor({
+    Property(property) {
+      if (!property.computed && !property.shorthand) {
+        propertyNames.add(property.key.start);
+      }
+    },
+    MemberExpression(member) {
+      if (!member.computed) propertyNames.add(member.property.start);
+    },
+    Identifier(identifier) {
+      if (!propertyNames.has(identifier.start)) names.add(identifier.name);
+    },
+  }).visit(source.program);
+  return names;
+};
 
 /**
  * What a managed package's existing imports bring that the rebuilt config
@@ -799,6 +822,7 @@ const keptManagedImports = (
   );
   const imports: ImportInfo[] = [];
   const texts: string[] = [];
+  const references = usedIdentifiers(usedText);
   for (const declaration of declarations) {
     const pkg = declaration.source.value;
     const named: string[] = [];
@@ -806,7 +830,7 @@ const keptManagedImports = (
     let namespaceName: string | undefined;
     for (const specifier of declaration.specifiers) {
       const local = specifier.local.name;
-      if (bound.has(local) || !usesIdentifier(usedText, local)) continue;
+      if (bound.has(local) || (references && !references.has(local))) continue;
       if (specifier.type === "ImportDefaultSpecifier") {
         defaultName = local;
       } else if (specifier.type === "ImportNamespaceSpecifier") {
@@ -1031,33 +1055,6 @@ const mergeHotUpdaterConfigText = (
     };
   }
 
-  // A name the project imports from elsewhere, such as its own `plugins`
-  // list, can't also take the scaffold's import of that name.
-  const scaffoldNames = new Map(
-    scaffold.imports.flatMap((info) =>
-      (info.named ?? []).map(
-        (name) => [name.split(/\s+as\s+/).at(-1)!, info.pkg] as const,
-      ),
-    ),
-  );
-  for (const declaration of importDeclarationsOf(existingSource)) {
-    const pkg = declaration.source.value;
-    if (
-      MANAGED_IMPORT_PACKAGES.has(pkg) &&
-      !(nextObject.keptBuild && BUILD_IMPORT_PACKAGES.has(pkg))
-    ) {
-      continue;
-    }
-    for (const specifier of declaration.specifiers) {
-      const scaffoldPackage = scaffoldNames.get(specifier.local.name);
-      if (scaffoldPackage !== undefined && scaffoldPackage !== pkg) {
-        return {
-          reason: `The import of ${specifier.local.name} from "${pkg}" takes the name init imports from "${scaffoldPackage}".`,
-        };
-      }
-    }
-  }
-
   const objectEdit: TextEdit = {
     start: existingConfig.objectExpression.start,
     end: existingConfig.objectExpression.end,
@@ -1074,17 +1071,102 @@ const mergeHotUpdaterConfigText = (
       text: "",
     })),
   ]);
+  const usedSource = parseConfigSource(usedText);
+  const usedConfig = usedSource && findDefineConfigObject(usedSource);
+  const plugins =
+    usedConfig && findPluginsProperty(usedConfig.objectExpression);
+  // New factory calls do not count as uses of the project's old imports.
+  const keptReferences = usedIdentifiers(
+    plugins
+      ? applyTextEdits(usedText, [
+          { start: plugins.start, end: plugins.end, text: "plugins: []" },
+        ])
+      : usedText,
+  );
 
-  return {
-    text: applyTextEdits(existingText, [
-      objectEdit,
-      bodyEdit,
-      rebuildImportBlock(existingSource, scaffold, {
-        keptBuild: nextObject.keptBuild,
-        usedText,
+  // A name the project imports from elsewhere, such as its own `insights`
+  // factory, can't also take the scaffold's import of that name.
+  const scaffoldNames = new Map(
+    scaffold.imports.flatMap((info) =>
+      (info.named ?? []).map((name) => {
+        const parts = name.split(/\s+as\s+/);
+        return [parts.at(-1)!, { pkg: info.pkg, imported: parts[0] }] as const;
       }),
-    ]),
-  };
+    ),
+  );
+  const bindings: (BindingPattern | BindingRestElement)[] = [];
+  for (const statement of usedSource?.program.body ?? []) {
+    const declaration =
+      statement.type === "ExportNamedDeclaration"
+        ? statement.declaration
+        : statement;
+    if (declaration?.type === "VariableDeclaration") {
+      bindings.push(...declaration.declarations.map(({ id }) => id));
+    } else if (
+      (declaration?.type === "FunctionDeclaration" ||
+        declaration?.type === "ClassDeclaration") &&
+      declaration.id
+    ) {
+      bindings.push(declaration.id);
+    }
+  }
+  for (const binding of bindings) {
+    if (binding.type === "Identifier" && scaffoldNames.has(binding.name)) {
+      return {
+        reason: `The declaration of ${binding.name} conflicts with an import init needs.`,
+      };
+    }
+    if (binding.type === "ObjectPattern") {
+      bindings.push(
+        ...binding.properties.map((property) =>
+          property.type === "RestElement" ? property.argument : property.value,
+        ),
+      );
+    } else if (binding.type === "ArrayPattern") {
+      bindings.push(...binding.elements.filter((element) => element !== null));
+    } else if (binding.type === "AssignmentPattern") {
+      bindings.push(binding.left);
+    } else if (binding.type === "RestElement") {
+      bindings.push(binding.argument);
+    }
+  }
+  for (const declaration of importDeclarationsOf(existingSource)) {
+    const pkg = declaration.source.value;
+    for (const specifier of declaration.specifiers) {
+      if (
+        MANAGED_IMPORT_PACKAGES.has(pkg) &&
+        !(nextObject.keptBuild && BUILD_IMPORT_PACKAGES.has(pkg)) &&
+        keptReferences &&
+        !keptReferences.has(specifier.local.name)
+      ) {
+        continue;
+      }
+      const scaffoldImport = scaffoldNames.get(specifier.local.name);
+      const imported =
+        specifier.type === "ImportSpecifier" &&
+        specifier.imported.type === "Identifier"
+          ? specifier.imported.name
+          : null;
+      if (
+        scaffoldImport !== undefined &&
+        (scaffoldImport.pkg !== pkg || scaffoldImport.imported !== imported)
+      ) {
+        return {
+          reason: `The import of ${specifier.local.name} from "${pkg}" takes the name init imports from "${scaffoldImport.pkg}".`,
+        };
+      }
+    }
+  }
+
+  const mergedText = applyTextEdits(existingText, [
+    objectEdit,
+    bodyEdit,
+    rebuildImportBlock(existingSource, scaffold, {
+      keptBuild: nextObject.keptBuild,
+      usedText,
+    }),
+  ]);
+  return { text: mergedText };
 };
 
 const extractCallIdentifier = (initializer: string) => {

@@ -69,7 +69,8 @@ export interface RemoteConfigPreviewOptions extends RemoteConfigCommandOptions {
 const REMOTE_CONFIG = {
   id: "remoteConfig",
   call: "remoteConfig()",
-  importLine:
+  importLine: 'import { remoteConfig } from "hot-updater/plugins"',
+  serverImportLine:
     'import { remoteConfig } from "@hot-updater/server/plugins/remote-config"',
 } as const;
 

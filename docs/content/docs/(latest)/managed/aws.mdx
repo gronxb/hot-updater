@@ -216,7 +216,7 @@ credentials stay in the deploy environment.
   Insights ingestion, and Remote Config fetches require `x-api-key:
   $HOT_UPDATER_API_KEY`, using a key registered or created during init.
   Internally, the server runs the `insights()`, `apiKeys()`, and
-  `remoteConfig()` plugins that `@hot-updater/aws` exports as `plugins`; only
+  `remoteConfig()` plugins; only
   `handlers.client` is mounted. API keys do not authorize Insights query
   routes, and bundle management endpoints are not mounted on the public
   function URL.
@@ -317,8 +317,8 @@ database a distinct `basePath` before using prune.
 
 Init generates `hot-updater.config.ts` with your AWS storage and database, and
 `plugins`: the server plugins the managed Lambda@Edge function runs,
-`insights()`, `apiKeys()`, and `remoteConfig()`, which `@hot-updater/aws` exports. The CLI and the
-Console reach S3 and DynamoDB through these settings and run the same plugins
+`apiKeys()`, `insights()`, and `remoteConfig()`, imported from `hot-updater/plugins`.
+The CLI and the Console reach S3 and DynamoDB through these settings and run the same plugins
 as the function. The managed function runs these official plugins only; to run
 other server plugins, use a [custom server](/docs/custom/overview).
 
@@ -332,7 +332,8 @@ If you choose **current AWS CLI/default session**, the generated config uses the
 AWS SDK default provider chain instead of embedding access keys:
 
 ```ts title="hot-updater.config.ts"
-import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
+import { dynamoDB, s3Storage } from "@hot-updater/aws";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { bare } from "@hot-updater/bare";
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 import { defineConfig } from "hot-updater";
@@ -358,7 +359,7 @@ export default defineConfig({
     tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
-  plugins,
+  plugins: [apiKeys(), insights(), remoteConfig()],
   updateStrategy: "appVersion", // or "fingerprint"
 });
 ```

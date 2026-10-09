@@ -13,9 +13,11 @@ import {
   toolingTargetOf,
 } from "@hot-updater/plugin-core";
 import { plugins as supabase } from "@hot-updater/supabase";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { describe, expect, it } from "vitest";
 
 describe.each([
+  ["hot-updater/plugins", [apiKeys(), insights(), remoteConfig()]],
   ["@hot-updater/aws", aws],
   ["@hot-updater/cloudflare", cloudflare],
   ["@hot-updater/firebase", firebase],
@@ -31,9 +33,9 @@ describe.each([
       plugins,
     });
 
-    expect(Object.keys(server.api)).toEqual([
-      "insights",
+    expect(Object.keys(server.api).sort()).toEqual([
       "apiKeys",
+      "insights",
       "remoteConfig",
     ]);
     expect(clientAuthOf(server)?.plugin).toBe("apiKeys");

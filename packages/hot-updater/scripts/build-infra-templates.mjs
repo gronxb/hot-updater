@@ -10,8 +10,8 @@ import {
   resolvePackageVersion,
   transformEnv,
 } from "@hot-updater/cli-tools";
-import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "@hot-updater/server";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
+import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "@hot-updater/server";
 import { build as buildHelper } from "tsdown";
 
 import {
@@ -55,12 +55,31 @@ const indentFollowingLines = (text, spaces) =>
  */
 const renderCredentialDefinition = (scaffold, build) => {
   const imports = [
-    ...scaffold.imports.filter(
-      ({ pkg }) =>
-        pkg !== "hot-updater" &&
-        pkg !== "node:fs" &&
-        pkg !== `@hot-updater/${build}`,
-    ),
+    ...scaffold.imports
+      .filter(
+        ({ pkg }) =>
+          pkg !== "hot-updater" &&
+          pkg !== "node:fs" &&
+          pkg !== `@hot-updater/${build}`,
+      )
+      .flatMap((entry) =>
+        entry.pkg === "hot-updater/plugins"
+          ? [
+              {
+                pkg: "@hot-updater/server/plugins/api-keys",
+                named: ["apiKeys"],
+              },
+              {
+                pkg: "@hot-updater/server/plugins/insights",
+                named: ["insights"],
+              },
+              {
+                pkg: "@hot-updater/server/plugins/remote-config",
+                named: ["remoteConfig"],
+              },
+            ]
+          : [entry],
+      ),
     { pkg: "@hot-updater/server", named: ["createHotUpdater"] },
   ];
   const helpers = scaffold.helperStatements.map(({ code }) => code.trim());

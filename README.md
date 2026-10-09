@@ -106,7 +106,8 @@
   ```tsx
   import { existsSync } from "node:fs";
   import { bare } from "@hot-updater/bare";
-  import { plugins, supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+  import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+  import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
   import { defineConfig } from "hot-updater";
 
   if (existsSync(".env.hotupdater")) {
@@ -125,7 +126,7 @@
       supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
       supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
     }),
-    plugins,
+    plugins: [apiKeys(), insights(), remoteConfig()],
   });
   ```
 
@@ -133,7 +134,8 @@
 ```tsx
 import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
-import { d1Database, plugins, r2Storage } from "@hot-updater/cloudflare";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { defineConfig } from "hot-updater";
 
 if (existsSync(".env.hotupdater")) {
@@ -156,7 +158,7 @@ export default defineConfig({
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
-  plugins,
+  plugins: [apiKeys(), insights(), remoteConfig()],
 });
 ```
 
@@ -164,7 +166,8 @@ export default defineConfig({
 ```tsx
 import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
-import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
+import { dynamoDB, s3Storage } from "@hot-updater/aws";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { defineConfig } from "hot-updater";
 
 if (existsSync(".env.hotupdater")) {
@@ -190,7 +193,7 @@ export default defineConfig({
     ...awsOptions,
     tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
   }),
-  plugins,
+  plugins: [apiKeys(), insights(), remoteConfig()],
 });
 ```
 
@@ -198,7 +201,8 @@ export default defineConfig({
 ```tsx
 import { existsSync } from "node:fs";
 import { bare } from '@hot-updater/bare';
-import {firebaseStorage, firebaseDatabase, plugins} from '@hot-updater/firebase';
+import { firebaseStorage, firebaseDatabase } from '@hot-updater/firebase';
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { applicationDefault } from 'firebase-admin/app';
 import { defineConfig } from "hot-updater";
 
@@ -226,7 +230,7 @@ export default defineConfig({
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
     credential,
   }),
-  plugins,
+  plugins: [apiKeys(), insights(), remoteConfig()],
 });
 ```
 

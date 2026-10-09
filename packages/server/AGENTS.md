@@ -48,6 +48,8 @@ tooling entry when tooling needs more.
 - Server definition examples, such as `src/hotUpdater.ts`, import
   `createHotUpdater` from `@hot-updater/server`. `hot-updater.config.ts`
   never does: it lists the server's `database`, `storage`, and `plugins`.
+  Its built-in plugin factories come from `hot-updater/plugins`; server
+  definitions use the `@hot-updater/server/plugins/*` runtime entries.
 - CLI database commands derive migration and schema capability from the
   definition's `database` through `@hot-updater/cli-tools`, not through
   methods on the root instance.

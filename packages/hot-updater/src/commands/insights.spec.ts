@@ -298,7 +298,7 @@ describe("hot-updater insights over hot-updater.config.ts", () => {
     await handleInsightsEvents();
 
     expect(log.error).toHaveBeenCalledWith(
-      'hot-updater.config.ts lists no insights() in plugins. Add insights() to plugins, the same plugin your server runs (import { insights } from "@hot-updater/server/plugins/insights"). A managed config gets it from the provider\'s plugins.',
+      'hot-updater.config.ts lists no insights() in plugins. Add insights() to plugins, the same plugin your server runs (import { insights } from "hot-updater/plugins").',
     );
     expect(process.exitCode).toBe(1);
   });

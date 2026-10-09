@@ -36,8 +36,10 @@ export interface PluginRequirement {
   readonly id: string;
   /** How a config adds it, such as `apiKeys()`. */
   readonly call: string;
-  /** Where it is imported from, such as `import { apiKeys } from "…"`. */
+  /** How hot-updater.config.ts imports it. */
   readonly importLine: string;
+  /** How a createHotUpdater server definition imports it. */
+  readonly serverImportLine: string;
 }
 
 const fromDefinition = (loaded: LoadHotUpdaterResult): PluginServer => ({
@@ -86,13 +88,13 @@ export const openPluginServer = async (
 /** Throws, naming where to add it, when the server's plugins list no `plugin`. */
 export const requirePlugin = (
   server: PluginServer,
-  { id, call, importLine }: PluginRequirement,
+  { id, call, importLine, serverImportLine }: PluginRequirement,
 ): void => {
   if (server.plugins.some((plugin) => plugin.id === id)) return;
   throw new Error(
     server.definitionPath === undefined
-      ? `hot-updater.config.ts lists no ${call} in plugins. Add ${call} to plugins, the same plugin your server runs (${importLine}). A managed config gets it from the provider's plugins.`
-      : `${server.definitionPath} lists no ${call} in plugins. Add ${call} to its plugins (${importLine}).`,
+      ? `hot-updater.config.ts lists no ${call} in plugins. Add ${call} to plugins, the same plugin your server runs (${importLine}).`
+      : `${server.definitionPath} lists no ${call} in plugins. Add ${call} to its plugins (${serverImportLine}).`,
   );
 };
 

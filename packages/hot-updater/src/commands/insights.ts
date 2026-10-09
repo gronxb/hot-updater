@@ -59,7 +59,9 @@ export interface InsightsInstallationsOptions extends InsightsCommandOptions {
 const INSIGHTS = {
   id: "insights",
   call: "insights()",
-  importLine: 'import { insights } from "@hot-updater/server/plugins/insights"',
+  importLine: 'import { insights } from "hot-updater/plugins"',
+  serverImportLine:
+    'import { insights } from "@hot-updater/server/plugins/insights"',
 } as const;
 
 /**

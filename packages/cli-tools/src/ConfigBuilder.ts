@@ -167,7 +167,7 @@ export class ConfigBuilder {
     return this;
   }
 
-  /** Sets the plugins the server runs, such as a provider package's `plugins`. */
+  /** Sets the server's plugin factory array and its imports. */
   setPlugins(pluginsConfig: ProviderConfig): this {
     this.pluginsInfo = pluginsConfig;
     this.imports.push(...pluginsConfig.imports);

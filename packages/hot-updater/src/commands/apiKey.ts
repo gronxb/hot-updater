@@ -29,7 +29,9 @@ export interface ApiKeyRevokeOptions extends ApiKeyCommandOptions {
 const API_KEYS = {
   id: "apiKeys",
   call: "apiKeys()",
-  importLine: 'import { apiKeys } from "@hot-updater/server/plugins/api-keys"',
+  importLine: 'import { apiKeys } from "hot-updater/plugins"',
+  serverImportLine:
+    'import { apiKeys } from "@hot-updater/server/plugins/api-keys"',
 } as const;
 
 /** Runs `run` over the API of the apiKeys() the server runs. */

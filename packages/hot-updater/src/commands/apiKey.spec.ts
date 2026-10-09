@@ -63,7 +63,7 @@ vi.mock("./utils/load-hot-updater", async (importOriginal) => ({
 }));
 
 const API_KEYS_ERROR =
-  'hot-updater.config.ts lists no apiKeys() in plugins. Add apiKeys() to plugins, the same plugin your server runs (import { apiKeys } from "@hot-updater/server/plugins/api-keys"). A managed config gets it from the provider\'s plugins.';
+  'hot-updater.config.ts lists no apiKeys() in plugins. Add apiKeys() to plugins, the same plugin your server runs (import { apiKeys } from "hot-updater/plugins").';
 const STANDALONE_ERROR =
   "API keys live in the server's database, and hot-updater.config.ts reaches the server through standaloneRepository's admin API, which serves no API key routes. Run hot-updater api-key <command> <path-to-server-definition> in the server project, such as src/hotUpdater.ts, or use a hot-updater.config.ts whose database is the server's adapter.";
 const NOTHING_FOUND_ERROR =

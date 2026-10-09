@@ -26,8 +26,13 @@ const cloudflareDatabase: ProviderConfig = {
   })`,
 };
 const cloudflarePlugins: ProviderConfig = {
-  imports: [{ pkg: "@hot-updater/cloudflare", named: ["plugins"] }],
-  configString: "plugins",
+  imports: [
+    {
+      pkg: "hot-updater/plugins",
+      named: ["apiKeys", "insights", "remoteConfig"],
+    },
+  ],
+  configString: "[apiKeys(), insights(), remoteConfig()]",
 };
 
 const cloudflare = (build: BuildType) =>
@@ -42,10 +47,13 @@ describe("ConfigBuilder", () => {
   it("writes hot-updater.config.ts with the build and the server's storage, database, and plugins", () => {
     const scaffold = cloudflare("bare");
 
-    expect(scaffold.pluginsConfigString).toBe("plugins");
+    expect(scaffold.pluginsConfigString).toBe(
+      "[apiKeys(), insights(), remoteConfig()]",
+    );
     expect(scaffold.text).toBe(`import { bare } from "@hot-updater/bare";
-import { d1Database, plugins, r2Storage } from "@hot-updater/cloudflare";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare";
 import { defineConfig } from "hot-updater";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { existsSync } from "node:fs";
 
 if (existsSync(".env.hotupdater")) {
@@ -67,7 +75,7 @@ export default defineConfig({
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
-  plugins,
+  plugins: [apiKeys(), insights(), remoteConfig()],
   updateStrategy: "appVersion", // or "fingerprint"
 });`);
   });
@@ -97,8 +105,13 @@ export default defineConfig({
         configString: "dynamoDB(awsOptions)",
       })
       .setPlugins({
-        imports: [{ pkg: "@hot-updater/aws", named: ["plugins"] }],
-        configString: "plugins",
+        imports: [
+          {
+            pkg: "hot-updater/plugins",
+            named: ["apiKeys", "insights", "remoteConfig"],
+          },
+        ],
+        configString: "[apiKeys(), insights(), remoteConfig()]",
       })
       .addImport({ pkg: "@aws-sdk/credential-providers", named: ["fromIni"] })
       .setIntermediateCode(
@@ -107,10 +120,11 @@ export default defineConfig({
       .getScaffold();
 
     expect(scaffold.text)
-      .toBe(`import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
+      .toBe(`import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
 import { fromIni } from "@aws-sdk/credential-providers";
 import { defineConfig } from "hot-updater";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { existsSync } from "node:fs";
 
 if (existsSync(".env.hotupdater")) {
@@ -123,7 +137,7 @@ export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: s3Storage(awsOptions),
   database: dynamoDB(awsOptions),
-  plugins,
+  plugins: [apiKeys(), insights(), remoteConfig()],
   updateStrategy: "appVersion", // or "fingerprint"
 });`);
   });
@@ -143,15 +157,14 @@ export default defineConfig({
       })
       .setPlugins({
         imports: [
-          { pkg: "@hot-updater/server/plugins/api-keys", named: ["apiKeys"] },
-          { pkg: "@hot-updater/server/plugins/insights", named: ["insights"] },
+          { pkg: "hot-updater/plugins", named: ["apiKeys", "insights"] },
         ],
         configString: "[insights(), apiKeys()]",
       })
       .getScaffold();
 
     expect(scaffold.text).toContain(
-      'import { apiKeys } from "@hot-updater/server/plugins/api-keys";',
+      'import { apiKeys, insights } from "hot-updater/plugins";',
     );
     expect(scaffold.text).toContain("  plugins: [insights(), apiKeys()],\n");
   });

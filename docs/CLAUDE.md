@@ -52,6 +52,10 @@ npm install hot-updater @hot-updater/bare --save-dev
 Runtime imports are regular dependencies. Build/deploy/config-only packages are
 development dependencies. A package used by both belongs in regular dependencies.
 Install the SDK, CLI and selected build/provider packages before init/scaffold.
+In `hot-updater.config.ts`, import official server plugin factories from
+`hot-updater/plugins` and list calls explicitly in `plugins`. Server and hosted
+Console examples use `@hot-updater/server/plugins/*`; React Native client
+plugins come from `@hot-updater/react-native`.
 
 Prefer `HotUpdater.init` with `checkForUpdate`, the returned `updateBundle`
 helper and deliberate reload timing in onboarding and general examples. `init`

@@ -52,16 +52,19 @@ aws dynamodb update-time-to-live \
 ```
 
 Then write the schema settings with `migrateDynamoDB`. It takes the same
-configuration as `dynamoDB`, and the plugins the server runs, such as
-`plugins` from `@hot-updater/aws`: the managed server's Insights, API keys,
-and Remote Config.
+configuration as `dynamoDB`, and an explicit array of the plugins the server
+runs. This example includes the managed server's API keys, Insights, and
+Remote Config.
 
 ```typescript
-import { migrateDynamoDB, plugins } from "@hot-updater/aws";
+import { migrateDynamoDB } from "@hot-updater/aws";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
+import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
 
 await migrateDynamoDB(
   { tableName: "hot-updater", region: "us-east-1" },
-  plugins,
+  [apiKeys(), insights(), remoteConfig()],
 );
 ```
 
@@ -196,7 +199,8 @@ AWS with the current AWS CLI session. `plugins` is the list the managed server
 runs:
 
 ```typescript title="hot-updater.config.ts"
-import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
+import { dynamoDB, s3Storage } from "@hot-updater/aws";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { bare } from "@hot-updater/bare";
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 import { defineConfig } from "hot-updater";
@@ -222,7 +226,7 @@ export default defineConfig({
     tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
-  plugins,
+  plugins: [apiKeys(), insights(), remoteConfig()],
   updateStrategy: "appVersion", // or "fingerprint"
 });
 ```
@@ -253,8 +257,7 @@ export const hotUpdater = createHotUpdater({
 
 `insights()` records app events, `apiKeys()` protects client routes with
 the `x-api-key` header, and `remoteConfig()` serves Remote Config. The managed
-AWS server runs the same list, which
-`@hot-updater/aws` exports as `plugins`. List the server's plugins in
+AWS server runs the same list. List the server's plugins in
 `hot-updater.config.ts` too; see
 [CLI Configuration](/docs/custom/cli-configuration#mirror-the-server).
 

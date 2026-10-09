@@ -6,7 +6,15 @@ values its conditions pick; the client plugin fetches those values in the app
 and reads them synchronously, over in-app defaults.
 
 You don't install it on its own. `@hot-updater/server` and
-`@hot-updater/react-native` depend on it and re-export it:
+`@hot-updater/react-native` depend on it and re-export it.
+
+For `hot-updater.config.ts`, import the factory from the CLI's plugin entry:
+
+```ts
+import { remoteConfig } from "hot-updater/plugins";
+```
+
+For the server definition and app, use their runtime entries:
 
 ```ts
 // The server definition

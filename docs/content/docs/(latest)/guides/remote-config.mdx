@@ -45,6 +45,9 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
+In `hot-updater.config.ts`, import `remoteConfig` from `hot-updater/plugins`
+and add `remoteConfig()` to the existing server plugin list.
+
 Devices fetch from `GET /remote-config`, behind the same client-route policy as
 update checks, such as `apiKeys()`.
 

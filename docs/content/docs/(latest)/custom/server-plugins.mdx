@@ -511,7 +511,9 @@ plugins, and `AnyHotUpdaterPlugin` types any plugin in such a list.
 [create the plugin's tables](#create-the-plugins-tables).
 
 List the plugin in the `plugins` of `hot-updater.config.ts` too, beside the
-server's other plugins, so the CLI and the Console know the server runs it; see
+server's other plugins, so the CLI and the Console know the server runs it.
+Import the official factories in that CLI configuration from
+`hot-updater/plugins`, and your own plugin from its package or module; see
 [CLI Configuration](/docs/custom/cli-configuration#mirror-the-server).
 
 ## Write in a transaction

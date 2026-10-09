@@ -39,6 +39,9 @@ export const hotUpdater = createHotUpdater({
 });
 ```
 
+In `hot-updater.config.ts`, import `insights` from `hot-updater/plugins` and
+add `insights()` to the existing server plugin list.
+
 It accepts reports at `POST /events` and serves the Console's reads on the
 admin handler. A server without it answers `404`. The app then stops reporting
 for the rest of that runtime. A later runtime can report once 24 hours have

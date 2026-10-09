@@ -692,6 +692,16 @@ describe("Cloudflare init discovery", () => {
       getConfigScaffold("bare"),
       { cwd: project, settings: "Cloudflare" },
     );
+    const [scaffold] = mocks.writeHotUpdaterFiles.mock.calls.at(-1)!;
+    expect(scaffold.text).toContain(
+      'import { d1Database, r2Storage } from "@hot-updater/cloudflare";',
+    );
+    expect(scaffold.text).toContain(
+      'import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";',
+    );
+    expect(scaffold.text).toContain(
+      "  plugins: [apiKeys(), insights(), remoteConfig()],\n",
+    );
     expect(mocks.printAppSetup).toHaveBeenCalledWith({
       baseURL: "https://hot-updater.example.workers.dev",
       credential,

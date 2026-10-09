@@ -60,7 +60,10 @@ their expiry. Declare it too if you set `collection`.
 Then write the schema settings the database checks before its first read:
 
 ```typescript
-import { migrateFirebaseDatabase, plugins } from '@hot-updater/firebase';
+import { migrateFirebaseDatabase } from '@hot-updater/firebase';
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
+import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
 import { applicationDefault } from 'firebase-admin/app';
 
 await migrateFirebaseDatabase(
@@ -68,13 +71,13 @@ await migrateFirebaseDatabase(
     projectId: 'your-project-id',
     credential: applicationDefault(),
   },
-  plugins,
+  [apiKeys(), insights(), remoteConfig()],
 );
 ```
 
 `migrateFirebaseDatabase` takes the same configuration as `firebaseDatabase`,
-and the plugins the server runs: here `plugins` from `@hot-updater/firebase`,
-the managed server's Insights, API keys, and Remote Config. `hot-updater init`
+and an explicit array of the plugins the server runs: here the managed
+server's API keys, Insights, and Remote Config. `hot-updater init`
 and the managed
 setup's key script both run it. `hot-updater db migrate`, run with the file
 that exports a server's `hotUpdater`, writes the same settings for the
@@ -183,7 +186,8 @@ runs:
 ```typescript title="hot-updater.config.ts"
 import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
-import { firebaseDatabase, firebaseStorage, plugins } from "@hot-updater/firebase";
+import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { applicationDefault } from "firebase-admin/app";
 import { defineConfig } from "hot-updater";
 
@@ -205,7 +209,7 @@ export default defineConfig({
     projectId: process.env.FIREBASE_PROJECT_ID!,
     credential,
   }),
-  plugins,
+  plugins: [apiKeys(), insights(), remoteConfig()],
   updateStrategy: "appVersion",
 });
 ```
@@ -234,8 +238,7 @@ export const hotUpdater = createHotUpdater({
 
 `insights()` records app events, `apiKeys()` protects client routes with
 the `x-api-key` header, and `remoteConfig()` serves Remote Config. The managed
-Cloud Function runs the same list, which
-`@hot-updater/firebase` exports as `plugins`. List the server's plugins in
+Cloud Function runs the same list. List the server's plugins in
 `hot-updater.config.ts` too; see
 [CLI Configuration](/docs/custom/cli-configuration#mirror-the-server).
 

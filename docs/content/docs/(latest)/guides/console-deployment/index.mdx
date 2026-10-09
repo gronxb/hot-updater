@@ -43,8 +43,11 @@ the console's project root, next to `console.auth.ts`. Or configure your own
 database, storage, and server plugins:
 
 ```ts title="console.config.ts"
-import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
+import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { defineConsoleConfig } from "@hot-updater/console";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
+import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
 
 const region = process.env.HOT_UPDATER_S3_REGION!;
 
@@ -59,7 +62,7 @@ export default defineConsoleConfig({
     region,
     bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
   }),
-  plugins,
+  plugins: [apiKeys(), insights(), remoteConfig()],
   console: {
     gitUrl: "https://github.com/acme/app",
   },
@@ -69,20 +72,21 @@ export default defineConsoleConfig({
 The configuration mirrors your server: the same database and bucket, reached
 with the console host's own credentials, and the
 [server plugins](/docs/custom/server-plugins) your backend runs. The AWS,
-Cloudflare, Firebase, and Supabase packages export their managed server's list,
-`insights()`, `apiKeys()`, and `remoteConfig()`, as `plugins`. Read credentials from the console
+Cloudflare, Firebase, and Supabase managed servers run
+`apiKeys()`, `insights()`, and `remoteConfig()`. Import those factories from
+`@hot-updater/server/plugins/*` in the Console configuration. Read credentials from the console
 host's runtime environment variables, and leave mobile build adapters and
 signing private keys in the app project.
 
 Install your chosen
 [database adapter](/docs/concepts/plugin-system#database-adapter) and
 [storage adapter](/docs/concepts/plugin-system#storage-adapter), such as
-`@hot-updater/aws` for the example above, in the console repository. A custom
-server's plugins come from `@hot-updater/server`, which exports `insights()`
-and `apiKeys()`; install it too when `plugins` lists them.
+`@hot-updater/aws` for the example above, in the console repository. Install
+`@hot-updater/server` for the official server plugins used by the deployed
+Console.
 
 ```package-install
-npm install @hot-updater/aws
+npm install @hot-updater/aws @hot-updater/server
 ```
 
 The console runs the plugins over `database` to read Insights and manage API

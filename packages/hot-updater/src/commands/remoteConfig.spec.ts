@@ -423,7 +423,7 @@ describe("hot-updater remote-config over hot-updater.config.ts", () => {
     await handleRemoteConfigShow();
 
     expect(log.error).toHaveBeenCalledWith(
-      'hot-updater.config.ts lists no remoteConfig() in plugins. Add remoteConfig() to plugins, the same plugin your server runs (import { remoteConfig } from "@hot-updater/server/plugins/remote-config"). A managed config gets it from the provider\'s plugins.',
+      'hot-updater.config.ts lists no remoteConfig() in plugins. Add remoteConfig() to plugins, the same plugin your server runs (import { remoteConfig } from "hot-updater/plugins").',
     );
     expect(process.exitCode).toBe(1);
     expect(database.dispose).toHaveBeenCalledOnce();

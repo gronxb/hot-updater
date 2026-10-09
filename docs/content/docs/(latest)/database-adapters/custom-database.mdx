@@ -330,8 +330,7 @@ Pass the database to the CLI and the server, with the same plugins. Partial
 configuration:
 
 ```ts title="hot-updater.config.ts"
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { apiKeys, insights } from "hot-updater/plugins";
 import { defineConfig } from "hot-updater";
 
 import { myDatabase } from "./myDatabase";

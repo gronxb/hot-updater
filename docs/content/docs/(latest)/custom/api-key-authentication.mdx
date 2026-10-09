@@ -161,7 +161,8 @@ without digests. `register` stores a known plaintext key idempotently, and
 management routes to `handlers.client` or `handlers.admin`.
 
 AWS, Cloudflare, Firebase, and Supabase run `apiKeys()` in their managed
-servers and export that plugin list as `plugins`. Their init registers an
+servers. Their init writes explicit factories from `hot-updater/plugins`
+in the CLI configuration, registers an
 existing `HOT_UPDATER_API_KEY` or creates one through it, then stores the
 plaintext only in the local environment file. Afterwards, `hot-updater api-key`
 in the app directory manages the same keys through the `database` and `plugins`

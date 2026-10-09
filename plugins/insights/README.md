@@ -5,7 +5,15 @@ and update failures and serves them to the Console and the CLI; the client
 plugin reports them from the app.
 
 You don't install it on its own. `@hot-updater/server` and
-`@hot-updater/react-native` depend on it and re-export it:
+`@hot-updater/react-native` depend on it and re-export it.
+
+For `hot-updater.config.ts`, import the factory from the CLI's plugin entry:
+
+```ts
+import { insights } from "hot-updater/plugins";
+```
+
+For the server definition and app, use their runtime entries:
 
 ```ts
 // The server definition

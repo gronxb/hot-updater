@@ -1,9 +1,12 @@
 import { existsSync } from "node:fs";
 import path from "path";
 
-import { dynamoDB, migrateDynamoDB, plugins, s3Storage } from "@hot-updater/aws";
+import { dynamoDB, migrateDynamoDB, s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { insights } from "@hot-updater/server/plugins/insights";
+import { remoteConfig } from "@hot-updater/server/plugins/remote-config";
 
 const envFilePath = path.resolve(process.cwd(), ".env.hotupdater");
 if (existsSync(envFilePath)) {
@@ -23,6 +26,8 @@ const dynamoDBConfig = {
   credentials,
   tableName: process.env.AWS_DYNAMODB_TABLE_NAME ?? "hot-updater-metadata",
 };
+
+const plugins = [apiKeys(), insights(), remoteConfig()];
 
 export const database = dynamoDB({ ...dynamoDBConfig });
 

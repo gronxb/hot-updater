@@ -136,8 +136,7 @@ export const hotUpdater = createHotUpdater({
 
 `insights()` records app events, `apiKeys()` protects client routes with
 the `x-api-key` header, and `remoteConfig()` serves Remote Config. The managed
-Edge Function runs the same list, which
-`@hot-updater/supabase/edge` exports as `plugins`. List the server's plugins in
+Edge Function runs the same list. List the server's plugins in
 `hot-updater.config.ts` too; see
 [CLI Configuration](/docs/custom/cli-configuration#mirror-the-server).
 
@@ -149,7 +148,8 @@ Function runs:
 
 ```typescript title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
-import { plugins, supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { defineConfig } from "hot-updater";
 import { existsSync } from "node:fs";
 
@@ -168,7 +168,7 @@ export default defineConfig({
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
   }),
-  plugins,
+  plugins: [apiKeys(), insights(), remoteConfig()],
   updateStrategy: "appVersion", // or "fingerprint"
 });
 ```

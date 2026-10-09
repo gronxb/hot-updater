@@ -35,7 +35,7 @@ describe("standalone-dynamodb local infrastructure contract", () => {
       /createHotUpdater\(\{\n  database,\n  plugins,\n/,
     );
     expect(dbSource).toContain(
-      'import { dynamoDB, migrateDynamoDB, plugins, s3Storage } from "@hot-updater/aws";',
+      'import { dynamoDB, migrateDynamoDB, s3Storage } from "@hot-updater/aws";',
     );
     expect(dbSource).not.toContain("clientAccess");
     expect(dbSource).not.toContain("insights:");

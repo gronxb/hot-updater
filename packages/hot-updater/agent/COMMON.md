@@ -127,10 +127,11 @@ command or generated files alone do not prove that a remote step is complete.
    dependencies. An MCP connection alone does not configure hot-updater deploy.
 2. Use app/hot-updater.config.ts as the merge source for the app's existing
    config: merge its storage, database, and plugins, which are the deployed
-   server's, so the CLI and console agree with the server. Keep custom
-   settings and the existing update strategy. Never copy app/hotUpdater.ts
-   into the app or add `server` to its config: the config names no server
-   code. Read ENVIRONMENT.md and fill only the applicable env.example
+   server's, so the CLI and console agree with the server. Import built-in
+   plugin factories from `hot-updater/plugins` and list the matching calls in
+   `plugins`. Keep custom settings and the existing update strategy. Never
+   copy app/hotUpdater.ts into the app or add `server` to its config: the config
+   names no server code. Read ENVIRONMENT.md and fill only the applicable env.example
    settings in a local ignored .env.hotupdater, which the config loads
    before it reads them. Provider and signing credential values must not
    enter logs, manifests, instructions, browser URLs, or app bundles. Verify

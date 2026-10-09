@@ -137,8 +137,7 @@ export const hotUpdater = createHotUpdater({
 
 `insights()` records app events, `apiKeys()` protects client routes with
 the `x-api-key` header, and `remoteConfig()` serves Remote Config. The managed
-Worker runs the same list, which
-`@hot-updater/cloudflare/worker` exports as `plugins`.
+Worker runs the same list.
 
 `hot-updater.config.ts` runs in Node, where `cloudflare:workers` doesn't exist.
 Give it the root `d1Database`, which reaches the same database through the
@@ -159,7 +158,8 @@ resolves:
 
 ```typescript title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
-import { d1Database, plugins, r2Storage } from "@hot-updater/cloudflare";
+import { d1Database, r2Storage } from "@hot-updater/cloudflare";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { defineConfig } from "hot-updater";
 import { existsSync } from "node:fs";
 
@@ -182,7 +182,7 @@ export default defineConfig({
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!,
   }),
-  plugins,
+  plugins: [apiKeys(), insights(), remoteConfig()],
   updateStrategy: "appVersion", // or "fingerprint"
 });
 ```
