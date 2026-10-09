@@ -6,7 +6,6 @@ import {
   type ClientAccessRule,
   createHotUpdater,
   type CreateHotUpdaterOptions,
-  type RemovedClientAccess,
 } from "../createHotUpdaterCore";
 import { definePlugin } from "../plugins/definePlugin";
 
@@ -89,19 +88,14 @@ describe("createHotUpdater types", () => {
     });
   });
 
-  it("says what replaced a clientAccess object from before 1.0 where it is written", () => {
-    expectTypeOf<ClientAccessPolicy>().toEqualTypeOf<
-      "public" | RemovedClientAccess
-    >();
-    expectTypeOf<
-      RemovedClientAccess["type"]
-    >().toEqualTypeOf<'clientAccess objects were removed in 1.0: set clientAccess: "public", or add a plugin that provides clientAuth'>();
+  it("takes only public as clientAccess", () => {
+    expectTypeOf<ClientAccessPolicy>().toEqualTypeOf<"public">();
     typeOnly((database) => {
-      // @ts-expect-error clientAccess objects were removed in 1.0.
+      // @ts-expect-error clientAccess is "public" or absent.
       createHotUpdater({ database, clientAccess: { type: "public" } });
       createHotUpdater({
         database,
-        // @ts-expect-error clientAccess objects were removed in 1.0.
+        // @ts-expect-error clientAccess is "public" or absent.
         clientAccess: { type: "api-key", headerName: "x-client-key" },
       });
     });

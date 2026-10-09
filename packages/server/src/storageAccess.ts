@@ -38,21 +38,15 @@ const tokensEqual = (left: string, right: string) => {
   return difference === 0;
 };
 
+/**
+ * Reads, download URLs, and signed downloads over the server's storage, for
+ * the URIs of its protocol; an HTTP(S) URI is used as it is.
+ */
 export const createStorageAccess = (
-  storageAdapters: readonly StorageAdapter[],
+  storageAdapter: StorageAdapter | undefined,
 ) => {
-  const protocols = new Set<string>();
-  for (const storage of storageAdapters) {
-    if (protocols.has(storage.protocol)) {
-      throw new Error(
-        `Multiple storage adapters handle protocol: ${storage.protocol}`,
-      );
-    }
-    protocols.add(storage.protocol);
-  }
-
   const findStorage = (protocol: string) =>
-    storageAdapters.find((item) => item.protocol === protocol);
+    storageAdapter?.protocol === protocol ? storageAdapter : undefined;
 
   const readStorageResponse = async (
     storageUri: string,
@@ -104,37 +98,36 @@ export const createStorageAccess = (
     return response?.text() ?? null;
   };
 
-  const downloadStorageObject = storageAdapters.some(
-    (storage) => storage.getDownloadUrl !== undefined,
-  )
-    ? async (
-        storageUriToken: string,
-        encodedSignature: string,
-      ): Promise<Response | null> => {
-        const requestedPath = `/storage/${storageUriToken}/${encodedSignature}`;
-        const requested = parseStorageDownloadPath(requestedPath);
-        if (!requested) return null;
-        let storage: StorageAdapter | undefined;
-        try {
-          storage = findStorage(getStorageProtocol(requested.storageUri));
-        } catch {
-          return null;
+  const downloadStorageObject =
+    storageAdapter?.getDownloadUrl !== undefined
+      ? async (
+          storageUriToken: string,
+          encodedSignature: string,
+        ): Promise<Response | null> => {
+          const requestedPath = `/storage/${storageUriToken}/${encodedSignature}`;
+          const requested = parseStorageDownloadPath(requestedPath);
+          if (!requested) return null;
+          let storage: StorageAdapter | undefined;
+          try {
+            storage = findStorage(getStorageProtocol(requested.storageUri));
+          } catch {
+            return null;
+          }
+          if (!storage?.getDownloadUrl || !storage.get) return null;
+          const { url: downloadUrl } = await storage.getDownloadUrl({
+            storageUri: requested.storageUri,
+          });
+          try {
+            new URL(downloadUrl);
+            return null;
+          } catch {
+            if (/^[a-z][a-z\d+.-]*:/i.test(downloadUrl)) return null;
+          }
+          if (!tokensEqual(downloadUrl, requestedPath)) return null;
+          return (await storage.get({ storageUri: requested.storageUri }))
+            .response;
         }
-        if (!storage?.getDownloadUrl || !storage.get) return null;
-        const { url: downloadUrl } = await storage.getDownloadUrl({
-          storageUri: requested.storageUri,
-        });
-        try {
-          new URL(downloadUrl);
-          return null;
-        } catch {
-          if (/^[a-z][a-z\d+.-]*:/i.test(downloadUrl)) return null;
-        }
-        if (!tokensEqual(downloadUrl, requestedPath)) return null;
-        return (await storage.get({ storageUri: requested.storageUri }))
-          .response;
-      }
-    : undefined;
+      : undefined;
 
   return {
     downloadStorageObject,

@@ -287,9 +287,6 @@ importers:
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
-      '@hot-updater/mock':
-        specifier: workspace:*
-        version: link:../../plugins/mock
       '@hot-updater/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -341,9 +338,6 @@ importers:
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
-      '@hot-updater/mock':
-        specifier: workspace:*
-        version: link:../../plugins/mock
       '@hot-updater/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -401,9 +395,6 @@ importers:
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
-      '@hot-updater/mock':
-        specifier: workspace:*
-        version: link:../../plugins/mock
       '@hot-updater/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -449,9 +440,6 @@ importers:
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
-      '@hot-updater/mock':
-        specifier: workspace:*
-        version: link:../../plugins/mock
       '@hot-updater/server':
         specifier: workspace:*
         version: link:../../packages/server
@@ -507,9 +495,6 @@ importers:
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
-      '@hot-updater/mock':
-        specifier: workspace:*
-        version: link:../../plugins/mock
       '@hot-updater/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -562,9 +547,6 @@ importers:
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
-      '@hot-updater/mock':
-        specifier: workspace:*
-        version: link:../../plugins/mock
       '@hot-updater/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -617,9 +599,6 @@ importers:
       '@hot-updater/firebase':
         specifier: workspace:*
         version: link:../../plugins/firebase
-      '@hot-updater/mock':
-        specifier: workspace:*
-        version: link:../../plugins/mock
       '@hot-updater/protocol':
         specifier: workspace:*
         version: link:../../packages/protocol
@@ -668,9 +647,6 @@ importers:
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
-      '@hot-updater/mock':
-        specifier: workspace:*
-        version: link:../../plugins/mock
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../../plugins/plugin-core
@@ -3788,6 +3764,7 @@ packages:
 
   '@cloudflare/vitest-pool-workers@0.13.0':
     resolution: {integrity: sha512-Q20e4+EOhyl3JZ6i8Xzg6N6KKKvGFKaWXiFsehfi291RA6bxLJQDftYWzGlldX1iU2NBZkz9z7GEPCS2gzR6PQ==}
+    deprecated: '@cloudflare/vitest-pool-workers has been renamed to @cloudflare/vitest-plugin. This package will not receive future updates.'
     peerDependencies:
       '@vitest/runner': ^4.1.0
       '@vitest/snapshot': ^4.1.0

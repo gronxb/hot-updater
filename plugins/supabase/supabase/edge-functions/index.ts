@@ -27,13 +27,11 @@ const hotUpdater = createHotUpdater({
     supabaseServiceRoleKey,
   }),
   plugins,
-  storage: [
-    supabaseStorage({
-      supabaseUrl,
-      supabaseServiceRoleKey,
-      bucketName,
-    }),
-  ],
+  storage: supabaseStorage({
+    supabaseUrl,
+    supabaseServiceRoleKey,
+    bucketName,
+  }),
 });
 
 const app = new Hono().basePath(functionBasePath);

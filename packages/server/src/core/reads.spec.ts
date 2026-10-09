@@ -82,9 +82,9 @@ const setup = async () => {
     tx.aggregate("bundle_totals", { platform_key: "*" }, { bundles: 2 });
     tx.aggregate("bundle_totals", { platform_key: "ios" }, { bundles: 2 });
   });
-  const { readStorageText, resolveFileUrl } = createStorageAccess([
+  const { readStorageText, resolveFileUrl } = createStorageAccess(
     createReleaseCatalogTestStorage() as StorageAdapterWith<"get">,
-  ]);
+  );
   return {
     database,
     reads: createCoreReads(db, { readStorageText, resolveFileUrl }),

@@ -131,17 +131,15 @@ import { apiKeys, insights } from "@hot-updater/server/plugins";
 const hotUpdater = createHotUpdater({
   database,
   plugins: [insights(), apiKeys()],
-  storage: [ // [!code ++]
-    s3Storage({ // [!code ++]
-      region: process.env.AWS_REGION!, // [!code ++]
-      credentials: { // [!code ++]
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID!, // [!code ++]
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
-      }, // [!code ++]
-      bucketName: process.env.AWS_S3_BUNDLES_BUCKET!, // [!code ++]
-      downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!, // [!code ++]
-    }), // [!code ++]
-  ], // [!code ++]
+  storage: s3Storage({ // [!code ++]
+    region: process.env.AWS_REGION!, // [!code ++]
+    credentials: { // [!code ++]
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!, // [!code ++]
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
+    }, // [!code ++]
+    bucketName: process.env.AWS_S3_BUNDLES_BUCKET!, // [!code ++]
+    downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!, // [!code ++]
+  }), // [!code ++]
   // ... other options
 });
 ```

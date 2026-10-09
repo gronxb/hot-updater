@@ -296,7 +296,7 @@ import { apiKeys, insights } from "@hot-updater/server/plugins";
 const hotUpdater = createHotUpdater({
   database,
   plugins: [insights(), apiKeys()],
-  storage: [storage],
+  storage,
 });
 ```
 

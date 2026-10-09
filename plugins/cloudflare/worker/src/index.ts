@@ -19,13 +19,11 @@ export const HOT_UPDATER_BASE_PATH = "/";
 const hotUpdater = createHotUpdater({
   database: d1Database(env.DB),
   plugins,
-  storage: [
-    r2Storage({
-      bucket: env.BUCKET,
-      bucketName: env.BUCKET_NAME,
-      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
-    }),
-  ],
+  storage: r2Storage({
+    bucket: env.BUCKET,
+    bucketName: env.BUCKET_NAME,
+    downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
+  }),
 });
 
 const app = new Hono<{ Bindings: CloudflareWorkerEnv }>();

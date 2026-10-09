@@ -19,32 +19,6 @@ import {
 import { HOT_UPDATER_SERVER_VERSION } from "./version";
 
 describe("runtime createHotUpdater", () => {
-  it.each(["authorityId", "catalogId"])("rejects a user-supplied %s", (key) => {
-    expect(() =>
-      createHotUpdater({
-        clientAccess: "public",
-        database: createRuntimeDatabase(),
-        [key]: "user-controlled",
-      }),
-    ).toThrow(`Remove ${key}`);
-  });
-
-  it.each([
-    ["storages", "Rename storages to storage"],
-    ["storagePlugins", "Rename storagePlugins to storage"],
-    ["basePath", "Remove basePath"],
-    ["cwd", "Remove cwd"],
-  ])("rejects the removed %s, which it would otherwise ignore", (key, fix) => {
-    // Built in a variable, as plain JavaScript or a spread passes them.
-    const options = {
-      clientAccess: "public",
-      database: createRuntimeDatabase(),
-      [key]: key === "basePath" ? "/hot-updater" : [],
-    } as const;
-
-    expect(() => createHotUpdater(options)).toThrow(fix);
-  });
-
   it("publishes the runtime, the built-in adapters, and the built-in plugins, and no tooling entry", () => {
     // Tooling reads a server through its definition's properties instead.
     expect(Object.keys(packageJson.exports).sort()).toEqual([
@@ -95,7 +69,7 @@ describe("runtime createHotUpdater", () => {
     const hotUpdater = createHotUpdater({
       clientAccess: "public",
       database: createRuntimeDatabase("contextlessTestDatabase"),
-      storage: [storage],
+      storage,
     });
 
     expect(hotUpdater.adapterName).toBe("contextlessTestDatabase");
@@ -185,7 +159,7 @@ describe("runtime createHotUpdater", () => {
       const hotUpdater = createHotUpdater({
         clientAccess: "public",
         database: createRuntimeDatabase(),
-        storage: [storage],
+        storage,
       });
 
       expect(() => hotUpdater.handlers).toThrow(
@@ -222,21 +196,18 @@ describe("runtime createHotUpdater", () => {
     );
   });
 
-  it("rejects a clientAccess object, naming what replaced it", () => {
-    const withObject = (clientAccess: unknown) => () =>
+  it("rejects a clientAccess other than public", () => {
+    const withClientAccess = (clientAccess: unknown) => () =>
       createHotUpdater({
         clientAccess: clientAccess as ClientAccessPolicy,
         database: createRuntimeDatabase(),
       });
-    const removed =
-      'clientAccess objects were removed in 1.0. Set clientAccess: "public", or add a plugin that provides clientAuth to plugins.';
+    const onlyPublic =
+      'clientAccess must be "public"; to protect client routes, add a plugin that provides clientAuth to plugins.';
 
-    expect(withObject({ type: "api-key", headerName: "x-client-key" })).toThrow(
-      removed,
+    expect(withClientAccess({ headerName: "x-client-key" })).toThrow(
+      onlyPublic,
     );
-    expect(withObject({ type: "public" })).toThrow(removed);
-    expect(withObject("private")).toThrow(
-      'clientAccess must be "public"; to protect client routes, add a plugin that provides clientAuth to plugins.',
-    );
+    expect(withClientAccess("private")).toThrow(onlyPublic);
   });
 });

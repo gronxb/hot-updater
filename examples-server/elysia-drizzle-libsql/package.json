@@ -20,7 +20,6 @@
     "@elysiajs/node": "^1.4.5",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/protocol": "workspace:*",
-    "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@libsql/client": "catalog:db",

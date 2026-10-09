@@ -81,12 +81,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       db: kysely,
       provider: "postgresql",
     }),
-    storage: [
-      createTestStorageAdapter("s3", readStoredText),
-      createTestStorageAdapter("r2", readStoredText),
-      createTestStorageAdapter("supabase-storage", readStoredText),
-      createTestStorageAdapter("gs", readStoredText),
-    ],
+    storage: createTestStorageAdapter("s3", readStoredText),
   });
   it("uses the default generated schema artifact path for Drizzle", () => {
     const adapter = drizzleAdapter({ db: {}, provider: "sqlite" });

@@ -90,13 +90,11 @@ import { env } from "cloudflare:workers";
 export const hotUpdater = createHotUpdater({
   database: d1Database(env.DB),
   plugins: [insights(), apiKeys()],
-  storage: [
-    r2Storage({
-      bucket: env.BUCKET, // [!code ++]
-      bucketName: env.BUCKET_NAME, // [!code ++]
-      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY, // [!code ++]
-    }),
-  ],
+  storage: r2Storage({
+    bucket: env.BUCKET, // [!code ++]
+    bucketName: env.BUCKET_NAME, // [!code ++]
+    downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY, // [!code ++]
+  }),
 });
 ```
 

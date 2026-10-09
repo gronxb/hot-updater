@@ -16,7 +16,7 @@ describe("downloadBundle", () => {
   it("redirects already-public storage without requiring a plugin URL API", async () => {
     const response = await downloadBundle("bundle-id", {
       core: createCore("https://cdn.example.com/manifest.json"),
-      storage: [],
+      storage: undefined,
     });
 
     expect(response.status).toBe(302);
@@ -39,7 +39,7 @@ describe("downloadBundle", () => {
 
     const response = await downloadBundle("bundle-id", {
       core: createCore("r2://updates/bundle/manifest.json"),
-      storage: [storageAdapter],
+      storage: storageAdapter,
     });
 
     expect(get).toHaveBeenCalledWith({
@@ -63,7 +63,7 @@ describe("downloadBundle", () => {
 
     const response = await downloadBundle("bundle-id", {
       core: createCore(storageUri),
-      storage: [storageAdapter],
+      storage: storageAdapter,
     });
 
     expect(response.status).toBe(200);

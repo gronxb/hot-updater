@@ -36,7 +36,7 @@ export type DatabaseTestSuiteOptions<
    */
   readonly createHttpClient: (options: {
     readonly database: TDatabase;
-    readonly storage: readonly StorageAdapter[];
+    readonly storage: StorageAdapter;
   }) => HttpTestServer | Promise<HttpTestServer>;
   /** The suites of the server plugins the provider opts in to test. */
   readonly plugins?: readonly DatabasePluginTestSuite<TDatabase>[];
@@ -55,7 +55,7 @@ export const setupDatabaseTestSuite = <TDatabase extends EngineDatabase>(
     beforeEach(async () => {
       client = await options.createHttpClient({
         database: getDatabase(),
-        storage: [createReleaseCatalogTestStorage()],
+        storage: createReleaseCatalogTestStorage(),
       });
     });
     afterEach(async () => {

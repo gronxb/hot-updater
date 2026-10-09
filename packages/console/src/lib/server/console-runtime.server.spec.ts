@@ -57,7 +57,7 @@ describe("Console config resolution", () => {
       expect(resolved).toMatchObject({
         gitUrl: "https://github.com/example/app",
         database,
-        storage: [storage],
+        storage,
         plugins,
       });
       expect(Object.keys(resolved.api ?? {}).sort()).toEqual([
@@ -141,7 +141,7 @@ describe("Console config resolution", () => {
     await expect(resolveConsoleConfig(request)).resolves.toEqual({
       database,
       core: database.core,
-      storage: [storage],
+      storage,
       plugins,
     });
     expect(database.fetchAdmin).not.toHaveBeenCalled();

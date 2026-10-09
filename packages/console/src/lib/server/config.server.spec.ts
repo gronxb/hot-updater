@@ -61,7 +61,7 @@ describe("config.server", () => {
     const plugins = [apiKeys()];
     const server = createHotUpdater({
       database,
-      storage: [storageAdapter],
+      storage: storageAdapter,
       plugins,
     });
 
@@ -70,7 +70,7 @@ describe("config.server", () => {
       core: server.core,
       plugins,
       api: server.api,
-      storage: [storageAdapter],
+      storage: storageAdapter,
     });
 
     const { isConfigLoaded, prepareConfig } = await import("./config.server");
@@ -94,8 +94,8 @@ describe("config.server", () => {
       remoteConfig: false,
     });
     await expect(first.core.listChannels()).resolves.toEqual([]);
-    expect(first.storage).toEqual([storageAdapter]);
-    expect(second.storage).toEqual([storageAdapter]);
+    expect(first.storage).toBe(storageAdapter);
+    expect(second.storage).toBe(storageAdapter);
     expect(isConfigLoaded()).toBe(true);
   });
 
@@ -105,7 +105,7 @@ describe("config.server", () => {
     resolveConsoleConfigMock.mockResolvedValue({
       database: { name: "standalone-repository", core, fetchAdmin },
       core,
-      storage: [createTestStorageAdapter()],
+      storage: createTestStorageAdapter(),
       plugins: [insights()],
     });
 
@@ -134,7 +134,7 @@ describe("config.server", () => {
       .mockRejectedValueOnce(new Error("load failed"))
       .mockResolvedValueOnce({
         database,
-        storage: [storageAdapter],
+        storage: storageAdapter,
         plugins: [],
       });
 
@@ -146,7 +146,7 @@ describe("config.server", () => {
 
     expect(resolveConsoleConfigMock).toHaveBeenCalledTimes(2);
     expect(recovered.config.database).toBe(database);
-    expect(recovered.storage).toEqual([storageAdapter]);
+    expect(recovered.storage).toBe(storageAdapter);
     expect(consoleErrorSpy).toHaveBeenCalledTimes(1);
   });
 
@@ -159,7 +159,7 @@ describe("config.server", () => {
     });
     resolveConsoleConfigMock.mockResolvedValue({
       database,
-      storage: [storage],
+      storage,
       plugins: [],
     });
 
@@ -167,7 +167,7 @@ describe("config.server", () => {
 
     // The console never uploads, so the server's storage serves it as is.
     await expect(prepareConfig(request)).resolves.toMatchObject({
-      storage: [storage],
+      storage,
     });
   });
 

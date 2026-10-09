@@ -2,7 +2,6 @@ import { existsSync } from "node:fs";
 import path from "path";
 
 import { dynamoDB, migrateDynamoDB, s3Storage } from "@hot-updater/aws";
-import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 
@@ -36,22 +35,20 @@ export const migrateDatabase = () => migrateDynamoDB(dynamoDBConfig, plugins);
 export const hotUpdater = createHotUpdater({
   database,
   plugins,
-  storage: [
+  storage:
     process.env.NODE_ENV === "test"
       ? (
           await import("@hot-updater/test-utils/node")
         ).createReleaseCatalogTestStorage()
-      : mockStorage({}),
-    s3Storage({
-      region,
-      endpoint: process.env.AWS_S3_ENDPOINT ?? "http://localhost:9000",
-      credentials,
-      bucketName: process.env.AWS_S3_BUCKET_NAME ?? "hot-updater-bundles",
-      basePath: providerNamespace,
-      forcePathStyle: true,
-      downloadUrlSigningKey:
-        process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY ??
-        "development-storage-download-url-key",
-    }),
-  ],
+      : s3Storage({
+          region,
+          endpoint: process.env.AWS_S3_ENDPOINT ?? "http://localhost:9000",
+          credentials,
+          bucketName: process.env.AWS_S3_BUCKET_NAME ?? "hot-updater-bundles",
+          basePath: providerNamespace,
+          forcePathStyle: true,
+          downloadUrlSigningKey:
+            process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY ??
+            "development-storage-download-url-key",
+        }),
 });

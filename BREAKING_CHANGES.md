@@ -69,10 +69,11 @@ export default defineConfig({
 });
 ```
 
-v1 refuses to load a config that has `compressStrategy`, which also stops Expo
-prebuild. There is no replacement option. `releaseChannel` had no effect in v0;
-set the native default channel with `npx hot-updater channel set <channel>`,
-or with the `channel` option of the Expo config plugin.
+Neither option exists in v1, so TypeScript reports both; there is no
+replacement. Updates always use per-file Brotli compression. `releaseChannel`
+had no effect in v0; set the native default channel with
+`npx hot-updater channel set <channel>`, or with the `channel` option of the
+Expo config plugin.
 
 ### Remove `platform.android.stringResourcePaths`
 
@@ -741,20 +742,20 @@ import { apiKeys } from "@hot-updater/server/plugins";
 
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "postgresql" }), // a new, empty database
-  storage: [
-    s3Storage({
-      region,
-      credentials,
-      bucketName,
-      downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
-    }),
-  ],
+  storage: s3Storage({
+    region,
+    credentials,
+    bucketName,
+    downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
+  }),
   plugins: [apiKeys()], // or clientAccess: "public"
 });
 ```
 
-- `storages` and `storagePlugins` become `storage`. `createHotUpdater` throws
-  on the old keys, as it does on `basePath` and `cwd`.
+- `storages: [adapter]` and `storagePlugins` become `storage: adapter`: one
+  adapter, the same one `hot-updater.config.ts` uploads with. Fails silently:
+  in JavaScript, or when the options object is built in a variable, the old
+  keys are ignored and the server runs without storage.
 - Choose a client-access policy, or startup throws. `clientAccess: "public"`
   keeps v0's open client routes. `plugins: [apiKeys()]` requires an API key
   from apps: create one with
@@ -765,8 +766,9 @@ export const hotUpdater = createHotUpdater({
   handler's `/storage/...` route) or `getDownloadUrl`, such as
   `cloudFrontDownloadUrl(...)`. Without either, the first use of
   `hotUpdater.handlers` throws. The same applies to `r2Storage`.
-- `basePath` and `routes` are removed; the mounts in the next entry replace
-  them. `cwd` is removed.
+- `basePath`, `routes` and `cwd` are removed. The mounts in the next entry
+  replace `basePath` and `routes`, and each plugin in `plugins` adds its own
+  endpoints to them.
 - Pass adapter objects, not `() => adapter` thunks.
 
 ### Mount `handlers.client` and `handlers.admin`

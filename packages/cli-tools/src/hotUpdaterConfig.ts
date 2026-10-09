@@ -64,14 +64,10 @@ export type HotUpdaterConfigScaffold = {
   storage: {
     initializer: string;
     callee: string;
-    /** Options the merge deletes from the project's call; see `ProviderConfig`. */
-    removedOptions?: readonly string[];
   };
   database: {
     initializer: string;
     callee: string;
-    /** Options the merge deletes from the project's call; see `ProviderConfig`. */
-    removedOptions?: readonly string[];
   };
   /** The server's plugin factory array. */
   plugins: {
@@ -525,14 +521,6 @@ const mergeObjectLiteralText = (
   ]);
 };
 
-/** What a merged adapter call loses from the project's call. */
-type DroppedNames = {
-  /** Options the scaffold's adapter no longer accepts. */
-  readonly options: readonly string[];
-  /** Managed helpers the rebuilt config no longer declares. */
-  readonly helpers: ReadonlySet<string>;
-};
-
 /**
  * The edit that deletes `property` from its object: with its comma, and with
  * the rest of its line when the property starts one.
@@ -567,12 +555,12 @@ const parseCall = (text: string): CallSource | null => {
 };
 
 /**
- * The project's call without the options and the helper spreads `dropped`
- * names, such as v0's `cloudflareApiToken` or `...commonOptions`.
+ * The project's call without its spreads of the managed helpers the rebuilt
+ * config no longer declares.
  */
-const withoutDropped = (
+const withoutDroppedHelpers = (
   call: CallSource,
-  dropped: DroppedNames,
+  droppedHelpers: ReadonlySet<string>,
 ): CallSource | null => {
   const [argument] = call.callExpression.arguments;
   if (
@@ -584,16 +572,12 @@ const withoutDropped = (
 
   const callStart = call.callExpression.start;
   const edits = argument.properties
-    .filter((property) => {
-      if (property.type === "SpreadElement") {
-        return (
-          property.argument.type === "Identifier" &&
-          dropped.helpers.has(property.argument.name)
-        );
-      }
-      const name = getObjectPropertyName(property);
-      return name !== null && dropped.options.includes(name);
-    })
+    .filter(
+      (property) =>
+        property.type === "SpreadElement" &&
+        property.argument.type === "Identifier" &&
+        droppedHelpers.has(property.argument.name),
+    )
     .map((property) => {
       const edit = removePropertyEdit(call.source.text, property);
       return {
@@ -623,9 +607,9 @@ const usesAny = (text: string, names: ReadonlySet<string>) => {
 const buildMergedCallInitializer = (
   existing: CallSource,
   next: CallSource,
-  dropped: DroppedNames,
+  droppedHelpers: ReadonlySet<string>,
 ) => {
-  const project = withoutDropped(existing, dropped);
+  const project = withoutDroppedHelpers(existing, droppedHelpers);
   if (!project) {
     return null;
   }
@@ -760,20 +744,15 @@ const mergeHelperStatement = (
  * `plugins`: a call to the same adapter keeps the project's arguments and
  * gains the scaffold's missing ones, and `plugins` is the scaffold's. A build
  * that is not a plain build adapter, such as `withSentry(bare())`, stays the
- * project's (`keptBuild`). The merged call loses the options the scaffold's
- * adapter dropped and the helpers the rebuilt config no longer declares, and
- * a call that still uses such a helper takes the scaffold's. Null when
- * `build`, `storage`, or `database` is no call.
+ * project's (`keptBuild`). The merged call loses its spreads of the managed
+ * helpers the rebuilt config no longer declares (`droppedHelpers`), and a
+ * call that still uses one takes the scaffold's. Null when `build`,
+ * `storage`, or `database` is no call.
  */
 const updateManagedObject = (
   existing: ManagedConfigObject,
   next: ManagedConfigObject,
-  dropped: {
-    readonly helpers: ReadonlySet<string>;
-    readonly options: Readonly<
-      Record<"storage" | "database", readonly string[]>
-    >;
-  },
+  droppedHelpers: ReadonlySet<string>,
 ): { readonly text: string; readonly keptBuild: boolean } | null => {
   const objectStart = existing.objectExpression.start;
   const objectText = getNodeText(existing.source, existing.objectExpression);
@@ -781,7 +760,7 @@ const updateManagedObject = (
   const missingPropertyTexts: string[] = [];
   let keptBuild = false;
 
-  for (const propertyName of ["build", "storage", "database"] as const) {
+  for (const propertyName of ["build", "storage", "database"]) {
     const existingProperty = findManagedProperty(
       existing.objectExpression,
       propertyName,
@@ -834,13 +813,13 @@ const updateManagedObject = (
           callExpression: nextProperty.value,
           source: next.source,
         },
-        { helpers: dropped.helpers, options: dropped.options[propertyName] },
+        droppedHelpers,
       );
       if (!mergedInitializer) {
         return null;
       }
 
-      if (!usesAny(mergedInitializer, dropped.helpers)) {
+      if (!usesAny(mergedInitializer, droppedHelpers)) {
         nextInitializerText = mergedInitializer;
       }
     }
@@ -1185,13 +1164,7 @@ const mergeHotUpdaterConfigText = (
       objectExpression: nextConfig.objectExpression,
       source: nextSource,
     },
-    {
-      helpers: droppedHelpers,
-      options: {
-        storage: scaffold.storage.removedOptions ?? [],
-        database: scaffold.database.removedOptions ?? [],
-      },
-    },
+    droppedHelpers,
   );
   if (!nextObject) {
     return {
@@ -1407,12 +1380,10 @@ export const createHotUpdaterConfigScaffoldFromBuilder = (
     storage: {
       initializer: scaffold.storageConfigString,
       callee: extractCallIdentifier(scaffold.storageConfigString),
-      removedOptions: scaffold.storageRemovedOptions,
     },
     database: {
       initializer: scaffold.databaseConfigString,
       callee: extractCallIdentifier(scaffold.databaseConfigString),
-      removedOptions: scaffold.databaseRemovedOptions,
     },
     plugins: {
       initializer: scaffold.pluginsConfigString,

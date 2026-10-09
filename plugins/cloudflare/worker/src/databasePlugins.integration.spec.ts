@@ -123,7 +123,7 @@ const reset = async (): Promise<void> => {
  */
 const serve = (options: {
   readonly database: EngineDatabase;
-  readonly storage?: readonly StorageAdapter[];
+  readonly storage?: StorageAdapter;
 }) =>
   createHotUpdater({
     ...options,

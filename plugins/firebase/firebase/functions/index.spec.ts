@@ -73,7 +73,7 @@ describe("the prebuilt Cloud Function", () => {
     expect(mocks.createHotUpdater).toHaveBeenCalledOnce();
     expect(mocks.createHotUpdater.mock.calls[0]?.[0]).toMatchObject({
       database: { name: "firebaseDatabase" },
-      storage: [{ name: "firebaseStorage", protocol: "gs" }],
+      storage: { name: "firebaseStorage", protocol: "gs" },
       plugins,
     });
   });

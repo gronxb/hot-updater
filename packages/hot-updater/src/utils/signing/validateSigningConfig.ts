@@ -202,7 +202,7 @@ export async function validateSigningConfig(
         platform: "android",
         code: "ORPHAN_PUBLIC_KEY",
         message:
-          "Signing is disabled but com.hotupdater.PUBLIC_KEY exists in AndroidManifest.xml or legacy strings.xml. This will cause OTA updates to be rejected.",
+          "Signing is disabled but com.hotupdater.PUBLIC_KEY exists in AndroidManifest.xml. This will cause OTA updates to be rejected.",
         resolution:
           "Run `npx hot-updater keys remove` to remove public keys, or enable signing in hot-updater.config.ts",
       });

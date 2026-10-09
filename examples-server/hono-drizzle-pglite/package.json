@@ -19,7 +19,6 @@
     "@hono/node-server": "catalog:hono",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/protocol": "workspace:*",
-    "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@types/node": "^20.11.17",

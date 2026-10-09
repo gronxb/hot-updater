@@ -19,7 +19,6 @@
   "devDependencies": {
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/protocol": "workspace:*",
-    "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
     "@prisma/client": "catalog:db",

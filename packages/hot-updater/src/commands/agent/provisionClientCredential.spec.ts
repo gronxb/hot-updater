@@ -63,7 +63,7 @@ import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 const credential = { label: "API key", header: "x-api-key", env: "HOT_UPDATER_API_KEY" };
 export const createHotUpdater = ({ database, plugins }) => ({
   database,
-  storage: [],
+  storage: undefined,
   plugins: plugins.map((id) => ({
     id,
     cli: id !== "apiKeys" ? {} : {

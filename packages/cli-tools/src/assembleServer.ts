@@ -50,7 +50,7 @@ export interface AssembleServerOptions {
 /** `createHotUpdater`, with public client routes unless a plugin provides clientAuth. */
 const createServer = (
   database: EngineDatabase,
-  storage: readonly StorageAdapter[],
+  storage: StorageAdapter | undefined,
   plugins: readonly AnyHotUpdaterPlugin[],
 ) =>
   createHotUpdater({
@@ -85,7 +85,7 @@ export function assembleServer({
   if (isRemoteDatabase(database)) {
     const shape = createServer(
       { name: "memory", adapter: createMemoryAdapter() },
-      [],
+      undefined,
       plugins,
     );
     return {
@@ -100,11 +100,7 @@ export function assembleServer({
         : { clientAuth: shape.clientAuth }),
     };
   }
-  const server = createServer(
-    database,
-    storage === undefined ? [] : [storage],
-    plugins,
-  );
+  const server = createServer(database, storage, plugins);
   return {
     database,
     core: server.core,

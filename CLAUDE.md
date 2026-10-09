@@ -70,7 +70,7 @@ When working on helper packages, reference these external projects:
 
 ### Configuration
 Projects use `hot-updater.config.ts` (`defineConfig()`) for `build`, `storage`, `database`, and `plugins`, plus the deploy settings (`updateStrategy`, `signing`, `fingerprint`, `patch`, `platform`, `nativeBuild`, `console`, `cacheDir`). The config mirrors the server and never names server code:
-- `storage` is the one adapter the CLI uploads with, one of the server's `createHotUpdater({ storage })` list;
+- `storage` is the one adapter the CLI uploads with, the same adapter as the server's `createHotUpdater({ storage })`;
 - `database` is the server's database adapter, or `standaloneRepository({ baseUrl, commonHeaders })` to reach a self-hosted server's admin API;
 - `plugins` lists the server plugins the server runs. Over a direct database, the CLI assembles core over `database` and `plugins` as `createHotUpdater` does, so the schema fence and retention pruning apply to its writes.
 

@@ -136,33 +136,6 @@ describe("loadConfig", () => {
     }
   });
 
-  it.each(["authorityId", "catalogId"])(
-    "rejects user-managed %s",
-    async (key) => {
-      await writeProjectFile(
-        projectRoot,
-        "hot-updater.config.ts",
-        `export default { ${key}: 'project-a' };\n`,
-      );
-
-      const { loadConfig } = await import("./loadConfig");
-      await expect(loadConfig(null)).rejects.toThrow(`Remove ${key}`);
-    },
-  );
-
-  it("rejects the removed compressStrategy setting", async () => {
-    await writeProjectFile(
-      projectRoot,
-      "hot-updater.config.ts",
-      "export default { compressStrategy: 'tar.br' };\n",
-    );
-
-    const { loadConfig } = await import("./loadConfig");
-    await expect(loadConfig(null)).rejects.toThrow(
-      "Remove compressStrategy from hot-updater.config",
-    );
-  });
-
   it("allows disabling the local CLI cache", async () => {
     await writeProjectFile(
       projectRoot,

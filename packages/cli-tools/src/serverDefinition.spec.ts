@@ -24,7 +24,7 @@ const definitionOf = (
   overrides: Partial<ServerDefinition> = {},
 ): ServerDefinition => ({
   database: { name: "memory", adapter: createMemoryAdapter() },
-  storage: [],
+  storage: undefined,
   plugins: [],
   clientPlugins: [],
   clientEndpoints: [],

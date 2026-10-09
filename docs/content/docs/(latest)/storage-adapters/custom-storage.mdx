@@ -226,24 +226,21 @@ Configure the same bucket and base path as the CLI:
 ```ts title="src/hotUpdater.ts (excerpt)"
 export const hotUpdater = createHotUpdater({
   database, // Your provider's database.
-  storage: [
-    myStorage({
-      client: createBucketClient(process.env.BUCKET_TOKEN!),
-      bucket: "bundles",
-      basePath: "ota",
-      downloadUrlSigningKey: process.env.STORAGE_DOWNLOAD_URL_SIGNING_KEY!,
-    }),
-  ],
+  storage: myStorage({
+    client: createBucketClient(process.env.BUCKET_TOKEN!),
+    bucket: "bundles",
+    basePath: "ota",
+    downloadUrlSigningKey: process.env.STORAGE_DOWNLOAD_URL_SIGNING_KEY!,
+  }),
   plugins: [insights(), apiKeys()],
 });
 ```
 
-`createHotUpdater` refuses two adapters with one protocol. The first read of
-`hotUpdater.handlers` checks that every adapter in `storage` implements `get`
+The first read of `hotUpdater.handlers` checks that `storage` implements `get`
 and `getDownloadUrl`, so a server that mounts the handlers throws there when
-one of them is upload-only. To answer a URI, Hot Updater:
+its adapter is upload-only. To answer a URI, Hot Updater:
 
-1. uses the registered adapter whose `protocol` matches the URI's scheme;
+1. uses the adapter when its `protocol` matches the URI's scheme;
 2. uses an `http` or `https` URI directly when no adapter owns its scheme;
 3. otherwise reports the scheme as unsupported.
 

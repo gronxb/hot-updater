@@ -19,8 +19,6 @@ export const getConfigScaffold = (
       secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
     },
   })`,
-    // r2Storage authenticates with R2 S3 credentials; v0's Wrangler token was removed.
-    removedOptions: ["cloudflareApiToken"],
   };
   const databaseConfig: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/cloudflare", named: ["d1Database"] }],

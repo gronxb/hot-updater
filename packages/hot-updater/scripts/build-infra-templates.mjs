@@ -44,9 +44,6 @@ const save = async (file, value) => {
 const pluginRoot = (provider) => path.join(repoRoot, "plugins", provider);
 const moduleAt = (file) => import(pathToFileURL(file).href);
 const placeholder = (name) => `__HOT_UPDATER_${name}__`;
-/** Indents every line after the first, so a multi-line value nests. */
-const indentFollowingLines = (text, spaces) =>
-  text.replaceAll("\n", `\n${" ".repeat(spaces)}`);
 /**
  * The credential helper's server definition, which stays in the scaffold:
  * the config scaffold's database, storage, and plugins, without its build or
@@ -81,9 +78,7 @@ ${helpers.map((code) => `${code}\n\n`).join("")}/**
  */
 export const hotUpdater = createHotUpdater({
   database: ${scaffold.database.initializer},
-  storage: [
-    ${indentFollowingLines(scaffold.storage.initializer, 2)},
-  ],
+  storage: ${scaffold.storage.initializer},
   ${plugins === "plugins" ? "plugins" : `plugins: ${plugins}`},
 });
 `;

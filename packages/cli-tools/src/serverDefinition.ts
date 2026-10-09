@@ -27,8 +27,8 @@ export interface ServerClientEndpoint {
 export interface ServerDefinition {
   /** The database as configured, with the tooling `hot-updater db` runs. */
   readonly database: ToolingDatabase;
-  /** The storage as configured, in order. */
-  readonly storage: readonly StorageAdapter[];
+  /** The storage as configured; absent when the server has none. */
+  readonly storage: StorageAdapter | undefined;
   readonly plugins: readonly AnyHotUpdaterPlugin[];
   /** The client plugins an app adds for the plugins: what init prints. */
   readonly clientPlugins: readonly PluginClientPlugin[];
@@ -59,7 +59,7 @@ export const isServerDefinition = (value: unknown): value is ServerDefinition =>
   isRecord(value) &&
   isRecord(value.database) &&
   typeof value.database.name === "string" &&
-  Array.isArray(value.storage) &&
+  (value.storage === undefined || isRecord(value.storage)) &&
   Array.isArray(value.plugins) &&
   Array.isArray(value.clientPlugins) &&
   Array.isArray(value.clientEndpoints) &&

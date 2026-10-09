@@ -5,8 +5,8 @@ import type {
 
 interface DownloadBundleDependencies {
   readonly core: Pick<HotUpdaterCoreApi, "getBundle">;
-  /** The server's storage; the manifest is read with its protocol's. */
-  readonly storage: readonly StorageAdapter[];
+  /** The server's storage, which reads the manifest of its protocol. */
+  readonly storage: StorageAdapter | undefined;
 }
 
 export const downloadBundle = async (
@@ -19,9 +19,7 @@ export const downloadBundle = async (
   const storageUri = detail.bundle.manifest_storage_uri;
 
   const protocol = new URL(storageUri).protocol.replace(":", "");
-  const storageAdapter = storage.find(
-    (adapter) => adapter.protocol === protocol,
-  );
+  const storageAdapter = storage?.protocol === protocol ? storage : undefined;
   if (storageAdapter?.get !== undefined) {
     const { response } = await storageAdapter.get({ storageUri });
     if (!response)

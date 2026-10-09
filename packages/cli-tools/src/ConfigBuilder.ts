@@ -10,12 +10,6 @@ export type ImportInfo = {
 export type ProviderConfig = {
   imports: ImportInfo[]; // Imports required specifically by this provider part
   configString: string; // The JS code string for storage: ..., database: ...
-  /**
-   * Options an earlier version of this adapter accepted that the current one
-   * rejects, such as `cloudflareApiToken` in `r2Storage`: init deletes them
-   * from the project's call when it merges into an existing config.
-   */
-  removedOptions?: readonly string[];
 };
 
 const normalizeImportInfos = (imports: ImportInfo[]) => {
@@ -107,9 +101,7 @@ export type ConfigBuilderScaffold = {
   imports: ImportInfo[];
   buildConfigString: string;
   storageConfigString: string;
-  storageRemovedOptions: readonly string[];
   databaseConfigString: string;
-  databaseRemovedOptions: readonly string[];
   pluginsConfigString: string;
   intermediateCode: string;
   text: string;
@@ -221,9 +213,7 @@ ${this.intermediateCode ? `${this.intermediateCode}\n\n` : ""}export default def
       imports,
       buildConfigString,
       storageConfigString: this.storageInfo.configString,
-      storageRemovedOptions: this.storageInfo.removedOptions ?? [],
       databaseConfigString: this.databaseInfo.configString,
-      databaseRemovedOptions: this.databaseInfo.removedOptions ?? [],
       pluginsConfigString: plugins,
       intermediateCode: this.intermediateCode,
       text,
