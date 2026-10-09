@@ -20,6 +20,7 @@ import {
 } from "../../../e2e/lynx/public-matrix-contract";
 import {
   androidMatrixLaunchArguments,
+  createDeviceAdapter,
   DIAGNOSTIC_MARKER,
   EVENT_MARKER,
   formatAppleLogStart,
@@ -852,7 +853,63 @@ describe("Lynx public matrix runner", () => {
     fs.rmSync(temporary, { recursive: true, force: true });
   });
 
-  it("parses the iOS bare JSONL sink and Android marked log lines", () => {
+  it("reads complete Android journal records without logcat truncation", () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), "lynx-journal-"));
+    const adapter = createDeviceAdapter("android", { deviceId: "test" });
+    const parameters = { a: "a".repeat(1024), b: "b".repeat(998) };
+    const event = {
+      event: "pageAdmitted",
+      pageParameters: parameters,
+      orderedPageParameters: [{}, parameters],
+    };
+    const encoded = JSON.stringify(event);
+    const diagnostic = {
+      action: "navigationStackBoundary",
+      ok: true,
+      processId: "101",
+      data: { pages: Array.from({ length: 16 }, () => parameters) },
+    };
+    fs.mkdirSync(path.join(directory, "files"));
+    const runAs = path.join(directory, "run-as");
+    fs.writeFileSync(runAs, '#!/bin/sh\nshift\nexec "$@"\n', { mode: 0o755 });
+    vi.spyOn(adapter, "adb").mockImplementation((args: string[]) => {
+      if (args[0] === "logcat")
+        return `${EVENT_MARKER}${encoded.slice(0, 4000)}`;
+      const result = spawnSync("/bin/sh", ["-c", args.slice(2).join(" ")], {
+        cwd: directory,
+        env: { ...process.env, PATH: `${directory}:${process.env.PATH}` },
+        encoding: "utf8",
+      });
+      if (result.status !== 0) throw new Error(result.stderr);
+      return result.stdout;
+    });
+    try {
+      expect(adapter.readEvents()).toEqual([]);
+      expect(adapter.readDiagnostics()).toEqual([]);
+      expect(encoded.length).toBeGreaterThan(4000);
+      const eventsFile = path.join(directory, "files/matrix-events.jsonl");
+      fs.writeFileSync(eventsFile, `${encoded}\n`);
+      fs.writeFileSync(
+        path.join(directory, "files/matrix-diagnostics.jsonl"),
+        `${JSON.stringify(diagnostic)}\n`,
+      );
+      expect(adapter.readEvents()).toEqual([event]);
+      expect(adapter.readDiagnostics()).toEqual([diagnostic]);
+      fs.writeFileSync(eventsFile, '{"event":');
+      expect(() => adapter.readEvents()).toThrow("Malformed matrix event JSON");
+      fs.writeFileSync(
+        runAs,
+        "#!/bin/sh\necho 'package not debuggable' >&2\nexit 1\n",
+      );
+      expect(() => adapter.readEvents()).toThrow("package not debuggable");
+      expect(() => adapter.readDiagnostics()).toThrow("package not debuggable");
+    } finally {
+      vi.restoreAllMocks();
+      fs.rmSync(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("parses bare JSONL sinks and marked log lines", () => {
     const event = {
       event: "generationStarted",
       processId: "101",

@@ -632,7 +632,19 @@ class AndroidAdapter {
   }
 
   readEvents() {
-    return parseEvents(this.adb(["logcat", "-d", "-s", "HotUpdaterLynx:I"]));
+    return parseEvents(this.readJournal("matrix-events.jsonl"));
+  }
+
+  readJournal(name) {
+    return this.adb([
+      "shell",
+      "-T",
+      "run-as",
+      APP_ID,
+      "sh",
+      "-c",
+      `'if [ -e files/${name} ]; then cat files/${name}; fi'`,
+    ]);
   }
 
   readStates() {
@@ -667,22 +679,7 @@ class AndroidAdapter {
   }
 
   readDiagnostics() {
-    const result = spawnSync(
-      "adb",
-      [
-        "-s",
-        this.deviceId,
-        "shell",
-        "run-as",
-        APP_ID,
-        "cat",
-        "files/matrix-diagnostics.jsonl",
-      ],
-      { encoding: "utf8" },
-    );
-    return result.status === 0
-      ? parseDiagnostics(result.stdout)
-      : parseDiagnostics(this.readNativeLogs());
+    return parseDiagnostics(this.readJournal("matrix-diagnostics.jsonl"));
   }
 }
 

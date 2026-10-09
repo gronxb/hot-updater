@@ -50,7 +50,14 @@ android {
         .orNull?.split(",") ?: listOf("arm64-v8a", "x86_64")
     }
   }
-  buildTypes { release { isMinifyEnabled = false; signingConfig = signingConfigs.getByName("debug") } }
+  // The QA runner reads complete event journals through adb run-as.
+  buildTypes {
+    release {
+      isDebuggable = project.findProperty("lynxE2eDebuggable") == "true"
+      isMinifyEnabled = false
+      signingConfig = signingConfigs.getByName("debug")
+    }
+  }
   compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
   kotlinOptions { jvmTarget = "17" }
   androidResources { ignoreAssetsPattern = "" }

@@ -2,6 +2,7 @@ package com.hotupdater.lynxmatrix
 
 import android.app.Activity
 import android.os.Bundle
+import android.os.Process
 import android.util.Log
 import android.view.Gravity
 import android.view.ViewGroup
@@ -72,10 +73,7 @@ class MatrixActivity : Activity() {
                     .put("observedAt", observedAt())
                     .put("framework", framework)
                 val encoded = event.toString()
-                synchronized(MatrixActivity::class.java) {
-                    File(filesDir, "matrix-events.jsonl")
-                        .appendText("$encoded\n")
-                }
+                appendRecord("matrix-events.jsonl", encoded)
                 Log.i(
                     "HotUpdaterLynx",
                     "HOT_UPDATER_MATRIX_EVENT $encoded",
@@ -245,11 +243,23 @@ class MatrixActivity : Activity() {
                     .put("error", error.message ?: "Diagnostic action rejected")
             },
         )
-        val encoded = record.toString()
-        synchronized(MatrixActivity::class.java) {
-            File(filesDir, "matrix-diagnostics.jsonl").appendText("$encoded\n")
-        }
+        val encoded = record.put("processId", Process.myPid().toString()).toString()
+        appendRecord("matrix-diagnostics.jsonl", encoded)
         Log.i("HotUpdaterLynx", "HOT_UPDATER_MATRIX_DIAGNOSTIC $encoded")
+    }
+
+    private fun appendRecord(name: String, encoded: String) {
+        synchronized(MatrixActivity::class.java) {
+            val destination = File(filesDir, name)
+            val pending = File(filesDir, "$name.pending")
+            pending.outputStream().use { output ->
+                if (destination.exists()) {
+                    destination.inputStream().use { it.copyTo(output) }
+                }
+                output.write("$encoded\n".toByteArray(Charsets.UTF_8))
+            }
+            check(pending.renameTo(destination)) { "Could not publish $name" }
+        }
     }
 
     override fun onDestroy() {
