@@ -15,6 +15,7 @@ import {
   startHttpTestServer,
   createBundleEventRowFixture,
   insightsTestSuite,
+  createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import { createBundleFixture } from "@hot-updater/test-utils";
 import { Kysely, SqliteDialect } from "kysely";
@@ -72,6 +73,7 @@ const insightsOf = (database: ToolingDatabase) =>
   createInsightsModel(
     createHotUpdater({
       database,
+      storage: createReleaseCatalogTestStorage(),
       plugins: [insights()],
       clientAccess: "public",
     }).api.insights,

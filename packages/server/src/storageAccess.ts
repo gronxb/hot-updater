@@ -42,11 +42,9 @@ const tokensEqual = (left: string, right: string) => {
  * Reads, download URLs, and signed downloads over the server's storage, for
  * the URIs of its protocol; an HTTP(S) URI is used as it is.
  */
-export const createStorageAccess = (
-  storageAdapter: StorageAdapter | undefined,
-) => {
+export const createStorageAccess = (storageAdapter: StorageAdapter) => {
   const findStorage = (protocol: string) =>
-    storageAdapter?.protocol === protocol ? storageAdapter : undefined;
+    storageAdapter.protocol === protocol ? storageAdapter : undefined;
 
   const readStorageResponse = async (
     storageUri: string,
@@ -99,7 +97,7 @@ export const createStorageAccess = (
   };
 
   const downloadStorageObject =
-    storageAdapter?.getDownloadUrl !== undefined
+    storageAdapter.getDownloadUrl !== undefined
       ? async (
           storageUriToken: string,
           encodedSignature: string,

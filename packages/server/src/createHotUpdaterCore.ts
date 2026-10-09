@@ -77,8 +77,8 @@ export type RuntimeHotUpdaterAPI<
    * closes it (`dispose`).
    */
   readonly database: ToolingDatabase;
-  /** The storage as configured; absent when the server has none. */
-  readonly storage: StorageAdapter | undefined;
+  /** The storage as configured. */
+  readonly storage: StorageAdapter;
   /** The plugins as configured, as a frozen copy, whose tables tooling creates. */
   readonly plugins: TPlugins;
   /**
@@ -165,7 +165,7 @@ export type CreateHotUpdaterOptions<
    * Where bundles are stored, the same adapter `hot-updater.config.ts`
    * uploads with: the server reads and signs the URIs of its protocol.
    */
-  readonly storage?: StorageAdapter;
+  readonly storage: StorageAdapter;
   /** The plugins the server runs; at most one provides clientAuth. Defaults to none. */
   readonly plugins?: TPlugins;
 } & ClientAccessRule<TPlugins>;
@@ -194,6 +194,20 @@ const databaseOf = (value: unknown): ToolingDatabase => {
   );
 };
 
+/** The configured storage, when it is a storage adapter. */
+const storageOf = (value: unknown): StorageAdapter => {
+  if (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.protocol === "string"
+  ) {
+    return value as unknown as StorageAdapter;
+  }
+  throw new HotUpdaterConfigError(
+    "storage must be a storage adapter, such as s3Storage(...): the one hot-updater.config.ts uploads with.",
+  );
+};
+
 /** `"public"`, or nothing. */
 const isPublic = (value: unknown): boolean => {
   if (value === undefined) return false;
@@ -209,7 +223,7 @@ export function createHotUpdater<
   options: CreateHotUpdaterOptions<TPlugins>,
 ): RuntimeHotUpdaterAPI<NoInfer<TPlugins>> {
   const database = databaseOf(options.database);
-  const storage = options.storage;
+  const storage = storageOf(options.storage);
   const { downloadStorageObject, readStorageText, resolveFileUrl } =
     createStorageAccess(storage);
   const publicClients = isPublic(
@@ -258,9 +272,7 @@ export function createHotUpdater<
     adapterName: database.name,
     get handlers(): HotUpdaterHandlers {
       if (!serving) {
-        if (storage !== undefined) {
-          assertStorageOperations(storage, ["get", "getDownloadUrl"]);
-        }
+        assertStorageOperations(storage, ["get", "getDownloadUrl"]);
         serving = true;
       }
       return handlers;

@@ -3,6 +3,7 @@ import {
   type ConfigInput,
   coreSettings,
 } from "@hot-updater/plugin-core";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { describe, expect, expectTypeOf, it, vi } from "vitest";
 
 import packageJson from "../package.json" with { type: "json" };
@@ -106,6 +107,7 @@ describe("runtime createHotUpdater", () => {
         createHotUpdater({
           clientAccess: "public",
           database: database as unknown as CreateHotUpdaterOptions["database"],
+          storage: createReleaseCatalogTestStorage(),
         }),
       ).toThrow(HotUpdaterConfigError);
     }
@@ -113,8 +115,29 @@ describe("runtime createHotUpdater", () => {
       createHotUpdater({
         clientAccess: "public",
         database: remote as unknown as CreateHotUpdaterOptions["database"],
+        storage: createReleaseCatalogTestStorage(),
       }),
     ).toThrow("standaloneRepository reaches a server's admin API");
+  });
+
+  it("refuses storage that is not a storage adapter", () => {
+    for (const storage of [
+      undefined,
+      [createReleaseCatalogTestStorage()],
+      { name: "s3Storage" },
+    ]) {
+      expect(() =>
+        createHotUpdater({
+          clientAccess: "public",
+          database: createRuntimeDatabase(),
+          storage: storage as unknown as CreateHotUpdaterOptions["storage"],
+        }),
+      ).toThrow(
+        new HotUpdaterConfigError(
+          "storage must be a storage adapter, such as s3Storage(...): the one hot-updater.config.ts uploads with.",
+        ),
+      );
+    }
   });
 
   it("answers 503 until the schema settings are written", async () => {
@@ -123,6 +146,7 @@ describe("runtime createHotUpdater", () => {
       const hotUpdater = createHotUpdater({
         clientAccess: "public",
         database: await createFencedDatabase("kysely"),
+        storage: createReleaseCatalogTestStorage(),
       });
 
       const response = await hotUpdater.handlers.admin(
@@ -142,6 +166,7 @@ describe("runtime createHotUpdater", () => {
     const hotUpdater = createHotUpdater({
       clientAccess: "public",
       database: await createFencedDatabase("kysely", coreSettings),
+      storage: createReleaseCatalogTestStorage(),
     });
 
     await expect(hotUpdater.core.listChannels()).resolves.toEqual([]);
@@ -172,6 +197,7 @@ describe("runtime createHotUpdater", () => {
     const hotUpdater = createHotUpdater({
       clientAccess: "public",
       database: createRuntimeDatabase(),
+      storage: createReleaseCatalogTestStorage(),
     });
 
     const response = await hotUpdater.handlers.client(
@@ -190,6 +216,7 @@ describe("runtime createHotUpdater", () => {
     expect(() =>
       createHotUpdater({
         database: createRuntimeDatabase(),
+        storage: createReleaseCatalogTestStorage(),
       } as unknown as CreateHotUpdaterOptions),
     ).toThrow(
       'Set clientAccess to "public", or add a plugin that provides clientAuth.',
@@ -201,6 +228,7 @@ describe("runtime createHotUpdater", () => {
       createHotUpdater({
         clientAccess: clientAccess as ClientAccessPolicy,
         database: createRuntimeDatabase(),
+        storage: createReleaseCatalogTestStorage(),
       });
     const onlyPublic =
       'clientAccess must be "public"; to protect client routes, add a plugin that provides clientAuth to plugins.';

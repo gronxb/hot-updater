@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { mockStorage } from "@hot-updater/mock";
 import {
   createEngineDatabase,
   createMemoryAdapter,
@@ -67,7 +68,11 @@ describe("Console config resolution", () => {
       // The console writes through core over the server's own tables.
       await resolved.core.ensureChannel("production");
       await expect(
-        createHotUpdater({ database, plugins }).core.listChannels(),
+        createHotUpdater({
+          database,
+          storage: mockStorage({}),
+          plugins,
+        }).core.listChannels(),
       ).resolves.toMatchObject([{ name: "production" }]);
       if (sourceType === "callback") {
         expect(source).toHaveBeenCalledWith(request);

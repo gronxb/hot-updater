@@ -497,6 +497,7 @@ import { feedback } from "./feedback";
 
 export const hotUpdater = createHotUpdater({
   database, // Your provider's database, such as kyselyAdapter(...).
+  storage, // The adapter hot-updater.config.ts uploads with, such as s3Storage(...).
   plugins: [insights(), apiKeys(), feedback()], // [!code ++]
 });
 ```
@@ -911,6 +912,7 @@ database:
 ```ts title="src/feedback/endpoints.spec.ts"
 import { createHotUpdater } from "@hot-updater/server";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { expect, it } from "vitest";
 
 import { feedback } from "./index";
@@ -918,6 +920,7 @@ import { feedback } from "./index";
 it("serves POST /feedback on the client handler", async () => {
   const hotUpdater = createHotUpdater({
     database: { name: "memory", adapter: createMemoryAdapter() },
+    storage: createReleaseCatalogTestStorage(),
     plugins: [feedback()],
     clientAccess: "public",
   });

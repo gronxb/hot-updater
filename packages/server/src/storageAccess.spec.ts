@@ -6,6 +6,10 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createStorageAccess } from "./storageAccess";
 
+/** Storage that owns `s3://`, so an `https://` URI is nobody's. */
+const s3Storage = () =>
+  createStorageAdapter({ name: "s3Storage", protocol: "s3" });
+
 describe("createStorageAccess", () => {
   afterEach(() => {
     vi.unstubAllGlobals();
@@ -33,7 +37,7 @@ describe("createStorageAccess", () => {
       async () => new Response("manifest text"),
     );
     vi.stubGlobal("fetch", fetchMock);
-    const { readStorageText } = createStorageAccess(undefined);
+    const { readStorageText } = createStorageAccess(s3Storage());
 
     await expect(
       readStorageText("https://assets.example.com/manifest.json"),
@@ -41,7 +45,7 @@ describe("createStorageAccess", () => {
   });
 
   it("uses an unowned HTTPS URI directly as the download URL", async () => {
-    const { resolveFileUrl } = createStorageAccess(undefined);
+    const { resolveFileUrl } = createStorageAccess(s3Storage());
     const storageUri = "https://assets.example.com/bundle.zip";
 
     await expect(resolveFileUrl(storageUri)).resolves.toBe(storageUri);

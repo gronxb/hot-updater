@@ -1,5 +1,8 @@
 import { defineTable, createMemoryAdapter } from "@hot-updater/plugin-core";
-import { createBundleFixture } from "@hot-updater/test-utils";
+import {
+  createBundleFixture,
+  createReleaseCatalogTestStorage,
+} from "@hot-updater/test-utils";
 import { describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "../createHotUpdaterCore";
@@ -62,7 +65,11 @@ const keys = (
   });
 
 const startup = (options: Record<string, unknown>) => () =>
-  createHotUpdater({ database: database(), ...options } as never);
+  createHotUpdater({
+    database: database(),
+    storage: createReleaseCatalogTestStorage(),
+    ...options,
+  } as never);
 
 describe("createHotUpdater with plugins", () => {
   it("keeps the configured plugins, with what the CLI reads from them", () => {
@@ -72,6 +79,7 @@ describe("createHotUpdater with plugins", () => {
     };
     const hotUpdater = createHotUpdater({
       database: database(),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [withClientPlugin],
       clientAccess: "public",
     });
@@ -81,6 +89,7 @@ describe("createHotUpdater with plugins", () => {
   it("gives each plugin its own tables on the engine and exposes its API by id", async () => {
     const hotUpdater = createHotUpdater({
       database: database(),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [notes],
       clientAccess: "public",
     });
@@ -95,10 +104,12 @@ describe("createHotUpdater with plugins", () => {
   it("mounts endpoints by access and lists every route with its access, core's and the plugins' only", () => {
     const { handlers } = createHotUpdater({
       database: database(),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [notes, keys()],
     });
     expect(listHotUpdaterRoutes(handlers)).toEqual([
       { method: "GET", path: "/version", access: "public" },
+      { method: "GET", path: "/storage/:token/:signature", access: "public" },
       {
         method: "GET",
         path: "/release-catalogs/app-version/:platform/:channelKey/:appVersion",
@@ -161,6 +172,7 @@ describe("createHotUpdater with plugins", () => {
     });
     const hotUpdater = createHotUpdater({
       database: database(),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [notes, keys(authenticate)],
     });
     await hotUpdater.api.notes.add("n1", "hello");
@@ -193,6 +205,7 @@ describe("createHotUpdater with plugins", () => {
   it("leaves client routes open with clientAccess: public", async () => {
     const hotUpdater = createHotUpdater({
       database: database(),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [notes],
       clientAccess: "public",
     });
@@ -208,6 +221,7 @@ describe("createHotUpdater with plugins", () => {
     const onCachedRoutesChange = vi.fn(async () => undefined);
     const hotUpdater = createHotUpdater({
       database: { ...database(), onCachedRoutesChange },
+      storage: createReleaseCatalogTestStorage(),
       plugins: [notes],
       clientAccess: "public",
     });

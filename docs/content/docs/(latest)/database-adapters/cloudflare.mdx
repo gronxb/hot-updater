@@ -120,7 +120,7 @@ The root export above is for `hot-updater.config.ts` and the Console. Inside a
 Cloudflare Worker, import the same provider name from the `/worker` subpath and
 pass the native D1 binding at the `createHotUpdater` boundary:
 
-```typescript title="src/hotUpdater.ts"
+```typescript title="src/hotUpdater.ts (excerpt)"
 import { d1Database } from "@hot-updater/cloudflare/worker"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
@@ -128,8 +128,8 @@ import { env } from "cloudflare:workers";
 
 export const hotUpdater = createHotUpdater({
   database: d1Database(env.DB), // [!code ++]
+  storage, // The adapter hot-updater.config.ts uploads with, such as r2Storage(...).
   plugins: [insights(), apiKeys(), remoteConfig()],
-  // ... other options
 });
 ```
 

@@ -756,9 +756,8 @@ export const hotUpdater = createHotUpdater({
 ```
 
 - `storages: [adapter]` and `storagePlugins` become `storage: adapter`: one
-  adapter, the same one `hot-updater.config.ts` uploads with. Fails silently:
-  in JavaScript, or when the options object is built in a variable, the old
-  keys are ignored and the server runs without storage.
+  adapter, the same one `hot-updater.config.ts` uploads with. `storage` is
+  required: TypeScript reports a missing one, and startup throws without it.
 - Choose a client-access policy, or startup throws. `clientAccess: "public"`
   keeps v0's open client routes. `plugins: [apiKeys()]` requires an API key
   from apps: create one with

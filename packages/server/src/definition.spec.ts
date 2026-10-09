@@ -6,7 +6,10 @@ import {
   type Deployment,
 } from "@hot-updater/plugin-core";
 import { NIL_UUID } from "@hot-updater/protocol";
-import { createBundleFixture } from "@hot-updater/test-utils";
+import {
+  createBundleFixture,
+  createReleaseCatalogTestStorage,
+} from "@hot-updater/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "./createHotUpdaterCore";
@@ -120,6 +123,7 @@ describe("a server definition", () => {
   it("names the plugin that guards client routes and the headers its decision reads, lowercase", () => {
     const hotUpdater = createHotUpdater({
       database: { name: "memory", adapter: createMemoryAdapter() },
+      storage: createReleaseCatalogTestStorage(),
       plugins: [apiKeys({ headerName: "X-Hot-Updater-Key" })],
     });
 
@@ -145,6 +149,7 @@ describe("a server definition", () => {
           adapter,
           ...(aggregateBatching === undefined ? {} : { aggregateBatching }),
         },
+        storage: createReleaseCatalogTestStorage(),
         plugins: [insights(), apiKeys()],
       });
     }
@@ -157,7 +162,13 @@ describe("a server definition", () => {
       name: "memory",
       adapter: createMemoryAdapter(),
     });
-    await createMigrator(createHotUpdater({ database, clientAccess: "public" }))
+    await createMigrator(
+      createHotUpdater({
+        database,
+        storage: createReleaseCatalogTestStorage(),
+        clientAccess: "public",
+      }),
+    )
       .migrateToLatest({ mode: "from-schema", updateSettings: true })
       .then((result) => result.execute());
     const hotUpdater = createHotUpdater({
@@ -211,6 +222,7 @@ describe("a server definition", () => {
           },
         },
       }),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [insights()],
       clientAccess: "public",
     });
@@ -220,6 +232,7 @@ describe("a server definition", () => {
         name: "memory",
         adapter: { ...memory, prune },
       }),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [insights()],
       clientAccess: "public",
     });

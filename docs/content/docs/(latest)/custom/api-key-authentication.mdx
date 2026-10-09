@@ -19,6 +19,7 @@ import { apiKeys } from "@hot-updater/server/plugins";
 
 export const hotUpdater = createHotUpdater({
   database,
+  storage,
   plugins: [apiKeys()], // [!code ++]
 });
 ```

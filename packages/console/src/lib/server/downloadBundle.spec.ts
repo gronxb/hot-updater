@@ -16,7 +16,8 @@ describe("downloadBundle", () => {
   it("redirects already-public storage without requiring a plugin URL API", async () => {
     const response = await downloadBundle("bundle-id", {
       core: createCore("https://cdn.example.com/manifest.json"),
-      storage: undefined,
+      // Owns `r2://`, so the `https://` manifest is nobody's.
+      storage: createStorageAdapter({ name: "r2Storage", protocol: "r2" }),
     });
 
     expect(response.status).toBe(302);

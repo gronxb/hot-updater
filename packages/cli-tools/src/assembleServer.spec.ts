@@ -41,7 +41,7 @@ describe("assembleServer", () => {
     const server = assembleServer({ database, storage: uploads, plugins });
 
     expect(server.database).toBe(database);
-    expect(server.storage).toBe(uploads);
+    expect(server).not.toHaveProperty("storage");
     expect(server.plugins).toEqual(plugins);
     expect(Object.keys(server.api).sort()).toEqual(["apiKeys", "insights"]);
     expect(server.clientPlugins).toEqual([insightsClientPlugin]);
@@ -58,7 +58,6 @@ describe("assembleServer", () => {
   it("leaves client routes public without a plugin that guards them, and needs no storage", () => {
     const server = assembleServer({ database: memory() });
 
-    expect(server.storage).toBeUndefined();
     expect(server.plugins).toEqual([]);
     expect(server.api).toEqual({});
     expect(server.clientPlugins).toEqual([]);
@@ -113,7 +112,6 @@ describe("assembleServer", () => {
 
     expect(server.database).toBe(remote);
     expect(server.core).toBe(remote.core);
-    expect(server.storage).toBe(uploads);
     expect(server.api).toBeUndefined();
     expect(server.plugins.map(({ id }) => id)).toEqual(["insights", "apiKeys"]);
     expect(server.clientPlugins).toEqual([insightsClientPlugin]);

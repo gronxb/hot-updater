@@ -463,7 +463,7 @@ export type ConfigInput = {
    */
   signing?: SigningConfig;
   build: (args: BuildAdapterArgs) => Promise<BuildAdapter> | BuildAdapter;
-  /** Where the CLI uploads bundles: the same adapter the server lists in its storage. */
+  /** Where the CLI uploads bundles: the same adapter as the server's `storage`. */
   storage: StorageAdapter;
   /**
    * The server's database, which the CLI opens itself, or

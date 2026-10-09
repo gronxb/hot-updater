@@ -233,7 +233,7 @@ export default defineConfig({
 
 Use `dynamoDB` with `createHotUpdater` for self-hosted servers:
 
-```typescript title="src/hotUpdater.ts"
+```typescript title="src/hotUpdater.ts (excerpt)"
 import { dynamoDB } from "@hot-updater/aws"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
@@ -247,6 +247,7 @@ export const hotUpdater = createHotUpdater({
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]
+  storage, // The adapter hot-updater.config.ts uploads with, such as s3Storage(...).
   plugins: [insights(), apiKeys(), remoteConfig()],
 });
 ```

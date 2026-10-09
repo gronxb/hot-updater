@@ -6,7 +6,7 @@ import {
 
 import { getPlatform } from "@/prompts/getPlatform";
 import { createBundleDiff } from "@/utils/createBundleDiff";
-import { loadServer, requireStorage } from "@/utils/loadServer";
+import { loadServer } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
@@ -43,7 +43,7 @@ export const createPatch = async (options: PatchOptions) => {
     await loadConfig({ channel: options.channel, platform }),
   );
   try {
-    const storageAdapter = requireStorage(server);
+    const storageAdapter = server.storage;
     assertStorageOperations(storageAdapter, ["get", "put", "delete"]);
     p.note(
       [

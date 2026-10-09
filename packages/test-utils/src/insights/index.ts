@@ -15,8 +15,8 @@ export { setupInsightsModelTestSuite } from "./setupInsightsModelTestSuite";
  * The Insights plugin's tests, for `setupDatabaseTestSuite`'s `plugins`: its
  * HTTP routes on the provider's server, which must run `insights()`, and
  * with `createModel` its report contract on the provider's database, such as
- * `(database) => createInsightsModel(createHotUpdater({ database, plugins:
- * [insights()], clientAccess: "public" }).api.insights)`.
+ * `(database) => createInsightsModel(createHotUpdater({ database, storage,
+ * plugins: [insights()], clientAccess: "public" }).api.insights)`.
  */
 export const insightsTestSuite = <TDatabase = EngineDatabase>(
   options: {

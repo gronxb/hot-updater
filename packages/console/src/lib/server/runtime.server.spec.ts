@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { mockStorage } from "@hot-updater/mock";
 import type {
   AnyHotUpdaterPlugin,
   EngineDatabase,
@@ -29,6 +30,7 @@ const databaseRuntime = (
     plugins,
     api: createHotUpdater({
       database,
+      storage: mockStorage({}),
       plugins,
       ...(plugins.some(({ provides }) => provides?.clientAuth)
         ? {}
@@ -119,7 +121,11 @@ describe("createConsoleRuntime over the database", () => {
     const created = await keys.create({ name: "Console" });
     // The server's own tables: the server's apiKeys() plugin sees the same key.
     await expect(
-      createHotUpdater({ database, plugins: [apiKeys()] }).api.apiKeys.list(),
+      createHotUpdater({
+        database,
+        storage: mockStorage({}),
+        plugins: [apiKeys()],
+      }).api.apiKeys.list(),
     ).resolves.toEqual([
       expect.objectContaining({ id: created.record.id, name: "Console" }),
     ]);
@@ -141,6 +147,7 @@ describe("createConsoleRuntime over the database", () => {
     await expect(
       createHotUpdater({
         database,
+        storage: mockStorage({}),
         plugins: [remoteConfig()],
         clientAccess: "public",
       }).api.remoteConfig.getActive(),

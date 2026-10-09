@@ -363,7 +363,7 @@ the storage engine, yours or a provider's, so you can see what each server
 call costs a store that bills by read. Pass the metered database to
 `createHotUpdater`, then run a call through `measureReads`:
 
-```ts title="measure.ts"
+```ts title="measure.ts (excerpt)"
 import { meterReads } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 
@@ -372,7 +372,11 @@ import { myDatabase } from "./myDatabase";
 const database = meterReads(
   myDatabase({ connectionString: process.env.DATABASE_URL }),
 );
-const hotUpdater = createHotUpdater({ database, clientAccess: "public" });
+const hotUpdater = createHotUpdater({
+  database,
+  storage, // The adapter hot-updater.config.ts uploads with, such as s3Storage(...).
+  clientAccess: "public",
+});
 
 const { result, adapter, engine } = await database.measureReads(() =>
   hotUpdater.core.listBundles({ limit: 20 }),
@@ -600,6 +604,7 @@ import { toolingTargetOf } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import { createInsightsModel, insights } from "@hot-updater/server/plugins";
 import {
+  createReleaseCatalogTestStorage,
   insightsTestSuite,
   setupDatabaseTestSuite,
   startHttpTestServer,
@@ -638,8 +643,12 @@ setupDatabaseTestSuite({
       // The plugin's API on your database, as the server assembles it.
       createModel: (database) =>
         createInsightsModel(
-          createHotUpdater({ database, plugins, clientAccess: "public" }).api
-            .insights,
+          createHotUpdater({
+            database,
+            storage: createReleaseCatalogTestStorage(),
+            plugins,
+            clientAccess: "public",
+          }).api.insights,
         ),
     }),
   ],

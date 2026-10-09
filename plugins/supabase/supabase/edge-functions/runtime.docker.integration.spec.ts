@@ -38,6 +38,7 @@ import {
   startHttpTestServer,
   withAdapterLatency,
   insightsTestSuite,
+  createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import {
   assertDockerComposeAvailable,
@@ -216,7 +217,11 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
   /** Registers the API key the edge function's client routes accept. */
   const registerRuntimeApiKey = () =>
-    createHotUpdater({ database, plugins: [apiKeys()] }).api.apiKeys.register({
+    createHotUpdater({
+      database,
+      storage: createReleaseCatalogTestStorage(),
+      plugins: [apiKeys()],
+    }).api.apiKeys.register({
       apiKey: API_KEY,
       name: "Runtime acceptance",
     });
@@ -349,7 +354,11 @@ describe.sequential("supabase edge runtime acceptance", () => {
       supabaseServiceRoleKey: SERVICE_ROLE_KEY,
     });
     await registerRuntimeApiKey();
-    core = createHotUpdater({ database, clientAccess: "public" }).core;
+    core = createHotUpdater({
+      database,
+      storage: createReleaseCatalogTestStorage(),
+      clientAccess: "public",
+    }).core;
 
     edgeRuntime = spawnRuntime({
       command: "docker",
@@ -458,6 +467,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
           createInsightsModel(
             createHotUpdater({
               database,
+              storage: createReleaseCatalogTestStorage(),
               plugins: [insights()],
               clientAccess: "public",
             }).api.insights,
@@ -493,6 +503,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
         supabaseUrl: gatewayBaseUrl,
         supabaseServiceRoleKey: SERVICE_ROLE_KEY,
       }),
+      storage: createReleaseCatalogTestStorage(),
       clientAccess: "public",
     }).core;
     const channelName = "concurrent-channel";

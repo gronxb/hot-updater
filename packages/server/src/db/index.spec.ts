@@ -5,6 +5,7 @@ import {
 } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 import { NIL_UUID } from "@hot-updater/protocol";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import {
@@ -136,7 +137,10 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
     it("passes the Prisma adapter's engine models through unchanged", () => {
       const database = prismaAdapter({ prisma: {}, provider: "postgresql" });
       const code = generateSchema(
-        createHotUpdater({ database }),
+        createHotUpdater({
+          database,
+          storage: createReleaseCatalogTestStorage(),
+        }),
         "latest",
       ).code;
 
@@ -148,14 +152,23 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
     it("rejects generating a retired schema snapshot", () => {
       const database = prismaAdapter({ prisma: {}, provider: "postgresql" });
       expect(() =>
-        generateSchema(createHotUpdater({ database }), "0.21.0"),
+        generateSchema(
+          createHotUpdater({
+            database,
+            storage: createReleaseCatalogTestStorage(),
+          }),
+          "0.21.0",
+        ),
       ).toThrow("Invalid version 0.21.0");
     });
 
     it("passes the Drizzle adapter's engine schema through unchanged", () => {
       const database = drizzleAdapter({ db: {}, provider: "postgresql" });
       const code = generateSchema(
-        createHotUpdater({ database }),
+        createHotUpdater({
+          database,
+          storage: createReleaseCatalogTestStorage(),
+        }),
         "latest",
       ).code;
 
@@ -176,6 +189,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
           db: migrationKysely,
           provider: "postgresql",
         }),
+        storage: createReleaseCatalogTestStorage(),
       });
 
       try {
@@ -213,6 +227,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
           db: migrationKysely,
           provider: "postgresql",
         }),
+        storage: createReleaseCatalogTestStorage(),
       });
 
       try {
@@ -248,6 +263,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
           db: migrationKysely,
           provider: "postgresql",
         }),
+        storage: createReleaseCatalogTestStorage(),
       });
 
       try {
@@ -274,6 +290,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
           db: migrationKysely,
           provider: "postgresql",
         }),
+        storage: createReleaseCatalogTestStorage(),
       });
 
       try {
@@ -298,6 +315,7 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
           db: migrationKysely,
           provider: "postgresql",
         }),
+        storage: createReleaseCatalogTestStorage(),
       });
 
       try {

@@ -18,6 +18,7 @@ import {
   setupDatabaseTestSuite,
   startHttpTestServer,
   insightsTestSuite,
+  createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import { createBundleFixture } from "@hot-updater/test-utils";
 import { createClient } from "@libsql/client";
@@ -106,6 +107,7 @@ for (const provider of ["postgresql", "sqlite"] as const) {
           createInsightsModel(
             createHotUpdater({
               database,
+              storage: createReleaseCatalogTestStorage(),
               plugins: [insights()],
               clientAccess: "public",
             }).api.insights,

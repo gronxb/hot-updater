@@ -8,7 +8,10 @@ import {
   defineTable,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { createBundleFixture } from "@hot-updater/test-utils";
+import {
+  createBundleFixture,
+  createReleaseCatalogTestStorage,
+} from "@hot-updater/test-utils";
 import { createD1TestDatabase } from "@hot-updater/test-utils/node";
 import { beforeEach, expect, it, vi } from "vitest";
 
@@ -55,8 +58,11 @@ const config = {
 
 /** Core's API over the REST database, as the CLI and console run it. */
 const core = () =>
-  createHotUpdater({ database: d1Database(config), clientAccess: "public" })
-    .core;
+  createHotUpdater({
+    database: d1Database(config),
+    storage: createReleaseCatalogTestStorage(),
+    clientAccess: "public",
+  }).core;
 
 /** A plugin with one table. */
 const notes = definePlugin({
@@ -82,6 +88,7 @@ const notes = definePlugin({
 const server = () =>
   createHotUpdater({
     database: d1Database(config),
+    storage: createReleaseCatalogTestStorage(),
     plugins: [notes],
     clientAccess: "public",
   });

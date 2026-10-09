@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { mockStorage } from "@hot-updater/mock";
 import type { Bundle, HotUpdaterCoreApi } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
@@ -32,6 +33,7 @@ const patchFrom = (base: Bundle) => ({
 const memoryCore = (): HotUpdaterCoreApi =>
   createHotUpdater({
     database: { name: "memory", adapter: createMemoryAdapter() },
+    storage: mockStorage({}),
     clientAccess: "public",
   }).core;
 

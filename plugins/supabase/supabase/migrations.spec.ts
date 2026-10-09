@@ -14,6 +14,7 @@ import {
   setupDatabaseTestSuite,
   startHttpTestServer,
   insightsTestSuite,
+  createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
@@ -190,6 +191,7 @@ describe("Supabase schema", () => {
         supabaseUrl: "https://project.supabase.co",
         supabaseServiceRoleKey: "service-role-key",
       }),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [notes],
       clientAccess: "public",
     });
@@ -265,6 +267,7 @@ describe("supabaseDatabase over the apply RPC", () => {
           createInsightsModel(
             createHotUpdater({
               database,
+              storage: createReleaseCatalogTestStorage(),
               plugins: [insights()],
               clientAccess: "public",
             }).api.insights,

@@ -9,6 +9,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import { insights, type BundleEventRow } from "@hot-updater/server/plugins";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {
@@ -360,6 +361,7 @@ describe("Insights write budgets on DynamoDB Local", () => {
     await store.migrations!.apply();
     const api = createHotUpdater({
       database: { name: "dynamoDB", adapter: createKvAdapter({ store }) },
+      storage: createReleaseCatalogTestStorage(),
       plugins: [insights()],
       clientAccess: "public",
     }).api.insights;

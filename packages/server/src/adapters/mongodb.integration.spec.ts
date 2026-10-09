@@ -12,6 +12,7 @@ import {
   setupDatabaseTestSuite,
   startHttpTestServer,
   insightsTestSuite,
+  createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import { createBundleFixture } from "@hot-updater/test-utils";
 import { assertDockerComposeAvailable } from "@hot-updater/test-utils/node";
@@ -120,6 +121,7 @@ setupDatabaseTestSuite({
         createInsightsModel(
           createHotUpdater({
             database,
+            storage: createReleaseCatalogTestStorage(),
             plugins: [insights()],
             clientAccess: "public",
           }).api.insights,

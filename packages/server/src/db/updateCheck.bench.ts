@@ -1,4 +1,7 @@
-import { createMemoryAdapter } from "@hot-updater/plugin-core";
+import {
+  createMemoryAdapter,
+  createStorageAdapter,
+} from "@hot-updater/plugin-core";
 import { encodeChannelKey } from "@hot-updater/protocol";
 import { bench, describe } from "vitest";
 
@@ -6,6 +9,14 @@ import { createHotUpdater } from "../index";
 
 const hotUpdater = createHotUpdater({
   database: { name: "bench", adapter: createMemoryAdapter() },
+  storage: createStorageAdapter({
+    name: "benchStorage",
+    protocol: "s3",
+    get: async () => ({ response: null }),
+    getDownloadUrl: async ({ storageUri }) => ({
+      url: `https://cdn.example.com/${encodeURIComponent(storageUri)}`,
+    }),
+  }),
   clientAccess: "public",
 });
 await hotUpdater.core.deploy([

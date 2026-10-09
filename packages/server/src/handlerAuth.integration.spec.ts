@@ -1,3 +1,4 @@
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { Hono } from "hono";
 import { bearerAuth } from "hono/bearer-auth";
 import { describe, expect, it } from "vitest";
@@ -9,6 +10,7 @@ describe("framework-owned admin authentication", () => {
   it("protects admin without affecting the client handler", async () => {
     const hotUpdater = createHotUpdater({
       database: createRuntimeDatabase(),
+      storage: createReleaseCatalogTestStorage(),
       clientAccess: "public",
     });
     const adminToken = "test-management-token";
