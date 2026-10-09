@@ -85,7 +85,14 @@ export type WriteHotUpdaterConfigResult = {
 
 const HOT_UPDATER_CONFIG_PATH = "hot-updater.config.ts";
 const CONFIG_FILE_NAME = "hot-updater.config.ts";
+const SERVER_PLUGIN_PACKAGES = new Set([
+  "@hot-updater/server/plugins",
+  "@hot-updater/server/plugins/api-keys",
+  "@hot-updater/server/plugins/insights",
+  "@hot-updater/server/plugins/remote-config",
+]);
 const MANAGED_IMPORT_PACKAGES = new Set([
+  ...SERVER_PLUGIN_PACKAGES,
   "firebase-admin",
   "firebase-admin/app",
   "hot-updater",
@@ -168,7 +175,7 @@ type ConfigTextMergeResult =
 
 const parseConfigSource = (text: string): ConfigSource | null => {
   const result = parseSync(CONFIG_FILE_NAME, text, {
-    astType: "js",
+    astType: "ts",
     lang: "ts",
     preserveParens: false,
     sourceType: "module",
@@ -824,7 +831,9 @@ const keptManagedImports = (
   const texts: string[] = [];
   const references = usedIdentifiers(usedText);
   for (const declaration of declarations) {
-    const pkg = declaration.source.value;
+    const pkg = SERVER_PLUGIN_PACKAGES.has(declaration.source.value)
+      ? "@hot-updater/server/plugins"
+      : declaration.source.value;
     const named: string[] = [];
     let defaultName: string | undefined;
     let namespaceName: string | undefined;
@@ -846,7 +855,11 @@ const keptManagedImports = (
     }
     if (named.length === 0 && !defaultName && !namespaceName) continue;
     if (declaration.importKind === "type") {
-      texts.push(`import type { ${named.join(", ")} } from "${pkg}";`);
+      if (named.length > 0)
+        texts.push(`import type { ${named.join(", ")} } from "${pkg}";`);
+      if (namespaceName)
+        texts.push(`import type * as ${namespaceName} from "${pkg}";`);
+      if (defaultName) texts.push(`import type ${defaultName} from "${pkg}";`);
       continue;
     }
     if (named.length > 0) imports.push({ pkg, named });
@@ -1018,6 +1031,23 @@ const mergeHotUpdaterConfigText = (
     };
   }
 
+  const existingPlugins = findPluginsProperty(existingConfig.objectExpression);
+  if (
+    existingPlugins &&
+    existingConfig.objectExpression.properties.some(
+      (property) =>
+        property.start > existingPlugins.start &&
+        (property.type === "SpreadElement" ||
+          property.computed ||
+          getObjectPropertyName(property) === "plugins"),
+    )
+  ) {
+    return {
+      reason:
+        "A later spread or property can overwrite plugins. Move plugins after it before running init again.",
+    };
+  }
+
   const nextObject = updateManagedObject(
     {
       objectExpression: existingConfig.objectExpression,
@@ -1149,7 +1179,12 @@ const mergeHotUpdaterConfigText = (
           : null;
       if (
         scaffoldImport !== undefined &&
-        (scaffoldImport.pkg !== pkg || scaffoldImport.imported !== imported)
+        (scaffoldImport.imported !== imported ||
+          (scaffoldImport.pkg !== pkg &&
+            !(
+              scaffoldImport.pkg === "hot-updater/plugins" &&
+              SERVER_PLUGIN_PACKAGES.has(pkg)
+            )))
       ) {
         return {
           reason: `The import of ${specifier.local.name} from "${pkg}" takes the name init imports from "${scaffoldImport.pkg}".`,
@@ -1335,7 +1370,8 @@ const isGeneratedPluginsFile = (text: string) =>
  * Writes hot-updater.config.ts and says what it did. `settings` names the
  * provider in messages, such as "Supabase". A config it cannot merge is
  * kept, with what to add to it. The plugins file an older init wrote is
- * removed; one the project wrote is named, since nothing reads it.
+ * removed only after a successful config write and when the config no longer
+ * references it. A file the project wrote is kept with a cleanup notice.
  */
 export const writeHotUpdaterFiles = async (
   scaffold: HotUpdaterConfigScaffold,
@@ -1371,6 +1407,14 @@ export const writeHotUpdaterFiles = async (
   const pluginsPath = path.join(cwd, PLUGINS_FILE_PATH);
   const pluginsText = await readTextFile(pluginsPath);
   if (pluginsText === null) return { config };
+  if (config.status === "skipped") return { config, pluginsFile: "kept" };
+  const configText = await fs.readFile(config.path, "utf-8");
+  if (configText.includes("./hotUpdater.plugins")) {
+    p.log.warn(
+      `Kept '${PLUGINS_FILE_PATH}': '${HOT_UPDATER_CONFIG_PATH}' still references it.`,
+    );
+    return { config, pluginsFile: "kept" };
+  }
   if (isGeneratedPluginsFile(pluginsText)) {
     await fs.rm(pluginsPath);
     p.log.success(
