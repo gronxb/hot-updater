@@ -3,7 +3,7 @@ import { createHotUpdater } from "@hot-updater/server";
 import {
   remoteConfig,
   type RemoteConfigApi,
-} from "@hot-updater/server/plugins/remote-config";
+} from "@hot-updater/server/plugins";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import {
   cleanup,

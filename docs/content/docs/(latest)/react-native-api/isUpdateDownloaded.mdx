@@ -54,6 +54,9 @@ async function checkAndUpdate() {
 
 - This value is derived from the internal `progress` state managed by `useHotUpdaterStore()`.
 - It is session-scoped: it does not persist across app restarts.
+- Transitions that need no download, including `USE_BUILTIN`, `USE_EMBEDDED`,
+  and `ADOPT_RELEASE`, leave it `false`. Use the result of the selected
+  `updateBundle()` helper to confirm those transitions succeeded.
 - Use this when you need to decide whether to show a "Restart to update" UI or trigger a controlled reload.
 
 ```tsx

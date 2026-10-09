@@ -5,7 +5,7 @@ import type {
   RemoteConfigTemplateIssue,
   RemoteConfigVersionDetail,
   RemoteConfigVersionsPage,
-} from "@hot-updater/server/plugins/remote-config";
+} from "@hot-updater/server/plugins";
 import { createServerFn } from "@tanstack/react-start";
 
 import { consoleAccess } from "./console-access";
@@ -178,7 +178,7 @@ export const previewRemoteConfigRpc = createServerFn({ method: "POST" })
       evaluateRemoteConfig,
       RemoteConfigValidationError,
       validateRemoteConfigTemplate,
-    } = await import("@hot-updater/server/plugins/remote-config");
+    } = await import("@hot-updater/server/plugins");
     try {
       return {
         status: "ok",

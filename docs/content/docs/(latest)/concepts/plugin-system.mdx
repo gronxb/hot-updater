@@ -35,8 +35,9 @@ Plugins are configured in three places:
 - The app's **`HotUpdater.init({ plugins })`**, for client plugins.
 
 A managed project lists plugins in two places: `hot-updater.config.ts`, where
-init writes the provider package's `plugins`, and the app. Its prebuilt server
-runs the same list.
+init imports `apiKeys`, `insights`, and `remoteConfig` from
+`hot-updater/plugins` and lists `[apiKeys(), insights(), remoteConfig()]`, and
+the app. Its prebuilt server runs the same server plugins.
 
 Keep the config's list the same as the server's, and a deployed Console's
 `console.config.ts`, which mirrors the server too. When the server adds or
@@ -85,7 +86,8 @@ Hot Updater's packages divide by where their code runs:
 | --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | `@hot-updater/protocol`     | The device-safe, zero-dependency package for what crosses a boundary: the data formats and pure computations the app and the server share, and the contracts between a host and its extensions on the device, such as the client plugin contract. | The app, the server, the CLI, and client plugins         |
 | `@hot-updater/plugin-core`  | The kit that extends the server: the adapter and server plugin contracts and their helpers, and the storage engine they run on. It runs wherever the server runs, and depends on `@hot-updater/protocol`.                                       | Adapters and server plugins, including Hot Updater's own |
-| `@hot-updater/server`       | The runtime host: `createHotUpdater` and its handlers, with the built-in adapters and plugins it re-exports.                                                                                                                                      | The server, and `hot-updater.config.ts` for its plugins  |
+| `@hot-updater/server`       | The runtime host: `createHotUpdater` and its handlers, with the built-in adapters and plugins it re-exports.                                                                                                                                      | The server and deployed Console                        |
+| `hot-updater/plugins`      | The official server plugin factories for CLI configuration: `apiKeys`, `insights`, and `remoteConfig`.                                                                                                                                          | `hot-updater.config.ts`                                 |
 | `@hot-updater/react-native` | The app's SDK. It imports `@hot-updater/protocol` and the built-in Insights and Remote Config clients, never `@hot-updater/plugin-core` or the server.                                                                                         | The app                                                  |
 
 An adapter or a server plugin you write imports `@hot-updater/plugin-core`, and
@@ -95,7 +97,7 @@ packages do. A database adapter builds on the engine kit there too.
 
 Each package's API is its root. A subpath only sets apart a part some projects
 leave out: `@hot-updater/server/adapters/*` holds the Kysely, Drizzle, Prisma
-and MongoDB adapters, `@hot-updater/server/plugins/*` the built-in plugins, and
+and MongoDB adapters, `@hot-updater/server/plugins` the built-in plugins, and
 an official plugin package has one entry per side. No package has an internal
 entry, and a package uses another only through that package's API. Test
 helpers live in `@hot-updater/test-utils` alone.
@@ -227,10 +229,9 @@ three. To write one for a custom server, see
 
 Hot Updater's own plugins are packages built the same way:
 `@hot-updater/plugin-insights`, `@hot-updater/plugin-api-keys`, and
-`@hot-updater/plugin-remote-config`. `@hot-updater/server/plugins/insights`,
-`@hot-updater/server/plugins/api-keys`, and
-`@hot-updater/server/plugins/remote-config` re-export them, so a server installs
-nothing more. Each package has an entry
+`@hot-updater/plugin-remote-config`. `@hot-updater/server/plugins` re-exports them for servers and
+deployed Consoles. CLI configurations import these factories from
+`hot-updater/plugins`, which ships with the CLI. Each package has an entry
 per side, the layout a plugin you publish follows; see
 [Ship both sides from one package](/docs/plugins/publish#ship-both-sides-from-one-package).
 

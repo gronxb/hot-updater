@@ -41,9 +41,7 @@ const SERVER_EXPORTS = [
   "./adapters/kysely",
   "./adapters/mongodb",
   "./adapters/prisma",
-  "./plugins/api-keys",
-  "./plugins/insights",
-  "./plugins/remote-config",
+  "./plugins",
   "./package.json",
 ];
 

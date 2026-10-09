@@ -6,7 +6,9 @@ icon: GitBranch
 
 ## Usage
 
-Use `hotUpdater.isChannelSwitched()` to determine whether the app is currently running with a runtime channel switch instead of its build-time default channel.
+Use `hotUpdater.isChannelSwitched()` to determine whether the selected channel
+differs from the build-time default. It can become `true` after staging, before
+the app reloads into the selected code.
 
 ```tsx
 import { hotUpdater } from "./hotUpdater";
@@ -20,7 +22,7 @@ if (hotUpdater.isChannelSwitched()) {
 
 Returns `true` when:
 
-- A bundle from another channel was successfully applied at runtime
+- A transition to another channel was successfully staged
 - The runtime channel switch has not been cleared with `hotUpdater.resetChannel()`
 
 Returns `false` when:

@@ -15,12 +15,12 @@ import {
   type RemoteDatabase,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { insights } from "@hot-updater/server/plugins/insights";
 import {
+  insights,
   remoteConfig,
   type RemoteConfigApi,
   type RemoteConfigTemplate,
-} from "@hot-updater/server/plugins/remote-config";
+} from "@hot-updater/server/plugins";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -423,7 +423,7 @@ describe("hot-updater remote-config over hot-updater.config.ts", () => {
     await handleRemoteConfigShow();
 
     expect(log.error).toHaveBeenCalledWith(
-      'hot-updater.config.ts lists no remoteConfig() in plugins. Add remoteConfig() to plugins, the same plugin your server runs (import { remoteConfig } from "@hot-updater/server/plugins/remote-config"). A managed config gets it from the provider\'s plugins.',
+      'hot-updater.config.ts lists no remoteConfig() in plugins. Add remoteConfig() to plugins, the same plugin your server runs (import { remoteConfig } from "hot-updater/plugins").',
     );
     expect(process.exitCode).toBe(1);
     expect(database.dispose).toHaveBeenCalledOnce();

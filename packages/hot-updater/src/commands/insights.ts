@@ -9,7 +9,7 @@ import {
   createInsightsReads,
   type InsightsReads,
   type InstallationRow,
-} from "@hot-updater/server/plugins/insights";
+} from "@hot-updater/server/plugins";
 
 import { printBanner } from "@/utils/printBanner";
 
@@ -59,7 +59,8 @@ export interface InsightsInstallationsOptions extends InsightsCommandOptions {
 const INSIGHTS = {
   id: "insights",
   call: "insights()",
-  importLine: 'import { insights } from "@hot-updater/server/plugins/insights"',
+  importLine: 'import { insights } from "hot-updater/plugins"',
+  serverImportLine: 'import { insights } from "@hot-updater/server/plugins"',
 } as const;
 
 /**

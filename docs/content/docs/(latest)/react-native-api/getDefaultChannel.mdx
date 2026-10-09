@@ -19,7 +19,8 @@ console.log(defaultChannel);
 ## Behavior
 
 - Returns the build-time default channel configured in the native app
-- Does not change when `hotUpdater.checkForUpdate({ channel })` applies a runtime channel switch
+- Does not change when the `updateBundle()` helper returned by
+  `hotUpdater.checkForUpdate({ channel })` commits a runtime channel switch
 - Defaults to `production` when no channel is configured
 
 ## Example

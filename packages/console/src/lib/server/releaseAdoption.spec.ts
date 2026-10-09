@@ -1,6 +1,6 @@
 // @vitest-environment node
 import type { ReleaseRow } from "@hot-updater/plugin-core";
-import type { InsightsCountEventSeriesInput } from "@hot-updater/server/plugins/insights";
+import type { InsightsCountEventSeriesInput } from "@hot-updater/server/plugins";
 import { describe, expect, it, vi } from "vitest";
 
 import { crashRateOf, recommendsRollback } from "../release-adoption";

@@ -78,6 +78,24 @@ describe("public infrastructure scaffolding", () => {
         expect(agentResult.status, agentResult.stderr).toBe(0);
         const agent = JSON.parse(agentResult.stdout);
         expect(agent.output).not.toBe(scaffold.output);
+        const config = await readFile(
+          path.join(agent.output, "app/hot-updater.config.ts"),
+          "utf8",
+        );
+        expect(config).toContain(
+          'import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";',
+        );
+        expect(config).toContain(
+          "  plugins: [apiKeys(), insights(), remoteConfig()],\n",
+        );
+        const definition = await readFile(
+          path.join(agent.output, "app/hotUpdater.ts"),
+          "utf8",
+        );
+        expect(definition).not.toContain('from "hot-updater/plugins"');
+        expect(definition).toContain(
+          'import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";',
+        );
         const agentManifest = await json(agent.manifest);
         for (const [file, hash] of Object.entries(manifest.files)) {
           expect(agentManifest.files[file], file).toBe(hash);

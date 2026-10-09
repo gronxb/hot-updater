@@ -1,4 +1,4 @@
-import type { InsightsModel } from "@hot-updater/server/plugins/insights";
+import type { InsightsModel } from "@hot-updater/server/plugins";
 
 import { insightsPeriodEnd, recoveryWindows } from "../insights-recovery";
 import {

@@ -7,8 +7,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { apiKeys, insights } from "@hot-updater/server/plugins";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createConsoleRuntime } from "./server/runtime.server";

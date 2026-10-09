@@ -4,7 +4,7 @@ import {
   type RemoteDatabase,
   type StorageAdapter,
 } from "@hot-updater/plugin-core";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { insights } from "@hot-updater/server/plugins";
 import { describe, expect, it, vi } from "vitest";
 
 import { loadServer, requireStorage, ServerConfigError } from "./loadServer";

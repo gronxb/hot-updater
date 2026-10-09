@@ -8,10 +8,7 @@ import {
   createKvAdapter,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  insights,
-  type BundleEventRow,
-} from "@hot-updater/server/plugins/insights";
+import { insights, type BundleEventRow } from "@hot-updater/server/plugins";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import {

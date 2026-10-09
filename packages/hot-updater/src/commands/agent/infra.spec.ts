@@ -125,7 +125,7 @@ describe("published agent infrastructure commands", () => {
         }
         const appFile = (file: string) =>
           readFile(path.join(result.data.output, "app", file), "utf8");
-        const providerImport = new RegExp(
+        const legacyPluginsImport = new RegExp(
           `^import \\{[^}]*\\bplugins\\b[^}]*\\} from "@hot-updater/${provider}";$`,
           "mu",
         );
@@ -133,10 +133,15 @@ describe("published agent infrastructure commands", () => {
         // server code.
         const config = await appFile("hot-updater.config.ts");
         expect(config).toContain(`@hot-updater/${build}`);
-        expect(config).toMatch(providerImport);
+        expect(config).toContain(
+          'import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";',
+        );
+        expect(config).not.toMatch(legacyPluginsImport);
         expect(config).toMatch(/^ {2}storage: \w+\(/mu);
         expect(config).toMatch(/^ {2}database: \w+\(/mu);
-        expect(config).toMatch(/^ {2}plugins,$/mu);
+        expect(config).toContain(
+          "  plugins: [apiKeys(), insights(), remoteConfig()],\n",
+        );
         expect(config).not.toMatch(
           /\bserver:|hotUpdater\.ts|@hot-updater\/server/u,
         );
@@ -147,7 +152,14 @@ describe("published agent infrastructure commands", () => {
         expect(definition).toContain(
           "export const hotUpdater = createHotUpdater({",
         );
-        expect(definition).toMatch(providerImport);
+        expect(definition).not.toMatch(legacyPluginsImport);
+        expect(definition).not.toContain('from "hot-updater/plugins"');
+        expect(definition).toContain(
+          'import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";',
+        );
+        expect(definition).toContain(
+          "  plugins: [apiKeys(), insights(), remoteConfig()],\n",
+        );
         expect(definition).not.toContain(`@hot-updater/${build}`);
         expect(definition).not.toContain("process.loadEnvFile");
         const sources = [

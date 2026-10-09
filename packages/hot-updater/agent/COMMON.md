@@ -127,10 +127,11 @@ command or generated files alone do not prove that a remote step is complete.
    dependencies. An MCP connection alone does not configure hot-updater deploy.
 2. Use app/hot-updater.config.ts as the merge source for the app's existing
    config: merge its storage, database, and plugins, which are the deployed
-   server's, so the CLI and console agree with the server. Keep custom
-   settings and the existing update strategy. Never copy app/hotUpdater.ts
-   into the app or add `server` to its config: the config names no server
-   code. Read ENVIRONMENT.md and fill only the applicable env.example
+   server's, so the CLI and console agree with the server. Import built-in
+   plugin factories from `hot-updater/plugins` and list the matching calls in
+   `plugins`. Keep custom settings and the existing update strategy. Never
+   copy app/hotUpdater.ts into the app or add `server` to its config: the config
+   names no server code. Read ENVIRONMENT.md and fill only the applicable env.example
    settings in a local ignored .env.hotupdater, which the config loads
    before it reads them. Provider and signing credential values must not
    enter logs, manifests, instructions, browser URLs, or app bundles. Verify
@@ -138,9 +139,10 @@ command or generated files alone do not prove that a remote step is complete.
 3. After the schema is ready, run app/provision-client-credential.mjs with
    app/hotUpdater.ts beside it, and app/migrate.ts where the scaffold has one
    (Firestore). app/hotUpdater.ts is the credential helper's server
-   definition, with the deployed server's database, storage, and plugins; it
-   stays in the scaffold. With app/migrate.ts, the script first writes the
-   schema settings of core and the plugins app/hotUpdater.ts runs; complete
+   definition, with the deployed server's database, storage, and plugins from
+   `@hot-updater/server/plugins`; it stays in the scaffold. With app/migrate.ts,
+   the script first writes the schema settings of core and the plugins
+   app/hotUpdater.ts runs; complete
    SETUP.md's database compatibility preflight before running it, since the
    helper does not reject every unsupported engine version. Run the script
    from the directory whose .env.hotupdater contains the target provider

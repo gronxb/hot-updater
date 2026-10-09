@@ -8,7 +8,7 @@ import {
   RemoteConfigValidationError,
   type RemoteConfigVersionDetail,
   type RemoteConfigVersionsPage,
-} from "@hot-updater/server/plugins/remote-config";
+} from "@hot-updater/server/plugins";
 
 import { ConsoleFeatureUnavailableError } from "../console-features";
 

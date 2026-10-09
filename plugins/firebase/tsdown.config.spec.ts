@@ -12,9 +12,7 @@ describe("Firebase Functions build configuration", () => {
       expect.arrayContaining([
         "@hot-updater/plugin-core",
         "@hot-updater/server",
-        "@hot-updater/server/plugins/api-keys",
-        "@hot-updater/server/plugins/insights",
-        "@hot-updater/server/plugins/remote-config",
+        "@hot-updater/server/plugins",
         "@hot-updater/plugin-remote-config/server",
       ]),
     );

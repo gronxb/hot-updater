@@ -84,8 +84,13 @@ describe("Firebase managed config scaffold", () => {
     expect(updated).toContain("basePath: providerNamespace");
     expect(updated).toContain('updateStrategy: "fingerprint"');
     expect(updated).toContain(
-      'import { firebaseDatabase, firebaseStorage, plugins } from "@hot-updater/firebase";',
+      'import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";',
     );
-    expect(updated).toContain("  plugins,\n");
+    expect(updated).toContain(
+      'import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";',
+    );
+    expect(updated).toContain(
+      "  plugins: [apiKeys(), insights(), remoteConfig()],\n",
+    );
   });
 });

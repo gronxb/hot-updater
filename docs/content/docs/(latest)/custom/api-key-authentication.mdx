@@ -10,12 +10,12 @@ The `apiKeys()` [server plugin](/docs/custom/server-plugins) protects a custom
 server's client routes. It stores each key's SHA-256 digest and non-secret
 metadata in the `api_keys` table and provides the server's client-route
 policy. It ships as `@hot-updater/plugin-api-keys`, which
-`@hot-updater/server/plugins/api-keys` re-exports, so there is nothing extra to
+`@hot-updater/server/plugins` re-exports, so there is nothing extra to
 install:
 
 ```ts title="src/hotUpdater.ts (excerpt)"
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
+import { apiKeys } from "@hot-updater/server/plugins";
 
 export const hotUpdater = createHotUpdater({
   database,
@@ -161,7 +161,8 @@ without digests. `register` stores a known plaintext key idempotently, and
 management routes to `handlers.client` or `handlers.admin`.
 
 AWS, Cloudflare, Firebase, and Supabase run `apiKeys()` in their managed
-servers and export that plugin list as `plugins`. Their init registers an
+servers. Their init writes explicit factories from `hot-updater/plugins`
+in the CLI configuration, registers an
 existing `HOT_UPDATER_API_KEY` or creates one through it, then stores the
 plaintext only in the local environment file. Afterwards, `hot-updater api-key`
 in the app directory manages the same keys through the `database` and `plugins`

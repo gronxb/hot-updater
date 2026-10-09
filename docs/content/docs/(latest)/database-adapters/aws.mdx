@@ -52,16 +52,17 @@ aws dynamodb update-time-to-live \
 ```
 
 Then write the schema settings with `migrateDynamoDB`. It takes the same
-configuration as `dynamoDB`, and the plugins the server runs, such as
-`plugins` from `@hot-updater/aws`: the managed server's Insights, API keys,
-and Remote Config.
+configuration as `dynamoDB`, and an explicit array of the plugins the server
+runs. This example includes the managed server's API keys, Insights, and
+Remote Config.
 
 ```typescript
-import { migrateDynamoDB, plugins } from "@hot-updater/aws";
+import { migrateDynamoDB } from "@hot-updater/aws";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 
 await migrateDynamoDB(
   { tableName: "hot-updater", region: "us-east-1" },
-  plugins,
+  [apiKeys(), insights(), remoteConfig()],
 );
 ```
 
@@ -124,8 +125,8 @@ event's transaction:
   event's totals or counts one twice.
 - After an event, the server compacts when a minute has passed since the last
   compaction. A read of the totals, such as the Console's, compacts first. If
-  it cannot write, it shows the stored totals, which can leave out up to one
-  window of the latest events.
+  it cannot write, it shows the stored totals, which can leave out pending
+  events until a later compaction succeeds.
 
 On DynamoDB Local, where nine events in ten are a returning installation's
 first launch of the day, an event costs about 8 write units at 10 or more
@@ -196,7 +197,8 @@ AWS with the current AWS CLI session. `plugins` is the list the managed server
 runs:
 
 ```typescript title="hot-updater.config.ts"
-import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
+import { dynamoDB, s3Storage } from "@hot-updater/aws";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { bare } from "@hot-updater/bare";
 import { fromNodeProviderChain } from "@aws-sdk/credential-providers";
 import { defineConfig } from "hot-updater";
@@ -222,7 +224,7 @@ export default defineConfig({
     tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
     cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
-  plugins,
+  plugins: [apiKeys(), insights(), remoteConfig()],
   updateStrategy: "appVersion", // or "fingerprint"
 });
 ```
@@ -234,8 +236,7 @@ Use `dynamoDB` with `createHotUpdater` for self-hosted servers:
 ```typescript title="src/hotUpdater.ts"
 import { dynamoDB } from "@hot-updater/aws"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 
 export const hotUpdater = createHotUpdater({
   database: dynamoDB({ // [!code ++]
@@ -246,13 +247,13 @@ export const hotUpdater = createHotUpdater({
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]
-  plugins: [insights(), apiKeys()],
+  plugins: [insights(), apiKeys(), remoteConfig()],
 });
 ```
 
-`insights()` records app events, and `apiKeys()` protects client routes with
-the `x-api-key` header. The managed AWS server runs the same list, which
-`@hot-updater/aws` exports as `plugins`. List the server's plugins in
+`insights()` records app events, `apiKeys()` protects client routes with
+the `x-api-key` header, and `remoteConfig()` serves Remote Config. The managed
+AWS server runs the same list. List the server's plugins in
 `hot-updater.config.ts` too; see
 [CLI Configuration](/docs/custom/cli-configuration#mirror-the-server).
 
@@ -267,7 +268,8 @@ item's partition key is a table name, or a table name followed by `#` for its
 index items, so a `dynamodb:LeadingKeys` condition can scope the role to Hot
 Updater's items. The managed setup's policy lists them, including
 `aggregate_log_0` to `aggregate_log_7` and `aggregate_lease`. `migrateDynamoDB`
-also needs `DescribeTable`, and `CreateTable` when it creates the table.
+also needs `DescribeTable` and `DescribeTimeToLive`, `CreateTable` when it
+creates the table, and `UpdateTimeToLive` when it enables TTL.
 
 ## Transaction limits
 

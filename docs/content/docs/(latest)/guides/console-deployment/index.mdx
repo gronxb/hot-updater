@@ -7,6 +7,8 @@ icon: Settings
 import { Step, Steps } from "fumadocs-ui/components/steps";
 import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
 
+## Prepare the console
+
 Host the console with [Nitro](https://nitro.build/deploy) and connect it to your existing Hot Updater backend.
 
 You need Node.js 22+ (npm 11+ if using npm), backend credentials, and a GitHub or Google OAuth application.
@@ -41,8 +43,9 @@ the console's project root, next to `console.auth.ts`. Or configure your own
 database, storage, and server plugins:
 
 ```ts title="console.config.ts"
-import { dynamoDB, plugins, s3Storage } from "@hot-updater/aws";
+import { dynamoDB, s3Storage } from "@hot-updater/aws";
 import { defineConsoleConfig } from "@hot-updater/console";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 
 const region = process.env.HOT_UPDATER_S3_REGION!;
 
@@ -57,7 +60,7 @@ export default defineConsoleConfig({
     region,
     bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
   }),
-  plugins,
+  plugins: [apiKeys(), insights(), remoteConfig()],
   console: {
     gitUrl: "https://github.com/acme/app",
   },
@@ -67,20 +70,21 @@ export default defineConsoleConfig({
 The configuration mirrors your server: the same database and bucket, reached
 with the console host's own credentials, and the
 [server plugins](/docs/custom/server-plugins) your backend runs. The AWS,
-Cloudflare, Firebase, and Supabase packages export their managed server's list,
-`insights()`, `apiKeys()`, and `remoteConfig()`, as `plugins`. Read credentials from the console
+Cloudflare, Firebase, and Supabase managed servers run
+`apiKeys()`, `insights()`, and `remoteConfig()`. Import those factories from
+`@hot-updater/server/plugins` in the Console configuration. Read credentials from the console
 host's runtime environment variables, and leave mobile build adapters and
 signing private keys in the app project.
 
 Install your chosen
 [database adapter](/docs/concepts/plugin-system#database-adapter) and
 [storage adapter](/docs/concepts/plugin-system#storage-adapter), such as
-`@hot-updater/aws` for the example above, in the console repository. A custom
-server's plugins come from `@hot-updater/server`, which exports `insights()`
-and `apiKeys()`; install it too when `plugins` lists them.
+`@hot-updater/aws` for the example above, in the console repository. Install
+`@hot-updater/server` for the official server plugins used by the deployed
+Console.
 
 ```package-install
-npm install @hot-updater/aws
+npm install @hot-updater/aws @hot-updater/server
 ```
 
 The console runs the plugins over `database` to read Insights and manage API
@@ -94,8 +98,7 @@ install `@hot-updater/standalone`:
 ```ts title="console.config.ts"
 import { s3Storage } from "@hot-updater/aws";
 import { defineConsoleConfig } from "@hot-updater/console";
-import { apiKeys } from "@hot-updater/server/plugins/api-keys";
-import { insights } from "@hot-updater/server/plugins/insights";
+import { apiKeys, insights } from "@hot-updater/server/plugins";
 import { standaloneRepository } from "@hot-updater/standalone";
 
 export default defineConsoleConfig({
@@ -183,7 +186,10 @@ For another host, select its preset from [Nitro's deployment catalog](https://ni
 
 1. Open the HTTPS URL: sign-in should appear before any management data.
 2. Sign in with an allowlisted account: check Bundles and Insights. If Insights is missing from the navigation, add `insights()` to `plugins` in `console.config.ts`, as your server runs it.
-3. Download a bundle, then sign out: management data should no longer be accessible.
+3. Open a Bundle's details and use **Download manifest** to verify access to its `manifest.json`. Then sign out: management data should no longer be accessible.
+
+The manifest download checks console access to metadata. Verify OTA delivery
+separately with [Test an OTA update](/docs/get-started/test-ota).
 
 </Step>
 </Steps>

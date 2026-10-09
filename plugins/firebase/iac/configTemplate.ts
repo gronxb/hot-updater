@@ -44,8 +44,13 @@ const credential = applicationDefault();`.trim(),
     .setStorage(storageConfig)
     .setDatabase(databaseConfig)
     .setPlugins({
-      imports: [{ pkg: "@hot-updater/firebase", named: ["plugins"] }],
-      configString: "plugins",
+      imports: [
+        {
+          pkg: "hot-updater/plugins",
+          named: ["apiKeys", "insights", "remoteConfig"],
+        },
+      ],
+      configString: "[apiKeys(), insights(), remoteConfig()]",
     })
     .addImport({ pkg: "firebase-admin/app", named: ["applicationDefault"] })
     .setIntermediateCode(

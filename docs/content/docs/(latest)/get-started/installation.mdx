@@ -116,13 +116,10 @@ npm install @hot-updater/firebase --save-dev
 For a [custom server](/docs/custom/quick-start), follow its database/storage
 package choices and install the required `@hot-updater/*` packages.
 Server dependencies belong in the server workspace when it is separate. The
-app's `hot-updater.config.ts` lists the server's plugins, and imports the
-official ones from `@hot-updater/server`, so the app workspace installs it as a
-development dependency too:
-
-```package-install
-npm install @hot-updater/server --save-dev
-```
+app's `hot-updater.config.ts` lists the server's plugins and imports the
+official `apiKeys`, `insights`, and `remoteConfig` factories from
+`hot-updater/plugins`, included with the CLI installed above. A custom server
+imports those factories from `@hot-updater/server/plugins` in its own workspace.
 
 Complete the SDK, CLI, build and provider installations **before** running
 `init` or generating infrastructure so setup uses the packages selected for

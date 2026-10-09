@@ -10,11 +10,14 @@ icon: supabase
 npm install @hot-updater/supabase --save-dev
 ```
 
+For a deployed server, install the package as a runtime dependency instead
+of a development dependency.
+
 ## Setup
 
 For a complete provider deployment, follow the [Supabase setup](/docs/managed/supabase#step-2-configure-supabase).
 For an existing bucket or a custom server, use the storage configuration below;
-you do not need to provision the provider's database and server to use this plugin.
+you do not need to provision the provider's database and server to use this adapter.
 
 ## Configuration
 
@@ -56,7 +59,7 @@ For example,
 ## Capabilities
 
 `supabaseStorage` passes the upload stream to Supabase, but downloads resolve to
-a complete `Blob` before the plugin constructs its Web `Response`. It also
+a complete `Blob` before the adapter constructs its Web `Response`. It also
 implements signed download URL generation, existence checks, and exact deletion.
 For Supabase Edge Functions, import the same `supabaseStorage` name from
 `@hot-updater/supabase/edge`; that implementation captures the edge-compatible

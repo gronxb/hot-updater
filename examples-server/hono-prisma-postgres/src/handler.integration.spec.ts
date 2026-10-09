@@ -9,7 +9,7 @@ import {
   createInsightsModel,
   insights as insightsPlugin,
   type BundleEventRow,
-} from "@hot-updater/server/plugins/insights";
+} from "@hot-updater/server/plugins";
 import {
   createHttpTestClient,
   setupReleaseCatalogTestSuite,

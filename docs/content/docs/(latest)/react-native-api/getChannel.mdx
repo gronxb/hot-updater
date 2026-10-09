@@ -35,7 +35,9 @@ export default function App() {
 ## Behavior
 
 - If no runtime channel switch is active, `hotUpdater.getChannel()` returns the build-time channel.
-- If a bundle from another channel has been applied at runtime, `hotUpdater.getChannel()` returns that switched channel.
+- After a transition to another channel is staged successfully,
+  `hotUpdater.getChannel()` returns that channel, even before reload. The
+  selected channel does not prove that its code is already running.
 - If no channel is configured, the default is `production`.
 - The build-time default channel is written into native project files by
   [`hot-updater channel set`](/docs/guides/channel-management).

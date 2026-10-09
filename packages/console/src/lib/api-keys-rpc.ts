@@ -1,4 +1,4 @@
-import type { ApiKeyRow } from "@hot-updater/server/plugins/api-keys";
+import type { ApiKeyRow } from "@hot-updater/server/plugins";
 import { createServerFn } from "@tanstack/react-start";
 
 import { consoleAccess } from "./console-access";

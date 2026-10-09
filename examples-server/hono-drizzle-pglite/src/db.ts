@@ -1,8 +1,8 @@
 import { s3Storage } from "@hot-updater/aws";
 import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
-import { insights } from "@hot-updater/server/plugins/insights";
 import { drizzleAdapter } from "@hot-updater/server/adapters/drizzle";
+import { insights } from "@hot-updater/server/plugins";
 
 import { closeClient, getDB, resetDecisionFixtures } from "./drizzle";
 

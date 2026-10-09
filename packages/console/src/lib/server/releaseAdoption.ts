@@ -2,7 +2,7 @@ import type { HotUpdaterCoreApi, ReleaseRow } from "@hot-updater/plugin-core";
 import type {
   InsightsBundleEventFilter,
   InsightsModel,
-} from "@hot-updater/server/plugins/insights";
+} from "@hot-updater/server/plugins";
 
 import { insightsPeriodEnd, recoveryWindows } from "../insights-recovery";
 import {

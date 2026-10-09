@@ -18,6 +18,11 @@
       "require": "./dist/config.mjs"
     },
     "./package.json": "./package.json",
+    "./plugins": {
+      "types": "./dist/plugins.d.mts",
+      "import": "./dist/plugins.mjs",
+      "require": "./dist/plugins.mjs"
+    },
     "./signing": {
       "types": "./dist/signing.d.mts",
       "import": "./dist/signing.mjs",

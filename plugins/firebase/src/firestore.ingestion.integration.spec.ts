@@ -5,10 +5,7 @@ import {
   createEngine,
 } from "@hot-updater/plugin-core";
 import type { CoreReader } from "@hot-updater/plugin-core";
-import {
-  insights,
-  type BundleEventRow,
-} from "@hot-updater/server/plugins/insights";
+import { insights, type BundleEventRow } from "@hot-updater/server/plugins";
 import {
   runContentionHarness,
   withAdapterLatency,

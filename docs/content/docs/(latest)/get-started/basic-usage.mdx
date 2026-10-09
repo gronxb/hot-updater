@@ -56,6 +56,13 @@ Review the setup result:
 | Update server base URL | The actual deployed endpoint, including a provider base path when required |
 | Remote resources | The selected account/project, database and storage match the local config |
 
+For every managed provider, `init` imports `apiKeys`, `insights`, and
+`remoteConfig` from `hot-updater/plugins` and writes
+`plugins: [apiKeys(), insights(), remoteConfig()]` into `hot-updater.config.ts`.
+If it cannot safely merge an existing config, it keeps the file and prints the
+imports and settings to add. A later spread or computed property must not
+override the `plugins` list.
+
 The server URL and **client** API key connect the app to the server.
 `.env.hotupdater` is not automatically loaded into the mobile app. Provider,
 service-role and admin credentials remain in the CLI/server environment.

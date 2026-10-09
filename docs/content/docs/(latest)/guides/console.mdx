@@ -4,6 +4,8 @@ description: "Manage bundles, Insights, and Remote Config locally, or deploy an 
 icon: Terminal
 ---
 
+## Manage updates
+
 Use the console for:
 
 - Bundle rollout and targeting management
@@ -137,10 +139,12 @@ rebuild the stale catalogs it reports.
 Advanced diagnostics shows each bundle's **Artifact ID**: the uploaded files the
 bundle uses. A promoted bundle shares its source's artifact. Deleting the last
 bundle that uses an artifact deletes the artifact's record too, with every
-patch to or from it, so a device running that bundle downloads its next update
-in full. `bundle delete --json` names the artifact in `deletedArtifactId`. The
-stored files stay until the [Storage Cleanup](/docs/guides/storage-cleanup)
-workflow previews and deletes them.
+patch to or from it. A device running that bundle can still reuse unchanged
+local files, but changed files download in full without a Hermes patch from
+that artifact. `bundle delete --json` names the artifact in
+`deletedArtifactId`. The stored files stay until the
+[Storage Cleanup](/docs/guides/storage-cleanup) workflow previews and deletes
+them.
 
 ## Insights
 
@@ -168,6 +172,10 @@ move to the previous compatible enabled bundle or to the app's built-in bundle
 when no compatible bundle remains. The result can vary by app version,
 fingerprint, and cohort, so verify the scope shown by the Console before
 confirming.
+
+Devices receive the rollback on their next update check and apply it through
+the app's download and restart flow. Disabling a bundle does not restart apps
+that are already running it.
 
 <img src={"/docs/console/enabled.png"} />
 

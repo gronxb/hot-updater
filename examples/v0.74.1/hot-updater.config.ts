@@ -2,9 +2,9 @@ import { existsSync } from "node:fs";
 
 import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
-import { insights } from "@hot-updater/server/plugins/insights";
 import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
+import { insights } from "hot-updater/plugins";
 
 if (existsSync(".env.hotupdater")) {
   process.loadEnvFile(".env.hotupdater");

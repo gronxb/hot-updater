@@ -141,8 +141,9 @@ back to.
 
 ## Plugins on the server and in the app
 
-Insights, Remote Config, and API keys are built the same way: a server plugin
-that adds tables and routes, and a client plugin that runs in the app.
+Insights, Remote Config, and API keys are server plugins that add tables and
+routes. Insights and Remote Config also have client plugins that run in the
+app; API keys are sent through the app's `requestHeaders`.
 `HotUpdater.init` returns an instance, and client plugins can add their own
 API to it:
 

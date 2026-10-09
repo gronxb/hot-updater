@@ -131,8 +131,8 @@ If a required native setting is missing, run the command shown by `doctor`,
 then rebuild the native app.
 
 `doctor` does not require a default channel in native files. If
-`HOT_UPDATER_CHANNEL` or `hot_updater_channel` exists, the command reports it as
-context only.
+`HOT_UPDATER_CHANNEL` in iOS `Info.plist` or `com.hotupdater.CHANNEL` in Android
+manifest metadata exists, the command reports it as context only.
 
 For fingerprint projects, doctor computes the project's fingerprint as
 `fingerprint create` does, which hashes the native inputs and can take a few
@@ -412,7 +412,7 @@ then redeploy your server and verify it with doctor.
 | ------------------------- | ------------------------------------------------------- |
 | `--server-base-url <url>` | Server base URL for version checks and scoped live catalog checks. |
 | `--json`                  | Print a machine-readable result for agents and scripts. |
-| `--fix` | Run the repairs doctor can make itself, then check again. |
+| `--fix` | Run the repairs doctor can make itself, then check again. Cannot be combined with scoped verification options. |
 | `--scope <scope>` | Require `scaffold` or `infrastructure` verification. |
 | `--infra-dir <directory>` | Exact directory returned by infrastructure scaffolding. |
 | `--platform <platform>` | `ios` or `android` for a live catalog check. |

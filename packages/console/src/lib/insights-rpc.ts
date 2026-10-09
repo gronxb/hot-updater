@@ -4,7 +4,7 @@ import type {
   InsightsEventPageInput,
   InsightsInstallationEventPageInput,
   ActiveInstallationWindow,
-} from "@hot-updater/server/plugins/insights";
+} from "@hot-updater/server/plugins";
 import { createServerFn } from "@tanstack/react-start";
 
 import { consoleAccess } from "./console-access";
