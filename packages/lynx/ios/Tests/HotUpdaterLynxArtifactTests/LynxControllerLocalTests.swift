@@ -354,6 +354,58 @@ final class LynxControllerLocalTests: XCTestCase {
         XCTAssertEqual(confirmation?.transitionId, transitionId)
     }
 
+    func testRecoveryPreservesTheUnconsumedTransitionWithRevokedConfirmedRelease() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-local-\(UUID().uuidString)")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let embedded = root.appendingPathComponent("embedded")
+        let digest = try writeTree(at: embedded, bundleId: embeddedId, marker: "A")
+        let config = configuration(root: root.appendingPathComponent("store"), embedded: embedded, digest: digest)
+        var controller: LynxController? = try LynxController(configuration: config)
+        var context = controller!.createContext(primary: true)
+        _ = try controller!.begin(context)
+        try confirm(controller!, context)
+        controller = nil
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B")
+        controller = try LynxController(configuration: config)
+        context = controller!.createContext(primary: true)
+        _ = try controller!.begin(context)
+        try confirm(controller!, context)
+        controller = nil
+        // C's catalog revokes confirmed B; recovery must choose embedded A.
+        try plantNext(config, releaseId: releaseC, bundleId: bundleC, marker: "C")
+        controller = try LynxController(configuration: config)
+        context = controller!.createContext(primary: true)
+        _ = try controller!.begin(context)
+        let journal = LynxControllerJournal(file: try home(config.root).appendingPathComponent("state.json"))
+        let transitionId = try XCTUnwrap(journal.load().launchTransition?.transitionId)
+        controller = nil
+
+        controller = try LynxController(configuration: config)
+        XCTAssertEqual(try journal.load().launchTransition?.transitionId, transitionId)
+        XCTAssertEqual(
+            try journal.load().launchTransition?.policy.kind,
+            "RECOVERED"
+        )
+        controller = nil
+
+        controller = try LynxController(configuration: config)
+        context = controller!.createContext(primary: true)
+        _ = try controller!.begin(context)
+        XCTAssertEqual(try journal.load().launchTransition?.transitionId, transitionId)
+        try controller!.observedContent(context)
+        var confirmation: LynxConfirmationResult?
+        controller!.notifyAppReady(context) { confirmation = try? $0.get() }
+        XCTAssertEqual(confirmation?.transition?.kind, "RECOVERED")
+        XCTAssertEqual(confirmation?.transitionId, transitionId)
+        XCTAssertEqual(confirmation?.transition?.from.bundleId, bundleC)
+        XCTAssertEqual(confirmation?.transition?.from.releaseId, releaseC)
+        XCTAssertEqual(confirmation?.transition?.to.kind, "BUILTIN")
+        XCTAssertEqual(confirmation?.transition?.to.bundleId, embeddedId)
+        controller!.notifyAppReady(context) { confirmation = try? $0.get() }
+        XCTAssertNil(confirmation?.transition)
+        XCTAssertNil(confirmation?.transitionId)
+    }
+
     func testLegacyLaunchTransitionIsBackfilledAndInvalidIdsFailClosed() throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("lynx-local-\(UUID().uuidString)")
         defer { try? FileManager.default.removeItem(at: root) }

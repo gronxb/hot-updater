@@ -649,8 +649,8 @@ class LynxUpdaterControllerTest {
         }
     }
 
-    private fun plantEmbeddedNext(root: File) {
-        plantNext(root, releaseB, embeddedId, "A", background = true)
+    private fun plantEmbeddedNext(root: File, releaseId: String = releaseB) {
+        plantNext(root, releaseId, embeddedId, "A", background = true)
         val state = journal(root)
         state.getJSONObject("next").put("kind", "EMBEDDED")
         val catalog = JSONObject(state.getString("catalog"))
@@ -1168,6 +1168,60 @@ class LynxUpdaterControllerTest {
                 val confirmation = recovered.confirm(primary)
                 assertEquals("RECOVERED", confirmation.getJSONObject("transition").getString("kind"))
                 assertEquals(transitionId, confirmation.getString("transitionId"))
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun recoveryPreservesTheUnconsumedLaunchTransitionWithRevokedConfirmedRelease() {
+        val root = temp()
+        try {
+            withController(root) { initial ->
+                initial.pinPrimary().also {
+                    it.firstScreen = true
+                    initial.confirm(it)
+                }
+            }
+            plantNext(root, releaseB, bundleB, "B")
+            withController(root) { stable ->
+                stable.pinPrimary().also { it.firstScreen = true; stable.confirm(it) }
+            }
+            // C's catalog revokes confirmed B; recovery must choose embedded A.
+            plantNext(root, releaseC, bundleC, "C")
+            val trial = controller(root)
+            trial.pinPrimary()
+            val transitionId = journal(root).getJSONObject("launchTransition")
+                .getString("transitionId")
+            trial.close()
+            val recoveredBeforePin = controller(root)
+            assertEquals(
+                transitionId,
+                journal(root).getJSONObject("launchTransition")
+                    .getString("transitionId"),
+            )
+            assertEquals(
+                "RECOVERED",
+                journal(root).getJSONObject("launchTransition")
+                    .getString("kind"),
+            )
+            recoveredBeforePin.close()
+            withController(root) { recovered ->
+                val primary = recovered.pinPrimary().also { it.firstScreen = true }
+                assertEquals(
+                    transitionId,
+                    journal(root).getJSONObject("launchTransition")
+                        .getString("transitionId"),
+                )
+                val confirmation = recovered.confirm(primary)
+                assertEquals("RECOVERED", confirmation.getJSONObject("transition").getString("kind"))
+                assertEquals(transitionId, confirmation.getString("transitionId"))
+                val transition = confirmation.getJSONObject("transition")
+                assertEquals(releaseC, transition.getJSONObject("from").getString("releaseId"))
+                assertEquals(bundleC, transition.getJSONObject("from").getString("bundleId"))
+                assertEquals("BUILTIN", transition.getJSONObject("to").getString("kind"))
+                assertEquals(embeddedId, transition.getJSONObject("to").getString("bundleId"))
+                assertEquals(JSONObject.NULL, recovered.confirm(primary).opt("transition"))
             }
         } finally {
             root.deleteRecursively()
@@ -2906,6 +2960,48 @@ class LynxUpdaterControllerTest {
         } finally {
             root.deleteRecursively()
         }
+    }
+
+    @Test fun rollbackReportsRevokedConfirmedReleaseAsItsHistoricalOrigin() {
+        val root = temp()
+        val releaseA = "01900000-0000-7000-8000-000000000110"
+        try {
+            controller(root).close()
+            plantNext(root, releaseC, bundleC, "C")
+            withController(root) { initial ->
+                initial.pinPrimary().also { it.firstScreen = true; initial.confirm(it) }
+            }
+            // Each replacement catalog contains only the rollback target.
+            plantNext(root, releaseB, bundleB, "B")
+            withController(root) { rollback ->
+                val session = rollback.pinPrimary().also { it.firstScreen = true }
+                val id = journal(root).getJSONObject("launchTransition").getString("transitionId")
+                val confirmation = rollback.confirm(session)
+                val transition = confirmation.getJSONObject("transition")
+                assertEquals("UPDATE_APPLIED", transition.getString("kind"))
+                assertEquals(bundleC, transition.getJSONObject("from").getString("bundleId"))
+                assertEquals(releaseC, transition.getJSONObject("from").getString("releaseId"))
+                assertEquals(bundleB, transition.getJSONObject("to").getString("bundleId"))
+                assertEquals(releaseB, transition.getJSONObject("to").getString("releaseId"))
+                assertEquals(id, confirmation.getString("transitionId"))
+                assertEquals(JSONObject.NULL, rollback.confirm(session).opt("transition"))
+            }
+            plantEmbeddedNext(root, releaseA)
+            withController(root) { rollback ->
+                val session = rollback.pinPrimary().also { it.firstScreen = true }
+                val id = journal(root).getJSONObject("launchTransition").getString("transitionId")
+                val confirmation = rollback.confirm(session)
+                val transition = confirmation.getJSONObject("transition")
+                assertEquals("UPDATE_APPLIED", transition.getString("kind"))
+                assertEquals(bundleB, transition.getJSONObject("from").getString("bundleId"))
+                assertEquals(releaseB, transition.getJSONObject("from").getString("releaseId"))
+                assertEquals("EMBEDDED", transition.getJSONObject("to").getString("kind"))
+                assertEquals(embeddedId, transition.getJSONObject("to").getString("bundleId"))
+                assertEquals(releaseA, transition.getJSONObject("to").getString("releaseId"))
+                assertEquals(id, confirmation.getString("transitionId"))
+                assertEquals(JSONObject.NULL, rollback.confirm(session).opt("transition"))
+            }
+        } finally { root.deleteRecursively() }
     }
 
     @Test fun cohortValidationAndJournalFailureLeaveThePreviousValue() {

@@ -684,8 +684,13 @@ class LynxUpdaterController internal constructor(
             }
             val selected = fallback.receipt
             val selectedFiles = checkNotNull(fallback.files)
-            val stable = fallback.confirmed ?: builtin()
-            val transition = launchTransition(stable, selected)
+            // Catalog eligibility governs execution, not the historical origin.
+            val stable = receipt("confirmed") ?: builtin()
+            val transition = store.value.optJSONObject("launchTransition")?.takeIf {
+                validateStoredLaunchTransition(it)
+                it.getString("kind") == "RECOVERED" &&
+                    CatalogPolicy.parseReceipt(it.getJSONObject("to")) == selected
+            } ?: launchTransition(stable, selected)
             LaunchPlan(
                 store.value.getString("revision"),
                 selected,

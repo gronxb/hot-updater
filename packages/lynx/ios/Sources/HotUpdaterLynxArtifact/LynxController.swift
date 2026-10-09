@@ -458,6 +458,10 @@ public final class LynxController {
         let transition: LynxLaunchTransition?
         if let failed = try failedPendingSelection?.policy {
             transition = Self.launchTransition(from: failed, to: runningSelection, recovery: true)
+        } else if let stored = try recovered.launchTransition?.policy,
+                  stored.kind == "RECOVERED", stored.to == runningSelection {
+            // A pre-begin reopen must retain the failed trial's provenance.
+            transition = stored
         } else {
             let stable = try recovered.confirmed?.policy ?? builtinPolicy
             transition = Self.launchTransition(from: stable, to: runningSelection)
