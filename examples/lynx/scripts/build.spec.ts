@@ -603,7 +603,9 @@ describe("production native update endpoint", () => {
       builder,
       androidHost,
       androidApp,
+      androidConfiguration,
       androidE2eApp,
+      androidE2eConfiguration,
       androidMatrixApp,
       androidGradle,
       iosHost,
@@ -627,7 +629,21 @@ describe("production native update endpoint", () => {
       fs.readFile(
         path.join(
           exampleRoot,
+          "android/app/src/main/java/com/hotupdater/lynxexample/LynxApplication.kt",
+        ),
+        "utf8",
+      ),
+      fs.readFile(
+        path.join(
+          exampleRoot,
           "android/e2e-app/src/main/java/com/hotupdater/lynxexample/OtaActivity.kt",
+        ),
+        "utf8",
+      ),
+      fs.readFile(
+        path.join(
+          exampleRoot,
+          "android/e2e-app/src/main/java/com/hotupdater/lynxexample/LynxApplication.kt",
         ),
         "utf8",
       ),
@@ -672,7 +688,10 @@ describe("production native update endpoint", () => {
       'buildConfigField("String", "HOT_UPDATER_APP_BASE_URL"',
     );
     expect(androidApp).toContain('mapOf("appBaseURL" to it)');
-    expect(androidApp).toContain('channel = "ota-react"');
+    expect(androidApp).toContain(
+      "(application as LynxHostConfigurationProvider).createLynxHostConfiguration()",
+    );
+    expect(androidConfiguration).toContain('channel = "ota-react"');
     expect(androidApp).not.toContain(
       "allowDiagnosticIntentLaunchConfiguration",
     );
@@ -680,11 +699,9 @@ describe("production native update endpoint", () => {
       "allowDiagnosticIntentLaunchConfiguration = true",
     );
     expect(androidE2eApp).toContain(
-      "HotUpdaterSparklingLaunchConfiguration.from(this)",
+      "(application as LynxHostConfigurationProvider).createLynxHostConfiguration()",
     );
-    expect(androidE2eApp).toContain(
-      'channel = launchConfiguration["channel"] ?: "ota-react"',
-    );
+    expect(androidE2eConfiguration).toContain('channel = "production"');
     expect(androidMatrixApp).toContain(
       "allowDiagnosticIntentLaunchConfiguration = true",
     );

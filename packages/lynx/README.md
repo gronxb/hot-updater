@@ -13,6 +13,15 @@ configuration as the foreground host. The returned `AutoCloseable` requests
 cancellation. Completion runs on the main thread and contains the script's
 string output plus the selection receipt captured by native code.
 
+For OS-scheduled work, implement `LynxHostConfigurationProvider` on the Android
+Application and return that same configuration from `createLynxHostConfiguration()`.
+Call `LynxBackgroundJobService.schedule(context, jobId)` with an application-owned
+job ID. The SDK declares the service in its manifest; no application service or
+Activity is required. Android decides when to run the job. The optional
+`onLynxBackgroundResult(jobId, result)` observer runs on the main thread.
+The service allows 25 seconds for acquisition and execution; OS cancellation
+requests teardown without rescheduling or changing foreground readiness.
+
 Declare one self-contained UTF-8 script with `backgroundEntry` in the build
 adapter. Lynx 3.9 standalone scripts return an object with an `init` function:
 

@@ -3,6 +3,8 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import { writeLynxBackgroundEntry } from "./background-entry.ts";
+
 export const LYNX_E2E_BUILTIN_BUNDLE_ID =
   "00000000-0000-7000-8000-000000000000";
 
@@ -83,6 +85,7 @@ export async function packageLynxEmbeddedDirectory(options: {
   readonly bundleId: string;
   readonly runtimeId: string;
   readonly entry?: string;
+  readonly backgroundEntry?: string;
 }): Promise<{ readonly manifestDigest: string }> {
   const entry = options.entry ?? "main.lynx.bundle";
   const pageEntries = LYNX_E2E_PAGE_ENTRIES;
@@ -105,6 +108,9 @@ export async function packageLynxEmbeddedDirectory(options: {
         bundleId: options.bundleId,
         platform: options.platform,
         entry,
+        ...(options.backgroundEntry
+          ? { backgroundEntry: options.backgroundEntry }
+          : {}),
         pageEntries,
         pageEssentialResources,
         runtimeId: options.runtimeId,
@@ -371,6 +377,10 @@ export async function compileLynxE2eEmbedded(options: {
     platform: options.platform,
     bundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
     runtimeId: lynxE2eRuntimeId(options.platform),
+    backgroundEntry: await writeLynxBackgroundEntry(outDir, {
+      bundleId: LYNX_E2E_BUILTIN_BUNDLE_ID,
+      marker: "targeted-qa-detox",
+    }),
   });
   const bundle = await fs.readFile(path.join(outDir, "main.lynx.bundle"));
   const detailBundle = await fs.readFile(

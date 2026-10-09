@@ -489,7 +489,7 @@
     ]
   },
   "android": {
-    "hash": "9150f7ee794deca879d7cf7dc4e86efe8799e89cd119792986772c8634812caa",
+    "hash": "64fefb748abb5fec411c1bffe1c9e60c771a36bab220c981b20b71165b0aa68a",
     "sources": [
       {
         "type": "file",
@@ -629,9 +629,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "678647a824ef7ab16066708585790ab265135d32fdf84bcd918a4b050f8891b9",
+        "hash": "de9a077734bb2012e6ec9b55d4491c64850de9a436d35e2c4aa4a6c0cd1b9584",
         "debugInfo": {
-          "byteSize": 149
+          "byteSize": 371
         }
       },
       {
@@ -698,6 +698,17 @@
         "hash": "d8b6ab6729c67e5743c7d59ecb5ecb2f3f950e1ecdf5ba5089cad66778960b3a",
         "debugInfo": {
           "byteSize": 6496
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx/android/src/main/java/com/hotupdater/lynx/LynxBackgroundJobService.kt",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "561aaa99468b395926607d07c6fad3a7795624c8cb44d2a5b01048682ce473f7",
+        "debugInfo": {
+          "byteSize": 4318
         }
       },
       {
@@ -1047,9 +1058,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "94d70e15bdc0776dae2671a07892db4d8046ba72449518336b82eed009ec91c8",
+        "hash": "e9a409e916e4f3ce90943a4478b23eb60f8af199f4303eb37102b1fd245600da",
         "debugInfo": {
-          "byteSize": 1307
+          "byteSize": 2480
         }
       },
       {
@@ -1058,9 +1069,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "86dffe800cda451c96a9f9ab9123ad58fad7b5abfa7838daa1f21406414484a9",
+        "hash": "0fb4d1ed0889af1b008d379b436dd6a2c3a89c11d10e528f6a9b11cbbc3a3c60",
         "debugInfo": {
-          "byteSize": 1923
+          "byteSize": 742
         }
       },
       {

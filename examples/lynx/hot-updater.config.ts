@@ -14,6 +14,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { standaloneRepository } from "@hot-updater/standalone";
 
+import { writeLynxBackgroundEntry } from "../../e2e/lynx/background-entry.ts";
 import { LYNX_E2E_BUILTIN_BUNDLE_ID } from "../../e2e/lynx/embedded-bundle.ts";
 import { copyE2eFixtures } from "./scripts/copy-e2e-fixtures";
 import { resolveE2eBuildRuntimeId } from "./src/e2eBuildRuntimeId";
@@ -213,14 +214,22 @@ export default {
       const reuseEmbeddedIdentity =
         process.env.HOT_UPDATER_E2E_BUILD_MODE !== "cross-provenance" &&
         scenarioMarker === "targeted-qa-detox";
+      if (!scenarioMarker)
+        throw new Error("Missing deployed Lynx scenario marker");
+      const effectiveBundleId = reuseEmbeddedIdentity
+        ? LYNX_E2E_BUILTIN_BUNDLE_ID
+        : bundleId;
+      const backgroundEntry = await writeLynxBackgroundEntry(outDir, {
+        bundleId: effectiveBundleId,
+        marker: scenarioMarker,
+      });
       return {
         entry: "main.lynx.bundle",
+        backgroundEntry,
         pageEntries,
         pageEssentialResources,
         runtimeId: selectedRuntimeId,
-        ...(reuseEmbeddedIdentity
-          ? { bundleId: LYNX_E2E_BUILTIN_BUNDLE_ID }
-          : { bundleId }),
+        bundleId: effectiveBundleId,
       };
     },
   }),

@@ -69,6 +69,11 @@ import {
   resetFixtureReleases,
 } from "./fixture-release-reset.ts";
 import {
+  assertLynxHeadlessTask,
+  assertLynxHeadlessProcessStopped,
+  readLynxHeadlessManifest,
+} from "./lynx-headless-task.ts";
+import {
   e2eBuiltInBundleId,
   isLynxE2eAppId,
   LYNX_E2E_BUILTIN_BUNDLE_ID,
@@ -7992,6 +7997,7 @@ export async function handleLaunchStartupHang(bundleId: string) {
 // app has no activity. On iOS a silent push launches the app in the
 // background, and the example renders nothing for that launch.
 export async function handleLaunchHeadlessTask(bundleId: string) {
+  if (isLynxE2eApp()) return handleLynxHeadlessTask(bundleId);
   const ios = fixtureSession.platform === "ios";
   const marker = `HotUpdaterE2EHeadlessTask:${bundleId}`;
   const adb = (...args: string[]) =>
@@ -8134,6 +8140,116 @@ export async function handleLaunchHeadlessTask(bundleId: string) {
       output,
     );
   }
+}
+
+async function handleLynxHeadlessTask(bundleId: string) {
+  if (fixtureSession.platform !== "android") {
+    throw new Error("Lynx iOS OS background delivery is not implemented");
+  }
+  const adb = (...args: string[]) =>
+    captureCommand("adb", ["-s", deviceId as string, ...args]);
+  const read = (file: string) => {
+    const result = readAndroidFileBuffer(file);
+    if (!result.fileBuffer)
+      throw new Error(
+        `Missing Lynx background evidence ${file}: ${result.readError}`,
+      );
+    return result.fileBuffer;
+  };
+  const scope = ensureLynxScopePath();
+  if (!scope) throw new Error("Missing staged Lynx native scope");
+  const processes = adb("shell", "ps", "-A", "-o", "NAME");
+  assertLynxHeadlessProcessStopped(processes, fixtureSession.appId);
+  const journalPath = `${scope}/state.json`;
+  const eventsPath = "files/hot-updater-lynx/runtime-events/events.json";
+  const observationPath = "files/lynx-background-result.json";
+  const before = read(journalPath);
+  const eventsBefore = read(eventsPath);
+  const manifest = readLynxHeadlessManifest({
+    appId: fixtureSession.appId,
+    scope: path.posix.basename(scope),
+    bundleId,
+    read: (file) => readAndroidFileBuffer(file).fileBuffer,
+  });
+  writeResultDiagnosticFile(
+    "lynx-headless-before.json",
+    before.toString("utf8"),
+  );
+  writeResultDiagnosticFile("lynx-headless-processes.txt", processes);
+  writeResultDiagnosticFile(
+    "lynx-headless-events-before.json",
+    eventsBefore.toString("utf8"),
+  );
+  writeResultDiagnosticFile(
+    "lynx-headless-manifest.json",
+    manifest.toString("utf8"),
+  );
+  adb(
+    "shell",
+    "run-as",
+    fixtureSession.appId,
+    "rm",
+    "-f",
+    observationPath,
+    `${observationPath}.tmp`,
+  );
+  if (androidFileExists(observationPath))
+    throw new Error("Stale Lynx background observation was not removed");
+  adb(
+    "shell",
+    "am",
+    "broadcast",
+    "--include-stopped-packages",
+    "-n",
+    `${fixtureSession.appId}/.HeadlessTaskReceiver`,
+  );
+  // It may already have run naturally. Dispatch failure is accepted only if a fresh native result proves execution.
+  const dispatch = captureCommand(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "cmd",
+      "jobscheduler",
+      "run",
+      "-f",
+      fixtureSession.appId,
+      "1300",
+    ],
+    { allowFailure: true },
+  );
+  const deadline = Date.now() + 60_000;
+  let observation: Buffer | null = null;
+  while (!observation && Date.now() < deadline) {
+    observation = readAndroidFileBuffer(observationPath).fileBuffer;
+    if (!observation) await sleep(E2E_POLL_INTERVAL_MS);
+  }
+  if (!observation)
+    throw new Error(`Lynx background job did not complete: ${dispatch}`);
+  writeResultDiagnosticFile(
+    "lynx-headless-result.json",
+    observation.toString("utf8"),
+  );
+  const after = read(journalPath);
+  const eventsAfter = read(eventsPath);
+  writeResultDiagnosticFile("lynx-headless-after.json", after.toString("utf8"));
+  writeResultDiagnosticFile(
+    "lynx-headless-events-after.json",
+    eventsAfter.toString("utf8"),
+  );
+  assertLynxHeadlessTask({
+    bundleId,
+    before,
+    after,
+    eventsBefore,
+    eventsAfter,
+    manifest,
+    manifestHash: createHash("sha256").update(manifest).digest("hex"),
+    result: JSON.parse(observation.toString("utf8")),
+  });
+  await captureState("headless-task");
+  return {};
 }
 
 export async function handleWriteSummary(args: {
