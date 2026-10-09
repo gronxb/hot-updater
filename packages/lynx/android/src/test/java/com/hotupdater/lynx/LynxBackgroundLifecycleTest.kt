@@ -23,21 +23,21 @@ class LynxBackgroundLifecycleTest {
         )
     }
 
-    @Test fun completionWaitsForNativeDetachAndDuplicateCompletionsCannotReplaceIt() {
+    @Test fun completionWaitsForNativeDestructionAndDuplicateCompletionsCannotReplaceIt() {
         val runtime = Runtime()
         runtime.lifecycle.complete("deployed-A")
         runtime.lifecycle.complete("forged-B")
         assertEquals(1, runtime.destroyRequests)
         assertEquals(0, runtime.releases)
         assertTrue(runtime.replies.isEmpty())
-        runtime.lifecycle.onDetached()
-        runtime.lifecycle.onDetached()
-        runtime.lifecycle.complete("after-detach")
+        runtime.lifecycle.onDestroyed()
+        runtime.lifecycle.onDestroyed()
+        runtime.lifecycle.complete("after-destruction")
         assertEquals(1, runtime.releases)
         assertEquals(listOf("deployed-A"), runtime.replies.map { it.getOrThrow() })
     }
 
-    @Test fun fatalAfterCompletionOverridesSuccessBeforeDetach() {
+    @Test fun fatalAfterCompletionOverridesSuccessBeforeDestruction() {
         val runtime = Runtime()
         runtime.lifecycle.complete("computed-A")
         val error = IllegalStateException("native fatal")
@@ -45,12 +45,12 @@ class LynxBackgroundLifecycleTest {
         assertEquals(listOf("native fatal"), runtime.failures)
         assertEquals(0, runtime.releases)
         assertTrue(runtime.replies.isEmpty())
-        runtime.lifecycle.onDetached()
+        runtime.lifecycle.onDestroyed()
         assertEquals(error, runtime.replies.single().exceptionOrNull())
         assertEquals(1, runtime.destroyRequests)
     }
 
-    @Test fun timeoutAndCancellationReplyOnceButRetainEngineUntilDetach() {
+    @Test fun timeoutAndCancellationReplyOnceButRetainEngineUntilDestruction() {
         for (error in listOf(TimeoutException("deadline"), CancellationException("cancelled"))) {
             val runtime = Runtime()
             runtime.lifecycle.stop(error)
@@ -62,7 +62,7 @@ class LynxBackgroundLifecycleTest {
             // Cancellation cannot erase a fatal already produced by the still-live engine.
             runtime.lifecycle.nativeError(IllegalStateException("queued fatal"), true)
             assertEquals(listOf("queued fatal"), runtime.failures)
-            runtime.lifecycle.onDetached()
+            runtime.lifecycle.onDestroyed()
             assertEquals(1, runtime.releases)
             assertEquals(1, runtime.replies.size)
         }
@@ -77,7 +77,7 @@ class LynxBackgroundLifecycleTest {
         assertEquals(listOf(disk), fatal.suppressed.toList())
         assertEquals(0, runtime.releases)
         assertTrue(runtime.replies.isEmpty())
-        runtime.lifecycle.onDetached()
+        runtime.lifecycle.onDestroyed()
         assertEquals(disk, runtime.replies.single().exceptionOrNull())
         assertEquals(listOf("runtime fatal"), runtime.failures)
     }
@@ -86,24 +86,24 @@ class LynxBackgroundLifecycleTest {
         val runtime = Runtime()
         val error = IllegalStateException("engine initialization error")
         runtime.lifecycle.nativeError(error, false)
-        runtime.lifecycle.onDetached()
+        runtime.lifecycle.onDestroyed()
         assertTrue(runtime.failures.isEmpty())
         assertEquals(error, runtime.replies.single().exceptionOrNull())
-        val detached = Runtime()
-        detached.lifecycle.onDetached()
-        assertTrue(detached.replies.single().isFailure)
-        assertTrue(detached.failures.isEmpty())
-        assertEquals(0, detached.destroyRequests)
+        val destroyed = Runtime()
+        destroyed.lifecycle.onDestroyed()
+        assertTrue(destroyed.replies.single().isFailure)
+        assertTrue(destroyed.failures.isEmpty())
+        assertEquals(0, destroyed.destroyRequests)
     }
 
-    @Test fun oversizedBridgeResultAndMissingDetachCannotReportSuccess() {
+    @Test fun oversizedBridgeResultAndMissingDestructionCannotReportSuccess() {
         val runtime = Runtime()
         runtime.lifecycle.complete("x".repeat(16 * 1024 + 1))
         assertTrue(runtime.replies.single().isFailure)
         assertEquals(0, runtime.releases)
         val pending = Runtime()
         pending.lifecycle.complete("A")
-        pending.lifecycle.stop(TimeoutException("detach never arrived"))
+        pending.lifecycle.stop(TimeoutException("destruction never arrived"))
         assertFalse(pending.replies.single().isSuccess)
         assertEquals(0, pending.releases)
         assertEquals(1, pending.destroyRequests)
@@ -119,7 +119,7 @@ class LynxBackgroundLifecycleTest {
         lifecycle.complete("A")
         assertEquals(error, replies.single().exceptionOrNull())
         assertEquals(0, releases)
-        lifecycle.onDetached()
+        lifecycle.onDestroyed()
         assertEquals(1, releases)
         assertEquals(1, replies.size)
     }

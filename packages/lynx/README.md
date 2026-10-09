@@ -40,12 +40,13 @@ and stream fetches are rejected; bundle dependencies into the declared entry.
 Lynx's built-in APK asset loader remains available, so this is not a sandbox
 for untrusted JavaScript.
 
-Native completion waits for runtime detach. Cancellation or the 25-second
+Native completion waits for the runtime to retire the script and destroy its
+module manager. Cancellation or the 25-second
 deadline reports failure and requests destruction. Lynx cannot forcibly
 interrupt synchronous JavaScript: the task continues occupying one of the
-scope's four slots until native detach. Grouped Lynx threads keep work off the
+scope's four slots until native teardown. Grouped Lynx threads keep work off the
 default JS thread but use a shared pool. Native fatal errors are recorded
-against the task's pinned receipt, including errors queued before detach after
+against the task's pinned receipt, including errors queued before teardown after
 cancellation. Task completion never signals application readiness.
 
 ## Runtime API

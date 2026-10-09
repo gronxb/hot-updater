@@ -60,6 +60,11 @@ export function assertLynxHeadlessTask(options: {
   const next = record(journal.next);
   const confirmed = record(journal.confirmed);
   const result = record(options.result);
+  if (result.success !== true) {
+    throw new Error(
+      `Lynx background execution failed: ${String(result.error)}`,
+    );
+  }
   const output = record(JSON.parse(String(result.value)));
   const manifest = record(JSON.parse(options.manifest.toString("utf8")));
   if (
@@ -72,7 +77,6 @@ export function assertLynxHeadlessTask(options: {
     journal.pending ||
     journal.pageAttempt ||
     journal.generationFailure ||
-    result.success !== true ||
     !Number.isInteger(result.processId) ||
     Number(result.processId) <= 0 ||
     result.activitiesCreated !== 0 ||

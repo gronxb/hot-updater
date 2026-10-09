@@ -65,6 +65,17 @@ function evidence() {
 }
 
 describe("Lynx cold background evidence", () => {
+  it("reports the native job failure before attempting to parse absent JS output", () => {
+    expect(() =>
+      assertLynxHeadlessTask({
+        ...evidence(),
+        result: { success: false, error: "Timed out waiting for 25000 ms" },
+      }),
+    ).toThrow(
+      "Lynx background execution failed: Timed out waiting for 25000 ms",
+    );
+  });
+
   it("accepts a staged native receipt and script result with unchanged foreground state", () => {
     expect(() => assertLynxHeadlessTask(evidence())).not.toThrow();
   });

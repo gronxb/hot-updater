@@ -40,6 +40,7 @@ import {
   PAX_LONG_ASSET_RELATIVE_PATH,
 } from "../pax-long-path-fixture.ts";
 import { importPublished, publishedBin } from "../published.ts";
+import { readAndroidFileBuffer as readDeviceFileBuffer } from "./android-file.ts";
 import {
   advanceAndroidRestartWait,
   hasLynxNativeRestartEvidence,
@@ -1997,48 +1998,11 @@ function androidRunAsReadablePath(remotePath: string) {
 }
 
 function readAndroidFileBuffer(remotePath: string) {
-  const runAsPath = androidRunAsReadablePath(remotePath);
-  const readAttempts = [
-    [
-      "-s",
-      deviceId as string,
-      "exec-out",
-      "run-as",
-      fixtureSession.appId,
-      "cat",
-      runAsPath,
-    ],
-    [
-      "-s",
-      deviceId as string,
-      "shell",
-      "run-as",
-      fixtureSession.appId,
-      "cat",
-      runAsPath,
-    ],
-    ["-s", deviceId as string, "shell", "cat", remotePath],
-  ];
-  const readErrors: string[] = [];
-
-  for (const args of readAttempts) {
-    const result = spawnSync("adb", args, {
-      // Final-file assertions also read multi-megabyte Hermes bundles.
-      maxBuffer: 64 * 1024 * 1024,
-      stdio: ["ignore", "pipe", "pipe"],
-    });
-    if (result.status === 0) {
-      return { fileBuffer: result.stdout, readError: null };
-    }
-
-    readErrors.push(
-      result.stderr.toString().trim() ||
-        result.error?.message ||
-        `adb exited ${String(result.status)}`,
-    );
-  }
-
-  return { fileBuffer: null, readError: readErrors.join(" | ") };
+  return readDeviceFileBuffer(
+    deviceId as string,
+    fixtureSession.appId,
+    remotePath,
+  );
 }
 
 function copyAndroidFile(remotePath: string, localPath: string) {

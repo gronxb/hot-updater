@@ -4,7 +4,7 @@ import android.content.Context
 import android.os.Handler
 import android.os.Looper
 import com.lynx.jsbridge.CommonModuleCreator
-import com.lynx.jsbridge.RuntimeLifecycleListener
+import com.lynx.jsbridge.LynxModuleFactory
 import com.lynx.tasm.LynxBackgroundRuntime
 import com.lynx.tasm.LynxBackgroundRuntimeClient
 import com.lynx.tasm.LynxBackgroundRuntimeOptions
@@ -42,7 +42,16 @@ internal class LynxBackgroundExecutor(
     private var runtime: LynxBackgroundRuntime? = null
     private var group: LynxGroup? = null
     private val lifecycle = LynxBackgroundLifecycle(
-        destroy = { runtime?.destroy() },
+        destroy = {
+            runtime?.let { engine ->
+                // Match Lynx NativeFacade: native teardown calls this retained peer's onDestroy.
+                val factory = engine.moduleFactory
+                factory.retainJniObject()
+                val retained = factory.nativePtr != 0L
+                engine.destroy()
+                check(retained) { "Lynx background module factory could not retain its native peer" }
+            }
+        },
         persistFatal = { message -> task?.reportFatal(message) },
         release = { task?.close() },
         reply = { result ->
@@ -52,7 +61,7 @@ internal class LynxBackgroundExecutor(
     private val timeout = Runnable { lifecycle.stop(TimeoutException("Lynx background task exceeded 25 seconds")) }
     private val client = object : LynxBackgroundRuntimeClient() {
         override fun onReceivedError(error: LynxError) {
-            // Lynx already enqueues errors on main. Reposting could move a fatal past detach.
+            // Lynx already enqueues errors on main. Reposting could move a fatal past native teardown.
             val failure = IllegalStateException("Lynx background error ${error.errorCode}: ${error.msg}")
             lifecycle.nativeError(failure, error.isFatal)
         }
@@ -68,9 +77,9 @@ internal class LynxBackgroundExecutor(
                     acquired.fold(
                         { selected ->
                             task = selected
-                            if (lifecycle.stopping) detached() else start()
+                            if (lifecycle.stopping) destroyed() else start()
                         },
-                        { error -> lifecycle.stop(error); detached() },
+                        { error -> lifecycle.stop(error); destroyed() },
                     )
                 }
             }
@@ -107,31 +116,33 @@ internal class LynxBackgroundExecutor(
             check(engine.state == LynxBackgroundRuntime.STATE_START && engine.nativePtr != 0L) {
                 "Lynx did not create a background runtime"
             }
-            engine.addRuntimeLifecycleListener(object : RuntimeLifecycleListener {
-                override fun onRuntimeAttach(runtimeId: Long) = Unit
-                override fun onRuntimeDetach() { main.post { detached() } }
-            })
             engine.addLynxBackgroundRuntimeClient(client)
             engine.moduleFactory.let { factory ->
+                check(factory.nativePtr != 0L) { "Lynx did not create a native module factory" }
+                // The stock 3.9 Maven runtime compiles out NAPI lifecycle listeners.
+                // This callback follows native App retirement and works without NAPI.
+                factory.setLifecycleListener(object : LynxModuleFactory.AbstractLifecycleListener() {
+                    override fun onDestroy() { main.post { destroyed() } }
+                })
                 factory.bind(LynxBackgroundModuleCreator(CommonModuleCreator(factory.currentContextFinder())))
             }
             // Leading slash is required by Lynx 3.9's standalone script lookup.
             engine.evaluateJavaScript("/hot-updater-background/${snapshot.taskId}/${snapshot.entry}", snapshot.source)
         } catch (error: Throwable) {
             lifecycle.stop(error)
-            // STATE_INVALID creates no native runtime, so no detach callback can arrive.
-            if (runtime == null || runtime?.nativePtr == 0L) detached()
+            // STATE_INVALID creates no native runtime, so no destruction callback can arrive.
+            if (runtime == null || runtime?.nativePtr == 0L) destroyed()
         }
     }
 
-    private fun detached() {
+    private fun destroyed() {
         main.removeCallbacks(timeout)
         runtime?.removeLynxBackgroundRuntimeClient(client)
         runtime = null
         group?.destroy()
         group = null
         active.remove(this)
-        lifecycle.onDetached()
+        lifecycle.onDestroyed()
     }
 
     override fun close() {
@@ -139,7 +150,7 @@ internal class LynxBackgroundExecutor(
     }
 
     private companion object {
-        // Keep engines alive until native detach; destroy() only queues their teardown.
+        // Keep engines alive until native teardown acknowledgement; destroy() only queues their teardown.
         val active = mutableSetOf<LynxBackgroundExecutor>()
     }
 }
