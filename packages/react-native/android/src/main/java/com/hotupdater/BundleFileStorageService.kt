@@ -590,8 +590,8 @@ class BundleFileStorageService(
         // Ensure bundle store directory exists
         getBundleStoreDir().mkdirs()
 
-        // Clean up old bundles if isolationKey format changed
-        checkAndCleanupIfIsolationKeyChanged()
+        // Clean up a store from another schema or isolationKey
+        cleanupIfStoreIncompatible()
 
         recoverInterruptedPromotions()
     }
@@ -1005,10 +1005,11 @@ class BundleFileStorageService(
     }
 
     /**
-     * Checks if isolationKey has changed and cleans up old bundles if needed.
-     * This handles migration when isolationKey format changes.
+     * Cleans up a bundle store this build can't use. Metadata in another
+     * schema resets the whole store, including its metadata, crash history
+     * and launch report. A changed isolationKey removes the bundles.
      */
-    private fun checkAndCleanupIfIsolationKeyChanged() {
+    private fun cleanupIfStoreIncompatible() {
         val metadataFile = getMetadataFile()
 
         if (!metadataFile.exists()) {
@@ -1017,9 +1018,16 @@ class BundleFileStorageService(
         }
 
         try {
-            // Read metadata without validation to get stored isolationKey
+            // Read metadata without validation to get stored schema and isolationKey
             val jsonString = metadataFile.readText()
             val json = org.json.JSONObject(jsonString)
+
+            if (json.opt("schema") as? String != BundleMetadata.SCHEMA_VERSION) {
+                Log.d(TAG, "Metadata schema changed, resetting the bundle store")
+                cleanupAllBundlesForMigration(includingStoreState = true)
+                return
+            }
+
             val storedIsolationKey = if (json.has("isolationKey")) json.getString("isolationKey") else null
 
             if (storedIsolationKey != null && storedIsolationKey != isolationKey) {
@@ -1034,10 +1042,10 @@ class BundleFileStorageService(
     }
 
     /**
-     * Removes all bundle directories during migration.
-     * Called when isolationKey format changes.
+     * Removes all bundle directories during migration. With [includingStoreState],
+     * also removes the metadata, crash history and launch report.
      */
-    private fun cleanupAllBundlesForMigration() {
+    private fun cleanupAllBundlesForMigration(includingStoreState: Boolean = false) {
         val bundleStoreDir = getBundleStoreDir()
 
         if (!bundleStoreDir.exists()) {
@@ -1055,6 +1063,14 @@ class BundleFileStorageService(
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error removing bundle ${file.name}: ${e.message}")
+                    }
+                }
+            }
+
+            if (includingStoreState) {
+                listOf(getMetadataFile(), getCrashedHistoryFile(), getLaunchReportFile()).forEach { file ->
+                    if (file.exists() && !file.delete()) {
+                        Log.e(TAG, "Error removing ${file.name}")
                     }
                 }
             }
@@ -1085,10 +1101,10 @@ class BundleFileStorageService(
                 metadata.stableBundleId != null -> metadata.stableSelection
                 else -> null
             }?.takeIf { it.bundleId != bundleId }
-        val stagingSelection = incomingSelection ?: PersistedSelection.legacyBundle(bundleId)
+        val stagingSelection = incomingSelection ?: PersistedSelection.bareBundle(bundleId)
         val fromSelection =
             currentVerifiedSelection
-                ?: PersistedSelection.legacyBundle(HotUpdaterImpl.getMinBundleId())
+                ?: PersistedSelection.bareBundle(HotUpdaterImpl.getMinBundleId())
 
         return metadata.copy(
             stableBundleId = currentVerifiedBundleId,
@@ -1266,9 +1282,9 @@ class BundleFileStorageService(
 
     private fun activeSelection(metadata: BundleMetadata): PersistedSelection? =
         metadata.stagingSelection
-            ?: metadata.stagingBundleId?.let(PersistedSelection::legacyBundle)
+            ?: metadata.stagingBundleId?.let(PersistedSelection::bareBundle)
             ?: metadata.stableSelection
-            ?: metadata.stableBundleId?.let(PersistedSelection::legacyBundle)
+            ?: metadata.stableBundleId?.let(PersistedSelection::bareBundle)
 
     override fun getActiveUpdateState(): Map<String, Any?> =
         synchronized(releaseStateLock) {

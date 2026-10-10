@@ -772,8 +772,8 @@ class BundleFileStorageService: BundleStorageService {
         // Ensure bundle store directory exists
         _ = bundleStoreDir()
 
-        // Clean up old bundles if isolationKey format changed
-        checkAndCleanupIfIsolationKeyChanged()
+        // Clean up a store from another schema or isolationKey
+        cleanupIfStoreIncompatible()
         recoverInterruptedPromotions()
     }
 
@@ -1184,10 +1184,11 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     /**
-     * Checks if isolationKey has changed and cleans up old bundles if needed.
-     * This handles migration when isolationKey format changes.
+     * Cleans up a bundle store this build can't use. Metadata in another
+     * schema resets the whole store, including its metadata, crash history
+     * and launch report. A changed isolationKey removes the bundles.
      */
-    private func checkAndCleanupIfIsolationKeyChanged() {
+    private func cleanupIfStoreIncompatible() {
         guard let metadataURL = metadataFileURL() else {
             return
         }
@@ -1201,15 +1202,22 @@ class BundleFileStorageService: BundleStorageService {
 
         do {
             let jsonString = try String(contentsOf: metadataURL, encoding: .utf8)
-            if let jsonData = jsonString.data(using: .utf8),
-               let json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-               let storedKey = json["isolationKey"] as? String {
+            guard let jsonData = jsonString.data(using: .utf8),
+                  let json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any] else {
+                return
+            }
 
-                if storedKey != isolationKey {
-                    NSLog("[BundleStorage] isolationKey changed: \(storedKey) -> \(isolationKey)")
-                    NSLog("[BundleStorage] Cleaning up old bundles for migration")
-                    cleanupAllBundlesForMigration()
-                }
+            if json["schema"] as? String != BundleMetadata.schemaVersion {
+                NSLog("[BundleStorage] Metadata schema changed, resetting the bundle store")
+                cleanupAllBundlesForMigration(includingStoreState: true)
+                return
+            }
+
+            if let storedKey = json[BundleMetadata.CodingKeys.isolationKey.rawValue] as? String,
+               storedKey != isolationKey {
+                NSLog("[BundleStorage] isolationKey changed: \(storedKey) -> \(isolationKey)")
+                NSLog("[BundleStorage] Cleaning up old bundles for migration")
+                cleanupAllBundlesForMigration()
             }
         } catch {
             NSLog("[BundleStorage] Error checking isolationKey: \(error.localizedDescription)")
@@ -1217,13 +1225,22 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     /**
-     * Removes all bundle directories during migration.
-     * Called when isolationKey format changes.
+     * Removes all bundle directories during migration. With
+     * `includingStoreState`, also removes the metadata, crash history and
+     * launch report.
      */
-    private func cleanupAllBundlesForMigration() {
+    private func cleanupAllBundlesForMigration(includingStoreState: Bool = false) {
         guard case .success(let storeDir) = bundleStoreDir() else {
             return
         }
+
+        let keptEntries = includingStoreState
+            ? protectedBundleStoreEntries.subtracting([
+                BundleMetadata.metadataFilename,
+                CrashedHistory.crashedHistoryFilename,
+                LaunchReport.launchReportFilename,
+            ])
+            : protectedBundleStoreEntries
 
         do {
             let contents = try fileSystem.contentsOfDirectory(atPath: storeDir)
@@ -1232,7 +1249,7 @@ class BundleFileStorageService: BundleStorageService {
             for item in contents {
                 let fullPath = (storeDir as NSString).appendingPathComponent(item)
 
-                if protectedBundleStoreEntries.contains(item) {
+                if keptEntries.contains(item) {
                     continue
                 }
 
@@ -1290,9 +1307,9 @@ class BundleFileStorageService: BundleStorageService {
             }
             return metadata.stableSelection
         }())
-        let stagingSelection = incomingSelection ?? PersistedSelection.legacyBundle(bundleId)
+        let stagingSelection = incomingSelection ?? PersistedSelection.bareBundle(bundleId)
         let fromSelection = currentVerifiedSelection
-            ?? PersistedSelection.legacyBundle(resolveBuiltInBundleId() ?? bundleId)
+            ?? PersistedSelection.bareBundle(resolveBuiltInBundleId() ?? bundleId)
         let pendingTransition = currentVerifiedBundleId.map {
             createPendingTransition(fromBundleId: $0, toBundleId: bundleId)
         }
@@ -1446,9 +1463,9 @@ class BundleFileStorageService: BundleStorageService {
 
     private func activeSelection(_ metadata: BundleMetadata) -> PersistedSelection? {
         metadata.stagingSelection
-            ?? metadata.stagingBundleId.map(PersistedSelection.legacyBundle)
+            ?? metadata.stagingBundleId.map(PersistedSelection.bareBundle)
             ?? metadata.stableSelection
-            ?? metadata.stableBundleId.map(PersistedSelection.legacyBundle)
+            ?? metadata.stableBundleId.map(PersistedSelection.bareBundle)
     }
 
     func getActiveUpdateState() -> [String: Any] {

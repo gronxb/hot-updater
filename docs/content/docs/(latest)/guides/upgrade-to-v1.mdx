@@ -255,12 +255,12 @@ updates. Update CI to use the v1 provider configuration, app build variables,
 signer and compatibility target. Keep a separate v0 deployment configuration
 for any OTA releases still needed by installed v0 binaries.
 
-A store-delivered native upgrade can preserve the app's local sandbox even
-though its server generation is fresh. The v1 native SDK migrates
-Bundle-ID-only metadata, reads retained local `BUNDLE_ID` artifacts, and keeps
-the existing cohort identity. Verify an upgrade from a retained v0 installation
-without clearing app data. This on-device bridge does not migrate the v0 server
-database or remote storage.
+A store-delivered native upgrade can preserve the app's local sandbox, but the
+v1 native SDK does not reuse it: on first launch it removes the OTA bundles,
+metadata, crash history and launch report that v0 left on the device, and
+starts from the new build's built-in bundle. Verify an upgrade from a retained
+v0 installation without clearing app data: the app must launch the new build's
+built-in bundle, then apply v1 updates.
 
 The endpoints remain parallel during adoption: existing v0 binaries use the v0
 endpoint, and new v1 binaries use the v1 endpoint. There is no server-side

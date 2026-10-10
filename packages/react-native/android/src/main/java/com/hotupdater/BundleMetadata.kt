@@ -36,10 +36,10 @@ data class BundleMetadata(
             val stagingBundleId = json.optNullableString("stagingBundleId")
             val stableSelection =
                 json.optJSONObject("stableSelection")?.let(PersistedSelection::fromJson)
-                    ?: stableBundleId?.let(PersistedSelection::legacyBundle)
+                    ?: stableBundleId?.let(PersistedSelection::bareBundle)
             val stagingSelection =
                 json.optJSONObject("stagingSelection")?.let(PersistedSelection::fromJson)
-                    ?: stagingBundleId?.let(PersistedSelection::legacyBundle)
+                    ?: stagingBundleId?.let(PersistedSelection::bareBundle)
             val highestSeenCatalogs = linkedMapOf<String, CatalogHighWater>()
             json.optJSONObject("highestSeenCatalogs")?.let { highWaters ->
                 highWaters.keys().forEach { key ->
@@ -57,7 +57,7 @@ data class BundleMetadata(
                 }
             }
             return BundleMetadata(
-                schema = SCHEMA_VERSION,
+                schema = json.opt("schema") as? String ?: "",
                 isolationKey =
                     if (json.has("isolationKey") && !json.isNull("isolationKey")) {
                         json.getString("isolationKey").takeIf { it.isNotEmpty() }
@@ -91,6 +91,12 @@ data class BundleMetadata(
                 val jsonString = file.readText()
                 val json = JSONObject(jsonString)
                 val metadata = fromJson(json)
+
+                // Metadata in another schema belongs to a different store layout.
+                if (metadata.schema != SCHEMA_VERSION) {
+                    Log.d(TAG, "Unsupported schema ${metadata.schema}, treating as invalid")
+                    return null
+                }
 
                 // Validate isolation key
                 val metadataKey = metadata.isolationKey
@@ -192,7 +198,8 @@ data class PersistedSelection(
     val selectionContextHash: String?,
 ) {
     companion object {
-        fun legacyBundle(bundleId: String): PersistedSelection =
+        /** A selection that names only a Bundle, with no Release Catalog receipt, such as the built-in bundle. */
+        fun bareBundle(bundleId: String): PersistedSelection =
             PersistedSelection(
                 kind = "BUNDLE",
                 releaseId = null,

@@ -1811,32 +1811,6 @@ function seedDeviceCrashHistory(bundleIds: readonly string[]) {
   return { bundleIds: clamped, count: clamped.length };
 }
 
-function seedLegacyDeviceMetadata() {
-  terminateFixtureApp();
-  const metadata = readDeviceStoreJson("metadata.json");
-  metadata.schema = "metadata-v1";
-  if (fixtureSession.platform === "ios") {
-    delete metadata.stable_selection;
-    delete metadata.staging_selection;
-    delete metadata.pending_selection_transition;
-    delete metadata.highest_seen_catalogs;
-    delete metadata.current_selection_contexts;
-  } else {
-    delete metadata.stableSelection;
-    delete metadata.stagingSelection;
-    delete metadata.pendingTransition;
-    delete metadata.highestSeenCatalogs;
-    delete metadata.currentSelectionContexts;
-  }
-  writeDeviceStoreJson("metadata.json", metadata);
-  const state = getMetadataState(metadata);
-  return {
-    schema: state.schema,
-    stableBundleId: state.stableBundleId,
-    stagingBundleId: state.stagingBundleId,
-  };
-}
-
 function assertMetadataState(
   metadata: Record<string, unknown>,
   bundleId: string,
@@ -6657,10 +6631,6 @@ export async function handleAssertCrashHistory(
 
 export function handleSeedCrashHistory(bundleIds: readonly string[]) {
   return seedDeviceCrashHistory(bundleIds);
-}
-
-export function handleSeedLegacyMetadata() {
-  return seedLegacyDeviceMetadata();
 }
 
 export async function handleWaitForCrashRecovery(
