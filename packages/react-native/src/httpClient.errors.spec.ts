@@ -174,7 +174,7 @@ describe.each(["catalog", "artifact"] as const)(
       expect(await result).toMatchObject({ message: "Request timed out" });
     });
 
-    it("keeps the server's 404 details even when adding compatibility context", async () => {
+    it("keeps the server's 404 details", async () => {
       const body = '{"error":"Bundle target was not found"}';
       vi.stubGlobal(
         "fetch",
@@ -183,9 +183,7 @@ describe.each(["catalog", "artifact"] as const)(
 
       const onResponse = vi.fn();
       await expect(request(resource, onResponse)).rejects.toThrow(
-        resource === "catalog"
-          ? "Request failed with HTTP 404"
-          : "Server does not support artifact protocol 1.",
+        "Request failed with HTTP 404",
       );
       expect(onResponse).toHaveBeenCalledWith(
         expect.objectContaining({ status: 404, body }),

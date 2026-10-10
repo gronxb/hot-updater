@@ -139,11 +139,8 @@ describe("private HotUpdater HTTP client", () => {
     ).rejects.toThrow("Artifact URLs must be absolute HTTP(S) URLs.");
   });
 
-  it("rejects a legacy artifact response", async () => {
-    mocks.fetchJSON.mockResolvedValue({
-      fileHash: "archive-hash",
-      fileUrl: "/storage/bundle.zip",
-    });
+  it("rejects a response in another artifact protocol", async () => {
+    mocks.fetchJSON.mockResolvedValue({ artifactProtocolVersion: 2 });
     const session = await createHttpClient(
       "https://updates.example.com",
     ).createSession();
@@ -156,10 +153,9 @@ describe("private HotUpdater HTTP client", () => {
     ).rejects.toThrow("does not support artifact protocol 1");
   });
 
-  it("reports an old server without the v1 endpoint explicitly", async () => {
-    mocks.fetchJSON.mockRejectedValue(
-      new FetchJSONResponseError(404, "Not Found"),
-    );
+  it("passes the server's 404 for a missing artifact through", async () => {
+    const notFound = new FetchJSONResponseError(404, "Not Found");
+    mocks.fetchJSON.mockRejectedValue(notFound);
     const session = await createHttpClient(
       "https://updates.example.com",
     ).createSession();
@@ -169,11 +165,11 @@ describe("private HotUpdater HTTP client", () => {
         currentBundleId: "current",
         targetBundleId: "target",
       }),
-    ).rejects.toThrow("does not support artifact protocol 1");
+    ).rejects.toBe(notFound);
   });
 
   it.each([
-    { label: "a legacy response", response: { fileUrl: "/storage/a.zip" } },
+    { label: "a response without the protocol fields", response: {} },
     {
       label: "an invalid absolute URL",
       response: {
