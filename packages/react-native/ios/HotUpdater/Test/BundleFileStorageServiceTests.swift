@@ -2700,9 +2700,14 @@ struct BundleFileStorageServiceTests {
             .appendingPathComponent("bundle-store", isDirectory: true)
             .appendingPathComponent(BundleMetadata.metadataFilename))
 
+        let preferences = InMemoryPreferencesService()
+        try preferences.setItem(stable.appendingPathComponent("index.ios.bundle").path, forKey: "HotUpdaterBundleURL")
+
         #expect(loadMetadata(documentsDirectory: root) == nil)
-        let service = makeStorageService(documentsDirectory: root)
+        let service = makeStorageService(documentsDirectory: root, preferences: preferences)
         #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+        #expect(service.getBundleId() == nil)
+        #expect(service.getBaseURL() == "")
     }
 
     @Test

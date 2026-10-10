@@ -64,8 +64,14 @@ class BundleFileStorageServiceTest {
                 .toString(),
         )
 
+        val preferences = InMemoryPreferencesService()
+        preferences.setItem("HotUpdaterBundleURL", File(stableDir, "index.android.bundle").absolutePath)
+
         assertNull(loadMetadata(rootDir))
-        assertNull(createService(rootDir).prepareLaunch(null).launchedBundleId)
+        val service = createService(rootDir, preferences)
+        assertNull(service.prepareLaunch(null).launchedBundleId)
+        assertNull(service.getBundleId())
+        assertEquals("", service.getBaseURL())
     }
 
     private fun assertStagingLaunchAcrossColdStart(
