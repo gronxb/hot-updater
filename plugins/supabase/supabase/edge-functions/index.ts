@@ -1,10 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createHotUpdater } from "@hot-updater/server";
-import {
-  plugins,
-  supabaseDatabase,
-  supabaseStorage,
-} from "@hot-updater/supabase/edge";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase/edge";
 import { Hono } from "hono";
 
 declare global {
@@ -26,7 +23,8 @@ const hotUpdater = createHotUpdater({
     supabaseUrl,
     supabaseServiceRoleKey,
   }),
-  plugins,
+  // The plugins init migrates the database for (src/plugins.ts).
+  plugins: [insights(), apiKeys(), remoteConfig()],
   storage: supabaseStorage({
     supabaseUrl,
     supabaseServiceRoleKey,

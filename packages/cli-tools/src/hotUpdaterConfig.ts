@@ -1467,7 +1467,8 @@ const PLUGINS_FILE_PATH = "hotUpdater.plugins.ts";
 
 /**
  * Whether `text` is the plugins file an older init wrote: comments and a
- * re-export of a provider package's `plugins`, which the config imports now.
+ * re-export of a provider package's former `plugins`, which the config's
+ * `plugins` list replaces.
  */
 const isGeneratedPluginsFile = (text: string) =>
   /^export\{plugins\}from(["'])@hot-updater\/[\w-]+\1;?$/u.test(

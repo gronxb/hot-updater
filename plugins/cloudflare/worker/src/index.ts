@@ -2,7 +2,8 @@ import { createHotUpdater } from "@hot-updater/server";
 import { env } from "cloudflare:workers";
 import { Hono } from "hono";
 
-import { d1Database, plugins, r2Storage } from "../../src/worker";
+import { plugins } from "../../src/plugins";
+import { d1Database, r2Storage } from "../../src/worker";
 
 export type CloudflareWorkerEnv = {
   DB: {

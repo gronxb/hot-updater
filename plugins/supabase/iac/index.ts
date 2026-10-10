@@ -377,6 +377,15 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
       if (imports[specifier]) {
         continue;
       }
+      // Hot Updater's own entries, such as the plugin factories in
+      // `@hot-updater/server/plugins`, are vendored like the two above.
+      if (specifier.startsWith(WORKSPACE_PACKAGE_PREFIX)) {
+        await addWorkspacePackage({
+          ...workspaceImport(specifier),
+          searchFrom: supabasePackage.packageRoot,
+        });
+        continue;
+      }
       imports[specifier] = await resolveBareSpecifierImportTarget(
         specifier,
         supabasePackage.packageRoot,

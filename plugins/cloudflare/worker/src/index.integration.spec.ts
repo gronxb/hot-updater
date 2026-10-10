@@ -7,7 +7,8 @@ import {
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 
-import { d1Database, plugins } from "../../src/worker";
+import { plugins } from "../../src/plugins";
+import { d1Database } from "../../src/worker";
 import worker, { HOT_UPDATER_BASE_PATH } from "./index";
 
 declare module "vitest" {
