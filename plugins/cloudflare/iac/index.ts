@@ -18,10 +18,10 @@ import {
   type RunInitOptions,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { Cloudflare } from "cloudflare";
 
 import { d1Database } from "../src/d1Database";
-import { plugins } from "../src/plugins";
 import { createWrangler } from "../src/utils/createWrangler";
 import {
   validateCloudflareApiToken,
@@ -665,9 +665,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     cloudflareApiToken: apiToken,
     databaseId: selectedD1DatabaseId,
   });
-  // The managed server: the package's plugins over the database init set
-  // up, which assembling it neither reads nor writes.
-  const server = assembleServer({ database, plugins });
+  // The managed server: its plugins over the database init set up, which
+  // assembling it neither reads nor writes.
+  const server = assembleServer({
+    database,
+    plugins: [insights(), apiKeys(), remoteConfig()],
+  });
   // The app's credential, through the managed server's plugins, on the tables they read.
   let credential: ProvisionedClientCredential | undefined;
   try {

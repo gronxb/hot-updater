@@ -4,7 +4,7 @@ import {
 } from "@hot-updater/cli-tools";
 import type { EngineDatabase } from "@hot-updater/plugin-core";
 import { toolingTargetOf, createMemoryAdapter } from "@hot-updater/plugin-core";
-import { apiKeys } from "@hot-updater/server/plugins";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
@@ -24,7 +24,6 @@ vi.mock("../src/dynamoDB", () => ({
   migrateDynamoDB: mocks.migrateDynamoDB,
 }));
 
-import { plugins } from "../src/plugins";
 import { prepareDynamoDBDeployment } from "./index";
 
 const EXISTING_API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
@@ -49,10 +48,16 @@ const storedApiKeys = (database: EngineDatabase) =>
 
 /** What init provisions: the app's credential, through the managed server's plugins. */
 const provision = (database: EngineDatabase, existing?: string) =>
-  provisionClientCredential(assembleServer({ database, plugins }), {
-    env: existing === undefined ? {} : { HOT_UPDATER_API_KEY: existing },
-    name: "AWS init",
-  });
+  provisionClientCredential(
+    assembleServer({
+      database,
+      plugins: [insights(), apiKeys(), remoteConfig()],
+    }),
+    {
+      env: existing === undefined ? {} : { HOT_UPDATER_API_KEY: existing },
+      name: "AWS init",
+    },
+  );
 
 describe("AWS client credential provisioning", () => {
   it("registers the existing app key without persisting the raw value", async () => {
@@ -116,7 +121,11 @@ describe("AWS DynamoDB deployment preparation", () => {
     await prepareDynamoDBDeployment(input);
 
     expect(mocks.ensureTable).toHaveBeenCalledWith("hot-updater-metadata");
-    expect(mocks.migrateDynamoDB).toHaveBeenCalledWith(input, plugins);
+    expect(mocks.migrateDynamoDB).toHaveBeenCalledWith(input, [
+      expect.objectContaining({ id: "insights" }),
+      expect.objectContaining({ id: "apiKeys" }),
+      expect.objectContaining({ id: "remoteConfig" }),
+    ]);
     expect(mocks.calls).toEqual(["ensureTable", "migrateDynamoDB"]);
   });
 });

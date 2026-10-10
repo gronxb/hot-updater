@@ -7,6 +7,7 @@ import {
   HotUpdaterSchemaMigrationRequiredError,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import {
   createBundleFixture,
   createReleaseCatalogTestStorage,
@@ -15,10 +16,10 @@ import { describe, expect, it } from "vitest";
 
 import { createD1Database } from "./d1Executor";
 import { d1SchemaSql, d1SchemaStatements } from "./d1Schema";
-import { plugins } from "./plugins";
 
 /** The managed Worker's migration: core's tables and its plugins'. */
-const managedSql = () => d1SchemaSql(toolingTargetOf(plugins));
+const managedSql = () =>
+  d1SchemaSql(toolingTargetOf([insights(), apiKeys(), remoteConfig()]));
 
 const FILES = [
   "plugins/cloudflare/sql/bundles.sql",

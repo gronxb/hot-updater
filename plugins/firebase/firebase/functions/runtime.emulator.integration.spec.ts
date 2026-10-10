@@ -18,9 +18,12 @@ import type { HotUpdaterCoreApi } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 import { createHotUpdater } from "@hot-updater/server";
 import {
+  apiKeys,
   createInsightsModel,
   createInsightsProvider,
+  insights,
   type InsightsProvider,
+  remoteConfig,
 } from "@hot-updater/server/plugins";
 import {
   assertCommandAvailable,
@@ -40,7 +43,6 @@ import {
   migrateFirebaseDatabase,
 } from "../../src/firebaseDatabase";
 import { FIREBASE_V1_COLLECTION } from "../../src/firebaseInfrastructureNames";
-import { plugins } from "../../src/plugins";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -250,6 +252,8 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     };
 
     const database = firebaseDatabase({ ...adminOptions });
+    // The plugins the function runs.
+    const plugins = [insights(), apiKeys(), remoteConfig()];
     await migrateFirebaseDatabase({ ...adminOptions }, plugins);
     // The server the function runs, on the emulator's project: the API key
     // it authenticates with, and core's writes as the managed config makes them.

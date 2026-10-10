@@ -18,4 +18,4 @@ export default defineConfig({
 
 - `@hot-updater/aws`, `@hot-updater/cloudflare`, `@hot-updater/cloudflare/worker`, `@hot-updater/firebase`, `@hot-updater/supabase`, and `@hot-updater/supabase/edge` drop the export. A server or Console config imports the same factories from `@hot-updater/server/plugins`.
 - `hot-updater init --provider <provider>` rewrites a config that still imports `plugins` from a provider package into the list above.
-- The managed Supabase Edge Function lists its plugins from `@hot-updater/server/plugins`, and `hot-updater init` vendors that entry into the function with the others.
+- Each managed server, the Lambda@Edge function, Worker, Cloud Function, and Edge Function, lists its plugins in its own `createHotUpdater` call. `hot-updater init` vendors `@hot-updater/server/plugins` into the Supabase Edge Function with the other entries it imports.

@@ -56,7 +56,6 @@ vi.mock("execa", async (importOriginal) => {
   };
 });
 
-import { plugins } from "../src/plugins";
 import {
   createSelectedBucket,
   getSupabaseProjectAccess,
@@ -1147,18 +1146,5 @@ describe("resolveEdgeFunctionDenoConfig", () => {
     } finally {
       await fs.rm(targetDir, { recursive: true, force: true });
     }
-  });
-});
-
-describe("the Edge Function", () => {
-  it("lists the plugins init migrates the database for", async () => {
-    const source = await fs.readFile(
-      path.resolve("plugins/supabase/supabase/edge-functions/index.ts"),
-      "utf8",
-    );
-
-    expect(source).toContain(
-      `plugins: [${plugins.map(({ id }) => `${id}()`).join(", ")}],`,
-    );
   });
 });

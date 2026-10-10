@@ -25,6 +25,7 @@ import {
   createHotUpdater,
   type RuntimeHotUpdaterAPI,
 } from "@hot-updater/server";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import {
   assertDockerDaemonAvailable,
   findOpenPort,
@@ -37,8 +38,10 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { cloudFrontDownloadUrl } from "../src/cloudFrontDownloadUrl";
 import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";
-import { plugins } from "../src/plugins";
 import { s3Storage } from "../src/s3Storage";
+
+/** The plugins the Lambda runs. */
+const plugins = [insights(), apiKeys(), remoteConfig()] as const;
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

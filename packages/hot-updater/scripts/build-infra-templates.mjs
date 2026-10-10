@@ -12,6 +12,7 @@ import {
 } from "@hot-updater/cli-tools";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "@hot-updater/server";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { build as buildHelper } from "tsdown";
 
 import {
@@ -134,21 +135,19 @@ await buildHelper({
   deps: { alwaysBundle: ["@hot-updater/protocol"], onlyBundle: false },
 });
 await rm(outputRoot, { recursive: true, force: true });
+// The plugins every provider's prebuilt server runs set its client-route
+// policy, which the scaffold provisions, documents, and checks, and name the
+// client plugins an app adds. Assembled on a database nothing reads here.
+const prebuilt = assembleServer({
+  database: { name: "memory", adapter: createMemoryAdapter() },
+  plugins: [insights(), apiKeys(), remoteConfig()],
+});
+const clientAuth = clientAuthOf(prebuilt) ?? null;
+const { clientPlugins } = prebuilt;
 for (const provider of providers) {
   const root = pluginRoot(provider);
   const output = path.join(outputRoot, provider);
   await mkdir(output, { recursive: true });
-  // The plugins the provider's prebuilt server runs set its client-route
-  // policy, which the scaffold provisions, documents, and checks, and name
-  // the client plugins an app adds.
-  const { plugins } = await moduleAt(path.join(root, "src/plugins.ts"));
-  // The prebuilt server's plugins, on a database nothing reads here.
-  const prebuilt = assembleServer({
-    database: { name: "memory", adapter: createMemoryAdapter() },
-    plugins,
-  });
-  const clientAuth = clientAuthOf(prebuilt) ?? null;
-  const { clientPlugins } = prebuilt;
   await cp(path.join(root, "agent"), output, { recursive: true });
   for (const [source, file] of [
     ...(await readdir(output))

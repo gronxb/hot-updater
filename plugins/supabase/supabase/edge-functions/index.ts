@@ -23,7 +23,6 @@ const hotUpdater = createHotUpdater({
     supabaseUrl,
     supabaseServiceRoleKey,
   }),
-  // The plugins init migrates the database for (src/plugins.ts).
   plugins: [insights(), apiKeys(), remoteConfig()],
   storage: supabaseStorage({
     supabaseUrl,

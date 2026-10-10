@@ -124,7 +124,6 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   };
 });
 
-import { plugins } from "../src/plugins";
 import { getAwsV1SsmParameterName } from "./awsInfrastructureNames";
 import { runInit } from "./index";
 import { getConfigScaffold } from "./templates";
@@ -172,7 +171,7 @@ beforeEach(() => {
 });
 
 describe("AWS init", () => {
-  it("deploys the prebuilt function, with the package's plugins' tables, the app's credential, and CloudFront's client headers", async () => {
+  it("deploys the prebuilt function, with its plugins' tables, the app's credential, and CloudFront's client headers", async () => {
     await runInit({ build: "bare", envFile: ".env.hotupdater" });
 
     const ssmParameterName = getAwsV1SsmParameterName("hot-updater-edge");
@@ -182,9 +181,13 @@ describe("AWS init", () => {
         region: "ap-northeast-2",
         tableName: "hot-updater-metadata",
       },
-      plugins,
+      [
+        expect.objectContaining({ id: "insights" }),
+        expect.objectContaining({ id: "apiKeys" }),
+        expect.objectContaining({ id: "remoteConfig" }),
+      ],
     );
-    // The managed server: the package's plugins on the table init set up.
+    // The managed server: its plugins on the table init set up.
     expect(mocks.provisionClientCredential).toHaveBeenCalledWith(
       expect.objectContaining({
         database: expect.objectContaining({ name: "dynamoDB" }),

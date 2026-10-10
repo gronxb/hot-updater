@@ -24,10 +24,10 @@ import {
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
-import { plugins } from "../src/plugins";
 import { supabaseDatabase } from "../src/supabaseDatabase";
 import { getConfigScaffold } from "./configTemplate";
 import {
@@ -1122,7 +1122,10 @@ const runInitWithoutCliMetadata = async ({
     });
     // The managed server's plugins over the project's database, which
     // assembling neither reads nor writes.
-    const managedServer = assembleServer({ database, plugins });
+    const managedServer = assembleServer({
+      database,
+      plugins: [insights(), apiKeys(), remoteConfig()],
+    });
     ({ clientPlugins } = managedServer);
     // The app's credential, through the managed server's plugins, on the tables they read.
     try {
