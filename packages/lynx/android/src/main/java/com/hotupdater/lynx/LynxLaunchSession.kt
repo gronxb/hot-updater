@@ -52,20 +52,28 @@ class LynxLaunchSession internal constructor(
     private var firstContentHandler: (() -> Unit)? = null
     private var confirmedHandler: ((JSONObject) -> Unit)? = null
     private var engineDiagnosticHandler: ((Map<String, Any?>) -> Unit)? = null
+    private var resourceObserver: ((String, String, String) -> Unit)? = null
     private var readinessGate: (() -> Boolean)? = null
     private val retiredResources = mutableListOf<LynxReleaseResources>()
     var resources = newResources()
         private set
     val entryUrl = "hot-updater:///" + pageEntry
 
-    private fun newResources() = LynxReleaseResources(
+    private fun newResources(): LynxReleaseResources = LynxReleaseResources(
         installation.directory,
         installation.bundleId,
         installation.managedFileHashes,
         File(snapshotDirectory, java.util.UUID.randomUUID().toString()),
-    ).also {
-        it.isLive = { live && !controller.generationFailed }
-        it.onFailure = { message -> notifyFailure(message) }
+    ).also { ownedResources ->
+        ownedResources.isLive = { live && !controller.generationFailed }
+        ownedResources.onFailure = { message -> notifyFailure(message) }
+        ownedResources.onLoaded = { event, path, sha256 ->
+            resourceObserver?.invoke(event, path, sha256)
+            if (resources === ownedResources) {
+                loadedResources.add(path)
+                handler.post { flushReady() }
+            }
+        }
     }
     private fun notifyFailure(
         message: String,
@@ -146,15 +154,8 @@ class LynxLaunchSession internal constructor(
     }
     /** Observes verified managed resources without exposing filesystem authority. */
     fun setResourceObserver(observer: (event: String, path: String, sha256: String) -> Unit) {
-        check(live && resources.onLoaded == null)
-        val observingResources = resources
-        observingResources.onLoaded = { event, path, sha256 ->
-            observer(event, path, sha256)
-            if (resources === observingResources) {
-                loadedResources.add(path)
-                handler.post { flushReady() }
-            }
-        }
+        check(live && resourceObserver == null)
+        resourceObserver = observer
     }
     internal fun reloadAction():
         (String, (Result<JSONObject>) -> Unit) -> Unit {
@@ -253,6 +254,7 @@ class LynxLaunchSession internal constructor(
         firstContentHandler = null
         confirmedHandler = null
         engineDiagnosticHandler = null
+        resourceObserver = null
         return previous
     }
     internal fun notifyReady(callback: (Result<JSONObject>) -> Unit) {
@@ -314,6 +316,7 @@ class LynxLaunchSession internal constructor(
         firstContentHandler = null
         confirmedHandler = null
         engineDiagnosticHandler = null
+        resourceObserver = null
         readinessGate = null
         resources.onFailure = null
         resources.onLoaded = null

@@ -1996,7 +1996,6 @@ class LynxUpdaterControllerTest {
                 primary.notifyReady { }
                 val secondary = controller.pinSecondary("detail.lynx.bundle", emptyMap(), 1, "generation-rebind")
                 secondary.requireResourceBeforeReady(secondary.pageEntry)
-                secondary.setResourceObserver { _, _, _ -> }
                 secondary.firstScreen = true
                 secondary.resolveEssential(secondary.pageEntry)
                 var original: JSONObject? = null
@@ -2013,7 +2012,6 @@ class LynxUpdaterControllerTest {
                     set(secondary, android.app.Application())
                 }
                 secondary.prepareForRebind()
-                secondary.setResourceObserver { _, _, _ -> }
                 var duplicateAdmissionEvents = 0
                 secondary.setReadinessHandlers({}, { duplicateAdmissionEvents++ })
                 var reply: Result<JSONObject>? = null
@@ -2096,6 +2094,58 @@ class LynxUpdaterControllerTest {
         }
     }
 
+    @Test fun primaryReadinessTracksEssentialResourcesWithoutAnObserver() {
+        val root = temp()
+        try {
+            withController(root) { controller ->
+                val primary = controller.pinPrimary(generationId = "generation-no-observer")
+                primary.requireResourceBeforeReady(primary.pageEntry)
+                var confirmed: Result<JSONObject>? = null
+                primary.firstScreen = true
+                primary.notifyReady { confirmed = it }
+                assertEquals(null, confirmed)
+                assertTrue(journal(root).has("pending"))
+                primary.resolveEssential(primary.pageEntry)
+                assertTrue(checkNotNull(confirmed).isSuccess)
+                assertFalse(journal(root).has("pending"))
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun rejectedHostResourceObservationDoesNotConfirmReadiness() {
+        val root = temp()
+        try {
+            withController(root) { controller ->
+                val primary = controller.pinPrimary(generationId = "generation-host-observation")
+                primary.requireResourceBeforeReady(primary.pageEntry)
+                var acceptObservation = false
+                var confirmed: Result<JSONObject>? = null
+                primary.setResourceObserver { _, path, _ ->
+                    assertEquals(primary.pageEntry, path)
+                    assertEquals(null, confirmed)
+                    assertTrue(journal(root).has("pending"))
+                    check(acceptObservation) { "Generation resource journal rejected the load" }
+                }
+                primary.firstScreen = true
+                primary.notifyReady { confirmed = it }
+                assertThrows(IllegalStateException::class.java) {
+                    primary.resolveEssential(primary.pageEntry)
+                }
+                primary.flushReady()
+                assertEquals(null, confirmed)
+                assertTrue(journal(root).has("pending"))
+                acceptObservation = true
+                primary.resolveEssential(primary.pageEntry)
+                assertTrue(checkNotNull(confirmed).isSuccess)
+                assertFalse(journal(root).has("pending"))
+            }
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun secondaryAdmissionWaitsForResolvedEssentialPageEntry() {
         val root = temp()
         try {
@@ -2109,7 +2159,6 @@ class LynxUpdaterControllerTest {
                     1,
                     "generation-entry",
                 )
-                secondary.setResourceObserver { _, _, _ -> }
                 secondary.requireResourceBeforeReady("detail.lynx.bundle")
                 var admitted: Result<JSONObject>? = null
                 secondary.firstScreen = true
