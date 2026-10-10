@@ -105,7 +105,6 @@ const MANAGED_HELPER_NAMES = new Set([
   "awsOptions",
   "commonOptions",
   "credential",
-  "storageOptions",
 ]);
 const KNOWN_BUILD_CALLEES = new Set(["bare", "expo", "rock"]);
 /** Build adapter packages, whose imports a kept build still needs. */

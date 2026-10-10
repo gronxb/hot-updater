@@ -13,15 +13,6 @@ import { withPublicBundleMutationErrors } from "./public-bundle-error";
 import { listReleases, readReleaseFilter } from "./server/listReleases";
 import { addReleaseReachability } from "./server/releaseReachability";
 
-type GetBundlesInput = {
-  platform?: "ios" | "android";
-  limit?: number;
-  /** Bundles older than this id: the next page. */
-  after?: string;
-  /** Bundles newer than this id: the previous page. */
-  before?: string;
-};
-
 type GetBundleInput = {
   bundleId: string;
 };
@@ -146,7 +137,6 @@ export const getReleaseCatalogDiagnostics = createServerFn({ method: "GET" })
     (await prepare()).core.getReleaseCatalogRow(data.scopeKey),
   );
 
-// GET /api/config
 export const getConfig = createServerFn()
   .middleware([consoleAccess])
   .handler(async () => {
@@ -159,7 +149,6 @@ export const getConfig = createServerFn()
     }
   });
 
-// GET /api/channels
 export const getChannels = createServerFn()
   .middleware([consoleAccess])
   .handler(async (): Promise<ChannelRow[]> => {
@@ -171,7 +160,6 @@ export const getChannels = createServerFn()
     }
   });
 
-// POST /api/channels
 export const createChannel = createServerFn({ method: "POST" })
   .middleware([consoleAccess])
   .validator((input: { name: string }) => {
@@ -195,7 +183,6 @@ export const createChannel = createServerFn({ method: "POST" })
     }
   });
 
-// DELETE /api/channels/:id
 export const deleteChannel = createServerFn({ method: "POST" })
   .middleware([consoleAccess])
   .validator((input: { id: string }) => input)
@@ -208,79 +195,6 @@ export const deleteChannel = createServerFn({ method: "POST" })
     }
   });
 
-// GET /api/config-loaded
-export const getConfigLoaded = createServerFn()
-  .middleware([consoleAccess])
-  .handler(async () => {
-    try {
-      const { isConfigLoaded } = await import("./server/config.server");
-      const configLoaded = isConfigLoaded();
-      return { configLoaded };
-    } catch (error) {
-      console.error("Error during config loaded retrieval:", error);
-      throw error;
-    }
-  });
-
-// GET /api/bundles: newest first, one page by key; the total is one counter row.
-export const getBundles = createServerFn({ method: "GET" })
-  .middleware([consoleAccess])
-  .validator((input: GetBundlesInput | undefined) => {
-    if (input?.after !== undefined && input.before !== undefined) {
-      throw new Error("Page by after or before, not both.");
-    }
-    return {
-      ...(input?.platform === undefined ? {} : { platform: input.platform }),
-      ...(input?.after === undefined ? {} : { after: input.after }),
-      ...(input?.before === undefined ? {} : { before: input.before }),
-      limit: pageLimit(input?.limit),
-    };
-  })
-  .handler(async ({ data }) => {
-    try {
-      const { core } = await prepare();
-      const platform =
-        data.platform === undefined ? {} : { platform: data.platform };
-      const [page, total] = await Promise.all([
-        data.before === undefined
-          ? core.listBundles({
-              ...platform,
-              order: "desc",
-              limit: data.limit,
-              ...(data.after === undefined ? {} : { after: data.after }),
-            })
-          : core
-              .listBundles({
-                ...platform,
-                order: "asc",
-                limit: data.limit,
-                after: data.before,
-              })
-              .then((rows) => rows.reverse()),
-        core.countBundles(data.platform),
-      ]);
-      const full = page.length === data.limit;
-      const first = page[0]?.bundle.id;
-      const last = page.at(-1)?.bundle.id;
-      return {
-        data: page.map(({ bundle, patches }) => rowToBundle(bundle, patches)),
-        total,
-        // A full page may have more past it; a short one ended the range.
-        ...(last !== undefined && (data.before !== undefined || full)
-          ? { next: last }
-          : {}),
-        ...(first !== undefined &&
-        (data.after !== undefined || (data.before !== undefined && full))
-          ? { previous: first }
-          : {}),
-      };
-    } catch (error) {
-      console.error("Error during bundle retrieval:", error);
-      throw error;
-    }
-  });
-
-// GET /api/bundles/:bundleId
 export const getBundle = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
   .validator((input: GetBundleInput) => input)

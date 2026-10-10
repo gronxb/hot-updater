@@ -233,7 +233,7 @@ program
   .description("Manage native default channels")
   .command("set")
   .description(
-    "Set the native default channel for Android (BuildConfig) and iOS (Info.plist)",
+    "Set the native default channel for Android (AndroidManifest.xml) and iOS (Info.plist)",
   )
   .argument("<channel>", "the channel to set")
   .action(handleSetChannel);

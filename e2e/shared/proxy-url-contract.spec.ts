@@ -628,7 +628,7 @@ describe("E2E remote asset proxy URLs", () => {
         controller.handleAssertProxy({ artifactRequests: 0 }),
       ).toMatchObject({
         pathCardinality: 1,
-        requestCounts: { artifact: 0, catalog: 4, legacy: 0 },
+        requestCounts: { artifact: 0, catalog: 4, other: 0 },
       });
       expect(fetchMock).toHaveBeenCalledTimes(3);
       expect(String(fetchMock.mock.calls[0]?.[0])).toBe(

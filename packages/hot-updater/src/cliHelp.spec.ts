@@ -49,7 +49,7 @@ describe("CLI bundle mental model", () => {
     },
   );
 
-  it("keeps the v0 bundle management verbs together", () => {
+  it("lists the bundle management commands together", () => {
     const output = help("bundle");
     for (const command of [
       "list",
@@ -64,7 +64,7 @@ describe("CLI bundle mental model", () => {
     }
   });
 
-  it("keeps the v0 bundle list filters", () => {
+  it("documents the channel and target app version filters of bundle list", () => {
     const output = help("bundle", "list");
     expect(output).toContain("-c, --channel <channel>");
     expect(output).toContain("--target-app-version <targetAppVersion>");

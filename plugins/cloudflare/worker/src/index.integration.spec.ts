@@ -120,7 +120,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     });
   });
 
-  it("does not support the legacy exact path", async () => {
+  it("answers 404 for /api/check-update", async () => {
     const response = await worker.fetch(
       new Request(`${PUBLIC_BASE_URL}/api/check-update`),
       env,

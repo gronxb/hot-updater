@@ -29,7 +29,6 @@ import {
   getRequiredServerVersion,
   handleDoctor,
   isInfrastructureUpdateRequired,
-  isV1InfrastructureRequired,
   resolveVersionEndpoint,
 } from "./doctor";
 import { checkFingerprintJson } from "./doctor/fingerprint";
@@ -365,11 +364,6 @@ describe("infrastructure version helpers", () => {
       fixability: "blocked",
       commands: expect.arrayContaining(["hot-updater agent infra upgrade"]),
     });
-  });
-
-  it("requires generation 1 for v1 packages", () => {
-    expect(isV1InfrastructureRequired("0.38.0")).toBe(false);
-    expect(isV1InfrastructureRequired("1.0.0")).toBe(true);
   });
 
   it("blocks a v0 endpoint instead of suggesting an in-place update", async () => {

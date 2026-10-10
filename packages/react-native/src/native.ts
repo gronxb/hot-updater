@@ -208,38 +208,14 @@ const cloneManifest = (manifest: Manifest): Manifest => ({
   ),
 });
 
-const getNativeBundleId = (): string | null => {
-  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
-    getBundleId?: () => string | null;
-  };
-
-  if (typeof nativeModule.getBundleId !== "function") {
-    throw new Error(
-      "[HotUpdater] Native module is missing 'getBundleId()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.",
-    );
-  }
-
-  return nativeModule.getBundleId();
-};
-
 const resolveBundleId = (bundleId: string | null): string => {
   return !bundleId || bundleId === NIL_UUID ? getMinBundleId() : bundleId;
 };
 
 const getFreshBundleId = (): string => {
-  const resolvedBundleId = resolveBundleId(getNativeBundleId());
+  const resolvedBundleId = resolveBundleId(HotUpdaterNative.getBundleId());
   sessionState.cacheBundleId(resolvedBundleId);
   return resolvedBundleId;
-};
-
-const getReloadProcess = (): (() => Promise<void>) | null => {
-  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
-    reloadProcess?: () => Promise<void>;
-  };
-
-  return typeof nativeModule.reloadProcess === "function"
-    ? nativeModule.reloadProcess.bind(nativeModule)
-    : null;
 };
 
 export type HotUpdaterProgressArtifactType = "diff";
@@ -549,7 +525,6 @@ export const getAppVersion = (): string | null => {
  * When `setReloadBehavior("processRestart")` is used:
  * - Android performs a cold process restart
  * - iOS keeps the same behavior as the normal React reload path
- * - older Android native binaries fall back to `reload()` if `reloadProcess()` is unavailable
  *
  * When `setReloadBehavior("custom", handler)` is used:
  * - both Android and iOS execute the provided handler
@@ -567,11 +542,8 @@ export const reload = async () => {
   }
 
   if (Platform.OS === "android" && reloadBehavior === "processRestart") {
-    const reloadProcess = getReloadProcess();
-    if (reloadProcess) {
-      await reloadProcess();
-      return;
-    }
+    await HotUpdaterNative.reloadProcess();
+    return;
   }
 
   await HotUpdaterNative.reload();
@@ -666,10 +638,11 @@ export const getManifest = (): Manifest => {
     return cachedManifest;
   }
 
-  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
-    getManifest?: () => Record<string, unknown> | string;
-  };
-  const manifest = nativeModule.getManifest?.();
+  // Android's old-architecture module returns the manifest as a JSON string.
+  const manifest = HotUpdaterNative.getManifest() as
+    | Record<string, unknown>
+    | string
+    | null;
 
   let normalizedManifest: Manifest;
 
@@ -795,7 +768,6 @@ export type LaunchTransition = {
 
 type RawNotifyAppReadyResult = {
   status?: string;
-  crashedBundleId?: string;
   fromReleaseId?: string;
   fromBundleId?: string;
   toReleaseId?: string;
@@ -861,7 +833,7 @@ const getNotifyAppReadyTransition = (
   fromReleaseId: string | null;
   toReleaseId: string | null;
 } | null => {
-  if (result.status === "UPDATE_APPLIED" || result.status === "PROMOTED") {
+  if (result.status === "UPDATE_APPLIED") {
     const fromBundleId = readDirectionalBundleId(result.fromBundleId);
     const toBundleId = readDirectionalBundleId(result.toBundleId);
     if (fromBundleId && toBundleId) {
@@ -1005,16 +977,6 @@ const normalizeManifestAssets = (value: unknown): Manifest["assets"] => {
         return [];
       }
 
-      if (typeof entry === "string") {
-        const fileHash = entry.trim();
-
-        if (!fileHash) {
-          return [];
-        }
-
-        return [[trimmedKey, { fileHash }] as const];
-      }
-
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
         return [];
       }
@@ -1050,7 +1012,7 @@ const normalizeManifestAssets = (value: unknown): Manifest["assets"] => {
  */
 export const getCrashHistory = (): string[] => {
   const result = HotUpdaterNative.getCrashHistory();
-  // Older Android old-arch implementations returned JSON strings.
+  // Android's old-architecture module returns the history as a JSON string.
   if (typeof result === "string") {
     try {
       return JSON.parse(result);

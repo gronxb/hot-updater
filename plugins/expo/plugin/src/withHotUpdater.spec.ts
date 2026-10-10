@@ -219,7 +219,7 @@ class MainApplication : Application(), ReactApplication {
       expect(result).toBe(_expected);
     });
 
-    it("RN 0.82+ Kotlin: migrates the previous HotUpdater bundle path", () => {
+    it("RN 0.82+ Kotlin: keeps an existing HotUpdater bundle path", () => {
       const input = `package com.rndiffapp
 
 import com.facebook.react.ReactApplication
@@ -235,28 +235,7 @@ class MainApplication : Application(), ReactApplication {
   }
 }`;
 
-      const expected = `package com.rndiffapp
-
-import com.facebook.react.ReactApplication
-import com.hotupdater.HotUpdater
-
-class MainApplication : Application(), ReactApplication {
-  override val reactHost: ReactHost by lazy {
-    getDefaultReactHost(
-      context = applicationContext,
-      packageList = emptyList(),
-      jsBundleFilePath = if (BuildConfig.DEBUG) {
-        null
-      } else {
-        HotUpdater.getJSBundleFile(applicationContext)
-      },
-    )
-  }
-}`;
-
-      const result = transformAndroid(input);
-      expect(result).toBe(expected);
-      expect(transformAndroid(result)).toBe(result);
+      expect(transformAndroid(input)).toBe(input);
     });
 
     it("RN 0.82+ Kotlin: keeps a custom bundle path", () => {
@@ -373,7 +352,7 @@ class MainApplication : Application(), ReactApplication {
       expect(result).toBe(_expected);
     });
 
-    it("RN 0.81 Kotlin: migrates the previous HotUpdater bundle path", () => {
+    it("RN 0.81 Kotlin: keeps an existing HotUpdater bundle path", () => {
       const input = `package com.hotupdaterexample
 
 import com.facebook.react.ReactApplication
@@ -391,30 +370,7 @@ class MainApplication : Application(), ReactApplication {
     }
 }`;
 
-      const expected = `package com.hotupdaterexample
-
-import com.facebook.react.ReactApplication
-import com.facebook.react.defaults.DefaultReactNativeHost
-import com.hotupdater.HotUpdater
-
-class MainApplication : Application(), ReactApplication {
-  override val reactNativeHost: ReactNativeHost =
-    object : DefaultReactNativeHost(this) {
-      override val isHermesEnabled: Boolean = BuildConfig.IS_HERMES_ENABLED
-
-      override fun getJSBundleFile(): String? {
-        return if (BuildConfig.DEBUG) {
-          null
-        } else {
-          HotUpdater.getJSBundleFile(applicationContext)
-        }
-      }
-    }
-}`;
-
-      const result = transformAndroid(input);
-      expect(result).toBe(expected);
-      expect(transformAndroid(result)).toBe(result);
+      expect(transformAndroid(input)).toBe(input);
     });
 
     it("Expo 54 Kotlin: input -> output", () => {

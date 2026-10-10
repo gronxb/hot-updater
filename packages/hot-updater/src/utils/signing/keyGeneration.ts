@@ -96,37 +96,3 @@ export async function saveKeyPair(
 
   await Promise.all([privateKeyFile.close(), publicKeyFile.close()]);
 }
-
-/**
- * Load private key from PEM file.
- * @param privateKeyPath Path to private key file
- * @returns Private key in PEM format
- * @throws Error if file not found or invalid format
- */
-export async function loadPrivateKey(privateKeyPath: string): Promise<string> {
-  try {
-    const privateKey = await fs.readFile(privateKeyPath, "utf-8");
-
-    // Validate it's a valid private key by attempting to create crypto object
-    crypto.createPrivateKey(privateKey);
-
-    return privateKey;
-  } catch (error) {
-    throw new Error(
-      `Failed to load private key from ${privateKeyPath}: ${(error as Error).message}`,
-    );
-  }
-}
-
-/**
- * Extract public key from private key.
- * @param privateKeyPEM Private key in PEM format
- * @returns Public key in PEM format
- */
-export function getPublicKeyFromPrivate(privateKeyPEM: string): string {
-  const privateKey = crypto.createPrivateKey(privateKeyPEM);
-  return crypto.createPublicKey(privateKey).export({
-    type: "spki",
-    format: "pem",
-  }) as string;
-}

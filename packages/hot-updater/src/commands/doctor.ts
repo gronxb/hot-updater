@@ -62,7 +62,6 @@ export {
   getRequiredInfrastructureVersion,
   getRequiredServerVersion,
   isInfrastructureUpdateRequired,
-  isV1InfrastructureRequired,
   resolveVersionEndpoint,
 } from "./doctorInfrastructure";
 
@@ -474,9 +473,9 @@ const checkAndroidNativeStatus = async ({
     });
   }
 
-  const channel = await androidParser.get("hot_updater_channel");
+  const channel = await androidParser.get("com.hotupdater.CHANNEL");
   const fingerprintHash = requireFingerprint
-    ? await androidParser.get("hot_updater_fingerprint_hash")
+    ? await androidParser.get("com.hotupdater.FINGERPRINT_HASH")
     : undefined;
 
   if (requireFingerprint && !fingerprintHash?.value) {

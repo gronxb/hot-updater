@@ -10,7 +10,7 @@ const setAndroidFingerprintHash = async (
   const androidParser = new AndroidConfigParser(
     config.platform.android.androidManifestPaths ?? [],
   );
-  return await androidParser.set("hot_updater_fingerprint_hash", hash);
+  return await androidParser.set("com.hotupdater.FINGERPRINT_HASH", hash);
 };
 
 const getAndroidFingerprintHash = async (): Promise<{
@@ -24,7 +24,7 @@ const getAndroidFingerprintHash = async (): Promise<{
   if (!(await androidParser.exists())) {
     throw new Error("No Android native config files found");
   }
-  return androidParser.get("hot_updater_fingerprint_hash");
+  return androidParser.get("com.hotupdater.FINGERPRINT_HASH");
 };
 
 const setIosFingerprintHash = async (

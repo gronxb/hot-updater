@@ -9,7 +9,7 @@ import {
   toolingTargetOf,
   quoteSql,
 } from "@hot-updater/plugin-core";
-import type { ToolingDatabase } from "@hot-updater/plugin-core";
+import type { SqlDialect, ToolingDatabase } from "@hot-updater/plugin-core";
 import {
   setupDatabaseTestSuite,
   startHttpTestServer,
@@ -25,7 +25,7 @@ import { describe, expect, it } from "vitest";
 import { createInProcessCoreApi } from "../core/inProcess.testFixtures";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
-import { kyselyAdapter, type SQLProvider } from "./kysely";
+import { kyselyAdapter } from "./kysely";
 
 /** What the suites run: core and the Insights plugin. */
 const target = toolingTargetOf([insights()]);
@@ -96,7 +96,7 @@ const backends = {
       close: async () => undefined,
     };
   },
-} satisfies Record<Exclude<SQLProvider, "mysql">, () => unknown>;
+} satisfies Record<Exclude<SqlDialect, "mysql">, () => unknown>;
 
 for (const provider of ["postgresql", "sqlite"] as const) {
   let backend: ReturnType<(typeof backends)[typeof provider]> | undefined;

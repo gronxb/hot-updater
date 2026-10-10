@@ -21,8 +21,6 @@
       "require": "./dist/worker/index.cjs",
       "default": "./dist/worker/index.mjs"
     },
-    "./worker/config": "./worker/wrangler.json",
-    "./worker/wrangler.json": "./worker/wrangler.json",
     "./package.json": "./package.json"
   },
   "license": "MIT",
