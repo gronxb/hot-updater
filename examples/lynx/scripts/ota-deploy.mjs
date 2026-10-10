@@ -353,7 +353,7 @@ assert.deepEqual(
 const metadata = JSON.parse(archive["hot-updater-lynx.json"].toString());
 assert.equal(manifest.bundleId, bundle.id);
 assert.deepEqual(metadata, {
-  schemaVersion: 1,
+  schemaVersion: 2,
   bundleId: bundle.id,
   platform,
   entry: "main.lynx.bundle",
