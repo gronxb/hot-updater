@@ -21,15 +21,11 @@ import {
   updateRelease as updateReleaseApi,
 } from "./api-rpc";
 
-const bundleListQueryKey = ["bundles"] as const;
 const releaseListQueryKey = ["releases"] as const;
 
 export const queryKeys = {
   config: ["config"] as const,
   channels: ["channels"] as const,
-  bundles: {
-    all: bundleListQueryKey,
-  },
   releases: {
     all: releaseListQueryKey,
     list: (filters?: ReleaseFilters) =>
@@ -200,7 +196,6 @@ export function useDeleteReleaseMutation() {
         queryClient.invalidateQueries({ queryKey: queryKeys.releases.all }),
         queryClient.invalidateQueries({ queryKey: ["release-catalog"] }),
         queryClient.invalidateQueries({ queryKey: queryKeys.channels }),
-        queryClient.invalidateQueries({ queryKey: queryKeys.bundles.all }),
         queryClient.invalidateQueries({ queryKey: ["bundle"] }),
         queryClient.invalidateQueries({
           queryKey: queryKeys.bundleChildren.all,

@@ -262,11 +262,7 @@ describe("useDeleteReleaseMutation", () => {
       });
     });
 
-    for (const queryKey of [
-      queryKeys.bundles.all,
-      ["bundle"],
-      queryKeys.bundleChildren.all,
-    ]) {
+    for (const queryKey of [["bundle"], queryKeys.bundleChildren.all]) {
       expect(invalidateQueries).toHaveBeenCalledWith({ queryKey });
     }
 
