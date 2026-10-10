@@ -84,20 +84,18 @@ describe("admin routes on core", () => {
     expect(response.status).toBe(404);
   });
 
-  it("creates, finds, lists, and deletes a channel, with or without v=2", async () => {
+  it("creates, finds, lists, and deletes a channel", async () => {
     const handler = createAdminHandler();
 
     const created = await handler(
       send("POST", "/channels", { name: "preview" }),
     );
-    const again = await handler(
-      send("POST", "/channels?v=2", { name: "preview" }),
-    );
+    const again = await handler(send("POST", "/channels", { name: "preview" }));
     const { data: channel } = (await created.json()) as {
       data: { id: string; name: string };
     };
     const found = await handler(send("GET", "/channels?name=preview"));
-    const listed = await handler(send("GET", "/channels?v=2"));
+    const listed = await handler(send("GET", "/channels"));
 
     expect(created.status).toBe(200);
     expect(channel.name).toBe("preview");

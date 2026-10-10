@@ -299,24 +299,22 @@ describe("drizzleAdapter schema and migrations", () => {
     },
   );
 
-  it("asks for the ORM's tables first, and refuses a database from before the engine", async () => {
+  it("asks for the ORM's tables first, and refuses a v0 database", async () => {
     const empty = await libsqlFile();
     await expect(
       drizzleAdapter({ db: libsql(empty), provider: "sqlite" })
         .createMigrator!().migrateToLatest(),
     ).rejects.toThrow("drizzle-kit push");
 
-    const legacy = await libsqlFile();
-    await legacy.executeMultiple(
-      "CREATE TABLE private_hot_updater_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO private_hot_updater_settings VALUES ('schema.core', '1.0.0');",
+    const v0 = await libsqlFile();
+    await v0.executeMultiple(
+      "CREATE TABLE private_hot_updater_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO private_hot_updater_settings VALUES ('version', '0.21.0');",
     );
     await expect(
-      drizzleAdapter({ db: libsql(legacy), provider: "sqlite" })
+      drizzleAdapter({ db: libsql(v0), provider: "sqlite" })
         .createMigrator!().migrateToLatest(),
-    ).rejects.toMatchObject({
-      setting: { key: "schema.engine", expected: "1", found: null },
-    });
+    ).rejects.toThrow("Hot Updater v1 cannot migrate schema 0.21.0 in place.");
     empty.close();
-    legacy.close();
+    v0.close();
   });
 });

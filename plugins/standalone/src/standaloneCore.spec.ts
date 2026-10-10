@@ -75,7 +75,7 @@ describe("createStandaloneCoreApi", () => {
     expect(read).toBe(false);
   });
 
-  it("checks the protocol once and reads with protocol 2 parameters", async () => {
+  it("checks the protocol once and pages by key", async () => {
     let versionChecks = 0;
     const queries: URLSearchParams[] = [];
     server.use(
@@ -99,7 +99,6 @@ describe("createStandaloneCoreApi", () => {
 
     expect(versionChecks).toBe(1);
     expect(Object.fromEntries(queries[1]!)).toEqual({
-      v: "2",
       limit: "20",
       order: "desc",
       cursor: "k",

@@ -123,9 +123,9 @@ export interface EngineDatabaseOptions {
   readonly retry?: RetryOptions;
   /**
    * How `hot-updater db migrate` reads the stored settings rows, by key; by
-   * default through the adapter. An adapter whose earlier versions stored
-   * them elsewhere reads them itself, so the migrator refuses a database
-   * from before the storage engine.
+   * default the engine's keys through the adapter. An adapter whose v0
+   * database kept other settings rows reads every row itself, so the
+   * migrator refuses a v0 database.
    */
   readonly readSettings?: () => Promise<ReadonlyMap<string, unknown>>;
 }

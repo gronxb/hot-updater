@@ -162,26 +162,6 @@ describe("kyselyAdapter migrations and fence", () => {
     }
   });
 
-  it("refuses to migrate a database from before the storage engine", async () => {
-    const { db, exec, close } = backends.postgresql();
-    try {
-      await exec(
-        `CREATE TABLE private_hot_updater_settings (key varchar(255) PRIMARY KEY, value varchar(255) NOT NULL, _v bigint NOT NULL DEFAULT 0);
-         INSERT INTO private_hot_updater_settings (key, value) VALUES ('schema.core', '1.0.0');`,
-      );
-      const migrator = kyselyAdapter({
-        db,
-        provider: "postgresql",
-      }).createMigrator!();
-      await expect(migrator.migrateToLatest()).rejects.toMatchObject({
-        setting: { key: "schema.engine", expected: "1", found: null },
-      });
-    } finally {
-      await db.destroy();
-      await close();
-    }
-  });
-
   it("rolls back a failed event write whole and accepts the retry", async () => {
     const { db, exec, close } = backends.postgresql();
     const database = kyselyAdapter({ db, provider: "postgresql" });

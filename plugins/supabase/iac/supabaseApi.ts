@@ -41,14 +41,7 @@ export const supabaseApi = (
         return marker.data?.value === "1" ? "v1" : "incompatible";
       }
       if (!missing(marker.error.code)) throw marker.error;
-      // A database from before the storage engine keeps its old settings table.
-      const legacy = await supabase
-        .from("hot_updater_v1_private_settings")
-        .select("key")
-        .limit(1);
-      if (!legacy.error) return "incompatible";
-      if (missing(legacy.error.code)) return "fresh";
-      throw legacy.error;
+      return "fresh";
     },
     listBuckets: async () => {
       const { data, error } = await supabase.storage.listBuckets();

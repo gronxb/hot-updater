@@ -6,7 +6,7 @@ import { type EngineSqlOptions, generateEngineSql } from "./engineSql";
 import { getEmptyMigrationResult } from "./fixedMigratorShared";
 import {
   readStoredSettings,
-  refusePreEngineDatabase,
+  refuseV0Database,
   storedSchemaVersion,
 } from "./settingsMigrator";
 import type { MigrateOptions, MigrationResult, Migrator } from "./types";
@@ -31,8 +31,8 @@ const run = async (executor: SqlExecutor, statements: readonly string[]) => {
 /**
  * `hot-updater db migrate` and `db generate` for an SQL provider on the
  * engine: the generated SQL schema, applied when a settings row is missing or
- * different, and refused on a database from before the engine. A SQL
- * adapter's `createMigrator` returns it, as `kyselyAdapter`'s does.
+ * different, and refused on a v0 database. A SQL adapter's `createMigrator`
+ * returns it, as `kyselyAdapter`'s does.
  */
 export const createEngineSqlMigrator = (
   options: EngineSqlMigratorOptions,
@@ -47,8 +47,7 @@ export const createEngineSqlMigrator = (
     migrate: MigrateOptions = {},
   ): Promise<MigrationResult> => {
     const stored = await read();
-    // A database from before the engine is recreated, never converted.
-    refusePreEngineDatabase(options.adapterName, stored);
+    refuseV0Database(options.adapterName, stored);
     if (
       Object.entries(options.settings).every(
         ([key, value]) => stored.get(key) === value,
