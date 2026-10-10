@@ -15,9 +15,9 @@ import {
   SETTINGS_TABLE,
   toolingTargetOf,
 } from "@hot-updater/plugin-core";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 
 import { DYNAMODB_TTL_ATTRIBUTE } from "../src/dynamoDBStore";
-import { plugins } from "../src/plugins";
 
 const DYNAMODB_DESCRIBE_TABLE_ACTION = "dynamodb:DescribeTable";
 
@@ -135,19 +135,19 @@ export const buildDynamoDBCreateTableInput = (tableName: string) =>
 export const buildDynamoDBSchemaSettingsInput = (tableName: string) =>
   ({
     RequestItems: {
-      [tableName]: Object.entries(toolingTargetOf(plugins).settings).map(
-        ([key, value]) => ({
-          PutRequest: {
-            Item: {
-              pk: { S: SETTINGS_TABLE.name },
-              sk: { S: encodeKvKey([key]) },
-              key: { S: key },
-              value: { S: value },
-              _v: { N: "0" },
-            },
+      [tableName]: Object.entries(
+        toolingTargetOf([insights(), apiKeys(), remoteConfig()]).settings,
+      ).map(([key, value]) => ({
+        PutRequest: {
+          Item: {
+            pk: { S: SETTINGS_TABLE.name },
+            sk: { S: encodeKvKey([key]) },
+            key: { S: key },
+            value: { S: value },
+            _v: { N: "0" },
           },
-        }),
-      ),
+        },
+      })),
     },
   }) satisfies BatchWriteItemInput;
 

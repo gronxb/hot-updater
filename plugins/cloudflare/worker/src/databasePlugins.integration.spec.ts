@@ -5,7 +5,12 @@ import type {
 } from "@hot-updater/plugin-core";
 import { isMultiIndex, toolingTargetOf } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { createInsightsModel, insights } from "@hot-updater/server/plugins";
+import {
+  apiKeys,
+  createInsightsModel,
+  insights,
+  remoteConfig,
+} from "@hot-updater/server/plugins";
 import {
   createHandlerHttpTestClient,
   createReleaseCatalogTestStorage,
@@ -30,7 +35,6 @@ import {
 } from "vitest";
 
 import { d1Database } from "../../src/d1Database";
-import { plugins } from "../../src/plugins";
 import { d1Database as d1RuntimeDatabase } from "../../src/worker";
 
 const state = vi.hoisted<{ db: D1Database | undefined }>(() => ({
@@ -104,7 +108,11 @@ vi.mock("cloudflare", () => ({
 }));
 
 /** Every data table of the managed server's migration: each model's table and the index tables of its multi-valued indexes. */
-const dataTables = toolingTargetOf(plugins).schema.tables.flatMap((table) => [
+const dataTables = toolingTargetOf([
+  insights(),
+  apiKeys(),
+  remoteConfig(),
+]).schema.tables.flatMap((table) => [
   table.name,
   ...table.indexes
     .filter((index) => isMultiIndex(table, index))

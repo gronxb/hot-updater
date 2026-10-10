@@ -24,10 +24,10 @@ import {
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
-import { plugins } from "../src/plugins";
 import { supabaseDatabase } from "../src/supabaseDatabase";
 import { getConfigScaffold } from "./configTemplate";
 import {
@@ -375,6 +375,15 @@ const buildEdgeFunctionImports = async (targetDir: string) => {
     );
     for (const specifier of edgeFunctionSpecifiers) {
       if (imports[specifier]) {
+        continue;
+      }
+      // Hot Updater's own entries, such as the plugin factories in
+      // `@hot-updater/server/plugins`, are vendored like the two above.
+      if (specifier.startsWith(WORKSPACE_PACKAGE_PREFIX)) {
+        await addWorkspacePackage({
+          ...workspaceImport(specifier),
+          searchFrom: supabasePackage.packageRoot,
+        });
         continue;
       }
       imports[specifier] = await resolveBareSpecifierImportTarget(
@@ -1113,7 +1122,10 @@ const runInitWithoutCliMetadata = async ({
     });
     // The managed server's plugins over the project's database, which
     // assembling neither reads nor writes.
-    const managedServer = assembleServer({ database, plugins });
+    const managedServer = assembleServer({
+      database,
+      plugins: [insights(), apiKeys(), remoteConfig()],
+    });
     ({ clientPlugins } = managedServer);
     // The app's credential, through the managed server's plugins, on the tables they read.
     try {

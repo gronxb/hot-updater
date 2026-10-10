@@ -16,10 +16,10 @@ import {
   type RunInitOptions,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { execa } from "execa";
 
 import { dynamoDB, migrateDynamoDB } from "../src/dynamoDB";
-import { plugins } from "../src/plugins";
 import { resolveAwsAuth } from "./awsAuth";
 import { getAwsV1SsmParameterName } from "./awsInfrastructureNames";
 import {
@@ -65,7 +65,7 @@ export const prepareDynamoDBDeployment = async (input: {
   const dynamodbManager = new DynamoDBManager(input.region, input.credentials);
   await dynamodbManager.ensureTable(input.tableName);
   // The plugin reads nothing until the table's schema settings exist.
-  await migrateDynamoDB(input, plugins);
+  await migrateDynamoDB(input, [insights(), apiKeys(), remoteConfig()]);
 };
 
 export const runInit = async ({ build, envFile }: RunInitOptions) => {
@@ -334,8 +334,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     region: bucketRegion,
     tableName: resolvedDynamoDBTableName,
   });
-  // The managed server, as the function runs it: the package's plugins on the table.
-  const server = assembleServer({ database, plugins });
+  // The managed server, as the function runs it: its plugins on the table.
+  const server = assembleServer({
+    database,
+    plugins: [insights(), apiKeys(), remoteConfig()],
+  });
   // The app's credential, through the managed server's plugins, on the table they read.
   let credential: ProvisionedClientCredential | undefined;
   try {

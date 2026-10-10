@@ -1,11 +1,11 @@
 import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { getApps, initializeApp } from "firebase-admin/app";
 import { onRequest } from "firebase-functions/v2/https";
 import { Hono } from "hono";
 
 import { firebaseDatabase } from "../../src/firebaseDatabase";
 import { firebaseStorage } from "../../src/firebaseStorage";
-import { plugins } from "../../src/plugins";
 
 declare global {
   var HotUpdater: {
@@ -30,7 +30,7 @@ const hotUpdater = createHotUpdater({
   database: firebaseDatabase({
     ...adminOptions,
   }),
-  plugins,
+  plugins: [insights(), apiKeys(), remoteConfig()],
   storage: firebaseStorage({
     ...adminOptions,
     storageBucket,

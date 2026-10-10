@@ -1,8 +1,9 @@
 import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { env } from "cloudflare:workers";
 import { Hono } from "hono";
 
-import { d1Database, plugins, r2Storage } from "../../src/worker";
+import { d1Database, r2Storage } from "../../src/worker";
 
 export type CloudflareWorkerEnv = {
   DB: {
@@ -20,7 +21,7 @@ export const HOT_UPDATER_BASE_PATH = "/";
 
 const hotUpdater = createHotUpdater({
   database: d1Database(env.DB),
-  plugins,
+  plugins: [insights(), apiKeys(), remoteConfig()],
   storage: r2Storage({
     bucket: env.BUCKET,
     bucketName: env.BUCKET_NAME,

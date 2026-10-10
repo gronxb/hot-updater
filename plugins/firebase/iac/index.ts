@@ -21,6 +21,7 @@ import {
   transformEnv,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { isEqual, sortBy, uniqWith } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 import {
@@ -35,7 +36,6 @@ import {
   migrateFirebaseDatabase,
 } from "../src/firebaseDatabase";
 import { FIREBASE_V1_FUNCTION_NAME } from "../src/firebaseInfrastructureNames";
-import { plugins } from "../src/plugins";
 import { inputFirebaseApplicationCredentials } from "./firebaseApplicationCredentials";
 import {
   assertFirebaseFunctionCanInitialize,
@@ -596,11 +596,14 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const database = firebaseDatabase(databaseConfig);
   // The managed server's plugins over the database init set up, which
   // assembling it neither reads nor writes.
-  const server = assembleServer({ database, plugins });
+  const server = assembleServer({
+    database,
+    plugins: [insights(), apiKeys(), remoteConfig()],
+  });
   let clientCredential: ProvisionedClientCredential | undefined;
   try {
     // The database reads nothing until the schema settings exist.
-    await migrateFirebaseDatabase(databaseConfig, plugins);
+    await migrateFirebaseDatabase(databaseConfig, server.plugins);
     // The app's credential, through the managed server's plugins, on the tables they read.
     clientCredential = await provisionClientCredential(server, {
       env: initInputEnv,

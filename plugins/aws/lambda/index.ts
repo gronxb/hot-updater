@@ -1,4 +1,5 @@
 import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import type { CloudFrontRequestHandler } from "aws-lambda";
 import { Hono } from "hono";
 import type { Callback, CloudFrontRequest } from "hono/lambda-edge";
@@ -6,7 +7,6 @@ import { handle } from "hono/lambda-edge";
 
 import { cloudFrontDownloadUrl } from "../src/cloudFrontDownloadUrl";
 import { dynamoDB } from "../src/dynamoDB";
-import { plugins } from "../src/plugins";
 import { s3Storage } from "../src/s3Storage";
 
 declare global {
@@ -53,7 +53,7 @@ const getHotUpdater = (distributionDomainName: string) => {
 
   const hotUpdater = createHotUpdater({
     database,
-    plugins,
+    plugins: [insights(), apiKeys(), remoteConfig()],
     storage: s3Storage({
       bucketName: S3_BUCKET_NAME,
       region: SSM_REGION,
