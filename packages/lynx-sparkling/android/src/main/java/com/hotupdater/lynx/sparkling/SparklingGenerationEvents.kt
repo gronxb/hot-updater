@@ -4,6 +4,7 @@ import android.content.Context
 import android.util.Log
 import com.hotupdater.lynx.LynxGenerationEventJournal
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicLong
 
 internal class SparklingRuntimeEventSink(
     private val record: (String, Map<String, Any?>) -> Unit,
@@ -115,6 +116,7 @@ internal class SparklingGenerationEvents(
     private val listener: HotUpdaterSparklingEventListener?,
     val id: String = UUID.randomUUID().toString(),
 ) {
+    val epoch: String = nextEpoch.incrementAndGet().toString()
     private val lock = Any()
     private val leases = linkedMapOf<String, Map<String, Any?>>()
     private var accepting = true
@@ -194,5 +196,6 @@ internal class SparklingGenerationEvents(
 
     companion object {
         private const val TAG = "HotUpdaterSparkling"
+        private val nextEpoch = AtomicLong()
     }
 }

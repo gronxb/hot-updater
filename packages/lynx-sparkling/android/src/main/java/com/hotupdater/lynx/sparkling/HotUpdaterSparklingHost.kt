@@ -921,6 +921,7 @@ class HotUpdaterSparklingHost(
                         configuration.allowDiagnosticIntentLaunchConfiguration,
                         activity,
                         page.logical.parameters,
+                        generation.epoch,
                     ),
                 )
             }

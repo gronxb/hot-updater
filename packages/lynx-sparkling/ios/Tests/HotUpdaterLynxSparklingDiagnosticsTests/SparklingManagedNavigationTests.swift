@@ -10,7 +10,8 @@ final class SparklingManagedNavigationTests: XCTestCase {
         let epochs = try ["first-host", "first-host", "replacement-host"].map { host in
             let launch = HotUpdaterSparklingPageLaunchConfiguration.resolve(
                 host: ["host": host, "runtimeGenerationEpoch": "host"],
-                page: ["title": "Page", "runtimeGenerationEpoch": "page"]
+                page: ["title": "Page", "runtimeGenerationEpoch": "page"],
+                managedGenerationEpoch: "1"
             )
             XCTAssertEqual(launch["host"], host)
             XCTAssertEqual(launch["title"], "Page")
@@ -21,18 +22,36 @@ final class SparklingManagedNavigationTests: XCTestCase {
         XCTAssertEqual(Set(epochs).count, 3)
     }
 
+    func testPagesAndRebindingsShareOnlyTheirManagedGenerationEpoch() {
+        let first = SparklingGenerationEvents(sink: nil)
+        let next = SparklingGenerationEvents(sink: nil)
+        let configurations = [first, first, first, next].map { generation in
+            HotUpdaterSparklingPageLaunchConfiguration.resolve(
+                host: ["managedGenerationEpoch": "host"],
+                page: ["managedGenerationEpoch": "page"],
+                managedGenerationEpoch: generation.epoch
+            )
+        }
+        XCTAssertEqual(configurations.map { $0["managedGenerationEpoch"] },
+                       [first.epoch, first.epoch, first.epoch, next.epoch])
+        XCTAssertGreaterThan(UInt64(next.epoch)!, UInt64(first.epoch)!)
+        XCTAssertEqual(Set(configurations.compactMap { $0["runtimeGenerationEpoch"] }).count, 4)
+    }
+
     func testPageParametersAreExposedAsLaunchConfiguration() {
         XCTAssertEqual(
             HotUpdaterSparklingPageLaunchConfiguration.merge(
                 host: ["runtimeConfigURL": "http://localhost", "title": "Host"],
                 page: ["title": "Second Page", "item": "42"],
-                runtimeGenerationEpoch: "7"
+                runtimeGenerationEpoch: "7",
+                managedGenerationEpoch: "1"
             ),
             [
                 "runtimeConfigURL": "http://localhost",
                 "title": "Second Page",
                 "item": "42",
                 "runtimeGenerationEpoch": "7",
+                "managedGenerationEpoch": "1",
             ]
         )
     }

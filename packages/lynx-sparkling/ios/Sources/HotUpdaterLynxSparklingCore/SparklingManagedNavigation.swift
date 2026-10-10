@@ -52,7 +52,8 @@ enum HotUpdaterSparklingPageLaunchConfiguration {
 
     static func resolve(
         host: [String: String],
-        page: [String: String]
+        page: [String: String],
+        managedGenerationEpoch: String
     ) -> [String: String] {
         // Font caches can outlive both the host and an individual runtime binding.
         epochLock.lock()
@@ -61,14 +62,16 @@ enum HotUpdaterSparklingPageLaunchConfiguration {
         return merge(
             host: host,
             page: page,
-            runtimeGenerationEpoch: String(nextRuntimeEpoch)
+            runtimeGenerationEpoch: String(nextRuntimeEpoch),
+            managedGenerationEpoch: managedGenerationEpoch
         )
     }
 
     static func merge(
         host: [String: String],
         page: [String: String],
-        runtimeGenerationEpoch: String
+        runtimeGenerationEpoch: String,
+        managedGenerationEpoch: String
     ) -> [String: String] {
         precondition(
             runtimeGenerationEpoch.range(
@@ -77,8 +80,16 @@ enum HotUpdaterSparklingPageLaunchConfiguration {
             ) != nil,
             "Lynx runtime generation epoch must be a canonical decimal"
         )
+        precondition(
+            managedGenerationEpoch.range(
+                of: "^[1-9][0-9]*$",
+                options: .regularExpression
+            ) != nil,
+            "Lynx managed generation epoch must be a canonical decimal"
+        )
         var merged = host.merging(page) { _, pageValue in pageValue }
         merged["runtimeGenerationEpoch"] = runtimeGenerationEpoch
+        merged["managedGenerationEpoch"] = managedGenerationEpoch
         return merged
     }
 }

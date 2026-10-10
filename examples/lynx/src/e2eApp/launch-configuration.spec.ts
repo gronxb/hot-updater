@@ -11,6 +11,11 @@ import {
   serializeLynxNativeLaunchConfiguration,
 } from "../../../../e2e/lynx/native-launch-configuration";
 import {
+  beginE2eScreenStateLaunch,
+  handlePatchE2eScreenState,
+  resetE2eScreenState,
+} from "../../../../e2e/shared/control-server/screen-state";
+import {
   resolveAppBaseUrl,
   resolveRuntimeConfigUrl,
 } from "../../../../e2e/shared/scripts/control-server-env";
@@ -25,6 +30,46 @@ const repo = path.resolve(
 );
 
 describe("Lynx E2E launch configuration", () => {
+  it("accepts detail before primary recovery without admitting the retired generation", () => {
+    resetE2eScreenState();
+    beginE2eScreenStateLaunch("recovery-launch");
+    const publish = (
+      managedGenerationEpoch: string,
+      runtimeGenerationEpoch: string,
+      patch: Record<string, string>,
+    ) => {
+      const configuration = resolveE2eLaunchConfiguration({
+        managedGenerationEpoch,
+        runtimeGenerationEpoch,
+      });
+      // Page bindings 3 and 4 belong to the same managed recovery generation.
+      return handlePatchE2eScreenState({
+        launchGeneration: "recovery-launch",
+        runtimeGenerationEpoch: configuration.managedGenerationEpoch,
+        ...patch,
+      });
+    };
+    publish("2", "4", { detailPageMarker: "recovered-detail" });
+    expect(
+      publish("2", "3", { runtimeScenarioMarker: "recovered-main" }),
+    ).toMatchObject({
+      runtimeGenerationEpoch: "2",
+      screenState: {
+        detailPageMarker: "recovered-detail",
+        runtimeScenarioMarker: "recovered-main",
+      },
+    });
+    // A retired generation cannot publish even with a later binding/cache key.
+    expect(() => publish("1", "5", { runtimeScenarioMarker: "stale" })).toThrow(
+      "stale screen state runtime generation",
+    );
+    publish("3", "6", { runtimeScenarioMarker: "next-main" });
+    expect(() =>
+      publish("2", "4", { detailPageMarker: "late-detail" }),
+    ).toThrow("stale screen state runtime generation");
+    resetE2eScreenState();
+  });
+
   it("uses the endpoints supplied for the current device shard", () => {
     expect(
       resolveE2eLaunchConfiguration({

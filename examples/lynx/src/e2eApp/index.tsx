@@ -94,6 +94,7 @@ type ScreenState = {
 let runtimeConfigURL = "http://localhost:3107/e2e/runtime-config";
 let launchGeneration: string | null = null;
 let runtimeGenerationEpoch: string | null = null;
+let managedGenerationEpoch: string | null = null;
 let automaticForceUpdate = false;
 let screenStateURL = runtimeConfigURL.endsWith("/runtime-config")
   ? runtimeConfigURL.replace(/\/runtime-config$/, "/screen-state")
@@ -136,7 +137,7 @@ async function resolveAppBaseURL(): Promise<string> {
 const patchScreenState = async (patch: Partial<ScreenState>) => {
   await publishScreenStatePatch(fetchState, screenStateURL, patch, {
     launchGeneration,
-    runtimeGenerationEpoch,
+    runtimeGenerationEpoch: managedGenerationEpoch,
   });
 };
 
@@ -812,6 +813,7 @@ const configureE2eRuntime = async (): Promise<boolean> => {
   runtimeConfigURL = resolved.runtimeConfigURL;
   launchGeneration = resolved.launchGeneration ?? null;
   runtimeGenerationEpoch = resolved.runtimeGenerationEpoch ?? null;
+  managedGenerationEpoch = resolved.managedGenerationEpoch ?? null;
   screenStateURL = runtimeConfigURL.endsWith("/runtime-config")
     ? runtimeConfigURL.replace(/\/runtime-config$/, "/screen-state")
     : `${runtimeConfigURL.replace(/\/+$/, "")}/screen-state`;

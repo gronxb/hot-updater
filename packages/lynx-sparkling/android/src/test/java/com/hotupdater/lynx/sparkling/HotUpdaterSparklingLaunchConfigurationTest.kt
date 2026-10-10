@@ -26,6 +26,7 @@ class HotUpdaterSparklingLaunchConfigurationTest {
                 host = mapOf("host" to host, "runtimeGenerationEpoch" to "host"),
                 allowDiagnosticIntent = true,
                 context = activity,
+                managedGenerationEpoch = "1",
                 page = mapOf("title" to "Page", "runtimeGenerationEpoch" to "page"),
             )
             assertEquals(host, launch["host"])
@@ -38,6 +39,32 @@ class HotUpdaterSparklingLaunchConfigurationTest {
     }
 
     @Test
+    fun pagesAndRebindingsShareOnlyTheirManagedGenerationEpoch() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        activity.intent = Intent().putExtra(
+            HotUpdaterSparklingLaunchConfiguration.EXTRA,
+            """{"managedGenerationEpoch":"diagnostic"}""",
+        )
+        val first = SparklingGenerationEvents(null)
+        val next = SparklingGenerationEvents(null)
+        val configurations = listOf(first, first, first, next).map { generation ->
+            HotUpdaterSparklingLaunchConfiguration.resolve(
+                host = mapOf("managedGenerationEpoch" to "host"),
+                allowDiagnosticIntent = true,
+                context = activity,
+                page = mapOf("managedGenerationEpoch" to "page"),
+                managedGenerationEpoch = generation.epoch,
+            )
+        }
+        // Primary, detail and a retained-Activity rebind share the generation,
+        // but all four bindings must use different process-wide font cache keys.
+        assertEquals(listOf(first.epoch, first.epoch, first.epoch, next.epoch),
+            configurations.map { it["managedGenerationEpoch"] })
+        assertTrue(next.epoch.toLong() > first.epoch.toLong())
+        assertEquals(4, configurations.map { it["runtimeGenerationEpoch"] }.toSet().size)
+    }
+
+    @Test
     fun mergesHostThenDiagnosticsThenPageConfiguration() {
         assertEquals(
             mapOf(
@@ -46,6 +73,7 @@ class HotUpdaterSparklingLaunchConfigurationTest {
                 "pageOnly" to "page",
                 "shared" to "page",
                 "runtimeGenerationEpoch" to "3",
+                "managedGenerationEpoch" to "1",
             ),
             HotUpdaterSparklingLaunchConfiguration.merge(
                 host = mapOf("hostOnly" to "host", "shared" to "host"),
@@ -55,6 +83,7 @@ class HotUpdaterSparklingLaunchConfigurationTest {
                 ),
                 page = mapOf("pageOnly" to "page", "shared" to "page"),
                 runtimeGenerationEpoch = "3",
+                managedGenerationEpoch = "1",
             ),
         )
     }
@@ -95,8 +124,9 @@ class HotUpdaterSparklingLaunchConfigurationTest {
                 allowDiagnosticIntent =
                     configuration.allowDiagnosticIntentLaunchConfiguration,
                 context = activity,
+                managedGenerationEpoch = "1",
                 page = mapOf("title" to "Detail"),
-            ) - "runtimeGenerationEpoch",
+            ) - setOf("runtimeGenerationEpoch", "managedGenerationEpoch"),
         )
     }
 
@@ -122,8 +152,9 @@ class HotUpdaterSparklingLaunchConfigurationTest {
                 ),
                 allowDiagnosticIntent = true,
                 context = activity,
+                managedGenerationEpoch = "1",
                 page = mapOf("title" to "Page"),
-            ) - "runtimeGenerationEpoch",
+            ) - setOf("runtimeGenerationEpoch", "managedGenerationEpoch"),
         )
     }
 

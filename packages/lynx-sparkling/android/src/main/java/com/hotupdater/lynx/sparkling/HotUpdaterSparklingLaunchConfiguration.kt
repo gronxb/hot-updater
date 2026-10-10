@@ -38,12 +38,18 @@ object HotUpdaterSparklingLaunchConfiguration {
         diagnostics: Map<String, String>,
         page: Map<String, String>,
         runtimeGenerationEpoch: String,
+        managedGenerationEpoch: String,
     ): Map<String, String> {
         require(runtimeGenerationEpoch.matches(Regex("^[1-9][0-9]*$"))) {
             "Lynx runtime generation epoch must be a canonical decimal"
         }
-        return host + diagnostics + page +
-            ("runtimeGenerationEpoch" to runtimeGenerationEpoch)
+        require(managedGenerationEpoch.matches(Regex("^[1-9][0-9]*$"))) {
+            "Lynx managed generation epoch must be a canonical decimal"
+        }
+        return host + diagnostics + page + mapOf(
+            "runtimeGenerationEpoch" to runtimeGenerationEpoch,
+            "managedGenerationEpoch" to managedGenerationEpoch,
+        )
     }
 
     internal fun resolve(
@@ -51,11 +57,13 @@ object HotUpdaterSparklingLaunchConfiguration {
         allowDiagnosticIntent: Boolean,
         context: Context,
         page: Map<String, String>,
+        managedGenerationEpoch: String,
     ): Map<String, String> = merge(
         host,
         if (allowDiagnosticIntent) from(context) else emptyMap(),
         page,
         // Lynx caches fonts across hosts and retained-Activity runtime rebinds.
         nextRuntimeEpoch.incrementAndGet().toString(),
+        managedGenerationEpoch,
     )
 }

@@ -956,7 +956,8 @@ public final class HotUpdaterSparklingHost: NSObject {
                 .resolve(
                     host: launchConfiguration,
                     page: Dictionary(uniqueKeysWithValues:
-                        logical.parameters.map { ($0.name, $0.value) })
+                        logical.parameters.map { ($0.name, $0.value) }),
+                    managedGenerationEpoch: generation.epoch
                 )
         )
         let sparkling = SPKContext()

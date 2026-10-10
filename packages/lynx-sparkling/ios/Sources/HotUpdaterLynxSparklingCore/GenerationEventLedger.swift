@@ -705,6 +705,14 @@ final class SparklingGenerationEventJournal {
 }
 
 final class SparklingGenerationEvents {
+    private static let epochLock = NSLock()
+    private static var nextEpoch: UInt64 = 0
+    let epoch: String = {
+        epochLock.lock()
+        defer { epochLock.unlock() }
+        nextEpoch += 1
+        return String(nextEpoch)
+    }()
     let id: String
     private let journal: SparklingGenerationEventJournal
     private let sink: ((_ name: String, _ details: [String: Any]) -> Void)?
