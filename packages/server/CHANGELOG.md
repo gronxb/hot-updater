@@ -1,5 +1,43 @@
 # @hot-updater/server
 
+## 1.0.0-rc.46
+
+### Minor Changes
+
+- 47638d6: Remove code that only served v0. No v1 code called it.
+  - `@hot-updater/cli-tools` no longer exports the copy-promote helpers `createCopiedBundleArtifacts` and `LEGACY_BUNDLE_ERROR`, or `writeStorageFile` and `writeStorageResponseFile`. Promotion runs through core.
+  - `hot-updater` no longer exports `getPublicKeyFromPrivate` or `loadPrivateKey`. `hot-updater channel set` help names AndroidManifest.xml, where the channel is written.
+  - `@hot-updater/protocol` no longer exports `stripBundleArtifactMetadata`, which returned its input.
+  - `@hot-updater/plugin-core` no longer exports `filterCompatibleAppVersions`.
+  - `@hot-updater/server` no longer re-exports protocol's `Bundle` type from its root; import it from `@hot-updater/protocol`. `@hot-updater/server/adapters/kysely` no longer exports the `SQLProvider` alias; use `SqlDialect` from `@hot-updater/plugin-core`.
+  - `@hot-updater/cloudflare` no longer exports `./worker/config` or `./worker/wrangler.json`.
+  - `@hot-updater/react-native` calls `getBundleId()`, `getManifest()`, and Android's `reloadProcess()` directly, which every v1 native module implements. It no longer reads a `PROMOTED` launch report or manifest assets given as plain strings.
+  - The Expo config plugin no longer rewrites the `getJSBundleFile` code that its v0 releases injected without a debug check.
+  - `@hot-updater/supabase/edge` exports `supabaseStorage` directly. The name and config are unchanged.
+  - The Console drops the unused `getBundles` and `getConfigLoaded` server functions and their query hooks.
+
+- 19be90f: Remove options and messages left over from v0.
+  - `drizzleAdapter` no longer takes `schema`, which it ignored. TypeScript now reports it: delete it.
+  - `MigrateOptions` no longer has `mode`: every migration already ran from the schema. Delete `mode: "from-schema"` from `migrateToLatest` calls.
+  - `@hot-updater/js` is no longer published. It only copied `semverSatisfies` and `filterCompatibleAppVersions` from `@hot-updater/plugin-core`.
+  - Messages say what is wrong without naming a version:
+    - `createHotUpdater` refuses a `database` that is not a Hot Updater database adapter, such as `kyselyAdapter(...)` or `postgres(...)`.
+    - The Kysely, Drizzle, and Prisma adapters list the supported providers.
+    - `standaloneRepository` refuses a server whose `/version` does not report admin API protocol 2, and asks for the path where the server mounts `handlers.admin`.
+    - Firebase `init` refuses an incompatible Function `hot-updater-v1` with its own message.
+    - `hot-updater doctor` names `com.hotupdater.FINGERPRINT_HASH` in `AndroidManifest.xml` when it does not match `fingerprint.json`.
+  - The Expo config plugin no longer deletes `hot_updater_*` strings from `strings.xml`. They have no effect: prebuild writes the manifest meta-data the app reads.
+
+### Patch Changes
+
+- Updated dependencies [47638d6]
+- Updated dependencies [19be90f]
+  - @hot-updater/protocol@1.0.0-rc.46
+  - @hot-updater/plugin-core@1.0.0-rc.46
+  - @hot-updater/plugin-insights@1.0.0-rc.46
+  - @hot-updater/plugin-remote-config@1.0.0-rc.46
+  - @hot-updater/plugin-api-keys@1.0.0-rc.46
+
 ## 1.0.0-rc.45
 
 ### Patch Changes
