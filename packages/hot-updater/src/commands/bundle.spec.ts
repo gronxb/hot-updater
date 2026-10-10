@@ -130,7 +130,7 @@ describe("Bundle commands", () => {
     });
   });
 
-  it("combines the v0 channel and target app version filters", async () => {
+  it("combines the channel and target app version filters", async () => {
     const bundle = artifact("00000000-0000-7000-8000-000000000011");
     const { core } = databaseHarness;
     const releaseOf = async (

@@ -2,11 +2,6 @@ import type { Platform } from "@hot-updater/protocol";
 
 import { HandlerBadRequestError } from "./handlerErrors";
 
-type PositiveIntegerBounds = {
-  readonly defaultValue: number;
-  readonly maxValue: number;
-};
-
 export const decodeMaybe = (value: string | undefined): string | undefined => {
   if (value === undefined) return undefined;
   try {
@@ -53,53 +48,4 @@ export const parseBooleanSearchParam = (
   throw new HandlerBadRequestError(
     `The '${key}' query parameter must be 'true' or 'false'.`,
   );
-};
-
-export const parseNullableStringSearchParam = (
-  url: URL,
-  key: string,
-): string | null | undefined => {
-  const value = url.searchParams.get(key);
-  if (value === null) return undefined;
-  return value === "null" ? null : value;
-};
-
-export const parseStringArraySearchParam = (
-  url: URL,
-  key: string,
-): string[] | undefined => {
-  const values = url.searchParams.getAll(key);
-  return values.length > 0 ? values : undefined;
-};
-
-export const parsePositiveIntegerSearchParam = (
-  url: URL,
-  key: string,
-  bounds: PositiveIntegerBounds,
-): number => {
-  const value = url.searchParams.get(key);
-  if (value === null) return bounds.defaultValue;
-  const parsed = Number(value);
-  if (!Number.isInteger(parsed) || parsed < 1 || parsed > bounds.maxValue) {
-    throw new HandlerBadRequestError(
-      `The '${key}' query parameter must be a positive integer between 1 and ${bounds.maxValue}.`,
-    );
-  }
-  return parsed;
-};
-
-export const parseNonNegativeIntegerSearchParam = (
-  url: URL,
-  key: string,
-  defaultValue: number,
-): number => {
-  const value = url.searchParams.get(key);
-  if (value === null) return defaultValue;
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed < 0) {
-    throw new HandlerBadRequestError(
-      `The '${key}' query parameter must be a non-negative integer.`,
-    );
-  }
-  return parsed;
 };

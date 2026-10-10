@@ -113,7 +113,6 @@ export interface Spec extends TurboModule {
     toReleaseId?: string;
     toBundleId?: string;
     updateStrategy?: "fingerprint" | "appVersion";
-    crashedBundleId?: string;
   };
 
   /**

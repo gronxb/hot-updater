@@ -11,10 +11,8 @@ import {
   getBundle,
   getBundleChildCounts,
   getBundleChildren,
-  getBundles,
   getChannels,
   getConfig,
-  getConfigLoaded,
   getRelease,
   getReleaseCatalogDiagnostics,
   getReleases,
@@ -23,26 +21,14 @@ import {
   updateRelease as updateReleaseApi,
 } from "./api-rpc";
 
-type BundleFilters = {
-  platform?: "ios" | "android";
-  limit?: number;
-  /** Bundles older than this id: the next page. */
-  after?: string;
-  /** Bundles newer than this id: the previous page. */
-  before?: string;
-};
-
 const bundleListQueryKey = ["bundles"] as const;
 const releaseListQueryKey = ["releases"] as const;
 
 export const queryKeys = {
   config: ["config"] as const,
   channels: ["channels"] as const,
-  configLoaded: ["config-loaded"] as const,
   bundles: {
     all: bundleListQueryKey,
-    list: (filters?: BundleFilters) =>
-      [...bundleListQueryKey, filters ?? {}] as const,
   },
   releases: {
     all: releaseListQueryKey,
@@ -84,23 +70,6 @@ export function useChannelsQuery() {
     queryKey: queryKeys.channels,
     queryFn: () => getChannels(),
     staleTime: Infinity,
-  });
-}
-
-export function useConfigLoadedQuery() {
-  return useQuery({
-    queryKey: queryKeys.configLoaded,
-    queryFn: () => getConfigLoaded(),
-    staleTime: Infinity,
-  });
-}
-
-export function useBundlesQuery(filters?: BundleFilters) {
-  return useQuery({
-    queryKey: queryKeys.bundles.list(filters),
-    queryFn: () => getBundles({ data: filters }),
-    staleTime: Infinity,
-    placeholderData: (previousData) => previousData,
   });
 }
 

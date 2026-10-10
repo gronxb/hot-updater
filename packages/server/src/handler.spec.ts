@@ -37,7 +37,7 @@ describe("createHandlers client routes", () => {
   it.each([
     "/app-version/ios/1.0.0/production/default/default",
     "/fingerprint/android/fingerprint-123/production/default/default",
-  ])("does not expose the v0 route %s", async (path) => {
+  ])("answers 404 for %s", async (path) => {
     const handler = createHandlers(createApi()).client;
 
     const response = await handler(new Request(`http://localhost${path}`));
