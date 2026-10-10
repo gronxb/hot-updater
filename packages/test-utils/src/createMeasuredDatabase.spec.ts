@@ -4,6 +4,7 @@ import { apiKeys, insights } from "@hot-updater/server/plugins";
 import { describe, expect, it } from "vitest";
 
 import { createMeasuredDatabase } from "./createMeasuredDatabase";
+import { createReleaseCatalogTestStorage } from "./releaseCatalogHttpFixtures";
 
 describe("createMeasuredDatabase", () => {
   it("measures core and the plugins on createHotUpdater, over the adapter as given", async () => {
@@ -53,7 +54,11 @@ describe("createMeasuredDatabase", () => {
 
   it("leaves a server on a database without meterReads unmetered", () => {
     const database = { name: "memory", adapter: createMemoryAdapter() };
-    const hotUpdater = createHotUpdater({ database, clientAccess: "public" });
+    const hotUpdater = createHotUpdater({
+      database,
+      storage: createReleaseCatalogTestStorage(),
+      clientAccess: "public",
+    });
 
     expect("measureReads" in database).toBe(false);
     expect("measureReads" in hotUpdater).toBe(false);

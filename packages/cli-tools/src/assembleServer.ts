@@ -2,6 +2,7 @@ import {
   type AnyHotUpdaterPlugin,
   type ConfiguredDatabase,
   createMemoryAdapter,
+  createStorageAdapter,
   type EngineDatabase,
   type HotUpdaterCoreApi,
   isRemoteDatabase,
@@ -12,7 +13,7 @@ import { createHotUpdater } from "@hot-updater/server";
 
 /**
  * The server hot-updater.config.ts describes, as the CLI runs it: core and
- * the plugins over the config's database and storage.
+ * the plugins over the config's database.
  */
 export interface AssembledServer {
   /** The config's database: the server's own, or `standaloneRepository(...)`. */
@@ -24,8 +25,6 @@ export interface AssembledServer {
    * `standaloneRepository`, they go through the server's admin API.
    */
   readonly core: HotUpdaterCoreApi;
-  /** Where the CLI uploads bundles; undefined when the config names none. */
-  readonly storage: StorageAdapter | undefined;
   /** The plugins as configured, as a frozen copy. */
   readonly plugins: readonly AnyHotUpdaterPlugin[];
   /** Each plugin's API by id; undefined over standaloneRepository, whose plugins run on the server. */
@@ -43,14 +42,22 @@ export interface AssembledServer {
 /** What `assembleServer` runs: hot-updater.config.ts's `database`, `storage`, and `plugins`. */
 export interface AssembleServerOptions {
   readonly database: ConfiguredDatabase;
+  /**
+   * The config's storage, through which core resolves file URLs and the
+   * plugins read stored files. Tooling that does neither, such as init
+   * provisioning a credential, leaves it out.
+   */
   readonly storage?: StorageAdapter;
   readonly plugins?: readonly AnyHotUpdaterPlugin[];
 }
 
+/** The storage of an assembly that reads no stored file: it owns no URI. */
+const noStorage = createStorageAdapter({ name: "none", protocol: "none" });
+
 /** `createHotUpdater`, with public client routes unless a plugin provides clientAuth. */
 const createServer = (
   database: EngineDatabase,
-  storage: readonly StorageAdapter[],
+  storage: StorageAdapter,
   plugins: readonly AnyHotUpdaterPlugin[],
 ) =>
   createHotUpdater({
@@ -79,19 +86,18 @@ export function assembleServer(
 export function assembleServer(options: AssembleServerOptions): AssembledServer;
 export function assembleServer({
   database,
-  storage,
+  storage = noStorage,
   plugins = [],
 }: AssembleServerOptions): AssembledServer {
   if (isRemoteDatabase(database)) {
     const shape = createServer(
       { name: "memory", adapter: createMemoryAdapter() },
-      [],
+      storage,
       plugins,
     );
     return {
       database,
       core: database.core,
-      storage,
       plugins: shape.plugins,
       api: undefined,
       clientPlugins: shape.clientPlugins,
@@ -100,15 +106,10 @@ export function assembleServer({
         : { clientAuth: shape.clientAuth }),
     };
   }
-  const server = createServer(
-    database,
-    storage === undefined ? [] : [storage],
-    plugins,
-  );
+  const server = createServer(database, storage, plugins);
   return {
     database,
     core: server.core,
-    storage,
     plugins: server.plugins,
     api: server.api,
     clientPlugins: server.clientPlugins,

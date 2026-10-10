@@ -117,7 +117,7 @@ Use the `/edge` subpath when composing `createHotUpdater` inside a Supabase
 Edge Function. The provider keeps the same name while the subpath makes the
 runtime boundary explicit:
 
-```typescript title="src/hotUpdater.ts"
+```typescript title="src/hotUpdater.ts (excerpt)"
 import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { supabaseDatabase } from "@hot-updater/supabase/edge"; // [!code ++]
@@ -127,8 +127,8 @@ export const hotUpdater = createHotUpdater({
     supabaseUrl: Deno.env.get("SUPABASE_URL")!, // [!code ++]
     supabaseServiceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, // [!code ++]
   }), // [!code ++]
+  storage, // The adapter hot-updater.config.ts uploads with, such as supabaseStorage(...).
   plugins: [insights(), apiKeys(), remoteConfig()],
-  // ... other options
 });
 ```
 

@@ -77,13 +77,12 @@ Create the ignored `.secrets.production.json`:
 {
   "BETTER_AUTH_SECRET": "REPLACE_WITH_RANDOM_SECRET",
   "HOT_UPDATER_CONSOLE_ALLOWED_EMAILS": "owner@example.com",
-  "STORAGE_DOWNLOAD_URL_SIGNING_KEY": "REPLACE_WITH_ANOTHER_RANDOM_SECRET",
   "GITHUB_CLIENT_ID": "REPLACE_WITH_CLIENT_ID",
   "GITHUB_CLIENT_SECRET": "REPLACE_WITH_CLIENT_SECRET"
 }
 ```
 
-Fill the values from [sign-in setup](/docs/guides/console-deployment#set-up-sign-in). Generate a separate storage secret with `openssl rand -base64 32`.
+Fill the values from [sign-in setup](/docs/guides/console-deployment#set-up-sign-in).
 
 ```bash
 chmod 600 .secrets.production.json

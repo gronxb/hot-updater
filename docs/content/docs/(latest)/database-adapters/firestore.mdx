@@ -216,7 +216,7 @@ export default defineConfig({
 
 Use `firebaseDatabase` with `createHotUpdater` for self-hosted servers:
 
-```typescript title="src/hotUpdater.ts"
+```typescript title="src/hotUpdater.ts (excerpt)"
 import { firebaseDatabase } from "@hot-updater/firebase"; // [!code ++]
 import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
@@ -227,8 +227,8 @@ export const hotUpdater = createHotUpdater({
     projectId: process.env.FIREBASE_PROJECT_ID!, // [!code ++]
     credential: applicationDefault(), // [!code ++]
   }), // [!code ++]
+  storage, // The adapter hot-updater.config.ts uploads with, such as firebaseStorage(...).
   plugins: [insights(), apiKeys(), remoteConfig()],
-  // ... other options
 });
 ```
 

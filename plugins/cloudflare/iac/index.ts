@@ -1,4 +1,3 @@
-import crypto from "crypto";
 import path from "path";
 
 import {
@@ -61,6 +60,7 @@ const deployWorker = async (
     d1DatabaseName,
     nonInteractive,
     r2BucketName,
+    r2Credentials,
     workerName,
   }: {
     credentialSource: CloudflareCredentialSource;
@@ -68,6 +68,8 @@ const deployWorker = async (
     d1DatabaseName: string;
     nonInteractive: boolean;
     r2BucketName: string;
+    /** R2's S3-compatible credentials, with which the Worker presigns download URLs. */
+    r2Credentials: { accessKeyId: string; secretAccessKey: string };
     workerName: string;
   },
 ) => {
@@ -84,6 +86,7 @@ const deployWorker = async (
 
   try {
     await prepareWorkerDeployment(workerRoot, {
+      accountId,
       d1DatabaseId,
       d1DatabaseName,
       r2BucketName,
@@ -107,18 +110,23 @@ const deployWorker = async (
       accountId,
       nonInteractive,
     });
-    const secretCommand = secretWrangler(
-      "secret",
-      "put",
-      "STORAGE_DOWNLOAD_URL_SIGNING_KEY",
-      "--name",
-      workerName,
-    );
-    if (!secretCommand.stdin) {
-      throw new Error("Failed to open Wrangler secret input.");
+    for (const [name, value] of [
+      ["R2_ACCESS_KEY_ID", r2Credentials.accessKeyId],
+      ["R2_SECRET_ACCESS_KEY", r2Credentials.secretAccessKey],
+    ]) {
+      const secretCommand = secretWrangler(
+        "secret",
+        "put",
+        name,
+        "--name",
+        workerName,
+      );
+      if (!secretCommand.stdin) {
+        throw new Error("Failed to open Wrangler secret input.");
+      }
+      secretCommand.stdin.end(value);
+      await secretCommand;
     }
-    secretCommand.stdin.end(crypto.randomBytes(32).toString("hex"));
-    await secretCommand;
     return workerName;
   } catch (error) {
     if (error instanceof Error) {
@@ -648,6 +656,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     d1DatabaseName,
     nonInteractive,
     r2BucketName: selectedBucketName,
+    r2Credentials: { accessKeyId, secretAccessKey },
     workerName,
   });
 

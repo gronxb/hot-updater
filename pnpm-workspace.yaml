@@ -37,6 +37,7 @@ catalog:
 catalogs:
   aws:
     "@aws-sdk/client-s3": 3.1066.0
+    "@aws-sdk/s3-request-presigner": 3.1066.0
   db:
     "@electric-sql/pglite": 0.4.1
     "@libsql/client": 0.15.15

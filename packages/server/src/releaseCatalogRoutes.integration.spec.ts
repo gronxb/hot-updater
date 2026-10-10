@@ -1,5 +1,6 @@
 import type { EngineDatabase } from "@hot-updater/plugin-core";
 import { encodeChannelKey } from "@hot-updater/protocol";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "./index";
@@ -14,7 +15,11 @@ const scopeKey = `v1:app-version:ios:${channelKey}`;
 /** A database with one deployed release in production's app-version scope. */
 const createCatalogDatabase = async () => {
   const database = createRuntimeDatabase();
-  await createHotUpdater({ database, clientAccess: "public" }).core.deploy([
+  await createHotUpdater({
+    database,
+    storage: createReleaseCatalogTestStorage(),
+    clientAccess: "public",
+  }).core.deploy([
     {
       bundle: {
         assetBaseStorageUri: "storage://assets",
@@ -51,11 +56,13 @@ describe("Release catalog routes", () => {
     const database = await createCatalogDatabase();
     const storedCatalog = await createHotUpdater({
       database,
+      storage: createReleaseCatalogTestStorage(),
       clientAccess: "public",
     }).core.getReleaseCatalogRow(scopeKey);
     const catalogReads = countCatalogReads(database);
     const hotUpdater = createHotUpdater({
       database,
+      storage: createReleaseCatalogTestStorage(),
       clientAccess: "public",
     });
     const url =
@@ -156,6 +163,7 @@ describe("Release catalog routes", () => {
     const write = vi.spyOn(database.adapter, "write");
     const restarted = createHotUpdater({
       database,
+      storage: createReleaseCatalogTestStorage(),
       clientAccess: "public",
     });
     const relocated = await restarted.handlers.client(
@@ -170,6 +178,7 @@ describe("Release catalog routes", () => {
     const catalogReads = countCatalogReads(database);
     const hotUpdater = createHotUpdater({
       database,
+      storage: createReleaseCatalogTestStorage(),
       clientAccess: "public",
     });
     const url =
@@ -189,6 +198,7 @@ describe("Release catalog routes", () => {
   it("varies authenticated catalog responses by the configured header", async () => {
     const hotUpdater = createHotUpdater({
       database: await createCatalogDatabase(),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [apiKeys({ headerName: "X-Hot-Updater-Key" })],
     });
     await hotUpdater.api.apiKeys.register({ apiKey: API_KEY, name: "App" });

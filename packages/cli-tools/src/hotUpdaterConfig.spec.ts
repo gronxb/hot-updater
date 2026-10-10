@@ -632,6 +632,97 @@ export default defineConfig({
     );
   });
 
+  it.each([
+    ["passes the helper", "s3Storage(commonOptions)"],
+    ["spreads the helper", 's3Storage({ ...commonOptions, basePath: "app" })'],
+  ])(
+    "leaves no use of a helper the rebuilt config drops when a call %s",
+    async (_, storageCall) => {
+      const configPath = path.join(
+        await createTempDir(),
+        "hot-updater.config.ts",
+      );
+      await fs.writeFile(
+        configPath,
+        `import { s3Database, s3Storage } from "@hot-updater/aws";
+import { bare } from "@hot-updater/bare";
+import { defineConfig } from "hot-updater";
+
+const commonOptions = {
+  bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  region: process.env.HOT_UPDATER_S3_REGION!,
+};
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: ${storageCall},
+  database: s3Database({
+    ...commonOptions,
+    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+  }),
+  updateStrategy: "appVersion",
+});
+`,
+        "utf-8",
+      );
+      const awsOptions: ManagedHelperStatement = {
+        name: "awsOptions",
+        strategy: "merge-object",
+        code: `const awsOptions = {
+  region: process.env.HOT_UPDATER_S3_REGION!,
+};`,
+      };
+      const scaffold = createHotUpdaterConfigScaffoldFromBuilder(
+        new ConfigBuilder()
+          .setBuildType("bare")
+          .setStorage({
+            imports: [{ pkg: "@hot-updater/aws", named: ["s3Storage"] }],
+            configString: `s3Storage({
+    ...awsOptions,
+    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  })`,
+          })
+          .setDatabase({
+            imports: [{ pkg: "@hot-updater/aws", named: ["dynamoDB"] }],
+            configString: `dynamoDB({
+    ...awsOptions,
+    tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
+  })`,
+          })
+          .setPlugins({
+            imports: [
+              {
+                pkg: "hot-updater/plugins",
+                named: ["apiKeys", "insights", "remoteConfig"],
+              },
+            ],
+            configString: "[apiKeys(), insights(), remoteConfig()]",
+          })
+          .setIntermediateCode(awsOptions.code),
+        { helperStatements: [awsOptions] },
+      );
+
+      const result = await writeHotUpdaterConfig(scaffold, configPath);
+      const updated = await fs.readFile(configPath, "utf-8");
+
+      expect(result.status).toBe("merged");
+      expect(updated).not.toContain("commonOptions");
+      expect(updated).toContain("const awsOptions = {");
+      expect(updated).toContain(
+        storageCall === "s3Storage(commonOptions)"
+          ? `  storage: s3Storage({
+    ...awsOptions,
+    bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME!,
+  }),`
+          : 'storage: s3Storage({ basePath: "app", ...awsOptions, bucketName: process.env.HOT_UPDATER_S3_BUCKET_NAME! }),',
+      );
+      expect(updated).toContain("database: dynamoDB({");
+
+      await writeHotUpdaterConfig(scaffold, configPath);
+      await expect(fs.readFile(configPath, "utf-8")).resolves.toBe(updated);
+    },
+  );
+
   it.each(["...overrides", '["plugins"]: []', "plugins: []"])(
     "does not report success when %s can overwrite the scaffold's plugins",
     async (override) => {

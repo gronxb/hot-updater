@@ -13,7 +13,7 @@ import {
 } from "./insights-http-client.ts";
 import { importPublished } from "./published.ts";
 
-const { createMemoryAdapter } = await importPublished<
+const { createMemoryAdapter, createStorageAdapter } = await importPublished<
   typeof import("@hot-updater/plugin-core")
 >("@hot-updater/plugin-core");
 const { createHotUpdater } = await importPublished<
@@ -22,6 +22,15 @@ const { createHotUpdater } = await importPublished<
 const { insights } = await importPublished<
   typeof import("@hot-updater/server/plugins")
 >("@hot-updater/server/plugins");
+
+/** Storage for a server whose Insights routes open no stored file. */
+const storage = () =>
+  createStorageAdapter({
+    name: "memory",
+    protocol: "memory",
+    get: async () => ({ response: null }),
+    getDownloadUrl: async () => ({ url: "https://storage.example.com/" }),
+  });
 
 describe("E2E Insights HTTP client", () => {
   it("loads under the Node strip-types mode used by the E2E control server", () => {
@@ -42,6 +51,7 @@ describe("E2E Insights HTTP client", () => {
   it("queries the deployed server when config only has a standalone admin client", async () => {
     const deployedServer = createHotUpdater({
       database: { name: "memory", adapter: createMemoryAdapter() },
+      storage: storage(),
       plugins: [insights()],
       clientAccess: "public",
     });
@@ -99,6 +109,7 @@ describe("E2E Insights HTTP client", () => {
       const sinceMs = Date.now();
       const server = createHotUpdater({
         database: { name: "memory", adapter: createMemoryAdapter() },
+        storage: storage(),
         plugins: [insights()],
         clientAccess: "public",
       });

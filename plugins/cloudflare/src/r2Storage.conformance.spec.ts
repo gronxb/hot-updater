@@ -68,7 +68,6 @@ setupStorageAdapterTestSuite({
           accessKeyId: "access-key-id",
           secretAccessKey: "secret-access-key",
         },
-        downloadUrlSigningKey: "test-signing-key",
       }),
       basePath: "ota",
     };

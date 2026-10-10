@@ -60,7 +60,7 @@ middleware and mount ordering.
 Handlers match paths relative to their mount. For example, mounting the client
 handler at `/hot-updater` exposes `/hot-updater/version`; configure the app's
 `baseURL` as `https://example.com/hot-updater`. The framework owns the external
-prefix, including for signed storage-download URLs resolved against `baseURL`.
+prefix.
 
 ## Runtime policy
 
@@ -71,7 +71,7 @@ ingestion and plugin client routes, or explicitly set `clientAccess: "public"`.
 
 | Handler           | Routes and access                                                                                                                                                                                       |
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `handlers.client` | Public `/version`; Release Catalogs, artifacts, `POST /events` and plugin client routes follow the client policy; signed storage-download routes are available when the storage provider supports them. |
+| `handlers.client` | Public `/version`; Release Catalogs, artifacts, `POST /events` and plugin client routes follow the client policy. Devices download artifacts from the URLs the storage adapter returns, not through this handler. |
 | `handlers.admin`  | Bundle, Release, catalog and Channel routes, Insights queries and plugin admin routes. Your framework authenticates every request before mounting this handler.                                         |
 
 Insights runs as the `insights()` plugin. React Native apps report to it when
@@ -88,15 +88,14 @@ for the HTTP operations used by the CLI.
 
 ## Storage adapters
 
-Use a storage adapter in the CLI and the matching runtime implementation in the
-server's `storage` array. The URI scheme and bucket/key configuration must agree.
-For example, an `s3Storage` deploy configuration needs an `s3Storage` server entry;
+Use one storage adapter in the CLI and the matching runtime implementation as
+the server's `storage`. The URI scheme and bucket/key configuration must agree.
+For example, an `s3Storage` deploy configuration needs `s3Storage` on the server;
 using R2 infrastructure alone does not make `s3://` and `r2://` interchangeable.
 
-A server may retain multiple storage providers when old and new bundles coexist,
-but register at most one adapter per URI scheme. Stored URIs use
-`protocol://bucket/encoded/slash/key`. The matching adapter owns reads, download
-URLs and exact deletion; an unowned HTTP(S) URI can be used directly.
+Stored URIs use `protocol://bucket/encoded/slash/key`. The adapter owns reads,
+download URLs and exact deletion for its scheme; an HTTP(S) URI it does not own
+can be used directly.
 
 Use [S3](/docs/storage-adapters/aws), [R2](/docs/storage-adapters/cloudflare),
 [Supabase Storage](/docs/storage-adapters/supabase) or

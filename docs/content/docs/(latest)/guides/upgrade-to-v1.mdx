@@ -92,15 +92,23 @@ reuse the existing project: v1 uses the `hot_updater_v1` Firestore collection or
 `hot_updater_v1_*` tables and a separate `hot-updater-v1` function. Cloudflare needs a separate D1 database
 and Worker. Keep each provider's v0 resources intact.
 
+Init reads saved resource names from `.env.hotupdater` and the environment as
+its inputs, so change the v0 names before running it. For Supabase, set
+`HOT_UPDATER_SUPABASE_FUNCTION_NAME=hot-updater-v1`; v0 saved `update-server`.
+For Cloudflare, enter a new Worker name and D1 database, because the v1
+defaults match v0's.
+
 Managed initialization rejects selected v0 resources before mutating them.
 Self-hosted SQL and MongoDB schema initialization also rejects v0 schema
 markers; create schema `1.0.0` on empty storage using the selected adapter's
 schema workflow. Do not erase a marker to force an in-place upgrade.
 
-For AWS, create separate v1 DynamoDB, Lambda and CloudFront resources. Preserve
-the old Lambda name and distribution ID in the v0 deployment configuration.
-The v1 configuration must use the new `HOT_UPDATER_AWS_LAMBDA_NAME` and
-`HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID` after provisioning.
+For AWS, create separate v1 DynamoDB, Lambda and CloudFront resources. Copy
+the old Lambda name and distribution ID to the v0 deployment configuration,
+then remove `HOT_UPDATER_AWS_LAMBDA_NAME` and
+`HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID` from `.env.hotupdater` before running
+init. Init creates the new resources and writes their names to
+`.env.hotupdater`, including the new `HOT_UPDATER_DYNAMODB_TABLE_NAME`.
 
 Storage buckets do not have to be new, but preserve the access policies and
 objects still needed by v0. Do not prune shared storage using only the v1
@@ -267,8 +275,8 @@ server code or plugins, update these boundaries before connecting a v1 app:
 | --- | --- |
 | Unified `createHandler`, `createHotUpdater().handler`, `HandlerOptions` | `createHotUpdater().handlers.client` and `.admin`. Mount the admin handler behind framework authentication before the broader client mount. |
 | `toNodeHandler(hotUpdater)` from `@hot-updater/server/node` | Import it from `@hot-updater/server` and pass the individual handler, such as `toNodeHandler(hotUpdater.handlers.admin)`. |
-| Instance methods such as `getBundleById`, `getBundles`, `insertBundle`, `updateBundleById`, `deleteBundleById` and `getChannels` | `hotUpdater.core` reads and typed operations, such as `getBundle`, `listBundles`, `deploy`, `updateBundle`, `deleteBundles` and `listChannels`. |
-| `storages`, `storagePlugins` | `storage: [storagePlugin]` in `createHotUpdater`. |
+| Instance methods such as `getBundleById`, `getBundles`, `insertBundle`, `updateBundleById`, `deleteBundleById` and `getChannels` | `hotUpdater.core`, where the public Bundle ID is a Release ID: `getRelease`, `listReleases`, `deploy`, `updateReleasePolicy`, `deleteRelease` and `listChannels`. `getBundle` and `listBundles` read the artifacts. |
+| `storages: [adapter]`, `storagePlugins` | `storage: adapter` in `createHotUpdater`, required: one storage adapter, the one `hot-updater.config.ts` uploads with. |
 | Database/storage `() => plugin` thunks | Pass database and storage objects directly to `createHotUpdater` and `defineConfig`. Built-in provider factories already return those objects. List the server's plugins in `plugins` of both. |
 | Client routes without authentication | Choose a policy: `apiKeys()` from `@hot-updater/server/plugins` in `plugins` requires `x-api-key`, or the `headerName` you pass. To keep the v0 behavior, set `clientAccess: "public"` instead. |
 | `routes: { updateCheck, bundles }` and the authentication on `/api/*` | Mount the handler surfaces explicitly: `handlers.client` for update checks, and `handlers.admin` for Bundle management behind the authentication that guarded `/api/*`. |
@@ -288,7 +296,7 @@ import { storage } from "./storage";
 
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "postgresql" }),
-  storage: [storage],
+  storage,
   plugins: [insights(), apiKeys()],
 });
 ```
@@ -355,18 +363,14 @@ v0 mutable per-Bundle asset layout or its cleanup fallback.
 | `@hot-updater/aws`: `s3Database` | `dynamoDB`; S3 stores artifacts. |
 | `@hot-updater/aws`: `s3LambdaEdgeStorage` | `s3Storage`. |
 | `@hot-updater/aws`: `withCloudFrontSignedUrl` | `s3Storage({ getDownloadUrl: cloudFrontDownloadUrl(...) })`; see [S3 download URLs](/docs/storage-adapters/aws). |
-| `@hot-updater/cloudflare/worker`: context-derived database/storage | `d1Database(binding)` and `r2Storage({ bucket, bucketName, downloadUrlSigningKey })` with native bindings; see [Worker storage](/docs/storage-adapters/cloudflare). |
-| `@hot-updater/cloudflare/worker`: `verifyJwtSignedUrl` | The server storage-download handler. |
+| `@hot-updater/cloudflare/worker`: context-derived database/storage | `d1Database(binding)` and `r2Storage({ bucket, bucketName, accountId, credentials })` with native bindings; the R2 credentials presign download URLs. See [Worker storage](/docs/storage-adapters/cloudflare). |
+| `@hot-updater/cloudflare/worker`: `verifyJwtSignedUrl` | None: devices download from the presigned R2 URLs that `r2Storage` returns. |
 | `@hot-updater/supabase`: root `supabaseEdgeFunctionDatabase` and `supabaseEdgeFunctionStorage` | `supabaseDatabase` and `supabaseStorage` from `@hot-updater/supabase/edge`. |
-| `@hot-updater/js`: `verifyJwtSignedUrl`, `withJwtSignedUrl` | Provider-owned download URL handling or the server storage handler. |
+| `@hot-updater/js`: `verifyJwtSignedUrl`, `withJwtSignedUrl` | None: a storage adapter's `getDownloadUrl` returns the URL devices download from. |
 | `@hot-updater/js`, `@hot-updater/postgres`: `getUpdateInfo` | Release Catalog compilation and exact reads, then device selection; disable the public Bundle for rollback. |
 | `@hot-updater/plugin-core`: `createBlobDatabasePlugin` | A database adapter over a store with atomic conditional writes, such as `createKvAdapter({ store })`, returned with `createEngineDatabase`. Plain object storage cannot provide those writes. |
 | `@hot-updater/plugin-core`: `createNodeStoragePlugin`, `createRuntimeStoragePlugin`, `createUniversalStoragePlugin` | `createStorageAdapter` with flat operations. |
 | `@hot-updater/plugin-core`: `createRequestUpdateBundleResolver`, `getRequestUpdateBundleSeeds` | None: core resolves an artifact with one batch read of both Bundles and one read of their patch. |
-
-Server-side `s3Storage` does not implicitly produce S3 presigned URLs. Configure
-`downloadUrlSigningKey` or an explicit `getDownloadUrl` implementation. CLI-only
-upload storage does not need a download URL resolver.
 
 ## Update app lifecycle handlers
 

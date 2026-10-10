@@ -9,6 +9,7 @@ import {
   createHttpTestClient,
   setupReleaseCatalogTestSuite,
   storeBundles,
+  createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
@@ -340,6 +341,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
       const migrationHotUpdater = createHotUpdater({
         database: kyselyAdapter({ db, provider: "mysql" }),
+        storage: createReleaseCatalogTestStorage(),
         clientAccess: "public",
         plugins: [insights()],
       });
@@ -398,6 +400,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       const migrator = createMigrator(
         createHotUpdater({
           database: writerDatabase,
+          storage: createReleaseCatalogTestStorage(),
           clientAccess: "public",
           plugins: [insights()],
         }),
@@ -409,6 +412,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
       await migration.execute();
       const core = createHotUpdater({
         database: writerDatabase,
+        storage: createReleaseCatalogTestStorage(),
         clientAccess: "public",
       }).core;
 
@@ -441,6 +445,7 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
       const removerCore = createHotUpdater({
         database: kyselyAdapter({ db: remover, provider: "mysql" }),
+        storage: createReleaseCatalogTestStorage(),
         clientAccess: "public",
       }).core;
       // The deletion commits while the patch insert waits; the patch update
@@ -488,6 +493,7 @@ const insightsModelOf = (kysely: Kysely<object>) =>
   createInsightsModel(
     createHotUpdater({
       database: kyselyAdapter({ db: kysely, provider: "mysql" }),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [insights()],
       clientAccess: "public",
     }).api.insights,

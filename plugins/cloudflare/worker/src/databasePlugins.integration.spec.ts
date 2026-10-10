@@ -8,6 +8,7 @@ import { createHotUpdater } from "@hot-updater/server";
 import { createInsightsModel, insights } from "@hot-updater/server/plugins";
 import {
   createHandlerHttpTestClient,
+  createReleaseCatalogTestStorage,
   setupDatabaseTestSuite,
   createBundleEventRowFixture,
   insightsTestSuite,
@@ -121,12 +122,16 @@ const reset = async (): Promise<void> => {
  * A public server with Insights on `database`, as the suite serves it. The
  * specs here reach core and the Insights API through it.
  */
-const serve = (options: {
+const serve = ({
+  database,
+  storage = createReleaseCatalogTestStorage(),
+}: {
   readonly database: EngineDatabase;
-  readonly storage?: readonly StorageAdapter[];
+  readonly storage?: StorageAdapter;
 }) =>
   createHotUpdater({
-    ...options,
+    database,
+    storage,
     plugins: [insights()],
     clientAccess: "public",
   });

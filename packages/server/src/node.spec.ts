@@ -105,7 +105,7 @@ describe("server node entry", () => {
     await middleware(
       {
         method: "GET",
-        url: "/hot-updater/storage/token/signature",
+        url: "/hot-updater/bundle.zip",
         headers: { host: "example.com" },
         protocol: "https",
         get: (name: string) => (name === "host" ? "example.com" : undefined),

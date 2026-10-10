@@ -6,6 +6,7 @@ import {
   insights as serverInsights,
   remoteConfig as serverRemoteConfig,
 } from "@hot-updater/server/plugins";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { describe, expect, it } from "vitest";
 
@@ -22,6 +23,7 @@ describe("hot-updater/plugins", () => {
     ];
     const definition = {
       database: { name: "memory", adapter: createMemoryAdapter() },
+      storage: createReleaseCatalogTestStorage(),
       plugins,
     };
     const cli = assembleServer(definition);

@@ -88,18 +88,15 @@ import { db } from "./drizzle";
 export const hotUpdater = createHotUpdater({
   database: drizzleAdapter({ db, provider: "postgresql" }),
   plugins: [insights(), apiKeys()],
-  storage: [
-    s3Storage({
-      region: "auto",
-      endpoint: process.env.R2_ENDPOINT,
-      credentials: {
-        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-      },
-      bucketName: process.env.R2_BUCKET_NAME!,
-      downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
-    }),
-  ],
+  storage: s3Storage({
+    region: "auto",
+    endpoint: process.env.R2_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.R2_BUCKET_NAME!,
+  }),
 });
 ```
 
@@ -231,7 +228,6 @@ Run the container with environment variables.
 docker run -p 3000:3000 \
   -e DATABASE_URL="postgresql://user:password@host:5432/dbname" \
   -e HOT_UPDATER_ADMIN_TOKEN="replace-with-a-secret" \
-  -e HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY="replace-with-a-separate-secret" \
   -e R2_ENDPOINT="https://<account-id>.r2.cloudflarestorage.com" \
   -e R2_ACCESS_KEY_ID="<access-key-id>" \
   -e R2_SECRET_ACCESS_KEY="<secret-access-key>" \
@@ -277,7 +273,6 @@ services:
     environment:
       DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}@postgres:5432/hot_updater
       HOT_UPDATER_ADMIN_TOKEN: replace-with-a-secret
-      HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY: replace-with-a-separate-secret
       R2_ENDPOINT: https://<account-id>.r2.cloudflarestorage.com
       R2_ACCESS_KEY_ID: <access-key-id>
       R2_SECRET_ACCESS_KEY: <secret-access-key>

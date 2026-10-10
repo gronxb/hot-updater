@@ -11,6 +11,8 @@ import type { StorageAdapter } from "@hot-updater/plugin-core";
  * the plugins over the config's database and storage.
  */
 export type LoadedServer = AssembledServer & {
+  /** Where the CLI uploads bundles: the config's storage. */
+  readonly storage: StorageAdapter;
   /** Closes what the config opened: its database. */
   dispose(): Promise<void>;
 };
@@ -22,8 +24,8 @@ export class ServerConfigError extends Error {
 /**
  * The server hot-updater.config.ts describes: core and the plugins over its
  * database and storage, assembled as the server assembles them, so the
- * CLI's writes take the server's path. A database the config names that the
- * plugins cannot run on is closed before the error is thrown.
+ * CLI's writes take the server's path. A database the config opened is
+ * closed before an error about the config is thrown.
  */
 export const loadServer = async (
   config?: Pick<ConfigResponse, "database" | "storage" | "plugins">,
@@ -32,6 +34,12 @@ export const loadServer = async (
   if (database === undefined) {
     throw new ServerConfigError(
       "Set database in hot-updater.config.ts: the database your server runs on, such as d1Database(...), or standaloneRepository({ baseUrl }) to reach a self-hosted server through its admin API.",
+    );
+  }
+  if (storage === undefined) {
+    await database.dispose?.();
+    throw new ServerConfigError(
+      "Set storage in hot-updater.config.ts: where the CLI uploads bundles, such as r2Storage(...).",
     );
   }
   let server: AssembledServer;
@@ -43,20 +51,9 @@ export const loadServer = async (
   }
   return {
     ...server,
+    storage,
     dispose: async () => {
       await database.dispose?.();
     },
   };
-};
-
-/** The storage the CLI uploads bundles to: the config's. */
-export const requireStorage = (
-  server: Pick<LoadedServer, "storage">,
-): StorageAdapter => {
-  if (server.storage === undefined) {
-    throw new ServerConfigError(
-      "Set storage in hot-updater.config.ts: where the CLI uploads bundles, such as r2Storage(...).",
-    );
-  }
-  return server.storage;
 };

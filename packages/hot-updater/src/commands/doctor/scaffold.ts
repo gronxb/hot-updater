@@ -226,6 +226,8 @@ export async function checkScaffold(infraDir: string): Promise<{
       bucket.length !== 1 ||
       !isText(bucket[0]?.["bucket_name"]) ||
       object(config["vars"])["BUCKET_NAME"] !== bucket[0]?.["bucket_name"] ||
+      // The Worker presigns download URLs on this account's R2 endpoint.
+      object(config["vars"])["ACCOUNT_ID"] !== config["account_id"] ||
       !Array.isArray(config["compatibility_flags"]) ||
       !config["compatibility_flags"].includes("nodejs_compat")
     ) {
@@ -233,7 +235,7 @@ export async function checkScaffold(infraDir: string): Promise<{
         "INFRA_CLOUDFLARE_BINDINGS",
         "Worker DB/BUCKET bindings or bucket settings are incomplete or inconsistent.",
         file,
-        "Keep one DB binding, one BUCKET binding, matching vars.BUCKET_NAME, account/name and nodejs_compat.",
+        "Keep one DB binding, one BUCKET binding, vars.BUCKET_NAME and vars.ACCOUNT_ID matching them, account/name and nodejs_compat.",
       );
     }
     const main = config["main"];

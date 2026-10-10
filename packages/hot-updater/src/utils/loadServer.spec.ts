@@ -7,7 +7,7 @@ import {
 import { insights } from "@hot-updater/server/plugins";
 import { describe, expect, it, vi } from "vitest";
 
-import { loadServer, requireStorage, ServerConfigError } from "./loadServer";
+import { loadServer, ServerConfigError } from "./loadServer";
 
 const createDatabase = () => ({
   name: "memory",
@@ -44,13 +44,14 @@ describe("loadServer", () => {
   it("reaches a self-hosted server through standaloneRepository's core, with no plugin APIs", async () => {
     const remote = {
       name: "standalone",
-      core: assembleServer({ database: createDatabase() }).core,
+      core: assembleServer({ database: createDatabase(), storage }).core,
       fetchAdmin: vi.fn(async () => new Response(null, { status: 404 })),
       dispose: vi.fn(async () => {}),
     } satisfies RemoteDatabase;
 
     const server = await loadServer({
       database: remote,
+      storage,
       plugins: [insights()],
     });
 
@@ -65,7 +66,7 @@ describe("loadServer", () => {
   });
 
   it("needs a database in hot-updater.config.ts", async () => {
-    const loaded = loadServer({ plugins: [] });
+    const loaded = loadServer({ storage, plugins: [] });
 
     await expect(loaded).rejects.toBeInstanceOf(ServerConfigError);
     await expect(loaded).rejects.toThrow(
@@ -73,21 +74,23 @@ describe("loadServer", () => {
     );
   });
 
+  it("needs storage in hot-updater.config.ts, and closes the database the config opened", async () => {
+    const database = createDatabase();
+    const loaded = loadServer({ database, plugins: [] });
+
+    await expect(loaded).rejects.toBeInstanceOf(ServerConfigError);
+    await expect(loaded).rejects.toThrow(
+      "Set storage in hot-updater.config.ts: where the CLI uploads bundles, such as r2Storage(...).",
+    );
+    expect(database.dispose).toHaveBeenCalledOnce();
+  });
+
   it("closes the database the config opened when its plugins do not assemble", async () => {
     const database = createDatabase();
 
     await expect(
-      loadServer({ database, plugins: [insights(), insights()] }),
+      loadServer({ database, storage, plugins: [insights(), insights()] }),
     ).rejects.toThrow('Plugin "insights" is registered twice.');
     expect(database.dispose).toHaveBeenCalledOnce();
-  });
-});
-
-describe("requireStorage", () => {
-  it("is the config's storage, or an error that says to set one", () => {
-    expect(requireStorage({ storage })).toBe(storage);
-    expect(() => requireStorage({ storage: undefined })).toThrow(
-      "Set storage in hot-updater.config.ts: where the CLI uploads bundles, such as r2Storage(...).",
-    );
   });
 });

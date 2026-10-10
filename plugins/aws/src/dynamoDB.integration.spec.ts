@@ -20,6 +20,7 @@ import {
   setupDatabaseTestSuite,
   startHttpTestServer,
   insightsTestSuite,
+  createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
@@ -198,7 +199,11 @@ describe("dynamoDB", () => {
   it("serves only after the migration writes the schema settings", async () => {
     const fenced = { ...local.config, tableName: local.tableName() };
     const database = dynamoDB(fenced);
-    const core = createHotUpdater({ database, clientAccess: "public" }).core;
+    const core = createHotUpdater({
+      database,
+      storage: createReleaseCatalogTestStorage(),
+      clientAccess: "public",
+    }).core;
     // No table yet: the fence reads DynamoDB's missing table as a missing schema.
     await expect(core.listChannels()).rejects.toBeInstanceOf(
       HotUpdaterSchemaMigrationRequiredError,
@@ -225,6 +230,7 @@ describe("dynamoDB", () => {
           createInsightsModel(
             createHotUpdater({
               database,
+              storage: createReleaseCatalogTestStorage(),
               plugins: [insights()],
               clientAccess: "public",
             }).api.insights,

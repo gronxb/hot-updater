@@ -12,6 +12,7 @@ const {
   bundleToRow,
   createEngine,
   createMemoryAdapter,
+  createStorageAdapter,
   rowToBundle,
 } = await importPublished<typeof import("@hot-updater/plugin-core")>(
   "@hot-updater/plugin-core",
@@ -40,7 +41,12 @@ export const createMemoryCore = () => {
     },
   };
   const database: EngineDatabase = { name: "memory", adapter };
-  const { core } = createHotUpdater({ database, clientAccess: "public" });
+  const { core } = createHotUpdater({
+    database,
+    // Owns no URI: the specs read no stored file.
+    storage: createStorageAdapter({ name: "memory", protocol: "memory" }),
+    clientAccess: "public",
+  });
   return {
     core,
     database,

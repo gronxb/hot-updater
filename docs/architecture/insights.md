@@ -8,6 +8,7 @@ selected-bundle deployment evidence.
 ```ts
 createHotUpdater({
   database,
+  storage,
   plugins: [insights(), apiKeys()],
 });
 ```

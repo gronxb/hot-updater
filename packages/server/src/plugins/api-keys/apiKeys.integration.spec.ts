@@ -1,3 +1,4 @@
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 import { createHotUpdater } from "../../index";
@@ -23,6 +24,7 @@ const withApiKey = (url: string, init?: RequestInit) =>
 const start = async () => {
   const hotUpdater = createHotUpdater({
     database: createRuntimeDatabase(),
+    storage: createReleaseCatalogTestStorage(),
     plugins: [apiKeys(), insights()],
   });
   await hotUpdater.api.apiKeys.register({ apiKey: API_KEY, name: "App" });
@@ -83,6 +85,7 @@ describe("createHotUpdater with the apiKeys() plugin", () => {
     const hotUpdater = createHotUpdater({
       clientAccess: "public",
       database: createRuntimeDatabase(),
+      storage: createReleaseCatalogTestStorage(),
     });
 
     expect(

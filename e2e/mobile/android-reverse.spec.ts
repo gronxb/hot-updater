@@ -58,6 +58,25 @@ describe("owned Android reverse mappings", () => {
       { device: "tcp:3007", host: "tcp:3012" },
       { device: "tcp:3107", host: "tcp:3112" },
     ]);
+  });
+
+  it("maps a local S3 endpoint's port, which presigned download URLs name", () => {
+    expect(
+      planAndroidReverses({
+        ...env,
+        AWS_S3_ENDPOINT: "http://127.0.0.1:3013",
+      }),
+    ).toEqual([
+      { device: "tcp:3007", host: "tcp:3012" },
+      { device: "tcp:3013", host: "tcp:3013" },
+      { device: "tcp:3107", host: "tcp:3112" },
+    ]);
+    expect(
+      planAndroidReverses({
+        ...env,
+        AWS_S3_ENDPOINT: "https://s3.us-east-1.amazonaws.com",
+      }),
+    ).toHaveLength(2);
     expect(
       planAndroidReverses({
         ...env,

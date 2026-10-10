@@ -17,6 +17,8 @@ vi.mock("@hot-updater/bsdiff", () => ({
   hdiff: vi.fn(async () => new Uint8Array([1, 2, 3, 4])),
 }));
 
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
+
 import { createBundleDiff } from "./createBundleDiff";
 
 const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
@@ -36,6 +38,7 @@ type Core = ReturnType<typeof createHotUpdater>["core"];
 const createCore = async (bundles: readonly Bundle[]): Promise<Core> => {
   const { core } = createHotUpdater({
     database: { name: "memory", adapter: createMemoryAdapter() },
+    storage: createReleaseCatalogTestStorage(),
     clientAccess: "public",
   });
   for (const bundle of bundles) {

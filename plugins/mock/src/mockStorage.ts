@@ -1,5 +1,4 @@
 import {
-  createStorageDownloadPath,
   createStorageAdapter,
   createStorageUri,
   parseStorageUri,
@@ -59,7 +58,7 @@ export const mockStorage = (
     async getDownloadUrl({ storageUri }) {
       parseAndValidate(storageUri);
       return {
-        url: createStorageDownloadPath(storageUri, "mock-download"),
+        url: `https://storage.example.com/${encodeURIComponent(storageUri)}`,
       };
     },
     async exists({ storageUri }) {

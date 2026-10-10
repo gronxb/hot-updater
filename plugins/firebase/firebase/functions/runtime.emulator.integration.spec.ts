@@ -24,6 +24,7 @@ import {
 } from "@hot-updater/server/plugins";
 import {
   assertCommandAvailable,
+  createReleaseCatalogTestStorage,
   findOpenPort,
   spawnRuntime,
   stopRuntime,
@@ -252,7 +253,11 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     await migrateFirebaseDatabase({ ...adminOptions }, plugins);
     // The server the function runs, on the emulator's project: the API key
     // it authenticates with, and core's writes as the managed config makes them.
-    const server = createHotUpdater({ database, plugins });
+    const server = createHotUpdater({
+      database,
+      storage: createReleaseCatalogTestStorage(),
+      plugins,
+    });
     await server.api.apiKeys.register({
       apiKey: API_KEY,
       name: "Runtime acceptance",

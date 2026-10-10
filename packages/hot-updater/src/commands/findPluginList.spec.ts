@@ -14,7 +14,7 @@ const definition = (...ids: string[]) =>
   [
     "export const hotUpdater = {",
     '  database: { name: "memory" },',
-    "  storage: [],",
+    "  storage: undefined,",
     `  plugins: ${JSON.stringify(ids.map((id) => ({ id })))},`,
     "  clientPlugins: [],",
     "  clientEndpoints: [],",

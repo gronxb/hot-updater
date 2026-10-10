@@ -6,9 +6,9 @@ import {
   type S3ClientConfig,
 } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
+import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import {
   createStorageKeyBuilder,
-  createStorageDownloadUrl,
   createStorageAdapter,
   createStorageUri,
   parseStorageUri,
@@ -21,9 +21,10 @@ export interface R2S3StorageConfig extends S3ClientConfig {
   credentials: NonNullable<S3ClientConfig["credentials"]>;
   /** Base path where bundles will be stored in the bucket. */
   basePath?: string;
-  /** Required when this storage serves downloads through createHotUpdater. */
-  downloadUrlSigningKey?: string;
 }
+
+/** Devices download right after the update check that returns the URL. */
+const PRESIGNED_URL_EXPIRES_IN_SECONDS = 3600;
 
 const isObjectNotFoundError = (error: unknown) => {
   if (
@@ -43,12 +44,13 @@ const isObjectNotFoundError = (error: unknown) => {
 
 export const createR2S3Storage = (
   config: R2S3StorageConfig,
-): StorageAdapterWith<"put" | "get" | "exists" | "delete"> => {
+): StorageAdapterWith<
+  "put" | "get" | "getDownloadUrl" | "exists" | "delete"
+> => {
   const {
     accountId,
     basePath,
     bucketName,
-    downloadUrlSigningKey,
     endpoint,
     forcePathStyle,
     region,
@@ -61,9 +63,6 @@ export const createR2S3Storage = (
     region: region ?? "auto",
   });
   const getStorageKey = createStorageKeyBuilder(basePath);
-  const getDownloadUrl = downloadUrlSigningKey
-    ? createStorageDownloadUrl(downloadUrlSigningKey)
-    : undefined;
 
   const parseAndValidate = (storageUri: string) => {
     const parsed = parseStorageUri(storageUri, "r2");
@@ -122,14 +121,16 @@ export const createR2S3Storage = (
         throw error;
       }
     },
-    ...(getDownloadUrl
-      ? {
-          async getDownloadUrl({ storageUri }: { storageUri: string }) {
-            parseAndValidate(storageUri);
-            return getDownloadUrl({ storageUri });
-          },
-        }
-      : {}),
+    async getDownloadUrl({ storageUri }) {
+      const { key } = parseAndValidate(storageUri);
+      return {
+        url: await getSignedUrl(
+          client,
+          new GetObjectCommand({ Bucket: bucketName, Key: key }),
+          { expiresIn: PRESIGNED_URL_EXPIRES_IN_SECONDS },
+        ),
+      };
+    },
     async exists({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       try {

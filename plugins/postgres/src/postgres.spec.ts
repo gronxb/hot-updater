@@ -15,6 +15,7 @@ import {
   setupDatabaseTestSuite,
   startHttpTestServer,
   insightsTestSuite,
+  createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it } from "vitest";
@@ -67,6 +68,7 @@ setupDatabaseTestSuite({
         createInsightsModel(
           createHotUpdater({
             database,
+            storage: createReleaseCatalogTestStorage(),
             plugins: [insights()],
             clientAccess: "public",
           }).api.insights,
@@ -110,7 +112,11 @@ describe("postgres plugin schema", () => {
   it("refuses a database without the schema settings, then serves once they exist", async () => {
     const pglite = new PGlite();
     const database = postgres({ dialect: new PGliteDialect(pglite) });
-    const core = createHotUpdater({ database, clientAccess: "public" }).core;
+    const core = createHotUpdater({
+      database,
+      storage: createReleaseCatalogTestStorage(),
+      clientAccess: "public",
+    }).core;
     try {
       await expect(core.listChannels()).rejects.toBeInstanceOf(
         HotUpdaterSchemaMigrationRequiredError,

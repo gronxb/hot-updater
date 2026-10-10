@@ -56,6 +56,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "catalog:aws",
     "@aws-sdk/lib-storage": "3.1008.0",
+    "@aws-sdk/s3-request-presigner": "catalog:aws",
     "@hot-updater/cli-tools": "workspace:*",
     "@hot-updater/protocol": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",

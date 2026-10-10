@@ -14,6 +14,7 @@ import {
   createHttpTestClient,
   setupReleaseCatalogTestSuite,
   storeBundles,
+  createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
@@ -238,6 +239,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
     const insights = createInsightsModel(
       createHotUpdater({
         database: prismaAdapter({ prisma, provider: "postgresql" }),
+        storage: createReleaseCatalogTestStorage(),
         plugins: [insightsPlugin()],
         clientAccess: "public",
       }).api.insights,
@@ -279,6 +281,7 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
   it("lets exactly one of two concurrent policy changes at one revision win", async () => {
     const core = createHotUpdater({
       database: prismaAdapter({ prisma, provider: "postgresql" }),
+      storage: createReleaseCatalogTestStorage(),
       clientAccess: "public",
     }).core;
     const [deployed] = await core.deploy([
@@ -322,7 +325,11 @@ describe("Hot Updater Handler Integration Tests (Hono + Prisma + PostgreSQL)", (
 
   it("rolls back patch cleanup when bundle deletion fails", async () => {
     const database = prismaAdapter({ prisma, provider: "postgresql" });
-    const core = createHotUpdater({ database, clientAccess: "public" }).core;
+    const core = createHotUpdater({
+      database,
+      storage: createReleaseCatalogTestStorage(),
+      clientAccess: "public",
+    }).core;
     const baseId = "5d8b5ebf-8008-4ab8-9fb5-79af0ec766c3";
     const targetId = "5e08db65-e31d-4de3-a795-8492327c30d8";
     // Both bundles stored with no release, the target with its patch.

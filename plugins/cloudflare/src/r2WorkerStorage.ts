@@ -1,26 +1,52 @@
 import {
   createStorageKeyBuilder,
-  createStorageDownloadUrl,
   createStorageAdapter,
   createStorageUri,
   parseStorageUri,
   type StorageAdapterWith,
 } from "@hot-updater/plugin-core";
 
-export interface CloudflareWorkerStorageConfig {
+import { presignR2GetUrl, type R2Credentials } from "./presignR2Url";
+
+export type CloudflareWorkerStorageConfig = {
   readonly bucket: R2Bucket;
   readonly bucketName: string;
   readonly basePath?: string;
-  readonly downloadUrlSigningKey: string;
-}
+} & (
+  | {
+      /** The account whose R2 endpoint download URLs name. */
+      readonly accountId: string;
+      /**
+       * R2's S3-compatible credentials, which presign download URLs, as
+       * `r2Storage` from `@hot-updater/cloudflare` does: what a server needs
+       * to serve downloads.
+       */
+      readonly credentials: R2Credentials;
+    }
+  | { readonly accountId?: undefined; readonly credentials?: undefined }
+);
 
-export const r2WorkerStorage = (
+/** Devices download right after the update check that returns the URL. */
+const PRESIGNED_URL_EXPIRES_IN_SECONDS = 3600;
+
+/**
+ * Storage on the Worker's R2 binding. With R2's S3-compatible credentials,
+ * its download URLs are presigned and devices download from the bucket;
+ * without them, it has no `getDownloadUrl`, as a Console that only reads
+ * needs.
+ */
+export function r2WorkerStorage(
+  config: CloudflareWorkerStorageConfig & {
+    readonly credentials: R2Credentials;
+  },
+): StorageAdapterWith<"put" | "get" | "getDownloadUrl" | "exists" | "delete">;
+export function r2WorkerStorage(
   config: CloudflareWorkerStorageConfig,
-): StorageAdapterWith<
-  "put" | "get" | "getDownloadUrl" | "exists" | "delete"
-> => {
+): StorageAdapterWith<"put" | "get" | "exists" | "delete">;
+export function r2WorkerStorage(
+  config: CloudflareWorkerStorageConfig,
+): StorageAdapterWith<"put" | "get" | "exists" | "delete"> {
   const getStorageKey = createStorageKeyBuilder(config.basePath);
-  const getDownloadUrl = createStorageDownloadUrl(config.downloadUrlSigningKey);
 
   const parseAndValidate = (storageUri: string) => {
     const parsed = parseStorageUri(storageUri, "r2");
@@ -77,10 +103,22 @@ export const r2WorkerStorage = (
       headers.set("content-length", String(object.size));
       return { response: new Response(object.body, { headers }) };
     },
-    async getDownloadUrl({ storageUri }) {
-      parseAndValidate(storageUri);
-      return getDownloadUrl({ storageUri });
-    },
+    ...(config.credentials === undefined
+      ? {}
+      : {
+          async getDownloadUrl({ storageUri }: { storageUri: string }) {
+            const { key } = parseAndValidate(storageUri);
+            return {
+              url: await presignR2GetUrl({
+                accountId: config.accountId,
+                bucketName: config.bucketName,
+                credentials: config.credentials,
+                expiresInSeconds: PRESIGNED_URL_EXPIRES_IN_SECONDS,
+                key,
+              }),
+            };
+          },
+        }),
     async exists({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       return { exists: (await config.bucket.head(key)) !== null };
@@ -91,4 +129,4 @@ export const r2WorkerStorage = (
       return { deleted: true };
     },
   });
-};
+}

@@ -11,7 +11,9 @@ export type CloudflareWorkerEnv = {
   };
   BUCKET: R2Bucket;
   BUCKET_NAME: string;
-  STORAGE_DOWNLOAD_URL_SIGNING_KEY: string;
+  ACCOUNT_ID: string;
+  R2_ACCESS_KEY_ID: string;
+  R2_SECRET_ACCESS_KEY: string;
 };
 
 export const HOT_UPDATER_BASE_PATH = "/";
@@ -19,13 +21,16 @@ export const HOT_UPDATER_BASE_PATH = "/";
 const hotUpdater = createHotUpdater({
   database: d1Database(env.DB),
   plugins,
-  storage: [
-    r2Storage({
-      bucket: env.BUCKET,
-      bucketName: env.BUCKET_NAME,
-      downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
-    }),
-  ],
+  storage: r2Storage({
+    bucket: env.BUCKET,
+    bucketName: env.BUCKET_NAME,
+    // Presign download URLs, so devices download from R2.
+    accountId: env.ACCOUNT_ID,
+    credentials: {
+      accessKeyId: env.R2_ACCESS_KEY_ID,
+      secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+    },
+  }),
 });
 
 const app = new Hono<{ Bindings: CloudflareWorkerEnv }>();

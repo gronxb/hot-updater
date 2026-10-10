@@ -12,7 +12,9 @@
   },
   "vars": {
     "BUCKET_NAME": "hot-updater-test",
-    "STORAGE_DOWNLOAD_URL_SIGNING_KEY": "test-storage-download-url-signing-key"
+    "ACCOUNT_ID": "test-account-id",
+    "R2_ACCESS_KEY_ID": "test-access-key-id",
+    "R2_SECRET_ACCESS_KEY": "test-secret-access-key"
   },
   "d1_databases": [
     {

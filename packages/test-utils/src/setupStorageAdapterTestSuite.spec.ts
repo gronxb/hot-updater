@@ -1,6 +1,5 @@
 import {
   createStorageAdapter,
-  createStorageDownloadUrl,
   createStorageKeyBuilder,
   createStorageUri,
   parseStorageUri,
@@ -34,7 +33,6 @@ const memoryStorage = ({
     }
     return parsed.key;
   };
-  const signDownload = createStorageDownloadUrl("test-signing-key");
 
   return createStorageAdapter({
     name: "memoryStorage",
@@ -58,7 +56,9 @@ const memoryStorage = ({
     },
     async getDownloadUrl({ storageUri }) {
       keyOf(storageUri);
-      return signDownload({ storageUri });
+      return {
+        url: `https://downloads.example.com/${encodeURIComponent(storageUri)}`,
+      };
     },
     async exists({ storageUri }) {
       return { exists: objects.has(keyOf(storageUri)) };
@@ -348,12 +348,13 @@ describe("storage adapter test cases", () => {
         })),
     ],
     [
-      "getDownloadUrl signs each call differently",
+      "getDownloadUrl returns a path",
       "resolves a download URL for a stored object",
       () =>
         broken(() => ({
-          getDownloadUrl: (input) =>
-            createStorageDownloadUrl(crypto.randomUUID())(input),
+          getDownloadUrl: async ({ storageUri }) => ({
+            url: `/downloads/${encodeURIComponent(storageUri)}`,
+          }),
         })),
     ],
     [

@@ -39,6 +39,7 @@ import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins"; /
 
 export const hotUpdater = createHotUpdater({
   database,
+  storage,
   plugins: [insights(), apiKeys(), remoteConfig()], // [!code ++]
 });
 ```

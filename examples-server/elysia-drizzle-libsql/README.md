@@ -22,7 +22,6 @@ Follow these steps to run [Elysia.js](https://elysiajs.com) under [Node.js](http
    R2_ACCESS_KEY_ID=your-r2-access-key-id
    R2_SECRET_ACCESS_KEY=your-r2-secret-access-key
    R2_BUCKET_NAME=your-r2-bucket-name
-   HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY=replace-with-a-long-random-signing-key
    ```
 
 3. Create the data directory, apply the Drizzle schema, and initialize the

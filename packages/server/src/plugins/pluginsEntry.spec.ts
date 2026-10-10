@@ -3,6 +3,7 @@ import { createRequire } from "node:module";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import * as plugins from "@hot-updater/server/plugins";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 const require = createRequire(import.meta.url);
@@ -16,6 +17,7 @@ describe("@hot-updater/server/plugins", () => {
     (_, entry) => {
       const server = createHotUpdater({
         database: { name: "memory", adapter: createMemoryAdapter() },
+        storage: createReleaseCatalogTestStorage(),
         plugins: [
           entry.apiKeys({ headerName: "x-client-key" }),
           entry.insights({ retention: { rawDays: 7, dailyDays: 30 } }),

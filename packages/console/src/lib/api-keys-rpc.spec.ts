@@ -1,5 +1,6 @@
 // @vitest-environment node
 
+import { mockStorage } from "@hot-updater/mock";
 import type {
   AnyHotUpdaterPlugin,
   EngineDatabase,
@@ -48,6 +49,7 @@ const databaseRuntime = (
     plugins,
     api: createHotUpdater({
       database,
+      storage: mockStorage({}),
       plugins,
       ...(plugins.some(({ provides }) => provides?.clientAuth)
         ? {}

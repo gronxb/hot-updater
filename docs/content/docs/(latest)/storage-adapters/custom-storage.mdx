@@ -38,7 +38,7 @@ npm install @hot-updater/test-utils vitest --save-dev
 ```
 
 `@hot-updater/plugin-core` exports `createStorageAdapter`, the storage types,
-and the URI and download helpers used below. An adapter you publish lists it in
+and the URI helpers used below. An adapter you publish lists it in
 `peerDependencies`; see [Test and publish](/docs/plugins/publish).
 `@hot-updater/test-utils` runs the storage contract against your adapter; see
 [Test the adapter](#test-the-adapter).
@@ -50,7 +50,6 @@ your provider's SDK. Replace it with your SDK's client:
 
 ```ts title="src/myStorage.ts"
 import {
-  createStorageDownloadUrl,
   createStorageKeyBuilder,
   createStorageAdapter,
   createStorageUri,
@@ -69,6 +68,8 @@ export interface BucketClient {
     contentType: string;
     size: number;
   } | null>;
+  /** A URL a device downloads the object from, such as a presigned one. */
+  downloadUrl(key: string): Promise<string>;
   exists(key: string): Promise<boolean>;
   remove(key: string): Promise<void>;
 }
@@ -78,23 +79,12 @@ export interface MyStorageOptions {
   bucket: string;
   /** A folder inside the bucket for Hot Updater's objects. */
   basePath?: string;
-  /** Signs download URLs that the Hot Updater server answers itself. */
-  downloadUrlSigningKey?: string;
 }
 
 const PROTOCOL = "my-storage";
 
-export const myStorage = ({
-  client,
-  bucket,
-  basePath,
-  downloadUrlSigningKey,
-}: MyStorageOptions) => {
+export const myStorage = ({ client, bucket, basePath }: MyStorageOptions) => {
   const objectKey = createStorageKeyBuilder(basePath);
-  const signDownloadUrl =
-    downloadUrlSigningKey === undefined
-      ? undefined
-      : createStorageDownloadUrl(downloadUrlSigningKey);
   const keyOf = (storageUri: string) => {
     const parsed = parseStorageUri(storageUri, PROTOCOL);
     if (parsed.bucket !== bucket) {
@@ -132,6 +122,10 @@ export const myStorage = ({
       };
     },
 
+    async getDownloadUrl({ storageUri }) {
+      return { url: await client.downloadUrl(keyOf(storageUri)) };
+    },
+
     async exists({ storageUri }) {
       return { exists: await client.exists(keyOf(storageUri)) };
     },
@@ -140,15 +134,6 @@ export const myStorage = ({
       await client.remove(keyOf(storageUri));
       return { deleted: true };
     },
-
-    ...(signDownloadUrl === undefined
-      ? {}
-      : {
-          async getDownloadUrl({ storageUri }: { storageUri: string }) {
-            keyOf(storageUri);
-            return signDownloadUrl({ storageUri });
-          },
-        }),
   });
 };
 ```
@@ -184,22 +169,12 @@ contract can add fields without changing positions.
 ## Serve downloads
 
 `getDownloadUrl({ storageUri })` returns the URL a device downloads an object
-from. The server calls it for every artifact in an update response. Return one
-of these:
-
-- **A URL your provider serves.** A public or CDN URL, or one your provider
-  signs, such as an S3 presigned URL. It must be `http` or `https`.
-- **A download path the server answers.** `createStorageDownloadUrl(signingKey)`
-  returns a `getDownloadUrl` that signs the URI with HMAC-SHA256 and returns
-  `/storage/<uri>/<signature>`. The server's client handler checks the
-  signature and streams the object through `get`. Use it for a private bucket
-  your provider cannot sign URLs for. The app resolves the path against its
-  `baseURL`. The signature does not expire and the route skips client
-  authentication: like a public URL, it only keeps other objects' paths from
-  being guessed.
-
-Only the server needs `getDownloadUrl`, and with it the signing key. Keep the
-key in the server's environment, and use the same key on every server instance.
+from: an absolute `http` or `https` URL that your provider serves, such as a
+public or CDN URL, or one your provider signs, such as an S3 presigned URL. The
+server calls it for every artifact in an update response, and the device
+starts the download right away, so a signed URL needs to last only minutes;
+`s3Storage` and `r2Storage` sign theirs for an hour. Only the server needs
+`getDownloadUrl`.
 
 ## Register the adapter
 
@@ -220,30 +195,26 @@ const storage = myStorage({
 Assign this value to `storage` next to the configuration's `build`,
 `database`, `plugins`, and `updateStrategy`.
 
-The server takes a list, so it can read Bundles that different adapters stored.
-Configure the same bucket and base path as the CLI:
+The server takes the same adapter, with the same bucket and base path as the
+CLI:
 
 ```ts title="src/hotUpdater.ts (excerpt)"
 export const hotUpdater = createHotUpdater({
   database, // Your provider's database.
-  storage: [
-    myStorage({
-      client: createBucketClient(process.env.BUCKET_TOKEN!),
-      bucket: "bundles",
-      basePath: "ota",
-      downloadUrlSigningKey: process.env.STORAGE_DOWNLOAD_URL_SIGNING_KEY!,
-    }),
-  ],
+  storage: myStorage({
+    client: createBucketClient(process.env.BUCKET_TOKEN!),
+    bucket: "bundles",
+    basePath: "ota",
+  }),
   plugins: [insights(), apiKeys()],
 });
 ```
 
-`createHotUpdater` refuses two adapters with one protocol. The first read of
-`hotUpdater.handlers` checks that every adapter in `storage` implements `get`
+The first read of `hotUpdater.handlers` checks that `storage` implements `get`
 and `getDownloadUrl`, so a server that mounts the handlers throws there when
-one of them is upload-only. To answer a URI, Hot Updater:
+its adapter is upload-only. To answer a URI, Hot Updater:
 
-1. uses the registered adapter whose `protocol` matches the URI's scheme;
+1. uses the adapter when its `protocol` matches the URI's scheme;
 2. uses an `http` or `https` URI directly when no adapter owns its scheme;
 3. otherwise reports the scheme as unsupported.
 
@@ -319,6 +290,9 @@ const memoryBucket = (): BucketClient => {
         size: object.bytes.byteLength,
       };
     },
+    async downloadUrl(key) {
+      return `https://downloads.example.com/${encodeURIComponent(key)}`;
+    },
     async exists(key) {
       return objects.has(key);
     },
@@ -335,7 +309,6 @@ setupStorageAdapterTestSuite({
       client: memoryBucket(),
       bucket: "bundles",
       basePath: "ota",
-      downloadUrlSigningKey: "test-signing-key",
     }),
     basePath: "ota",
   }),
@@ -357,8 +330,8 @@ and Unicode; the archive and asset URIs that deploy derives from a manifest's
 URI; replacing an object; a failed upload that leaves no object; `null` for a
 missing object or a folder; a `delete` that removes exactly one object and
 succeeds again; a URI of another bucket or protocol, which every operation
-rejects; download URLs that are `http(s)` or the same `/storage/` path on every
-call, and with `fetchDownloadUrls`, URLs that serve the object; keys that
+rejects; download URLs that are absolute `http(s)` URLs, and with
+`fetchDownloadUrls`, URLs that serve the object; keys that
 `listObjects` returns relative to the base path, with a prefix as a folder; and
 `deleteObjects` deleting exactly the keys it receives.
 
@@ -382,13 +355,13 @@ setupStorageAdapterTestSuite({
         client,
         bucket: "hot-updater-test",
         basePath,
-        downloadUrlSigningKey: "test-signing-key",
       }),
       basePath,
       cleanup: () => deleteBelow(basePath),
     };
   },
   operations: ["put", "get", "getDownloadUrl", "exists", "delete"],
+  fetchDownloadUrls: true,
 });
 ```
 

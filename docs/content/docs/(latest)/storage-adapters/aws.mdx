@@ -30,7 +30,6 @@ import type { S3ClientConfig } from "@aws-sdk/client-s3";
 interface S3StorageConfig extends S3ClientConfig {
   bucketName: string; // S3 bucket name
   basePath?: string; // Optional base path within bucket
-  downloadUrlSigningKey?: string;
   getDownloadUrl?: (input: { storageUri: string }) => Promise<{ url: string }>;
 }
 ```
@@ -79,11 +78,10 @@ For example, `s3://my-bucket/releases/1.0.0/bundle%20ios.zip` is stored in the
 ## Capabilities
 
 `s3Storage` implements streaming upload, streaming Web-response reads,
-existence checks, and exact deletion. Download URL generation requires either
-`downloadUrlSigningKey` or a `getDownloadUrl` implementation; the adapter does
-not implicitly generate S3 presigned URLs. CLI-only storage does not need this
-capability. For a self-hosted server, set `downloadUrlSigningKey` so the adapter
-returns a signed URL handled by the same server.
+existence checks, exact deletion, and download URLs. A download URL is an S3
+presigned URL that expires in an hour, signed with the adapter's credentials:
+devices download from the bucket, which stays private. Pass `getDownloadUrl`
+to return another URL instead.
 
 For CloudFront delivery, pass `cloudFrontDownloadUrl(...)` as `getDownloadUrl`:
 
@@ -131,17 +129,14 @@ import { apiKeys, insights } from "@hot-updater/server/plugins";
 const hotUpdater = createHotUpdater({
   database,
   plugins: [insights(), apiKeys()],
-  storage: [ // [!code ++]
-    s3Storage({ // [!code ++]
-      region: process.env.AWS_REGION!, // [!code ++]
-      credentials: { // [!code ++]
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID!, // [!code ++]
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
-      }, // [!code ++]
-      bucketName: process.env.AWS_S3_BUNDLES_BUCKET!, // [!code ++]
-      downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!, // [!code ++]
-    }), // [!code ++]
-  ], // [!code ++]
+  storage: s3Storage({ // [!code ++]
+    region: process.env.AWS_REGION!, // [!code ++]
+    credentials: { // [!code ++]
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!, // [!code ++]
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
+    }, // [!code ++]
+    bucketName: process.env.AWS_S3_BUNDLES_BUCKET!, // [!code ++]
+  }), // [!code ++]
   // ... other options
 });
 ```

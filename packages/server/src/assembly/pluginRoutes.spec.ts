@@ -1,4 +1,5 @@
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "../createHotUpdaterCore";
@@ -55,6 +56,7 @@ describe("Insights routes with plugins", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const hotUpdater = createHotUpdater({
       database: database(),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [insights()],
       clientAccess: "public",
     });
@@ -84,6 +86,7 @@ describe("Insights routes with plugins", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     const hotUpdater = createHotUpdater({
       database: database(),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [],
       clientAccess: "public",
     });
@@ -117,6 +120,7 @@ describe("admin /version", () => {
       plugins(
         createHotUpdater({
           database: database(),
+          storage: createReleaseCatalogTestStorage(),
           plugins: [insights(), apiKeys()],
         }),
       ),
@@ -125,6 +129,7 @@ describe("admin /version", () => {
       plugins(
         createHotUpdater({
           database: database(),
+          storage: createReleaseCatalogTestStorage(),
           plugins: [insights()],
           clientAccess: "public",
         }),
@@ -135,6 +140,7 @@ describe("admin /version", () => {
   it("answers the server's version and plugin ids, and apps only the version", async () => {
     const hotUpdater = createHotUpdater({
       database: database(),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [insights(), apiKeys()],
     });
     const keys = async (response: Promise<Response>) =>
@@ -160,6 +166,7 @@ describe("admin /version", () => {
   it("lists none for a server without plugins, which serves no Insights route", async () => {
     const hotUpdater = createHotUpdater({
       database: database(),
+      storage: createReleaseCatalogTestStorage(),
       clientAccess: "public",
     });
 
@@ -185,6 +192,7 @@ describe("core reads", () => {
     });
     const hotUpdater = createHotUpdater({
       database: database(),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [channels],
       clientAccess: "public",
     });
@@ -208,6 +216,7 @@ describe("core reads", () => {
     const start = () =>
       createHotUpdater({
         database: database(),
+        storage: createReleaseCatalogTestStorage(),
         plugins: [impostor],
         clientAccess: "public",
       });

@@ -9,6 +9,7 @@ import {
   readPackageUp,
 } from "@hot-updater/cli-tools";
 import { createEngine } from "@hot-updater/plugin-core";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -48,6 +49,7 @@ beforeEach(async () => {
   } as never);
   vi.mocked(loadConfig).mockResolvedValue({
     database: closing.database,
+    storage: createReleaseCatalogTestStorage(),
     plugins: [],
     updateStrategy: "appVersion",
     platform: {

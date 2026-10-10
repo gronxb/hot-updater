@@ -4,6 +4,7 @@ import { createHotUpdater } from "@hot-updater/server";
 import {
   createBundleFixture,
   createBundleRowFixture,
+  createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import { createD1TestDatabase } from "@hot-updater/test-utils/node";
 import { expect, it } from "vitest";
@@ -39,6 +40,7 @@ it("reads through the binding's statements and writes each change as one batch",
         );
       },
     }),
+    storage: createReleaseCatalogTestStorage(),
     clientAccess: "public",
   }).core;
   const bundle = createBundleFixture("1");

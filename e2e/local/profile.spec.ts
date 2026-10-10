@@ -28,7 +28,6 @@ describe("local standalone profile", () => {
       storagePort: 3003,
       token: "local-admin",
       storagePassword: "local-storage",
-      signingKey: "local-signing",
       env: {
         NODE_ENV: "development",
         BABEL_ENV: "development",
@@ -83,15 +82,16 @@ describe("local standalone profile", () => {
       storagePort: 4003,
       token: "local-admin",
       storagePassword: "local-storage",
-      signingKey: "local-signing",
       env: {},
     });
     const childEnv = buildControlServerEnv("android", profile.env);
     expect(childEnv.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL).toBe(
       "http://127.0.0.1:3107/e2e/runtime-config",
     );
+    // The storage port too: presigned download URLs name the local S3.
     expect(planAndroidReverses(childEnv)).toEqual([
       { device: "tcp:4001", host: "tcp:4001" },
+      { device: "tcp:4003", host: "tcp:4003" },
       { device: "tcp:3107", host: "tcp:4002" },
     ]);
     const policy = await fs.readFile(
@@ -113,6 +113,7 @@ describe("local standalone profile", () => {
     for (const key of [
       "HOT_UPDATER_APP_BASE_URL",
       "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL",
+      "AWS_S3_ENDPOINT",
     ]) {
       const url = new URL(profile.env[key]!);
       expect(url.protocol).toBe("http:");

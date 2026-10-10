@@ -8,6 +8,7 @@ import {
   toolingTargetOf,
   createMemoryAdapter,
 } from "@hot-updater/plugin-core";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { describe, expect, it, vi } from "vitest";
@@ -90,6 +91,7 @@ describe("plugin tables in db tooling", () => {
   it("migrates an engine database's core and plugin tables with its adapter", async () => {
     const hotUpdater = createHotUpdater({
       database: memoryDatabase(),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [notes],
       clientAccess: "public",
     });
@@ -115,9 +117,16 @@ describe("plugin tables in db tooling", () => {
 
   it("answers 503 until the plugin's settings row exists, then serves it", async () => {
     const database = memoryDatabase();
-    await migrate(createHotUpdater({ database, clientAccess: "public" }));
+    await migrate(
+      createHotUpdater({
+        database,
+        storage: createReleaseCatalogTestStorage(),
+        clientAccess: "public",
+      }),
+    );
     const hotUpdater = createHotUpdater({
       database,
+      storage: createReleaseCatalogTestStorage(),
       plugins: [notes],
       clientAccess: "public",
     });
@@ -141,6 +150,7 @@ describe("plugin tables in db tooling", () => {
     await expect(
       createHotUpdater({
         database,
+        storage: createReleaseCatalogTestStorage(),
         clientAccess: "public",
       }).core.listChannels(),
     ).resolves.toEqual([]);
@@ -152,6 +162,7 @@ describe("plugin tables in db tooling", () => {
     try {
       const hotUpdater = createHotUpdater({
         database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
+        storage: createReleaseCatalogTestStorage(),
         plugins: [notes],
         clientAccess: "public",
       });
@@ -184,6 +195,7 @@ describe("plugin tables in db tooling", () => {
       generateSchema(
         createHotUpdater({
           database,
+          storage: createReleaseCatalogTestStorage(),
           plugins: [notes],
           clientAccess: "public",
         }),
@@ -227,6 +239,7 @@ describe("plugin tables in db tooling", () => {
     const start = (plugins: readonly AnyHotUpdaterPlugin[]) => () =>
       createHotUpdater({
         database: memoryDatabase(),
+        storage: createReleaseCatalogTestStorage(),
         plugins,
         ...(plugins.some(({ provides }) => provides?.clientAuth)
           ? {}

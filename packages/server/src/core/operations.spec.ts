@@ -7,7 +7,10 @@ import {
   DatabaseRowReferencedError,
   type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
-import { createBundleFixture } from "@hot-updater/test-utils";
+import {
+  createBundleFixture,
+  createReleaseCatalogTestStorage,
+} from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 import { createHotUpdater } from "../createHotUpdaterCore";
@@ -446,6 +449,7 @@ describe("cached client routes", () => {
           purges += 1;
         },
       },
+      storage: createReleaseCatalogTestStorage(),
       clientAccess: "public",
     });
 

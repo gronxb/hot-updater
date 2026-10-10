@@ -11,7 +11,10 @@ import {
   type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { storeBundles } from "@hot-updater/test-utils";
+import {
+  storeBundles,
+  createReleaseCatalogTestStorage,
+} from "@hot-updater/test-utils";
 import { vi } from "vitest";
 
 export type DeploymentSeed = BundleDeployment;
@@ -41,6 +44,7 @@ export const createDatabaseHarness = () => {
   };
   const { core: engineCore } = createHotUpdater({
     database: { name: "test-database", adapter },
+    storage: createReleaseCatalogTestStorage(),
     clientAccess: "public",
   });
   const deploy = vi.fn((deployments: readonly Deployment[]) =>

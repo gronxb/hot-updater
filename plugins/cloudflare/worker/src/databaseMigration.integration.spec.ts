@@ -5,7 +5,10 @@ import {
   insights,
   remoteConfig,
 } from "@hot-updater/server/plugins";
-import { createBundleEventRowFixture } from "@hot-updater/test-utils";
+import {
+  createBundleEventRowFixture,
+  createReleaseCatalogTestStorage,
+} from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import { expect, inject, it } from "vitest";
 
@@ -67,6 +70,7 @@ it("creates every table, the batch guard, and the settings the fence checks", as
 it("publishes a Remote Config template and serves it from the initialized D1 schema", async () => {
   const api = createHotUpdater({
     database: d1Database(env.DB),
+    storage: createReleaseCatalogTestStorage(),
     plugins: [remoteConfig()],
     clientAccess: "public",
   }).api.remoteConfig;
@@ -102,6 +106,7 @@ it("returns canonical downloaded and applied events from the initialized D1 sche
   const model = createInsightsModel(
     createHotUpdater({
       database: d1Database(env.DB),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [insights()],
       clientAccess: "public",
     }).api.insights,

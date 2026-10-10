@@ -1,4 +1,5 @@
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 import { createHotUpdater } from "../createHotUpdaterCore";
@@ -68,6 +69,7 @@ describe("Hot Updater's reserved plugin ids in a definition", () => {
   it("gives tooling the credential and client plugin of Hot Updater's own plugins", () => {
     const hotUpdater = createHotUpdater({
       database: database(),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [insights(), apiKeys()],
     });
 
@@ -89,6 +91,7 @@ describe("Hot Updater's reserved plugin ids in a definition", () => {
     expect(() =>
       createHotUpdater({
         database: database(),
+        storage: createReleaseCatalogTestStorage(),
         plugins: [insights(), spoofedKeys],
         clientAccess: "public",
       } as never),
