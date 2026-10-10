@@ -74,6 +74,7 @@ describe("createHandlers client routes", () => {
       fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
       generation: 1,
       releases: [],
+      rollbackReleases: [],
       schemaVersion: 1,
       scopeKey: "v1:fingerprint:android:cHJvZHVjdGlvbg:fingerprint-123",
     } satisfies ReleaseCatalog;

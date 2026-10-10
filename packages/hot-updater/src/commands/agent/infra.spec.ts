@@ -125,7 +125,7 @@ describe("published agent infrastructure commands", () => {
         }
         const appFile = (file: string) =>
           readFile(path.join(result.data.output, "app", file), "utf8");
-        const legacyPluginsImport = new RegExp(
+        const providerPluginsImport = new RegExp(
           `^import \\{[^}]*\\bplugins\\b[^}]*\\} from "@hot-updater/${provider}";$`,
           "mu",
         );
@@ -136,7 +136,7 @@ describe("published agent infrastructure commands", () => {
         expect(config).toContain(
           'import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";',
         );
-        expect(config).not.toMatch(legacyPluginsImport);
+        expect(config).not.toMatch(providerPluginsImport);
         expect(config).toMatch(/^ {2}storage: \w+\(/mu);
         expect(config).toMatch(/^ {2}database: \w+\(/mu);
         expect(config).toContain(
@@ -152,7 +152,7 @@ describe("published agent infrastructure commands", () => {
         expect(definition).toContain(
           "export const hotUpdater = createHotUpdater({",
         );
-        expect(definition).not.toMatch(legacyPluginsImport);
+        expect(definition).not.toMatch(providerPluginsImport);
         expect(definition).not.toContain('from "hot-updater/plugins"');
         expect(definition).toContain(
           'import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";',

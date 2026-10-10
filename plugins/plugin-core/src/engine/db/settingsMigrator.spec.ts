@@ -43,18 +43,18 @@ describe("the settings-only migrator", () => {
     ).resolves.toBeUndefined();
   });
 
-  it("asks for the ORM's tables first, refuses a database from before the engine, and rethrows other failures", async () => {
+  it("asks for the ORM's tables first, refuses a v0 database, and rethrows other failures", async () => {
     await expect(
       migratorOver(new DatabaseSync(":memory:")).migrateToLatest(),
     ).rejects.toThrow("the ORM's push");
 
-    const legacy = new DatabaseSync(":memory:");
-    legacy.exec(
-      "CREATE TABLE private_hot_updater_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO private_hot_updater_settings VALUES ('schema.core', '1.0.0');",
+    const v0 = new DatabaseSync(":memory:");
+    v0.exec(
+      "CREATE TABLE private_hot_updater_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL); INSERT INTO private_hot_updater_settings VALUES ('version', '0.21.0');",
     );
-    await expect(migratorOver(legacy).migrateToLatest()).rejects.toMatchObject({
-      setting: { key: "schema.engine", expected: "1", found: null },
-    });
+    await expect(migratorOver(v0).migrateToLatest()).rejects.toThrow(
+      "Hot Updater v1 cannot migrate schema 0.21.0 in place.",
+    );
 
     const closed = new DatabaseSync(":memory:");
     closed.close();

@@ -101,10 +101,9 @@ head's values before it.
 A launch (`isLaunch`) is an `UPDATE_APPLIED`, or a kept `UNCHANGED` that moved
 the installation to another bundle under a non-null Release. One rule counts
 it everywhere: the Release's lifetime `applies`, the `on:<bundle>` outcome key,
-and the bundle filter `{ type: "UNCHANGED", toBundleId }`. The `on:` key is
-new, so `UNCHANGED` rows that older servers kept for every launch count as
-no launch. A first report, a Release change of the running bundle, and a move
-under no Release are not launches.
+and the bundle filter `{ type: "UNCHANGED", toBundleId }`. A first report, a
+Release change of the running bundle, and a move under no Release are not
+launches.
 
 A reload can deliver one runtime's report after the next runtime's. A download
 or apply whose target the head already runs, a download that repeats the

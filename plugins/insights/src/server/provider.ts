@@ -200,8 +200,7 @@ const readEventCursor = (
   filter: InsightsEventFilter,
 ): EventCursorPayload => {
   const cursor = decodeCursor(value);
-  // A cursor names the row it continues after. One that only held a time
-  // (`olderThanMs`) resumed below a window of days, which lists no longer do.
+  // A cursor names the row it continues after.
   if (
     !isRecord(cursor) ||
     cursor.version !== 2 ||

@@ -119,11 +119,11 @@ target for an older scaffold.
 Read the returned `upgradeGuide` (`upgrades/README.md`) and ordered `upgradeFiles`
 entries (`upgrades/<version>.md`). Read the installed generation's baseline as
 context, then every subsequent requirement through the target in ascending order,
-including skipped releases. Prerelease installations also need baseline context;
-if the deployment predates the first file, start there. Read all relevant files
-before making changes, using each file's common sections and selected provider
-section. Do not read only the newest release or blindly replay already applied
-steps. Resolve conflicting prerequisites before applying pending changes in order.
+including skipped releases. If the deployment predates the first file, start
+there. Read all relevant files before making changes, using each file's common
+sections and selected provider section. Do not read only the newest release or
+blindly replay already applied steps. Resolve conflicting prerequisites before
+applying pending changes in order.
 
 Preserve customized files, resource identities, endpoints, data, migration history,
 client API keys, and signing keys as the release instructions require. Do not
@@ -136,11 +136,10 @@ remembered migration recipe from this skill.
 ## Verify and report
 
 Follow all common/provider completion steps, including local configuration and
-the final report. When the scaffold supplies app/verify-server.mjs, run it with
-its documented arguments and actual app target instead of recreating the probe.
+the final report. Run the scaffold's app/verify-server.mjs with its documented
+arguments and actual app target instead of recreating the probe.
 It is read-only, reads keys privately, and emits sanitized JSON with a nonzero
 exit code on failure. It does not test artifact signing or native integration.
-Older scaffolds may describe a manual probe; follow their versioned instructions.
 Check the public server's actual version/generation against the target, verify an authenticated client request and
 artifact access when available, and run the discovered doctor command against the
 actual server base URL. `/version` is public and does not test client authentication.

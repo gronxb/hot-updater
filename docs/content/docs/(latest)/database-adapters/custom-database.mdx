@@ -305,9 +305,9 @@ migrator from `@hot-updater/plugin-core`, which its `createMigrator` returns:
   rows. `applyTables` says how the ORM creates the tables, for the error when
   they are missing.
 
-Both refuse a database from before the storage engine. The ORM's own schema
-generator renders each table from `sqlTableShapes` and quotes names with
-`quoteSql`; see [Create the schema](#create-the-schema).
+Both refuse a v0 database. The ORM's own schema generator renders each
+table from `sqlTableShapes` and quotes names with `quoteSql`; see
+[Create the schema](#create-the-schema).
 
 ## Wrap it as a database
 
@@ -324,7 +324,7 @@ database also carries the migration that `hot-updater db migrate` runs.
 | `onCachedRoutesChange` | A CDN purge for the cacheable client routes. Core calls it after a committed write that changes a Release Catalog, so the adapter never names a table. `dynamoDB` invalidates CloudFront here. |
 | `aggregateBatching`    | For a backend that bills each write: apply the changes of aggregates declared `batched` after their transaction commits, merged into one write per row. `{ mode?: "log" \| "memory", windowMs? }`; absent or `false` writes them in each transaction. `dynamoDB` and `firebaseDatabase` pass `{}`, the log mode. |
 | `retry`                | Optional. How a transaction that conflicts with another write runs again: `{ attempts?, baseDelayMs?, maxDelayMs?, onRetry? }`, 8 attempts 5 ms apart at first, doubling to at most 250 ms. A store many writers contend on, such as DynamoDB under a burst of events, can take more attempts; `onRetry(kind, attempt)` observes each rerun, such as for a metric. |
-| `readSettings`         | Optional. How `hot-updater db migrate` reads the stored settings rows, by key, when an earlier version of the adapter stored them elsewhere; the MongoDB adapter reads its pre-engine rows this way. By default the migrator reads them through the adapter. |
+| `readSettings`         | Optional. How `hot-updater db migrate` reads the stored settings rows, by key. By default the migrator reads the engine's keys through the adapter; an adapter whose v0 database kept other settings rows reads every row itself, so the migrator refuses a v0 database, as the MongoDB adapter does. |
 
 Pass the database to the CLI and the server, with the same plugins. Partial
 configuration:

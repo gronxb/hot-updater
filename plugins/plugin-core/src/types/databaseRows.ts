@@ -43,7 +43,7 @@ export interface ReleaseRow {
   readonly scope_key: string;
   readonly channel_id: string;
   readonly platform: Platform;
-  readonly kind: "BUNDLE" | "EMBEDDED";
+  readonly kind: "BUNDLE";
   readonly bundle_id: string | null;
   readonly strategy: "APP_VERSION" | "FINGERPRINT";
   readonly target_app_version: string | null;

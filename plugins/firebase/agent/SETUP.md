@@ -18,8 +18,6 @@ supply this CLI. Do this before remote provisioning.
     The runtime keeps every item in the hot_updater_v1 collection and serves from
     the hot-updater-v1 Function. Preserve unrelated collections/functions and
     stop before mutation if the existing namespace or endpoint is incompatible.
-    Nonempty hot_updater_v1_* collections are an unsupported layout; preserve
-    them and investigate before adopting the project.
   - Verify/record: projectId and region; ownership and compatible reuse established.
   - Retry: query the same project ID/creation operation before another request.
 

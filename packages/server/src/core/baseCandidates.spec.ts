@@ -59,7 +59,6 @@ const referenceBaseBundleIds = async (
       const id = release.bundle_id;
       if (
         compatible &&
-        release.kind === "BUNDLE" &&
         id !== null &&
         id < bundleId &&
         !found.includes(id) &&

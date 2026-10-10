@@ -605,7 +605,7 @@ export function ReleaseEditorSheet({
                   <h3 className="text-sm font-medium">Actions</h3>
                   <Button
                     className="w-full"
-                    disabled={release.kind !== "BUNDLE" || busy}
+                    disabled={!release.bundle_id || busy}
                     onClick={() => setShowPromote(true)}
                     size="sm"
                     variant="outline"

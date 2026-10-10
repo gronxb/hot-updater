@@ -1,5 +1,21 @@
 # @hot-updater/protocol
 
+## 1.0.0-rc.47
+
+### Patch Changes
+
+- ccf3e2f: Remove the `EMBEDDED` Release kind. Every Release points at a Bundle, and a device goes back to its built-in bundle through the `BUILTIN` selection.
+  - `getActiveUpdateState().kind` is `"BUNDLE"` or `"BUILTIN"`, and `transitionKind` no longer includes `"USE_EMBEDDED"`; no server creates bundle-less Releases.
+  - `ReleaseKind` and `ReleaseRow.kind` are `"BUNDLE"`. The `kind` column and the `kind` field of catalog descriptors stay, so no migration is needed and catalogs are unchanged.
+  - `parseReleaseCatalog` accepts only `BUNDLE` descriptors that carry a `bundleId`.
+  - `compileReleaseCatalog` rejects an enabled Release without a Bundle with `INVALID_RELEASE`.
+
+- ccf3e2f: The React Native SDK calls its native module directly and requires `rollbackReleases` in every Release catalog.
+  - `@hot-updater/react-native` calls `getInstallId()`, `getStorageItem()`, `setStorageItem()`, and the Release catalog methods of its native module without checking that they exist. Every native build of the SDK implements them.
+  - The `insights()` client treats a `400` to an `UPDATE_FAILED` report like any other `400`: it doesn't retry, it logs a warning, and it reports the failure again when it happens again.
+  - `ReleaseCatalog.rollbackReleases` is required. `parseReleaseCatalog` rejects a catalog without it, and `selectDesiredRelease` looks for rollback candidates only there. Hot Updater servers always send it.
+  - `projectCompiledRollbackCatalog` reads only the compiled catalog's `rollbackReleaseIndexes`, which `compileReleaseCatalog` always writes.
+
 ## 1.0.0-rc.46
 
 ### Minor Changes

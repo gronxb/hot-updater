@@ -282,8 +282,8 @@ describe("init choices", () => {
   });
 
   it("stops before editing any file when the installed provider package has no init for this CLI, naming the version to install", async () => {
-    // Given: a provider package from before its one ./init entry, whose
-    // ./init has the provider's definition but no runInit.
+    // Given: a provider package whose ./init has the provider's definition
+    // but no runInit.
     mocks.readHotUpdaterInitEnv.mockResolvedValue({ env: {}, managedEnv: {} });
     const { initProvider } = await import("@hot-updater/aws/init");
     vi.spyOn(INIT_PROVIDER_PACKAGES.aws, "load").mockResolvedValue({

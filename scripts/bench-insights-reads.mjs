@@ -115,7 +115,7 @@ function makeEvent(
       cohort: "0",
       update_strategy: type === "UNCHANGED" ? null : "appVersion",
       fingerprint_hash: null,
-      sdk_version: "1.0.0-rc",
+      sdk_version: "1.0.0",
     }),
     received_at_ms: sequence * 10000 + installation,
   };

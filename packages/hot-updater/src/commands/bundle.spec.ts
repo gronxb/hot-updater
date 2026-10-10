@@ -105,7 +105,6 @@ describe("Bundle commands", () => {
     expect(table).not.toContain(bundle.id);
     expect(table).not.toContain(android.id);
     expect(table).not.toContain("Release ID");
-    expect(table).not.toContain("Bundle / Embedded");
 
     await handleBundleList({ json: true, platform: "ios", limit: 5 });
     expect(JSON.parse(String(output.mock.calls.at(-1)?.[0]))).toEqual([

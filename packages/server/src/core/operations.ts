@@ -403,7 +403,7 @@ export const createCoreOperations = (
     promoteRelease: (input) =>
       withChannels(async () => {
         const checkSource = (source: ReleaseRow) => {
-          if (source.kind !== "BUNDLE" || source.bundle_id === null) {
+          if (source.bundle_id === null) {
             throw new ReleaseManagementError(
               "TARGET_RELEASE_INVALID",
               "Only a Bundle Release can be promoted.",

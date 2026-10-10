@@ -669,7 +669,7 @@ describe("E2E scenario contract", () => {
 
   it.each([
     ["running-file", "staged-update"],
-    ["019f0000-0000-7000-8000-000000000000", "embedded-update"],
+    ["019f0000-0000-7000-8000-000000000000", "staged-update"],
   ])(
     "keeps runtime file diagnostics on %s when the selected ID is %s",
     (bundleId, updateId) => {
@@ -733,7 +733,7 @@ describe("E2E scenario contract", () => {
   it.each([
     ["safe-file", "promoted-update", false],
     ["crash-file", "safe-file", true],
-    ["019f0000-0000-7000-8000-000000000000", "embedded-update", false],
+    ["019f0000-0000-7000-8000-000000000000", "staged-update", false],
   ])(
     "checks the crash guard against file %s independently of selected ID %s",
     async (bundleId, updateId, shouldCrash) => {

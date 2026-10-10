@@ -68,7 +68,6 @@ const refusal = (status: number, value: unknown, fallback: string): Error => {
 };
 
 const keysetParams = ({ order, after, limit }: KeysetInput) => ({
-  v: String(STANDALONE_ADMIN_PROTOCOL),
   limit: String(limit),
   ...(order === undefined ? {} : { order }),
   ...(after === undefined ? {} : { cursor: after }),
@@ -101,7 +100,7 @@ const filterParams = (filter: ReleaseFilter): Record<string, string> => {
 /**
  * Core's API over a self-hosted server's admin handler, protocol 2: the CLI's
  * path to a database it cannot open itself. The first call checks that the
- * server speaks protocol 2, so an older server fails fast.
+ * server speaks protocol 2, so a baseUrl without it fails before any read.
  */
 export const createStandaloneCoreApi = (
   config: StandaloneRepositoryConfig,
@@ -212,15 +211,13 @@ export const createStandaloneCoreApi = (
     query: Readonly<Record<string, string>>,
   ): Promise<T[]> => (await call<T[]>("GET", path, { query })) ?? [];
 
-  const v2 = { v: String(STANDALONE_ADMIN_PROTOCOL) };
   const encode = encodeURIComponent;
 
   return {
     ready: async () => {
-      await list("/release-catalogs", { ...v2, limit: "1" });
+      await list("/release-catalogs", { limit: "1" });
     },
-    getBundle: (id) =>
-      call<BundleDetail>("GET", `/bundles/${encode(id)}`, { query: v2 }),
+    getBundle: (id) => call<BundleDetail>("GET", `/bundles/${encode(id)}`),
     listBundles: ({ platform, ...input }) =>
       list<BundleDetail>("/bundles", {
         ...keysetParams(input),
@@ -228,7 +225,7 @@ export const createStandaloneCoreApi = (
       }),
     countBundles: async (platform) => {
       const total = await call<unknown>("GET", "/bundles/count", {
-        query: { ...v2, ...(platform === undefined ? {} : { platform }) },
+        query: platform === undefined ? {} : { platform },
       });
       if (typeof total !== "number") {
         throw new StandaloneDatabaseError(
@@ -243,7 +240,7 @@ export const createStandaloneCoreApi = (
       if (ids.length === 0) return {};
       return (
         (await call<Record<string, number>>("GET", "/bundles/child-counts", {
-          query: { ...v2, ids: ids.join(",") },
+          query: { ids: ids.join(",") },
         })) ?? {}
       );
     },
@@ -267,9 +264,9 @@ export const createStandaloneCoreApi = (
       call<ReleaseCatalogRow>("GET", `/release-catalogs/${encode(scopeKey)}`),
     listReleaseCatalogs: (input) =>
       list<ReleaseCatalogRow>("/release-catalogs", keysetParams(input)),
-    listChannels: () => list<ChannelRow>("/channels", v2),
+    listChannels: () => list<ChannelRow>("/channels", {}),
     findChannelByName: (name) =>
-      call<ChannelRow>("GET", "/channels", { query: { ...v2, name } }),
+      call<ChannelRow>("GET", "/channels", { query: { name } }),
 
     deploy: async (deployments) =>
       (await call<ReleaseCatalogMutationResult[]>("POST", "/releases", {
@@ -317,10 +314,7 @@ export const createStandaloneCoreApi = (
         `/release-catalogs/${encode(scopeKey)}/preflight`,
       ))!,
     ensureChannel: async (name) =>
-      (await call<ChannelRow>("POST", "/channels", {
-        query: v2,
-        body: { name },
-      }))!,
+      (await call<ChannelRow>("POST", "/channels", { body: { name } }))!,
     deleteChannel: async (id) => {
       const response = await call<ChannelDeleteResult>(
         "DELETE",

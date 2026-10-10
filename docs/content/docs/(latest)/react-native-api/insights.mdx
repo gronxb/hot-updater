@@ -141,9 +141,6 @@ the SDK knows:
 - A failure still waiting to be sent, or being retried, is dropped once the
   same runtime reports `UPDATE_DOWNLOADED` or `UPDATE_APPLIED` for the same
   target bundle.
-- A server that does not accept `UPDATE_FAILED` answers `400`. The plugin
-  skips that failure for the rest of the UTC day, without a retry or a
-  warning.
 
 A check that finds no Release for its scope, a bundle in the device's crash
 history, and a selection that a newer check replaced are

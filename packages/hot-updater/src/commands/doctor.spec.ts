@@ -226,9 +226,9 @@ describe("areVersionsCompatible", () => {
   });
 
   it("should accept increments within the same pre-release channel", () => {
-    expect(areVersionsCompatible("1.0.0-rc.1", "1.0.0-rc.0")).toBe(true);
-    expect(areVersionsCompatible("1.0.0-rc.0", "1.0.0-rc.1")).toBe(true);
-    expect(areVersionsCompatible("1.0.1-rc.0", "1.0.0-rc.0")).toBe(false);
+    expect(areVersionsCompatible("1.1.0-beta.1", "1.1.0-beta.0")).toBe(true);
+    expect(areVersionsCompatible("1.1.0-beta.0", "1.1.0-beta.1")).toBe(true);
+    expect(areVersionsCompatible("1.1.1-beta.0", "1.1.0-beta.0")).toBe(false);
   });
 });
 
@@ -275,15 +275,15 @@ describe("infrastructure version helpers", () => {
   });
 
   it.each([
-    ["1.0.0-rc.2", false],
-    ["1.0.0-rc.1", true],
+    ["1.0.0-beta.2", false],
+    ["1.0.0-beta.1", true],
     ["1.0.0", false],
   ])(
-    "checks server %s against the runtime shipped by the RC",
+    "checks server %s against the runtime a prerelease CLI ships",
     async (serverVersion, needsUpdate) => {
       const requiredTarget = getRequiredUpdateTarget(
-        "1.0.0-rc.4",
-        "1.0.0-rc.2",
+        "1.0.0-beta.4",
+        "1.0.0-beta.2",
       );
       expect(requiredTarget.version).toBe("1.0.0");
       const status = await checkInfrastructureStatus({
@@ -297,23 +297,24 @@ describe("infrastructure version helpers", () => {
         ),
       });
       expect(status).toMatchObject({
-        requiredVersion: "1.0.0-rc.2",
+        requiredVersion: "1.0.0-beta.2",
         needsUpdate,
       });
       expect(status.upgradeBlocked).toBeUndefined();
     },
   );
 
-  it("does not relax a stable CLI's requirement for an RC server", async () => {
-    const requiredTarget = getRequiredUpdateTarget("1.0.0", "1.0.0-rc.2");
+  it("does not relax a stable CLI's requirement for a prerelease server", async () => {
+    const requiredTarget = getRequiredUpdateTarget("1.0.0", "1.0.0-beta.2");
     const status = await checkInfrastructureStatus({
       serverBaseUrl: "https://updates.example.com",
       requiredTarget,
-      fetchImpl: vi
-        .fn<typeof fetch>()
-        .mockResolvedValue(
-          Response.json({ infrastructureGeneration: 1, version: "1.0.0-rc.2" }),
-        ),
+      fetchImpl: vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json({
+          infrastructureGeneration: 1,
+          version: "1.0.0-beta.2",
+        }),
+      ),
     });
     expect(status).toMatchObject({
       requiredVersion: "1.0.0",
@@ -323,17 +324,17 @@ describe("infrastructure version helpers", () => {
 
   it("does not relax the baseline for a different server core version", () => {
     expect(
-      getRequiredUpdateTarget("1.0.0-rc.4", "0.99.0-rc.2"),
+      getRequiredUpdateTarget("1.0.0-beta.4", "0.99.0-beta.2"),
     ).not.toHaveProperty("minimumPrereleaseVersion");
   });
 
-  it("still blocks a missing generation marker on the bundled RC runtime", async () => {
+  it("still blocks a missing generation marker on the runtime a prerelease CLI ships", async () => {
     const status = await checkInfrastructureStatus({
       serverBaseUrl: "https://updates.example.com",
-      requiredTarget: getRequiredUpdateTarget("1.0.0-rc.4", "1.0.0-rc.2"),
+      requiredTarget: getRequiredUpdateTarget("1.0.0-beta.4", "1.0.0-beta.2"),
       fetchImpl: vi
         .fn<typeof fetch>()
-        .mockResolvedValue(Response.json({ version: "1.0.0-rc.2" })),
+        .mockResolvedValue(Response.json({ version: "1.0.0-beta.2" })),
     });
     expect(status.upgradeBlocked).toBe(true);
     expect(status.needsUpdate).toBeUndefined();
@@ -700,14 +701,14 @@ describe("doctor", () => {
     expect(result).toBe(true);
   });
 
-  it("should accept independently released packages in the same RC", async () => {
+  it("should accept independently released packages in the same prerelease", async () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: {
         dependencies: {
-          "hot-updater": "1.0.0-rc.0",
-          "@hot-updater/cloudflare": "1.0.0-rc.0",
-          "@hot-updater/expo": "1.0.0-rc.1",
-          "@hot-updater/react-native": "1.0.0-rc.1",
+          "hot-updater": "1.1.0-beta.0",
+          "@hot-updater/cloudflare": "1.1.0-beta.0",
+          "@hot-updater/expo": "1.1.0-beta.1",
+          "@hot-updater/react-native": "1.1.0-beta.1",
         },
       },
       path: "/mock/cwd/package.json",
@@ -751,10 +752,10 @@ describe("doctor", () => {
     });
   });
 
-  it.each(["1.0.0-rc.4", "^1.0.0-rc.4", "~1.0.0-rc.4"])(
+  it.each(["1.0.0-beta.4", "^1.0.0-beta.4", "~1.0.0-beta.4"])(
     "uses the executing CLI runtime rather than the %s dependency declaration",
     async (declaredVersion) => {
-      packageJsonData.version = "1.0.0-rc.4";
+      packageJsonData.version = "1.0.0-beta.4";
       mockReadPackageUp.mockResolvedValue({
         packageJson: { devDependencies: { "hot-updater": declaredVersion } },
         path: "/mock/cwd/package.json",

@@ -109,15 +109,11 @@ describe("schema fence", () => {
     });
   });
 
-  it("asks for a new database only when one carries a schema version without the engine setting", () => {
+  it("asks for a new database only for a v0 schema, which it cannot migrate in place", () => {
     expect(
-      new HotUpdaterSchemaMigrationRequiredError("memory", "1.0.0", {
-        key: "schema.engine",
-        expected: "1",
-        found: null,
-      }).message,
+      new HotUpdaterSchemaMigrationRequiredError("memory", "0.21.0").message,
     ).toBe(
-      'Hot Updater schema setting "schema.engine" for memory is missing; expected "1". Create a new empty database and run `hot-updater db migrate`; databases from before the storage engine are not converted.',
+      "Hot Updater v1 cannot migrate schema 0.21.0 in place. Create a new empty database and run `hot-updater db migrate`.",
     );
   });
 
@@ -141,7 +137,7 @@ describe("schema fence", () => {
     expect(calls.gets).toBe(3);
   });
 
-  it("rewrites only changed settings and refuses a database from before the engine", async () => {
+  it("rewrites only changed settings", async () => {
     const memory = createMemoryAdapter();
     await migrateSchema(memory, "memory", [], settings);
     const writes: unknown[] = [];
@@ -159,18 +155,6 @@ describe("schema fence", () => {
       "schema.insights": "1.0.0",
     });
     expect(writes).toHaveLength(1);
-
-    const legacy = createMemoryAdapter();
-    await legacy.write([
-      {
-        type: "insert",
-        table: SETTINGS_TABLE,
-        row: { key: "schema.core", value: "1.0.0", _v: 0 },
-      },
-    ]);
-    await expect(
-      mismatch(writeSchemaSettings(legacy, "memory", settings)),
-    ).resolves.toEqual({ key: "schema.engine", expected: "1", found: null });
   });
   it("reads a missing table as missing settings and rethrows any other failure", async () => {
     const empty = createSqlAdapter({

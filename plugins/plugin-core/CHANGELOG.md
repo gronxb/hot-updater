@@ -1,5 +1,30 @@
 # @hot-updater/plugin-core
 
+## 1.0.0-rc.47
+
+### Patch Changes
+
+- 5891d9b: Two messages now name the actual problem.
+  - The schema fence tells a database that hasn't been migrated, such as a new one or one whose tables `drizzle-kit push` or `prisma db push` just created, to run `hot-updater db migrate`.
+  - `@hot-updater/react-native` reports a 404 from the artifact endpoint as the server's HTTP 404, the same as a catalog request, instead of "Server does not support artifact protocol 1". Responses that aren't artifact protocol 1 still fail with that message.
+
+- ccf3e2f: Remove the `EMBEDDED` Release kind. Every Release points at a Bundle, and a device goes back to its built-in bundle through the `BUILTIN` selection.
+  - `getActiveUpdateState().kind` is `"BUNDLE"` or `"BUILTIN"`, and `transitionKind` no longer includes `"USE_EMBEDDED"`; no server creates bundle-less Releases.
+  - `ReleaseKind` and `ReleaseRow.kind` are `"BUNDLE"`. The `kind` column and the `kind` field of catalog descriptors stay, so no migration is needed and catalogs are unchanged.
+  - `parseReleaseCatalog` accepts only `BUNDLE` descriptors that carry a `bundleId`.
+  - `compileReleaseCatalog` rejects an enabled Release without a Bundle with `INVALID_RELEASE`.
+
+- 7132080: A database whose settings carry `schema.core` without `schema.engine` is no longer refused separately: the schema fence and `hot-updater db migrate` treat it like any unmigrated database. A v0 database is still refused, with the advice to create a new empty database and run `hot-updater db migrate`. `standaloneRepository` no longer sends a `v` query parameter with admin requests, and `hot-updater init` no longer looks for a `hotUpdater.plugins.ts` file or, on Firebase and Supabase, for collections and tables outside the storage engine's layout. A plugin with a `kind` key fails with the unknown-key error.
+- ccf3e2f: The React Native SDK calls its native module directly and requires `rollbackReleases` in every Release catalog.
+  - `@hot-updater/react-native` calls `getInstallId()`, `getStorageItem()`, `setStorageItem()`, and the Release catalog methods of its native module without checking that they exist. Every native build of the SDK implements them.
+  - The `insights()` client treats a `400` to an `UPDATE_FAILED` report like any other `400`: it doesn't retry, it logs a warning, and it reports the failure again when it happens again.
+  - `ReleaseCatalog.rollbackReleases` is required. `parseReleaseCatalog` rejects a catalog without it, and `selectDesiredRelease` looks for rollback candidates only there. Hot Updater servers always send it.
+  - `projectCompiledRollbackCatalog` reads only the compiled catalog's `rollbackReleaseIndexes`, which `compileReleaseCatalog` always writes.
+
+- Updated dependencies [ccf3e2f]
+- Updated dependencies [ccf3e2f]
+  - @hot-updater/protocol@1.0.0-rc.47
+
 ## 1.0.0-rc.46
 
 ### Minor Changes

@@ -64,8 +64,6 @@ export type InsightsDelivery =
   | "delivered"
   /** The server runs without Insights: a 404, since it mounts no `/events`. */
   | "disabled"
-  /** A 400 for an `UPDATE_FAILED` event, from a server that does not know it. */
-  | "refused"
   /** No attempt got an answer the SDK accepts. */
   | "failed";
 
@@ -134,9 +132,6 @@ const postInsightsEvent = async (
 
     if (response.status === 204) return "delivered";
     if (response.status === 404) return "disabled";
-    if (response.status === 400 && event.type === "UPDATE_FAILED") {
-      return "refused";
-    }
     return {
       error: new Error(
         `Expected HTTP 204 from /events, received ${response.status}`,

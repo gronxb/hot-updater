@@ -271,7 +271,7 @@ describe("Standalone core API over admin API protocol 2", () => {
     );
 
     const response = await fetch(
-      `${baseUrl}/hot-updater/admin/releases?v=2&channelId=x`,
+      `${baseUrl}/hot-updater/admin/releases?channelId=x`,
     );
     expect(response.status).toBe(400);
   });

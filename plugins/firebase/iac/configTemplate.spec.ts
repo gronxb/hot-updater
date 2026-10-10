@@ -28,7 +28,10 @@ const configWith = async (text: string) => {
   return configPath;
 };
 
-/** An rc.20 config with a credential helper and settings of the project's own. */
+/**
+ * A config with a credential helper and settings of the project's own, and
+ * no plugins.
+ */
 const PROJECT_CONFIG = `import { bare } from "@hot-updater/bare";
 import { firebaseDatabase, firebaseStorage } from "@hot-updater/firebase";
 import { applicationDefault } from "firebase-admin/app";
