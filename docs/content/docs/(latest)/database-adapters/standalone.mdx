@@ -84,12 +84,11 @@ Every admin path is fixed relative to `baseUrl`. The repository is
   Remote Config through it.
 
 Before its first request, `core` reads `GET /version` from the admin handler.
-A server that reports an `adminProtocol` below 2, or none, fails with a
-message to upgrade `@hot-updater/server` on the server. A `baseUrl` at the
-client mount, whose `/version` has no `plugins` list, fails with a message to
-use the path of `handlers.admin`. When the server
-answers 503 because its database lacks its schema settings, the CLI says to
-run `hot-updater db migrate` where the server's database is configured.
+When `/version` does not report `adminProtocol` 2 or later, or has no
+`plugins` list because `baseUrl` is the client mount, the CLI fails with a
+message to use the path of `handlers.admin`. When the server answers 503
+because its database lacks its schema settings, the CLI says to run
+`hot-updater db migrate` where the server's database is configured.
 
 `standaloneRepository` belongs only in `hot-updater.config.ts` and Console
 configuration. `createHotUpdater` needs the server's own database and throws

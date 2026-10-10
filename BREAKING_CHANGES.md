@@ -631,8 +631,8 @@ and signed bundles are rejected.
 
 Run `npx hot-updater channel set <channel>`, `npx hot-updater fingerprint
 create` (fingerprint strategy) and `npx hot-updater keys export-public --yes`
-(signing) to write the meta-data, then delete the strings. Expo prebuild does
-this itself.
+(signing) to write the meta-data, then delete the strings. Expo prebuild writes
+the meta-data itself; delete the strings yourself.
 
 ### Android: set `newArchEnabled` on React Native before 0.82
 
@@ -868,6 +868,30 @@ database connection string.
   transactions. Start `mongod --replSet rs0`, run `rs.initiate()` once, and add
   `replicaSet=rs0` to the connection string.
 
+### Remove `schema` from `drizzleAdapter`
+
+Search for `schema` inside `drizzleAdapter(`.
+
+```ts
+// v0
+import { db, schema } from "./drizzle";
+
+database: drizzleAdapter({ db, provider: "postgresql", schema }),
+```
+
+```ts
+// v1
+import { db } from "./drizzle";
+
+database: drizzleAdapter({ db, provider: "postgresql" }),
+```
+
+- `drizzleAdapter` takes only `db` and `provider`, so TypeScript reports
+  `schema`.
+- Hot Updater runs SQL on `db` and needs no Drizzle table objects. The schema
+  file that `hot-updater db generate` writes is for drizzle-kit only
+  ([Database and schema](#database-and-schema)).
+
 ## HTTP routes
 
 These entries apply to proxies, CDN and WAF rules, API gateways, and custom
@@ -1076,7 +1100,7 @@ Search for `Bundle` and `BundlePatchArtifact` imported from
 | `@hot-updater/cloudflare/worker`                              | `r2Storage({ publicBaseUrl, jwtSecret })` and the `JWT_SECRET` var                                                                                                                                                       | `r2Storage({ bucket: env.BUCKET, bucketName: env.BUCKET_NAME, accountId: env.ACCOUNT_ID, credentials: { accessKeyId: env.R2_ACCESS_KEY_ID, secretAccessKey: env.R2_SECRET_ACCESS_KEY } })`: the Worker presigns download URLs with the R2 credentials, which it reads from the `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` secrets |
 | `@hot-updater/cloudflare/worker`                              | `verifyJwtSignedUrl`                                                                                                                                                                                                     | None: devices download from the presigned R2 URLs |
 | `@hot-updater/supabase`, `@hot-updater/supabase/edge`         | `supabaseEdgeFunctionDatabase`, `supabaseEdgeFunctionStorage`, `SupabaseEdgeFunctionDatabaseConfig`, `SupabaseEdgeFunctionStorageConfig`                                                                                 | `supabaseDatabase`, `supabaseStorage` from `@hot-updater/supabase/edge`; `supabaseStorage` requires `bucketName`              |
-| `@hot-updater/js`                                             | `getUpdateInfo`, `verifyJwtSignedUrl`, `withJwtSignedUrl`, `signToken`, `verifyJwtToken`                                                                                                                                 | None. Storage adapters sign download URLs.                                                                                    |
+| `@hot-updater/js`                                             | The package                                                                                                                                                                                                              | None. Storage adapters sign download URLs.                                                                                    |
 | `@hot-updater/postgres`                                       | `getUpdateInfo`, `appVersionStrategy`, `fingerprintStrategy`                                                                                                                                                             | None. `postgres(config)` returns the database.                                                                                |
 | `@hot-updater/plugin-core`                                    | `createDatabasePlugin`, `DatabasePlugin`, `AbstractDatabasePlugin`, `CreateDatabasePluginOptions`                                                                                                                        | `createEngineDatabase`, `EngineDatabase`, `DatabaseAdapter`                                                                   |
 | `@hot-updater/plugin-core`                                    | `createBlobDatabasePlugin`                                                                                                                                                                                               | `createKvAdapter` over a store with conditional writes                                                                        |

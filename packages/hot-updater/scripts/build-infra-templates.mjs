@@ -208,7 +208,7 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
   }
   const result = await database
     .createMigrator(toolingTargetOf(plugins))
-    .migrateToLatest({ mode: "from-schema", updateSettings: true });
+    .migrateToLatest({ updateSettings: true });
   await result.execute();
 };
 `,

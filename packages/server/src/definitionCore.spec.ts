@@ -83,7 +83,6 @@ describe("definition.core on a SQL database (PGlite)", () => {
     hotUpdater: Parameters<typeof createMigrator>[0],
   ): Promise<void> => {
     const result = await createMigrator(hotUpdater).migrateToLatest({
-      mode: "from-schema",
       updateSettings: true,
     });
     await result.execute();

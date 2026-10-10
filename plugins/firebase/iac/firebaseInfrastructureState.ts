@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import {
   assertInfrastructureGenerationAtUrl,
   InitError,
+  LegacyInfrastructureError,
 } from "@hot-updater/cli-tools";
 import {
   coreSettings,
@@ -123,11 +124,18 @@ export const assertFirebaseFunctionCanInitialize = async ({
       "version",
       `${existingFunction.uri.replace(/\/$/u, "")}/`,
     ).toString();
-    await assertInfrastructureGenerationAtUrl({
-      fetchImpl,
-      provider: "Firebase",
-      resource: `Function ${FIREBASE_V1_FUNCTION_NAME}`,
-      versionUrl,
-    });
+    try {
+      await assertInfrastructureGenerationAtUrl({
+        fetchImpl,
+        provider: "Firebase",
+        resource: `Function ${FIREBASE_V1_FUNCTION_NAME}`,
+        versionUrl,
+      });
+    } catch (error) {
+      if (!(error instanceof LegacyInfrastructureError)) throw error;
+      throw new InitError(
+        `Function ${FIREBASE_V1_FUNCTION_NAME}, which init deploys, already exists in this Firebase project and is incompatible: its /version does not report Hot Updater infrastructure generation 1. Delete the function or use another Firebase project, then rerun init. The existing function was not changed.`,
+      );
+    }
   }
 };

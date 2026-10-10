@@ -49,7 +49,6 @@ const invokeHandler = async (
 
 beforeAll(async () => {
   const result = await createMigrator(api).migrateToLatest({
-    mode: "from-schema",
     updateSettings: true,
   });
   await result.execute();
@@ -257,17 +256,19 @@ describe("Standalone core API over admin API protocol 2", () => {
     });
   });
 
-  it("fails fast on a server that predates protocol 2, and refuses release filters no index serves", async () => {
+  it("fails fast on a baseUrl without the admin API, and refuses release filters no index serves", async () => {
     server.use(
-      http.get(`${baseUrl}/old-server/version`, () =>
+      http.get(`${baseUrl}/elsewhere/version`, () =>
         HttpResponse.json({ error: "Not found" }, { status: 404 }),
       ),
     );
     await expect(
       standaloneRepository({
-        baseUrl: `${baseUrl}/old-server`,
+        baseUrl: `${baseUrl}/elsewhere`,
       }).core.listChannels(),
-    ).rejects.toThrow("speaks admin API protocol 1, and this CLI needs 2");
+    ).rejects.toThrow(
+      `The server at ${baseUrl}/elsewhere does not report Hot Updater admin API protocol 2 at /version.`,
+    );
 
     const response = await fetch(
       `${baseUrl}/hot-updater/admin/releases?v=2&channelId=x`,

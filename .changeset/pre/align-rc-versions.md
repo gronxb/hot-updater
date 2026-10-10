@@ -12,7 +12,6 @@
 "@hot-updater/datadog-plugin": patch
 "@hot-updater/expo": patch
 "@hot-updater/firebase": patch
-"@hot-updater/js": patch
 "@hot-updater/plugin-core": patch
 "@hot-updater/postgres": patch
 "@hot-updater/react-native": patch

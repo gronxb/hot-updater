@@ -2,10 +2,7 @@ import type { DatabaseAdapter } from "../../database/adapter";
 import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
 import type { SchemaSettings } from "../database/fence";
 import type { ResolvedSchema } from "../database/resolveSchema";
-import {
-  assertSupportedMigrationMode,
-  getEmptyMigrationResult,
-} from "./fixedMigratorShared";
+import { getEmptyMigrationResult } from "./fixedMigratorShared";
 import { migrateSchema } from "./schemaSettings";
 import {
   refusePreEngineDatabase,
@@ -38,7 +35,6 @@ export const createEngineMigrator = (
   const makeResult = async (
     migrate: MigrateOptions = {},
   ): Promise<MigrationResult> => {
-    assertSupportedMigrationMode(migrate);
     const stored = await options.readSettings();
     refusePreEngineDatabase(options.adapterName, stored);
     if (

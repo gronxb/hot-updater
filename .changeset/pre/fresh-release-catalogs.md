@@ -5,7 +5,6 @@
 "@hot-updater/console": minor
 "@hot-updater/protocol": minor
 "@hot-updater/firebase": minor
-"@hot-updater/js": minor
 "@hot-updater/mock": minor
 "@hot-updater/plugin-core": minor
 "@hot-updater/postgres": minor

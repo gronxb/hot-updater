@@ -52,7 +52,6 @@ const notes = definePlugin({
 /** `hot-updater db migrate`: the migrator for the server's tables, run. */
 const migrate = async (hotUpdater: Parameters<typeof createMigrator>[0]) => {
   const result = await createMigrator(hotUpdater).migrateToLatest({
-    mode: "from-schema",
     updateSettings: true,
   });
   await result.execute();
@@ -167,7 +166,6 @@ describe("plugin tables in db tooling", () => {
         clientAccess: "public",
       });
       const result = await createMigrator(hotUpdater).migrateToLatest({
-        mode: "from-schema",
         updateSettings: true,
       });
       const sql = result.getSQL?.() ?? "";

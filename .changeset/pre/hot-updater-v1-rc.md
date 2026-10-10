@@ -12,7 +12,6 @@
 "@hot-updater/datadog-plugin": major
 "@hot-updater/expo": major
 "@hot-updater/firebase": major
-"@hot-updater/js": major
 "@hot-updater/mock": major
 "@hot-updater/plugin-core": major
 "@hot-updater/postgres": major

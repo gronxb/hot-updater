@@ -119,7 +119,7 @@ export const createStandaloneCoreApi = (
     if (typeof protocol !== "number" || protocol < STANDALONE_ADMIN_PROTOCOL) {
       throw new StandaloneDatabaseError(
         "request-failed",
-        `The server at ${config.baseUrl} speaks admin API protocol ${typeof protocol === "number" ? protocol : 1}, and this CLI needs ${STANDALONE_ADMIN_PROTOCOL}. Upgrade @hot-updater/server on the server.`,
+        `The server at ${config.baseUrl} does not report Hot Updater admin API protocol ${STANDALONE_ADMIN_PROTOCOL} at /version. Set baseUrl to the path where the server mounts handlers.admin, such as https://example.com/hot-updater/admin.`,
         response.status,
       );
     }

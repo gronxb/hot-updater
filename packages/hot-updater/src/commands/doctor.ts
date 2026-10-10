@@ -500,7 +500,8 @@ const checkAndroidNativeStatus = async ({
       type: "error",
       platform: "android",
       code: "FINGERPRINT_HASH_MISMATCH",
-      message: "hot_updater_fingerprint_hash does not match fingerprint.json.",
+      message:
+        "com.hotupdater.FINGERPRINT_HASH in AndroidManifest.xml does not match fingerprint.json.",
       resolution:
         "Run `npx hot-updater fingerprint create` and rebuild your Android app.",
       fixability: "command",

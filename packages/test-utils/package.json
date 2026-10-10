@@ -77,7 +77,6 @@
     "@electric-sql/pglite": "catalog:db",
     "@hot-updater/plugin-insights": "workspace:*",
     "@hot-updater/protocol": "workspace:*",
-    "@hot-updater/js": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@types/node": "catalog:",
