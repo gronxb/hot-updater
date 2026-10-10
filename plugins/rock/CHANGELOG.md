@@ -1,5 +1,16 @@
 # @hot-updater/rnef
 
+## 1.0.0-rc.47
+
+### Patch Changes
+
+- Updated dependencies [5891d9b]
+- Updated dependencies [ccf3e2f]
+- Updated dependencies [7132080]
+- Updated dependencies [ccf3e2f]
+  - @hot-updater/plugin-core@1.0.0-rc.47
+  - @hot-updater/cli-tools@1.0.0-rc.47
+
 ## 1.0.0-rc.46
 
 ### Patch Changes

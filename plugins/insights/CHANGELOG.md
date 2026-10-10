@@ -1,5 +1,20 @@
 # @hot-updater/plugin-insights
 
+## 1.0.0-rc.47
+
+### Patch Changes
+
+- 7132080: A database whose settings carry `schema.core` without `schema.engine` is no longer refused separately: the schema fence and `hot-updater db migrate` treat it like any unmigrated database. A v0 database is still refused, with the advice to create a new empty database and run `hot-updater db migrate`. `standaloneRepository` no longer sends a `v` query parameter with admin requests, and `hot-updater init` no longer looks for a `hotUpdater.plugins.ts` file or, on Firebase and Supabase, for collections and tables outside the storage engine's layout. A plugin with a `kind` key fails with the unknown-key error.
+- ccf3e2f: The React Native SDK calls its native module directly and requires `rollbackReleases` in every Release catalog.
+  - `@hot-updater/react-native` calls `getInstallId()`, `getStorageItem()`, `setStorageItem()`, and the Release catalog methods of its native module without checking that they exist. Every native build of the SDK implements them.
+  - The `insights()` client treats a `400` to an `UPDATE_FAILED` report like any other `400`: it doesn't retry, it logs a warning, and it reports the failure again when it happens again.
+  - `ReleaseCatalog.rollbackReleases` is required. `parseReleaseCatalog` rejects a catalog without it, and `selectDesiredRelease` looks for rollback candidates only there. Hot Updater servers always send it.
+  - `projectCompiledRollbackCatalog` reads only the compiled catalog's `rollbackReleaseIndexes`, which `compileReleaseCatalog` always writes.
+
+- Updated dependencies [ccf3e2f]
+- Updated dependencies [ccf3e2f]
+  - @hot-updater/protocol@1.0.0-rc.47
+
 ## 1.0.0-rc.46
 
 ### Patch Changes
