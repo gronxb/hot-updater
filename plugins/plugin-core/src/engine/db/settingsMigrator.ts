@@ -1,7 +1,6 @@
 import { HOT_UPDATER_SCHEMA_VERSION } from "../core/schema";
 import {
   ENGINE_SCHEMA_KEY,
-  ENGINE_SCHEMA_VERSION,
   isMissingSchemaError,
   SETTINGS_TABLE,
   type SchemaSettings,
@@ -42,28 +41,24 @@ export const storedSchemaVersion = (
   return typeof version === "string" ? version : undefined;
 };
 
-/** A v0 or pre-engine database is recreated, never converted. */
-export const refusePreEngineDatabase = (
+/**
+ * A v0 database, whose settings hold `version` and no `schema.engine`, is
+ * recreated, never converted.
+ */
+export const refuseV0Database = (
   adapterName: string,
   stored: ReadonlyMap<string, unknown>,
 ): void => {
-  const version = storedSchemaVersion(stored);
-  if (version === undefined || stored.has(ENGINE_SCHEMA_KEY)) return;
-  throw new HotUpdaterSchemaMigrationRequiredError(
-    adapterName,
-    version,
-    stored.has("schema.core")
-      ? { key: ENGINE_SCHEMA_KEY, expected: ENGINE_SCHEMA_VERSION, found: null }
-      : undefined,
-  );
+  const version = stored.get("version");
+  if (typeof version !== "string" || stored.has(ENGINE_SCHEMA_KEY)) return;
+  throw new HotUpdaterSchemaMigrationRequiredError(adapterName, version);
 };
 
 /**
  * `hot-updater db migrate` for an ORM that applies the DDL itself (Drizzle,
  * Prisma): it sets what the ORM cannot declare, writes the settings rows, and
- * refuses a v0 or pre-engine database. The `createMigrator` of an adapter
- * whose ORM creates the tables returns it, as the Drizzle and Prisma
- * adapters' do.
+ * refuses a v0 database. The `createMigrator` of an adapter whose ORM
+ * creates the tables returns it, as the Drizzle and Prisma adapters' do.
  */
 export const createSettingsMigrator = (options: {
   readonly adapterName: string;
@@ -89,7 +84,7 @@ export const createSettingsMigrator = (options: {
         `${options.adapterName}: the Hot Updater tables are missing. Run \`hot-updater db generate\`, apply the schema with ${options.applyTables}, then migrate again.`,
       );
     }
-    refusePreEngineDatabase(options.adapterName, stored);
+    refuseV0Database(options.adapterName, stored);
     if (
       migrate.updateSettings === false ||
       Object.entries(options.settings).every(

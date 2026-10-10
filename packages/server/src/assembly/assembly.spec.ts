@@ -268,10 +268,6 @@ describe("createHotUpdater with plugins", () => {
         'Plugin "valid" is registered twice.',
       ],
       [
-        { plugins: [{ ...valid, kind: "core" }], clientAccess: "public" },
-        "plugins[0] has a kind; core is built in and is never passed as a plugin.",
-      ],
-      [
         { plugins: [{ ...valid, hooks: {} }], clientAccess: "public" },
         'plugins[0] has an unknown key "hooks".',
       ],

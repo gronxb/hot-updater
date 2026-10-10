@@ -493,7 +493,7 @@ describe("createHotUpdater Insights", () => {
   it("records a report with fields it does not know and still checks the ones it does", async () => {
     const hotUpdater = start();
     const recordEvent = vi.spyOn(hotUpdater.api.insights, "recordEvent");
-    // `username` left the contract; an older client's is ignored like any other.
+    // A field outside the contract, such as `username`, is ignored like any other.
     const newer = {
       ...event,
       networkType: "wifi",
@@ -691,7 +691,7 @@ describe("createHotUpdater Insights", () => {
     expect(byInstall["raw-error-2"]).toEqual(byInstall["raw-error-1"]);
   });
 
-  it("keeps how a bundle arrived, and ignores what an older SDK still sends about a recovery", async () => {
+  it("keeps how a bundle arrived, and ignores a recovery's fields outside the contract", async () => {
     const hotUpdater = start();
     const movement = {
       ...event,
@@ -707,7 +707,7 @@ describe("createHotUpdater Insights", () => {
         metadata: { delivery: "archive", patchFallback: true },
       },
       {
-        // An SDK that still says why the crashed process exited.
+        // Why the crashed process exited is outside the contract.
         ...movement,
         type: "RECOVERED",
         installId: "install-2",

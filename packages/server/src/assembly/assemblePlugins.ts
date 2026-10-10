@@ -66,9 +66,6 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 const checkPlugin = (value: unknown, at: string): PluginShape => {
   if (!isRecord(value)) return fail(`${at} is not a plugin.`);
-  if ("kind" in value) {
-    fail(`${at} has a kind; core is built in and is never passed as a plugin.`);
-  }
   const unknown = Object.keys(value).find((key) => !PLUGIN_KEYS.has(key));
   if (unknown !== undefined) fail(`${at} has an unknown key "${unknown}".`);
   const plugin = value as unknown as PluginShape;

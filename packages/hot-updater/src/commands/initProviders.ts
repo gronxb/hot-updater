@@ -90,10 +90,7 @@ const isWholeInit = (
   typeof entry.runInit === "function" &&
   typeof entry.initProvider?.inputs === "object";
 
-/**
- * An `./init` without `runInit`, such as the definition-only entry every
- * provider package up to rc.20 publishes.
- */
+/** An `./init` without `runInit`: a provider package this CLI cannot run. */
 const noInitError = (packageName: string) => {
   const installed = installedVersionOf(packageName);
   return new InitError(

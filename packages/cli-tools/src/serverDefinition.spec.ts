@@ -81,16 +81,10 @@ describe("serverDefinitionOf", () => {
     expect(serverDefinitionOf(definition)).toBe(definition);
   });
 
-  it("says what a module must export instead, and to upgrade a server from before the properties", () => {
+  it("says what a module must export instead", () => {
     expect(isServerDefinition({})).toBe(false);
     expect(() => serverDefinitionOf(null, "src/hotUpdater.ts")).toThrow(
       "src/hotUpdater.ts must export hotUpdater: the server createHotUpdater({ database, storage, plugins }) returns.",
-    );
-    // What createHotUpdater returned before rc.21.
-    expect(() =>
-      serverDefinitionOf({ adapterName: "kysely", handlers: {} }),
-    ).toThrow(
-      "exports a hotUpdater from an older @hot-updater/server. Upgrade @hot-updater/server to the version of hot-updater.",
     );
   });
 });

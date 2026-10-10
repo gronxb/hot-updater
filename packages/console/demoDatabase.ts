@@ -722,7 +722,7 @@ const downloadDemo = {
     cohort: "download-demo",
     update_strategy: "appVersion" as const,
     fingerprint_hash: null,
-    sdk_version: "1.0.0-rc",
+    sdk_version: "1.0.0",
   },
 
   user_id: "download-demo",

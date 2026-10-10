@@ -53,7 +53,7 @@ export type CreateBundleEventRequestBase = {
   /**
    * The bundle ID the native build ships as its built-in bundle. A report
    * whose running bundle is this one, with no Release, runs the built-in
-   * bundle. Older SDKs leave it out.
+   * bundle.
    */
   readonly minBundleId?: string | null;
   readonly fromReleaseId: string | null;

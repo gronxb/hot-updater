@@ -195,8 +195,6 @@ export const insights = (options: InsightsOptions = {}) => {
     id: "insights",
     // Keeps its tables' names: bundle_events, bundle_event_heads, insights_*.
     namespace: false,
-    // The 1.0.0 schema, as core's: until 1.0.0 is released, its baseline
-    // changes in place.
     schemaVersion: "1.0.0",
     schema: createInsightsSchema(retention),
     init: ({ db, now }) => {

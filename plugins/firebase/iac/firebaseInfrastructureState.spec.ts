@@ -8,11 +8,9 @@ import {
 
 describe("Firebase infrastructure generation", () => {
   it.each([
-    [{ engine: undefined, preEngineData: false }, "fresh"],
-    [{ engine: "1", preEngineData: false }, "v1"],
-    [{ engine: "2", preEngineData: false }, "incompatible"],
-    [{ engine: undefined, preEngineData: true }, "incompatible"],
-    [{ engine: "1", preEngineData: true }, "incompatible"],
+    [{ engine: undefined }, "fresh"],
+    [{ engine: "1" }, "v1"],
+    [{ engine: "2" }, "incompatible"],
   ] as const)("classifies %j as %s", (input, expected) => {
     expect(resolveFirebaseInfrastructureState(input)).toBe(expected);
   });

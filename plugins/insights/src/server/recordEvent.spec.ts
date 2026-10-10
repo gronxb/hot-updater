@@ -1059,16 +1059,15 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
     });
   });
 
-  it("counts no UNCHANGED row kept before launches had their own key", () => {
-    const older = {
+  it("counts no UNCHANGED row without a change as a launch", () => {
+    const row = {
       ...unchanged(1),
       to_bundle_id: "bundle-2",
     } as BundleEventRow;
-    // Rows older RCs kept for every launch carry no change, so no bundle
-    // filter, outcome series, or counter reads them as launches.
-    expect(bundleRefsOf(older)).toEqual([]);
+    // No bundle filter, outcome series, or counter reads it as a launch.
+    expect(bundleRefsOf(row)).toEqual([]);
     expect(
-      matchesInsightsEventFilter(older, {
+      matchesInsightsEventFilter(row, {
         kind: "bundle",
         platform: "ios",
         channel: "production",
@@ -1076,7 +1075,7 @@ describe.each(backends)("insights recordEvent on %s", (_name, adapter) => {
         toBundleId: "bundle-2",
       }),
     ).toBe(false);
-    expect(isLaunch(older)).toBe(false);
+    expect(isLaunch(row)).toBe(false);
   });
 
   it("records an update failure for its target release and channel, and moves no head", async () => {

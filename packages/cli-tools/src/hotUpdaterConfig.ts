@@ -1461,34 +1461,15 @@ const renderServerSettings = (scaffold: HotUpdaterConfigScaffold) => {
     .join("\n\n");
 };
 
-/** Where an older init wrote a managed server's plugins, which the config lists now. */
-const PLUGINS_FILE_PATH = "hotUpdater.plugins.ts";
-
-/**
- * Whether `text` is the plugins file an older init wrote: comments and a
- * re-export of a provider package's former `plugins`, which the config's
- * `plugins` list replaces.
- */
-const isGeneratedPluginsFile = (text: string) =>
-  /^export\{plugins\}from(["'])@hot-updater\/[\w-]+\1;?$/u.test(
-    text.replace(/^\s*\/\/.*$/gmu, "").replace(/\s+/gu, ""),
-  );
-
 /**
  * Writes hot-updater.config.ts and says what it did. `settings` names the
  * provider in messages, such as "Supabase". A config it cannot merge is
- * kept, with what to add to it. The plugins file an older init wrote is
- * removed only after a successful config write and when the config no longer
- * references it. A file the project wrote is kept with a cleanup notice.
+ * kept, with what to add to it.
  */
 export const writeHotUpdaterFiles = async (
   scaffold: HotUpdaterConfigScaffold,
   { cwd = process.cwd(), settings }: { cwd?: string; settings: string },
-): Promise<{
-  readonly config: WriteHotUpdaterConfigResult;
-  /** What became of hotUpdater.plugins.ts, when there was one. */
-  readonly pluginsFile?: "removed" | "kept";
-}> => {
+): Promise<{ readonly config: WriteHotUpdaterConfigResult }> => {
   const config = await writeHotUpdaterConfig(
     scaffold,
     path.join(cwd, HOT_UPDATER_CONFIG_PATH),
@@ -1511,27 +1492,5 @@ export const writeHotUpdaterFiles = async (
       ].join("\n"),
     );
   }
-
-  const pluginsPath = path.join(cwd, PLUGINS_FILE_PATH);
-  const pluginsText = await readTextFile(pluginsPath);
-  if (pluginsText === null) return { config };
-  if (config.status === "skipped") return { config, pluginsFile: "kept" };
-  const configText = await fs.readFile(config.path, "utf-8");
-  if (configText.includes("./hotUpdater.plugins")) {
-    p.log.warn(
-      `Kept '${PLUGINS_FILE_PATH}': '${HOT_UPDATER_CONFIG_PATH}' still references it.`,
-    );
-    return { config, pluginsFile: "kept" };
-  }
-  if (isGeneratedPluginsFile(pluginsText)) {
-    await fs.rm(pluginsPath);
-    p.log.success(
-      `Removed '${PLUGINS_FILE_PATH}': \`plugins\` in '${HOT_UPDATER_CONFIG_PATH}' lists the plugins the server runs.`,
-    );
-    return { config, pluginsFile: "removed" };
-  }
-  p.log.warn(
-    `Nothing reads '${pluginsPath}' anymore: \`plugins\` in '${HOT_UPDATER_CONFIG_PATH}' lists the plugins the server runs. Delete it.`,
-  );
-  return { config, pluginsFile: "kept" };
+  return { config };
 };

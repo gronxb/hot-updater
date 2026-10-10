@@ -71,13 +71,6 @@ export const serverDefinitionOf = (
   source = "The server definition",
 ): ServerDefinition => {
   if (isServerDefinition(value)) return value;
-  // A server from before its definition had public properties: handlers
-  // without them. `in` reads no getter, so it starts nothing.
-  if (isRecord(value) && "handlers" in value) {
-    throw new ServerDefinitionError(
-      `${source} exports a hotUpdater from an older @hot-updater/server. Upgrade @hot-updater/server to the version of hot-updater.`,
-    );
-  }
   throw new ServerDefinitionError(
     `${source} must export hotUpdater: the server createHotUpdater({ database, storage, plugins }) returns.`,
   );

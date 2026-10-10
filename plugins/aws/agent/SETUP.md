@@ -47,8 +47,8 @@ init. reference/ is additional context, not executable provisioning code.
     schema-settings.json exist under
     pk `private_hot_updater_settings`. New tables have deletion protection
     enabled; preserve that setting on reused tables. A table with a secondary
-    index, including `hot-updater-update-index`, is incompatible; do not change
-    its schema or settings to make it pass.
+    index is incompatible; do not change its schema or settings to make it
+    pass.
   - Retry: describe the same table/backups/TTL/items; write only what is missing.
 
 - [ ] **aws.client-credential — Initialize local access and the client credential**

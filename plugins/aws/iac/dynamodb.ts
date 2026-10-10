@@ -26,7 +26,7 @@ export class DynamoDBTableSchemaError extends Error {
 
   constructor(readonly tableName: string) {
     super(
-      `DynamoDB table "${tableName}" does not match the Hot Updater schema: a pk and sk key and no secondary index. A table from before 1.0 keeps its update index; delete it and rerun init to create it again.`,
+      `DynamoDB table "${tableName}" does not match the Hot Updater schema: a pk and sk key and no secondary index. Delete the table and rerun init to create it again.`,
     );
   }
 }
@@ -104,7 +104,7 @@ const hasExpectedSchema = (table: TableDescription | undefined): boolean => {
     table.OnDemandThroughput?.MaxWriteRequestUnits ===
       onDemandThroughput.MaxWriteRequestUnits &&
     hasKeySchema(table?.KeySchema, primaryKeySchema) &&
-    // The storage engine keeps its indexes as items; a secondary index marks a table from before 1.0.
+    // The storage engine keeps its indexes as items, so the table has none.
     (table?.GlobalSecondaryIndexes ?? []).length === 0
   );
 };

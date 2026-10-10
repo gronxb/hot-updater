@@ -152,7 +152,7 @@ describe("InstallationsPage", () => {
         "Downloads, launches, crashes, update failures, and other changes to what an installation runs, newest first, kept for 90 days. Launches that change nothing aren't listed.",
       ),
     ).toBeDefined();
-    // Launch reports older servers stored for every launch still show.
+    // A kept report without a change shows as a launch.
     for (const label of ["Launch", "Launched", "Crashed"]) {
       expect(screen.getAllByText(label).length).toBeGreaterThan(0);
     }
