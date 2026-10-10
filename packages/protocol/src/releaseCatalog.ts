@@ -59,7 +59,10 @@ export interface ReleaseCatalog {
   readonly fallbackPolicy: typeof RELEASE_CATALOG_FALLBACK_POLICY;
   /** Release descriptors ordered newest first. */
   readonly releases: readonly ReleaseCatalogDescriptor[];
-  /** Enabled compatible Releases ordered newest first for v0-style rollback. */
+  /**
+   * Enabled compatible Releases ordered newest first, where a device keeps its
+   * active Release or rolls back to the newest Release before it.
+   */
   readonly rollbackReleases?: readonly ReleaseCatalogDescriptor[];
 }
 

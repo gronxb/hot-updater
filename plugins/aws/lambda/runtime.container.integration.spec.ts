@@ -455,7 +455,7 @@ describe.sequential("aws lambda runtime acceptance", () => {
     });
   });
 
-  it("does not support the legacy exact path", async () => {
+  it("answers 404 for /api/check-update", async () => {
     const response = await invokeLambda(
       lambdaPort,
       createCloudFrontEvent({

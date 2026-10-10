@@ -390,7 +390,7 @@ describe("ReleaseEditorSheet", () => {
     ).toBeDefined();
   });
 
-  it("keeps the v0 move model and selects the target from a listbox", async () => {
+  it("moves a Release to the target channel selected from a listbox", async () => {
     render(
       <ReleaseEditorSheet
         channels={[
@@ -441,7 +441,7 @@ describe("ReleaseEditorSheet", () => {
     });
   });
 
-  it("maps the v0 copy action to keeping the source Release enabled", async () => {
+  it("copies a Release to the target channel and keeps it in the current one", async () => {
     render(
       <ReleaseEditorSheet
         channels={[

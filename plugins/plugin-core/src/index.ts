@@ -26,7 +26,6 @@ export {
   isDatabaseMetadataObject,
 } from "./databaseJsonValue";
 export * from "./databaseRows";
-export * from "./filterCompatibleAppVersions";
 export * from "./generateMinBundleId";
 export * from "./parseStorageUri";
 export * from "./releaseCatalogCompiler";

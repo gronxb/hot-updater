@@ -50,8 +50,6 @@ const normalizeImportInfos = (imports: ImportInfo[]) => {
       const isABuild = a.startsWith("@hot-updater/");
       const isBBuild = b.startsWith("@hot-updater/");
       if (isABuild !== isBBuild) return isABuild ? -1 : 1;
-      if (a === "dotenv/config") return -1;
-      if (b === "dotenv/config") return 1;
       const isAdminA = a === "firebase-admin";
       const isAdminB = b === "firebase-admin";
       if (isAdminA !== isAdminB) return isAdminA ? -1 : 1;

@@ -27,10 +27,8 @@ vi.mock("./api-rpc", () => ({
   getBundle: vi.fn(),
   getBundleChildCounts: vi.fn(),
   getBundleChildren: vi.fn(),
-  getBundles: vi.fn(),
   getChannels: vi.fn(),
   getConfig: vi.fn(),
-  getConfigLoaded: vi.fn(),
   getRelease: vi.fn(),
   getReleaseCatalogDiagnostics: vi.fn(),
   getReleases: vi.fn(),
@@ -264,11 +262,7 @@ describe("useDeleteReleaseMutation", () => {
       });
     });
 
-    for (const queryKey of [
-      queryKeys.bundles.all,
-      ["bundle"],
-      queryKeys.bundleChildren.all,
-    ]) {
+    for (const queryKey of [["bundle"], queryKeys.bundleChildren.all]) {
       expect(invalidateQueries).toHaveBeenCalledWith({ queryKey });
     }
 

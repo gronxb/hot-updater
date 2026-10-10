@@ -24,6 +24,7 @@ const nativeModuleMock = vi.hoisted(() => {
     })),
     notifyAppReady: vi.fn(),
     reload: vi.fn(),
+    reloadProcess: vi.fn(),
     resetChannel: vi.fn(),
     setCohort: vi.fn(),
     setStorageItem: vi.fn<(key: string, value: string | null) => void>(),
@@ -213,11 +214,11 @@ describe("notifyAppReady", () => {
     expect(getBundleId()).toBe("min-bundle-id");
   });
 
-  it("normalizes legacy PROMOTED launch reports to UPDATE_APPLIED", async () => {
+  it("parses UPDATE_APPLIED launch reports from old-arch JSON payloads", async () => {
     nativeModuleMock.notifyAppReady.mockReturnValue(
       JSON.stringify({
         fromBundleId: "bundle-123",
-        status: "PROMOTED",
+        status: "UPDATE_APPLIED",
         toBundleId: "bundle-456",
       }),
     );
@@ -332,24 +333,6 @@ describe("notifyAppReady", () => {
     expect(getBundleId()).toBe("bundle-123");
   });
 
-  it("throws when native SDK does not expose getBundleId", async () => {
-    const nativeModule = nativeModuleMock as typeof nativeModuleMock & {
-      getBundleId?: typeof nativeModuleMock.getBundleId;
-    };
-    const originalGetBundleId = nativeModule.getBundleId;
-    nativeModule.getBundleId = null as unknown as Mock<() => string | null>;
-
-    try {
-      const { getBundleId } = await import("./native");
-
-      expect(() => getBundleId()).toThrow(
-        "Native module is missing 'getBundleId()'",
-      );
-    } finally {
-      nativeModule.getBundleId = originalGetBundleId;
-    }
-  });
-
   it("falls back to MIN_BUNDLE_ID when native reports an empty bundle id", async () => {
     nativeModuleMock.getBundleId.mockReturnValue("");
 
@@ -406,10 +389,13 @@ describe("notifyAppReady", () => {
     });
   });
 
-  it("normalizes legacy manifest asset entries from native objects", async () => {
+  it("drops manifest asset entries that are not file descriptors", async () => {
     nativeModuleMock.getManifest.mockReturnValue({
       assets: {
         "assets/logo.png": "hash-logo",
+        "index.android.bundle": {
+          fileHash: "hash-bundle",
+        },
       },
       bundleId: "bundle-123",
     });
@@ -418,8 +404,8 @@ describe("notifyAppReady", () => {
 
     expect(getManifest()).toEqual({
       assets: {
-        "assets/logo.png": {
-          fileHash: "hash-logo",
+        "index.android.bundle": {
+          fileHash: "hash-bundle",
         },
       },
       bundleId: "bundle-123",
@@ -450,7 +436,7 @@ describe("notifyAppReady", () => {
     });
   });
 
-  it("normalizes legacy manifest asset entries from old-arch JSON payloads", async () => {
+  it("drops manifest asset entries that are not file descriptors from old-arch JSON payloads", async () => {
     nativeModuleMock.getManifest.mockReturnValue(
       JSON.stringify({
         assets: {
@@ -463,11 +449,7 @@ describe("notifyAppReady", () => {
     const { getManifest } = await import("./native");
 
     expect(getManifest()).toEqual({
-      assets: {
-        "assets/logo.png": {
-          fileHash: "hash-logo",
-        },
-      },
+      assets: {},
       bundleId: "bundle-123",
     });
   });

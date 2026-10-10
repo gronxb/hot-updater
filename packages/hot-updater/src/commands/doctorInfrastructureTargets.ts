@@ -131,11 +131,3 @@ export function isInfrastructureUpdateRequired({
 
   return isLess(normalizedServerVersion, normalizedRequiredVersion);
 }
-
-export function isV1InfrastructureRequired(requiredVersion: string): boolean {
-  const normalizedRequiredVersion = normalize(requiredVersion);
-  if (!normalizedRequiredVersion) {
-    throw new Error("Invalid infrastructure version");
-  }
-  return !isLess(normalizedRequiredVersion, "1.0.0");
-}

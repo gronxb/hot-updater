@@ -20,10 +20,6 @@ export type D1Like = {
   batch(statements: D1BoundStatement[]): Promise<readonly D1ResultLike[]>;
 };
 
-export interface CloudflareWorkerDatabaseEnv {
-  readonly DB: D1Like;
-}
-
 /** Hot Updater's database on a D1 binding, inside a Worker. */
 export const d1Database = (database: D1Like): EngineDatabase =>
   createD1Database({

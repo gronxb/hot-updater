@@ -12,7 +12,7 @@ const setAndroidChannel = async (
   const androidParser = new AndroidConfigParser(
     config.platform.android.androidManifestPaths ?? [],
   );
-  return await androidParser.set("hot_updater_channel", channel);
+  return await androidParser.set("com.hotupdater.CHANNEL", channel);
 };
 
 const getAndroidChannel = async (): Promise<{
@@ -26,7 +26,7 @@ const getAndroidChannel = async (): Promise<{
   if (!(await androidParser.exists())) {
     throw new Error("No Android native config files found");
   }
-  const { value, paths } = await androidParser.get("hot_updater_channel");
+  const { value, paths } = await androidParser.get("com.hotupdater.CHANNEL");
   return { value: value ?? DEFAULT_CHANNEL, paths };
 };
 
