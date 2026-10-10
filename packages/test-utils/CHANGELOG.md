@@ -1,5 +1,20 @@
 # @hot-updater/test-utils
 
+## 1.0.0-rc.44
+
+### Minor Changes
+
+- 13d2119: `createHotUpdater` requires one storage adapter, `storage: s3Storage({ ... })`, the same adapter `hot-updater.config.ts` uploads with, and `hotUpdater.storage` is that adapter. Startup throws without it. `setupDatabaseTestSuite`'s `createHttpClient` receives one adapter too.
+
+  `clientAccess` takes only `"public"`. Options that no longer exist, in `createHotUpdater` and `hot-updater.config.ts`, are left to TypeScript instead of runtime checks.
+
+  A Release Catalog path with a channel name in place of its key, or a malformed fingerprint hash, answers `400` instead of `500`. `standaloneRepository` stops with a message when `baseUrl` points at the client mount instead of `handlers.admin`. `hot-updater init` no longer writes a storage call that uses a helper it removed.
+
+- 13d2119: Storage adapters return the URL devices download from, and the server no longer serves downloads itself.
+  - `s3Storage` and `r2Storage` presign their download URLs again, as in v0: a URL signed with the adapter's credentials that expires in an hour, so devices download from the private bucket. `downloadUrlSigningKey` is removed from both. `s3Storage`'s `getDownloadUrl`, such as `cloudFrontDownloadUrl(...)`, still replaces the presigned URL.
+  - `r2Storage` from `@hot-updater/cloudflare/worker` takes `accountId` and `credentials`, R2's S3-compatible credentials, in place of `downloadUrlSigningKey`, and presigns the same URLs; without them it has no `getDownloadUrl`, as a Console needs. The managed Worker reads them from the `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` secrets and the `ACCOUNT_ID` variable, which `hot-updater init` sets in place of `STORAGE_DOWNLOAD_URL_SIGNING_KEY`.
+  - The client handler's `GET /storage/:token/:signature` route is removed, with `createStorageDownloadUrl`, `createStorageDownloadPath`, and `parseStorageDownloadPath` from `@hot-updater/plugin-core`. `getDownloadUrl` returns an absolute `http(s)` URL, which the storage adapter test suite requires, and the React Native SDK takes only absolute artifact URLs.
+
 ## 1.0.0-rc.43
 
 ## 1.0.0-rc.42

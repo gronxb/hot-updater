@@ -1,5 +1,16 @@
 # @hot-updater/postgres
 
+## 1.0.0-rc.44
+
+### Patch Changes
+
+- Updated dependencies [13d2119]
+- Updated dependencies [13d2119]
+- Updated dependencies [92971a0]
+  - @hot-updater/server@1.0.0-rc.44
+  - @hot-updater/plugin-core@1.0.0-rc.44
+  - @hot-updater/protocol@1.0.0-rc.44
+
 ## 1.0.0-rc.43
 
 ### Patch Changes
