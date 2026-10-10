@@ -98,15 +98,27 @@ describe("schema fence", () => {
       message:
         'The tables of plugins "insights", "notes" and "keys" are not migrated on memory: schema settings "schema.insights" is missing; expected "2", and "schema.notes" is "1"; expected "2", and "schema.keys" is missing; expected "1". Run the migration.',
     });
-    // Core's settings keep their own message, which names no plugin.
+    // Core's settings keep their own message, which names no plugin. An
+    // unmigrated database only needs the migration.
     await expect(
       checkSchemaFence(createMemoryAdapter(), "memory", settings),
     ).rejects.toMatchObject({
       plugins: [],
-      message: expect.stringContaining(
-        'Hot Updater schema setting "schema.engine" for memory is missing',
-      ),
+      message:
+        'Hot Updater schema setting "schema.engine" for memory is missing; expected "1". Run `hot-updater db migrate`.',
     });
+  });
+
+  it("asks for a new database only when one carries a schema version without the engine setting", () => {
+    expect(
+      new HotUpdaterSchemaMigrationRequiredError("memory", "1.0.0", {
+        key: "schema.engine",
+        expected: "1",
+        found: null,
+      }).message,
+    ).toBe(
+      'Hot Updater schema setting "schema.engine" for memory is missing; expected "1". Create a new empty database and run `hot-updater db migrate`; databases from before the storage engine are not converted.',
+    );
   });
 
   it("checks before a process's first read only, and again after a failure", async () => {

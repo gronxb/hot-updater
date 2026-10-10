@@ -110,7 +110,7 @@ function App(): React.JSX.Element {
 }
 
 export default hotUpdater.wrap({
-  updateStrategy: "appVersion", // or "fingerprint"
+  updateStrategy: "fingerprint",
   fallbackComponent: ({ progress, status }) => (
     <Modal transparent visible={true}>
       <View

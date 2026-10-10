@@ -40,9 +40,12 @@ const stored = ({ key, expected, found }: SchemaSettingMismatch) =>
 const settingMessage = (
   adapterName: string,
   { key, expected, found }: SchemaSettingMismatch,
+  currentVersion: string | undefined,
 ) =>
   `Hot Updater schema setting "${key}" for ${adapterName} is ${found === null ? "missing" : `"${found}"`}; expected "${expected}". ${
-    key === ENGINE_SCHEMA_KEY
+    // A stored schema version without the engine setting is a database the
+    // engine never migrated; an unmigrated database has no version at all.
+    key === ENGINE_SCHEMA_KEY && currentVersion !== undefined
       ? "Create a new empty database and run `hot-updater db migrate`; databases from before the storage engine are not converted."
       : "Run `hot-updater db migrate`."
   }`;
@@ -108,7 +111,7 @@ export class HotUpdaterSchemaMigrationRequiredError extends Error {
               settings,
               options?.fix ?? PLUGIN_TABLES_FIX,
             )
-          : settingMessage(adapterName, setting),
+          : settingMessage(adapterName, setting, currentVersion),
       options?.cause === undefined ? undefined : { cause: options.cause },
     );
     this.name = "HotUpdaterSchemaMigrationRequiredError";
