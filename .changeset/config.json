@@ -7,7 +7,7 @@
   "fixed": [["hot-updater", "@hot-updater/*"]],
   "access": "public",
   "privatePackages": { "version": true, "tag": false },
-  "baseBranch": "next",
+  "baseBranch": "main",
   "bumpVersionsWithWorkspaceProtocolOnly": true,
   "___experimentalUnsafeOptions_WILL_CHANGE_IN_PATCH": {
     "onlyUpdatePeerDependentsWhenOutOfRange": true

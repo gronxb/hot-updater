@@ -8,13 +8,15 @@
 "@hot-updater/cli-tools": major
 "@hot-updater/cloudflare": major
 "@hot-updater/console": major
-"@hot-updater/protocol": major
 "@hot-updater/datadog-plugin": major
 "@hot-updater/expo": major
 "@hot-updater/firebase": major
-"@hot-updater/mock": major
+"@hot-updater/plugin-api-keys": major
 "@hot-updater/plugin-core": major
+"@hot-updater/plugin-insights": major
+"@hot-updater/plugin-remote-config": major
 "@hot-updater/postgres": major
+"@hot-updater/protocol": major
 "@hot-updater/react-native": major
 "@hot-updater/rock": major
 "@hot-updater/sentry-plugin": major
@@ -25,4 +27,4 @@
 "hot-updater": major
 ---
 
-Release HotUpdater 1.0 with the Release Catalog architecture.
+Hot Updater 1.0, the first stable release of v1. Deploys create Releases that the server compiles into one cacheable Release Catalog per app scope, and `createHotUpdater` runs a storage adapter, a database adapter, and plugins such as Insights, Remote Config, and client API keys. v1 runs on new infrastructure and needs a new native app build: follow the [upgrade guide](https://hot-updater.dev/docs/guides/upgrade-to-v1) and [BREAKING_CHANGES.md](https://github.com/gronxb/hot-updater/blob/main/BREAKING_CHANGES.md) to move from v0.

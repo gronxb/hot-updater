@@ -253,9 +253,9 @@ order reads those items. Every other index adds an item per entry in its own
 partition, holding a copy of the row, written in the same write. A unique entry
 is an item that one row at a time may hold. `fits` counts items and bytes
 against `limits`. The
-[DynamoDB store](https://github.com/gronxb/hot-updater/blob/next/plugins/aws/src/dynamoDBStore.ts)
+[DynamoDB store](https://github.com/gronxb/hot-updater/blob/main/plugins/aws/src/dynamoDBStore.ts)
 and the
-[Firestore store](https://github.com/gronxb/hot-updater/blob/next/plugins/firebase/src/firestoreStore.ts)
+[Firestore store](https://github.com/gronxb/hot-updater/blob/main/plugins/firebase/src/firestoreStore.ts)
 are complete implementations. Wrap the adapter as in `myDatabase`, with
 `createKvAdapter({ store })` in place of `createSqlAdapter`.
 
@@ -269,7 +269,7 @@ as declared, and read an index range in `indexOrderColumns` order. The
 [database adapter contract](/docs/database-adapters/adapter-contract) lists
 every rule, and `createMemoryAdapter()` implements them all as the reference.
 The
-[MongoDB adapter](https://github.com/gronxb/hot-updater/blob/next/packages/server/src/adapters/mongodbAdapter.ts)
+[MongoDB adapter](https://github.com/gronxb/hot-updater/blob/main/packages/server/src/adapters/mongodbAdapter.ts)
 is a production one: a collection per table keyed by `_id`, guards as
 conditional updates, and one transaction per write. While you develop, wrap
 your adapter in `verifyAdapter(adapter)`. It fails reads that return rows for

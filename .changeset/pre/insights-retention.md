@@ -1,5 +1,0 @@
----
-"@hot-updater/server": patch
----
-
-Insights keeps its data for set periods: by default, downloads, applies, recoveries, and hourly totals for 90 days; daily totals, unique-installation sketches, and latest-report distributions for 400 days; and each installation's latest report for 400 days after it last reports. Lifetime counters per Release ID are kept. `insights({ retention: { rawDays, dailyDays } })` sets the periods, in whole days of at least 1 with `dailyDays` at least `rawDays`, and throws `HotUpdaterConfigError` otherwise. A changed period applies at the next pruning pass on SQL databases; on DynamoDB, Firestore, and MongoDB, rows already written keep the expiry they were stamped with. `api.insights.retention` and the admin route `GET /retention` report the periods. Daily and lifetime totals have their own tables, `insights_overview_daily`, `insights_sketches_daily`, and `insights_overview_lifetime`, under the plugin's schema `1.1.0`. `getAppUsage` and a channel's `getReleaseActivity` read daily totals for a window of whole UTC days that reaches past the raw period, and a read that reaches past what is kept reports partial coverage.

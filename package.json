@@ -24,7 +24,6 @@
     "release:test": "nx release --dry-run",
     "release": "pnpm clear && pnpm build && nx release --skip-publish",
     "publish:all": "nx release publish",
-    "publish:rc": "nx release publish --tag rc",
     "changeset": "changeset",
     "changeset:minor": "node ./scripts/changeset-minor.mjs"
   },
