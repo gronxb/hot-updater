@@ -1,5 +1,7 @@
 # @hot-updater/protocol
 
+## 1.0.0-rc.45
+
 ## 1.0.0-rc.44
 
 ## 1.0.0-rc.43
