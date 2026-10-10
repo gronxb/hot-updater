@@ -10,7 +10,7 @@ const iosExists = vi.fn();
 vi.mock("@hot-updater/cli-tools", () => ({
   loadConfig: vi.fn(async () => ({
     platform: {
-      android: { androidManifestPaths: [], stringResourcePaths: [] },
+      android: { androidManifestPaths: [] },
       ios: { infoPlistPaths: [] },
     },
   })),

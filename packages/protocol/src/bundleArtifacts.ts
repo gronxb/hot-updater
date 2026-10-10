@@ -1,8 +1,4 @@
-import type { Bundle, BundleMetadata, BundlePatchArtifact } from "./types";
-
-export const stripBundleArtifactMetadata = (
-  metadata: BundleMetadata | undefined,
-): BundleMetadata | undefined => metadata;
+import type { Bundle, BundlePatchArtifact } from "./types";
 
 export const getManifestStorageUri = (
   bundle: Pick<Bundle, "manifestStorageUri">,

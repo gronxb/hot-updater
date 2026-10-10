@@ -403,7 +403,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
     }
   });
 
-  it("does not support the legacy exact path", async () => {
+  it("answers 404 for /api/check-update", async () => {
     const response = await invokeHandler("/api/check-update");
 
     expect(response.status).toBe(404);

@@ -502,7 +502,7 @@ type CapturedArtifactSelection = {
 const proxyRequestCounts = {
   artifact: 0,
   catalog: 0,
-  legacy: 0,
+  other: 0,
 };
 const capturedArtifactSelections: CapturedArtifactSelection[] = [];
 const remoteAssetTransfers = new Map<
@@ -2970,15 +2970,6 @@ async function withHotUpdaterControlEnv<T>(callback: () => Promise<T>) {
   }
 }
 
-function getRemoteChannelPathSegment(channelSegment: string) {
-  const channel = decodeURIComponent(channelSegment);
-  if (!channelNamespace || channel.startsWith(`${channelNamespace}-`)) {
-    return channelSegment;
-  }
-
-  return encodeURIComponent(getFixtureChannel(channel));
-}
-
 function rewriteProxiedUpdatePath(pathname: string) {
   const proxyPrefix = "/hot-updater";
   const targetBase = new URL(getControllerReachableAppBaseUrl());
@@ -2988,12 +2979,6 @@ function rewriteProxiedUpdatePath(pathname: string) {
     : "";
   const segments = suffix.split("/").filter(Boolean);
 
-  if (
-    (segments[0] === "app-version" || segments[0] === "fingerprint") &&
-    segments[3]
-  ) {
-    segments[3] = getRemoteChannelPathSegment(segments[3]);
-  }
   if (
     segments[0] === "release-catalogs" &&
     (segments[1] === "app-version" || segments[1] === "fingerprint") &&
@@ -3295,7 +3280,7 @@ function captureArtifactSelection(pathname: string, payload: unknown) {
 function classifyProxiedUpdatePath(pathname: string) {
   if (pathname.includes("/release-catalogs/")) return "catalog" as const;
   if (pathname.includes("/artifacts/")) return "artifact" as const;
-  return "legacy" as const;
+  return "other" as const;
 }
 
 function recordProxyRequest(
@@ -3410,7 +3395,7 @@ export function handleConfigureProxy(input: {
   if (input.reset) {
     proxyRequestCounts.artifact = 0;
     proxyRequestCounts.catalog = 0;
-    proxyRequestCounts.legacy = 0;
+    proxyRequestCounts.other = 0;
     proxyPathCounts.clear();
     capturedArtifactSelections.length = 0;
     remoteAssetTransfers.clear();
@@ -3791,7 +3776,7 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
   const target = getRemoteAssetProxyTarget(requestUrl);
 
   if (!target) {
-    return new Response("Missing url", { status: 400 });
+    return new Response("Unknown proxy target", { status: 400 });
   }
   const transfer = remoteAssetTransfers.get(requestUrl.pathname) ?? {
     requests: 0,
@@ -3869,17 +3854,13 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
 
 function getRemoteAssetProxyTarget(requestUrl: URL) {
   const proxyPathPrefix = "/e2e/proxy-url/";
-  if (requestUrl.pathname.startsWith(proxyPathPrefix)) {
-    const targetId = decodeURIComponent(
-      requestUrl.pathname.slice(proxyPathPrefix.length),
-    );
-    return remoteAssetProxyTargets.get(targetId) ?? null;
+  if (!requestUrl.pathname.startsWith(proxyPathPrefix)) {
+    return null;
   }
-
-  const legacyTarget = requestUrl.searchParams.get("url");
-  return legacyTarget === null
-    ? null
-    : ({ kind: "file", url: legacyTarget } satisfies RemoteAssetProxyTarget);
+  const targetId = decodeURIComponent(
+    requestUrl.pathname.slice(proxyPathPrefix.length),
+  );
+  return remoteAssetProxyTargets.get(targetId) ?? null;
 }
 
 function buildCatalogUrl(args: {

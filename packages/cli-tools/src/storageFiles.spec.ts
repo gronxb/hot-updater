@@ -5,11 +5,7 @@ import path from "node:path";
 import { createStorageAdapter } from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  getStorageFileByteSize,
-  putStorageFile,
-  writeStorageFile,
-} from "./storageFiles";
+import { getStorageFileByteSize, putStorageFile } from "./storageFiles";
 
 const temporaryDirectories: string[] = [];
 
@@ -89,94 +85,5 @@ describe("putStorageFile", () => {
     } finally {
       stat.mockRestore();
     }
-  });
-});
-
-describe("writeStorageFile", () => {
-  it("streams a response body to a file without using arrayBuffer", async () => {
-    const directory = await fs.mkdtemp(
-      path.join(os.tmpdir(), "storage-files-"),
-    );
-    temporaryDirectories.push(directory);
-    const filePath = path.join(directory, "nested", "bundle.zip");
-    const chunk = new Uint8Array(64 * 1024).fill(23);
-    const chunkCount = 32;
-    let emitted = 0;
-    const response = new Response(
-      new ReadableStream<Uint8Array>({
-        pull(controller) {
-          if (emitted === chunkCount) {
-            controller.close();
-            return;
-          }
-          controller.enqueue(chunk);
-          emitted += 1;
-        },
-      }),
-    );
-    const arrayBuffer = vi
-      .spyOn(response, "arrayBuffer")
-      .mockRejectedValue(new Error("arrayBuffer must not be used"));
-    const storage = createStorageAdapter({
-      name: "streaming-test",
-      protocol: "test",
-      get: async () => ({ response }),
-    });
-
-    await writeStorageFile(storage, "test://bucket/bundle.zip", filePath);
-
-    expect((await fs.stat(filePath)).size).toBe(chunk.byteLength * chunkCount);
-    expect(emitted).toBe(chunkCount);
-    expect(arrayBuffer).not.toHaveBeenCalled();
-  });
-
-  it("creates an empty file when the response has no body", async () => {
-    const directory = await fs.mkdtemp(
-      path.join(os.tmpdir(), "storage-files-"),
-    );
-    temporaryDirectories.push(directory);
-    const filePath = path.join(directory, "empty.bin");
-    const storage = createStorageAdapter({
-      name: "empty-test",
-      protocol: "test",
-      get: async () => ({ response: new Response(null) }),
-    });
-
-    await writeStorageFile(storage, "test://bucket/empty.bin", filePath);
-
-    expect((await fs.stat(filePath)).size).toBe(0);
-  });
-
-  it("removes a partial file when the response stream fails", async () => {
-    const directory = await fs.mkdtemp(
-      path.join(os.tmpdir(), "storage-files-"),
-    );
-    temporaryDirectories.push(directory);
-    const filePath = path.join(directory, "partial.bin");
-    const streamError = new Error("storage stream failed");
-    let pulled = false;
-    const storage = createStorageAdapter({
-      name: "failing-test",
-      protocol: "test",
-      get: async () => ({
-        response: new Response(
-          new ReadableStream<Uint8Array>({
-            pull(controller) {
-              if (!pulled) {
-                pulled = true;
-                controller.enqueue(new Uint8Array(64 * 1024).fill(1));
-                return;
-              }
-              controller.error(streamError);
-            },
-          }),
-        ),
-      }),
-    });
-
-    await expect(
-      writeStorageFile(storage, "test://bucket/partial.bin", filePath),
-    ).rejects.toBe(streamError);
-    await expect(fs.stat(filePath)).rejects.toMatchObject({ code: "ENOENT" });
   });
 });

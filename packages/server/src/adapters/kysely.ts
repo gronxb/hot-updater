@@ -13,8 +13,6 @@ import { checkSqlProvider } from "./sqlProviders";
 
 export { kyselyExecutor } from "./kyselyExecutor";
 
-export type { SqlDialect as SQLProvider };
-
 export interface KyselyAdapterConfig<TDatabase extends object = object> {
   readonly db: Kysely<TDatabase>;
   readonly provider: SqlDialect;

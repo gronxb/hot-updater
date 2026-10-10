@@ -1,8 +1,7 @@
-import { createReadStream, createWriteStream } from "node:fs";
+import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
 
 import {
   getContentType,
@@ -36,39 +35,5 @@ export const putStorageFile = async (
     return { ...result, byteSize };
   } finally {
     source.destroy();
-  }
-};
-
-export const writeStorageFile = async (
-  storage: StorageAdapterWith<"get">,
-  storageUri: string,
-  filePath: string,
-): Promise<void> => {
-  const { response } = await storage.get({ storageUri });
-  if (response === null) {
-    throw new Error(`Storage object not found: ${storageUri}`);
-  }
-
-  await writeStorageResponseFile(response, filePath);
-};
-
-export const writeStorageResponseFile = async (
-  response: Response,
-  filePath: string,
-): Promise<void> => {
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  if (response.body === null) {
-    await fs.writeFile(filePath, new Uint8Array());
-    return;
-  }
-
-  try {
-    await pipeline(
-      Readable.fromWeb(response.body as ReadableStream<Uint8Array>),
-      createWriteStream(filePath),
-    );
-  } catch (error) {
-    await fs.rm(filePath, { force: true });
-    throw error;
   }
 };

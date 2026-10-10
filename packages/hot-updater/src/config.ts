@@ -14,8 +14,3 @@ export {
   generateFingerprints,
   readLocalFingerprint,
 } from "./utils/fingerprint";
-
-export {
-  getPublicKeyFromPrivate,
-  loadPrivateKey,
-} from "./utils/signing/keyGeneration";

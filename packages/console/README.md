@@ -135,9 +135,7 @@ Functions with input take a `{ data: input }` argument:
 - `deleteRelease({ data: { releaseId, expectedRevision } })` deletes a release.
 - `promoteRelease({ data: { releaseId, expectedRevision, targetChannel, action } })`
   copies or moves a release; `action` is `"copy"` or `"move"`.
-- `getBundles({ data: { platform, limit, after, before } })` lists bundle artifacts;
-  `getBundle({ data: { bundleId } })` reads one and
-  `deleteBundle({ data: { bundleId } })` deletes one.
+- `getBundle({ data: { bundleId } })` reads a bundle artifact.
 
 Use one pagination cursor at a time.
 

@@ -146,10 +146,6 @@ app.all("/hot-updater/*", async (c) => {
   return handleProxyUpdateRequest(c.req.raw);
 });
 
-app.all("/e2e/proxy-url", async (c) => {
-  return handleProxyRemoteAssetRequest(c.req.raw);
-});
-
 app.all("/e2e/proxy-url/:targetId", async (c) => {
   return handleProxyRemoteAssetRequest(c.req.raw);
 });

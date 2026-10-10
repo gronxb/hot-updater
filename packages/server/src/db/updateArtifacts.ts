@@ -10,7 +10,6 @@ import {
   getBundlePatch,
   getManifestFileHash,
   getManifestStorageUri,
-  stripBundleArtifactMetadata,
   type ArtifactInfo,
   type ArtifactAsset,
   type Bundle,
@@ -117,62 +116,6 @@ const isBundleManifest = (value: unknown): value is BundleManifest => {
       );
     },
   );
-};
-
-export const parseBundleMetadata = (
-  value: unknown,
-): Bundle["metadata"] | undefined => {
-  if (!value) {
-    return undefined;
-  }
-
-  let parsedValue: unknown = value;
-
-  if (typeof parsedValue === "string") {
-    try {
-      parsedValue = JSON.parse(parsedValue) as unknown;
-    } catch {
-      return undefined;
-    }
-  }
-
-  if (
-    !parsedValue ||
-    typeof parsedValue !== "object" ||
-    Array.isArray(parsedValue)
-  ) {
-    return undefined;
-  }
-
-  return stripBundleArtifactMetadata(parsedValue as Bundle["metadata"]);
-};
-
-export const parseBundleRawMetadata = (
-  value: unknown,
-): Bundle["metadata"] | undefined => {
-  if (!value) {
-    return undefined;
-  }
-
-  let parsedValue: unknown = value;
-
-  if (typeof parsedValue === "string") {
-    try {
-      parsedValue = JSON.parse(parsedValue) as unknown;
-    } catch {
-      return undefined;
-    }
-  }
-
-  if (
-    !parsedValue ||
-    typeof parsedValue !== "object" ||
-    Array.isArray(parsedValue)
-  ) {
-    return undefined;
-  }
-
-  return parsedValue as Bundle["metadata"];
 };
 
 async function fetchBundleManifest(

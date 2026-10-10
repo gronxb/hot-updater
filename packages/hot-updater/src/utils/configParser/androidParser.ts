@@ -21,11 +21,12 @@ interface ManifestXml {
   };
 }
 
-const MANIFEST_KEYS: Record<string, string> = {
-  hot_updater_channel: "com.hotupdater.CHANNEL",
-  hot_updater_fingerprint_hash: "com.hotupdater.FINGERPRINT_HASH",
-  hot_updater_public_key: "com.hotupdater.PUBLIC_KEY",
-};
+/** The AndroidManifest meta-data names the native SDK reads. */
+const MANIFEST_KEYS = new Set([
+  "com.hotupdater.CHANNEL",
+  "com.hotupdater.FINGERPRINT_HASH",
+  "com.hotupdater.PUBLIC_KEY",
+]);
 
 export class AndroidConfigParser implements ConfigParser {
   private androidManifestPaths: string[];
@@ -67,7 +68,7 @@ export class AndroidConfigParser implements ConfigParser {
   }
 
   private getManifestKey(key: string): string | undefined {
-    return MANIFEST_KEYS[key];
+    return MANIFEST_KEYS.has(key) ? key : undefined;
   }
 
   private getApplication(result: ManifestXml): ApplicationElement | null {
