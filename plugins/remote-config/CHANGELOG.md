@@ -1,5 +1,13 @@
 # @hot-updater/plugin-remote-config
 
+## 1.0.0-rc.47
+
+### Patch Changes
+
+- Updated dependencies [ccf3e2f]
+- Updated dependencies [ccf3e2f]
+  - @hot-updater/protocol@1.0.0-rc.47
+
 ## 1.0.0-rc.46
 
 ### Patch Changes

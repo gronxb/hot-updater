@@ -1,5 +1,19 @@
 # @hot-updater/supabase
 
+## 1.0.0-rc.47
+
+### Patch Changes
+
+- 7132080: A database whose settings carry `schema.core` without `schema.engine` is no longer refused separately: the schema fence and `hot-updater db migrate` treat it like any unmigrated database. A v0 database is still refused, with the advice to create a new empty database and run `hot-updater db migrate`. `standaloneRepository` no longer sends a `v` query parameter with admin requests, and `hot-updater init` no longer looks for a `hotUpdater.plugins.ts` file or, on Firebase and Supabase, for collections and tables outside the storage engine's layout. A plugin with a `kind` key fails with the unknown-key error.
+- Updated dependencies [5891d9b]
+- Updated dependencies [ccf3e2f]
+- Updated dependencies [7132080]
+- Updated dependencies [ccf3e2f]
+  - @hot-updater/plugin-core@1.0.0-rc.47
+  - @hot-updater/protocol@1.0.0-rc.47
+  - @hot-updater/server@1.0.0-rc.47
+  - @hot-updater/cli-tools@1.0.0-rc.47
+
 ## 1.0.0-rc.46
 
 ### Patch Changes
