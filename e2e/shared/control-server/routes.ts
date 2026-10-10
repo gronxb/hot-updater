@@ -36,7 +36,6 @@ import {
   handleRollbackRemoteConfig,
   handleRuntimeConfig,
   handleSeedCrashHistory,
-  handleSeedLegacyMetadata,
   handleTerminateApp,
   handleVerifyConsoleInsights,
   handleWaitForCrashRecovery,
@@ -433,10 +432,6 @@ app.post("/e2e/seed-crash-history", async (c) => {
     return c.json({ error: "bundleIds must be a string array" }, 400);
   }
   return c.json(handleSeedCrashHistory(payload.bundleIds));
-});
-
-app.post("/e2e/seed-legacy-metadata", async (c) => {
-  return c.json(handleSeedLegacyMetadata());
 });
 
 app.post("/e2e/jobs/patch-release", async (c) => {

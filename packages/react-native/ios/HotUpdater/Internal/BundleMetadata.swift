@@ -36,7 +36,9 @@ public struct PersistedSelection: Codable {
     let channel: String
     let selectionContextHash: String?
 
-    static func legacyBundle(_ bundleId: String) -> PersistedSelection {
+    /// A selection that names only a Bundle, with no Release Catalog receipt,
+    /// such as the built-in bundle.
+    static func bareBundle(_ bundleId: String) -> PersistedSelection {
         PersistedSelection(
             kind: "BUNDLE",
             releaseId: nil,
@@ -139,14 +141,14 @@ public struct BundleMetadata: Codable {
 
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
-        schema = BundleMetadata.schemaVersion
+        schema = try values.decodeIfPresent(String.self, forKey: .schema) ?? ""
         isolationKey = try values.decodeIfPresent(String.self, forKey: .isolationKey)
         stableBundleId = try values.decodeIfPresent(String.self, forKey: .stableBundleId)
         stagingBundleId = try values.decodeIfPresent(String.self, forKey: .stagingBundleId)
         stableSelection = try values.decodeIfPresent(PersistedSelection.self, forKey: .stableSelection)
-            ?? stableBundleId.map(PersistedSelection.legacyBundle)
+            ?? stableBundleId.map(PersistedSelection.bareBundle)
         stagingSelection = try values.decodeIfPresent(PersistedSelection.self, forKey: .stagingSelection)
-            ?? stagingBundleId.map(PersistedSelection.legacyBundle)
+            ?? stagingBundleId.map(PersistedSelection.bareBundle)
         verificationPending = try values.decodeIfPresent(Bool.self, forKey: .verificationPending) ?? false
         launchInProgress = try values.decodeIfPresent(Bool.self, forKey: .launchInProgress) ?? false
         pendingTransition = try values.decodeIfPresent(PendingBundleTransition.self, forKey: .pendingTransition)
@@ -166,6 +168,12 @@ public struct BundleMetadata: Codable {
             let data = try Data(contentsOf: file)
             let decoder = JSONDecoder()
             let metadata = try decoder.decode(BundleMetadata.self, from: data)
+
+            // Read only metadata written in this schema.
+            guard metadata.schema == BundleMetadata.schemaVersion else {
+                print("[BundleMetadata] Unsupported schema \(metadata.schema), treating as invalid")
+                return nil
+            }
 
             // Validate isolation key
             if let metadataKey = metadata.isolationKey {

@@ -2681,6 +2681,50 @@ struct BundleFileStorageServiceTests {
             )
         }
     }
+
+    @Test
+    func metadataInAnotherSchemaIsNotLoaded() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let stable = try createBundleDirectory(documentsDirectory: root, bundleId: "stable-bundle")
+        try writeBundle(in: stable, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stable, bundleId: "stable-bundle")
+        let metadata: [String: Any] = [
+            "schema": "metadata-v3",
+            "isolation_key": testIsolationKey,
+            "stable_bundle_id": "stable-bundle",
+            "verification_pending": false,
+            "updated_at": 0,
+        ]
+        try JSONSerialization.data(withJSONObject: metadata).write(to: root
+            .appendingPathComponent("bundle-store", isDirectory: true)
+            .appendingPathComponent(BundleMetadata.metadataFilename))
+
+        let preferences = InMemoryPreferencesService()
+        try preferences.setItem(stable.appendingPathComponent("index.ios.bundle").path, forKey: "HotUpdaterBundleURL")
+
+        #expect(loadMetadata(documentsDirectory: root) == nil)
+        let service = makeStorageService(documentsDirectory: root, preferences: preferences)
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+        #expect(service.getBundleId() == nil)
+        #expect(service.getBaseURL() == "")
+    }
+
+    @Test
+    func changedIsolationKeyRemovesTheBundles() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let stable = try createBundleDirectory(documentsDirectory: root, bundleId: "stable-bundle")
+        try writeBundle(in: stable, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stable, bundleId: "stable-bundle")
+        try writeMetadata(documentsDirectory: root,
+            BundleMetadata(isolationKey: "another-isolation-key", stableBundleId: "stable-bundle"))
+
+        let service = makeStorageService(documentsDirectory: root)
+
+        #expect(!FileManager.default.fileExists(atPath: stable.path))
+        #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
+    }
 }
 
 private let testIsolationKey = "test-isolation-key"

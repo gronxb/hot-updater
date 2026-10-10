@@ -49,6 +49,31 @@ class BundleFileStorageServiceTest {
         assertStagingLaunchAcrossColdStart(hasStableBundle = false, completesLaunch = true)
     }
 
+    @Test
+    fun `metadata in another schema is not loaded`() {
+        val rootDir = temporaryFolder.newFolder()
+        val stableDir = createBundleDir(rootDir, "stable-bundle")
+        writeFile(stableDir, "index.android.bundle")
+        writeManifest(stableDir, listOf("index.android.bundle"))
+        File(bundleStoreDir(rootDir), BundleMetadata.METADATA_FILENAME).writeText(
+            JSONObject()
+                .put("schema", "metadata-v3")
+                .put("isolationKey", TEST_ISOLATION_KEY)
+                .put("stableBundleId", "stable-bundle")
+                .put("verificationPending", false)
+                .toString(),
+        )
+
+        val preferences = InMemoryPreferencesService()
+        preferences.setItem("HotUpdaterBundleURL", File(stableDir, "index.android.bundle").absolutePath)
+
+        assertNull(loadMetadata(rootDir))
+        val service = createService(rootDir, preferences)
+        assertNull(service.prepareLaunch(null).launchedBundleId)
+        assertNull(service.getBundleId())
+        assertEquals("", service.getBaseURL())
+    }
+
     private fun assertStagingLaunchAcrossColdStart(
         hasStableBundle: Boolean,
         completesLaunch: Boolean = false,

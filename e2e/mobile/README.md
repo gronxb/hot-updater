@@ -1,7 +1,7 @@
 # Mobile E2E runner
 
 The runner uses `e2e@0.18.0`, `@e2e-dev/mobile@0.10.0`, and
-`agent-device@0.21.22` to execute the 31 scenarios in
+`agent-device@0.21.22` to execute the 30 scenarios in
 [`../scenario-names.json`](../scenario-names.json). The shared control server
 prepares OTA fixtures and verifies native recovery and Console Insights.
 iOS app-opening confirmation dialogs are recognized in English and Korean;

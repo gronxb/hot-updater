@@ -113,7 +113,6 @@ const defaultScenarioNames = [
   "republished-crashed-bundle-skipped",
   "crash-then-next-safe-update",
   "runtime-channel-crash-restore",
-  "metadata-v1-migration",
   "ten-crash-history-safe-bundle",
   "remote-config-fetch-activate",
 ] as const;
@@ -279,7 +278,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(31);
+    expect(new Set(listScenarioNames()).size).toBe(30);
   });
 
   it("keeps repeated catalog checks as no-ops while already built-in", async () => {
@@ -879,8 +878,6 @@ describe("E2E scenario contract", () => {
       "crash-then-next-safe-update: install next safe update",
       "runtime-channel-crash-restore: install beta stable",
       "runtime-channel-crash-restore: install beta crash",
-      "metadata-v1-migration: install migration stable",
-      "metadata-v1-migration: install migration staging",
     ]);
 
     for (const scenarioName of defaultScenarioNames) {

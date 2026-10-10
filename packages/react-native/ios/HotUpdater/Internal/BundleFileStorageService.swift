@@ -1203,7 +1203,7 @@ class BundleFileStorageService: BundleStorageService {
             let jsonString = try String(contentsOf: metadataURL, encoding: .utf8)
             if let jsonData = jsonString.data(using: .utf8),
                let json = try JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
-               let storedKey = json["isolationKey"] as? String {
+               let storedKey = json[BundleMetadata.CodingKeys.isolationKey.rawValue] as? String {
 
                 if storedKey != isolationKey {
                     NSLog("[BundleStorage] isolationKey changed: \(storedKey) -> \(isolationKey)")
@@ -1290,9 +1290,9 @@ class BundleFileStorageService: BundleStorageService {
             }
             return metadata.stableSelection
         }())
-        let stagingSelection = incomingSelection ?? PersistedSelection.legacyBundle(bundleId)
+        let stagingSelection = incomingSelection ?? PersistedSelection.bareBundle(bundleId)
         let fromSelection = currentVerifiedSelection
-            ?? PersistedSelection.legacyBundle(resolveBuiltInBundleId() ?? bundleId)
+            ?? PersistedSelection.bareBundle(resolveBuiltInBundleId() ?? bundleId)
         let pendingTransition = currentVerifiedBundleId.map {
             createPendingTransition(fromBundleId: $0, toBundleId: bundleId)
         }
@@ -1446,9 +1446,9 @@ class BundleFileStorageService: BundleStorageService {
 
     private func activeSelection(_ metadata: BundleMetadata) -> PersistedSelection? {
         metadata.stagingSelection
-            ?? metadata.stagingBundleId.map(PersistedSelection.legacyBundle)
+            ?? metadata.stagingBundleId.map(PersistedSelection.bareBundle)
             ?? metadata.stableSelection
-            ?? metadata.stableBundleId.map(PersistedSelection.legacyBundle)
+            ?? metadata.stableBundleId.map(PersistedSelection.bareBundle)
     }
 
     func getActiveUpdateState() -> [String: Any] {
