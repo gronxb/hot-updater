@@ -111,6 +111,19 @@ describe("runtime createHotUpdater", () => {
         }),
       ).toThrow(HotUpdaterConfigError);
     }
+    for (const database of [legacy, undefined]) {
+      expect(() =>
+        createHotUpdater({
+          clientAccess: "public",
+          database: database as unknown as CreateHotUpdaterOptions["database"],
+          storage: createReleaseCatalogTestStorage(),
+        }),
+      ).toThrow(
+        new HotUpdaterConfigError(
+          "database must be a Hot Updater database adapter, such as kyselyAdapter(...) or postgres(...).",
+        ),
+      );
+    }
     expect(() =>
       createHotUpdater({
         clientAccess: "public",

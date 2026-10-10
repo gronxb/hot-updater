@@ -11,7 +11,6 @@
 "@hot-updater/datadog-plugin": patch
 "@hot-updater/expo": patch
 "@hot-updater/firebase": patch
-"@hot-updater/js": patch
 "@hot-updater/plugin-api-keys": patch
 "@hot-updater/plugin-core": patch
 "@hot-updater/plugin-insights": patch

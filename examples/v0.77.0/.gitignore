@@ -76,3 +76,6 @@ yarn-error.log
 .hot-updater/output
 # hot-updater
 .env.hotupdater
+
+# Public Hot Updater settings generated before bundling
+src/hotUpdaterBuildConfig.js

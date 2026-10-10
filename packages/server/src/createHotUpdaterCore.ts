@@ -191,7 +191,7 @@ const databaseOf = (value: unknown): ToolingDatabase => {
     }
   }
   throw new HotUpdaterConfigError(
-    "database must be a Hot Updater 1.0 database, such as kyselyAdapter(...) or postgres(...). Upgrade the provider package that created it.",
+    "database must be a Hot Updater database adapter, such as kyselyAdapter(...) or postgres(...).",
   );
 };
 

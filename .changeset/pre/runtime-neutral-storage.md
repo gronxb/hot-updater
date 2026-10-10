@@ -10,7 +10,6 @@
 "@hot-updater/supabase": minor
 "@hot-updater/standalone": minor
 "@hot-updater/mock": minor
-"@hot-updater/js": minor
 ---
 
 Replace runtime-profiled storage plugins with the flat, runtime-independent

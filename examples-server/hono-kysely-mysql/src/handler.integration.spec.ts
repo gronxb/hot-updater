@@ -349,7 +349,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
 
       await expect(
         migrator.migrateToLatest({
-          mode: "from-schema",
           updateSettings: true,
         }),
       ).rejects.toThrow("Hot Updater v1 cannot migrate schema 0.31.0");
@@ -406,7 +405,6 @@ describe("Hot Updater Handler Integration Tests (Hono + MySQL)", () => {
         }),
       );
       const migration = await migrator.migrateToLatest({
-        mode: "from-schema",
         updateSettings: true,
       });
       await migration.execute();
@@ -574,7 +572,6 @@ const migrateCurrentSchema = async (
   const migrate = async () => {
     const migrator = createMigrator(hotUpdater);
     const result = await migrator.migrateToLatest({
-      mode: "from-schema",
       updateSettings: true,
     });
     await result.execute();

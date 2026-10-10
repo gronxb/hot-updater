@@ -15,6 +15,8 @@
     <meta-data android:name="expo.modules.updates.ENABLED" android:value="false"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_CHECK_ON_LAUNCH" android:value="ALWAYS"/>
     <meta-data android:name="expo.modules.updates.EXPO_UPDATES_LAUNCH_WAIT_MS" android:value="0"/>
+    <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="c0f50d038dce61ef6b3fd54ae319d51d9880e4e7"/>
+    <meta-data android:name="com.hotupdater.PUBLIC_KEY" android:value="-----BEGIN PUBLIC KEY-----\nMIICIjANBgkqhkiG9w0BAQEFAAOCAg8AMIICCgKCAgEAo3D5wVYe+8kvDuwYdTDf\nKeLk5UDntWyojSK39tFDGX2Fqj2Pv16o5UdsU2AfxJyAwxM7Y0ZYK3H/TULsuNQ2\nhGonOUdwOsTL9BbyhTQdAsXaHcemYFz88VcD8aHuqjDeiD6WymrqzVfKuiIWsQHr\n3uiSKKOvCi8Ww7n1u5KCo6jQyDp/t1pvJ457SeYGtYHXv8ZAUlfWddTlvOuj1ij2\neGzntcKvMgAb3nvSZtNEPkZrL/k1s73D0yL8H+GMAZNiqiPJNfwGCZ6vKyERhl6j\nbaL+0YIN0hEqn+PZpSNS4cVMt8wxWuyali5LKgfNfnlBkZifbckobtO/SPKTxuMQ\nBFDGB7+W6QoAe1vBnk3RpuEZlh8JEQSIrR5dFuPSIRIOxVdfIIcXTzZY1U+OBKtj\nipNsCdq4X2Z1QqqrV7R6OqL6VOW9PF0wFB28AHFR8nkdNkfHmJMRV3Icdb1PysXz\nnFPYLnpmTQUZsaLpStOlj7Clh8fPpR85bNuOoiAX2yc+LvwayhiUeLkQ4XnBZkxz\n2t+bmbRMlJtOH4g0p27JF+XfH+LzHKT7yF38Is1c52IrKU+NQ8/8fjwgYcvcHzLh\n20DJIux/Hwm0cKo8yOztlOwk20LxsfIfRPsJURcsrsyyrn0GhiVyHp9vThglnH9y\nDYmCC/ciE5c5rhWZg+HKmBMCAwEAAQ==\n-----END PUBLIC KEY-----"/>
     <activity android:name=".MainActivity" android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode" android:launchMode="singleTask" android:windowSoftInputMode="adjustResize" android:theme="@style/Theme.App.SplashScreen" android:exported="true" android:screenOrientation="portrait">
       <intent-filter>
         <action android:name="android.intent.action.MAIN"/>

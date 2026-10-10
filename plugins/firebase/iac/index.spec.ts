@@ -395,12 +395,12 @@ describe("Firebase project creation", () => {
     mocks.existingProject = true;
     mocks.assertFunction.mockRejectedValueOnce(
       new Error(
-        "Firebase v0 infrastructure was detected at Function hot-updater-v1",
+        "Function hot-updater-v1, which init deploys, already exists in this Firebase project and is incompatible",
       ),
     );
 
     await expect(runInit({ build: "bare" })).rejects.toThrow(
-      "Firebase v0 infrastructure was detected at Function hot-updater-v1",
+      "Function hot-updater-v1, which init deploys, already exists in this Firebase project and is incompatible",
     );
 
     expect(mocks.events).toEqual(["project"]);

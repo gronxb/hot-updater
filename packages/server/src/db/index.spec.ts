@@ -95,7 +95,6 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
   beforeAll(async () => {
     const migrator = createMigrator(hotUpdater);
     const result = await migrator.migrateToLatest({
-      mode: "from-schema",
       updateSettings: true,
     });
     await result.execute();
@@ -195,7 +194,6 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
       try {
         const migrator = createMigrator(migrationHotUpdater);
         const result = await migrator.migrateToLatest({
-          mode: "from-schema",
           updateSettings: false,
         });
         const sql = result.getSQL?.() ?? "";
@@ -243,37 +241,9 @@ describe("server/db hotUpdater (PGlite + Kysely)", async () => {
         const migrator = createMigrator(migrationHotUpdater);
         await expect(
           migrator.migrateToLatest({
-            mode: "from-schema",
             updateSettings: true,
           }),
         ).rejects.toThrow("Hot Updater v1 cannot migrate schema 0.21.0");
-      } finally {
-        await migrationKysely.destroy();
-        await migrationDb.close();
-      }
-    });
-
-    it("rejects from-database migrations explicitly", async () => {
-      const migrationDb = new PGlite();
-      const migrationKysely = new Kysely<object>({
-        dialect: new PGliteDialect(migrationDb),
-      });
-      const migrationHotUpdater = createHotUpdater({
-        database: kyselyAdapter({
-          db: migrationKysely,
-          provider: "postgresql",
-        }),
-        storage: createReleaseCatalogTestStorage(),
-      });
-
-      try {
-        await expect(
-          createMigrator(migrationHotUpdater).migrateToLatest({
-            mode: "from-database",
-          }),
-        ).rejects.toThrow(
-          "Hot Updater migrations support only mode: 'from-schema'.",
-        );
       } finally {
         await migrationKysely.destroy();
         await migrationDb.close();

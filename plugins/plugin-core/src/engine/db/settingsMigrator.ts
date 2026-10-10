@@ -10,10 +10,7 @@ import { HotUpdaterSchemaMigrationRequiredError } from "../database/fence";
 import type { SqlExecutor } from "../database/sql/sqlAdapter";
 import { quoteSql } from "../database/sql/sqlSchema";
 import { settingsStatements } from "./engineSql";
-import {
-  assertSupportedMigrationMode,
-  getEmptyMigrationResult,
-} from "./fixedMigratorShared";
+import { getEmptyMigrationResult } from "./fixedMigratorShared";
 import type { MigrateOptions, MigrationResult, Migrator } from "./types";
 
 /**
@@ -86,7 +83,6 @@ export const createSettingsMigrator = (options: {
   const makeResult = async (
     migrate: MigrateOptions = {},
   ): Promise<MigrationResult> => {
-    assertSupportedMigrationMode(migrate);
     const stored = await read();
     if (stored === null) {
       throw new Error(

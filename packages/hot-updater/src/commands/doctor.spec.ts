@@ -1737,6 +1737,33 @@ describe("doctor", () => {
     });
   });
 
+  it("names the manifest key when the Android fingerprint hash differs from fingerprint.json", async () => {
+    const cwd = await setUpNativeProject("fingerprint");
+    await writeAndroidManifest(
+      cwd,
+      '    <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="stale-android-fingerprint" />',
+    );
+
+    const result = await doctor();
+
+    expect(result).toMatchObject({
+      success: false,
+      details: {
+        native: {
+          issues: [
+            {
+              platform: "android",
+              code: "FINGERPRINT_HASH_MISMATCH",
+              message:
+                "com.hotupdater.FINGERPRINT_HASH in AndroidManifest.xml does not match fingerprint.json.",
+              paths: ["android/app/src/main/AndroidManifest.xml"],
+            },
+          ],
+        },
+      },
+    });
+  });
+
   it("prints the sources that changed under a stale fingerprint.json", async () => {
     await setUpNativeProject("fingerprint");
     mockCheckFingerprintJson.mockResolvedValueOnce([staleIos]);

@@ -13,6 +13,11 @@ import {
 import React, { useEffect, useState } from "react";
 import { Button, Image, Modal, SafeAreaView, Text, View } from "react-native";
 
+import {
+  HOT_UPDATER_API_KEY,
+  HOT_UPDATER_APP_BASE_URL,
+} from "./src/hotUpdaterBuildConfig";
+
 export const extractFormatDateFromUUIDv7 = (uuid: string) => {
   const timestampHex = uuid.split("-").join("").slice(0, 12);
   const timestamp = Number.parseInt(timestampHex, 16);
@@ -29,8 +34,16 @@ export const extractFormatDateFromUUIDv7 = (uuid: string) => {
 };
 
 export const hotUpdater = HotUpdater.init({
-  // Replace with your public update server URL.
-  baseURL: "https://your-project.supabase.co/functions/v1/update-server",
+  // The hot-updater-v1 Edge Function URL, or HOT_UPDATER_APP_BASE_URL from the
+  // build environment or .env.hotupdater (see hot-updater-build-config.cjs).
+  baseURL:
+    HOT_UPDATER_APP_BASE_URL ??
+    "https://your-project.supabase.co/functions/v1/hot-updater-v1",
+  // The client API key the server's apiKeys() requires: HOT_UPDATER_API_KEY,
+  // which `hot-updater init` writes to .env.hotupdater.
+  requestHeaders: HOT_UPDATER_API_KEY
+    ? { "x-api-key": HOT_UPDATER_API_KEY }
+    : undefined,
   plugins: [insights()],
 });
 

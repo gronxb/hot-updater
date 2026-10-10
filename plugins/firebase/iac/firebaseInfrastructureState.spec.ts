@@ -1,3 +1,4 @@
+import { InitError } from "@hot-updater/cli-tools";
 import { describe, expect, it, vi } from "vitest";
 
 import {
@@ -16,7 +17,7 @@ describe("Firebase infrastructure generation", () => {
     expect(resolveFirebaseInfrastructureState(input)).toBe(expected);
   });
 
-  it("ignores the v0 function because v1 has a distinct function name", async () => {
+  it("ignores functions with other names", async () => {
     const fetchImpl = vi.fn<typeof fetch>();
 
     await expect(
@@ -30,10 +31,38 @@ describe("Firebase infrastructure generation", () => {
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("blocks an incompatible function occupying the v1 name", async () => {
+  it.each([
+    ["answers 404 at /version", new Response(null, { status: 404 })],
+    [
+      "reports no infrastructure generation",
+      Response.json({ version: "1.0.0" }),
+    ],
+  ])(
+    "blocks an incompatible function occupying the v1 name, which %s",
+    async (_, response) => {
+      const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(response);
+
+      const blocked = assertFirebaseFunctionCanInitialize({
+        fetchImpl,
+        functions: [
+          {
+            id: "hot-updater-v1",
+            uri: "https://hot-updater-v1.example.com",
+          },
+        ],
+      });
+
+      await expect(blocked).rejects.toBeInstanceOf(InitError);
+      await expect(blocked).rejects.toThrow(
+        "Function hot-updater-v1, which init deploys, already exists in this Firebase project and is incompatible: its /version does not report Hot Updater infrastructure generation 1. Delete the function or use another Firebase project, then rerun init. The existing function was not changed.",
+      );
+    },
+  );
+
+  it("keeps the shared error when the function's /version cannot be read", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(new Response(null, { status: 404 }));
+      .mockResolvedValue(new Response(null, { status: 503 }));
 
     await expect(
       assertFirebaseFunctionCanInitialize({
@@ -46,7 +75,7 @@ describe("Firebase infrastructure generation", () => {
         ],
       }),
     ).rejects.toThrow(
-      "Firebase v0 infrastructure was detected at Function hot-updater-v1",
+      "Could not verify the Firebase infrastructure generation at Function hot-updater-v1: HTTP 503",
     );
   });
 

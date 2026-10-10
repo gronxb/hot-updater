@@ -110,7 +110,7 @@ it("runs the complete contract from the published test-utils package", async () 
         migrate: async () => {
           const migration = await database
             .createMigrator!(toolingTargetOf([insights()]))
-            .migrateToLatest({ mode: "from-schema", updateSettings: true });
+            .migrateToLatest({ updateSettings: true });
           await migration.execute();
         },
         reset: async () => {

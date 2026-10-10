@@ -3,10 +3,7 @@ import type { SchemaSettings } from "../database/fence";
 import type { ResolvedSchema } from "../database/resolveSchema";
 import type { SqlExecutor } from "../database/sql/sqlAdapter";
 import { type EngineSqlOptions, generateEngineSql } from "./engineSql";
-import {
-  assertSupportedMigrationMode,
-  getEmptyMigrationResult,
-} from "./fixedMigratorShared";
+import { getEmptyMigrationResult } from "./fixedMigratorShared";
 import {
   readStoredSettings,
   refusePreEngineDatabase,
@@ -49,7 +46,6 @@ export const createEngineSqlMigrator = (
   const makeResult = async (
     migrate: MigrateOptions = {},
   ): Promise<MigrationResult> => {
-    assertSupportedMigrationMode(migrate);
     const stored = await read();
     // A database from before the engine is recreated, never converted.
     refusePreEngineDatabase(options.adapterName, stored);

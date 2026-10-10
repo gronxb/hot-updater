@@ -81,7 +81,7 @@ describe("hot-updater/plugins", () => {
       plugins: [apiKeys(), insights(), remoteConfig()],
     });
     await database.createMigrator!(toolingTargetOf(server.plugins))
-      .migrateToLatest({ mode: "from-schema", updateSettings: true })
+      .migrateToLatest({ updateSettings: true })
       .then((result) => result.execute());
 
     expect(generateClientCredential(server)).toMatch(/^[A-Za-z0-9_-]{43}$/u);

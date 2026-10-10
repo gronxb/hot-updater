@@ -17,13 +17,15 @@ const version = (adminProtocol?: number) =>
   http.get(`${BASE_URL}/version`, () =>
     HttpResponse.json(
       adminProtocol === undefined
-        ? { version: "0.30.0" }
+        ? {}
         : { version: "1.0.0", adminProtocol, plugins: [] },
     ),
   );
 
+const PROTOCOL_REFUSAL = `The server at ${BASE_URL} does not report Hot Updater admin API protocol 2 at /version. Set baseUrl to the path where the server mounts handlers.admin, such as https://example.com/hot-updater/admin.`;
+
 describe("createStandaloneCoreApi", () => {
-  it("refuses a server older than admin API protocol 2 before any read", async () => {
+  it("refuses a baseUrl whose /version answers 404 before any read", async () => {
     let read = false;
     server.use(
       http.get(
@@ -37,19 +39,17 @@ describe("createStandaloneCoreApi", () => {
     );
     const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
 
-    await expect(core.ready()).rejects.toThrow(
-      `The server at ${BASE_URL} speaks admin API protocol 1, and this CLI needs 2.`,
-    );
+    await expect(core.ready()).rejects.toThrow(PROTOCOL_REFUSAL);
     expect(read).toBe(false);
   });
 
-  it("refuses a server that reports an older protocol", async () => {
+  it("refuses a /version without adminProtocol", async () => {
     server.use(version());
     const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
 
-    await expect(core.listChannels()).rejects.toBeInstanceOf(
-      StandaloneDatabaseError,
-    );
+    const refused = core.listChannels();
+    await expect(refused).rejects.toBeInstanceOf(StandaloneDatabaseError);
+    await expect(refused).rejects.toThrow(PROTOCOL_REFUSAL);
   });
 
   it("refuses a baseUrl at the client mount, whose /version lists no plugins, before any read", async () => {

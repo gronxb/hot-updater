@@ -366,7 +366,7 @@ v0 mutable per-Bundle asset layout or its cleanup fallback.
 | `@hot-updater/cloudflare/worker`: context-derived database/storage | `d1Database(binding)` and `r2Storage({ bucket, bucketName, accountId, credentials })` with native bindings; the R2 credentials presign download URLs. See [Worker storage](/docs/storage-adapters/cloudflare). |
 | `@hot-updater/cloudflare/worker`: `verifyJwtSignedUrl` | None: devices download from the presigned R2 URLs that `r2Storage` returns. |
 | `@hot-updater/supabase`: root `supabaseEdgeFunctionDatabase` and `supabaseEdgeFunctionStorage` | `supabaseDatabase` and `supabaseStorage` from `@hot-updater/supabase/edge`. |
-| `@hot-updater/js`: `verifyJwtSignedUrl`, `withJwtSignedUrl` | None: a storage adapter's `getDownloadUrl` returns the URL devices download from. |
+| `@hot-updater/js`: the package | None: a storage adapter's `getDownloadUrl` returns the URL devices download from. |
 | `@hot-updater/js`, `@hot-updater/postgres`: `getUpdateInfo` | Release Catalog compilation and exact reads, then device selection; disable the public Bundle for rollback. |
 | `@hot-updater/plugin-core`: `createBlobDatabasePlugin` | A database adapter over a store with atomic conditional writes, such as `createKvAdapter({ store })`, returned with `createEngineDatabase`. Plain object storage cannot provide those writes. |
 | `@hot-updater/plugin-core`: `createNodeStoragePlugin`, `createRuntimeStoragePlugin`, `createUniversalStoragePlugin` | `createStorageAdapter` with flat operations. |

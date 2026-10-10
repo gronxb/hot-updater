@@ -22,5 +22,6 @@
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
       </activity>
+      <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="1df2f30d85e43c3273fbb3a6eb3f646b3e8fcc81" />
     </application>
 </manifest>
