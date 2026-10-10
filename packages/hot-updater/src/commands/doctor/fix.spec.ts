@@ -1,8 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { isExpoCNG } from "../../utils/expoDetection";
 import { syncFingerprintFiles } from "../../utils/fingerprint";
-import { isProjectFileTracked } from "../../utils/git";
 import { writePublicKeyToNativeFiles } from "../keys";
 import type { DoctorContext } from "./context";
 import { applyDoctorFixes } from "./fix";
@@ -12,10 +10,21 @@ import {
   rebuildReleaseCatalogs,
 } from "./serverData";
 
+const { nativeFileRepairBlockReason, buildAdapter } = vi.hoisted(() => {
+  const nativeFileRepairBlockReason = vi.fn<() => string | undefined>();
+  return {
+    nativeFileRepairBlockReason,
+    buildAdapter: vi.fn(async () => ({
+      integration: { nativeFileRepairBlockReason },
+    })),
+  };
+});
+
 vi.mock("@hot-updater/cli-tools", () => ({
   getBundleSigningPublicKey: vi.fn(async () => "configured public key"),
   getCwd: vi.fn(() => "/project"),
   loadConfig: vi.fn(async () => ({
+    build: buildAdapter,
     signing: { enabled: true, privateKeyPath: "./keys/private-key.pem" },
     platform: {
       ios: { infoPlistPaths: ["ios/App/Info.plist"] },
@@ -25,9 +34,7 @@ vi.mock("@hot-updater/cli-tools", () => ({
     },
   })),
 }));
-vi.mock("../../utils/expoDetection", () => ({ isExpoCNG: vi.fn() }));
 vi.mock("../../utils/fingerprint", () => ({ syncFingerprintFiles: vi.fn() }));
-vi.mock("../../utils/git", () => ({ isProjectFileTracked: vi.fn() }));
 vi.mock("../keys", () => ({ writePublicKeyToNativeFiles: vi.fn() }));
 vi.mock("./serverData", () => ({
   deleteUnreferencedArtifacts: vi.fn(),
@@ -56,8 +63,7 @@ const context = (): DoctorContext => ({
 describe("applyDoctorFixes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(isExpoCNG).mockReturnValue(false);
-    vi.mocked(isProjectFileTracked).mockReturnValue(true);
+    nativeFileRepairBlockReason.mockReturnValue(undefined);
   });
 
   it("writes the run's fingerprint once for all its issues, names each file, and counts the native ones", async () => {
@@ -175,9 +181,10 @@ describe("applyDoctorFixes", () => {
     expect(fixesWroteNativeFiles(fixes)).toBe(false);
   });
 
-  it("skips native-file repairs on an Expo project whose native folders prebuild generates, judged in the run's directory", async () => {
-    vi.mocked(isExpoCNG).mockReturnValue(true);
-    vi.mocked(isProjectFileTracked).mockReturnValue(false);
+  it("skips native-file repairs when the selected integration owns the generated native files", async () => {
+    nativeFileRepairBlockReason.mockReturnValue(
+      "expo prebuild owns the native files",
+    );
     vi.mocked(rebuildReleaseCatalogs).mockResolvedValue([
       "release catalog v1:app-version:ios:cHJvZA, generation 4",
     ]);
@@ -193,11 +200,8 @@ describe("applyDoctorFixes", () => {
       context(),
     );
 
-    expect(isExpoCNG).toHaveBeenCalledWith("/project");
-    expect(isProjectFileTracked).toHaveBeenCalledWith({
-      cwd: "/project",
-      filePath: "ios",
-    });
+    expect(buildAdapter).toHaveBeenCalledWith({ cwd: "/project" });
+    expect(nativeFileRepairBlockReason).toHaveBeenCalled();
     expect(fixes).toMatchObject([
       {
         repair: "fingerprint",
@@ -209,8 +213,8 @@ describe("applyDoctorFixes", () => {
     expect(syncFingerprintFiles).not.toHaveBeenCalled();
   });
 
-  it("repairs the native files of an Expo project that commits them", async () => {
-    vi.mocked(isExpoCNG).mockReturnValue(true);
+  it("repairs the native files when the selected integration allows native repairs", async () => {
+    nativeFileRepairBlockReason.mockReturnValue(undefined);
     vi.mocked(syncFingerprintFiles).mockResolvedValue({
       fingerprintJson: false,
       iosPaths: [],

@@ -1,4 +1,8 @@
-import { createEngine, createMemoryAdapter } from "@hot-updater/plugin-core";
+import {
+  getSha256,
+  createEngine,
+  createMemoryAdapter,
+} from "@hot-updater/plugin-core";
 import { NIL_UUID, type Bundle } from "@hot-updater/protocol";
 import { describe, expect, it, vi } from "vitest";
 
@@ -23,9 +27,9 @@ const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
 });
 
 const runScenario = async ({
-  currentHash = "current-hash",
+  currentHash = "c".repeat(64),
   patchByteSize,
-  targetHash = "target-hash",
+  targetHash = "d".repeat(64),
   targetDownloadByteSize = 10,
   resolveUrl,
   archive,
@@ -47,7 +51,7 @@ const runScenario = async ({
               baseBundleId: CURRENT_ID,
               baseFileHash: currentHash,
               byteSize: patchByteSize,
-              patchFileHash: "patch-hash",
+              patchFileHash: "f".repeat(64),
               patchStorageUri: PATCH_URI,
             },
           ],
@@ -57,17 +61,25 @@ const runScenario = async ({
       CURRENT_MANIFEST_URI,
       JSON.stringify({
         bundleId: CURRENT_ID,
-        assets: { "index.ios.bundle": { fileHash: currentHash } },
+        patchAssetPath: "index.ios.bundle",
+        assets: {
+          "index.ios.bundle": {
+            fileHash: currentHash,
+            downloadCompression: null,
+          },
+        },
       }),
     ],
     [
       TARGET_MANIFEST_URI,
       JSON.stringify({
         bundleId: TARGET_ID,
+        patchAssetPath: "index.ios.bundle",
         ...(archive === undefined ? {} : { archive }),
         assets: {
           "index.ios.bundle": {
             downloadByteSize: targetDownloadByteSize,
+            downloadCompression: "br",
             downloadFileHash: "a".repeat(64),
             fileHash: targetHash,
           },
@@ -75,6 +87,12 @@ const runScenario = async ({
       }),
     ],
   ]);
+  currentBundle.manifestFileHash = getSha256(
+    manifests.get(CURRENT_MANIFEST_URI)!,
+  );
+  targetBundle.manifestFileHash = getSha256(
+    manifests.get(TARGET_MANIFEST_URI)!,
+  );
   const resolveFileUrl = vi.fn(async (storageUri: string | null) =>
     storageUri
       ? resolveUrl
@@ -129,8 +147,8 @@ describe("resolveManifestArtifacts", () => {
   });
   it("returns an original descriptor for every target file, including unchanged files", async () => {
     const { result } = await runScenario({
-      currentHash: "same-hash",
-      targetHash: "same-hash",
+      currentHash: "e".repeat(64),
+      targetHash: "e".repeat(64),
     });
 
     expect(result).toMatchObject({
@@ -138,7 +156,7 @@ describe("resolveManifestArtifacts", () => {
       assets: {
         "index.ios.bundle": {
           file: { compression: "br", url: expect.any(String) },
-          fileHash: "same-hash",
+          fileHash: "e".repeat(64),
         },
       },
     });
@@ -175,7 +193,8 @@ describe("core's artifact resolution", () => {
       assets: {
         "assets/logo.png": {
           downloadByteSize: 4,
-          fileHash: "logo-hash",
+          downloadCompression: null,
+          fileHash: "b".repeat(64),
         },
       },
     });
@@ -194,7 +213,9 @@ describe("core's artifact resolution", () => {
     );
     await core.deploy([
       {
-        bundle: createBundle(TARGET_ID),
+        bundle: createBundle(TARGET_ID, {
+          manifestFileHash: getSha256(manifestText),
+        }),
         release: {
           channel: "production",
           enabled: true,
@@ -215,7 +236,7 @@ describe("core's artifact resolution", () => {
       assets: {
         "assets/logo.png": {
           file: { url: expect.any(String) },
-          fileHash: "logo-hash",
+          fileHash: "b".repeat(64),
         },
       },
       manifestUrl: expect.any(String),

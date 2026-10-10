@@ -7,8 +7,54 @@ import { describe, expect, it, vi } from "vitest";
 
 import { listScenarioNames } from "../shared/scenarios.ts";
 import { parseMobileOptions, runMobile, runSdkChild } from "./run.ts";
+import { lynxMobileEnvironment } from "./target.ts";
 
 describe("mobile wrapper", () => {
+  it("selects Lynx page coverage and rejects RN metadata migration before starting anything", () => {
+    const args = [
+      "--platform",
+      "android",
+      "--device",
+      "leased-lynx",
+      "--runtime",
+      "lynx",
+    ];
+    const options = parseMobileOptions(args, {});
+    expect(options.scenarios).toEqual([
+      ...listScenarioNames().filter((name) => name !== "metadata-v1-migration"),
+      "sparkling-multipage-ota",
+    ]);
+    expect(
+      parseMobileOptions([...args, "--scenario", "sparkling-multipage-ota"], {})
+        .scenarios,
+    ).toEqual(["sparkling-multipage-ota"]);
+    expect(() =>
+      parseMobileOptions([...args, "--scenario", "metadata-v1-migration"], {}),
+    ).toThrow("Unknown scenario");
+    expect(() =>
+      parseMobileOptions(["--runtime", "unknown", ...args.slice(0, 4)], {}),
+    ).toThrow("--runtime");
+  });
+
+  it("uses the prepared Lynx target's app and build without inheriting RN defaults", () => {
+    const env = lynxMobileEnvironment("/checkout", {
+      HOT_UPDATER_E2E_ANDROID_BINARY_PATH: "/prepared/lynx.apk",
+      HOT_UPDATER_E2E_APP_ID: "com.example.customlynx",
+    });
+    expect(env.HOT_UPDATER_E2E_ENV_TARGET_DIR).toBe("/checkout/examples/lynx");
+    expect(env.HOT_UPDATER_E2E_ANDROID_BINARY_PATH).toBe("/prepared/lynx.apk");
+    expect(env.HOT_UPDATER_E2E_IOS_APP_ID).toBe("com.example.customlynx");
+    expect(env.HOT_UPDATER_E2E_IOS_BINARY_PATH).toMatch(
+      /\/SparklingGoE2E\.app$/,
+    );
+    expect(
+      parseMobileOptions(
+        ["--platform", "android", "--device", "leased-lynx"],
+        env,
+      ).values.runtime,
+    ).toBe("lynx");
+  });
+
   it("selects the shared default manifest and requires an explicit device", () => {
     expect(
       parseMobileOptions(

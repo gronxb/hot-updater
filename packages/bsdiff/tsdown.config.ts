@@ -7,6 +7,7 @@ export default defineConfig({
     bun: "src/bun.ts",
     deno: "src/deno.ts",
     worker: "src/worker.ts",
+    bsdiff: "src/bsdiff.ts",
     hdiff: "src/hdiff.ts",
     errors: "src/errors.ts",
     precompiled: "src/precompiled.ts",

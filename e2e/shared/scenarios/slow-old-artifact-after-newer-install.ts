@@ -63,7 +63,9 @@ export const slowOldArtifactAfterNewerInstallScenario: ScenarioDefinition = {
     await app.control("delay old artifact completion", "/e2e/proxy-control", {
       artifactDelayMs: 750,
     });
-    await app.tap("apply captured old update", "action-apply-captured-update");
+    await app.tap("apply captured old update", "action-apply-captured-update", {
+      allowErrorResult: true,
+    });
     await app.assertText(
       "assert old artifact CAS rejected",
       "update-action-result",

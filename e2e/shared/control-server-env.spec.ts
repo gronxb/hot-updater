@@ -2,9 +2,35 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { buildControlServerEnv } from "./scripts/control-server.ts";
+
+async function loadController(platform: "android" | "ios") {
+  const resultsDir = await fs.mkdtemp(
+    path.join(os.tmpdir(), "hot-updater-control-transport-"),
+  );
+  vi.resetModules();
+  vi.stubEnv(
+    "HOT_UPDATER_E2E_APP_BASE_URL",
+    "https://updates.test/hot-updater",
+  );
+  vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.lynxexample");
+  vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "booted");
+  vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", platform);
+  vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", resultsDir);
+  vi.stubEnv("HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT", "3114");
+  vi.stubEnv("PORT", "3124");
+  return {
+    controller: await import("./control-server/controller.ts"),
+    resultsDir,
+  };
+}
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
 
 describe("E2E control server environment", () => {
   it("scopes provider channels to the control port when the runner omits a namespace", () => {
@@ -140,11 +166,90 @@ describe("E2E control server environment", () => {
 
     expect(first.HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT).toBe("3107");
     expect(first.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL).toBe(
-      "http://localhost:3107/e2e/runtime-config",
+      "http://127.0.0.1:3107/e2e/runtime-config",
     );
     expect(second.HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT).toBe("3107");
     expect(second.HOT_UPDATER_E2E_RUNTIME_CONFIG_URL).toBe(
-      "http://localhost:3107/e2e/runtime-config",
+      "http://127.0.0.1:3107/e2e/runtime-config",
     );
+  });
+
+  it("serializes Android recovery and runtime config over the IPv4 adb reverse", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () =>
+        Response.json({
+          artifactProtocolVersion: 1,
+          archiveUrl: "https://storage.test/bundle.tar.br",
+          manifestUrl: "https://storage.test/manifest.json",
+          manifestFileHash: "manifest-hash",
+          assets: {
+            "detail.lynx.bundle": {
+              fileHash: "asset-hash",
+              file: { url: "https://storage.test/detail" },
+            },
+          },
+        }),
+      ),
+    );
+    const { controller, resultsDir } = await loadController("android");
+    try {
+      expect(
+        JSON.parse(controller.createLynxRecoveryLaunchConfiguration()),
+      ).toEqual({
+        appBaseURL: "https://updates.test/hot-updater",
+        channel: "production",
+        runtimeConfigURL: "http://127.0.0.1:3114/e2e/runtime-config",
+      });
+      expect(controller.handleRuntimeConfig()).toMatchObject({
+        automaticForceUpdate: false,
+        baseURL: "http://127.0.0.1:3114/hot-updater",
+        updateServerBaseURL: "https://updates.test/hot-updater",
+      });
+      vi.stubEnv("HOT_UPDATER_E2E_SCENARIO_NAME", "force-update-auto-reload");
+      expect(controller.handleRuntimeConfig()).toMatchObject({
+        automaticForceUpdate: true,
+      });
+      // One mobile suite reuses its controller across normal, forced and normal
+      // launches. An old process-level scenario name must not leak between them.
+      for (const enabled of [false, true, false]) {
+        controller.handleRuntimeConfigUpdate({ automaticForceUpdate: enabled });
+        expect(controller.handleRuntimeConfig().automaticForceUpdate).toBe(
+          enabled,
+        );
+      }
+      expect(() =>
+        controller.handleRuntimeConfigUpdate({ automaticForceUpdate: "true" }),
+      ).toThrow("must be a boolean");
+      expect(controller.handleRuntimeConfig().automaticForceUpdate).toBe(false);
+      const artifactResponse = await controller.handleProxyUpdateRequest(
+        new Request(
+          "http://127.0.0.1:3114/hot-updater/artifacts/v1/target/from/current",
+        ),
+      );
+      await expect(artifactResponse.json()).resolves.toMatchObject({
+        archiveUrl: expect.stringMatching(
+          /^http:\/\/127\.0\.0\.1:3114\/e2e\/proxy-url\//,
+        ),
+      });
+    } finally {
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
+  });
+
+  it("keeps iOS control URLs on localhost and the host control port", async () => {
+    const { controller, resultsDir } = await loadController("ios");
+    try {
+      expect(
+        JSON.parse(controller.createLynxRecoveryLaunchConfiguration()),
+      ).toMatchObject({
+        runtimeConfigURL: "http://localhost:3124/e2e/runtime-config",
+      });
+      expect(controller.handleRuntimeConfig()).toMatchObject({
+        baseURL: "http://localhost:3124/hot-updater",
+      });
+    } finally {
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
   });
 });

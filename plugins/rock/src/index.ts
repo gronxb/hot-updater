@@ -6,9 +6,15 @@ import type {
   BuildAdapterArgs,
   BuildAdapter,
   BuildAdapterConfig,
+  NativeFingerprintProvider,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
+
+import { selectReactNativeArtifacts } from "./artifacts";
+import { createReactNativeFingerprint } from "./buildFingerprint";
+import { createReactNativeDoctor } from "./doctor";
+import { getReactNativePodInstallEnvironment } from "./podInstallEnvironment";
 
 interface RunBundleArgs {
   entryFile: string;
@@ -70,6 +76,8 @@ const runBundle = async ({
 };
 
 export interface RockAdapterConfig extends BuildAdapterConfig {
+  /** Native fingerprint implementation for the selected Rock host. */
+  fingerprint?: NativeFingerprintProvider;
   /**
    * @default "index.js"
    * The entry file to bundle.
@@ -103,8 +111,21 @@ export const rock =
       sourcemap = false,
       entryFile = "index.js",
       hermes = true,
+      fingerprint,
     } = config;
     return {
+      integration: {
+        doctor: createReactNativeDoctor(cwd),
+      },
+      nativeBuild: {
+        developmentServerPort: 8081,
+        getPodInstallEnvironment: () =>
+          getReactNativePodInstallEnvironment(cwd),
+        fingerprint: (options) =>
+          fingerprint
+            ? fingerprint(options)
+            : createReactNativeFingerprint(cwd, options),
+      },
       build: async ({ platform }) => {
         const buildPath = path.join(cwd, outDir);
 
@@ -119,10 +140,16 @@ export const rock =
           sourcemap,
           hermes,
         });
+        const { artifacts, patchAssetPath } = await selectReactNativeArtifacts({
+          buildPath,
+          platform,
+        });
 
         return {
+          artifacts,
           buildPath,
           bundleId,
+          patchAssetPath,
           stdout,
         };
       },

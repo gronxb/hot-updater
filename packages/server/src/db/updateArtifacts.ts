@@ -1,4 +1,5 @@
 import {
+  parseStoredBundleManifest,
   getBundleArchiveStorageUri,
   getManifestAssetDownloadPath,
   isContentAddressedAssetFileHash,
@@ -6,32 +7,18 @@ import {
 } from "@hot-updater/plugin-core";
 import {
   ARTIFACT_PROTOCOL_VERSION,
+  MAX_UPDATE_ARTIFACT_RESPONSE_BYTES,
   getAssetBaseStorageUri,
   getBundlePatch,
+  getManifestContentHash,
   getManifestFileHash,
+  type BundleManifest,
   getManifestStorageUri,
   stripBundleArtifactMetadata,
   type ArtifactInfo,
   type ArtifactAsset,
   type Bundle,
 } from "@hot-updater/protocol";
-
-type BundleManifestAsset = {
-  downloadByteSize?: unknown;
-  downloadFileHash?: unknown;
-  fileHash: string;
-  signature?: string;
-};
-
-type BundleManifest = {
-  bundleId: string;
-  assets: Record<string, BundleManifestAsset>;
-  archive?: {
-    downloadFileHash?: unknown;
-    downloadByteSize?: unknown;
-    tarByteSize?: unknown;
-  };
-};
 
 type PlannedFile = {
   byteSize: number | null;
@@ -66,58 +53,10 @@ type ResolveFileUrl = (storageUri: string | null) => Promise<string | null>;
 
 type ReadStorageText = (storageUri: string) => Promise<string | null>;
 
-const HBC_ASSET_PATH_RE = /\.bundle$/;
-
 const asByteSize = (value: unknown): number | null =>
   typeof value === "number" && Number.isSafeInteger(value) && value >= 0
     ? value
     : null;
-
-const resolveUniqueHbcAssetPath = (manifest: BundleManifest) => {
-  const candidates = Object.keys(manifest.assets)
-    .sort((left, right) => left.localeCompare(right))
-    .filter((candidate) => HBC_ASSET_PATH_RE.test(candidate));
-
-  return candidates.length === 1 ? candidates[0] : null;
-};
-
-const isBundleManifest = (value: unknown): value is BundleManifest => {
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    return false;
-  }
-
-  const manifest = value as {
-    bundleId?: unknown;
-    assets?: unknown;
-  };
-
-  if (typeof manifest.bundleId !== "string") {
-    return false;
-  }
-
-  if (!manifest.assets || typeof manifest.assets !== "object") {
-    return false;
-  }
-
-  return Object.values(manifest.assets as Record<string, unknown>).every(
-    (asset) => {
-      if (!asset || typeof asset !== "object" || Array.isArray(asset)) {
-        return false;
-      }
-
-      const manifestAsset = asset as {
-        fileHash?: unknown;
-        signature?: unknown;
-      };
-
-      return (
-        typeof manifestAsset.fileHash === "string" &&
-        (manifestAsset.signature === undefined ||
-          typeof manifestAsset.signature === "string")
-      );
-    },
-  );
-};
 
 export const parseBundleMetadata = (
   value: unknown,
@@ -176,49 +115,53 @@ export const parseBundleRawMetadata = (
 };
 
 async function fetchBundleManifest(
-  storageUri: string,
+  bundle: Bundle,
   readStorageText: ReadStorageText,
 ): Promise<BundleManifest | null> {
-  const storageText = await readStorageText(storageUri);
-  if (storageText === null) {
-    return null;
-  }
-
-  let payload: unknown;
-  try {
-    payload = JSON.parse(storageText) as unknown;
-  } catch {
-    return null;
-  }
-
-  if (!isBundleManifest(payload)) {
-    return null;
-  }
-
-  return payload;
+  const text = await readStorageText(bundle.manifestStorageUri);
+  if (text === null) return null;
+  const manifest = parseStoredBundleManifest({
+    bundleId: bundle.id,
+    manifestBytes: new TextEncoder().encode(text),
+    manifestContentHash: getManifestContentHash(bundle),
+  });
+  return manifest &&
+    Object.values(manifest.assets).every(
+      (asset) => asset.downloadCompression !== undefined,
+    )
+    ? manifest
+    : null;
 }
 
-function resolveHbcPatchPlan({
+function resolvePatchPlan({
   currentBundle,
+  currentManifest,
   targetBundle,
   targetManifest,
 }: {
   currentBundle: Bundle | null;
+  currentManifest: BundleManifest | null;
   targetBundle: Bundle;
   targetManifest: BundleManifest;
 }): { assetPath: string; patch: PlannedPatch } | null {
   const matchingPatch = currentBundle
     ? getBundlePatch(targetBundle, currentBundle.id)
     : null;
-  const patchAssetPath = resolveUniqueHbcAssetPath(targetManifest);
+  const patchAssetPath = targetManifest.patchAssetPath;
 
   if (
     !currentBundle ||
+    !currentManifest ||
+    currentBundle.platform !== targetBundle.platform ||
     !matchingPatch ||
     !patchAssetPath ||
+    !Object.hasOwn(targetManifest.assets, patchAssetPath) ||
     !matchingPatch.patchStorageUri ||
-    !matchingPatch.patchFileHash ||
-    !matchingPatch.baseFileHash
+    !isContentAddressedAssetFileHash(matchingPatch.patchFileHash) ||
+    !isContentAddressedAssetFileHash(matchingPatch.baseFileHash) ||
+    currentManifest.patchAssetPath !== patchAssetPath ||
+    currentManifest.assets[patchAssetPath]?.fileHash !==
+      matchingPatch.baseFileHash
   ) {
     return null;
   }
@@ -238,23 +181,29 @@ function resolveHbcPatchPlan({
 function createManifestArtifactPlan({
   assetBaseStorageUri,
   currentBundle,
+  currentManifest,
   targetBundle,
   targetManifest,
 }: {
   assetBaseStorageUri: string;
   currentBundle: Bundle | null;
+  currentManifest: BundleManifest | null;
   targetBundle: Bundle;
   targetManifest: BundleManifest;
 }): ManifestArtifactPlan {
-  const patchCandidate = resolveHbcPatchPlan({
+  const patchCandidate = resolvePatchPlan({
     currentBundle,
+    currentManifest,
     targetBundle,
     targetManifest,
   });
   const assets = Object.entries(targetManifest.assets).map(
     ([assetPath, asset]): PlannedAsset => {
       const downloadByteSize = asByteSize(asset.downloadByteSize);
-      const downloadPath = getManifestAssetDownloadPath(assetPath);
+      const downloadPath = getManifestAssetDownloadPath(
+        assetPath,
+        asset.downloadCompression!,
+      );
       const isTransformedDownload = downloadPath !== assetPath;
       const hasValidDownloadFileHash = isContentAddressedAssetFileHash(
         asset.downloadFileHash,
@@ -301,7 +250,9 @@ async function resolveAssets(
   } | null = null;
 
   if (patchAsset?.patch) {
-    const patchUrl = await resolveFileUrl(patchAsset.patch.storageUri);
+    const patchUrl = await resolveFileUrl(patchAsset.patch.storageUri).catch(
+      () => null,
+    );
     if (patchUrl) {
       resolvedPatch = {
         assetPath: patchAsset.assetPath,
@@ -319,54 +270,59 @@ async function resolveAssets(
     }
   }
 
-  const entries = await Promise.all(
-    plan.assets.map(async (asset) => {
-      let patch =
-        resolvedPatch?.assetPath === asset.assetPath
-          ? resolvedPatch.patch
-          : null;
-      let fileUrl: string | null = null;
-      try {
-        fileUrl = await resolveFileUrl(asset.file.storageUri);
-      } catch (error) {
-        if (!patch) {
-          throw error;
-        }
-      }
+  const entries: ({ asset: readonly [string, ArtifactAsset] } | null)[] = [];
+  for (let offset = 0; offset < plan.assets.length; offset += 16) {
+    entries.push(
+      ...(await Promise.all(
+        plan.assets.slice(offset, offset + 16).map(async (asset) => {
+          let patch =
+            resolvedPatch?.assetPath === asset.assetPath
+              ? resolvedPatch.patch
+              : null;
+          let fileUrl: string | null = null;
+          try {
+            fileUrl = await resolveFileUrl(asset.file.storageUri);
+          } catch (error) {
+            if (!patch) {
+              throw error;
+            }
+          }
 
-      if (
-        fileUrl &&
-        patch &&
-        asset.file.byteSize !== null &&
-        asset.patch !== null &&
-        asset.patch.byteSize !== null &&
-        asset.patch.byteSize >= asset.file.byteSize
-      ) {
-        patch = null;
-      }
+          if (
+            fileUrl &&
+            patch &&
+            asset.file.byteSize !== null &&
+            asset.patch !== null &&
+            asset.patch.byteSize !== null &&
+            asset.patch.byteSize >= asset.file.byteSize
+          ) {
+            patch = null;
+          }
 
-      if (!fileUrl) {
-        return null;
-      }
+          if (!fileUrl) {
+            return null;
+          }
 
-      const changedAsset: ArtifactAsset = {
-        file: {
-          url: fileUrl,
-        },
-        fileHash: asset.fileHash,
-      };
-      if (asset.file.compression) {
-        changedAsset.file.compression = asset.file.compression;
-      }
-      if (patch) {
-        changedAsset.patch = patch;
-      }
+          const changedAsset: ArtifactAsset = {
+            file: {
+              url: fileUrl,
+            },
+            fileHash: asset.fileHash,
+          };
+          if (asset.file.compression) {
+            changedAsset.file.compression = asset.file.compression;
+          }
+          if (patch) {
+            changedAsset.patch = patch;
+          }
 
-      return {
-        asset: [asset.assetPath, changedAsset] as const,
-      };
-    }),
-  );
+          return {
+            asset: [asset.assetPath, changedAsset] as const,
+          };
+        }),
+      )),
+    );
+  }
 
   if (entries.some((entry) => entry === null)) {
     return null;
@@ -418,7 +374,7 @@ export async function resolveManifestArtifacts({
   }
 
   const targetManifest = await fetchBundleManifest(
-    manifestStorageUri,
+    targetBundle,
     readStorageText,
   );
 
@@ -429,6 +385,12 @@ export async function resolveManifestArtifacts({
   const plan = createManifestArtifactPlan({
     assetBaseStorageUri,
     currentBundle,
+    currentManifest:
+      currentBundle && getBundlePatch(targetBundle, currentBundle.id)
+        ? await fetchBundleManifest(currentBundle, readStorageText).catch(
+            () => null,
+          )
+        : null,
     targetBundle,
     targetManifest,
   });
@@ -463,11 +425,15 @@ export async function resolveManifestArtifacts({
     }
   }
 
-  return {
+  const artifact = {
     artifactProtocolVersion: ARTIFACT_PROTOCOL_VERSION,
     assets: resolved.assets,
     manifestFileHash,
     manifestUrl,
     ...(archiveUrl ? { archiveUrl } : {}),
   };
+  return new TextEncoder().encode(JSON.stringify(artifact)).byteLength <=
+    MAX_UPDATE_ARTIFACT_RESPONSE_BYTES
+    ? artifact
+    : null;
 }

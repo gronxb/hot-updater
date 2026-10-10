@@ -8,6 +8,11 @@ import net from "node:net";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { listLynxScenarioNames } from "../lynx/scenarios.ts";
+import {
+  LYNX_EXCLUDED_DEFAULT_SCENARIOS,
+  readLynxDefaultScenarioNames,
+} from "../lynx/suite-manifest.ts";
 import {
   listScenarioNames,
   resolveSuiteScenarioNames,
@@ -21,6 +26,7 @@ import { acquireAndroidReverses } from "./android-reverse.ts";
 import { collectAttemptEvidence } from "./attempt.ts";
 import type { MobileContext } from "./context.ts";
 import { normalizeMobileResult, writeMobileResult } from "./result.ts";
+import { lynxMobileEnvironment, resolveMobileRuntime } from "./target.ts";
 
 const repoDir = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
@@ -49,6 +55,7 @@ export function parseMobileOptions(
     "results-dir",
     "suite",
     "scenario",
+    "runtime",
   ];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -67,6 +74,7 @@ export function parseMobileOptions(
       throw new Error(`Duplicate argument: ${arg}`);
     else values[key] = value;
   }
+  values.runtime = resolveMobileRuntime(values.runtime, env);
   if (flags.has("--help") || flags.has("--list"))
     return { values, flags, scenarios };
   if (values.platform !== "ios" && values.platform !== "android")
@@ -75,8 +83,19 @@ export function parseMobileOptions(
     throw new Error("Use either --suite or --scenario, not both");
   const selected = scenarios.length
     ? scenarios
-    : [...resolveSuiteScenarioNames(values.suite ?? "default")];
-  const known = new Set(listScenarioNames());
+    : values.runtime === "lynx" && (values.suite ?? "default") === "default"
+      ? [...readLynxDefaultScenarioNames(repoDir)]
+      : [...resolveSuiteScenarioNames(values.suite ?? "default")];
+  const known = new Set(
+    values.runtime === "lynx"
+      ? listLynxScenarioNames().filter(
+          (name) =>
+            !LYNX_EXCLUDED_DEFAULT_SCENARIOS.some(
+              (excluded) => excluded === name,
+            ),
+        )
+      : listScenarioNames(),
+  );
   if (new Set(selected).size !== selected.length)
     throw new Error("Duplicate scenarios are not allowed");
   for (const name of selected)
@@ -196,14 +215,21 @@ export async function runMobile(
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<number> {
   const options = parseMobileOptions(argv, env);
+  const runtime = resolveMobileRuntime(options.values.runtime, env);
+  if (runtime === "lynx") env = lynxMobileEnvironment(repoDir, env);
   if (options.flags.has("--help")) {
     console.log(
-      "pnpm -w e2e -- --prepared --platform ios|android --device <UDID|serial> [--scenario <name>] [--suite default] [--dry-run] [--list]",
+      "pnpm -w e2e -- --prepared --runtime react-native|lynx --platform ios|android --device <UDID|serial> [--scenario <name>] [--suite default] [--dry-run] [--list]",
     );
     return 0;
   }
   if (options.flags.has("--list")) {
-    console.log(listScenarioNames().join("\n"));
+    console.log(
+      (runtime === "lynx"
+        ? readLynxDefaultScenarioNames(repoDir)
+        : listScenarioNames()
+      ).join("\n"),
+    );
     return 0;
   }
   if (options.flags.has("--dry-run")) {
@@ -253,6 +279,7 @@ export async function runMobile(
       env.HOT_UPDATER_E2E_CHANNEL_NAMESPACE ?? `mobile-${randomUUID()}`,
   });
   const context: MobileContext = {
+    runtime,
     platform,
     deviceId,
     session,

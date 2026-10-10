@@ -19,10 +19,16 @@ afterEach(async () => {
 
 describe("AWS managed config scaffold", () => {
   it("renders DynamoDB as the managed metadata database, with the managed server's plugins", () => {
-    const scaffold = getConfigScaffold("bare", {
-      mode: "local",
-      profile: null,
-    });
+    const scaffold = getConfigScaffold(
+      {
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      },
+      {
+        mode: "local",
+        profile: null,
+      },
+    );
 
     expect(scaffold.text).toContain(
       'import { dynamoDB, s3Storage } from "@hot-updater/aws";',
@@ -83,10 +89,16 @@ export default defineConfig({
 `,
       "utf8",
     );
-    const scaffold = getConfigScaffold("bare", {
-      mode: "sso",
-      profile: "hot-updater",
-    });
+    const scaffold = getConfigScaffold(
+      {
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      },
+      {
+        mode: "sso",
+        profile: "hot-updater",
+      },
+    );
 
     await writeHotUpdaterConfig(scaffold, configPath);
     await writeHotUpdaterConfig(scaffold, configPath);
@@ -146,10 +158,13 @@ export default defineConfig({
 `,
       "utf8",
     );
-    const scaffold = getConfigScaffold("bare", {
-      mode: "local",
-      profile: null,
-    });
+    const scaffold = getConfigScaffold(
+      {
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      },
+      { mode: "local", profile: null },
+    );
 
     const result = await writeHotUpdaterConfig(scaffold, configPath);
     const updated = await fs.readFile(configPath, "utf8");
@@ -181,16 +196,28 @@ export default defineConfig({
     await fs.writeFile(
       configPath,
       `${
-        getConfigScaffold("bare", {
-          mode: "sso",
-          profile: "hot-updater",
-        }).text
+        getConfigScaffold(
+          {
+            imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+            configString: "bare({ enableHermes: true })",
+          },
+          {
+            mode: "sso",
+            profile: "hot-updater",
+          },
+        ).text
       }\n`,
       "utf8",
     );
 
     await writeHotUpdaterConfig(
-      getConfigScaffold("bare", { mode: "local", profile: null }),
+      getConfigScaffold(
+        {
+          imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+          configString: "bare({ enableHermes: true })",
+        },
+        { mode: "local", profile: null },
+      ),
       configPath,
     );
 
@@ -203,7 +230,13 @@ export default defineConfig({
   });
 
   it("renders access key credentials for account mode", () => {
-    const scaffold = getConfigScaffold("bare", { mode: "account" });
+    const scaffold = getConfigScaffold(
+      {
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      },
+      { mode: "account" },
+    );
 
     expect(scaffold.text).toContain(
       "accessKeyId: process.env.HOT_UPDATER_S3_ACCESS_KEY_ID!",
@@ -217,10 +250,16 @@ export default defineConfig({
   });
 
   it("renders SSO credentials for sso mode", () => {
-    const scaffold = getConfigScaffold("bare", {
-      mode: "sso",
-      profile: "default",
-    });
+    const scaffold = getConfigScaffold(
+      {
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      },
+      {
+        mode: "sso",
+        profile: "default",
+      },
+    );
 
     expect(scaffold.text).toContain(
       'import { fromSSO } from "@aws-sdk/credential-provider-sso";',
@@ -231,10 +270,16 @@ export default defineConfig({
   });
 
   it("renders the default provider chain for local session mode", () => {
-    const scaffold = getConfigScaffold("bare", {
-      mode: "local",
-      profile: null,
-    });
+    const scaffold = getConfigScaffold(
+      {
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      },
+      {
+        mode: "local",
+        profile: null,
+      },
+    );
 
     expect(scaffold.text).toContain(
       'import { fromNodeProviderChain } from "@aws-sdk/credential-providers";',
@@ -244,10 +289,16 @@ export default defineConfig({
   });
 
   it("renders a shared profile lookup for local profile mode", () => {
-    const scaffold = getConfigScaffold("bare", {
-      mode: "local",
-      profile: "work",
-    });
+    const scaffold = getConfigScaffold(
+      {
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      },
+      {
+        mode: "local",
+        profile: "work",
+      },
+    );
 
     expect(scaffold.text).toContain(
       'import { fromIni } from "@aws-sdk/credential-providers";',

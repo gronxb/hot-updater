@@ -1,20 +1,18 @@
-import { p } from "@hot-updater/cli-tools";
+import { loadConfig, p } from "@hot-updater/cli-tools";
 
-import { warnIfExpoCNG } from "@/utils/expoDetection";
 import {
   createAndInjectFingerprintFiles,
-  ensureFingerprintConfig,
   type FingerprintResult,
   isFingerprintEquals,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
-import { isMissingFingerprintDependencyError } from "@/utils/fingerprint/dependency";
 import {
   getFingerprintDiff,
   showFingerprintDiff,
 } from "@/utils/fingerprint/diff";
 
 import { ui } from "../utils/cli-ui";
+import { runIntegrationCommand } from "../utils/integration";
 
 const exitWithFingerprintError = (error: unknown): never => {
   if (error instanceof Error) {
@@ -23,14 +21,12 @@ const exitWithFingerprintError = (error: unknown): never => {
     p.log.error(String(error));
   }
 
-  if (!isMissingFingerprintDependencyError(error)) {
-    console.error(error);
-  }
+  console.error(error);
   process.exit(1);
 };
 
 export const handleCreateFingerprint = async () => {
-  warnIfExpoCNG();
+  await runIntegrationCommand(await loadConfig(null), "fingerprint:create");
   let diffChanged = false;
   let localFingerprint: {
     ios: FingerprintResult | null;
@@ -89,18 +85,16 @@ export const handleCreateFingerprint = async () => {
 
     // Show what changed
     if (localFingerprint && result.fingerprint) {
-      const fingerprintConfig = await ensureFingerprintConfig();
-
       try {
         // Show iOS changes
         if (
           localFingerprint.ios &&
           localFingerprint.ios.hash !== result.fingerprint.ios.hash
         ) {
-          const iosDiff = await getFingerprintDiff(localFingerprint.ios, {
-            platform: "ios",
-            ...fingerprintConfig,
-          });
+          const iosDiff = getFingerprintDiff(
+            localFingerprint.ios,
+            result.fingerprint.ios,
+          );
           showFingerprintDiff(iosDiff, "iOS");
         }
 
@@ -109,12 +103,9 @@ export const handleCreateFingerprint = async () => {
           localFingerprint.android &&
           localFingerprint.android.hash !== result.fingerprint.android.hash
         ) {
-          const androidDiff = await getFingerprintDiff(
+          const androidDiff = getFingerprintDiff(
             localFingerprint.android,
-            {
-              platform: "android",
-              ...fingerprintConfig,
-            },
+            result.fingerprint.android,
           );
           showFingerprintDiff(androidDiff, "Android");
         }

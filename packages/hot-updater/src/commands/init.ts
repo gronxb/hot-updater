@@ -1,5 +1,7 @@
-import type { BuildType, RunInitOptions } from "@hot-updater/cli-tools";
+import path from "node:path";
+
 import {
+  assertInitIntegrationDescriptor,
   getHotUpdaterEnvValue,
   getMissingInitInputs,
   getMissingInitProviderInputs,
@@ -10,8 +12,10 @@ import {
   p,
   readHotUpdaterInitEnv,
   resolveInitProviderInputs,
+  type RunInitOptions,
 } from "@hot-updater/cli-tools";
 import { ExecaError } from "execa";
+import { createJiti } from "jiti";
 
 import { ensureInstallPackages } from "@/utils/ensureInstallPackages";
 import {
@@ -31,61 +35,25 @@ import {
 
 const INIT_BUILD_ENV_KEY = "HOT_UPDATER_INIT_BUILD";
 const INIT_PROVIDER_ENV_KEY = "HOT_UPDATER_INIT_PROVIDER";
-const BUILD_ADAPTER_KEYS = ["bare", "rock", "expo"] as const;
-
-const REQUIRED_PACKAGES = {
-  dependencies: ["@hot-updater/react-native"],
-};
-
-interface BuildAdapterChoice {
-  name: BuildType;
-  label: string;
-  hint?: string;
-  dependencies: string[];
-  devDependencies: string[];
-}
-
-const BUILD_ADAPTERS: Record<"bare" | "rock" | "expo", BuildAdapterChoice> = {
-  bare: {
-    name: "bare",
-    label: "Bare",
-    hint: "React Native CLI",
-    dependencies: [],
-    devDependencies: ["@hot-updater/bare"],
-  },
-  rock: {
-    name: "rock",
-    label: "Rock",
-    hint: "React Native Enterprise Framework by Callstack",
-    dependencies: [],
-    devDependencies: ["@hot-updater/rock"],
-  },
-  expo: {
-    name: "expo",
-    label: "Expo",
-    dependencies: [],
-    devDependencies: ["@hot-updater/expo"],
-  },
-};
-
-type BuildAdapterKey = keyof typeof BUILD_ADAPTERS;
-
 export interface InitOptions {
-  readonly build?: BuildAdapterKey;
+  readonly build?: string;
   readonly envFile?: string;
   readonly provider?: InitProvider;
 }
 
-const isBuildAdapterKey = (
-  value: string | undefined,
-): value is BuildAdapterKey => {
-  return value !== undefined && Object.keys(BUILD_ADAPTERS).includes(value);
-};
+const isIntegrationName = (value: string | undefined): value is string =>
+  value !== undefined &&
+  /^(?:@[a-z0-9][a-z0-9._-]*\/[a-z0-9][a-z0-9._-]*|[a-z0-9][a-z0-9._-]*)$/.test(
+    value,
+  );
+
+export const integrationPackageName = (value: string): string =>
+  value.startsWith("@") ? value : `@hot-updater/${value}`;
 
 const collectInitChoices = async (
   options: InitOptions,
 ): Promise<{
-  build: BuildAdapterKey;
+  build: string;
   env: Readonly<Record<string, string>>;
   provider: InitProvider;
 }> => {
@@ -99,7 +67,7 @@ const collectInitChoices = async (
     INIT_PROVIDER_ENV_KEY,
   );
   const build =
-    options.build ?? (isBuildAdapterKey(savedBuild) ? savedBuild : null);
+    options.build ?? (isIntegrationName(savedBuild) ? savedBuild : null);
   const provider =
     options.provider ?? (isInitProvider(savedProvider) ? savedProvider : null);
 
@@ -123,13 +91,13 @@ const collectInitChoices = async (
       build: () =>
         build
           ? Promise.resolve(build)
-          : p.select<BuildAdapterKey>({
-              message: "Select a build adapter",
-              options: BUILD_ADAPTER_KEYS.map((value) => ({
-                value,
-                label: BUILD_ADAPTERS[value].label,
-                hint: BUILD_ADAPTERS[value].hint,
-              })),
+          : p.text({
+              message: "Enter an application integration package or short name",
+              placeholder: "@hot-updater/<integration>",
+              validate: (value) =>
+                isIntegrationName(value)
+                  ? undefined
+                  : "Use a package name or an unscoped short name.",
             }),
       provider: () =>
         provider
@@ -200,7 +168,7 @@ export const init = async (options: InitOptions = {}) => {
     p.log.info(".gitignore has been modified to include hot-updater entries");
   }
 
-  const buildAdapterPackage = BUILD_ADAPTERS[choices.build];
+  const integrationPackage = integrationPackageName(choices.build);
   const provider = choices.provider;
   const providerPackage = INIT_PROVIDER_PACKAGES[provider];
 
@@ -211,12 +179,9 @@ export const init = async (options: InitOptions = {}) => {
 
   try {
     await ensureInstallPackages({
-      dependencies: [
-        ...buildAdapterPackage.dependencies,
-        ...REQUIRED_PACKAGES.dependencies,
-      ],
+      dependencies: [],
       devDependencies: [
-        ...buildAdapterPackage.devDependencies,
+        integrationPackage,
         ...providerPackage.devDependencies,
         providerPackage.packageName,
       ],
@@ -231,6 +196,26 @@ export const init = async (options: InitOptions = {}) => {
     process.exit(1);
   }
 
+  // Resolve the installed adapter from the app, including ESM-only adapters.
+  const loader = createJiti(path.join(process.cwd(), "package.json"));
+  const integrationModule = await loader.import<{ initIntegration?: unknown }>(
+    `${integrationPackage}/integration`,
+  );
+  assertInitIntegrationDescriptor(integrationModule.initIntegration);
+  const integration = integrationModule.initIntegration;
+  await ensureInstallPackages({
+    dependencies: [...integration.dependencies],
+    devDependencies: [...integration.devDependencies],
+  });
+  await integration.prepare?.({
+    cwd: process.cwd(),
+    envFile: options.envFile,
+  });
+  const build = integration.build;
+  const runInitOptions = {
+    build,
+    envFile: options.envFile,
+  } satisfies RunInitOptions;
   try {
     const { initProvider, runInit } = await loadInitProvider(provider);
     if (options.envFile !== undefined) {
@@ -244,10 +229,7 @@ export const init = async (options: InitOptions = {}) => {
         throw new MissingInitInputsError([...new Set(missingInputs)]);
       }
     }
-    await runInit({
-      build: buildAdapterPackage.name,
-      envFile: options.envFile,
-    } satisfies RunInitOptions);
+    await runInit(runInitOptions);
   } catch (error) {
     if (handleInitError(error)) {
       return;

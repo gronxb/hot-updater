@@ -1,7 +1,7 @@
 /**
  * The client plugin contract. Built-in plugins, such as Insights, and
  * third-party plugins use the same one, as server plugins do. Plugins import
- * it from here, and apps through `@hot-updater/react-native`.
+ * it from here, and apps through their device SDK.
  *
  * Keep this module free of state and of classes that code checks with
  * `instanceof`. A plugin can load it in one module format while the app loads
@@ -250,8 +250,8 @@ export interface HotUpdaterClientPlugin<
    */
   readonly id: TId;
   /**
-   * Called once for each plugin host it is configured in. The React Native
-   * SDK creates a host for each instance `HotUpdater.init` returns.
+   * Called once for each plugin host it is configured in. A device SDK
+   * creates a host for each instance `HotUpdater.init` returns.
    */
   setup(context: HotUpdaterClientContext): HotUpdaterClientSetup<TApi> | void;
 }

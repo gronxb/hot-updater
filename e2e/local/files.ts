@@ -22,6 +22,24 @@ export const localMutableFiles = [
   "src/e2eBuildConfig.js",
 ] as const;
 
+export const lynxLocalMutableFiles = [
+  "hot-updater.config.ts",
+  ".env.hotupdater",
+  ".gitignore",
+  "keys/private-key.pem",
+  "keys/public-key.pem",
+  "fingerprint.json",
+  "ios/Podfile.lock",
+  "ios/Info.plist",
+  "ios/MatrixHarness/NonProductionInfo.plist",
+  "ios/SparklingGo.xcodeproj/project.pbxproj",
+  "ios/SparklingGo.xcworkspace/contents.xcworkspacedata",
+  "android/app/src/main/AndroidManifest.xml",
+  "android/e2e-app/src/main/AndroidManifest.xml",
+  "android/matrix-app/src/main/AndroidManifest.xml",
+  "src/e2eApp/patchSurface.ts",
+] as const;
+
 export async function preserveFiles(
   root: string,
   names: readonly string[],

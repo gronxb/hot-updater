@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -8,7 +9,12 @@ import {
 } from "node:fs";
 import path from "node:path";
 
-import type { JsonObject } from "../shared/control-client.ts";
+import {
+  createControlClient,
+  type ControlClient,
+  type JsonObject,
+} from "../shared/control-client.ts";
+import type { MobileContext } from "./context.ts";
 
 // Workers run attempts in parallel, so each attempt files its own records and
 // the runner gathers them once the SDK has exited.
@@ -123,4 +129,64 @@ export function runtimeLaunchArguments(
         : ["--es", key, value]
       : [],
   );
+}
+
+export interface HotUpdaterAttempt {
+  readonly client: ControlClient;
+  readonly signal: AbortSignal;
+  name?: string;
+  bootstrap: JsonObject;
+  consoleInsights?: JsonObject;
+  expectedLaunchFailures?: number;
+}
+
+export async function finishAttempt(
+  attempt: HotUpdaterAttempt,
+  context: Pick<
+    MobileContext,
+    "resultsDir" | "controlBaseUrl" | "cleanupTimeoutMs"
+  >,
+) {
+  const key = attempt.name ?? randomUUID();
+  try {
+    // Leave room inside the SDK teardown budget for device/session shutdown.
+    await attempt.client.cancelAndDrain({
+      timeoutMs: Math.floor(context.cleanupTimeoutMs / 2),
+    });
+    // The attempt client is fenced after draining. Terminate through the
+    // owned controller's explicit device; SDK disposal closes its session.
+    const cleanupClient = createControlClient({
+      baseUrl: context.controlBaseUrl,
+      httpTimeoutMs: Math.floor(context.cleanupTimeoutMs / 2),
+    });
+    await cleanupClient.postJson(
+      "release Remote Config lock after attempt",
+      "/e2e/release-remote-config-lock",
+      {},
+    );
+    await cleanupClient.postJson(
+      "terminate app after attempt",
+      "/e2e/terminate-app",
+      {},
+    );
+  } catch (error) {
+    recordQuarantine(context.resultsDir, key, {
+      schemaVersion: 1,
+      scenarioName: attempt.name ?? null,
+      reason: String(error),
+      quarantineRequired: true,
+    });
+    throw error;
+  }
+  recordAttempt(context.resultsDir, key, {
+    schemaVersion: 1,
+    name: attempt.name ?? null,
+    cleanupCompleted: true,
+    ...(attempt.consoleInsights
+      ? {
+          consoleInsights: attempt.consoleInsights,
+          expectedLaunchFailures: attempt.expectedLaunchFailures ?? 0,
+        }
+      : {}),
+  });
 }

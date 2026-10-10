@@ -5,11 +5,10 @@ import {
 import { createStorageKeyBuilder } from "./createStorageKeyBuilder";
 import { createStorageUri, parseStorageUri } from "./parseStorageUri";
 
-export const isBrotliManifestAssetPath = (assetPath: string) =>
-  /(^|\/)index\.[^/]+\.bundle$/.test(assetPath.replace(/\\/g, "/"));
-
-export const getManifestAssetDownloadPath = (assetPath: string) =>
-  isBrotliManifestAssetPath(assetPath) ? `${assetPath}.br` : assetPath;
+export const getManifestAssetDownloadPath = (
+  assetPath: string,
+  downloadCompression: "br" | null,
+) => (downloadCompression === "br" ? `${assetPath}.br` : assetPath);
 
 export const createStorageUriWithRelativePath = ({
   baseStorageUri,

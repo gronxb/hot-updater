@@ -119,7 +119,7 @@ export const sizeAwareArtifactSelectionScenario: ScenarioDefinition = {
       {
         archiveRequests: 0,
         currentBundleId: "$sizeAwareBaseBundleId",
-        fileRequests: 0,
+        fileRequests: "manifest-diff",
         maxRequestsPerAsset: 1,
         minNetworkAssets: 1,
         patchRequests: 1,
@@ -166,7 +166,6 @@ export const sizeAwareArtifactSelectionScenario: ScenarioDefinition = {
       baseBundleId: string;
       bundleResultKey: string;
       corruptArchive: boolean;
-      expectedFileRequests: number;
       expectedPatchRequests: number;
       label: string;
       marker: string;
@@ -240,7 +239,7 @@ export const sizeAwareArtifactSelectionScenario: ScenarioDefinition = {
         {
           archiveRequests: 1,
           currentBundleId: input.baseBundleId,
-          fileRequests: input.expectedFileRequests,
+          fileRequests: input.corruptArchive ? "manifest-diff" : "archive",
           maxRequestsPerAsset: 1,
           minNetworkAssets: input.corruptArchive ? 2 : 0,
           patchRequests: input.expectedPatchRequests,
@@ -288,7 +287,6 @@ export const sizeAwareArtifactSelectionScenario: ScenarioDefinition = {
       baseBundleId: "$sizeAwareSmallBundleId",
       bundleResultKey: "sizeAwareLargeSuccessBundleId",
       corruptArchive: false,
-      expectedFileRequests: 0,
       expectedPatchRequests: 0,
       label: "large success",
       marker: "size-aware-large-success-detox",
@@ -298,7 +296,6 @@ export const sizeAwareArtifactSelectionScenario: ScenarioDefinition = {
       baseBundleId: "$sizeAwareLargeSuccessBundleId",
       bundleResultKey: "sizeAwareLargeFallbackBundleId",
       corruptArchive: true,
-      expectedFileRequests: 1,
       expectedPatchRequests: 1,
       label: "large fallback",
       marker: "size-aware-large-fallback-detox",

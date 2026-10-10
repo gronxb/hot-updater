@@ -12,7 +12,15 @@ import type {
 import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
 
+import { selectReactNativeArtifacts } from "./artifacts";
+import { createReactNativeDoctor } from "./doctor";
 import { getConfig } from "./expoConfig";
+import { createExpoFingerprint } from "./fingerprint";
+import { getReactNativePodInstallEnvironment } from "./podInstallEnvironment";
+import {
+  getExpoNativeFileRepairBlockReason,
+  validateExpoProject,
+} from "./projectValidation";
 import { resolveMain } from "./resolveMain";
 import { runExpoPrebuild } from "./util/prebuild";
 
@@ -177,7 +185,17 @@ export const expo =
   ({ cwd }: BuildAdapterArgs): BuildAdapter => {
     const { outDir = "dist", sourcemap = false, resetCache = true } = config;
     return {
+      integration: {
+        nativeFileRepairBlockReason: () =>
+          getExpoNativeFileRepairBlockReason(cwd),
+        beforeCommand: ({ command }) => validateExpoProject({ command, cwd }),
+        doctor: createReactNativeDoctor(cwd),
+      },
       nativeBuild: {
+        developmentServerPort: 8081,
+        getPodInstallEnvironment: () =>
+          getReactNativePodInstallEnvironment(cwd),
+        fingerprint: (options) => createExpoFingerprint(cwd, options),
         getBundleSigningPublicKey: () => getExpoBundleSigningPublicKey(cwd),
         getFingerprintExtraSources: async () =>
           getExpoFingerprintExtraSources(cwd),
@@ -198,10 +216,16 @@ export const expo =
           sourcemap,
           resetCache,
         });
+        const { artifacts, patchAssetPath } = await selectReactNativeArtifacts({
+          buildPath,
+          platform,
+        });
 
         return {
+          artifacts,
           buildPath,
           bundleId,
+          patchAssetPath,
           stdout,
         };
       },

@@ -41,7 +41,10 @@ export default {
       app: {
         bundleId: context.appId,
         appPath: context.appPath,
-        launchArguments: runtimeLaunchArguments(context.platform),
+        launchArguments:
+          context.runtime === "lynx"
+            ? [] // The Lynx driver supplies a fresh native launch generation per launch.
+            : runtimeLaunchArguments(context.platform),
       },
     },
   ],

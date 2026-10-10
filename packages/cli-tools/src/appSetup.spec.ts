@@ -29,21 +29,29 @@ describe("renderAppSetup", () => {
       '  requestHeaders: {\n    "x-api-key": "key\\"with-quote",\n  },',
     );
     expect(source).toContain(
-      ["// App.tsx", 'import { hotUpdater } from "./src/hotUpdater";'].join(
-        "\n",
-      ),
+      'hotUpdater.checkForUpdate({ updateStrategy: "appVersion" })',
     );
-    expect(source).toContain(
-      'export default hotUpdater.wrap({ updateStrategy: "appVersion" })(App);',
-    );
+    expect(source).not.toContain(".wrap(");
     expect(source).not.toMatch(/HotUpdater\.(?!init\()/);
+  });
+
+  it("uses the selected integration's SDK and leaves selection explicit when absent", () => {
+    expect(
+      renderAppSetup({
+        baseURL: "https://example.com",
+        sdkModule: "@hot-updater/lynx",
+      }),
+    ).toContain('import { HotUpdater } from "@hot-updater/lynx";');
+    expect(renderAppSetup({ baseURL: "https://example.com" })).toContain(
+      "// Import HotUpdater from your application integration.",
+    );
   });
 
   it("sends no headers to public client routes", () => {
     const source = renderAppSetup({ baseURL: "https://example.com" });
 
     expect(source).toContain(
-      '// src/hotUpdater.ts\nimport { HotUpdater } from "@hot-updater/react-native";\n\nexport const hotUpdater = HotUpdater.init({\n  baseURL: "https://example.com",\n});',
+      '// src/hotUpdater.ts\n// Import HotUpdater from your application integration.\n\nexport const hotUpdater = HotUpdater.init({\n  baseURL: "https://example.com",\n});',
     );
     expect(source).not.toContain("requestHeaders");
     expect(source).not.toContain("plugins");
@@ -53,6 +61,7 @@ describe("renderAppSetup", () => {
     const source = renderAppSetup({
       baseURL: "https://example.com",
       credential,
+      sdkModule: "@hot-updater/react-native",
       clientPlugins: [
         { module: "@hot-updater/react-native", name: "insights" },
         { module: "feedback-rn", name: "feedback" },
@@ -81,12 +90,17 @@ describe("printAppSetup", () => {
     printAppSetup({
       baseURL: "https://example.com",
       credential,
+      sdkModule: "@hot-updater/react-native",
       clientPlugins: [],
     });
 
     expect(prompts.note).toHaveBeenNthCalledWith(
       1,
-      renderAppSetup({ baseURL: "https://example.com", credential }),
+      renderAppSetup({
+        baseURL: "https://example.com",
+        credential,
+        sdkModule: "@hot-updater/react-native",
+      }),
     );
     expect(prompts.note).toHaveBeenNthCalledWith(
       2,

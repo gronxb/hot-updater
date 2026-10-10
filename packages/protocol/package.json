@@ -19,13 +19,8 @@
     "package.json"
   ],
   "keywords": [
-    "react-native",
-    "react-native-code-push",
-    "code-push",
-    "eas",
-    "eas-update",
-    "expo",
-    "expo-update",
+    "ota",
+    "protocol",
     "self-hosted"
   ],
   "license": "MIT",

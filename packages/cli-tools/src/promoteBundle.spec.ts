@@ -19,6 +19,7 @@ const sha256 = (bytes: string | Uint8Array) =>
 type ManifestAsset = {
   downloadByteSize?: number;
   downloadFileHash?: string;
+  downloadCompression: "br" | null;
   fileHash: string;
   signature?: string;
 };
@@ -75,7 +76,8 @@ const addSourceAsset = ({
 }) => {
   const asset = manifest.assets[assetPath]!;
   const storagePath = getManifestAssetStoragePath({
-    assetPath: assetPath.endsWith(".bundle") ? `${assetPath}.br` : assetPath,
+    assetPath:
+      asset.downloadCompression === "br" ? `${assetPath}.br` : assetPath,
     downloadFileHash: asset.downloadFileHash,
     fileHash: asset.fileHash,
   });
@@ -92,14 +94,16 @@ describe("createCopiedBundleArtifacts", () => {
     const hbc = Buffer.from("hermes bytecode");
     const compressedHbc = brotliCompressSync(hbc);
     const manifest: Manifest = {
-      bundleId: "source",
+      bundleId: "0195a408-8f13-7d9b-8df4-123456789abc",
       assets: {
         "assets/logo.png": {
           downloadByteSize: logo.byteLength,
+          downloadCompression: null,
           fileHash: sha256(logo),
         },
         "index.ios.bundle": {
           downloadByteSize: compressedHbc.byteLength,
+          downloadCompression: "br",
           downloadFileHash: sha256(compressedHbc),
           fileHash: sha256(hbc),
         },
@@ -177,12 +181,19 @@ describe("createCopiedBundleArtifacts", () => {
       publicKeyEncoding: { type: "spki", format: "pem" },
       privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
-    const manifest: Manifest = { bundleId: "source", assets: {} };
+    const manifest: Manifest = {
+      bundleId: "0195a408-8f13-7d9b-8df4-123456789abc",
+      assets: {},
+    };
     const sourceObjects = new Map<string, Uint8Array>();
     for (let index = 0; index < 12; index += 1) {
       const assetPath = `assets/${index}.txt`;
       const body = Buffer.from(`asset-${index}`);
-      manifest.assets[assetPath] = { fileHash: sha256(body) };
+      manifest.assets[assetPath] = {
+        fileHash: sha256(body),
+        downloadCompression: null,
+        downloadByteSize: body.byteLength,
+      };
       addSourceAsset({ assetPath, body, manifest, sourceObjects });
     }
     const manifestBytes = encodeManifest(manifest);
@@ -253,7 +264,10 @@ describe("createCopiedBundleArtifacts", () => {
       publicKeyEncoding: { type: "spki", format: "pem" },
       privateKeyEncoding: { type: "pkcs8", format: "pem" },
     });
-    const original = encodeManifest({ bundleId: "source", assets: {} });
+    const original = encodeManifest({
+      bundleId: "0195a408-8f13-7d9b-8df4-123456789abc",
+      assets: {},
+    });
     const replacement = encodeManifest({ bundleId: "tampered", assets: {} });
     const source = sourceBundle(original);
     source.manifestFileHash = `sig:${crypto
@@ -283,8 +297,14 @@ describe("createCopiedBundleArtifacts", () => {
   it("rejects source bytes that do not match the manifest", async () => {
     const expected = Buffer.from("expected");
     const manifest: Manifest = {
-      bundleId: "source",
-      assets: { "index.js": { fileHash: sha256(expected) } },
+      bundleId: "0195a408-8f13-7d9b-8df4-123456789abc",
+      assets: {
+        "index.js": {
+          fileHash: sha256(expected),
+          downloadCompression: null,
+          downloadByteSize: expected.byteLength,
+        },
+      },
     };
     const manifestBytes = encodeManifest(manifest);
     const sourceObjects = new Map<string, Uint8Array>([
@@ -305,7 +325,7 @@ describe("createCopiedBundleArtifacts", () => {
         nextBundleId: "copy",
         storageAdapter: plugin,
       }),
-    ).rejects.toThrow("Manifest file hash mismatch for index.js");
+    ).rejects.toThrow("Manifest download representation mismatch for index.js");
     expect(plugin.put).not.toHaveBeenCalled();
   });
 });

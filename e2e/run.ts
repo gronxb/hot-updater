@@ -4,10 +4,11 @@ import { fileURLToPath } from "node:url";
 
 import { runLocal } from "./local/prepare.ts";
 import { parseMobileOptions, runMobile } from "./mobile/run.ts";
+import { resolveMobileRuntime } from "./mobile/target.ts";
 
 const repositoryRoot = fileURLToPath(new URL("../", import.meta.url));
 const usage = `Usage: pnpm e2e --platform ios|android [--device <UDID|serial>]
-                [--scenario <name>] [--suite default] [--dry-run] [--list]
+                [--runtime react-native|lynx] [--scenario <name>] [--suite default] [--dry-run] [--list]
 
 Local runs prepare PGlite, local S3 storage, signing keys, and the Release app.
 With no --device, exactly one booted device of the selected platform is required.
@@ -64,6 +65,7 @@ export async function runE2e(
       JSON.stringify(
         {
           platform,
+          runtime: validated.values.runtime,
           device: device ?? "one booted device (resolved at execution)",
           profile: "standalone-kysely",
           scenarios: validated.scenarios,
@@ -71,7 +73,9 @@ export async function runE2e(
             "workspace build",
             "local signing key",
             "native dependencies",
-            "fingerprint",
+            validated.values.runtime === "lynx"
+              ? "committed Lynx fingerprint and source verification"
+              : "fingerprint",
             "Release build",
             "local S3 + PGlite",
             "mobile scenarios",
@@ -84,7 +88,14 @@ export async function runE2e(
     );
     return 0;
   }
-  return runners.local(forwarded, repositoryRoot, platform, device, env);
+  return runners.local(
+    forwarded,
+    repositoryRoot,
+    platform,
+    device,
+    env,
+    resolveMobileRuntime(validated.values.runtime, env),
+  );
 }
 
 if (

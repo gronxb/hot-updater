@@ -2,13 +2,10 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
+import { parseSync } from "oxc-parser";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import {
-  type BuildType,
-  ConfigBuilder,
-  type ProviderConfig,
-} from "./ConfigBuilder";
+import { ConfigBuilder, type ProviderConfig } from "./ConfigBuilder";
 import {
   createHotUpdaterConfigScaffoldFromBuilder,
   type ManagedHelperStatement,
@@ -16,6 +13,23 @@ import {
   writeHotUpdaterFiles,
 } from "./hotUpdaterConfig";
 import { p } from "./prompts";
+
+type TestBuildName = "bare" | "rock" | "lynx";
+
+const testBuildConfig = (name: TestBuildName): ProviderConfig =>
+  name === "lynx"
+    ? {
+        imports: [
+          { pkg: "@hot-updater/lynx-build", named: ["lynx"] },
+          { pkg: "./hot-updater.lynx", named: ["createLynxBuild"] },
+        ],
+        configString: "lynx({ build: createLynxBuild })",
+      }
+    : {
+        imports: [{ pkg: `@hot-updater/${name}`, named: [name] }],
+        configString:
+          name === "bare" ? "bare({ enableHermes: true })" : "rock()",
+      };
 
 const tempDirs: string[] = [];
 
@@ -27,7 +41,7 @@ const createTempDir = async () => {
   return tempDir;
 };
 
-const createSupabaseScaffold = (build: BuildType) => {
+const createSupabaseScaffold = (build: TestBuildName) => {
   const storage: ProviderConfig = {
     imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
     configString: `supabaseStorage({
@@ -46,7 +60,7 @@ const createSupabaseScaffold = (build: BuildType) => {
 
   return createHotUpdaterConfigScaffoldFromBuilder(
     new ConfigBuilder()
-      .setBuildType(build)
+      .setBuild(testBuildConfig(build))
       .setStorage(storage)
       .setDatabase(database)
       .setPlugins({
@@ -62,7 +76,7 @@ const createSupabaseScaffold = (build: BuildType) => {
 };
 
 const createAwsScaffold = (
-  build: BuildType,
+  build: TestBuildName,
   { profile }: { profile: string | null },
 ) => {
   const storage: ProviderConfig = {
@@ -105,7 +119,7 @@ const createAwsScaffold = (
       ];
 
   const builder = new ConfigBuilder()
-    .setBuildType(build)
+    .setBuild(testBuildConfig(build))
     .setStorage(storage)
     .setDatabase(database)
     .setPlugins({
@@ -133,7 +147,7 @@ const createAwsScaffold = (
   });
 };
 
-const createFirebaseScaffold = (build: BuildType) => {
+const createFirebaseScaffold = (build: TestBuildName) => {
   const helperStatements: ManagedHelperStatement[] = [
     {
       name: "credential",
@@ -142,7 +156,7 @@ const createFirebaseScaffold = (build: BuildType) => {
     },
   ];
   const builder = new ConfigBuilder()
-    .setBuildType(build)
+    .setBuild(testBuildConfig(build))
     .setStorage({
       imports: [{ pkg: "@hot-updater/firebase", named: ["firebaseStorage"] }],
       configString: `firebaseStorage({
@@ -674,7 +688,7 @@ export default defineConfig({
       };
       const scaffold = createHotUpdaterConfigScaffoldFromBuilder(
         new ConfigBuilder()
-          .setBuildType("bare")
+          .setBuild(testBuildConfig("bare"))
           .setStorage({
             imports: [{ pkg: "@hot-updater/aws", named: ["s3Storage"] }],
             configString: `s3Storage({
@@ -1080,6 +1094,57 @@ export default defineConfig({`,
 });
 
 describe("writeHotUpdaterFiles", () => {
+  it.each(
+    ["lynx(buildOptions)", "lynx({ build: createLynxBuild })"].flatMap(
+      (buildExpression) =>
+        ["@hot-updater/server/plugins", "./project-plugins"].map(
+          (pluginSource) => [buildExpression, pluginSource],
+        ),
+    ),
+  )(
+    "preserves %s when reinitializing factories from %s",
+    async (buildExpression, pluginSource) => {
+      const cwd = await createTempDir();
+      const configPath = path.join(cwd, "hot-updater.config.ts");
+      const original = `import { defineConfig } from "hot-updater";
+import { lynx } from "@hot-updater/lynx-build";
+import { createLynxBuild } from "./hot-updater.lynx";
+import { apiKeys, insights, remoteConfig } from "${pluginSource}";
+const buildOptions = { build: createLynxBuild };
+export default defineConfig({
+  build: ${buildExpression},
+  plugins: [apiKeys(), insights(), remoteConfig()],
+});
+`;
+      await fs.writeFile(configPath, original);
+      const result = await writeHotUpdaterConfig(
+        createSupabaseScaffold("lynx"),
+        configPath,
+      );
+      const updated = await fs.readFile(configPath, "utf8");
+      if (pluginSource === "./project-plugins") {
+        expect(result.status).toBe("skipped");
+        expect(result.reason).toContain("takes the name init imports");
+        expect(updated).toBe(original);
+      } else {
+        expect(result.status).toBe("merged");
+        expect(updated).toContain('from "hot-updater/plugins"');
+        expect(updated).not.toContain('from "@hot-updater/server/plugins"');
+        expect(updated.match(/from "@hot-updater\/lynx-build"/g)).toHaveLength(
+          1,
+        );
+        expect(updated.match(/from "\.\/hot-updater.lynx"/g)).toHaveLength(1);
+        expect(
+          parseSync(configPath, updated, { showSemanticErrors: true }).errors,
+        ).toEqual([]);
+        expect(updated).toContain(
+          "const buildOptions = { build: createLynxBuild }",
+        );
+        expect(updated).toContain(`build: ${buildExpression}`);
+      }
+    },
+  );
+
   it.each(["defineConfig(() => ({ plugins }))", "defineConfig({ plugins })"])(
     "keeps a legacy plugins file still imported by %s",
     async (expression) => {

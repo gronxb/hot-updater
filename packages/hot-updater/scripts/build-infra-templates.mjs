@@ -28,7 +28,6 @@ const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const repoRoot = path.resolve(packageRoot, "../..");
 const outputRoot = path.join(packageRoot, "dist/infra-templates");
 const providers = ["cloudflare", "supabase", "aws", "firebase"];
-const builds = ["bare", "rock", "expo"];
 const upgradeFiles = await readInfrastructureUpgradeFiles(
   path.join(packageRoot, "infrastructure-upgrades"),
   INFRASTRUCTURE_UPDATES,
@@ -44,6 +43,36 @@ const save = async (file, value) => {
 const pluginRoot = (provider) => path.join(repoRoot, "plugins", provider);
 const moduleAt = (file) => import(pathToFileURL(file).href);
 const placeholder = (name) => `__HOT_UPDATER_${name}__`;
+const discoverIntegrations = async () => {
+  const integrations = [];
+  for (const parent of ["packages", "plugins"]) {
+    const parentPath = path.join(repoRoot, parent);
+    for (const entry of await readdir(parentPath, { withFileTypes: true })) {
+      if (!entry.isDirectory()) continue;
+      const directory = path.join(parentPath, entry.name);
+      const manifestPath = path.join(directory, "package.json");
+      let manifest;
+      try {
+        manifest = await json(manifestPath);
+      } catch (error) {
+        if (error?.code === "ENOENT") continue;
+        throw error;
+      }
+      if (!manifest.exports?.["./integration"]) continue;
+      const source = path.join(directory, "src/integration.ts");
+      const { initIntegration } = await moduleAt(source);
+      integrations.push({
+        descriptor: initIntegration,
+        directory: path.relative(repoRoot, directory),
+        packageName: manifest.name,
+      });
+    }
+  }
+  return integrations.sort((left, right) =>
+    left.descriptor.id.localeCompare(right.descriptor.id),
+  );
+};
+const integrations = await discoverIntegrations();
 /**
  * The credential helper's server definition, which stays in the scaffold:
  * the config scaffold's database, storage, and plugins, without its build or
@@ -57,7 +86,7 @@ const renderCredentialDefinition = (scaffold, build) => {
         ({ pkg }) =>
           pkg !== "hot-updater" &&
           pkg !== "node:fs" &&
-          pkg !== `@hot-updater/${build}`,
+          !build.imports.some((entry) => entry.pkg === pkg),
       )
       .map((entry) =>
         entry.pkg === "hot-updater/plugins"
@@ -87,8 +116,8 @@ const versions = {};
 for (const directory of [
   "packages/hot-updater",
   "packages/server",
-  "packages/react-native",
-  ...[...providers, ...builds].map((name) => `plugins/${name}`),
+  ...providers.map((name) => `plugins/${name}`),
+  ...integrations.map(({ directory }) => directory),
 ]) {
   const pkg = await json(path.join(repoRoot, directory, "package.json"));
   versions[pkg.name] = pkg.version;
@@ -178,17 +207,21 @@ for (const provider of providers) {
           profile: null,
         })
       : templateModule.getConfigScaffold(build);
-  for (const build of builds) {
+  for (const { descriptor } of integrations) {
+    const build = descriptor.id;
     await save(
       path.join(output, "app", `hot-updater.config.${build}.ts`),
-      `${scaffoldOf(build).text}\n`,
+      `${scaffoldOf(descriptor.build).text}\n`,
     );
   }
   // The credential helper's definition holds no build, so one serves every
   // build's config.
   await save(
     path.join(output, "app/hotUpdater.ts"),
-    renderCredentialDefinition(scaffoldOf(builds[0]), builds[0]),
+    renderCredentialDefinition(
+      scaffoldOf(integrations[0].descriptor.build),
+      integrations[0].descriptor.build,
+    ),
   );
   if (provider === "firebase") {
     // Firestore has no migration tooling, so the credential script runs the

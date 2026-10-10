@@ -157,11 +157,15 @@ export interface HotUpdaterCoreApi {
   ensureChannel(name: string): Promise<ChannelRow>;
   /** Deletes a channel no release uses. */
   deleteChannel(id: string): Promise<ChannelDeleteResult>;
-  /** Changes a bundle's fields; `patches`, when given, replaces its patches. */
+  /** Changes fields or atomically replaces/upserts patches. The two patch operations are exclusive. */
   updateBundle(
     id: string,
     update: Partial<Omit<Bundle, "id" | "patches">> & {
       readonly patches?: Bundle["patches"];
+      readonly upsertPatch?: {
+        readonly artifact: NonNullable<Bundle["patches"]>[number];
+        readonly position: "first" | "last";
+      };
     },
   ): Promise<void>;
   /** Deletes bundles with their patches; a bundle a release uses refuses. */

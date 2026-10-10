@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 
+import { bsdiff } from "./bsdiff.js";
 import { HdiffError, type HdiffErrorCode } from "./errors.js";
 import { hdiff } from "./hdiff.js";
 import { installPrecompiledWasm } from "./precompiled.js";
@@ -19,4 +20,4 @@ function loadNodeWasmModule(): WebAssembly.Module {
   }
 }
 
-export { hdiff, HdiffError, type HdiffErrorCode };
+export { bsdiff, hdiff, HdiffError, type HdiffErrorCode };

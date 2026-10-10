@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  type BuildType,
-  ConfigBuilder,
-  type ProviderConfig,
-} from "./ConfigBuilder";
+import { ConfigBuilder, type ProviderConfig } from "./ConfigBuilder";
+
+const testBuildConfig = (name: string): ProviderConfig => ({
+  imports: [{ pkg: `@hot-updater/${name}`, named: [name] }],
+  configString: name === "bare" ? "bare({ enableHermes: true })" : `${name}()`,
+});
 
 const cloudflareStorage: ProviderConfig = {
   imports: [{ pkg: "@hot-updater/cloudflare", named: ["r2Storage"] }],
@@ -35,9 +36,9 @@ const cloudflarePlugins: ProviderConfig = {
   configString: "[apiKeys(), insights(), remoteConfig()]",
 };
 
-const cloudflare = (build: BuildType) =>
+const cloudflare = (build: string) =>
   new ConfigBuilder()
-    .setBuildType(build)
+    .setBuild(testBuildConfig(build))
     .setStorage(cloudflareStorage)
     .setDatabase(cloudflareDatabase)
     .setPlugins(cloudflarePlugins)
@@ -95,7 +96,7 @@ export default defineConfig({
 
   it("puts helpers between the environment loading and the config, with their imports", () => {
     const scaffold = new ConfigBuilder()
-      .setBuildType("bare")
+      .setBuild(testBuildConfig("bare"))
       .setStorage({
         imports: [{ pkg: "@hot-updater/aws", named: ["s3Storage"] }],
         configString: "s3Storage(awsOptions)",
@@ -144,7 +145,7 @@ export default defineConfig({
 
   it("writes a plugin list the config names itself", () => {
     const scaffold = new ConfigBuilder()
-      .setBuildType("bare")
+      .setBuild(testBuildConfig("bare"))
       .setStorage({
         imports: [{ pkg: "@hot-updater/aws", named: ["s3Storage"] }],
         configString: "s3Storage({})",
@@ -172,7 +173,7 @@ export default defineConfig({
   it("needs the server's plugins", () => {
     expect(() =>
       new ConfigBuilder()
-        .setBuildType("bare")
+        .setBuild(testBuildConfig("bare"))
         .setStorage(cloudflareStorage)
         .setDatabase(cloudflareDatabase)
         .getScaffold(),

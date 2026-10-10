@@ -1,61 +1,20 @@
-import { randomUUID } from "node:crypto";
-
 import { test as mobileTest } from "@e2e-dev/mobile";
 
+import { LynxAppDriver } from "../lynx/lynx-app-driver.ts";
+import { getLynxScenarioDefinition } from "../lynx/scenarios.ts";
 import { createControlClient } from "../shared/control-client.ts";
-import type { ControlClient, JsonObject } from "../shared/control-client.ts";
 import { getScenarioDefinition } from "../shared/scenarios.ts";
-import { recordAttempt, recordQuarantine } from "./attempt.ts";
+import {
+  finishAttempt,
+  type HotUpdaterAttempt,
+  writeAttemptRecord,
+} from "./attempt.ts";
 import { readMobileContext } from "./context.ts";
 import { MobileAppDriver } from "./driver.ts";
 import { createIosAlertReader } from "./ios-alert.ts";
 
 const context = readMobileContext();
 let installed = false;
-
-interface HotUpdaterAttempt {
-  readonly client: ControlClient;
-  readonly signal: AbortSignal;
-  name?: string;
-  bootstrap: JsonObject;
-  consoleInsights?: JsonObject;
-  expectedLaunchFailures?: number;
-}
-
-async function finishAttempt(attempt: HotUpdaterAttempt) {
-  const key = attempt.name ?? randomUUID();
-  try {
-    // Leave room inside the SDK teardown budget for device/session shutdown.
-    await attempt.client.cancelAndDrain({
-      timeoutMs: Math.floor(context.cleanupTimeoutMs / 2),
-    });
-    // The attempt client is fenced after draining. Terminate through the
-    // owned controller's explicit device; SDK disposal closes its session.
-    await createControlClient({
-      baseUrl: context.controlBaseUrl,
-      httpTimeoutMs: Math.floor(context.cleanupTimeoutMs / 2),
-    }).postJson("terminate app after attempt", "/e2e/terminate-app", {});
-  } catch (error) {
-    recordQuarantine(context.resultsDir, key, {
-      schemaVersion: 1,
-      scenarioName: attempt.name ?? null,
-      reason: String(error),
-      quarantineRequired: true,
-    });
-    throw error;
-  }
-  recordAttempt(context.resultsDir, key, {
-    schemaVersion: 1,
-    name: attempt.name ?? null,
-    cleanupCompleted: true,
-    ...(attempt.consoleInsights
-      ? {
-          consoleInsights: attempt.consoleInsights,
-          expectedLaunchFailures: attempt.expectedLaunchFailures ?? 0,
-        }
-      : {}),
-  });
-}
 
 const test = mobileTest.extend<{ hotUpdater: HotUpdaterAttempt }>({
   hotUpdater: async (_fixtures, use) => {
@@ -75,7 +34,7 @@ const test = mobileTest.extend<{ hotUpdater: HotUpdaterAttempt }>({
     await use(attempt);
     // Runs after the hooks and the body, whether or not they failed.
     controller.abort(new Error("Scenario attempt finished"));
-    await finishAttempt(attempt);
+    await finishAttempt(attempt, context);
   },
 });
 
@@ -104,9 +63,33 @@ test.beforeEach(async ({ device, hotUpdater }) => {
 });
 
 for (const scenarioName of context.scenarioNames) {
-  const scenario = getScenarioDefinition(scenarioName);
   test(scenarioName, async ({ device, screen, hotUpdater }) => {
     hotUpdater.name = scenarioName;
+    await hotUpdater.client.postJson(
+      "configure scenario runtime",
+      "/e2e/runtime-config",
+      { automaticForceUpdate: scenarioName === "force-update-auto-reload" },
+    );
+    const insightsStartedAtMs = Date.now() - 5_000;
+    if (context.runtime === "lynx") {
+      const app = new LynxAppDriver(
+        hotUpdater.client,
+        context.platform,
+        process.env,
+        hotUpdater.bootstrap,
+        { device, screen, signal: hotUpdater.signal },
+      );
+      await getLynxScenarioDefinition(scenarioName).run(app);
+      hotUpdater.consoleInsights =
+        await app.verifyConsoleInsights(insightsStartedAtMs);
+      hotUpdater.expectedLaunchFailures = app.expectedLaunchFailures;
+      writeAttemptRecord(
+        context.resultsDir,
+        `lynx-generation-ledger-${scenarioName}.json`,
+        app.runtimeEventLedgerReceipt(),
+      );
+      return;
+    }
     const app = new MobileAppDriver({
       appId: context.appId,
       client: hotUpdater.client,
@@ -117,8 +100,7 @@ for (const scenarioName of context.scenarioNames) {
       screen,
       signal: hotUpdater.signal,
     });
-    const insightsStartedAtMs = Date.now() - 5_000;
-    await scenario.run(app);
+    await getScenarioDefinition(scenarioName).run(app);
     hotUpdater.consoleInsights =
       await app.verifyConsoleInsights(insightsStartedAtMs);
     hotUpdater.expectedLaunchFailures = app.expectedLaunchFailures;

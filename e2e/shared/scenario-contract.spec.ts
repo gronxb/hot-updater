@@ -6,6 +6,7 @@ import { transformFileSync, transformSync } from "@babel/core";
 import { describe, expect, it } from "vitest";
 
 import type { JsonObject } from "./control-client.ts";
+import { isExpectedMetadataStateReached } from "./control-server/metadata-wait.ts";
 import { PAX_LONG_ASSET_MANIFEST_PATH } from "./pax-long-path-fixture.ts";
 import {
   getScenarioDefinition,
@@ -75,14 +76,6 @@ const exampleE2eAppResultScreenPaths = [
 const runtimeConfigPath = path.join(
   repoDir,
   "examples/v0.85.0/src/e2eRuntimeConfig.ts",
-);
-const androidDownloadServicePath = path.join(
-  repoDir,
-  "packages/react-native/android/src/main/java/com/hotupdater/OkHttpDownloadService.kt",
-);
-const iosDownloadServicePath = path.join(
-  repoDir,
-  "packages/react-native/ios/HotUpdater/Internal/URLSessionDownloadService.swift",
 );
 const defaultScenarioNames = [
   "startup-hang-recovery",
@@ -372,35 +365,34 @@ describe("E2E scenario contract", () => {
     ).toEqual({ artifactRequests: 1, catalogRequests: 1 });
   });
 
-  it("fails every native attempt of the first download before the retry", async () => {
-    // Given: native downloads try a failed request again up to a fixed number
-    // of attempts, the same on Android and iOS.
-    const [androidSource, iosSource] = await Promise.all([
-      fs.readFile(androidDownloadServicePath, "utf8"),
-      fs.readFile(iosDownloadServicePath, "utf8"),
-    ]);
-    const attempts = Number(
-      /const val MAX_ATTEMPTS = (\d+)/.exec(androidSource)?.[1],
-    );
-    expect(attempts).toBeGreaterThan(0);
-    expect(
-      Number(/static let maximumAttempts = (\d+)/.exec(iosSource)?.[1]),
-    ).toBe(attempts);
-
-    // When / Then: the scenario injects one failure per attempt, so the first
-    // install fails and the manual retry of the same generation finds none.
+  it("restores download availability only after observing failure, preserving catalog evidence", async () => {
+    const scenario = "failed-download-same-generation-retry";
     expect(
       await controlStepBody(
-        "failed-download-same-generation-retry",
+        scenario,
         "fail every attempt of the first download",
       ),
-    ).toEqual({ artifactFailures: attempts, reset: true });
+    ).toEqual({ downloadAvailable: false, reset: true });
     expect(
       await controlStepBody(
-        "failed-download-same-generation-retry",
-        "assert retry transport",
+        scenario,
+        "verify the first attempt reached an unavailable download",
       ),
-    ).toEqual({
+    ).toEqual({ minFailedDownloads: 1 });
+    expect(
+      await controlStepBody(
+        scenario,
+        "restore downloads without resetting catalog evidence",
+      ),
+    ).toEqual({ downloadAvailable: true });
+    const stages = await scenarioStages(scenario);
+    expect(
+      stages.indexOf("restore downloads without resetting catalog evidence"),
+    ).toBeGreaterThan(stages.indexOf("assert first download failed"));
+    expect(stages.indexOf("retry same generation download")).toBeGreaterThan(
+      stages.indexOf("restore downloads without resetting catalog evidence"),
+    );
+    expect(await controlStepBody(scenario, "assert retry transport")).toEqual({
       artifactFailuresRemaining: 0,
       artifactRequests: 2,
       catalogRequests: 2,
@@ -534,22 +526,18 @@ describe("E2E scenario contract", () => {
     }
   });
 
-  it("captures the built-in bundle id with the minimum-id suffix contract", async () => {
-    // Given: the running manifest can expose a platform-generated UUID with
-    // the built-in minimum id suffix.
+  it("captures the built-in bundle id through the app-context contract", async () => {
+    // Given: Lynx uses one canonical full built-in UUID while the shared RN
+    // suite continues to expose the platform minimum-id suffix.
     const controllerSource = await fs.readFile(
       path.join(repoDir, "e2e/shared/control-server/controller.ts"),
       "utf8",
     );
 
     // When: scenarios capture the built-in bundle id for later UI assertions.
-    // Then: E2E must preserve the minimum-id suffix contract instead of requiring
-    // a hard-coded full UUID that iOS does not expose.
+    // Then: the controller dispatches through the tested app-context helper.
     expect(controllerSource).toContain(
-      "const builtInBundleId = BUILT_IN_MIN_BUNDLE_ID_SUFFIX;",
-    );
-    expect(controllerSource).not.toContain(
-      "const builtInBundleId = E2E_MIN_BUNDLE_ID;",
+      "const builtInBundleId = e2eBuiltInBundleId(fixtureSession.appId);",
     );
   });
 
@@ -579,7 +567,7 @@ describe("E2E scenario contract", () => {
           baseBundleId: base.id,
           baseFileHash: base.manifestFileHash,
           byteSize: 10,
-          patchFileHash: "patch-hash",
+          patchFileHash: "c".repeat(64),
           patchStorageUri: "storage://patches/target.patch",
         },
       ],
@@ -731,6 +719,24 @@ describe("E2E scenario contract", () => {
     },
   );
 
+  it("uses a real managed page fatal for the Lynx crash fixture", async () => {
+    const source = await fs.readFile(controlServerControllerPath, "utf8");
+    const guardFactory = source.slice(
+      source.indexOf("  const crashGuardSource ="),
+      source.indexOf(
+        ': mode !== "reset"',
+        source.indexOf("  const crashGuardSource ="),
+      ),
+    );
+
+    expect(guardFactory).toContain(
+      'await callE2eDiagnostic("armNextPageFatalFailure")',
+    );
+    expect(guardFactory).toContain('path: "detail.lynx.bundle"');
+    expect(guardFactory).not.toContain("await new Promise");
+    expect(guardFactory).not.toContain("getManifest");
+  });
+
   it.each([
     ["safe-file", "promoted-update", false],
     ["crash-file", "safe-file", true],
@@ -747,6 +753,7 @@ describe("E2E scenario contract", () => {
         `${guardFactory}\ncrashGuardSource;`,
       ).runInNewContext({
         mode: "crash",
+        isLynxE2eApp: () => false,
         safeBundleIds: ["safe-file"],
         BUILT_IN_MIN_BUNDLE_ID_SUFFIX: "7000-8000-000000000000",
         CRASH_GUARD_START: "/* E2E_CRASH_GUARD_START */",
@@ -1234,7 +1241,7 @@ describe("E2E scenario contract", () => {
     expect(stages).toEqual([
       "deploy force update bundle",
       "launch force update app",
-      "prove force update native reload",
+      "prove force update runtime replacement",
       "wait force update automatic reload",
       "assert force update Bundle",
       "assert force update Release",
@@ -1258,7 +1265,7 @@ describe("E2E scenario contract", () => {
     expect(
       await controlStepDefinition(
         "force-update-auto-reload",
-        "prove force update native reload",
+        "prove force update runtime replacement",
       ),
     ).toMatchObject({
       body: {
@@ -1361,7 +1368,7 @@ describe("E2E scenario contract", () => {
     ).toMatchObject({
       body: {
         archiveRequests: 0,
-        fileRequests: 0,
+        fileRequests: "manifest-diff",
         maxRequestsPerAsset: 1,
         minNetworkAssets: 1,
         patchRequests: 1,
@@ -1387,7 +1394,7 @@ describe("E2E scenario contract", () => {
     ).toMatchObject({
       body: {
         archiveRequests: 1,
-        fileRequests: 0,
+        fileRequests: "archive",
         maxRequestsPerAsset: 1,
         patchRequests: 0,
         verifyAllAssetHashes: true,
@@ -1402,7 +1409,7 @@ describe("E2E scenario contract", () => {
     ).toMatchObject({
       body: {
         archiveRequests: 1,
-        fileRequests: 1,
+        fileRequests: "manifest-diff",
         maxRequestsPerAsset: 1,
         minNetworkAssets: 2,
         patchRequests: 1,
@@ -1513,6 +1520,7 @@ describe("E2E scenario contract", () => {
       "wait first multi-asset metadata stable",
       "assert first multi-assets stored",
       "deploy second multi-asset bundle",
+      "require individual assets for multi-asset reuse evidence",
       "launch second multi-asset app",
       "install second multi-asset update",
       "wait second multi-asset metadata pending",
@@ -1520,7 +1528,20 @@ describe("E2E scenario contract", () => {
       "wait second multi-asset metadata stable",
       "assert multi-assets replaced",
       "assert multi-asset manifest reuse",
+      "restore optional archive availability",
     ]);
+    expect(
+      await controlStepBody(
+        "multi-asset-replacement",
+        "require individual assets for multi-asset reuse evidence",
+      ),
+    ).toEqual({ archiveAvailable: false });
+    expect(
+      await controlStepBody(
+        "multi-asset-replacement",
+        "restore optional archive availability",
+      ),
+    ).toEqual({ archiveAvailable: true });
     const firstDeploy = await controlStepBody(
       "multi-asset-replacement",
       "deploy first multi-asset bundle",
@@ -1529,6 +1550,14 @@ describe("E2E scenario contract", () => {
       "multi-asset-replacement",
       "deploy second multi-asset bundle",
     );
+    expect(firstDeploy).toMatchObject({
+      bundleProfile: "multiAssetReplacement",
+      safeBundleIds: [],
+    });
+    expect(secondDeploy).toMatchObject({
+      bundleProfile: "multiAssetReplacement",
+      safeBundleIds: ["$firstBundleId"],
+    });
     expect(
       (
         await controlStepBody(
@@ -1726,13 +1755,27 @@ describe("E2E scenario contract", () => {
       "deploy manifest intermediate bundle",
       "deploy manifest fallback bundle",
       "assert manifest fallback patch bases",
+      "require originals when no patch matches the running bundle",
       "launch manifest fallback app",
       "install manifest fallback update",
       "wait manifest fallback metadata pending",
       "reload manifest fallback update",
       "wait manifest fallback metadata stable",
       "assert manifest diff fallback",
+      "restore optional archive availability",
     ]);
+    expect(
+      await controlStepBody(
+        "bspatch-manifest-diff-fallback",
+        "require originals when no patch matches the running bundle",
+      ),
+    ).toEqual({ archiveAvailable: false });
+    expect(
+      await controlStepBody(
+        "bspatch-manifest-diff-fallback",
+        "restore optional archive availability",
+      ),
+    ).toEqual({ archiveAvailable: true });
   });
 
   it("accepts Android manifest fallback evidence when adb cannot hash an existing bundle file", async () => {
@@ -2278,33 +2321,35 @@ describe("E2E scenario contract", () => {
     ]);
   });
 
-  it("does not treat a rollback stable base as the active metadata bundle", async () => {
-    const controllerSource = await fs.readFile(
-      controlServerControllerPath,
-      "utf8",
-    );
-    const activePredicateBody = controllerSource.slice(
-      controllerSource.indexOf("function isMetadataActiveBundle"),
-      controllerSource.indexOf("function isExpectedMetadataStateReached"),
-    );
-    const expectedStateBody = controllerSource.slice(
-      controllerSource.indexOf("function isExpectedMetadataStateReached"),
-      controllerSource.indexOf("function isExpectedCrashRecoveryReached"),
-    );
-
-    expect(activePredicateBody).toContain(
-      "metadataState.stagingBundleId === bundleId ||",
-    );
-    expect(activePredicateBody).toContain(
-      "metadataState.stableBundleId === bundleId",
-    );
-    expect(expectedStateBody).toContain(
-      "metadataState.stagingBundleId !== bundleId",
-    );
-    expect(expectedStateBody).not.toContain(
-      "isMetadataActiveBundle(metadataState, bundleId)",
-    );
-  });
+  it.each([false, true])(
+    "does not treat a rollback stable base as the active metadata bundle (Lynx=%s)",
+    (isLynx) => {
+      const state = {
+        stableBundleId: "rollback-base-A",
+        stagingBundleId: "active-B",
+        stagingSelection: { releaseId: "release-B" },
+        verificationPending: false,
+      };
+      expect(
+        isExpectedMetadataStateReached(
+          state,
+          "rollback-base-A",
+          false,
+          undefined,
+          isLynx,
+        ),
+      ).toBe(false);
+      expect(
+        isExpectedMetadataStateReached(
+          state,
+          "active-B",
+          false,
+          "release-B",
+          isLynx,
+        ),
+      ).toBe(true);
+    },
+  );
 
   it("models disabled bsdiff chain rollback through C to B to A to built-in", async () => {
     const stages = await scenarioStages("bspatch-disabled-chain-rollback");
@@ -2337,6 +2382,8 @@ describe("E2E scenario contract", () => {
       "assert chain bundle B launch status",
       "deploy chain bundle C",
       "assert chain bundle C bases",
+      "create chain rollback patch C to B",
+      "create chain rollback patch B to A",
       "launch chain bundle C app",
       "install chain bundle C",
       "wait chain bundle C metadata pending",
@@ -2359,6 +2406,7 @@ describe("E2E scenario contract", () => {
       "assert chain bundle B rollback launch",
       "assert chain bundle B rollback launch status",
       "assert chain bundle B rollback active",
+      "assert chain bundle B rollback patch",
       "disable chain bundle B",
       "install rollback to chain bundle A",
       "assert chain bundle A rollback action result",
@@ -2369,6 +2417,7 @@ describe("E2E scenario contract", () => {
       "assert chain bundle A rollback launch",
       "assert chain bundle A rollback launch status",
       "assert chain bundle A rollback active",
+      "assert chain bundle A rollback patch",
       "disable chain bundle A",
       "install rollback to built-in chain",
       "assert chain built-in rollback action result",

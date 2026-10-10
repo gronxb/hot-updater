@@ -181,6 +181,22 @@ export const bspatchDisabledChainRollbackScenario: ScenarioDefinition = {
         expectedBaseBundleIds: ["$bundleB", "$bundleA"],
       },
     );
+    await app.control(
+      "create chain rollback patch C to B",
+      "/e2e/jobs/create-bundle-diff",
+      {
+        baseBundleId: "$bundleC",
+        bundleId: "$bundleB",
+      },
+    );
+    await app.control(
+      "create chain rollback patch B to A",
+      "/e2e/jobs/create-bundle-diff",
+      {
+        baseBundleId: "$bundleB",
+        bundleId: "$bundleA",
+      },
+    );
     await app.launch("launch chain bundle C app");
     await app.tap(
       "install chain bundle C",
@@ -302,6 +318,15 @@ export const bspatchDisabledChainRollbackScenario: ScenarioDefinition = {
         bundleId: "$bundleB",
       },
     );
+    await app.control(
+      "assert chain bundle B rollback patch",
+      "/e2e/assert-bsdiff-patch-applied",
+      {
+        assetPath: "$diffPatchAssetPath",
+        baseBundleId: "$bundleC",
+        bundleId: "$bundleB",
+      },
+    );
 
     await app.control("disable chain bundle B", "/e2e/jobs/patch-release", {
       enabled: false,
@@ -356,6 +381,15 @@ export const bspatchDisabledChainRollbackScenario: ScenarioDefinition = {
       "assert chain bundle A rollback active",
       "/e2e/assert-metadata-active",
       {
+        bundleId: "$bundleA",
+      },
+    );
+    await app.control(
+      "assert chain bundle A rollback patch",
+      "/e2e/assert-bsdiff-patch-applied",
+      {
+        assetPath: "$diffPatchAssetPath",
+        baseBundleId: "$bundleB",
         bundleId: "$bundleA",
       },
     );

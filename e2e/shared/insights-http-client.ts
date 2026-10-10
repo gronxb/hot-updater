@@ -56,7 +56,7 @@ export const createConsoleInsightsHttpClient = ({
     getReportingOverview: (input) =>
       requestJson<
         Awaited<ReturnType<ConsoleInsightsQaClient["getReportingOverview"]>>
-      >(withQuery("/overview", input)),
+      >(withQuery("/overview", { ...input })),
     getInstallation: ({ installId }) =>
       requestJson<
         Awaited<ReturnType<ConsoleInsightsQaClient["getInstallation"]>>

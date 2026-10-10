@@ -1,0 +1,42 @@
+import java.security.MessageDigest
+
+// The upstream AAR targets Fresco 2. Recompile its pinned Java source against
+// Fresco 3 so CloseableBitmap/CloseableImage calls use the interface ABI.
+def imageSources = configurations.detachedConfiguration(
+    dependencies.create('org.lynxsdk.lynx:lynx-service-image:4.0.3:sources@jar'),
+)
+imageSources.transitive = false
+def generatedSources = layout.buildDirectory.dir('generated/fresco-compat')
+def prepareImageService = tasks.register('prepareLynxImageServiceFresco3', Sync) {
+    inputs.files(imageSources)
+    from({ zipTree(imageSources.singleFile) }) { include '**/*.java' }
+    into(generatedSources)
+    doFirst {
+        def digest = MessageDigest.getInstance('SHA-256')
+            .digest(imageSources.singleFile.bytes)
+            .collect { String.format('%02x', it & 0xff) }.join()
+        if (digest != 'b8d1cc1b9ade6317b478c7d390c84b973203657b69467c3485e6add891afd3c4') {
+            throw new GradleException('Lynx image-service source integrity mismatch')
+        }
+    }
+    filesMatching('**/LynxImageService.java') {
+        filter { String line ->
+            line.replace('onAnimationStart(AnimatedDrawable2 drawable)', 'onAnimationStart(Drawable drawable)')
+                .replace('onAnimationStop(AnimatedDrawable2 drawable)', 'onAnimationStop(Drawable drawable)')
+                .replace('onAnimationRepeat(AnimatedDrawable2 drawable)', 'onAnimationRepeat(Drawable drawable)')
+                .replace('if (drawable.isRunning())', 'if (((AnimatedDrawable2) drawable).isRunning())')
+        }
+    }
+}
+
+android.sourceSets.main.java.srcDir(generatedSources)
+tasks.named('preBuild').configure { dependsOn(prepareImageService) }
+
+dependencies {
+    api 'com.facebook.fresco:fresco:3.4.0'
+    implementation 'com.facebook.fresco:animated-gif:3.4.0'
+    implementation 'com.facebook.fresco:animated-webp:3.4.0'
+    implementation 'com.facebook.fresco:webpsupport:3.4.0'
+    implementation 'com.facebook.fresco:animated-drawable:3.4.0'
+    implementation 'com.facebook.fresco:middleware:3.4.0'
+}

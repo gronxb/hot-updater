@@ -2,7 +2,7 @@
   "name": "@hot-updater/plugin-core",
   "version": "1.0.0-rc.44",
   "type": "module",
-  "description": "React Native OTA solution for self-hosted",
+  "description": "Engine-neutral plugin contracts for Hot Updater",
   "sideEffects": false,
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
@@ -12,22 +12,17 @@
       "import": "./dist/index.mjs",
       "require": "./dist/index.cjs"
     },
+    "./fingerprint": {
+      "import": "./dist/fingerprint.mjs",
+      "require": "./dist/fingerprint.cjs"
+    },
     "./package.json": "./package.json"
   },
   "files": [
     "dist",
     "package.json"
   ],
-  "keywords": [
-    "react-native",
-    "react-native-code-push",
-    "code-push",
-    "eas",
-    "eas-update",
-    "expo",
-    "expo-update",
-    "self-hosted"
-  ],
+  "keywords": ["ota", "over-the-air", "self-hosted"],
   "license": "MIT",
   "scripts": {
     "build": "tsdown",
@@ -44,7 +39,9 @@
   },
   "dependencies": {
     "@hot-updater/protocol": "workspace:*",
+    "@noble/hashes": "2.2.0",
     "es-toolkit": "^1.32.0",
+    "fast-glob": "3.3.3",
     "mime": "^4.0.4",
     "verkit": "catalog:"
   },

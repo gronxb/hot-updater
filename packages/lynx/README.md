@@ -1,0 +1,366 @@
+# @hot-updater/lynx
+
+OTA updates for applications running on the Lynx engine. ReactLynx, VueLynx,
+and OctaneLynx use the same runtime API, build contract, and native controllers
+on iOS and Android. The package does not depend on any of those UI frameworks.
+
+The native packages target Lynx 4, pinned to Lynx 4.0.3 and PrimJS 4.0.0 in
+the Sparkling example. Use a new native runtime identity and rebuild the app
+when changing the engine version; an OTA bundle cannot upgrade the native engine.
+
+## Viewless tasks on Android
+
+An Android native entry point can call
+`LynxRuntimeHost.get(context, configuration).runBackground(context) { result -> ... }`
+after the application's normal Lynx initialization. Use the same native
+configuration as the foreground host. The returned `AutoCloseable` requests
+cancellation. Completion runs on the main thread and contains the script's
+string output plus the selection receipt captured by native code.
+
+For OS-scheduled work, implement `LynxHostConfigurationProvider` on the Android
+Application and return that same configuration from `createLynxHostConfiguration()`.
+Call `LynxBackgroundJobService.schedule(context, jobId)` with an application-owned
+job ID. The SDK declares the service in its manifest; no application service or
+Activity is required. Android decides when to run the job. The optional
+`onLynxBackgroundResult(jobId, result)` observer runs on the main thread.
+The service allows 25 seconds for acquisition and execution; OS cancellation
+requests teardown without rescheduling or changing foreground readiness.
+
+Declare one self-contained UTF-8 script with `backgroundEntry` in the build
+adapter. Lynx standalone scripts return an object with an `init` function:
+
+```js
+({
+  init({ tt }) {
+    tt.NativeModules.HotUpdaterBackground.complete("computed result");
+  },
+});
+```
+
+This separate runtime cannot consume a staged update, confirm a foreground
+launch, or call application-wide native modules. Its completion bridge accepts
+one string of at most 16 Ki characters. Additional script, bytecode, template,
+and stream fetches are rejected; bundle dependencies into the declared entry.
+Lynx's built-in APK asset loader remains available, so this is not a sandbox
+for untrusted JavaScript.
+
+Native completion waits for the runtime to retire the script and destroy its
+module manager. Cancellation or the 25-second
+deadline reports failure and requests destruction. Lynx cannot forcibly
+interrupt synchronous JavaScript: the task continues occupying one of the
+scope's four slots until native teardown. Grouped Lynx threads keep work off the
+default JS thread but use a shared pool. Native fatal errors are recorded
+against the task's pinned receipt, including errors queued before teardown after
+cancellation. Task completion never signals application readiness.
+
+## Runtime API
+
+Call the SDK from Lynx background scripting after the native host registers the
+`HotUpdaterLynx` module:
+
+```ts
+import { HotUpdater } from "@hot-updater/lynx";
+
+const hotUpdater = HotUpdater.init({
+  baseURL: "https://updates.example.com/hot-updater",
+});
+
+await hotUpdater.notifyAppReady();
+
+const update = await hotUpdater.checkForUpdate({
+  updateStrategy: "appVersion",
+});
+
+if (update && (await update.updateBundle()) && update.shouldForceUpdate) {
+  await hotUpdater.reload();
+}
+```
+
+Run update checks, installation, and reload from the host-designated primary
+page context. Secondary pages report their own readiness with
+`notifyAppReady()`; they cannot authorize or stage an OTA selection. The primary
+context can apply an update while a detail page is open, rebuilding the full
+managed stack in the same process.
+
+If a primary launch exits before readiness without a recorded failure, native
+recovery selects a fallback and holds that Release. Once the fallback's current
+screen, required resources, and application readiness are confirmed, a later
+process may select that Release for one retry. Recreating managed runtimes in
+the recovering process does not release the hold. Successful confirmation clears
+the retry record; a second unfinished attempt permanently excludes that Release.
+Verified fatal failures and interrupted secondary-page admission remain excluded.
+These Release holds are separate from `getCrashHistory()`; publishing a new,
+authorized Release can retry cached bytes unless that Bundle has fatally failed.
+
+Importing the package does not call native code, register a listener, or open a
+network connection. `init()` creates a fresh instance and synchronously sets up
+its plugins, which may read the bound native context. It does not confirm
+readiness or start an update. The background runtime and native
+integration must provide `fetch`, `AbortController`, and a readable response
+stream through `response.body.getReader()`. Enable standard Fetch streaming in
+each page compiler with
+`pluginLynxConfig({ enableFetchAPIStandardStreaming: true })`. The SDK bounds
+bytes as they arrive. `Content-Length` can reject an oversized response before
+reading, but it cannot replace streaming because reading the whole response at
+once cannot enforce the allocation bound. The packaged native integrations
+enable this contract on the pinned Lynx 4 runtime.
+
+`init()` accepts the update server URL (or a function resolving it at request time),
+optional request headers and timeout, and
+an optional error callback, and client `plugins`. Plugins use the framework-neutral
+`@hot-updater/protocol` contract, also exported from this package. Setup runs once per instance and returns `{ hooks, api }`; the API is exposed as
+`hotUpdater[plugin.id]` immediately. Each instance owns its configuration and
+plugins. Native state getters read the current bound context, including changes
+made by another instance. Hooks observe readiness, checks, staged downloads,
+errors, and HTTP responses; the updater does not await their results. Only the
+primary page reports app readiness. Plugin storage and installation identity
+persist across OTA generations and stay outside device backups.
+
+For example, install `@hot-updater/plugin-insights` and configure it in the primary
+page (the server must also enable Insights):
+
+```ts
+import { HotUpdater } from "@hot-updater/lynx";
+import { insights } from "@hot-updater/plugin-insights/client";
+
+const hotUpdater = HotUpdater.init({
+  baseURL: "https://updates.example.com/hot-updater",
+  plugins: [insights()],
+});
+```
+
+The root exposes `HotUpdater.init()` and the stateless bootstrap reads
+`HotUpdater.getLaunchConfiguration()` and `HotUpdater.getRuntimeEvents()`.
+Configured operations belong to the instance returned by `init()`:
+
+- lifecycle: `checkForUpdate`, the returned update's `updateBundle`,
+  `notifyAppReady`, `getLaunchInfo`, `reload`, and
+  `setReloadBehavior("custom", handler)`;
+- state reads: `isUpdateDownloaded`, `getAppVersion`, `getActiveUpdateState`,
+  `getBundleId`, `getMinBundleId`, `getChannel`, `getDefaultChannel`,
+  `isChannelSwitched`, `getCohort`, `getFingerprintHash`, and `getCrashHistory`;
+- state changes: `setCohort`, `resetChannel`, and `clearCrashHistory`.
+
+The instance method `hotUpdater.updateBundle()` rejects with `USE_CHECK_FOR_UPDATE`;
+installation belongs to the update returned by `checkForUpdate()`. The package
+does not expose a manifest, filesystem installation identifier, user mutation,
+event listener, or insights option because native cannot supply those values or
+events authoritatively.
+
+`checkForUpdate()` fetches and authorizes a catalog selection, resolves its
+delivery description, and authenticates the manifest and Lynx compatibility
+metadata. This step checks runtime identity, declared pages and resources without
+downloading page bundles, images, fonts, patches, or the archive. Native code keeps
+one bounded metadata snapshot keyed by bundle ID and manifest integrity token.
+`update.updateBundle()` reuses matching metadata, verifies the complete artifact,
+and atomically stages the selection after rechecking authorization. File corruption
+can therefore fail installation even when the metadata check succeeded. The
+returned update object retains no native preparation capacity. Repeated calls to
+the same closure share one installation promise.
+
+Installation changes the next selection and never changes the bytes used by the
+current managed generation. `hotUpdater.reload()` asks the packaged host to
+replace every managed Lynx runtime and view in the same foreground OS process.
+All replacement contexts receive fresh identities and use one selected release.
+An ordinary next launch applies a staged selection independently of reload.
+
+Register managed fonts with the exported
+`managedFontUrl("assets/font.ttf", runtimeGenerationEpoch)` helper. Read
+the epoch from `HotUpdater.getLaunchConfiguration()` for the current runtime;
+it must be a canonical positive decimal string. Lynx can cache font sources
+for the process lifetime. Each new runtime binding in that process receives a
+distinct epoch, including Activity rebinds within the same managed release
+generation. Page parameters cannot override this native value; do not persist
+or synthesize it.
+Android context recreation also replaces its resource providers. Retired providers
+cannot publish resource success or failure into the replacement context. Already
+handed-out snapshots remain available until the managed session closes; the new
+context must observe its own first content and required resources before readiness.
+The helper uses `https://hot-updater-font.invalid` with the generation query.
+This reserved origin is resolved locally from the verified release; it never
+uses a network or host fallback. Ordinary resources continue to use
+`managedResourceUrl()`. A missing or invalid epoch must fail startup rather
+than reuse an unqualified font URL.
+
+Use matching versions of the SDK, Lynx build adapter, and native integration.
+Current builds emit Lynx sidecar schema version 2; older native readers reject
+it during compatibility checking even when the application runtime ID matches.
+Current native readers also accept supported version 1 artifacts. Mixing a new
+SDK with an old build adapter is unsupported.
+
+Startup confirmation requires all of the following from the live primary
+context:
+
+- a durable native attempt recorded before evaluation;
+- actual native first-content observation;
+- successful loads of every configured startup resource; and
+- the application's `notifyAppReady()` signal.
+
+A fatal startup failure in any managed context retires the generation and uses
+the controller's eligible confirmed or embedded fallback. Stale contexts and
+callbacks cannot confirm or mutate the replacement generation.
+
+`notifyAppReady()` returns a one-shot native transition receipt. The first valid
+confirmation after a transition may report `UPDATE_APPLIED` or `RECOVERED` with
+the exact source and target selections. Native consumes that receipt atomically;
+later readiness calls report `UNCHANGED`.
+
+## Channels and native state
+
+Pass `channel` to `checkForUpdate()` only for an explicit scope switch:
+
+```ts
+await hotUpdater.checkForUpdate({
+  updateStrategy: "appVersion",
+  channel: "beta",
+});
+```
+
+Native accepts the target catalog and channel switch under one state revision.
+Once switched away from the configured default channel, another cross-channel
+check is rejected. Call and await `hotUpdater.resetChannel()` before selecting a
+different channel. Reset clears channel-scoped accepted, staged, pending, and
+stable state atomically and returns to the configured default channel.
+
+`hotUpdater.getLaunchInfo()` reports the running and staged selections without
+exposing native filesystem paths. `hotUpdater.clearCrashHistory()` waits for the
+native mutation before resolving. `hotUpdater.isUpdateDownloaded()` reads
+the current native snapshot to determine whether a next selection is staged.
+
+`reload()` calls the packaged native host by default and propagates native
+failures to its caller. A custom integration must call
+`hotUpdater.setReloadBehavior("custom", handler)` with a handler; there are no
+public `reload` or `processRestart` behavior options.
+
+## Artifact and delta contract
+
+Native verifies the signed manifest, every managed target file, the
+`hot-updater-lynx.json` sidecar, platform, Bundle ID, and exact runtime identity
+before candidate evaluation. Managed paths use canonical portable POSIX syntax.
+Absolute paths, backslashes, drive or URL prefixes, empty or dot segments,
+control characters, case-insensitive aliases, reserved metadata collisions,
+symlinks, and configured size or entry-limit violations are rejected.
+
+Shared packaging limits are 128 MiB for an archive, 128 MiB for each artifact,
+512 MiB for total expanded files, and 1 MiB for the signed manifest. The Lynx
+sidecar is limited to 16 KiB. Packaging and native verification apply these
+limits before publication or execution. Artifact paths and fingerprint inputs
+use locale-independent UTF-16 code-unit ordering so equivalent inputs produce
+the same metadata and hashes on every host.
+
+Artifact delivery uses manifest v1: an authenticated manifest, a complete
+`assets` map with an original file for every target path, and an optional
+`archiveUrl`. The manifest declares one
+`patchAssetPath`, and each downloadable asset declares
+`downloadCompression: "br"` or `downloadCompression: null`. Native chooses the
+verified running installation as the base, supports BSDIFF patches, copies only
+manifest-covered unchanged files, verifies the reconstructed target hash, and
+publishes the complete target atomically. A bad or stale patch uses its verified
+original file. Native may choose a bulk `bundle.tar.br` using authenticated
+transfer costs; its hash, compressed size, decoded TAR size, and exact file
+inventory are verified. Bulk transfer requires a logical byte size for every
+manifest asset; otherwise installation uses the original files. TAR extraction
+checks each path and size before writing, validates USTAR checksums and padding,
+and requires two complete end blocks. Local PAX path and size records are supported;
+global, dangling, consecutive, duplicate and link metadata are rejected.
+A failed bulk transfer falls back to the same original
+files. Manifest verification failure stops installation. Native logs distinguish
+bulk installation from an actual patch application.
+
+The provider-neutral database contract retains at most 24 ordered base patches
+for one target Bundle and publishes replacement patch rows atomically. Deleting
+a Bundle fails with the common referenced-row result while a Release refers to
+it. Following the 1.0 core lifecycle, deleting an unreferenced Bundle also removes
+patches to and from it; targets remain installable through their original files.
+
+## Build integration
+
+Use the separate `@hot-updater/lynx-build` package. The application owns its
+ReactLynx, VueLynx, or OctaneLynx compiler and writes selected native output into
+the empty attempt directory:
+
+```ts
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { lynx, type LynxBuildOutput } from "@hot-updater/lynx-build";
+
+const build = lynx({
+  build: async ({ cwd, platform, bundleId, outDir }) => {
+    const { pageEntries, pageEssentialResources } = await buildNativeLynxFiles({
+      cwd,
+      platform,
+      bundleId,
+      outDir,
+    });
+    return {
+      entry: "main.lynx.bundle",
+      pageEntries,
+      pageEssentialResources,
+      runtimeId: nativeRuntimeIdentity,
+    } satisfies LynxBuildOutput;
+  },
+  getBundleSigningPublicKey: async ({ cwd }) => ({
+    publicKey: await readFile(path.join(cwd, "native/public-key.pem"), "utf8"),
+  }),
+});
+```
+
+The basic example emits `main.lynx.bundle` and `detail.lynx.bundle`; these names
+are example choices. The compiler must emit each declared `pageEntries` path
+and return the deterministic page allowlist and exact resource closure from its
+dependency graph. For the basic example, that graph is:
+
+```ts
+const pageEntries = ["detail.lynx.bundle", "main.lynx.bundle"] as const;
+const pageEssentialResources = [
+  {
+    entry: "detail.lynx.bundle",
+    resources: ["detail.lynx.bundle"],
+  },
+  {
+    entry: "main.lynx.bundle",
+    resources: [
+      "assets/bootstrap.js",
+      "assets/probe.png",
+      "assets/probe.ttf",
+      "dynamic/component.lynx.bundle",
+      "main.lynx.bundle",
+    ],
+  },
+] as const;
+```
+
+These values come from the compiler's module, chunk, and asset relations; do
+not infer them from bundle text or maintain a separate resource list. The
+callback also returns the exact compatibility identity embedded by the native
+binary. The adapter adds
+`hot-updater-lynx.json`, declares every selected file as a build artifact,
+declares the entry as `patchAssetPath`, Brotli-compresses that entry for
+download, and preserves the other files as raw bytes. It rejects reserved paths,
+nonregular files, symlinks, and empty entries before packaging.
+
+The optional signing resolver returns the public key embedded by the native
+build. It never returns a private signing key. The CLI compares it with the
+configured signer before upload. Lynx also provides a native fingerprint based
+on its own host inputs; a custom host may supply a `fingerprint` provider.
+
+Common Hot Updater packaging consumes these explicit declarations without Lynx
+or React Native filename rules. React Native/Hermes artifact selection lives in
+the Bare, Expo, and Rock build adapters. Bare and Rock own their native
+fingerprints, while Expo owns Expo fingerprint discovery.
+
+## Sparkling host
+
+The optional `@hot-updater/lynx-sparkling` package provides Sparkling integrations
+for iOS and Android. They
+own the Lynx bridge, release-scoped resource loaders, startup observations,
+managed-context identities, recovery, and in-process generation replacement.
+An application supplies native compatibility and embedded-release configuration,
+registers the packaged module, and mounts the packaged host. See the
+[Sparkling example](../../examples/lynx) for the production scaffold and its
+separate nonproduction acceptance harness.
+
+The device SDK exports only its root and depends only on `@hot-updater/protocol`.
+Build tooling and Sparkling dependencies belong to the separate packages above.
+The current ready-made host integration requires Sparkling; a plain LynxView
+host is not yet provided.

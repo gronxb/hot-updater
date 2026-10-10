@@ -22,7 +22,7 @@ export interface PluginHostConfig {
 
 /**
  * What plugins read from the app and the device. A device SDK backs it with
- * its native module; `@hot-updater/test-utils/react-native` backs it with
+ * its native module; the SDK test utilities back it with
  * fakes.
  */
 export interface PluginHostEnvironment {
@@ -155,7 +155,7 @@ export const createPluginHost = (
       });
     } catch (error: unknown) {
       // Whatever the fetch rejects with once the timeout aborts it: an
-      // AbortError, or Expo's "fetch failed: FetchRequestCanceledException".
+      // AbortError or a host-specific fetch cancellation error.
       if (
         !callerSignal?.aborted &&
         (timedOut || (error instanceof Error && error.name === "AbortError"))

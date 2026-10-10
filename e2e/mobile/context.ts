@@ -1,6 +1,9 @@
 import { readFileSync } from "node:fs";
 
+import type { MobileRuntime } from "./target.ts";
+
 export interface MobileContext {
+  runtime: MobileRuntime;
   platform: "ios" | "android";
   deviceId: string;
   session: string;
