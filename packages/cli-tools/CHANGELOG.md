@@ -1,5 +1,26 @@
 # @hot-updater/cli-tools
 
+## 1.0.0-rc.44
+
+### Patch Changes
+
+- 92971a0: Export official plugin factories from `hot-updater/plugins` and generate explicit plugin arrays in managed configs, matching the server and client configuration pattern.
+
+  Reuse official server factories through the CLI entry when rerunning init, preserve plugin files still needed by existing configs, and propagate Firebase config write failures. Report config shapes that could override the generated plugin list instead of claiming a successful merge.
+
+- 13d2119: `createHotUpdater` requires one storage adapter, `storage: s3Storage({ ... })`, the same adapter `hot-updater.config.ts` uploads with, and `hotUpdater.storage` is that adapter. Startup throws without it. `setupDatabaseTestSuite`'s `createHttpClient` receives one adapter too.
+
+  `clientAccess` takes only `"public"`. Options that no longer exist, in `createHotUpdater` and `hot-updater.config.ts`, are left to TypeScript instead of runtime checks.
+
+  A Release Catalog path with a channel name in place of its key, or a malformed fingerprint hash, answers `400` instead of `500`. `standaloneRepository` stops with a message when `baseUrl` points at the client mount instead of `handlers.admin`. `hot-updater init` no longer writes a storage call that uses a helper it removed.
+
+- Updated dependencies [13d2119]
+- Updated dependencies [13d2119]
+- Updated dependencies [92971a0]
+  - @hot-updater/server@1.0.0-rc.44
+  - @hot-updater/plugin-core@1.0.0-rc.44
+  - @hot-updater/protocol@1.0.0-rc.44
+
 ## 1.0.0-rc.43
 
 ### Patch Changes

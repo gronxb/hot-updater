@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/plugin-insights",
   "type": "module",
-  "version": "1.0.0-rc.43",
+  "version": "1.0.0-rc.44",
   "description": "Hot Updater's Insights plugin: launch, download, and update failure events, for the server and the React Native app",
   "exports": {
     "./client": {
