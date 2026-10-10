@@ -49,14 +49,26 @@ class LynxRuntimeHost internal constructor(
     fun runBackground(context: Context, completion: (Result<LynxBackgroundResult>) -> Unit): AutoCloseable =
         LynxBackgroundExecutor(context, this, completion)
 
-    fun createForeground(): LynxUpdaterController = synchronized(ownerLock) {
+    fun createForeground(): LynxUpdaterController = createForeground(null, false)
+
+    /** Native containers supply current placement; the journal never creates a UI hierarchy. */
+    fun createForegroundForMounts(
+        pages: List<LynxLogicalPage>,
+        reconstructing: Boolean = false,
+    ): LynxUpdaterController = createForeground(pages, reconstructing)
+
+    private fun createForeground(
+        pages: List<LynxLogicalPage>?,
+        reconstructing: Boolean,
+    ): LynxUpdaterController = synchronized(ownerLock) {
         synchronized(stateLock) {
             check(foreground == null) { "This Lynx scope already has a foreground owner" }
             replayColdFailures()
         }
         // Installer initialization takes its own lock. Never hold stateLock here.
         LynxUpdaterController(filesDir, packageCodePath, embedded, configuration, processIdentity, processToken,
-            runtimeHost = this, binaryId = binaryId).also { foreground = it }
+            runtimeHost = this, binaryId = binaryId,
+            mountedPages = pages, reconstructingMounts = reconstructing).also { foreground = it }
     }
 
     internal fun closeForeground(controller: LynxUpdaterController) = synchronized(ownerLock) {

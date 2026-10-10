@@ -10,6 +10,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.security.MessageDigest
 
+enum class LynxPageHostMode { STACK, MOUNTED }
+
 /** All scope, compatibility and embedded identities originate in native application code. */
 data class LynxHostConfiguration(
     val runtimeId: String,
@@ -22,6 +24,7 @@ data class LynxHostConfiguration(
     val cohort: String,
     val publicKeyPem: String? = null,
     val fingerprintHash: String? = null,
+    val pageHostMode: LynxPageHostMode = LynxPageHostMode.STACK,
 ) {
     init {
         require(embeddedBundleId.isNotBlank()) {

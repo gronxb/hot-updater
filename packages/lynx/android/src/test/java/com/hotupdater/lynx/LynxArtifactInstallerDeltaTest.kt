@@ -36,7 +36,7 @@ import org.junit.Test
 
 class LynxArtifactInstallerDeltaTest {
     private val runtime =
-        "android-sparkling-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ota-v2"
+        "android-sparkling-2.1.0-rc.12-lynx-4.0.3-primjs-4.0.0-ota-v2"
     private val baseId = "01900000-0000-7000-8000-000000000020"
     private val targetId = "01900000-0000-7000-8000-000000000021"
     private val targetReleaseId = "01900000-0000-7000-8000-000000000121"
@@ -1232,8 +1232,8 @@ class LynxArtifactInstallerDeltaTest {
     fun metadataCheckAuthenticatesCompressedSidecarAndReusesExpandedBytes() = runBlocking {
         val root = Files.createTempDirectory("lynx-check-brotli-").toFile()
         try {
-            val sidecar = """{"schemaVersion":1,"bundleId":"01900000-0000-7000-8000-000000000021","platform":"android","runtimeId":"android-sparkling-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ota-v2","entry":"main.lynx.bundle"}""".toByteArray()
-            val compressed = Base64.getDecoder().decode("G8cAAIzUYk2Z7qTRttSX2b3gIVKimKQOS9/T4wLFWlRbW8vamgcRH/1gB7veMJ/ykrY28oftwusJjIPsnIqhTAqANrFOZWGIketYaxBAGnBaE7ZzgjiSYhLcFfkwtFNNK0Y0t1yM5fBOD12JRXPZ2rHbGxCxrVcJOB8pL4ugYAGehjZN+AYG")
+            val sidecar = """{"schemaVersion":1,"bundleId":"01900000-0000-7000-8000-000000000021","platform":"android","runtimeId":"android-sparkling-2.1.0-rc.12-lynx-4.0.3-primjs-4.0.0-ota-v2","entry":"main.lynx.bundle"}""".toByteArray()
+            val compressed = Base64.getDecoder().decode("G78AAIzDdOMrz1Z51SJwyKEc6MYBZi2NtqW+zO4VC5ESRVQn5wfFtqytrWVtzYOIQw8wwNzGltdVhGLlw9rZ1x2aAMW9VFOdBUKbVGutNYEYiWq2NQAiCXFaBY57kRhZOsYzkYepX1paMaJ5lGIsp3/56EWL43b083AWNs21OR8LkFxAPAtNiPg0HA==")
             val target = files(targetId, TARGET_ENTRY) + ("hot-updater-lynx.json" to sidecar)
             FixtureServer(emptyMap()).use { server ->
                 val descriptor = artifact(server, "/target", targetId,

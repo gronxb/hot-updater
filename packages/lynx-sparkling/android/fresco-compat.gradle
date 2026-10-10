@@ -3,7 +3,7 @@ import java.security.MessageDigest
 // The upstream AAR targets Fresco 2. Recompile its pinned Java source against
 // Fresco 3 so CloseableBitmap/CloseableImage calls use the interface ABI.
 def imageSources = configurations.detachedConfiguration(
-    dependencies.create('org.lynxsdk.lynx:lynx-service-image:3.9.0:sources@jar'),
+    dependencies.create('org.lynxsdk.lynx:lynx-service-image:4.0.3:sources@jar'),
 )
 imageSources.transitive = false
 def generatedSources = layout.buildDirectory.dir('generated/fresco-compat')
@@ -15,7 +15,7 @@ def prepareImageService = tasks.register('prepareLynxImageServiceFresco3', Sync)
         def digest = MessageDigest.getInstance('SHA-256')
             .digest(imageSources.singleFile.bytes)
             .collect { String.format('%02x', it & 0xff) }.join()
-        if (digest != '41f9087ff78a4cb29c0322c9c41e45c1e491ef85f58d4f233b1136fbb0a0b68a') {
+        if (digest != 'b8d1cc1b9ade6317b478c7d390c84b973203657b69467c3485e6add891afd3c4') {
             throw new GradleException('Lynx image-service source integrity mismatch')
         }
     }

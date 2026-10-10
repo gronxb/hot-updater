@@ -26,9 +26,9 @@ target 'SparklingGo' do
   pod 'SparklingMacro', :path => '.upstream/sparkling/packages/sparkling-sdk/ios/SparklingMacro'
   pod 'SparklingMethod', :path => '.upstream/sparkling/packages/sparkling-method/ios', :subspecs => ['Lynx', 'DIProvider']
   pod 'Sparkling-Router', :path => '.upstream/sparkling/packages/methods/sparkling-navigation/ios'
-  pod 'Lynx', '3.9.0', :subspecs => ['Framework', 'ReleaseResource']
-  pod 'PrimJS', '3.8.0-alpha.6', :subspecs => ['quickjs', 'napi']
-  pod 'LynxService', '3.9.0', :subspecs => ['Image', 'Log', 'Http']
+  pod 'Lynx', '4.0.3', :subspecs => ['Framework', 'ReleaseResource']
+  pod 'PrimJS', '4.0.0', :subspecs => ['quickjs', 'napi']
+  pod 'LynxService', '4.0.3', :subspecs => ['Image', 'Log', 'Http']
   pod 'SnapKit', '5.7.1'
   pod 'Mantle', '2.2.0'
   pod 'SDWebImage', '5.15.5'
@@ -46,9 +46,9 @@ target 'SparklingGoE2E' do
   pod 'SparklingMacro', :path => '.upstream/sparkling/packages/sparkling-sdk/ios/SparklingMacro'
   pod 'SparklingMethod', :path => '.upstream/sparkling/packages/sparkling-method/ios', :subspecs => ['Lynx', 'DIProvider']
   pod 'Sparkling-Router', :path => '.upstream/sparkling/packages/methods/sparkling-navigation/ios'
-  pod 'Lynx', '3.9.0', :subspecs => ['Framework', 'ReleaseResource']
-  pod 'PrimJS', '3.8.0-alpha.6', :subspecs => ['quickjs', 'napi']
-  pod 'LynxService', '3.9.0', :subspecs => ['Image', 'Log', 'Http']
+  pod 'Lynx', '4.0.3', :subspecs => ['Framework', 'ReleaseResource']
+  pod 'PrimJS', '4.0.0', :subspecs => ['quickjs', 'napi']
+  pod 'LynxService', '4.0.3', :subspecs => ['Image', 'Log', 'Http']
   pod 'SnapKit', '5.7.1'
   pod 'Mantle', '2.2.0'
   pod 'SDWebImage', '5.15.5'
@@ -65,9 +65,9 @@ target 'SparklingMatrixHarness' do
   pod 'SparklingMacro', :path => '.upstream/sparkling/packages/sparkling-sdk/ios/SparklingMacro'
   pod 'SparklingMethod', :path => '.upstream/sparkling/packages/sparkling-method/ios', :subspecs => ['Lynx', 'DIProvider']
   pod 'Sparkling-Router', :path => '.upstream/sparkling/packages/methods/sparkling-navigation/ios'
-  pod 'Lynx', '3.9.0', :subspecs => ['Framework', 'ReleaseResource']
-  pod 'PrimJS', '3.8.0-alpha.6', :subspecs => ['quickjs', 'napi']
-  pod 'LynxService', '3.9.0', :subspecs => ['Image', 'Log', 'Http']
+  pod 'Lynx', '4.0.3', :subspecs => ['Framework', 'ReleaseResource']
+  pod 'PrimJS', '4.0.0', :subspecs => ['quickjs', 'napi']
+  pod 'LynxService', '4.0.3', :subspecs => ['Image', 'Log', 'Http']
   pod 'SnapKit', '5.7.1'
   pod 'Mantle', '2.2.0'
   pod 'SDWebImage', '5.15.5'

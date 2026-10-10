@@ -1,13 +1,13 @@
 # Lynx image service with Fresco 3
 
-The published `org.lynxsdk.lynx:lynx-service-image:3.9.0` AAR calls Fresco 2
+The published `org.lynxsdk.lynx:lynx-service-image:4.0.3` AAR calls Fresco 2
 classes. Fresco 3.4.0 provides 16 KB-aligned native libraries but changes
 `CloseableBitmap` and `CloseableImage` to interfaces. Using that AAR with Fresco
 3 therefore throws `IncompatibleClassChangeError` when decoding a bitmap.
 
-`fresco-compat.gradle` compiles the five Java files in the upstream 3.9.0 sources
+`fresco-compat.gradle` compiles the five Java files in the upstream 4.0.3 sources
 JAR against Fresco 3.4.0. It verifies SHA-256
-`41f9087ff78a4cb29c0322c9c41e45c1e491ef85f58d4f233b1136fbb0a0b68a` before
+`b8d1cc1b9ade6317b478c7d390c84b973203657b69467c3485e6add891afd3c4` before
 extracting them. Compilation fixes the class/interface invocation ABI.
 
 The only source adaptations are the three animation-listener callback argument

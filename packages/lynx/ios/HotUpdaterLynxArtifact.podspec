@@ -14,6 +14,6 @@ Pod::Spec.new do |s|
   s.swift_version = '5.0'
   s.libraries = 'compression', 'bz2', 'c++'
   s.pod_target_xcconfig = { 'CLANG_CXX_LANGUAGE_STANDARD' => 'c++17' }
-  s.dependency 'Lynx/Framework', '3.9.0'
+  s.dependency 'Lynx/Framework', '4.0.3'
   s.frameworks = 'Foundation', 'Security', 'CryptoKit'
 end

@@ -18,7 +18,7 @@ import java.util.concurrent.ExecutionException
 import java.util.concurrent.atomic.AtomicReference
 
 class LynxUpdaterControllerTest {
-    private val runtime = "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1"
+    private val runtime = "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-4.0.3-primjs-4.0.0-managed-pages-v1"
     private val embeddedId = "00000000-0000-0000-0000-000000000000"
     private val bundleB = "01900000-0000-7000-8000-000000000020"
     private val bundleC = "01900000-0000-7000-8000-000000000030"
@@ -97,6 +97,337 @@ class LynxUpdaterControllerTest {
     private fun store(root: File): File = File(root, "hot-updater-lynx/scopes").listFiles()!!.single { it.isDirectory }
 
     private fun journal(root: File): JSONObject = JSONObject(File(store(root), "state.json").readText())
+
+    private fun mounts(vararg secondaryIds: String) = listOf(
+        LynxLogicalPage("main.lynx.bundle", mountId = "primary"),
+    ) + secondaryIds.map { LynxLogicalPage("detail.lynx.bundle", mountId = it) }
+
+    private fun mountedController(
+        root: File,
+        pages: List<LynxLogicalPage>,
+        reconstructing: Boolean = false,
+    ) = LynxUpdaterController(root, binary(root), embedded(root),
+        config().copy(pageHostMode = LynxPageHostMode.MOUNTED),
+        processIdentity = { "4321" }, mountedPages = pages,
+        reconstructingMounts = reconstructing)
+
+    private fun mount(
+        controller: LynxUpdaterController,
+        primary: LynxLaunchSession,
+        id: String,
+        reconstructing: Boolean = true,
+    ): LynxLaunchSession {
+        val pages = controller.retainedLogicalStack(primary)
+        val position = if (reconstructing) pages.indexOfFirst { it.mountId == id } else pages.size
+        return controller.pinSecondary("detail.lynx.bundle", emptyMap(), position,
+            primary.generationId, reconstructing = reconstructing, mountId = id)
+    }
+
+    @Test fun mountedMiddleRemovalPreservesAnotherPendingIdenticalBundle() {
+        val root = temp()
+        val current = mountedController(root, mounts("a", "b"))
+        try {
+            val primary = current.pinPrimary().also { it.firstScreen = true }
+            var ready: Result<JSONObject>? = null
+            primary.notifyReady { ready = it }
+            val a = mount(current, primary, "a").also { it.firstScreen = true }
+            current.admitSecondary(a)
+            val b = mount(current, primary, "b")
+            assertEquals(null, ready)
+            current.unmountSecondary(a)
+            assertEquals(listOf("primary", "b"), current.retainedLogicalStack(primary).map { it.mountId })
+            assertTrue(b.live)
+            assertFalse(a.live)
+            assertEquals(b.id, journal(root).getJSONObject("pageAttempt").getString("attemptId"))
+            assertEquals(1, journal(root).getInt("reconstructionPosition"))
+            assertEquals(null, ready)
+            b.firstScreen = true
+            current.admitSecondary(b)
+            assertTrue(ready?.isSuccess == true)
+            assertFalse(journal(root).has("reconstructionPosition"))
+            assertFalse(journal(root).has("generationFailure"))
+        } finally { current.close(); root.deleteRecursively() }
+    }
+
+    @Test fun mountedPendingRemovalDoesNotTransferAuthorityWhenIdIsReused() {
+        val root = temp()
+        val current = mountedController(root, mounts("a", "b"))
+        try {
+            val primary = current.pinPrimary().also { it.firstScreen = true }
+            val oldA = mount(current, primary, "a")
+            current.unmountSecondary(oldA)
+            val cancelled = journal(root).getJSONObject("lastPageAttempt")
+            assertEquals("a", cancelled.getString("mountId"))
+            assertEquals("authorized-cancel", cancelled.getString("terminal"))
+            assertEquals("nativeUnmount", cancelled.getString("reason"))
+            val b = mount(current, primary, "b").also { it.firstScreen = true }
+            current.admitSecondary(b)
+            val freshA = mount(current, primary, "a", reconstructing = false)
+            assertFalse(oldA.id == freshA.id)
+            assertFalse(current.fail(oldA, "late failure"))
+            assertThrows(CatalogPolicy.Rejected::class.java) { current.unmountSecondary(oldA) }
+            var stale: Result<JSONObject>? = null
+            oldA.notifyReady { stale = it }
+            assertTrue(stale?.isFailure == true)
+            assertEquals(freshA.id, journal(root).getJSONObject("pageAttempt").getString("attemptId"))
+            freshA.firstScreen = true
+            current.admitSecondary(freshA)
+            assertEquals(listOf("primary", "b", "a"), current.retainedLogicalStack(primary).map { it.mountId })
+            assertFalse(journal(root).has("generationFailure"))
+        } finally { current.close(); root.deleteRecursively() }
+    }
+
+    @Test fun coldMountedAttachmentKeepsInterruptionEvidenceWithoutResurrectingOldContainers() {
+        val root = temp()
+        try {
+            mountedController(root, mounts()).let { seed ->
+                val primary = seed.pinPrimary().also { it.firstScreen = true }
+                seed.confirm(primary)
+                seed.close()
+            }
+            plantNext(root, releaseB, bundleB, "B")
+            val previous = mountedController(root, mounts("a", "b"))
+            val primary = previous.pinPrimary()
+            assertEquals(bundleB, primary.installation.bundleId)
+            val a = mount(previous, primary, "a").also { it.firstScreen = true }
+            previous.admitSecondary(a)
+            val b = mount(previous, primary, "b")
+            previous.close()
+
+            val fresh = mountedController(root, mounts())
+            try {
+                val terminal = journal(root).getJSONObject("lastPageAttempt")
+                assertEquals(b.id, terminal.getString("attemptId"))
+                assertEquals("b", terminal.getString("mountId"))
+                assertEquals("process-interruption", terminal.getString("terminal"))
+                assertEquals(3, terminal.getJSONArray("stack").length())
+                assertTrue(jsonStrings(journal(root).getJSONArray("unconfirmed")).contains(releaseB))
+                val recovered = fresh.pinPrimary().also { it.firstScreen = true }
+                assertEquals(embeddedId, recovered.installation.bundleId)
+                assertEquals(mounts(), fresh.retainedLogicalStack(recovered))
+                var ready: Result<JSONObject>? = null
+                recovered.notifyReady { ready = it }
+                assertTrue(ready?.isSuccess == true)
+                assertFalse(journal(root).has("reconstructionPosition"))
+            } finally { fresh.close() }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun mountedReplacementRebuildsOnlyFrozenCurrentMembership() {
+        val root = temp()
+        try {
+            val previous = mountedController(root, mounts("a", "b"))
+            val primary = previous.pinPrimary().also { it.firstScreen = true }
+            val a = mount(previous, primary, "a").also { it.firstScreen = true }
+            previous.admitSecondary(a)
+            val b = mount(previous, primary, "b").also { it.firstScreen = true }
+            previous.admitSecondary(b)
+            previous.confirm(primary)
+            previous.unmountSecondary(a)
+            val frozen = previous.retainedLogicalStack(primary)
+            previous.acceptManagedTransition(primary, primary.generationId, frozen, "reload")
+            assertThrows(CatalogPolicy.Rejected::class.java) { previous.unmountSecondary(b) }
+            assertThrows(CatalogPolicy.Rejected::class.java) {
+                previous.pinSecondary("detail.lynx.bundle", emptyMap(), frozen.size,
+                    primary.generationId, mountId = "late")
+            }
+            assertEquals(frozen.size, journal(root).getJSONArray("logicalStack").length())
+            previous.close()
+            assertThrows(IllegalArgumentException::class.java) {
+                mountedController(root, mounts(), reconstructing = true)
+            }
+            val fresh = mountedController(root, frozen, reconstructing = true)
+            try {
+                val next = fresh.pinPrimary().also { it.firstScreen = true }
+                var ready: Result<JSONObject>? = null
+                next.notifyReady { ready = it }
+                assertEquals(null, ready)
+                val newB = mount(fresh, next, "b").also { it.firstScreen = true }
+                fresh.admitSecondary(newB)
+                assertTrue(ready?.isSuccess == true)
+                assertEquals(mounts("b"), fresh.retainedLogicalStack(next))
+                assertFalse(journal(root).has("managedTransition"))
+            } finally { fresh.close() }
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun mountedJournalRejectsModeChangesAndDuplicateNativeIdentities() {
+        val root = temp()
+        try {
+            assertThrows(IllegalArgumentException::class.java) {
+                mountedController(root, mounts("duplicate", "duplicate"))
+            }
+            val previous = mountedController(root, mounts())
+            val primary = previous.pinPrimary().also { it.firstScreen = true }
+            previous.confirm(primary)
+            previous.close()
+            assertThrows(IllegalArgumentException::class.java) { controller(root) }
+            val fresh = mountedController(root, mounts())
+            fresh.close()
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun mountedRollbackRevokesTheOldSessionBeforeRetryingTheSameIdentity() {
+        val root = temp()
+        val current = mountedController(root, mounts("a"))
+        try {
+            val primary = current.pinPrimary().also { it.firstScreen = true }
+            val oldA = mount(current, primary, "a")
+            assertTrue(current.rollbackSecondary(oldA))
+            assertFalse(oldA.live)
+            val freshA = mount(current, primary, "a")
+            assertThrows(CatalogPolicy.Rejected::class.java) { current.unmountSecondary(oldA) }
+            assertFalse(current.fail(oldA, "late failure"))
+            assertEquals(mounts("a"), current.retainedLogicalStack(primary))
+            assertEquals(freshA.id, journal(root).getJSONObject("pageAttempt").getString("attemptId"))
+            var ready: Result<JSONObject>? = null
+            primary.notifyReady { ready = it }
+            assertEquals(null, ready)
+            freshA.firstScreen = true
+            current.admitSecondary(freshA)
+            assertTrue(ready?.isSuccess == true)
+        } finally { current.close(); root.deleteRecursively() }
+    }
+
+    @Test fun mountedQueuedRemovalPreservesTheOtherAdmissionAndCompletesReadiness() {
+        val root = temp()
+        val current = mountedController(root, mounts("a", "b"))
+        try {
+            val primary = current.pinPrimary().also { it.firstScreen = true }
+            var ready: Result<JSONObject>? = null
+            primary.notifyReady { ready = it }
+            val a = mount(current, primary, "a")
+            assertThrows(IllegalStateException::class.java) {
+                current.unmountUnlaunchedSecondary(primary, "a")
+            }
+            assertThrows(IllegalStateException::class.java) {
+                current.unmountUnlaunchedSecondary(primary, "primary")
+            }
+            val pending = journal(root).getJSONObject("pageAttempt").toString()
+            current.unmountUnlaunchedSecondary(primary, "b")
+            assertEquals(pending, journal(root).getJSONObject("pageAttempt").toString())
+            assertEquals(mounts("a"), current.retainedLogicalStack(primary))
+            assertFalse(journal(root).has("lastPageAttempt"))
+            assertEquals(null, ready)
+            a.firstScreen = true
+            current.admitSecondary(a)
+            assertTrue(ready?.isSuccess == true)
+            assertFalse(journal(root).has("reconstructionPosition"))
+            current.acceptManagedTransition(primary, primary.generationId, mounts("a"), "reload")
+            assertThrows(CatalogPolicy.Rejected::class.java) {
+                current.unmountUnlaunchedSecondary(primary, "b")
+            }
+        } finally { current.close(); root.deleteRecursively() }
+    }
+
+    @Test fun mountedClosedPendingSessionCannotBeReclassifiedAsUnlaunched() {
+        val root = temp()
+        val current = mountedController(root, mounts("a", "b"))
+        try {
+            val primary = current.pinPrimary()
+            val a = mount(current, primary, "a")
+            a.close()
+            assertThrows(IllegalStateException::class.java) {
+                current.unmountUnlaunchedSecondary(primary, "a")
+            }
+            current.unmountUnlaunchedSecondary(primary, "b")
+            assertEquals(a.id, journal(root).getJSONObject("pageAttempt").getString("attemptId"))
+            assertEquals(mounts("a"), current.retainedLogicalStack(primary))
+        } finally { current.close(); root.deleteRecursively() }
+    }
+
+    @Test fun mountedAppendRollbackFlushesPrimaryReadiness() {
+        val root = temp()
+        val current = mountedController(root, mounts())
+        try {
+            val primary = current.pinPrimary().also { it.firstScreen = true }
+            val a = mount(current, primary, "a", reconstructing = false)
+            var ready: Result<JSONObject>? = null
+            primary.notifyReady { ready = it }
+            assertEquals(null, ready)
+            assertTrue(current.rollbackSecondary(a))
+            assertEquals(mounts(), current.retainedLogicalStack(primary))
+            assertTrue(ready?.isSuccess == true)
+        } finally { current.close(); root.deleteRecursively() }
+    }
+
+    @Test fun malformedMountedTerminalHistoryReleasesJournalOwnership() {
+        val root = temp()
+        try {
+            val previous = mountedController(root, mounts("a"))
+            val primary = previous.pinPrimary()
+            val a = mount(previous, primary, "a")
+            previous.unmountSecondary(a)
+            previous.close()
+            val stateFile = File(store(root), "state.json")
+            val valid = stateFile.readText()
+            val corrupt = JSONObject(valid)
+            val terminal = corrupt.getJSONArray("pageAttemptTerminals").getJSONObject(0)
+            terminal.getJSONArray("stack").getJSONObject(0).remove("mountId")
+            stateFile.writeText(corrupt.toString())
+            assertThrows(IllegalArgumentException::class.java) {
+                mountedController(root, mounts())
+            }
+            stateFile.writeText(valid)
+            mountedController(root, mounts()).close()
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun mountedAdmissionCannotResurrectAConcurrentUnmount() {
+        val root = temp()
+        val executor = Executors.newFixedThreadPool(3)
+        val releasePruner = CountDownLatch(1)
+        var current: LynxUpdaterController? = null
+        try {
+            mountedController(root, mounts()).let { seed ->
+                seed.pinPrimary().also { it.firstScreen = true; seed.confirm(it) }
+                seed.close()
+            }
+            plantNext(root, releaseB, bundleB, "B")
+            val controller = mountedController(root, mounts("a")).also { current = it }
+            val primary = controller.pinPrimary()
+            val a = mount(controller, primary, "a").also { it.firstScreen = true }
+            controller.admitSecondary(a)
+            val pruner = LynxArtifactInstaller(File(store(root), "artifacts"), LynxInstallConfiguration(runtime))
+            val pruning = CountDownLatch(1)
+            val pruningTask = executor.submit {
+                pruner.prune {
+                    pruning.countDown()
+                    check(releasePruner.await(10, TimeUnit.SECONDS))
+                }
+            }
+            assertTrue(pruning.await(10, TimeUnit.SECONDS))
+            val worker = AtomicReference<Thread>()
+            val admission = executor.submit<LynxLaunchSession> {
+                worker.set(Thread.currentThread())
+                mount(controller, primary, "b", reconstructing = false)
+            }
+            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+            while (System.nanoTime() < deadline && worker.get()?.let {
+                    it.state == Thread.State.BLOCKED && it.stackTrace.any { frame ->
+                        frame.className == LynxArtifactInstaller::class.java.name && frame.methodName.startsWith("retain$")
+                    }
+                } != true) Thread.yield()
+            assertEquals(Thread.State.BLOCKED, worker.get()?.state)
+            assertTrue(worker.get().stackTrace.any { it.methodName.startsWith("retain$") })
+            val removal = executor.submit { controller.unmountSecondary(a) }
+            val removalDeadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
+            while (a.live && System.nanoTime() < removalDeadline) Thread.yield()
+            assertFalse(a.live)
+            releasePruner.countDown()
+            pruningTask.get(10, TimeUnit.SECONDS)
+            removal.get(10, TimeUnit.SECONDS)
+            assertThrows(ExecutionException::class.java) { admission.get(10, TimeUnit.SECONDS) }
+            assertEquals(mounts(), controller.retainedLogicalStack(primary))
+            assertFalse(journal(root).has("pageAttempt"))
+        } finally {
+            releasePruner.countDown()
+            executor.shutdownNow()
+            executor.awaitTermination(10, TimeUnit.SECONDS)
+            current?.close()
+            root.deleteRecursively()
+        }
+    }
 
     private fun catalog(
         releaseId: String,

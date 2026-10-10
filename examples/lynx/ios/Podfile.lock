@@ -1,9 +1,9 @@
 PODS:
   - HotUpdaterLynxArtifact (1.0.0):
-    - Lynx/Framework (= 3.9.0)
+    - Lynx/Framework (= 4.0.3)
   - HotUpdaterLynxSparkling/Core (1.0.0):
     - HotUpdaterLynxArtifact (= 1.0.0)
-    - Lynx/Framework (= 3.9.0)
+    - Lynx/Framework (= 4.0.3)
     - Sparkling
     - Sparkling-Router
     - SparklingMethod/DIProvider
@@ -21,62 +21,62 @@ PODS:
   - libwebp/sharpyuv (1.5.0)
   - libwebp/webp (1.5.0):
     - libwebp/sharpyuv
-  - Lynx (3.9.0):
-    - Lynx/Framework (= 3.9.0)
-  - Lynx/Framework (3.9.0):
+  - Lynx (4.0.3):
+    - Lynx/Framework (= 4.0.3)
+  - Lynx/Framework (4.0.3):
     - Lynx/ReleaseResource
     - LynxBase/Framework
     - LynxServiceAPI
     - PrimJS/napi/env
     - PrimJS/napi/jsc
     - PrimJS/napi/quickjs
-    - PrimJS/quickjs (= 3.8.0-alpha.6)
-  - Lynx/ReleaseResource (3.9.0)
-  - LynxBase (3.9.0):
-    - LynxBase/Framework (= 3.9.0)
-  - LynxBase/Framework (3.9.0):
+    - PrimJS/quickjs (= 4.0.0)
+  - Lynx/ReleaseResource (4.0.3)
+  - LynxBase (4.0.3):
+    - LynxBase/Framework (= 4.0.3)
+  - LynxBase/Framework (4.0.3):
     - LynxServiceAPI/Core
   - LynxLibraryRegistry (0.1.0):
     - Lynx
-  - LynxService/Http (3.9.0):
-    - Lynx (= 3.9.0)
-    - LynxServiceAPI (= 3.9.0)
-  - LynxService/Image (3.9.0):
-    - Lynx (= 3.9.0)
-    - LynxServiceAPI (= 3.9.0)
+  - LynxService/Http (4.0.3):
+    - Lynx (= 4.0.3)
+    - LynxServiceAPI (= 4.0.3)
+  - LynxService/Image (4.0.3):
+    - Lynx (= 4.0.3)
+    - LynxServiceAPI (= 4.0.3)
     - SDWebImage (= 5.15.5)
     - SDWebImageWebPCoder (= 0.11.0)
-  - LynxService/Log (3.9.0):
-    - Lynx (= 3.9.0)
-    - LynxBase (= 3.9.0)
-    - LynxServiceAPI (= 3.9.0)
-  - LynxServiceAPI (3.9.0):
-    - LynxServiceAPI/Core (= 3.9.0)
-  - LynxServiceAPI/Core (3.9.0)
+  - LynxService/Log (4.0.3):
+    - Lynx (= 4.0.3)
+    - LynxBase (= 4.0.3)
+    - LynxServiceAPI (= 4.0.3)
+  - LynxServiceAPI (4.0.3):
+    - LynxServiceAPI/Core (= 4.0.3)
+  - LynxServiceAPI/Core (4.0.3)
   - Mantle (2.2.0):
     - Mantle/extobjc (= 2.2.0)
   - Mantle/extobjc (2.2.0)
-  - PrimJS/log (3.8.0-alpha.6)
-  - PrimJS/napi (3.8.0-alpha.6):
-    - PrimJS/napi/adapter (= 3.8.0-alpha.6)
-    - PrimJS/napi/core (= 3.8.0-alpha.6)
-    - PrimJS/napi/env (= 3.8.0-alpha.6)
-    - PrimJS/napi/jsc (= 3.8.0-alpha.6)
-    - PrimJS/napi/quickjs (= 3.8.0-alpha.6)
-  - PrimJS/napi/adapter (3.8.0-alpha.6):
+  - PrimJS/log (4.0.0)
+  - PrimJS/napi (4.0.0):
+    - PrimJS/napi/adapter (= 4.0.0)
+    - PrimJS/napi/core (= 4.0.0)
+    - PrimJS/napi/env (= 4.0.0)
+    - PrimJS/napi/jsc (= 4.0.0)
+    - PrimJS/napi/quickjs (= 4.0.0)
+  - PrimJS/napi/adapter (4.0.0):
     - PrimJS/napi/core
     - PrimJS/napi/env
-  - PrimJS/napi/core (3.8.0-alpha.6)
-  - PrimJS/napi/env (3.8.0-alpha.6):
+  - PrimJS/napi/core (4.0.0)
+  - PrimJS/napi/env (4.0.0):
     - PrimJS/napi/core
-  - PrimJS/napi/jsc (3.8.0-alpha.6):
+  - PrimJS/napi/jsc (4.0.0):
     - PrimJS/log
     - PrimJS/napi/core
     - PrimJS/quickjs
-  - PrimJS/napi/quickjs (3.8.0-alpha.6):
+  - PrimJS/napi/quickjs (4.0.0):
     - PrimJS/napi/core
     - PrimJS/quickjs
-  - PrimJS/quickjs (3.8.0-alpha.6):
+  - PrimJS/quickjs (4.0.0):
     - PrimJS/log
   - SDWebImage (5.15.5):
     - SDWebImage/Core (= 5.15.5)
@@ -136,15 +136,15 @@ DEPENDENCIES:
   - HotUpdaterLynxArtifact (from `../../../packages/lynx/ios`)
   - HotUpdaterLynxSparkling/Core (from `../../../packages/lynx-sparkling/ios`)
   - HotUpdaterLynxSparkling/Diagnostics (from `../../../packages/lynx-sparkling/ios`)
-  - Lynx/Framework (= 3.9.0)
-  - Lynx/ReleaseResource (= 3.9.0)
+  - Lynx/Framework (= 4.0.3)
+  - Lynx/ReleaseResource (= 4.0.3)
   - LynxLibraryRegistry (from `generated/lynx-library`)
-  - LynxService/Http (= 3.9.0)
-  - LynxService/Image (= 3.9.0)
-  - LynxService/Log (= 3.9.0)
+  - LynxService/Http (= 4.0.3)
+  - LynxService/Image (= 4.0.3)
+  - LynxService/Log (= 4.0.3)
   - Mantle (= 2.2.0)
-  - PrimJS/napi (= 3.8.0-alpha.6)
-  - PrimJS/quickjs (= 3.8.0-alpha.6)
+  - PrimJS/napi (= 4.0.0)
+  - PrimJS/quickjs (= 4.0.0)
   - SDWebImage (= 5.15.5)
   - SDWebImageWebPCoder (= 0.11.0)
   - SnapKit (= 5.7.1)
@@ -184,16 +184,16 @@ EXTERNAL SOURCES:
     :path: ".upstream/sparkling/packages/sparkling-method/ios"
 
 SPEC CHECKSUMS:
-  HotUpdaterLynxArtifact: bccef3bc7f1827e722a065229153908f8900653a
-  HotUpdaterLynxSparkling: 9ed1dc7d97dfbdb318dbd7291136c625155d0ce7
+  HotUpdaterLynxArtifact: 267b8c04d5380f4aa5fca75489a1c8108c18168f
+  HotUpdaterLynxSparkling: b40097689bc99b4713530f130110434721f42eaa
   libwebp: 02b23773aedb6ff1fd38cec7a77b81414c6842a8
-  Lynx: ad5ed649ccf1d761e6697bc5d6d4fa6f30ad13e3
-  LynxBase: 046fe3d218a88ff0b1a3f058ee8d9a07aa9ae387
+  Lynx: e1fb48fd1c2d2fa187fa9259c8010005bd50e56e
+  LynxBase: c90f118654a8b5ca43ce4fe2dae9661bd289ec7f
   LynxLibraryRegistry: b2017f1b3dd04bcac00caacc69d28fddcd6c9043
-  LynxService: a1728eea1ecb9d4bd9a37430b14d431ae000fce0
-  LynxServiceAPI: d7fe4bc006716867e5d7cf2d3a4bcaa5207cfa0f
+  LynxService: 040c3a40fe8d2721c6f930cd23ac2dff93d7dea8
+  LynxServiceAPI: 015608819cdcbc6a398613170baf27d07a2b5797
   Mantle: c5aa8794a29a022dfbbfc9799af95f477a69b62d
-  PrimJS: a917134ed564e22594bcda526b940bc9a1de4e4d
+  PrimJS: f048efc0923e73cde312466a110516f56b70834d
   SDWebImage: fd7e1a22f00303e058058278639bf6196ee431fe
   SDWebImageWebPCoder: 295a6573c512f54ad2dd58098e64e17dcf008499
   SnapKit: d612e99e678a2d3b95bf60b0705ed0a35c03484a
@@ -202,6 +202,6 @@ SPEC CHECKSUMS:
   SparklingMacro: 2358dca825325d1b1055c3adfb79ee3e376b204d
   SparklingMethod: 4c72f641b1798f0c592ce01d8807ac5b3a021bee
 
-PODFILE CHECKSUM: 2f035daee0b8ba41224b0efa93daf82f42eb1fcd
+PODFILE CHECKSUM: 2827d9be6f5a2f627615665e391362ab0cda2df0
 
 COCOAPODS: 1.17.0

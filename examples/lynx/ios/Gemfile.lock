@@ -53,7 +53,7 @@ GEM
       typhoeus (~> 1.0)
     cocoapods-deintegrate (1.0.5)
     cocoapods-downloader (2.1)
-    cocoapods-lynx-library (3.9.0)
+    cocoapods-lynx-library (4.0.3)
       cocoapods (>= 1.11.0)
     cocoapods-plugins (1.0.0)
       nap
@@ -110,7 +110,7 @@ PLATFORMS
 
 DEPENDENCIES
   cocoapods (>= 1.14)
-  cocoapods-lynx-library (= 3.9.0)
+  cocoapods-lynx-library (= 4.0.3)
   ffi (= 1.16.3)
 
 RUBY VERSION

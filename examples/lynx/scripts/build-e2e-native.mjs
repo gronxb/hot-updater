@@ -198,8 +198,8 @@ const configReceipt = (files, nativePublicKeyInjection) => {
 };
 const versions = {
   sparkling: "2.1.0-rc.12",
-  lynx: "3.9.0",
-  primjs: "3.8.0-alpha.6",
+  lynx: "4.0.3",
+  primjs: "4.0.0",
   hotUpdaterLynx: createRequire(import.meta.url)(
     "@hot-updater/lynx/package.json",
   ).version,

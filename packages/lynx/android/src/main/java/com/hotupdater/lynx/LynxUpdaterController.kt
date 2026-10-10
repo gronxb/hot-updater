@@ -35,6 +35,8 @@ class LynxUpdaterController internal constructor(
     private val processToken: String = PROCESS_TOKEN,
     internal val runtimeHost: LynxRuntimeHost? = null,
     private val binaryId: String = HashUtils.calculateSHA256(packageCodePath),
+    mountedPages: List<LynxLogicalPage>? = null,
+    reconstructingMounts: Boolean = false,
 ) {
     constructor(context: Context, configuration: LynxHostConfiguration) : this(
         context.filesDir,
@@ -43,6 +45,16 @@ class LynxUpdaterController internal constructor(
         configuration,
     )
     private val stateLock = runtimeHost?.stateLock ?: Any()
+    private val mountedHost = configuration.pageHostMode == LynxPageHostMode.MOUNTED
+    private val initialMountedPages = mountedPages?.map {
+        it.copy(parameters = it.parameters.toMap())
+    }.also { pages ->
+        require((pages != null) == mountedHost) {
+            "Mounted hosts require the current native container membership"
+        }
+        require(!reconstructingMounts || mountedHost)
+        pages?.let(::validateLogicalPages)
+    }
     private val directory = lynxScopeDirectory(filesDir, binaryId, embedded, configuration)
     private val namespace = directory.name
     private val generationEventJournal = LynxGenerationEventJournal(filesDir)
@@ -67,6 +79,7 @@ class LynxUpdaterController internal constructor(
         }
     private var primary: LynxLaunchSession? = null
     private val members = linkedSetOf<LynxLaunchSession>()
+    private val admittedMounts = mutableSetOf<String>()
     private var accepted: CatalogPolicy.AcceptedCatalog? = null
     private var acceptedScopeSwitch = false
     private data class Preparation(val guard: String, val receipt: CatalogPolicy.Receipt,
@@ -80,6 +93,7 @@ class LynxUpdaterController internal constructor(
         val logicalStack: List<LynxLogicalPage>,
     )
     private data class SecondaryPlan(
+        val revision: String,
         val files: VerifiedLynxInstallation,
         val receipt: CatalogPolicy.Receipt,
         val primary: LynxLaunchSession,
@@ -97,15 +111,32 @@ class LynxUpdaterController internal constructor(
             if (!store.value.has("revision")) store.update { it.put("revision", UUID.randomUUID().toString()) }
             try {
                 storedReader().validateRetryRecords()
+                if (store.value.has("logicalStack") || store.value.has("pageHostMode")) {
+                    require(store.value.optString("pageHostMode", "stack") ==
+                        if (mountedHost) "mounted-v1" else "stack") {
+                        "The native page host mode does not match the journal"
+                    }
+                    retainedStack()
+                }
+                if (reconstructingMounts) {
+                    require(initialMountedPages == retainedStack()) {
+                        "Replacement mounts differ from the live native membership"
+                    }
+                    store.value.optJSONObject("managedTransition")?.let {
+                        require(initialMountedPages == parseStack(it.getJSONArray("stack"))) {
+                            "Replacement mounts differ from the accepted transition"
+                        }
+                    }
+                }
+                normalizeStoredLaunchTransition()
+                recover()
+                if (!store.value.has("channel")) mutate { it.put("channel", configuration.channel) }
+                running = receipt("active") ?: builtin()
+                // The process does not execute any restored candidate before pinPrimary().
             } catch (error: Throwable) {
                 try { store.close() } catch (cleanupError: Throwable) { error.addSuppressed(cleanupError) }
                 throw error
             }
-            normalizeStoredLaunchTransition()
-            recover()
-            if (!store.value.has("channel")) mutate { it.put("channel", configuration.channel) }
-            running = receipt("active") ?: builtin()
-            // The process does not execute any restored candidate before pinPrimary().
         }
         Log.i(TAG, "native-profile binary=$binaryId runtime=${configuration.runtimeId} scope=$namespace")
     }
@@ -329,7 +360,7 @@ class LynxUpdaterController internal constructor(
             null
         } else {
             storedFallback(
-                retainedStack(),
+                initialMountedPages ?: retainedStack(),
                 nextCrashed.toList(),
                 (nextUnconfirmed + heldReleases(nextInterruptions)).toList(),
                 failedEmbedded,
@@ -456,6 +487,7 @@ class LynxUpdaterController internal constructor(
     private fun pageJson(value: LynxLogicalPage) = JSONObject()
         .put("entry", value.entry)
         .put("parameters", JSONObject(value.parameters))
+        .also { value.mountId?.let { id -> it.put("mountId", id) } }
 
     private fun stackJson(value: List<LynxLogicalPage>) = JSONArray(
         value.map(::pageJson),
@@ -510,17 +542,16 @@ class LynxUpdaterController internal constructor(
         return members.toList().asReversed().firstOrNull { session ->
             session.id != excludingAttemptId && session.live && !session.failed &&
                 session.generationId == primary?.generationId &&
-                session.pageEntry == top.entry &&
-                session.pageParameters == top.parameters
+                session.logicalPage == top
         }?.id
     }
 
     private fun stackBeforeAttempt(
         stack: List<LynxLogicalPage>,
         attempt: JSONObject,
-    ): List<LynxLogicalPage> = stack.take(
-        attempt.getInt("position").coerceIn(0, stack.size),
-    )
+    ): List<LynxLogicalPage> = if (mountedHost) {
+        stack.filter { it.mountId != attempt.getString("mountId") }
+    } else stack.take(attempt.getInt("position").coerceIn(0, stack.size))
 
     private fun terminalTopPage(
         terminal: JSONObject,
@@ -529,6 +560,8 @@ class LynxUpdaterController internal constructor(
         terminal.getString("terminal") == "authorized-cancel"
     ) {
         stack.lastOrNull()
+    } else if (mountedHost) {
+        stack.singleOrNull { it.mountId == terminal.getString("mountId") }
     } else {
         stack.getOrNull(terminal.getInt("position")) ?: stack.lastOrNull()
     }
@@ -559,7 +592,9 @@ class LynxUpdaterController internal constructor(
         (0 until value.length()).map { index ->
             val page = value.optJSONObject(index)
                 ?: error("Invalid managed logical page")
-            require(page.keys().asSequence().toSet() == setOf("entry", "parameters")) {
+            val keys = if (mountedHost) setOf("entry", "parameters", "mountId")
+                else setOf("entry", "parameters")
+            require(page.keys().asSequence().toSet() == keys) {
                 "Invalid managed logical page keys"
             }
             val parameters = page.optJSONObject("parameters")
@@ -569,12 +604,28 @@ class LynxUpdaterController internal constructor(
                 parameters.opt(key) as? String
                     ?: error("Managed page parameters must be strings")
             }
-            LynxLogicalPage(page.getString("entry"), values)
-        }.also { stack ->
-            require(stack.isNotEmpty() && stack.size <= MAX_MANAGED_PAGES) {
-                "Invalid managed logical stack size"
-            }
+            LynxLogicalPage(page.getString("entry"), values,
+                if (mountedHost) page.getString("mountId") else null)
+        }.also(::validateLogicalPages)
+
+    private fun validateLogicalPages(pages: List<LynxLogicalPage>) {
+        require(pages.isNotEmpty() && pages.size <= MAX_MANAGED_PAGES) {
+            "Invalid managed logical page count"
         }
+        if (mountedHost) {
+            require(pages.first().entry == embedded.entry &&
+                pages.all { page ->
+                    val id = page.mountId
+                    id != null && id.isNotEmpty() && id.toByteArray().size <= 256 &&
+                        id.none { it.isISOControl() } &&
+                        page.parameters.keys.none(String::isEmpty)
+                } && pages.map { it.mountId }.distinct().size == pages.size) {
+                "Mounted pages require a primary entry and unique bounded native identities"
+            }
+        } else require(pages.all { it.mountId == null }) {
+            "Navigation stacks cannot contain native mount identities"
+        }
+    }
 
     private fun retainedStack(): List<LynxLogicalPage> {
         val transition = store.value.optJSONObject("managedTransition")
@@ -661,7 +712,7 @@ class LynxUpdaterController internal constructor(
                 "A new controller generation is required"
             }
             replayBackgroundFailures()
-            val stack = retainedStack().let { retained ->
+            val stack = initialMountedPages ?: retainedStack().let { retained ->
                 if (
                     store.value.has("logicalStack") ||
                     store.value.has("managedTransition")
@@ -728,6 +779,7 @@ class LynxUpdaterController internal constructor(
                     next.put("active", plan.receipt.toJson())
                     next.remove("next")
                     next.put("logicalStack", stackJson(plan.logicalStack))
+                    if (mountedHost) next.put("pageHostMode", "mounted-v1")
                     if (plan.logicalStack.size > 1) {
                         next.put("reconstructionPosition", 1)
                     } else {
@@ -798,12 +850,14 @@ class LynxUpdaterController internal constructor(
         reconstructing: Boolean = false,
         nativePageClass: String? = null,
         sourceContextId: String? = null,
+        mountId: String? = null,
     ): LynxLaunchSession {
         val plan = synchronized(stateLock) {
             check(!closed) { "The controller is closed" }
             val currentPrimary = checkNotNull(primary) {
                 "Secondary context must wait for primary selection"
             }
+            requireLive(currentPrimary)
             rejectFailedGeneration()
             require(generationId == currentPrimary.generationId) {
                 "Secondary context belongs to another generation"
@@ -818,7 +872,7 @@ class LynxUpdaterController internal constructor(
             require(logical.size <= MAX_MANAGED_PAGES) {
                 "Invalid managed logical stack size"
             }
-            val page = LynxLogicalPage(pageEntry, parameters.toMap())
+            val page = LynxLogicalPage(pageEntry, parameters.toMap(), mountId)
             if (reconstructing) {
                 require(
                     store.value.optInt("reconstructionPosition", -1) ==
@@ -836,18 +890,21 @@ class LynxUpdaterController internal constructor(
                 }
                 logical.add(page)
             }
+            validateLogicalPages(logical)
             require(!store.value.has("pageAttempt")) {
                 "A secondary page admission is already pending"
             }
-            SecondaryPlan(runningFiles, running, currentPrimary, logical, page)
+            SecondaryPlan(store.value.getString("revision"), runningFiles, running, currentPrimary, logical, page)
         }
         val lease = installer.retain(plan.files)
         try {
             return synchronized(stateLock) {
                 check(
                     !closed && primary === plan.primary &&
-                        running == plan.receipt && runningFiles === plan.files,
-                ) { "Primary selection changed during resource retention" }
+                        running == plan.receipt && runningFiles === plan.files &&
+                        store.value.getString("revision") == plan.revision,
+                ) { "Page admission changed during resource retention" }
+                requireLive(plan.primary)
                 rejectFailedGeneration()
                 val openingSourceContextId = sourceContextId ?: plan.primary.id
                 val session = launchSession(
@@ -873,6 +930,7 @@ class LynxUpdaterController internal constructor(
                             .put("reconstructing", reconstructing)
                             .put("entry", plan.page.entry)
                             .put("parameters", JSONObject(plan.page.parameters))
+                            .also { attempt -> mountId?.let { attempt.put("mountId", it) } }
                             .put("selection", plan.receipt.toJson())
                             .put(
                                 "nativePageClass",
@@ -912,6 +970,7 @@ class LynxUpdaterController internal constructor(
             page.parameters,
             generationId,
             openingSourceContextId,
+            page.mountId,
         )
     }
 
@@ -1584,7 +1643,8 @@ class LynxUpdaterController internal constructor(
             check(
                 attempt.optString("attemptId") == session.id &&
                     attempt.optString("generationId") == session.generationId &&
-                    attempt.optString("entry") == session.pageEntry,
+                    attempt.optString("entry") == session.pageEntry &&
+                    (!mountedHost || attempt.optString("mountId") == session.mountId),
             ) { "Secondary page admission authority is stale" }
             mutate { next ->
                 appendPageAttemptTerminal(
@@ -1596,7 +1656,10 @@ class LynxUpdaterController internal constructor(
                     topContextId = session.id,
                 )
                 next.remove("pageAttempt")
-                if (attempt.optBoolean("reconstructing")) {
+                if (mountedHost) {
+                    updateMountedReconstruction(next, retainedStack(),
+                        admittedMounts + checkNotNull(session.mountId))
+                } else if (attempt.optBoolean("reconstructing")) {
                     val nextPosition = attempt.getInt("position") + 1
                     if (nextPosition < retainedStack().size) {
                         next.put("reconstructionPosition", nextPosition)
@@ -1605,12 +1668,81 @@ class LynxUpdaterController internal constructor(
                     }
                 }
             }
+            session.mountId?.let(admittedMounts::add)
             primary
         }
         if (!deferPrimaryFlush) primaryToFlush?.flushReady()
         return JSONObject()
             .put("status", "PAGE_ADMITTED")
             .put("pageAttemptId", session.id)
+    }
+
+    private fun updateMountedReconstruction(
+        next: JSONObject,
+        pages: List<LynxLogicalPage>,
+        admitted: Set<String> = admittedMounts,
+    ) {
+        val position = pages.indices.drop(1).firstOrNull {
+            pages[it].mountId !in admitted
+        }
+        if (position == null) next.remove("reconstructionPosition")
+        else next.put("reconstructionPosition", position)
+    }
+
+    /** Retires exactly one native container, including while a different mount is pending. */
+    fun unmountSecondary(session: LynxLaunchSession) {
+        val primaryToFlush = synchronized(stateLock) {
+            requireLive(session, false)
+            check(mountedHost && !session.isPrimary) {
+                "Only a mounted secondary can be unmounted independently"
+            }
+            val pages = retainedStack().toMutableList()
+            val position = pages.indexOfFirst { it.mountId == session.mountId }
+            check(position > 0 && pages[position] == session.logicalPage) {
+                "The native mount no longer belongs to this generation"
+            }
+            pages.removeAt(position)
+            val pending = store.value.optJSONObject("pageAttempt")
+            mutate { next ->
+                if (pending?.optString("attemptId") == session.id) {
+                    appendPageAttemptTerminal(next, pending, "authorized-cancel", pages,
+                        reason = "nativeUnmount", topContextId = liveTopContextId(pages, session.id))
+                    next.remove("pageAttempt")
+                }
+                next.put("logicalStack", stackJson(pages))
+                updateMountedReconstruction(next, pages, admittedMounts - checkNotNull(session.mountId))
+            }
+            admittedMounts.remove(session.mountId)
+            // Revoke authority before releasing the state lock; drain resource work outside it.
+            session.live = false
+            primary
+        }
+        session.close()
+        primaryToFlush?.flushReady()
+    }
+
+    /** Removes a declared container before launch; launched containers require their own session. */
+    fun unmountUnlaunchedSecondary(primarySession: LynxLaunchSession, mountId: String) {
+        synchronized(stateLock) {
+            requireLive(primarySession)
+            check(mountedHost) { "Only mounted containers can be unmounted independently" }
+            check(members.none { it.live && it.mountId == mountId }) {
+                "A launched mount must be removed through its own session"
+            }
+            check(mountId !in admittedMounts &&
+                store.value.optJSONObject("pageAttempt")?.optString("mountId") != mountId) {
+                "A launched mount cannot be removed as an unlaunched container"
+            }
+            val pages = retainedStack().toMutableList()
+            val position = pages.indexOfFirst { it.mountId == mountId }
+            check(position > 0) { "The unlaunched secondary mount is not registered" }
+            pages.removeAt(position)
+            mutate { next ->
+                next.put("logicalStack", stackJson(pages))
+                updateMountedReconstruction(next, pages)
+            }
+        }
+        primarySession.flushReady()
     }
 
     fun cancelSecondary(
@@ -1631,6 +1763,7 @@ class LynxUpdaterController internal constructor(
     ): Boolean {
         val primaryToFlush = synchronized(stateLock) {
             requireLive(session, false)
+            check(!mountedHost) { "Mounted views use identity-based unmounting" }
             check(!session.isPrimary) { "The primary page cannot be popped" }
             val stack = retainedStack().toMutableList()
             val attempt = store.value.optJSONObject("pageAttempt")
@@ -1681,8 +1814,8 @@ class LynxUpdaterController internal constructor(
         primaryToFlush?.flushReady()
     }
 
-    fun rollbackSecondary(session: LynxLaunchSession): Boolean =
-        synchronized(stateLock) {
+    fun rollbackSecondary(session: LynxLaunchSession): Boolean {
+        val rolledBack = synchronized(stateLock) {
             requireLive(session, false)
             check(!session.isPrimary) { "The primary page cannot be rolled back" }
             val attempt = store.value.optJSONObject("pageAttempt")
@@ -1691,26 +1824,33 @@ class LynxUpdaterController internal constructor(
                 return@synchronized false
             }
             val stack = retainedStack().toMutableList()
-            val position = attempt.getInt("position")
+            val position = if (mountedHost) {
+                stack.indexOfFirst { it.mountId == session.mountId }
+            } else attempt.getInt("position")
             check(
                 position in 1 until stack.size &&
-                    stack[position] == LynxLogicalPage(
-                        session.pageEntry,
-                        session.pageParameters,
-                    ),
+                    stack[position] == session.logicalPage,
             ) { "Only the unlaunched top page can be rolled back" }
             mutate { next ->
                 next.remove("pageAttempt")
                 if (attempt.optBoolean("reconstructing")) {
                     next.put("reconstructionPosition", position)
                 } else {
-                    stack.removeAt(stack.lastIndex)
-                    next.remove("reconstructionPosition")
+                    stack.removeAt(position)
+                    if (mountedHost) updateMountedReconstruction(next, stack)
+                    else next.remove("reconstructionPosition")
                     next.put("logicalStack", stackJson(stack))
                 }
             }
+            if (mountedHost) session.live = false
             true
         }
+        if (rolledBack && mountedHost) {
+            session.close()
+            flushPrimaryReadinessAfterHostEvent()
+        }
+        return rolledBack
+    }
     internal fun fail(
         session: LynxLaunchSession,
         message: String,

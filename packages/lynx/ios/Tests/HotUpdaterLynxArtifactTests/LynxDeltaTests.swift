@@ -4,7 +4,7 @@ import XCTest
 @testable import HotUpdaterLynxArtifact
 
 final class LynxDeltaTests: XCTestCase {
-    private let runtimeId = "sparkling-lynx-3.9.0-primjs-ios-delta-tests"
+    private let runtimeId = "sparkling-lynx-4.0.3-primjs-ios-delta-tests"
     private let baseBundleId = "01900000-0000-7000-8000-000000000201"
     private let targetBundleId = "01900000-0000-7000-8000-000000000202"
     private let targetReleaseId = "01900000-0000-7000-8000-000000000302"
@@ -246,8 +246,8 @@ final class LynxDeltaTests: XCTestCase {
     func testMetadataCheckAuthenticatesCompressedSidecarAndReusesExpandedBytes() async throws {
         let root = temporaryRoot()
         defer { try? FileManager.default.removeItem(at: root) }
-        let sidecar = Data(#"{"schemaVersion":1,"bundleId":"01900000-0000-7000-8000-000000000202","platform":"ios","runtimeId":"sparkling-lynx-3.9.0-primjs-ios-delta-tests","entry":"main.lynx.bundle"}"#.utf8)
-        let compressed = Data(base64Encoded: "G6oAgIzUYk2Z7mTRNfLh36sAfNGITh2WPp0cd1BsSypq2cUDoSzMU5aUBPPrHye3THeQCbJzKoYyLQBCRiGEEAR4BBEQQwmFYLAB2nlH2M7paEcN3xv4DO1U0/BOD2kWmaBla8dup3beaUNBn06EggjYhBKSxSkM")!
+        let sidecar = Data(#"{"schemaVersion":1,"bundleId":"01900000-0000-7000-8000-000000000202","platform":"ios","runtimeId":"sparkling-lynx-4.0.3-primjs-ios-delta-tests","entry":"main.lynx.bundle"}"#.utf8)
+        let compressed = Data(base64Encoded: "G6oAgIzUYk2Z7mTRNfLh36sAfNGITh2WPp0cd1BsSypq2cUDoSzMU5aUBPPrHye3THeQCbJzKoYyLQBCRiGEEAR4BBEQQwmFYLAB2nlH2M7paEcN3xv4DO1U0/BODxkmmKZla8dup3beaUNBn06EggjYhBKSxSkM")!
         let files = ["main.lynx.bundle": Data("main".utf8), "hot-updater-lynx.json": sidecar]
         let transfer = try metadataTransfer(files, brotliDownloads: ["hot-updater-lynx.json": compressed])
         let recorder = FetchRecorder()

@@ -4,6 +4,10 @@ OTA updates for applications running on the Lynx engine. ReactLynx, VueLynx,
 and OctaneLynx use the same runtime API, build contract, and native controllers
 on iOS and Android. The package does not depend on any of those UI frameworks.
 
+The native packages target Lynx 4, pinned to Lynx 4.0.3 and PrimJS 4.0.0 in
+the Sparkling example. Use a new native runtime identity and rebuild the app
+when changing the engine version; an OTA bundle cannot upgrade the native engine.
+
 ## Viewless tasks on Android
 
 An Android native entry point can call
@@ -23,7 +27,7 @@ The service allows 25 seconds for acquisition and execution; OS cancellation
 requests teardown without rescheduling or changing foreground readiness.
 
 Declare one self-contained UTF-8 script with `backgroundEntry` in the build
-adapter. Lynx 3.9 standalone scripts return an object with an `init` function:
+adapter. Lynx standalone scripts return an object with an `init` function:
 
 ```js
 ({
@@ -99,7 +103,7 @@ each page compiler with
 bytes as they arrive. `Content-Length` can reject an oversized response before
 reading, but it cannot replace streaming because reading the whole response at
 once cannot enforce the allocation bound. The packaged native integrations
-support this contract on Lynx 3.9.
+enable this contract on the pinned Lynx 4 runtime.
 
 `init()` accepts the update server URL (or a function resolving it at request time),
 optional request headers and timeout, and

@@ -3,7 +3,7 @@
 The `SparklingGo` scheme is the production Sparkling scaffold for
 `com.hotupdater.lynxexample`. It is derived from Sparkling's Apache-2.0 template
 at commit `c4ce8d25c5ea277e13752d68ff1f2a66f5704240` and uses the locked Lynx
-3.9.0 and PrimJS 3.8.0-alpha.6 dependencies.
+4.0.3 and PrimJS 4.0.0 dependencies.
 
 Run `mise exec -- sh bootstrap.sh` from this directory to fetch the pinned
 Sparkling source, install `cocoapods-lynx-library`, and resolve the CocoaPods

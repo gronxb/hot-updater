@@ -20,7 +20,7 @@ android {
     applicationId = "com.hotupdater.lynxexample"
     minSdk = 24
     targetSdk = 34
-    buildConfigField("String", "LYNX_OTA_COMPATIBILITY_ID", "\"android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1\"")
+    buildConfigField("String", "LYNX_OTA_COMPATIBILITY_ID", "\"android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-4.0.3-primjs-4.0.0-managed-pages-v1\"")
     buildConfigField("String", "LYNX_EMBEDDED_DESCRIPTOR", "\"${embeddedDescriptor()}\"")
     versionCode = 1
     versionName = "0.0.1"
@@ -46,11 +46,11 @@ dependencies {
   implementation(project(":hot-updater-lynx"))
   implementation(project(":hot-updater-lynx-sparkling"))
   implementation(project(":hot-updater-lynx-sparkling-diagnostics"))
-  implementation("org.lynxsdk.lynx:lynx:3.9.0")
-  implementation("org.lynxsdk.lynx:lynx-jssdk:3.9.0")
-  implementation("org.lynxsdk.lynx:lynx-service-http:3.9.0")
-  implementation("org.lynxsdk.lynx:lynx-service-log:3.9.0")
-  implementation("org.lynxsdk.lynx:primjs:3.8.0-alpha.6")
+  implementation("org.lynxsdk.lynx:lynx:4.0.3")
+  implementation("org.lynxsdk.lynx:lynx-jssdk:4.0.3")
+  implementation("org.lynxsdk.lynx:lynx-service-http:4.0.3")
+  implementation("org.lynxsdk.lynx:lynx-service-log:4.0.3")
+  implementation("org.lynxsdk.lynx:primjs:4.0.0")
   implementation("androidx.appcompat:appcompat:1.6.1")
   implementation("com.tiktok.sparkling:sparkling:2.1.0-rc.12") {
     exclude(group = "org.lynxsdk.lynx", module = "lynx-service-image")

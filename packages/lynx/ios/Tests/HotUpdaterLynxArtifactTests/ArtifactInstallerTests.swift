@@ -3,7 +3,7 @@ import XCTest
 @testable import HotUpdaterLynxArtifact
 
 final class ArtifactInstallerTests: XCTestCase {
-    private let profile = "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1"
+    private let profile = "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-4.0.3-primjs-4.0.0-ios-managed-pages-v1"
     private let expectedFiles: Set<String> = [
         "assets/OFL.txt", "assets/bootstrap.js", "assets/probe.png", "assets/probe.ttf",
         "detail.lynx.bundle", "dynamic/component.lynx.bundle", "hot-updater-lynx.json", "main.lynx.bundle",

@@ -23,7 +23,7 @@ Pod::Spec.new do |s|
     core.dependency 'Sparkling'
     core.dependency 'SparklingMethod/DIProvider'
     core.dependency 'Sparkling-Router'
-    core.dependency 'Lynx/Framework', '3.9.0'
+    core.dependency 'Lynx/Framework', '4.0.3'
   end
 
   s.subspec 'Diagnostics' do |diagnostics|

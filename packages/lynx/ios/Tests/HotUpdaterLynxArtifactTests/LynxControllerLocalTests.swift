@@ -4,7 +4,7 @@ import XCTest
 @testable import HotUpdaterLynxArtifact
 
 final class LynxControllerLocalTests: XCTestCase {
-    private let runtime = "sparkling-c4ce8d2-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-ota-v2"
+    private let runtime = "sparkling-c4ce8d2-lynx-4.0.3-primjs-4.0.0-ios-ota-v2"
     private let embeddedId = "00000000-0000-0000-0000-000000000000"
     private let bundleB = "01900000-0000-7000-8000-000000000020"
     private let bundleC = "01900000-0000-7000-8000-000000000030"

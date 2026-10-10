@@ -2,8 +2,8 @@
 
 The `:app` module is the production Sparkling scaffold for
 `com.hotupdater.lynxexample`. It is derived from Sparkling's Apache-2.0 template
-at commit `c4ce8d25c5ea277e13752d68ff1f2a66f5704240` and pins Lynx 3.9.0 and
-PrimJS 3.8.0-alpha.6.
+at commit `c4ce8d25c5ea277e13752d68ff1f2a66f5704240` and pins Lynx 4.0.3 and
+PrimJS 4.0.0.
 
 The packaged Sparkling integration temporarily recompiles the pinned Lynx image
 service for Fresco 3.4.0. Its source checksum, API adaptation, and removal
@@ -54,7 +54,7 @@ provenance before compiling it:
 The Android source digest reads files below `android/src/main` in sorted
 source-root-relative UTF-8 path order and feeds each relative path, a NUL byte,
 and the raw file bytes to SHA-256. The matching runtime identity is
-`android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1`.
+`android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-4.0.3-primjs-4.0.0-managed-pages-v1`.
 The graph digest hashes the sorted resolved `owner -> requested => selected`
 edges, including a trailing newline, after applying the devtool exclusions.
 This is the unmodified upstream reference graph; the Fresco adaptation and its dependencies are tracked separately

@@ -32,7 +32,10 @@ class LynxLaunchSession internal constructor(
     val pageParameters: Map<String, String> = emptyMap(),
     val generationId: String = "legacy",
     val openingSourceContextId: String? = null,
+    val mountId: String? = null,
 ) {
+    internal val logicalPage: LynxLogicalPage
+        get() = LynxLogicalPage(pageEntry, pageParameters, mountId)
     private val closed = AtomicBoolean()
     @Volatile internal var live = true
     @Volatile internal var failed = false

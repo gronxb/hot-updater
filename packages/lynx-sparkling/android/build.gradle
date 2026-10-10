@@ -98,7 +98,7 @@ android {
 
 dependencies {
     api project(':hot-updater-lynx')
-    compileOnly 'org.lynxsdk.lynx:lynx:3.9.0'
+    compileOnly 'org.lynxsdk.lynx:lynx:4.0.3'
     compileOnly('com.tiktok.sparkling:sparkling:2.1.0-rc.12') {
         exclude group: 'org.lynxsdk.lynx', module: 'lynx-service-image'
         exclude group: 'org.lynxsdk.lynx', module: 'lynx-service-devtool'
@@ -109,7 +109,7 @@ dependencies {
     compileOnly 'com.tiktok.sparkling:sparkling-method:2.1.0-rc.12'
     compileOnly 'androidx.appcompat:appcompat:1.6.1'
     testImplementation 'junit:junit:4.13.2'
-    testImplementation 'org.lynxsdk.lynx:lynx:3.9.0'
+    testImplementation 'org.lynxsdk.lynx:lynx:4.0.3'
     testImplementation 'org.json:json:20240303'
     testImplementation 'com.tiktok.sparkling:sparkling-method:2.1.0-rc.12'
     testImplementation 'androidx.appcompat:appcompat:1.6.1'

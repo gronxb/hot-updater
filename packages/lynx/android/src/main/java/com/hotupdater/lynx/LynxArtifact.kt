@@ -151,6 +151,8 @@ data class LynxPageEssentialResources internal constructor(
 data class LynxLogicalPage(
     val entry: String,
     val parameters: Map<String, String> = emptyMap(),
+    /** Native container identity; absent for a navigation stack. */
+    val mountId: String? = null,
 )
 
 data class LynxManagedTransition internal constructor(

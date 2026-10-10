@@ -15,7 +15,7 @@ android {
 
 dependencies {
     api project(':hot-updater-lynx-sparkling')
-    compileOnly 'org.lynxsdk.lynx:lynx:3.9.0'
+    compileOnly 'org.lynxsdk.lynx:lynx:4.0.3'
     compileOnly 'com.tiktok.sparkling:sparkling:2.1.0-rc.12'
     compileOnly 'androidx.appcompat:appcompat:1.6.1'
     testImplementation 'junit:junit:4.13.2'

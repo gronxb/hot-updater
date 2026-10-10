@@ -1300,7 +1300,7 @@ internal class ManagedRuntimeLifecycle(
     private val detached = AtomicBoolean()
     private val completion = AtomicReference<(() -> Unit)?>(null)
 
-    override fun onRuntimeAttach(runtimePtr: Long) = Unit
+    override fun onRuntimeAttach(napiEnv: Long, runtimeType: String) = Unit
 
     override fun onRuntimeDetach() {
         detached.set(true)

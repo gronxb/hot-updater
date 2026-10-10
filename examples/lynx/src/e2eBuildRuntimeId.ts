@@ -10,8 +10,8 @@ const CROSS_PROVENANCE_RUNTIME_SUFFIX = "-cross-provenance-rejected";
 
 export const lynxHostRuntimeId = (platform: LynxPlatform): string =>
   platform === "ios"
-    ? "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1"
-    : "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-3.9.0-primjs-3.8.0-alpha.6-managed-pages-v1";
+    ? "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-4.0.3-primjs-4.0.0-ios-managed-pages-v1"
+    : "android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-4.0.3-primjs-4.0.0-managed-pages-v1";
 
 export const resolveE2eBuildRuntimeId = (
   platform: LynxPlatform,

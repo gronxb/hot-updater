@@ -3,7 +3,7 @@ import XCTest
 @testable import HotUpdaterLynxArtifact
 
 final class LynxControllerTests: XCTestCase {
-    private let runtime = "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-3.9.0-primjs-3.8.0-alpha.6-ios-managed-pages-v1"
+    private let runtime = "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-4.0.3-primjs-4.0.0-ios-managed-pages-v1"
     private func fixture() async throws -> (URL, LynxControllerConfiguration, Data, LynxArtifactRequest) {
         guard let origin = ProcessInfo.processInfo.environment["LYNX_ARTIFACT_TEST_ORIGIN"],
               let embeddedPath = ProcessInfo.processInfo.environment["LYNX_CONTROLLER_EMBEDDED"] else { throw XCTSkip("Requires frozen native embedded fixture and real CLI service") }

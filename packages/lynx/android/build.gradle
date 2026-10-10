@@ -17,7 +17,7 @@ android {
 }
 
 dependencies {
-    compileOnly 'org.lynxsdk.lynx:lynx:3.9.0'
+    compileOnly 'org.lynxsdk.lynx:lynx:4.0.3'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3'
     implementation 'com.squareup.okhttp3:okhttp:4.12.0'
     implementation 'org.jetbrains.kotlinx:kotlinx-coroutines-core:1.7.3'
@@ -27,7 +27,7 @@ dependencies {
     testImplementation 'junit:junit:4.13.2'
     testImplementation 'com.google.code.gson:gson:2.10'
     testImplementation 'org.json:json:20240303'
-    testImplementation 'org.lynxsdk.lynx:lynx:3.9.0'
+    testImplementation 'org.lynxsdk.lynx:lynx:4.0.3'
 }
 
 tasks.withType(Test).configureEach {
