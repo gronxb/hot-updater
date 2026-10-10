@@ -59,6 +59,6 @@ directory is committed atomically only after every target hash is verified.
 `updateBundle` never reloads the app by itself. Call `hotUpdater.reload()` to
 start the staged transition immediately.
 
-For built-in or embedded Catalog transitions, use the helper returned by
-`checkForUpdate()`; those transitions do not require a fabricated manifest
+For a built-in Catalog transition, use the helper returned by
+`checkForUpdate()`; that transition does not require a fabricated manifest
 request.

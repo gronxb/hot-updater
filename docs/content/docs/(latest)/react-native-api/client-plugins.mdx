@@ -134,11 +134,7 @@ type UpdateCheckResult =
       fromReleaseId: string | null;
       toBundleId: string;
       toReleaseId: string | null;
-      transitionKind:
-        | "INSTALL"
-        | "ADOPT_RELEASE"
-        | "USE_EMBEDDED"
-        | "USE_BUILTIN";
+      transitionKind: "INSTALL" | "ADOPT_RELEASE" | "USE_BUILTIN";
       updateStatus: "UPDATE" | "ROLLBACK";
       shouldForceUpdate: boolean;
       updateStrategy: "fingerprint" | "appVersion";

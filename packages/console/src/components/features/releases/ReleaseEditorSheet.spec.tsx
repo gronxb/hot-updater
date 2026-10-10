@@ -285,40 +285,28 @@ describe("ReleaseEditorSheet", () => {
     }
   });
 
-  it.each(["BUNDLE", "EMBEDDED"] as const)(
-    "shows the console ID in the header for %s updates",
-    (kind) => {
-      releaseValue = {
-        ...release,
-        kind,
-        bundle_id: kind === "BUNDLE" ? bundle.id : null,
-      };
-      render(
-        <ReleaseEditorSheet
-          channels={[{ id: "channel-1", name: "production" }]}
-          onOpenChange={vi.fn()}
-          open
-          releaseId={release.id}
-        />,
-      );
+  it("shows the console ID in the header", () => {
+    render(
+      <ReleaseEditorSheet
+        channels={[{ id: "channel-1", name: "production" }]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={release.id}
+      />,
+    );
 
-      const header = screen.getByRole("heading", {
-        name: "Bundle Detail",
-      }).parentElement!;
-      expect(within(header).getByText("ID")).toBeDefined();
-      expect(within(header).getByText(release.id)).toBeDefined();
-      expect(within(header).queryByText(bundle.id)).toBeNull();
-      const diagnostics = screen
-        .getByText("Advanced diagnostics")
-        .closest("details")!;
-      expect(diagnostics.open).toBe(false);
-      expect(
-        within(diagnostics).getByText(
-          kind === "BUNDLE" ? bundle.id : "Built-in bundle",
-        ),
-      ).toBeDefined();
-    },
-  );
+    const header = screen.getByRole("heading", {
+      name: "Bundle Detail",
+    }).parentElement!;
+    expect(within(header).getByText("ID")).toBeDefined();
+    expect(within(header).getByText(release.id)).toBeDefined();
+    expect(within(header).queryByText(bundle.id)).toBeNull();
+    const diagnostics = screen
+      .getByText("Advanced diagnostics")
+      .closest("details")!;
+    expect(diagnostics.open).toBe(false);
+    expect(within(diagnostics).getByText(bundle.id)).toBeDefined();
+  });
 
   it("leaves release activity out where the console does not read it", () => {
     insightsAnalytics = false;

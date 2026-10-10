@@ -61,6 +61,7 @@ const catalog: ReleaseCatalog = {
       targetCohorts: [],
     },
   ],
+  rollbackReleases: [],
   schemaVersion: 1,
   scopeKey: SCOPE_KEY,
 };

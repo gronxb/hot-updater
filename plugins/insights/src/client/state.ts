@@ -152,7 +152,7 @@ export const createInsightsState = (storage: HotUpdaterClientStorage) => {
       if (read("report") !== null) write("report", null);
     },
 
-    /** Whether a failure was already reported, or refused, that day. */
+    /** Whether a failure was already reported that day. */
     hasFailure(day: string, key: string): boolean {
       const failures = parseFailures(read("failures"));
       return failures?.day === day && failures.keys.includes(key);

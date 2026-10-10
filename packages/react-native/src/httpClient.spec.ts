@@ -45,6 +45,7 @@ const catalog: ReleaseCatalog = {
   fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
   generation: 1,
   releases: [],
+  rollbackReleases: [],
   schemaVersion: 1,
   scopeKey: "v1:app-version:server-owned-project:ios:cHJvZHVjdGlvbg",
 };

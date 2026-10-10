@@ -40,6 +40,7 @@ const catalog = (
   fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
   generation: 10,
   releases,
+  rollbackReleases: releases,
   schemaVersion: 1,
   scopeKey: "v1:app-version:ios:production",
   ...overrides,
@@ -123,30 +124,6 @@ describe("selectDesiredRelease", () => {
 
     expect(desired?.releaseId).toBe(releaseId(2));
     expect(desired?.bundleId).toBe(bundleId(2));
-  });
-
-  it("can read a legacy EMBEDDED Release after crashed Bundle candidates", () => {
-    const desired = selectDesiredRelease(
-      catalog([
-        descriptor(3, { bundleId: bundleId(9) }),
-        descriptor(2, { bundleId: null, kind: "EMBEDDED" }),
-      ]),
-      {
-        builtInBundleId: bundleId(0),
-        cohort: "1",
-        crashedBundleIds: [bundleId(9)],
-        currentBundleId: bundleId(0),
-        minimumReleaseId: bundleId(1),
-      },
-    );
-
-    expect(desired).toEqual({
-      bundleId: bundleId(0),
-      kind: "EMBEDDED",
-      release: expect.objectContaining({ releaseId: releaseId(2) }),
-      releaseId: releaseId(2),
-      status: "ROLLBACK",
-    });
   });
 
   it("synthesizes BUILTIN only from an explicit complete-catalog fallback", () => {

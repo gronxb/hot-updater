@@ -154,9 +154,8 @@ describe("compileReleaseCatalog", () => {
     const releases = [
       fingerprintRelease(30, { bundleId: repeatedBundle }),
       fingerprintRelease(29, { bundleId: repeatedBundle }),
-      fingerprintRelease(28, { bundleId: null, kind: "EMBEDDED" }),
       ...Array.from({ length: 20 }, (_, index) =>
-        fingerprintRelease(27 - index),
+        fingerprintRelease(28 - index),
       ),
     ];
     const compilation = await compileReleaseCatalog({
@@ -213,7 +212,6 @@ describe("compileReleaseCatalog", () => {
       const bundleIds = new Set<string>();
       for (const candidate of ordered) {
         if (
-          candidate.kind !== "BUNDLE" ||
           candidate.bundleId === null ||
           !isReleaseEligibleForCohort(
             {
@@ -297,6 +295,18 @@ describe("compileReleaseCatalog", () => {
       }),
     ).rejects.toMatchObject({
       code: "INVALID_RELEASE",
+    });
+  });
+
+  it("rejects an enabled Release without a Bundle", async () => {
+    await expect(
+      compileReleaseCatalog({
+        releases: [release(1, { bundleId: null })],
+        strategy: "APP_VERSION",
+      }),
+    ).rejects.toMatchObject({
+      code: "INVALID_RELEASE",
+      message: `Release ${releaseId(1)} has no Bundle`,
     });
   });
 });

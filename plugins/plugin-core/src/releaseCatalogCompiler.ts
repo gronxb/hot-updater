@@ -236,13 +236,10 @@ function validateReleases(
         `Release ${release.id} has the wrong strategy`,
       );
     }
-    if (
-      (release.kind === "BUNDLE" && release.bundleId === null) ||
-      (release.kind === "EMBEDDED" && release.bundleId !== null)
-    ) {
+    if (release.bundleId === null) {
       throw new ReleaseCatalogCompilationError(
         "INVALID_RELEASE",
-        `Release ${release.id} has an invalid kind/Bundle combination`,
+        `Release ${release.id} has no Bundle`,
       );
     }
     if (release.targetCohorts.length > MAX_TARGET_COHORTS_PER_RELEASE) {
@@ -270,7 +267,7 @@ function validateReleases(
       );
     }
   }
-  return enabled.filter((release) => release.kind === "BUNDLE");
+  return enabled;
 }
 
 function collectFrontierReleaseIds(
@@ -285,22 +282,12 @@ function collectFrontierReleaseIds(
   ) {
     const retained = new Set<string>();
     const bundleIds = new Set<string>();
-    let embedded = false;
     for (const release of releases) {
-      if (release.kind === "EMBEDDED") {
-        if (!embedded) {
-          embedded = true;
-          retained.add(release.id);
-        }
-      } else if (
-        release.bundleId !== null &&
-        bundleIds.size < 11 &&
-        !bundleIds.has(release.bundleId)
-      ) {
+      if (release.bundleId !== null && !bundleIds.has(release.bundleId)) {
         bundleIds.add(release.bundleId);
         retained.add(release.id);
       }
-      if (embedded && bundleIds.size >= 11) break;
+      if (bundleIds.size >= 11) break;
     }
     return retained;
   }
@@ -322,7 +309,6 @@ function collectFrontierReleaseIds(
       numeric:
         normalized === undefined ? null : getNumericCohortValue(normalized),
       bundleIds: new Set<string>(),
-      embedded: false,
       complete: false,
     };
   });
@@ -375,20 +361,11 @@ function collectFrontierReleaseIds(
     for (const index of eligibleStateIndexes) {
       const state = cohortStates[index]!;
       if (state.complete) continue;
-      if (release.kind === "EMBEDDED") {
-        if (!state.embedded) {
-          state.embedded = true;
-          retained.add(release.id);
-        }
-      } else if (
-        release.bundleId !== null &&
-        state.bundleIds.size < 11 &&
-        !state.bundleIds.has(release.bundleId)
-      ) {
+      if (release.bundleId !== null && !state.bundleIds.has(release.bundleId)) {
         state.bundleIds.add(release.bundleId);
         retained.add(release.id);
       }
-      if (state.embedded && state.bundleIds.size >= 11) {
+      if (state.bundleIds.size >= 11) {
         state.complete = true;
         incompleteStateCount -= 1;
       }
@@ -710,14 +687,14 @@ export function projectCompiledRollbackCatalog(
 ): readonly ReleaseCatalogDescriptor[] {
   let indexes: readonly number[];
   if (catalog.strategy === "FINGERPRINT") {
-    indexes = catalog.rollbackReleaseIndexes ?? catalog.releaseIndexes;
+    indexes = catalog.rollbackReleaseIndexes;
   } else {
     const canonicalVersion = appVersion && canonicalizeAppVersion(appVersion);
     if (!canonicalVersion) return [];
-    const segment = catalog.segments.find((candidate) =>
-      versionInSegment(canonicalVersion, candidate),
-    );
-    indexes = segment?.rollbackReleaseIndexes ?? segment?.releaseIndexes ?? [];
+    indexes =
+      catalog.segments.find((segment) =>
+        versionInSegment(canonicalVersion, segment),
+      )?.rollbackReleaseIndexes ?? [];
   }
   return indexes.map((index) => catalog.releaseDescriptors[index]!);
 }
