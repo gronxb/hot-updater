@@ -50,36 +50,22 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
-    fun `metadata from another schema resets the bundle store`() {
+    fun `metadata in another schema is not loaded`() {
         val rootDir = temporaryFolder.newFolder()
         val stableDir = createBundleDir(rootDir, "stable-bundle")
         writeFile(stableDir, "index.android.bundle")
         writeManifest(stableDir, listOf("index.android.bundle"))
-        val storeDir = bundleStoreDir(rootDir)
-        val storeStateFiles =
-            listOf(
-                BundleMetadata.METADATA_FILENAME,
-                CrashedHistory.CRASHED_HISTORY_FILENAME,
-                LaunchReport.LAUNCH_REPORT_FILENAME,
-            )
-        File(storeDir, BundleMetadata.METADATA_FILENAME).writeText(
+        File(bundleStoreDir(rootDir), BundleMetadata.METADATA_FILENAME).writeText(
             JSONObject()
-                .put("schema", "metadata-v1")
+                .put("schema", "metadata-v3")
                 .put("isolationKey", TEST_ISOLATION_KEY)
                 .put("stableBundleId", "stable-bundle")
                 .put("verificationPending", false)
                 .toString(),
         )
-        File(storeDir, CrashedHistory.CRASHED_HISTORY_FILENAME).writeText("""{"bundles":[]}""")
-        File(storeDir, LaunchReport.LAUNCH_REPORT_FILENAME).writeText("""{"status":"RECOVERED"}""")
 
         assertNull(loadMetadata(rootDir))
-
-        val service = createService(rootDir)
-
-        assertFalse(stableDir.exists())
-        storeStateFiles.forEach { name -> assertFalse(name, File(storeDir, name).exists()) }
-        assertNull(service.prepareLaunch(null).launchedBundleId)
+        assertNull(createService(rootDir).prepareLaunch(null).launchedBundleId)
     }
 
     private fun assertStagingLaunchAcrossColdStart(

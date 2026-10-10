@@ -92,7 +92,7 @@ data class BundleMetadata(
                 val json = JSONObject(jsonString)
                 val metadata = fromJson(json)
 
-                // Metadata in another schema belongs to a different store layout.
+                // Read only metadata written in this schema.
                 if (metadata.schema != SCHEMA_VERSION) {
                     Log.d(TAG, "Unsupported schema ${metadata.schema}, treating as invalid")
                     return null

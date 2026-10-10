@@ -169,7 +169,7 @@ public struct BundleMetadata: Codable {
             let decoder = JSONDecoder()
             let metadata = try decoder.decode(BundleMetadata.self, from: data)
 
-            // Metadata in another schema belongs to a different store layout.
+            // Read only metadata written in this schema.
             guard metadata.schema == BundleMetadata.schemaVersion else {
                 print("[BundleMetadata] Unsupported schema \(metadata.schema), treating as invalid")
                 return nil

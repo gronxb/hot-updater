@@ -590,8 +590,8 @@ class BundleFileStorageService(
         // Ensure bundle store directory exists
         getBundleStoreDir().mkdirs()
 
-        // Clean up a store from another schema or isolationKey
-        cleanupIfStoreIncompatible()
+        // Clean up old bundles if isolationKey format changed
+        checkAndCleanupIfIsolationKeyChanged()
 
         recoverInterruptedPromotions()
     }
@@ -1005,11 +1005,10 @@ class BundleFileStorageService(
     }
 
     /**
-     * Cleans up a bundle store this build can't use. Metadata in another
-     * schema resets the whole store, including its metadata, crash history
-     * and launch report. A changed isolationKey removes the bundles.
+     * Checks if isolationKey has changed and cleans up old bundles if needed.
+     * This handles migration when isolationKey format changes.
      */
-    private fun cleanupIfStoreIncompatible() {
+    private fun checkAndCleanupIfIsolationKeyChanged() {
         val metadataFile = getMetadataFile()
 
         if (!metadataFile.exists()) {
@@ -1018,16 +1017,9 @@ class BundleFileStorageService(
         }
 
         try {
-            // Read metadata without validation to get stored schema and isolationKey
+            // Read metadata without validation to get stored isolationKey
             val jsonString = metadataFile.readText()
             val json = org.json.JSONObject(jsonString)
-
-            if (json.opt("schema") as? String != BundleMetadata.SCHEMA_VERSION) {
-                Log.d(TAG, "Metadata schema changed, resetting the bundle store")
-                cleanupAllBundlesForMigration(includingStoreState = true)
-                return
-            }
-
             val storedIsolationKey = if (json.has("isolationKey")) json.getString("isolationKey") else null
 
             if (storedIsolationKey != null && storedIsolationKey != isolationKey) {
@@ -1042,10 +1034,10 @@ class BundleFileStorageService(
     }
 
     /**
-     * Removes all bundle directories during migration. With [includingStoreState],
-     * also removes the metadata, crash history and launch report.
+     * Removes all bundle directories during migration.
+     * Called when isolationKey format changes.
      */
-    private fun cleanupAllBundlesForMigration(includingStoreState: Boolean = false) {
+    private fun cleanupAllBundlesForMigration() {
         val bundleStoreDir = getBundleStoreDir()
 
         if (!bundleStoreDir.exists()) {
@@ -1063,14 +1055,6 @@ class BundleFileStorageService(
                         }
                     } catch (e: Exception) {
                         Log.e(TAG, "Error removing bundle ${file.name}: ${e.message}")
-                    }
-                }
-            }
-
-            if (includingStoreState) {
-                listOf(getMetadataFile(), getCrashedHistoryFile(), getLaunchReportFile()).forEach { file ->
-                    if (file.exists() && !file.delete()) {
-                        Log.e(TAG, "Error removing ${file.name}")
                     }
                 }
             }

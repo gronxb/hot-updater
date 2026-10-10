@@ -2683,40 +2683,25 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
-    func metadataFromAnotherSchemaResetsTheBundleStore() throws {
+    func metadataInAnotherSchemaIsNotLoaded() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
         let stable = try createBundleDirectory(documentsDirectory: root, bundleId: "stable-bundle")
         try writeBundle(in: stable, bundleFileName: "index.ios.bundle")
         try writeManifest(in: stable, bundleId: "stable-bundle")
-        let store = root.appendingPathComponent("bundle-store", isDirectory: true)
-        let storeStateFiles = [
-            BundleMetadata.metadataFilename,
-            CrashedHistory.crashedHistoryFilename,
-            LaunchReport.launchReportFilename,
-        ]
         let metadata: [String: Any] = [
-            "schema": "metadata-v1",
+            "schema": "metadata-v3",
             "isolation_key": testIsolationKey,
             "stable_bundle_id": "stable-bundle",
             "verification_pending": false,
             "updated_at": 0,
         ]
-        try JSONSerialization.data(withJSONObject: metadata)
-            .write(to: store.appendingPathComponent(BundleMetadata.metadataFilename))
-        try Data(#"{"bundles":[]}"#.utf8)
-            .write(to: store.appendingPathComponent(CrashedHistory.crashedHistoryFilename))
-        try Data(#"{"status":"RECOVERED"}"#.utf8)
-            .write(to: store.appendingPathComponent(LaunchReport.launchReportFilename))
+        try JSONSerialization.data(withJSONObject: metadata).write(to: root
+            .appendingPathComponent("bundle-store", isDirectory: true)
+            .appendingPathComponent(BundleMetadata.metadataFilename))
 
         #expect(loadMetadata(documentsDirectory: root) == nil)
-
         let service = makeStorageService(documentsDirectory: root)
-
-        #expect(!FileManager.default.fileExists(atPath: stable.path))
-        for name in storeStateFiles {
-            #expect(!FileManager.default.fileExists(atPath: store.appendingPathComponent(name).path))
-        }
         #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
     }
 

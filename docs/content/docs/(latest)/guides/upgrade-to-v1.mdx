@@ -256,11 +256,9 @@ signer and compatibility target. Keep a separate v0 deployment configuration
 for any OTA releases still needed by installed v0 binaries.
 
 A store-delivered native upgrade can preserve the app's local sandbox, but the
-v1 native SDK does not reuse it: on first launch it removes the OTA bundles,
-metadata, crash history and launch report that v0 left on the device, and
-starts from the new build's built-in bundle. Verify an upgrade from a retained
-v0 installation without clearing app data: the app must launch the new build's
-built-in bundle, then apply v1 updates.
+v1 native SDK does not read the OTA state v0 left there: the new build launches
+its built-in bundle, then applies v1 updates. Verify an upgrade from a retained
+v0 installation without clearing app data.
 
 The endpoints remain parallel during adoption: existing v0 binaries use the v0
 endpoint, and new v1 binaries use the v1 endpoint. There is no server-side
