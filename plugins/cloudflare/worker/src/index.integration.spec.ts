@@ -1,6 +1,9 @@
 import type { Bundle } from "@hot-updater/protocol";
 import { createHotUpdater } from "@hot-updater/server";
-import { createBundleEventRowFixture } from "@hot-updater/test-utils";
+import {
+  createBundleEventRowFixture,
+  createReleaseCatalogTestStorage,
+} from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 
@@ -18,7 +21,9 @@ declare module "cloudflare:test" {
     DB: D1Database;
     BUCKET: R2Bucket;
     BUCKET_NAME: string;
-    STORAGE_DOWNLOAD_URL_SIGNING_KEY: string;
+    ACCOUNT_ID: string;
+    R2_ACCESS_KEY_ID: string;
+    R2_SECRET_ACCESS_KEY: string;
   }
 }
 
@@ -35,7 +40,11 @@ const toRuntimeBundle = (bundle: Bundle): Bundle => {
 
 /** A server on the test database with the plugins the Worker runs. */
 const createSeedServer = () =>
-  createHotUpdater({ database: d1Database(env.DB), plugins });
+  createHotUpdater({
+    database: d1Database(env.DB),
+    storage: createReleaseCatalogTestStorage(),
+    plugins,
+  });
 
 const seedBundles = async (bundles: Bundle[]) => {
   const { core } = createSeedServer();

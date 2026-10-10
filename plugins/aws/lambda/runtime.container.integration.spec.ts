@@ -304,24 +304,22 @@ describe.sequential("aws lambda runtime acceptance", () => {
     seedHotUpdater = createHotUpdater({
       database,
       plugins,
-      storage: [
-        s3Storage({
-          bucketName: S3_BUCKET_NAME,
-          region: REGION,
-          endpoint: localstackEndpoint,
-          forcePathStyle: true,
-          credentials: {
-            accessKeyId: ACCESS_KEY_ID,
-            secretAccessKey: SECRET_ACCESS_KEY,
-          },
-          getDownloadUrl: cloudFrontDownloadUrl({
-            keyPairId: CLOUDFRONT_KEY_PAIR_ID,
-            ssmRegion: REGION,
-            ssmParameterName: SSM_PARAMETER_NAME,
-            publicBaseUrl: PUBLIC_BASE_URL,
-          }),
+      storage: s3Storage({
+        bucketName: S3_BUCKET_NAME,
+        region: REGION,
+        endpoint: localstackEndpoint,
+        forcePathStyle: true,
+        credentials: {
+          accessKeyId: ACCESS_KEY_ID,
+          secretAccessKey: SECRET_ACCESS_KEY,
+        },
+        getDownloadUrl: cloudFrontDownloadUrl({
+          keyPairId: CLOUDFRONT_KEY_PAIR_ID,
+          ssmRegion: REGION,
+          ssmParameterName: SSM_PARAMETER_NAME,
+          publicBaseUrl: PUBLIC_BASE_URL,
         }),
-      ],
+      }),
     });
 
     runtimeDir = await mkdtemp(

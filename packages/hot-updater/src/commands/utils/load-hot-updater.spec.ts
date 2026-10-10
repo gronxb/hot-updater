@@ -39,7 +39,6 @@ const definitionSource = (name: string, tooling = "") =>
   [
     "export const hotUpdater = {",
     `  database: { name: ${name}${tooling ? `, ${tooling}` : ""} },`,
-    "  storage: [],",
     "  plugins: [],",
     "  clientPlugins: [],",
     "  clientEndpoints: [],",

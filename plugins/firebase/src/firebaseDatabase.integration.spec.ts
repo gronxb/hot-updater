@@ -10,6 +10,7 @@ import {
   setupDatabaseTestSuite,
   startHttpTestServer,
   insightsTestSuite,
+  createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
@@ -48,6 +49,7 @@ describe("firebaseDatabase", () => {
     await clearCollection("hot_updater_v1");
     const core = createHotUpdater({
       database: firebaseDatabase(config),
+      storage: createReleaseCatalogTestStorage(),
       clientAccess: "public",
     }).core;
     await expect(core.listChannels()).rejects.toBeInstanceOf(
@@ -74,6 +76,7 @@ describe("firebaseDatabase", () => {
           createInsightsModel(
             createHotUpdater({
               database,
+              storage: createReleaseCatalogTestStorage(),
               plugins: [insights()],
               clientAccess: "public",
             }).api.insights,

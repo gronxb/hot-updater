@@ -39,7 +39,6 @@ export * from "./releaseManagement";
 export * from "./releaseCatalogMutation";
 export * from "./remoteBundleSigning";
 export * from "./semverSatisfies";
-export * from "./storageDownloadPath";
 export * from "./types";
 export * from "./uuidv7";
 

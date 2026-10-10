@@ -854,8 +854,13 @@ describe("deploy rollout wiring", () => {
     expect(database.dispose).toHaveBeenCalledOnce();
   });
 
-  it("stops before building when the config names no storage, and closes the database", async () => {
-    mockLoadServer.mockResolvedValue(testServer({ database: harnessDatabase }));
+  it("stops before building when the config names no storage", async () => {
+    // loadServer refuses the config, and closes its database.
+    mockLoadServer.mockRejectedValue(
+      new Error(
+        "Set storage in hot-updater.config.ts: where the CLI uploads bundles, such as r2Storage(...).",
+      ),
+    );
 
     await expect(
       deploy({
@@ -870,7 +875,6 @@ describe("deploy rollout wiring", () => {
     );
     expect(mockBuildAdapter.build).not.toHaveBeenCalled();
     expect(databaseHarness.deploy).not.toHaveBeenCalled();
-    expect(databaseHarness.dispose).toHaveBeenCalledOnce();
   });
 
   it("deploys a single platform in one core call, after the schema check", async () => {

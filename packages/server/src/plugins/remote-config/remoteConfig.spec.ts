@@ -1,4 +1,5 @@
 import { remoteConfig as remoteConfigClient } from "@hot-updater/plugin-remote-config/client";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { setupClientPlugin } from "@hot-updater/test-utils/react-native";
 import { describe, expect, it } from "vitest";
 
@@ -40,6 +41,7 @@ const mounted = (path: string) => `https://updates.example.com${path}`;
 const start = async () => {
   const hotUpdater = createHotUpdater({
     database: createRuntimeDatabase(),
+    storage: createReleaseCatalogTestStorage(),
     plugins: [apiKeys(), remoteConfig()],
   });
   await hotUpdater.api.apiKeys.register({ apiKey: API_KEY, name: "App" });

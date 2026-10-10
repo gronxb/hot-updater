@@ -1,4 +1,5 @@
 import { definePlugin, defineTable } from "@hot-updater/plugin-core";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "./index";
@@ -32,7 +33,12 @@ const notes = definePlugin({
 });
 
 const createServer = (database = createRuntimeDatabase()) =>
-  createHotUpdater({ clientAccess: "public", database, plugins: [notes] });
+  createHotUpdater({
+    clientAccess: "public",
+    database,
+    storage: createReleaseCatalogTestStorage(),
+    plugins: [notes],
+  });
 
 describe("server retention", () => {
   afterEach(() => {

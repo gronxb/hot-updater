@@ -17,6 +17,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { HOT_UPDATER_SERVER_VERSION } from "@hot-updater/server";
 import { insights } from "@hot-updater/server/plugins";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { packageJsonData } from "../packageJson";
@@ -99,6 +100,7 @@ const createConfig = (overrides: Record<string, unknown> = {}) => ({
     build: vi.fn(),
     name: "test-build",
   }),
+  storage: createReleaseCatalogTestStorage(),
   updateStrategy: "appVersion",
   platform: {
     ios: {

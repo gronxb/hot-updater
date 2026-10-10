@@ -30,7 +30,6 @@ describe("r2WorkerStorage", () => {
     const storage = r2WorkerStorage({
       bucket: createBucket(get),
       bucketName: "bundles",
-      downloadUrlSigningKey: "test-signing-key",
     });
 
     const { response } = await storage.get({
@@ -46,7 +45,6 @@ describe("r2WorkerStorage", () => {
     const storage = r2WorkerStorage({
       bucket: createBucket(get),
       bucketName: "bundles",
-      downloadUrlSigningKey: "test-signing-key",
     });
 
     await expect(
@@ -69,7 +67,6 @@ describe("r2WorkerStorage", () => {
     const storage = r2WorkerStorage({
       bucket,
       bucketName: "bundles",
-      downloadUrlSigningKey: "test-signing-key",
     });
 
     await storage.put({
@@ -104,7 +101,6 @@ describe("r2WorkerStorage", () => {
     const storage = r2WorkerStorage({
       bucket,
       bucketName: "bundles",
-      downloadUrlSigningKey: "test-signing-key",
     });
     const key = "릴리스 folder/logo@2x #100%/bundle.zip";
 
@@ -150,7 +146,6 @@ describe("r2WorkerStorage", () => {
         put: put as unknown as R2Bucket["put"],
       }),
       bucketName: "bundles",
-      downloadUrlSigningKey: "test-signing-key",
     });
 
     await storage.put({
@@ -164,21 +159,41 @@ describe("r2WorkerStorage", () => {
     expect(uploaded).toBe("bundle");
   });
 
-  it("returns a stable signed download path for private R2 objects", async () => {
+  it("presigns download URLs on the account's R2 endpoint for an hour", async () => {
     const storage = r2WorkerStorage({
       bucket: createBucket(vi.fn()),
       bucketName: "bundles",
-      downloadUrlSigningKey: "test-signing-key",
+      accountId: "account-id",
+      credentials: {
+        accessKeyId: "access-key-id",
+        secretAccessKey: "secret-access-key",
+      },
     });
 
-    const first = await storage.getDownloadUrl({
-      storageUri: "r2://bundles/releases/bundle.zip",
-    });
-    const second = await storage.getDownloadUrl({
-      storageUri: "r2://bundles/releases/bundle.zip",
+    const { url } = await storage.getDownloadUrl({
+      storageUri: "r2://bundles/releases/logo%402x.png",
     });
 
-    expect(first).toEqual(second);
-    expect(first.url).toMatch(/^\/storage\//);
+    const presigned = new URL(url);
+    expect(presigned.origin).toBe(
+      "https://account-id.r2.cloudflarestorage.com",
+    );
+    expect(presigned.pathname).toBe("/bundles/releases/logo%402x.png");
+    expect(presigned.searchParams.get("X-Amz-Expires")).toBe("3600");
+    expect(presigned.searchParams.get("X-Amz-Signature")).toMatch(
+      /^[0-9a-f]{64}$/,
+    );
+    await expect(
+      storage.getDownloadUrl({ storageUri: "r2://other/releases/bundle.zip" }),
+    ).rejects.toThrow('Bucket name mismatch: expected "bundles"');
+  });
+
+  it("has no download URLs without R2's S3-compatible credentials", () => {
+    const storage = r2WorkerStorage({
+      bucket: createBucket(vi.fn()),
+      bucketName: "bundles",
+    });
+
+    expect(storage).not.toHaveProperty("getDownloadUrl");
   });
 });

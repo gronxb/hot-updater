@@ -2,6 +2,7 @@ import { PGlite } from "@electric-sql/pglite";
 import type { Bundle } from "@hot-updater/protocol";
 import { NIL_UUID } from "@hot-updater/protocol";
 import { standaloneRepository } from "@hot-updater/standalone";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
 import { HttpResponse, http } from "msw";
@@ -19,6 +20,7 @@ const kysely = new Kysely<object>({ dialect: new PGliteDialect(db) });
 const clientMountPath = "/hot-updater";
 const api = createHotUpdater({
   database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
+  storage: createReleaseCatalogTestStorage(),
   plugins: [insights()],
   clientAccess: "public",
 });
@@ -278,6 +280,7 @@ describe("Insights through a self-hosted server's admin API", () => {
   const offPath = "/no-insights";
   const withoutInsights = createHotUpdater({
     database: kyselyAdapter({ db: kysely, provider: "postgresql" }),
+    storage: createReleaseCatalogTestStorage(),
     plugins: [],
     clientAccess: "public",
   });

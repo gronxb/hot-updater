@@ -2,6 +2,7 @@ import {
   createMemoryAdapter,
   type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 import { createHotUpdater } from "../../createHotUpdaterCore";
@@ -39,6 +40,7 @@ const start = (
       name: "memory",
       adapter: options.adapter ?? createMemoryAdapter(),
     },
+    storage: createReleaseCatalogTestStorage(),
     plugins: [
       apiKeys(
         options.headerName === undefined

@@ -73,9 +73,6 @@ const discoverIntegrations = async () => {
   );
 };
 const integrations = await discoverIntegrations();
-/** Indents every line after the first, so a multi-line value nests. */
-const indentFollowingLines = (text, spaces) =>
-  text.replaceAll("\n", `\n${" ".repeat(spaces)}`);
 /**
  * The credential helper's server definition, which stays in the scaffold:
  * the config scaffold's database, storage, and plugins, without its build or
@@ -110,9 +107,7 @@ ${helpers.map((code) => `${code}\n\n`).join("")}/**
  */
 export const hotUpdater = createHotUpdater({
   database: ${scaffold.database.initializer},
-  storage: [
-    ${indentFollowingLines(scaffold.storage.initializer, 2)},
-  ],
+  storage: ${scaffold.storage.initializer},
   ${plugins === "plugins" ? "plugins" : `plugins: ${plugins}`},
 });
 `;
@@ -280,6 +275,7 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
     config.d1_databases[0].database_id = placeholder("D1_DATABASE_ID");
     config.d1_databases[0].database_name = placeholder("D1_DATABASE_NAME");
     config.r2_buckets[0].bucket_name = placeholder("BUCKET_NAME");
+    config.vars.ACCOUNT_ID = placeholder("ACCOUNT_ID");
     config.vars.BUCKET_NAME = placeholder("BUCKET_NAME");
     await save(path.join(output, "worker/wrangler.json"), config);
     await save(path.join(output, "worker/package.json"), {

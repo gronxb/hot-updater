@@ -35,8 +35,8 @@ Record observations in deployment.json as described in COMMON.md.
 - [ ] **cf.schema — Configure and migrate**
   - Requires: cf.storage and cf.database.
   - Run: install worker/package.json dependencies in worker/. Fill wrangler.json's
-    account, Worker name, D1 ID/name and R2 bucket. Keep DB/BUCKET bindings,
-    BUCKET_NAME, cache settings and compatibility date.
+    account, Worker name, D1 ID/name, R2 bucket and the ACCOUNT_ID variable.
+    Keep DB/BUCKET bindings, BUCKET_NAME, cache settings and compatibility date.
     Inspect history, then from worker/ run
     `npx wrangler d1 migrations apply <database-name> --remote`.
     MCP SQL operations must preserve migration names/history as well.
@@ -53,18 +53,18 @@ Record observations in deployment.json as described in COMMON.md.
     URL match the selected resources. Save workerName and baseUrl.
   - Retry: query the existing Worker deployment and logs; reuse D1/R2 and its name.
 
-- [ ] **cf.signing — Configure download signing**
+- [ ] **cf.presign — Give the Worker the R2 credentials it presigns with**
   - Requires: cf.worker. Inspect secret names without revealing values.
-  - Run: retain an existing STORAGE_DOWNLOAD_URL_SIGNING_KEY. If absent, generate
-    32 random bytes locally and persist them privately before uploading via a
-    secret store/API or `wrangler secret put STORAGE_DOWNLOAD_URL_SIGNING_KEY`
-    from worker/, piping the saved file through stdin without printing its contents.
-  - Verify/record: the secret exists on the active Worker. Record its name/private
-    local reference only; artifact download is checked by common.report when available.
-  - Retry: reuse the same saved secret and inspect remote state; do not rotate it.
+  - Run: upload the local R2 S3 credentials as the Worker secrets
+    R2_ACCESS_KEY_ID and R2_SECRET_ACCESS_KEY via a secret store/API or
+    `wrangler secret put <name>` from worker/, piping each saved value through
+    stdin without printing it.
+  - Verify/record: both secrets exist on the active Worker. Record their names
+    only; artifact download is checked by common.report when available.
+  - Retry: reuse the same credentials and inspect remote state.
 
 - [ ] **cf.client-credential — Prepare local access and register the client credential**
-  - Requires: cf.schema and cf.signing.
+  - Requires: cf.schema and cf.presign.
   - Run: complete COMMON.md's Local CLI and client credential steps.
     ENVIRONMENT.md explains the local D1 API and R2 S3 credentials. Run the
     supplied credential helper from the app directory.

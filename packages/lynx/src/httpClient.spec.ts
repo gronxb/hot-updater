@@ -31,7 +31,10 @@ const archiveSignature = `sig:${Buffer.from("archive-signature").toString("base6
 const manifestSignature = `sig:${Buffer.from("manifest-signature").toString("base64")}`;
 const changedAsset = {
   fileHash: "b".repeat(64),
-  file: { url: "/storage/native-entry.br", compression: "br" },
+  file: {
+    url: "https://updates.test/storage/native-entry.br",
+    compression: "br",
+  },
   patch: {
     algorithm: "bsdiff",
     baseBundleId,
@@ -42,7 +45,7 @@ const changedAsset = {
 };
 const manifestArtifact = {
   artifactProtocolVersion: 1,
-  manifestUrl: "/storage/manifest.json",
+  manifestUrl: "https://updates.test/storage/manifest.json",
   manifestFileHash: manifestSignature,
   assets: { "native/entry.bin": changedAsset },
 };
@@ -59,8 +62,8 @@ function respond(value: unknown) {
 function artifactResponseBody(byteLength: number): string {
   const artifact = {
     artifactProtocolVersion: 1,
-    archiveUrl: "/storage/bundle.tar.br",
-    manifestUrl: "/storage/manifest.json",
+    archiveUrl: "https://updates.test/storage/bundle.tar.br",
+    manifestUrl: "https://updates.test/storage/manifest.json",
     manifestFileHash: manifestSignature,
     assets: {
       "native/entry.bin": {
@@ -166,8 +169,8 @@ describe("Lynx delivery HTTP contract", () => {
 
   it.each([
     [
-      "/storage/bundle.tar.br",
-      "https://updates.test/api/storage/bundle.tar.br",
+      "https://updates.test/storage/bundle.tar.br",
+      "https://updates.test/storage/bundle.tar.br",
     ],
     [
       "https://objects.test/bundle?signature=value",
@@ -249,6 +252,29 @@ describe("Lynx delivery HTTP contract", () => {
     ).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
   });
 
+  it.each(["manifest", "archive", "file", "patch"])(
+    "rejects a client-relative %s URL from the removed storage proxy",
+    async (field) => {
+      const artifact = structuredClone(manifestArtifact);
+      const relativeUrl = "/storage/token/signature";
+      if (field === "manifest") artifact.manifestUrl = relativeUrl;
+      if (field === "file")
+        artifact.assets["native/entry.bin"].file.url = relativeUrl;
+      if (field === "patch")
+        artifact.assets["native/entry.bin"].patch.patchUrl = relativeUrl;
+      respond({
+        ...artifact,
+        ...(field === "archive" ? { archiveUrl: relativeUrl } : {}),
+      });
+      await expect(
+        createHttpClient({ baseURL: "https://updates.test" }).resolveArtifact(
+          "target",
+          baseBundleId,
+        ),
+      ).rejects.toMatchObject({ code: "INVALID_RESPONSE" });
+    },
+  );
+
   it("rejects the removed archive-only response", async () => {
     respond({
       fileUrl: "https://objects.test/archive",
@@ -267,7 +293,9 @@ describe("Lynx delivery HTTP contract", () => {
     async (withArchive) => {
       respond({
         ...manifestArtifact,
-        ...(withArchive ? { archiveUrl: "/storage/bundle.tar.br" } : {}),
+        ...(withArchive
+          ? { archiveUrl: "https://updates.test/storage/bundle.tar.br" }
+          : {}),
       });
       // Background scripting does not require a browser URL implementation.
       vi.stubGlobal("URL", undefined);
@@ -279,15 +307,15 @@ describe("Lynx delivery HTTP contract", () => {
         bundleId: "target",
         artifactProtocolVersion: 1,
         ...(withArchive
-          ? { archiveUrl: "https://updates.test/api/storage/bundle.tar.br" }
+          ? { archiveUrl: "https://updates.test/storage/bundle.tar.br" }
           : {}),
-        manifestUrl: "https://updates.test/api/storage/manifest.json",
+        manifestUrl: "https://updates.test/storage/manifest.json",
         manifestFileHash: manifestSignature,
         assets: {
           "native/entry.bin": {
             ...changedAsset,
             file: {
-              url: "https://updates.test/api/storage/native-entry.br",
+              url: "https://updates.test/storage/native-entry.br",
               compression: "br",
             },
           },
@@ -319,14 +347,17 @@ describe("Lynx delivery HTTP contract", () => {
     {
       "native/entry.bin": {
         ...changedAsset,
-        file: { url: "/storage/raw-entry" },
+        file: { url: "https://updates.test/storage/raw-entry" },
         patch: undefined,
       },
     },
     {
       "assets/empty.txt": {
         fileHash: "d".repeat(64),
-        file: { url: "/storage/empty.txt", compression: null },
+        file: {
+          url: "https://updates.test/storage/empty.txt",
+          compression: null,
+        },
         patch: null,
       },
     },
@@ -343,16 +374,28 @@ describe("Lynx delivery HTTP contract", () => {
   );
 
   it.each([
-    ["missing archive hash", { fileUrl: "/storage/archive.zip" }],
+    [
+      "missing archive hash",
+      { fileUrl: "https://updates.test/storage/archive.zip" },
+    ],
     ["missing archive URL", { fileHash: "a".repeat(64) }],
     [
       "malformed archive hash",
-      { fileUrl: "/storage/archive.zip", fileHash: "not-a-hash" },
+      {
+        fileUrl: "https://updates.test/storage/archive.zip",
+        fileHash: "not-a-hash",
+      },
     ],
-    ["empty signature", { fileUrl: "/storage/archive.zip", fileHash: "sig:" }],
+    [
+      "empty signature",
+      { fileUrl: "https://updates.test/storage/archive.zip", fileHash: "sig:" },
+    ],
     [
       "invalid signature encoding",
-      { fileUrl: "/storage/archive.zip", fileHash: "sig:not-base64" },
+      {
+        fileUrl: "https://updates.test/storage/archive.zip",
+        fileHash: "sig:not-base64",
+      },
     ],
     ["missing manifest hash", { ...manifestArtifact, manifestFileHash: null }],
     ["missing manifest URL", { ...manifestArtifact, manifestUrl: null }],
@@ -436,7 +479,7 @@ describe("Lynx delivery HTTP contract", () => {
     async (_name, asset) => {
       respond({
         ...manifestArtifact,
-        archiveUrl: "/storage/bundle.tar.br",
+        archiveUrl: "https://updates.test/storage/bundle.tar.br",
         assets: { "native/entry.bin": asset },
       });
       await expect(

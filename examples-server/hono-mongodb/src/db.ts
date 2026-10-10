@@ -4,7 +4,6 @@ import path from "path";
 import { s3Storage } from "@hot-updater/aws";
 // import { firebaseStorage } from "@hot-updater/fir
 // import admin from "fZrebase-admin";
-import { mockStorage } from "@hot-updater/mock";
 import { createHotUpdater } from "@hot-updater/server";
 import { mongoAdapter } from "@hot-updater/server/adapters/mongodb";
 import { insights, remoteConfig } from "@hot-updater/server/plugins";
@@ -23,43 +22,39 @@ export const hotUpdater = createHotUpdater({
   database: mongoAdapter({ client }),
   plugins: [insights(), remoteConfig()],
   clientAccess: "public",
-  storage: [
+  // Or another provider's storage adapter, such as:
+  // r2Storage({
+  //   bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
+  //   accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
+  //   credentials: {
+  //     accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
+  //     secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
+  //   },
+  // }),
+  // firebaseStorage({
+  //   projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+  //   storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
+  //   credential: admin.credential.applicationDefault(),
+  // }),
+  // supabaseStorage({
+  //   supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
+  //   supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+  //   bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
+  // }),
+  storage:
     process.env.NODE_ENV === "test"
       ? (
           await import("@hot-updater/test-utils/node")
         ).createReleaseCatalogTestStorage()
-      : mockStorage({}),
-    s3Storage({
-      region: "auto",
-      endpoint: process.env.R2_ENDPOINT,
-      credentials: {
-        accessKeyId: process.env.R2_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
-      },
-      bucketName: process.env.R2_BUCKET_NAME!,
-      downloadUrlSigningKey:
-        process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY ??
-        "development-storage-download-url-key",
-    }),
-    // r2Storage({
-    //   bucketName: process.env.HOT_UPDATER_CLOUDFLARE_R2_BUCKET_NAME!,
-    //   accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!,
-    //   credentials: {
-    //     accessKeyId: process.env.HOT_UPDATER_CLOUDFLARE_R2_ACCESS_KEY_ID!,
-    //     secretAccessKey: process.env.HOT_UPDATER_CLOUDFLARE_R2_SECRET_ACCESS_KEY!,
-    //   },
-    // }),
-    // firebaseStorage({
-    //   projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
-    //   storageBucket: process.env.HOT_UPDATER_FIREBASE_STORAGE_BUCKET!,
-    //   credential: admin.credential.applicationDefault(),
-    // }),
-    // supabaseStorage({
-    //   supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    //   supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
-    //   bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
-    // }),
-  ],
+      : s3Storage({
+          region: "auto",
+          endpoint: process.env.R2_ENDPOINT,
+          credentials: {
+            accessKeyId: process.env.R2_ACCESS_KEY_ID!,
+            secretAccessKey: process.env.R2_SECRET_ACCESS_KEY!,
+          },
+          bucketName: process.env.R2_BUCKET_NAME!,
+        }),
 });
 
 // Cleanup function for graceful shutdown

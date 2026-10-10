@@ -19,15 +19,16 @@ import { apiKeys } from "@hot-updater/server/plugins";
 
 export const hotUpdater = createHotUpdater({
   database,
+  storage,
   plugins: [apiKeys()], // [!code ++]
 });
 ```
 
 With `apiKeys()`, Release Catalog reads, artifact resolution, Insights
 ingestion (`POST /events`), and other plugins' client routes require a valid
-key in `x-api-key`. `/version` stays public, and signed storage downloads use
-their download URL signature. API keys do not grant access to Insights
-queries, admin routes, or API key management.
+key in `x-api-key`. `/version` stays public, and devices download artifacts
+from the URLs the storage adapter returns, such as presigned URLs. API keys do
+not grant access to Insights queries, admin routes, or API key management.
 
 `apiKeys()` is the server's client authentication, so the configuration sets
 no `clientAccess`. Setting both fails to type-check and throws

@@ -3,7 +3,10 @@ import {
   createMemoryAdapter,
   toolingTargetOf,
 } from "@hot-updater/plugin-core";
-import { createPluginTestHarness } from "@hot-updater/test-utils";
+import {
+  createPluginTestHarness,
+  createReleaseCatalogTestStorage,
+} from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 import { HotUpdaterConfigError } from "../../assembly/configError";
@@ -86,6 +89,7 @@ describe("insights retention", () => {
     const hotUpdater = createHotUpdater({
       clientAccess: "public",
       database: { name: "memory", adapter: createMemoryAdapter() },
+      storage: createReleaseCatalogTestStorage(),
       plugins: [insights({ retention: { rawDays: 30, dailyDays: 60 } })],
     });
 

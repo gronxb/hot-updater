@@ -37,6 +37,8 @@ vi.mock("@tanstack/react-start", () => ({
 }));
 vi.mock("./server/config.server", () => ({ prepareConfig: mocks.prepare }));
 
+import { mockStorage } from "@hot-updater/mock";
+
 import {
   getRemoteConfigRpc,
   getRemoteConfigVersionRpc,
@@ -71,7 +73,12 @@ const localRuntime = () => {
   return createConsoleRuntime({
     database,
     plugins,
-    api: createHotUpdater({ database, plugins, clientAccess: "public" }).api,
+    api: createHotUpdater({
+      database,
+      storage: mockStorage({}),
+      plugins,
+      clientAccess: "public",
+    }).api,
   });
 };
 
@@ -79,6 +86,7 @@ const localRuntime = () => {
 const remoteRuntime = (serverPlugins = [remoteConfig()]) => {
   const server = createHotUpdater({
     database: memoryDatabase(),
+    storage: mockStorage({}),
     plugins: serverPlugins,
     clientAccess: "public",
   });
@@ -234,6 +242,7 @@ describe("Remote Config RPC access", () => {
         plugins: [insights()],
         api: createHotUpdater({
           database,
+          storage: mockStorage({}),
           plugins: [insights()],
           clientAccess: "public",
         }).api,

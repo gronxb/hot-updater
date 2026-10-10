@@ -1,3 +1,4 @@
+import { mockStorage } from "@hot-updater/mock";
 import { createMemoryAdapter } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import {
@@ -93,6 +94,7 @@ const lastDialog = () => {
 beforeEach(() => {
   state.api = createHotUpdater({
     database: { name: "memory", adapter: createMemoryAdapter() },
+    storage: mockStorage({}),
     plugins: [remoteConfig()],
     clientAccess: "public",
   }).api.remoteConfig;
@@ -337,6 +339,7 @@ describe("RemoteConfigPage", () => {
     cleanup();
     state.api = createHotUpdater({
       database: { name: "memory", adapter: createMemoryAdapter() },
+      storage: mockStorage({}),
       plugins: [remoteConfig()],
       clientAccess: "public",
     }).api.remoteConfig;

@@ -19,11 +19,7 @@ import {
   getPatchStorageUri,
 } from "@hot-updater/protocol";
 
-import {
-  type LoadedServer,
-  loadServer,
-  requireStorage,
-} from "@/utils/loadServer";
+import { type LoadedServer, loadServer } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
@@ -466,7 +462,7 @@ export async function handleStoragePrune(options: StoragePruneOptions = {}) {
   const server = await loadServer(await loadConfig(null));
 
   try {
-    const storageAdapter = requireStorage(server);
+    const storageAdapter = server.storage;
     assertStorageOperations(storageAdapter, ["get"]);
     const listObjects = storageAdapter.listObjects;
     if (!listObjects) {

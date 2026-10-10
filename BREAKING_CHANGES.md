@@ -69,10 +69,11 @@ export default defineConfig({
 });
 ```
 
-v1 refuses to load a config that has `compressStrategy`, which also stops Expo
-prebuild. There is no replacement option. `releaseChannel` had no effect in v0;
-set the native default channel with `npx hot-updater channel set <channel>`,
-or with the `channel` option of the Expo config plugin.
+Neither option exists in v1, so TypeScript reports both; there is no
+replacement. Updates always use per-file Brotli compression. `releaseChannel`
+had no effect in v0; set the native default channel with
+`npx hot-updater channel set <channel>`, or with the `channel` option of the
+Expo config plugin.
 
 ### Remove `platform.android.stringResourcePaths`
 
@@ -119,8 +120,8 @@ plugins: [insights(), apiKeys()], // the plugins the server lists
   `hot-updater api-key` and the Console's Insights and API key pages need
   this list.
 
-Fails silently: with the v0 client-root `baseUrl`, every list is empty and
-only writes report an error.
+With the v0 client-root `baseUrl`, the CLI stops before its first read and
+asks for the path of `handlers.admin`.
 
 ### Update `standaloneStorage`
 
@@ -164,14 +165,14 @@ refuses a v0 function, Worker, D1 database or CloudFront distribution. Copy the
 v0 values to the setup that keeps serving v0 apps, then change them before
 running `npx hot-updater init`:
 
-| Key                                                                                | Before v1 init                                                                            |
-| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| `HOT_UPDATER_AWS_LAMBDA_NAME`, `HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID`            | Remove. Init creates a new Lambda@Edge function (`hot-updater-v1-edge`) and distribution. |
-| `HOT_UPDATER_DYNAMODB_TABLE_NAME`                                                  | New. Init writes it (`hot-updater-v1`); `init --from-env-file` requires it.               |
-| `HOT_UPDATER_CLOUDFLARE_WORKER_NAME`                                               | Set a new name. The v1 default is still `hot-updater`.                                    |
-| `HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID`, `HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME` | Point at a new D1 database.                                                               |
-| `HOT_UPDATER_SUPABASE_FUNCTION_NAME`                                               | Set `hot-updater-v1` (v0: `update-server`).                                               |
-| `HOT_UPDATER_SUPABASE_ANON_KEY`                                                    | Rename to `HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY`. The value stays the same.              |
+| Key                                                                                | Before v1 init                                                                                                                      |
+| ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `HOT_UPDATER_AWS_LAMBDA_NAME`, `HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID`            | Remove. Init creates a new Lambda@Edge function (`hot-updater-v1-edge`) and distribution.                                           |
+| `HOT_UPDATER_DYNAMODB_TABLE_NAME`                                                  | New. Init writes it (`hot-updater-v1`); `init --from-env-file` requires it.                                                         |
+| `HOT_UPDATER_CLOUDFLARE_WORKER_NAME`                                               | Set a new name. The v1 default is still `hot-updater`.                                                                              |
+| `HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID`, `HOT_UPDATER_CLOUDFLARE_D1_DATABASE_NAME` | Point at a new D1 database.                                                                                                         |
+| `HOT_UPDATER_SUPABASE_FUNCTION_NAME`                                               | Set `hot-updater-v1` (v0: `update-server`).                                                                                         |
+| `HOT_UPDATER_SUPABASE_ANON_KEY`                                                    | Rename to `HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY`. v0 init stored the service-role key there; replace an anon key you set yourself. |
 
 Firebase keys stay the same; v1 uses the fixed function name `hot-updater-v1`
 and the Firestore collection `hot_updater_v1`. Storage buckets can be shared
@@ -183,8 +184,11 @@ must send.
 Search for `s3Database`, `cloudflareApiToken` inside `r2Storage(`,
 `supabaseAnonKey`, and a provider config without `plugins`.
 
-After v1 init, check that `hot-updater.config.ts` has the shape below. Keep the
-v0 credentials setup (`fromNodeProviderChain`, `fromIni`, `fromSSO` or keys).
+After v1 init, check that `hot-updater.config.ts` has the shape below. Init
+adds a new option beside the old one it replaces, such as `credentials` beside
+`cloudflareApiToken`, and TypeScript then reports the old one: delete it. Keep
+the v0 credentials setup (`fromNodeProviderChain`, `fromIni`, `fromSSO` or
+keys).
 
 AWS:
 
@@ -741,33 +745,22 @@ import { apiKeys } from "@hot-updater/server/plugins";
 
 export const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db, provider: "postgresql" }), // a new, empty database
-  storage: [
-    s3Storage({
-      region,
-      credentials,
-      bucketName,
-      downloadUrlSigningKey: process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY!,
-    }),
-  ],
+  storage: s3Storage({ region, credentials, bucketName }),
   plugins: [apiKeys()], // or clientAccess: "public"
 });
 ```
 
-- `storages` and `storagePlugins` become `storage`. Fails silently: in
-  JavaScript, or when the options object is built in a variable, the old keys
-  are ignored and the server runs without storage.
+- `storages: [adapter]` and `storagePlugins` become `storage: adapter`: one
+  adapter, the same one `hot-updater.config.ts` uploads with. `storage` is
+  required: TypeScript reports a missing one, and startup throws without it.
 - Choose a client-access policy, or startup throws. `clientAccess: "public"`
   keeps v0's open client routes. `plugins: [apiKeys()]` requires an API key
   from apps: create one with
   `npx hot-updater api-key create --name <name> src/hotUpdater.ts` and send
   it from `HotUpdater.init`. Use one or the other.
-- Server storage must produce download URLs. v0 presigned them implicitly; v1
-  needs `downloadUrlSigningKey` (artifacts are then served by the client
-  handler's `/storage/...` route) or `getDownloadUrl`, such as
-  `cloudFrontDownloadUrl(...)`. Without either, the first use of
-  `hotUpdater.handlers` throws. The same applies to `r2Storage`.
-- `basePath` and `routes` are removed; the mounts in the next entry replace
-  them. `cwd` is removed.
+- `basePath`, `routes` and `cwd` are removed. The mounts in the next entry
+  replace `basePath` and `routes`, and each plugin in `plugins` adds its own
+  endpoints to them.
 - Pass adapter objects, not `() => adapter` thunks.
 
 ### Mount `handlers.client` and `handlers.admin`
@@ -891,7 +884,6 @@ Client routes, relative to the `handlers.client` mount (v0: relative to
 | `GET /app-version/:platform/:appVersion/:channel/:minBundleId/:bundleId[/:cohort]`      | `GET /release-catalogs/app-version/:platform/:channelKey/:appVersion`                   |
 | `GET /fingerprint/:platform/:fingerprintHash/:channel/:minBundleId/:bundleId[/:cohort]` | `GET /release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`              |
 | The artifact URL inside the update response                                             | `GET /artifacts/v1/:targetBundleId/from/:currentBundleId`                               |
-| Presigned storage URLs                                                                  | `GET /storage/:token/:signature`, when the storage adapter uses `downloadUrlSigningKey` |
 | `GET /version`                                                                          | `GET /version`                                                                          |
 
 - `:channelKey` is the base64url encoding of the UTF-8 channel name.
@@ -1081,8 +1073,8 @@ Search for `Bundle` and `BundlePatchArtifact` imported from
 | `@hot-updater/aws`                                            | `withCloudFrontSignedUrl`, `WithCloudFrontSignedUrlOptions`, `CloudFrontSignedUrlConfig`, `PublicBaseUrlResolver`                                                                                                        | `cloudFrontDownloadUrl`, `CloudFrontDownloadUrlOptions`; `publicBaseUrl` is a string                                          |
 | `@hot-updater/cloudflare`                                     | `cloudflareApiToken` in `r2Storage`, `R2WranglerStorageConfig`                                                                                                                                                           | `r2Storage({ credentials: { accessKeyId, secretAccessKey } })`, `R2S3StorageConfig`                                           |
 | `@hot-updater/cloudflare/worker`                              | `d1Database()` without arguments; `RequestEnvContext`, `CloudflareWorkerRuntimeEnv`, `CloudflareWorkerDatabaseEnv`, `CloudflareWorkerStorageEnv`                                                                         | `d1Database(env.DB)`, `D1Like`                                                                                                |
-| `@hot-updater/cloudflare/worker`                              | `r2Storage({ publicBaseUrl, jwtSecret })` and the `JWT_SECRET` var                                                                                                                                                       | `r2Storage({ bucket: env.BUCKET, bucketName: env.BUCKET_NAME, downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY })` |
-| `@hot-updater/cloudflare/worker`                              | `verifyJwtSignedUrl`                                                                                                                                                                                                     | The client handler's `/storage/...` route                                                                                     |
+| `@hot-updater/cloudflare/worker`                              | `r2Storage({ publicBaseUrl, jwtSecret })` and the `JWT_SECRET` var                                                                                                                                                       | `r2Storage({ bucket: env.BUCKET, bucketName: env.BUCKET_NAME, accountId: env.ACCOUNT_ID, credentials: { accessKeyId: env.R2_ACCESS_KEY_ID, secretAccessKey: env.R2_SECRET_ACCESS_KEY } })`: the Worker presigns download URLs with the R2 credentials, which it reads from the `R2_ACCESS_KEY_ID` and `R2_SECRET_ACCESS_KEY` secrets |
+| `@hot-updater/cloudflare/worker`                              | `verifyJwtSignedUrl`                                                                                                                                                                                                     | None: devices download from the presigned R2 URLs |
 | `@hot-updater/supabase`, `@hot-updater/supabase/edge`         | `supabaseEdgeFunctionDatabase`, `supabaseEdgeFunctionStorage`, `SupabaseEdgeFunctionDatabaseConfig`, `SupabaseEdgeFunctionStorageConfig`                                                                                 | `supabaseDatabase`, `supabaseStorage` from `@hot-updater/supabase/edge`; `supabaseStorage` requires `bucketName`              |
 | `@hot-updater/js`                                             | `getUpdateInfo`, `verifyJwtSignedUrl`, `withJwtSignedUrl`, `signToken`, `verifyJwtToken`                                                                                                                                 | None. Storage adapters sign download URLs.                                                                                    |
 | `@hot-updater/postgres`                                       | `getUpdateInfo`, `appVersionStrategy`, `fingerprintStrategy`                                                                                                                                                             | None. `postgres(config)` returns the database.                                                                                |

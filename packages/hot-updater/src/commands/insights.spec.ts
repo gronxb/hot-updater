@@ -10,6 +10,7 @@ import {
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys, insights } from "@hot-updater/server/plugins";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -58,6 +59,7 @@ const createDatabase = (): EngineDatabase & {
 const serverOver = (db: EngineDatabase) =>
   createHotUpdater({
     database: { name: "memory", adapter: db.adapter },
+    storage: createReleaseCatalogTestStorage(),
     plugins: [insights()],
     clientAccess: "public",
   });
@@ -132,7 +134,11 @@ const configure = (config: {
   readonly database?: EngineDatabase | RemoteDatabase;
   readonly plugins?: readonly AnyHotUpdaterPlugin[];
 }) => {
-  vi.mocked(loadConfig).mockResolvedValue({ plugins: [], ...config } as never);
+  vi.mocked(loadConfig).mockResolvedValue({
+    plugins: [],
+    storage: createReleaseCatalogTestStorage(),
+    ...config,
+  } as never);
 };
 
 const messages = () =>
@@ -347,6 +353,7 @@ describe("hot-updater insights over standaloneRepository", () => {
     const remote = remoteOf(
       createHotUpdater({
         database: createDatabase(),
+        storage: createReleaseCatalogTestStorage(),
         plugins: [],
         clientAccess: "public",
       }),

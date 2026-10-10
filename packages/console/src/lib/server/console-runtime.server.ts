@@ -25,8 +25,8 @@ export interface ResolvedConsoleConfig {
    * admin API.
    */
   readonly core: HotUpdaterCoreApi;
-  /** The server's storage; each bundle file is read with its protocol's. */
-  readonly storage: readonly StorageAdapter[];
+  /** The server's storage, which reads the bundle files. */
+  readonly storage: StorageAdapter;
   /** The plugins the server runs, as the config lists them. */
   readonly plugins: readonly AnyHotUpdaterPlugin[];
   /**
@@ -50,7 +50,7 @@ const assemble = (
 ) =>
   createHotUpdater({
     database,
-    storage: [storage],
+    storage,
     plugins,
     ...(plugins.some((plugin) => plugin.provides?.clientAuth)
       ? {}
@@ -89,7 +89,7 @@ export const resolveConsoleConfig = async (
       ...gitUrl,
       database,
       core: database.core,
-      storage: [storage],
+      storage,
       plugins: checked.plugins,
     };
   }
@@ -98,7 +98,7 @@ export const resolveConsoleConfig = async (
     ...gitUrl,
     database,
     core: server.core,
-    storage: server.storage,
+    storage,
     plugins: server.plugins,
     api: server.api,
   };

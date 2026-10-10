@@ -197,20 +197,6 @@ export const loadPlatformConfigs = async <TPlatform extends Platform>(
 };
 
 const resolveConfig = (config: ConfigInput | undefined): ConfigResponse => {
-  for (const key of ["authorityId", "catalogId"]) {
-    if (config && Object.hasOwn(config, key)) {
-      throw new Error(
-        `Remove ${key} from hot-updater.config. Catalog identity is managed internally.`,
-      );
-    }
-  }
-
-  if (config && Object.hasOwn(config, "compressStrategy")) {
-    throw new Error(
-      "Remove compressStrategy from hot-updater.config. OTA artifacts use manifest files with per-file Brotli compression.",
-    );
-  }
-
   const mergedConfig = mergeConfigSources(config, getDefaultConfig());
   const signing = normalizeSigningConfig(mergedConfig.signing);
   return {

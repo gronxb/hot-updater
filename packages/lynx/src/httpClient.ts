@@ -192,11 +192,11 @@ function hasUnsafeAssetPathCharacter(value: string): boolean {
 }
 
 // Lynx background runtimes need not provide the WHATWG URL constructor.
-function resolveArtifactUrl(baseURL: string, value: unknown): string {
+function requireArtifactUrl(value: unknown): string {
   if (typeof value !== "string") {
     return invalidResponse("Artifact URLs must be strings.");
   }
-  const url = value.startsWith("/storage/") ? `${baseURL}${value}` : value;
+  const url = value;
   const match =
     /^https?:\/\/(\[[0-9a-f:.]+\]|[A-Za-z0-9.-]+)(?::([0-9]{1,5}))?(?:[/?#].*)?$/i.exec(
       url,
@@ -207,16 +207,13 @@ function resolveArtifactUrl(baseURL: string, value: unknown): string {
     (match[2] !== undefined && Number(match[2]) > 65535)
   ) {
     return invalidResponse(
-      "Artifact URLs must use HTTP(S) or a /storage/ path without credentials.",
+      "Artifact URLs must be absolute HTTP(S) URLs without credentials.",
     );
   }
   return url;
 }
 
-function parseAssets(
-  baseURL: string,
-  value: unknown,
-): Record<string, UpdateAsset> {
+function parseAssets(value: unknown): Record<string, UpdateAsset> {
   if (
     !isObject(value) ||
     Object.keys(value).length === 0 ||
@@ -250,7 +247,7 @@ function parseAssets(
           return invalidResponse("Invalid target asset file descriptor.");
         }
         file = {
-          url: resolveArtifactUrl(baseURL, asset.file.url),
+          url: requireArtifactUrl(asset.file.url),
           compression: asset.file.compression ?? null,
         };
       }
@@ -277,7 +274,7 @@ function parseAssets(
           baseBundleId: asset.patch.baseBundleId,
           baseFileHash: asset.patch.baseFileHash,
           patchFileHash: asset.patch.patchFileHash,
-          patchUrl: resolveArtifactUrl(baseURL, asset.patch.patchUrl),
+          patchUrl: requireArtifactUrl(asset.patch.patchUrl),
         };
       }
       return [assetPath, { fileHash: asset.fileHash, file, patch }];
@@ -500,14 +497,14 @@ export function createHttpClient(
       return {
         artifactProtocolVersion: 1,
         bundleId,
-        manifestUrl: resolveArtifactUrl(baseURL(), value.manifestUrl),
+        manifestUrl: requireArtifactUrl(value.manifestUrl),
         manifestFileHash: value.manifestFileHash,
         ...(value.archiveUrl === undefined
           ? {}
           : {
-              archiveUrl: resolveArtifactUrl(baseURL(), value.archiveUrl),
+              archiveUrl: requireArtifactUrl(value.archiveUrl),
             }),
-        assets: parseAssets(baseURL(), value.assets),
+        assets: parseAssets(value.assets),
       };
     },
   };

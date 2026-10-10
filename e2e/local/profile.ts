@@ -29,7 +29,6 @@ export function createLocalProfile(options: {
   storagePort: number;
   token: string;
   storagePassword: string;
-  signingKey: string;
   env: NodeJS.ProcessEnv;
 }): LocalProfile {
   const runtime = options.runtime ?? "react-native";
@@ -48,7 +47,6 @@ export function createLocalProfile(options: {
     PORT: String(options.providerPort),
     TEST_DB_PATH: path.join(options.runDir, "database"),
     HOT_UPDATER_ADMIN_TOKEN: options.token,
-    HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY: options.signingKey,
     HOT_UPDATER_APP_BASE_URL: providerUrl,
     HOT_UPDATER_CONTROL_BASE_URL: providerUrl,
     HOT_UPDATER_E2E_APP_BASE_URL: providerUrl,
@@ -137,7 +135,6 @@ export default defineConfig({
 export function localEnvFile(env: NodeJS.ProcessEnv): string {
   const keys = [
     "HOT_UPDATER_ADMIN_TOKEN",
-    "HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY",
     "HOT_UPDATER_APP_BASE_URL",
     "HOT_UPDATER_CONTROL_BASE_URL",
     "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL",

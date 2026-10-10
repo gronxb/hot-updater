@@ -1,6 +1,9 @@
 import { createHotUpdater } from "@hot-updater/server";
 import { insights } from "@hot-updater/server/plugins";
-import { createBundleEventRowFixture } from "@hot-updater/test-utils";
+import {
+  createBundleEventRowFixture,
+  createReleaseCatalogTestStorage,
+} from "@hot-updater/test-utils";
 import { createBundleFixture } from "@hot-updater/test-utils";
 import { env } from "cloudflare:test";
 import { expect, inject, it } from "vitest";
@@ -29,6 +32,7 @@ it("reads only through declared indexes on D1, never a full scan or a sort", asy
       },
       batch: (statements) => env.DB.batch(statements as D1PreparedStatement[]),
     }),
+    storage: createReleaseCatalogTestStorage(),
     plugins: [insights()],
     clientAccess: "public",
   });

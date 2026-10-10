@@ -526,12 +526,104 @@ const mergeObjectLiteralText = (
   ]);
 };
 
-const buildMergedCallInitializer = (existing: CallSource, next: CallSource) => {
-  const [existingArgument] = existing.callExpression.arguments;
+/**
+ * The edit that deletes `property` from its object: with its comma, and with
+ * the rest of its line when the property starts one.
+ */
+const removePropertyEdit = (text: string, property: Span): TextEdit => {
+  const comma = /^[ \t]*,/.exec(text.slice(property.end));
+  const end = property.end + (comma?.[0].length ?? 0);
+  if (startsLine(text, property)) {
+    const rest = /^[ \t]*(?:\/\/[^\n]*)?\n/.exec(text.slice(end));
+    return {
+      start: lineStartOf(text, property.start),
+      end: end + (rest?.[0].length ?? 0),
+      text: "",
+    };
+  }
+  const space = /^[ \t]*/.exec(text.slice(end));
+  return {
+    start: property.start,
+    end: end + (space?.[0].length ?? 0),
+    text: "",
+  };
+};
+
+const parseCall = (text: string): CallSource | null => {
+  const source = parseConfigSource(`(${text});`);
+  const statement = source?.program.body[0];
+  return source &&
+    statement?.type === "ExpressionStatement" &&
+    statement.expression.type === "CallExpression"
+    ? { callExpression: statement.expression, source }
+    : null;
+};
+
+/**
+ * The project's call without its spreads of the managed helpers the rebuilt
+ * config no longer declares.
+ */
+const withoutDroppedHelpers = (
+  call: CallSource,
+  droppedHelpers: ReadonlySet<string>,
+): CallSource | null => {
+  const [argument] = call.callExpression.arguments;
+  if (
+    call.callExpression.arguments.length !== 1 ||
+    argument?.type !== "ObjectExpression"
+  ) {
+    return call;
+  }
+
+  const callStart = call.callExpression.start;
+  const edits = argument.properties
+    .filter(
+      (property) =>
+        property.type === "SpreadElement" &&
+        property.argument.type === "Identifier" &&
+        droppedHelpers.has(property.argument.name),
+    )
+    .map((property) => {
+      const edit = removePropertyEdit(call.source.text, property);
+      return {
+        ...edit,
+        start: edit.start - callStart,
+        end: edit.end - callStart,
+      };
+    });
+  if (edits.length === 0) {
+    return call;
+  }
+
+  return parseCall(
+    applyTextEdits(getNodeText(call.source, call.callExpression), edits),
+  );
+};
+
+/** Whether `text` uses one of `names`; text that doesn't parse counts as a use. */
+const usesAny = (text: string, names: ReadonlySet<string>) => {
+  if (names.size === 0) {
+    return false;
+  }
+  const used = usedIdentifiers(`(${text});`);
+  return used === null || [...names].some((name) => used.has(name));
+};
+
+const buildMergedCallInitializer = (
+  existing: CallSource,
+  next: CallSource,
+  droppedHelpers: ReadonlySet<string>,
+) => {
+  const project = withoutDroppedHelpers(existing, droppedHelpers);
+  if (!project) {
+    return null;
+  }
+
+  const [existingArgument] = project.callExpression.arguments;
   const [nextArgument] = next.callExpression.arguments;
 
   if (
-    existing.callExpression.arguments.length === 1 &&
+    project.callExpression.arguments.length === 1 &&
     next.callExpression.arguments.length === 1 &&
     existingArgument?.type === "ObjectExpression" &&
     nextArgument?.type === "ObjectExpression"
@@ -539,7 +631,7 @@ const buildMergedCallInitializer = (existing: CallSource, next: CallSource) => {
     const mergedObjectLiteral = mergeObjectLiteralText(
       {
         objectExpression: existingArgument,
-        source: existing.source,
+        source: project.source,
       },
       {
         objectExpression: nextArgument,
@@ -551,12 +643,12 @@ const buildMergedCallInitializer = (existing: CallSource, next: CallSource) => {
     }
 
     return `${getNodeText(
-      existing.source,
-      existing.callExpression.callee,
+      project.source,
+      project.callExpression.callee,
     )}(${mergedObjectLiteral})`;
   }
 
-  return getNodeText(existing.source, existing.callExpression);
+  return getNodeText(project.source, project.callExpression);
 };
 
 const findManagedProperty = (
@@ -657,12 +749,15 @@ const mergeHelperStatement = (
  * `plugins`: a call to the same adapter keeps the project's arguments and
  * gains the scaffold's missing ones, and `plugins` is the scaffold's. A build
  * that is not a plain build adapter, such as `withSentry(bare())`, stays the
- * project's (`keptBuild`). Null when `build`, `storage`, or `database` is no
- * call.
+ * project's (`keptBuild`). The merged call loses its spreads of the managed
+ * helpers the rebuilt config no longer declares (`droppedHelpers`), and a
+ * call that still uses one takes the scaffold's. Null when `build`,
+ * `storage`, or `database` is no call.
  */
 const updateManagedObject = (
   existing: ManagedConfigObject,
   next: ManagedConfigObject,
+  droppedHelpers: ReadonlySet<string>,
 ): { readonly text: string; readonly keptBuild: boolean } | null => {
   const objectStart = existing.objectExpression.start;
   const objectText = getNodeText(existing.source, existing.objectExpression);
@@ -729,12 +824,15 @@ const updateManagedObject = (
           callExpression: nextProperty.value,
           source: next.source,
         },
+        droppedHelpers,
       );
       if (!mergedInitializer) {
         return null;
       }
 
-      nextInitializerText = mergedInitializer;
+      if (!usesAny(mergedInitializer, droppedHelpers)) {
+        nextInitializerText = mergedInitializer;
+      }
     }
 
     propertyEdits.push({
@@ -1072,6 +1170,23 @@ const mergeHotUpdaterConfigText = (
     };
   }
 
+  // The managed helpers the rebuilt body drops, such as v0's `commonOptions`.
+  const scaffoldHelpers = new Set(
+    scaffold.helperStatements.map((helper) => helper.name),
+  );
+  const droppedHelpers = new Set(
+    existingSource.program.body.flatMap((statement) => {
+      const name =
+        statement.start < existingConfig.exportDeclaration.start
+          ? getManagedHelperName(statement)
+          : null;
+      return name !== null &&
+        MANAGED_HELPER_NAMES.has(name) &&
+        !scaffoldHelpers.has(name)
+        ? [name]
+        : [];
+    }),
+  );
   const nextObject = updateManagedObject(
     {
       objectExpression: existingConfig.objectExpression,
@@ -1081,6 +1196,7 @@ const mergeHotUpdaterConfigText = (
       objectExpression: nextConfig.objectExpression,
       source: nextSource,
     },
+    droppedHelpers,
   );
   if (!nextObject) {
     return {

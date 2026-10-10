@@ -6,12 +6,6 @@ import { promisify } from "node:util";
 
 import { s3Storage } from "@hot-updater/aws";
 import { lynx } from "@hot-updater/lynx-build";
-import {
-  createStorageDownloadUrl,
-  createStorageAdapter,
-  createStorageUri,
-  parseStorageUri,
-} from "@hot-updater/plugin-core";
 import { standaloneRepository } from "@hot-updater/standalone";
 
 import { writeLynxBackgroundEntry } from "../../e2e/lynx/background-entry.ts";
@@ -40,82 +34,18 @@ const adminHeaders = adminToken
   ? { authorization: `Bearer ${adminToken}` }
   : undefined;
 
-function localFsStorage(options: {
-  readonly directory: string;
-  readonly signingKey: string;
-}) {
-  const objectPath = (key: string) => path.join(options.directory, key);
-  return createStorageAdapter({
-    name: "local-fs",
-    protocol: "storage",
-    async put({ key, body, contentType }) {
-      const storageUri = createStorageUri({
-        bucket: "my-app",
-        key,
-        protocol: "storage",
-      });
-      const file = objectPath(key);
-      await fsp.mkdir(path.dirname(file), { recursive: true });
-      const bytes = Buffer.from(await new Response(body).arrayBuffer());
-      await fsp.writeFile(file, bytes);
-      await fsp.writeFile(
-        `${file}.meta.json`,
-        JSON.stringify({ contentType, storageUri }),
-      );
-      return { storageUri };
-    },
-    async get({ storageUri }) {
-      const parsed = parseStorageUri(storageUri, "storage");
-      try {
-        const body = await fsp.readFile(objectPath(parsed.key));
-        return { response: new Response(body) };
-      } catch (error) {
-        if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-          return { response: null };
-        }
-        throw error;
-      }
-    },
-    getDownloadUrl: createStorageDownloadUrl(options.signingKey),
-    async exists({ storageUri }) {
-      const parsed = parseStorageUri(storageUri, "storage");
-      try {
-        await fsp.access(objectPath(parsed.key));
-        return { exists: true };
-      } catch {
-        return { exists: false };
-      }
-    },
-    async delete({ storageUri }) {
-      const parsed = parseStorageUri(storageUri, "storage");
-      await fsp.rm(objectPath(parsed.key), { force: true });
-      return { deleted: true };
-    },
-  });
-}
-
 function resolveStorage() {
-  if (process.env.AWS_S3_ENDPOINT) {
-    return s3Storage({
-      region: process.env.AWS_REGION || "us-east-1",
-      endpoint: process.env.AWS_S3_ENDPOINT,
-      credentials: {
-        accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
-        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
-      },
-      bucketName: process.env.AWS_S3_METADATA_BUCKET!,
-      basePath: process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE,
-      forcePathStyle: true,
-    });
-  }
-  const directory = process.env.HOT_UPDATER_STORAGE_DIR;
-  const signingKey = process.env.HOT_UPDATER_STORAGE_DOWNLOAD_URL_KEY;
-  if (!directory || !signingKey) {
-    throw new Error(
-      "Lynx deploy needs AWS_S3_ENDPOINT or HOT_UPDATER_STORAGE_DIR",
-    );
-  }
-  return localFsStorage({ directory, signingKey });
+  return s3Storage({
+    region: process.env.AWS_REGION || "us-east-1",
+    endpoint: process.env.AWS_S3_ENDPOINT,
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.AWS_S3_METADATA_BUCKET!,
+    basePath: process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE,
+    forcePathStyle: true,
+  });
 }
 
 export default {

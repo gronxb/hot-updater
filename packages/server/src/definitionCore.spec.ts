@@ -13,6 +13,7 @@ import {
   createBundleEventRowFixture,
   createBundleFixture,
   createMemoryKeyValueStore,
+  createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import { Kysely } from "kysely";
 import { PGliteDialect } from "kysely-pglite-dialect";
@@ -46,7 +47,11 @@ const deployment = (suffix: string): Deployment => ({
 
 /** The definition the CLI loads, on `database`, running Insights and API keys. */
 const definitionOn = (database: EngineDatabase) =>
-  createHotUpdater({ database, plugins: [insights(), apiKeys()] });
+  createHotUpdater({
+    database,
+    storage: createReleaseCatalogTestStorage(),
+    plugins: [insights(), apiKeys()],
+  });
 
 /** The fence's message for a database that lacks both plugins' migrations. */
 const migrationRequired = (database: string) =>
@@ -87,7 +92,13 @@ describe("definition.core on a SQL database (PGlite)", () => {
   it("stops a write until the plugins' migration runs, naming them and the fix", async () => {
     const { database } = sqlDatabase();
     // Core's tables only, as before the definition listed its plugins.
-    await migrate(createHotUpdater({ database, clientAccess: "public" }));
+    await migrate(
+      createHotUpdater({
+        database,
+        storage: createReleaseCatalogTestStorage(),
+        clientAccess: "public",
+      }),
+    );
     const hotUpdater = definitionOn(database);
 
     const refused = hotUpdater.core.deploy([deployment("1")]);

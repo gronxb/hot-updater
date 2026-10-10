@@ -6,8 +6,9 @@ import { registerInsightsModelTests } from "./insightsModelTests";
 
 /**
  * The Insights report contract on one database: pass the Insights plugin's
- * model over it, `createInsightsModel(createHotUpdater({ database, plugins:
- * [insights()], clientAccess: "public" }).api.insights)`, as `createDatabase`.
+ * model over it, `createInsightsModel(createHotUpdater({ database, storage,
+ * plugins: [insights()], clientAccess: "public" }).api.insights)`, as
+ * `createDatabase`.
  */
 export const setupInsightsModelTestSuite = (
   lifecycle: DatabaseTestLifecycle<InsightsModel>,

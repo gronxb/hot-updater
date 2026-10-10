@@ -31,13 +31,16 @@ const scopeKey = createReleaseCatalogScopeKey({
 });
 const artifactResponse = {
   artifactProtocolVersion: 1,
-  archiveUrl: "/storage/bundle.tar.br",
-  manifestUrl: "/storage/manifest.json",
+  archiveUrl: "https://updates.test/storage/bundle.tar.br",
+  manifestUrl: "https://updates.test/storage/manifest.json",
   manifestFileHash: "b".repeat(64),
   assets: {
     "main.lynx.bundle": {
       fileHash: "c".repeat(64),
-      file: { url: "/storage/main.lynx.bundle", compression: null },
+      file: {
+        url: "https://updates.test/storage/main.lynx.bundle",
+        compression: null,
+      },
     },
   },
 };
@@ -316,14 +319,14 @@ describe("Lynx catalog controller (mock native transport)", () => {
               ? catalog
               : {
                   artifactProtocolVersion: 1,
-                  archiveUrl: "/storage/bundle.tar.br",
-                  manifestUrl: "/storage/manifest.json",
+                  archiveUrl: "https://updates.test/storage/bundle.tar.br",
+                  manifestUrl: "https://updates.test/storage/manifest.json",
                   manifestFileHash,
                   assets: {
                     "runtime/main.lynx": {
                       fileHash: "e".repeat(64),
                       file: {
-                        url: "/storage/runtime-main.lynx",
+                        url: "https://updates.test/storage/runtime-main.lynx",
                         compression: null,
                       },
                       patch: {
@@ -331,7 +334,8 @@ describe("Lynx catalog controller (mock native transport)", () => {
                         baseBundleId: A,
                         baseFileHash: "f".repeat(64),
                         patchFileHash: "1".repeat(64),
-                        patchUrl: "/storage/runtime-main.patch",
+                        patchUrl:
+                          "https://updates.test/storage/runtime-main.patch",
                       },
                     },
                   },
@@ -382,14 +386,14 @@ describe("Lynx catalog controller (mock native transport)", () => {
               ? catalog
               : {
                   artifactProtocolVersion: 1,
-                  archiveUrl: "/storage/bundle.tar.br",
-                  manifestUrl: "/storage/manifest.json",
+                  archiveUrl: "https://updates.test/storage/bundle.tar.br",
+                  manifestUrl: "https://updates.test/storage/manifest.json",
                   manifestFileHash: "c".repeat(64),
                   assets: {
                     "runtime/main.lynx": {
                       fileHash: "e".repeat(64),
                       file: {
-                        url: "/storage/runtime-main.lynx",
+                        url: "https://updates.test/storage/runtime-main.lynx",
                         compression: "gzip",
                       },
                       patch: null,

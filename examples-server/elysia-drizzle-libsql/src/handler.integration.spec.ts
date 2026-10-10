@@ -11,6 +11,7 @@ import {
 import {
   createHttpTestClient,
   setupReleaseCatalogTestSuite,
+  createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import { setupBundleMethodsTestSuite } from "@hot-updater/test-utils";
 import {
@@ -109,6 +110,7 @@ describe("Hot Updater Handler Integration Tests (Elysia)", () => {
     const insights = createInsightsModel(
       createHotUpdater({
         database: drizzleAdapter({ db: async () => db, provider: "sqlite" }),
+        storage: createReleaseCatalogTestStorage(),
         plugins: [insightsPlugin()],
         clientAccess: "public",
       }).api.insights,

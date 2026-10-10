@@ -7,10 +7,12 @@ export type { R2S3StorageConfig };
 
 export const r2Storage = (
   config: R2S3StorageConfig,
-): StorageAdapterWith<"put" | "get" | "exists" | "delete"> => {
+): StorageAdapterWith<
+  "put" | "get" | "getDownloadUrl" | "exists" | "delete"
+> => {
   if (!config.credentials) {
     throw new Error(
-      "r2Storage requires S3-compatible credentials. The Wrangler fallback was removed.",
+      "r2Storage requires S3-compatible credentials: pass credentials with an R2 access key ID and secret access key.",
     );
   }
 

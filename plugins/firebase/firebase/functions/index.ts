@@ -31,13 +31,11 @@ const hotUpdater = createHotUpdater({
     ...adminOptions,
   }),
   plugins,
-  storage: [
-    firebaseStorage({
-      ...adminOptions,
-      storageBucket,
-      cdnUrl,
-    }),
-  ],
+  storage: firebaseStorage({
+    ...adminOptions,
+    storageBucket,
+    cdnUrl,
+  }),
 });
 
 const app = new Hono();

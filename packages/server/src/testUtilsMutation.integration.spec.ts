@@ -112,7 +112,7 @@ it("rejects broken providers while the unmodified provider passes the public sui
         import { createHotUpdater } from "@hot-updater/server";
         import { createMemoryAdapter } from "@hot-updater/plugin-core";
         import { createInsightsModel, insights } from "@hot-updater/server/plugins";
-        import { insightsTestSuite } from "@hot-updater/test-utils";
+        import { createReleaseCatalogTestStorage, insightsTestSuite } from "@hot-updater/test-utils";
         import { setupDatabaseTestSuite, startHttpTestServer } from "@hot-updater/test-utils";
         // An empty memory adapter per test, behind one adapter a mutant may break.
         let original = createMemoryAdapter();
@@ -125,7 +125,8 @@ it("rejects broken providers while the unmodified provider passes the public sui
         };
         let insightsModel = database =>
           createInsightsModel(createHotUpdater({
-            database, plugins: [insights()], clientAccess: "public",
+            database, storage: createReleaseCatalogTestStorage(),
+            plugins: [insights()], clientAccess: "public",
           }).api.insights);
         ${variant.implementation}
         setupDatabaseTestSuite({

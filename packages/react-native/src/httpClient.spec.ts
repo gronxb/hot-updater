@@ -30,13 +30,13 @@ const artifact: ArtifactInfo = {
   artifactProtocolVersion: 1,
   assets: {
     "index.ios.bundle": {
-      file: { url: "/storage/index.bundle.br" },
+      file: { url: "https://cdn.example.com/index.bundle.br" },
       fileHash: "bundle-hash",
     },
   },
   manifestFileHash: "manifest-hash",
-  manifestUrl: "/storage/manifest.json",
-  archiveUrl: "/storage/bundle.tar.br",
+  manifestUrl: "https://cdn.example.com/manifest.json",
+  archiveUrl: "https://cdn.example.com/bundle.tar.br",
 };
 
 const catalog: ReleaseCatalog = {
@@ -104,20 +104,7 @@ describe("private HotUpdater HTTP client", () => {
         currentBundleId: "current",
         targetBundleId: "target",
       }),
-    ).resolves.toEqual({
-      ...artifact,
-      assets: {
-        "index.ios.bundle": {
-          file: {
-            url: "https://first.example.com/hot-updater/storage/index.bundle.br",
-          },
-          fileHash: "bundle-hash",
-        },
-      },
-      manifestUrl:
-        "https://first.example.com/hot-updater/storage/manifest.json",
-      archiveUrl: "https://first.example.com/hot-updater/storage/bundle.tar.br",
-    });
+    ).resolves.toEqual(artifact);
 
     expect(resolveBaseURL).toHaveBeenCalledOnce();
     expect(mocks.fetchJSON).toHaveBeenCalledWith({
@@ -130,12 +117,12 @@ describe("private HotUpdater HTTP client", () => {
     expect(resolveBaseURL).toHaveBeenCalledTimes(2);
   });
 
-  it("rejects non-storage relative artifact URLs", async () => {
+  it("rejects relative artifact URLs", async () => {
     mocks.fetchJSON.mockResolvedValue({
       ...artifact,
       assets: {
         "index.ios.bundle": {
-          file: { url: "/private/index.bundle.br" },
+          file: { url: "/storage/index.bundle.br" },
           fileHash: "bundle-hash",
         },
       },
@@ -149,7 +136,7 @@ describe("private HotUpdater HTTP client", () => {
         currentBundleId: "current",
         targetBundleId: "target",
       }),
-    ).rejects.toThrow("client-relative storage paths");
+    ).rejects.toThrow("Artifact URLs must be absolute HTTP(S) URLs.");
   });
 
   it("rejects a legacy artifact response", async () => {

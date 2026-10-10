@@ -20,6 +20,7 @@ import {
   apiKeys,
   insights,
 } from "@hot-updater/server/plugins";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -85,7 +86,11 @@ const configure = (config: {
   readonly database?: EngineDatabase | RemoteDatabase;
   readonly plugins?: readonly AnyHotUpdaterPlugin[];
 }) => {
-  vi.mocked(loadConfig).mockResolvedValue({ plugins: [], ...config } as never);
+  vi.mocked(loadConfig).mockResolvedValue({
+    plugins: [],
+    storage: createReleaseCatalogTestStorage(),
+    ...config,
+  } as never);
 };
 
 /** apiKeys()'s API over the configured database's tables, to seed and read them. */
@@ -103,6 +108,7 @@ const definitionAt = (
 ): LoadHotUpdaterResult & { dispose: ReturnType<typeof vi.fn> } => ({
   hotUpdater: createHotUpdater({
     database: definitionDatabase,
+    storage: createReleaseCatalogTestStorage(),
     plugins: [...plugins],
     ...(plugins.some(({ provides }) => provides?.clientAuth)
       ? {}

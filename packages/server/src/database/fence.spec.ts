@@ -4,6 +4,7 @@ import {
   createSqlAdapter,
   migrateCoreSchema,
 } from "@hot-updater/plugin-core";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { pgliteExecutor } from "@hot-updater/test-utils/node";
 import { afterAll, describe, expect, it, vi } from "vitest";
 
@@ -20,6 +21,7 @@ describe("a provider's fenced database on PGlite", () => {
     });
     const hotUpdater = createHotUpdater({
       database: createEngineDatabase({ name: "pglite", adapter }),
+      storage: createReleaseCatalogTestStorage(),
       clientAccess: "public",
     });
     const channels = () =>

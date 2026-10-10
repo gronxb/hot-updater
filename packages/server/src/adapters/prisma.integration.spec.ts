@@ -10,6 +10,7 @@ import {
   setupDatabaseTestSuite,
   startHttpTestServer,
   insightsTestSuite,
+  createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 import { assertDockerComposeAvailable } from "@hot-updater/test-utils/node";
 import { execa } from "execa";
@@ -105,6 +106,7 @@ setupDatabaseTestSuite({
         createInsightsModel(
           createHotUpdater({
             database,
+            storage: createReleaseCatalogTestStorage(),
             plugins: [insights()],
             clientAccess: "public",
           }).api.insights,

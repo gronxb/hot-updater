@@ -60,7 +60,6 @@ import {
   createSelectedBucket,
   getSupabaseProjectAccess,
   getSupabaseFunctionUrl,
-  getLegacySupabaseConfigReference,
   reportSupabaseOriginCatalogReady,
   resolveEdgeFunctionDenoConfig,
   selectBucket,
@@ -132,32 +131,6 @@ describe("Supabase React Native init output", () => {
       "Catalog checks still invoke the Supabase Edge Function.",
     );
     expect(mockCli.p.log.warn).not.toHaveBeenCalled();
-  });
-});
-
-describe("getLegacySupabaseConfigReference", () => {
-  it("detects legacy Supabase env references", () => {
-    expect(
-      getLegacySupabaseConfigReference(
-        "process.env.HOT_UPDATER_SUPABASE_ANON_KEY!",
-      ),
-    ).toBe("HOT_UPDATER_SUPABASE_ANON_KEY");
-  });
-
-  it("detects legacy Supabase config fields", () => {
-    expect(
-      getLegacySupabaseConfigReference(
-        "supabaseDatabase({ supabaseAnonKey: legacyKey })",
-      ),
-    ).toBe("supabaseAnonKey");
-  });
-
-  it("allows service-role Supabase config", () => {
-    expect(
-      getLegacySupabaseConfigReference(
-        "supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!",
-      ),
-    ).toBeNull();
   });
 });
 

@@ -54,18 +54,16 @@ const getHotUpdater = (distributionDomainName: string) => {
   const hotUpdater = createHotUpdater({
     database,
     plugins,
-    storage: [
-      s3Storage({
-        bucketName: S3_BUCKET_NAME,
-        region: SSM_REGION,
-        getDownloadUrl: cloudFrontDownloadUrl({
-          keyPairId: CLOUDFRONT_KEY_PAIR_ID,
-          ssmRegion: SSM_REGION,
-          ssmParameterName: SSM_PARAMETER_NAME,
-          publicBaseUrl: `https://${distributionDomainName}`,
-        }),
+    storage: s3Storage({
+      bucketName: S3_BUCKET_NAME,
+      region: SSM_REGION,
+      getDownloadUrl: cloudFrontDownloadUrl({
+        keyPairId: CLOUDFRONT_KEY_PAIR_ID,
+        ssmRegion: SSM_REGION,
+        ssmParameterName: SSM_PARAMETER_NAME,
+        publicBaseUrl: `https://${distributionDomainName}`,
       }),
-    ],
+    }),
   });
   hotUpdaterByDistribution.set(distributionDomainName, hotUpdater);
   return hotUpdater;

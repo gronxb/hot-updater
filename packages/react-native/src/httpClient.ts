@@ -42,55 +42,32 @@ export interface HotUpdaterHttpClient {
   createSession: () => Promise<HotUpdaterHttpSession>;
 }
 
-const resolveArtifactUrl = (baseURL: string, value: string): string => {
-  if (/^https?:\/\//i.test(value)) {
-    try {
-      new URL(value);
-    } catch (error) {
-      throw new InvalidUpdateResponseError(`Invalid artifact URL: ${value}`, {
-        cause: error,
-      });
-    }
-    return value;
-  }
-  if (!value.startsWith("/storage/")) {
+/** A URL the device downloads from: the server returns each one absolute. */
+const requireArtifactUrl = (value: string): string => {
+  if (!/^https?:\/\//i.test(value)) {
     throw new InvalidUpdateResponseError(
-      "Artifact URLs must be absolute HTTP(S) URLs or client-relative storage paths.",
+      "Artifact URLs must be absolute HTTP(S) URLs.",
     );
   }
-  return `${baseURL}/${value.slice(1)}`;
+  try {
+    new URL(value);
+  } catch (error) {
+    throw new InvalidUpdateResponseError(`Invalid artifact URL: ${value}`, {
+      cause: error,
+    });
+  }
+  return value;
 };
 
-const resolveArtifactUrls = (
-  baseURL: string,
-  info: ArtifactInfo,
-): ArtifactInfo => ({
-  ...info,
-  manifestUrl: resolveArtifactUrl(baseURL, info.manifestUrl),
-  ...(info.archiveUrl
-    ? { archiveUrl: resolveArtifactUrl(baseURL, info.archiveUrl) }
-    : {}),
-  assets: Object.fromEntries(
-    Object.entries(info.assets).map(([path, asset]) => [
-      path,
-      {
-        ...asset,
-        file: {
-          ...asset.file,
-          url: resolveArtifactUrl(baseURL, asset.file.url),
-        },
-        ...(asset.patch
-          ? {
-              patch: {
-                ...asset.patch,
-                patchUrl: resolveArtifactUrl(baseURL, asset.patch.patchUrl),
-              },
-            }
-          : {}),
-      },
-    ]),
-  ),
-});
+const requireArtifactUrls = (info: ArtifactInfo): ArtifactInfo => {
+  requireArtifactUrl(info.manifestUrl);
+  if (info.archiveUrl) requireArtifactUrl(info.archiveUrl);
+  for (const asset of Object.values(info.assets)) {
+    requireArtifactUrl(asset.file.url);
+    if (asset.patch) requireArtifactUrl(asset.patch.patchUrl);
+  }
+  return info;
+};
 
 const requireArtifactProtocolV1 = (info: ArtifactInfo): ArtifactInfo => {
   if (
@@ -176,7 +153,7 @@ const createSession = (
       }
       throw error;
     }
-    return resolveArtifactUrls(baseURL, requireArtifactProtocolV1(info));
+    return requireArtifactUrls(requireArtifactProtocolV1(info));
   },
 });
 

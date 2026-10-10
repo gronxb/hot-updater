@@ -62,7 +62,7 @@ import {
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { appendToProjectRootGitignore, getLatestGitCommit } from "@/utils/git";
-import { loadServer, requireStorage } from "@/utils/loadServer";
+import { loadServer } from "@/utils/loadServer";
 import { printBanner } from "@/utils/printBanner";
 import { validateSigningConfig } from "@/utils/signing/validateSigningConfig";
 import { getDefaultTargetAppVersion } from "@/utils/version/getDefaultTargetAppVersion";
@@ -1268,7 +1268,7 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   };
 
   try {
-    const storageAdapter = requireStorage(server);
+    const storageAdapter = server.storage;
     const rolloutPercentage = normalizeRolloutPercentage(options.rollout);
     // The schema fence (and a self-hosted server's admin protocol) is
     // checked before anything is built or uploaded.

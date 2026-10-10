@@ -104,7 +104,6 @@ describe("Release JSX runtime", () => {
       storagePort: 3003,
       token: "unused",
       storagePassword: "unused",
-      signingKey: "unused",
       env: { NODE_ENV: "development", BABEL_ENV: "development" },
     });
     expect(transformRoute(profile.env)).toEqual({

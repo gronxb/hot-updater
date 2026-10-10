@@ -100,7 +100,11 @@ export const createMeasuredDatabase = async <
   });
   const hotUpdater = createHotUpdater({
     database,
-    storage: options.storage === undefined ? [] : [storageOf(options.storage)],
+    storage:
+      options.storage === undefined
+        ? // Owns no URI, so reads that resolve one fail.
+          { name: "measuredStorage", protocol: "none" }
+        : storageOf(options.storage),
     plugins: observed,
     ...(plugins.some((plugin) => plugin.provides?.clientAuth === true)
       ? {}

@@ -5,6 +5,7 @@ import {
   setupDatabaseTestSuite,
   startHttpTestServer,
   insightsTestSuite,
+  createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
 
 import { mockDatabase } from "../mockDatabase";
@@ -39,6 +40,7 @@ setupDatabaseTestSuite({
         createInsightsModel(
           createHotUpdater({
             database,
+            storage: createReleaseCatalogTestStorage(),
             plugins: [insights()],
             clientAccess: "public",
           }).api.insights,

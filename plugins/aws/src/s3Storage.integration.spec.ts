@@ -115,7 +115,6 @@ setupStorageAdapterTestSuite({
         basePath,
         bucketName: BUCKET,
         credentials,
-        downloadUrlSigningKey: "test-signing-key",
         endpoint,
         forcePathStyle: true,
         region: REGION,
@@ -133,4 +132,6 @@ setupStorageAdapterTestSuite({
     "listObjects",
     "deleteObjects",
   ],
+  // LocalStack answers the presigned URLs.
+  fetchDownloadUrls: true,
 });

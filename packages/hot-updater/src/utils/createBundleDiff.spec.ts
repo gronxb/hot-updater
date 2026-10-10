@@ -19,6 +19,7 @@ import {
 } from "@hot-updater/plugin-core";
 import type { Bundle, BundleManifest } from "@hot-updater/protocol";
 import { createHotUpdater } from "@hot-updater/server";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createBundleDiff, decompressBrotliBytes } from "./createBundleDiff";
@@ -110,6 +111,7 @@ const createCore = async (
 ): Promise<HotUpdaterCoreApi> => {
   const { core } = createHotUpdater({
     database: { name: "memory", adapter },
+    storage: createReleaseCatalogTestStorage(),
     clientAccess: "public",
   });
   for (const bundle of bundles)

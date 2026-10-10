@@ -21,7 +21,6 @@ import {
   type RunInitOptions,
   resolvePackageVersion,
   transformEnv,
-  writeHotUpdaterConfig,
   writeHotUpdaterFiles,
 } from "@hot-updater/cli-tools";
 import type { PluginClientPlugin } from "@hot-updater/plugin-core";
@@ -72,53 +71,6 @@ const SUPABASE_STORAGE_READINESS_MAX_ATTEMPTS = 60 * 5;
 const SUPABASE_STORAGE_READINESS_POLL_INTERVAL_MS = 1000;
 const SUPABASE_SCHEMA_READINESS_MAX_ATTEMPTS = 60;
 const SUPABASE_SCHEMA_READINESS_POLL_INTERVAL_MS = 1000;
-const LEGACY_SUPABASE_CATALOG_CDN_URL_ENV_KEY =
-  "HOT_UPDATER_SUPABASE_CATALOG_CDN_URL";
-export const getLegacySupabaseConfigReference = (configText: string) => {
-  if (configText.includes("HOT_UPDATER_SUPABASE_ANON_KEY")) {
-    return "HOT_UPDATER_SUPABASE_ANON_KEY";
-  }
-
-  if (/\bsupabaseAnonKey\s*:/.test(configText)) {
-    return "supabaseAnonKey";
-  }
-
-  return null;
-};
-
-const assertSkippedConfigDoesNotUseLegacySupabaseKey = async (
-  configWriteResult: Awaited<ReturnType<typeof writeHotUpdaterConfig>>,
-) => {
-  if (configWriteResult.status !== "skipped") {
-    return;
-  }
-
-  const configText = await fs
-    .readFile(configWriteResult.path, "utf-8")
-    .catch((error) => {
-      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
-        return null;
-      }
-
-      throw error;
-    });
-
-  const legacyReference =
-    configText === null ? null : getLegacySupabaseConfigReference(configText);
-
-  if (!legacyReference) {
-    return;
-  }
-
-  p.log.error(
-    `Existing '${configWriteResult.path}' still references '${legacyReference}'.`,
-  );
-  p.log.message(
-    "Update it to use 'supabaseServiceRoleKey' with " +
-      "'HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY', then run init again.",
-  );
-  process.exit(1);
-};
 
 /** The Edge Function URL an app sets as its baseURL. */
 export const getSupabaseFunctionUrl = ({
@@ -1133,15 +1085,9 @@ const runInitWithoutCliMetadata = async ({
       providerEnv[SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY] = project.id;
     }
     await makeEnv(providerEnv, ".env.hotupdater", {
-      removeKeys: [
-        LEGACY_SUPABASE_CATALOG_CDN_URL_ENV_KEY,
-        ...(persistDatabasePassword
-          ? []
-          : [
-              databasePasswordKey,
-              SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
-            ]),
-      ],
+      removeKeys: persistDatabasePassword
+        ? []
+        : [databasePasswordKey, SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY],
     });
 
     const bucket = await createSelectedBucket(
@@ -1191,11 +1137,10 @@ const runInitWithoutCliMetadata = async ({
   }
 
   p.log.success("Generated '.env.hotupdater' file with Supabase settings.");
-  const files = await writeHotUpdaterFiles(getConfigScaffold(build), {
+  await writeHotUpdaterFiles(getConfigScaffold(build), {
     cwd: process.cwd(),
     settings: "Supabase",
   });
-  await assertSkippedConfigDoesNotUseLegacySupabaseKey(files.config);
 
   printAppSetup({
     ...(build.clientModule ? { sdkModule: build.clientModule } : {}),

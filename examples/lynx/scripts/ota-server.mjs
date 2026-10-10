@@ -112,7 +112,7 @@ await postgres.waitReady;
 const database = new Kysely({ dialect: new PGliteDialect(postgres) });
 const hotUpdater = createHotUpdater({
   database: kyselyAdapter({ db: database, provider: "postgresql" }),
-  storage: [storage],
+  storage,
   clientAccess: "public",
 });
 await (

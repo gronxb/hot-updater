@@ -3,6 +3,7 @@ import {
   createMemoryAdapter,
   type DatabaseAdapter,
 } from "@hot-updater/plugin-core";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "../../index";
@@ -19,6 +20,7 @@ const EVENT_BODY_MAX_BYTES = 16 * 1_024;
 const start = () =>
   createHotUpdater({
     database: createRuntimeDatabase(),
+    storage: createReleaseCatalogTestStorage(),
     plugins: [insights()],
     clientAccess: "public",
   });
@@ -312,6 +314,7 @@ describe("createHotUpdater Insights", () => {
     const error = vi.spyOn(console, "error").mockImplementation(() => {});
     const unmigrated = createHotUpdater({
       database: await createFencedDatabase("kysely"),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [insights()],
       clientAccess: "public",
     });
@@ -320,6 +323,7 @@ describe("createHotUpdater Insights", () => {
         "kysely",
         toolingTargetOf([insights()]).settings,
       ),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [insights()],
       clientAccess: "public",
     });
@@ -969,6 +973,7 @@ describe("createHotUpdater Insights", () => {
           name: "testDatabase",
           adapter: { ...createMemoryAdapter(), ...overrides },
         },
+        storage: createReleaseCatalogTestStorage(),
         plugins: [insights()],
         clientAccess: "public",
       }).handlers.client(eventRequest());

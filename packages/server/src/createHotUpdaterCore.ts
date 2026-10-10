@@ -47,10 +47,10 @@ export type RuntimeHotUpdaterAPI<
     readonly AnyHotUpdaterPlugin[],
 > = {
   /**
-   * The routes a host mounts. On first access every storage adapter must
-   * serve downloads (`get` and `getDownloadUrl`), so a server fails where it
+   * The routes a host mounts. On first access the storage must serve
+   * downloads (`get` and `getDownloadUrl`), so a server fails where it
    * mounts them, while tooling that only reads the definition, such as the
-   * CLI, can list storage that only uploads.
+   * CLI, can configure storage that only uploads.
    */
   readonly handlers: HotUpdaterHandlers;
   /**
@@ -77,8 +77,8 @@ export type RuntimeHotUpdaterAPI<
    * closes it (`dispose`).
    */
   readonly database: ToolingDatabase;
-  /** The storage as configured, in order, as a frozen copy. */
-  readonly storage: readonly StorageAdapter[];
+  /** The storage as configured. */
+  readonly storage: StorageAdapter;
   /** The plugins as configured, as a frozen copy, whose tables tooling creates. */
   readonly plugins: TPlugins;
   /**
@@ -97,21 +97,8 @@ export type RuntimeHotUpdaterAPI<
 
 export type HotUpdaterAPI = RuntimeHotUpdaterAPI;
 
-const REMOVED_CLIENT_ACCESS =
-  'clientAccess objects were removed in 1.0: set clientAccess: "public", or add a plugin that provides clientAuth';
-
-/**
- * A `clientAccess` object from before 1.0. Its `type` names the fix, so
- * TypeScript reports it where the object is written.
- */
-export interface RemovedClientAccess {
-  readonly type: typeof REMOVED_CLIENT_ACCESS;
-  readonly headerName?: string;
-}
-
-export type ClientAccessPolicy =
-  /** Leaves client routes public; required when no plugin provides clientAuth. */
-  "public" | RemovedClientAccess;
+/** Leaves client routes public; required when no plugin provides clientAuth. */
+export type ClientAccessPolicy = "public";
 
 type ProvidesClientAuth<TPlugin> = TPlugin extends {
   readonly provides?: infer TProvides;
@@ -175,10 +162,11 @@ export type CreateHotUpdaterOptions<
   /** A provider's database on the storage engine, such as `kyselyAdapter(...)` or `postgres(...)`. */
   readonly database: ToolingDatabase;
   /**
-   * Where bundles are stored: the server reads and signs the URIs of each
-   * adapter's protocol.
+   * Where bundles are stored, the same adapter `hot-updater.config.ts`
+   * uploads with: the server reads the URIs of its protocol and returns
+   * their download URLs.
    */
-  readonly storage?: readonly StorageAdapter[];
+  readonly storage: StorageAdapter;
   /** The plugins the server runs; at most one provides clientAuth. Defaults to none. */
   readonly plugins?: TPlugins;
 } & ClientAccessRule<TPlugins>;
@@ -207,14 +195,26 @@ const databaseOf = (value: unknown): ToolingDatabase => {
   );
 };
 
-/** `"public"`, or nothing; a `clientAccess` object says what replaced it. */
+/** The configured storage, when it is a storage adapter. */
+const storageOf = (value: unknown): StorageAdapter => {
+  if (
+    isRecord(value) &&
+    typeof value.name === "string" &&
+    typeof value.protocol === "string"
+  ) {
+    return value as unknown as StorageAdapter;
+  }
+  throw new HotUpdaterConfigError(
+    "storage must be a storage adapter, such as s3Storage(...): the one hot-updater.config.ts uploads with.",
+  );
+};
+
+/** `"public"`, or nothing. */
 const isPublic = (value: unknown): boolean => {
   if (value === undefined) return false;
   if (value === "public") return true;
   throw new HotUpdaterConfigError(
-    isRecord(value)
-      ? 'clientAccess objects were removed in 1.0. Set clientAccess: "public", or add a plugin that provides clientAuth to plugins.'
-      : 'clientAccess must be "public"; to protect client routes, add a plugin that provides clientAuth to plugins.',
+    'clientAccess must be "public"; to protect client routes, add a plugin that provides clientAuth to plugins.',
   );
 };
 
@@ -223,22 +223,14 @@ export function createHotUpdater<
 >(
   options: CreateHotUpdaterOptions<TPlugins>,
 ): RuntimeHotUpdaterAPI<NoInfer<TPlugins>> {
-  for (const key of ["authorityId", "catalogId"]) {
-    if (Object.hasOwn(options, key)) {
-      throw new TypeError(
-        `Remove ${key} from createHotUpdater options. Catalog identity is managed internally.`,
-      );
-    }
-  }
   const database = databaseOf(options.database);
-  // Copies, so changing the arrays passed in can't make the definition list
-  // other storage or plugins than the ones it runs.
-  const storage = Object.freeze([...(options.storage ?? [])]);
-  const { downloadStorageObject, readStorageText, resolveFileUrl } =
-    createStorageAccess(storage);
+  const storage = storageOf(options.storage);
+  const { readStorageText, resolveFileUrl } = createStorageAccess(storage);
   const publicClients = isPublic(
     (options as { readonly clientAccess?: unknown }).clientAccess,
   );
+  // A copy, so changing the array passed in can't make the definition list
+  // other plugins than the ones it runs.
   const configured = Object.freeze([
     ...(options.plugins ?? []),
   ]) as unknown as TPlugins;
@@ -270,7 +262,6 @@ export function createHotUpdater<
   const handlers = createHotUpdaterHandlers({
     api: { core: plugins.core },
     ...(clientPolicy === undefined ? {} : { clientPolicy }),
-    downloadStorageObject,
     endpoints: plugins.endpoints,
     plugins: Object.keys(plugins.api),
   });
@@ -280,9 +271,7 @@ export function createHotUpdater<
     adapterName: database.name,
     get handlers(): HotUpdaterHandlers {
       if (!serving) {
-        for (const adapter of storage) {
-          assertStorageOperations(adapter, ["get", "getDownloadUrl"]);
-        }
+        assertStorageOperations(storage, ["get", "getDownloadUrl"]);
         serving = true;
       }
       return handlers;

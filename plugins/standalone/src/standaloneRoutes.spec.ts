@@ -31,7 +31,7 @@ describe("standalone admin routes", () => {
   ] as const)("encodes bundle IDs for %s", async (operation, method) => {
     const fetch = vi.fn(async (input: string | URL, _init?: RequestInit) =>
       String(input).endsWith("/version")
-        ? Response.json({ adminProtocol: 2 })
+        ? Response.json({ adminProtocol: 2, plugins: [] })
         : operation === "getBundle"
           ? new Response(null, { status: 404 })
           : new Response(null, { status: 204 }),

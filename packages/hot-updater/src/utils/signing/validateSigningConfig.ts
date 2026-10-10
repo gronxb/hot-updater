@@ -226,7 +226,7 @@ export async function validateSigningConfig(
         code: "ORPHAN_PUBLIC_KEY",
         message: usesBuildPluginConfig
           ? "Signing is disabled but the build plugin resolved a native public key. The native app will reject unsigned updates."
-          : "Signing is disabled but com.hotupdater.PUBLIC_KEY exists in AndroidManifest.xml or legacy strings.xml. This will cause OTA updates to be rejected.",
+          : "Signing is disabled but com.hotupdater.PUBLIC_KEY exists in AndroidManifest.xml. This will cause OTA updates to be rejected.",
         resolution: usesBuildPluginConfig
           ? "Enable signing in hot-updater.config.ts, or remove the key from the native build configuration and rebuild the app."
           : "Run `npx hot-updater keys remove` to remove public keys, or enable signing in hot-updater.config.ts",

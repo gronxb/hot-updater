@@ -36,6 +36,19 @@ export function planAndroidReverses(env: NodeJS.ProcessEnv): ReverseMapping[] {
       tcpPort(env.HOT_UPDATER_E2E_ANDROID_REVERSE_HOST_PORT ?? appPort),
     );
   }
+  // Presigned download URLs send the device to the local profile's S3.
+  if (env.AWS_S3_ENDPOINT !== undefined) {
+    const storageUrl = new URL(env.AWS_S3_ENDPOINT);
+    if (
+      storageUrl.hostname === "localhost" ||
+      storageUrl.hostname === "127.0.0.1"
+    ) {
+      const storagePort = tcpPort(
+        storageUrl.port || (storageUrl.protocol === "https:" ? "443" : "80"),
+      );
+      expected.set(storagePort, storagePort);
+    }
+  }
   const controlDevice = tcpPort(
     env.HOT_UPDATER_E2E_ANDROID_CONTROL_DEVICE_PORT ?? "3107",
   );

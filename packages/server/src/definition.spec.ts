@@ -6,7 +6,10 @@ import {
   type Deployment,
 } from "@hot-updater/plugin-core";
 import { NIL_UUID } from "@hot-updater/protocol";
-import { createBundleFixture } from "@hot-updater/test-utils";
+import {
+  createBundleFixture,
+  createReleaseCatalogTestStorage,
+} from "@hot-updater/test-utils";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createHotUpdater } from "./createHotUpdaterCore";
@@ -84,18 +87,17 @@ afterEach(() => {
 describe("a server definition", () => {
   it("exposes the database, storage, and plugins as configured", () => {
     const database = { name: "memory", adapter: createMemoryAdapter() };
-    const storage = [uploads];
     const plugins = [insights(), notes] as const;
 
     const hotUpdater = createHotUpdater({
       database,
-      storage,
+      storage: uploads,
       plugins,
       clientAccess: "public",
     });
 
     expect(hotUpdater.database).toBe(database);
-    expect(hotUpdater.storage).toEqual([uploads]);
+    expect(hotUpdater.storage).toBe(uploads);
     expect(hotUpdater.plugins).toEqual(plugins);
     // What init prints for the app, each once.
     expect(hotUpdater.clientPlugins).toEqual([
@@ -109,21 +111,19 @@ describe("a server definition", () => {
     ]);
     expect(hotUpdater.clientAuth).toBeUndefined();
 
-    // Frozen copies: changing the arrays passed in changes nothing it lists.
-    storage.push(uploads);
+    // A frozen copy: changing the array passed in changes nothing it lists.
     (plugins as unknown as unknown[]).pop();
-    expect(hotUpdater.storage).toEqual([uploads]);
     expect(hotUpdater.plugins.map(({ id }) => id)).toEqual([
       "insights",
       "notes",
     ]);
-    expect(Object.isFrozen(hotUpdater.storage)).toBe(true);
     expect(Object.isFrozen(hotUpdater.plugins)).toBe(true);
   });
 
   it("names the plugin that guards client routes and the headers its decision reads, lowercase", () => {
     const hotUpdater = createHotUpdater({
       database: { name: "memory", adapter: createMemoryAdapter() },
+      storage: createReleaseCatalogTestStorage(),
       plugins: [apiKeys({ headerName: "X-Hot-Updater-Key" })],
     });
 
@@ -149,6 +149,7 @@ describe("a server definition", () => {
           adapter,
           ...(aggregateBatching === undefined ? {} : { aggregateBatching }),
         },
+        storage: createReleaseCatalogTestStorage(),
         plugins: [insights(), apiKeys()],
       });
     }
@@ -161,12 +162,18 @@ describe("a server definition", () => {
       name: "memory",
       adapter: createMemoryAdapter(),
     });
-    await createMigrator(createHotUpdater({ database, clientAccess: "public" }))
+    await createMigrator(
+      createHotUpdater({
+        database,
+        storage: createReleaseCatalogTestStorage(),
+        clientAccess: "public",
+      }),
+    )
       .migrateToLatest({ mode: "from-schema", updateSettings: true })
       .then((result) => result.execute());
     const hotUpdater = createHotUpdater({
       database,
-      storage: [uploads],
+      storage: uploads,
       plugins: [insights()],
       clientAccess: "public",
     });
@@ -215,6 +222,7 @@ describe("a server definition", () => {
           },
         },
       }),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [insights()],
       clientAccess: "public",
     });
@@ -224,6 +232,7 @@ describe("a server definition", () => {
         name: "memory",
         adapter: { ...memory, prune },
       }),
+      storage: createReleaseCatalogTestStorage(),
       plugins: [insights()],
       clientAccess: "public",
     });

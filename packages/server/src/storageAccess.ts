@@ -1,12 +1,16 @@
 import {
   MAX_BUNDLE_MANIFEST_BYTES,
-  parseStorageDownloadPath,
   type StorageAdapter,
 } from "@hot-updater/plugin-core";
 
 import { readBoundedResponseBytes } from "./boundedResponseBody";
 
 const assertRemoteUrl = (value: string) => {
+  if (!/^https?:\/\//i.test(value)) {
+    throw new Error(
+      "Storage getDownloadUrl must resolve to an absolute HTTP(S) URL.",
+    );
+  }
   const match =
     /^https?:\/\/(\[[0-9a-f:.]+\]|[A-Za-z0-9.-]+)(?::([0-9]{1,5}))?(?:[/?#].*)?$/i.exec(
       value,
@@ -33,42 +37,13 @@ const getStorageProtocol = (storageUri: string) =>
 const isRemoteUrlProtocol = (protocol: string) =>
   protocol === "http" || protocol === "https";
 
-const resolveDownloadPath = (value: string, storageUri: string) => {
-  const parsed = parseStorageDownloadPath(value);
-  if (!parsed || parsed.storageUri !== storageUri) {
-    throw new Error(
-      "Storage getDownloadUrl must return an HTTP(S) URL or a valid storage download path.",
-    );
-  }
-  return value;
-};
-
-const tokensEqual = (left: string, right: string) => {
-  const leftBytes = new TextEncoder().encode(left);
-  const rightBytes = new TextEncoder().encode(right);
-  let difference = leftBytes.length ^ rightBytes.length;
-  const length = Math.max(leftBytes.length, rightBytes.length);
-  for (let index = 0; index < length; index += 1) {
-    difference |= (leftBytes[index] ?? 0) ^ (rightBytes[index] ?? 0);
-  }
-  return difference === 0;
-};
-
-export const createStorageAccess = (
-  storageAdapters: readonly StorageAdapter[],
-) => {
-  const protocols = new Set<string>();
-  for (const storage of storageAdapters) {
-    if (protocols.has(storage.protocol)) {
-      throw new Error(
-        `Multiple storage adapters handle protocol: ${storage.protocol}`,
-      );
-    }
-    protocols.add(storage.protocol);
-  }
-
+/**
+ * Reads and download URLs over the server's storage, for the URIs of its
+ * protocol; an HTTP(S) URI is used as it is.
+ */
+export const createStorageAccess = (storageAdapter: StorageAdapter) => {
   const findStorage = (protocol: string) =>
-    storageAdapters.find((item) => item.protocol === protocol);
+    storageAdapter.protocol === protocol ? storageAdapter : undefined;
 
   const readStorageResponse = async (
     storageUri: string,
@@ -108,12 +83,7 @@ export const createStorageAccess = (
     // Nor a URL to sign.
     if (!storage.getDownloadUrl) return null;
     const { url: downloadUrl } = await storage.getDownloadUrl({ storageUri });
-    try {
-      return assertRemoteUrl(downloadUrl);
-    } catch (error) {
-      if (/^[a-z][a-z\d+.-]*:/i.test(downloadUrl)) throw error;
-    }
-    return resolveDownloadPath(downloadUrl, storageUri);
+    return assertRemoteUrl(downloadUrl);
   };
 
   const readStorageText = async (
@@ -127,40 +97,7 @@ export const createStorageAccess = (
       : null;
   };
 
-  const downloadStorageObject = storageAdapters.some(
-    (storage) => storage.getDownloadUrl !== undefined,
-  )
-    ? async (
-        storageUriToken: string,
-        encodedSignature: string,
-      ): Promise<Response | null> => {
-        const requestedPath = `/storage/${storageUriToken}/${encodedSignature}`;
-        const requested = parseStorageDownloadPath(requestedPath);
-        if (!requested) return null;
-        let storage: StorageAdapter | undefined;
-        try {
-          storage = findStorage(getStorageProtocol(requested.storageUri));
-        } catch {
-          return null;
-        }
-        if (!storage?.getDownloadUrl || !storage.get) return null;
-        const { url: downloadUrl } = await storage.getDownloadUrl({
-          storageUri: requested.storageUri,
-        });
-        try {
-          new URL(downloadUrl);
-          return null;
-        } catch {
-          if (/^[a-z][a-z\d+.-]*:/i.test(downloadUrl)) return null;
-        }
-        if (!tokensEqual(downloadUrl, requestedPath)) return null;
-        return (await storage.get({ storageUri: requested.storageUri }))
-          .response;
-      }
-    : undefined;
-
   return {
-    downloadStorageObject,
     readStorageText,
     resolveFileUrl,
   };

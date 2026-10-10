@@ -21,6 +21,7 @@ import {
   type RemoteConfigApi,
   type RemoteConfigTemplate,
 } from "@hot-updater/server/plugins";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -97,7 +98,11 @@ const configure = (config: {
   readonly database?: EngineDatabase | RemoteDatabase;
   readonly plugins?: readonly AnyHotUpdaterPlugin[];
 }) => {
-  vi.mocked(loadConfig).mockResolvedValue({ plugins: [], ...config } as never);
+  vi.mocked(loadConfig).mockResolvedValue({
+    plugins: [],
+    storage: createReleaseCatalogTestStorage(),
+    ...config,
+  } as never);
 };
 
 /** remoteConfig()'s API over the configured database's tables, to seed and read them. */
@@ -150,6 +155,7 @@ const standaloneServer = (plugins: readonly AnyHotUpdaterPlugin[]) => {
   const serverDatabase = createDatabase();
   const hotUpdater = createHotUpdater({
     database: serverDatabase,
+    storage: createReleaseCatalogTestStorage(),
     plugins: [...plugins],
     ...(plugins.some(({ provides }) => provides?.clientAuth)
       ? {}
@@ -497,6 +503,7 @@ describe("hot-updater remote-config over a server definition", () => {
     const definitionDatabase = createDatabase();
     const hotUpdater = createHotUpdater({
       database: definitionDatabase,
+      storage: createReleaseCatalogTestStorage(),
       plugins: [remoteConfig()],
       clientAccess: "public",
     });

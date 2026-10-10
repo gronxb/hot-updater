@@ -7,7 +7,10 @@ import {
   HotUpdaterSchemaMigrationRequiredError,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { createBundleFixture } from "@hot-updater/test-utils";
+import {
+  createBundleFixture,
+  createReleaseCatalogTestStorage,
+} from "@hot-updater/test-utils";
 import { describe, expect, it } from "vitest";
 
 import { createD1Database } from "./d1Executor";
@@ -62,6 +65,7 @@ describe("d1 schema", () => {
     const db = new DatabaseSync(":memory:");
     const core = createHotUpdater({
       database: sqliteD1(db),
+      storage: createReleaseCatalogTestStorage(),
       clientAccess: "public",
     }).core;
     await expect(core.listChannels()).rejects.toBeInstanceOf(

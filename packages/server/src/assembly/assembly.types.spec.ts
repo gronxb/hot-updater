@@ -1,4 +1,5 @@
 import { defineTable } from "@hot-updater/plugin-core";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { describe, expectTypeOf, it } from "vitest";
 
 import {
@@ -6,7 +7,6 @@ import {
   type ClientAccessRule,
   createHotUpdater,
   type CreateHotUpdaterOptions,
-  type RemovedClientAccess,
 } from "../createHotUpdaterCore";
 import { definePlugin } from "../plugins/definePlugin";
 
@@ -73,35 +73,64 @@ describe("createHotUpdater types", () => {
 
   it("accepts exactly one policy source", () => {
     typeOnly((database) => {
-      createHotUpdater({ database, plugins: [notes, keys] });
-      createHotUpdater({ database, plugins: [notes], clientAccess: "public" });
-      createHotUpdater({ database, clientAccess: "public" });
-      // @ts-expect-error Neither a clientAuth plugin nor "public".
-      createHotUpdater({ database, plugins: [notes] });
       createHotUpdater({
         database,
+        storage: createReleaseCatalogTestStorage(),
+        plugins: [notes, keys],
+      });
+      createHotUpdater({
+        database,
+        storage: createReleaseCatalogTestStorage(),
+        plugins: [notes],
+        clientAccess: "public",
+      });
+      createHotUpdater({
+        database,
+        storage: createReleaseCatalogTestStorage(),
+        clientAccess: "public",
+      });
+      // @ts-expect-error Neither a clientAuth plugin nor "public".
+      createHotUpdater({
+        database,
+        storage: createReleaseCatalogTestStorage(),
+        plugins: [notes],
+      });
+      createHotUpdater({
+        database,
+        storage: createReleaseCatalogTestStorage(),
         plugins: [keys],
         // @ts-expect-error clientAuth and "public" together.
         clientAccess: "public",
       });
       // @ts-expect-error Two plugins provide clientAuth.
-      createHotUpdater({ database, plugins: [keys, sso] });
+      createHotUpdater({
+        database,
+        storage: createReleaseCatalogTestStorage(),
+        plugins: [keys, sso],
+      });
     });
   });
 
-  it("says what replaced a clientAccess object from before 1.0 where it is written", () => {
-    expectTypeOf<ClientAccessPolicy>().toEqualTypeOf<
-      "public" | RemovedClientAccess
-    >();
-    expectTypeOf<
-      RemovedClientAccess["type"]
-    >().toEqualTypeOf<'clientAccess objects were removed in 1.0: set clientAccess: "public", or add a plugin that provides clientAuth'>();
+  it("requires storage", () => {
     typeOnly((database) => {
-      // @ts-expect-error clientAccess objects were removed in 1.0.
-      createHotUpdater({ database, clientAccess: { type: "public" } });
+      // @ts-expect-error storage is required.
+      createHotUpdater({ database, clientAccess: "public" });
+    });
+  });
+
+  it("takes only public as clientAccess", () => {
+    expectTypeOf<ClientAccessPolicy>().toEqualTypeOf<"public">();
+    typeOnly((database) => {
       createHotUpdater({
         database,
-        // @ts-expect-error clientAccess objects were removed in 1.0.
+        storage: createReleaseCatalogTestStorage(),
+        // @ts-expect-error clientAccess is "public" or absent.
+        clientAccess: { type: "public" },
+      });
+      createHotUpdater({
+        database,
+        storage: createReleaseCatalogTestStorage(),
+        // @ts-expect-error clientAccess is "public" or absent.
         clientAccess: { type: "api-key", headerName: "x-client-key" },
       });
     });
@@ -118,6 +147,7 @@ describe("createHotUpdater types", () => {
     typeOnly((database) => {
       createHotUpdater({
         database,
+        storage: createReleaseCatalogTestStorage(),
         // @ts-expect-error Core is built in; it is not a plugin.
         plugins: [core],
       });

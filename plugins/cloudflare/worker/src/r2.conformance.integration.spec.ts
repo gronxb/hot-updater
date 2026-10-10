@@ -29,7 +29,11 @@ setupStorageAdapterTestSuite({
         basePath,
         bucket: env.BUCKET,
         bucketName: env.BUCKET_NAME,
-        downloadUrlSigningKey: env.STORAGE_DOWNLOAD_URL_SIGNING_KEY,
+        accountId: env.ACCOUNT_ID,
+        credentials: {
+          accessKeyId: env.R2_ACCESS_KEY_ID,
+          secretAccessKey: env.R2_SECRET_ACCESS_KEY,
+        },
       }),
       basePath,
       cleanup: () => deleteBelow(basePath),
