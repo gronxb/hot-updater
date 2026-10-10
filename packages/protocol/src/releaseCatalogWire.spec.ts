@@ -46,8 +46,7 @@ const catalog: ReleaseCatalog = {
     {
       ...descriptor,
       releaseId: "01906c0c-5f14-7000-8000-000000000003",
-      kind: "EMBEDDED",
-      bundleId: null,
+      bundleId: "01906c0c-5f14-7000-8000-000000000004",
       rolloutCohortCount: 0,
     },
   ],
@@ -78,8 +77,8 @@ describe("parseReleaseCatalog", () => {
       { releases: [{ ...descriptor, bundleId: null }] },
     ],
     [
-      "an embedded release with an artifact ID",
-      { releases: [{ ...descriptor, kind: "EMBEDDED" }] },
+      "a release kind other than BUNDLE",
+      { releases: [{ ...descriptor, kind: "BUILTIN" as never }] },
     ],
     [
       "a cohort rollout above the client range",

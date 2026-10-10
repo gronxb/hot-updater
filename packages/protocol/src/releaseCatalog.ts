@@ -14,7 +14,7 @@ export const MAX_TARGET_COHORTS_PER_RELEASE = 100;
 export const MAX_DISTINCT_TARGET_COHORTS_PER_SCOPE = 512;
 export const MAX_COMPILED_CATALOG_BYTES = 256 * 1024;
 
-export type ReleaseKind = "BUNDLE" | "EMBEDDED";
+export type ReleaseKind = "BUNDLE";
 export type ReleaseStrategy = "APP_VERSION" | "FINGERPRINT";
 export type ReleaseOperation = "DEPLOY" | "PROMOTE" | "ROLLBACK";
 export type SelectionKind = ReleaseKind | "BUILTIN";
@@ -181,20 +181,13 @@ export function selectDesiredRelease(
 
   const isSafeBundleRelease = (
     release: ReleaseCatalogDescriptor,
-  ): release is ReleaseCatalogDescriptor & {
-    readonly kind: "BUNDLE";
-    readonly bundleId: string;
-  } =>
-    release.kind === "BUNDLE" &&
+  ): release is ReleaseCatalogDescriptor & { readonly bundleId: string } =>
     release.bundleId !== null &&
     !crashedBundleIds.has(release.bundleId) &&
     release.bundleId >= input.minimumReleaseId;
 
   const desiredBundle = (
-    release: ReleaseCatalogDescriptor & {
-      readonly kind: "BUNDLE";
-      readonly bundleId: string;
-    },
+    release: ReleaseCatalogDescriptor & { readonly bundleId: string },
     status: "UPDATE" | "ROLLBACK",
   ): DesiredRelease => ({
     bundleId: release.bundleId,
@@ -222,18 +215,6 @@ export function selectDesiredRelease(
     if (isSafeBundleRelease(release)) {
       return desiredBundle(release, "UPDATE");
     }
-
-    if (release.bundleId !== null) {
-      continue;
-    }
-
-    return {
-      bundleId: input.builtInBundleId,
-      kind: "EMBEDDED",
-      release,
-      releaseId: release.releaseId,
-      status: "ROLLBACK",
-    };
   }
 
   if (activeReleaseId !== null || hasActiveBundle) {

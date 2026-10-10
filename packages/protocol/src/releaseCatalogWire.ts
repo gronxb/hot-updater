@@ -63,10 +63,8 @@ const isValidReleaseDescriptor = (value: unknown): boolean => {
 
   return (
     isUUIDv7(descriptor.releaseId) &&
-    (descriptor.kind === "BUNDLE" || descriptor.kind === "EMBEDDED") &&
-    ((descriptor.kind === "BUNDLE" &&
-      typeof descriptor.bundleId === "string") ||
-      (descriptor.kind === "EMBEDDED" && descriptor.bundleId === null)) &&
+    descriptor.kind === "BUNDLE" &&
+    typeof descriptor.bundleId === "string" &&
     Number.isSafeInteger(descriptor.rolloutCohortCount) &&
     (descriptor.rolloutCohortCount as number) >= 0 &&
     (descriptor.rolloutCohortCount as number) <= NUMERIC_COHORT_SIZE &&

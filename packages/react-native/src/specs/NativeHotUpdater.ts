@@ -96,7 +96,7 @@ export interface Spec extends TurboModule {
   /** Rechecks generation/context immediately before a catalog side effect. */
   isReleaseSelectionCurrent(params: UnsafeObject): boolean;
 
-  /** Atomically commits a metadata-only, EMBEDDED, or BUILTIN selection. */
+  /** Atomically commits a metadata-only or BUILTIN selection. */
   commitReleaseSelection(params: UnsafeObject): Promise<boolean>;
 
   /**

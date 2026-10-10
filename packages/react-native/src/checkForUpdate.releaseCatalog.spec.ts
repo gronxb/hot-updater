@@ -608,64 +608,55 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
   });
 
-  it.each(["EMBEDDED", "BUILTIN"] as const)(
-    "returns a forced %s rollback with its console ID or built-in fallback",
-    async (kind) => {
-      const active: PersistedSelectionReceipt = {
-        catalogId: CATALOG_ID,
-        bundleId: CURRENT_BUNDLE_ID,
-        catalogHash: `sha256:${"b".repeat(64)}`,
-        channel: CHANNEL,
-        generation: 1,
-        kind: "BUNDLE",
-        releaseId: MINIMUM_RELEASE_ID,
-        scopeKey: SCOPE_KEY,
-        selectionContextHash: "old-context",
-      };
-      mocks.getActiveUpdateState.mockReturnValueOnce({
-        activeSelection: active,
-        highestSeenCatalogs: {},
-        stableSelection: active,
-        verificationPending: false,
-      });
-      const { checkForUpdate } = await import("./checkForUpdate");
-      const { client, resolveArtifact } = createClient(
-        createCatalog({
-          releases:
-            kind === "EMBEDDED"
-              ? [{ ...createCatalog().releases[0]!, kind, bundleId: null }]
-              : [],
-          rollbackReleases: [],
-        }),
-      );
+  it("returns a forced BUILTIN rollback with the built-in bundle's ID", async () => {
+    const active: PersistedSelectionReceipt = {
+      catalogId: CATALOG_ID,
+      bundleId: CURRENT_BUNDLE_ID,
+      catalogHash: `sha256:${"b".repeat(64)}`,
+      channel: CHANNEL,
+      generation: 1,
+      kind: "BUNDLE",
+      releaseId: MINIMUM_RELEASE_ID,
+      scopeKey: SCOPE_KEY,
+      selectionContextHash: "old-context",
+    };
+    mocks.getActiveUpdateState.mockReturnValueOnce({
+      activeSelection: active,
+      highestSeenCatalogs: {},
+      stableSelection: active,
+      verificationPending: false,
+    });
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client, resolveArtifact } = createClient(
+      createCatalog({ releases: [], rollbackReleases: [] }),
+    );
 
-      const result = await checkForUpdate({
-        emit,
-        client,
-        updateStrategy: "appVersion",
-      });
+    const result = await checkForUpdate({
+      emit,
+      client,
+      updateStrategy: "appVersion",
+    });
 
-      expect(result).toMatchObject({
-        id: kind === "EMBEDDED" ? RELEASE_ID : MINIMUM_RELEASE_ID,
-        releaseId: kind === "EMBEDDED" ? RELEASE_ID : null,
-        shouldForceUpdate: true,
-        status: "ROLLBACK",
-        transitionKind: kind === "EMBEDDED" ? "USE_EMBEDDED" : "USE_BUILTIN",
-      });
-      await expect(result?.updateBundle()).resolves.toBe(true);
-      expect(mocks.commitReleaseSelection).toHaveBeenCalledWith(
-        expect.objectContaining({
-          selection: expect.objectContaining({
-            bundleId: MINIMUM_RELEASE_ID,
-            kind,
-            releaseId: kind === "EMBEDDED" ? RELEASE_ID : null,
-          }),
+    expect(result).toMatchObject({
+      id: MINIMUM_RELEASE_ID,
+      releaseId: null,
+      shouldForceUpdate: true,
+      status: "ROLLBACK",
+      transitionKind: "USE_BUILTIN",
+    });
+    await expect(result?.updateBundle()).resolves.toBe(true);
+    expect(mocks.commitReleaseSelection).toHaveBeenCalledWith(
+      expect.objectContaining({
+        selection: expect.objectContaining({
+          bundleId: MINIMUM_RELEASE_ID,
+          kind: "BUILTIN",
+          releaseId: null,
         }),
-      );
-      expect(resolveArtifact).not.toHaveBeenCalled();
-      expect(mocks.stageBundle).not.toHaveBeenCalled();
-    },
-  );
+      }),
+    );
+    expect(resolveArtifact).not.toHaveBeenCalled();
+    expect(mocks.stageBundle).not.toHaveBeenCalled();
+  });
 
   it("does not surface a rollback when the app already uses built-in bytes", async () => {
     mocks.getBundleId.mockReturnValueOnce(MINIMUM_RELEASE_ID);

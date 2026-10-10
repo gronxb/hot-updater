@@ -115,9 +115,9 @@ protocol v1 artifact lazily when needed.
 | `rolloutCohortCount` | `number` | Numeric cohort count selected by the Release policy. |
 | `targetCohorts` | `string[]` | Explicit cohort targets in that policy. |
 | `releaseId` | `string \| null \| undefined` | Release identifier when present. |
-| `transitionKind` | `"INSTALL" \| "ADOPT_RELEASE" \| "USE_EMBEDDED" \| "USE_BUILTIN" \| undefined` | How the selected transition will be applied. |
+| `transitionKind` | `"INSTALL" \| "ADOPT_RELEASE" \| "USE_BUILTIN" \| undefined` | How the selected transition will be applied. |
 | `updateBundle` | `() => Promise<boolean>` | Stage or commit this selection; resolves with whether it succeeded. |
 
 A different Release can reference the same artifact. `ADOPT_RELEASE` commits
 that policy selection without downloading the artifact or forcing a reload.
-The built-in and embedded transitions also do not require an artifact download.
+The built-in transition also does not require an artifact download.

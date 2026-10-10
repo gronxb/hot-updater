@@ -318,11 +318,9 @@ async function checkForReleaseCatalogUpdate(input: {
   const transitionKind: ReleaseTransitionKind =
     desired.kind === "BUILTIN"
       ? "USE_BUILTIN"
-      : desired.kind === "EMBEDDED"
-        ? "USE_EMBEDDED"
-        : active?.bundleId === desired.bundleId
-          ? "ADOPT_RELEASE"
-          : "INSTALL";
+      : active?.bundleId === desired.bundleId
+        ? "ADOPT_RELEASE"
+        : "INSTALL";
   const guard = {
     catalogId,
     catalogHash: catalog.catalogHash,

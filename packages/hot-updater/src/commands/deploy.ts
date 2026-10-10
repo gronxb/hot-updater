@@ -478,7 +478,7 @@ const resolveCommittedDeployments = (
 
   for (const commit of commitResults) {
     const release = commit.release;
-    if (release === null || release.kind !== "BUNDLE" || !release.bundle_id) {
+    if (release === null || !release.bundle_id) {
       throw new Error(
         "Deployment commit result did not contain a Bundle Release.",
       );

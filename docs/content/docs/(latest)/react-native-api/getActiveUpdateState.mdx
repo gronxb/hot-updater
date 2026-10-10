@@ -25,7 +25,7 @@ console.log({
 
 ```ts
 type Selection = {
-  readonly kind: "BUNDLE" | "EMBEDDED" | "BUILTIN";
+  readonly kind: "BUNDLE" | "BUILTIN";
   readonly releaseId: string | null;
   readonly bundleId: string;
   readonly channel: string;
@@ -48,9 +48,8 @@ getActiveUpdateState(): Promise<ActiveUpdateState>
 
 A selection's `releaseId` identifies delivery policy and matches the Console's
 update ID when present. For `kind: "BUNDLE"`, `bundleId` is the artifact ID.
-`EMBEDDED` selects the native app's built-in bundle through a Release;
-`BUILTIN` selects that bundle as a fallback without a Release. Those two kinds
-use the native build's bundle identifier.
+`BUILTIN` selects the native app's built-in bundle as a fallback without a
+Release; its `bundleId` is the native build's bundle identifier.
 
 This method reads local state and does not make a network request. It does not
 reload, acknowledge readiness, or subscribe to changes. Read it again when you

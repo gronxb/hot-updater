@@ -197,12 +197,12 @@ describe("notifyAppReady", () => {
     expect(getManifest().bundleId).toBe("running-file");
   });
 
-  it("reports an explicit built-in rollback by its update ID", async () => {
+  it("reports the built-in bundle after a built-in rollback", async () => {
     nativeModuleMock.getActiveUpdateState.mockReturnValue(
       JSON.stringify({
         activeSelection: {
-          kind: "EMBEDDED",
-          releaseId: "rollback-1",
+          kind: "BUILTIN",
+          releaseId: null,
           bundleId: "min-bundle-id",
         },
       }),
@@ -210,7 +210,7 @@ describe("notifyAppReady", () => {
     nativeModuleMock.getBundleId.mockReturnValue(null);
     const { getUpdateId, getBundleId } = await import("./native");
 
-    expect(getUpdateId()).toBe("rollback-1");
+    expect(getUpdateId()).toBe("min-bundle-id");
     expect(getBundleId()).toBe("min-bundle-id");
   });
 
