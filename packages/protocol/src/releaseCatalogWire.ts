@@ -123,9 +123,8 @@ export const parseReleaseCatalog = (
       catalog.fallbackPolicy !== RELEASE_CATALOG_FALLBACK_POLICY ||
       !Array.isArray(catalog.releases) ||
       !catalog.releases.every(isValidReleaseDescriptor) ||
-      (catalog.rollbackReleases !== undefined &&
-        (!Array.isArray(catalog.rollbackReleases) ||
-          !catalog.rollbackReleases.every(isValidReleaseDescriptor)))
+      !Array.isArray(catalog.rollbackReleases) ||
+      !catalog.rollbackReleases.every(isValidReleaseDescriptor)
     ) {
       return null;
     }
@@ -135,7 +134,7 @@ export const parseReleaseCatalog = (
       return null;
     }
     const distinctTargetCohorts = new Set(
-      [...catalog.releases, ...(catalog.rollbackReleases ?? [])].flatMap(
+      [...catalog.releases, ...catalog.rollbackReleases].flatMap(
         (release) => release.targetCohorts,
       ),
     );

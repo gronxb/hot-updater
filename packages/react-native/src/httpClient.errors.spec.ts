@@ -84,6 +84,7 @@ describe.each(["catalog", "artifact"] as const)(
               fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
               generation: 1,
               releases: [],
+              rollbackReleases: [],
               schemaVersion: 1,
               scopeKey: createReleaseCatalogScopeKey({
                 channelKey: "cHJvZHVjdGlvbg",

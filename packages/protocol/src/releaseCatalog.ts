@@ -63,7 +63,7 @@ export interface ReleaseCatalog {
    * Enabled compatible Releases ordered newest first, where a device keeps its
    * active Release or rolls back to the newest Release before it.
    */
-  readonly rollbackReleases?: readonly ReleaseCatalogDescriptor[];
+  readonly rollbackReleases: readonly ReleaseCatalogDescriptor[];
 }
 
 export interface CatalogHighWater {
@@ -237,7 +237,7 @@ export function selectDesiredRelease(
   }
 
   if (activeReleaseId !== null || hasActiveBundle) {
-    const rollbackReleases = catalog.rollbackReleases ?? catalog.releases;
+    const { rollbackReleases } = catalog;
     const current = rollbackReleases.find(
       (release) =>
         release.releaseId === activeReleaseId ||

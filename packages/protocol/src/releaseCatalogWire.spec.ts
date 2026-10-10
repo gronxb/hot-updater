@@ -68,6 +68,7 @@ describe("parseReleaseCatalog", () => {
     ["a zero generation", { generation: 0 }],
     ["an unsafe generation", { generation: Number.MAX_SAFE_INTEGER + 1 }],
     ["another fallback policy", { fallbackPolicy: "NONE" as never }],
+    ["no rollback releases", { rollbackReleases: undefined as never }],
     [
       "an invalid release ID",
       { releases: [{ ...descriptor, releaseId: "test-release" }] },

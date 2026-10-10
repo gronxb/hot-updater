@@ -710,14 +710,14 @@ export function projectCompiledRollbackCatalog(
 ): readonly ReleaseCatalogDescriptor[] {
   let indexes: readonly number[];
   if (catalog.strategy === "FINGERPRINT") {
-    indexes = catalog.rollbackReleaseIndexes ?? catalog.releaseIndexes;
+    indexes = catalog.rollbackReleaseIndexes;
   } else {
     const canonicalVersion = appVersion && canonicalizeAppVersion(appVersion);
     if (!canonicalVersion) return [];
-    const segment = catalog.segments.find((candidate) =>
-      versionInSegment(canonicalVersion, candidate),
-    );
-    indexes = segment?.rollbackReleaseIndexes ?? segment?.releaseIndexes ?? [];
+    indexes =
+      catalog.segments.find((segment) =>
+        versionInSegment(canonicalVersion, segment),
+      )?.rollbackReleaseIndexes ?? [];
   }
   return indexes.map((index) => catalog.releaseDescriptors[index]!);
 }

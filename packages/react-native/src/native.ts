@@ -325,18 +325,6 @@ export interface ReleaseSelectionGuard {
   readonly channel: string;
 }
 
-const requireReleaseCatalogNativeMethod = <T extends (...args: any[]) => any>(
-  name: string,
-): T => {
-  const method = (HotUpdaterNative as unknown as Record<string, unknown>)[name];
-  if (typeof method !== "function") {
-    throw new Error(
-      `[HotUpdater] Native module is missing '${name}()'. Rebuild the native app before using Release catalogs.`,
-    );
-  }
-  return method.bind(HotUpdaterNative) as T;
-};
-
 export const acceptReleaseCatalog = (input: {
   readonly catalogId: string;
   readonly scopeKey: string;
@@ -344,15 +332,10 @@ export const acceptReleaseCatalog = (input: {
   readonly catalogHash: string;
   readonly channel: string;
   readonly selectionContextHash: string;
-}): boolean =>
-  requireReleaseCatalogNativeMethod<(params: object) => boolean>(
-    "acceptReleaseCatalog",
-  )(input);
+}): boolean => HotUpdaterNative.acceptReleaseCatalog(input);
 
 export const getActiveUpdateState = (): InternalActiveUpdateState => {
-  const value = requireReleaseCatalogNativeMethod<() => unknown>(
-    "getActiveUpdateState",
-  )();
+  const value: unknown = HotUpdaterNative.getActiveUpdateState();
   if (typeof value === "string") {
     return JSON.parse(value) as InternalActiveUpdateState;
   }
@@ -381,18 +364,13 @@ export const getPublicActiveUpdateState = (): ActiveUpdateState => {
 
 export const isReleaseSelectionCurrent = (
   input: ReleaseSelectionGuard,
-): boolean =>
-  requireReleaseCatalogNativeMethod<(params: object) => boolean>(
-    "isReleaseSelectionCurrent",
-  )(input);
+): boolean => HotUpdaterNative.isReleaseSelectionCurrent(input);
 
 export const commitReleaseSelection = async (input: {
   readonly selection: PersistedSelectionReceipt;
   readonly guard: ReleaseSelectionGuard;
 }): Promise<boolean> => {
-  const ok = await requireReleaseCatalogNativeMethod<
-    (params: object) => Promise<boolean>
-  >("commitReleaseSelection")(input);
+  const ok = await HotUpdaterNative.commitReleaseSelection(input);
   if (ok)
     sessionState.markBundleInstalled(
       input.selection.bundleId,
@@ -696,44 +674,17 @@ export const getFingerprintHash = (): string | null => {
   return constants.FINGERPRINT_HASH ?? null;
 };
 
-export const getInstallId = (): string => {
-  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
-    getInstallId?: () => string;
-  };
-
-  if (typeof nativeModule.getInstallId !== "function") {
-    throw new Error(
-      "[HotUpdater] Native module is missing 'getInstallId()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.",
-    );
-  }
-
-  return nativeModule.getInstallId();
-};
-
-const requireStorageNativeMethod = <T extends (...args: any[]) => any>(
-  name: "getStorageItem" | "setStorageItem",
-): T => {
-  const method = (HotUpdaterNative as unknown as Record<string, unknown>)[name];
-  if (typeof method !== "function") {
-    throw new Error(
-      `[HotUpdater] Native module is missing '${name}()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.`,
-    );
-  }
-  return method.bind(HotUpdaterNative) as T;
-};
+export const getInstallId = (): string => HotUpdaterNative.getInstallId();
 
 /** Reads a value from the SDK's native key-value store. */
 export const getStorageItem = (key: string): string | null => {
-  const value =
-    requireStorageNativeMethod<(key: string) => unknown>("getStorageItem")(key);
+  const value: unknown = HotUpdaterNative.getStorageItem(key);
   return typeof value === "string" ? value : null;
 };
 
 /** Writes a value to the SDK's native key-value store; null removes it. */
 export const setStorageItem = (key: string, value: string | null): void => {
-  requireStorageNativeMethod<(key: string, value: string | null) => void>(
-    "setStorageItem",
-  )(key, value);
+  HotUpdaterNative.setStorageItem(key, value);
 };
 
 /**

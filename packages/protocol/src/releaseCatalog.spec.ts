@@ -40,6 +40,7 @@ const catalog = (
   fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
   generation: 10,
   releases,
+  rollbackReleases: releases,
   schemaVersion: 1,
   scopeKey: "v1:app-version:ios:production",
   ...overrides,

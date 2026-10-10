@@ -65,12 +65,8 @@ vi.mock("./native", () => mocks);
 
 const createCatalog = (
   overrides: Partial<ReleaseCatalog> = {},
-): ReleaseCatalog => ({
-  catalogId: CATALOG_ID,
-  catalogHash: CATALOG_HASH,
-  fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
-  generation: 2,
-  releases: [
+): ReleaseCatalog => {
+  const releases = overrides.releases ?? [
     {
       bundleId: TARGET_BUNDLE_ID,
       kind: "BUNDLE",
@@ -80,11 +76,19 @@ const createCatalog = (
       shouldForceUpdate: false,
       targetCohorts: [],
     },
-  ],
-  schemaVersion: 1,
-  scopeKey: SCOPE_KEY,
-  ...overrides,
-});
+  ];
+  return {
+    catalogId: CATALOG_ID,
+    catalogHash: CATALOG_HASH,
+    fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
+    generation: 2,
+    releases,
+    rollbackReleases: releases,
+    schemaVersion: 1,
+    scopeKey: SCOPE_KEY,
+    ...overrides,
+  };
+};
 
 const createClient = (catalog = createCatalog()) => {
   const fetchReleaseCatalog = vi.fn(async () => catalog);

@@ -1,5 +1,5 @@
 import { INVALID_COHORT_ERROR_MESSAGE } from "@hot-updater/protocol";
-import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const nativeModuleMock = vi.hoisted(() => {
   const getManifest = vi.fn<() => Record<string, unknown> | string>();
@@ -851,24 +851,6 @@ describe("notifyAppReady", () => {
     expect(getFingerprintHash()).toBeNull();
   });
 
-  it("throws when native SDK does not expose getInstallId", async () => {
-    const nativeModule = nativeModuleMock as typeof nativeModuleMock & {
-      getInstallId?: typeof nativeModuleMock.getInstallId;
-    };
-    const originalGetInstallId = nativeModule.getInstallId;
-    nativeModule.getInstallId = null as unknown as Mock<() => string>;
-
-    try {
-      const { getInstallId } = await import("./native");
-
-      expect(() => getInstallId()).toThrow(
-        "Native module is missing 'getInstallId()'",
-      );
-    } finally {
-      nativeModule.getInstallId = originalGetInstallId;
-    }
-  });
-
   it("reads and writes the native key-value store", async () => {
     nativeModuleMock.getStorageItem.mockImplementation((key) =>
       key === "plugins/example/state" ? "stored" : null,
@@ -891,27 +873,6 @@ describe("notifyAppReady", () => {
       null,
     );
   });
-
-  it.each(["getStorageItem", "setStorageItem"] as const)(
-    "throws when native SDK does not expose %s",
-    async (name) => {
-      const nativeModule = nativeModuleMock as Record<string, unknown>;
-      const original = nativeModule[name];
-      nativeModule[name] = undefined;
-
-      try {
-        const { getStorageItem, setStorageItem } = await import("./native");
-
-        expect(() =>
-          name === "getStorageItem"
-            ? getStorageItem("key")
-            : setStorageItem("key", "value"),
-        ).toThrow(`Native module is missing '${name}()'`);
-      } finally {
-        nativeModule[name] = original;
-      }
-    },
-  );
 
   it("returns the cohort reported by native", async () => {
     nativeModuleMock.getCohort.mockReturnValue("qa-group");
