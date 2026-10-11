@@ -85,10 +85,10 @@ android {
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_1_8
-        targetCompatibility JavaVersion.VERSION_1_8
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
     }
-    kotlinOptions { jvmTarget = '1.8' }
+    kotlinOptions { jvmTarget = '17' }
     testOptions { unitTests.includeAndroidResources = true }
     sourceSets.main.java.srcDir(
         new File(navigationRoot, 'android/src/main/java'),
@@ -170,8 +170,14 @@ def verifySparklingAndroidArtifacts = tasks.register(
             }
         }
         def graphEdges = []
-        sparklingTransitiveGraph.incoming.resolutionResult.allComponents.each {
+        def resolution = sparklingTransitiveGraph.incoming.resolutionResult
+        def rootId = resolution.root.id
+        resolution.allComponents.each {
             component ->
+            // Keep the reference SDK root identity across Gradle versions and host project names.
+            def source = component.id == rootId
+                ? 'project :hot-updater-lynx-sparkling'
+                : component.id.displayName
             component.dependencies.each { dependency ->
                 if (!(dependency instanceof org.gradle.api.artifacts.result.ResolvedDependencyResult)) {
                     throw new GradleException(
@@ -179,7 +185,7 @@ def verifySparklingAndroidArtifacts = tasks.register(
                     )
                 }
                 graphEdges << (
-                    "${component.id.displayName} -> ${dependency.requested.displayName} " +
+                    "${source} -> ${dependency.requested.displayName} " +
                         "=> ${dependency.selected.id.displayName}"
                 )
             }

@@ -10,6 +10,9 @@ when changing the engine version; an OTA bundle cannot upgrade the native engine
 
 ## Native Android containers
 
+The Android SDK and Sparkling host use Java and Kotlin JVM target 17. Build
+with JDK 17 or later.
+
 After normal Lynx initialization, use `HotUpdaterLynxHost` to mount managed
 LynxViews without Sparkling. Give it the same native artifact configuration as
 other entry points, with `pageHostMode = LynxPageHostMode.MOUNTED`.
