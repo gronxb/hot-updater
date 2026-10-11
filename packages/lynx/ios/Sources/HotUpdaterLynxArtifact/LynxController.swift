@@ -1586,6 +1586,22 @@ public final class LynxController {
         return (state.mountedPages ?? []).map(LynxManagedLogicalPage.init)
     }
 
+    /// Persists native placement while an earlier container is still awaiting admission.
+    public func declareSecondary(_ page: LynxManagedLogicalPage, primary context: LynxLaunchContext) throws {
+        lock.lock(); defer { lock.unlock() }
+        try validate(context, primaryRequired: true)
+        guard mountedHost, !readinessAuthorityRevoked,
+              runningArtifact.pageEntries.contains(page.entry) else {
+            throw LynxArtifactError.invalid("Only a live mounted host can declare a known secondary page")
+        }
+        var next = state
+        let pages = (next.mountedPages ?? []) + [page.stored]
+        try lynxValidateLogicalPages(pages, mode: .mounted)
+        next.mountedPages = pages
+        next.revision = UUID().uuidString
+        try save(next)
+    }
+
     /// Removes this exact native mount without truncating other live or pending pages.
     public func unmountSecondary(_ context: LynxLaunchContext) throws {
         var deliveries: [CallbackDelivery] = []

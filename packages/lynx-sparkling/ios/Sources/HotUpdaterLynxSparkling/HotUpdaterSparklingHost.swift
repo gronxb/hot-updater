@@ -32,13 +32,10 @@ public struct HotUpdaterSparklingConfiguration {
             "manifest.json"
         )
         let metadata = try JSONDecoder().decode(
-            EmbeddedMetadata.self,
+            SparklingEmbeddedMetadata.self,
             from: Data(contentsOf: metadataURL)
         )
-        guard metadata.schemaVersion == 1,
-              metadata.runtimeId == runtimeId,
-              metadata.platform == "ios",
-              metadata.bundleId == embeddedBundleId else {
+        guard metadata.isCompatible(runtimeId: runtimeId, bundleId: embeddedBundleId) else {
             throw HotUpdaterSparklingError.invalidEmbeddedArtifact
         }
         let manifest = try Data(contentsOf: manifestURL)
@@ -104,13 +101,6 @@ public enum HotUpdaterSparklingError: LocalizedError {
             return "Managed Lynx generation reconstruction failed: \(message)"
         }
     }
-}
-
-private struct EmbeddedMetadata: Decodable {
-    let schemaVersion: Int
-    let bundleId: String
-    let platform: String
-    let runtimeId: String
 }
 
 /** Owns one real full-page Sparkling navigation stack and its generation. */

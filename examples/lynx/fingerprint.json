@@ -1,6 +1,6 @@
 {
   "ios": {
-    "hash": "da9e2e253c3dc588a0ee1c16587f75f8cfe06f4b642822a1feda65a26304426a",
+    "hash": "5b8e014d9f9ceec53eeb1ce2c005a5fef0ddd820ee760c81b41b8fa9394a08c8",
     "sources": [
       {
         "type": "file",
@@ -30,9 +30,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "89c245e9a5815fc54e6a24b353b1baa1682747109d33215c67fab05c8695ce3b",
+        "hash": "09d1162c3893683d773f0677d04a725d86be654a43ed13634a17beec68e57702",
         "debugInfo": {
-          "byteSize": 77255
+          "byteSize": 77015
         }
       },
       {
@@ -66,6 +66,17 @@
         "hash": "9d1ee852056e4403fef13c80376d7d72d0c678f9487370e75d1331347e57a83b",
         "debugInfo": {
           "byteSize": 1705
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx-sparkling/ios/Sources/HotUpdaterLynxSparklingCore/SparklingEmbeddedMetadata.swift",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "3f93b5f80b469a284aba211c90507656930b444c1219bb7b9f055e8d9a0853ef",
+        "debugInfo": {
+          "byteSize": 487
         }
       },
       {
@@ -239,9 +250,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "448f0d95b5e7c99975f64a6410e4837b26ae35017f589e69c7a9bc50c6c9d416",
+        "hash": "d9b3062c0ac37351e08be198c8a9a44a888344f709f27716ae19f323f7023401",
         "debugInfo": {
-          "byteSize": 91482
+          "byteSize": 92275
         }
       },
       {
