@@ -1,0 +1,6 @@
+{
+  "title": "Database Adapters",
+  "description": "ORMs and database drivers for Hot Updater",
+  "icon": "Database",
+  "pages": ["sql-export", "drizzle", "prisma", "kysely", "mongodb", "s3"]
+}

@@ -1,0 +1,25 @@
+{
+  "title": "React Native API",
+  "description": "React Native client-side integration",
+  "icon": "Smartphone",
+  "pages": [
+    "wrap",
+    "init",
+    "checkForUpdate",
+    "updateBundle",
+    "reload",
+    "setReloadBehavior",
+    "getChannel",
+    "getDefaultChannel",
+    "getCohort",
+    "setCohort",
+    "isChannelSwitched",
+    "resetChannel",
+    "getAppVersion",
+    "useHotUpdaterStore",
+    "addListener",
+    "isUpdateDownloaded",
+    "getCrashHistory",
+    "clearCrashHistory"
+  ]
+}

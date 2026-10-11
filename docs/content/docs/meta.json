@@ -1,7 +1,5 @@
 {
   "title": "Documentation",
   "description": "Hot Updater documentation",
-  "pages": [
-    "...(latest)"
-  ]
+  "pages": ["(latest)", "v0"]
 }

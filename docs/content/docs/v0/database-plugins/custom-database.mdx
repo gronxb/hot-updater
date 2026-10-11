@@ -1,0 +1,273 @@
+---
+title: "Custom Database Plugin"
+description: Create your own database plugin for any database provider
+icon: Hammer
+---
+
+## Installation
+
+```package-install
+npm install @hot-updater/plugin-core
+```
+
+## Overview
+
+Use `createDatabasePlugin` to build and configure a plugin for your database provider.
+
+## Creating a Database Plugin
+
+Use `createDatabasePlugin` to build custom database plugins:
+
+```typescript
+import { createDatabasePlugin } from "@hot-updater/plugin-core";
+
+export const myDatabase = createDatabasePlugin<MyConfig>({
+  name: "myDatabase",              // Plugin identifier
+  factory: (config) => ({
+    // Return these required methods:
+    getBundleById: async (bundleId) => { /* ... */ },
+    getBundles: async (options) => ({ data: [], pagination: {} }),
+    getChannels: async () => [],
+    commitBundle: async ({ changedSets }) => { /* ... */ },
+    onUnmount: async () => { /* optional cleanup */ }
+  })
+});
+```
+
+### Factory Function Return Type
+
+Your factory function must return an object with these methods:
+
+```typescript
+{
+  // Fetch single bundle by ID
+  getBundleById: (bundleId: string) => Promise<Bundle | null>;
+
+  // Optional but recommended: direct update-check fast path
+  getUpdateInfo?: (args: GetBundlesArgs) => Promise<UpdateInfo | null>;
+
+  // Fetch paginated bundles with optional filtering
+  getBundles: (
+    options: DatabaseBundleQueryOptions & { offset?: number },
+  ) => Promise<Paginated<Bundle[]>>;
+
+  // Get all available channels
+  getChannels: () => Promise<string[]>;
+
+  // Commit all pending changes (batch operation)
+  commitBundle: (params: {
+    changedSets: {
+      operation: "insert" | "update" | "delete";
+      data: Bundle;
+    }[];
+  }) => Promise<void>;
+
+  // Optional: cleanup resources on unmount
+  onUnmount?: () => Promise<void>;
+}
+```
+
+Implement `getUpdateInfo` whenever your backend can answer update checks
+without scanning the full management list. This is especially important for
+blob/object-storage plugins, where the hot path should read only the manifest
+objects needed for the request.
+
+The factory does not need to implement `updateBundle`, `appendBundle`, or `deleteBundle`. `createDatabasePlugin` generates and tracks these internally.
+
+## Implementation Example
+
+This custom database plugin uses a REST API:
+
+```typescript title="customDatabase.ts"
+import {
+  type Bundle,
+  type DatabaseBundleQueryOptions,
+  type Paginated,
+  createDatabasePlugin,
+} from "@hot-updater/plugin-core";
+
+export interface CustomDatabaseConfig {
+  baseUrl: string;
+  apiKey: string;
+}
+
+export const customDatabase = createDatabasePlugin<CustomDatabaseConfig>({
+  name: "customDatabase",
+  factory: (config) => {
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${config.apiKey}`,
+    };
+
+    return {
+      async getBundleById(bundleId) {
+        const response = await fetch(
+          `${config.baseUrl}/bundles/${bundleId}`,
+          { headers }
+        );
+
+        if (!response.ok) {
+          if (response.status === 404) return null;
+          throw new Error(`Failed to fetch bundle: ${response.statusText}`);
+        }
+
+        return response.json();
+      },
+
+      async getBundles(
+        options: DatabaseBundleQueryOptions & { offset?: number },
+      ): Promise<Paginated<Bundle[]>> {
+        const params = new URLSearchParams({
+          limit: String(options.limit),
+        });
+
+        if (options.offset !== undefined) {
+          params.set("offset", String(options.offset));
+        }
+        if (options.where !== undefined) {
+          params.set("where", JSON.stringify(options.where));
+        }
+        if (options.orderBy !== undefined) {
+          params.set("orderBy", JSON.stringify(options.orderBy));
+        }
+
+        const response = await fetch(
+          `${config.baseUrl}/bundles?${params}`,
+          { headers }
+        );
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch bundles: ${response.statusText}`);
+        }
+
+        const result = await response.json();
+        return {
+          data: result.data,
+          pagination: result.pagination,
+        };
+      },
+
+      async getChannels() {
+        const response = await fetch(`${config.baseUrl}/channels`, {
+          headers,
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to fetch channels: ${response.statusText}`);
+        }
+
+        return response.json();
+      },
+
+      async commitBundle({ changedSets }) {
+        // Process all changes in batch
+        for (const change of changedSets) {
+          if (change.operation === "insert" || change.operation === "update") {
+            await fetch(`${config.baseUrl}/bundles`, {
+              method: "POST",
+              headers,
+              body: JSON.stringify(change.data),
+            });
+          } else if (change.operation === "delete") {
+            await fetch(`${config.baseUrl}/bundles/${change.data.id}`, {
+              method: "DELETE",
+              headers,
+            });
+          }
+        }
+      },
+
+      async onUnmount() {
+        // Optional: cleanup resources, close connections, etc.
+        console.log("Database plugin unmounted");
+      },
+    };
+  },
+});
+```
+
+The `createDatabasePlugin` fallback resolves cursor requests into `where.id`,
+`orderBy`, and the internal `offset` before calling the provider. The REST
+service must parse `where` and `orderBy`, apply all filters and ordering, and
+only then apply `offset` and `limit`.
+
+## Helper Utilities
+
+The `@hot-updater/plugin-core` package provides helper functions:
+
+### calculatePagination
+
+Generates pagination metadata for the internal offset window passed to your
+provider:
+
+```typescript
+import { calculatePagination } from "@hot-updater/plugin-core";
+
+const offset = options.offset ?? 0;
+const pagination = calculatePagination(totalCount, {
+  limit: 10,
+  offset,
+});
+// Result: { total, hasNextPage, hasPreviousPage, currentPage, totalPages }
+```
+
+## CLI Configuration
+
+Use your custom plugin in `hot-updater.config.ts`:
+
+```typescript
+import { defineConfig } from "hot-updater";
+import { customDatabase } from "./customDatabase";
+
+export default defineConfig({
+  database: customDatabase({
+    baseUrl: process.env.DATABASE_BASE_URL!,
+    apiKey: process.env.DATABASE_API_KEY!,
+  }),
+  // ... other config
+});
+```
+
+## Custom Server Usage
+
+Use your plugin with `createHotUpdater` for self-hosted servers:
+
+```typescript
+import { createHotUpdater } from "@hot-updater/server";
+import { customDatabase } from "./customDatabase";
+
+const hotUpdater = createHotUpdater({
+  database: customDatabase({
+    baseUrl: process.env.DATABASE_BASE_URL!,
+    apiKey: process.env.DATABASE_API_KEY!,
+  }),
+  // ... other options
+});
+```
+
+## Best Practices
+
+### Security
+
+- Never hardcode credentials in plugin code
+- Use environment variables for sensitive data
+- Implement proper authentication headers
+- Validate input data before storing
+
+### Performance
+
+- Prefer `getUpdateInfo` for the update-check hot path so runtime requests do
+  not fall back to wide `getBundles` scans
+- Implement efficient filtering in `getBundles`
+- Use database indexes for common queries
+- Batch operations in `commitBundle` when possible
+- Cache channel lists if they don't change frequently
+- Add deterministic I/O or query-counter tests that fail if update checks or
+  cursor-backed management reads regress into broad scans
+
+### Error Handling
+
+- Return `null` from `getBundleById` when not found (don't throw)
+- Throw descriptive errors for other failures
+- Handle network errors gracefully
+- Validate bundle data structure

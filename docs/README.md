@@ -1,9 +1,10 @@
 # Hot Updater documentation
 
-The Waku/Fumadocs site serves the current documentation, and only the current
-documentation, from `content/docs/(latest)` at `/docs/...`. There is no
-archived version and no version selector; `/docs/v0/*` redirects to the same
-path in the current docs. Change content for current behavior and keep
+The Waku/Fumadocs site serves the current documentation from
+`content/docs/(latest)` at `/docs/...`, and the frozen v0 documentation from
+`content/docs/v0` at `/docs/v0/...`. The sidebar's version selector switches
+between the two (`v1.0` and `v0.36`). Don't edit the v0 archive; change
+content for current behavior and keep
 v0-to-v1 transition instructions in `guides/upgrade-to-v1.mdx`. Current guides
 describe the stable release; do not include release-candidate setup or
 migration procedures. Use “Hot Updater” without a major-version label in

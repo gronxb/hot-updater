@@ -154,7 +154,7 @@ export function parseDocument(raw: string): DocumentData {
   };
 }
 
-export function readDocumentation(contentRoot: string) {
+export function readDocumentation(contentRoot: string, urlPrefix?: string) {
   const files: VirtualFile<{ pageData: DocumentData; metaData: MetaData }>[] =
     [];
   function walk(dir: string) {
@@ -183,7 +183,10 @@ export function readDocumentation(contentRoot: string) {
     }
   }
   walk(contentRoot);
-  const source = loader({ source: { files }, baseUrl: "/docs" });
+  const source = loader({
+    source: { files },
+    baseUrl: urlPrefix ? `/docs/${urlPrefix}` : "/docs",
+  });
   return { files, source };
 }
 
