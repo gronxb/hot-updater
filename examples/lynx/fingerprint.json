@@ -1,6 +1,6 @@
 {
   "ios": {
-    "hash": "1f27c6fe8b13e167ef2f81c84e1bea3cf0b1cac08542abb226c2bd4a7bce7019",
+    "hash": "610960b5fa0f0254b74b2cded897d46bff3ba7982acbc119bc8a22fb00dff737",
     "sources": [
       {
         "type": "file",
@@ -30,9 +30,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "78c70e9181dd561d13e8c3f3cee7406bc4e854cc715def9fd71743f1aca5e866",
+        "hash": "bbf57e7ecb695dd7b13de4f403ffcb4f8f0108c27c3b4e9ad05fbcacb4eb8ece",
         "debugInfo": {
-          "byteSize": 78753
+          "byteSize": 82966
         }
       },
       {
@@ -59,13 +59,24 @@
       },
       {
         "type": "file",
+        "filePath": "@hot-updater/lynx-sparkling/ios/Sources/HotUpdaterLynxSparkling/ManagedRuntimeRetirement.swift",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "0d97b6655d96ec53e46eb3be522106af19d1c40f8a5b1e255c317b9b78d9fb9e",
+        "debugInfo": {
+          "byteSize": 739
+        }
+      },
+      {
+        "type": "file",
         "filePath": "@hot-updater/lynx-sparkling/ios/Sources/HotUpdaterLynxSparklingCore/GenerationEventLedger.swift",
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "1bc1c478fe31e356b413025bca4db2a9d052efc072f3b8e8ceef0010ea297260",
+        "hash": "acad8eb73506533fdf48ddbde42d11ae71076172a7b5f940aeb17fde25658f4d",
         "debugInfo": {
-          "byteSize": 30781
+          "byteSize": 32126
         }
       },
       {

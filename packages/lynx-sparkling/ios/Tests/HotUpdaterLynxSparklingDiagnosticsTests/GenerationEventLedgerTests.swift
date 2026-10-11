@@ -3,6 +3,59 @@ import Foundation
 import XCTest
 
 final class GenerationEventLedgerTests: XCTestCase {
+    func testGenerationRetainsPoppedRuntimeUntilItsOwnDetach() {
+        let generation = SparklingGenerationEvents(sink: nil)
+        XCTAssertTrue(generation.runtimeCreated("main"))
+        XCTAssertTrue(generation.runtimeCreated("popped-detail"))
+        XCTAssertTrue(generation.runtimeCreated("current-detail"))
+        var releases = 0
+        XCTAssertTrue(generation.beginRetirement([:]))
+        generation.afterRuntimeRetirement { releases += 1 }
+        XCTAssertFalse(generation.runtimeCreated("late-page"))
+        XCTAssertEqual(releases, 0)
+
+        generation.runtimeDetached("main")
+        generation.runtimeDetached("current-detail")
+        generation.runtimeDetached("main")
+        generation.runtimeDetached("unrelated-generation")
+        XCTAssertEqual(releases, 0)
+        generation.runtimeDetached("popped-detail")
+        XCTAssertEqual(releases, 1)
+        generation.runtimeDetached("popped-detail")
+        XCTAssertEqual(releases, 1)
+        XCTAssertFalse(generation.beginRetirement([:]))
+    }
+
+    func testReentrantCloseWaitsForAdmittedReadAfterRuntimeDetach() throws {
+        let generation = SparklingGenerationEvents(sink: nil)
+        XCTAssertTrue(generation.runtimeCreated("main"))
+        var order: [String] = []
+        try generation.resourceOperation {
+            order.append("read-started")
+            XCTAssertTrue(generation.beginRetirement([:]))
+            generation.afterRuntimeRetirement { order.append("store-released") }
+            generation.runtimeDetached("main")
+            XCTAssertEqual(order, ["read-started"])
+            XCTAssertThrowsError(try generation.resourceOperation {})
+            order.append("read-finished")
+        }
+        XCTAssertEqual(order, ["read-started", "read-finished", "store-released"])
+    }
+
+    func testRetirementCompletesWhenRuntimeAlreadyDetachedOrNeverCreated() {
+        for didCreateRuntime in [false, true] {
+            let generation = SparklingGenerationEvents(sink: nil)
+            if didCreateRuntime {
+                XCTAssertTrue(generation.runtimeCreated("removed-page"))
+                generation.runtimeDetached("removed-page")
+            }
+            var released = false
+            XCTAssertTrue(generation.beginRetirement([:]))
+            generation.afterRuntimeRetirement { released = true }
+            XCTAssertTrue(released)
+        }
+    }
+
     func testManagedEventsPersistEightCanonicalIdentityFields() throws {
         let journal = SparklingGenerationEventJournal()
         let generation = SparklingGenerationEvents(

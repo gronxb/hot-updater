@@ -200,7 +200,8 @@ public final class HotUpdaterSparklingHost: NSObject {
                 message: error.localizedDescription,
                 failureRecorded: error is ManagedPageConstructionError
             )
-            if !closed, !pages.isEmpty { return navigation }
+            // Recovery may be waiting for a failed page's actual runtime detach.
+            if !closed { return navigation }
             failClosed(
                 reason: "initialAttachFailed",
                 message: error.localizedDescription
@@ -328,23 +329,26 @@ public final class HotUpdaterSparklingHost: NSObject {
         requireMainThread()
         guard transitionInFlight == acceptance,
               let navigationController, !closed else { return }
-        retireCurrentGeneration(reason: trigger)
-        do {
-            try startGeneration()
-            try buildStack(logical, in: navigationController)
-            transitionInFlight = nil
-            emitGenerationStarted(
-                reason: trigger,
-                transitionId: acceptance.transitionId
-            )
-        } catch {
-            recoverReconstruction(
-                logical,
-                navigation: navigationController,
-                transitionId: acceptance.transitionId,
-                message: error.localizedDescription,
-                failureRecorded: error is ManagedPageConstructionError
-            )
+        retireCurrentGeneration(reason: trigger) { [weak self] in
+            guard let self, !self.closed,
+                  self.transitionInFlight == acceptance else { return }
+            do {
+                try self.startGeneration()
+                try self.buildStack(logical, in: navigationController)
+                self.transitionInFlight = nil
+                self.emitGenerationStarted(
+                    reason: trigger,
+                    transitionId: acceptance.transitionId
+                )
+            } catch {
+                self.recoverReconstruction(
+                    logical,
+                    navigation: navigationController,
+                    transitionId: acceptance.transitionId,
+                    message: error.localizedDescription,
+                    failureRecorded: error is ManagedPageConstructionError
+                )
+            }
         }
     }
 
@@ -370,28 +374,29 @@ public final class HotUpdaterSparklingHost: NSObject {
             )
             return
         }
-        retireCurrentGeneration(reason: "recovery")
-        guard !closed else { return }
-        do {
-            try startGeneration()
-            guard controller.runningSelection.bundleId != failedSelection.bundleId
-                || controller.runningSelection.releaseId != failedSelection.releaseId else {
-                transitionInFlight = nil
-                failClosed(reason: "embeddedFailure", message: message)
-                return
+        retireCurrentGeneration(reason: "recovery") { [weak self] in
+            guard let self, !self.closed else { return }
+            do {
+                try self.startGeneration()
+                guard self.controller.runningSelection.bundleId != failedSelection.bundleId
+                    || self.controller.runningSelection.releaseId != failedSelection.releaseId else {
+                    self.transitionInFlight = nil
+                    self.failClosed(reason: "embeddedFailure", message: message)
+                    return
+                }
+                try self.buildStack(logical, in: navigation)
+                self.transitionInFlight = nil
+                self.emitGenerationStarted(
+                    reason: "recovery",
+                    transitionId: transitionId
+                )
+            } catch {
+                self.transitionInFlight = nil
+                self.failClosed(
+                    reason: "reconstructionFailed",
+                    message: error.localizedDescription
+                )
             }
-            try buildStack(logical, in: navigation)
-            transitionInFlight = nil
-            emitGenerationStarted(
-                reason: "recovery",
-                transitionId: transitionId
-            )
-        } catch {
-            transitionInFlight = nil
-            failClosed(
-                reason: "reconstructionFailed",
-                message: error.localizedDescription
-            )
         }
     }
 
@@ -467,8 +472,12 @@ public final class HotUpdaterSparklingHost: NSObject {
                 page.container,
                 animated: options.animated
             )
+            try validateActivePage(page)
             emitStack("pageOpened", page: page)
         } catch {
+            if closed {
+                navigationController.setViewControllers([], animated: false)
+            }
             throw error
         }
     }
@@ -768,6 +777,7 @@ public final class HotUpdaterSparklingHost: NSObject {
             do {
                 try activate(managed)
             } catch {
+                guard !closed else { throw error }
                 let failure = (error as? ManagedPageFailure)
                     ?? ManagedPageFailure(error: error)
                 if managed.primary {
@@ -815,6 +825,10 @@ public final class HotUpdaterSparklingHost: NSObject {
             pages.map(\.container),
             animated: false
         )
+        guard !closed else {
+            navigation.setViewControllers([], animated: false)
+            throw reloadError("STALE_CONTEXT", "The native host is closed")
+        }
         for page in pages.dropFirst() {
             emitStack("pageOpened", page: page)
         }
@@ -990,6 +1004,36 @@ public final class HotUpdaterSparklingHost: NSObject {
         sparkling.lynxModule = lynxModules
         sparkling.rawViewBuilderBlock = { raw in
             guard let builder = raw as? LynxViewBuilder else { return }
+            guard generation.runtimeCreated(context.id) else {
+                builder.enableJSRuntime = false
+                return
+            }
+            // Each page owns its context; the default serial JS runner orders
+            // replacement initialization after the previous destructor task.
+            let options = LynxBackgroundRuntimeOptions()
+            let group = LynxGroup(name: context.id)
+            options.group = group
+            builder.group = group
+            options.backgroundJsRuntimeType = builder.backgroundJsRuntimeType
+            options.enableBytecode = builder.enableBytecode
+            options.bytecodeUrl = builder.bytecodeUrl
+            options.pendingCoreJsLoad = true
+            // Attachment retains this runtime's external resource loader.
+            options.addLynxResourceProvider(
+                LYNX_PROVIDER_TYPE_EXTERNAL_JS,
+                provider: provider
+            )
+            options.addLynxResourceProvider(
+                LYNX_PROVIDER_TYPE_DYNAMIC_COMPONENT,
+                provider: provider
+            )
+            let runtime = LynxBackgroundRuntime(options: options)
+            runtime.addLifecycleClient(lifecycle)
+            runtime.add(ManagedRuntimeRetirement(
+                generation: generation,
+                contextId: context.id
+            ))
+            builder.lynxBackgroundRuntime = runtime
             builder.fetcher = provider
             builder.addLynxResourceProvider(
                 LYNX_PROVIDER_TYPE_EXTERNAL_JS,
@@ -1064,6 +1108,10 @@ public final class HotUpdaterSparklingHost: NSObject {
                 for: logical.entry
             ) ?? [],
         ]) { _, new in new })
+        guard !closed, generation === generationEvents else {
+            generationController.destroy(context)
+            throw reloadError("STALE_CONTEXT", "The native host is closed")
+        }
         return ManagedPage(
             logical: logical,
             primary: primary,
@@ -1083,6 +1131,7 @@ public final class HotUpdaterSparklingHost: NSObject {
     }
 
     private func activate(_ page: ManagedPage) throws {
+        try validateActivePage(page)
         guard let declaredResources = controller.runningArtifact.essentialResources(
             for: page.logical.entry
         ) else {
@@ -1097,8 +1146,23 @@ public final class HotUpdaterSparklingHost: NSObject {
             }
         for resource in resources {
             try page.generation.loader.resolveEssential(resource)
+            try validateActivePage(page)
         }
         page.container.loadViewIfNeeded()
+        try validateActivePage(page)
+    }
+
+    private func validateActivePage(_ page: ManagedPage) throws {
+        guard !closed, page.generation.events === generationEvents,
+              pages.contains(where: { $0 === page }) else {
+            // Closure can occur synchronously during a resource/lifecycle event,
+            // before UIKit has finished creating or publishing this view.
+            retire(page)
+            if closed {
+                navigationController?.setViewControllers([], animated: false)
+            }
+            throw reloadError("STALE_CONTEXT", "The native page was retired")
+        }
     }
 
     private func trustedURL(_ logical: LynxManagedLogicalPage) -> String {
@@ -1128,20 +1192,43 @@ public final class HotUpdaterSparklingHost: NSObject {
         }
     }
 
-    private func retireCurrentGeneration(reason: String) {
+    private func retireCurrentGeneration(
+        reason: String,
+        completion: (() -> Void)? = nil
+    ) {
         let generation = generationEvents
+        let generationController = controller
+        let navigation = navigationController
         let retired = retirementDetails(reason: reason)
-        generation.beginRetirement(retired)
-        navigationController?.setViewControllers([], animated: false)
+        guard generation.beginRetirement(retired) else { return }
+        // Revoke all pages before clearing any view can invoke native callbacks.
+        pages.reversed().forEach {
+            $0.generation.module.invalidate()
+            generationController.destroy($0.generation.context)
+        }
+        navigation?.setViewControllers([], animated: false)
         pages.reversed().forEach(retire)
         pages = []
-        try? controller.close()
-        generation.finishRetirement(retired)
+        generation.afterRuntimeRetirement {
+            let finish = {
+                try? generationController.close()
+                generation.finishRetirement(retired)
+                completion?()
+            }
+            if Thread.isMainThread {
+                finish()
+            } else {
+                DispatchQueue.main.async(execute: finish)
+            }
+        }
     }
 
     private func retire(_ page: ManagedPage) {
         page.generation.module.invalidate()
         page.generation.controller.destroy(page.generation.context)
+        if page.container.isViewLoaded {
+            (page.container.kitView as? LynxView)?.clearForDestroy()
+        }
     }
 
     private func recordGenerationFailure() throws -> Bool {
@@ -1436,8 +1523,7 @@ public final class HotUpdaterSparklingHost: NSObject {
     deinit {
         assert(Thread.isMainThread)
         if !closed {
-            pages.reversed().forEach(retire)
-            try? controller.close()
+            retireCurrentGeneration(reason: "deinit")
         }
     }
 }
@@ -1995,7 +2081,7 @@ private final class HotUpdaterSparklingResourceLoader: NSObject,
 }
 
 private final class HotUpdaterSparklingLifecycle: NSObject,
-    SPKContainerLifecycleProtocol {
+    SPKContainerLifecycleProtocol, LynxBackgroundRuntimeLifecycle {
     private let controller: LynxController
     private let context: LynxLaunchContext
     private let pageEntry: String
@@ -2111,6 +2197,14 @@ private final class HotUpdaterSparklingLifecycle: NSObject,
         _ container: SPKContainerProtocol,
         didRecieveError error: Error?
     ) {
+        receivedRuntimeError(error)
+    }
+
+    func runtime(_ runtime: LynxBackgroundRuntime, didReceiveError error: Error) {
+        receivedRuntimeError(error)
+    }
+
+    private func receivedRuntimeError(_ error: Error?) {
         guard let lynx = error as? LynxError,
               lynx.isFatal || lynx.isJSError() else {
             generation.emit("runtimeWarning", [

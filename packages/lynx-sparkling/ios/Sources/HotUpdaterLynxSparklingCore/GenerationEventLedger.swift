@@ -720,6 +720,8 @@ final class SparklingGenerationEvents {
     private var accepting = true
     private var retired = false
     private var inFlightResources = 0
+    private var runtimes: Set<String> = []
+    private var retirementCompletion: (() -> Void)?
     private var leases: [String: [String: Any]] = [:]
     private let identity: [String: Any]?
 
@@ -763,8 +765,8 @@ final class SparklingGenerationEvents {
 
     func resourceOperation<T>(_ operation: () throws -> T) throws -> T {
         lock.lock()
-        defer { lock.unlock() }
         guard accepting else {
+            lock.unlock()
             throw NSError(
                 domain: "HotUpdaterLynxSparkling",
                 code: 1,
@@ -772,8 +774,47 @@ final class SparklingGenerationEvents {
             )
         }
         inFlightResources += 1
-        defer { inFlightResources -= 1 }
+        defer {
+            inFlightResources -= 1
+            let completion = takeRetirementCompletion()
+            lock.unlock()
+            completion?()
+        }
         return try operation()
+    }
+
+    func runtimeCreated(_ contextId: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        guard accepting else { return false }
+        return runtimes.insert(contextId).inserted
+    }
+
+    func runtimeDetached(_ contextId: String) {
+        lock.lock()
+        runtimes.remove(contextId)
+        let completion = takeRetirementCompletion()
+        lock.unlock()
+        completion?()
+    }
+
+    /// Includes runtimes whose pages were removed before generation retirement.
+    func afterRuntimeRetirement(_ completion: @escaping () -> Void) {
+        lock.lock()
+        precondition(!accepting && retirementCompletion == nil)
+        retirementCompletion = completion
+        let ready = takeRetirementCompletion()
+        lock.unlock()
+        ready?()
+    }
+
+    private func takeRetirementCompletion() -> (() -> Void)? {
+        guard !accepting, runtimes.isEmpty, inFlightResources == 0 else {
+            return nil
+        }
+        let completion = retirementCompletion
+        retirementCompletion = nil
+        return completion
     }
 
     @discardableResult
@@ -824,12 +865,14 @@ final class SparklingGenerationEvents {
         return publish(name, details)
     }
 
-    func beginRetirement(_ details: [String: Any]) {
+    @discardableResult
+    func beginRetirement(_ details: [String: Any]) -> Bool {
         lock.lock()
         defer { lock.unlock() }
-        guard accepting else { return }
+        guard accepting else { return false }
         accepting = false
         publish("generationWillRetire", details)
+        return true
     }
 
     func finishRetirement(_ details: [String: Any]) {

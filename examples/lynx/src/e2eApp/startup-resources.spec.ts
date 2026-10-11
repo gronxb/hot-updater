@@ -44,7 +44,7 @@ describe("Lynx E2E startup resources", () => {
     );
   });
 
-  it("registers the managed iOS provider for external scripts and fonts", () => {
+  it("routes the attached iOS runtime and view through their managed providers", () => {
     const source = fs.readFileSync(
       path.join(
         repo,
@@ -54,13 +54,31 @@ describe("Lynx E2E startup resources", () => {
     );
     const registrations = [
       ...source.matchAll(
-        /addLynxResourceProvider\(\s*(LYNX_PROVIDER_TYPE_[A-Z_]+)/g,
+        /(options|builder)\.addLynxResourceProvider\(\s*(LYNX_PROVIDER_TYPE_[A-Z_]+),\s*provider:\s*(\w+)/g,
       ),
-    ].map((match) => match[1]);
+    ].map(([, owner, resource, provider]) => ({ owner, resource, provider }));
 
     expect(registrations).toEqual([
-      "LYNX_PROVIDER_TYPE_EXTERNAL_JS",
-      "LYNX_PROVIDER_TYPE_FONT",
+      {
+        owner: "options",
+        resource: "LYNX_PROVIDER_TYPE_EXTERNAL_JS",
+        provider: "provider",
+      },
+      {
+        owner: "options",
+        resource: "LYNX_PROVIDER_TYPE_DYNAMIC_COMPONENT",
+        provider: "provider",
+      },
+      {
+        owner: "builder",
+        resource: "LYNX_PROVIDER_TYPE_EXTERNAL_JS",
+        provider: "provider",
+      },
+      {
+        owner: "builder",
+        resource: "LYNX_PROVIDER_TYPE_FONT",
+        provider: "fontProvider",
+      },
     ]);
   });
 
