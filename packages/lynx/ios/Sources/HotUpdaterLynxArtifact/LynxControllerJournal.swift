@@ -51,7 +51,30 @@ struct LynxStoredPageParameter: Codable, Equatable {
 struct LynxStoredLogicalPage: Codable, Equatable {
     let entry: String
     let parameters: [LynxStoredPageParameter]
+    var mountId: String? = nil
 }
+
+func lynxValidateLogicalPages(_ pages: [LynxStoredLogicalPage], mode: LynxPageHostMode) throws {
+    guard !pages.isEmpty, pages.count <= lynxManagedPageStackCapacity else {
+        throw LynxArtifactError.invalid("Invalid native page membership size")
+    }
+    if mode == .stack {
+        guard pages.allSatisfy({ $0.mountId == nil }) else {
+            throw LynxArtifactError.invalid("Navigation pages cannot contain mount identities")
+        }
+        return
+    }
+    guard pages.allSatisfy({ page in
+        guard let id = page.mountId else { return false }
+        return !page.entry.isEmpty && !id.isEmpty && id.utf8.count <= 256
+            && !id.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+            && page.parameters.allSatisfy { !$0.name.isEmpty }
+            && Set(page.parameters.map(\.name)).count == page.parameters.count
+    }), Set(pages.compactMap(\.mountId)).count == pages.count else {
+        throw LynxArtifactError.invalid("Mounted pages require unique bounded native identities")
+    }
+}
+
 struct LynxControllerPendingPage: Codable {
     let attemptId: String
     let contextId: String
@@ -61,6 +84,7 @@ struct LynxControllerPendingPage: Codable {
     let startupAttemptId: String?
     let selection: LynxStoredSelection
     let stack: [LynxStoredLogicalPage]
+    var mountId: String? = nil
 }
 struct LynxControllerPageTerminal: Codable {
     let attemptId: String
@@ -77,6 +101,7 @@ struct LynxControllerPageTerminal: Codable {
     let failureCode: Int?
     let failureResourcePath: String?
     var runtimeEventEmitted: Bool?
+    var mountId: String? = nil
 
     var dictionary: [String: Any] {
         get throws {
@@ -101,8 +126,8 @@ struct LynxControllerPageTerminal: Codable {
                         ["name": $0.name, "value": $0.value]
                     }
                 },
-                "pageEntry": stack.last?.entry as Any? ?? NSNull(),
-            ]
+                "pageEntry": (mountId.flatMap { id in stack.first { $0.mountId == id } } ?? stack.last)?.entry as Any? ?? NSNull(),
+            ].merging(mountId.map { ["mountId": $0] } ?? [:]) { _, new in new }
         }
     }
 }
@@ -214,6 +239,8 @@ struct LynxInterruptedRelease: Codable, Equatable {
 
 struct LynxControllerState: Codable {
     var revision = UUID().uuidString
+    var pageHostMode: String?
+    var mountedPages: [LynxStoredLogicalPage]?
     var selectionChannel: String?
     var selectionCohort: String?
     var confirmed: LynxStoredSelection?
@@ -305,6 +332,22 @@ final class LynxControllerJournal {
         guard FileManager.default.fileExists(atPath: file.path) else { return LynxControllerState() }
         let bytes = try StrictMetadataJSON.read(file, limit: 24 * 1024 * 1024)
         let state = try JSONDecoder().decode(LynxControllerState.self, from: bytes)
+        guard let mode = LynxPageHostMode(rawValue: state.pageHostMode ?? "stack"),
+              (state.mountedPages != nil) == (mode == .mounted) else {
+            throw LynxArtifactError.invalid("Invalid native page host mode")
+        }
+        let stacks = [state.mountedPages, state.managedTransition?.stack, state.managedTerminalFailure?.stack]
+            .compactMap { $0 } + (state.pendingPages ?? []).map(\.stack)
+            + (state.pageAttemptTerminals ?? []).map(\.stack)
+        for stack in stacks { try lynxValidateLogicalPages(stack, mode: mode) }
+        for (id, stack) in (state.pendingPages ?? []).map({ ($0.mountId, $0.stack) })
+            + (state.pageAttemptTerminals ?? []).map({ ($0.mountId, $0.stack) }) {
+            guard mode == .mounted
+                ? id != nil && stack.dropFirst().contains(where: { $0.mountId == id })
+                : id == nil else {
+                throw LynxArtifactError.invalid("Invalid native page attempt mount identity")
+            }
+        }
         if let failure = state.failedEmbedded {
             let receipt = try failure.policy
             guard ["BUILTIN", "BUNDLE"].contains(receipt.kind),
@@ -343,7 +386,7 @@ final class LynxControllerJournal {
               }),
               state.incompatibleArtifacts.count <= 128, state.highWater.count <= 32, state.catalogs.count <= 32,
               (state.catalogAcceptances?.count ?? 0) <= 32,
-              (state.pendingPages?.count ?? 0) <= lynxManagedPageStackCapacity,
+              (state.pendingPages?.count ?? 0) <= (mode == .mounted ? 1 : lynxManagedPageStackCapacity),
               (state.pendingPages ?? []).allSatisfy({
                   !$0.stack.isEmpty
                       && $0.stack.count <= lynxManagedPageStackCapacity

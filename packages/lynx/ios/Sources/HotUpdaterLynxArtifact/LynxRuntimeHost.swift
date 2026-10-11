@@ -37,7 +37,8 @@ public final class LynxRuntimeHost {
             embeddedBundleId: config.embeddedBundleId, embeddedManifestDigest: config.embeddedManifestDigest,
             minimumBundleId: config.minimumBundleId, appVersion: config.appVersion,
             channel: config.channel, cohort: config.cohort, publicKeyPEM: config.publicKeyPEM,
-            startupResourcePaths: config.startupResourcePaths, fingerprintHash: config.fingerprintHash
+            startupResourcePaths: config.startupResourcePaths, fingerprintHash: config.fingerprintHash,
+            pageHostMode: config.pageHostMode
         )
         let scope = try LynxNativeScope(configuration: canonical)
         registryLock.lock(); defer { registryLock.unlock() }
@@ -56,6 +57,13 @@ public final class LynxRuntimeHost {
     /// Ordinary controller construction uses the same coordinator as this factory.
     public func createForeground() throws -> LynxController {
         try LynxController(configuration: configuration)
+    }
+
+    /// Native placement is authoritative; persisted recovery never invents containers.
+    public func createForegroundForMounts(_ pages: [LynxManagedLogicalPage],
+                                         reconstructing: Bool = false) throws -> LynxController {
+        try LynxController(configuration: configuration, mountedPages: pages,
+                           reconstructingMounts: reconstructing)
     }
 
     // Caller holds ownerLock. No existing foreground can publish while a cold lease is held.

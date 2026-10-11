@@ -97,12 +97,12 @@ final class LynxControllerLocalTests: XCTestCase {
         return hash(manifest)
     }
 
-    private func configuration(root: URL, embedded: URL, digest: String, resources: Set<String> = []) -> LynxControllerConfiguration {
+    private func configuration(root: URL, embedded: URL, digest: String, resources: Set<String> = [], pageHostMode: LynxPageHostMode = .stack) -> LynxControllerConfiguration {
         LynxControllerConfiguration(
             root: root, runtimeId: runtime, binaryIdentity: "local-binary-v1",
             embeddedDirectory: embedded, embeddedBundleId: embeddedId, embeddedManifestDigest: digest,
             minimumBundleId: embeddedId, appVersion: "1.0.0", channel: channel, cohort: "1",
-            startupResourcePaths: resources)
+            startupResourcePaths: resources, pageHostMode: pageHostMode)
     }
 
     private func snapshot(
@@ -2413,5 +2413,360 @@ extension LynxControllerLocalTests {
         XCTAssertEqual(next.snapshot.selection.releaseId, releaseC)
         XCTAssertEqual(try Data(contentsOf: journal.file), before)
         try next.executionEnded()
+    }
+}
+
+extension LynxControllerLocalTests {
+    private func mounts(_ ids: String...) -> [LynxManagedLogicalPage] {
+        [.init(entry: "main.lynx.bundle", mountId: "primary")]
+            + ids.map { .init(entry: "detail.lynx.bundle", mountId: $0) }
+    }
+
+    private func mountedConfiguration(_ root: URL) throws -> LynxControllerConfiguration {
+        let embedded = root.appendingPathComponent("embedded")
+        let digest = try writeTree(at: embedded, bundleId: embeddedId, marker: "A", managedPages: true)
+        return configuration(root: root.appendingPathComponent("store"), embedded: embedded,
+                             digest: digest, pageHostMode: .mounted)
+    }
+
+    private func mount(_ id: String, on controller: LynxController,
+                       primary: LynxLaunchContext) throws -> LynxLaunchContext {
+        var pages = try controller.mountedPages(primary)
+        if !pages.contains(where: { $0.mountId == id }) {
+            pages.append(.init(entry: "detail.lynx.bundle", mountId: id))
+        }
+        let context = controller.createContext(primary: false)
+        _ = try controller.begin(context, pageEntry: "detail.lynx.bundle",
+            generationId: controller.attemptId, stack: pages, mountId: id)
+        return context
+    }
+
+    private func readyMount(_ context: LynxLaunchContext, on controller: LynxController) throws {
+        try controller.observedResource(context.primary ? "main.lynx.bundle" : "detail.lynx.bundle", context: context)
+        try controller.observedContent(context)
+        var status: String?
+        controller.notifyAppReady(context) { status = try? $0.get().status }
+        XCTAssertEqual(status, context.primary ? "CONFIRMED" : "PAGE_ADMITTED")
+    }
+
+    func testMountedMiddleRemovalPreservesAnotherPendingIdenticalBundle() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = try mountedConfiguration(root)
+        let controller = try LynxController(configuration: config, mountedPages: mounts("a", "b"))
+        defer { try? controller.close() }
+        let primary = controller.createContext(primary: true)
+        _ = try controller.begin(primary)
+        try controller.observedResource("main.lynx.bundle", context: primary)
+        try controller.observedContent(primary)
+        var ready: String?
+        controller.notifyAppReady(primary) { ready = try? $0.get().status }
+        let a = try mount("a", on: controller, primary: primary)
+        try readyMount(a, on: controller)
+        let b = try mount("b", on: controller, primary: primary)
+        let attempt = try controller.pendingPageAttemptId(b)
+        XCTAssertNil(ready)
+        try controller.unmountSecondary(a)
+        XCTAssertEqual(try controller.mountedPages(primary).compactMap(\.mountId), ["primary", "b"])
+        XCTAssertEqual(try controller.pendingPageAttemptId(b), attempt)
+        XCTAssertThrowsError(try controller.observedContent(a))
+        XCTAssertNil(ready)
+        try readyMount(b, on: controller)
+        XCTAssertEqual(ready, "CONFIRMED")
+        let state = try LynxControllerJournal(file: home(config.root).appendingPathComponent("state.json")).load()
+        XCTAssertNil(state.pendingPages)
+        XCTAssertTrue(state.unconfirmedReleaseIds.isEmpty)
+        XCTAssertTrue(state.crashedBundleIds.isEmpty)
+    }
+
+    func testMountedCancelledIdentityCannotAffectReplacementContext() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = try mountedConfiguration(root)
+        let controller = try LynxController(configuration: config, mountedPages: mounts("a"))
+        defer { try? controller.close() }
+        let primary = controller.createContext(primary: true)
+        _ = try controller.begin(primary)
+        let old = try mount("a", on: controller, primary: primary)
+        var cancelled: String?
+        controller.notifyAppReady(old) { if case .failure(let error) = $0 { cancelled = (error as? LynxPolicyError)?.code } }
+        try controller.unmountSecondary(old)
+        XCTAssertEqual(cancelled, "PAGE_CANCELLED")
+        let fresh = try mount("a", on: controller, primary: primary)
+        let attempt = try controller.pendingPageAttemptId(fresh)
+        XCTAssertNotEqual(old.id, fresh.id)
+        XCTAssertThrowsError(try controller.reportPageFailure(old))
+        XCTAssertThrowsError(try controller.unmountSecondary(old))
+        XCTAssertThrowsError(try controller.resource("hot-updater:///detail.lynx.bundle", context: old))
+        XCTAssertEqual(try controller.pendingPageAttemptId(fresh), attempt)
+        try readyMount(fresh, on: controller)
+        let state = try LynxControllerJournal(file: home(config.root).appendingPathComponent("state.json")).load()
+        let terminal = try XCTUnwrap(state.pageAttemptTerminals?.first)
+        XCTAssertEqual(terminal.mountId, "a")
+        XCTAssertEqual(terminal.terminal, "authorized-cancel")
+        XCTAssertEqual(terminal.reason, "nativeUnmount")
+        XCTAssertTrue(state.crashedBundleIds.isEmpty)
+    }
+
+    func testMountedQueuedRemovalPreservesAdmissionAndUnblocksPrimary() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = try LynxController(configuration: mountedConfiguration(root), mountedPages: mounts("a", "b"))
+        defer { try? controller.close() }
+        let primary = controller.createContext(primary: true)
+        _ = try controller.begin(primary)
+        try controller.observedResource("main.lynx.bundle", context: primary)
+        try controller.observedContent(primary)
+        var ready: String?
+        controller.notifyAppReady(primary) { ready = try? $0.get().status }
+        let a = try mount("a", on: controller, primary: primary)
+        let attempt = try controller.pendingPageAttemptId(a)
+        try controller.unmountUnlaunchedSecondary("b", primary: primary)
+        XCTAssertEqual(try controller.pendingPageAttemptId(a), attempt)
+        XCTAssertNil(ready)
+        XCTAssertThrowsError(try controller.unmountSecondary(primary))
+        XCTAssertThrowsError(try controller.unmountUnlaunchedSecondary("primary", primary: primary))
+        try readyMount(a, on: controller)
+        XCTAssertEqual(ready, "CONFIRMED")
+    }
+
+    func testMountedDestroyedAdmissionCannotBecomeAnUnlaunchedContainer() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = try LynxController(configuration: mountedConfiguration(root), mountedPages: mounts("a"))
+        defer { try? controller.close() }
+        let primary = controller.createContext(primary: true)
+        _ = try controller.begin(primary)
+        let a = try mount("a", on: controller, primary: primary)
+        XCTAssertThrowsError(try controller.cancelPage(a, reason: .nativeBack))
+        controller.destroy(a)
+        XCTAssertThrowsError(try controller.unmountUnlaunchedSecondary("a", primary: primary))
+        XCTAssertThrowsError(try mount("a", on: controller, primary: primary))
+    }
+
+    func testMountedTransitionFreezesMembershipAndWaitsForConfirmedReconstruction() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = try mountedConfiguration(root)
+        let controller = try LynxController(configuration: config, mountedPages: mounts())
+        let primary = controller.createContext(primary: true)
+        _ = try controller.begin(primary)
+        try readyMount(primary, on: controller)
+        let a = try mount("a", on: controller, primary: primary)
+        try readyMount(a, on: controller)
+        let frozen = try controller.mountedPages(primary)
+        XCTAssertThrowsError(try controller.acceptManagedTransition(primary, trigger: "reload", stack: mounts()))
+        _ = try controller.acceptManagedTransition(primary, trigger: "reload", stack: frozen)
+        XCTAssertThrowsError(try controller.unmountSecondary(a))
+        XCTAssertThrowsError(try controller.unmountUnlaunchedSecondary("a", primary: primary))
+        XCTAssertThrowsError(try mount("b", on: controller, primary: primary))
+        try controller.close()
+        XCTAssertThrowsError(try LynxController(configuration: config, mountedPages: mounts(), reconstructingMounts: true))
+        let fresh = try controller.runtimeHost.createForegroundForMounts(frozen, reconstructing: true)
+        defer { try? fresh.close() }
+        let current = fresh.createContext(primary: true)
+        _ = try fresh.begin(current)
+        var ready: String?
+        fresh.notifyAppReady(current) { ready = try? $0.get().status }
+        XCTAssertNil(ready)
+        try fresh.observedResource("main.lynx.bundle", context: current)
+        try fresh.observedContent(current)
+        XCTAssertNil(ready)
+        XCTAssertNotNil(fresh.managedTransitionId)
+        let newA = try mount("a", on: fresh, primary: current)
+        try readyMount(newA, on: fresh)
+        XCTAssertEqual(ready, "ALREADY_CONFIRMED")
+        XCTAssertNil(fresh.managedTransitionId)
+        XCTAssertEqual(try fresh.mountedPages(current), frozen)
+        XCTAssertThrowsError(try controller.observedContent(a))
+    }
+
+    func testMountedColdAttachmentKeepsInterruptionButUsesCurrentPlacement() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = try mountedConfiguration(root)
+        let seed = try LynxController(configuration: config, mountedPages: mounts())
+        let initial = seed.createContext(primary: true)
+        _ = try seed.begin(initial)
+        try readyMount(initial, on: seed)
+        try seed.close()
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B", managedPages: true)
+        let trial = try LynxController(configuration: config, mountedPages: mounts("old"))
+        let primary = trial.createContext(primary: true)
+        _ = try trial.begin(primary)
+        _ = try mount("old", on: trial, primary: primary)
+        try trial.close()
+        let cold = try LynxController(configuration: config, mountedPages: mounts())
+        defer { try? cold.close() }
+        XCTAssertEqual(cold.runningSelection.bundleId, embeddedId)
+        XCTAssertEqual(cold.recoveryPages, mounts())
+        let current = cold.createContext(primary: true)
+        _ = try cold.begin(current)
+        XCTAssertEqual(try cold.mountedPages(current), mounts())
+        let state = try LynxControllerJournal(file: home(config.root).appendingPathComponent("state.json")).load()
+        XCTAssertTrue(state.unconfirmedReleaseIds.contains(releaseB))
+        XCTAssertEqual(state.pageAttemptTerminals?.last?.terminal, "process-interruption")
+        XCTAssertEqual(state.pageAttemptTerminals?.last?.mountId, "old")
+        XCTAssertEqual(state.pageAttemptTerminals?.last?.stack.compactMap(\.mountId), ["primary", "old"])
+    }
+
+    func testMountedSelectionRequiresEveryCurrentEntryBeforeLaunch() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = try mountedConfiguration(root)
+        let seed = try LynxController(configuration: config, mountedPages: mounts())
+        try seed.close()
+        try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "without-detail")
+        let current = try LynxController(configuration: config, mountedPages: mounts("detail"))
+        defer { try? current.close() }
+        XCTAssertEqual(current.runningSelection.bundleId, embeddedId)
+        XCTAssertEqual(current.recoveryPages, mounts("detail"))
+    }
+
+    func testMountedJournalRejectsDuplicateIdentityAndReleasesFailedOwnership() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = try mountedConfiguration(root)
+        XCTAssertThrowsError(try LynxController(configuration: config, mountedPages: mounts("a", "a")))
+        let previous = try LynxController(configuration: config, mountedPages: mounts("a"))
+        try previous.close()
+        let file = try home(config.root).appendingPathComponent("state.json")
+        let bytes = try Data(contentsOf: file)
+        let journal = LynxControllerJournal(file: file)
+        var corrupted = try journal.load()
+        corrupted.mountedPages?[1].mountId = "primary"
+        try journal.save(corrupted)
+        let corruptedBytes = try Data(contentsOf: file)
+        XCTAssertThrowsError(try LynxController(configuration: config, mountedPages: mounts()))
+        XCTAssertEqual(try Data(contentsOf: file), corruptedBytes)
+        try bytes.write(to: file)
+        let fresh = try LynxController(configuration: config, mountedPages: mounts())
+        defer { try? fresh.close() }
+        XCTAssertEqual(fresh.recoveryPages, mounts())
+    }
+}
+
+extension LynxControllerLocalTests {
+    func testMountedJournalModeAndHistoricalIdentitiesFailClosedWithoutMutation() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = try mountedConfiguration(root)
+        let previous = try LynxController(configuration: config, mountedPages: mounts("a"))
+        let primary = previous.createContext(primary: true)
+        _ = try previous.begin(primary)
+        let a = try mount("a", on: previous, primary: primary)
+        try previous.unmountSecondary(a)
+        try previous.close()
+        let file = try home(config.root).appendingPathComponent("state.json")
+        let original = try Data(contentsOf: file)
+        let journal = LynxControllerJournal(file: file)
+        let initial = try journal.load()
+        for mutation: (inout LynxControllerState) -> Void in [
+            { $0.pageHostMode = "unknown" },
+            { $0.pageHostMode = "stack" },
+            { $0.mountedPages = nil },
+            { $0.pageAttemptTerminals?[0].mountId = "missing" },
+        ] {
+            var invalid = initial
+            mutation(&invalid)
+            try journal.save(invalid)
+            let bytes = try Data(contentsOf: file)
+            XCTAssertThrowsError(try LynxController(configuration: config, mountedPages: mounts()))
+            XCTAssertEqual(try Data(contentsOf: file), bytes)
+        }
+        try original.write(to: file)
+        let current = try LynxController(configuration: config, mountedPages: mounts())
+        defer { try? current.close() }
+        let currentPrimary = current.createContext(primary: true)
+        _ = try current.begin(currentPrimary)
+        let beforeLateFailure = try Data(contentsOf: file)
+        XCTAssertThrowsError(try previous.recordManagedFailClosed(reason: "late", message: "retired view", stack: mounts()))
+        XCTAssertEqual(try Data(contentsOf: file), beforeLateFailure)
+        XCTAssertEqual(try current.mountedPages(currentPrimary), mounts())
+    }
+
+    func testMountedConfirmedReadinessDoesNotInvalidateCatalogGuardsRepeatedly() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = try mountedConfiguration(root)
+        let controller = try LynxController(configuration: config, mountedPages: mounts())
+        defer { try? controller.close() }
+        let primary = controller.createContext(primary: true)
+        _ = try controller.begin(primary)
+        try readyMount(primary, on: controller)
+        let revision = try controller.getState(primary)["revision"] as? String
+        var status: String?
+        controller.notifyAppReady(primary) { status = try? $0.get().status }
+        try controller.observedContent(primary)
+        try controller.observedResource("main.lynx.bundle", context: primary)
+        XCTAssertEqual(status, "ALREADY_CONFIRMED")
+        XCTAssertEqual(try controller.getState(primary)["revision"] as? String, revision)
+    }
+}
+
+extension LynxControllerLocalTests {
+    func testMountedAdmissionUsesNativeOrderAndRevokesChildrenWithPrimary() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let controller = try LynxController(configuration: mountedConfiguration(root), mountedPages: mounts("a", "b"))
+        defer { try? controller.close() }
+        let primary = controller.createContext(primary: true)
+        _ = try controller.begin(primary)
+        XCTAssertThrowsError(try mount("b", on: controller, primary: primary))
+        XCTAssertThrowsError(try mount("new", on: controller, primary: primary))
+        let a = try mount("a", on: controller, primary: primary)
+        try readyMount(a, on: controller)
+        let b = try mount("b", on: controller, primary: primary)
+        controller.destroy(primary)
+        XCTAssertThrowsError(try controller.resource("hot-updater:///detail.lynx.bundle", context: a))
+        XCTAssertThrowsError(try controller.observedContent(b))
+        XCTAssertThrowsError(try controller.unmountSecondary(a))
+        XCTAssertThrowsError(try mount("new", on: controller, primary: primary))
+    }
+}
+
+extension LynxControllerLocalTests {
+    func testMountedColdBackgroundFailureKeepsItsCauseBeforeAnyForegroundExists() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let embedded = root.appendingPathComponent("embedded")
+        let digest = try writeTree(at: embedded, bundleId: embeddedId, marker: "A", managedPages: true, background: true)
+        let config = configuration(root: root.appendingPathComponent("store"), embedded: embedded,
+            digest: digest, pageHostMode: .mounted)
+        let host = try LynxRuntimeHost.get(configuration: config)
+        let task = try host.beginBackground()
+        try task.reportFatal()
+        try task.executionEnded()
+        XCTAssertNil(host.foreground)
+        XCTAssertThrowsError(try host.createForegroundForMounts(mounts())) { error in
+            guard case LynxArtifactError.invalid(let message) = error else { return XCTFail("Unexpected error: \(error)") }
+            XCTAssertEqual(message, "No eligible complete selection can recover the page stack")
+        }
+        let state = try LynxControllerJournal(file: home(config.root).appendingPathComponent("state.json")).load()
+        XCTAssertEqual(try state.failedEmbedded?.policy.bundleId, embeddedId)
+        XCTAssertNil(state.pending)
+        XCTAssertNil(state.pendingPages)
+    }
+
+    func testMountedRecoveryRejectsTwoPendingAdmissionsWithoutRewritingJournal() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = try mountedConfiguration(root)
+        let previous = try LynxController(configuration: config, mountedPages: mounts("a", "b"))
+        let primary = previous.createContext(primary: true)
+        _ = try previous.begin(primary)
+        _ = try mount("a", on: previous, primary: primary)
+        try previous.close()
+        let file = try home(config.root).appendingPathComponent("state.json")
+        let journal = LynxControllerJournal(file: file)
+        var invalid = try journal.load()
+        let a = try XCTUnwrap(invalid.pendingPages?.first)
+        invalid.pendingPages?.append(.init(attemptId: UUID().uuidString, contextId: UUID().uuidString,
+            sourceContextId: a.sourceContextId, generationId: a.generationId, processId: a.processId,
+            startupAttemptId: a.startupAttemptId, selection: a.selection, stack: a.stack, mountId: "b"))
+        try journal.save(invalid)
+        let bytes = try Data(contentsOf: file)
+        XCTAssertThrowsError(try LynxController(configuration: config, mountedPages: mounts()))
+        XCTAssertEqual(try Data(contentsOf: file), bytes)
     }
 }

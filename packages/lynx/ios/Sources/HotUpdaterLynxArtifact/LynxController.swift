@@ -1,6 +1,8 @@
 import CryptoKit
 import Foundation
 
+public enum LynxPageHostMode: String { case stack, mounted = "mounted-v1" }
+
 /// Supply these values from the native binary/host, never downloaded JavaScript.
 public struct LynxControllerConfiguration: Equatable {
     public let root: URL
@@ -16,16 +18,18 @@ public struct LynxControllerConfiguration: Equatable {
     public let publicKeyPEM: String?
     public let startupResourcePaths: Set<String>
     public let fingerprintHash: String
+    public let pageHostMode: LynxPageHostMode
     public init(root: URL, runtimeId: String, binaryIdentity: String, embeddedDirectory: URL,
                 embeddedBundleId: String, embeddedManifestDigest: String, minimumBundleId: String,
                 appVersion: String, channel: String, cohort: String, publicKeyPEM: String? = nil, startupResourcePaths: Set<String> = [],
-                fingerprintHash: String? = nil) {
+                fingerprintHash: String? = nil, pageHostMode: LynxPageHostMode = .stack) {
         self.root = root; self.runtimeId = runtimeId; self.binaryIdentity = binaryIdentity
         self.embeddedDirectory = embeddedDirectory; self.embeddedBundleId = embeddedBundleId
         self.embeddedManifestDigest = embeddedManifestDigest; self.minimumBundleId = minimumBundleId
         self.appVersion = appVersion; self.channel = channel; self.cohort = cohort; self.publicKeyPEM = publicKeyPEM
         self.startupResourcePaths = startupResourcePaths
         self.fingerprintHash = fingerprintHash.flatMap { $0.isEmpty ? nil : $0 } ?? binaryIdentity
+        self.pageHostMode = pageHostMode
     }
 }
 
@@ -36,6 +40,8 @@ public final class LynxLaunchContext {
     fileprivate var active = true
     fileprivate var started = false
     fileprivate var pageEntry: String?
+    fileprivate var mountId: String?
+    fileprivate var generationId: String?
     fileprivate var requiredResources = Set<String>()
     fileprivate var loadedResources = Set<String>()
     fileprivate var pageContentObserved = false
@@ -58,13 +64,25 @@ public struct LynxManagedPageParameter: Codable, Equatable {
 public struct LynxManagedLogicalPage: Codable, Equatable {
     public let entry: String
     public let parameters: [LynxManagedPageParameter]
+    public let mountId: String?
 
     public init(
         entry: String,
-        parameters: [LynxManagedPageParameter] = []
+        parameters: [LynxManagedPageParameter] = [],
+        mountId: String? = nil
     ) {
         self.entry = entry
         self.parameters = parameters
+        self.mountId = mountId
+    }
+
+    var stored: LynxStoredLogicalPage {
+        .init(entry: entry, parameters: parameters.map { .init(name: $0.name, value: $0.value) }, mountId: mountId)
+    }
+    init(_ stored: LynxStoredLogicalPage) {
+        self.init(entry: stored.entry,
+                  parameters: stored.parameters.map { .init(name: $0.name, value: $0.value) },
+                  mountId: stored.mountId)
     }
 }
 
@@ -173,19 +191,34 @@ public final class LynxController {
     private var closed = false
     private var runtimeCohort: String
     private var runtimeChannel: String
+    private var admittedMounts = Set<String>()
+    private var mountedHost: Bool { configuration.pageHostMode == .mounted }
 
-    public convenience init(configuration config: LynxControllerConfiguration) throws {
+    public convenience init(configuration config: LynxControllerConfiguration,
+                            mountedPages: [LynxManagedLogicalPage]? = nil,
+                            reconstructingMounts: Bool = false) throws {
         try self.init(
             configuration: config,
             artifactFetch: nil,
-            journalDirectorySync: nil
+            journalDirectorySync: nil,
+            mountedPages: mountedPages,
+            reconstructingMounts: reconstructingMounts
         )
     }
 
     init(configuration config: LynxControllerConfiguration,
          artifactFetch: LynxArtifactFetch?,
          journalDirectorySync: ((URL) throws -> Void)? = nil,
-         processToken: String = LynxController.processToken) throws {
+         processToken: String = LynxController.processToken,
+         mountedPages: [LynxManagedLogicalPage]? = nil,
+         reconstructingMounts: Bool = false) throws {
+        guard (mountedPages != nil) == (config.pageHostMode == .mounted),
+              !reconstructingMounts || mountedPages != nil else {
+            throw LynxArtifactError.invalid("Mounted hosts require current native container membership")
+        }
+        if let mountedPages {
+            try lynxValidateLogicalPages(mountedPages.map(\.stored), mode: .mounted)
+        }
         launchProcessToken = processToken
         let host = try LynxRuntimeHost.get(configuration: config)
         host.ownerLock.lock()
@@ -199,6 +232,9 @@ public final class LynxController {
         let scope = host.scope
         let profile = LynxArtifactConfiguration(runtimeId: config.runtimeId, publicKeyPEM: config.publicKeyPEM)
         let embeddedArtifactValue = scope.embeddedArtifact
+        if let mountedPages, mountedPages.first?.entry != embeddedArtifactValue.entry {
+            throw LynxArtifactError.invalid("The primary mount must use the native artifact entry")
+        }
         embeddedArtifact = embeddedArtifactValue
         builtin = scope.builtin
         let builtinPolicy = try builtin.policy
@@ -227,6 +263,24 @@ public final class LynxController {
         host.stateLock.lock()
         defer { host.stateLock.unlock() }
         var recovered = try journal.load()
+        if let mode = recovered.pageHostMode {
+            guard mode == config.pageHostMode.rawValue else {
+                throw LynxArtifactError.invalid("Native page host mode does not match the journal")
+            }
+        } else if config.pageHostMode == .mounted,
+                  recovered.confirmed != nil || recovered.next != nil || recovered.pending != nil
+                    || recovered.pendingPages != nil || recovered.pageAttemptTerminals != nil
+                    || recovered.managedTransition != nil || recovered.managedTerminalFailure != nil
+                    || recovered.launchTransition != nil {
+            throw LynxArtifactError.invalid("A navigation journal cannot become mounted membership")
+        }
+        // A cold background failure can create a journal before any page host owns it.
+        if reconstructingMounts {
+            guard mountedPages?.map(\.stored) == recovered.mountedPages,
+                  recovered.managedTransition.map({ $0.stack == recovered.mountedPages }) != false else {
+                throw LynxArtifactError.invalid("Replacement mounts differ from frozen native membership")
+            }
+        }
         var recoveredChanged = false
         if let launchTransition = recovered.launchTransition,
            launchTransition.transitionId == nil {
@@ -372,6 +426,8 @@ public final class LynxController {
             recovered.managedTransition = nil
             recoveredChanged = true
         }
+        // Historical attempts still classify recovery. Current native placement alone creates views.
+        if let mountedPages { recoveredPages = mountedPages }
         if recovered.selectionChannel == nil || recovered.selectionChannel?.isEmpty == true {
             recovered.selectionChannel = config.channel
             recoveredChanged = true
@@ -410,6 +466,7 @@ public final class LynxController {
                    .isSubset(of: Set(tree.hasManagedPageMetadata
                        ? mainResources
                        : Array(tree.files.keys)))),
+               (mountedPages == nil || recoveredPages.first?.entry == tree.entry),
                recoveredPages.allSatisfy({ tree.pageEntries.contains($0.entry) }) {
                 selected = (candidate, tree)
                 break
@@ -426,6 +483,7 @@ public final class LynxController {
             }
             guard !recovered.excludesEmbedded(builtinPolicy),
                   !embeddedPageInterruptionHasNoFallback,
+                  mountedPages == nil || recoveredPages.first?.entry == embeddedArtifactValue.entry,
                   recoveredPages.isEmpty || recoveredPages.allSatisfy({
                       embeddedArtifactValue.pageEntries.contains($0.entry)
                   }) else {
@@ -443,6 +501,14 @@ public final class LynxController {
             }
         }
         recoveryPages = recoveredPages
+        if let mountedPages {
+            recovered.mountedPages = mountedPages.map(\.stored)
+            recoveredChanged = true
+        }
+        if recovered.pageHostMode == nil {
+            recovered.pageHostMode = config.pageHostMode.rawValue
+            recoveredChanged = true
+        }
         // A rejected staged selection is not retained as the policy base. Preserve only an eligible selected receipt.
         if recovered.next != nil, !Self.sameIdentity(try recovered.next?.policy, runningSelection) {
             recovered.next = nil
@@ -548,7 +614,8 @@ public final class LynxController {
             transitionId: transitionId,
             failureCode: failureCode,
             failureResourcePath: failureResourcePath,
-            runtimeEventEmitted: false
+            runtimeEventEmitted: false,
+            mountId: pending.mountId
         )
         var records = state.pageAttemptTerminals ?? []
         records.append(record)
@@ -689,6 +756,7 @@ public final class LynxController {
     private func validate(_ context: LynxLaunchContext, primaryRequired: Bool = false, retryFatal: Bool = false) throws {
         guard context.owner == identity, contexts[ObjectIdentifier(context)] === context, context.active, context.started, !fatal,
               !closed, !readinessAuthorityRevoked,
+              !mountedHost || primary?.active == true,
               fatalContext == nil || (retryFatal && fatalContext === context),
               !primaryRequired || primary === context else { throw LynxArtifactError.invalid("STALE_CONTEXT: Native launch context has no authority") }
     }
@@ -712,6 +780,7 @@ public final class LynxController {
     }
     /// Call before loading the first template byte. A second primary cannot replace this generation.
     public func begin(_ context: LynxLaunchContext) throws -> LynxInstalledArtifact {
+        lock.lock(); defer { lock.unlock() }
         guard context.primary else {
             throw LynxArtifactError.invalid(
                 "Secondary pages require an explicit managed page entry"
@@ -721,7 +790,8 @@ public final class LynxController {
             context,
             pageEntry: runningArtifact.entry,
             generationId: attemptId,
-            stack: [.init(entry: runningArtifact.entry)]
+            stack: state.mountedPages?.map(LynxManagedLogicalPage.init) ?? [.init(entry: runningArtifact.entry)],
+            mountId: state.mountedPages?.first?.mountId
         )
     }
 
@@ -731,7 +801,8 @@ public final class LynxController {
         pageEntry: String,
         generationId: String,
         stack: [LynxManagedLogicalPage],
-        sourceContextId: String? = nil
+        sourceContextId: String? = nil,
+        mountId: String? = nil
     ) throws -> LynxInstalledArtifact {
         lock.lock(); defer { lock.unlock() }
         try replayBackgroundFailures()
@@ -740,13 +811,31 @@ public final class LynxController {
               context.active, !context.started, !fatal, fatalContext == nil,
               !readinessAuthorityRevoked,
               !generationId.isEmpty,
-              stack.last?.entry == pageEntry,
+              (mountedHost ? stack.first(where: { $0.mountId == mountId })?.entry : stack.last?.entry) == pageEntry,
               stack.count <= lynxManagedPageStackCapacity,
               runningArtifact.pageEntries.contains(pageEntry),
               let declaredResources = runningArtifact.essentialResources(
                   for: pageEntry
               ) else {
             throw LynxArtifactError.invalid("Invalid managed page launch context")
+        }
+        try lynxValidateLogicalPages(stack.map(\.stored), mode: configuration.pageHostMode)
+        if mountedHost {
+            let current = state.mountedPages ?? []
+            let supplied = stack.map(\.stored)
+            guard let mountId, !admittedMounts.contains(mountId),
+                  !contexts.values.contains(where: { $0.started && $0.mountId == mountId }),
+                  (context.primary ? current.first?.mountId == mountId : current.first?.mountId != mountId),
+                  (supplied == current || (!context.primary && supplied.dropLast() == current[...]
+                    && supplied.last?.mountId == mountId)),
+                  context.primary || (primary?.active == true && state.pendingPages?.isEmpty != false
+                    && generationId == primary?.generationId
+                    && current.dropFirst().first(where: { $0.mountId.map(admittedMounts.contains) != true })
+                        .map({ $0.mountId == mountId }) != false) else {
+                throw LynxArtifactError.invalid("Native mount admission differs from current membership")
+            }
+        } else if mountId != nil {
+            throw LynxArtifactError.invalid("Navigation contexts cannot contain mount identities")
         }
         guard runtimeHost.canAdmit(runningSelection, state: state, live: liveReceipt) else {
             throw LynxArtifactError.invalid("Startup recovery capacity exhausted")
@@ -804,20 +893,17 @@ public final class LynxController {
                     processId: String(ProcessInfo.processInfo.processIdentifier),
                     startupAttemptId: attemptId,
                     selection: running,
-                    stack: stack.map {
-                        .init(
-                            entry: $0.entry,
-                            parameters: $0.parameters.map {
-                                .init(name: $0.name, value: $0.value)
-                            }
-                        )
-                    }
+                    stack: stack.map(\.stored),
+                    mountId: mountId
                 ))
             next.pendingPages = pendingPages
+            if mountedHost { next.mountedPages = stack.map(\.stored) }
             next.revision = UUID().uuidString
             try save(next)
         }
         context.pageEntry = pageEntry
+        context.mountId = mountId
+        context.generationId = generationId
         context.requiredResources = Set(
             runningArtifact.hasManagedPageMetadata
                 ? declaredResources
@@ -1289,7 +1375,7 @@ public final class LynxController {
             }
             return
         }
-        if runningConfirmed {
+        if runningConfirmed && !mountedHost {
             do {
                 var next = state
                 if let pending = next.pending {
@@ -1356,12 +1442,46 @@ public final class LynxController {
     ) throws {
         guard contentObserved, readyRequested, let primary,
               primary.requiredResources.isSubset(of: primary.loadedResources),
-              state.pendingPages?.isEmpty != false
+              state.pendingPages?.isEmpty != false,
+              !mountedHost || (state.mountedPages ?? []).dropFirst().allSatisfy({
+                  $0.mountId.map(admittedMounts.contains) == true
+              })
         else { return }
         do {
         try validate(primary, primaryRequired: true)
         var next = state
         if runningConfirmed {
+            if mountedHost {
+                if let pending = next.pending {
+                    guard pending.failed != true, pending.contextId == primary.id,
+                          pending.attemptId == attemptId,
+                          Self.sameIdentity(try pending.selection.policy, runningSelection),
+                          pending.transitionId == next.managedTransition?.transitionId else {
+                        throw LynxArtifactError.invalid("Startup attempt changed")
+                    }
+                } else if next.managedTransition != nil {
+                    throw LynxArtifactError.invalid("No pending managed startup attempt")
+                }
+                let (transition, transitionId) = try launchConfirmation(from: next)
+                next.confirmInterruptedLaunch(releaseId: runningSelection.releaseId,
+                    processToken: launchProcessToken)
+                if next.pending != nil || next.launchTransition != nil || next.managedTransition != nil
+                    || next.interruptedReleases != state.interruptedReleases {
+                    next.pending = nil
+                    next.launchTransition = nil
+                    next.managedTransition = nil
+                    next.revision = UUID().uuidString
+                    try save(next)
+                }
+                let callbacks = readyCallbacks
+                readyCallbacks.removeAll()
+                callbacks.enumerated().forEach { offset, callback in
+                    deliveries.append { callback(.success(.init(status: "ALREADY_CONFIRMED",
+                        transition: offset == 0 ? transition : nil,
+                        transitionId: offset == 0 ? transitionId : nil))) }
+                }
+                return
+            }
             if next.interruptedReleases?[runningSelection.releaseId ?? ""] != nil
                 || (next.interruptedReleases ?? [:]).values.contains(where: { !$0.retryReady }) {
                 next.confirmInterruptedLaunch(releaseId: runningSelection.releaseId,
@@ -1432,6 +1552,7 @@ public final class LynxController {
         next.revision = UUID().uuidString
         try save(next)
         context.pageAdmitted = true
+        if let mountId = context.mountId { admittedMounts.insert(mountId) }
         let callbacks = pageReadyCallbacks.removeValue(
             forKey: ObjectIdentifier(context)
         ) ?? []
@@ -1458,6 +1579,61 @@ public final class LynxController {
         })?.attemptId
     }
 
+    public func mountedPages(_ context: LynxLaunchContext) throws -> [LynxManagedLogicalPage] {
+        lock.lock(); defer { lock.unlock() }
+        try validate(context)
+        guard mountedHost else { throw LynxArtifactError.invalid("This host uses navigation pages") }
+        return (state.mountedPages ?? []).map(LynxManagedLogicalPage.init)
+    }
+
+    /// Removes this exact native mount without truncating other live or pending pages.
+    public func unmountSecondary(_ context: LynxLaunchContext) throws {
+        var deliveries: [CallbackDelivery] = []
+        lock.lock()
+        defer { lock.unlock(); deliveries.forEach { $0() } }
+        try validate(context)
+        guard mountedHost, !context.primary, let mountId = context.mountId,
+              state.mountedPages?.dropFirst().contains(where: { $0.mountId == mountId }) == true else {
+            throw LynxArtifactError.invalid("Only a current secondary mount can be removed")
+        }
+        var next = state
+        if let pending = next.pendingPages?.first(where: { $0.contextId == context.id }) {
+            _ = try Self.terminalizePageAttempt(pending, as: "authorized-cancel",
+                reason: "nativeUnmount", in: &next)
+        }
+        next.mountedPages?.removeAll { $0.mountId == mountId }
+        next.revision = UUID().uuidString
+        try save(next)
+        context.active = false
+        admittedMounts.remove(mountId)
+        contexts.removeValue(forKey: ObjectIdentifier(context))
+        let callbacks = pageReadyCallbacks.removeValue(forKey: ObjectIdentifier(context)) ?? []
+        callbacks.forEach { callback in
+            deliveries.append { callback(.failure(LynxPolicyError(code: "PAGE_CANCELLED",
+                message: "Native page mount was removed"))) }
+        }
+        try confirmIfReady(&deliveries)
+    }
+
+    /// Cancels a declared container before launch; a destroyed admission retains its failure evidence.
+    public func unmountUnlaunchedSecondary(_ mountId: String, primary context: LynxLaunchContext) throws {
+        var deliveries: [CallbackDelivery] = []
+        lock.lock()
+        defer { lock.unlock(); deliveries.forEach { $0() } }
+        try validate(context, primaryRequired: true)
+        guard mountedHost, !admittedMounts.contains(mountId),
+              !contexts.values.contains(where: { $0.started && $0.mountId == mountId }),
+              state.pendingPages?.contains(where: { $0.mountId == mountId }) != true,
+              state.mountedPages?.dropFirst().contains(where: { $0.mountId == mountId }) == true else {
+            throw LynxArtifactError.invalid("The native mount is not an unlaunched secondary")
+        }
+        var next = state
+        next.mountedPages?.removeAll { $0.mountId == mountId }
+        next.revision = UUID().uuidString
+        try save(next)
+        try confirmIfReady(&deliveries)
+    }
+
     @discardableResult
     public func cancelPage(
         _ context: LynxLaunchContext,
@@ -1470,6 +1646,9 @@ public final class LynxController {
             deliveries.forEach { $0() }
         }
         try validate(context)
+        guard !mountedHost else {
+            throw LynxArtifactError.invalid("Mounted pages require identity-based unmounting")
+        }
         guard !context.primary, !context.pageAdmitted,
               let pending = state.pendingPages?.first(where: {
                   $0.contextId == context.id
@@ -1559,6 +1738,10 @@ public final class LynxController {
     ) throws -> LynxManagedTransitionAcceptance {
         lock.lock(); defer { lock.unlock() }
         try validate(context, primaryRequired: true)
+        try lynxValidateLogicalPages(stack.map(\.stored), mode: configuration.pageHostMode)
+        guard !mountedHost || stack.map(\.stored) == state.mountedPages else {
+            throw LynxArtifactError.invalid("Transition membership differs from current native mounts")
+        }
         guard ["reload", "reset", "forcedActivation"].contains(trigger),
               state.managedTransition == nil,
               !stack.isEmpty,
@@ -1597,7 +1780,7 @@ public final class LynxController {
                 )
             }
         }
-        guard stack.allSatisfy({
+        guard stack.first?.entry == targetArtifact.entry, stack.allSatisfy({
             targetArtifact.pageEntries.contains($0.entry)
         }) else {
             throw LynxPolicyError(
@@ -1617,14 +1800,7 @@ public final class LynxController {
             trigger: trigger,
             source: running,
             target: target,
-            stack: stack.map {
-                .init(
-                    entry: $0.entry,
-                    parameters: $0.parameters.map {
-                        .init(name: $0.name, value: $0.value)
-                    }
-                )
-            }
+            stack: stack.map(\.stored)
         )
         next.revision = UUID().uuidString
         try save(next)
@@ -1664,7 +1840,11 @@ public final class LynxController {
         stack: [LynxManagedLogicalPage]
     ) throws -> [String: Any] {
         lock.lock(); defer { lock.unlock() }
-        guard !reason.isEmpty, !message.isEmpty,
+        try lynxValidateLogicalPages(stack.map(\.stored), mode: configuration.pageHostMode)
+        guard !mountedHost || stack.map(\.stored) == state.mountedPages else {
+            throw LynxArtifactError.invalid("Failure membership differs from current native mounts")
+        }
+        guard !closed, !reason.isEmpty, !message.isEmpty,
               !stack.isEmpty,
               stack.count <= lynxManagedPageStackCapacity else {
             throw LynxArtifactError.invalid(
@@ -1679,14 +1859,7 @@ public final class LynxController {
             transitionId: next.managedTransition?.transitionId,
             processId: String(ProcessInfo.processInfo.processIdentifier),
             selection: running,
-            stack: stack.map {
-                .init(
-                    entry: $0.entry,
-                    parameters: $0.parameters.map {
-                        .init(name: $0.name, value: $0.value)
-                    }
-                )
-            }
+            stack: stack.map(\.stored)
         )
         next.managedTerminalFailure = record
         if next.pending?.attemptId == attemptId {
