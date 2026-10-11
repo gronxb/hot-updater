@@ -1,5 +1,6 @@
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
+apply from: 'fresco-compat.gradle'
 
 android {
     namespace 'com.hotupdater.lynx'
@@ -13,7 +14,10 @@ android {
         targetCompatibility JavaVersion.VERSION_1_8
     }
     kotlinOptions { jvmTarget = '1.8' }
-    testOptions { unitTests.returnDefaultValues = true }
+    testOptions {
+        unitTests.returnDefaultValues = true
+        unitTests.includeAndroidResources = true
+    }
 }
 
 dependencies {
@@ -28,6 +32,7 @@ dependencies {
     testImplementation 'com.google.code.gson:gson:2.10'
     testImplementation 'org.json:json:20240303'
     testImplementation 'org.lynxsdk.lynx:lynx:4.0.3'
+    testImplementation 'org.robolectric:robolectric:4.12.2'
 }
 
 tasks.withType(Test).configureEach {

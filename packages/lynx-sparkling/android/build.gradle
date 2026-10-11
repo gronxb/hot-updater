@@ -2,7 +2,6 @@ import java.security.MessageDigest
 
 apply plugin: 'com.android.library'
 apply plugin: 'kotlin-android'
-apply from: 'fresco-compat.gradle'
 
 def navigationPackage = providers.gradleProperty('sparklingNavigationPackageDir')
     .orElse(providers.environmentVariable('SPARKLING_NAVIGATION_PACKAGE_DIR'))

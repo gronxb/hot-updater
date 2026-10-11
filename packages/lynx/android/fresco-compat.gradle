@@ -33,6 +33,7 @@ android.sourceSets.main.java.srcDir(generatedSources)
 tasks.named('preBuild').configure { dependsOn(prepareImageService) }
 
 dependencies {
+    compileOnly 'androidx.annotation:annotation:1.6.0'
     api 'com.facebook.fresco:fresco:3.4.0'
     implementation 'com.facebook.fresco:animated-gif:3.4.0'
     implementation 'com.facebook.fresco:animated-webp:3.4.0'

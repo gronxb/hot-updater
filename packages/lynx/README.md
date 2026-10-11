@@ -8,6 +8,47 @@ The native packages target Lynx 4, pinned to Lynx 4.0.3 and PrimJS 4.0.0 in
 the Sparkling example. Use a new native runtime identity and rebuild the app
 when changing the engine version; an OTA bundle cannot upgrade the native engine.
 
+## Native Android containers
+
+After normal Lynx initialization, use `HotUpdaterLynxHost` to mount managed
+LynxViews without Sparkling. Give it the same native artifact configuration as
+other entry points, with `pageHostMode = LynxPageHostMode.MOUNTED`.
+
+Initialize Fresco and register `LynxImageService` through `LynxServiceCenter` as
+in [Lynx's native integration guide](https://lynxjs.org/guide/start/integrate-with-existing-apps.html).
+The SDK supplies the Lynx 4.0.3 image service
+compiled against Fresco 3.4.0; omit the separate upstream image-service AAR to
+avoid duplicate classes. Sparkling hosts use this same SDK-owned adaptation.
+
+```kotlin
+val host = HotUpdaterLynxHost(this, configuration)
+val primary = host.mountPrimary(this)
+layout.addView(primary)
+
+val detail = host.mount(this, "detail.lynx.bundle")
+layout.addView(detail)
+
+// When the application's native owner removes this page:
+detail.close()
+layout.removeView(detail)
+
+// When the owner is destroyed:
+host.close()
+```
+
+Mount and close containers on the main thread. Each mount has its own native
+identity, including multiple instances of the same bundle. Detaching or
+reparenting a container preserves its membership; explicitly close it to remove
+it. Closing the primary closes the entire host.
+
+The primary page calls the regular JavaScript update API. On reload, the SDK
+retains the containers and replaces every managed view and runtime after native
+teardown completes. Mount changes during replacement are applied before the new
+templates execute. Every page calls `notifyAppReady()`; primary confirmation
+waits for required page admissions and verified essential resources. The host
+acquires foreground ownership only when the primary mounts. Its optional
+`onError` callback reports a closed host when no complete generation can start.
+
 ## Viewless tasks on Android
 
 An Android native entry point can call

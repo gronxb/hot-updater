@@ -1,4 +1,4 @@
-package com.hotupdater.lynx.sparkling;
+package com.hotupdater.lynx;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;

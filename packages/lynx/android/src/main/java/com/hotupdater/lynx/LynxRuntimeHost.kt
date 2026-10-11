@@ -45,6 +45,8 @@ class LynxRuntimeHost internal constructor(
     private val tasks = linkedMapOf<String, Task>()
     private var foreground: LynxUpdaterController? = null
 
+    internal val primaryEntry: String get() = embedded.entry
+
     /** Runs the declared standalone background entry; closing requests cancellation, never readiness. */
     fun runBackground(context: Context, completion: (Result<LynxBackgroundResult>) -> Unit): AutoCloseable =
         LynxBackgroundExecutor(context, this, completion)

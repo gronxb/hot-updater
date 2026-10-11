@@ -69,6 +69,7 @@ const PLATFORM_NATIVE_INPUTS = {
 const PACKAGE_NATIVE_INPUTS = {
   android: [
     "android/build.gradle",
+    "android/fresco-compat.gradle",
     "android/libs/*.jar",
     "android/src/main/**/*",
     "package.json",
@@ -83,12 +84,7 @@ const PACKAGE_NATIVE_INPUTS = {
 } as const;
 
 const SPARKLING_NATIVE_INPUTS = {
-  android: [
-    "android/build.gradle",
-    "android/fresco-compat.gradle",
-    "android/src/main/**/*",
-    "package.json",
-  ],
+  android: ["android/build.gradle", "android/src/main/**/*", "package.json"],
   ios: [
     "ios/*.podspec",
     "ios/Package.swift",

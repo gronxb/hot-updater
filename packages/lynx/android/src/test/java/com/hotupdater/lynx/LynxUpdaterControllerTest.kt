@@ -123,6 +123,47 @@ class LynxUpdaterControllerTest {
             primary.generationId, reconstructing = reconstructing, mountId = id)
     }
 
+    @Test fun mountedDeclarationRetainsPendingAuthorityAndGatesPrimaryReadiness() {
+        val root = temp()
+        val current = mountedController(root, mounts())
+        try {
+            val primary = current.pinPrimary().also { it.firstScreen = true }
+            current.declareSecondary(primary, mounts("a").last())
+            val a = mount(current, primary, "a")
+            val pending = journal(root).getJSONObject("pageAttempt").toString()
+            current.declareSecondary(primary, mounts("b").last())
+            assertEquals(pending, journal(root).getJSONObject("pageAttempt").toString())
+            var ready: Result<JSONObject>? = null
+            primary.notifyReady { ready = it }
+            a.firstScreen = true
+            current.admitSecondary(a)
+            assertEquals(null, ready)
+            val b = mount(current, primary, "b").also { it.firstScreen = true }
+            current.admitSecondary(b)
+            assertTrue(ready?.isSuccess == true)
+            assertEquals(mounts("a", "b"), current.retainedLogicalStack(primary))
+        } finally { current.close(); root.deleteRecursively() }
+    }
+
+    @Test fun mountedDeclarationRejectsInvalidMembershipAndAcceptedSourceWithoutWriting() {
+        val root = temp()
+        val current = mountedController(root, mounts("a"))
+        try {
+            val primary = current.pinPrimary()
+            for (page in listOf(mounts("a").last(),
+                LynxLogicalPage("absent.lynx.bundle", mountId = "unknown"),
+                LynxLogicalPage("detail.lynx.bundle", mountId = ""))) {
+                val before = File(store(root), "state.json").readText()
+                assertThrows(IllegalArgumentException::class.java) { current.declareSecondary(primary, page) }
+                assertEquals(before, File(store(root), "state.json").readText())
+            }
+            current.acceptManagedTransition(primary, primary.generationId, mounts("a"), "reload")
+            val before = File(store(root), "state.json").readText()
+            assertThrows(CatalogPolicy.Rejected::class.java) { current.declareSecondary(primary, mounts("b").last()) }
+            assertEquals(before, File(store(root), "state.json").readText())
+        } finally { current.close(); root.deleteRecursively() }
+    }
+
     @Test fun mountedMiddleRemovalPreservesAnotherPendingIdenticalBundle() {
         val root = temp()
         val current = mountedController(root, mounts("a", "b"))

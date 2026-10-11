@@ -19,8 +19,9 @@ is retained beside this file.
 
 Apps must exclude the upstream image-service AAR from their Sparkling dependency
 to avoid duplicate classes. Fresco and its animation dependencies are supplied
-by the optional Hot Updater Sparkling integration. Application initialization
-uses the normal Sparkling pool configuration without changing the allocator.
+by the Hot Updater Lynx SDK, so plain LynxView hosts use the same service. Do not
+add the upstream image-service AAR separately. Application initialization uses
+the normal Lynx service and Fresco pool configuration without changing the allocator.
 
 This temporary adaptation is specific to Fresco. It does not enable Android
 page-size compatibility mode or legacy JNI compression. Remove it when an

@@ -360,13 +360,10 @@ describe("Lynx native fingerprint", () => {
   });
 
   it("invalidates Android compatibility when the Fresco adaptation changes", async () => {
-    const sparklingRoot = path.join(
-      cwd,
-      "node_modules/@hot-updater/lynx-sparkling",
-    );
-    const directory = path.join(sparklingRoot, "android");
+    const lynxRoot = path.join(cwd, "node_modules/@hot-updater/lynx");
+    const directory = path.join(lynxRoot, "android");
     await fs.mkdir(directory, { recursive: true });
-    await fs.writeFile(path.join(sparklingRoot, "package.json"), "{}");
+    await fs.writeFile(path.join(lynxRoot, "package.json"), "{}");
     const adapter = path.join(directory, "fresco-compat.gradle");
     await fs.writeFile(adapter, "sourceChecksum = 'revision-a'");
     const before = await createFingerprint({ platform: "android" });
@@ -377,7 +374,7 @@ describe("Lynx native fingerprint", () => {
     expect(after.sources).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
-          filePath: "@hot-updater/lynx-sparkling/android/fresco-compat.gradle",
+          filePath: "@hot-updater/lynx/android/fresco-compat.gradle",
         }),
       ]),
     );

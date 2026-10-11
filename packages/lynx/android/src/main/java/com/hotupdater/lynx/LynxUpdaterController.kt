@@ -1689,6 +1689,22 @@ class LynxUpdaterController internal constructor(
         else next.put("reconstructionPosition", position)
     }
 
+    /** Records native placement before evaluation, even while another mount is pending. */
+    fun declareSecondary(primarySession: LynxLaunchSession, page: LynxLogicalPage) {
+        synchronized(stateLock) {
+            requireLive(primarySession)
+            check(mountedHost) { "Only mounted containers can be declared before launch" }
+            rejectFailedGeneration()
+            require(page.entry in runningFiles.pageEntries) { "Unknown managed page entry" }
+            val pages = retainedStack() + page.copy(parameters = page.parameters.toMap())
+            validateLogicalPages(pages)
+            mutate { next ->
+                next.put("logicalStack", stackJson(pages))
+                updateMountedReconstruction(next, pages)
+            }
+        }
+    }
+
     /** Retires exactly one native container, including while a different mount is pending. */
     fun unmountSecondary(session: LynxLaunchSession) {
         val primaryToFlush = synchronized(stateLock) {

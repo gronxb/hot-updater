@@ -544,7 +544,7 @@
     ]
   },
   "android": {
-    "hash": "db80aff33a6316d660e404a873795ac8987bb740625ae9a0b23a7398c97fb9d8",
+    "hash": "6bca532fbde86d136fd4708175b0cf4b2794f48fc027d7ca53da07b08a7372b3",
     "sources": [
       {
         "type": "file",
@@ -552,20 +552,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "29d518eacaa65a543a8222f5b4866e5ea9fb055b37ec4f4d4db1557fe74ab47a",
+        "hash": "4df0863ea2279d3e945e07429bdca308e116e368390ee522c0aad3e034c37f9e",
         "debugInfo": {
-          "byteSize": 9300
-        }
-      },
-      {
-        "type": "file",
-        "filePath": "@hot-updater/lynx-sparkling/android/fresco-compat.gradle",
-        "reasons": [
-          "lynx-native-input"
-        ],
-        "hash": "be0360e11541b54564266c017f0671db54b1aec4d1887a8e59a9b5a293b41a61",
-        "debugInfo": {
-          "byteSize": 2060
+          "byteSize": 9265
         }
       },
       {
@@ -662,9 +651,20 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "1d60c0b18af2edadbfa0840f9d80cc55425562b66575bcec9a43e16ef7662a90",
+        "hash": "0c9ed41857cadffa48df891b514bd895167470ba29b2b0d7698470e15bb2f4b1",
         "debugInfo": {
-          "byteSize": 1407
+          "byteSize": 1563
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx/android/fresco-compat.gradle",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "f8c4815234eeeba5998d1176d333ecb5aa3f9fdd17213104d62935599fc0746b",
+        "debugInfo": {
+          "byteSize": 2115
         }
       },
       {
@@ -709,6 +709,17 @@
         "hash": "888097d16400364878fa4d0d1b393f767c2d41cfdc351c6da9d5ed4aa806a7e1",
         "debugInfo": {
           "byteSize": 1378
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx/android/src/main/java/com/hotupdater/lynx/HotUpdaterLynxHost.kt",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "930418e85d76b36e1eee777cec8b42670778d6901840830694fb965bd7d4a395",
+        "debugInfo": {
+          "byteSize": 13169
         }
       },
       {
@@ -893,9 +904,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "0f3c942ddbbe1e758943ab2ea5acb93b30d8980859d5f43de529e82581f29092",
+        "hash": "57bc7b08a5a757d7682acb707585428030fa1e2ea652bc4c6705f34e47729a8f",
         "debugInfo": {
-          "byteSize": 11812
+          "byteSize": 11874
         }
       },
       {
@@ -926,9 +937,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "850788d97459addfa941abcdc1d5be1a476d1f06f3bb69a85f4e65d41e9c2829",
+        "hash": "282db80a7d02119d3b9ca6f8c507d0df95841d22b8cd1bd3308330eb53638a16",
         "debugInfo": {
-          "byteSize": 91598
+          "byteSize": 92376
         }
       },
       {
