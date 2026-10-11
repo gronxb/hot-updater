@@ -438,8 +438,16 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       path.join(functions, "index.cjs"),
       transformEnv(path.join(functions, "index.cjs"), {
         REGION: placeholder("REGION"),
+        FIRESTORE_DATABASE_ID: placeholder("FIRESTORE_DATABASE_ID"),
       }),
     );
+    // Indexes deploy to the database the function uses.
+    const firebaseJson = await json(path.join(firebase, "firebase.json"));
+    firebaseJson.firestore = {
+      ...firebaseJson.firestore,
+      database: placeholder("FIRESTORE_DATABASE_ID"),
+    };
+    await save(path.join(firebase, "firebase.json"), firebaseJson);
     const pkg = await json(path.join(functions, "package.json"));
     pkg.dependencies = await runtimeDependencies(functions, provider);
     await save(path.join(functions, "package.json"), pkg);
@@ -449,6 +457,7 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
     Object.assign(requirements, {
       projectId: null,
       region: null,
+      databaseId: null,
       storageBucket: null,
     });
   }

@@ -22,6 +22,7 @@ export const getConfigScaffold = (
     imports: [{ pkg: "@hot-updater/firebase", named: ["firebaseDatabase"] }],
     configString: `firebaseDatabase({
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+    databaseId: process.env.HOT_UPDATER_FIREBASE_DATABASE_ID,
     credential,
   })`,
   };

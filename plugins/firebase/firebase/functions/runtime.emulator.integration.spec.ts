@@ -48,6 +48,8 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const WORKSPACE_ROOT = path.resolve(__dirname, "../../../..");
 const REGION = "us-central1";
+// A named database, as init deploys the function for one.
+const FIRESTORE_DATABASE_ID = "hot-updater-runtime";
 const FUNCTION_NAME = "hot-updater-v1";
 const API_KEY = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE";
 const FIREBASE_CLI_VERSION_ARGS = [
@@ -239,6 +241,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
         ),
         {
           REGION,
+          FIRESTORE_DATABASE_ID,
         },
       ),
     );
@@ -249,6 +252,7 @@ exec node "${path.join(firebaseFunctionsPackagePath, "lib/bin/firebase-functions
       ...firebaseAdminApp.options,
       projectId,
       storageBucket,
+      databaseId: FIRESTORE_DATABASE_ID,
     };
 
     const database = firebaseDatabase({ ...adminOptions });
@@ -423,7 +427,7 @@ const clearFirestoreCollection = async (
   collectionName: string,
   matches: (pk: string) => boolean,
 ) => {
-  const firestore = getFirestore();
+  const firestore = getFirestore(FIRESTORE_DATABASE_ID);
   const doomed = (await firestore.collection(collectionName).get()).docs.filter(
     (doc) => matches(String(doc.get("pk"))),
   );

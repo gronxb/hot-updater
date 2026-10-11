@@ -51,9 +51,11 @@ export const firebaseEngineSettingDocumentId = () =>
 
 export const assertFirebaseInfrastructureCanInitialize = async ({
   applicationCredentials,
+  databaseId,
   projectId,
 }: {
   readonly applicationCredentials?: string;
+  readonly databaseId: string;
   readonly projectId: string;
 }): Promise<void> => {
   const credential = applicationCredentials
@@ -64,7 +66,7 @@ export const assertFirebaseInfrastructureCanInitialize = async ({
     `hot-updater-init-${projectId}-${Date.now()}`,
   );
   try {
-    const db = getFirestore(app);
+    const db = getFirestore(app, databaseId);
     const setting = await db
       .collection(FIREBASE_V1_COLLECTION)
       .doc(firebaseEngineSettingDocumentId())
@@ -74,7 +76,7 @@ export const assertFirebaseInfrastructureCanInitialize = async ({
     });
     if (state === "incompatible") {
       throw new InitError(
-        `Firebase v1 infrastructure in project ${projectId} records an unsupported database version. Use a new Firebase project, or delete the ${FIREBASE_V1_COLLECTION} collection, then rerun init.`,
+        `Firebase v1 infrastructure in project ${projectId} (Firestore database ${databaseId}) records an unsupported database version. Use a new Firebase project, or delete the ${FIREBASE_V1_COLLECTION} collection, then rerun init.`,
       );
     }
   } catch (error) {

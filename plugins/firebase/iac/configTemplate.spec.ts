@@ -95,5 +95,9 @@ describe("Firebase managed config scaffold", () => {
     expect(updated).toContain(
       "  plugins: [apiKeys(), insights(), remoteConfig()],\n",
     );
+    // The database init set up, which the function also uses.
+    expect(updated).toContain(
+      "databaseId: process.env.HOT_UPDATER_FIREBASE_DATABASE_ID,",
+    );
   });
 });

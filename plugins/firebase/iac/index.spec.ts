@@ -179,6 +179,7 @@ vi.mock("./select", () => ({
     mocks.events.push("project");
     if (mocks.existingProject) {
       return {
+        databaseId: "hot-updater",
         projectId: "existing-project",
         status: "ready" as const,
         storageBucket: "existing-project.firebasestorage.app",
@@ -223,6 +224,10 @@ describe("Firebase project creation", () => {
     await fs.writeFile(
       path.join(mocks.tmpDir, "firestore.indexes.json"),
       JSON.stringify({ fieldOverrides: [], indexes: [] }),
+    );
+    await fs.writeFile(
+      path.join(mocks.tmpDir, "firebase.json"),
+      JSON.stringify({ firestore: { indexes: "firestore.indexes.json" } }),
     );
   });
 
@@ -341,6 +346,66 @@ describe("Firebase project creation", () => {
       expect.arrayContaining(["firebase", "deploy", "--only", "functions"]),
       expect.anything(),
     );
+  });
+
+  it("sets up the Firestore database the project selection resolved", async () => {
+    // Given
+    mocks.existingProject = true;
+    mocks.existingEnv = {
+      HOT_UPDATER_FIREBASE_DATABASE_ID: "hot-updater",
+      HOT_UPDATER_FIREBASE_PROJECT_ID: "existing-project",
+      HOT_UPDATER_FIREBASE_REGION: "asia-northeast3",
+    };
+    await fs.writeFile(
+      path.join(mocks.functionsDir, "index.cjs"),
+      "exports.databaseId = HotUpdater.FIRESTORE_DATABASE_ID;\n",
+    );
+
+    // When
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    // Then
+    // The saved database is the one project selection looks for.
+    expect(vi.mocked(initFirebaseUser).mock.calls[0]?.[5]).toBe("hot-updater");
+    expect(mocks.assertInfrastructure).toHaveBeenCalledWith(
+      expect.objectContaining({
+        databaseId: "hot-updater",
+        projectId: "existing-project",
+      }),
+    );
+    expect(setEnv).toHaveBeenCalledWith(
+      expect.objectContaining({ databaseId: "hot-updater" }),
+    );
+    // Indexes are read from and deployed to that database.
+    expect(execa).toHaveBeenCalledWith(
+      "npx",
+      [
+        "firebase",
+        "firestore:indexes",
+        "--database",
+        "hot-updater",
+        "--non-interactive",
+      ],
+      expect.objectContaining({ cwd: mocks.tmpDir }),
+    );
+    await expect(
+      fs.readFile(path.join(mocks.tmpDir, "firebase.json"), "utf-8"),
+    ).resolves.toSatisfy(
+      (text: string) =>
+        JSON.parse(text).firestore.database === "hot-updater" &&
+        JSON.parse(text).firestore.indexes === "firestore.indexes.json",
+    );
+    // The schema settings and the function both use it.
+    expect(mocks.migrateFirebaseDatabase).toHaveBeenCalledWith(
+      expect.objectContaining({ databaseId: "hot-updater" }),
+      expect.any(Array),
+    );
+    expect(firebaseDatabase).toHaveBeenCalledWith(
+      expect.objectContaining({ databaseId: "hot-updater" }),
+    );
+    await expect(
+      fs.readFile(path.join(mocks.functionsDir, "index.cjs"), "utf-8"),
+    ).resolves.toContain('exports.databaseId = "hot-updater";');
   });
 
   it("points missing Firebase credentials to .env.hotupdater", async () => {

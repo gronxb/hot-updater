@@ -45,8 +45,8 @@ Set `databaseId` to keep the collection in a [named Firestore
 database](https://firebase.google.com/docs/firestore/manage-databases) instead
 of the project's `(default)` one. The database must already exist. Pass the
 same `databaseId` to `migrateFirebaseDatabase` and wherever the server and
-`hot-updater.config.ts` create `firebaseDatabase`. The managed setup and its
-Cloud Function use the `(default)` database.
+`hot-updater.config.ts` create `firebaseDatabase`. Managed init asks for the
+database and records it as `HOT_UPDATER_FIREBASE_DATABASE_ID`.
 
 ## Collection and indexes
 
