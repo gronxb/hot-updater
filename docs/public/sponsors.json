@@ -12,20 +12,20 @@
       "avatarUrl": "https://avatars.githubusercontent.com/u/56547421?u=2a7ead7e22a551021e26e41aef6c7c4b89216ffc&v=4",
       "name": "Valerio Belli",
       "url": "https://github.com/valeriobelli",
-      "weight": 0.452
-    },
-    {
-      "login": "claudesortwell",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/41422239?u=62aa6ed5b4084595175b5fdc42d2edb5598e914b&v=4",
-      "name": "Claude",
-      "url": "https://github.com/claudesortwell",
-      "weight": 0.238
+      "weight": 0.476
     },
     {
       "login": "Davescat",
       "avatarUrl": "https://avatars.githubusercontent.com/u/47789084?u=011ae9b93ad68924bf2bce311eb102bd6337e00b&v=4",
       "name": "Davide Catalano",
       "url": "https://github.com/Davescat",
+      "weight": 0.262
+    },
+    {
+      "login": "claudesortwell",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/41422239?u=62aa6ed5b4084595175b5fdc42d2edb5598e914b&v=4",
+      "name": "Claude",
+      "url": "https://github.com/claudesortwell",
       "weight": 0.238
     },
     {
@@ -57,18 +57,18 @@
       "weight": 0.095
     },
     {
+      "login": "soonoo",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/5436405?u=5d0b4aa955c87e30e6bda7f0cccae5402da99528&v=4",
+      "name": "soonoo",
+      "url": "https://github.com/soonoo",
+      "weight": 0.095
+    },
+    {
       "login": "wes4m",
       "avatarUrl": "https://avatars.githubusercontent.com/u/5308867?v=4",
       "name": "Wesam Alzahir",
       "url": "https://github.com/wes4m",
       "weight": 0.095
-    },
-    {
-      "login": "soonoo",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/5436405?u=5d0b4aa955c87e30e6bda7f0cccae5402da99528&v=4",
-      "name": "soonoo",
-      "url": "https://github.com/soonoo",
-      "weight": 0.071
     },
     {
       "login": "diepquynh",
@@ -120,8 +120,15 @@
       "weight": 0.024
     },
     {
+      "login": "zhuscat",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/14963619?u=d6fc43ce5ddbe99d929ba46c6ff1876b1b166a88&v=4",
+      "name": "Liangzhen Zhu",
+      "url": "https://github.com/zhuscat",
+      "weight": 0.024
+    },
+    {
       "login": "RyuWoong",
-      "avatarUrl": "https://avatars.githubusercontent.com/u/36265465?u=916eb9791fb9f9d5efbea5f2ab82f1463af166e2&v=4",
+      "avatarUrl": "https://avatars.githubusercontent.com/u/36265465?u=fbeea36bb783e4e6d3ca5911a698cad542154630&v=4",
       "name": "RyuWoong",
       "url": "https://github.com/RyuWoong",
       "weight": 0.019
@@ -134,5 +141,5 @@
       "weight": 0.005
     }
   ],
-  "updatedAt": "2026-09-02T17:18:32Z"
+  "updatedAt": "2026-10-11T04:15:32Z"
 }
