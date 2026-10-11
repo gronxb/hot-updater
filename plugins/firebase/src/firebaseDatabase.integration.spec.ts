@@ -12,6 +12,8 @@ import {
   insightsTestSuite,
   createReleaseCatalogTestStorage,
 } from "@hot-updater/test-utils";
+import { getApp } from "firebase-admin/app";
+import { getFirestore } from "firebase-admin/firestore";
 import { describe, expect, it } from "vitest";
 
 import { createFirestoreTestDatabase } from "../test-utils/createFirestoreTestDatabase";
@@ -58,6 +60,34 @@ describe("firebaseDatabase", () => {
     await migrateFirebaseDatabase(config);
     await migrateFirebaseDatabase(config);
     await expect(core.listChannels()).resolves.toEqual([]);
+  });
+
+  it("keeps its collection in the named database databaseId gives", async () => {
+    await clearCollection("hot_updater_v1");
+    const databaseId = `named-${process.pid}`;
+    const named = { ...config, databaseId };
+    const namedCollection = getFirestore(getApp(), databaseId).collection(
+      "hot_updater_v1",
+    );
+    try {
+      await migrateFirebaseDatabase(named);
+      const core = createHotUpdater({
+        database: firebaseDatabase(named),
+        storage: createReleaseCatalogTestStorage(),
+        clientAccess: "public",
+      }).core;
+      await expect(core.listChannels()).resolves.toEqual([]);
+      expect((await namedCollection.get()).empty).toBe(false);
+      expect((await firestore.collection("hot_updater_v1").get()).empty).toBe(
+        true,
+      );
+    } finally {
+      const batch = namedCollection.firestore.batch();
+      for (const document of (await namedCollection.get()).docs) {
+        batch.delete(document.ref);
+      }
+      await batch.commit();
+    }
   });
 
   setupDatabaseTestSuite({
