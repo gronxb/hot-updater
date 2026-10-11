@@ -5,9 +5,11 @@ import { initProvider as FIREBASE_INIT_PROVIDER } from "./init/index";
 export const FIRESTORE_DEFAULT_DATABASE_ID = "(default)";
 
 /**
- * The IDs of a project's Firestore databases in Native mode, from
+ * The IDs of a project's databases the Firestore API can use, from
  * `gcloud firestore databases list --format=json`, whose names are
- * `projects/<project>/databases/<id>`.
+ * `projects/<project>/databases/<id>`: not Datastore mode, and not an
+ * Enterprise database with Firestore data access disabled, the default for
+ * MongoDB-compatible ones.
  */
 export const parseFirestoreDatabaseIds = (databases: unknown): string[] =>
   Array.isArray(databases)
@@ -16,7 +18,9 @@ export const parseFirestoreDatabaseIds = (databases: unknown): string[] =>
         const name = Reflect.get(database, "name");
         if (
           typeof name !== "string" ||
-          Reflect.get(database, "type") === "DATASTORE_MODE"
+          Reflect.get(database, "type") === "DATASTORE_MODE" ||
+          Reflect.get(database, "firestoreDataAccessMode") ===
+            "DATA_ACCESS_MODE_DISABLED"
         ) {
           return [];
         }

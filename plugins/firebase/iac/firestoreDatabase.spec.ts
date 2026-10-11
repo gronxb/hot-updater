@@ -30,7 +30,7 @@ beforeEach(() => {
 });
 
 describe("parseFirestoreDatabaseIds", () => {
-  it("reads the IDs of the project's Native mode databases", () => {
+  it("reads the IDs of the databases the Firestore API can use", () => {
     expect(
       parseFirestoreDatabaseIds([
         {
@@ -45,8 +45,20 @@ describe("parseFirestoreDatabaseIds", () => {
           name: "projects/demo-project/databases/legacy",
           type: "DATASTORE_MODE",
         },
+        {
+          name: "projects/demo-project/databases/mongo",
+          type: "FIRESTORE_NATIVE",
+          databaseEdition: "ENTERPRISE",
+          firestoreDataAccessMode: "DATA_ACCESS_MODE_DISABLED",
+        },
+        {
+          name: "projects/demo-project/databases/enterprise",
+          type: "FIRESTORE_NATIVE",
+          databaseEdition: "ENTERPRISE",
+          firestoreDataAccessMode: "DATA_ACCESS_MODE_ENABLED",
+        },
       ]),
-    ).toEqual(["(default)", "hot-updater"]);
+    ).toEqual(["(default)", "hot-updater", "enterprise"]);
   });
 
   it("reads nothing from an unexpected response", () => {

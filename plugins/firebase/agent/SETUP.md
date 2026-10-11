@@ -27,7 +27,8 @@ supply this CLI. Do this before remote provisioning.
     Service Account Credentials APIs. Create the default Firestore database and
     enable Storage when missing and authorized. Ask only for prerequisites that
     require user involvement. Query the canonical default bucket; never guess its suffix.
-    List the Native mode Firestore databases
+    List the databases the Firestore API can use (not Datastore mode, not
+    Firestore data access disabled)
     (`gcloud firestore databases list --project <project-id>`) and select the
     one Hot Updater uses: `(default)`, the only one, or the one the user names.
   - Verify/record: database ready, APIs available, actual bucketName and
