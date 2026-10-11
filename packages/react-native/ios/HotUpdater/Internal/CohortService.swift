@@ -4,7 +4,6 @@ import UIKit
 final class CohortService {
     private let userDefaults: UserDefaults
 
-    // Keep the legacy key so existing custom cohorts continue to work.
     private let cohortKey = "HotUpdater_CustomCohort"
     private let fallbackIdentifierKey = "HotUpdater_FallbackCohortIdentifier"
 

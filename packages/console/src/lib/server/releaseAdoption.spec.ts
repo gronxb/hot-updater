@@ -43,7 +43,7 @@ const row = (
 // Newest first, as the release index lists them.
 const releases = [
   row("release-4", 9 * DAY, { message: "Newest" }),
-  row("release-embedded", 8 * DAY, { kind: "EMBEDDED", bundle_id: null }),
+  row("release-no-bundle", 8 * DAY, { bundle_id: null }),
   row("release-3", 7 * DAY, { enabled: false }),
   row("release-2", 5 * DAY),
 ];
@@ -82,7 +82,7 @@ describe("Release health bundles", () => {
       order: "desc",
       limit: 10,
     });
-    // A rollback to the built-in bundle has nothing to apply.
+    // A release without a bundle has nothing to apply.
     expect(listed).toEqual([
       {
         releaseId: "release-4",
@@ -120,7 +120,7 @@ describe("Release health bundles", () => {
       releaseId: "release-4",
       withPrevious: true,
     });
-    // Past the rollback, the bundle before it.
+    // Past the release without a bundle, the bundle before it.
     expect(withPrevious.previous?.releaseId).toBe("release-3");
     expect(core.listReleases).toHaveBeenCalledWith({
       filter: {
@@ -133,8 +133,8 @@ describe("Release health bundles", () => {
       limit: 4,
     });
 
-    // No other platform's or channel's release, and no rollback.
-    for (const releaseId of ["release-android", "release-embedded", "none"])
+    // No other platform's or channel's release, and none without a bundle.
+    for (const releaseId of ["release-android", "release-no-bundle", "none"])
       await expect(
         getAdoptionRelease(core, {
           platform: "ios",

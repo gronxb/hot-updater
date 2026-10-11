@@ -1,6 +1,0 @@
----
-"@hot-updater/server": patch
-"@hot-updater/plugin-core": patch
----
-
-Insights writes less for each report. An installation's `UNCHANGED` report that repeats its latest report on the same UTC day, with the same channel, platform, app version, bundle, Release, and user, records nothing, so launch counts count daily active installations. An `UNCHANGED` report still updates the installation's latest report and the launch metrics, but is not stored as an event: no event list holds it, `GET /events` answers `400` for `outcome=unchanged`, `GET /overview` no longer returns `bundle.unchangedReports`, and `InsightsBundleEventFilter` no longer takes `UNCHANGED`. The latest-installation gauges count each installation in the UTC day of its latest report: `countLatestEvents` takes the start of a UTC day as `sinceMs`, `GET /overview` counts from the start of the UTC day its window reaches into, and the App usage distribution covers every UTC day its window touches. Usage sketches are kept per platform and merged for every platform on read, and a channel's unique users come from its usage sketches. On DynamoDB a new installation's first launch writes 15 items (40 write units) instead of 27 (76), and a relaunch the same UTC day writes nothing instead of 12 or 26 items.

@@ -108,7 +108,7 @@ describe("DynamoDB existing table key types", () => {
     },
   );
 
-  it("rejects a table from before 1.0, which keeps its update index", async () => {
+  it("rejects a table with a secondary index", async () => {
     // Given
     mocks.describeTable.mockResolvedValue({
       Table: {
@@ -120,7 +120,7 @@ describe("DynamoDB existing table key types", () => {
         ),
         GlobalSecondaryIndexes: [
           {
-            IndexName: "hot-updater-update-index",
+            IndexName: "by-channel",
             KeySchema: [
               { AttributeName: "gsi1pk", KeyType: "HASH" },
               { AttributeName: "gsi1sk", KeyType: "RANGE" },

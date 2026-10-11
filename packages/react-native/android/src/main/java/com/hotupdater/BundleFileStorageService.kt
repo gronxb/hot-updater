@@ -1085,10 +1085,10 @@ class BundleFileStorageService(
                 metadata.stableBundleId != null -> metadata.stableSelection
                 else -> null
             }?.takeIf { it.bundleId != bundleId }
-        val stagingSelection = incomingSelection ?: PersistedSelection.legacyBundle(bundleId)
+        val stagingSelection = incomingSelection ?: PersistedSelection.bareBundle(bundleId)
         val fromSelection =
             currentVerifiedSelection
-                ?: PersistedSelection.legacyBundle(HotUpdaterImpl.getMinBundleId())
+                ?: PersistedSelection.bareBundle(HotUpdaterImpl.getMinBundleId())
 
         return metadata.copy(
             stableBundleId = currentVerifiedBundleId,
@@ -1266,9 +1266,9 @@ class BundleFileStorageService(
 
     private fun activeSelection(metadata: BundleMetadata): PersistedSelection? =
         metadata.stagingSelection
-            ?: metadata.stagingBundleId?.let(PersistedSelection::legacyBundle)
+            ?: metadata.stagingBundleId?.let(PersistedSelection::bareBundle)
             ?: metadata.stableSelection
-            ?: metadata.stableBundleId?.let(PersistedSelection::legacyBundle)
+            ?: metadata.stableBundleId?.let(PersistedSelection::bareBundle)
 
     override fun getActiveUpdateState(): Map<String, Any?> =
         synchronized(releaseStateLock) {

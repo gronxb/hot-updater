@@ -98,15 +98,23 @@ describe("schema fence", () => {
       message:
         'The tables of plugins "insights", "notes" and "keys" are not migrated on memory: schema settings "schema.insights" is missing; expected "2", and "schema.notes" is "1"; expected "2", and "schema.keys" is missing; expected "1". Run the migration.',
     });
-    // Core's settings keep their own message, which names no plugin.
+    // Core's settings keep their own message, which names no plugin. An
+    // unmigrated database only needs the migration.
     await expect(
       checkSchemaFence(createMemoryAdapter(), "memory", settings),
     ).rejects.toMatchObject({
       plugins: [],
-      message: expect.stringContaining(
-        'Hot Updater schema setting "schema.engine" for memory is missing',
-      ),
+      message:
+        'Hot Updater schema setting "schema.engine" for memory is missing; expected "1". Run `hot-updater db migrate`.',
     });
+  });
+
+  it("asks for a new database only for a v0 schema, which it cannot migrate in place", () => {
+    expect(
+      new HotUpdaterSchemaMigrationRequiredError("memory", "0.21.0").message,
+    ).toBe(
+      "Hot Updater v1 cannot migrate schema 0.21.0 in place. Create a new empty database and run `hot-updater db migrate`.",
+    );
   });
 
   it("checks before a process's first read only, and again after a failure", async () => {
@@ -129,7 +137,7 @@ describe("schema fence", () => {
     expect(calls.gets).toBe(3);
   });
 
-  it("rewrites only changed settings and refuses a database from before the engine", async () => {
+  it("rewrites only changed settings", async () => {
     const memory = createMemoryAdapter();
     await migrateSchema(memory, "memory", [], settings);
     const writes: unknown[] = [];
@@ -147,18 +155,6 @@ describe("schema fence", () => {
       "schema.insights": "1.0.0",
     });
     expect(writes).toHaveLength(1);
-
-    const legacy = createMemoryAdapter();
-    await legacy.write([
-      {
-        type: "insert",
-        table: SETTINGS_TABLE,
-        row: { key: "schema.core", value: "1.0.0", _v: 0 },
-      },
-    ]);
-    await expect(
-      mismatch(writeSchemaSettings(legacy, "memory", settings)),
-    ).resolves.toEqual({ key: "schema.engine", expected: "1", found: null });
   });
   it("reads a missing table as missing settings and rethrows any other failure", async () => {
     const empty = createSqlAdapter({

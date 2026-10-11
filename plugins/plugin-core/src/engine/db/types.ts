@@ -12,7 +12,6 @@ export type ORMSQLProvider = (typeof sqlProviders)[number];
 
 /** What a `Migrator`'s migrations take. */
 export interface MigrateOptions {
-  mode?: "from-schema" | "from-database";
   updateSettings?: boolean;
   unsafe?: boolean;
 }

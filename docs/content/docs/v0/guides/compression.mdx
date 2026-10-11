@@ -1,0 +1,41 @@
+---
+title: "Compression Strategy"
+description: "Choose a compression format for your bundle distribution."
+icon: FileArchive
+---
+
+## Supported Formats
+
+- **`zip`** - Standard ZIP format (DEFLATE algorithm). Fast compression and decompression.
+- **`tar.gz`** - TAR archive with GZIP compression (LZ77 algorithm). ~10-15% smaller than ZIP.
+- **`tar.br`** - TAR archive with [Brotli](https://github.com/google/brotli) compression. ~20-30% smaller than GZIP. Developed by Google for web compression.
+
+## Configuration
+
+Set `compressStrategy` in your `hot-updater.config.ts`:
+
+```ts
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  // ... other options
+  compressStrategy: 'tar.gz', // 'zip' | 'tar.gz' | 'tar.br'
+});
+```
+
+## Usage
+
+After setting the compression strategy, deploy your bundle:
+
+```bash
+npx hot-updater deploy -p ios
+npx hot-updater deploy -p android
+```
+
+Hot Updater compresses and deploys the bundle in the specified format. The
+client app detects ZIP, GZIP, or Brotli and decompresses the download
+automatically. Compression reduces download size and bandwidth usage.
+
+<Callout title="Recommendation">
+Choose `tar.br` or `tar.gz` for smaller downloads. The client supports both formats.
+</Callout>

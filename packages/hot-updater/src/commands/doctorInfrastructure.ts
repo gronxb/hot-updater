@@ -1,7 +1,6 @@
 import {
   getRequiredUpdateTarget,
   isInfrastructureUpdateRequired,
-  isV1InfrastructureRequired,
   type RequiredUpdateTarget,
 } from "./doctorInfrastructureTargets";
 
@@ -10,7 +9,6 @@ export {
   getRequiredServerVersion,
   getRequiredUpdateTarget,
   isInfrastructureUpdateRequired,
-  isV1InfrastructureRequired,
 } from "./doctorInfrastructureTargets";
 
 export interface InfrastructureStatus {
@@ -109,7 +107,6 @@ export async function checkInfrastructureStatus({
   const catalogMode = getCatalogMode(baseUrl);
   const requiredVersion =
     requiredTarget.minimumPrereleaseVersion ?? requiredTarget.version;
-  const requiresV1 = isV1InfrastructureRequired(requiredTarget.version);
 
   try {
     const response = await fetchImpl(versionEndpoint, {
@@ -125,16 +122,9 @@ export async function checkInfrastructureStatus({
           ...catalogMode,
           versionEndpoint,
           requiredVersion,
-          ...(requiresV1
-            ? {
-                upgradeBlocked: true,
-                updateReason:
-                  "v1 infrastructure marker not found at the existing endpoint",
-              }
-            : {
-                needsUpdate: true,
-                updateReason: "Version endpoint not found",
-              }),
+          upgradeBlocked: true,
+          updateReason:
+            "v1 infrastructure marker not found at the existing endpoint",
         };
       }
 
@@ -158,7 +148,7 @@ export async function checkInfrastructureStatus({
       };
     }
 
-    if (requiresV1 && data.infrastructureGeneration !== 1) {
+    if (data.infrastructureGeneration !== 1) {
       return {
         baseUrl,
         ...catalogMode,
@@ -167,20 +157,6 @@ export async function checkInfrastructureStatus({
         requiredVersion,
         upgradeBlocked: true,
         updateReason: "Existing infrastructure does not declare generation 1",
-      };
-    }
-
-    if (
-      data.infrastructureGeneration !== undefined &&
-      data.infrastructureGeneration !== 1
-    ) {
-      return {
-        baseUrl,
-        ...catalogMode,
-        versionEndpoint,
-        serverVersion: data.version,
-        requiredVersion,
-        error: `Unsupported infrastructure generation: ${String(data.infrastructureGeneration)}`,
       };
     }
 
@@ -194,9 +170,7 @@ export async function checkInfrastructureStatus({
       ...catalogMode,
       versionEndpoint,
       serverVersion: data.version,
-      ...(data.infrastructureGeneration === 1
-        ? { infrastructureGeneration: 1 }
-        : {}),
+      infrastructureGeneration: 1,
       requiredVersion,
       needsUpdate,
       updateReason: needsUpdate ? requiredTarget.note : undefined,

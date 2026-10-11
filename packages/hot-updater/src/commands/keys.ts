@@ -21,7 +21,7 @@ import {
   saveKeyPair,
 } from "../utils/signing";
 
-export const ANDROID_KEY = "hot_updater_public_key";
+export const ANDROID_KEY = "com.hotupdater.PUBLIC_KEY";
 export const IOS_KEY = "HOT_UPDATER_PUBLIC_KEY";
 
 const canonicalizeRsaSpkiPublicKey = (publicKeyPem: string): string => {

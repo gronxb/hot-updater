@@ -109,9 +109,6 @@ pnpm release
 
 # Publish all packages
 pnpm publish:all
-
-# Publish release candidate
-pnpm publish:rc
 ```
 
 ### Hot Updater CLI

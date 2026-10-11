@@ -106,7 +106,6 @@ const defaultScenarioNames = [
   "republished-crashed-bundle-skipped",
   "crash-then-next-safe-update",
   "runtime-channel-crash-restore",
-  "metadata-v1-migration",
   "ten-crash-history-safe-bundle",
   "remote-config-fetch-activate",
 ] as const;
@@ -272,7 +271,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(31);
+    expect(new Set(listScenarioNames()).size).toBe(30);
   });
 
   it("keeps repeated catalog checks as no-ops while already built-in", async () => {
@@ -658,7 +657,7 @@ describe("E2E scenario contract", () => {
 
   it.each([
     ["running-file", "staged-update"],
-    ["019f0000-0000-7000-8000-000000000000", "embedded-update"],
+    ["019f0000-0000-7000-8000-000000000000", "staged-update"],
   ])(
     "keeps runtime file diagnostics on %s when the selected ID is %s",
     (bundleId, updateId) => {
@@ -740,7 +739,7 @@ describe("E2E scenario contract", () => {
   it.each([
     ["safe-file", "promoted-update", false],
     ["crash-file", "safe-file", true],
-    ["019f0000-0000-7000-8000-000000000000", "embedded-update", false],
+    ["019f0000-0000-7000-8000-000000000000", "staged-update", false],
   ])(
     "checks the crash guard against file %s independently of selected ID %s",
     async (bundleId, updateId, shouldCrash) => {
@@ -886,8 +885,6 @@ describe("E2E scenario contract", () => {
       "crash-then-next-safe-update: install next safe update",
       "runtime-channel-crash-restore: install beta stable",
       "runtime-channel-crash-restore: install beta crash",
-      "metadata-v1-migration: install migration stable",
-      "metadata-v1-migration: install migration staging",
     ]);
 
     for (const scenarioName of defaultScenarioNames) {

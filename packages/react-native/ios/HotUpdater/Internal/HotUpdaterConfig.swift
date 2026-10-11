@@ -3,7 +3,7 @@ import Foundation
 /// Thread-safe programmatic configuration holder for HotUpdater.
 ///
 /// When values are set here, they take priority over `Info.plist` (iOS) and
-/// manifest metadata / string resources (Android). This enables brownfield /
+/// manifest metadata (Android). This enables brownfield /
 /// prebuilt-framework setups where the RN module cannot rely on the host app's
 /// `Info.plist` for configuration.
 @objcMembers

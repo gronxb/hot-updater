@@ -160,7 +160,6 @@ async function generateWithMigrator(
 
   // Generate migration
   const result = await migrator.migrateToLatest({
-    mode: "from-schema",
     updateSettings: true,
   });
 

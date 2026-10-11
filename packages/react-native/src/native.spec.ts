@@ -1,5 +1,5 @@
 import { INVALID_COHORT_ERROR_MESSAGE } from "@hot-updater/protocol";
-import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const nativeModuleMock = vi.hoisted(() => {
   const getManifest = vi.fn<() => Record<string, unknown> | string>();
@@ -24,6 +24,7 @@ const nativeModuleMock = vi.hoisted(() => {
     })),
     notifyAppReady: vi.fn(),
     reload: vi.fn(),
+    reloadProcess: vi.fn(),
     resetChannel: vi.fn(),
     setCohort: vi.fn(),
     setStorageItem: vi.fn<(key: string, value: string | null) => void>(),
@@ -196,12 +197,12 @@ describe("notifyAppReady", () => {
     expect(getManifest().bundleId).toBe("running-file");
   });
 
-  it("reports an explicit built-in rollback by its update ID", async () => {
+  it("reports the built-in bundle after a built-in rollback", async () => {
     nativeModuleMock.getActiveUpdateState.mockReturnValue(
       JSON.stringify({
         activeSelection: {
-          kind: "EMBEDDED",
-          releaseId: "rollback-1",
+          kind: "BUILTIN",
+          releaseId: null,
           bundleId: "min-bundle-id",
         },
       }),
@@ -209,15 +210,15 @@ describe("notifyAppReady", () => {
     nativeModuleMock.getBundleId.mockReturnValue(null);
     const { getUpdateId, getBundleId } = await import("./native");
 
-    expect(getUpdateId()).toBe("rollback-1");
+    expect(getUpdateId()).toBe("min-bundle-id");
     expect(getBundleId()).toBe("min-bundle-id");
   });
 
-  it("normalizes legacy PROMOTED launch reports to UPDATE_APPLIED", async () => {
+  it("parses UPDATE_APPLIED launch reports from old-arch JSON payloads", async () => {
     nativeModuleMock.notifyAppReady.mockReturnValue(
       JSON.stringify({
         fromBundleId: "bundle-123",
-        status: "PROMOTED",
+        status: "UPDATE_APPLIED",
         toBundleId: "bundle-456",
       }),
     );
@@ -332,24 +333,6 @@ describe("notifyAppReady", () => {
     expect(getBundleId()).toBe("bundle-123");
   });
 
-  it("throws when native SDK does not expose getBundleId", async () => {
-    const nativeModule = nativeModuleMock as typeof nativeModuleMock & {
-      getBundleId?: typeof nativeModuleMock.getBundleId;
-    };
-    const originalGetBundleId = nativeModule.getBundleId;
-    nativeModule.getBundleId = null as unknown as Mock<() => string | null>;
-
-    try {
-      const { getBundleId } = await import("./native");
-
-      expect(() => getBundleId()).toThrow(
-        "Native module is missing 'getBundleId()'",
-      );
-    } finally {
-      nativeModule.getBundleId = originalGetBundleId;
-    }
-  });
-
   it("falls back to MIN_BUNDLE_ID when native reports an empty bundle id", async () => {
     nativeModuleMock.getBundleId.mockReturnValue("");
 
@@ -406,10 +389,13 @@ describe("notifyAppReady", () => {
     });
   });
 
-  it("normalizes legacy manifest asset entries from native objects", async () => {
+  it("drops manifest asset entries that are not file descriptors", async () => {
     nativeModuleMock.getManifest.mockReturnValue({
       assets: {
         "assets/logo.png": "hash-logo",
+        "index.android.bundle": {
+          fileHash: "hash-bundle",
+        },
       },
       bundleId: "bundle-123",
     });
@@ -418,8 +404,8 @@ describe("notifyAppReady", () => {
 
     expect(getManifest()).toEqual({
       assets: {
-        "assets/logo.png": {
-          fileHash: "hash-logo",
+        "index.android.bundle": {
+          fileHash: "hash-bundle",
         },
       },
       bundleId: "bundle-123",
@@ -450,7 +436,7 @@ describe("notifyAppReady", () => {
     });
   });
 
-  it("normalizes legacy manifest asset entries from old-arch JSON payloads", async () => {
+  it("drops manifest asset entries that are not file descriptors from old-arch JSON payloads", async () => {
     nativeModuleMock.getManifest.mockReturnValue(
       JSON.stringify({
         assets: {
@@ -463,11 +449,7 @@ describe("notifyAppReady", () => {
     const { getManifest } = await import("./native");
 
     expect(getManifest()).toEqual({
-      assets: {
-        "assets/logo.png": {
-          fileHash: "hash-logo",
-        },
-      },
+      assets: {},
       bundleId: "bundle-123",
     });
   });
@@ -869,24 +851,6 @@ describe("notifyAppReady", () => {
     expect(getFingerprintHash()).toBeNull();
   });
 
-  it("throws when native SDK does not expose getInstallId", async () => {
-    const nativeModule = nativeModuleMock as typeof nativeModuleMock & {
-      getInstallId?: typeof nativeModuleMock.getInstallId;
-    };
-    const originalGetInstallId = nativeModule.getInstallId;
-    nativeModule.getInstallId = null as unknown as Mock<() => string>;
-
-    try {
-      const { getInstallId } = await import("./native");
-
-      expect(() => getInstallId()).toThrow(
-        "Native module is missing 'getInstallId()'",
-      );
-    } finally {
-      nativeModule.getInstallId = originalGetInstallId;
-    }
-  });
-
   it("reads and writes the native key-value store", async () => {
     nativeModuleMock.getStorageItem.mockImplementation((key) =>
       key === "plugins/example/state" ? "stored" : null,
@@ -909,27 +873,6 @@ describe("notifyAppReady", () => {
       null,
     );
   });
-
-  it.each(["getStorageItem", "setStorageItem"] as const)(
-    "throws when native SDK does not expose %s",
-    async (name) => {
-      const nativeModule = nativeModuleMock as Record<string, unknown>;
-      const original = nativeModule[name];
-      nativeModule[name] = undefined;
-
-      try {
-        const { getStorageItem, setStorageItem } = await import("./native");
-
-        expect(() =>
-          name === "getStorageItem"
-            ? getStorageItem("key")
-            : setStorageItem("key", "value"),
-        ).toThrow(`Native module is missing '${name}()'`);
-      } finally {
-        nativeModule[name] = original;
-      }
-    },
-  );
 
   it("returns the cohort reported by native", async () => {
     nativeModuleMock.getCohort.mockReturnValue("qa-group");

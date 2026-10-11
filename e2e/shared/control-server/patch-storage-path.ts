@@ -32,11 +32,11 @@ export function inferPatchAssetPathFromStorageUri({
     return null;
   }
 
-  const patchSegments = segments.slice(patchesIndex + 2);
-  if (patchSegments[0] === patchFileHash) {
-    patchSegments.shift();
+  // patches/<baseBundleId>/<patchFileHash>/<asset path>.bsdiff
+  if (segments[patchesIndex + 2] !== patchFileHash) {
+    return null;
   }
-  const patchPath = patchSegments.join("/");
+  const patchPath = segments.slice(patchesIndex + 3).join("/");
   return patchPath.endsWith(".bsdiff")
     ? patchPath.slice(0, -".bsdiff".length)
     : null;

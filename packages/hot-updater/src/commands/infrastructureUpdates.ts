@@ -7,10 +7,6 @@ export interface InfrastructureUpdate {
 // validates and packages those files; retain earlier releases for skipped upgrades.
 export const INFRASTRUCTURE_UPDATES = [
   {
-    version: "1.0.0-rc.29",
-    note: "HTTP response diagnostics in Insights; runtime and Console upgrade without a database migration",
-  },
-  {
     version: "1.0.0",
     note: "Release Catalog, manifest artifact protocol v1, and storage engine infrastructure generation",
   },

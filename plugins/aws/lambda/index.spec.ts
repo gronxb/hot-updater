@@ -125,7 +125,7 @@ describe("aws lambda entrypoint", () => {
     };
   });
 
-  it("uses DynamoDB metadata with built-in Insights and API keys", async () => {
+  it("uses DynamoDB metadata with built-in Insights, API keys, and Remote Config", async () => {
     const { handler } = await import("./index");
     await handler(
       createCloudFrontRequest(
@@ -139,9 +139,14 @@ describe("aws lambda entrypoint", () => {
       region: "us-east-1",
       tableName: "hot-updater-metadata",
     });
-    const { plugins } = await import("../src/plugins");
     expect(serverMocks.createHotUpdater).toHaveBeenCalledWith(
-      expect.objectContaining({ plugins }),
+      expect.objectContaining({
+        plugins: [
+          expect.objectContaining({ id: "insights" }),
+          expect.objectContaining({ id: "apiKeys" }),
+          expect.objectContaining({ id: "remoteConfig" }),
+        ],
+      }),
     );
     expect(serverMocks.createHotUpdater.mock.lastCall?.[0]).not.toHaveProperty(
       "clientAccess",

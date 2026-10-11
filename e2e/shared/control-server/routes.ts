@@ -39,7 +39,6 @@ import {
   handleRuntimeConfig,
   handleLynxCrashState,
   handleSeedCrashHistory,
-  handleSeedLegacyMetadata,
   handleTerminateApp,
   handleVerifyConsoleInsights,
   handleWaitForCrashRecovery,
@@ -180,10 +179,6 @@ app.post("/e2e/rollback-remote-config", async (c) => {
 
 app.all("/hot-updater/*", async (c) => {
   return handleProxyUpdateRequest(c.req.raw);
-});
-
-app.all("/e2e/proxy-url", async (c) => {
-  return handleProxyRemoteAssetRequest(c.req.raw);
 });
 
 app.all("/e2e/proxy-url/:targetId", async (c) => {
@@ -551,10 +546,6 @@ app.post("/e2e/seed-crash-history", async (c) => {
     return c.json({ error: "bundleIds must be a string array" }, 400);
   }
   return c.json(await handleSeedCrashHistory(payload.bundleIds));
-});
-
-app.post("/e2e/seed-legacy-metadata", async (c) => {
-  return c.json(handleSeedLegacyMetadata());
 });
 
 app.post("/e2e/jobs/patch-release", async (c) => {

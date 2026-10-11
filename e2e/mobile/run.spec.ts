@@ -21,16 +21,13 @@ describe("mobile wrapper", () => {
     ];
     const options = parseMobileOptions(args, {});
     expect(options.scenarios).toEqual([
-      ...listScenarioNames().filter((name) => name !== "metadata-v1-migration"),
+      ...listScenarioNames(),
       "sparkling-multipage-ota",
     ]);
     expect(
       parseMobileOptions([...args, "--scenario", "sparkling-multipage-ota"], {})
         .scenarios,
     ).toEqual(["sparkling-multipage-ota"]);
-    expect(() =>
-      parseMobileOptions([...args, "--scenario", "metadata-v1-migration"], {}),
-    ).toThrow("Unknown scenario");
     expect(() =>
       parseMobileOptions(["--runtime", "unknown", ...args.slice(0, 4)], {}),
     ).toThrow("--runtime");

@@ -1,10 +1,6 @@
-import type { Bundle, BundleMetadata, BundlePatchArtifact } from "./types";
+import type { Bundle, BundlePatchArtifact } from "./types";
 
 export const MAX_UPDATE_ARTIFACT_RESPONSE_BYTES = 512 * 1024 + 4096;
-
-export const stripBundleArtifactMetadata = (
-  metadata: BundleMetadata | undefined,
-): BundleMetadata | undefined => metadata;
 
 export const getManifestStorageUri = (
   bundle: Pick<Bundle, "manifestStorageUri">,

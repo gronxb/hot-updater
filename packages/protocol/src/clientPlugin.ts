@@ -11,11 +11,7 @@
 export type UpdateStrategy = "fingerprint" | "appVersion";
 
 /** How an update moves the app's selection. */
-export type ReleaseTransitionKind =
-  | "INSTALL"
-  | "ADOPT_RELEASE"
-  | "USE_EMBEDDED"
-  | "USE_BUILTIN";
+export type ReleaseTransitionKind = "INSTALL" | "ADOPT_RELEASE" | "USE_BUILTIN";
 
 /** The launch outcome native reports once per JavaScript runtime. */
 export type AppReadyResult =

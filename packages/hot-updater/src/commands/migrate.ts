@@ -227,7 +227,6 @@ async function migrateWithMigrator(
 
   // Generate migration to check what changes will be made
   const result = await migrator.migrateToLatest({
-    mode: "from-schema",
     updateSettings: true,
   });
 

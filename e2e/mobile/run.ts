@@ -9,10 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { listLynxScenarioNames } from "../lynx/scenarios.ts";
-import {
-  LYNX_EXCLUDED_DEFAULT_SCENARIOS,
-  readLynxDefaultScenarioNames,
-} from "../lynx/suite-manifest.ts";
+import { readLynxDefaultScenarioNames } from "../lynx/suite-manifest.ts";
 import {
   listScenarioNames,
   resolveSuiteScenarioNames,
@@ -87,14 +84,7 @@ export function parseMobileOptions(
       ? [...readLynxDefaultScenarioNames(repoDir)]
       : [...resolveSuiteScenarioNames(values.suite ?? "default")];
   const known = new Set(
-    values.runtime === "lynx"
-      ? listLynxScenarioNames().filter(
-          (name) =>
-            !LYNX_EXCLUDED_DEFAULT_SCENARIOS.some(
-              (excluded) => excluded === name,
-            ),
-        )
-      : listScenarioNames(),
+    values.runtime === "lynx" ? listLynxScenarioNames() : listScenarioNames(),
   );
   if (new Set(selected).size !== selected.length)
     throw new Error("Duplicate scenarios are not allowed");

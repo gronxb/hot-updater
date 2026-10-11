@@ -1,7 +1,5 @@
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { plugins } from "../../src/plugins";
-
 const mocks = vi.hoisted(() => {
   const client = vi.fn<(request: Request) => Promise<Response>>();
   return {
@@ -69,12 +67,12 @@ const get = async (urlPath: string) => {
 };
 
 describe("the prebuilt Cloud Function", () => {
-  it("runs the package's plugins over its project's Firestore and default bucket", () => {
+  it("runs Insights, API keys, and Remote Config over its project's Firestore and default bucket", () => {
     expect(mocks.createHotUpdater).toHaveBeenCalledOnce();
     expect(mocks.createHotUpdater.mock.calls[0]?.[0]).toMatchObject({
       database: { name: "firebaseDatabase" },
       storage: { name: "firebaseStorage", protocol: "gs" },
-      plugins,
+      plugins: [{ id: "insights" }, { id: "apiKeys" }, { id: "remoteConfig" }],
     });
   });
 

@@ -29,6 +29,7 @@ import {
   apiKeys,
   createInsightsModel,
   insights,
+  remoteConfig,
   type BundleEventRow,
 } from "@hot-updater/server/plugins";
 import {
@@ -51,7 +52,6 @@ import {
 import { createClient } from "@supabase/supabase-js";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
-import { plugins } from "../../src/plugins";
 import { supabaseDatabase } from "../../src/supabaseDatabase";
 import { supabaseExecutor } from "../../src/supabaseExecutor";
 import {
@@ -254,7 +254,9 @@ describe.sequential("supabase edge runtime acceptance", () => {
 
   /** Empties every data table but `keep`, the managed plugins' included; the settings rows stay. */
   const truncateDataTables = (keep: readonly string[] = []) => {
-    const tables = supabaseTableNames(toolingTargetOf(plugins).schema)
+    const tables = supabaseTableNames(
+      toolingTargetOf([insights(), apiKeys(), remoteConfig()]).schema,
+    )
       .filter(
         (table) => table !== SUPABASE_SETTINGS_TABLE && !keep.includes(table),
       )
@@ -876,7 +878,7 @@ describe.sequential("supabase edge runtime acceptance", () => {
     });
   });
 
-  it("does not support the legacy exact path", async () => {
+  it("answers 404 for /api/check-update", async () => {
     const response = await fetch(
       `http://127.0.0.1:${edgePort}${FUNCTION_BASE_PATH}/api/check-update`,
     );
@@ -1306,9 +1308,8 @@ const writeSupabaseRuntimeFiles = async ({
   await writeFile(
     path.join(runtimeRoot, "hot-updater-supabase-edge.ts"),
     `
-export { plugins } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/plugins.ts")).href)};
 export { supabaseDatabase } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseDatabase.ts")).href)};
-export { supabaseEdgeFunctionStorage as supabaseStorage } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseEdgeFunctionStorage.ts")).href)};
+export { supabaseStorage } from ${JSON.stringify(pathToFileURL(path.join(WORKSPACE_ROOT, "plugins/supabase/src/supabaseStorage.ts")).href)};
 `.trim(),
   );
   await writeFile(

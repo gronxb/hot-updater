@@ -52,5 +52,3 @@ export const prepareConfig = async (request: Request = getRequest()) => {
     throw error;
   }
 };
-
-export const isConfigLoaded = () => Boolean(configPromise);

@@ -3,6 +3,7 @@ import fs from "fs/promises";
 import {
   assertInfrastructureGenerationAtUrl,
   InitError,
+  LegacyInfrastructureError,
 } from "@hot-updater/cli-tools";
 import {
   coreSettings,
@@ -18,7 +19,6 @@ import {
 import { getFirestore } from "firebase-admin/firestore";
 
 import {
-  FIREBASE_PRE_ENGINE_COLLECTIONS,
   FIREBASE_V1_COLLECTION,
   FIREBASE_V1_FUNCTION_NAME,
 } from "../src/firebaseInfrastructureNames";
@@ -31,17 +31,13 @@ export type FirebaseInfrastructureState = "fresh" | "incompatible" | "v1";
 
 /**
  * v1 once the storage engine's schema settings are written; incompatible
- * when a 1.0 release candidate's collections hold data, or another engine
- * version is recorded; otherwise fresh.
+ * when another engine version is recorded; otherwise fresh.
  */
 export const resolveFirebaseInfrastructureState = ({
   engine,
-  preEngineData,
 }: {
   readonly engine: unknown;
-  readonly preEngineData: boolean;
 }): FirebaseInfrastructureState => {
-  if (preEngineData) return "incompatible";
   if (engine === undefined) return "fresh";
   return engine === coreSettings[ENGINE_SETTING] ? "v1" : "incompatible";
 };
@@ -73,18 +69,12 @@ export const assertFirebaseInfrastructureCanInitialize = async ({
       .collection(FIREBASE_V1_COLLECTION)
       .doc(firebaseEngineSettingDocumentId())
       .get();
-    const preEngine = await Promise.all(
-      FIREBASE_PRE_ENGINE_COLLECTIONS.map((name) =>
-        db.collection(name).limit(1).get(),
-      ),
-    );
     const state = resolveFirebaseInfrastructureState({
       engine: setting.exists ? setting.get("row.value") : undefined,
-      preEngineData: preEngine.some((snapshot) => !snapshot.empty),
     });
     if (state === "incompatible") {
       throw new InitError(
-        `Firebase v1 infrastructure in project ${projectId} holds data from a 1.0 release candidate or an unsupported database version. Use a new Firebase project, or delete the hot_updater_v1_* collections, then rerun init.`,
+        `Firebase v1 infrastructure in project ${projectId} records an unsupported database version. Use a new Firebase project, or delete the ${FIREBASE_V1_COLLECTION} collection, then rerun init.`,
       );
     }
   } catch (error) {
@@ -123,11 +113,18 @@ export const assertFirebaseFunctionCanInitialize = async ({
       "version",
       `${existingFunction.uri.replace(/\/$/u, "")}/`,
     ).toString();
-    await assertInfrastructureGenerationAtUrl({
-      fetchImpl,
-      provider: "Firebase",
-      resource: `Function ${FIREBASE_V1_FUNCTION_NAME}`,
-      versionUrl,
-    });
+    try {
+      await assertInfrastructureGenerationAtUrl({
+        fetchImpl,
+        provider: "Firebase",
+        resource: `Function ${FIREBASE_V1_FUNCTION_NAME}`,
+        versionUrl,
+      });
+    } catch (error) {
+      if (!(error instanceof LegacyInfrastructureError)) throw error;
+      throw new InitError(
+        `Function ${FIREBASE_V1_FUNCTION_NAME}, which init deploys, already exists in this Firebase project and is incompatible: its /version does not report Hot Updater infrastructure generation 1. Delete the function or use another Firebase project, then rerun init. The existing function was not changed.`,
+      );
+    }
   }
 };

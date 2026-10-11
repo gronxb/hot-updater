@@ -37,6 +37,9 @@ export default {
       HOT_UPDATER_SUPABASE_URL: JSON.stringify(
         process.env.HOT_UPDATER_SUPABASE_URL,
       ),
+      // Optional: App.tsx falls back to a placeholder URL and sends no key.
+      HOT_UPDATER_APP_BASE_URL: null,
+      HOT_UPDATER_API_KEY: null,
     }),
     new SentryDebugIdPlugin(),
   ],

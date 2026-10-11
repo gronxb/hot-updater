@@ -117,36 +117,24 @@ describe("Insights event delivery", () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
-  it("does not retry a 400", async () => {
-    const { fetchMock } = stubEventsEndpoint(400);
-    const gate = openGate();
-    const send = createInsightsEventSender(fetchMock, gate);
+  it.each(["UNCHANGED", "UPDATE_FAILED"] as const)(
+    "does not retry a 400 for %s",
+    async (type) => {
+      const { fetchMock } = stubEventsEndpoint(400);
+      const gate = openGate();
+      const send = createInsightsEventSender(fetchMock, gate);
 
-    await expect(send(unchangedEvent())).rejects.toThrow(
-      "Expected HTTP 204 from /events, received 400",
-    );
-    await vi.runAllTimersAsync();
-    expect(fetchMock).toHaveBeenCalledOnce();
-    expect(gate.settle).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "UNCHANGED" }),
-      "failed",
-    );
-  });
-
-  it("settles an UPDATE_FAILED event an older server refuses with 400, without retrying", async () => {
-    const { fetchMock } = stubEventsEndpoint(400);
-    const gate = openGate();
-    const send = createInsightsEventSender(fetchMock, gate);
-
-    await send({ ...unchangedEvent(), type: "UPDATE_FAILED" });
-    await vi.runAllTimersAsync();
-
-    expect(fetchMock).toHaveBeenCalledOnce();
-    expect(gate.settle).toHaveBeenCalledWith(
-      expect.objectContaining({ type: "UPDATE_FAILED" }),
-      "refused",
-    );
-  });
+      await expect(send({ ...unchangedEvent(), type })).rejects.toThrow(
+        "Expected HTTP 204 from /events, received 400",
+      );
+      await vi.runAllTimersAsync();
+      expect(fetchMock).toHaveBeenCalledOnce();
+      expect(gate.settle).toHaveBeenCalledWith(
+        expect.objectContaining({ type }),
+        "failed",
+      );
+    },
+  );
 
   it("settles a 404, from a server without Insights, as Insights off without retrying", async () => {
     const { fetchMock } = stubEventsEndpoint(404);

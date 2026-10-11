@@ -1,5 +1,37 @@
 # @hot-updater/plugin-remote-config
 
+## 1.0.0
+
+### Major Changes
+
+- adb0e40: Hot Updater 1.0, the first stable release of v1. Deploys create Releases that the server compiles into one cacheable Release Catalog per app scope, and `createHotUpdater` runs a storage adapter, a database adapter, and plugins such as Insights, Remote Config, and client API keys. v1 runs on new infrastructure and needs a new native app build: follow the [upgrade guide](https://hot-updater.dev/docs/guides/upgrade-to-v1) and [BREAKING_CHANGES.md](https://github.com/gronxb/hot-updater/blob/main/BREAKING_CHANGES.md) to move from v0.
+
+### Patch Changes
+
+- Updated dependencies [adb0e40]
+  - @hot-updater/protocol@1.0.0
+
+## 1.0.0-rc.47
+
+### Patch Changes
+
+- Updated dependencies [ccf3e2f]
+- Updated dependencies [ccf3e2f]
+  - @hot-updater/protocol@1.0.0-rc.47
+
+## 1.0.0-rc.46
+
+### Patch Changes
+
+- Updated dependencies [47638d6]
+  - @hot-updater/protocol@1.0.0-rc.46
+
+## 1.0.0-rc.45
+
+### Patch Changes
+
+- @hot-updater/protocol@1.0.0-rc.45
+
 ## 1.0.0-rc.44
 
 ### Patch Changes

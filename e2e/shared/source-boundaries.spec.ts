@@ -44,7 +44,6 @@ const expectedScenarioModuleFiles = [
   "headless-launch-keeps-staged-bundle.ts",
   "interrupted-launch-retries-bundle.ts",
   "launch-status-after-session-install.ts",
-  "metadata-v1-migration.ts",
   "multi-asset-replacement.ts",
   "numeric-cohort-rollout.ts",
   "release-ota-recovery.ts",

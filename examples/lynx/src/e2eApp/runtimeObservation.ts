@@ -83,8 +83,6 @@ function formatInstalledUpdate(update: CheckForUpdateResult, label: string) {
   switch (update.transitionKind) {
     case "ADOPT_RELEASE":
       return `${label} -> adopted ID ${update.id}`;
-    case "USE_EMBEDDED":
-      return `${label} -> selected EMBEDDED ID ${update.id}`;
     case "USE_BUILTIN":
       return `${label} -> selected BUILTIN`;
     default:

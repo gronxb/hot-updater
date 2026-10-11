@@ -58,9 +58,7 @@ const isSelectionSummary = (value: unknown): value is SelectionSummary => {
   if (value === null || typeof value !== "object") return false;
   const selection = value as Partial<SelectionSummary>;
   return (
-    (selection.kind === "BUNDLE" ||
-      selection.kind === "EMBEDDED" ||
-      selection.kind === "BUILTIN") &&
+    (selection.kind === "BUNDLE" || selection.kind === "BUILTIN") &&
     typeof selection.bundleId === "string" &&
     selection.bundleId.length > 0 &&
     (selection.releaseId === null ||

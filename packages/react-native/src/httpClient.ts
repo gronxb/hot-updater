@@ -9,7 +9,7 @@ import {
   type UpdateHttpResponse,
 } from "@hot-updater/protocol";
 
-import { fetchJSON, FetchJSONResponseError } from "./fetchJSON";
+import { fetchJSON } from "./fetchJSON";
 import { fetchReleaseCatalogWithCache } from "./releaseCatalogCache";
 import { InvalidUpdateResponseError } from "./updateError";
 
@@ -134,25 +134,14 @@ const createSession = (
     });
   },
   resolveArtifact: async (params): Promise<ArtifactInfo> => {
-    let info: ArtifactInfo;
-    try {
-      info = await fetchJSON<ArtifactInfo>({
-        ...(onResponse ? { onResponse } : {}),
-        requestHeaders: params.requestHeaders,
-        requestTimeout: params.requestTimeout,
-        url: `${baseURL}/artifacts/v1/${encodeURIComponent(
-          params.targetBundleId,
-        )}/from/${encodeURIComponent(params.currentBundleId)}`,
-      });
-    } catch (error) {
-      if (error instanceof FetchJSONResponseError && error.status === 404) {
-        throw new InvalidUpdateResponseError(
-          `Server does not support artifact protocol ${ARTIFACT_PROTOCOL_VERSION}.`,
-          { cause: error },
-        );
-      }
-      throw error;
-    }
+    const info = await fetchJSON<ArtifactInfo>({
+      ...(onResponse ? { onResponse } : {}),
+      requestHeaders: params.requestHeaders,
+      requestTimeout: params.requestTimeout,
+      url: `${baseURL}/artifacts/v1/${encodeURIComponent(
+        params.targetBundleId,
+      )}/from/${encodeURIComponent(params.currentBundleId)}`,
+    });
     return requireArtifactUrls(requireArtifactProtocolV1(info));
   },
 });

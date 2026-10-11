@@ -504,8 +504,8 @@ function selection(value: unknown, at: string) {
 function selectionSummary(value: unknown, at: string) {
   const item = record(value, at);
   const kind = string(item.kind, `${at}.kind`);
-  if (kind !== "BUNDLE" && kind !== "EMBEDDED" && kind !== "BUILTIN") {
-    fail(`${at}.kind`, "expected BUNDLE, EMBEDDED, or BUILTIN");
+  if (kind !== "BUNDLE" && kind !== "BUILTIN") {
+    fail(`${at}.kind`, "expected BUNDLE or BUILTIN");
   }
   return {
     kind,

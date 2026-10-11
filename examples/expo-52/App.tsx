@@ -31,7 +31,14 @@ export const extractFormatDateFromUUIDv7 = (uuid: string) => {
 };
 
 export const hotUpdater = HotUpdater.init({
-  baseURL: "http://localhost:3006/hot-updater",
+  // The hot-updater-v1 Edge Function URL and the client API key the server's
+  // apiKeys() requires, from EXPO_PUBLIC_* build variables (.env or EAS).
+  baseURL:
+    process.env.EXPO_PUBLIC_HOT_UPDATER_APP_BASE_URL ??
+    "https://your-project.supabase.co/functions/v1/hot-updater-v1",
+  requestHeaders: process.env.EXPO_PUBLIC_HOT_UPDATER_API_KEY
+    ? { "x-api-key": process.env.EXPO_PUBLIC_HOT_UPDATER_API_KEY }
+    : undefined,
   plugins: [insights()],
 });
 

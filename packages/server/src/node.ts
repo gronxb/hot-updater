@@ -19,9 +19,6 @@ interface NodeResponse {
   [key: string]: unknown;
 }
 
-export { HOT_UPDATER_SERVER_VERSION } from "./version";
-export { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "./handlerVersionRoutes";
-
 /**
  * Converts a Hot Updater handler to a Node.js-compatible middleware
  * Works with Express, Connect, and other frameworks using Node.js req/res

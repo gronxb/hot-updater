@@ -685,21 +685,6 @@ describe("insights() client plugin", () => {
       ]);
       expect(new Set(sentEvents().map((event) => event.eventId)).size).toBe(2);
     });
-
-    it("drops a failure an older server refuses, without retrying, warning, or pausing", async () => {
-      responses = [400];
-      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-      const app = await launch();
-
-      app.updateError(downloadFailure());
-      await flush();
-      app.updateError(downloadFailure());
-      app.appReady(unchangedLaunch());
-      await flush();
-
-      expect(sentTypes()).toEqual(["UPDATE_FAILED", "UNCHANGED"]);
-      expect(warn).not.toHaveBeenCalled();
-    });
   });
 
   describe("event details", () => {

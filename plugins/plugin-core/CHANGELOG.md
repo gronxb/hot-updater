@@ -1,5 +1,80 @@
 # @hot-updater/plugin-core
 
+## 1.0.0
+
+### Major Changes
+
+- adb0e40: Hot Updater 1.0, the first stable release of v1. Deploys create Releases that the server compiles into one cacheable Release Catalog per app scope, and `createHotUpdater` runs a storage adapter, a database adapter, and plugins such as Insights, Remote Config, and client API keys. v1 runs on new infrastructure and needs a new native app build: follow the [upgrade guide](https://hot-updater.dev/docs/guides/upgrade-to-v1) and [BREAKING_CHANGES.md](https://github.com/gronxb/hot-updater/blob/main/BREAKING_CHANGES.md) to move from v0.
+
+### Patch Changes
+
+- Updated dependencies [adb0e40]
+  - @hot-updater/protocol@1.0.0
+
+## 1.0.0-rc.47
+
+### Patch Changes
+
+- 5891d9b: Two messages now name the actual problem.
+  - The schema fence tells a database that hasn't been migrated, such as a new one or one whose tables `drizzle-kit push` or `prisma db push` just created, to run `hot-updater db migrate`.
+  - `@hot-updater/react-native` reports a 404 from the artifact endpoint as the server's HTTP 404, the same as a catalog request, instead of "Server does not support artifact protocol 1". Responses that aren't artifact protocol 1 still fail with that message.
+
+- ccf3e2f: Remove the `EMBEDDED` Release kind. Every Release points at a Bundle, and a device goes back to its built-in bundle through the `BUILTIN` selection.
+  - `getActiveUpdateState().kind` is `"BUNDLE"` or `"BUILTIN"`, and `transitionKind` no longer includes `"USE_EMBEDDED"`; no server creates bundle-less Releases.
+  - `ReleaseKind` and `ReleaseRow.kind` are `"BUNDLE"`. The `kind` column and the `kind` field of catalog descriptors stay, so no migration is needed and catalogs are unchanged.
+  - `parseReleaseCatalog` accepts only `BUNDLE` descriptors that carry a `bundleId`.
+  - `compileReleaseCatalog` rejects an enabled Release without a Bundle with `INVALID_RELEASE`.
+
+- 7132080: A database whose settings carry `schema.core` without `schema.engine` is no longer refused separately: the schema fence and `hot-updater db migrate` treat it like any unmigrated database. A v0 database is still refused, with the advice to create a new empty database and run `hot-updater db migrate`. `standaloneRepository` no longer sends a `v` query parameter with admin requests, and `hot-updater init` no longer looks for a `hotUpdater.plugins.ts` file or, on Firebase and Supabase, for collections and tables outside the storage engine's layout. A plugin with a `kind` key fails with the unknown-key error.
+- ccf3e2f: The React Native SDK calls its native module directly and requires `rollbackReleases` in every Release catalog.
+  - `@hot-updater/react-native` calls `getInstallId()`, `getStorageItem()`, `setStorageItem()`, and the Release catalog methods of its native module without checking that they exist. Every native build of the SDK implements them.
+  - The `insights()` client treats a `400` to an `UPDATE_FAILED` report like any other `400`: it doesn't retry, it logs a warning, and it reports the failure again when it happens again.
+  - `ReleaseCatalog.rollbackReleases` is required. `parseReleaseCatalog` rejects a catalog without it, and `selectDesiredRelease` looks for rollback candidates only there. Hot Updater servers always send it.
+  - `projectCompiledRollbackCatalog` reads only the compiled catalog's `rollbackReleaseIndexes`, which `compileReleaseCatalog` always writes.
+
+- Updated dependencies [ccf3e2f]
+- Updated dependencies [ccf3e2f]
+  - @hot-updater/protocol@1.0.0-rc.47
+
+## 1.0.0-rc.46
+
+### Minor Changes
+
+- 47638d6: Remove code that only served v0. No v1 code called it.
+  - `@hot-updater/cli-tools` no longer exports the copy-promote helpers `createCopiedBundleArtifacts` and `LEGACY_BUNDLE_ERROR`, or `writeStorageFile` and `writeStorageResponseFile`. Promotion runs through core.
+  - `hot-updater` no longer exports `getPublicKeyFromPrivate` or `loadPrivateKey`. `hot-updater channel set` help names AndroidManifest.xml, where the channel is written.
+  - `@hot-updater/protocol` no longer exports `stripBundleArtifactMetadata`, which returned its input.
+  - `@hot-updater/plugin-core` no longer exports `filterCompatibleAppVersions`.
+  - `@hot-updater/server` no longer re-exports protocol's `Bundle` type from its root; import it from `@hot-updater/protocol`. `@hot-updater/server/adapters/kysely` no longer exports the `SQLProvider` alias; use `SqlDialect` from `@hot-updater/plugin-core`.
+  - `@hot-updater/cloudflare` no longer exports `./worker/config` or `./worker/wrangler.json`.
+  - `@hot-updater/react-native` calls `getBundleId()`, `getManifest()`, and Android's `reloadProcess()` directly, which every v1 native module implements. It no longer reads a `PROMOTED` launch report or manifest assets given as plain strings.
+  - The Expo config plugin no longer rewrites the `getJSBundleFile` code that its v0 releases injected without a debug check.
+  - `@hot-updater/supabase/edge` exports `supabaseStorage` directly. The name and config are unchanged.
+  - The Console drops the unused `getBundles` and `getConfigLoaded` server functions and their query hooks.
+
+- 19be90f: Remove options and messages left over from v0.
+  - `drizzleAdapter` no longer takes `schema`, which it ignored. TypeScript now reports it: delete it.
+  - `MigrateOptions` no longer has `mode`: every migration already ran from the schema. Delete `mode: "from-schema"` from `migrateToLatest` calls.
+  - `@hot-updater/js` is no longer published. It only copied `semverSatisfies` and `filterCompatibleAppVersions` from `@hot-updater/plugin-core`.
+  - Messages say what is wrong without naming a version:
+    - `createHotUpdater` refuses a `database` that is not a Hot Updater database adapter, such as `kyselyAdapter(...)` or `postgres(...)`.
+    - The Kysely, Drizzle, and Prisma adapters list the supported providers.
+    - `standaloneRepository` refuses a server whose `/version` does not report admin API protocol 2, and asks for the path where the server mounts `handlers.admin`.
+    - Firebase `init` refuses an incompatible Function `hot-updater-v1` with its own message.
+    - `hot-updater doctor` names `com.hotupdater.FINGERPRINT_HASH` in `AndroidManifest.xml` when it does not match `fingerprint.json`.
+  - The Expo config plugin no longer deletes `hot_updater_*` strings from `strings.xml`. They have no effect: prebuild writes the manifest meta-data the app reads.
+
+### Patch Changes
+
+- Updated dependencies [47638d6]
+  - @hot-updater/protocol@1.0.0-rc.46
+
+## 1.0.0-rc.45
+
+### Patch Changes
+
+- @hot-updater/protocol@1.0.0-rc.45
+
 ## 1.0.0-rc.44
 
 ### Minor Changes

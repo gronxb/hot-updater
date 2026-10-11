@@ -370,7 +370,6 @@ const setUpInsights = (
     if (event.failureKey !== null) {
       state.recordFailure(event.day, event.failureKey);
     }
-    if (delivery === "refused") return;
     state.resume();
     if (event.report !== null) state.recordReport(event.report);
     else state.forgetReport();

@@ -158,10 +158,9 @@ does not close this acceptance gate.
 
 ## Run the shared Lynx E2E suite
 
-The Lynx suite uses every shared default OTA scenario except
-`metadata-v1-migration`. That scenario migrates React Native's legacy metadata
-store and does not apply to Lynx. Delta, channel, fingerprint, stale-catalog,
-recovery, and crash-history scenarios remain enabled.
+The Lynx suite runs every shared default OTA scenario, followed by
+`sparkling-multipage-ota`: delta, channel, fingerprint, stale-catalog,
+recovery, and crash-history scenarios all apply to Lynx.
 
 ```sh
 hot-updater-agent verify \

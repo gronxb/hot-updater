@@ -8,8 +8,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
   generateKeyPair,
   getPrivateKeyGitignorePath,
-  getPublicKeyFromPrivate,
-  loadPrivateKey,
   saveKeyPair,
 } from "./keyGeneration";
 
@@ -165,79 +163,6 @@ describe("Key Generation", () => {
       await expect(
         fs.access(path.join(testDir, "private-key.pem")),
       ).rejects.toThrow();
-    });
-  });
-
-  describe("loadPrivateKey", () => {
-    it("should load private key from file", async () => {
-      const keyPair = await generateKeyPair(2048);
-      await saveKeyPair(keyPair, testDir);
-
-      const privateKeyPath = path.join(testDir, "private-key.pem");
-      const loadedKey = await loadPrivateKey(privateKeyPath);
-
-      expect(loadedKey).toBe(keyPair.privateKey);
-    });
-
-    it("should throw error if file does not exist", async () => {
-      const invalidPath = path.join(testDir, "nonexistent.pem");
-
-      await expect(loadPrivateKey(invalidPath)).rejects.toThrow(
-        /Failed to load private key/,
-      );
-    });
-
-    it("should throw error if file contains invalid key", async () => {
-      const invalidKeyPath = path.join(testDir, "invalid-key.pem");
-      await fs.writeFile(invalidKeyPath, "not a valid key");
-
-      await expect(loadPrivateKey(invalidKeyPath)).rejects.toThrow(
-        /Failed to load private key/,
-      );
-    });
-
-    it("should validate private key format", async () => {
-      const keyPair = await generateKeyPair(2048);
-      await saveKeyPair(keyPair, testDir);
-
-      const privateKeyPath = path.join(testDir, "private-key.pem");
-      const loadedKey = await loadPrivateKey(privateKeyPath);
-
-      // Should be able to create crypto object from loaded key
-      const privateKey = crypto.createPrivateKey(loadedKey);
-      expect(privateKey).toBeDefined();
-    });
-  });
-
-  describe("getPublicKeyFromPrivate", () => {
-    it("should extract public key from private key", async () => {
-      const keyPair = await generateKeyPair(2048);
-      const extractedPublicKey = getPublicKeyFromPrivate(keyPair.privateKey);
-
-      expect(extractedPublicKey).toContain("BEGIN PUBLIC KEY");
-      expect(extractedPublicKey).toContain("END PUBLIC KEY");
-    });
-
-    it("should produce valid public key", async () => {
-      const keyPair = await generateKeyPair(2048);
-      const extractedPublicKey = getPublicKeyFromPrivate(keyPair.privateKey);
-
-      // Should be able to create crypto object
-      const publicKey = crypto.createPublicKey(extractedPublicKey);
-      expect(publicKey).toBeDefined();
-    });
-
-    it("should match original public key", async () => {
-      const keyPair = await generateKeyPair(2048);
-      const extractedPublicKey = getPublicKeyFromPrivate(keyPair.privateKey);
-
-      // Both public keys should work identically for verification
-      const originalPublic = crypto.createPublicKey(keyPair.publicKey);
-      const extractedPublic = crypto.createPublicKey(extractedPublicKey);
-
-      expect(originalPublic.export({ type: "spki", format: "pem" })).toBe(
-        extractedPublic.export({ type: "spki", format: "pem" }),
-      );
     });
   });
 });

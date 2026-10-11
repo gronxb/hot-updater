@@ -169,7 +169,7 @@ describe("a server definition", () => {
         clientAccess: "public",
       }),
     )
-      .migrateToLatest({ mode: "from-schema", updateSettings: true })
+      .migrateToLatest({ updateSettings: true })
       .then((result) => result.execute());
     const hotUpdater = createHotUpdater({
       database,
@@ -178,7 +178,7 @@ describe("a server definition", () => {
       clientAccess: "public",
     });
     await createMigrator(hotUpdater)
-      .migrateToLatest({ mode: "from-schema", updateSettings: true })
+      .migrateToLatest({ updateSettings: true })
       .then((result) => result.execute());
 
     // What the CLI's deploy, promote, and delete do: no file is read.
@@ -237,7 +237,7 @@ describe("a server definition", () => {
       clientAccess: "public",
     });
     await createMigrator(hotUpdater)
-      .migrateToLatest({ mode: "from-schema", updateSettings: true })
+      .migrateToLatest({ updateSettings: true })
       .then((result) => result.execute());
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
 

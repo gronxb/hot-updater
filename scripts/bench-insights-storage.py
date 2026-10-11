@@ -30,7 +30,7 @@ def event(installation, sequence, depth):
                 app_version="1.0.0", channel="preview" if sequence % 7 == 0 else "production",
                 received_at_ms=sequence * 10000 + installation,
                 username=None, cohort="0", update_strategy=None if kind == "UNCHANGED" else "appVersion",
-                fingerprint_hash=None, sdk_version="1.0.0-rc")
+                fingerprint_hash=None, sdk_version="1.0.0")
 
 def measure(db, sql, args):
     plan = [r[3] for r in db.execute("EXPLAIN QUERY PLAN " + sql, args)]

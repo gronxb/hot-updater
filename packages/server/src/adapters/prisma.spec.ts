@@ -168,14 +168,13 @@ describe("prismaAdapter migrations", () => {
     await db.close();
   });
 
-  it.each(["mssql", "cockroachdb"])(
-    "refuses %s, which 1.0 dropped",
-    (provider) => {
-      expect(() =>
-        prismaAdapter({ prisma: {}, provider: provider as never }),
-      ).toThrow("CockroachDB and SQL Server were dropped in 1.0");
-    },
-  );
+  it.each(["mssql", "cockroachdb"])("refuses %s", (provider) => {
+    expect(() =>
+      prismaAdapter({ prisma: {}, provider: provider as never }),
+    ).toThrow(
+      `prismaAdapter: provider "${provider}" is not supported. Use "sqlite", "mysql", "postgresql".`,
+    );
+  });
 });
 
 describe("prismaAdapter schema", () => {

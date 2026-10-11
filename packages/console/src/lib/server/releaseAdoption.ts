@@ -35,11 +35,9 @@ const labelOf = (release: ReleaseRow): AdoptionRelease => ({
   revision: release.revision,
 });
 
-// A rollback to the built-in bundle has nothing to apply.
+// A release without a bundle has nothing to apply.
 const bundles = (releases: readonly ReleaseRow[]) =>
-  releases
-    .filter((release) => release.kind === "BUNDLE" && release.bundle_id)
-    .map(labelOf);
+  releases.filter((release) => release.bundle_id).map(labelOf);
 
 /**
  * The newest bundle deployments of a channel and platform, newest first: one
@@ -78,7 +76,6 @@ export async function getAdoptionRelease(
   if (
     row === null ||
     release === null ||
-    release.kind !== "BUNDLE" ||
     !release.bundle_id ||
     release.platform !== platform ||
     release.channel_id !== row.id

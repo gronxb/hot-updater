@@ -1,0 +1,105 @@
+---
+title: "useHotUpdaterStore"
+description: "Read update progress from React components."
+icon: Database
+---
+
+Use `useHotUpdaterStore` when you want to show OTA update progress in your
+React Native UI.
+
+For most apps, `progress` and `isUpdateDownloaded` are enough. Use
+`artifactType` and `details` only when you want to render bundle diffing
+progress more specifically.
+
+## Basic Usage
+
+`progress` is a number from `0` to `1`. `isUpdateDownloaded` becomes `true`
+when the update has finished downloading and can be applied with
+`HotUpdater.reload()`.
+
+```tsx
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import { Button, Text, View } from "react-native";
+
+function App() {
+  const { progress, isUpdateDownloaded } = useHotUpdaterStore();
+
+  return (
+    <View>
+      <Text>{Math.round(progress * 100)}%</Text>
+      <Button
+        title="Reload"
+        onPress={() => HotUpdater.reload()}
+        disabled={!isUpdateDownloaded}
+      />
+    </View>
+  );
+}
+```
+
+## State
+
+| Field                | Type                  | Description                                      |
+|----------------------|-----------------------|--------------------------------------------------|
+| `progress`           | `number`              | Overall update progress from `0` to `1`.          |
+| `isUpdateDownloaded` | `boolean`             | `true` when `progress` reaches `1`.               |
+| `artifactType`       | `"archive" \| "diff" \| null` | Current download type, or `null` before progress starts. |
+| `downloadedBytes`    | `number \| undefined` | Downloaded bytes for archive updates.             |
+| `totalBytes`         | `number \| undefined` | Total bytes for archive updates when known.       |
+| `details`            | `object \| null`      | Per-file progress for bundle diffing updates.     |
+
+When `artifactType` is `"archive"`, the app is downloading the normal
+compressed OTA archive.
+
+When `artifactType` is `"diff"`, Hot Updater is reusing unchanged files from
+the current OTA bundle and downloading only the files that changed. In this
+case, `details` contains `totalFilesCount`, `completedFilesCount`, and `files`.
+
+```tsx
+import { useHotUpdaterStore } from "@hot-updater/react-native";
+import { Text, View } from "react-native";
+
+function UpdateProgress() {
+  const { artifactType, details, progress } = useHotUpdaterStore();
+
+  return (
+    <View>
+      <Text>{Math.round(progress * 100)}%</Text>
+      {artifactType === "diff" && details ? (
+        <Text>
+          {details.completedFilesCount}/{details.totalFilesCount} files
+        </Text>
+      ) : null}
+    </View>
+  );
+}
+```
+
+## Optimizing Renders with Selectors
+
+Pass a selector when a component only needs one field from the store.
+
+```tsx
+import { HotUpdater, useHotUpdaterStore } from "@hot-updater/react-native";
+import { Button, Text } from "react-native";
+
+function ProgressDisplay() {
+  const progress = useHotUpdaterStore((state) => state.progress);
+
+  return <Text>{Math.round(progress * 100)}%</Text>;
+}
+
+function UpdateButton() {
+  const isUpdateDownloaded = useHotUpdaterStore(
+    (state) => state.isUpdateDownloaded,
+  );
+
+  return (
+    <Button
+      title="Reload"
+      onPress={() => HotUpdater.reload()}
+      disabled={!isUpdateDownloaded}
+    />
+  );
+}
+```

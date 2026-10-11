@@ -2,6 +2,10 @@ import { useRef } from "react";
 
 import { hotUpdater } from "./runtime";
 
+/** A captured update's target: a Release, or the built-in bundle. */
+const describeTarget = (releaseId: string | null | undefined) =>
+  releaseId ? `Release ${releaseId}` : "built-in bundle";
+
 export const useCapturedUpdateActions = ({
   refresh,
   setUpdateActionResult,
@@ -20,7 +24,7 @@ export const useCapturedUpdateActions = ({
       capturedUpdateRef.current = updateInfo;
       await setUpdateActionResult(
         updateInfo
-          ? `captured-update -> Release ${updateInfo.releaseId ?? "legacy"}`
+          ? `captured-update -> ${describeTarget(updateInfo.releaseId)}`
           : "captured-update -> no-update",
       );
     } catch (error) {
@@ -40,7 +44,7 @@ export const useCapturedUpdateActions = ({
       const installed = await updateInfo.updateBundle();
       await setUpdateActionResult(
         installed
-          ? `captured-update -> installed Release ${updateInfo.releaseId ?? "legacy"}`
+          ? `captured-update -> installed ${describeTarget(updateInfo.releaseId)}`
           : "captured-update -> skipped",
       );
       await refresh();

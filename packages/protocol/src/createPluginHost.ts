@@ -247,7 +247,6 @@ export const createPluginHost = (
       (key) => key !== "hooks" && key !== "api",
     );
     if (unknownKeys.length > 0) {
-      // A plugin written for the contract that returned hooks directly.
       reportHookError(
         `Plugin "${plugin.id}" setup returned ${unknownKeys.map((key) => `"${key}"`).join(", ")}; setup returns { hooks, api }`,
         new TypeError("Unexpected setup result"),

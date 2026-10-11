@@ -3,9 +3,9 @@ package com.hotupdater
 /**
  * Thread-safe programmatic configuration holder for HotUpdater.
  *
- * When values are set here, they take priority over manifest metadata and
- * Android string resources. This enables brownfield/AAR setups where the RN
- * module cannot rely on the host app's manifest/strings.xml for configuration.
+ * When values are set here, they take priority over manifest metadata. This
+ * enables brownfield/AAR setups where the RN module cannot rely on the host
+ * app's manifest for configuration.
  */
 object HotUpdaterConfig {
     @Volatile

@@ -30,7 +30,6 @@ export {
 } from "./databaseJsonValue";
 export * from "./databaseRows";
 export * from "./deterministicOrder";
-export * from "./filterCompatibleAppVersions";
 export * from "./generateMinBundleId";
 export * from "./parseStorageUri";
 export * from "./portableArtifactPath";

@@ -50,7 +50,6 @@ export const baseBundleIdsOf = (
     const id = descriptor.bundleId;
     if (
       serving.has(index) &&
-      descriptor.kind === "BUNDLE" &&
       id !== null &&
       id < bundleId &&
       !ids.includes(id)

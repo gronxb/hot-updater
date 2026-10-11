@@ -151,15 +151,6 @@ export default defineConfig({
           "/Users/gronxb/workspace/hot-updater2/plugins/firebase/src/$1",
       },
       {
-        find: new RegExp("^@hot-updater/js$"),
-        replacement:
-          "/Users/gronxb/workspace/hot-updater2/plugins/js/src/index.ts",
-      },
-      {
-        find: new RegExp("^@hot-updater/js/(.*)$"),
-        replacement: "/Users/gronxb/workspace/hot-updater2/plugins/js/src/$1",
-      },
-      {
         find: new RegExp("^@hot-updater/mock$"),
         replacement:
           "/Users/gronxb/workspace/hot-updater2/plugins/mock/src/index.ts",

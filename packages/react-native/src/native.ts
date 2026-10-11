@@ -208,38 +208,14 @@ const cloneManifest = (manifest: Manifest): Manifest => ({
   ),
 });
 
-const getNativeBundleId = (): string | null => {
-  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
-    getBundleId?: () => string | null;
-  };
-
-  if (typeof nativeModule.getBundleId !== "function") {
-    throw new Error(
-      "[HotUpdater] Native module is missing 'getBundleId()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.",
-    );
-  }
-
-  return nativeModule.getBundleId();
-};
-
 const resolveBundleId = (bundleId: string | null): string => {
   return !bundleId || bundleId === NIL_UUID ? getMinBundleId() : bundleId;
 };
 
 const getFreshBundleId = (): string => {
-  const resolvedBundleId = resolveBundleId(getNativeBundleId());
+  const resolvedBundleId = resolveBundleId(HotUpdaterNative.getBundleId());
   sessionState.cacheBundleId(resolvedBundleId);
   return resolvedBundleId;
-};
-
-const getReloadProcess = (): (() => Promise<void>) | null => {
-  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
-    reloadProcess?: () => Promise<void>;
-  };
-
-  return typeof nativeModule.reloadProcess === "function"
-    ? nativeModule.reloadProcess.bind(nativeModule)
-    : null;
 };
 
 export type HotUpdaterProgressArtifactType = "diff";
@@ -349,18 +325,6 @@ export interface ReleaseSelectionGuard {
   readonly channel: string;
 }
 
-const requireReleaseCatalogNativeMethod = <T extends (...args: any[]) => any>(
-  name: string,
-): T => {
-  const method = (HotUpdaterNative as unknown as Record<string, unknown>)[name];
-  if (typeof method !== "function") {
-    throw new Error(
-      `[HotUpdater] Native module is missing '${name}()'. Rebuild the native app before using Release catalogs.`,
-    );
-  }
-  return method.bind(HotUpdaterNative) as T;
-};
-
 export const acceptReleaseCatalog = (input: {
   readonly catalogId: string;
   readonly scopeKey: string;
@@ -368,15 +332,10 @@ export const acceptReleaseCatalog = (input: {
   readonly catalogHash: string;
   readonly channel: string;
   readonly selectionContextHash: string;
-}): boolean =>
-  requireReleaseCatalogNativeMethod<(params: object) => boolean>(
-    "acceptReleaseCatalog",
-  )(input);
+}): boolean => HotUpdaterNative.acceptReleaseCatalog(input);
 
 export const getActiveUpdateState = (): InternalActiveUpdateState => {
-  const value = requireReleaseCatalogNativeMethod<() => unknown>(
-    "getActiveUpdateState",
-  )();
+  const value: unknown = HotUpdaterNative.getActiveUpdateState();
   if (typeof value === "string") {
     return JSON.parse(value) as InternalActiveUpdateState;
   }
@@ -405,18 +364,13 @@ export const getPublicActiveUpdateState = (): ActiveUpdateState => {
 
 export const isReleaseSelectionCurrent = (
   input: ReleaseSelectionGuard,
-): boolean =>
-  requireReleaseCatalogNativeMethod<(params: object) => boolean>(
-    "isReleaseSelectionCurrent",
-  )(input);
+): boolean => HotUpdaterNative.isReleaseSelectionCurrent(input);
 
 export const commitReleaseSelection = async (input: {
   readonly selection: PersistedSelectionReceipt;
   readonly guard: ReleaseSelectionGuard;
 }): Promise<boolean> => {
-  const ok = await requireReleaseCatalogNativeMethod<
-    (params: object) => Promise<boolean>
-  >("commitReleaseSelection")(input);
+  const ok = await HotUpdaterNative.commitReleaseSelection(input);
   if (ok)
     sessionState.markBundleInstalled(
       input.selection.bundleId,
@@ -549,7 +503,6 @@ export const getAppVersion = (): string | null => {
  * When `setReloadBehavior("processRestart")` is used:
  * - Android performs a cold process restart
  * - iOS keeps the same behavior as the normal React reload path
- * - older Android native binaries fall back to `reload()` if `reloadProcess()` is unavailable
  *
  * When `setReloadBehavior("custom", handler)` is used:
  * - both Android and iOS execute the provided handler
@@ -567,11 +520,8 @@ export const reload = async () => {
   }
 
   if (Platform.OS === "android" && reloadBehavior === "processRestart") {
-    const reloadProcess = getReloadProcess();
-    if (reloadProcess) {
-      await reloadProcess();
-      return;
-    }
+    await HotUpdaterNative.reloadProcess();
+    return;
   }
 
   await HotUpdaterNative.reload();
@@ -666,10 +616,11 @@ export const getManifest = (): Manifest => {
     return cachedManifest;
   }
 
-  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
-    getManifest?: () => Record<string, unknown> | string;
-  };
-  const manifest = nativeModule.getManifest?.();
+  // Android's old-architecture module returns the manifest as a JSON string.
+  const manifest = HotUpdaterNative.getManifest() as
+    | Record<string, unknown>
+    | string
+    | null;
 
   let normalizedManifest: Manifest;
 
@@ -723,44 +674,17 @@ export const getFingerprintHash = (): string | null => {
   return constants.FINGERPRINT_HASH ?? null;
 };
 
-export const getInstallId = (): string => {
-  const nativeModule = HotUpdaterNative as typeof HotUpdaterNative & {
-    getInstallId?: () => string;
-  };
-
-  if (typeof nativeModule.getInstallId !== "function") {
-    throw new Error(
-      "[HotUpdater] Native module is missing 'getInstallId()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.",
-    );
-  }
-
-  return nativeModule.getInstallId();
-};
-
-const requireStorageNativeMethod = <T extends (...args: any[]) => any>(
-  name: "getStorageItem" | "setStorageItem",
-): T => {
-  const method = (HotUpdaterNative as unknown as Record<string, unknown>)[name];
-  if (typeof method !== "function") {
-    throw new Error(
-      `[HotUpdater] Native module is missing '${name}()'. This JS bundle requires a newer native @hot-updater/react-native SDK. Rebuild and release a new app version before delivering this OTA update.`,
-    );
-  }
-  return method.bind(HotUpdaterNative) as T;
-};
+export const getInstallId = (): string => HotUpdaterNative.getInstallId();
 
 /** Reads a value from the SDK's native key-value store. */
 export const getStorageItem = (key: string): string | null => {
-  const value =
-    requireStorageNativeMethod<(key: string) => unknown>("getStorageItem")(key);
+  const value: unknown = HotUpdaterNative.getStorageItem(key);
   return typeof value === "string" ? value : null;
 };
 
 /** Writes a value to the SDK's native key-value store; null removes it. */
 export const setStorageItem = (key: string, value: string | null): void => {
-  requireStorageNativeMethod<(key: string, value: string | null) => void>(
-    "setStorageItem",
-  )(key, value);
+  HotUpdaterNative.setStorageItem(key, value);
 };
 
 /**
@@ -795,7 +719,6 @@ export type LaunchTransition = {
 
 type RawNotifyAppReadyResult = {
   status?: string;
-  crashedBundleId?: string;
   fromReleaseId?: string;
   fromBundleId?: string;
   toReleaseId?: string;
@@ -861,7 +784,7 @@ const getNotifyAppReadyTransition = (
   fromReleaseId: string | null;
   toReleaseId: string | null;
 } | null => {
-  if (result.status === "UPDATE_APPLIED" || result.status === "PROMOTED") {
+  if (result.status === "UPDATE_APPLIED") {
     const fromBundleId = readDirectionalBundleId(result.fromBundleId);
     const toBundleId = readDirectionalBundleId(result.toBundleId);
     if (fromBundleId && toBundleId) {
@@ -1005,16 +928,6 @@ const normalizeManifestAssets = (value: unknown): Manifest["assets"] => {
         return [];
       }
 
-      if (typeof entry === "string") {
-        const fileHash = entry.trim();
-
-        if (!fileHash) {
-          return [];
-        }
-
-        return [[trimmedKey, { fileHash }] as const];
-      }
-
       if (!entry || typeof entry !== "object" || Array.isArray(entry)) {
         return [];
       }
@@ -1050,7 +963,7 @@ const normalizeManifestAssets = (value: unknown): Manifest["assets"] => {
  */
 export const getCrashHistory = (): string[] => {
   const result = HotUpdaterNative.getCrashHistory();
-  // Older Android old-arch implementations returned JSON strings.
+  // Android's old-architecture module returns the history as a JSON string.
   if (typeof result === "string") {
     try {
       return JSON.parse(result);

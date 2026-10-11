@@ -1,0 +1,6 @@
+{
+  "title": "Get Started",
+  "description": "Quick start guide for Hot Updater",
+  "icon": "Rocket",
+  "pages": ["introduction", "basic-usage"]
+}

@@ -26,8 +26,6 @@ export interface DrizzleConfig {
   /** A Drizzle database, or a function that returns one on first use. */
   readonly db: unknown | (() => unknown | Promise<unknown>);
   readonly provider: DrizzleProvider;
-  /** Ignored: Hot Updater reads through SQL; the schema file is for drizzle-kit. */
-  readonly schema?: Record<string, unknown>;
 }
 
 /**

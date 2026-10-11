@@ -254,7 +254,7 @@ describe("mongoAdapter migrations", () => {
     await expect(core.getRelease(release.id)).resolves.toEqual(release);
   });
 
-  it("refuses a v0 database and a database from before the engine", async () => {
+  it("refuses a v0 database", async () => {
     const v0 = await connect("v0");
     await v0
       .db()
@@ -263,16 +263,5 @@ describe("mongoAdapter migrations", () => {
     await expect(
       mongoAdapter({ client: v0 }).createMigrator!().migrateToLatest(),
     ).rejects.toThrow("cannot migrate schema 0.21.0 in place");
-
-    const rc = await connect("rc");
-    await rc
-      .db()
-      .collection("private_hot_updater_settings")
-      .insertOne({ key: "schema.core", value: "1.0.0" });
-    await expect(
-      mongoAdapter({ client: rc }).createMigrator!().migrateToLatest(),
-    ).rejects.toMatchObject({
-      setting: { key: "schema.engine", expected: "1", found: null },
-    });
   });
 });

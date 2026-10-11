@@ -1,6 +1,7 @@
 import { isMultiIndex, toolingTargetOf } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import {
+  apiKeys,
   createInsightsModel,
   insights,
   remoteConfig,
@@ -12,7 +13,6 @@ import {
 import { env } from "cloudflare:test";
 import { expect, inject, it } from "vitest";
 
-import { plugins } from "../../src/plugins";
 import { d1Database } from "../../src/worker";
 
 declare module "vitest" {
@@ -25,7 +25,11 @@ declare module "vitest" {
 }
 
 /** Every data table of the managed server's migration: each model's table and the index tables of its multi-valued indexes. */
-const dataTables = toolingTargetOf(plugins).schema.tables.flatMap((table) => [
+const dataTables = toolingTargetOf([
+  insights(),
+  apiKeys(),
+  remoteConfig(),
+]).schema.tables.flatMap((table) => [
   table.name,
   ...table.indexes
     .filter((index) => isMultiIndex(table, index))

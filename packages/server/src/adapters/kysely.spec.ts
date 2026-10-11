@@ -9,7 +9,7 @@ import {
   toolingTargetOf,
   quoteSql,
 } from "@hot-updater/plugin-core";
-import type { ToolingDatabase } from "@hot-updater/plugin-core";
+import type { SqlDialect, ToolingDatabase } from "@hot-updater/plugin-core";
 import {
   setupDatabaseTestSuite,
   startHttpTestServer,
@@ -25,7 +25,7 @@ import { describe, expect, it } from "vitest";
 import { createInProcessCoreApi } from "../core/inProcess.testFixtures";
 import { createHotUpdater } from "../index";
 import { createInsightsModel, insights } from "../plugins/insights";
-import { kyselyAdapter, type SQLProvider } from "./kysely";
+import { kyselyAdapter } from "./kysely";
 
 /** What the suites run: core and the Insights plugin. */
 const target = toolingTargetOf([insights()]);
@@ -96,7 +96,7 @@ const backends = {
       close: async () => undefined,
     };
   },
-} satisfies Record<Exclude<SQLProvider, "mysql">, () => unknown>;
+} satisfies Record<Exclude<SqlDialect, "mysql">, () => unknown>;
 
 for (const provider of ["postgresql", "sqlite"] as const) {
   let backend: ReturnType<(typeof backends)[typeof provider]> | undefined;
@@ -156,26 +156,6 @@ describe("kyselyAdapter migrations and fence", () => {
         operations: [],
       });
       await expect(core.listChannels()).resolves.toEqual([]);
-    } finally {
-      await db.destroy();
-      await close();
-    }
-  });
-
-  it("refuses to migrate a database from before the storage engine", async () => {
-    const { db, exec, close } = backends.postgresql();
-    try {
-      await exec(
-        `CREATE TABLE private_hot_updater_settings (key varchar(255) PRIMARY KEY, value varchar(255) NOT NULL, _v bigint NOT NULL DEFAULT 0);
-         INSERT INTO private_hot_updater_settings (key, value) VALUES ('schema.core', '1.0.0');`,
-      );
-      const migrator = kyselyAdapter({
-        db,
-        provider: "postgresql",
-      }).createMigrator!();
-      await expect(migrator.migrateToLatest()).rejects.toMatchObject({
-        setting: { key: "schema.engine", expected: "1", found: null },
-      });
     } finally {
       await db.destroy();
       await close();

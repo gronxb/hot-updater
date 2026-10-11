@@ -9,7 +9,12 @@ import {
   defineTable,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
-import { createInsightsModel, insights } from "@hot-updater/server/plugins";
+import {
+  apiKeys,
+  createInsightsModel,
+  insights,
+  remoteConfig,
+} from "@hot-updater/server/plugins";
 import {
   setupDatabaseTestSuite,
   startHttpTestServer,
@@ -18,7 +23,6 @@ import {
 } from "@hot-updater/test-utils";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { plugins } from "../src/plugins";
 import { supabaseDatabase } from "../src/supabaseDatabase";
 import { toApplyStatement } from "../src/supabaseExecutor";
 import { supabaseDatabase as supabaseToolingDatabase } from "../src/supabaseMigration";
@@ -31,8 +35,8 @@ import {
 
 const MIGRATIONS = path.resolve("plugins/supabase/supabase/migrations");
 const MIGRATION = path.join(MIGRATIONS, "0001_hot-updater_1.0.0.sql");
-/** The managed server's tables: core's, and its plugins' (Insights and API keys). */
-const managed = toolingTargetOf(plugins);
+/** The managed server's tables: core's, and its plugins' (Insights, API keys, and Remote Config). */
+const managed = toolingTargetOf([insights(), apiKeys(), remoteConfig()]);
 
 const state = vi.hoisted(() => ({ db: undefined as PGlite | undefined }));
 

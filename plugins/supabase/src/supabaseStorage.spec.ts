@@ -87,6 +87,24 @@ describe("supabaseStorage", () => {
     await expect(response?.text()).resolves.toBe("manifest");
   });
 
+  it("reads with the service role key under the decoded object name", async () => {
+    bucket.download.mockResolvedValue({
+      data: new Blob(["manifest"]),
+      error: null,
+    });
+
+    const { response } = await createStorage().get({
+      storageUri: "supabase-storage://updates/logo%402x.json",
+    });
+
+    await expect(response?.text()).resolves.toBe("manifest");
+    expect(createClient).toHaveBeenCalledWith(
+      "https://example.supabase.co",
+      "service-role-key",
+    );
+    expect(bucket.download).toHaveBeenCalledWith("logo@2x.json");
+  });
+
   /** supabase-js's error for a download Storage answered with `body`. */
   const downloadError = (body: object) =>
     Object.assign(new Error("{}"), {

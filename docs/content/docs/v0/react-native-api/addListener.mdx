@@ -1,0 +1,110 @@
+---
+title: "addListener"
+description: "Subscribe to Hot Updater events."
+icon: Headphones
+---
+
+<Callout type="warn">
+For progress UI, prefer [useHotUpdaterStore](./useHotUpdaterStore). Use
+`addListener` when you need the raw event, such as analytics, logs, or custom
+side effects.
+</Callout>
+
+## Usage
+
+`addListener` subscribes to a Hot Updater event and returns an unsubscribe
+function.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+const unsubscribe = HotUpdater.addListener("onProgress", (event) => {
+  console.log(`Update progress: ${Math.round(event.progress * 100)}%`);
+});
+
+unsubscribe();
+```
+
+## Event Type
+
+`onProgress` is emitted while an OTA update is being downloaded.
+
+```ts
+type HotUpdaterProgressEvent =
+  | {
+      progress: number;
+      artifactType: "archive";
+      downloadedBytes?: number;
+      totalBytes?: number;
+    }
+  | {
+      progress: number;
+      artifactType: "diff";
+      details: {
+        totalFilesCount: number;
+        completedFilesCount: number;
+        files: Array<{
+          path: string;
+          downloadPath: string;
+          status: "pending" | "downloading" | "downloaded" | "failed";
+          progress: number;
+          order: number;
+          downloadedBytes?: number;
+          totalBytes?: number;
+        }>;
+      };
+    };
+
+type HotUpdaterEvent = {
+  onProgress: HotUpdaterProgressEvent;
+};
+```
+
+For archive updates, use `downloadedBytes` and `totalBytes` when they are
+available. For bundle diffing updates, use `details` if you need per-file
+progress.
+
+```tsx
+import { HotUpdater } from "@hot-updater/react-native";
+
+HotUpdater.addListener("onProgress", (event) => {
+  if (event.artifactType === "archive") {
+    console.log("Archive progress", event.progress);
+    return;
+  }
+
+  console.log(
+    "Diff progress",
+    event.details.completedFilesCount,
+    event.details.totalFilesCount,
+  );
+});
+```
+
+## Parameters
+
+| Parameter   | Type                                  | Required | Description                              |
+|-------------|---------------------------------------|----------|------------------------------------------|
+| `eventName` | `keyof HotUpdaterEvent`               | Yes      | The event name. Currently `onProgress`.  |
+| `listener`  | `(event: HotUpdaterEvent[T]) => void` | Yes      | Callback called when the event is emitted. |
+
+## Cleanup
+
+Call the returned function when the listener is no longer needed.
+
+```tsx
+import { useEffect } from "react";
+import { HotUpdater } from "@hot-updater/react-native";
+
+function UpdateProgressLogger() {
+  useEffect(() => {
+    const unsubscribe = HotUpdater.addListener("onProgress", (event) => {
+      console.log(Math.round(event.progress * 100));
+    });
+
+    return unsubscribe;
+  }, []);
+
+  return null;
+}
+```

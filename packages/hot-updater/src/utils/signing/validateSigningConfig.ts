@@ -6,7 +6,7 @@ import type { Platform } from "@hot-updater/plugin-core";
 import { AndroidConfigParser } from "../configParser/androidParser";
 import { IosConfigParser } from "../configParser/iosParser";
 
-const ANDROID_KEY = "hot_updater_public_key";
+const ANDROID_KEY = "com.hotupdater.PUBLIC_KEY";
 const IOS_KEY = "HOT_UPDATER_PUBLIC_KEY";
 
 const parseRsaSpkiPublicKey = (publicKeyPem: string) => {

@@ -99,7 +99,7 @@ async function applyWorkerPublicKeyTransform(
     integrity.nativePublicKeyPaths.android.map((relativePath) =>
       path.join(targetRepo, relativePath),
     ),
-  ).set("hot_updater_public_key", value);
+  ).set("com.hotupdater.PUBLIC_KEY", value);
   await new IosConfigParser(
     integrity.nativePublicKeyPaths.ios.map((relativePath) =>
       path.join(targetRepo, relativePath),
@@ -350,7 +350,7 @@ describe("native public-key source integrity", () => {
     const manifest = integrity.nativePublicKeyPaths.android[0];
     git(targetRepo, ["update-index", "--assume-unchanged", manifest]);
     await new AndroidConfigParser([path.join(targetRepo, manifest)]).set(
-      "hot_updater_public_key",
+      "com.hotupdater.PUBLIC_KEY",
       publicKey,
     );
 
@@ -366,7 +366,7 @@ describe("native public-key source integrity", () => {
     const { targetRepo } = createFixture();
     const manifest = integrity.nativePublicKeyPaths.android[0];
     await new AndroidConfigParser([path.join(targetRepo, manifest)]).set(
-      "hot_updater_public_key",
+      "com.hotupdater.PUBLIC_KEY",
       publicKey,
     );
     git(targetRepo, ["add", manifest]);
@@ -425,7 +425,7 @@ describe("native public-key source integrity", () => {
     await applyWorkerPublicKeyTransform(targetRepo);
     await new AndroidConfigParser([
       path.join(targetRepo, integrity.nativePublicKeyPaths.android[0]),
-    ]).set("hot_updater_public_key", otherPublicKey);
+    ]).set("com.hotupdater.PUBLIC_KEY", otherPublicKey);
 
     expect(() =>
       integrity.assertNativePublicKeyOnlySourceChanges(
@@ -440,7 +440,7 @@ describe("native public-key source integrity", () => {
     await applyWorkerPublicKeyTransform(targetRepo);
     await new AndroidConfigParser([
       path.join(targetRepo, integrity.nativePublicKeyPaths.android[0]),
-    ]).set("hot_updater_channel", "tampered");
+    ]).set("com.hotupdater.CHANNEL", "tampered");
 
     expect(() =>
       integrity.assertNativePublicKeyOnlySourceChanges(
@@ -470,9 +470,11 @@ describe("native public-key source integrity", () => {
       targetRepo,
       integrity.nativePublicKeyPaths.android[0],
     );
-    await new AndroidConfigParser([manifest]).remove("hot_updater_public_key");
+    await new AndroidConfigParser([manifest]).remove(
+      "com.hotupdater.PUBLIC_KEY",
+    );
     await new AndroidConfigParser([manifest]).set(
-      "hot_updater_channel",
+      "com.hotupdater.CHANNEL",
       "changed",
     );
 

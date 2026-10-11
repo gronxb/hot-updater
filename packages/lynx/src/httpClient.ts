@@ -287,8 +287,8 @@ function descriptor(value: unknown): value is ReleaseCatalogDescriptor {
   const item = value as Record<string, unknown>;
   return (
     isUUIDv7(item.releaseId) &&
-    ((item.kind === "BUNDLE" && isUUIDv7(item.bundleId)) ||
-      (item.kind === "EMBEDDED" && item.bundleId === null)) &&
+    item.kind === "BUNDLE" &&
+    isUUIDv7(item.bundleId) &&
     Number.isSafeInteger(item.rolloutCohortCount) &&
     (item.rolloutCohortCount as number) >= 0 &&
     (item.rolloutCohortCount as number) <= NUMERIC_COHORT_SIZE &&

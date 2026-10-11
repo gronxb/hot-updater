@@ -12,7 +12,6 @@ class CohortService(
         context.getSharedPreferences("HotUpdaterCohort", Context.MODE_PRIVATE)
 
     companion object {
-        // Keep the legacy key so existing custom cohorts continue to work.
         private const val COHORT_KEY = "custom_cohort"
         private const val FALLBACK_IDENTIFIER_KEY = "fallback_identifier"
     }

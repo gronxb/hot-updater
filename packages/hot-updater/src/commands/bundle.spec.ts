@@ -105,7 +105,6 @@ describe("Bundle commands", () => {
     expect(table).not.toContain(bundle.id);
     expect(table).not.toContain(android.id);
     expect(table).not.toContain("Release ID");
-    expect(table).not.toContain("Bundle / Embedded");
 
     await handleBundleList({ json: true, platform: "ios", limit: 5 });
     expect(JSON.parse(String(output.mock.calls.at(-1)?.[0]))).toEqual([
@@ -130,7 +129,7 @@ describe("Bundle commands", () => {
     });
   });
 
-  it("combines the v0 channel and target app version filters", async () => {
+  it("combines the channel and target app version filters", async () => {
     const bundle = artifact("00000000-0000-7000-8000-000000000011");
     const { core } = databaseHarness;
     const releaseOf = async (

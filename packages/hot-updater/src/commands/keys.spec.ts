@@ -77,8 +77,6 @@ vi.mock("../utils/git", () => ({
 vi.mock("../utils/signing", () => ({
   generateKeyPair: vi.fn(),
   getPrivateKeyGitignorePath: vi.fn(),
-  getPublicKeyFromPrivate: vi.fn(),
-  loadPrivateKey: vi.fn(),
   saveKeyPair: vi.fn(),
 }));
 
@@ -199,7 +197,7 @@ describe("keysExportPublic", () => {
 
     expect(mocks.confirm).not.toHaveBeenCalled();
     expect(mocks.androidSet).toHaveBeenCalledWith(
-      "hot_updater_public_key",
+      "com.hotupdater.PUBLIC_KEY",
       next.publicKey.trim(),
     );
   });
@@ -222,7 +220,7 @@ describe("keysExportPublic", () => {
     mocks.androidGet.mockResolvedValue({ value: null, paths: [] });
     await keysExportPublic({ yes: true });
     expect(mocks.androidSet).toHaveBeenCalledWith(
-      "hot_updater_public_key",
+      "com.hotupdater.PUBLIC_KEY",
       publicKey.trim(),
     );
   });

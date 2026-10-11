@@ -74,9 +74,6 @@ pnpm test # Uses @cloudflare/vitest-pool-workers
 
 ### Utility Functions
 
-- `calculatePagination()`: Pagination calculation helper
-- `compressionFormat()`: Compression format detection and handling
-- `filterCompatibleAppVersions()`: App version compatibility filtering
 - `generateMinBundleId()`: Generate minimal unique bundle IDs
 - `parseStorageUri()`: Parse and validate storage URIs
 - `semverSatisfies()`: Semantic version comparison
@@ -95,7 +92,7 @@ Located in `src/types/`, provides TypeScript interfaces for plugins and core fun
 
 ### Dependencies
 
-- Current dependencies are edge-compatible: `es-toolkit`, `mime`, `semver`
+- Current dependencies are edge-compatible: `es-toolkit`, `mime`, `verkit`
 - When adding new dependencies, verify they work in Cloudflare Workers
 - Prefer pure JavaScript implementations over native bindings
 

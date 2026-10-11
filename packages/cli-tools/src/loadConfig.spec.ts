@@ -345,11 +345,6 @@ describe("loadConfig", () => {
     );
     await writeProjectFile(
       projectRoot,
-      "android/app/src/main/res/values/strings.xml",
-      "<resources />",
-    );
-    await writeProjectFile(
-      projectRoot,
       "hot-updater.config.ts",
       [
         "export default (options) => ({",

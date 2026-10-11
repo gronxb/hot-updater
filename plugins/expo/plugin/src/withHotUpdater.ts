@@ -7,7 +7,6 @@ import {
   withInfoPlist,
   withMainApplication,
   withPlugins,
-  withStringsXml,
 } from "expo/config-plugins";
 
 import pkg from "../../package.json";
@@ -244,25 +243,6 @@ const withHotUpdaterConfigAsync =
       } else {
         removeAndroidMetaData(application, ANDROID_META_DATA_KEYS.publicKey);
       }
-
-      return cfg;
-    });
-
-    // Remove legacy Hot Updater string resources when prebuild reuses a tree.
-    modifiedConfig = withStringsXml(modifiedConfig, (cfg) => {
-      const strings = cfg.modResults.resources?.string;
-      if (!strings) {
-        return cfg;
-      }
-
-      cfg.modResults.resources.string = (
-        Array.isArray(strings) ? strings : [strings]
-      ).filter(
-        (item) =>
-          item.$?.name !== "hot_updater_channel" &&
-          item.$?.name !== "hot_updater_fingerprint_hash" &&
-          item.$?.name !== "hot_updater_public_key",
-      );
 
       return cfg;
     });

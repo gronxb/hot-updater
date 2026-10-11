@@ -131,8 +131,6 @@ export interface HotUpdaterPlugin<
   init(context: PluginContext<TSchema>): TInstance;
   /** Read by the CLI only; the server never runs it. */
   readonly cli?: PluginCli<TInstance["api"]>;
-  /** Only core modules carry a kind. */
-  readonly kind?: "Core is built in; it is not a plugin";
 }
 
 /** Declares a plugin; Hot Updater's own plugins and third-party ones use the same contract. */

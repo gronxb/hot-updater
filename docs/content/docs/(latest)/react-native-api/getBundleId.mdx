@@ -30,8 +30,6 @@ getBundleId(): string
 
 The getter is synchronous and does not make a network request. Before an OTA
 update is active, it returns the identifier embedded in the native build.
-An update retained from a legacy installation keeps its existing identifier
-until a catalog update is selected.
 
 After an update is staged, this ID can change before the app reloads. It
 identifies the selected update; it does not confirm that its code is already

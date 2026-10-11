@@ -8,8 +8,7 @@ import {
   SETTINGS_TABLE,
   toolingTargetOf,
 } from "@hot-updater/plugin-core";
-
-import { plugins } from "../src/plugins";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 
 /**
  * The partitions the managed server's items use: each table's rows of core
@@ -18,7 +17,7 @@ import { plugins } from "../src/plugins";
  */
 export const dynamoDBLeadingKeys = (): string[] =>
   [
-    ...toolingTargetOf(plugins).schema.tables,
+    ...toolingTargetOf([insights(), apiKeys(), remoteConfig()]).schema.tables,
     ...aggregateBatchingTables,
     SETTINGS_TABLE,
   ].flatMap(({ name }) => [name, `${name}#*`]);

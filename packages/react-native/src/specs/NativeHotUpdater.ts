@@ -96,7 +96,7 @@ export interface Spec extends TurboModule {
   /** Rechecks generation/context immediately before a catalog side effect. */
   isReleaseSelectionCurrent(params: UnsafeObject): boolean;
 
-  /** Atomically commits a metadata-only, EMBEDDED, or BUILTIN selection. */
+  /** Atomically commits a metadata-only or BUILTIN selection. */
   commitReleaseSelection(params: UnsafeObject): Promise<boolean>;
 
   /**
@@ -113,7 +113,6 @@ export interface Spec extends TurboModule {
     toReleaseId?: string;
     toBundleId?: string;
     updateStrategy?: "fingerprint" | "appVersion";
-    crashedBundleId?: string;
   };
 
   /**
@@ -150,8 +149,8 @@ export interface Spec extends TurboModule {
 
   /**
    * Gets the current active bundle ID from native bundle storage.
-   * Native reads the extracted bundle manifest first and falls back to the
-   * legacy BUNDLE_ID file when needed. Built-in bundle fallback is handled in JS.
+   * Native reads it from the extracted bundle's manifest. Built-in bundle
+   * fallback is handled in JS.
    *
    * @returns Active bundle ID from bundle storage, or null when unavailable
    */

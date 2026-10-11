@@ -186,7 +186,6 @@ export async function generateStandaloneSQL(options: {
     // tables.
     const migrator = adapter.createMigrator!(toolingTargetOf(plugins));
     const result = await migrator.migrateToLatest({
-      mode: "from-schema",
       updateSettings: false,
     });
 

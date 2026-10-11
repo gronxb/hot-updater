@@ -46,7 +46,7 @@ describe("prepareBundleSigning", () => {
     ).resolves.toBeNull();
   });
 
-  it("signs with v0 local config without requiring a public key file", async () => {
+  it("signs with a local private key config without requiring a public key file", async () => {
     const cwd = await createTempDir();
     const { privateKey, publicKey } = createKeyPair();
     await fs.writeFile(path.join(cwd, "custom-private.pem"), privateKey);

@@ -30,11 +30,7 @@ export interface CheckForUpdateOptions {
   onError?: (error: Error) => void;
 }
 
-export type ReleaseTransitionKind =
-  | "INSTALL"
-  | "ADOPT_RELEASE"
-  | "USE_EMBEDDED"
-  | "USE_BUILTIN";
+export type ReleaseTransitionKind = "INSTALL" | "ADOPT_RELEASE" | "USE_BUILTIN";
 
 export type NotifyAppReadyResult =
   | {
@@ -63,7 +59,7 @@ export type NotifyAppReadyResult =
 export type CustomReloadHandler = () => void | Promise<void>;
 
 export interface ActiveUpdateSelection {
-  kind: "BUNDLE" | "EMBEDDED" | "BUILTIN";
+  kind: "BUNDLE" | "BUILTIN";
   releaseId: string | null;
   bundleId: string;
   channel: string;

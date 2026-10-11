@@ -37,7 +37,6 @@ function collectReachableFromIndexes(
   for (const cohort of cohorts) {
     const selected = descriptors.find(
       (descriptor) =>
-        descriptor.kind === "BUNDLE" &&
         descriptor.bundleId !== null &&
         isReleaseEligibleForCohort(descriptor, cohort),
     );

@@ -105,7 +105,7 @@ describe("AndroidConfigParser", () => {
       ]);
       vi.mocked(fs.existsSync).mockReturnValue(false);
 
-      await expect(parser.get("hot_updater_channel")).resolves.toEqual({
+      await expect(parser.get("com.hotupdater.CHANNEL")).resolves.toEqual({
         value: null,
         paths: [],
       });
@@ -126,7 +126,7 @@ describe("AndroidConfigParser", () => {
         },
       });
 
-      await expect(parser.get("hot_updater_channel")).resolves.toEqual({
+      await expect(parser.get("com.hotupdater.CHANNEL")).resolves.toEqual({
         value: "production",
         paths: ["android/app/src/main/AndroidManifest.xml"],
       });
@@ -163,7 +163,7 @@ describe("AndroidConfigParser", () => {
       vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
 
       await expect(
-        parser.set("hot_updater_channel", "production"),
+        parser.set("com.hotupdater.CHANNEL", "production"),
       ).resolves.toEqual({
         paths: ["android/app/src/main/AndroidManifest.xml"],
       });

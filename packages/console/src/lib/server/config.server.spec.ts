@@ -73,9 +73,7 @@ describe("config.server", () => {
       storage: storageAdapter,
     });
 
-    const { isConfigLoaded, prepareConfig } = await import("./config.server");
-
-    expect(isConfigLoaded()).toBe(false);
+    const { prepareConfig } = await import("./config.server");
 
     const first = await prepareConfig(request);
     const second = await prepareConfig(request);
@@ -96,7 +94,6 @@ describe("config.server", () => {
     await expect(first.core.listChannels()).resolves.toEqual([]);
     expect(first.storage).toBe(storageAdapter);
     expect(second.storage).toBe(storageAdapter);
-    expect(isConfigLoaded()).toBe(true);
   });
 
   it("takes a self-hosted server's features from the plugins the config lists, without asking the server", async () => {

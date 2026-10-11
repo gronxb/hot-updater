@@ -78,6 +78,78 @@ describe("database rows", () => {
     expect(toRow(bundle)).not.toHaveProperty("target_cohorts");
   });
 
+  it("keeps patches and release fields out of the bundle row", () => {
+    const base = createBundle("base");
+    const bundle: Bundle = {
+      ...createBundle("target"),
+      patches: [
+        {
+          baseBundleId: base.id,
+          baseFileHash: `asset-hash-${base.id}`,
+          byteSize: 3_000_000_002,
+          patchFileHash: "patch",
+          patchStorageUri: "storage://patch",
+        },
+      ],
+    };
+
+    const row = toRow(bundle);
+    const hydrated = rowsToBundles([row], bundleToPatchRows(bundle), [
+      toRow(base),
+    ]);
+
+    expect(row).not.toHaveProperty("patches");
+    expect(row).not.toHaveProperty("patch_file_hash");
+    expect(row).not.toHaveProperty("channel");
+    expect(row).not.toHaveProperty("enabled");
+    expect(hydrated).toEqual([bundle]);
+  });
+
+  it("orders patches by their order index, then by id", () => {
+    const oldest = createBundle("oldest");
+    const newest = createBundle("newest");
+    const target = createBundle("target");
+    const patchRow = (
+      id: string,
+      baseBundleId: string,
+      orderIndex: number,
+    ) => ({
+      id,
+      bundle_id: target.id,
+      base_bundle_id: baseBundleId,
+      base_file_hash: `base-hash-${id}`,
+      patch_file_hash: `patch-hash-${id}`,
+      patch_storage_uri: `storage://${id}.patch`,
+      byte_size: 3_000_000_002,
+      order_index: orderIndex,
+    });
+    const later = patchRow("later", newest.id, 1);
+    const firstById = patchRow("a-first", oldest.id, 0);
+    const secondById = patchRow("z-second", newest.id, 0);
+
+    const [hydrated] = rowsToBundles(
+      [toRow(target)],
+      [later, secondById, firstById],
+      [toRow(oldest), toRow(newest)],
+    );
+
+    expect(hydrated?.patches?.map((patch) => patch.patchFileHash)).toEqual([
+      firstById.patch_file_hash,
+      secondById.patch_file_hash,
+      later.patch_file_hash,
+    ]);
+  });
+
+  it("hydrates a bundle without patch rows with an empty patch list", () => {
+    const [hydrated] = rowsToBundles(
+      [toRow(createBundle("without-patches"))],
+      [],
+      [],
+    );
+
+    expect(hydrated).toMatchObject({ patches: [] });
+  });
+
   it("rejects duplicate patch ids", () => {
     const base = createBundle("base");
     const bundle: Bundle = {

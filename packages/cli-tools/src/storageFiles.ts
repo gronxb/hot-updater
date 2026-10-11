@@ -1,8 +1,7 @@
-import { createReadStream, createWriteStream } from "node:fs";
+import { createReadStream } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { Readable, Transform } from "node:stream";
-import { pipeline } from "node:stream/promises";
+import { Readable } from "node:stream";
 
 import {
   getContentType,
@@ -36,58 +35,5 @@ export const putStorageFile = async (
     return { ...result, byteSize };
   } finally {
     source.destroy();
-  }
-};
-
-export const writeStorageFile = async (
-  storage: StorageAdapterWith<"get">,
-  storageUri: string,
-  filePath: string,
-  maxBytes?: number,
-): Promise<void> => {
-  const { response } = await storage.get({ storageUri });
-  if (response === null) {
-    throw new Error(`Storage object not found: ${storageUri}`);
-  }
-
-  await writeStorageResponseFile(response, filePath, maxBytes);
-};
-
-export const writeStorageResponseFile = async (
-  response: Response,
-  filePath: string,
-  maxBytes = Number.MAX_SAFE_INTEGER,
-): Promise<void> => {
-  const declaredSize = Number(response.headers.get("content-length"));
-  if (declaredSize > maxBytes) {
-    await response.body?.cancel();
-    throw new Error(`Storage response exceeds the ${maxBytes} byte limit`);
-  }
-  await fs.mkdir(path.dirname(filePath), { recursive: true });
-  if (response.body === null) {
-    await fs.writeFile(filePath, new Uint8Array());
-    return;
-  }
-
-  try {
-    let downloaded = 0;
-    await pipeline(
-      Readable.fromWeb(response.body as ReadableStream<Uint8Array>),
-      new Transform({
-        transform(chunk: Buffer, _encoding, callback) {
-          downloaded += chunk.byteLength;
-          callback(
-            downloaded > maxBytes
-              ? new Error(`Storage response exceeds the ${maxBytes} byte limit`)
-              : null,
-            chunk,
-          );
-        },
-      }),
-      createWriteStream(filePath),
-    );
-  } catch (error) {
-    await fs.rm(filePath, { force: true });
-    throw error;
   }
 };

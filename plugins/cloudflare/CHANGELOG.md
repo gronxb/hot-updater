@@ -1,5 +1,83 @@
 # @hot-updater/cloudflare
 
+## 1.0.0
+
+### Major Changes
+
+- adb0e40: Hot Updater 1.0, the first stable release of v1. Deploys create Releases that the server compiles into one cacheable Release Catalog per app scope, and `createHotUpdater` runs a storage adapter, a database adapter, and plugins such as Insights, Remote Config, and client API keys. v1 runs on new infrastructure and needs a new native app build: follow the [upgrade guide](https://hot-updater.dev/docs/guides/upgrade-to-v1) and [BREAKING_CHANGES.md](https://github.com/gronxb/hot-updater/blob/main/BREAKING_CHANGES.md) to move from v0.
+
+### Patch Changes
+
+- Updated dependencies [adb0e40]
+  - @hot-updater/cli-tools@1.0.0
+  - @hot-updater/plugin-core@1.0.0
+  - @hot-updater/protocol@1.0.0
+  - @hot-updater/server@1.0.0
+
+## 1.0.0-rc.47
+
+### Patch Changes
+
+- Updated dependencies [5891d9b]
+- Updated dependencies [ccf3e2f]
+- Updated dependencies [7132080]
+- Updated dependencies [ccf3e2f]
+  - @hot-updater/plugin-core@1.0.0-rc.47
+  - @hot-updater/protocol@1.0.0-rc.47
+  - @hot-updater/server@1.0.0-rc.47
+  - @hot-updater/cli-tools@1.0.0-rc.47
+
+## 1.0.0-rc.46
+
+### Minor Changes
+
+- 47638d6: Remove code that only served v0. No v1 code called it.
+  - `@hot-updater/cli-tools` no longer exports the copy-promote helpers `createCopiedBundleArtifacts` and `LEGACY_BUNDLE_ERROR`, or `writeStorageFile` and `writeStorageResponseFile`. Promotion runs through core.
+  - `hot-updater` no longer exports `getPublicKeyFromPrivate` or `loadPrivateKey`. `hot-updater channel set` help names AndroidManifest.xml, where the channel is written.
+  - `@hot-updater/protocol` no longer exports `stripBundleArtifactMetadata`, which returned its input.
+  - `@hot-updater/plugin-core` no longer exports `filterCompatibleAppVersions`.
+  - `@hot-updater/server` no longer re-exports protocol's `Bundle` type from its root; import it from `@hot-updater/protocol`. `@hot-updater/server/adapters/kysely` no longer exports the `SQLProvider` alias; use `SqlDialect` from `@hot-updater/plugin-core`.
+  - `@hot-updater/cloudflare` no longer exports `./worker/config` or `./worker/wrangler.json`.
+  - `@hot-updater/react-native` calls `getBundleId()`, `getManifest()`, and Android's `reloadProcess()` directly, which every v1 native module implements. It no longer reads a `PROMOTED` launch report or manifest assets given as plain strings.
+  - The Expo config plugin no longer rewrites the `getJSBundleFile` code that its v0 releases injected without a debug check.
+  - `@hot-updater/supabase/edge` exports `supabaseStorage` directly. The name and config are unchanged.
+  - The Console drops the unused `getBundles` and `getConfigLoaded` server functions and their query hooks.
+
+### Patch Changes
+
+- Updated dependencies [47638d6]
+- Updated dependencies [19be90f]
+  - @hot-updater/cli-tools@1.0.0-rc.46
+  - @hot-updater/protocol@1.0.0-rc.46
+  - @hot-updater/plugin-core@1.0.0-rc.46
+  - @hot-updater/server@1.0.0-rc.46
+
+## 1.0.0-rc.45
+
+### Minor Changes
+
+- 73c9d9d: The provider packages no longer export `plugins`, the plugins their managed servers run. A config lists its plugins itself, as `hot-updater init` writes them:
+
+  ```ts
+  import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
+
+  export default defineConfig({
+    // build, storage, database, ...
+    plugins: [apiKeys(), insights(), remoteConfig()],
+  });
+  ```
+
+  - `@hot-updater/aws`, `@hot-updater/cloudflare`, `@hot-updater/cloudflare/worker`, `@hot-updater/firebase`, `@hot-updater/supabase`, and `@hot-updater/supabase/edge` drop the export. A server or Console config imports the same factories from `@hot-updater/server/plugins`.
+  - `hot-updater init --provider <provider>` rewrites a config that still imports `plugins` from a provider package into the list above.
+  - Each managed server, the Lambda@Edge function, Worker, Cloud Function, and Edge Function, lists its plugins in its own `createHotUpdater` call. `hot-updater init` vendors `@hot-updater/server/plugins` into the Supabase Edge Function with the other entries it imports.
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.0.0-rc.45
+  - @hot-updater/protocol@1.0.0-rc.45
+  - @hot-updater/server@1.0.0-rc.45
+  - @hot-updater/plugin-core@1.0.0-rc.45
+
 ## 1.0.0-rc.44
 
 ### Minor Changes

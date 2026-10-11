@@ -1,5 +1,6 @@
 import type { Bundle } from "@hot-updater/protocol";
 import { createHotUpdater } from "@hot-updater/server";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import {
   createBundleEventRowFixture,
   createReleaseCatalogTestStorage,
@@ -7,7 +8,7 @@ import {
 import { env } from "cloudflare:test";
 import { beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 
-import { d1Database, plugins } from "../../src/worker";
+import { d1Database } from "../../src/worker";
 import worker, { HOT_UPDATER_BASE_PATH } from "./index";
 
 declare module "vitest" {
@@ -43,7 +44,7 @@ const createSeedServer = () =>
   createHotUpdater({
     database: d1Database(env.DB),
     storage: createReleaseCatalogTestStorage(),
-    plugins,
+    plugins: [insights(), apiKeys(), remoteConfig()],
   });
 
 const seedBundles = async (bundles: Bundle[]) => {
@@ -119,7 +120,7 @@ describe.sequential("cloudflare worker runtime acceptance", () => {
     });
   });
 
-  it("does not support the legacy exact path", async () => {
+  it("answers 404 for /api/check-update", async () => {
     const response = await worker.fetch(
       new Request(`${PUBLIC_BASE_URL}/api/check-update`),
       env,

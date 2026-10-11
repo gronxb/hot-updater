@@ -255,12 +255,10 @@ updates. Update CI to use the v1 provider configuration, app build variables,
 signer and compatibility target. Keep a separate v0 deployment configuration
 for any OTA releases still needed by installed v0 binaries.
 
-A store-delivered native upgrade can preserve the app's local sandbox even
-though its server generation is fresh. The v1 native SDK migrates
-Bundle-ID-only metadata, reads retained local `BUNDLE_ID` artifacts, and keeps
-the existing cohort identity. Verify an upgrade from a retained v0 installation
-without clearing app data. This on-device bridge does not migrate the v0 server
-database or remote storage.
+A store-delivered native upgrade can preserve the app's local sandbox, but the
+v1 native SDK does not read the OTA state v0 left there: the new build launches
+its built-in bundle, then applies v1 updates. Verify an upgrade from a retained
+v0 installation without clearing app data.
 
 The endpoints remain parallel during adoption: existing v0 binaries use the v0
 endpoint, and new v1 binaries use the v1 endpoint. There is no server-side
@@ -366,7 +364,7 @@ v0 mutable per-Bundle asset layout or its cleanup fallback.
 | `@hot-updater/cloudflare/worker`: context-derived database/storage | `d1Database(binding)` and `r2Storage({ bucket, bucketName, accountId, credentials })` with native bindings; the R2 credentials presign download URLs. See [Worker storage](/docs/storage-adapters/cloudflare). |
 | `@hot-updater/cloudflare/worker`: `verifyJwtSignedUrl` | None: devices download from the presigned R2 URLs that `r2Storage` returns. |
 | `@hot-updater/supabase`: root `supabaseEdgeFunctionDatabase` and `supabaseEdgeFunctionStorage` | `supabaseDatabase` and `supabaseStorage` from `@hot-updater/supabase/edge`. |
-| `@hot-updater/js`: `verifyJwtSignedUrl`, `withJwtSignedUrl` | None: a storage adapter's `getDownloadUrl` returns the URL devices download from. |
+| `@hot-updater/js`: the package | None: a storage adapter's `getDownloadUrl` returns the URL devices download from. |
 | `@hot-updater/js`, `@hot-updater/postgres`: `getUpdateInfo` | Release Catalog compilation and exact reads, then device selection; disable the public Bundle for rollback. |
 | `@hot-updater/plugin-core`: `createBlobDatabasePlugin` | A database adapter over a store with atomic conditional writes, such as `createKvAdapter({ store })`, returned with `createEngineDatabase`. Plain object storage cannot provide those writes. |
 | `@hot-updater/plugin-core`: `createNodeStoragePlugin`, `createRuntimeStoragePlugin`, `createUniversalStoragePlugin` | `createStorageAdapter` with flat operations. |

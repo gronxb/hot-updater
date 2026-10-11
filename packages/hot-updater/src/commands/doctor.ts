@@ -61,7 +61,6 @@ export {
   getRequiredInfrastructureVersion,
   getRequiredServerVersion,
   isInfrastructureUpdateRequired,
-  isV1InfrastructureRequired,
   resolveVersionEndpoint,
 } from "./doctorInfrastructure";
 
@@ -364,9 +363,9 @@ const checkAndroidNativeStatus = async ({
     });
   }
 
-  const channel = await androidParser.get("hot_updater_channel");
+  const channel = await androidParser.get("com.hotupdater.CHANNEL");
   const fingerprintHash = requireFingerprint
-    ? await androidParser.get("hot_updater_fingerprint_hash")
+    ? await androidParser.get("com.hotupdater.FINGERPRINT_HASH")
     : undefined;
 
   if (requireFingerprint && !fingerprintHash?.value) {
@@ -391,7 +390,8 @@ const checkAndroidNativeStatus = async ({
       type: "error",
       platform: "android",
       code: "FINGERPRINT_HASH_MISMATCH",
-      message: "hot_updater_fingerprint_hash does not match fingerprint.json.",
+      message:
+        "com.hotupdater.FINGERPRINT_HASH in AndroidManifest.xml does not match fingerprint.json.",
       resolution:
         "Run `npx hot-updater fingerprint create` and rebuild your Android app.",
       fixability: "command",

@@ -189,7 +189,7 @@ describe("Insights event details", () => {
           type: "UNCHANGED",
           platform: "ios",
           appVersion: "1.6.0",
-          sdkVersion: "1.0.0-rc.29",
+          sdkVersion: "1.0.0",
           channel: "production",
           installId: "device-1",
           httpResponse: {

@@ -190,7 +190,6 @@ it("migrates an empty database's tables, write guard included, through the API",
   state.database = createD1TestDatabase(new DatabaseSync(":memory:"));
   const hotUpdater = server();
   const result = await createMigrator(hotUpdater).migrateToLatest({
-    mode: "from-schema",
     updateSettings: true,
   });
   await result.execute();

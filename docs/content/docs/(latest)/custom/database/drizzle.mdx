@@ -82,9 +82,8 @@ export const hotUpdater = createHotUpdater({
 
 `drizzleAdapter` takes `db`, a Drizzle database or a function that returns
 one on first use, and `provider`: `"postgresql"`, `"mysql"` or `"sqlite"`,
-matching the driver. Its `schema` option is accepted and ignored. It returns
-an engine database with the schema generator and migrator that
-`hot-updater db` runs. On
+matching the driver. It returns an engine database with the schema generator
+and migrator that `hot-updater db` runs. On
 better-sqlite3 and bun:sqlite, which run synchronously, the adapter runs one
 statement at a time and begins each transaction with `BEGIN IMMEDIATE`.
 `insights()` records app events, and `apiKeys()` protects the client routes

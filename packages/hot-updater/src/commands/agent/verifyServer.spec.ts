@@ -23,7 +23,7 @@ const clientAuth: InfraClientAuth = {
     env: "HOT_UPDATER_API_KEY",
   },
 };
-const serverVersion = "1.0.0-rc.2";
+const serverVersion = "1.0.1";
 const channel = "preview/한글";
 const channelKey = Buffer.from(channel).toString("base64url");
 const catalogContentType =
@@ -49,8 +49,7 @@ const fingerprintCatalog: ReleaseCatalog = {
     {
       ...releaseDescriptor,
       releaseId: "01906c0c-5f14-7000-8000-000000000003",
-      kind: "EMBEDDED",
-      bundleId: null,
+      bundleId: "01906c0c-5f14-7000-8000-000000000004",
       rolloutCohortCount: 0,
     },
   ],
@@ -344,8 +343,8 @@ describe("agent server verification", () => {
       { releases: [{ ...releaseDescriptor, bundleId: null }] },
     ],
     [
-      "embedded release with an artifact ID",
-      { releases: [{ ...releaseDescriptor, kind: "EMBEDDED" }] },
+      "release kind other than BUNDLE",
+      { releases: [{ ...releaseDescriptor, kind: "BUILTIN" as never }] },
     ],
     [
       "cohort rollout above the client range",
@@ -398,7 +397,7 @@ describe("agent server verification", () => {
   );
 
   it.each([
-    { version: "1.0.0-rc.1", infrastructureGeneration: 1 },
+    { version: "1.0.0", infrastructureGeneration: 1 },
     { version: serverVersion, infrastructureGeneration: 0 },
     { version: serverVersion },
   ])(

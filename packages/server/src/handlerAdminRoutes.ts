@@ -23,8 +23,7 @@ import type { RouteHandler } from "./handlerTypes";
 /**
  * The admin API's protocol, which `/version` reports. Protocol 2 pages by
  * key, lists releases by the filter sets their indexes serve, and writes
- * through core's typed operations. `v=2` on a request is accepted and
- * changes nothing: protocol 1 is gone.
+ * through core's typed operations.
  */
 export const ADMIN_API_PROTOCOL = 2;
 

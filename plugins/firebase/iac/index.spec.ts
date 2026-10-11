@@ -196,7 +196,6 @@ import { p, printAppSetup } from "@hot-updater/cli-tools";
 import { execa } from "execa";
 
 import { firebaseDatabase } from "../src/firebaseDatabase";
-import { plugins } from "../src/plugins";
 import { runInit } from "./index";
 import { initFirebaseUser, setEnv } from "./select";
 
@@ -313,12 +312,12 @@ describe("Firebase project creation", () => {
         projectId: "existing-project",
       }),
     );
-    // The first API key, through the provider's plugins over the Firestore
+    // The first API key, through the managed server's plugins over the Firestore
     // database init set up.
     const [server, input] = mocks.provisionClientCredential.mock.calls[0]!;
     expect(server).toMatchObject({
       database: vi.mocked(firebaseDatabase).mock.results[0]?.value,
-      plugins,
+      plugins: [{ id: "insights" }, { id: "apiKeys" }, { id: "remoteConfig" }],
     });
     expect(input).toEqual({
       env: expect.objectContaining({ HOT_UPDATER_API_KEY: API_KEY }),
@@ -327,7 +326,11 @@ describe("Firebase project creation", () => {
     // The schema settings come first, since the database reads nothing without them.
     expect(mocks.migrateFirebaseDatabase).toHaveBeenCalledWith(
       expect.objectContaining({ projectId: "existing-project" }),
-      plugins,
+      [
+        expect.objectContaining({ id: "insights" }),
+        expect.objectContaining({ id: "apiKeys" }),
+        expect.objectContaining({ id: "remoteConfig" }),
+      ],
     );
     expect(
       mocks.migrateFirebaseDatabase.mock.invocationCallOrder[0],
@@ -403,12 +406,12 @@ describe("Firebase project creation", () => {
     mocks.existingProject = true;
     mocks.assertFunction.mockRejectedValueOnce(
       new Error(
-        "Firebase v0 infrastructure was detected at Function hot-updater-v1",
+        "Function hot-updater-v1, which init deploys, already exists in this Firebase project and is incompatible",
       ),
     );
 
     await expect(runInit({ build: bareBuild })).rejects.toThrow(
-      "Firebase v0 infrastructure was detected at Function hot-updater-v1",
+      "Function hot-updater-v1, which init deploys, already exists in this Firebase project and is incompatible",
     );
 
     expect(mocks.events).toEqual(["project"]);

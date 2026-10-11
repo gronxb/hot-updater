@@ -41,11 +41,7 @@ const settingMessage = (
   adapterName: string,
   { key, expected, found }: SchemaSettingMismatch,
 ) =>
-  `Hot Updater schema setting "${key}" for ${adapterName} is ${found === null ? "missing" : `"${found}"`}; expected "${expected}". ${
-    key === ENGINE_SCHEMA_KEY
-      ? "Create a new empty database and run `hot-updater db migrate`; databases from before the storage engine are not converted."
-      : "Run `hot-updater db migrate`."
-  }`;
+  `Hot Updater schema setting "${key}" for ${adapterName} is ${found === null ? "missing" : `"${found}"`}; expected "${expected}". Run \`hot-updater db migrate\`.`;
 
 /** The plugin a `schema.<id>` setting belongs to; undefined for core's and the engine's. */
 const pluginOf = ({ key }: SchemaSettingMismatch) =>

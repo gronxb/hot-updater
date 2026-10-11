@@ -15,7 +15,6 @@ import { forceUpdateAutoReloadScenario } from "./scenarios/force-update-auto-rel
 import { headlessLaunchKeepsStagedBundleScenario } from "./scenarios/headless-launch-keeps-staged-bundle.ts";
 import { interruptedLaunchRetriesBundleScenario } from "./scenarios/interrupted-launch-retries-bundle.ts";
 import { launchStatusAfterSessionInstallScenario } from "./scenarios/launch-status-after-session-install.ts";
-import { metadataV1MigrationScenario } from "./scenarios/metadata-v1-migration.ts";
 import { multiAssetReplacementScenario } from "./scenarios/multi-asset-replacement.ts";
 import { numericCohortRolloutScenario } from "./scenarios/numeric-cohort-rollout.ts";
 import { releaseOtaRecoveryScenario } from "./scenarios/release-ota-recovery.ts";
@@ -68,7 +67,6 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   republishedCrashedBundleSkippedScenario,
   crashThenNextSafeUpdateScenario,
   runtimeChannelCrashRestoreScenario,
-  metadataV1MigrationScenario,
   tenCrashHistorySafeBundleScenario,
   remoteConfigFetchActivateScenario,
 ];

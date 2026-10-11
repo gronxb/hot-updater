@@ -6,7 +6,6 @@ import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
 import {
-  LYNX_EXCLUDED_DEFAULT_SCENARIOS,
   LYNX_REQUIRED_SCENARIO,
   readLynxDefaultScenarioNames,
   validateLynxScenarioManifest,
@@ -40,16 +39,10 @@ function plannedScenarios(stdout: string): string[] {
 }
 
 describe("Lynx E2E suite manifest", () => {
-  it("equals the shared default in order minus only RN metadata migration", () => {
-    const excluded = new Set<string>(LYNX_EXCLUDED_DEFAULT_SCENARIOS);
-    const expected = [
-      ...sharedDefault.filter((name) => !excluded.has(name)),
-      LYNX_REQUIRED_SCENARIO,
-    ];
+  it("equals the shared default in order, then the Sparkling scenario", () => {
     const actual = readLynxDefaultScenarioNames(repoDir);
 
-    expect(actual).toEqual(expected);
-    expect(actual).not.toContain("metadata-v1-migration");
+    expect(actual).toEqual([...sharedDefault, LYNX_REQUIRED_SCENARIO]);
     expect(actual).toEqual(
       expect.arrayContaining([
         "bspatch-builtin-to-diff-ota",
@@ -62,19 +55,18 @@ describe("Lynx E2E suite manifest", () => {
 
   it.each([
     {
-      name: "an additional exclusion",
-      manifest: sharedDefault.filter(
-        (scenario) =>
-          scenario !== "metadata-v1-migration" &&
-          scenario !== "bspatch-builtin-to-diff-ota",
-      ),
+      name: "an exclusion",
+      manifest: [
+        ...sharedDefault.filter(
+          (scenario) => scenario !== "bspatch-builtin-to-diff-ota",
+        ),
+        LYNX_REQUIRED_SCENARIO,
+      ],
     },
     {
       name: "an added Lynx-only scenario",
       manifest: [
-        ...sharedDefault.filter(
-          (scenario) => scenario !== "metadata-v1-migration",
-        ),
+        ...sharedDefault,
         LYNX_REQUIRED_SCENARIO,
         "lynx-only-shortcut",
       ],
@@ -84,14 +76,13 @@ describe("Lynx E2E suite manifest", () => {
       manifest: [
         sharedDefault[1],
         sharedDefault[0],
-        ...sharedDefault
-          .slice(2)
-          .filter((scenario) => scenario !== "metadata-v1-migration"),
+        ...sharedDefault.slice(2),
+        LYNX_REQUIRED_SCENARIO,
       ],
     },
   ])("rejects $name", ({ manifest }) => {
     expect(() => validateLynxScenarioManifest(sharedDefault, manifest)).toThrow(
-      "Lynx default manifest must equal the shared default manifest minus only metadata-v1-migration, followed by sparkling-multipage-ota",
+      "Lynx default manifest must equal the shared default manifest followed by sparkling-multipage-ota",
     );
   });
 
@@ -105,20 +96,6 @@ describe("Lynx E2E suite manifest", () => {
     expect(() =>
       validateLynxScenarioManifest(sharedDefault, [" release-ota-recovery"]),
     ).toThrow("Lynx default manifest must contain unique");
-  });
-
-  it("fails if the shared suite stops declaring the explicit exclusion", () => {
-    const sharedWithoutMigration = sharedDefault.filter(
-      (scenario) => scenario !== "metadata-v1-migration",
-    );
-    expect(() =>
-      validateLynxScenarioManifest(sharedWithoutMigration, [
-        ...sharedWithoutMigration,
-        LYNX_REQUIRED_SCENARIO,
-      ]),
-    ).toThrow(
-      "Shared default manifest no longer contains metadata-v1-migration",
-    );
   });
 
   it("dry-run plans the validated Lynx suite", () => {

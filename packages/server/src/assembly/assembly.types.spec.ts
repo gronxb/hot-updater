@@ -136,22 +136,7 @@ describe("createHotUpdater types", () => {
     });
   });
 
-  it("rejects core passed as a plugin and a clientAuth the plugin did not declare", () => {
-    const core = {
-      kind: "core",
-      id: "core",
-      schemaVersion: "1",
-      schema: {},
-      init: () => ({ api: {} }),
-    } as const;
-    typeOnly((database) => {
-      createHotUpdater({
-        database,
-        storage: createReleaseCatalogTestStorage(),
-        // @ts-expect-error Core is built in; it is not a plugin.
-        plugins: [core],
-      });
-    });
+  it("rejects a clientAuth the plugin did not declare, and a declared one init does not return", () => {
     definePlugin({
       id: "sneaky",
       schemaVersion: "1",

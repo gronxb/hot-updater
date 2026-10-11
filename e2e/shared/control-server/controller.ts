@@ -554,7 +554,7 @@ type CapturedArtifactSelection = ArtifactSelectionEvidence & {
 const proxyRequestCounts = {
   artifact: 0,
   catalog: 0,
-  legacy: 0,
+  other: 0,
 };
 const capturedArtifactSelections: CapturedArtifactSelection[] = [];
 const remoteAssetTransfers = new Map<
@@ -2216,37 +2216,6 @@ async function seedDeviceCrashHistory(bundleIds: readonly string[]) {
   return { bundleIds: clamped, count: clamped.length };
 }
 
-function seedLegacyDeviceMetadata() {
-  if (isLynxE2eApp()) {
-    throw createEndpointError(
-      "metadata-v1-migration is unsupported for Lynx: legacy metadata belongs to React Native",
-    );
-  }
-  terminateFixtureApp();
-  const metadata = readDeviceStoreJson("metadata.json");
-  metadata.schema = "metadata-v1";
-  if (fixtureSession.platform === "ios") {
-    delete metadata.stable_selection;
-    delete metadata.staging_selection;
-    delete metadata.pending_selection_transition;
-    delete metadata.highest_seen_catalogs;
-    delete metadata.current_selection_contexts;
-  } else {
-    delete metadata.stableSelection;
-    delete metadata.stagingSelection;
-    delete metadata.pendingTransition;
-    delete metadata.highestSeenCatalogs;
-    delete metadata.currentSelectionContexts;
-  }
-  writeDeviceStoreJson("metadata.json", metadata);
-  const state = getMetadataState(metadata);
-  return {
-    schema: state.schema,
-    stableBundleId: state.stableBundleId,
-    stagingBundleId: state.stagingBundleId,
-  };
-}
-
 function assertMetadataState(
   metadata: Record<string, unknown>,
   bundleId: string,
@@ -3513,15 +3482,6 @@ async function withHotUpdaterControlEnv<T>(callback: () => Promise<T>) {
   }
 }
 
-function getRemoteChannelPathSegment(channelSegment: string) {
-  const channel = decodeURIComponent(channelSegment);
-  if (!channelNamespace || channel.startsWith(`${channelNamespace}-`)) {
-    return channelSegment;
-  }
-
-  return encodeURIComponent(getFixtureChannel(channel));
-}
-
 function rewriteProxiedUpdatePath(pathname: string) {
   const proxyPrefix = "/hot-updater";
   const targetBase = new URL(getControllerReachableAppBaseUrl());
@@ -3531,12 +3491,6 @@ function rewriteProxiedUpdatePath(pathname: string) {
     : "";
   const segments = suffix.split("/").filter(Boolean);
 
-  if (
-    (segments[0] === "app-version" || segments[0] === "fingerprint") &&
-    segments[3]
-  ) {
-    segments[3] = getRemoteChannelPathSegment(segments[3]);
-  }
   if (
     segments[0] === "release-catalogs" &&
     (segments[1] === "app-version" || segments[1] === "fingerprint") &&
@@ -3860,7 +3814,7 @@ function captureArtifactSelection(pathname: string, payload: unknown) {
 function classifyProxiedUpdatePath(pathname: string) {
   if (pathname.includes("/release-catalogs/")) return "catalog" as const;
   if (pathname.includes("/artifacts/")) return "artifact" as const;
-  return "legacy" as const;
+  return "other" as const;
 }
 
 function recordProxyRequest(
@@ -3987,7 +3941,7 @@ export function handleConfigureProxy(input: {
   if (input.reset) {
     proxyRequestCounts.artifact = 0;
     proxyRequestCounts.catalog = 0;
-    proxyRequestCounts.legacy = 0;
+    proxyRequestCounts.other = 0;
     proxyPathCounts.clear();
     capturedArtifactSelections.length = 0;
     remoteAssetTransfers.clear();
@@ -4459,7 +4413,7 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
   const target = getRemoteAssetProxyTarget(requestUrl);
 
   if (!target) {
-    return new Response("Missing url", { status: 400 });
+    return new Response("Unknown proxy target", { status: 400 });
   }
   const transfer = remoteAssetTransfers.get(requestUrl.pathname) ?? {
     requests: 0,
@@ -4552,17 +4506,13 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
 
 function getRemoteAssetProxyTarget(requestUrl: URL) {
   const proxyPathPrefix = "/e2e/proxy-url/";
-  if (requestUrl.pathname.startsWith(proxyPathPrefix)) {
-    const targetId = decodeURIComponent(
-      requestUrl.pathname.slice(proxyPathPrefix.length),
-    );
-    return remoteAssetProxyTargets.get(targetId) ?? null;
+  if (!requestUrl.pathname.startsWith(proxyPathPrefix)) {
+    return null;
   }
-
-  const legacyTarget = requestUrl.searchParams.get("url");
-  return legacyTarget === null
-    ? null
-    : ({ kind: "file", url: legacyTarget } satisfies RemoteAssetProxyTarget);
+  const targetId = decodeURIComponent(
+    requestUrl.pathname.slice(proxyPathPrefix.length),
+  );
+  return remoteAssetProxyTargets.get(targetId) ?? null;
 }
 
 function buildCatalogUrl(args: {
@@ -7776,10 +7726,6 @@ export async function handleAssertCrashHistory(
 
 export async function handleSeedCrashHistory(bundleIds: readonly string[]) {
   return seedDeviceCrashHistory(bundleIds);
-}
-
-export function handleSeedLegacyMetadata() {
-  return seedLegacyDeviceMetadata();
 }
 
 export async function handleWaitForCrashRecovery(

@@ -8,7 +8,6 @@ import {
   getBundlePatches,
   getManifestFileHash,
   getManifestStorageUri,
-  stripBundleArtifactMetadata,
 } from "@hot-updater/protocol";
 
 import { bundleMetadataToRow } from "./databaseMetadata";
@@ -139,7 +138,7 @@ export const rowToBundle = (
     id: row.id,
     platform: row.platform,
     gitCommitHash: row.git_commit_hash,
-    metadata: stripBundleArtifactMetadata(row.metadata),
+    metadata: row.metadata,
     manifestStorageUri: row.manifest_storage_uri,
     manifestFileHash: row.manifest_file_hash,
     assetBaseStorageUri: row.asset_base_storage_uri,

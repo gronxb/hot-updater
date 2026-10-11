@@ -16,17 +16,17 @@ describe("patch storage path", () => {
     ).toBe("nested/index.ios.bundle");
   });
 
-  it("keeps decoding the legacy patch storage layout", () => {
+  it("decodes the asset path of an https storage URI", () => {
     expect(
       inferPatchAssetPathFromStorageUri({
         baseBundleId,
         patchFileHash,
-        patchStorageUri: `https://storage.example.com/bundles/target/patches/${baseBundleId}/nested%20assets/index.android.bundle.bsdiff`,
+        patchStorageUri: `https://storage.example.com/bundles/target/patches/${baseBundleId}/${patchFileHash}/nested%20assets/index.android.bundle.bsdiff`,
       }),
     ).toBe("nested assets/index.android.bundle");
   });
 
-  it("keeps a path segment that does not match the descriptor hash", () => {
+  it("rejects a path without the descriptor's patch hash", () => {
     const otherHash = "b".repeat(64);
 
     expect(
@@ -35,6 +35,6 @@ describe("patch storage path", () => {
         patchFileHash,
         patchStorageUri: `s3://bucket/bundles/target/patches/${baseBundleId}/${otherHash}/index.ios.bundle.bsdiff`,
       }),
-    ).toBe(`${otherHash}/index.ios.bundle`);
+    ).toBeNull();
   });
 });

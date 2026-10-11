@@ -1,5 +1,45 @@
 # @hot-updater/protocol
 
+## 1.0.0
+
+### Major Changes
+
+- adb0e40: Hot Updater 1.0, the first stable release of v1. Deploys create Releases that the server compiles into one cacheable Release Catalog per app scope, and `createHotUpdater` runs a storage adapter, a database adapter, and plugins such as Insights, Remote Config, and client API keys. v1 runs on new infrastructure and needs a new native app build: follow the [upgrade guide](https://hot-updater.dev/docs/guides/upgrade-to-v1) and [BREAKING_CHANGES.md](https://github.com/gronxb/hot-updater/blob/main/BREAKING_CHANGES.md) to move from v0.
+
+## 1.0.0-rc.47
+
+### Patch Changes
+
+- ccf3e2f: Remove the `EMBEDDED` Release kind. Every Release points at a Bundle, and a device goes back to its built-in bundle through the `BUILTIN` selection.
+  - `getActiveUpdateState().kind` is `"BUNDLE"` or `"BUILTIN"`, and `transitionKind` no longer includes `"USE_EMBEDDED"`; no server creates bundle-less Releases.
+  - `ReleaseKind` and `ReleaseRow.kind` are `"BUNDLE"`. The `kind` column and the `kind` field of catalog descriptors stay, so no migration is needed and catalogs are unchanged.
+  - `parseReleaseCatalog` accepts only `BUNDLE` descriptors that carry a `bundleId`.
+  - `compileReleaseCatalog` rejects an enabled Release without a Bundle with `INVALID_RELEASE`.
+
+- ccf3e2f: The React Native SDK calls its native module directly and requires `rollbackReleases` in every Release catalog.
+  - `@hot-updater/react-native` calls `getInstallId()`, `getStorageItem()`, `setStorageItem()`, and the Release catalog methods of its native module without checking that they exist. Every native build of the SDK implements them.
+  - The `insights()` client treats a `400` to an `UPDATE_FAILED` report like any other `400`: it doesn't retry, it logs a warning, and it reports the failure again when it happens again.
+  - `ReleaseCatalog.rollbackReleases` is required. `parseReleaseCatalog` rejects a catalog without it, and `selectDesiredRelease` looks for rollback candidates only there. Hot Updater servers always send it.
+  - `projectCompiledRollbackCatalog` reads only the compiled catalog's `rollbackReleaseIndexes`, which `compileReleaseCatalog` always writes.
+
+## 1.0.0-rc.46
+
+### Minor Changes
+
+- 47638d6: Remove code that only served v0. No v1 code called it.
+  - `@hot-updater/cli-tools` no longer exports the copy-promote helpers `createCopiedBundleArtifacts` and `LEGACY_BUNDLE_ERROR`, or `writeStorageFile` and `writeStorageResponseFile`. Promotion runs through core.
+  - `hot-updater` no longer exports `getPublicKeyFromPrivate` or `loadPrivateKey`. `hot-updater channel set` help names AndroidManifest.xml, where the channel is written.
+  - `@hot-updater/protocol` no longer exports `stripBundleArtifactMetadata`, which returned its input.
+  - `@hot-updater/plugin-core` no longer exports `filterCompatibleAppVersions`.
+  - `@hot-updater/server` no longer re-exports protocol's `Bundle` type from its root; import it from `@hot-updater/protocol`. `@hot-updater/server/adapters/kysely` no longer exports the `SQLProvider` alias; use `SqlDialect` from `@hot-updater/plugin-core`.
+  - `@hot-updater/cloudflare` no longer exports `./worker/config` or `./worker/wrangler.json`.
+  - `@hot-updater/react-native` calls `getBundleId()`, `getManifest()`, and Android's `reloadProcess()` directly, which every v1 native module implements. It no longer reads a `PROMOTED` launch report or manifest assets given as plain strings.
+  - The Expo config plugin no longer rewrites the `getJSBundleFile` code that its v0 releases injected without a debug check.
+  - `@hot-updater/supabase/edge` exports `supabaseStorage` directly. The name and config are unchanged.
+  - The Console drops the unused `getBundles` and `getConfigLoaded` server functions and their query hooks.
+
+## 1.0.0-rc.45
+
 ## 1.0.0-rc.44
 
 ## 1.0.0-rc.43

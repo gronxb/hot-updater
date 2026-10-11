@@ -284,11 +284,9 @@ async function checkForUpdateAttempt(
   };
   const transitionKind: ReleaseTransitionKind = canRequestAdoption
     ? "ADOPT_RELEASE"
-    : desired.kind === "EMBEDDED"
-      ? "USE_EMBEDDED"
-      : desired.kind === "BUILTIN"
-        ? "USE_BUILTIN"
-        : "INSTALL";
+    : desired.kind === "BUILTIN"
+      ? "USE_BUILTIN"
+      : "INSTALL";
   return {
     id: desired.releaseId ?? desired.bundleId,
     bundleId: desired.bundleId,

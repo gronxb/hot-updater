@@ -35,6 +35,7 @@ const catalog: ReleaseCatalog = {
   fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
   generation: 1,
   releases: [],
+  rollbackReleases: [],
   schemaVersion: 1,
   scopeKey,
 };
@@ -42,16 +43,6 @@ const catalog: ReleaseCatalog = {
 describe("Release Catalog native cache contract", () => {
   beforeEach(() => {
     for (const key of Object.keys(nativeModule)) delete nativeModule[key];
-  });
-
-  it("fails before fetching when the v1 native cache API is missing", async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal("fetch", fetchMock);
-
-    await expect(fetchReleaseCatalogWithCache(input)).rejects.toThrow(
-      "Native module is missing 'getReleaseCatalogCache()'. Rebuild the native app before using Release catalogs.",
-    );
-    expect(fetchMock).not.toHaveBeenCalled();
   });
 
   it("uses the network when native cache I/O fails", async () => {

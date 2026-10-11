@@ -15,9 +15,9 @@ import {
   SETTINGS_TABLE,
   toolingTargetOf,
 } from "@hot-updater/plugin-core";
+import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 
 import { DYNAMODB_TTL_ATTRIBUTE } from "../src/dynamoDBStore";
-import { plugins } from "../src/plugins";
 
 const DYNAMODB_DESCRIBE_TABLE_ACTION = "dynamodb:DescribeTable";
 
@@ -26,7 +26,7 @@ export class DynamoDBTableSchemaError extends Error {
 
   constructor(readonly tableName: string) {
     super(
-      `DynamoDB table "${tableName}" does not match the Hot Updater schema: a pk and sk key and no secondary index. A table from before 1.0 keeps its update index; delete it and rerun init to create it again.`,
+      `DynamoDB table "${tableName}" does not match the Hot Updater schema: a pk and sk key and no secondary index. Delete the table and rerun init to create it again.`,
     );
   }
 }
@@ -104,7 +104,7 @@ const hasExpectedSchema = (table: TableDescription | undefined): boolean => {
     table.OnDemandThroughput?.MaxWriteRequestUnits ===
       onDemandThroughput.MaxWriteRequestUnits &&
     hasKeySchema(table?.KeySchema, primaryKeySchema) &&
-    // The storage engine keeps its indexes as items; a secondary index marks a table from before 1.0.
+    // The storage engine keeps its indexes as items, so the table has none.
     (table?.GlobalSecondaryIndexes ?? []).length === 0
   );
 };
@@ -135,19 +135,19 @@ export const buildDynamoDBCreateTableInput = (tableName: string) =>
 export const buildDynamoDBSchemaSettingsInput = (tableName: string) =>
   ({
     RequestItems: {
-      [tableName]: Object.entries(toolingTargetOf(plugins).settings).map(
-        ([key, value]) => ({
-          PutRequest: {
-            Item: {
-              pk: { S: SETTINGS_TABLE.name },
-              sk: { S: encodeKvKey([key]) },
-              key: { S: key },
-              value: { S: value },
-              _v: { N: "0" },
-            },
+      [tableName]: Object.entries(
+        toolingTargetOf([insights(), apiKeys(), remoteConfig()]).settings,
+      ).map(([key, value]) => ({
+        PutRequest: {
+          Item: {
+            pk: { S: SETTINGS_TABLE.name },
+            sk: { S: encodeKvKey([key]) },
+            key: { S: key },
+            value: { S: value },
+            _v: { N: "0" },
           },
-        }),
-      ),
+        },
+      })),
     },
   }) satisfies BatchWriteItemInput;
 

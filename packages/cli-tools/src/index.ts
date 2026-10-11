@@ -26,7 +26,6 @@ export * from "./serverDefinition";
 export * from "./log";
 export * from "./makeEnv";
 export * from "./moduleSpecifiers";
-export * from "./promoteBundle";
 export * from "./prompts";
 export * from "./readPackageUp";
 export * from "./resolvePackageVersion";

@@ -48,11 +48,11 @@ const catalogHash = `sha256:${"a".repeat(64)}`;
 
 const release = (
   releaseId: string,
-  bundleId: string | null,
+  bundleId: string,
 ): ReleaseCatalogDescriptor => ({
   releaseId,
   bundleId,
-  kind: bundleId === null ? "EMBEDDED" : "BUNDLE",
+  kind: "BUNDLE",
   rolloutCohortCount: 1000,
   targetCohorts: [],
   shouldForceUpdate: false,
@@ -107,6 +107,7 @@ function setup(
     catalogHash,
     fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
     releases,
+    rollbackReleases: releases,
   };
   const native = {
     getStateSync: () => ({ ok: true as const, data: state }),
@@ -681,23 +682,6 @@ describe("Lynx catalog controller (mock native transport)", () => {
     expect(prepared()).toMatchObject({
       artifact: null,
       selection: { kind: "BUILTIN", bundleId: A, releaseId: null },
-    });
-    expect(fetch).toHaveBeenCalledOnce();
-  });
-
-  it("stages an authorized embedded rollback without requesting an archive", async () => {
-    const { updater, fetch, prepared } = setup(
-      { runningSelection: receipt(B, releaseB) },
-      [release(id(14), null)],
-    );
-    const update = await updater.checkForUpdate({
-      updateStrategy: "appVersion",
-    });
-    expect(update).toMatchObject({ bundleId: A, status: "ROLLBACK" });
-    await update!.updateBundle();
-    expect(prepared()).toMatchObject({
-      artifact: null,
-      selection: { kind: "EMBEDDED", bundleId: A },
     });
     expect(fetch).toHaveBeenCalledOnce();
   });

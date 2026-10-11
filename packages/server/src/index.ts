@@ -10,7 +10,6 @@ export type {
   RuntimeHotUpdaterAPI,
 } from "./createHotUpdaterCore";
 export { HotUpdaterConfigError } from "./assembly/assemblePlugins";
-export * from "./types";
 export { toNodeHandler } from "./node";
 export { HOT_UPDATER_SERVER_VERSION } from "./version";
 export { HOT_UPDATER_INFRASTRUCTURE_GENERATION } from "./handlerVersionRoutes";
