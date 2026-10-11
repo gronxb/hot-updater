@@ -8,6 +8,15 @@ final class LynxManagedFontURLTests: XCTestCase {
         XCTAssertTrue(LynxManagedFontURL.owns(canonical))
         XCTAssertEqual(try LynxManagedFontURL.relativePath(canonical), "assets/probe.ttf")
         for invalid in [
+            " \n" + canonical + "\t",
+            canonical.replacingOccurrences(of: "hot-updater-font", with: "hot-updater-\tfont"),
+            canonical.replacingOccurrences(of: "hot-updater-font", with: "hot-updater-\rfont"),
+            canonical.replacingOccurrences(of: "hot-updater-font", with: "hot-updater-\nfont"),
+            canonical.replacingOccurrences(of: "hot-updater-font", with: "hot-updater-\r\nfont"),
+            canonical.replacingOccurrences(of: "https:", with: ""),
+            canonical.replacingOccurrences(of: "https:", with: "")
+                .replacingOccurrences(of: ".invalid/", with: ".invalid:bad/"),
+            canonical.replacingOccurrences(of: "https://", with: "\\\\"),
             canonical.replacingOccurrences(of: ".invalid/", with: ".invalid:443/"),
             canonical.replacingOccurrences(of: ".invalid/", with: ".invalid:bad/"),
             canonical.replacingOccurrences(of: "https://", with: "https://user@"),
@@ -28,7 +37,9 @@ final class LynxManagedFontURLTests: XCTestCase {
             XCTAssertThrowsError(try LynxManagedFontURL.relativePath(invalid), invalid)
         }
         for external in ["https://example.test/font.ttf", "https://hot-updater-font.invalid.example/font.ttf",
-                         "https://hot-updater-font.invalid@example.test/font.ttf"] {
+                         "https://hot-updater-font.invalid@example.test/font.ttf",
+                         "//hot-updater-font.invalid@example.test/font.ttf",
+                         "assets/hot-updater-font.invalid/font.ttf"] {
             XCTAssertFalse(LynxManagedFontURL.owns(external), external)
         }
     }

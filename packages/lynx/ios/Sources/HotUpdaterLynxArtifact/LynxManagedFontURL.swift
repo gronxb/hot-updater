@@ -6,9 +6,20 @@ public enum LynxManagedFontURL {
     private static let prefix = "https://hot-updater-font.invalid/"
 
     public static func owns(_ raw: String) -> Bool {
-        let normalizedInput = raw.trimmingCharacters(in: .whitespacesAndNewlines).filter { !"\t\r\n".contains($0) }
-        guard let separator = normalizedInput.firstIndex(of: ":") else { return false }
-        let authority = normalizedInput[normalizedInput.index(after: separator)...]
+        let normalizedInput = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "\t", with: "")
+            .replacingOccurrences(of: "\r", with: "")
+            .replacingOccurrences(of: "\n", with: "")
+        let authoritySource: Substring
+        let start = normalizedInput.prefix(2)
+        if start.count == 2, start.allSatisfy({ "/\\".contains($0) }) {
+            authoritySource = normalizedInput[...]
+        } else if let separator = normalizedInput.firstIndex(of: ":") {
+            authoritySource = normalizedInput[normalizedInput.index(after: separator)...]
+        } else {
+            return false
+        }
+        let authority = authoritySource
             .drop { "/\\".contains($0) }.prefix { !"/\\?#".contains($0) }
         let hostPort = authority.split(separator: "@", omittingEmptySubsequences: false).last ?? ""
         let candidate = String(hostPort.prefix { $0 != ":" })

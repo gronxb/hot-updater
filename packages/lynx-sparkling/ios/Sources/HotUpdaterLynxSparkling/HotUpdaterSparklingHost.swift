@@ -856,6 +856,9 @@ public final class HotUpdaterSparklingHost: NSObject {
         )
         let provider = SPKLynxResourceProvider()
         provider.resourceLoader = loader
+        let fontProvider = ManagedFontResourceProvider(delegate: provider) { raw, error in
+            loader.fail(ManagedPageFailure(error: error, resourcePath: raw))
+        }
 #if HOT_UPDATER_LYNX_DIAGNOSTICS
         let failAfterFirstContent = !primary
             && failNextSecondaryAdmissionForDiagnostics
@@ -994,7 +997,7 @@ public final class HotUpdaterSparklingHost: NSObject {
             )
             builder.addLynxResourceProvider(
                 LYNX_PROVIDER_TYPE_FONT,
-                provider: provider
+                provider: fontProvider
             )
         }
         let url = trustedURL(logical)
@@ -1968,7 +1971,7 @@ private final class HotUpdaterSparklingResourceLoader: NSObject,
         return "resourceLoaded"
     }
 
-    private func fail(_ failure: ManagedPageFailure) {
+    fileprivate func fail(_ failure: ManagedPageFailure) {
         generation.emit("resourceFailed", [
             "processId": String(ProcessInfo.processInfo.processIdentifier),
             "generationId": generation.id,

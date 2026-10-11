@@ -1,6 +1,6 @@
 {
   "ios": {
-    "hash": "27a6987e9798b6d6c83853a82eca6cc9275cdea0cbf8c04b736e02ff6831575d",
+    "hash": "1f27c6fe8b13e167ef2f81c84e1bea3cf0b1cac08542abb226c2bd4a7bce7019",
     "sources": [
       {
         "type": "file",
@@ -30,9 +30,20 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "c007b8b94bbc493b467e3f6b9ffd5b0dc76071e37b1c2491449fb53382db39df",
+        "hash": "78c70e9181dd561d13e8c3f3cee7406bc4e854cc715def9fd71743f1aca5e866",
         "debugInfo": {
-          "byteSize": 78567
+          "byteSize": 78753
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx-sparkling/ios/Sources/HotUpdaterLynxSparkling/ManagedFontResourceProvider.swift",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "36a424fd417b3f65a61a71775d936f86cfef364d8c2e96d1037f7772e27e8df3",
+        "debugInfo": {
+          "byteSize": 1350
         }
       },
       {
@@ -283,9 +294,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "227279164baf581c5a4d4452a2a73134df09f14d1c3679b47352a0dc3020d773",
+        "hash": "0e21d20b76446bb39b233ca814cbc63e2887964814de73528dcba92b8a5a7fe5",
         "debugInfo": {
-          "byteSize": 2138
+          "byteSize": 2556
         }
       },
       {
