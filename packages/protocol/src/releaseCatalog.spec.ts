@@ -373,6 +373,49 @@ describe("selectDesiredRelease force update", () => {
     });
   });
 
+  it("finds a forced Release the forward frontier dropped", () => {
+    // The compiler keeps only the newest Bundles in `releases`; the complete
+    // history stays in `rollbackReleases`.
+    const history = Array.from({ length: 14 }, (_, offset) =>
+      descriptor(15 - offset, { shouldForceUpdate: 15 - offset === 3 }),
+    );
+    const desired = selectDesiredRelease(
+      catalog(history.slice(0, 11), { rollbackReleases: history }),
+      fromRelease(2),
+    );
+
+    expect(desired).toMatchObject({
+      releaseId: releaseId(15),
+      shouldForceUpdate: true,
+    });
+  });
+
+  it("counts from the running Release while a newer one is staged", () => {
+    const releases = [
+      descriptor(3),
+      descriptor(2, { shouldForceUpdate: true }),
+      descriptor(1),
+    ];
+
+    expect(
+      selectDesiredRelease(catalog(releases), {
+        ...fromRelease(3),
+        currentBundleId: bundleId(1),
+        runningReleaseId: releaseId(1),
+      }),
+    ).toMatchObject({
+      releaseId: releaseId(3),
+      shouldForceUpdate: true,
+      status: "UPDATE",
+    });
+    expect(
+      selectDesiredRelease(catalog(releases), {
+        ...fromRelease(3),
+        runningReleaseId: releaseId(3),
+      })?.shouldForceUpdate,
+    ).toBe(false);
+  });
+
   it("does not force re-adopting the running bundle", () => {
     const desired = selectDesiredRelease(
       catalog([descriptor(2, { shouldForceUpdate: true })]),
