@@ -15,6 +15,12 @@ export default defineConfig({
         baseUrl: "https://hot-updater.dev",
         contentDir: "content/docs/(latest)",
       }),
+      llmsTxtPlugin({
+        baseUrl: "https://hot-updater.dev",
+        contentDir: "content/docs/v0",
+        generateIndex: false,
+        urlPrefix: "v0",
+      }),
       deadLinkCheckerPlugin({
         contentDir: "content/docs",
         failOnError: false,

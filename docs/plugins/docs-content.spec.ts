@@ -116,6 +116,26 @@ describe("agent documentation", () => {
       ),
     ).toBe(canonical);
     expect(index).not.toContain("console-deployment/index.md");
+
+    const legacy = fixture();
+    legacy.write(
+      "guides/start.mdx",
+      "---\ntitle: Legacy v0 setup\n---\n## Set up\n",
+    );
+    await generateDocumentationFiles({
+      baseUrl: "https://hot-updater.dev",
+      contentDir: legacy.dir,
+      outputDir: output,
+      urlPrefix: "v0",
+      generateIndex: false,
+    });
+    expect(
+      readFileSync(join(output, "docs/v0/guides/start.md"), "utf8"),
+    ).toContain("Legacy v0 setup");
+    expect(readFileSync(join(output, "llms.txt"), "utf8")).toBe(index);
+    expect(readFileSync(join(output, "llms-full.txt"), "utf8")).not.toContain(
+      "Legacy v0 setup",
+    );
   });
 
   it("keeps alternative labels, paragraphs and native integration code in Markdown", () => {
@@ -188,9 +208,12 @@ describe("agent documentation", () => {
     expect(issues).toEqual([]);
     const index = llmsIndex(documentation, "https://hot-updater.dev");
     const site = readDocumentation("content/docs");
-    expect(orderedPages(site).map((page) => page.url)).toEqual(
-      orderedPages(documentation).map((page) => page.url),
-    );
+    expect(
+      orderedPages(site)
+        .filter((page) => !page.url.startsWith("/docs/v0/"))
+        .map((page) => page.url),
+    ).toEqual(orderedPages(documentation).map((page) => page.url));
+    expect(index).not.toContain("/docs/v0/");
     expect(index).not.toContain("(latest)");
     expect(index).toContain("/docs/guides/bundle-diffing.md");
     expect(orderedPages(documentation)[0]?.url).toBe(

@@ -7,8 +7,9 @@ guide; do not duplicate its page inventory here.
 ## Scope and structure
 
 - Documentation lives in `content/docs/(latest)` and is served at `/docs/...`.
-  Only the current version is kept: no archived versions, and no PRDs, plans,
-  audits or measurement records in the repository.
+  The frozen v0 archive lives in `content/docs/v0` at `/docs/v0/...`, behind
+  the version selector; don't edit it. Keep no PRDs, plans, audits or
+  measurement records in the repository.
 - Treat latest content as the stable release. Keep v0/v1 comparisons and
   transition steps in `guides/upgrade-to-v1.mdx`; omit release-candidate
   setup and migration procedures.

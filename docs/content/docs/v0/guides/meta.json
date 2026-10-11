@@ -1,0 +1,21 @@
+{
+  "title": "Guides",
+  "description": "Practical guides and tutorials",
+  "icon": "BookOpenCheck",
+  "pages": [
+    "deploy",
+    "custom-update",
+    "bundle-diffing",
+    "rollout-cohorts",
+    "console",
+    "storage-cleanup",
+    "ai-agents",
+    "simulator-test",
+    "channel-management",
+    "runtime-channel-switch",
+    "update-strategies",
+    "compression",
+    "doctor",
+    "bundle-signing"
+  ]
+}
