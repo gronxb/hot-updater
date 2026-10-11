@@ -156,7 +156,13 @@ class HotUpdaterLynxHost internal constructor(
             check(!current.retiring) { "The managed generation is retired" }
             operation()
         } }
-        session.setFailureHandler { message, _, _ -> recover(current, IllegalStateException(message)) }
+        session.setFailureHandler { failure, _, _ ->
+            if (current !== generation || current.retiring || closed) return@setFailureHandler
+            failure.fold(
+                { message -> recover(current, IllegalStateException(message)) },
+                ::failClosed,
+            )
+        }
         session.setReadinessHandlers({}, {
             if (current === generation && !current.retiring && !page.retired) {
                 page.admitted = true

@@ -90,9 +90,11 @@ class LynxRuntimeHost internal constructor(
     private fun captureBackground(reserve: Boolean): LynxBackgroundSnapshot = synchronized(ownerLock) {
         foreground?.let { return@synchronized it.backgroundSnapshot(reserve) }
         synchronized(stateLock) {
+            requirePersistedFailures(directory)
             replayColdFailures()
             val store = LynxStateStore(directory, readOnly = true)
             try {
+                requirePersistedFailures(directory)
                 if (reserve) requireTaskSlot()
                 val selected = LynxStoredSelectionReader(store.value, directory, embedded, configuration, binaryId)
                     .backgroundSelection(processToken, cold = true)
@@ -211,6 +213,24 @@ class LynxRuntimeHost internal constructor(
     }
 
     companion object {
+        // Failed durable writes cannot be forgotten when an owner is closed.
+        // This process-only block holds identities, never Activities or runtimes.
+        private val unpersistedFailures = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+        internal fun retainUnpersistedFailure(directory: File, contextId: String) {
+            unpersistedFailures.putIfAbsent(directory.path, contextId)
+        }
+
+        internal fun releasePersistedFailure(directory: File, contextId: String) {
+            unpersistedFailures.remove(directory.path, contextId)
+        }
+
+        internal fun requirePersistedFailures(directory: File) {
+            check(!unpersistedFailures.containsKey(directory.path)) {
+                "A native Lynx failure could not be persisted; this process cannot reopen the scope"
+            }
+        }
+
         private val hosts = mutableMapOf<String, WeakReference<LynxRuntimeHost>>()
         private val retainedHosts = mutableSetOf<LynxRuntimeHost>()
 

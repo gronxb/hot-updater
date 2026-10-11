@@ -37,6 +37,7 @@ class LynxLaunchSession internal constructor(
     internal val logicalPage: LynxLogicalPage
         get() = LynxLogicalPage(pageEntry, pageParameters, mountId)
     private val closed = AtomicBoolean()
+    private val failurePending = AtomicBoolean()
     @Volatile internal var live = true
     @Volatile internal var failed = false
     internal var firstScreen = false
@@ -51,7 +52,7 @@ class LynxLaunchSession internal constructor(
     private val loadedResources = java.util.concurrent.ConcurrentHashMap.newKeySet<String>()
     private var reloadHandler:
         ((String, (Result<JSONObject>) -> Unit) -> Unit)? = null
-    private var failureHandler: ((String, Int?, String?) -> Unit)? = null
+    private var failureHandler: ((Result<String>, Int?, String?) -> Unit)? = null
     private var firstContentHandler: (() -> Unit)? = null
     private var confirmedHandler: ((JSONObject) -> Unit)? = null
     private var engineDiagnosticHandler: ((Map<String, Any?>) -> Unit)? = null
@@ -83,23 +84,30 @@ class LynxLaunchSession internal constructor(
         failureCode: Int? = null,
         failureResourcePath: String? = null,
     ) {
-        val accepted = runCatching {
+        if (!live || !failurePending.compareAndSet(false, true)) return
+        fun persist() = runCatching {
             controller.fail(
                 this,
                 message,
+                allowConfirmed = true,
                 failureCode = failureCode,
                 failureResourcePath = failureResourcePath,
             )
         }
-            .getOrDefault(false)
+        val first = persist()
         handler.post {
-            if (accepted) {
+            if (!live) return@post
+            // Resource callbacks stop once the generation is failed. Retain the
+            // report here so a failed write gets one native-owned retry.
+            val persisted = if (first.isFailure) persist() else first
+            if (persisted.isFailure || persisted.getOrDefault(false)) {
                 failureHandler?.invoke(
-                    message,
+                    persisted.map { message },
                     failureCode,
                     failureResourcePath,
                 )
             }
+            if (persisted.getOrNull() == false) failurePending.set(false)
             flushReady()
         }
     }
@@ -126,8 +134,8 @@ class LynxLaunchSession internal constructor(
         check(live && reloadHandler == null) { "Reload handler is already configured" }
         reloadHandler = handler
     }
-    /** Installed by a packaged host that can reconstruct a failed generation. */
-    fun setFailureHandler(handler: (String, Int?, String?) -> Unit) {
+    /** A durable fatal report permits recovery; a persistence error must close the host. */
+    fun setFailureHandler(handler: (Result<String>, Int?, String?) -> Unit) {
         check(live && failureHandler == null) { "Failure handler is already configured" }
         failureHandler = handler
     }

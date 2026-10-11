@@ -58,9 +58,14 @@ class LynxUpdaterController internal constructor(
     private val directory = lynxScopeDirectory(filesDir, binaryId, embedded, configuration)
     private val namespace = directory.name
     private val generationEventJournal = LynxGenerationEventJournal(filesDir)
-    private val store = LynxStateStore(directory).also { acquired ->
-        if (runtimeHost == null) try {
-            LynxRuntimeHost.requireNoBackgroundTasks(directory)
+    private val store = run {
+        LynxRuntimeHost.requirePersistedFailures(directory)
+        LynxStateStore(directory)
+    }.also { acquired ->
+        try {
+            // Admission is decided after acquiring the same lock the old owner releases.
+            LynxRuntimeHost.requirePersistedFailures(directory)
+            if (runtimeHost == null) LynxRuntimeHost.requireNoBackgroundTasks(directory)
         } catch (error: Throwable) {
             try { acquired.close() } catch (cleanup: Throwable) { error.addSuppressed(cleanup) }
             throw error
@@ -80,6 +85,7 @@ class LynxUpdaterController internal constructor(
     private var primary: LynxLaunchSession? = null
     private val members = linkedSetOf<LynxLaunchSession>()
     private val admittedMounts = mutableSetOf<String>()
+    private val admittedMembers = mutableSetOf<LynxLaunchSession>()
     private var accepted: CatalogPolicy.AcceptedCatalog? = null
     private var acceptedScopeSwitch = false
     private data class Preparation(val guard: String, val receipt: CatalogPolicy.Receipt,
@@ -1668,6 +1674,7 @@ class LynxUpdaterController internal constructor(
                     }
                 }
             }
+            admittedMembers.add(session)
             session.mountId?.let(admittedMounts::add)
             primary
         }
@@ -1818,6 +1825,7 @@ class LynxUpdaterController internal constructor(
                 next.remove("reconstructionPosition")
                 next.put("logicalStack", stackJson(stack))
             }
+            admittedMembers.remove(session)
             primary
         }
         if (!deferPrimaryFlush) primaryToFlush?.flushReady()
@@ -1877,8 +1885,11 @@ class LynxUpdaterController internal constructor(
         return synchronized(stateLock) {
             val pending = store.value.optJSONObject("pending")
             val managedStartupPending = pending?.opt("transitionId") is String
+            val acceptedSource = store.value.optJSONObject("managedTransition")
+                ?.optString("sourceGenerationId")
             if (
                 closed || session !in members || !session.live ||
+                acceptedSource == session.generationId ||
                 fatalSession != null && fatalSession !== session ||
                 session.isPrimary && session !== primary ||
                 session.isPrimary && runningConfirmed && !allowConfirmed &&
@@ -1886,20 +1897,17 @@ class LynxUpdaterController internal constructor(
             ) return@synchronized false
             if (session.failed) return@synchronized false
             val pageAttempt = store.value.optJSONObject("pageAttempt")
-            if (!session.isPrimary && (
-                pageAttempt == null ||
-                    pageAttempt.optString("attemptId") != session.id ||
-                    pageAttempt.optString("generationId") != session.generationId
-            )) {
-                return@synchronized false
-            }
+            val ownsPageAttempt = pageAttempt?.optString("attemptId") == session.id &&
+                pageAttempt.optString("generationId") == session.generationId
+            if (!session.isPrimary && !ownsPageAttempt &&
+                (!allowConfirmed || session !in admittedMembers)) return@synchronized false
             if (session.isPrimary && (!runningConfirmed || managedStartupPending) &&
                 pending?.optString("attemptId") != session.id) {
                 return@synchronized false
             }
             if (
                 session.isPrimary && pending?.optBoolean("fatal") == true ||
-                !session.isPrimary && pageAttempt?.optBoolean("fatal") == true
+                ownsPageAttempt && pageAttempt?.optBoolean("fatal") == true
             ) {
                 session.failed = true
                 return@synchronized false
@@ -1907,11 +1915,11 @@ class LynxUpdaterController internal constructor(
             // A failed journal write can retry this fatal report, never page admission.
             fatalSession = session
             members.forEach { it.scheduleReadinessFlush() }
-            mutate { next ->
+            try { mutate { next ->
                 if (session.isPrimary && pending != null) {
                     next.put("pending", JSONObject(pending.toString()).put("fatal", true).put("message", message))
                 }
-                if (!session.isPrimary && pageAttempt != null) {
+                if (ownsPageAttempt && pageAttempt != null) {
                     appendPageAttemptTerminal(
                         next = next,
                         attempt = pageAttempt,
@@ -1929,6 +1937,13 @@ class LynxUpdaterController internal constructor(
                         failureCode = failureCode,
                         failureResourcePath = failureResourcePath,
                     )
+                    next.remove("pageAttempt")
+                } else if (pageAttempt != null) {
+                    // This admission is being retired because another member failed.
+                    // Its own payload did not produce the fatal callback.
+                    appendPageAttemptTerminal(next, pageAttempt, "authorized-cancel",
+                        retainedStack(), reason = "generationFailure",
+                        transitionId = activeManagedTransitionId(), topContextId = null)
                     next.remove("pageAttempt")
                 }
                 if (runningConfirmed || !session.isPrimary) {
@@ -1963,6 +1978,11 @@ class LynxUpdaterController internal constructor(
                     next.put("unconfirmed", JSONArray(unconfirmed))
                 }
             }
+            } catch (error: Throwable) {
+                LynxRuntimeHost.retainUnpersistedFailure(directory, session.id)
+                throw error
+            }
+            LynxRuntimeHost.releasePersistedFailure(directory, session.id)
             session.failed = true
             true
         }
@@ -1971,6 +1991,7 @@ class LynxUpdaterController internal constructor(
         val (discarded, shouldPrune) = synchronized(stateLock) {
             session.live = false
             members.remove(session)
+            admittedMembers.remove(session)
             if (closed) return@synchronized emptyList<PreparedLynxArtifact>() to false
             val ids = preparations.filterValues { it.contextId == session.id }.keys.toList()
             ids.mapNotNull { preparations.remove(it)?.bytes } to true
@@ -2039,6 +2060,7 @@ class LynxUpdaterController internal constructor(
             primary?.live = false
             members.forEach { it.live = false }
             members.clear()
+            admittedMembers.clear()
             preparations.values.mapNotNull(Preparation::bytes).also {
                 preparations.clear()
                 preparing.clear()

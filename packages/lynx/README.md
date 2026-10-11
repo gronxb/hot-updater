@@ -49,6 +49,12 @@ waits for required page admissions and verified essential resources. The host
 acquires foreground ownership only when the primary mounts. Its optional
 `onError` callback reports a closed host when no complete generation can start.
 
+A fatal engine or managed-resource failure after readiness also retires the
+whole host. If the failure cannot be recorded after one native retry, the host
+closes and the process cannot reopen that native scope or run its background
+tasks. This process-local block is not a durable exclusion across app restarts
+when storage writes remain unavailable.
+
 ## Viewless tasks on Android
 
 An Android native entry point can call

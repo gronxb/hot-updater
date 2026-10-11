@@ -814,7 +814,15 @@ class HotUpdaterSparklingHost(
         }.getOrNull()
         val launch = page.session
         if (!page.failureHandlerInstalled) {
-            launch.setFailureHandler { message, failureCode, resourcePath ->
+            launch.setFailureHandler { failure, failureCode, resourcePath ->
+                if (generation !== generationEvents || transitioning || closed) return@setFailureHandler
+                val message = failure.getOrElse { error ->
+                    Log.e(TAG, "Could not persist managed runtime failure", error)
+                    val activities = pages.mapNotNull { it.activity.get() }
+                    close()
+                    activities.forEach(Activity::finish)
+                    return@setFailureHandler
+                }
                 page.failureGate.deliver {
                     recover(
                         message,

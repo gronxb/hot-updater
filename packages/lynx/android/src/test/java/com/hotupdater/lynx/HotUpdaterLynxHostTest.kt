@@ -36,6 +36,21 @@ class HotUpdaterLynxHostTest {
         var loadFailure: Throwable? = null
         override fun load() { loads++; loadFailure?.let { throw it } }
         override fun destroy() { destroys++ }
+        fun missingManagedResource() {
+            var failed = false
+            session.resources.generic.fetchResource(
+                com.lynx.tasm.resourceprovider.LynxResourceRequest(
+                    "hot-updater:///missing-resource.js",
+                    com.lynx.tasm.resourceprovider.LynxResourceRequest.LynxResourceType.LynxResourceTypeGeneric,
+                ),
+                object : com.lynx.tasm.resourceprovider.LynxResourceCallback<ByteArray> {
+                    override fun onResponse(response: com.lynx.tasm.resourceprovider.LynxResourceResponse<ByteArray>) {
+                        failed = response.state == com.lynx.tasm.resourceprovider.LynxResourceResponse.ResponseState.FAILED
+                    }
+                },
+            )
+            assertTrue(failed)
+        }
         fun contentAndReady() {
             session.resolveEssential(session.pageEntry)
             session.firstScreen = true
@@ -222,6 +237,125 @@ class HotUpdaterLynxHostTest {
         f.engines.toList().forEach { it.detached() }; f.idle()
         assertEquals(2, f.engines.size)
         assertTrue(f.engines.all { !it.session.live && it.destroys == 1 })
+    }
+
+    @Test fun confirmedPrimaryResourceFailureRetiresTheWholeHost(): Unit = Fixture().use { f ->
+        f.primary(); f.detail()
+        f.engines[1].contentAndReady(); f.engines[0].contentAndReady()
+        assertTrue(f.engines[0].ready?.isSuccess == true)
+        val old = f.engines.toList()
+        old[0].missingManagedResource()
+        assertTrue(old[0].session.controller.generationFailed)
+        assertEquals(old[0].session.id, f.journal().getJSONObject("generationFailure").getString("pageAttemptId"))
+        f.idle()
+        assertTrue(old.all { it.destroys == 1 && !it.session.live })
+        old.forEach { it.detached() }; f.idle()
+        assertEquals(1, f.errors.size)
+        assertEquals(old.size, f.engines.size)
+    }
+
+    @Test fun admittedMemberFailureCancelsAnotherPendingPageWithoutBlamingIt(): Unit = Fixture().use { f ->
+        f.primary(); f.detail()
+        f.engines[1].contentAndReady(); f.engines[0].contentAndReady()
+        val admitted = f.engines[1]
+        f.detail()
+        val pending = f.engines[2]
+        val old = f.engines.toList()
+        admitted.missingManagedResource()
+        assertTrue(admitted.session.controller.generationFailed)
+        val journal = f.journal()
+        assertEquals(admitted.session.id, journal.getJSONObject("generationFailure").getString("pageAttemptId"))
+        assertFalse(journal.has("pageAttempt"))
+        val terminals = journal.getJSONArray("pageAttemptTerminals")
+        val admittedTerminals = (0 until terminals.length()).map(terminals::getJSONObject)
+            .filter { it.getString("attemptId") == admitted.session.id }
+        val pendingTerminals = (0 until terminals.length()).map(terminals::getJSONObject)
+            .filter { it.getString("attemptId") == pending.session.id }
+        assertEquals(listOf("admitted"), admittedTerminals.map { it.getString("terminal") })
+        assertEquals(listOf("authorized-cancel"), pendingTerminals.map { it.getString("terminal") })
+        assertEquals("generationFailure", pendingTerminals.single().getString("reason"))
+        f.idle()
+        assertTrue(old.all { it.destroys == 1 && !it.session.live })
+        old.forEach { it.detached() }; f.idle()
+        assertEquals(1, f.errors.size)
+    }
+
+    @Test fun failedFatalWriteRetriesWithoutAnotherResourceCallback(): Unit = Fixture().use { f ->
+        f.primary(); f.engines[0].contentAndReady()
+        val old = f.engines.single()
+        val state = File(File(f.root, "hot-updater-lynx/scopes").listFiles()!!.single(), "state.json")
+        val saved = File(f.root, "saved-state.json")
+        assertTrue(state.renameTo(saved)); assertTrue(state.mkdir())
+        try {
+            old.missingManagedResource()
+            assertTrue(old.session.controller.generationFailed)
+            assertEquals(0, old.destroys)
+            // Duplicate engine/resource reports cannot replace the retained intent.
+            repeat(3) { old.session.resources.onFailure?.invoke("duplicate failure") }
+        } finally {
+            assertTrue(state.deleteRecursively()); assertTrue(saved.renameTo(state))
+        }
+        assertFalse(f.journal().has("generationFailure"))
+        f.idle()
+        assertEquals(old.session.id, f.journal().getJSONObject("generationFailure").getString("pageAttemptId"))
+        assertTrue(f.journal().getJSONObject("generationFailure").getString("message").contains("missing-resource.js"))
+        assertEquals(1, old.destroys)
+        old.detached(); f.idle()
+        assertEquals(1, f.errors.size)
+        assertEquals(1, f.engines.size)
+    }
+
+    @Test fun permanentFatalWriteFailureClosesEveryRuntimeWithoutReopening(): Unit = Fixture().use { f ->
+        f.primary(); f.detail()
+        f.engines[1].contentAndReady(); f.engines[0].contentAndReady()
+        val old = f.engines.toList()
+        val state = File(File(f.root, "hot-updater-lynx/scopes").listFiles()!!.single(), "state.json")
+        val saved = File(f.root, "saved-state.json")
+        assertTrue(state.renameTo(saved)); assertTrue(state.mkdir())
+        try {
+            old[1].missingManagedResource()
+            f.idle()
+            assertEquals(1, f.errors.size)
+            assertTrue(old.all { it.destroys == 1 && !it.session.live })
+            old.forEach { it.detached() }; f.idle()
+            assertEquals(old.size, f.engines.size)
+            assertThrows(IllegalStateException::class.java) { f.detail() }
+        } finally {
+            assertTrue(state.deleteRecursively()); assertTrue(saved.renameTo(state))
+        }
+        assertThrows(IllegalStateException::class.java) { f.runtime.createForegroundForMounts(
+            listOf(LynxLogicalPage("main.lynx.bundle", mountId = "replacement"))) }
+        assertThrows(IllegalStateException::class.java) { f.runtime.backgroundSnapshot() }
+    }
+
+    @Test fun closingBeforeFatalRetryCannotForgetTheUnpersistedFailure(): Unit = Fixture().use { f ->
+        f.primary(); f.engines[0].contentAndReady()
+        val old = f.engines.single()
+        val state = File(File(f.root, "hot-updater-lynx/scopes").listFiles()!!.single(), "state.json")
+        val saved = File(f.root, "saved-state.json")
+        assertTrue(state.renameTo(saved)); assertTrue(state.mkdir())
+        try { old.missingManagedResource() } finally {
+            assertTrue(state.deleteRecursively()); assertTrue(saved.renameTo(state))
+        }
+        val before = state.readText()
+        f.host.close(); old.detached(); f.idle()
+        assertEquals(before, state.readText())
+        assertThrows(IllegalStateException::class.java) { f.runtime.createForegroundForMounts(
+            listOf(LynxLogicalPage("main.lynx.bundle", mountId = "replacement"))) }
+        assertEquals(1, f.engines.size)
+    }
+
+    @Test fun failureAfterReloadAcceptanceCannotChangeTheReplacementSelection(): Unit = Fixture().use { f ->
+        f.primary(); f.detail()
+        f.engines[1].contentAndReady(); f.engines[0].contentAndReady()
+        f.reload().getOrThrow()
+        val before = f.journal().toString()
+        f.engines[0].missingManagedResource()
+        f.engines[1].missingManagedResource()
+        assertEquals(before, f.journal().toString())
+        assertFalse(f.engines[0].session.controller.generationFailed)
+        f.idle()
+        assertTrue(f.errors.isEmpty())
     }
 
     @Test fun exhaustedRecoveryClosesAllViewsAfterPersistingTheFailure(): Unit = Fixture().use { f ->
