@@ -163,14 +163,12 @@ final class LynxControllerLocalTests: XCTestCase {
 
     private func catalogJSON(
         releases: [(String, String)],
-        kind: String = "BUNDLE",
         generation: Int = 2,
         hash: String? = nil,
         scope: String? = nil
     ) throws -> Data {
         let descriptors: [[String: Any]] = releases.map { release, bundle in
-            ["releaseId": release, "kind": kind,
-             "bundleId": kind == "EMBEDDED" ? NSNull() : bundle,
+            ["releaseId": release, "kind": "BUNDLE", "bundleId": bundle,
              "rolloutCohortCount": 1000,
              "targetCohorts": [String](), "shouldForceUpdate": false, "message": NSNull()]
         }
@@ -185,14 +183,20 @@ final class LynxControllerLocalTests: XCTestCase {
         releaseId: String,
         bundleId: String,
         contextHash: String,
-        kind: String = "BUNDLE",
         generation: Int64 = 2,
         hash: String? = nil,
         channel: String? = nil,
         scope: String? = nil
     ) -> LynxPolicyReceipt {
-        LynxPolicyReceipt(kind: kind, releaseId: releaseId, bundleId: bundleId, catalogId: catalogId,
+        LynxPolicyReceipt(kind: "BUNDLE", releaseId: releaseId, bundleId: bundleId, catalogId: catalogId,
             scopeKey: scope ?? scopeKey, generation: generation, catalogHash: hash ?? catalogHash,
+            channel: channel ?? self.channel,
+            selectionContextHash: contextHash)
+    }
+
+    private func builtinReceipt(contextHash: String, channel: String? = nil, scope: String? = nil) -> LynxPolicyReceipt {
+        LynxPolicyReceipt(kind: "BUILTIN", releaseId: nil, bundleId: embeddedId, catalogId: catalogId,
+            scopeKey: scope ?? scopeKey, generation: 2, catalogHash: catalogHash,
             channel: channel ?? self.channel,
             selectionContextHash: contextHash)
     }
@@ -213,6 +217,15 @@ final class LynxControllerLocalTests: XCTestCase {
         state.installedDigests[bundleId] = digest
         state.catalogs[catalogKey()] = try catalogJSON(releases: [(releaseId, bundleId)])
         state.highWater[catalogKey()] = LynxStoredHighWater(generation: 2, hash: catalogHash)
+        try journal.save(state)
+    }
+
+    private func plantInstalled(_ config: LynxControllerConfiguration, bundleId: String, marker: String) throws {
+        let store = try home(config.root)
+        let digest = try writeTree(at: store.appendingPathComponent("bundles/\(bundleId)"), bundleId: bundleId, marker: marker)
+        let journal = LynxControllerJournal(file: store.appendingPathComponent("state.json"))
+        var state = try journal.load()
+        state.installedDigests[bundleId] = digest
         try journal.save(state)
     }
 
@@ -1252,17 +1265,12 @@ final class LynxControllerLocalTests: XCTestCase {
         _ = try controller.begin(context)
         let initial = try snapshot(controller, context, config)
         let guardValue = try controller.acceptCatalog(
-            try catalogJSON(releases: [(releaseB, embeddedId)], kind: "EMBEDDED"),
+            try catalogJSON(releases: []),
             expectedRevision: initial.revision,
             contextHash: LynxCatalogPolicy.contextHash(snapshot: initial, scopeKey: scopeKey),
             context: context
         )
-        let selected = receipt(
-            releaseId: releaseB,
-            bundleId: embeddedId,
-            contextHash: guardValue.selectionContextHash,
-            kind: "EMBEDDED"
-        )
+        let selected = builtinReceipt(contextHash: guardValue.selectionContextHash)
         let preparedId = try await controller.prepareSelection(
             guard: guardValue,
             receipt: selected,
@@ -1273,22 +1281,21 @@ final class LynxControllerLocalTests: XCTestCase {
         XCTAssertEqual(staged["status"] as? String, "STAGED")
         XCTAssertGreaterThan(failures.calls, 0)
         let memoryNext = try XCTUnwrap(
-            (try controller.getState(context)["nextSelection"] as? [String: Any])?["releaseId"] as? String
+            (try controller.getState(context)["nextSelection"] as? [String: Any])?["catalogId"] as? String
         )
-        XCTAssertEqual(memoryNext, releaseB)
+        XCTAssertEqual(memoryNext, catalogId)
 
         let store = try home(config.root)
         let diskState = try LynxControllerJournal(
             file: store.appendingPathComponent("state.json")
         ).load()
-        XCTAssertEqual(try diskState.next?.policy.releaseId, releaseB)
+        XCTAssertEqual(try diskState.next?.policy, selected)
         try controller.close()
 
         let restarted = try LynxController(configuration: config)
         let restartedContext = restarted.createContext(primary: true)
         _ = try restarted.begin(restartedContext)
-        XCTAssertEqual(restarted.runningSelection.releaseId, releaseB)
-        XCTAssertEqual(restarted.runningSelection.kind, "EMBEDDED")
+        XCTAssertEqual(restarted.runningSelection, selected)
     }
 
     func testExplicitChannelSwitchPersistsSelectionAndChannelAtomically() async throws {
@@ -1304,11 +1311,7 @@ final class LynxControllerLocalTests: XCTestCase {
         _ = try controller.begin(context)
         try confirm(controller, context)
         let projected = try switchSnapshot(controller, context, config, targetChannel: beta)
-        let catalog = try catalogJSON(
-            releases: [(releaseB, embeddedId)],
-            kind: "EMBEDDED",
-            scope: betaScope
-        )
+        let catalog = try catalogJSON(releases: [], scope: betaScope)
         let contextHash = LynxCatalogPolicy.contextHash(snapshot: projected, scopeKey: betaScope)
         XCTAssertThrowsError(try controller.acceptCatalog(
             catalog,
@@ -1326,14 +1329,7 @@ final class LynxControllerLocalTests: XCTestCase {
             explicitScopeSwitch: true,
             context: context
         )
-        let selected = receipt(
-            releaseId: releaseB,
-            bundleId: embeddedId,
-            contextHash: guardValue.selectionContextHash,
-            kind: "EMBEDDED",
-            channel: beta,
-            scope: betaScope
-        )
+        let selected = builtinReceipt(contextHash: guardValue.selectionContextHash, channel: beta, scope: betaScope)
         try await controller.validateSelection(
             guard: guardValue,
             receipt: selected,
@@ -1350,15 +1346,14 @@ final class LynxControllerLocalTests: XCTestCase {
         let committed = try controller.getState(context)
         XCTAssertEqual(committed["channel"] as? String, beta)
         XCTAssertEqual((committed["nextSelection"] as? [String: Any])?["channel"] as? String, beta)
-        XCTAssertEqual((committed["nextSelection"] as? [String: Any])?["releaseId"] as? String, releaseB)
+        XCTAssertEqual((committed["nextSelection"] as? [String: Any])?["scopeKey"] as? String, betaScope)
         try controller.close()
 
         let restarted = try LynxController(configuration: config)
         let restartedContext = restarted.createContext(primary: true)
         _ = try restarted.begin(restartedContext)
         XCTAssertEqual(try restarted.getState(restartedContext)["channel"] as? String, beta)
-        XCTAssertEqual(restarted.runningSelection.channel, beta)
-        XCTAssertEqual(restarted.runningSelection.releaseId, releaseB)
+        XCTAssertEqual(restarted.runningSelection, selected)
     }
 
     func testFailedChannelSwitchKeepsOldChannelAndCleanRetrySucceeds() async throws {
@@ -1373,11 +1368,7 @@ final class LynxControllerLocalTests: XCTestCase {
         let context = controller.createContext(primary: true)
         _ = try controller.begin(context)
         let projected = try switchSnapshot(controller, context, config, targetChannel: beta)
-        let catalog = try catalogJSON(
-            releases: [(releaseB, embeddedId)],
-            kind: "EMBEDDED",
-            scope: betaScope
-        )
+        let catalog = try catalogJSON(releases: [], scope: betaScope)
         let contextHash = LynxCatalogPolicy.contextHash(snapshot: projected, scopeKey: betaScope)
         let guardValue = try controller.acceptCatalog(
             catalog,
@@ -1387,14 +1378,7 @@ final class LynxControllerLocalTests: XCTestCase {
             explicitScopeSwitch: true,
             context: context
         )
-        let selected = receipt(
-            releaseId: releaseB,
-            bundleId: embeddedId,
-            contextHash: guardValue.selectionContextHash,
-            kind: "EMBEDDED",
-            channel: beta,
-            scope: betaScope
-        )
+        let selected = builtinReceipt(contextHash: guardValue.selectionContextHash, channel: beta, scope: betaScope)
         let preparedId = try await controller.prepareSelection(
             guard: guardValue,
             receipt: selected,
@@ -1420,14 +1404,7 @@ final class LynxControllerLocalTests: XCTestCase {
             explicitScopeSwitch: true,
             context: context
         )
-        let retrySelection = receipt(
-            releaseId: releaseB,
-            bundleId: embeddedId,
-            contextHash: retryGuard.selectionContextHash,
-            kind: "EMBEDDED",
-            channel: beta,
-            scope: betaScope
-        )
+        let retrySelection = builtinReceipt(contextHash: retryGuard.selectionContextHash, channel: beta, scope: betaScope)
         try await controller.validateSelection(
             guard: retryGuard,
             receipt: retrySelection,
@@ -1456,6 +1433,7 @@ final class LynxControllerLocalTests: XCTestCase {
         try confirm(controller!, context)
         try controller!.close()
         try plantNext(config, releaseId: releaseB, bundleId: bundleB, marker: "B")
+        try plantInstalled(config, bundleId: bundleC, marker: "C")
 
         controller = try LynxController(configuration: config)
         context = controller!.createContext(primary: true)
@@ -1464,11 +1442,7 @@ final class LynxControllerLocalTests: XCTestCase {
         let beta = "beta"
         let betaScope = scope(for: beta)
         let projected = try switchSnapshot(controller!, context, config, targetChannel: beta)
-        let catalog = try catalogJSON(
-            releases: [(releaseC, embeddedId)],
-            kind: "EMBEDDED",
-            scope: betaScope
-        )
+        let catalog = try catalogJSON(releases: [(releaseC, bundleC)], scope: betaScope)
         let guardValue = try controller!.acceptCatalog(
             catalog,
             expectedRevision: projected.revision,
@@ -1479,9 +1453,8 @@ final class LynxControllerLocalTests: XCTestCase {
         )
         let selected = receipt(
             releaseId: releaseC,
-            bundleId: embeddedId,
+            bundleId: bundleC,
             contextHash: guardValue.selectionContextHash,
-            kind: "EMBEDDED",
             channel: beta,
             scope: betaScope
         )
@@ -1496,7 +1469,7 @@ final class LynxControllerLocalTests: XCTestCase {
 
         controller = try LynxController(configuration: config)
         context = controller!.createContext(primary: true)
-        XCTAssertEqual(try controller!.begin(context).bundleId, embeddedId)
+        XCTAssertEqual(try controller!.begin(context).bundleId, bundleC)
         XCTAssertEqual(controller!.runningSelection.releaseId, releaseC)
         try controller!.close() // Leaves the unconfirmed beta trial pending.
 
@@ -1540,21 +1513,14 @@ final class LynxControllerLocalTests: XCTestCase {
         try confirm(controller, context)
         let projected = try switchSnapshot(controller, context, config, targetChannel: beta)
         let guardValue = try controller.acceptCatalog(
-            try catalogJSON(releases: [(releaseB, embeddedId)], kind: "EMBEDDED", scope: betaScope),
+            try catalogJSON(releases: [], scope: betaScope),
             expectedRevision: projected.revision,
             contextHash: LynxCatalogPolicy.contextHash(snapshot: projected, scopeKey: betaScope),
             targetChannel: beta,
             explicitScopeSwitch: true,
             context: context
         )
-        let selected = receipt(
-            releaseId: releaseB,
-            bundleId: embeddedId,
-            contextHash: guardValue.selectionContextHash,
-            kind: "EMBEDDED",
-            channel: beta,
-            scope: betaScope
-        )
+        let selected = builtinReceipt(contextHash: guardValue.selectionContextHash, channel: beta, scope: betaScope)
         let preparedId = try await controller.prepareSelection(
             guard: guardValue,
             receipt: selected,
@@ -1750,17 +1716,12 @@ final class LynxControllerLocalTests: XCTestCase {
         _ = try controller.begin(context)
         let current = try snapshot(controller, context, config)
         let guardValue = try controller.acceptCatalog(
-            try catalogJSON(releases: [(releaseB, embeddedId)], kind: "EMBEDDED"),
+            try catalogJSON(releases: []),
             expectedRevision: current.revision,
             contextHash: LynxCatalogPolicy.contextHash(snapshot: current, scopeKey: scopeKey),
             context: context
         )
-        let selected = receipt(
-            releaseId: releaseB,
-            bundleId: embeddedId,
-            contextHash: guardValue.selectionContextHash,
-            kind: "EMBEDDED"
-        )
+        let selected = builtinReceipt(contextHash: guardValue.selectionContextHash)
         for _ in 0..<20 {
             try await controller.validateSelection(
                 guard: guardValue,
@@ -1789,17 +1750,12 @@ final class LynxControllerLocalTests: XCTestCase {
         _ = try controller!.begin(context)
         let current = try snapshot(controller!, context, config)
         let guardValue = try controller!.acceptCatalog(
-            try catalogJSON(releases: [(releaseB, embeddedId)], kind: "EMBEDDED"),
+            try catalogJSON(releases: []),
             expectedRevision: current.revision,
             contextHash: LynxCatalogPolicy.contextHash(snapshot: current, scopeKey: scopeKey),
             context: context
         )
-        let selected = receipt(
-            releaseId: releaseB,
-            bundleId: embeddedId,
-            contextHash: guardValue.selectionContextHash,
-            kind: "EMBEDDED"
-        )
+        let selected = builtinReceipt(contextHash: guardValue.selectionContextHash)
         try controller!.close()
         controller = nil
 
@@ -1961,17 +1917,12 @@ final class LynxControllerLocalTests: XCTestCase {
         _ = try controller.begin(context)
         let initial = try snapshot(controller, context, config)
         let guardValue = try controller.acceptCatalog(
-            try catalogJSON(releases: [(releaseB, embeddedId)], kind: "EMBEDDED"),
+            try catalogJSON(releases: []),
             expectedRevision: initial.revision,
             contextHash: LynxCatalogPolicy.contextHash(snapshot: initial, scopeKey: scopeKey),
             context: context
         )
-        let selected = receipt(
-            releaseId: releaseB,
-            bundleId: embeddedId,
-            contextHash: guardValue.selectionContextHash,
-            kind: "EMBEDDED"
-        )
+        let selected = builtinReceipt(contextHash: guardValue.selectionContextHash)
         let preparedId = try await controller.prepareSelection(
             guard: guardValue,
             receipt: selected,
@@ -1981,12 +1932,7 @@ final class LynxControllerLocalTests: XCTestCase {
         let newerHash = "sha256:" + String(repeating: "b", count: 64)
         let current = try snapshot(controller, context, config)
         _ = try controller.acceptCatalog(
-            try catalogJSON(
-                releases: [(releaseC, embeddedId)],
-                kind: "EMBEDDED",
-                generation: 3,
-                hash: newerHash
-            ),
+            try catalogJSON(releases: [], generation: 3, hash: newerHash),
             expectedRevision: current.revision,
             contextHash: LynxCatalogPolicy.contextHash(snapshot: current, scopeKey: scopeKey),
             context: context
@@ -2010,17 +1956,12 @@ final class LynxControllerLocalTests: XCTestCase {
         _ = try controller.begin(context)
         let initial = try snapshot(controller, context, config)
         let guardValue = try controller.acceptCatalog(
-            try catalogJSON(releases: [(releaseB, embeddedId)], kind: "EMBEDDED"),
+            try catalogJSON(releases: []),
             expectedRevision: initial.revision,
             contextHash: LynxCatalogPolicy.contextHash(snapshot: initial, scopeKey: scopeKey),
             context: context
         )
-        let selected = receipt(
-            releaseId: releaseB,
-            bundleId: embeddedId,
-            contextHash: guardValue.selectionContextHash,
-            kind: "EMBEDDED"
-        )
+        let selected = builtinReceipt(contextHash: guardValue.selectionContextHash)
         let journal = try home(config.root).appendingPathComponent("state.json")
         let backup = journal.appendingPathExtension("backup")
         for _ in 0..<20 {
@@ -2318,23 +2259,6 @@ extension LynxControllerLocalTests {
         try task.reportFatal()
         XCTAssertEqual(try journal.load().unconfirmedReleaseIds.count, 128)
         try task.executionEnded()
-    }
-
-    func testBuiltinFailureMarkerSurvivesSignedEmbeddedFatalAndBlocksForegroundFallback() throws {
-        let (root, _, host, journal) = try backgroundFixture()
-        defer { try? FileManager.default.removeItem(at: root) }
-        let task = try host.beginBackground()
-        try task.reportFatal()
-        try task.executionEnded()
-        var state = try journal.load()
-        let signed = try LynxStoredSelection(receipt(releaseId: releaseB, bundleId: embeddedId,
-            contextHash: "v1:0000000000000000", kind: "EMBEDDED"), manifestDigest: host.scope.embeddedArtifact.manifestDigest)
-        try state.recordFatal(signed, embeddedBundleId: embeddedId)
-        try journal.save(state)
-        XCTAssertEqual(try journal.load().failedEmbedded?.policy.kind, "BUILTIN")
-        XCTAssertEqual(try journal.load().unconfirmedReleaseIds, [releaseB])
-        XCTAssertThrowsError(try host.beginBackground())
-        XCTAssertThrowsError(try host.createForeground())
     }
 }
 

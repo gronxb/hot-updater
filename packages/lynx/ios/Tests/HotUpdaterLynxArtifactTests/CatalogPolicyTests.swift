@@ -288,37 +288,42 @@ final class CatalogPolicyTests: XCTestCase {
             snapshot: startupState, highestSeen: highWater, rollbackAuthorization: proof))
     }
 
-    func testNilIdentityIsNativeEmbeddedOnlyAndExplicitEmbeddedCanBeExcluded() throws {
+    func testNilIdentityIsNativeBuiltinOnly() throws {
         let nilID = "00000000-0000-0000-0000-000000000000"
-        let fixture = try vectors().first { ($0["name"] as! String).contains("explicit-embedded-rollback") }!
+        let fixture = try vectors().first { ($0["name"] as! String).contains("revoked-release-falls-back-to-builtin") }!
         var stateJSON = fixture["snapshot"] as! [String: Any]
         stateJSON["embeddedBundleId"] = nilID; stateJSON["minimumBundleId"] = nilID
         let state = try snapshot(stateJSON)
         let catalog = try parse(fixture["catalog"] as! [String: Any], state)
         let highWater = LynxPolicyHighWater(generation: catalog.generation, catalogHash: catalog.catalogHash)
-        let embedded = try XCTUnwrap(LynxCatalogPolicy.desired(catalog: catalog, snapshot: state)?.receipt)
-        XCTAssertEqual(embedded.kind, "EMBEDDED"); XCTAssertEqual(embedded.bundleId, nilID)
-        XCTAssertEqual(try LynxCatalogPolicy.parseReceipt(embedded.dictionary), embedded)
-        XCTAssertTrue(try LynxCatalogPolicy.isEligibleStored(receipt: embedded, catalog: catalog, snapshot: state, highestSeen: highWater))
-        stateJSON["unconfirmedReleaseIds"] = [embedded.releaseId!]
-        XCTAssertFalse(try LynxCatalogPolicy.isEligibleStored(receipt: embedded, catalog: catalog, snapshot: snapshot(stateJSON), highestSeen: highWater))
-        var notAnOTABundle = embedded.dictionary; notAnOTABundle["kind"] = "BUNDLE"
-        assertCode("INVALID_RECEIPT") { _ = try LynxCatalogPolicy.parseReceipt(notAnOTABundle) }
+        let fallback = try XCTUnwrap(LynxCatalogPolicy.desired(catalog: catalog, snapshot: state)?.receipt)
+        XCTAssertEqual(fallback.kind, "BUILTIN"); XCTAssertNil(fallback.releaseId); XCTAssertEqual(fallback.bundleId, nilID)
+        XCTAssertEqual(try LynxCatalogPolicy.parseReceipt(fallback.dictionary), fallback)
+        XCTAssertTrue(try LynxCatalogPolicy.isEligibleStored(receipt: fallback, catalog: catalog, snapshot: state, highestSeen: highWater))
+        XCTAssertFalse(try LynxCatalogPolicy.isEligibleStored(receipt: fallback, catalog: catalog, snapshot: state, highestSeen: nil))
+        let releaseId = "01900000-0000-7000-8000-000000000140"
+        for kind in ["BUNDLE", "BUILTIN", "EMBEDDED"] {
+            var releaseBound = fallback.dictionary; releaseBound["kind"] = kind; releaseBound["releaseId"] = releaseId
+            assertCode("INVALID_RECEIPT") { _ = try LynxCatalogPolicy.parseReceipt(releaseBound) }
+        }
         let builtin = LynxPolicyReceipt(kind: "BUILTIN", releaseId: nil, bundleId: nilID, catalogId: nil, scopeKey: nil,
             generation: nil, catalogHash: nil, channel: state.channel, selectionContextHash: nil)
         XCTAssertEqual(try LynxCatalogPolicy.parseReceipt(builtin.dictionary), builtin)
         var omittedReleaseId = builtin.dictionary
         omittedReleaseId.removeValue(forKey: "releaseId")
         XCTAssertEqual(try LynxCatalogPolicy.parseReceipt(omittedReleaseId), builtin)
-        XCTAssertTrue(try LynxCatalogPolicy.isEligibleStored(receipt: builtin, catalog: catalog, snapshot: snapshot(stateJSON), highestSeen: nil))
-        var authorizedBuiltin = embedded.dictionary; authorizedBuiltin["kind"] = "BUILTIN"; authorizedBuiltin["releaseId"] = NSNull()
-        let builtinReceipt = try LynxCatalogPolicy.parseReceipt(authorizedBuiltin)
-        XCTAssertTrue(try LynxCatalogPolicy.isEligibleStored(receipt: builtinReceipt, catalog: catalog, snapshot: state, highestSeen: highWater))
-        XCTAssertFalse(try LynxCatalogPolicy.isEligibleStored(receipt: builtinReceipt, catalog: catalog, snapshot: state, highestSeen: nil))
-        var invalidCatalog = fixture["catalog"] as! [String: Any]
-        var invalidDescriptor = (invalidCatalog["releases"] as! [[String: Any]])[0]
-        invalidDescriptor["kind"] = "BUNDLE"; invalidDescriptor["bundleId"] = nilID; invalidCatalog["releases"] = [invalidDescriptor]
-        assertCode("INVALID_CATALOG") { _ = try parse(invalidCatalog, state) }
+        XCTAssertTrue(try LynxCatalogPolicy.isEligibleStored(receipt: builtin, catalog: catalog, snapshot: state, highestSeen: nil))
+        func catalogWith(kind: String, bundleId: Any) -> [String: Any] {
+            var value = fixture["catalog"] as! [String: Any]
+            value["releases"] = [["releaseId": releaseId, "kind": kind, "bundleId": bundleId, "rolloutCohortCount": 1000,
+                                  "targetCohorts": [String](), "shouldForceUpdate": false, "message": NSNull()]]
+            return value
+        }
+        XCTAssertNoThrow(try parse(catalogWith(kind: "BUNDLE", bundleId: "01900000-0000-7000-8000-000000000040"), state))
+        for (kind, bundleId): (String, Any) in [("BUNDLE", nilID), ("BUNDLE", NSNull()), ("EMBEDDED", NSNull()),
+                                                ("EMBEDDED", "01900000-0000-7000-8000-000000000040")] {
+            assertCode("INVALID_CATALOG") { _ = try parse(catalogWith(kind: kind, bundleId: bundleId), state) }
+        }
         for key in ["minimumBundleId", "embeddedBundleId"] {
             var invalid = stateJSON; invalid[key] = "invalid"
             assertCode("INVALID_STATE") { _ = try parse(fixture["catalog"] as! [String: Any], snapshot(invalid)) }

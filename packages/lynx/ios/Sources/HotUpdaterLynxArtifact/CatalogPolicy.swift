@@ -66,7 +66,7 @@ public struct LynxPolicySnapshot {
 public struct LynxPolicyDescriptor: Equatable {
     public let releaseId: String
     public let kind: String
-    public let bundleId: String?
+    public let bundleId: String
     public let rolloutCohortCount: Int
     public let targetCohorts: [String]
     public let shouldForceUpdate: Bool
@@ -155,7 +155,7 @@ public enum LynxCatalogPolicy {
     }
 
     public static func parseReceipt(_ object: [String: Any]) throws -> LynxPolicyReceipt {
-        guard let kind = object["kind"] as? String, ["BUNDLE", "EMBEDDED", "BUILTIN"].contains(kind),
+        guard let kind = object["kind"] as? String, ["BUNDLE", "BUILTIN"].contains(kind),
               let bundleId = object["bundleId"] as? String, uuid(bundleId) || (kind != "BUNDLE" && bundleId == nilUUID),
               let channel = object["channel"] as? String else { throw fail("INVALID_RECEIPT", "Invalid selection identity") }
         let releaseId = try nullableString(object, "releaseId")
@@ -229,8 +229,7 @@ public enum LynxCatalogPolicy {
                   let force = boolean(item["shouldForceUpdate"]) else {
                 throw fail("INVALID_CATALOG", "Invalid, duplicate, or unordered Release descriptor")
             }
-            let bundleId = try nullableString(item, "bundleId")
-            guard (kind == "BUNDLE" && bundleId.map(uuid) == true) || (kind == "EMBEDDED" && bundleId == nil) else {
+            guard kind == "BUNDLE", let bundleId = try nullableString(item, "bundleId"), uuid(bundleId) else {
                 throw fail("INVALID_CATALOG", "Invalid descriptor kind/Bundle identity")
             }
             result.append(LynxPolicyDescriptor(releaseId: releaseId, kind: kind, bundleId: bundleId,
@@ -362,14 +361,13 @@ public enum LynxCatalogPolicy {
             return from.bundleId != snapshot.embeddedBundleId && receipt.bundleId < from.bundleId
         } ?? false
         guard eligible(release, snapshot.cohort) || retainedRollback else { return false }
-        if receipt.kind == "EMBEDDED" { return release.bundleId == nil && receipt.bundleId == snapshot.embeddedBundleId }
         return receipt.bundleId == release.bundleId && safeBundle(release, snapshot, excluded, Set(snapshot.crashedBundleIds))
     }
 
     private static func safeBundle(_ release: LynxPolicyDescriptor, _ snapshot: LynxPolicySnapshot,
                                    _ excluded: Set<String>, _ crashed: Set<String>) -> Bool {
-        release.kind == "BUNDLE" && release.bundleId != nil && !excluded.contains(release.releaseId)
-            && !crashed.contains(release.bundleId!) && release.bundleId! >= snapshot.minimumBundleId
+        release.kind == "BUNDLE" && !excluded.contains(release.releaseId)
+            && !crashed.contains(release.bundleId) && release.bundleId >= snapshot.minimumBundleId
     }
 
     public static func desired(catalog: LynxPolicyCatalog, snapshot: LynxPolicySnapshot) -> LynxPolicyDesired? {
@@ -383,7 +381,7 @@ public enum LynxCatalogPolicy {
         }
         func select(_ release: LynxPolicyDescriptor?, kind: String, status: String) -> LynxPolicyDesired {
             let receipt = LynxPolicyReceipt(kind: kind, releaseId: release?.releaseId,
-                bundleId: kind == "BUNDLE" ? release!.bundleId! : snapshot.embeddedBundleId,
+                bundleId: kind == "BUNDLE" ? release!.bundleId : snapshot.embeddedBundleId,
                 catalogId: catalog.catalogId, scopeKey: catalog.scopeKey, generation: catalog.generation,
                 catalogHash: catalog.catalogHash, channel: snapshot.channel, selectionContextHash: contextHash(snapshot: snapshot, scopeKey: catalog.scopeKey))
             return LynxPolicyDesired(receipt: receipt, status: status, descriptor: release)
@@ -391,16 +389,15 @@ public enum LynxCatalogPolicy {
         for release in catalog.releases {
             if excluded.contains(release.releaseId) || !eligible(release, snapshot.cohort) { continue }
             if let activeId { if release.releaseId <= activeId { continue } }
-            else if hasActive && (release.bundleId == nil || release.bundleId! <= base.bundleId) { continue }
+            else if hasActive && release.bundleId <= base.bundleId { continue }
             if safe(release) { return select(release, kind: "BUNDLE", status: "UPDATE") }
-            if release.bundleId == nil { return select(release, kind: "EMBEDDED", status: "ROLLBACK") }
         }
         if activeId != nil || hasActive {
             let rollback = catalog.rollbackReleases ?? catalog.releases
             if let current = rollback.first(where: { $0.releaseId == activeId || (activeId == nil && $0.bundleId == base.bundleId) }),
                safe(current), eligible(current, snapshot.cohort) { return select(current, kind: "BUNDLE", status: "UPDATE") }
             if let previous = rollback.first(where: { release in
-                safe(release) && (activeId.map { release.releaseId < $0 } ?? (release.bundleId! < base.bundleId))
+                safe(release) && (activeId.map { release.releaseId < $0 } ?? (release.bundleId < base.bundleId))
             }) { return select(previous, kind: "BUNDLE", status: "ROLLBACK") }
             if base.bundleId <= snapshot.minimumBundleId { return nil }
         }

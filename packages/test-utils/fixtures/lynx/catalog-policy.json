@@ -556,7 +556,9 @@
         "selectionContextHash": "v1:0000000000000000"
       },
       "nextSelection": null,
-      "crashedBundleIds": ["01900000-0000-7000-8000-000000000020"],
+      "crashedBundleIds": [
+        "01900000-0000-7000-8000-000000000020"
+      ],
       "unconfirmedReleaseIds": []
     },
     "catalog": {
@@ -643,7 +645,9 @@
       },
       "nextSelection": null,
       "crashedBundleIds": [],
-      "unconfirmedReleaseIds": ["01900000-0000-7000-8000-000000000130"]
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000130"
+      ]
     },
     "catalog": {
       "schemaVersion": 1,
@@ -817,7 +821,9 @@
       },
       "nextSelection": null,
       "crashedBundleIds": [],
-      "unconfirmedReleaseIds": ["01900000-0000-7000-8000-000000000120"]
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000120"
+      ]
     },
     "catalog": {
       "schemaVersion": 1,
@@ -869,7 +875,7 @@
     }
   },
   {
-    "name": "ios/embedded-release-held-after-unknown-exit",
+    "name": "ios/excluded-newer-release-keeps-active",
     "snapshot": {
       "revision": "policy-fixture-revision",
       "platform": "ios",
@@ -904,7 +910,9 @@
       },
       "nextSelection": null,
       "crashedBundleIds": [],
-      "unconfirmedReleaseIds": ["01900000-0000-7000-8000-000000000140"]
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000140"
+      ]
     },
     "catalog": {
       "schemaVersion": 1,
@@ -916,8 +924,8 @@
       "releases": [
         {
           "releaseId": "01900000-0000-7000-8000-000000000140",
-          "kind": "EMBEDDED",
-          "bundleId": null,
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000040",
           "rolloutCohortCount": 1000,
           "targetCohorts": [],
           "shouldForceUpdate": false,
@@ -955,7 +963,7 @@
     }
   },
   {
-    "name": "ios/explicit-embedded-rollback",
+    "name": "ios/revoked-release-falls-back-to-builtin",
     "snapshot": {
       "revision": "policy-fixture-revision",
       "platform": "ios",
@@ -999,23 +1007,13 @@
       "generation": 2,
       "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
-      "releases": [
-        {
-          "releaseId": "01900000-0000-7000-8000-000000000140",
-          "kind": "EMBEDDED",
-          "bundleId": null,
-          "rolloutCohortCount": 1000,
-          "targetCohorts": [],
-          "shouldForceUpdate": false,
-          "message": null
-        }
-      ]
+      "releases": []
     },
     "expected": {
       "contextHash": "v1:7d63d5ae2a7006ea",
       "selection": {
-        "kind": "EMBEDDED",
-        "releaseId": "01900000-0000-7000-8000-000000000140",
+        "kind": "BUILTIN",
+        "releaseId": null,
         "bundleId": "01900000-0000-7000-8000-000000000001",
         "catalogId": "lynx-policy-fixture",
         "scopeKey": "v1:app-version:ios:cHJvZHVjdGlvbg",
@@ -1236,7 +1234,9 @@
           "kind": "BUNDLE",
           "bundleId": "01900000-0000-7000-8000-000000000020",
           "rolloutCohortCount": 0,
-          "targetCohorts": ["beta"],
+          "targetCohorts": [
+            "beta"
+          ],
           "shouldForceUpdate": false,
           "message": null
         }
@@ -2544,7 +2544,9 @@
         "selectionContextHash": "v1:0000000000000000"
       },
       "nextSelection": null,
-      "crashedBundleIds": ["01900000-0000-7000-8000-000000000020"],
+      "crashedBundleIds": [
+        "01900000-0000-7000-8000-000000000020"
+      ],
       "unconfirmedReleaseIds": []
     },
     "catalog": {
@@ -2631,7 +2633,9 @@
       },
       "nextSelection": null,
       "crashedBundleIds": [],
-      "unconfirmedReleaseIds": ["01900000-0000-7000-8000-000000000130"]
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000130"
+      ]
     },
     "catalog": {
       "schemaVersion": 1,
@@ -2805,7 +2809,9 @@
       },
       "nextSelection": null,
       "crashedBundleIds": [],
-      "unconfirmedReleaseIds": ["01900000-0000-7000-8000-000000000120"]
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000120"
+      ]
     },
     "catalog": {
       "schemaVersion": 1,
@@ -2857,7 +2863,7 @@
     }
   },
   {
-    "name": "android/embedded-release-held-after-unknown-exit",
+    "name": "android/excluded-newer-release-keeps-active",
     "snapshot": {
       "revision": "policy-fixture-revision",
       "platform": "android",
@@ -2892,7 +2898,9 @@
       },
       "nextSelection": null,
       "crashedBundleIds": [],
-      "unconfirmedReleaseIds": ["01900000-0000-7000-8000-000000000140"]
+      "unconfirmedReleaseIds": [
+        "01900000-0000-7000-8000-000000000140"
+      ]
     },
     "catalog": {
       "schemaVersion": 1,
@@ -2904,8 +2912,8 @@
       "releases": [
         {
           "releaseId": "01900000-0000-7000-8000-000000000140",
-          "kind": "EMBEDDED",
-          "bundleId": null,
+          "kind": "BUNDLE",
+          "bundleId": "01900000-0000-7000-8000-000000000040",
           "rolloutCohortCount": 1000,
           "targetCohorts": [],
           "shouldForceUpdate": false,
@@ -2943,7 +2951,7 @@
     }
   },
   {
-    "name": "android/explicit-embedded-rollback",
+    "name": "android/revoked-release-falls-back-to-builtin",
     "snapshot": {
       "revision": "policy-fixture-revision",
       "platform": "android",
@@ -2987,23 +2995,13 @@
       "generation": 2,
       "catalogHash": "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
       "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
-      "releases": [
-        {
-          "releaseId": "01900000-0000-7000-8000-000000000140",
-          "kind": "EMBEDDED",
-          "bundleId": null,
-          "rolloutCohortCount": 1000,
-          "targetCohorts": [],
-          "shouldForceUpdate": false,
-          "message": null
-        }
-      ]
+      "releases": []
     },
     "expected": {
       "contextHash": "v1:7d63d5ae2a7006ea",
       "selection": {
-        "kind": "EMBEDDED",
-        "releaseId": "01900000-0000-7000-8000-000000000140",
+        "kind": "BUILTIN",
+        "releaseId": null,
         "bundleId": "01900000-0000-7000-8000-000000000001",
         "catalogId": "lynx-policy-fixture",
         "scopeKey": "v1:app-version:android:cHJvZHVjdGlvbg",
@@ -3224,7 +3222,9 @@
           "kind": "BUNDLE",
           "bundleId": "01900000-0000-7000-8000-000000000020",
           "rolloutCohortCount": 0,
-          "targetCohorts": ["beta"],
+          "targetCohorts": [
+            "beta"
+          ],
           "shouldForceUpdate": false,
           "message": null
         }

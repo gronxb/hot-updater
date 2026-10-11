@@ -97,7 +97,7 @@ internal object CatalogPolicy {
     internal data class Descriptor(
         val releaseId: String,
         val kind: String,
-        val bundleId: String?,
+        val bundleId: String,
         val rolloutCohortCount: Int,
         val targetCohorts: List<String>,
         val shouldForceUpdate: Boolean,
@@ -200,20 +200,18 @@ internal object CatalogPolicy {
         fun selected(item: Descriptor?, kind: String, bundle: String, status: String): DesiredSelection = DesiredSelection(
             Receipt(kind, item?.releaseId, bundle, guard.catalogId, guard.scopeKey, guard.generation, guard.catalogHash, guard.channel, guard.selectionContextHash), status,
         )
-        fun bundle(item: Descriptor, status: String) = selected(item, "BUNDLE", item.bundleId!!, status)
+        fun bundle(item: Descriptor, status: String) = selected(item, "BUNDLE", item.bundleId, status)
 
         for (item in accepted.releases) {
             if (item.releaseId in excluded || !eligible(item, snapshot.cohort)) continue
             if ((base.releaseId != null && item.releaseId <= base.releaseId) ||
-                (base.releaseId == null && hasActive && (item.bundleId == null || item.bundleId <= base.bundleId))) continue
+                (base.releaseId == null && hasActive && item.bundleId <= base.bundleId)) continue
             if (safe(item)) return bundle(item, "UPDATE")
-            if (item.bundleId != null) continue
-            return selected(item, "EMBEDDED", snapshot.embeddedBundleId, "ROLLBACK")
         }
         if (base.releaseId != null || hasActive) {
             val current = accepted.rollbackReleases.find { it.releaseId == base.releaseId || (base.releaseId == null && it.bundleId == base.bundleId) }
             if (current != null && safe(current) && eligible(current, snapshot.cohort)) return bundle(current, "UPDATE")
-            val rollback = accepted.rollbackReleases.find { safe(it) && (if (base.releaseId != null) it.releaseId < base.releaseId else it.bundleId!! < base.bundleId) }
+            val rollback = accepted.rollbackReleases.find { safe(it) && (if (base.releaseId != null) it.releaseId < base.releaseId else it.bundleId < base.bundleId) }
             if (rollback != null) return bundle(rollback, "ROLLBACK")
             if (base.bundleId <= snapshot.minimumBundleId) return null
         }
@@ -249,13 +247,12 @@ internal object CatalogPolicy {
         val item = accepted.rollbackReleases.find { it.releaseId == receipt.releaseId } ?: return false
         if (item.kind != receipt.kind || (!eligible(item, snapshot.cohort) && !authorizedRollback(receipt, rollbackAuthorization, snapshot.embeddedBundleId)) ||
             item.releaseId in snapshot.unconfirmedReleaseIds) return false
-        return if (item.kind == "EMBEDDED") item.bundleId == null else
-            item.bundleId == receipt.bundleId && safeBundle(item, snapshot,
-                snapshot.unconfirmedReleaseIds.toSet(), snapshot.crashedBundleIds.toSet())
+        return item.bundleId == receipt.bundleId && safeBundle(item, snapshot,
+            snapshot.unconfirmedReleaseIds.toSet(), snapshot.crashedBundleIds.toSet())
     }
 
     private fun safeBundle(item: Descriptor, snapshot: NativeSnapshot, excluded: Set<String>, crashed: Set<String>): Boolean =
-        item.kind == "BUNDLE" && item.bundleId != null && item.releaseId !in excluded &&
+        item.kind == "BUNDLE" && item.releaseId !in excluded &&
             item.bundleId !in crashed && item.bundleId >= snapshot.minimumBundleId
 
     private fun authorizedRollback(receipt: Receipt, proof: RollbackAuthorization?, embeddedBundleId: String): Boolean {
@@ -300,7 +297,7 @@ internal object CatalogPolicy {
     }
 
     private fun validateReceipt(receipt: Receipt) {
-        ensure(receipt.kind in setOf("BUNDLE", "EMBEDDED", "BUILTIN") &&
+        ensure(receipt.kind in setOf("BUNDLE", "BUILTIN") &&
             (if (receipt.kind == "BUNDLE") uuid.matches(receipt.bundleId) else nativeBundleId(receipt.bundleId)), "INVALID_RECEIPT", "Invalid selection identity")
         ensure(if (receipt.kind == "BUILTIN") receipt.releaseId == null else receipt.releaseId?.let { uuid.matches(it) } == true, "INVALID_RECEIPT", "Invalid Release identity")
         validateChannel(receipt.channel)
@@ -336,8 +333,8 @@ internal object CatalogPolicy {
             ensure(uuid.matches(releaseId) && ids.add(releaseId), "INVALID_CATALOG", "Invalid or duplicate Release ID")
             ensure(result.lastOrNull()?.let { it.releaseId > releaseId } != false, "INVALID_CATALOG", "Releases must be ordered newest first")
             val kind = text(json, "kind")
-            val bundleId = nullableText(json, "bundleId")
-            ensure((kind == "BUNDLE" && bundleId?.let { uuid.matches(it) } == true) || (kind == "EMBEDDED" && bundleId == null), "INVALID_CATALOG", "Invalid Release bundle identity")
+            val bundleId = nullableText(json, "bundleId")?.takeIf { kind == "BUNDLE" && uuid.matches(it) }
+                ?: throw Rejected("INVALID_CATALOG", "Invalid Release bundle identity")
             val cohorts = array(json, "targetCohorts")
             ensure(cohorts.length() <= 100, "INVALID_CATALOG", "Too many target cohorts")
             val targets = (0 until cohorts.length()).map { offset ->

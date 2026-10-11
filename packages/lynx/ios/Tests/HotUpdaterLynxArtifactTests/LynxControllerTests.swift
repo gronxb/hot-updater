@@ -137,37 +137,6 @@ final class LynxControllerTests: XCTestCase {
         XCTAssertEqual(controller.runningSelection.bundleId, config.embeddedBundleId)
         XCTAssertTrue(try controller.getState(context)["nextSelection"] is NSNull)
     }
-    func testEmbeddedReleaseUnknownOrFatalSuppressionKeepsBuiltinUsable() async throws {
-        for knownFatal in [false, true] {
-        let (root, config, original, _) = try await fixture(); defer { try? FileManager.default.removeItem(at: root) }
-        var controller: LynxController? = try LynxController(configuration: config)
-        var context = controller!.createContext(primary: true); _ = try controller!.begin(context)
-        var wire = try JSONSerialization.jsonObject(with: original) as! [String: Any]
-        var descriptor = (wire["releases"] as! [[String: Any]])[0]
-        descriptor["kind"] = "EMBEDDED"; descriptor["bundleId"] = NSNull()
-        wire["releases"] = [descriptor]; wire["rollbackReleases"] = [descriptor]
-        let bytes = try JSONSerialization.data(withJSONObject: wire)
-        let current = try snapshot(controller!, context)
-        let catalog = try LynxCatalogPolicy.parseCatalog(json: bytes, snapshot: current)
-        let guardValue = try controller!.acceptCatalog(bytes, expectedRevision: current.revision, contextHash: LynxCatalogPolicy.contextHash(snapshot: current), context: context)
-        let receipt = try XCTUnwrap(LynxCatalogPolicy.desired(catalog: catalog, snapshot: current)).receipt
-        let token = try await controller!.prepareSelection(guard: guardValue, receipt: receipt, artifact: nil, context: context)
-        XCTAssertEqual(try controller!.stageSelection(token, context: context)["requiresRestart"] as? Bool, true)
-        controller = nil
-        controller = try LynxController(configuration: config)
-        context = controller!.createContext(primary: true); _ = try controller!.begin(context)
-        XCTAssertEqual(controller!.runningSelection.kind, "EMBEDDED")
-        if knownFatal { try controller!.reportFailure(context, fatal: true) }
-        controller = nil
-        controller = try LynxController(configuration: config)
-        context = controller!.createContext(primary: true); _ = try controller!.begin(context)
-        let recovered = try controller!.getState(context)
-        XCTAssertEqual(controller!.runningSelection.kind, "BUILTIN")
-        XCTAssertEqual(recovered["unconfirmedReleaseIds"] as? [String], [receipt.releaseId!])
-        XCTAssertEqual(recovered["crashedBundleIds"] as? [String], [])
-        }
-    }
-
     func testSameByteAuthorizedAdoptionUpdatesLiveReceiptAndConfirmation() async throws {
         let (root, config, original, artifact) = try await fixture(); defer { try? FileManager.default.removeItem(at: root) }
         var controller: LynxController? = try LynxController(configuration: config)

@@ -980,73 +980,21 @@ class LynxUpdaterControllerTest {
         }
     }
 
-    private fun plantEmbeddedNext(root: File, releaseId: String = releaseB) {
-        plantNext(root, releaseId, embeddedId, "A", background = true)
+    private fun plantBuiltinNext(root: File) {
         val state = journal(root)
-        state.getJSONObject("next").put("kind", "EMBEDDED")
         val catalog = JSONObject(state.getString("catalog"))
-        for (key in listOf("releases", "rollbackReleases")) {
-            catalog.getJSONArray(key).getJSONObject(0)
-                .put("kind", "EMBEDDED").put("bundleId", JSONObject.NULL)
-        }
+        for (key in listOf("releases", "rollbackReleases")) catalog.put(key, JSONArray())
         state.put("catalog", catalog.toString())
         state.getJSONObject("catalogs").put(digestString("$catalogId\u0000$scopeKey"), catalog.toString())
+        state.put(
+            "next",
+            JSONObject()
+                .put("kind", "BUILTIN").put("releaseId", JSONObject.NULL).put("bundleId", embeddedId)
+                .put("catalogId", catalogId).put("scopeKey", scopeKey).put("generation", 2)
+                .put("catalogHash", catalogHash).put("channel", channel)
+                .put("selectionContextHash", "v1:0123456789abcdef"),
+        )
         File(store(root), "state.json").writeText(state.toString())
-    }
-
-    @Test fun pendingEmbeddedPageCannotReplaceAnExistingFailedBuiltin() {
-        val root = temp()
-        var foreground: LynxUpdaterController? = null
-        var task: LynxBackgroundTask? = null
-        try {
-            val host = backgroundHost(root)
-            host.createForeground().also { initial ->
-                initial.pinPrimary().also { it.firstScreen = true; initial.confirm(it) }
-                initial.close()
-            }
-            val background = host.beginBackground().also { task = it }
-            plantEmbeddedNext(root)
-            val current = host.createForeground().also { foreground = it }
-            val page = current.pinPrimary().also { it.firstScreen = true; current.confirm(it) }
-            current.pinSecondary("detail.lynx.bundle", emptyMap(), 1, page.generationId, sourceContextId = page.id)
-            assertTrue(background.reportFatal("verified builtin task fatal"))
-            current.close()
-            val file = File(store(root), "state.json")
-            val before = file.readBytes()
-            assertThrows(IllegalStateException::class.java) { host.backgroundSnapshot() }
-            assertTrue(before.contentEquals(file.readBytes()))
-            val recovered = host.createForeground().also { foreground = it }
-            assertEquals(JSONObject.NULL, journal(root).getJSONObject("failedEmbedded").get("releaseId"))
-            assertThrows(IllegalStateException::class.java) { recovered.pinPrimary() }
-        } finally {
-            task?.close()
-            foreground?.close()
-            root.deleteRecursively()
-        }
-    }
-
-    @Test fun overlappingEmbeddedFailuresNeverResurrectAFailedBuiltin() {
-        for (builtinFirst in listOf(false, true)) {
-            val root = temp()
-            val tasks = mutableListOf<LynxBackgroundTask>()
-            try {
-                val host = backgroundHost(root)
-                host.createForeground().close()
-                val builtin = host.beginBackground().also(tasks::add)
-                plantEmbeddedNext(root)
-                val release = host.beginBackground().also(tasks::add)
-                assertEquals("EMBEDDED", release.snapshot.selection.kind)
-                assertEquals(releaseB, release.snapshot.selection.releaseId)
-                val ordered = if (builtinFirst) listOf(builtin, release) else listOf(release, builtin)
-                ordered.forEach { assertTrue(it.reportFatal("native embedded failure")) }
-                assertEquals(JSONObject.NULL, journal(root).getJSONObject("failedEmbedded").get("releaseId"))
-                assertEquals(listOf(releaseB), jsonStrings(journal(root).getJSONArray("unconfirmed")))
-                assertThrows(IllegalStateException::class.java) { host.beginBackground() }
-            } finally {
-                tasks.forEach { it.close() }
-                root.deleteRecursively()
-            }
-        }
     }
 
     @Test fun taskFatalForTheLiveBundleRevokesForegroundReadiness() {
@@ -3453,7 +3401,6 @@ class LynxUpdaterControllerTest {
 
     @Test fun rollbackReportsRevokedConfirmedReleaseAsItsHistoricalOrigin() {
         val root = temp()
-        val releaseA = "01900000-0000-7000-8000-000000000110"
         try {
             controller(root).close()
             plantNext(root, releaseC, bundleC, "C")
@@ -3475,7 +3422,7 @@ class LynxUpdaterControllerTest {
                 assertEquals(id, confirmation.getString("transitionId"))
                 assertEquals(JSONObject.NULL, rollback.confirm(session).opt("transition"))
             }
-            plantEmbeddedNext(root, releaseA)
+            plantBuiltinNext(root)
             withController(root) { rollback ->
                 val session = rollback.pinPrimary().also { it.firstScreen = true }
                 val id = journal(root).getJSONObject("launchTransition").getString("transitionId")
@@ -3484,9 +3431,9 @@ class LynxUpdaterControllerTest {
                 assertEquals("UPDATE_APPLIED", transition.getString("kind"))
                 assertEquals(bundleB, transition.getJSONObject("from").getString("bundleId"))
                 assertEquals(releaseB, transition.getJSONObject("from").getString("releaseId"))
-                assertEquals("EMBEDDED", transition.getJSONObject("to").getString("kind"))
+                assertEquals("BUILTIN", transition.getJSONObject("to").getString("kind"))
                 assertEquals(embeddedId, transition.getJSONObject("to").getString("bundleId"))
-                assertEquals(releaseA, transition.getJSONObject("to").getString("releaseId"))
+                assertEquals(JSONObject.NULL, transition.getJSONObject("to").get("releaseId"))
                 assertEquals(id, confirmation.getString("transitionId"))
                 assertEquals(JSONObject.NULL, rollback.confirm(session).opt("transition"))
             }
@@ -4355,14 +4302,6 @@ class LynxUpdaterControllerTest {
                 val targetScope =
                     "v1:app-version:android:${CatalogPolicy.channelKey(targetChannel)}"
                 val targetHash = "sha256:" + "d".repeat(64)
-                val descriptor = JSONObject()
-                    .put("releaseId", releaseB)
-                    .put("kind", "EMBEDDED")
-                    .put("bundleId", JSONObject.NULL)
-                    .put("rolloutCohortCount", 1000)
-                    .put("targetCohorts", JSONArray())
-                    .put("shouldForceUpdate", false)
-                    .put("message", JSONObject.NULL)
                 val targetCatalog = JSONObject()
                     .put("schemaVersion", 1)
                     .put("catalogId", "lynx-beta")
@@ -4373,7 +4312,7 @@ class LynxUpdaterControllerTest {
                         "fallbackPolicy",
                         "BUILTIN_IF_ACTIVE_INELIGIBLE",
                     )
-                    .put("releases", JSONArray().put(descriptor))
+                    .put("releases", JSONArray())
                 val before = controller.state(primary)
                 val projected = projectedSwitchSnapshot(before, targetChannel)
                 val contextHash = CatalogPolicy.selectionContextHash(
@@ -4390,8 +4329,8 @@ class LynxUpdaterControllerTest {
                         .put("explicitScopeSwitch", true),
                 )
                 val selection = CatalogPolicy.Receipt(
-                    "EMBEDDED",
-                    releaseB,
+                    "BUILTIN",
+                    null,
                     embeddedId,
                     "lynx-beta",
                     targetScope,

@@ -307,7 +307,7 @@ final class LynxControllerJournal {
         let state = try JSONDecoder().decode(LynxControllerState.self, from: bytes)
         if let failure = state.failedEmbedded {
             let receipt = try failure.policy
-            guard ["BUILTIN", "EMBEDDED", "BUNDLE"].contains(receipt.kind),
+            guard ["BUILTIN", "BUNDLE"].contains(receipt.kind),
                   failure.manifestDigest.range(of: "^[a-f0-9]{64}$", options: .regularExpression) != nil else {
                 throw LynxArtifactError.invalid("Invalid native embedded failure receipt")
             }

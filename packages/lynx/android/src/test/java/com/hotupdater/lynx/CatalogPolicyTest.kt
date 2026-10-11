@@ -225,6 +225,11 @@ class CatalogPolicyTest {
             input.getJSONObject("catalog").getJSONArray("releases").getJSONObject(0).put(key, value)
             rejected("INVALID_CATALOG") { accept(input) }
         }
+        for ((kind, bundleId) in listOf<Pair<String, Any>>("EMBEDDED" to JSONObject.NULL, "BUNDLE" to JSONObject.NULL, "EMBEDDED" to "01900000-0000-7000-8000-000000000020")) {
+            val input = vector("first-update")
+            input.getJSONObject("catalog").getJSONArray("releases").getJSONObject(0).put("kind", kind).put("bundleId", bundleId)
+            rejected("INVALID_CATALOG") { accept(input) }
+        }
         val collision = vector("first-update")
         val other = clone(collision.getJSONObject("catalog").getJSONArray("releases").getJSONObject(0)).put("rolloutCohortCount", 0)
         collision.getJSONObject("catalog").put("rollbackReleases", JSONArray().put(other))
@@ -365,7 +370,7 @@ class CatalogPolicyTest {
 
     @Test fun nilUuidIsOnlyAllowedForNativeEmbeddedAndMinimumIdentities() {
         val nil = "00000000-0000-0000-0000-000000000000"
-        for (name in listOf("first-update", "empty-keeps-embedded", "explicit-embedded-rollback")) {
+        for (name in listOf("first-update", "empty-keeps-embedded", "revoked-release-falls-back-to-builtin")) {
             val input = vector(name)
             val native = input.getJSONObject("snapshot").put("embeddedBundleId", nil).put("minimumBundleId", nil)
             if (native.getJSONObject("runningSelection").getString("kind") == "BUILTIN") {
@@ -380,6 +385,7 @@ class CatalogPolicyTest {
         }
         val ota = vector("confirmed-current-retained").getJSONObject("snapshot").getJSONObject("runningSelection")
         rejected("INVALID_RECEIPT") { CatalogPolicy.parseReceipt(clone(ota).put("bundleId", nil)) }
+        rejected("INVALID_RECEIPT") { CatalogPolicy.parseReceipt(clone(ota).put("kind", "EMBEDDED")) }
         rejected("INVALID_RECEIPT") { CatalogPolicy.parseReceipt(clone(ota).put("releaseId", nil)) }
         rejected("INVALID_RECEIPT") { CatalogPolicy.parseReceipt(clone(ota).apply { remove("releaseId") }) }
         val builtin = JSONObject()

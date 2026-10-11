@@ -35,8 +35,8 @@ const builtin = {
 };
 const descriptor = (bundle, release, extra = {}) => ({
   releaseId: id(release),
-  kind: bundle === null ? "EMBEDDED" : "BUNDLE",
-  bundleId: bundle === null ? null : id(bundle),
+  kind: "BUNDLE",
+  bundleId: id(bundle),
   rolloutCohortCount: 1000,
   targetCohorts: [],
   shouldForceUpdate: false,
@@ -107,15 +107,15 @@ const cases = [
     ],
   },
   {
-    name: "embedded-release-held-after-unknown-exit",
+    name: "excluded-newer-release-keeps-active",
     running: receipt(10, 110),
     exclusions: [id(140)],
-    releases: [descriptor(null, 140), descriptor(10, 110)],
+    releases: [descriptor(40, 140), descriptor(10, 110)],
   },
   {
-    name: "explicit-embedded-rollback",
+    name: "revoked-release-falls-back-to-builtin",
     running: receipt(10, 110),
-    releases: [descriptor(null, 140)],
+    releases: [],
   },
   {
     name: "ineligible-current-falls-back-to-builtin",
@@ -221,15 +221,21 @@ for (const platform of ["ios", "android"])
       unconfirmedReleaseIds: snapshot.unconfirmedReleaseIds,
     });
     if (item.contextMatches) base.selectionContextHash = contextHash;
-    const desired = selectDesiredRelease(catalog, {
-      builtInBundleId: embedded,
-      currentBundleId: base.bundleId,
-      activeReleaseId: base.releaseId,
-      minimumReleaseId: snapshot.minimumBundleId,
-      cohort: snapshot.cohort,
-      crashedBundleIds: snapshot.crashedBundleIds,
-      unconfirmedReleaseIds: snapshot.unconfirmedReleaseIds,
-    });
+    const desired = selectDesiredRelease(
+      {
+        ...catalog,
+        rollbackReleases: catalog.rollbackReleases ?? catalog.releases,
+      },
+      {
+        builtInBundleId: embedded,
+        currentBundleId: base.bundleId,
+        activeReleaseId: base.releaseId,
+        minimumReleaseId: snapshot.minimumBundleId,
+        cohort: snapshot.cohort,
+        crashedBundleIds: snapshot.crashedBundleIds,
+        unconfirmedReleaseIds: snapshot.unconfirmedReleaseIds,
+      },
+    );
     const selection = desired
       ? {
           kind: desired.kind,

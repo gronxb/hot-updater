@@ -180,7 +180,7 @@ class LynxRuntimeHost internal constructor(
                 }
                 if (receipt.bundleId == embedded.bundleId) {
                     val previous = next.optJSONObject("failedEmbedded")?.let(CatalogPolicy::parseReceipt)
-                    // A signed embedded Release must not resurrect an already-failed builtin.
+                    // A Release on the embedded bundle must not resurrect an already-failed builtin.
                     next.put("failedEmbedded", retainEmbeddedFailure(previous, receipt).toJson())
                 } else {
                     bundles.remove(receipt.bundleId)
