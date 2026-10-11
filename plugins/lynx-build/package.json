@@ -1,6 +1,6 @@
 {
   "name": "@hot-updater/lynx-build",
-  "version": "1.0.0-rc.27",
+  "version": "1.0.0",
   "type": "module",
   "sideEffects": false,
   "main": "./dist/index.cjs",
