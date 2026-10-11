@@ -2,12 +2,17 @@ package com.hotupdater
 
 import android.content.Context
 import android.util.Log
+import com.facebook.react.ReactActivity
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactInstanceEventListener
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.common.LifecycleState
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runInterruptible
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
@@ -67,7 +72,38 @@ class ReactIntegrationManager(
             if (reactHost.lifecycleState != LifecycleState.RESUMED && activity != null) {
                 reactHost.onHostResume(activity)
             }
-            reactHost.reload("Requested by HotUpdater")
+            val rootView = (activity as? ReactActivity)?.reactDelegate?.reactRootView
+            val beforeDestroy =
+                rootView?.let {
+                    object : () -> Unit {
+                        override fun invoke() {
+                            reactHost.removeBeforeDestroyListener(this)
+                            // ReactHost reuses this root on reload. Rearm only after old
+                            // surfaces stop, so their content cannot consume the marker.
+                            it.setShouldLogContentAppeared(true)
+                        }
+                    }
+                }
+            beforeDestroy?.let(reactHost::addBeforeDestroyListener)
+            try {
+                val reloadTask = reactHost.reload("Requested by HotUpdater")
+                if (beforeDestroy != null) {
+                    // Reload destroys the caller's module. Keep cleanup owned by
+                    // the host task without delaying the reload request's return.
+                    CoroutineScope(Dispatchers.IO).launch {
+                        try {
+                            runInterruptible { reloadTask.waitForCompletion() }
+                        } catch (e: Exception) {
+                            Log.w("HotUpdater", "Failed to wait for ReactHost reload cleanup", e)
+                        } finally {
+                            reactHost.removeBeforeDestroyListener(beforeDestroy)
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                beforeDestroy?.let(reactHost::removeBeforeDestroyListener)
+                throw e
+            }
         } catch (e: Exception) {
             Log.d("HotUpdater", "Failed to reload with ReactHost: ${e.message}")
         }
