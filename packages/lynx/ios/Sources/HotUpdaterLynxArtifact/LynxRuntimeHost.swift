@@ -14,6 +14,8 @@ public final class LynxRuntimeHost {
     }
     private static let registryLock = NSLock()
     private static var hosts: [String: WeakHost] = [:]
+    private static let failureLock = NSLock()
+    private static var unpersistedFailures: [String: String] = [:]
 
     public let configuration: LynxControllerConfiguration
     let scope: LynxNativeScope
@@ -68,6 +70,7 @@ public final class LynxRuntimeHost {
 
     // Caller holds ownerLock. No existing foreground can publish while a cold lease is held.
     func prepareForeground() throws {
+        try requirePersistedFailures()
         guard foreground == nil else { throw LynxArtifactError.storeBusy }
         stateLock.lock(); defer { stateLock.unlock() }
         if tasks.values.contains(where: { $0.fatal && !$0.persisted }) {
@@ -97,11 +100,35 @@ public final class LynxRuntimeHost {
     private func withColdStore<T>(
         _ body: (LynxArtifactInstaller, LynxControllerJournal) throws -> T
     ) throws -> T {
+        try requirePersistedFailures()
         let installer = try LynxArtifactInstaller(root: scope.home, configuration: .init(
             runtimeId: configuration.runtimeId, publicKeyPEM: configuration.publicKeyPEM
         ))
         defer { installer.close() }
+        try requirePersistedFailures()
         return try body(installer, LynxControllerJournal(file: scope.home.appendingPathComponent("state.json")))
+    }
+
+    // Retain identities only, so an owner closing cannot erase an unrecorded native failure.
+    func retainUnpersistedFailure(_ contextId: String) {
+        Self.failureLock.lock(); defer { Self.failureLock.unlock() }
+        if Self.unpersistedFailures[scope.home.path] == nil {
+            Self.unpersistedFailures[scope.home.path] = contextId
+        }
+    }
+
+    func releasePersistedFailure(_ contextId: String) {
+        Self.failureLock.lock(); defer { Self.failureLock.unlock() }
+        if Self.unpersistedFailures[scope.home.path] == contextId {
+            Self.unpersistedFailures.removeValue(forKey: scope.home.path)
+        }
+    }
+
+    func requirePersistedFailures() throws {
+        Self.failureLock.lock(); defer { Self.failureLock.unlock() }
+        guard Self.unpersistedFailures[scope.home.path] == nil else {
+            throw LynxArtifactError.invalid("A native Lynx failure could not be persisted; this process cannot reopen the scope")
+        }
     }
 
     // All task and admission operations below run under the shared state lock.

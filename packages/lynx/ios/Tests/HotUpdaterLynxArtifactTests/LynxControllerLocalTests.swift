@@ -3030,3 +3030,200 @@ extension LynxControllerLocalTests {
         XCTAssertThrowsError(try host.mountPrimary(id: "again", parameters: []))
     }
 }
+
+
+extension LynxControllerLocalTests {
+    func testAdmittedNativeFailureDoesNotBlameAnotherPendingMount() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = try mountedConfiguration(root)
+        let owner = try LynxRuntimeHost.get(configuration: config)
+        var runtimes: [MountedRuntime] = []
+        let host = try LynxMountedHost(owner: owner, onError: { XCTFail("\($0)") }) { controller, context, page in
+            let runtime = MountedRuntime(controller, context, page)
+            runtimes.append(runtime)
+            return runtime
+        }
+        defer {
+            host.close()
+            runtimes.forEach { $0.callbacks.detached() }
+            flushMountedCallbacks()
+        }
+        try host.mountPrimary(id: "primary", parameters: [])
+        try host.mount(id: "admitted", entry: "detail.lynx.bundle", parameters: [])
+        let ready = expectation(description: "primary and first detail are ready")
+        try runtimes[0].ready { result in
+            XCTAssertEqual(try? result.get().status, "CONFIRMED")
+            ready.fulfill()
+        }
+        try runtimes[1].ready { result in
+            XCTAssertEqual(try? result.get().status, "PAGE_ADMITTED")
+        }
+        wait(for: [ready], timeout: 2)
+        flushMountedCallbacks()
+        try host.mount(id: "unrelated-pending", entry: "detail.lynx.bundle", parameters: [])
+        XCTAssertEqual(runtimes.count, 3)
+        let attempt = try XCTUnwrap(runtimes[2].controller.pendingPageAttemptId(runtimes[2].context))
+        runtimes[1].callbacks.failed(POSIXError(.EIO))
+        flushMountedCallbacks()
+        XCTAssertTrue(runtimes.allSatisfy { $0.retired })
+        let journal = LynxControllerJournal(file: try home(config.root).appendingPathComponent("state.json"))
+        let state = try journal.load()
+        let terminal = try XCTUnwrap(state.pageAttemptTerminals?.first { $0.attemptId == attempt })
+        XCTAssertEqual(terminal.terminal, "authorized-cancel", "This pending runtime did not produce the native failure")
+        XCTAssertEqual(terminal.reason, "generationFailure")
+    }
+}
+
+extension LynxControllerLocalTests {
+    func testMountedHostRetriesNativeFailureOnceAndCoalescesCallbacks() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = try mountedConfiguration(root)
+        let owner = try LynxRuntimeHost.get(configuration: config)
+        var runtimes: [MountedRuntime] = []
+        var errors: [Error] = []
+        let host = try LynxMountedHost(owner: owner, onError: { errors.append($0) }) { controller, context, page in
+            let runtime = MountedRuntime(controller, context, page); runtimes.append(runtime); return runtime
+        }
+        defer { host.close(); runtimes.forEach { $0.callbacks.detached() }; flushMountedCallbacks() }
+        try host.mountPrimary(id: "primary", parameters: [])
+        let ready = expectation(description: "primary confirmed")
+        try runtimes[0].ready { result in
+            XCTAssertEqual(try? result.get().status, "CONFIRMED"); ready.fulfill()
+        }
+        wait(for: [ready], timeout: 2)
+        let file = try home(config.root).appendingPathComponent("state.json")
+        let original = try Data(contentsOf: file)
+        try FileManager.default.removeItem(at: file)
+        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: false)
+        runtimes[0].callbacks.failed(POSIXError(.EIO))
+        runtimes[0].callbacks.failed(POSIXError(.EIO))
+        let repaired = expectation(description: "first write failed before storage was repaired")
+        DispatchQueue.main.async {
+            do {
+                XCTAssertThrowsError(try owner.requirePersistedFailures())
+                XCTAssertThrowsError(try owner.beginBackground())
+                XCTAssertTrue(errors.isEmpty)
+                XCTAssertFalse(runtimes[0].retired)
+                try FileManager.default.removeItem(at: file)
+                try original.write(to: file)
+            } catch { XCTFail("\(error)") }
+            repaired.fulfill()
+        }
+        wait(for: [repaired], timeout: 2)
+        flushMountedCallbacks()
+        XCTAssertTrue(errors.isEmpty)
+        XCTAssertTrue(runtimes[0].retired)
+        XCTAssertNotNil(try LynxControllerJournal(file: file).load().failedEmbedded)
+        XCTAssertNoThrow(try owner.requirePersistedFailures())
+        runtimes[0].callbacks.detached(); flushMountedCallbacks()
+        XCTAssertEqual(errors.count, 1, "A failed built-in has no replacement; only one terminal recovery is attempted")
+        XCTAssertNil(owner.foreground)
+    }
+
+    func testExhaustedNativeFailureSurvivesOwnerDeallocationAndBlocksColdWork() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = try mountedConfiguration(root)
+        var owner: LynxRuntimeHost? = try LynxRuntimeHost.get(configuration: config)
+        var controller: LynxController? = try owner!.createForegroundForMounts(mounts())
+        let primary = controller!.createContext(primary: true)
+        _ = try controller!.begin(primary)
+        try readyMount(primary, on: controller!)
+        let file = try home(config.root).appendingPathComponent("state.json")
+        let original = try Data(contentsOf: file)
+        try FileManager.default.removeItem(at: file)
+        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: false)
+        XCTAssertThrowsError(try controller!.reportFailure(primary, fatal: true, allowConfirmed: true))
+        XCTAssertThrowsError(try controller!.reportFailure(primary, fatal: true, allowConfirmed: true))
+        XCTAssertThrowsError(try controller!.observedContent(primary))
+        try controller!.close(); controller = nil
+        weak let retiredOwner = owner
+        owner = nil
+        XCTAssertNil(retiredOwner, "The failure guard must retain identities, not owners")
+        try FileManager.default.removeItem(at: file)
+        try original.write(to: file)
+        let replacement = try LynxRuntimeHost.get(configuration: config)
+        XCTAssertThrowsError(try replacement.createForegroundForMounts(mounts()))
+        XCTAssertThrowsError(try replacement.beginBackground())
+        XCTAssertEqual(try Data(contentsOf: file), original)
+    }
+
+    func testAdmittedPageRequiresExplicitNativeFailureAuthority() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = try mountedConfiguration(root)
+        let controller = try LynxController(configuration: config, mountedPages: mounts())
+        defer { try? controller.close() }
+        let primary = controller.createContext(primary: true)
+        _ = try controller.begin(primary)
+        try readyMount(primary, on: controller)
+        let detail = try mount("detail", on: controller, primary: primary)
+        try readyMount(detail, on: controller)
+        let file = try home(config.root).appendingPathComponent("state.json")
+        let original = try Data(contentsOf: file)
+        XCTAssertFalse(try controller.reportPageFailure(detail))
+        XCTAssertEqual(try Data(contentsOf: file), original)
+        XCTAssertTrue(try controller.reportPageFailure(detail, allowConfirmed: true))
+        XCTAssertNotNil(try LynxControllerJournal(file: file).load().failedEmbedded)
+        XCTAssertThrowsError(try controller.reportPageFailure(detail, allowConfirmed: true))
+    }
+
+    func testNativeFailureCannotReclassifyAnAcceptedTransition() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = try mountedConfiguration(root)
+        let controller = try LynxController(configuration: config, mountedPages: mounts())
+        defer { try? controller.close() }
+        let primary = controller.createContext(primary: true)
+        _ = try controller.begin(primary)
+        try readyMount(primary, on: controller)
+        let detail = try mount("detail", on: controller, primary: primary)
+        try readyMount(detail, on: controller)
+        _ = try controller.acceptManagedTransition(primary, trigger: "reload", stack: controller.mountedPages(primary))
+        let file = try home(config.root).appendingPathComponent("state.json")
+        let accepted = try Data(contentsOf: file)
+        XCTAssertThrowsError(try controller.reportFailure(primary, fatal: true, allowConfirmed: true))
+        XCTAssertThrowsError(try controller.reportPageFailure(detail, allowConfirmed: true))
+        XCTAssertEqual(try Data(contentsOf: file), accepted)
+        XCTAssertNoThrow(try LynxRuntimeHost.get(configuration: config).requirePersistedFailures())
+    }
+}
+
+extension LynxControllerLocalTests {
+    func testMountedHostExhaustsNativeFailureBeforeClosing() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let config = try mountedConfiguration(root)
+        let owner = try LynxRuntimeHost.get(configuration: config)
+        var runtimes: [MountedRuntime] = []
+        var errors: [Error] = []
+        let host = try LynxMountedHost(owner: owner, onError: { errors.append($0) }) { controller, context, page in
+            let runtime = MountedRuntime(controller, context, page); runtimes.append(runtime); return runtime
+        }
+        defer { host.close(); runtimes.forEach { $0.callbacks.detached() }; flushMountedCallbacks() }
+        try host.mountPrimary(id: "primary", parameters: [])
+        let ready = expectation(description: "primary confirmed before storage failure")
+        try runtimes[0].ready { _ in ready.fulfill() }
+        wait(for: [ready], timeout: 2)
+        let file = try home(config.root).appendingPathComponent("state.json")
+        let original = try Data(contentsOf: file)
+        try FileManager.default.removeItem(at: file)
+        try FileManager.default.createDirectory(at: file, withIntermediateDirectories: false)
+        runtimes[0].callbacks.failed(POSIXError(.EIO))
+        flushMountedCallbacks()
+        XCTAssertEqual(errors.count, 1)
+        XCTAssertTrue(runtimes[0].retired)
+        XCTAssertThrowsError(try owner.requirePersistedFailures())
+        try FileManager.default.removeItem(at: file)
+        try original.write(to: file)
+        runtimes[0].callbacks.failed(POSIXError(.EIO))
+        runtimes[0].callbacks.detached(); flushMountedCallbacks()
+        XCTAssertEqual(errors.count, 1, "A closed host cannot schedule another persistence attempt")
+        XCTAssertNil(owner.foreground)
+        XCTAssertThrowsError(try owner.createForegroundForMounts(mounts()))
+        XCTAssertThrowsError(try owner.beginBackground())
+        XCTAssertEqual(try Data(contentsOf: file), original)
+    }
+}

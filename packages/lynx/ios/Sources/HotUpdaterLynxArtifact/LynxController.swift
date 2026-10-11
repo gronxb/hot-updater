@@ -262,6 +262,8 @@ public final class LynxController {
         }
         host.stateLock.lock()
         defer { host.stateLock.unlock() }
+        // Recheck after acquiring the artifact store's lock, before admitting this owner.
+        try host.requirePersistedFailures()
         var recovered = try journal.load()
         if let mode = recovered.pageHostMode {
             guard mode == config.pageHostMode.rawValue else {
@@ -1694,11 +1696,12 @@ public final class LynxController {
     }
 
     @discardableResult
-    public func reportPageFailure(_ context: LynxLaunchContext) throws -> Bool {
+    public func reportPageFailure(_ context: LynxLaunchContext, allowConfirmed: Bool = false) throws -> Bool {
         try reportPageFailure(
             context,
             failureCode: nil,
-            failureResourcePath: nil
+            failureResourcePath: nil,
+            allowConfirmed: allowConfirmed
         )
     }
 
@@ -1706,7 +1709,8 @@ public final class LynxController {
     public func reportPageFailure(
         _ context: LynxLaunchContext,
         failureCode: Int?,
-        failureResourcePath: String?
+        failureResourcePath: String?,
+        allowConfirmed: Bool = false
     ) throws -> Bool {
         var deliveries: [CallbackDelivery] = []
         lock.lock()
@@ -1715,25 +1719,25 @@ public final class LynxController {
             deliveries.forEach { $0() }
         }
         try validate(context, retryFatal: true)
-        guard !context.primary, !context.pageAdmitted,
-              let failedPending = state.pendingPages?.first(where: {
-                  $0.contextId == context.id
-              }) else {
+        let failedPending = state.pendingPages?.first { $0.contextId == context.id }
+        guard !context.primary,
+              context.pageAdmitted ? allowConfirmed : failedPending != nil else {
             return false
         }
         revokeFatalReadiness(context, deliveries: &deliveries)
+        runtimeHost.retainUnpersistedFailure(context.id)
         var next = state
         try recordFatalSelectionFailure(in: &next)
         for pending in next.pendingPages ?? [] {
             _ = try Self.terminalizePageAttempt(
                 pending,
-                as: "verified-fatal",
-                reason: "verifiedFatal",
-                failureCode: pending.attemptId == failedPending.attemptId
+                as: pending.attemptId == failedPending?.attemptId ? "verified-fatal" : "authorized-cancel",
+                reason: pending.attemptId == failedPending?.attemptId ? "verifiedFatal" : "generationFailure",
+                failureCode: pending.attemptId == failedPending?.attemptId
                     ? failureCode
                     : nil,
                 failureResourcePath:
-                    pending.attemptId == failedPending.attemptId
+                    pending.attemptId == failedPending?.attemptId
                         ? failureResourcePath
                         : nil,
                 in: &next
@@ -1743,6 +1747,7 @@ public final class LynxController {
         // as the source of the RECOVERED transition.
         next.revision = UUID().uuidString
         try save(next)
+        runtimeHost.releasePersistedFailure(context.id)
         fatal = true
         return true
     }
@@ -1956,15 +1961,17 @@ public final class LynxController {
               !runningConfirmed || allowConfirmed || managedStartupPending
         else { return false }
         revokeFatalReadiness(context, deliveries: &deliveries)
+        runtimeHost.retainUnpersistedFailure(context.id)
         var next = state
         try recordFatalSelectionFailure(in: &next)
         try Self.terminalizePendingPages(
-            as: "verified-fatal",
-            reason: "generationFatal",
+            as: "authorized-cancel",
+            reason: "generationFailure",
             in: &next
         )
         next.revision = UUID().uuidString
         try save(next)
+        runtimeHost.releasePersistedFailure(context.id)
         fatal = true
         return true
     }

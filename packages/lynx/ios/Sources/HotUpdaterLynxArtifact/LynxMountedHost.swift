@@ -41,6 +41,7 @@ final class LynxMountedHost {
         var runtimes: [ObjectIdentifier: Page] = [:]
         let resourceLock = NSLock()
         var retiring = false
+        var failureInFlight = false
         var replacement: [LynxManagedLogicalPage]?
         init(_ controller: LynxController, _ primary: LynxLaunchContext) {
             self.controller = controller; self.primary = primary
@@ -232,20 +233,26 @@ final class LynxMountedHost {
         } catch { completion(.failure(error)) }
     }
 
-    private func recover(_ current: Generation, error: Error, page: Page? = nil) {
-        guard !closed, !replacing, current === generation, !current.retiring, page?.retired != true else { return }
+    private func recover(_ current: Generation, error: Error, page: Page? = nil, retry: Bool = false) {
+        guard !closed, !replacing, current === generation, !current.retiring, page?.retired != true,
+              !current.failureInFlight || retry else { return }
+        current.failureInFlight = true
         do {
-            if let page, !page.context.primary,
-               try current.controller.reportPageFailure(page.context) {
-                // Pending secondary failure records its own admission before retiring the generation.
+            let recorded: Bool
+            if let page, !page.context.primary {
+                recorded = try current.controller.reportPageFailure(page.context, allowConfirmed: true)
             } else {
-                _ = try current.controller.reportFailure(current.primary, fatal: true, allowConfirmed: true)
+                recorded = try current.controller.reportFailure(current.primary, fatal: true, allowConfirmed: true)
             }
+            guard recorded else { current.failureInFlight = false; return }
             failedBundles.insert(current.controller.runningSelection.bundleId)
             current.replacement = mounts
             replacing = true
             DispatchQueue.main.async { self.retire(current) }
-        } catch { failClosed(error) }
+        } catch {
+            if retry { failClosed(error) }
+            else { DispatchQueue.main.async { self.recover(current, error: error, page: page, retry: true) } }
+        }
     }
 
     private func retire(_ page: Page, in current: Generation) {

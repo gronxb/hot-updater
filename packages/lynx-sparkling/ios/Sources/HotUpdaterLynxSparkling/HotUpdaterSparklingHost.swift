@@ -118,6 +118,7 @@ public final class HotUpdaterSparklingHost: NSObject {
     private var transitionInFlight: LynxManagedTransitionAcceptance?
     private var isClosingPage = false
     private var recoveredTerminalEventsEmitted = false
+    private var nativeFailureContext: LynxLaunchContext?
     private var closed = false
     private let launchConfiguration: [String: String]
 #if HOT_UPDATER_LYNX_DIAGNOSTICS
@@ -354,6 +355,7 @@ public final class HotUpdaterSparklingHost: NSObject {
         message: String,
         failureRecorded: Bool = false
     ) {
+        guard !closed else { return }
         let failedSelection = controller.runningSelection
         do {
             if !failureRecorded {
@@ -363,11 +365,13 @@ public final class HotUpdaterSparklingHost: NSObject {
             transitionInFlight = nil
             failClosed(
                 reason: "terminalPersistenceFailed",
-                message: error.localizedDescription
+                message: error.localizedDescription,
+                persistFailure: false
             )
             return
         }
         retireCurrentGeneration(reason: "recovery")
+        guard !closed else { return }
         do {
             try startGeneration()
             guard controller.runningSelection.bundleId != failedSelection.bundleId
@@ -642,10 +646,14 @@ public final class HotUpdaterSparklingHost: NSObject {
         _ failure: ManagedPageFailure,
         controller generationController: LynxController,
         context: LynxLaunchContext,
-        generation: SparklingGenerationEvents
+        generation: SparklingGenerationEvents,
+        retry: Bool = false,
+        pendingAttempts: [(ManagedPage, String)]? = nil
     ) {
         requireMainThread()
+        if nativeFailureContext != nil && !retry { return }
         guard !closed, transitionInFlight == nil,
+              nativeFailureContext == nil || nativeFailureContext === context,
               generation === generationEvents,
               generationController === controller,
               let page = pages.first(where: {
@@ -659,34 +667,47 @@ public final class HotUpdaterSparklingHost: NSObject {
             ])
             return
         }
-        let pendingPages = pages.compactMap { candidate -> (ManagedPage, String)? in
+        let pendingPages = pendingAttempts ?? pages.compactMap { candidate -> (ManagedPage, String)? in
             guard let attempt = try? controller.pendingPageAttemptId(
                 candidate.generation.context
             ) else { return nil }
             return (candidate, attempt)
         }
         let classified: Bool
+        nativeFailureContext = context
         do {
             if page.primary {
                 classified = try controller.reportFailure(
                     context,
-                    fatal: true
+                    fatal: true,
+                    allowConfirmed: true
                 )
             } else {
                 classified = try controller.reportPageFailure(
                     context,
                     failureCode: failure.code,
-                    failureResourcePath: failure.resourcePath
+                    failureResourcePath: failure.resourcePath,
+                    allowConfirmed: true
                 )
             }
         } catch {
+            if !retry {
+                DispatchQueue.main.async { [weak self] in
+                    self?.pageFailed(failure, controller: generationController,
+                                     context: context, generation: generation, retry: true,
+                                     pendingAttempts: pendingPages)
+                }
+                return
+            }
             failClosed(
                 reason: "terminalPersistenceFailed",
-                message: error.localizedDescription
+                message: error.localizedDescription,
+                persistFailure: false
             )
             return
         }
         guard classified, let navigationController else {
+            nativeFailureContext = nil
             generation.emit("runtimeWarning", details(for: page).merging([
                 "message": failure.message,
             ]) { _, new in new })
@@ -696,14 +717,15 @@ public final class HotUpdaterSparklingHost: NSObject {
             emitPageAttemptTerminal(
                 candidate,
                 pageAttemptId: pageAttemptId,
-                terminal: "verified-fatal",
-                reason: "verifiedFatal",
+                terminal: candidate === page ? "verified-fatal" : "authorized-cancel",
+                reason: candidate === page ? "verifiedFatal" : "generationFailure",
                 failure: candidate === page ? failure : nil
             )
         }
         generation.emit("generationFailed", details(for: page).merging([
             "message": failure.message,
         ]) { _, new in new })
+        guard !closed, controller === generationController, generationEvents === generation else { return }
         let logical = pages.map(\.logical)
         recoverReconstruction(
             logical,
@@ -771,8 +793,8 @@ public final class HotUpdaterSparklingHost: NSObject {
                             emitPageAttemptTerminal(
                                 candidate,
                                 pageAttemptId: pageAttemptId,
-                                terminal: "verified-fatal",
-                                reason: "verifiedFatal",
+                                terminal: candidate === managed ? "verified-fatal" : "authorized-cancel",
+                                reason: candidate === managed ? "verifiedFatal" : "generationFailure",
                                 failure: candidate === managed
                                     ? failure
                                     : nil
@@ -1134,7 +1156,9 @@ public final class HotUpdaterSparklingHost: NSObject {
     }
 
     private func startGeneration() throws {
+        guard !closed else { throw reloadError("STALE_CONTEXT", "The native host is closed") }
         controller = try LynxController(configuration: configuration.controller)
+        nativeFailureContext = nil
         recoveredTerminalEventsEmitted = false
         generationEvents = SparklingGenerationEvents(
             journal: eventJournal,
@@ -1362,25 +1386,27 @@ public final class HotUpdaterSparklingHost: NSObject {
         generationEvents.emit("pageAttemptTerminal", terminalDetails)
     }
 
-    private func failClosed(reason: String, message: String) {
+    private func failClosed(reason: String, message: String, persistFailure: Bool = true) {
         guard !closed else { return }
+        closed = true
         let details = retirementDetails(reason: reason)
         var failure = details.merging([
             "message": message,
         ]) { _, new in new }
-        do {
-            failure.merge(
-                try controller.recordManagedFailClosed(
-                    reason: reason,
-                    message: message,
-                    stack: pages.map(\.logical)
-                )
-            ) { old, _ in old }
-        } catch {
-            failure["persistenceError"] = error.localizedDescription
+        if persistFailure && nativeFailureContext == nil {
+            do {
+                failure.merge(
+                    try controller.recordManagedFailClosed(
+                        reason: reason,
+                        message: message,
+                        stack: pages.map(\.logical)
+                    )
+                ) { old, _ in old }
+            } catch {
+                failure["persistenceError"] = error.localizedDescription
+            }
         }
         retireCurrentGeneration(reason: reason)
-        closed = true
         if eventJournal.append(
             name: "generationReconstructionFailed",
             details: failure
@@ -1392,8 +1418,8 @@ public final class HotUpdaterSparklingHost: NSObject {
     public func close() {
         requireMainThread()
         guard !closed else { return }
-        retireCurrentGeneration(reason: "close")
         closed = true
+        retireCurrentGeneration(reason: "close")
         navigationController = nil
     }
 
