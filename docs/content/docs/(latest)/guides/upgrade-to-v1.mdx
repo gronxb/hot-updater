@@ -192,7 +192,8 @@ registered. A scaffold directory alone is not a working backend.
 now, including its schema, authenticated mounts and client-key registration,
 then return to step 3. Do not run managed init against a custom server.
 
-The v1 database starts with an empty Bundle history. Rebuild the desired
+The v1 database starts with an empty Bundle history; v0 policy is not backfilled.
+Rebuild the desired
 application revisions with v1 packages and deploy them to v1. Do not import v0
 archives or copy v0 policy rows.
 
