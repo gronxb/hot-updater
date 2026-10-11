@@ -403,5 +403,5 @@ separate nonproduction acceptance harness.
 
 The device SDK exports only its root and depends only on `@hot-updater/protocol`.
 Build tooling and Sparkling dependencies belong to the separate packages above.
-The current ready-made host integration requires Sparkling; a plain LynxView
-host is not yet provided.
+Android also supports plain native containers through `HotUpdaterLynxHost`.
+The iOS plain LynxView integration is not yet available.

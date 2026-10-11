@@ -1,6 +1,6 @@
 {
   "ios": {
-    "hash": "5b8e014d9f9ceec53eeb1ce2c005a5fef0ddd820ee760c81b41b8fa9394a08c8",
+    "hash": "f4cff577796ea78b130b6448e0899cfa1b06353c1c799ef1289da5b47578ebda",
     "sources": [
       {
         "type": "file",
@@ -286,6 +286,17 @@
         "hash": "227279164baf581c5a4d4452a2a73134df09f14d1c3679b47352a0dc3020d773",
         "debugInfo": {
           "byteSize": 2138
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx/ios/Sources/HotUpdaterLynxArtifact/LynxMountedHost.swift",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "cf54256ad2ed8884afb4868de7fe18f8e6c77c9fde434aced9d86e19710cde60",
+        "debugInfo": {
+          "byteSize": 15114
         }
       },
       {

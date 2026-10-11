@@ -2823,3 +2823,210 @@ extension LynxControllerLocalTests {
         XCTAssertEqual(try Data(contentsOf: file), bytes)
     }
 }
+
+
+extension LynxControllerLocalTests {
+    private final class MountedRuntime: LynxMountedRuntime {
+        let controller: LynxController
+        let context: LynxLaunchContext
+        let page: LynxManagedLogicalPage
+        var callbacks: LynxMountedRuntimeCallbacks!
+        var invalidated = false
+        var retired = false
+        var failLoad = false
+        var detachOnRetire = false
+        init(_ controller: LynxController, _ context: LynxLaunchContext, _ page: LynxManagedLogicalPage) {
+            self.controller = controller; self.context = context; self.page = page
+        }
+        func load(_ callbacks: LynxMountedRuntimeCallbacks) throws {
+            self.callbacks = callbacks
+            if failLoad { throw POSIXError(.EIO) }
+        }
+        func invalidate() { invalidated = true }
+        func retire() { retired = true; if detachOnRetire { callbacks.detached() } }
+        func ready(_ completion: @escaping (Result<LynxConfirmationResult, Error>) -> Void) throws {
+            _ = try callbacks.readResource("hot-updater:///" + page.entry) { _ in }
+            callbacks.didFirstScreen()
+            callbacks.appReady(completion)
+        }
+    }
+
+    private func flushMountedCallbacks() {
+        let settled = expectation(description: "queued native callbacks settled")
+        DispatchQueue.main.async {
+            DispatchQueue.main.async {
+                DispatchQueue.main.async { settled.fulfill() }
+            }
+        }
+        wait(for: [settled], timeout: 2)
+    }
+
+    func testMountedHostQueuesAdmissionsAndPreservesIdenticalSiblingOnRemoval() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let owner = try LynxRuntimeHost.get(configuration: mountedConfiguration(root))
+        var runtimes: [MountedRuntime] = []
+        let host = try LynxMountedHost(owner: owner, onError: { XCTFail("\($0)") }) { controller, context, page in
+            let runtime = MountedRuntime(controller, context, page); runtimes.append(runtime); return runtime
+        }
+        try host.mountPrimary(id: "primary", parameters: [])
+        try host.mount(id: "a", entry: "detail.lynx.bundle", parameters: [])
+        try host.mount(id: "b", entry: "detail.lynx.bundle", parameters: [.init(name: "item", value: "second")])
+        XCTAssertEqual(runtimes.map { $0.page.mountId }, ["primary", "a"])
+        var primaryStatus: String?
+        try runtimes[0].ready { primaryStatus = try? $0.get().status }
+        let aReady = expectation(description: "first secondary admitted")
+        try runtimes[1].ready { result in
+            XCTAssertEqual(try? result.get().status, "PAGE_ADMITTED"); aReady.fulfill()
+        }
+        wait(for: [aReady], timeout: 2); flushMountedCallbacks()
+        XCTAssertNil(primaryStatus)
+        XCTAssertEqual(runtimes.map { $0.page.mountId }, ["primary", "a", "b"])
+        let attempt = try runtimes[2].controller.pendingPageAttemptId(runtimes[2].context)
+        try host.unmount("a")
+        XCTAssertTrue(runtimes[1].retired)
+        XCTAssertEqual(try runtimes[2].controller.pendingPageAttemptId(runtimes[2].context), attempt)
+        let bReady = expectation(description: "remaining secondary admitted")
+        try runtimes[2].ready { result in
+            XCTAssertEqual(try? result.get().status, "PAGE_ADMITTED"); bReady.fulfill()
+        }
+        wait(for: [bReady], timeout: 2)
+        XCTAssertEqual(primaryStatus, "CONFIRMED")
+        host.close(); runtimes.forEach { $0.callbacks.detached() }; flushMountedCallbacks()
+        XCTAssertNil(owner.foreground)
+    }
+
+    func testMountedHostReloadWaitsForRemovedRuntimeAndAppliesQueuedMembership() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let owner = try LynxRuntimeHost.get(configuration: mountedConfiguration(root))
+        var runtimes: [MountedRuntime] = []
+        let host = try LynxMountedHost(owner: owner, onError: { XCTFail("\($0)") }) { controller, context, page in
+            let runtime = MountedRuntime(controller, context, page); runtimes.append(runtime); return runtime
+        }
+        try host.mountPrimary(id: "primary", parameters: [])
+        try host.mount(id: "removed", entry: "detail.lynx.bundle", parameters: [])
+        let ready = expectation(description: "generation ready")
+        try runtimes[0].ready { _ in ready.fulfill() }
+        try runtimes[1].ready { _ in }
+        wait(for: [ready], timeout: 2); flushMountedCallbacks()
+        try host.unmount("removed")
+        let accepted = expectation(description: "reload durably accepted")
+        runtimes[0].callbacks.transition("reload") { result in
+            XCTAssertNotNil(try? result.get()); accepted.fulfill()
+        }
+        wait(for: [accepted], timeout: 2); flushMountedCallbacks()
+        try host.mount(id: "queued", entry: "detail.lynx.bundle", parameters: [.init(name: "item", value: "after")])
+        runtimes[0].callbacks.detached(); flushMountedCallbacks()
+        XCTAssertEqual(runtimes.count, 2, "Removed runtimes also hold the old foreground lease")
+        XCTAssertNotNil(owner.foreground)
+        runtimes[1].callbacks.detached(); flushMountedCallbacks()
+        XCTAssertEqual(runtimes.map { $0.page.mountId }, ["primary", "removed", "primary", "queued"])
+        XCTAssertEqual(runtimes[3].page.parameters, [.init(name: "item", value: "after")])
+        XCTAssertNotEqual(runtimes[0].controller.attemptId, runtimes[2].controller.attemptId)
+        XCTAssertThrowsError(try runtimes[0].callbacks.readResource("hot-updater:///main.lynx.bundle") { _ in })
+        host.close(); runtimes.forEach { $0.callbacks.detached() }; flushMountedCallbacks()
+        XCTAssertNil(owner.foreground)
+    }
+
+    func testMountedHostPendingUnmountReadinessCanReenterClose() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let owner = try LynxRuntimeHost.get(configuration: mountedConfiguration(root))
+        var runtimes: [MountedRuntime] = []
+        let host = try LynxMountedHost(owner: owner, onError: { XCTFail("\($0)") }) { controller, context, page in
+            let runtime = MountedRuntime(controller, context, page); runtimes.append(runtime); return runtime
+        }
+        try host.mountPrimary(id: "primary", parameters: [])
+        try host.mount(id: "pending", entry: "detail.lynx.bundle", parameters: [])
+        let closed = expectation(description: "readiness closes its native host")
+        try runtimes[0].ready { result in
+            XCTAssertEqual(try? result.get().status, "CONFIRMED"); host.close(); closed.fulfill()
+        }
+        flushMountedCallbacks()
+        try host.unmount("pending")
+        wait(for: [closed], timeout: 2)
+        XCTAssertTrue(runtimes.allSatisfy(\.retired))
+        runtimes.forEach { $0.callbacks.detached() }; flushMountedCallbacks()
+        XCTAssertNil(owner.foreground)
+    }
+
+    func testMountedHostResourceConsumptionCanCloseWithoutReleasingItsLeaseEarly() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let owner = try LynxRuntimeHost.get(configuration: mountedConfiguration(root))
+        var runtime: MountedRuntime!
+        let host = try LynxMountedHost(owner: owner, onError: { XCTFail("\($0)") }) { controller, context, page in
+            runtime = MountedRuntime(controller, context, page); runtime.detachOnRetire = true; return runtime
+        }
+        try host.mountPrimary(id: "primary", parameters: [])
+        _ = try runtime.callbacks.readResource("hot-updater:///main.lynx.bundle") { data in
+            XCTAssertEqual(String(data: data, encoding: .utf8), "entry-A")
+            host.close()
+            XCTAssertTrue(runtime.invalidated)
+            XCTAssertFalse(runtime.retired, "Native delivery still owns its resource operation")
+            XCTAssertNotNil(owner.foreground)
+            XCTAssertThrowsError(try runtime.controller.getState(runtime.context))
+            XCTAssertThrowsError(try runtime.controller.setCohort("2", context: runtime.context))
+        }
+        flushMountedCallbacks()
+        XCTAssertTrue(runtime.retired)
+        XCTAssertNil(owner.foreground)
+    }
+
+    func testMountedHostBackgroundResourceDoesNotBlockMainThreadRetirement() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let owner = try LynxRuntimeHost.get(configuration: mountedConfiguration(root))
+        var runtime: MountedRuntime!
+        let host = try LynxMountedHost(owner: owner, onError: { XCTFail("\($0)") }) { controller, context, page in
+            runtime = MountedRuntime(controller, context, page); runtime.detachOnRetire = true; return runtime
+        }
+        try host.mountPrimary(id: "primary", parameters: [])
+        let entered = expectation(description: "background native delivery started")
+        let completed = expectation(description: "background native delivery drained")
+        let release = DispatchSemaphore(value: 0)
+        let callbacks = runtime.callbacks!
+        DispatchQueue.global().async {
+            defer { completed.fulfill() }
+            do {
+                _ = try callbacks.readResource("hot-updater:///main.lynx.bundle") { _ in
+                    entered.fulfill()
+                    XCTAssertEqual(release.wait(timeout: .now() + 2), .success)
+                }
+            } catch { XCTFail("\(error)") }
+        }
+        wait(for: [entered], timeout: 2)
+        host.close()
+        XCTAssertFalse(runtime.retired)
+        XCTAssertNotNil(owner.foreground)
+        XCTAssertThrowsError(try runtime.controller.getState(runtime.context))
+        XCTAssertThrowsError(try runtime.controller.setCohort("2", context: runtime.context))
+        release.signal()
+        wait(for: [completed], timeout: 2); flushMountedCallbacks()
+        XCTAssertTrue(runtime.retired)
+        XCTAssertNil(owner.foreground)
+    }
+
+    func testMountedHostEarlyLoadFailureWaitsForDetachAndDoesNotLoopTheFailedBuiltin() throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let owner = try LynxRuntimeHost.get(configuration: mountedConfiguration(root))
+        var runtimes: [MountedRuntime] = []
+        var errors: [Error] = []
+        let host = try LynxMountedHost(owner: owner, onError: { errors.append($0) }) { controller, context, page in
+            let runtime = MountedRuntime(controller, context, page)
+            runtime.failLoad = true; runtimes.append(runtime); return runtime
+        }
+        try host.mountPrimary(id: "primary", parameters: [])
+        flushMountedCallbacks()
+        XCTAssertTrue(runtimes[0].retired)
+        XCTAssertNotNil(owner.foreground)
+        XCTAssertTrue(errors.isEmpty)
+        runtimes[0].callbacks.detached(); flushMountedCallbacks()
+        XCTAssertNil(owner.foreground)
+        XCTAssertEqual(runtimes.count, 1)
+        XCTAssertEqual(errors.count, 1)
+        XCTAssertThrowsError(try host.mountPrimary(id: "again", parameters: []))
+    }
+}
