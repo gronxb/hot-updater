@@ -12,7 +12,10 @@ covers the same migration as a step-by-step procedure.
 ## Before you start
 
 v1 is a new infrastructure generation. A v0 app cannot update from a v1 server,
-and a v1 app cannot update from a v0 server. Migrate in parallel:
+and a v1 app cannot update from a v0 server. **Prepare a new v1 endpoint;
+keep the existing v0 URL serving the v0 backend.** Do not replace the server
+behind that URL or redirect it to v1: installed v0 apps would lose OTA access.
+Migrate in parallel:
 
 - Keep the v0 endpoint, resources, database and credentials running until the
   installed v0 apps no longer need updates.
@@ -70,7 +73,9 @@ export default defineConfig({
 ```
 
 Neither option exists in v1, so TypeScript reports both; there is no
-replacement. Updates always use per-file Brotli compression. `releaseChannel`
+replacement. The updater automatically chooses individual Brotli-compressed
+files or a `tar.br` bulk download based on local reuse. ZIP and gzip OTA archives
+are not supported. `releaseChannel`
 had no effect in v0; set the native default channel with
 `npx hot-updater channel set <channel>`, or with the `channel` option of the
 Expo config plugin.
