@@ -110,7 +110,7 @@ protocol v1 artifact lazily when needed.
 | --- | --- | --- |
 | `id` | `string` | Selected update ID shown in the Console. |
 | `status` | `"UPDATE" \| "ROLLBACK"` | Selected transition direction. |
-| `shouldForceUpdate` | `boolean` | Whether the caller should apply the transition immediately; the helper does not reload. |
+| `shouldForceUpdate` | `boolean` | Whether the caller should apply the transition immediately, including an update that skips a forced bundle; the helper does not reload. |
 | `message` | `string \| null` | Release message. |
 | `rolloutCohortCount` | `number` | Numeric cohort count selected by the Release policy. |
 | `targetCohorts` | `string[]` | Explicit cohort targets in that policy. |

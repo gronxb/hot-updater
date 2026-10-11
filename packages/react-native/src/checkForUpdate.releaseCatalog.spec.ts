@@ -351,6 +351,44 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
   });
 
+  it("forces an update that carries the device past a skipped forced Release", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const events = await recordPluginEvents();
+    const forcedRelease = {
+      ...createCatalog().releases[0]!,
+      shouldForceUpdate: true,
+    };
+    const latestRelease = {
+      ...forcedRelease,
+      bundleId: "00000000-0000-7001-8000-000000000003",
+      message: "Release three",
+      releaseId: ACTIVE_RELEASE_ID,
+      shouldForceUpdate: false,
+    };
+    const { client } = createClient(
+      createCatalog({ releases: [latestRelease, forcedRelease] }),
+    );
+
+    const result = await checkForUpdate({
+      emit,
+      client,
+      updateStrategy: "appVersion",
+    });
+
+    expect(result).toMatchObject({
+      id: ACTIVE_RELEASE_ID,
+      shouldForceUpdate: true,
+      transitionKind: "INSTALL",
+    });
+    expect(events[0]).toEqual([
+      "onUpdateCheck",
+      expect.objectContaining({
+        shouldForceUpdate: true,
+        toReleaseId: ACTIVE_RELEASE_ID,
+      }),
+    ]);
+  });
+
   it("reports a same-file adoption as UNCHANGED with the adopted Release", async () => {
     const active: PersistedSelectionReceipt = {
       catalogId: CATALOG_ID,

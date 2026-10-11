@@ -142,6 +142,13 @@ export type DesiredRelease = {
   readonly bundleId: string;
   readonly release: ReleaseCatalogDescriptor | null;
   readonly status: "UPDATE" | "ROLLBACK";
+  /**
+   * Whether the device must apply this transition immediately: every rollback,
+   * and an update when a forced Release the device's cohort was eligible for
+   * lies after the running bundle, up to and including the selected Release.
+   * Skipping past a forced Release does not drop its requirement.
+   */
+  readonly shouldForceUpdate: boolean;
 };
 
 export function isReleaseEligibleForCohort(
@@ -189,15 +196,23 @@ export function selectDesiredRelease(
   const desiredBundle = (
     release: ReleaseCatalogDescriptor & { readonly bundleId: string },
     status: "UPDATE" | "ROLLBACK",
+    shouldForceUpdate = status === "ROLLBACK",
   ): DesiredRelease => ({
     bundleId: release.bundleId,
     kind: "BUNDLE",
     release,
     releaseId: release.releaseId,
+    shouldForceUpdate,
     status,
   });
 
-  for (const release of catalog.releases) {
+  const isNewerThanRunning = (release: ReleaseCatalogDescriptor): boolean =>
+    activeReleaseId !== null
+      ? release.releaseId > activeReleaseId
+      : release.bundleId !== null && release.bundleId > input.currentBundleId;
+
+  for (let index = 0; index < catalog.releases.length; index += 1) {
+    const release = catalog.releases[index]!;
     if (!isReleaseEligibleForCohort(release, input.cohort)) {
       continue;
     }
@@ -213,7 +228,18 @@ export function selectDesiredRelease(
     }
 
     if (isSafeBundleRelease(release)) {
-      return desiredBundle(release, "UPDATE");
+      // Releases are newest first, so the selected one and everything after
+      // it that is still newer than the running bundle are what this update
+      // carries the device past.
+      const passesForcedRelease = catalog.releases
+        .slice(index)
+        .some(
+          (passed) =>
+            passed.shouldForceUpdate &&
+            isNewerThanRunning(passed) &&
+            isReleaseEligibleForCohort(passed, input.cohort),
+        );
+      return desiredBundle(release, "UPDATE", passesForcedRelease);
     }
   }
 
@@ -258,6 +284,7 @@ export function selectDesiredRelease(
     kind: "BUILTIN",
     release: null,
     releaseId: null,
+    shouldForceUpdate: true,
     status: "ROLLBACK",
   };
 }

@@ -491,19 +491,25 @@ export function ReleaseEditorSheet({
                         none remains.
                       </FieldDescription>
                     </Field>
-                    <Field orientation="horizontal">
-                      <FieldLabel htmlFor="release-force-update">
-                        Force update
-                      </FieldLabel>
-                      <Switch
-                        aria-label="Force update"
-                        checked={draft.shouldForceUpdate}
-                        id="release-force-update"
-                        name="shouldForceUpdate"
-                        onCheckedChange={(shouldForceUpdate) =>
-                          setDraft({ ...draft, shouldForceUpdate })
-                        }
-                      />
+                    <Field>
+                      <div className="flex items-center justify-between gap-4">
+                        <FieldLabel htmlFor="release-force-update">
+                          Force update
+                        </FieldLabel>
+                        <Switch
+                          aria-label="Force update"
+                          checked={draft.shouldForceUpdate}
+                          id="release-force-update"
+                          name="shouldForceUpdate"
+                          onCheckedChange={(shouldForceUpdate) =>
+                            setDraft({ ...draft, shouldForceUpdate })
+                          }
+                        />
+                      </div>
+                      <FieldDescription>
+                        Devices apply this bundle right away, and so do devices
+                        that skip it to update straight to a newer bundle.
+                      </FieldDescription>
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="release-rollout-percentage">

@@ -414,11 +414,7 @@ async function checkForReleaseCatalogUpdate(input: {
   };
 
   const shouldForceUpdate =
-    transitionKind === "ADOPT_RELEASE"
-      ? false
-      : desired.status === "ROLLBACK"
-        ? true
-        : (release?.shouldForceUpdate ?? false);
+    transitionKind === "ADOPT_RELEASE" ? false : desired.shouldForceUpdate;
   options.emit("onUpdateCheck", () => ({
     status: "UPDATE_AVAILABLE",
     channel: input.targetChannel,
