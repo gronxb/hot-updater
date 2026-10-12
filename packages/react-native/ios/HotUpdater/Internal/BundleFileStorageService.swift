@@ -746,7 +746,7 @@ class BundleFileStorageService: BundleStorageService {
                 builtInAssetResolver: BuiltInAssetResolver? = nil,
                 updateStrategyProvider: @escaping () -> UpdateStrategy = {
                     let fingerprintHash = HotUpdaterConfig.shared.fingerprintHash
-                        ?? Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
+                        ?? HotUpdaterConfig.shared.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
                     return (fingerprintHash?.isEmpty == false) ? .fingerprint : .appVersion
                 },
                 downloadRetryDelay: TimeInterval = 1) {

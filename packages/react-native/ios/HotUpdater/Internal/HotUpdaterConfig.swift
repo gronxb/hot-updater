@@ -16,6 +16,28 @@ public class HotUpdaterConfig: NSObject {
     private var _publicKey: String?
     private var _channel: String?
     private var _isolationKey: String?
+    private var _bundle: Bundle = .main
+
+    /// The bundle that holds the embedded `main.jsbundle`, which
+    /// `HotUpdater.bundleURL(bundle:)` records. A brownfield XCFramework passes
+    /// its own bundle, so reloads find its embedded bundle and assets, and the
+    /// `HOT_UPDATER_*` keys the CLI writes into its Info.plist apply.
+    public var bundle: Bundle {
+        get { lock.lock(); defer { lock.unlock() }; return _bundle }
+        set { lock.lock(); defer { lock.unlock() }; _bundle = newValue }
+    }
+
+    /// Reads a `HOT_UPDATER_*` Info.plist value from `bundle`, then from the
+    /// host app's main bundle.
+    @objc(infoValueForKey:)
+    public func infoValue(forKey key: String) -> String? {
+        for source in [bundle, Bundle.main] {
+            if let value = source.object(forInfoDictionaryKey: key) as? String, !value.isEmpty {
+                return value
+            }
+        }
+        return nil
+    }
 
     public var fingerprintHash: String? {
         get { lock.lock(); defer { lock.unlock() }; return _fingerprintHash }
