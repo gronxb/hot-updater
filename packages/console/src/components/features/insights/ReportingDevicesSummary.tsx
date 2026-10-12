@@ -1,8 +1,8 @@
+import { InfoTooltip } from "@/components/InfoTooltip";
 import { Skeleton } from "@/components/ui/skeleton";
 import { usageMetrics, type UsageWindow } from "@/lib/insights-usage";
 
 import { EstimatedCount } from "./EstimatedCount";
-import { InsightsInfo } from "./InsightsInfo";
 
 export function ReportingDevicesSummary({
   window,
@@ -37,11 +37,11 @@ export function ReportingDevicesSummary({
       )}
       <div className="flex items-center gap-1 text-sm text-muted-foreground">
         <span>{metric.label}</span>
-        <InsightsInfo label={`How ${metric.label} is counted`}>
+        <InfoTooltip label={`How ${metric.label} is counted`}>
           Installations that reported in the last {metric.period}, estimated
           within about 3%. The chart shows them per {metric.interval}.
           {partial ? " Some history is missing, so this is a minimum." : ""}
-        </InsightsInfo>
+        </InfoTooltip>
       </div>
     </div>
   );

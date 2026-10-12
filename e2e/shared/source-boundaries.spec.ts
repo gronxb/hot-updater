@@ -52,6 +52,7 @@ const expectedScenarioModuleFiles = [
   "runtime-channel-switch-reset.ts",
   "same-bundle-release-adoption.ts",
   "size-aware-artifact-selection.ts",
+  "skipped-force-update-propagates.ts",
   "slow-old-artifact-after-newer-install.ts",
   "stale-catalog-after-newer-generation.ts",
   "startup-hang-recovery.ts",

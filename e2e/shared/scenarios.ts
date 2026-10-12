@@ -24,6 +24,7 @@ import { runtimeChannelCrashRestoreScenario } from "./scenarios/runtime-channel-
 import { runtimeChannelSwitchResetScenario } from "./scenarios/runtime-channel-switch-reset.ts";
 import { sameBundleReleaseAdoptionScenario } from "./scenarios/same-bundle-release-adoption.ts";
 import { sizeAwareArtifactSelectionScenario } from "./scenarios/size-aware-artifact-selection.ts";
+import { skippedForceUpdatePropagatesScenario } from "./scenarios/skipped-force-update-propagates.ts";
 import { slowOldArtifactAfterNewerInstallScenario } from "./scenarios/slow-old-artifact-after-newer-install.ts";
 import { staleCatalogAfterNewerGenerationScenario } from "./scenarios/stale-catalog-after-newer-generation.ts";
 import { startupHangRecoveryScenario } from "./scenarios/startup-hang-recovery.ts";
@@ -55,6 +56,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   targetCohortsRolloutInteractionScenario,
   targetedCohortSwitchbackScenario,
   forceUpdateAutoReloadScenario,
+  skippedForceUpdatePropagatesScenario,
   disabledBundleRollbackToBuiltinScenario,
   disabledBundleRollbackToPreviousOtaScenario,
   fingerprintInitialInstallScenario,

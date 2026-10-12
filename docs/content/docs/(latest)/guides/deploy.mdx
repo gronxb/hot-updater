@@ -160,6 +160,11 @@ npx hot-updater deploy -p <"ios" | "android"> -f
 The `-f` (or `--force-update`) flag sets delivery behavior on the new Bundle. It
 does not rewrite the uploaded artifact.
 
+A forced Bundle stays required for devices that skip it. A device running an
+older bundle that updates straight to a newer, non-forced Bundle still receives
+`shouldForceUpdate: true`, as long as its cohort was eligible for the forced
+one. Devices that already run the forced Bundle get later updates as deployed.
+
 ### Channel
 
 The `-c` (or `--channel`) flag specifies the release channel.

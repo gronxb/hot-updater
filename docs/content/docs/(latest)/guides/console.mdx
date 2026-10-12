@@ -187,6 +187,10 @@ application when selected. In the [custom update flow](/docs/guides/custom-updat
 check `shouldForceUpdate` and call `hotUpdater.reload()` after a successful
 download.
 
+The requirement also covers devices that skip the forced bundle: a device on an
+older bundle that updates straight to a newer one is forced too. See
+[Force Update](/docs/guides/deploy#force-update).
+
 <img src={"/docs/console/force_update.png"} />
 
 ## Promote

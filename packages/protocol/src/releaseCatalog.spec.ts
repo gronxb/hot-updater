@@ -75,6 +75,7 @@ describe("selectDesiredRelease", () => {
       kind: "BUNDLE",
       release: expect.objectContaining({ releaseId: newestReleaseId }),
       releaseId: newestReleaseId,
+      shouldForceUpdate: false,
       status: "UPDATE",
     });
   });
@@ -140,6 +141,7 @@ describe("selectDesiredRelease", () => {
       kind: "BUILTIN",
       release: null,
       releaseId: null,
+      shouldForceUpdate: true,
       status: "ROLLBACK",
     });
   });
@@ -165,6 +167,7 @@ describe("selectDesiredRelease", () => {
     expect(desired).toMatchObject({
       bundleId: bundleId(3),
       releaseId: releaseId(3),
+      shouldForceUpdate: true,
       status: "ROLLBACK",
     });
   });
@@ -222,6 +225,250 @@ describe("selectDesiredRelease", () => {
     );
 
     expect(desired).toMatchObject({ kind: "BUILTIN", status: "ROLLBACK" });
+  });
+});
+
+describe("selectDesiredRelease force update", () => {
+  const fromRelease = (sequence: number) => ({
+    activeReleaseId: releaseId(sequence),
+    builtInBundleId: bundleId(0),
+    cohort: "1",
+    crashedBundleIds: [] as string[],
+    currentBundleId: bundleId(sequence),
+    minimumReleaseId: bundleId(0),
+  });
+
+  it("keeps a skipped forced Release's requirement on the newer selected Release", () => {
+    const desired = selectDesiredRelease(
+      catalog([
+        descriptor(3),
+        descriptor(2, { shouldForceUpdate: true }),
+        descriptor(1),
+      ]),
+      fromRelease(1),
+    );
+
+    expect(desired).toMatchObject({
+      releaseId: releaseId(3),
+      shouldForceUpdate: true,
+      status: "UPDATE",
+    });
+  });
+
+  it("uses the selected Release's own flag when nothing forced was skipped", () => {
+    expect(
+      selectDesiredRelease(
+        catalog([descriptor(3, { shouldForceUpdate: true }), descriptor(2)]),
+        fromRelease(1),
+      )?.shouldForceUpdate,
+    ).toBe(true);
+    expect(
+      selectDesiredRelease(
+        catalog([descriptor(3), descriptor(2)]),
+        fromRelease(1),
+      )?.shouldForceUpdate,
+    ).toBe(false);
+  });
+
+  it("does not force a device that already runs the forced Release", () => {
+    const desired = selectDesiredRelease(
+      catalog([descriptor(3), descriptor(2, { shouldForceUpdate: true })]),
+      fromRelease(2),
+    );
+
+    expect(desired).toMatchObject({
+      releaseId: releaseId(3),
+      shouldForceUpdate: false,
+    });
+  });
+
+  it("forces a built-in device past a forced Release published after its binary", () => {
+    const desired = selectDesiredRelease(
+      catalog([descriptor(3), descriptor(2, { shouldForceUpdate: true })]),
+      {
+        builtInBundleId: bundleId(1),
+        cohort: "1",
+        crashedBundleIds: [],
+        currentBundleId: bundleId(1),
+        minimumReleaseId: bundleId(1),
+      },
+    );
+
+    expect(desired).toMatchObject({
+      releaseId: releaseId(3),
+      shouldForceUpdate: true,
+    });
+  });
+
+  it("measures an explicit channel switch from the built-in bundle", () => {
+    // checkForUpdate selects for a switched channel from the native minimum,
+    // so the target channel's forced Releases after the binary still count.
+    const desired = selectDesiredRelease(
+      catalog([descriptor(4), descriptor(3, { shouldForceUpdate: true })]),
+      {
+        builtInBundleId: bundleId(1),
+        cohort: "1",
+        crashedBundleIds: [],
+        currentBundleId: bundleId(1),
+        minimumReleaseId: bundleId(1),
+      },
+    );
+
+    expect(desired).toMatchObject({
+      releaseId: releaseId(4),
+      shouldForceUpdate: true,
+    });
+  });
+
+  it("ignores a forced Release older than the built-in bundle", () => {
+    const desired = selectDesiredRelease(
+      catalog([descriptor(3), descriptor(1, { shouldForceUpdate: true })]),
+      {
+        builtInBundleId: bundleId(2),
+        cohort: "1",
+        crashedBundleIds: [],
+        currentBundleId: bundleId(2),
+        minimumReleaseId: bundleId(2),
+      },
+    );
+
+    expect(desired).toMatchObject({
+      releaseId: releaseId(3),
+      shouldForceUpdate: false,
+    });
+  });
+
+  it("ignores a skipped forced Release the device's cohort was not eligible for", () => {
+    const desired = selectDesiredRelease(
+      catalog([
+        descriptor(3),
+        descriptor(2, {
+          rolloutCohortCount: 0,
+          shouldForceUpdate: true,
+          targetCohorts: ["qa"],
+        }),
+      ]),
+      fromRelease(1),
+    );
+
+    expect(desired).toMatchObject({
+      releaseId: releaseId(3),
+      shouldForceUpdate: false,
+    });
+  });
+
+  it("ignores a forced Release newer than the selected one", () => {
+    const crashedBundleId = bundleId(9);
+    const desired = selectDesiredRelease(
+      catalog([
+        descriptor(3, { bundleId: crashedBundleId, shouldForceUpdate: true }),
+        descriptor(2),
+      ]),
+      { ...fromRelease(1), crashedBundleIds: [crashedBundleId] },
+    );
+
+    expect(desired).toMatchObject({
+      releaseId: releaseId(2),
+      shouldForceUpdate: false,
+    });
+  });
+
+  it("finds a forced Release the forward frontier dropped", () => {
+    // The compiler keeps only the newest Bundles in `releases`; the complete
+    // history stays in `rollbackReleases`.
+    const history = Array.from({ length: 14 }, (_, offset) =>
+      descriptor(15 - offset, { shouldForceUpdate: 15 - offset === 3 }),
+    );
+    const desired = selectDesiredRelease(
+      catalog(history.slice(0, 11), { rollbackReleases: history }),
+      fromRelease(2),
+    );
+
+    expect(desired).toMatchObject({
+      releaseId: releaseId(15),
+      shouldForceUpdate: true,
+    });
+  });
+
+  it("counts from the running Release while a newer one is staged", () => {
+    const releases = [
+      descriptor(3),
+      descriptor(2, { shouldForceUpdate: true }),
+      descriptor(1),
+    ];
+
+    expect(
+      selectDesiredRelease(catalog(releases), {
+        ...fromRelease(3),
+        currentBundleId: bundleId(1),
+        runningReleaseId: releaseId(1),
+      }),
+    ).toMatchObject({
+      releaseId: releaseId(3),
+      shouldForceUpdate: true,
+      status: "UPDATE",
+    });
+    expect(
+      selectDesiredRelease(catalog(releases), {
+        ...fromRelease(3),
+        runningReleaseId: releaseId(3),
+      })?.shouldForceUpdate,
+    ).toBe(false);
+  });
+
+  it("treats a forced Release of the running bundle as satisfied", () => {
+    // Release 2 re-releases the running bundle 1 as forced; whether the device
+    // adopted it before Release 3 arrived must not change the outcome.
+    const releases = [
+      descriptor(3),
+      descriptor(2, { bundleId: bundleId(1), shouldForceUpdate: true }),
+      descriptor(1),
+    ];
+
+    expect(
+      selectDesiredRelease(catalog(releases), fromRelease(1)),
+    ).toMatchObject({ releaseId: releaseId(3), shouldForceUpdate: false });
+    expect(
+      selectDesiredRelease(catalog(releases), {
+        ...fromRelease(2),
+        currentBundleId: bundleId(1),
+      }),
+    ).toMatchObject({ releaseId: releaseId(3), shouldForceUpdate: false });
+  });
+
+  it("ignores a newer forced Release whose bundle is below the native floor", () => {
+    // Release 2 promotes bundle 1, which the binary's floor (bundle 2)
+    // already supersedes, so the device could never select it.
+    const desired = selectDesiredRelease(
+      catalog([
+        descriptor(3),
+        descriptor(2, { bundleId: bundleId(1), shouldForceUpdate: true }),
+      ]),
+      {
+        ...fromRelease(1),
+        builtInBundleId: bundleId(2),
+        currentBundleId: bundleId(2),
+        minimumReleaseId: bundleId(2),
+      },
+    );
+
+    expect(desired).toMatchObject({
+      releaseId: releaseId(3),
+      shouldForceUpdate: false,
+    });
+  });
+
+  it("does not force re-adopting the running bundle", () => {
+    const desired = selectDesiredRelease(
+      catalog([descriptor(2, { shouldForceUpdate: true })]),
+      { ...fromRelease(2), activeReleaseId: null },
+    );
+
+    expect(desired).toMatchObject({
+      releaseId: releaseId(2),
+      shouldForceUpdate: false,
+      status: "UPDATE",
+    });
   });
 });
 
