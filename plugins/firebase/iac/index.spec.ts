@@ -373,7 +373,7 @@ describe("Firebase project creation", () => {
     );
 
     // When
-    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+    await runInit({ build: bareBuild, envFile: ".env.hotupdater" });
 
     // Then
     // The saved database is the one project selection looks for.

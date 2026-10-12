@@ -202,10 +202,9 @@ const getIOSVersionFromXcodeProject = async (
  * so it is the more correct source (#84). It is also far cheaper: reading
  * Info.plist is a small file read, whereas the pbxproj parser is synchronous
  * and blocks the event loop for the length of the parse. On a large
- * project.pbxproj that can take minutes. The React Native template ships
- * Info.plist with CFBundleShortVersionString set to "$(MARKETING_VERSION)",
- * which the plist parser cannot resolve, so the real version only lives in
- * project.pbxproj for most projects.
+ * project.pbxproj that can take minutes. When Info.plist declares
+ * CFBundleShortVersionString as "$(MARKETING_VERSION)", the plist parser
+ * cannot resolve it, so the version must come from project.pbxproj.
  */
 export const resolveIOSAppVersion = async (
   scope?: IOSAppVersionScope,
