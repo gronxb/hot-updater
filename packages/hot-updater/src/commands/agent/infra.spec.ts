@@ -9,6 +9,7 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { isBuiltin } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -22,7 +23,16 @@ const templatesRoot = path.resolve(
   import.meta.dirname,
   "../../../dist/infra-templates",
 );
-const providers = ["cloudflare", "supabase", "aws", "firebase"] as const;
+const providers = [
+  "cloudflare",
+  "supabase",
+  "aws",
+  "firebase",
+  "azure",
+] as const;
+/** Providers whose credential script runs app/migrate.ts first. */
+const migrates = (provider: string) =>
+  provider === "firebase" || provider === "azure";
 const builds = ["bare", "rock", "expo"] as const;
 let cwd: string;
 
@@ -95,7 +105,8 @@ describe("published agent infrastructure commands", () => {
           expect(createHash("sha256").update(content).digest("hex")).toBe(hash);
         }
         // The config the app merges, the credential script with the server
-        // definition it provisions over, and Firestore's migration.
+        // definition it provisions over, and Firestore's or Cosmos DB's
+        // migration.
         expect(
           Object.keys(manifest.files)
             .filter((file) => file.startsWith("app/"))
@@ -103,7 +114,7 @@ describe("published agent infrastructure commands", () => {
         ).toEqual([
           "app/hot-updater.config.ts",
           "app/hotUpdater.ts",
-          ...(provider === "firebase" ? ["app/migrate.ts"] : []),
+          ...(migrates(provider) ? ["app/migrate.ts"] : []),
           "app/provision-client-credential.mjs",
           "app/verify-server.mjs",
         ]);
@@ -165,7 +176,7 @@ describe("published agent infrastructure commands", () => {
         const sources = [
           config,
           definition,
-          ...(provider === "firebase" ? [await appFile("migrate.ts")] : []),
+          ...(migrates(provider) ? [await appFile("migrate.ts")] : []),
         ];
         const environment = await readFile(result.data.environment, "utf8");
         const example = await readFile(
@@ -391,9 +402,8 @@ describe("deployment artifacts", () => {
         `@hot-updater/${provider}`,
         "@hot-updater/server",
         ...(provider === "aws" ? ["@aws-sdk/credential-providers"] : []),
-        ...(provider === "firebase"
-          ? ["firebase-admin", "@hot-updater/plugin-core"]
-          : []),
+        ...(provider === "firebase" ? ["firebase-admin"] : []),
+        ...(migrates(provider) ? ["@hot-updater/plugin-core"] : []),
       ]) {
         const target = path.join(cwd, "node_modules", name);
         await mkdir(path.dirname(target), { recursive: true });
@@ -416,7 +426,7 @@ describe("deployment artifacts", () => {
           "--input-type=module",
           "--eval",
           // provision-client-credential.mjs's path: the clientAuth plugin's API on the definition's database, and Firestore's migration.
-          `const { hotUpdater } = await import(${JSON.stringify(definitionUrl.href)}); const { plugin } = hotUpdater.clientAuth; console.log(plugin, typeof hotUpdater.api[plugin]); ${provider === "firebase" ? `const { migrate } = await import(${JSON.stringify(migrationUrl.href)}); console.log(typeof migrate, typeof hotUpdater.database.createMigrator);` : ""} await hotUpdater.database.dispose?.();`,
+          `const { hotUpdater } = await import(${JSON.stringify(definitionUrl.href)}); const { plugin } = hotUpdater.clientAuth; console.log(plugin, typeof hotUpdater.api[plugin]); ${migrates(provider) ? `const { migrate } = await import(${JSON.stringify(migrationUrl.href)}); console.log(typeof migrate, typeof hotUpdater.database.createMigrator);` : ""} await hotUpdater.database.dispose?.();`,
         ],
         {
           cwd,
@@ -435,25 +445,32 @@ describe("deployment artifacts", () => {
             HOT_UPDATER_FIREBASE_PROJECT_ID: "test-project",
             // Firebase storage resolves its bucket when the definition loads.
             HOT_UPDATER_FIREBASE_STORAGE_BUCKET: "test-bucket",
+            // Azure's clients parse their connection strings when it loads.
+            HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING:
+              "DefaultEndpointsProtocol=https;AccountName=test;AccountKey=dGVzdA==;EndpointSuffix=core.windows.net",
+            HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING:
+              "AccountEndpoint=https://test.documents.azure.com:443/;AccountKey=dGVzdA==;",
           },
         },
       );
       expect(result.error).toBeUndefined();
       expect(result.status, result.stderr).toBe(0);
       expect(result.stdout.trim()).toBe(
-        provider === "firebase"
+        migrates(provider)
           ? "apiKeys object\nfunction function"
           : "apiKeys object",
       );
-      if (provider === "firebase") {
-        // Firestore has no migration tooling: the credential script passes
-        // the server definition to migrate.ts, which runs its migrator and
-        // restates none of its database settings.
+      if (migrates(provider)) {
+        // Firestore and Cosmos DB have no migration tooling: the credential
+        // script passes the server definition to migrate.ts, which runs its
+        // migrator and restates none of its database settings.
         const migration = await readFile(migrationUrl, "utf8");
         expect(migration).toContain(
           ".createMigrator(toolingTargetOf(plugins))",
         );
-        expect(migration).not.toMatch(/firebaseDatabase|HOT_UPDATER_|env/u);
+        expect(migration).not.toMatch(
+          /firebaseDatabase|cosmosDatabase|HOT_UPDATER_|env/u,
+        );
       }
     },
   );
@@ -563,6 +580,29 @@ describe("deployment artifacts", () => {
       "utf8",
     );
     expect(source).toContain("__HOT_UPDATER_FIRESTORE_DATABASE_ID__");
+  });
+
+  it("ships the Azure Function as one bundle the Functions host loads", async () => {
+    const root = path.join(templatesRoot, "azure/azure/function");
+    const pkg = await json(path.join(root, "package.json"));
+    expect(pkg).toMatchObject({ type: "module", main: "index.mjs" });
+    expect(pkg.dependencies).toBeUndefined();
+    expect(
+      (await json(path.join(root, "host.json"))).extensions.http.routePrefix,
+    ).toBe("");
+    const source = await readFile(path.join(root, pkg.main), "utf8");
+    // Only Node built-ins and the module the Functions host supplies.
+    for (const [, from, dynamic] of source.matchAll(
+      /^(?:import|export)\b[^\n]*?\bfrom ["']([^"']+)["']|\bimport\(["']([^"']+)["']\)/gm,
+    )) {
+      const specifier = (from ?? dynamic)!;
+      expect(
+        specifier.startsWith("node:") ||
+          isBuiltin(specifier) ||
+          specifier === "@azure/functions-core",
+        specifier,
+      ).toBe(true);
+    }
   });
 
   it.each(["aws", "firebase"])(

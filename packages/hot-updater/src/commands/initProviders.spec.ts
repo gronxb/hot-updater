@@ -1,4 +1,5 @@
 import * as awsInit from "@hot-updater/aws/init";
+import * as azureInit from "@hot-updater/azure/init";
 import * as cloudflareInit from "@hot-updater/cloudflare/init";
 import * as firebaseInit from "@hot-updater/firebase/init";
 import * as supabaseInit from "@hot-updater/supabase/init";
@@ -12,6 +13,7 @@ import {
 
 const providerInits = {
   aws: awsInit,
+  azure: azureInit,
   cloudflare: cloudflareInit,
   firebase: firebaseInit,
   supabase: supabaseInit,
@@ -20,14 +22,20 @@ const providerInits = {
 describe("init provider packages", () => {
   it("derives provider guards from the package registry", () => {
     // Given
-    const declaredProviders = ["cloudflare", "aws", "supabase", "firebase"];
+    const declaredProviders = [
+      "cloudflare",
+      "aws",
+      "supabase",
+      "firebase",
+      "azure",
+    ];
 
     // When
     const results = declaredProviders.map(isInitProvider);
 
     // Then
     expect(INIT_PROVIDER_NAMES).toEqual(declaredProviders);
-    expect(results).toEqual([true, true, true, true]);
+    expect(results).toEqual([true, true, true, true, true]);
     expect(isInitProvider("unknown")).toBe(false);
     expect(isInitProvider(undefined)).toBe(false);
   });

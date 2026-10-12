@@ -54,6 +54,12 @@ export const INIT_PROVIDER_PACKAGES = {
       import("@hot-updater/firebase/init"),
     packageName: "@hot-updater/firebase",
   },
+  azure: {
+    devDependencies: [],
+    label: "Azure Blob Storage + Functions + Cosmos DB",
+    load: (): Promise<InitProviderModule> => import("@hot-updater/azure/init"),
+    packageName: "@hot-updater/azure",
+  },
 } as const satisfies Record<string, InitProviderPackage>;
 
 export type InitProvider = keyof typeof INIT_PROVIDER_PACKAGES;

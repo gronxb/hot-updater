@@ -234,6 +234,34 @@ export default defineConfig({
 });
 ```
 
+* [Azure](https://hot-updater.dev/docs/managed/azure)
+```tsx
+import { existsSync } from "node:fs";
+import { azureBlobStorage, cosmosDatabase } from '@hot-updater/azure';
+import { bare } from '@hot-updater/bare';
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
+import { defineConfig } from "hot-updater";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
+export default defineConfig({
+  build: bare({
+    enableHermes: true,
+  }),
+  updateStrategy: "appVersion",
+  storage: azureBlobStorage({
+    connectionString: process.env.HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING!,
+    containerName: "hot-updater",
+  }),
+  database: cosmosDatabase({
+    connectionString: process.env.HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING!,
+  }),
+  plugins: [apiKeys(), insights(), remoteConfig()],
+});
+```
+
 ## End-to-end tests
 
 Contributors can run `pnpm -w e2e -- --platform ios` or the Android equivalent

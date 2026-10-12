@@ -75,14 +75,15 @@ npx hot-updater agent infra setup --provider cloudflare --build expo
 npx hot-updater agent infra setup --provider supabase --build bare
 npx hot-updater agent infra setup --provider aws --build rock
 npx hot-updater agent infra setup --provider firebase --build bare
+npx hot-updater agent infra setup --provider azure --build bare
 ```
 
-All four providers support `bare`, `rock`, and `expo`. The output prints absolute
+All five providers support `bare`, `rock`, and `expo`. The output prints absolute
 paths to the templates, instructions, manifest, and deployment record.
 
 | Option | Purpose |
 | --- | --- |
-| `--provider <provider>` | `cloudflare`, `supabase`, `aws`, or `firebase` |
+| `--provider <provider>` | `cloudflare`, `supabase`, `aws`, `firebase`, or `azure` |
 | `--build <plugin>` | `bare`, `rock`, or `expo` |
 | `--output <directory>` | Choose an unused scaffold destination |
 | `--json` | Return bootstrap instructions or scaffold paths as JSON |
@@ -99,7 +100,7 @@ directory. Missing files in an existing scaffold are reported for repair.
 the action and working directory, what to verify, and how to retry. The agent
 verifies a prerequisite before starting its dependent step. Database preparation
 and client-key registration follow the provider's `init` sequence, including
-Firebase's adapter initialization before Function deployment. A checked box alone
+Firebase's and Azure's adapter initialization before Function deployment. A checked box alone
 is not evidence of a successful deployment.
 
 Each scaffold includes `COMMON.md`, provider-specific `SETUP.md`, and an
@@ -114,6 +115,7 @@ the complete upgrade path.
 | Supabase | Prepared Edge Function, Deno imports and vendored files, SQL migrations |
 | AWS | Lambda bundle and dependencies, CloudFront specifications, DynamoDB/IAM JSON inputs and SSM references |
 | Firebase | Built Functions project, dependencies, Firebase config, Firestore indexes |
+| Azure | Bundled Function package: `index.mjs`, `host.json`, and `package.json` |
 
 The `app/` directory contains `hot-updater.config.ts` for the selected
 `--build`, with the provider's storage, database and `plugins`, and a client

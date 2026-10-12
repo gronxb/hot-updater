@@ -1,4 +1,5 @@
 import * as awsInit from "@hot-updater/aws/init";
+import * as azureInit from "@hot-updater/azure/init";
 import type { InitProviderDefinition } from "@hot-updater/cli-tools";
 import * as cloudflareInit from "@hot-updater/cloudflare/init";
 import * as firebaseInit from "@hot-updater/firebase/init";
@@ -12,6 +13,7 @@ const providers: Readonly<Record<string, InitProviderDefinition>> = {
   aws: awsInit.initProvider,
   supabase: supabaseInit.initProvider,
   firebase: firebaseInit.initProvider,
+  azure: azureInit.initProvider,
 };
 
 describe("init --help", () => {

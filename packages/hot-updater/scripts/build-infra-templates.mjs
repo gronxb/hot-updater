@@ -28,7 +28,7 @@ import { INFRASTRUCTURE_UPDATES } from "../src/commands/infrastructureUpdates.ts
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const repoRoot = path.resolve(packageRoot, "../..");
 const outputRoot = path.join(packageRoot, "dist/infra-templates");
-const providers = ["cloudflare", "supabase", "aws", "firebase"];
+const providers = ["cloudflare", "supabase", "aws", "firebase", "azure"];
 const builds = ["bare", "rock", "expo"];
 const upgradeFiles = await readInfrastructureUpgradeFiles(
   path.join(packageRoot, "infrastructure-upgrades"),
@@ -189,18 +189,20 @@ for (const provider of providers) {
     path.join(output, "app/hotUpdater.ts"),
     renderCredentialDefinition(scaffoldOf(builds[0]), builds[0]),
   );
-  if (provider === "firebase") {
-    // Firestore has no migration tooling, so the credential script runs the
-    // migrator of the server definition it loaded: core's settings and those
-    // of the definition's plugins, over the definition's own database.
+  if (provider === "firebase" || provider === "azure") {
+    // Firestore and Cosmos DB have no migration tooling, so the credential
+    // script runs the migrator of the server definition it loaded: Cosmos
+    // DB's container when it is missing, and core's settings and those of the
+    // definition's plugins, over the definition's own database.
     await save(
       path.join(output, "app/migrate.ts"),
       `import { toolingTargetOf } from "@hot-updater/plugin-core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
 
 /**
- * Writes the schema settings of core and the plugins \`hotUpdater\` runs,
- * which its database checks before its first read.
+ * Prepares the database's store where it has one to prepare, and writes the
+ * schema settings of core and the plugins \`hotUpdater\` runs, which its
+ * database checks before its first read.
  */
 export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
   if (database.createMigrator === undefined) {
@@ -420,6 +422,27 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       keyGroupId: null,
       ssmParameterName: null,
     });
+  } else if (provider === "azure") {
+    // The zip package init deploys to the Function App.
+    const functionDir = path.join(output, "azure/function");
+    for (const file of ["index.mjs", "host.json"]) {
+      await save(
+        path.join(functionDir, file),
+        await readFile(path.join(root, "dist/functions", file), "utf8"),
+      );
+    }
+    const { AZURE_FUNCTION_PACKAGE } = await moduleAt(
+      path.join(root, "dist/init/index.mjs"),
+    );
+    await save(path.join(functionDir, "package.json"), AZURE_FUNCTION_PACKAGE);
+    Object.assign(requirements, {
+      subscriptionId: null,
+      resourceGroup: null,
+      location: null,
+      storageAccount: null,
+      cosmosAccount: null,
+      functionApp: null,
+    });
   } else {
     const firebase = path.join(output, "firebase");
     const { prepareFirebaseTemplate } = await moduleAt(
@@ -476,6 +499,12 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       "@aws-sdk/credential-providers",
       { searchFrom: root },
     );
+  if (provider === "azure") {
+    // migrate.ts reads the tables the definition's plugins need.
+    appPackages["@hot-updater/plugin-core"] = (
+      await json(path.join(repoRoot, "plugins/plugin-core/package.json"))
+    ).version;
+  }
   if (provider === "firebase") {
     appPackages["firebase-admin"] = resolvePackageVersion("firebase-admin", {
       searchFrom: root,
