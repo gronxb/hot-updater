@@ -85,7 +85,7 @@ describe("getDefaultTargetAppVersion", () => {
     });
     mockMarketingVersion("2.15.0");
 
-    expect(await getDefaultTargetAppVersion("ios")).toBe("2.15.0");
+    expect((await getDefaultTargetAppVersion("ios")).version).toBe("2.15.0");
     expect(mockXcodeProjectOpen).toHaveBeenCalledWith(xcodeprojPath);
   });
 
@@ -97,7 +97,7 @@ describe("getDefaultTargetAppVersion", () => {
     });
     mockMarketingVersion("2.15");
 
-    expect(await getDefaultTargetAppVersion("ios")).toBe("2.15.x");
+    expect((await getDefaultTargetAppVersion("ios")).version).toBe("2.15.x");
   });
 
   it("prefers Info.plist and never parses project.pbxproj when it resolves", async () => {
@@ -106,7 +106,7 @@ describe("getDefaultTargetAppVersion", () => {
     mockPlistParse.mockReturnValue({ CFBundleShortVersionString: "2.15.0" });
     mockMarketingVersion("1.0.0");
 
-    expect(await getDefaultTargetAppVersion("ios")).toBe("2.15.0");
+    expect((await getDefaultTargetAppVersion("ios")).version).toBe("2.15.0");
     expect(mockXcodeProjectOpen).not.toHaveBeenCalled();
   });
 
@@ -114,6 +114,6 @@ describe("getDefaultTargetAppVersion", () => {
     mockFileExist([]);
     mockGlobbySync.mockReturnValue([]);
 
-    expect(await getDefaultTargetAppVersion("ios")).toBe(null);
+    expect((await getDefaultTargetAppVersion("ios")).version).toBe(null);
   });
 });

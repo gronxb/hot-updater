@@ -54,8 +54,11 @@ Examples:
 - `npx hot-updater deploy -p ios -t "*"` - All versions
 
 Without `-t`, deploy reads the selected platform's version from the native
-project. Every targeted version must be compatible with the update's JavaScript;
-a broad range does not check native compatibility for you.
+project. When the project builds several apps with different versions (Xcode
+app targets, or Android product flavors that set `versionName`), deploy cannot
+tell which one you mean and asks for `-t`; `npx hot-updater app-version` lists
+the versions it found. Every targeted version must be compatible with the
+update's JavaScript; a broad range does not check native compatibility for you.
 
 ## Client Setup
 

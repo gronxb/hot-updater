@@ -24,7 +24,11 @@ import {
   readLocalFingerprint,
 } from "@/utils/fingerprint";
 import { setIosMinBundleIdSlotIntoInfoPlist } from "@/utils/setIosMinBundleIdSlotIntoInfoPlist";
-import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
+import {
+  formatAppVersionCandidates,
+  isAmbiguousAppVersion,
+} from "@/utils/version/appVersionCandidates";
+import { resolveNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 type PreparedNativeBuildConfig = {
   outputPath: string;
@@ -115,14 +119,35 @@ export async function prepareNativeBuild(
     const s = p.spinner();
     s.start(`Get native app version (${platform})`);
 
-    const appVersion = await getNativeAppVersion(platform);
+    const iosScheme = config.nativeBuild.ios[scheme];
+    const androidScheme = config.nativeBuild.android[scheme];
+    // The scheme names the app built, for projects that build several.
+    const resolved = await resolveNativeAppVersion(platform, {
+      ios: iosScheme && {
+        scheme: iosScheme.scheme,
+        bundleIdentifier: iosScheme.bundleIdentifier,
+        configuration: iosScheme.configuration,
+      },
+      android: androidScheme && {
+        variant: androidScheme.variant,
+        applicationId: androidScheme.applicationId ?? androidScheme.packageName,
+        appModuleName: androidScheme.appModuleName,
+      },
+    });
+    const appVersion = resolved.version;
 
     s.stop(`App Version(${platform}): ${appVersion}`);
 
     target.appVersion = appVersion;
 
     if (!target.appVersion) {
-      p.log.error(`Failed to retrieve native app version of ${platform}`);
+      p.log.error(
+        isAmbiguousAppVersion(resolved)
+          ? platform === "ios"
+            ? `nativeBuild.ios.${scheme} (scheme ${iosScheme?.scheme}, bundleIdentifier ${iosScheme?.bundleIdentifier}) does not pick one of the app targets in project.pbxproj, which declare different versions (${formatAppVersionCandidates(resolved.candidates)}). Make its scheme match the name of the app target it builds.`
+            : `nativeBuild.android.${scheme} (variant ${androidScheme?.variant ?? "Release"}) does not pick one of the product flavors that set versionName, which declare different versions (${formatAppVersionCandidates(resolved.candidates)}). Set its variant to the flavor it builds, such as brandARelease.`
+          : `Failed to retrieve native app version of ${platform}`,
+      );
       return null;
     }
   }

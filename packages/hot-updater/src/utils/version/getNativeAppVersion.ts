@@ -1,26 +1,39 @@
 import type { Platform } from "@hot-updater/protocol";
 
-import { getAndroidVersion } from "./getAndroidVersion";
-import { getIOSVersion } from "./getIOSVersion";
+import type { ResolvedAppVersion } from "./appVersionCandidates";
+import {
+  type AndroidAppVersionScope,
+  resolveAndroidAppVersion,
+} from "./getAndroidVersion";
+import { type IOSAppVersionScope, resolveIOSAppVersion } from "./getIOSVersion";
+
+/** The native build scheme to read the version for, per platform. */
+export interface NativeAppVersionScope {
+  ios?: IOSAppVersionScope;
+  android?: AndroidAppVersionScope;
+}
+
+/**
+ * The version the native project builds, with every place it is declared.
+ * A project that builds several apps (Xcode targets, product flavors) with
+ * different versions resolves to null unless `scope` names the one built.
+ */
+export const resolveNativeAppVersion = async (
+  platform: Platform,
+  scope: NativeAppVersionScope = {},
+): Promise<ResolvedAppVersion> => {
+  switch (platform) {
+    case "ios":
+      return resolveIOSAppVersion(scope.ios);
+    case "android":
+      return resolveAndroidAppVersion(scope.android);
+    default:
+      return { version: null, candidates: [] };
+  }
+};
 
 export const getNativeAppVersion = async (
   platform: Platform,
-): Promise<string | null> => {
-  switch (platform) {
-    case "ios":
-      // Info.plist first, project.pbxproj as a fallback.
-      //
-      // CFBundleShortVersionString is the version the built app actually
-      // reports, so it is the more correct source (#84). It is also far cheaper:
-      // reading Info.plist is a small file read, whereas the pbxproj parser is
-      // synchronous and blocks the event loop for the length of the parse. On a
-      // large project.pbxproj that can take minutes, and `deploy` calls this
-      // after the bundle is already uploaded, purely to fill the informational
-      // `metadata.app_version` field on the bundle record.
-      return getIOSVersion({ parser: ["info-plist", "xcodeproj"] });
-    case "android":
-      return getAndroidVersion({ parser: "app-build-gradle" });
-    default:
-      return null;
-  }
-};
+  scope?: NativeAppVersionScope,
+): Promise<string | null> =>
+  (await resolveNativeAppVersion(platform, scope)).version;

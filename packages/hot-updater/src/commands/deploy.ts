@@ -65,6 +65,10 @@ import { getNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import { PLATFORMS } from "../commandOptions";
 import { ui } from "../utils/cli-ui";
+import {
+  formatAppVersionCandidates,
+  isAmbiguousAppVersion,
+} from "../utils/version/appVersionCandidates";
 import { getConsolePort, openConsole } from "./console";
 import {
   commitDeployment,
@@ -774,15 +778,24 @@ const deployPlatform = async ({
     target.fingerprintHash = newFingerprint.hash;
     s.stop(`Fingerprint(${platform}): ${newFingerprint.hash}`);
   } else {
-    const defaultTargetAppVersion = await getDefaultTargetAppVersion(platform);
+    const defaultTargetAppVersion = options.targetAppVersion
+      ? null
+      : await getDefaultTargetAppVersion(platform);
+    const ambiguousVersions =
+      defaultTargetAppVersion && isAmbiguousAppVersion(defaultTargetAppVersion)
+        ? formatAppVersionCandidates(defaultTargetAppVersion.candidates)
+        : null;
+    const defaultVersion = defaultTargetAppVersion?.version ?? null;
 
     const targetAppVersion =
       options.targetAppVersion ??
       (options.interactive
         ? await p.text({
-            message: "Target app version",
-            placeholder: defaultTargetAppVersion ?? "1.0.0",
-            initialValue: defaultTargetAppVersion ?? "1.0.0",
+            message: ambiguousVersions
+              ? `Target app version (the native project builds several versions: ${ambiguousVersions})`
+              : "Target app version",
+            placeholder: defaultVersion ?? "1.0.0",
+            initialValue: defaultVersion ?? (ambiguousVersions ? "" : "1.0.0"),
             validate: (value) => {
               if (!value || !normalizeRange(value)) {
                 return "Invalid semver format (e.g. 1.0.0, 1.x.x)";
@@ -790,7 +803,7 @@ const deployPlatform = async ({
               return;
             },
           })
-        : defaultTargetAppVersion);
+        : defaultVersion);
 
     if (p.isCancel(targetAppVersion)) {
       return null;
@@ -798,7 +811,9 @@ const deployPlatform = async ({
 
     if (!targetAppVersion) {
       p.log.error(
-        "Target app version not found in native files (Info.plist for iOS, build.gradle for Android). Pass -t <targetAppVersion> explicitly, or check your native config.",
+        ambiguousVersions
+          ? `The native project builds several app versions (${ambiguousVersions}), so the target app version for this deploy cannot be read from it. Pass -t <targetAppVersion> for the app this deploy targets.`
+          : "Target app version not found in native files (Info.plist or project.pbxproj for iOS, build.gradle for Android). Pass -t <targetAppVersion> explicitly, or check your native config.",
       );
       return null;
     }

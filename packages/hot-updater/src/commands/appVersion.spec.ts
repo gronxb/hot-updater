@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockGetNativeAppVersion, mockCli } = vi.hoisted(() => {
-  const mockGetNativeAppVersion = vi.fn();
+const { mockResolveNativeAppVersion, mockCli } = vi.hoisted(() => {
+  const mockResolveNativeAppVersion = vi.fn();
   const mockCli = {
     p: {
       log: {
@@ -9,12 +9,17 @@ const { mockGetNativeAppVersion, mockCli } = vi.hoisted(() => {
       },
     },
   };
-  return { mockGetNativeAppVersion, mockCli };
+  return { mockResolveNativeAppVersion, mockCli };
 });
 
 vi.mock("../utils/version/getNativeAppVersion", () => ({
-  getNativeAppVersion: mockGetNativeAppVersion,
+  resolveNativeAppVersion: mockResolveNativeAppVersion,
 }));
+
+const resolved = (version: string | null) => ({
+  version,
+  candidates: version ? [{ label: "Info.plist", version }] : [],
+});
 
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
   const actual =
@@ -28,8 +33,8 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
 describe("handleAppVersion", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockGetNativeAppVersion.mockImplementation((platform: string) =>
-      Promise.resolve(platform === "android" ? "1.2.3" : "2.3.4"),
+    mockResolveNativeAppVersion.mockImplementation((platform: string) =>
+      Promise.resolve(resolved(platform === "android" ? "1.2.3" : "2.3.4")),
     );
   });
   afterEach(() => {
@@ -42,8 +47,8 @@ describe("handleAppVersion", () => {
     const { handleAppVersion } = await import("./appVersion");
     await handleAppVersion();
 
-    expect(mockGetNativeAppVersion).toHaveBeenCalledWith("android");
-    expect(mockGetNativeAppVersion).toHaveBeenCalledWith("ios");
+    expect(mockResolveNativeAppVersion).toHaveBeenCalledWith("android");
+    expect(mockResolveNativeAppVersion).toHaveBeenCalledWith("ios");
     expect(mockCli.p.log.message).toHaveBeenCalledWith(
       expect.stringContaining("App version"),
     );
@@ -64,8 +69,8 @@ describe("handleAppVersion", () => {
 
   it("keeps missing platform versions explicit in JSON", async () => {
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
-    mockGetNativeAppVersion.mockImplementation((platform: string) =>
-      Promise.resolve(platform === "android" ? null : "2.3.4"),
+    mockResolveNativeAppVersion.mockImplementation((platform: string) =>
+      Promise.resolve(resolved(platform === "android" ? null : "2.3.4")),
     );
 
     const { handleAppVersion } = await import("./appVersion");
@@ -73,6 +78,37 @@ describe("handleAppVersion", () => {
 
     expect(logSpy).toHaveBeenCalledWith(
       JSON.stringify({ android: null, ios: "2.3.4" }, null, 2),
+    );
+  });
+
+  it("lists every version when the native project builds several", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    mockResolveNativeAppVersion.mockImplementation((platform: string) =>
+      Promise.resolve(
+        platform === "android"
+          ? resolved("1.2.3")
+          : {
+              version: null,
+              candidates: [
+                { label: "BrandA (Release)", version: "5.5.1" },
+                { label: "BrandB (Release)", version: "5.8.0" },
+              ],
+            },
+      ),
+    );
+
+    const { handleAppVersion } = await import("./appVersion");
+    await handleAppVersion();
+    await handleAppVersion({ json: true });
+
+    expect(mockCli.p.log.message).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "BrandA (Release): 5.5.1, BrandB (Release): 5.8.0",
+      ),
+    );
+    // The JSON shape stays: no single version is null.
+    expect(logSpy).toHaveBeenCalledWith(
+      JSON.stringify({ android: "1.2.3", ios: null }, null, 2),
     );
   });
 });
