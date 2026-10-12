@@ -11,6 +11,7 @@ const PROVIDER_SECTIONS = {
   supabase: "Supabase",
   aws: "AWS",
   firebase: "Firebase",
+  vercel: "Vercel",
 } as const satisfies Record<InitProvider, string>;
 
 export interface InfrastructureUpgradeFile extends InfrastructureUpdate {

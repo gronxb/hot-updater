@@ -28,7 +28,7 @@ import { INFRASTRUCTURE_UPDATES } from "../src/commands/infrastructureUpdates.ts
 const packageRoot = fileURLToPath(new URL("..", import.meta.url));
 const repoRoot = path.resolve(packageRoot, "../..");
 const outputRoot = path.join(packageRoot, "dist/infra-templates");
-const providers = ["cloudflare", "supabase", "aws", "firebase"];
+const providers = ["cloudflare", "supabase", "aws", "firebase", "vercel"];
 const builds = ["bare", "rock", "expo"];
 const upgradeFiles = await readInfrastructureUpgradeFiles(
   path.join(packageRoot, "infrastructure-upgrades"),
@@ -189,18 +189,20 @@ for (const provider of providers) {
     path.join(output, "app/hotUpdater.ts"),
     renderCredentialDefinition(scaffoldOf(builds[0]), builds[0]),
   );
-  if (provider === "firebase") {
-    // Firestore has no migration tooling, so the credential script runs the
-    // migrator of the server definition it loaded: core's settings and those
-    // of the definition's plugins, over the definition's own database.
+  if (provider === "firebase" || provider === "vercel") {
+    // Firestore has no migration tooling, and Vercel's PostgreSQL takes the
+    // server's migrator, so the credential script runs the migrator of the
+    // server definition it loaded: core's tables and settings and those of
+    // the definition's plugins, over the definition's own database.
     await save(
       path.join(output, "app/migrate.ts"),
       `import { toolingTargetOf } from "@hot-updater/plugin-core";
 import type { HotUpdaterAPI } from "@hot-updater/server";
 
 /**
- * Writes the schema settings of core and the plugins \`hotUpdater\` runs,
- * which its database checks before its first read.
+ * Creates the tables of core and the plugins \`hotUpdater\` runs where the
+ * database keeps tables, and writes their schema settings, which the
+ * database checks before its first read.
  */
 export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
   if (database.createMigrator === undefined) {
@@ -420,7 +422,25 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       keyGroupId: null,
       ssmParameterName: null,
     });
-  } else {
+  } else if (provider === "vercel") {
+    // The Function init deploys, and the rewrite that serves it on every path.
+    const vercel = path.join(output, "vercel");
+    await cp(
+      path.join(root, "dist/function/index.mjs"),
+      path.join(vercel, "api/index.mjs"),
+    );
+    const { VERCEL_FUNCTION_CONFIG } = await moduleAt(
+      path.join(root, "dist/init/index.mjs"),
+    );
+    await save(path.join(vercel, "vercel.json"), VERCEL_FUNCTION_CONFIG);
+    Object.assign(requirements, {
+      teamId: null,
+      projectId: null,
+      projectName: null,
+      blobStoreId: null,
+      blobAccess: null,
+    });
+  } else if (provider === "firebase") {
     const firebase = path.join(output, "firebase");
     const { prepareFirebaseTemplate } = await moduleAt(
       path.join(root, "iac/prepareTemplate.ts"),
@@ -476,6 +496,16 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       "@aws-sdk/credential-providers",
       { searchFrom: root },
     );
+  if (provider === "vercel") {
+    // The config's database adapter.
+    appPackages["@hot-updater/postgres"] = (
+      await json(path.join(repoRoot, "plugins/postgres/package.json"))
+    ).version;
+    // migrate.ts reads the tables the definition's plugins need.
+    appPackages["@hot-updater/plugin-core"] = (
+      await json(path.join(repoRoot, "plugins/plugin-core/package.json"))
+    ).version;
+  }
   if (provider === "firebase") {
     appPackages["firebase-admin"] = resolvePackageVersion("firebase-admin", {
       searchFrom: root,

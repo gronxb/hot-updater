@@ -17,6 +17,7 @@ const sections = [
   "Supabase",
   "AWS",
   "Firebase",
+  "Vercel",
   "Verification",
 ];
 const release = (version: string, emptySection?: string) =>

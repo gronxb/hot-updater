@@ -97,9 +97,11 @@ const MANAGED_IMPORT_PACKAGES = new Set([
   "@hot-updater/cloudflare",
   "@hot-updater/expo",
   "@hot-updater/firebase",
+  "@hot-updater/postgres",
   "@hot-updater/rock",
   "@hot-updater/server/plugins",
   "@hot-updater/supabase",
+  "@hot-updater/vercel",
 ]);
 const MANAGED_HELPER_NAMES = new Set([
   "awsOptions",

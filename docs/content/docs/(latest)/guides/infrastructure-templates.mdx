@@ -19,6 +19,7 @@ npx hot-updater infra scaffold --provider cloudflare
 npx hot-updater infra scaffold --provider supabase
 npx hot-updater infra scaffold --provider aws
 npx hot-updater infra scaffold --provider firebase
+npx hot-updater infra scaffold --provider vercel
 ```
 
 Only `--provider` is required. No React Native app, build adapter, credentials,
@@ -40,6 +41,7 @@ npx hot-updater infra scaffold --provider cloudflare --output ./server --json
 | [Supabase](/docs/managed/supabase) | Edge Function, complete Deno imports/vendor files, SQL migrations and project configuration |
 | [AWS](/docs/managed/aws) | Lambda bundle and pinned dependencies, CloudFront specifications, DynamoDB/IAM JSON inputs and SSM reference source |
 | [Firebase](/docs/managed/firebase) | Built Functions project, pinned dependencies, Firebase configuration and Firestore indexes |
+| [Vercel](/docs/managed/vercel) | Function bundled with its dependencies and `vercel.json` |
 
 `manifest.json` records the provider, target CLI/provider/server versions,
 infrastructure generation, resource inputs and original file hashes.
