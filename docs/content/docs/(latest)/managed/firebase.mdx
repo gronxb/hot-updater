@@ -76,10 +76,11 @@ The initializer then prompts you to:
 
 1. Choose an existing project or create a new one.
 2. Init locates the selected project's canonical default bucket and stops if Storage has not been enabled.
-3. Deploy the Firestore indexes used to store and query updates.
-4. Create the first client API key or reuse the saved key.
-5. Deploy a Firebase Function v2 called `hot-updater-v1`.
-6. Grant the Function's service account the IAM Service Account Token Creator role if needed.
+3. Select the Firestore database Hot Updater uses when the project has more than one. Init uses the only database without asking.
+4. Deploy the Firestore indexes used to store and query updates to that database.
+5. Create the first client API key or reuse the saved key.
+6. Deploy a Firebase Function v2 called `hot-updater-v1`.
+7. Grant the Function's service account the IAM Service Account Token Creator role if needed.
 
   </Accordion>
 </Accordions>
@@ -110,7 +111,11 @@ This download-URL signing is separate from optional bundle signing below.
 
 After setup, review the local configuration. Interactive init writes the settings
 below to `.env.hotupdater`; an agent merges the needed settings into your project.
-The project, region, and canonical bucket are persisted for deterministic reruns.
+The project, region, Firestore database, and canonical bucket are persisted for
+deterministic reruns. Init doesn't create named Firestore databases: to keep
+Hot Updater in a named database, create it first and select it. With
+`--env-file`, init uses `HOT_UPDATER_FIREBASE_DATABASE_ID`, or `(default)` when
+it is unset.
 When no credential-file path is supplied, init can write the active placeholder
 `GOOGLE_APPLICATION_CREDENTIALS=your-credentials.json`. If you use existing
 application-default credentials (ADC), remove or comment out that line before
@@ -121,6 +126,7 @@ only when it points to your intended private local file.
 ```
 HOT_UPDATER_FIREBASE_PROJECT_ID=your-project-id
 HOT_UPDATER_FIREBASE_REGION=your-functions-region
+HOT_UPDATER_FIREBASE_DATABASE_ID=(default)
 HOT_UPDATER_FIREBASE_STORAGE_BUCKET=your-bucket-name
 HOT_UPDATER_API_KEY=your-api-key
 # Optional: only if using a private credential file instead of existing ADC
@@ -208,6 +214,7 @@ necessarily authenticate the local Admin SDK. See
 ```bash title=".env.hotupdater"
 HOT_UPDATER_FIREBASE_PROJECT_ID=your-project-id
 HOT_UPDATER_FIREBASE_REGION=your-functions-region
+HOT_UPDATER_FIREBASE_DATABASE_ID=(default)
 HOT_UPDATER_FIREBASE_STORAGE_BUCKET=your-bucket-name
 HOT_UPDATER_API_KEY=your-api-key
 # Optional: only if using a private credential file instead of existing ADC
@@ -241,6 +248,7 @@ export default defineConfig({
   }),
   database: firebaseDatabase({
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
+    databaseId: process.env.HOT_UPDATER_FIREBASE_DATABASE_ID,
     credential,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
@@ -250,9 +258,10 @@ export default defineConfig({
 
 ### Resource names
 
-Managed Firestore keeps every item in the `hot_updater_v1` collection, and the
-managed Function is named `hot-updater-v1`. Bundles use the project's
-canonical Storage bucket with independent object keys.
+Managed Firestore keeps every item in the `hot_updater_v1` collection of the
+selected database, and the managed Function is named `hot-updater-v1`.
+Bundles use the project's canonical Storage bucket with independent object
+keys.
 
 ### Release catalog cache
 

@@ -10,6 +10,7 @@ import { initProvider as FIREBASE_INIT_PROVIDER } from "./init/index";
 
 export type FirebaseInitInputs = {
   readonly applicationCredentials?: string;
+  readonly databaseId?: string;
   readonly projectId?: string;
   readonly region?: string;
 };
@@ -73,6 +74,7 @@ export const resolveFirebaseInitInputs = (
       applicationCredentials === "your-credentials.json"
         ? undefined
         : applicationCredentials,
+    databaseId: resolveInitProviderInput(existingEnv, inputs.databaseId),
     projectId: resolveInitProviderInput(existingEnv, inputs.projectId),
     region: resolveInitProviderInput(existingEnv, inputs.region),
   };

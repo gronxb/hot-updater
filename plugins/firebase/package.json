@@ -62,7 +62,7 @@
     "mime": "^4.0.4"
   },
   "peerDependencies": {
-    "firebase-admin": "*",
+    "firebase-admin": ">=11.10.0",
     "firebase-functions": "*"
   },
   "peerDependenciesMeta": {

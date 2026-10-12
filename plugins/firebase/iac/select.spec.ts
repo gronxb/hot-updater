@@ -52,6 +52,7 @@ import { createFirebaseProject, initFirebaseUser, setEnv } from "./select";
 describe("setEnv", () => {
   it("preserves GOOGLE_APPLICATION_CREDENTIALS when updating Firebase env vars", async () => {
     await setEnv({
+      databaseId: "hot-updater",
       projectId: "demo-project",
       storageBucket: "demo-bucket",
       build: "bare",
@@ -67,6 +68,7 @@ describe("setEnv", () => {
         },
         HOT_UPDATER_FIREBASE_PROJECT_ID: "demo-project",
         HOT_UPDATER_FIREBASE_REGION: "asia-northeast3",
+        HOT_UPDATER_FIREBASE_DATABASE_ID: "hot-updater",
         HOT_UPDATER_FIREBASE_STORAGE_BUCKET: "demo-bucket",
       },
       ".env.hotupdater",
@@ -94,6 +96,9 @@ describe("setEnv", () => {
     expect(scaffold?.text).toContain(
       "  plugins: [apiKeys(), insights(), remoteConfig()],\n",
     );
+    expect(scaffold?.text).toContain(
+      "databaseId: process.env.HOT_UPDATER_FIREBASE_DATABASE_ID,",
+    );
     expect(scaffold?.text).not.toContain("createHotUpdater");
     expect(scaffold?.text).not.toContain("server:");
     expect(options).toMatchObject({ settings: "Firebase" });
@@ -108,6 +113,7 @@ describe("setEnv", () => {
 
     await expect(
       setEnv({
+        databaseId: "(default)",
         projectId: "demo-project",
         storageBucket: "demo-bucket",
         build: "bare",
@@ -193,6 +199,45 @@ describe("initFirebaseUser", () => {
     );
     expect(mocks.select).not.toHaveBeenCalled();
     expect(vi.mocked(makeEnv)).not.toHaveBeenCalled();
+  });
+
+  it("sets up the saved Firestore database among the project's databases", async () => {
+    // Given
+    const listDatabases = mocks.execa.getMockImplementation();
+    mocks.execa.mockImplementation(async (command, args) =>
+      [command, ...args].join(" ") ===
+      "gcloud firestore databases list --project=demo-project --format=json"
+        ? {
+            stdout: JSON.stringify([
+              {
+                name: "projects/demo-project/databases/(default)",
+                type: "FIRESTORE_NATIVE",
+              },
+              {
+                name: "projects/demo-project/databases/hot-updater",
+                type: "FIRESTORE_NATIVE",
+              },
+            ]),
+          }
+        : listDatabases?.(command, args),
+    );
+
+    // When
+    const initialization = await initFirebaseUser(
+      "/tmp/firebase-init",
+      "demo-project",
+      true,
+      undefined,
+      undefined,
+      "hot-updater",
+    );
+
+    // Then
+    expect(initialization).toMatchObject({
+      status: "ready",
+      databaseId: "hot-updater",
+    });
+    expect(mocks.select).not.toHaveBeenCalled();
   });
 
   it("prompts with a saved project selected by default in interactive mode", async () => {

@@ -10,6 +10,7 @@ import { firebaseStorage } from "../../src/firebaseStorage";
 declare global {
   var HotUpdater: {
     REGION: string;
+    FIRESTORE_DATABASE_ID: string;
   };
 }
 
@@ -29,6 +30,7 @@ if (!storageBucket) {
 const hotUpdater = createHotUpdater({
   database: firebaseDatabase({
     ...adminOptions,
+    databaseId: HotUpdater.FIRESTORE_DATABASE_ID,
   }),
   plugins: [insights(), apiKeys(), remoteConfig()],
   storage: firebaseStorage({
