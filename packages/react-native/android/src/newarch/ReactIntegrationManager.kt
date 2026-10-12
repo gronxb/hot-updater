@@ -2,9 +2,12 @@ package com.hotupdater
 
 import android.content.Context
 import android.util.Log
+import android.view.View
+import android.view.ViewGroup
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactInstanceEventListener
+import com.facebook.react.ReactRootView
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.common.LifecycleState
@@ -67,9 +70,28 @@ class ReactIntegrationManager(
             if (reactHost.lifecycleState != LifecycleState.RESUMED && activity != null) {
                 reactHost.onHostResume(activity)
             }
+            activity?.window?.decorView?.let(::logContentAppearedAgain)
             reactHost.reload("Requested by HotUpdater")
         } catch (e: Exception) {
             Log.d("HotUpdater", "Failed to reload with ReactHost: ${e.message}")
+        }
+    }
+
+    /**
+     * A reload restarts each surface in its existing view, and a view logs
+     * CONTENT_APPEARED only for its first content. Asks every React root view
+     * on screen to log it again, so the reloaded bundle's first content
+     * completes its launch, as a cold start does. Otherwise the next process
+     * rolls the working bundle back as an unfinished launch.
+     */
+    private fun logContentAppearedAgain(view: View) {
+        if (view is ReactRootView) {
+            view.setShouldLogContentAppeared(true)
+        }
+        if (view is ViewGroup) {
+            for (index in 0 until view.childCount) {
+                logContentAppearedAgain(view.getChildAt(index))
+            }
         }
     }
 
