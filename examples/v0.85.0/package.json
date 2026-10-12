@@ -21,6 +21,7 @@
     "@callstack/repack": "^5.2.5",
     "@expo/fingerprint": "^0.15.4",
     "@hot-updater/aws": "workspace:*",
+    "@hot-updater/azure": "workspace:*",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
     "@hot-updater/firebase": "workspace:*",

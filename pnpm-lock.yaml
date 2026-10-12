@@ -295,6 +295,28 @@ importers:
         specifier: ^2.9.0
         version: 2.9.0
 
+  examples-server/azure-functions:
+    dependencies:
+      '@hot-updater/azure':
+        specifier: workspace:*
+        version: link:../../plugins/azure
+      '@hot-updater/server':
+        specifier: workspace:*
+        version: link:../../packages/server
+    devDependencies:
+      '@azure/storage-blob':
+        specifier: catalog:azure
+        version: 12.34.0
+      '@types/node':
+        specifier: ^20.11.17
+        version: 20.19.43
+      tsx:
+        specifier: ^4.20.6
+        version: 4.23.14
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+
   examples-server/elysia-drizzle-libsql:
     devDependencies:
       '@elysiajs/node':
@@ -1197,6 +1219,9 @@ importers:
       '@hot-updater/aws':
         specifier: workspace:*
         version: link:../../plugins/aws
+      '@hot-updater/azure':
+        specifier: workspace:*
+        version: link:../../plugins/azure
       '@hot-updater/bare':
         specifier: workspace:*
         version: link:../../plugins/bare
@@ -32718,7 +32743,7 @@ snapshots:
       '@drizzle-team/brocli': 0.10.2
       '@esbuild-kit/esm-loader': 2.6.5
       esbuild: 0.25.12
-      tsx: 4.22.4
+      tsx: 4.23.14
 
   drizzle-orm@0.45.2(@cloudflare/workers-types@4.20260611.1)(@electric-sql/pglite@0.4.1)(@libsql/client@0.15.15)(@opentelemetry/api@1.9.1)(@prisma/client@6.19.3(@typescript/typescript6@6.0.2)(prisma@6.19.3(@typescript/typescript6@6.0.2)))(@types/pg@8.20.0)(kysely@0.28.17)(mysql2@3.19.1(@types/node@20.19.43))(pg@8.21.0)(prisma@6.19.3(@typescript/typescript6@6.0.2)):
     optionalDependencies:
@@ -42686,7 +42711,6 @@ snapshots:
       esbuild: 0.28.1
     optionalDependencies:
       fsevents: 2.3.3
-    optional: true
 
   turbo-stream@3.2.0: {}
 
