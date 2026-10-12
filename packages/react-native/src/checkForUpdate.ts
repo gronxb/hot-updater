@@ -271,8 +271,19 @@ async function checkForReleaseCatalogUpdate(input: {
       "Rejected a stale or inconsistent Release catalog",
     );
   }
+  const stableInTargetScope =
+    activeState.stableSelection?.catalogId === catalogId &&
+    activeState.stableSelection.scopeKey === scopeKey
+      ? activeState.stableSelection
+      : null;
   const desired = selectDesiredRelease(catalog, {
     activeReleaseId: activeInTargetScope?.releaseId ?? null,
+    // A staged update is active but not running yet; force decisions count
+    // from the Release the app runs.
+    runningReleaseId:
+      [activeInTargetScope, stableInTargetScope].find(
+        (selection) => selection?.bundleId === selectorCurrentBundleId,
+      )?.releaseId ?? null,
     builtInBundleId: input.minimumReleaseId,
     cohort: input.cohort,
     crashedBundleIds,
@@ -413,12 +424,12 @@ async function checkForReleaseCatalogUpdate(input: {
     }
   };
 
+  // Adopting the bundle the app already runs needs no reload; adopting a
+  // staged one does when the selector forces it.
   const shouldForceUpdate =
-    transitionKind === "ADOPT_RELEASE"
+    desired.bundleId === input.currentBundleId
       ? false
-      : desired.status === "ROLLBACK"
-        ? true
-        : (release?.shouldForceUpdate ?? false);
+      : desired.shouldForceUpdate;
   options.emit("onUpdateCheck", () => ({
     status: "UPDATE_AVAILABLE",
     channel: input.targetChannel,

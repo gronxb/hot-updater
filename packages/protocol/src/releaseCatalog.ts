@@ -87,6 +87,12 @@ export interface ReleaseSelectionInput {
   readonly builtInBundleId: string;
   readonly currentBundleId: string;
   readonly activeReleaseId?: string | null;
+  /**
+   * The Release of the bundle the app is running, which differs from
+   * `activeReleaseId` while a newer bundle is staged for the next launch.
+   * Defaults to `activeReleaseId`; null compares by `currentBundleId`.
+   */
+  readonly runningReleaseId?: string | null;
   readonly minimumReleaseId: string;
   readonly cohort: string | null | undefined;
   readonly crashedBundleIds: readonly string[];
@@ -150,6 +156,14 @@ export type DesiredRelease = {
   readonly bundleId: string;
   readonly release: ReleaseCatalogDescriptor | null;
   readonly status: "UPDATE" | "ROLLBACK";
+  /**
+   * Whether the device must apply this transition immediately: every rollback,
+   * and an update when a forced Release the device's cohort was eligible for
+   * lies after the running bundle's Release, up to and including the selected
+   * Release. Skipping past a forced Release, or staging a newer one before
+   * it was forced, does not drop its requirement.
+   */
+  readonly shouldForceUpdate: boolean;
 };
 
 export function isReleaseEligibleForCohort(
@@ -196,6 +210,30 @@ export function selectDesiredRelease(
     !crashedBundleIds.has(release.bundleId) &&
     release.bundleId >= input.minimumReleaseId;
 
+  const runningReleaseId =
+    input.runningReleaseId === undefined
+      ? activeReleaseId
+      : input.runningReleaseId;
+  const isNewerThanRunning = (release: ReleaseCatalogDescriptor): boolean =>
+    runningReleaseId !== null
+      ? release.releaseId > runningReleaseId
+      : release.bundleId !== null && release.bundleId > input.currentBundleId;
+  // `releases` keeps only the newest few Bundles, so the forced Releases an
+  // update carries the device past are read from the complete spine. A forced
+  // Release of the running bundle is already satisfied, and one below the
+  // native floor is older than what the binary ships.
+  const passesForcedRelease = (selected: ReleaseCatalogDescriptor): boolean =>
+    [selected, ...catalog.rollbackReleases].some(
+      (passed) =>
+        passed.shouldForceUpdate &&
+        passed.bundleId !== null &&
+        passed.bundleId >= input.minimumReleaseId &&
+        passed.bundleId !== input.currentBundleId &&
+        passed.releaseId <= selected.releaseId &&
+        isNewerThanRunning(passed) &&
+        isReleaseEligibleForCohort(passed, input.cohort),
+    );
+
   const desiredBundle = (
     release: ReleaseCatalogDescriptor & { readonly bundleId: string },
     status: "UPDATE" | "ROLLBACK",
@@ -204,6 +242,7 @@ export function selectDesiredRelease(
     kind: "BUNDLE",
     release,
     releaseId: release.releaseId,
+    shouldForceUpdate: status === "ROLLBACK" || passesForcedRelease(release),
     status,
   });
 
@@ -271,6 +310,7 @@ export function selectDesiredRelease(
     kind: "BUILTIN",
     release: null,
     releaseId: null,
+    shouldForceUpdate: true,
     status: "ROLLBACK",
   };
 }

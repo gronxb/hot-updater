@@ -476,6 +476,23 @@ describe("ReleaseEditorSheet", () => {
     });
   });
 
+  it("explains Force update in a tooltip beside its switch", async () => {
+    render(
+      <ReleaseEditorSheet
+        channels={[{ id: "channel-1", name: "production" }]}
+        onOpenChange={vi.fn()}
+        open
+        releaseId={release.id}
+      />,
+    );
+
+    expect(screen.queryByText(/skip it to update straight/)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "About Force update" }));
+    expect((await screen.findByRole("tooltip")).textContent).toContain(
+      "devices that skip it to update straight to a newer bundle",
+    );
+  });
+
   it("uses disabling as the only rollback action", async () => {
     render(
       <ReleaseEditorSheet
@@ -486,11 +503,10 @@ describe("ReleaseEditorSheet", () => {
       />,
     );
 
-    expect(
-      screen.getByText(
-        "Disabling rolls devices back to the previous enabled bundle on their next check, or to the built-in app when none remains.",
-      ),
-    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "About Enabled" }));
+    expect((await screen.findByRole("tooltip")).textContent).toContain(
+      "Disabling rolls devices back to the previous enabled bundle",
+    );
     expect(screen.queryByRole("button", { name: /roll back/i })).toBeNull();
 
     fireEvent.click(screen.getByRole("switch", { name: "Enabled" }));

@@ -1,5 +1,16 @@
 # @hot-updater/firebase
 
+## 1.0.1
+
+### Patch Changes
+
+- 367e60c: Support a named Firestore database. `firebaseDatabase` and `migrateFirebaseDatabase` take a `databaseId` option, which defaults to `(default)`. Firebase `hot-updater init` asks which database to use when the project has more than one, saves the choice as `HOT_UPDATER_FIREBASE_DATABASE_ID`, and uses it for the index deploy, the schema settings, the generated config, and the `hot-updater-v1` Function. The agent scaffold takes the database ID as a deployment input.
+- Updated dependencies [4e7c9c9]
+  - @hot-updater/protocol@1.0.1
+  - @hot-updater/cli-tools@1.0.1
+  - @hot-updater/server@1.0.1
+  - @hot-updater/plugin-core@1.0.1
+
 ## 1.0.0
 
 ### Major Changes

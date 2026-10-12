@@ -351,6 +351,97 @@ describe("checkForUpdate Release catalog protocol", () => {
     });
   });
 
+  it("forces an update that carries the device past a skipped forced Release", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const events = await recordPluginEvents();
+    const forcedRelease = {
+      ...createCatalog().releases[0]!,
+      shouldForceUpdate: true,
+    };
+    const latestRelease = {
+      ...forcedRelease,
+      bundleId: "00000000-0000-7001-8000-000000000003",
+      message: "Release three",
+      releaseId: ACTIVE_RELEASE_ID,
+      shouldForceUpdate: false,
+    };
+    const { client } = createClient(
+      createCatalog({ releases: [latestRelease, forcedRelease] }),
+    );
+
+    const result = await checkForUpdate({
+      emit,
+      client,
+      updateStrategy: "appVersion",
+    });
+
+    expect(result).toMatchObject({
+      id: ACTIVE_RELEASE_ID,
+      shouldForceUpdate: true,
+      transitionKind: "INSTALL",
+    });
+    expect(events[0]).toEqual([
+      "onUpdateCheck",
+      expect.objectContaining({
+        shouldForceUpdate: true,
+        toReleaseId: ACTIVE_RELEASE_ID,
+      }),
+    ]);
+  });
+
+  it("forces adopting a staged bundle once a Release it skipped is forced", async () => {
+    const stagedBundleId = "00000000-0000-7001-8000-000000000003";
+    const receipt = (
+      releaseId: string,
+      bundleId: string,
+    ): PersistedSelectionReceipt => ({
+      bundleId,
+      catalogHash: `sha256:${"b".repeat(64)}`,
+      catalogId: CATALOG_ID,
+      channel: CHANNEL,
+      generation: 1,
+      kind: "BUNDLE",
+      releaseId,
+      scopeKey: SCOPE_KEY,
+      selectionContextHash: "old-context",
+    });
+    // The app still runs the minimum Release while Release three is staged.
+    mocks.getActiveUpdateState.mockReturnValueOnce({
+      activeSelection: receipt(ACTIVE_RELEASE_ID, stagedBundleId),
+      highestSeenCatalogs: {},
+      stableSelection: receipt(MINIMUM_RELEASE_ID, CURRENT_BUNDLE_ID),
+      verificationPending: false,
+    });
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const forcedRelease = {
+      ...createCatalog().releases[0]!,
+      shouldForceUpdate: true,
+    };
+    const stagedRelease = {
+      ...forcedRelease,
+      bundleId: stagedBundleId,
+      releaseId: ACTIVE_RELEASE_ID,
+      shouldForceUpdate: false,
+    };
+    const { client, resolveArtifact } = createClient(
+      createCatalog({ releases: [stagedRelease, forcedRelease] }),
+    );
+
+    const result = await checkForUpdate({
+      emit,
+      client,
+      updateStrategy: "appVersion",
+    });
+
+    expect(result).toMatchObject({
+      id: ACTIVE_RELEASE_ID,
+      shouldForceUpdate: true,
+      transitionKind: "ADOPT_RELEASE",
+    });
+    await expect(result?.updateBundle()).resolves.toBe(true);
+    expect(resolveArtifact).not.toHaveBeenCalled();
+  });
+
   it("reports a same-file adoption as UNCHANGED with the adopted Release", async () => {
     const active: PersistedSelectionReceipt = {
       catalogId: CATALOG_ID,

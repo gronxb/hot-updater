@@ -94,6 +94,7 @@ const defaultScenarioNames = [
   "target-cohorts-rollout-interaction",
   "targeted-cohort-switchback",
   "force-update-auto-reload",
+  "skipped-force-update-propagates",
   "disabled-bundle-rollback-to-builtin",
   "disabled-bundle-rollback-to-previous-ota",
   "fingerprint-initial-install",
@@ -271,7 +272,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(30);
+    expect(new Set(listScenarioNames()).size).toBe(31);
   });
 
   it("keeps repeated catalog checks as no-ops while already built-in", async () => {
@@ -1227,6 +1228,39 @@ describe("E2E scenario contract", () => {
         )
       ).rollout,
     ).toBe(0);
+  });
+
+  it("models skipped-force-update-propagates as a forced reload past the forced bundle", async () => {
+    const calls = await recordScenarioCalls("skipped-force-update-propagates");
+    const forceUpdateOf = async (stage: string) =>
+      (await controlStepBody("skipped-force-update-propagates", stage))
+        .forceUpdate ?? false;
+
+    // When: the device skips a forced bundle for a newer unforced one.
+    // Then: launch reloads into the newer bundle without a manual install.
+    expect(await forceUpdateOf("deploy skipped force base bundle")).toBe(false);
+    expect(await forceUpdateOf("deploy skipped forced bundle")).toBe(true);
+    expect(await forceUpdateOf("deploy unforced latest bundle")).toBe(false);
+    const lastLaunch = calls.findLastIndex((call) => call.kind === "launch");
+    expect(calls[lastLaunch]).toMatchObject({
+      options: { allowDisconnect: true },
+      stage: "launch app past skipped force update",
+    });
+    expect(
+      calls
+        .slice(lastLaunch)
+        .some((call) => call.kind === "tap" || call.kind === "reload"),
+    ).toBe(false);
+    expect(
+      await controlStepBody(
+        "skipped-force-update-propagates",
+        "wait skipped force update automatic reload",
+      ),
+    ).toMatchObject({
+      bundleId: "$latestBundleId",
+      releaseId: "$latestReleaseId",
+      verificationPending: false,
+    });
   });
 
   it("models force-update-auto-reload without a manual install or reload", async () => {

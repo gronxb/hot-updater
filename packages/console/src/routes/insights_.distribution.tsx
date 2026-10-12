@@ -6,9 +6,9 @@ import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { ConsoleFeatureUnavailable } from "@/components/ConsoleFeatureUnavailable";
 import { BuiltinBundleBadge } from "@/components/features/insights/BuiltinBundle";
 import { InsightsErrorAlert } from "@/components/features/insights/InsightsErrorAlert";
-import { InsightsInfo } from "@/components/features/insights/InsightsInfo";
 import { InsightsPageHeader } from "@/components/features/insights/InsightsPageHeader";
 import { UsagePeriodSelector } from "@/components/features/insights/InsightsPeriodSelector";
+import { InfoTooltip } from "@/components/InfoTooltip";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
@@ -219,12 +219,12 @@ function DistributionPage() {
             <CardHeader className="flex flex-col gap-3">
               <div className="flex items-center justify-between gap-2">
                 <CardTitle>Bundles by app version</CardTitle>
-                <InsightsInfo label="How bundle distribution is counted">
+                <InfoTooltip label="How bundle distribution is counted">
                   Each installation counts once, by its latest report{" "}
                   {distributionPeriod}. Shares are within each app version.
                   Built-in bundle: the bundle the native build shipped, by its
                   ID. Unknown bundle: no deployment and no built-in bundle ID.
-                </InsightsInfo>
+                </InfoTooltip>
               </div>
               <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
                 {query.isPending ? (

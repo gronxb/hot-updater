@@ -92,6 +92,7 @@ export function setupReleaseCatalogLifecycleTests(options: {
       releaseId: null,
       bundleId: app.builtInBundleId,
       release: null,
+      shouldForceUpdate: true,
       status: "ROLLBACK",
     });
     // BUILTIN has no server artifact or Release. The native binary owns it.

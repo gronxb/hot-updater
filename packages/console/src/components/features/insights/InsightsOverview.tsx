@@ -3,6 +3,7 @@ import { ListIcon, RotateCcw, RotateCw, TriangleAlert, X } from "lucide-react";
 import { useState } from "react";
 
 import { BundleIdDisplay } from "@/components/BundleIdDisplay";
+import { InfoTooltip } from "@/components/InfoTooltip";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -60,7 +61,6 @@ import {
   useSeriesColors,
 } from "./ComparedBundlesChart";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
-import { InsightsInfo } from "./InsightsInfo";
 import { InsightsPeriodSelector } from "./InsightsPeriodSelector";
 import { RollbackButton } from "./RollbackButton";
 
@@ -185,11 +185,11 @@ export function InsightsOverview({
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-1 text-sm font-medium">
           Installations downloading and launching each bundle
-          <InsightsInfo label="About adoption">
+          <InfoTooltip label="About adoption">
             Dashed: installations that downloaded the bundle. Solid:
             installations that launched it. After a forced update the two lines
             meet.
-          </InsightsInfo>
+          </InfoTooltip>
         </div>
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
           <p>
@@ -212,12 +212,12 @@ export function InsightsOverview({
       <div className="flex flex-col gap-1">
         <div className="flex items-center gap-1 text-sm font-medium">
           Crashes after each deployment
-          <InsightsInfo label="About crashes">
+          <InfoTooltip label="About crashes">
             Installations that crashed on a bundle and rolled back. Crash rate =
             crashed ÷ (launched + crashed). A rollback is suggested at{" "}
             {percent(CRASH_RATE_THRESHOLD)} once {CRASH_MIN_ATTEMPTS}{" "}
             installations tried it.
-          </InsightsInfo>
+          </InfoTooltip>
         </div>
         <p className="text-xs text-muted-foreground">
           {cadenceOf(period.intervalMs)} · last {lengthOf(period.durationMs)} ·

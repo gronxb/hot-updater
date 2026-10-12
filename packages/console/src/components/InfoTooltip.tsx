@@ -8,7 +8,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 
-export function InsightsInfo({
+export function InfoTooltip({
   label,
   children,
 }: {

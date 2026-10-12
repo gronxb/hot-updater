@@ -3,6 +3,7 @@ import { Link } from "@tanstack/react-router";
 import { ArrowRight, ChevronRight } from "lucide-react";
 import { CartesianGrid, Line, LineChart, XAxis, YAxis } from "recharts";
 
+import { InfoTooltip } from "@/components/InfoTooltip";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -46,7 +47,6 @@ import type { AppUsageReport, UsageWindow } from "@/lib/insights-usage";
 
 import { EstimatedCount } from "./EstimatedCount";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
-import { InsightsInfo } from "./InsightsInfo";
 import { UsagePeriodSelector } from "./InsightsPeriodSelector";
 import { ReportingDevicesSummary } from "./ReportingDevicesSummary";
 
@@ -231,11 +231,11 @@ export function AppUsage({
           <CardTitle className="flex min-h-9 items-center">
             Distribution
           </CardTitle>
-          <InsightsInfo label="How distribution is counted">
+          <InfoTooltip label="How distribution is counted">
             Each installation counts once, by its latest report{" "}
             {distributionPeriod}.
             {report?.truncated ? " Some history is missing." : ""}
-          </InsightsInfo>
+          </InfoTooltip>
         </CardHeader>
         <CardContent className="flex-1">
           {query.isPending ? (
