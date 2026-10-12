@@ -25,6 +25,7 @@ const catalog = {
   catalogHash: `sha256:${"a".repeat(64)}`,
   fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
   releases: [],
+  rollbackReleases: [],
 };
 const baseBundleId = "00000000-0000-7000-8000-000000000001";
 const archiveSignature = `sig:${Buffer.from("archive-signature").toString("base64")}`;
@@ -86,6 +87,17 @@ function artifactResponseBody(byteLength: number): string {
 }
 
 describe("Lynx delivery HTTP contract", () => {
+  it.each([undefined, null, {}])(
+    "rejects a missing or invalid rollback spine: %s",
+    async (rollbackReleases) => {
+      respond({ ...catalog, rollbackReleases });
+      const client = createHttpClient({ baseURL: "https://updates.test" });
+      await expect(client.fetchCatalog(state)).rejects.toMatchObject({
+        code: "INVALID_RESPONSE",
+      });
+    },
+  );
+
   it("uses the encoded catalog route without the deprecated Lynx request extension", async () => {
     const fetch = respond(catalog);
     const client = createHttpClient({

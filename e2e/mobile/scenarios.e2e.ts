@@ -68,7 +68,11 @@ for (const scenarioName of context.scenarioNames) {
     await hotUpdater.client.postJson(
       "configure scenario runtime",
       "/e2e/runtime-config",
-      { automaticForceUpdate: scenarioName === "force-update-auto-reload" },
+      {
+        automaticForceUpdate:
+          scenarioName === "force-update-auto-reload" ||
+          scenarioName === "skipped-force-update-propagates",
+      },
     );
     const insightsStartedAtMs = Date.now() - 5_000;
     if (context.runtime === "lynx") {

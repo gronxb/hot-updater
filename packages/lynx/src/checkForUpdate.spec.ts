@@ -520,6 +520,7 @@ describe("Lynx catalog controller (mock native transport)", () => {
             catalogHash,
             fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
             releases: [release(releaseC, C)],
+            rollbackReleases: [release(releaseC, C)],
           }),
           { status: 200 },
         );
@@ -566,6 +567,7 @@ describe("Lynx catalog controller (mock native transport)", () => {
                   catalogHash,
                   fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
                   releases: [release(releaseC, C)],
+                  rollbackReleases: [release(releaseC, C)],
                 }
               : artifactResponse,
           ),
@@ -629,6 +631,127 @@ describe("Lynx catalog controller (mock native transport)", () => {
     expect((await updater.getLaunchInfo()).next?.bundleId).toBe(B);
   });
 
+  it.each([false, true])(
+    "keeps a skipped forced release mandatory with latest already staged=%s",
+    async (staged) => {
+      const { updater, validated } = setup(
+        {
+          runningSelection: receipt(A, releaseA),
+          nextSelection: staged ? receipt(C, releaseC) : null,
+        },
+        [
+          release(releaseC, C),
+          { ...release(releaseB, B), shouldForceUpdate: true },
+          release(releaseA, A),
+        ],
+      );
+
+      await expect(
+        updater.checkForUpdate({ updateStrategy: "appVersion" }),
+      ).resolves.toMatchObject({ bundleId: C, shouldForceUpdate: true });
+      expect(validated().selection.bundleId).toBe(C);
+    },
+  );
+
+  it("does not treat a staged forced bundle as already running over built-in bytes", async () => {
+    const { updater, native } = setup({ nextSelection: receipt(B, releaseB) }, [
+      release(releaseC, C),
+      { ...release(releaseB, B), shouldForceUpdate: true },
+    ]);
+
+    await expect(
+      updater.checkForUpdate({ updateStrategy: "appVersion" }),
+    ).resolves.toMatchObject({ bundleId: C, shouldForceUpdate: true });
+    expect(native.acceptCatalog.mock.calls[0]![0].selectionContextHash).toBe(
+      createReleaseSelectionContextHash({
+        activeBundleId: B,
+        activeReleaseId: releaseB,
+        cohort: "1",
+        minimumReleaseId: A,
+        strategy: "APP_VERSION",
+        strategyValue: "1.0.0",
+        crashedBundleIds: [],
+        unconfirmedReleaseIds: [],
+      }),
+    );
+  });
+
+  it("applies a newly forced staged release from the actual running bundle", async () => {
+    const { updater } = setup(
+      {
+        runningSelection: receipt(A, releaseA),
+        nextSelection: receipt(C, releaseC),
+      },
+      [{ ...release(releaseC, C), shouldForceUpdate: true }],
+    );
+
+    await expect(
+      updater.checkForUpdate({ updateStrategy: "appVersion" }),
+    ).resolves.toMatchObject({ bundleId: C, shouldForceUpdate: true });
+  });
+
+  it("does not force again after the skipped forced bundle is already running", async () => {
+    const { updater } = setup({ runningSelection: receipt(B, releaseB) }, [
+      release(releaseC, C),
+      { ...release(releaseB, B), shouldForceUpdate: true },
+    ]);
+
+    await expect(
+      updater.checkForUpdate({ updateStrategy: "appVersion" }),
+    ).resolves.toMatchObject({ bundleId: C, shouldForceUpdate: false });
+  });
+
+  it("uses actual running bytes when a different-channel selection is already staged", async () => {
+    const betaScope = createReleaseCatalogScopeKey({
+      strategy: "APP_VERSION",
+      platform: "android",
+      channelKey: encodeChannelKey("beta"),
+    });
+    const { updater, catalog } = setup(
+      {
+        channel: "beta",
+        channelKey: encodeChannelKey("beta"),
+        runningSelection: receipt(C, releaseC),
+        nextSelection: {
+          ...receipt(B, releaseB),
+          channel: "beta",
+          scopeKey: betaScope,
+        },
+      },
+      [
+        release(id(15), id(5)),
+        { ...release(releaseB, B), shouldForceUpdate: true },
+      ],
+    );
+    Object.assign(catalog, { scopeKey: betaScope });
+
+    await expect(
+      updater.checkForUpdate({ updateStrategy: "appVersion" }),
+    ).resolves.toMatchObject({ bundleId: id(5), shouldForceUpdate: false });
+  });
+
+  it("still forces unconfirmed same-byte rollback from a staged newer release", async () => {
+    const { updater, prepared } = setup(
+      {
+        runningSelection: receipt(B, releaseB),
+        runningConfirmed: false,
+        nextSelection: receipt(C, releaseC),
+      },
+      [release(releaseB, B)],
+    );
+    const update = await updater.checkForUpdate({
+      updateStrategy: "appVersion",
+    });
+    expect(update).toMatchObject({
+      bundleId: B,
+      shouldForceUpdate: true,
+      status: "ROLLBACK",
+      transitionKind: "INSTALL",
+    });
+    await update!.updateBundle();
+    expect(prepared().artifact?.bundleId).toBe(B);
+  });
+
   it("does not assume matching unconfirmed running bytes are eligible for metadata adoption", async () => {
     const { updater, fetch, prepared } = setup(
       { runningSelection: receipt(B, releaseB), runningConfirmed: false },
@@ -676,6 +799,7 @@ describe("Lynx catalog controller (mock native transport)", () => {
       bundleId: A,
       releaseId: null,
       status: "ROLLBACK",
+      shouldForceUpdate: true,
       transitionKind: "USE_BUILTIN",
     });
     await update!.updateBundle();
@@ -905,6 +1029,7 @@ describe("Lynx catalog controller (mock native transport)", () => {
     });
     expect(update).toMatchObject({
       status: "ROLLBACK",
+      shouldForceUpdate: true,
       transitionKind: "USE_BUILTIN",
     });
     await update!.updateBundle();
@@ -928,6 +1053,7 @@ describe("Lynx catalog controller (mock native transport)", () => {
     });
     expect(update).toMatchObject({
       status: "ROLLBACK",
+      shouldForceUpdate: true,
       transitionKind: "USE_BUILTIN",
     });
     await update!.updateBundle();

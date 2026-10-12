@@ -1254,6 +1254,16 @@ describe("E2E scenario contract", () => {
     expect(
       await controlStepBody(
         "skipped-force-update-propagates",
+        "prove skipped force update native reload",
+      ),
+    ).toMatchObject({
+      bundleId: "$latestBundleId",
+      releaseId: "$latestReleaseId",
+      runtimeScenarioMarker: "skipped-force-latest-detox",
+    });
+    expect(
+      await controlStepBody(
+        "skipped-force-update-propagates",
         "wait skipped force update automatic reload",
       ),
     ).toMatchObject({

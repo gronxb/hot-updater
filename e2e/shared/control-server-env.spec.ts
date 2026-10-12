@@ -206,10 +206,15 @@ describe("E2E control server environment", () => {
         baseURL: "http://127.0.0.1:3114/hot-updater",
         updateServerBaseURL: "https://updates.test/hot-updater",
       });
-      vi.stubEnv("HOT_UPDATER_E2E_SCENARIO_NAME", "force-update-auto-reload");
-      expect(controller.handleRuntimeConfig()).toMatchObject({
-        automaticForceUpdate: true,
-      });
+      for (const scenario of [
+        "force-update-auto-reload",
+        "skipped-force-update-propagates",
+      ]) {
+        vi.stubEnv("HOT_UPDATER_E2E_SCENARIO_NAME", scenario);
+        expect(controller.handleRuntimeConfig()).toMatchObject({
+          automaticForceUpdate: true,
+        });
+      }
       // One mobile suite reuses its controller across normal, forced and normal
       // launches. An old process-level scenario name must not leak between them.
       for (const enabled of [false, true, false]) {

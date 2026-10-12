@@ -170,8 +170,20 @@ async function checkForUpdateAttempt(
     }
     throw error;
   }
+  const running = state.runningSelection;
+  const runningInTargetScope =
+    running.catalogId === catalog.catalogId &&
+    running.scopeKey === catalog.scopeKey
+      ? running
+      : null;
+  const runningBundleId =
+    activeInTargetScope !== null || (!authenticated && !explicitScopeSwitch)
+      ? running.bundleId
+      : state.minimumBundleId;
   const desired = selectDesiredRelease(catalog, {
     activeReleaseId: activeInTargetScope?.releaseId ?? null,
+    runningBundleId,
+    runningReleaseId: runningInTargetScope?.releaseId ?? null,
     builtInBundleId: state.embeddedBundleId,
     currentBundleId: selectorCurrentBundleId,
     minimumReleaseId: state.minimumBundleId,
@@ -296,10 +308,7 @@ async function checkForUpdateAttempt(
     message: desired.release?.message ?? null,
     releaseId: desired.releaseId,
     rolloutCohortCount: desired.release?.rolloutCohortCount ?? 1000,
-    shouldForceUpdate: canRequestAdoption
-      ? false
-      : desired.status === "ROLLBACK" ||
-        (desired.release?.shouldForceUpdate ?? false),
+    shouldForceUpdate: canRequestAdoption ? false : desired.shouldForceUpdate,
     status: desired.status,
     targetCohorts: desired.release?.targetCohorts
       ? [...desired.release.targetCohorts]

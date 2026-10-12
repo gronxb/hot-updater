@@ -416,6 +416,30 @@ describe("selectDesiredRelease force update", () => {
     ).toBe(false);
   });
 
+  it.each([null, releaseId(1)])(
+    "retains force requirements when the policy bundle is staged and running Release is %s",
+    (runningReleaseId) => {
+      const desired = selectDesiredRelease(
+        catalog([
+          descriptor(3),
+          descriptor(2, { shouldForceUpdate: true }),
+          descriptor(1),
+        ]),
+        {
+          ...fromRelease(2),
+          runningBundleId: bundleId(1),
+          runningReleaseId,
+        },
+      );
+
+      expect(desired).toMatchObject({
+        releaseId: releaseId(3),
+        shouldForceUpdate: true,
+        status: "UPDATE",
+      });
+    },
+  );
+
   it("treats a forced Release of the running bundle as satisfied", () => {
     // Release 2 re-releases the running bundle 1 as forced; whether the device
     // adopted it before Release 3 arrived must not change the outcome.

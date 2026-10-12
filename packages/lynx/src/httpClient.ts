@@ -332,9 +332,8 @@ function validateCatalog(
     catalog.fallbackPolicy !== "BUILTIN_IF_ACTIVE_INELIGIBLE" ||
     !Array.isArray(catalog.releases) ||
     !catalog.releases.every(descriptor) ||
-    (catalog.rollbackReleases !== undefined &&
-      (!Array.isArray(catalog.rollbackReleases) ||
-        !catalog.rollbackReleases.every(descriptor)))
+    !Array.isArray(catalog.rollbackReleases) ||
+    !catalog.rollbackReleases.every(descriptor)
   ) {
     return invalidResponse(
       "Invalid Release catalog or unexpected catalog scope.",

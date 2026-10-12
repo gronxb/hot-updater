@@ -3511,7 +3511,10 @@ export function handleRuntimeConfig() {
   return {
     automaticForceUpdate:
       automaticForceUpdate ??
-      process.env.HOT_UPDATER_E2E_SCENARIO_NAME === "force-update-auto-reload",
+      (process.env.HOT_UPDATER_E2E_SCENARIO_NAME ===
+        "force-update-auto-reload" ||
+        process.env.HOT_UPDATER_E2E_SCENARIO_NAME ===
+          "skipped-force-update-propagates"),
     baseURL: `${getAppReachableControlBaseUrl()}/hot-updater`,
     channelNamespace,
     screenState: readE2eScreenStateSnapshot(),

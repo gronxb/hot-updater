@@ -93,6 +93,11 @@ export interface ReleaseSelectionInput {
    * Defaults to `activeReleaseId`; null compares by `currentBundleId`.
    */
   readonly runningReleaseId?: string | null;
+  /**
+   * The bundle currently executing when `currentBundleId` is a staged policy
+   * selection. Used only for force decisions; defaults to `currentBundleId`.
+   */
+  readonly runningBundleId?: string;
   readonly minimumReleaseId: string;
   readonly cohort: string | null | undefined;
   readonly crashedBundleIds: readonly string[];
@@ -214,10 +219,11 @@ export function selectDesiredRelease(
     input.runningReleaseId === undefined
       ? activeReleaseId
       : input.runningReleaseId;
+  const runningBundleId = input.runningBundleId ?? input.currentBundleId;
   const isNewerThanRunning = (release: ReleaseCatalogDescriptor): boolean =>
     runningReleaseId !== null
       ? release.releaseId > runningReleaseId
-      : release.bundleId !== null && release.bundleId > input.currentBundleId;
+      : release.bundleId !== null && release.bundleId > runningBundleId;
   // `releases` keeps only the newest few Bundles, so the forced Releases an
   // update carries the device past are read from the complete spine. A forced
   // Release of the running bundle is already satisfied, and one below the
@@ -228,7 +234,7 @@ export function selectDesiredRelease(
         passed.shouldForceUpdate &&
         passed.bundleId !== null &&
         passed.bundleId >= input.minimumReleaseId &&
-        passed.bundleId !== input.currentBundleId &&
+        passed.bundleId !== runningBundleId &&
         passed.releaseId <= selected.releaseId &&
         isNewerThanRunning(passed) &&
         isReleaseEligibleForCohort(passed, input.cohort),

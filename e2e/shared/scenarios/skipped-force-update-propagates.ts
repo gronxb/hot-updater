@@ -94,6 +94,7 @@ export const skippedForceUpdatePropagatesScenario: ScenarioDefinition = {
       {
         bundleId: "$latestBundleId",
         releaseId: "$latestReleaseId",
+        runtimeScenarioMarker: "skipped-force-latest-detox",
       },
     );
     await app.control(
