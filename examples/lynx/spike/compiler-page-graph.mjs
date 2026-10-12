@@ -90,6 +90,42 @@ export const compilerPageGraphPlugin = ({ resourceEntries }) => ({
           compiler.hooks.thisCompilation.tap(
             "HotUpdaterLynxPageGraph",
             (compilation) => {
+              const encodedAsyncAssets = new Map();
+              const [TemplatePlugin] = templateConstructors;
+              TemplatePlugin.getLynxTemplatePluginHooks(
+                compilation,
+              ).beforeEmit.tap("HotUpdaterLynxPageGraph", (output) => {
+                if (
+                  ["detail.lynx.bundle", "main.lynx.bundle"].includes(
+                    output.outputName,
+                  )
+                )
+                  return output;
+                // The pinned template versions expose names (0.10) or groups (0.13).
+                const groups =
+                  output.chunkGroups ??
+                  compilation.chunkGroups.filter((group) =>
+                    output.entryNames?.includes(group.name),
+                  );
+                if (
+                  groups.length === 0 ||
+                  groups.some((group) => group.isInitial()) ||
+                  (output.entryNames &&
+                    output.entryNames.some(
+                      (name) => !groups.some((group) => group.name === name),
+                    ))
+                ) {
+                  throw new Error(
+                    "Compiler async template has no resolved chunk group",
+                  );
+                }
+                for (const group of groups) {
+                  const assets = encodedAsyncAssets.get(group) ?? new Set();
+                  assets.add(output.outputName);
+                  encodedAsyncAssets.set(group, assets);
+                }
+                return output;
+              });
               compilation.hooks.processAssets.tap(
                 {
                   name: "HotUpdaterLynxPageGraph",
@@ -147,6 +183,7 @@ export const compilerPageGraphPlugin = ({ resourceEntries }) => ({
                     const pageNode = nodeId("page", entry);
                     addNode({ id: pageNode, kind: "page", path: entry });
                     const resources = new Set([entry]);
+                    const asyncAssets = new Set();
                     for (const compilerEntry of compilerEntries) {
                       const entrypoint =
                         compilation.entrypoints.get(compilerEntry);
@@ -166,7 +203,62 @@ export const compilerPageGraphPlugin = ({ resourceEntries }) => ({
                         kind: "compiledBy",
                         to: entryNode,
                       });
-                      for (const chunk of entrypoint.chunks) {
+                      const descendants = new Set(entrypoint.childrenIterable);
+                      for (const group of descendants) {
+                        for (const child of group.childrenIterable)
+                          descendants.add(child);
+                      }
+                      const asyncGroups = [...descendants].filter(
+                        (group) => !group.isInitial(),
+                      );
+                      const asyncChunks = new Set(
+                        asyncGroups.flatMap((group) => group.chunks),
+                      );
+                      for (const group of asyncGroups) {
+                        const index = compilation.chunkGroups.indexOf(group);
+                        if (index < 0)
+                          throw new Error(
+                            "Compiler async group is not part of this compilation",
+                          );
+                        const name = String(index);
+                        const groupNode = nodeId("async-group", name);
+                        addNode({ id: groupNode, kind: "async-group", name });
+                        addEdge({
+                          from: entryNode,
+                          kind: "contains",
+                          to: groupNode,
+                        });
+                        for (const chunk of group.chunks) {
+                          addEdge({
+                            from: groupNode,
+                            kind: "contains",
+                            to: nodeId("chunk", String(chunk.name ?? chunk.id)),
+                          });
+                        }
+                        for (const output of encodedAsyncAssets.get(group) ??
+                          []) {
+                          if (!compilation.getAsset(output))
+                            throw new Error(
+                              "Compiler async template output is missing",
+                            );
+                          const assetNode = nodeId("async-asset", output);
+                          addNode({
+                            id: assetNode,
+                            kind: "async-asset",
+                            path: output,
+                          });
+                          addEdge({
+                            from: groupNode,
+                            kind: "emits",
+                            to: assetNode,
+                          });
+                          asyncAssets.add(output);
+                        }
+                      }
+                      for (const chunk of new Set([
+                        ...entrypoint.chunks,
+                        ...asyncChunks,
+                      ])) {
                         const chunkName = String(chunk.name ?? chunk.id);
                         const chunkNode = nodeId("chunk", chunkName);
                         addNode({
@@ -174,11 +266,31 @@ export const compilerPageGraphPlugin = ({ resourceEntries }) => ({
                           kind: "chunk",
                           name: chunkName,
                         });
-                        addEdge({
-                          from: entryNode,
-                          kind: "contains",
-                          to: chunkNode,
-                        });
+                        if (entrypoint.chunks.includes(chunk))
+                          addEdge({
+                            from: entryNode,
+                            kind: "contains",
+                            to: chunkNode,
+                          });
+                        if (!entrypoint.chunks.includes(chunk)) {
+                          const outputs = [...chunk.files].filter((name) =>
+                            compilation.getAsset(name),
+                          );
+                          for (const name of outputs) {
+                            const assetNode = nodeId("async-asset", name);
+                            addNode({
+                              id: assetNode,
+                              kind: "async-asset",
+                              path: name,
+                            });
+                            addEdge({
+                              from: chunkNode,
+                              kind: "emits",
+                              to: assetNode,
+                            });
+                            asyncAssets.add(name);
+                          }
+                        }
                         for (const module of compilation.chunkGraph.getOrderedChunkModulesIterable(
                           chunk,
                           (left, right) =>
@@ -234,6 +346,7 @@ export const compilerPageGraphPlugin = ({ resourceEntries }) => ({
                       }
                     }
                     return {
+                      asyncAssets: [...asyncAssets].sort(compare),
                       compilerEntries,
                       entry,
                       resources: [...resources].sort(compare),
@@ -261,7 +374,7 @@ export const compilerPageGraphPlugin = ({ resourceEntries }) => ({
                     nodes: [...nodes.values()].sort((left, right) =>
                       compare(left.id, right.id),
                     ),
-                    schemaVersion: 1,
+                    schemaVersion: 2,
                     source,
                   };
                 },

@@ -60,11 +60,12 @@ function validCompilerGraph() {
       compareText(JSON.stringify(left), JSON.stringify(right)),
     );
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     source: "@rspack/core:chunkGraph",
     compilerVersion: "1.7.11",
     entries: pages.map((page) => ({
       entry: `${page}.lynx.bundle`,
+      asyncAssets: [],
       compilerEntries: [page, `${page}__main-thread`].sort(),
       resources: [`${page}.lynx.bundle`],
     })),

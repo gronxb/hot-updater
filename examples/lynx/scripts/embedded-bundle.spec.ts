@@ -132,17 +132,19 @@ function compilerPageGraph(threadSuffix = "__main-thread") {
     return a < b ? -1 : a > b ? 1 : 0;
   });
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     source: "@rspack/core:chunkGraph",
     compilerVersion: "1.7.11",
     entries: [
       {
         entry: "detail.lynx.bundle",
+        asyncAssets: [],
         compilerEntries: ["detail", `detail${threadSuffix}`].sort(),
         resources: ["detail.lynx.bundle"],
       },
       {
         entry: "main.lynx.bundle",
+        asyncAssets: [],
         compilerEntries: ["main", `main${threadSuffix}`].sort(),
         resources: [
           "assets/bootstrap.js",

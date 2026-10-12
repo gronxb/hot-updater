@@ -54,7 +54,7 @@ function validateCompilerGraph(graph, files, { requireNonempty }) {
       "edges",
       "nodes",
     ]) ||
-    graph.schemaVersion !== 1 ||
+    graph.schemaVersion !== 2 ||
     graph.source !== compilerGraphSource ||
     !/^\d+\.\d+\.\d+$/.test(graph.compilerVersion) ||
     !Array.isArray(graph.entries) ||
@@ -92,7 +92,7 @@ function validateCompilerGraph(graph, files, { requireNonempty }) {
         exactKeys(node, ["id", "kind", "path"]) &&
         node.id === `page:${node.path}` &&
         safePath.test(node.path)) ||
-      ((node.kind === "entry" || node.kind === "chunk") &&
+      (["entry", "chunk", "async-group"].includes(node.kind) &&
         exactKeys(node, ["id", "kind", "name"]) &&
         node.id === `${node.kind}:${node.name}` &&
         typeof node.name === "string" &&
@@ -103,6 +103,11 @@ function validateCompilerGraph(graph, files, { requireNonempty }) {
         /^spike\/compiler-page-resources\/[a-z]+\.page-resource$/.test(
           node.name,
         )) ||
+      (node.kind === "async-asset" &&
+        exactKeys(node, ["id", "kind", "path"]) &&
+        node.id === `async-asset:${node.path}` &&
+        typeof node.path === "string" &&
+        safePath.test(node.path)) ||
       (node.kind === "asset" &&
         exactKeys(node, ["essential", "id", "kind", "path", "source"]) &&
         node.id === `asset:${node.path}` &&
@@ -134,11 +139,16 @@ function validateCompilerGraph(graph, files, { requireNonempty }) {
         (fromKind !== "page" || toKind !== "entry")) ||
       (edge.kind === "contains" &&
         !(
-          (fromKind === "entry" && toKind === "chunk") ||
+          (fromKind === "entry" && ["chunk", "async-group"].includes(toKind)) ||
+          (fromKind === "async-group" && toKind === "chunk") ||
           (fromKind === "chunk" && toKind === "module")
         )) ||
       (edge.kind === "emits" &&
-        (fromKind !== "module" || toKind !== "asset")) ||
+        !(
+          (fromKind === "module" && toKind === "asset") ||
+          (["chunk", "async-group"].includes(fromKind) &&
+            toKind === "async-asset")
+        )) ||
       (edge.kind === "requires" &&
         (fromKind !== "page" ||
           toKind !== "asset" ||
@@ -152,7 +162,47 @@ function validateCompilerGraph(graph, files, { requireNonempty }) {
     edges.some(
       (edge) => edge.from === from && edge.kind === kind && edge.to === to,
     );
+  const compiledEntries = new Set(
+    edges.filter((edge) => edge.kind === "compiledBy").map((edge) => edge.to),
+  );
+  const reachableGroups = new Set(
+    edges
+      .filter(
+        (edge) =>
+          edge.kind === "contains" &&
+          compiledEntries.has(edge.from) &&
+          nodes.get(edge.to).kind === "async-group",
+      )
+      .map((edge) => edge.to),
+  );
+  const reachableChunks = new Set(
+    edges
+      .filter(
+        (edge) =>
+          edge.kind === "contains" &&
+          (compiledEntries.has(edge.from) || reachableGroups.has(edge.from)) &&
+          nodes.get(edge.to).kind === "chunk",
+      )
+      .map((edge) => edge.to),
+  );
   for (const node of nodes.values()) {
+    if (node.kind === "async-asset") {
+      const owners = edges.filter(
+        (edge) => edge.kind === "emits" && edge.to === node.id,
+      );
+      if (
+        owners.length === 0 ||
+        owners.some(
+          (edge) =>
+            !reachableChunks.has(edge.from) && !reachableGroups.has(edge.from),
+        )
+      )
+        throw new Error("Compiler async asset has no reachable chunk owner");
+      if (nodes.has(`page:${node.path}`) || nodes.has(`asset:${node.path}`))
+        throw new Error(
+          "Compiler async asset overlaps another resource category",
+        );
+    }
     if (node.kind !== "asset") continue;
     const moduleId = `module:${node.source}`;
     if (!hasEdge(moduleId, "emits", node.id)) {
@@ -175,12 +225,24 @@ function validateCompilerGraph(graph, files, { requireNonempty }) {
     ];
     if (
       !entry ||
-      !exactKeys(descriptor, ["entry", "compilerEntries", "resources"]) ||
+      !exactKeys(descriptor, [
+        "entry",
+        "compilerEntries",
+        "resources",
+        "asyncAssets",
+      ]) ||
       descriptor.entry !== entry ||
       !validCompilerEntries.some(
         (entries) =>
           JSON.stringify(descriptor.compilerEntries) ===
           JSON.stringify(entries),
+      ) ||
+      !Array.isArray(descriptor.asyncAssets) ||
+      JSON.stringify([...descriptor.asyncAssets].sort(comparePaths)) !==
+        JSON.stringify(descriptor.asyncAssets) ||
+      new Set(descriptor.asyncAssets).size !== descriptor.asyncAssets.length ||
+      descriptor.asyncAssets.some(
+        (resource) => typeof resource !== "string" || !safePath.test(resource),
       ) ||
       !Array.isArray(descriptor.resources) ||
       !descriptor.resources.includes(entry) ||
@@ -193,6 +255,58 @@ function validateCompilerGraph(graph, files, { requireNonempty }) {
     ) {
       throw new Error("Compiler emitted an ambiguous Lynx page graph");
     }
+    const compilerEntryNodes = edges
+      .filter(
+        (edge) => edge.from === `page:${entry}` && edge.kind === "compiledBy",
+      )
+      .map((edge) => edge.to)
+      .sort(comparePaths);
+    if (
+      JSON.stringify(compilerEntryNodes) !==
+      JSON.stringify(descriptor.compilerEntries.map((name) => `entry:${name}`))
+    )
+      throw new Error("Compiler page entry ownership does not match its graph");
+    const pageGroups = edges
+      .filter(
+        (edge) =>
+          compilerEntryNodes.includes(edge.from) &&
+          edge.kind === "contains" &&
+          nodes.get(edge.to).kind === "async-group",
+      )
+      .map((edge) => edge.to);
+    for (const group of pageGroups) {
+      if (
+        !edges.some((edge) => edge.from === group && edge.kind === "contains")
+      )
+        throw new Error("Compiler async group has no chunk membership");
+    }
+    const pageChunks = edges
+      .filter(
+        (edge) =>
+          (compilerEntryNodes.includes(edge.from) ||
+            pageGroups.includes(edge.from)) &&
+          edge.kind === "contains" &&
+          nodes.get(edge.to).kind === "chunk",
+      )
+      .map((edge) => edge.to);
+    const asyncAssets = [
+      ...new Set(
+        edges
+          .filter(
+            (edge) =>
+              (pageChunks.includes(edge.from) ||
+                pageGroups.includes(edge.from)) &&
+              edge.kind === "emits" &&
+              nodes.get(edge.to).kind === "async-asset",
+          )
+          .map((edge) => nodes.get(edge.to).path),
+      ),
+    ].sort(comparePaths);
+    if (JSON.stringify(asyncAssets) !== JSON.stringify(descriptor.asyncAssets))
+      throw new Error(
+        "Compiler page async assets do not match its dependency graph",
+      );
+    for (const resource of asyncAssets) owned.add(resource);
     const required = graph.edges
       .filter(
         (edge) => edge.from === `page:${entry}` && edge.kind === "requires",
@@ -203,16 +317,6 @@ function validateCompilerGraph(graph, files, { requireNonempty }) {
     for (const resource of required) {
       const assetNode = nodes.get(`asset:${resource}`);
       const moduleId = `module:${assetNode.source}`;
-      const pageEntries = edges
-        .filter(
-          (edge) => edge.from === `page:${entry}` && edge.kind === "compiledBy",
-        )
-        .map((edge) => edge.to);
-      const pageChunks = edges
-        .filter(
-          (edge) => pageEntries.includes(edge.from) && edge.kind === "contains",
-        )
-        .map((edge) => edge.to);
       if (
         !edges.some(
           (edge) =>

@@ -85,9 +85,19 @@ const writeCompilerOutput = async ({
             to: "entry:detail",
           },
           {
+            from: "page:detail.lynx.bundle",
+            kind: "compiledBy",
+            to: "entry:detail__main-thread",
+          },
+          {
             from: "page:main.lynx.bundle",
             kind: "compiledBy",
             to: "entry:main",
+          },
+          {
+            from: "page:main.lynx.bundle",
+            kind: "compiledBy",
+            to: "entry:main__main-thread",
           },
           {
             from: "page:main.lynx.bundle",
@@ -102,11 +112,13 @@ const writeCompilerOutput = async ({
         entries: [
           {
             entry: "detail.lynx.bundle",
+            asyncAssets: [],
             compilerEntries: ["detail", "detail__main-thread"],
             resources: ["detail.lynx.bundle"],
           },
           {
             entry: "main.lynx.bundle",
+            asyncAssets: [],
             compilerEntries: ["main", "main__main-thread"],
             resources: ["assets/probe.png", "main.lynx.bundle"],
           },
@@ -122,7 +134,17 @@ const writeCompilerOutput = async ({
           { id: "chunk:detail", kind: "chunk", name: "detail" },
           { id: "chunk:main", kind: "chunk", name: "main" },
           { id: "entry:detail", kind: "entry", name: "detail" },
+          {
+            id: "entry:detail__main-thread",
+            kind: "entry",
+            name: "detail__main-thread",
+          },
           { id: "entry:main", kind: "entry", name: "main" },
+          {
+            id: "entry:main__main-thread",
+            kind: "entry",
+            name: "main__main-thread",
+          },
           {
             id: "module:spike/compiler-page-resources/probe.page-resource",
             kind: "module",
@@ -139,7 +161,7 @@ const writeCompilerOutput = async ({
             path: "main.lynx.bundle",
           },
         ],
-        schemaVersion: 1,
+        schemaVersion: 2,
         source: "@rspack/core:chunkGraph",
       }),
     );
@@ -147,6 +169,125 @@ const writeCompilerOutput = async ({
 };
 
 describe("Lynx example compiler receipts", () => {
+  const writeAsyncOutput = async (output: string) => {
+    await writeCompilerOutput({
+      output,
+      extraFiles: [["lazy.js", "export const value = 'A';"]],
+    });
+    const graph = JSON.parse(
+      await fs.readFile(`${output}.page-graph.json`, "utf8"),
+    );
+    graph.entries[1].asyncAssets = ["lazy.js"];
+    graph.nodes.push(
+      { id: "async-asset:lazy.js", kind: "async-asset", path: "lazy.js" },
+      { id: "chunk:lazy", kind: "chunk", name: "lazy" },
+    );
+    graph.edges.push(
+      { from: "entry:main", kind: "contains", to: "chunk:lazy" },
+      { from: "chunk:lazy", kind: "emits", to: "async-asset:lazy.js" },
+    );
+    return graph;
+  };
+  const saveAsyncGraph = async (
+    output: string,
+    graph: Awaited<ReturnType<typeof writeAsyncOutput>>,
+  ) => {
+    graph.nodes.sort((left: { id: string }, right: { id: string }) =>
+      left.id < right.id ? -1 : left.id > right.id ? 1 : 0,
+    );
+    graph.edges.sort(
+      (left: Record<string, string>, right: Record<string, string>) =>
+        JSON.stringify(left) < JSON.stringify(right)
+          ? -1
+          : JSON.stringify(left) > JSON.stringify(right)
+            ? 1
+            : 0,
+    );
+    await fs.writeFile(`${output}.page-graph.json`, JSON.stringify(graph));
+  };
+
+  it("owns an async runtime file without declaring startup consumption", async () => {
+    const output = path.join(testRoot, "async-runtime");
+    await saveAsyncGraph(output, await writeAsyncOutput(output));
+    const { finishSpike, readSpikePageContract } =
+      await import("./spike-assets.mjs");
+    const receipt = await finishSpike(output, "vue", "A", {
+      resourceSet: "basic",
+    });
+    expect(receipt.compilerGraph.entries[1].asyncAssets).toEqual(["lazy.js"]);
+    expect(receipt.compilerGraph.auxiliaryAssets).toEqual([]);
+    expect(receipt.pageEssentialResources[1].resources).toEqual([
+      "assets/probe.png",
+      "main.lynx.bundle",
+    ]);
+    await expect(readSpikePageContract(output)).resolves.toMatchObject({
+      pageEssentialResources: receipt.pageEssentialResources,
+    });
+    await fs.writeFile(
+      path.join(output, "lazy.js"),
+      "export const value = 'B';",
+    );
+    await expect(readSpikePageContract(output)).rejects.toThrow(
+      "does not match the frozen build output",
+    );
+  });
+
+  it.each([
+    ["missing file", "missing or unowned output"],
+    ["extra file", "missing or unowned output"],
+    ["missing emission", "no reachable chunk owner"],
+    ["wrong page", "page entry ownership"],
+    ["omitted declaration", "async assets do not match"],
+    ["category overlap", "overlaps another resource category"],
+    ["auxiliary relabel", "ambiguous Lynx auxiliary graph"],
+  ])("rejects async output with %s", async (scenario, error) => {
+    const output = path.join(testRoot, scenario.replaceAll(" ", "-"));
+    const graph = await writeAsyncOutput(output);
+    switch (scenario) {
+      case "missing file":
+        await fs.rm(path.join(output, "lazy.js"));
+        break;
+      case "extra file":
+        await fs.writeFile(path.join(output, "unowned.js"), "extra");
+        break;
+      case "missing emission":
+        graph.edges = graph.edges.filter(
+          (edge: Record<string, string>) => edge.to !== "async-asset:lazy.js",
+        );
+        break;
+      case "wrong page":
+        graph.edges.find(
+          (edge: Record<string, string>) =>
+            edge.from === "page:detail.lynx.bundle" &&
+            edge.to === "entry:detail",
+        ).to = "entry:main";
+        break;
+      case "omitted declaration":
+        graph.entries[1].asyncAssets = [];
+        break;
+      case "category overlap": {
+        const node = graph.nodes.find(
+          (node: { id: string }) => node.id === "async-asset:lazy.js",
+        );
+        node.id = "async-asset:main.lynx.bundle";
+        node.path = "main.lynx.bundle";
+        graph.edges.find(
+          (edge: Record<string, string>) => edge.to === "async-asset:lazy.js",
+        ).to = node.id;
+        graph.entries[1].asyncAssets = [node.path];
+        break;
+      }
+      case "auxiliary relabel":
+        graph.auxiliaryAssets = ["lazy.js"];
+        break;
+    }
+    await saveAsyncGraph(output, graph);
+    const { finishSpike } = await import("./spike-assets.mjs");
+    await expect(
+      finishSpike(output, "vue", "A", { resourceSet: "basic" }),
+    ).rejects.toThrow(error);
+  });
+
   it("fails when the compiler does not emit its page graph", async () => {
     const output = path.join(testRoot, "missing-graph");
     await writeCompilerOutput({ output, includeGraph: false });
