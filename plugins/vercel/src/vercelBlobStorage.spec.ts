@@ -39,6 +39,32 @@ describe("vercelBlobStorage", () => {
     ).toThrow("read-write token");
   });
 
+  it("rejects a download URL lifetime beyond Vercel's seven days", () => {
+    for (const signedUrlExpiresIn of [0, 604_801, Number.NaN]) {
+      expect(() =>
+        vercelBlobStorage({ access: "private", signedUrlExpiresIn, token }),
+      ).toThrow("seven days");
+    }
+  });
+
+  it("keeps a delegation within seven days for week-long URLs", async () => {
+    const storage = vercelBlobStorage({
+      access: "private",
+      signedUrlExpiresIn: 604_800,
+      token,
+    });
+    const before = Date.now();
+
+    await storage.getDownloadUrl({
+      storageUri: "vercel-blob://store_AbC123/a.txt",
+    });
+
+    const [{ validUntil }] = blob.issueSignedToken.mock.calls[0] as [
+      { validUntil: number },
+    ];
+    expect(validUntil - before).toBeLessThanOrEqual(604_800_000 + 1_000);
+  });
+
   it("keeps a key in the store the token belongs to", async () => {
     const storage = vercelBlobStorage({
       access: "private",

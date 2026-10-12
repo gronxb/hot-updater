@@ -27,7 +27,7 @@ interface VercelBlobStorageConfig {
   token: string; // The store's read-write token (vercel_blob_rw_...)
   access: "public" | "private"; // The store's access, fixed when it was created
   basePath?: string; // Optional base path within the store
-  signedUrlExpiresIn?: number; // Private download URLs. Default: 3600 seconds
+  signedUrlExpiresIn?: number; // Private download URLs, at most 604800 (7 days). Default: 3600 seconds
 }
 ```
 

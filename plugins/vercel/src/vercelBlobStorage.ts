@@ -28,7 +28,10 @@ export interface VercelBlobStorageConfig {
   access: "public" | "private";
   /** Base path where bundles will be stored in the store. */
   basePath?: string;
-  /** Lifetime of a private store's download URLs in seconds. @default 3600 */
+  /**
+   * Lifetime of a private store's download URLs in seconds, at most seven
+   * days, Vercel's limit. @default 3600
+   */
   signedUrlExpiresIn?: number;
 }
 
@@ -47,6 +50,8 @@ const ONE_YEAR_IN_SECONDS = 31_536_000;
 const MULTIPART_THRESHOLD_BYTES = 100 * 1024 * 1024;
 /** One delegation presigns every private download URL for a day. */
 const DELEGATION_LIFETIME_MS = 24 * 60 * 60 * 1000;
+/** Vercel's limit on a delegation, and so on a presigned URL. */
+const MAX_SIGNED_LIFETIME_SECONDS = 7 * 24 * 60 * 60;
 const DELETE_BATCH_SIZE = 100;
 
 /**
@@ -125,7 +130,17 @@ export const vercelBlobStorage = (
   const host = `${storeId.slice("store_".length).toLowerCase()}.${access}.blob.vercel-storage.com`;
   const normalizedBasePath = config.basePath?.replace(/^\/+|\/+$/g, "") ?? "";
   const getStorageKey = createStorageKeyBuilder(normalizedBasePath);
-  const expiresInMs = (config.signedUrlExpiresIn ?? 3600) * 1000;
+  const expiresIn = config.signedUrlExpiresIn ?? 3600;
+  if (
+    !Number.isFinite(expiresIn) ||
+    expiresIn <= 0 ||
+    expiresIn > MAX_SIGNED_LIFETIME_SECONDS
+  ) {
+    throw new Error(
+      `vercelBlobStorage signedUrlExpiresIn must be between 1 and ${MAX_SIGNED_LIFETIME_SECONDS} seconds (seven days).`,
+    );
+  }
+  const expiresInMs = expiresIn * 1000;
 
   let delegation: Promise<IssuedSignedToken> | undefined;
   /** A read delegation that outlives `validUntil`, shared by every URL it presigns. */
@@ -138,7 +153,11 @@ export const vercelBlobStorage = (
       token,
       operations: ["get"],
       validUntil:
-        Date.now() + Math.max(DELEGATION_LIFETIME_MS, expiresInMs * 2),
+        Date.now() +
+        Math.min(
+          MAX_SIGNED_LIFETIME_SECONDS * 1000,
+          Math.max(DELEGATION_LIFETIME_MS, expiresInMs * 2),
+        ),
     });
     delegation = issued;
     return issued;

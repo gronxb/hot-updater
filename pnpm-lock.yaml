@@ -1200,6 +1200,9 @@ importers:
       '@hot-updater/firebase':
         specifier: workspace:*
         version: link:../../plugins/firebase
+      '@hot-updater/postgres':
+        specifier: workspace:*
+        version: link:../../plugins/postgres
       '@hot-updater/react-native':
         specifier: workspace:*
         version: link:../../packages/react-native
@@ -1212,6 +1215,9 @@ importers:
       '@hot-updater/supabase':
         specifier: workspace:*
         version: link:../../plugins/supabase
+      '@hot-updater/vercel':
+        specifier: workspace:*
+        version: link:../../plugins/vercel
       '@react-native-community/cli':
         specifier: 20.1.0
         version: 20.1.0(@typescript/typescript6@6.0.2)
