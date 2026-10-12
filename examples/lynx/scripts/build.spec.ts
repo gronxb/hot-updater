@@ -2,7 +2,8 @@ import { spawnSync } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { afterEach, describe, expect, it } from "vitest";
+import tasm from "@lynx-js/tasm";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const exampleRoot = path.resolve(import.meta.dirname, "..");
 const { lynxHostRuntimeId, resolveE2eBuildRuntimeId } =
@@ -21,19 +22,19 @@ const { resolveProductionAppBaseURL } =
   await import("./production-configuration.mjs");
 
 const productionMainSdkCalls = [
-  ".getLaunchConfiguration()",
-  ".init({baseURL:",
-  ".checkForUpdate({updateStrategy:",
-  ".updateBundle()",
-  ".notifyAppReady()",
-  ".reload()",
+  "HotUpdater.getLaunchConfiguration();",
+  "HotUpdater.init({ baseURL: () => baseURL });",
+  'updater.checkForUpdate({ updateStrategy: "appVersion" });',
+  "update.updateBundle();",
+  "updater.notifyAppReady();",
+  "updater.reload();",
 ];
 const productionMainFixture = [
-  "sparkling-navigation router.open detail.lynx.bundle Open detail page",
+  '"sparkling-navigation router.open detail.lynx.bundle Open detail page";',
   ...productionMainSdkCalls,
-].join(" ");
+].join("\n");
 const productionDetailFixture =
-  "sparkling-navigation router.close Close detail page .notifyAppReady()";
+  '"sparkling-navigation router.close Close detail page"; updater.notifyAppReady();';
 
 interface CompilerOutputOptions {
   readonly output: string;
@@ -395,6 +396,19 @@ describe("Lynx native artifact targets", () => {
 });
 
 describe("production Lynx embedded bundles", () => {
+  beforeEach(() => {
+    // Bundle decoding is covered by the scaffold build; these fixtures exercise
+    // the emitted JavaScript contract independently of the native encoder.
+    vi.spyOn(tasm, "supportNapi").mockReturnValue(true);
+    vi.spyOn(tasm, "decode_napi").mockImplementation((bytes) => ({
+      "background-thread-script": [
+        { type: "source", content: Buffer.from(bytes).toString("utf8") },
+      ],
+    }));
+  });
+
+  afterEach(() => vi.restoreAllMocks());
+
   it.each(["ios", "android"])(
     "accepts only public page navigation in the %s scaffold",
     async (platform) => {
@@ -469,8 +483,9 @@ describe("production Lynx embedded bundles", () => {
       ]);
       const { validateProductionEmbeddedBundles } =
         await import("./production-embedded-contract.mjs");
+      const method = missingCall.split(".")[1]!.split("(")[0];
       await expect(validateProductionEmbeddedBundles(root)).rejects.toThrow(
-        `missing Hot Updater SDK calls: ${missingCall}`,
+        `missing Hot Updater SDK calls: ${method}`,
       );
     },
   );
@@ -482,13 +497,81 @@ describe("production Lynx embedded bundles", () => {
       fs.writeFile(path.join(root, "main.lynx.bundle"), productionMainFixture),
       fs.writeFile(
         path.join(root, "detail.lynx.bundle"),
-        "sparkling-navigation router.close Close detail page",
+        '"sparkling-navigation router.close Close detail page";',
       ),
     ]);
     const { validateProductionEmbeddedBundles } =
       await import("./production-embedded-contract.mjs");
     await expect(validateProductionEmbeddedBundles(root)).rejects.toThrow(
-      "missing Hot Updater SDK calls: .notifyAppReady()",
+      "missing Hot Updater SDK calls: notifyAppReady",
+    );
+  });
+
+  it("accepts initialization with the Insights plugin before the endpoint", async () => {
+    const root = path.join(testRoot, "production-with-insights");
+    await fs.mkdir(root, { recursive: true });
+    await fs.writeFile(
+      path.join(root, "main.lynx.bundle"),
+      productionMainFixture.replace(
+        productionMainSdkCalls[1]!,
+        "HotUpdater.init({ plugins: baseURL ? [insights()] : [], baseURL: () => baseURL });",
+      ),
+    );
+    await fs.writeFile(
+      path.join(root, "detail.lynx.bundle"),
+      productionDetailFixture,
+    );
+    const { validateProductionEmbeddedBundles } =
+      await import("./production-embedded-contract.mjs");
+    await expect(
+      validateProductionEmbeddedBundles(root),
+    ).resolves.toBeDefined();
+  });
+
+  it.each([
+    'const message = "HotUpdater.init({baseURL:()=>baseURL})";',
+    "// HotUpdater.init({baseURL:()=>baseURL})",
+    "HotUpdater.init({ plugins: [{ baseURL: () => baseURL }] });",
+    "HotUpdater.init({ plugins: [insights()] }); const options = {baseURL:()=>baseURL};",
+  ])(
+    "rejects initialization without a direct endpoint option: %s",
+    async (initialization) => {
+      const root = path.join(testRoot, "production-without-endpoint");
+      await fs.mkdir(root, { recursive: true });
+      await fs.writeFile(
+        path.join(root, "main.lynx.bundle"),
+        productionMainFixture.replace(
+          productionMainSdkCalls[1]!,
+          initialization,
+        ),
+      );
+      await fs.writeFile(
+        path.join(root, "detail.lynx.bundle"),
+        productionDetailFixture,
+      );
+      const { validateProductionEmbeddedBundles } =
+        await import("./production-embedded-contract.mjs");
+      await expect(validateProductionEmbeddedBundles(root)).rejects.toThrow(
+        "missing Hot Updater SDK calls: init",
+      );
+    },
+  );
+
+  it("rejects syntactically broken initialization even when the calls are present", async () => {
+    const root = path.join(testRoot, "production-malformed-initialization");
+    await fs.mkdir(root, { recursive: true });
+    await fs.writeFile(
+      path.join(root, "main.lynx.bundle"),
+      `${productionMainFixture}\nHotUpdater.init({baseURL: () => baseURL`,
+    );
+    await fs.writeFile(
+      path.join(root, "detail.lynx.bundle"),
+      productionDetailFixture,
+    );
+    const { validateProductionEmbeddedBundles } =
+      await import("./production-embedded-contract.mjs");
+    await expect(validateProductionEmbeddedBundles(root)).rejects.toThrow(
+      "Production embedded JavaScript cannot be parsed",
     );
   });
 });

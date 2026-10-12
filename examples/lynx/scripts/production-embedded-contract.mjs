@@ -1,6 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
+import tasm from "@lynx-js/tasm";
+import ts from "typescript";
+
 export const productionEmbeddedForbiddenMarkers = [
   "http://localhost:3007",
   "http://127.0.0.1:",
@@ -29,16 +32,65 @@ const pageRequirements = {
 };
 
 export const productionSdkCalls = {
-  "detail.lynx.bundle": [".notifyAppReady()"],
+  "detail.lynx.bundle": ["notifyAppReady"],
   "main.lynx.bundle": [
-    ".getLaunchConfiguration()",
-    ".init({baseURL:",
-    ".checkForUpdate({updateStrategy:",
-    ".updateBundle()",
-    ".notifyAppReady()",
-    ".reload()",
+    "getLaunchConfiguration",
+    "init",
+    "checkForUpdate",
+    "updateBundle",
+    "notifyAppReady",
+    "reload",
   ],
 };
+
+const requiredOptions = { init: "baseURL", checkForUpdate: "updateStrategy" };
+
+async function readSdkCalls(bytes) {
+  const decode = tasm.supportNapi() ? tasm.decode_napi : tasm.decode_wasm;
+  const decoded = await decode(bytes);
+  const calls = new Set();
+  for (const script of decoded["background-thread-script"]) {
+    if (script.type !== "source") continue;
+    const source = ts.createSourceFile(
+      "background.js",
+      script.content,
+      ts.ScriptTarget.Latest,
+      false,
+      ts.ScriptKind.JS,
+    );
+    if (source.parseDiagnostics.length) {
+      throw new Error("Production embedded JavaScript cannot be parsed");
+    }
+    function visit(node) {
+      if (
+        ts.isCallExpression(node) &&
+        ts.isPropertyAccessExpression(node.expression)
+      ) {
+        const name = node.expression.name.text;
+        const option = requiredOptions[name];
+        const argument = node.arguments[0];
+        if (
+          option
+            ? argument &&
+              ts.isObjectLiteralExpression(argument) &&
+              argument.properties.some(
+                (property) =>
+                  ts.isPropertyAssignment(property) &&
+                  (ts.isIdentifier(property.name) ||
+                    ts.isStringLiteral(property.name)) &&
+                  property.name.text === option,
+              )
+            : node.arguments.length === 0
+        ) {
+          calls.add(name);
+        }
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(source);
+  }
+  return calls;
+}
 
 export async function validateProductionEmbeddedBundles(root) {
   const files = (await fs.readdir(root, { recursive: true }))
@@ -51,7 +103,8 @@ export async function validateProductionEmbeddedBundles(root) {
   }
   const checks = {};
   for (const file of files) {
-    const text = await fs.readFile(path.join(root, file), "utf8");
+    const bytes = await fs.readFile(path.join(root, file));
+    const text = bytes.toString("utf8");
     const present = productionEmbeddedForbiddenMarkers.filter((marker) =>
       text.includes(marker),
     );
@@ -68,7 +121,8 @@ export async function validateProductionEmbeddedBundles(root) {
       );
     }
     const sdkCalls = productionSdkCalls[file] ?? [];
-    const missingSdkCalls = sdkCalls.filter((call) => !text.includes(call));
+    const calls = sdkCalls.length ? await readSdkCalls(bytes) : new Set();
+    const missingSdkCalls = sdkCalls.filter((call) => !calls.has(call));
     if (missingSdkCalls.length) {
       throw new Error(
         `Production embedded ${file} is missing Hot Updater SDK calls: ${missingSdkCalls.join(", ")}`,
