@@ -8,7 +8,8 @@ final class PublicHost {
         "sparkling-c4ce8d2-navigation-2.1.0-rc.12-lynx-4.0.3-primjs-4.0.0-ios-managed-pages-v1"
     static var shared: PublicHost?
 
-    let managed: HotUpdaterSparklingHost
+    private let configuration: HotUpdaterSparklingConfiguration
+    private let launchConfiguration: [String: String]
 
     private static func productionLaunchConfiguration() -> [String: String] {
         guard let value = Bundle.main.object(
@@ -65,7 +66,7 @@ final class PublicHost {
               native.variant == "sdk3" else {
             throw HotUpdaterSparklingError.invalidEmbeddedArtifact
         }
-        let configuration = try HotUpdaterSparklingConfiguration(
+        configuration = try HotUpdaterSparklingConfiguration(
             storeURL: home.appendingPathComponent("stores"),
             runtimeId: Self.runtimeId,
             embeddedDirectory: embeddedDirectory,
@@ -82,7 +83,11 @@ final class PublicHost {
                 forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH"
             ) as? String
         )
-        managed = try HotUpdaterSparklingHost(
+        self.launchConfiguration = launchConfiguration
+    }
+
+    func makeScene() -> HotUpdaterSparklingScene {
+        HotUpdaterSparklingScene(
             configuration: configuration,
             launchConfiguration: launchConfiguration
         )
@@ -91,11 +96,7 @@ final class PublicHost {
 
 struct PublicView: UIViewControllerRepresentable {
     func makeUIViewController(context: Context) -> UIViewController {
-        do {
-            return try PublicHost.shared!.managed.makeViewController()
-        } catch {
-            preconditionFailure("Could not create managed Lynx view: \(error)")
-        }
+        PublicHost.shared!.makeScene()
     }
 
     func updateUIViewController(

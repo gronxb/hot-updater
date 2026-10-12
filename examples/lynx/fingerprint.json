@@ -1,6 +1,6 @@
 {
   "ios": {
-    "hash": "610960b5fa0f0254b74b2cded897d46bff3ba7982acbc119bc8a22fb00dff737",
+    "hash": "9f15ea5fd43b074d65dc458bee0663c699f1bb834219aa94e214ae2f905cbf05",
     "sources": [
       {
         "type": "file",
@@ -33,6 +33,17 @@
         "hash": "bbf57e7ecb695dd7b13de4f403ffcb4f8f0108c27c3b4e9ad05fbcacb4eb8ece",
         "debugInfo": {
           "byteSize": 82966
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx-sparkling/ios/Sources/HotUpdaterLynxSparkling/HotUpdaterSparklingScene.swift",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "fb11184c220699bb99040cade92e60db73411e776f7b4d7449db709fc8315891",
+        "debugInfo": {
+          "byteSize": 4062
         }
       },
       {
@@ -99,6 +110,17 @@
         "hash": "3f93b5f80b469a284aba211c90507656930b444c1219bb7b9f055e8d9a0853ef",
         "debugInfo": {
           "byteSize": 487
+        }
+      },
+      {
+        "type": "file",
+        "filePath": "@hot-updater/lynx-sparkling/ios/Sources/HotUpdaterLynxSparklingCore/SparklingForegroundAdmission.swift",
+        "reasons": [
+          "lynx-native-input"
+        ],
+        "hash": "694d2858a6070f0dfbec06c84d2348ada02f3123ac4e016e351658a28647d37e",
+        "debugInfo": {
+          "byteSize": 1378
         }
       },
       {
@@ -558,9 +580,9 @@
         "reasons": [
           "lynx-native-input"
         ],
-        "hash": "5566440ee3ff911a7701945b2f5e63f4b60731fa630ba9920ce49d8926d6b5d6",
+        "hash": "a6e67927b40741d1d31a0161dcf09366ca5c4f6eedfaf9911d80f8115f540332",
         "debugInfo": {
-          "byteSize": 4271
+          "byteSize": 4291
         }
       },
       {

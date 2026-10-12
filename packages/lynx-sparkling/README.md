@@ -16,6 +16,13 @@ Activity mounts the primary page, retains and reattaches its host across
 configuration changes, and closes it on final destruction. Applications do not
 implement this managed lifecycle themselves.
 
+iOS applications mount `HotUpdaterSparklingScene` with their native
+configuration. The SDK creates the foreground host when the container's own
+window scene becomes active. Creating the container during a silent launch
+does not begin foreground recovery. Later scene activations retain the existing
+host; `close()` permanently closes that container. This scene boundary does not
+provide background script execution or OS task delivery.
+
 Native launch configuration includes two process-local identities. The
 `managedGenerationEpoch` is shared by every page and Activity rebind in one
 managed generation and advances when that generation is replaced. The

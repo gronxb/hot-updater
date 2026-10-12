@@ -508,7 +508,7 @@ describe("production native update endpoint", () => {
     expect(productionNativeSource).toContain(
       "HotUpdaterSparklingModules.modules()",
     );
-    expect(productionNativeSource).toContain("HotUpdaterSparklingHost(");
+    expect(productionNativeSource).toContain("HotUpdaterSparklingScene(");
     for (const workaround of [
       "HotUpdaterSparklingDiagnostics",
       "RouterProvider.hostRouterDepend",
