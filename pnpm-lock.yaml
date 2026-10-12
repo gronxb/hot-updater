@@ -2416,6 +2416,9 @@ importers:
 
   plugins/lynx-build:
     dependencies:
+      fast-xml-parser:
+        specifier: 5.7.2
+        version: 5.7.2
       uuidv7:
         specifier: 'catalog:'
         version: 1.2.1

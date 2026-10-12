@@ -6,6 +6,6 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
-        <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="59fb5666c950fc8e163f4639e742f4aed4c218e67dca2db0729ec793753832bd"/>
+        <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="0c7d42592b1a3e3496903a07f10c2e1f1f27698461544c594798168df06be6b8"/>
     </application>
 </manifest>

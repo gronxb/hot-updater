@@ -216,6 +216,125 @@ describe("Lynx native fingerprint", () => {
     );
   });
 
+  it.each([
+    [
+      "large integers",
+      "<integer>9007199254740992</integer>",
+      "<integer>9007199254740993</integer>",
+    ],
+    ["whitespace strings", "<string> </string>", "<string>  </string>"],
+    ["native data", "<data>AQI=</data>", "<data>AQM=</data>"],
+    [
+      "array order",
+      "<array><string>A</string><integer>1</integer><string>B</string></array>",
+      "<array><string>A</string><string>B</string><integer>1</integer></array>",
+    ],
+    [
+      "nested settings",
+      "<dict><key>HOT_UPDATER_FINGERPRINT_HASH</key><string>A</string></dict>",
+      "<dict><key>HOT_UPDATER_FINGERPRINT_HASH</key><string>B</string></dict>",
+    ],
+  ])("preserves native plist differences in %s", async (_, first, second) => {
+    const plist = path.join(cwd, "ios", "Info.plist");
+    const writeValue = (value: string) =>
+      fs.writeFile(
+        plist,
+        `<plist><dict><key>NativeSetting</key>${value}</dict></plist>`,
+      );
+    await writeValue(first);
+    const before = await createFingerprint({ platform: "ios" });
+    await writeValue(second);
+    expect((await createFingerprint({ platform: "ios" })).hash).not.toBe(
+      before.hash,
+    );
+  });
+
+  it("preserves significant Android route whitespace", async () => {
+    const manifest = path.join(cwd, "android/app/src/main/AndroidManifest.xml");
+    await fs.mkdir(path.dirname(manifest), { recursive: true });
+    const writeRoute = (route: string) =>
+      fs.writeFile(
+        manifest,
+        `<manifest><application><activity android:name=".Main"><intent-filter><data android:path="${route}"/></intent-filter></activity></application></manifest>`,
+      );
+    await writeRoute("/route ");
+    const before = await createFingerprint({ platform: "android" });
+    expect(
+      before.sources.some(
+        (source) =>
+          source.type === "file" &&
+          source.filePath === "android/app/src/main/AndroidManifest.xml",
+      ),
+    ).toBe(true);
+    await writeRoute("/route");
+    expect((await createFingerprint({ platform: "android" })).hash).not.toBe(
+      before.hash,
+    );
+  });
+
+  it("keeps binary native plists hash-sensitive without XML decoding", async () => {
+    const plist = path.join(cwd, "ios", "NativeSettings.plist");
+    // Valid binary plists containing { NativeSetting: 1 } and { NativeSetting: 2 }.
+    await fs.writeFile(
+      plist,
+      Buffer.from(
+        "YnBsaXN0MDDRAQJdTmF0aXZlU2V0dGluZxABCAsZAAAAAAAAAQEAAAAAAAAAAwAAAAAAAAAAAAAAAAAAABs=",
+        "base64",
+      ),
+    );
+    const before = await createFingerprint({ platform: "ios" });
+    await fs.writeFile(
+      plist,
+      Buffer.from(
+        "YnBsaXN0MDDRAQJdTmF0aXZlU2V0dGluZxACCAsZAAAAAAAAAQEAAAAAAAAAAwAAAAAAAAAAAAAAAAAAABs=",
+        "base64",
+      ),
+    );
+    expect((await createFingerprint({ platform: "ios" })).hash).not.toBe(
+      before.hash,
+    );
+  });
+
+  it.each(["utf16le", "latin1"] as const)(
+    "preserves distinct native values in %s XML",
+    async (encoding) => {
+      const file = path.join(cwd, "ios", "Settings.plist");
+      const writeValue = async (value: string) => {
+        const declaration = encoding === "utf16le" ? "UTF-16" : "ISO-8859-1";
+        const xml = `<?xml version="1.0" encoding="${declaration}"?><plist><dict><key>NativeSetting</key><string>${value}</string></dict></plist>`;
+        const bytes = Buffer.from(xml, encoding);
+        await fs.writeFile(
+          file,
+          encoding === "utf16le"
+            ? Buffer.concat([Buffer.from([0xff, 0xfe]), bytes])
+            : bytes,
+        );
+      };
+      await writeValue("café");
+      const before = await createFingerprint({ platform: "ios" });
+      await writeValue("cafê");
+      expect((await createFingerprint({ platform: "ios" })).hash).not.toBe(
+        before.hash,
+      );
+    },
+  );
+
+  it("retains declarations that change the meaning of encoded XML bytes", async () => {
+    const file = path.join(cwd, "ios", "Settings.plist");
+    const xml =
+      '<?xml version="1.0" encoding="UTF-8"?><plist><dict><key>NativeSetting</key><string>é</string></dict></plist>';
+    await fs.writeFile(file, xml);
+    const before = await createFingerprint({ platform: "ios" });
+    // The same payload bytes mean two different strings under these encodings.
+    await fs.writeFile(
+      file,
+      xml.replace('encoding="UTF-8"', 'encoding="ISO-8859-1"'),
+    );
+    expect((await createFingerprint({ platform: "ios" })).hash).not.toBe(
+      before.hash,
+    );
+  });
+
   it("does not include the other platform or generated dependency trees", async () => {
     const before = await createFingerprint({
       platform: "android",

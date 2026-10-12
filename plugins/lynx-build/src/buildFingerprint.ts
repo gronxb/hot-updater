@@ -1,3 +1,4 @@
+import { isUtf8 } from "node:buffer";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
@@ -12,6 +13,7 @@ import {
   hashFingerprintSourcePath,
   resolveFingerprintSourcePaths,
 } from "@hot-updater/plugin-core/fingerprint";
+import { XMLParser } from "fast-xml-parser";
 
 const GENERATED_PATHS = [
   "**/{.build,.cxx,.git,.gradle,.hot-updater,build,DerivedData,node_modules,Pods}/**",
@@ -139,56 +141,98 @@ const resolvePackageSources = async (
   return sources.flat();
 };
 
-const FINGERPRINT_PLACEHOLDER = "__HOT_UPDATER_FINGERPRINT_HASH__";
+interface XmlNode {
+  [key: string]: XmlNode[] | string | Record<string, string>;
+}
+
+const STRUCTURAL_PLIST_ELEMENTS = new Set(["plist", "dict", "array"]);
+
+const normalizeXmlNodes = (
+  nodes: XmlNode[],
+  parents: string[] = [],
+): XmlNode[] => {
+  const result: XmlNode[] = [];
+  const parent = parents.join("/");
+  for (let index = 0; index < nodes.length; index++) {
+    const node = nodes[index];
+    const tag = Object.keys(node).find((key) => key !== ":@")!;
+    if (tag === "#text") {
+      if (
+        (parents[0] === "manifest" ||
+          STRUCTURAL_PLIST_ELEMENTS.has(parents.at(-1) ?? "")) &&
+        !(node[tag] as string).trim()
+      )
+        continue;
+      if (parents[0] === "plist" && parents.at(-1) === "data") {
+        const data = (node[tag] as string).replace(/[ \t\r\n]/g, "");
+        if (data) result.push({ "#text": data });
+      } else {
+        result.push(node);
+      }
+      continue;
+    }
+    const children = node[tag] as XmlNode[];
+    if (
+      parent === "plist/dict" &&
+      tag === "key" &&
+      ["HOT_UPDATER_FINGERPRINT_HASH", "HOT_UPDATER_PUBLIC_KEY"].includes(
+        children.map((child) => child["#text"] ?? "").join(""),
+      )
+    ) {
+      let next = index + 1;
+      while (
+        nodes[next]?.["#text"] !== undefined &&
+        !(nodes[next]["#text"] as string).trim()
+      )
+        next++;
+      if (nodes[next]?.string) {
+        index = next;
+        continue;
+      }
+    }
+    if (
+      parent === "manifest/application" &&
+      tag === "meta-data" &&
+      ["com.hotupdater.FINGERPRINT_HASH", "com.hotupdater.PUBLIC_KEY"].includes(
+        (node[":@"] as Record<string, string>)?.["@_android:name"],
+      )
+    )
+      continue;
+    result.push({
+      ...node,
+      [tag]: normalizeXmlNodes(children, [...parents, tag]),
+    });
+  }
+  return result;
+};
 
 const normalizeInjectedFingerprint = (filePath: string, bytes: Buffer) => {
-  const source = bytes.toString("utf8");
+  const isManifest =
+    filePath.startsWith("android/") && filePath.endsWith("AndroidManifest.xml");
+  const isPlist = filePath.startsWith("ios/") && filePath.endsWith(".plist");
+  // Preserve unsupported encodings as bytes instead of losing native values
+  // during UTF-8 decoding. Initial injection normalization is for UTF-8 XML.
   if (
-    filePath.startsWith("android/") &&
-    filePath.endsWith("AndroidManifest.xml")
-  ) {
-    return Buffer.from(
-      source
-        .replace(/<meta-data\b[^>]*>/gs, (element) => {
-          if (
-            /\bandroid:name\s*=\s*(["'])com\.hotupdater\.PUBLIC_KEY\1/.test(
-              element,
-            )
-          ) {
-            return "";
-          }
-          if (
-            !/\bandroid:name\s*=\s*(["'])com\.hotupdater\.FINGERPRINT_HASH\1/.test(
-              element,
-            )
-          ) {
-            return element;
-          }
-          return element.replace(
-            /(\bandroid:value\s*=\s*)(["'])[^"']*\2/,
-            `$1$2${FINGERPRINT_PLACEHOLDER}$2`,
-          );
-        })
-        .replace(/>\s+</g, "><")
-        .trim(),
-    );
-  }
-  if (filePath.startsWith("ios/") && filePath.endsWith(".plist")) {
-    return Buffer.from(
-      source
-        .replace(
-          /(<key>\s*HOT_UPDATER_FINGERPRINT_HASH\s*<\/key>\s*<string>)[\s\S]*?(<\/string>)/g,
-          `$1${FINGERPRINT_PLACEHOLDER}$2`,
-        )
-        .replace(
-          /<key>\s*HOT_UPDATER_PUBLIC_KEY\s*<\/key>\s*<string>[\s\S]*?<\/string>/g,
-          "",
-        )
-        .replace(/>\s+</g, "><")
-        .trim(),
-    );
-  }
-  return bytes;
+    (!isManifest && !isPlist) ||
+    bytes.subarray(0, 6).toString() === "bplist" ||
+    !isUtf8(bytes) ||
+    bytes.includes(0)
+  )
+    return bytes;
+  const source = bytes.toString("utf8");
+  const encoding = source.match(
+    /^\s*<\?xml\s[^?]*\bencoding\s*=\s*(['"])([^'"]+)\1/i,
+  )?.[2];
+  if (encoding && !/^utf-?8$/i.test(encoding)) return bytes;
+  const document = new XMLParser({
+    preserveOrder: true,
+    ignoreAttributes: false,
+    ignoreDeclaration: true,
+    parseTagValue: false,
+    parseAttributeValue: false,
+    trimValues: false,
+  }).parse(source) as XmlNode[];
+  return Buffer.from(JSON.stringify(normalizeXmlNodes(document)));
 };
 
 const hashLynxFingerprintSource = async (

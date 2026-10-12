@@ -32,7 +32,8 @@
     "README.md"
   ],
   "dependencies": {
-    "uuidv7": "catalog:"
+    "uuidv7": "catalog:",
+    "fast-xml-parser": "5.7.2"
   },
   "peerDependencies": {
     "@hot-updater/plugin-core": "workspace:*"
