@@ -12,11 +12,234 @@ const controllerPath = path.join(
 );
 
 describe("E2E remote asset proxy URLs", () => {
+  it("requires exactly one metadata transfer for a Lynx archive and rejects a substituted or repeated file", async () => {
+    const resultsDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-proxy-preflight-"),
+    );
+    vi.resetModules();
+    vi.stubEnv(
+      "HOT_UPDATER_E2E_APP_BASE_URL",
+      "https://provider.example.com/hot-updater",
+    );
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.lynxexample");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "booted");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", resultsDir);
+    vi.stubEnv("PORT", "3107");
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        if (String(input).includes("/artifacts/v1/")) {
+          return Response.json({
+            artifactProtocolVersion: 1,
+            archiveUrl: "https://storage.example.com/update.tar.br",
+            manifestUrl: "https://storage.example.com/manifest.json",
+            manifestFileHash: "manifest-hash",
+            assets: Object.fromEntries(
+              ["hot-updater-lynx.json", "pages/detail.bundle"].map((name) => [
+                name,
+                {
+                  fileHash: `hash-${name}`,
+                  file: { url: `https://storage.example.com/${name}` },
+                },
+              ]),
+            ),
+          });
+        }
+        return new Response("downloaded-bytes");
+      }),
+    );
+
+    try {
+      const controller = await import("./control-server/controller.ts");
+      const expected = {
+        archiveRequests: 1,
+        currentBundleId: "current",
+        fileRequests: "archive" as const,
+        maxRequestsPerAsset: 1,
+        patchRequests: 0,
+        targetBundleId: "target",
+      };
+      for (const file of ["pages/detail.bundle", "hot-updater-lynx.json"]) {
+        controller.handleConfigureProxy({ reset: true });
+        const response = await controller.handleProxyUpdateRequest(
+          new Request(
+            "http://localhost:3107/hot-updater/artifacts/v1/target/from/current",
+          ),
+        );
+        const artifact = (await response.json()) as {
+          archiveUrl: string;
+          assets: Record<string, { file: { url: string } }>;
+        };
+        await (
+          await controller.handleProxyRemoteAssetRequest(
+            new Request(artifact.archiveUrl),
+          )
+        ).arrayBuffer();
+        expect(() =>
+          controller.handleAssertBundleArtifactTransfers(expected),
+        ).toThrow("Unexpected Bundle artifact transfers");
+
+        const request = new Request(artifact.assets[file]!.file.url);
+        await (
+          await controller.handleProxyRemoteAssetRequest(request)
+        ).arrayBuffer();
+        if (file === "pages/detail.bundle") {
+          // The total is correct, but the required metadata was not fetched.
+          expect(() =>
+            controller.handleAssertBundleArtifactTransfers(expected),
+          ).toThrow("Unexpected Bundle artifact transfers");
+        } else {
+          expect(
+            controller.handleAssertBundleArtifactTransfers(expected),
+          ).toMatchObject({
+            expectedFilePaths: ["hot-updater-lynx.json"],
+            fileRequests: 1,
+          });
+          await (
+            await controller.handleProxyRemoteAssetRequest(request)
+          ).arrayBuffer();
+          expect(() =>
+            controller.handleAssertBundleArtifactTransfers(expected),
+          ).toThrow("Unexpected Bundle artifact transfers");
+        }
+      }
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
+  });
+
   it("does not expose the provider signed URL in the app-visible proxy URL", async () => {
     const controllerSource = await fs.readFile(controllerPath, "utf8");
 
     expect(controllerSource).not.toContain("/e2e/proxy-url?url=");
     expect(controllerSource).toContain("/e2e/proxy-url/");
+  });
+
+  it("omits stale Content-Length from rewritten catalog and artifact JSON", async () => {
+    const resultsDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-proxy-length-"),
+    );
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input instanceof URL ? input.toString() : String(input);
+      const payload = url.includes("/release-catalogs/")
+        ? {
+            catalogId: "provider-project",
+            catalogHash: `sha256:${"a".repeat(64)}`,
+            fallbackPolicy: "BUILTIN_IF_ACTIVE_INELIGIBLE",
+            generation: 1,
+            releases: [],
+            schemaVersion: 1,
+            scopeKey: "provider-scope",
+          }
+        : {
+            artifactProtocolVersion: 1,
+            archiveUrl: "https://storage.example.com/bundle.tar.br",
+            manifestUrl: "https://storage.example.com/manifest.json",
+            manifestFileHash: "manifest-hash",
+            assets: {
+              "main.bundle": {
+                fileHash: "target-hash",
+                file: { url: "https://storage.example.com/main.bundle" },
+              },
+            },
+          };
+      return new Response(JSON.stringify(payload), {
+        headers: {
+          "content-length": "1",
+          "content-type": "application/json",
+        },
+      });
+    });
+
+    vi.resetModules();
+    vi.stubEnv(
+      "HOT_UPDATER_E2E_APP_BASE_URL",
+      "https://provider.example.com/hot-updater",
+    );
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.example");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "booted");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", resultsDir);
+    vi.stubEnv("PORT", "3107");
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const controller = await import("./control-server/controller.ts");
+      const catalogResponse = await controller.handleProxyUpdateRequest(
+        new Request(
+          "http://localhost:3107/hot-updater/release-catalogs/app-version/ios/cHJvZHVjdGlvbg/1.0.0",
+        ),
+      );
+      const artifactResponse = await controller.handleProxyUpdateRequest(
+        new Request(
+          "http://localhost:3107/hot-updater/artifacts/v1/target/from/current",
+        ),
+      );
+
+      expect(catalogResponse.headers.get("content-length")).toBeNull();
+      expect(artifactResponse.headers.get("content-length")).toBeNull();
+      await expect(catalogResponse.json()).resolves.toMatchObject({
+        scopeKey: "v1:app-version:ios:cHJvZHVjdGlvbg",
+      });
+      await expect(artifactResponse.json()).resolves.toMatchObject({
+        archiveUrl: expect.stringContaining("/e2e/proxy-url/"),
+      });
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
+  });
+
+  it("injects configured artifact failures on the update artifact path", async () => {
+    const resultsDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-e2e-proxy-artifact-fail-"),
+    );
+    const fetchMock = vi.fn(async () => {
+      return new Response("bundle-bytes", {
+        headers: { "content-type": "application/octet-stream" },
+      });
+    });
+
+    vi.resetModules();
+    vi.stubEnv(
+      "HOT_UPDATER_E2E_APP_BASE_URL",
+      "https://provider.example.com/hot-updater",
+    );
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.example");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "booted");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", resultsDir);
+    vi.stubEnv("PORT", "3107");
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const controller = await import("./control-server/controller.ts");
+      const artifactUrl =
+        "http://localhost:3107/hot-updater/artifacts/v1/target/from/current";
+      controller.handleConfigureProxy({ artifactFailures: 1, reset: true });
+      const failed = await controller.handleProxyUpdateRequest(
+        new Request(artifactUrl),
+      );
+      expect(failed.status).toBe(503);
+      expect(controller.handleProxyState().artifactFailuresRemaining).toBe(0);
+      expect(controller.handleProxyState().requestCounts.artifact).toBe(1);
+      expect(fetchMock).not.toHaveBeenCalled();
+
+      const recovered = await controller.handleProxyUpdateRequest(
+        new Request(artifactUrl),
+      );
+      expect(recovered.status).toBe(200);
+      expect(await recovered.text()).toBe("bundle-bytes");
+      expect(controller.handleProxyState().requestCounts.artifact).toBe(2);
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
   });
 
   it("rewrites update asset URLs to opaque paths that resolve server-side", async () => {
@@ -53,6 +276,8 @@ describe("E2E remote asset proxy URLs", () => {
                 patch: {
                   algorithm: "bsdiff",
                   baseBundleId: "019ea44a-0000-7000-8000-000000000000",
+                  baseFileHash: "asset-base-hash",
+                  patchFileHash: "asset-patch-hash",
                   patchUrl: signedPatchUrl,
                 },
               },
@@ -167,6 +392,43 @@ describe("E2E remote asset proxy URLs", () => {
         currentBundleId: "current",
         targetBundleId: "target",
       });
+      const changedAssetMutation = await controlRoutes.request(
+        "/e2e/proxy-control",
+        {
+          body: JSON.stringify({
+            changedAssetMutation: {
+              assetPath: "detail.lynx.bundle",
+              mode: "corrupt",
+              remaining: 1,
+            },
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      expect(changedAssetMutation.status).toBe(200);
+      expect(await changedAssetMutation.json()).toMatchObject({
+        changedAssetMutation: {
+          assetPath: "detail.lynx.bundle",
+          mode: "corrupt",
+          remaining: 1,
+        },
+      });
+      const invalidChangedAssetMutation = await controlRoutes.request(
+        "/e2e/proxy-control",
+        {
+          body: JSON.stringify({
+            changedAssetMutation: {
+              assetPath: "main.lynx.bundle",
+              mode: "corrupt",
+              remaining: 1,
+            },
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      expect(invalidChangedAssetMutation.status).toBe(400);
       const invalidRouteAssertion = await controlRoutes.request(
         "/e2e/assert-bundle-artifact-selection",
         {
@@ -200,6 +462,54 @@ describe("E2E remote asset proxy URLs", () => {
       expect(await sizeAwareProfileValidation.json()).toEqual({
         error: "patchMaxBaseBundles must be an integer between 1 and 5",
       });
+      const crossProvenanceValidation = await controlRoutes.request(
+        "/e2e/jobs/deploy-bundle",
+        {
+          body: JSON.stringify({
+            channel: "production",
+            crossProvenance: "arbitrary-runtime-id",
+            marker: "cross-provenance-route-contract",
+            mode: "reset",
+            safeBundleIds: [],
+            targetAppVersion: "1.0.x",
+          }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      expect(crossProvenanceValidation.status).toBe(400);
+      expect(await crossProvenanceValidation.json()).toEqual({
+        error: "crossProvenance must be a boolean",
+      });
+      const deployJob = vi
+        .spyOn(controller, "startDeployBundleJob")
+        .mockReturnValue("incompatible-runtime-job");
+      try {
+        const incompatibleDeploy = await controlRoutes.request(
+          "/e2e/jobs/deploy-bundle",
+          {
+            body: JSON.stringify({
+              channel: "production",
+              crossProvenance: true,
+              marker: "cross-provenance-route-contract",
+              mode: "reset",
+              safeBundleIds: [],
+              targetAppVersion: "1.0.x",
+            }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          },
+        );
+        expect(incompatibleDeploy.status).toBe(200);
+        expect(await incompatibleDeploy.json()).toEqual({
+          jobId: "incompatible-runtime-job",
+        });
+        expect(deployJob).toHaveBeenCalledWith(
+          expect.objectContaining({ crossProvenance: true }),
+        );
+      } finally {
+        deployJob.mockRestore();
+      }
 
       const assetResponse = await controller.handleProxyRemoteAssetRequest(
         new Request(assetUrl),
@@ -368,7 +678,7 @@ describe("E2E remote asset proxy URLs", () => {
           archiveUrl: archivePath,
           artifactProtocolVersion: 1,
           assets: {
-            "assets/example.bmp": {
+            "detail.lynx.bundle": {
               file: { url: assetPath },
               fileHash: "asset-hash",
               patch: {
@@ -425,8 +735,8 @@ describe("E2E remote asset proxy URLs", () => {
         >;
         manifestUrl: string;
       };
-      const assetUrl = payload.assets["assets/example.bmp"]!.file.url;
-      const patchUrl = payload.assets["assets/example.bmp"]!.patch.patchUrl;
+      const assetUrl = payload.assets["detail.lynx.bundle"]!.file.url;
+      const patchUrl = payload.assets["detail.lynx.bundle"]!.patch.patchUrl;
       for (const url of [
         payload.archiveUrl,
         payload.manifestUrl,
@@ -471,6 +781,65 @@ describe("E2E remote asset proxy URLs", () => {
         ).text(),
       ).toBe("patch-bytes");
 
+      controller.handleConfigureProxy({ downloadAvailable: false });
+      expect(() =>
+        controller.handleAssertProxy({ minFailedDownloads: 1 }),
+      ).toThrow("Expected a failed asset download");
+      const descriptorDuringOutage = await controller.handleProxyUpdateRequest(
+        new Request(
+          "http://localhost:3107/hot-updater/artifacts/v1/target/from/current",
+        ),
+      );
+      expect(descriptorDuringOutage.status).toBe(200);
+      const requestsBeforeOutage = controller.handleProxyState().requestCounts;
+      const fetchesBeforeOutage = fetchMock.mock.calls.length;
+      for (const url of [payload.manifestUrl, assetUrl, patchUrl]) {
+        expect(
+          (await controller.handleProxyRemoteAssetRequest(new Request(url)))
+            .status,
+        ).toBe(503);
+      }
+      expect(fetchMock).toHaveBeenCalledTimes(fetchesBeforeOutage);
+      controller.handleAssertProxy({ minFailedDownloads: 3 });
+      controller.handleConfigureProxy({ downloadAvailable: true });
+      expect(controller.handleProxyState().requestCounts).toEqual(
+        requestsBeforeOutage,
+      );
+      expect(controller.handleProxyState().failedDownloads).toBe(3);
+      expect(
+        await (
+          await controller.handleProxyRemoteAssetRequest(new Request(assetUrl))
+        ).text(),
+      ).toBe("asset-bytes");
+
+      controller.handleConfigureProxy({
+        changedAssetMutation: {
+          assetPath: "detail.lynx.bundle",
+          mode: "corrupt",
+          remaining: 1,
+        },
+      });
+      expect(
+        await (
+          await controller.handleProxyRemoteAssetRequest(new Request(assetUrl))
+        ).text(),
+      ).toBe("corrupt changed asset bytes");
+      expect(controller.handleProxyState().changedAssetMutation).toMatchObject({
+        remaining: 0,
+      });
+
+      controller.handleConfigureProxy({
+        changedAssetMutation: {
+          assetPath: "detail.lynx.bundle",
+          mode: "missing",
+          remaining: 1,
+        },
+      });
+      const missingDetail = await controller.handleProxyRemoteAssetRequest(
+        new Request(assetUrl),
+      );
+      expect(missingDetail.status).toBe(404);
+
       expect(fetchTargets).toEqual(
         expect.arrayContaining([
           `${baseUrl}${manifestPath}`,
@@ -478,6 +847,217 @@ describe("E2E remote asset proxy URLs", () => {
           `${baseUrl}${assetPath}`,
           `${baseUrl}${patchPath}`,
         ]),
+      );
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(resultsDir, { force: true, recursive: true });
+    }
+  });
+
+  it("requires consistent manifest v1 captures before native reuse verification", async () => {
+    const resultsDir = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-selection-history-"),
+    );
+    let artifactPayload: unknown;
+    const fetchMock = vi.fn(async () => Response.json(artifactPayload));
+    const archiveOnly = {
+      fileHash: "archive-hash",
+      fileUrl: "https://storage.example.com/bundle.zip",
+    };
+    const manifestDiff = {
+      artifactProtocolVersion: 1,
+      assets: {
+        "main.bundle": {
+          file: {
+            url: "https://storage.example.com/main.bundle",
+            compression: null,
+          },
+          fileHash: "main-target-hash",
+          patch: {
+            algorithm: "bsdiff",
+            baseBundleId: "base-bundle",
+            baseFileHash: "main-base-hash",
+            patchFileHash: "main-patch-hash",
+            patchUrl: "https://storage.example.com/main.patch?token=one",
+          },
+        },
+        "metadata.json": {
+          file: {
+            compression: null,
+            url: "https://storage.example.com/metadata.json?token=one",
+          },
+          fileHash: "metadata-target-hash",
+          patch: null,
+        },
+      },
+      archiveUrl: "https://storage.example.com/archive.tar.br?token=one",
+      manifestFileHash: "manifest-hash",
+      manifestUrl: "https://storage.example.com/manifest.json?token=one",
+      patchAssetPath: "main.bundle",
+    };
+
+    vi.resetModules();
+    vi.stubEnv(
+      "HOT_UPDATER_E2E_APP_BASE_URL",
+      "https://provider.example.com/hot-updater",
+    );
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.example");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "booted");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", resultsDir);
+    vi.stubEnv("PORT", "3107");
+    vi.stubGlobal("fetch", fetchMock);
+
+    try {
+      const controller = await import("./control-server/controller.ts");
+      const artifactUrl =
+        "http://localhost:3107/hot-updater/artifacts/v1/target/from/current";
+      const capture = async (payload: unknown) => {
+        artifactPayload = payload;
+        const response = await controller.handleProxyUpdateRequest(
+          new Request(artifactUrl),
+        );
+        expect(response.status).toBe(200);
+      };
+      const assertManifestDiff = () =>
+        controller.handleAssertManifestDiffApplied({
+          bundleId: "target",
+          previousBundleId: "current",
+        });
+      const assertManifestConflict = async (mutate: (payload: any) => void) => {
+        const changed = structuredClone(manifestDiff);
+        mutate(changed);
+        controller.handleConfigureProxy({ reset: true });
+        await capture(manifestDiff);
+        await capture(changed);
+        await expect(assertManifestDiff()).rejects.toThrow(
+          "Unexpected Bundle artifact selection",
+        );
+      };
+
+      for (const captures of [
+        [archiveOnly, manifestDiff],
+        [manifestDiff, archiveOnly],
+      ]) {
+        controller.handleConfigureProxy({ reset: true });
+        for (const payload of captures) await capture(payload);
+        await expect(assertManifestDiff()).rejects.toThrow(
+          "Unexpected Bundle artifact selection",
+        );
+      }
+
+      controller.handleConfigureProxy({ reset: true });
+      await capture(archiveOnly);
+      await capture(archiveOnly);
+      await expect(assertManifestDiff()).rejects.toThrow(
+        "Unexpected Bundle artifact selection",
+      );
+
+      controller.handleConfigureProxy({ reset: true });
+      await capture(manifestDiff);
+      await capture(manifestDiff);
+      const strictPath = new AbortController();
+      strictPath.abort(new Error("strict manifest assertion reached"));
+      await expect(
+        controller.handleAssertManifestDiffApplied({
+          bundleId: "target",
+          previousBundleId: "current",
+          signal: strictPath.signal,
+        }),
+      ).rejects.toBe(strictPath.signal.reason);
+
+      for (const mutate of [
+        (payload: any) => (payload.manifestFileHash = "other-manifest-hash"),
+        (payload: any) =>
+          (payload.assets["metadata.json"].fileHash = "other-asset-hash"),
+        (payload: any) =>
+          (payload.assets["main.bundle"].patch.patchFileHash =
+            "other-patch-hash"),
+        (payload: any) =>
+          (payload.assets["main.bundle"].patch.algorithm = "other"),
+        (payload: any) =>
+          (payload.assets["main.bundle"].patch.baseBundleId =
+            "other-base-bundle"),
+      ]) {
+        await assertManifestConflict(mutate);
+      }
+
+      controller.handleConfigureProxy({ reset: true });
+      await capture(archiveOnly);
+      await capture({ ...archiveOnly, fileHash: "other-archive-hash" });
+      await expect(assertManifestDiff()).rejects.toThrow(
+        "Unexpected Bundle artifact selection",
+      );
+
+      for (const assets of [
+        {
+          "main.bundle": {
+            file: {},
+            fileHash: "main-target-hash",
+            patch: null,
+          },
+        },
+        {
+          "main.bundle": {
+            file: null,
+            fileHash: "main-target-hash",
+            patch: {
+              algorithm: "bsdiff",
+              baseBundleId: "base-bundle",
+              baseFileHash: "main-base-hash",
+              patchUrl: "https://storage.example.com/main.patch",
+            },
+          },
+        },
+      ]) {
+        controller.handleConfigureProxy({ reset: true });
+        await capture({ ...manifestDiff, assets });
+        await expect(assertManifestDiff()).rejects.toThrow(
+          "Unexpected Bundle artifact selection",
+        );
+      }
+
+      controller.handleConfigureProxy({ reset: true });
+      await capture(manifestDiff);
+      await capture({
+        ...manifestDiff,
+        assets: {
+          ...manifestDiff.assets,
+          "main.bundle": {
+            ...manifestDiff.assets["main.bundle"],
+            patch: {
+              ...manifestDiff.assets["main.bundle"].patch,
+              patchUrl: "https://renewed.example.com/main.patch?token=two",
+            },
+          },
+          "metadata.json": {
+            ...manifestDiff.assets["metadata.json"],
+            file: {
+              ...manifestDiff.assets["metadata.json"].file,
+              url: "https://renewed.example.com/metadata.json?token=two",
+            },
+          },
+        },
+        archiveUrl: "https://renewed.example.com/archive.tar.br?token=two",
+        manifestUrl: "https://renewed.example.com/manifest.json?token=two",
+      });
+      await expect(
+        controller.handleAssertManifestDiffApplied({
+          bundleId: "target",
+          previousBundleId: "current",
+          signal: strictPath.signal,
+        }),
+      ).rejects.toBe(strictPath.signal.reason);
+
+      controller.handleConfigureProxy({ reset: true });
+      await capture({
+        assets: {},
+        manifestFileHash: "manifest-hash",
+        manifestUrl: "https://storage.example.com/manifest.json",
+      });
+      await expect(assertManifestDiff()).rejects.toThrow(
+        "Unexpected Bundle artifact selection",
       );
     } finally {
       vi.unstubAllEnvs();

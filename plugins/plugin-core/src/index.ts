@@ -1,4 +1,7 @@
 export * from "./bundleStorageLayout";
+export * from "./bundlePatchLimits";
+export * from "./bundlePackagingLimits";
+export * from "./bundleManifestValidation";
 export * from "./assetStorageLayout";
 export * from "./contentAddressedAssets";
 export * from "./contentType";
@@ -26,8 +29,10 @@ export {
   isDatabaseMetadataObject,
 } from "./databaseJsonValue";
 export * from "./databaseRows";
+export * from "./deterministicOrder";
 export * from "./generateMinBundleId";
 export * from "./parseStorageUri";
+export * from "./portableArtifactPath";
 export * from "./releaseCatalogCompiler";
 export * from "./releaseManagement";
 export * from "./releaseCatalogMutation";

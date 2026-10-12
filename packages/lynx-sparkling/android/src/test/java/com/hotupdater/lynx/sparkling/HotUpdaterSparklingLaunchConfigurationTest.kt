@@ -1,0 +1,187 @@
+package com.hotupdater.lynx.sparkling
+
+import android.app.Activity
+import android.content.Intent
+import com.hotupdater.lynx.LynxHostConfiguration
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertThrows
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.Robolectric
+import org.robolectric.RobolectricTestRunner
+
+@RunWith(RobolectricTestRunner::class)
+class HotUpdaterSparklingLaunchConfigurationTest {
+    @Test
+    fun freshBindingsCannotReuseCallerSuppliedFontCacheEpochs() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        activity.intent = Intent().putExtra(
+            HotUpdaterSparklingLaunchConfiguration.EXTRA,
+            """{"runtimeGenerationEpoch":"diagnostic","title":"Intent"}""",
+        )
+        val epochs = listOf("first-host", "first-host", "replacement-host").map { host ->
+            val launch = HotUpdaterSparklingLaunchConfiguration.resolve(
+                host = mapOf("host" to host, "runtimeGenerationEpoch" to "host"),
+                allowDiagnosticIntent = true,
+                context = activity,
+                managedGenerationEpoch = "1",
+                page = mapOf("title" to "Page", "runtimeGenerationEpoch" to "page"),
+            )
+            assertEquals(host, launch["host"])
+            assertEquals("Page", launch["title"])
+            checkNotNull(launch["runtimeGenerationEpoch"]).also {
+                assertTrue(it.matches(Regex("^[1-9][0-9]*$")))
+            }
+        }
+        assertEquals(3, epochs.toSet().size)
+    }
+
+    @Test
+    fun pagesAndRebindingsShareOnlyTheirManagedGenerationEpoch() {
+        val activity = Robolectric.buildActivity(Activity::class.java).setup().get()
+        activity.intent = Intent().putExtra(
+            HotUpdaterSparklingLaunchConfiguration.EXTRA,
+            """{"managedGenerationEpoch":"diagnostic"}""",
+        )
+        val first = SparklingGenerationEvents(null)
+        val next = SparklingGenerationEvents(null)
+        val configurations = listOf(first, first, first, next).map { generation ->
+            HotUpdaterSparklingLaunchConfiguration.resolve(
+                host = mapOf("managedGenerationEpoch" to "host"),
+                allowDiagnosticIntent = true,
+                context = activity,
+                page = mapOf("managedGenerationEpoch" to "page"),
+                managedGenerationEpoch = generation.epoch,
+            )
+        }
+        // Primary, detail and a retained-Activity rebind share the generation,
+        // but all four bindings must use different process-wide font cache keys.
+        assertEquals(listOf(first.epoch, first.epoch, first.epoch, next.epoch),
+            configurations.map { it["managedGenerationEpoch"] })
+        assertTrue(next.epoch.toLong() > first.epoch.toLong())
+        assertEquals(4, configurations.map { it["runtimeGenerationEpoch"] }.toSet().size)
+    }
+
+    @Test
+    fun mergesHostThenDiagnosticsThenPageConfiguration() {
+        assertEquals(
+            mapOf(
+                "hostOnly" to "host",
+                "diagnosticOnly" to "diagnostic",
+                "pageOnly" to "page",
+                "shared" to "page",
+                "runtimeGenerationEpoch" to "3",
+                "managedGenerationEpoch" to "1",
+            ),
+            HotUpdaterSparklingLaunchConfiguration.merge(
+                host = mapOf("hostOnly" to "host", "shared" to "host"),
+                diagnostics = mapOf(
+                    "diagnosticOnly" to "diagnostic",
+                    "shared" to "diagnostic",
+                ),
+                page = mapOf("pageOnly" to "page", "shared" to "page"),
+                runtimeGenerationEpoch = "3",
+                managedGenerationEpoch = "1",
+            ),
+        )
+    }
+
+    @Test
+    fun defaultProductionConfigurationDoesNotReadIntentOverrides() {
+        val activity = Robolectric.buildActivity(Activity::class.java)
+            .setup()
+            .get()
+        val configuration = HotUpdaterSparklingConfiguration(
+            lynx = LynxHostConfiguration(
+                runtimeId = "runtime",
+                channel = "production",
+                appVersion = "1.0.0",
+                embeddedAssetDirectory = "ota/react/A",
+                embeddedBundleId = "embedded",
+                embeddedManifestHash = "0".repeat(64),
+                minimumBundleId = "embedded",
+                cohort = "1",
+            ),
+            launchConfiguration = mapOf(
+                "appBaseURL" to "https://updates.company.com/hot-updater",
+            ),
+        )
+        activity.intent = Intent().putExtra(
+            HotUpdaterSparklingLaunchConfiguration.EXTRA,
+            "{",
+        )
+
+        assertFalse(configuration.allowDiagnosticIntentLaunchConfiguration)
+        assertEquals(
+            mapOf(
+                "appBaseURL" to "https://updates.company.com/hot-updater",
+                "title" to "Detail",
+            ),
+            HotUpdaterSparklingLaunchConfiguration.resolve(
+                host = configuration.launchConfiguration,
+                allowDiagnosticIntent =
+                    configuration.allowDiagnosticIntentLaunchConfiguration,
+                context = activity,
+                managedGenerationEpoch = "1",
+                page = mapOf("title" to "Detail"),
+            ) - setOf("runtimeGenerationEpoch", "managedGenerationEpoch"),
+        )
+    }
+
+    @Test
+    fun diagnosticsOptInOverridesHostBeforeAuthorizedPageParameters() {
+        val activity = Robolectric.buildActivity(Activity::class.java)
+            .setup()
+            .get()
+        activity.intent = Intent().putExtra(
+            HotUpdaterSparklingLaunchConfiguration.EXTRA,
+            """{"appBaseURL":"http://diagnostics.test/hot-updater","title":"Intent"}""",
+        )
+
+        assertEquals(
+            mapOf(
+                "appBaseURL" to "http://diagnostics.test/hot-updater",
+                "title" to "Page",
+            ),
+            HotUpdaterSparklingLaunchConfiguration.resolve(
+                host = mapOf(
+                    "appBaseURL" to "https://updates.company.com/hot-updater",
+                    "title" to "Host",
+                ),
+                allowDiagnosticIntent = true,
+                context = activity,
+                managedGenerationEpoch = "1",
+                page = mapOf("title" to "Page"),
+            ) - setOf("runtimeGenerationEpoch", "managedGenerationEpoch"),
+        )
+    }
+
+    @Test
+    fun acceptsOnlyAStringMap() {
+        assertEquals(
+            mapOf(
+                "runtimeConfigURL" to "http://localhost:3111/e2e/runtime-config",
+                "appBaseURL" to "http://localhost:3011/hot-updater",
+                "channel" to "production",
+            ),
+            HotUpdaterSparklingLaunchConfiguration.parse(
+                """{"runtimeConfigURL":"http://localhost:3111/e2e/runtime-config","appBaseURL":"http://localhost:3011/hot-updater","channel":"production"}""",
+            ),
+        )
+        assertThrows(IllegalArgumentException::class.java) {
+            HotUpdaterSparklingLaunchConfiguration.parse(
+                """{"runtimeConfigURL":3111}""",
+            )
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            HotUpdaterSparklingLaunchConfiguration.parse(
+                """{"":"http://localhost:3111/e2e/runtime-config"}""",
+            )
+        }
+        assertThrows(org.json.JSONException::class.java) {
+            HotUpdaterSparklingLaunchConfiguration.parse("{")
+        }
+    }
+}

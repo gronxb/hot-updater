@@ -15,6 +15,10 @@ export type LaunchOptions = {
   readonly expectCrash?: boolean;
 };
 
+export type TapOptions = {
+  readonly allowErrorResult?: boolean;
+};
+
 export type ScenarioAppDriver = {
   readonly assertText: (
     stage: string,
@@ -31,7 +35,11 @@ export type ScenarioAppDriver = {
   readonly launch: (stage: string, options?: LaunchOptions) => Promise<void>;
   readonly reload: (stage: string) => Promise<void>;
   readonly resetAppState: (stage: string) => Promise<void>;
-  readonly tap: (stage: string, testID: string) => Promise<void>;
+  readonly tap: (
+    stage: string,
+    testID: string,
+    options?: TapOptions,
+  ) => Promise<void>;
   readonly terminate: (stage: string) => Promise<void>;
   readonly typeText: (
     stage: string,

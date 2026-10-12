@@ -1,0 +1,57 @@
+<script setup lang="ts">
+import { HotUpdater } from "@hot-updater/lynx";
+import { close } from "@hot-updater/lynx-sparkling";
+import { onMounted, ref } from "vue-lynx";
+
+import { variant } from "../../spike/bridge";
+
+import "../../style.css";
+
+declare const __SPIKE_BEHAVIOR__: string;
+
+const status = ref(`Detail bundle ${variant}`);
+const closeDetail = () =>
+  close(undefined, (result) => console.log("HOT_UPDATER_PAGE_CLOSE", result));
+onMounted(() => {
+  if (["unconfirmed", "detail-unconfirmed"].includes(__SPIKE_BEHAVIOR__)) {
+    status.value = `Detail bundle ${variant}: readiness deliberately withheld`;
+    console.log("HOT_UPDATER_DETAIL_UNCONFIRMED", variant);
+    return;
+  }
+  void HotUpdater.getLaunchConfiguration()
+    .then(({ appBaseURL }) =>
+      HotUpdater.init({ baseURL: () => appBaseURL }).notifyAppReady(),
+    )
+    .then((receipt) => {
+      status.value = `Detail bundle ${variant} ready`;
+      console.log("HOT_UPDATER_DETAIL_READY", JSON.stringify(receipt));
+    })
+    .catch((error) => {
+      status.value = `Detail failed: ${String(error)}`;
+    });
+});
+</script>
+
+<template>
+  <view class="page">
+    <text class="eyebrow">HOT UPDATER / VUELYNX DETAIL</text>
+    <text :flatten="false" :accessibility-element="true" class="title"
+      >Detail {{ variant }}</text
+    >
+    <text :flatten="false" :accessibility-element="true" class="description">{{
+      status
+    }}</text>
+    <view
+      :flatten="false"
+      :accessibility-element="true"
+      accessibility-label="Close detail page"
+      accessibility-traits="button"
+      class="action"
+      @tap="closeDetail"
+    >
+      <text :accessibility-element="false" class="action-label"
+        >Close detail page</text
+      >
+    </view>
+  </view>
+</template>

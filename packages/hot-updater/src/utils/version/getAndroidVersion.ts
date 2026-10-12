@@ -102,7 +102,13 @@ const getAndroidVersionFromAppBuildGradle = async (
 
   let buildGradle: string;
   try {
-    buildGradle = stripComments(await fs.readFile(buildGradlePath, "utf8"));
+    const contents = await fs
+      .readFile(buildGradlePath, "utf8")
+      .catch((error) => {
+        if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+        return fs.readFile(`${buildGradlePath}.kts`, "utf8");
+      });
+    buildGradle = stripComments(contents);
   } catch {
     return { version: null, candidates: [] };
   }

@@ -1,4 +1,7 @@
-import { createStorageAdapter } from "@hot-updater/plugin-core";
+import {
+  createStorageAdapter,
+  MAX_BUNDLE_MANIFEST_BYTES,
+} from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createStorageAccess } from "./storageAccess";
@@ -41,11 +44,68 @@ describe("createStorageAccess", () => {
     ).resolves.toBe("manifest text");
   });
 
+  it("rejects an oversized Content-Length before reading the body", async () => {
+    const cancel = vi.fn();
+    const response = new Response(new ReadableStream({ cancel }), {
+      headers: {
+        "content-length": String(MAX_BUNDLE_MANIFEST_BYTES + 1),
+      },
+    });
+    const storage = createStorageAdapter({
+      name: "r2Storage",
+      protocol: "r2",
+      get: async () => ({ response }),
+    });
+    const { readStorageText } = createStorageAccess(storage);
+
+    await expect(readStorageText("r2://assets/manifest.json")).rejects.toThrow(
+      "byte limit",
+    );
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
+  it("counts headerless response chunks and cancels after the limit", async () => {
+    const cancel = vi.fn();
+    const chunk = new Uint8Array(Math.ceil(MAX_BUNDLE_MANIFEST_BYTES / 2));
+    const response = new Response(
+      new ReadableStream({
+        start(controller) {
+          controller.enqueue(chunk);
+          controller.enqueue(chunk);
+          controller.enqueue(new Uint8Array([1]));
+        },
+        cancel,
+      }),
+    );
+    const storage = createStorageAdapter({
+      name: "r2Storage",
+      protocol: "r2",
+      get: async () => ({ response }),
+    });
+    const { readStorageText } = createStorageAccess(storage);
+
+    await expect(readStorageText("r2://assets/manifest.json")).rejects.toThrow(
+      "byte limit",
+    );
+    expect(cancel).toHaveBeenCalledOnce();
+  });
+
   it("uses an unowned HTTPS URI directly as the download URL", async () => {
     const { resolveFileUrl } = createStorageAccess(s3Storage());
     const storageUri = "https://assets.example.com/bundle.zip";
 
     await expect(resolveFileUrl(storageUri)).resolves.toBe(storageUri);
+  });
+
+  it.each([
+    "https://user:pass@assets.example.com/bundle.zip",
+    "https://assets.example.com:99999/bundle.zip",
+    "https://assets.example.com\\bundle.zip",
+    "https://assets.example.com/bundle.zip\nignored",
+  ])("rejects an unsafe direct HTTP storage URL: %s", async (storageUri) => {
+    const { resolveFileUrl } = createStorageAccess(s3Storage());
+
+    await expect(resolveFileUrl(storageUri)).rejects.toThrow("safe HTTP(S)");
   });
 
   it("lets a matching HTTPS storage own reads before direct fetch", async () => {
@@ -84,6 +144,22 @@ describe("createStorageAccess", () => {
       "https://cdn.example.com/bundle.zip",
     );
     expect(getDownloadUrl).toHaveBeenCalledWith({ storageUri });
+  });
+
+  it("rejects a credentialed URL returned by a storage plugin", async () => {
+    const storage = createStorageAdapter({
+      name: "standaloneStorage",
+      protocol: "https",
+      get: async () => ({ response: null }),
+      getDownloadUrl: async () => ({
+        url: "https://user:pass@cdn.example.com/bundle.zip",
+      }),
+    });
+    const { resolveFileUrl } = createStorageAccess(storage);
+
+    await expect(
+      resolveFileUrl("https://storage.example.com/bundle.zip"),
+    ).rejects.toThrow("safe HTTP(S)");
   });
 
   it("refuses a download URL that is not an absolute HTTP(S) URL", async () => {

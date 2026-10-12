@@ -13,6 +13,32 @@ const deviceId = "12345678-1234-1234-1234-1234567890AB";
 const otherDeviceId = "ABCDEFAB-1234-1234-1234-1234567890AB";
 
 describe("native Release builds", () => {
+  it.each(["android", "ios"] as const)(
+    "uses the existing Lynx native builder for %s without RN settings",
+    (platform) => {
+      const options = parseNativeBuildArgs([
+        "--platform",
+        platform,
+        "--runtime",
+        "lynx",
+      ]);
+      const plan = createNativeBuildPlan(options, "/checkout with spaces", {});
+      expect(plan).toEqual([
+        {
+          command: process.execPath,
+          args: [
+            "scripts/build-e2e-native.mjs",
+            "--platform",
+            platform,
+            "--target",
+            "e2e",
+          ],
+          cwd: "/checkout with spaces/examples/lynx",
+          env: { NODE_ENV: "production", BABEL_ENV: "production" },
+        },
+      ]);
+    },
+  );
   it("builds the debuggable Android Release app without an instrumentation APK", () => {
     const [command] = createNativeBuildPlan(
       { platform: "android", dryRun: false },
@@ -172,6 +198,10 @@ describe("native Release builds", () => {
     });
     await fs.mkdir(bin);
     await fs.copyFile(source, script);
+    await fs.copyFile(
+      new URL("./target.ts", import.meta.url),
+      path.join(root, "e2e/mobile/target.ts"),
+    );
     const compiler = `
       const fs = require('node:fs');
       process.on('SIGTERM', () => {});

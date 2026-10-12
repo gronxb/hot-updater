@@ -3,7 +3,7 @@ import {
   runAndroid,
 } from "@hot-updater/android-helper";
 import { type IosNativeRunOptions, runIos } from "@hot-updater/apple-helper";
-import { p } from "@hot-updater/cli-tools";
+import { getCwd, p } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 
@@ -37,13 +37,26 @@ const runNativeInternal = async <
     p.log.info(ui.line(["Running", ui.platform(platformName)]));
 
     if (platform === "android") {
+      const buildPlugin = await preparedConfig.config.build({ cwd: getCwd() });
+      const runOption = options as AndroidNativeRunOptions;
       await runAndroid({
         schemeConfig: preparedConfig.androidSchemeConfig!,
-        runOption: options as AndroidNativeRunOptions,
+        runOption: {
+          ...runOption,
+          port:
+            runOption.port ??
+            buildPlugin.nativeBuild?.developmentServerPort?.toString(),
+        },
       });
     } else {
+      const schemeConfig = preparedConfig.iosSchemeConfig!;
+      const buildPlugin = schemeConfig.installPods
+        ? await preparedConfig.config.build({ cwd: getCwd() })
+        : undefined;
       await runIos({
-        schemeConfig: preparedConfig.iosSchemeConfig!,
+        schemeConfig,
+        podInstallEnvironment:
+          await buildPlugin?.nativeBuild?.getPodInstallEnvironment?.(),
         runOption: options as IosNativeRunOptions,
       });
     }

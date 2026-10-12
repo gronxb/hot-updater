@@ -3,7 +3,7 @@ import os from "os";
 import path from "path";
 
 import JSZip from "jszip";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createZip } from "./createZip";
 
@@ -11,6 +11,7 @@ const createdDirectories: string[] = [];
 
 describe("createZip", () => {
   afterEach(async () => {
+    vi.useRealTimers();
     await Promise.all(
       createdDirectories.map((directory) =>
         fs.rm(directory, { recursive: true, force: true }),

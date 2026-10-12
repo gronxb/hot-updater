@@ -66,7 +66,11 @@ describe("@hot-updater/test-utils package", () => {
     });
   });
 
-  it("publishes only built artifacts and package metadata", () => {
-    expect(packageJson.files).toEqual(["dist", "package.json"]);
+  it("publishes built artifacts, package metadata, and shared native fixtures", () => {
+    expect(packageJson.files).toEqual([
+      "dist",
+      "package.json",
+      "fixtures/lynx",
+    ]);
   });
 });

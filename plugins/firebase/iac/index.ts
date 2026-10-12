@@ -401,6 +401,7 @@ const printTemplate = async (
   /** The client plugins the app adds for the plugins the function runs. */
   clientPlugins: readonly PluginClientPlugin[],
   cliEnv?: FirebaseCliEnv,
+  sdkModule?: string,
 ) => {
   try {
     const describedFunction = await execa(
@@ -430,6 +431,7 @@ const printTemplate = async (
     }
 
     printAppSetup({
+      ...(sdkModule ? { sdkModule } : {}),
       baseURL: functionUrl,
       ...(credential === undefined ? {} : { credential }),
       clientPlugins,
@@ -738,6 +740,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     currentRegion,
     server.clientPlugins,
     cliEnv,
+    build.clientModule,
   );
   await removeTmpDir();
 

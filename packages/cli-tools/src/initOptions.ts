@@ -1,7 +1,7 @@
-import type { BuildType } from "./ConfigBuilder";
+import type { BuildConfig } from "./ConfigBuilder";
 
 export type RunInitOptions = {
-  readonly build: BuildType;
+  readonly build: BuildConfig;
   readonly envFile?: string;
 };
 

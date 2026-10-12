@@ -283,8 +283,12 @@ const resolveBareSpecifierImportTarget = async (
   specifier: string,
   searchFrom: string,
 ) => {
-  const version = resolvePackageVersion(specifier, { searchFrom });
-  return `npm:${specifier}@${version}`;
+  const packageName = specifier
+    .split("/")
+    .slice(0, specifier.startsWith("@") ? 2 : 1)
+    .join("/");
+  const version = resolvePackageVersion(packageName, { searchFrom });
+  return `npm:${packageName}@${version}${specifier.slice(packageName.length)}`;
 };
 
 /** A vendored import of one of Hot Updater's packages, by its specifier. */
@@ -1151,6 +1155,7 @@ const runInitWithoutCliMetadata = async ({
   });
 
   printAppSetup({
+    ...(build.clientModule ? { sdkModule: build.clientModule } : {}),
     baseURL: getSupabaseFunctionUrl({ functionName, projectId: project.id }),
     ...(credential === undefined ? {} : { credential }),
     clientPlugins,

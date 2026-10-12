@@ -5,12 +5,13 @@ import path from "node:path";
 import { brotliDecompressSync } from "node:zlib";
 
 import * as tar from "tar";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { createTarBrTargetFiles } from "./createTarBr";
 
 const directories: string[] = [];
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all(
     directories
       .splice(0)
@@ -106,5 +107,66 @@ describe("tar.br target archive", () => {
         targetFiles: [{ path: link, name: target.name }],
       }),
     ).rejects.toThrow("regular file");
+  });
+});
+
+describe("bulk transport determinism", () => {
+  it("creates identical bytes for snapshots created at different times", async () => {
+    const directory = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-zip-time-"),
+    );
+    directories.push(directory);
+
+    const sourcePath = path.join(directory, "source.txt");
+    const firstArchivePath = path.join(directory, "first.tar.br");
+    const secondArchivePath = path.join(directory, "second.tar.br");
+    await fs.writeFile(sourcePath, "same snapshot");
+
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2025-01-01T00:00:00Z"));
+    await createTarBrTargetFiles({
+      outfile: firstArchivePath,
+      targetFiles: [{ name: "nested/source.txt", path: sourcePath }],
+    });
+    vi.setSystemTime(new Date("2026-01-01T00:00:00Z"));
+    await createTarBrTargetFiles({
+      outfile: secondArchivePath,
+      targetFiles: [{ name: "nested/source.txt", path: sourcePath }],
+    });
+
+    await expect(fs.readFile(secondArchivePath)).resolves.toEqual(
+      await fs.readFile(firstArchivePath),
+    );
+  });
+
+  it("creates identical bytes regardless of target input order", async () => {
+    const directory = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-zip-order-"),
+    );
+    directories.push(directory);
+
+    const firstSourcePath = path.join(directory, "first.txt");
+    const secondSourcePath = path.join(directory, "second.txt");
+    const firstArchivePath = path.join(directory, "first.tar.br");
+    const secondArchivePath = path.join(directory, "second.tar.br");
+    await fs.writeFile(firstSourcePath, "first");
+    await fs.writeFile(secondSourcePath, "second");
+    const targets = [
+      { name: "z/second.txt", path: secondSourcePath },
+      { name: "A/first.txt", path: firstSourcePath },
+    ];
+
+    await createTarBrTargetFiles({
+      outfile: firstArchivePath,
+      targetFiles: targets,
+    });
+    await createTarBrTargetFiles({
+      outfile: secondArchivePath,
+      targetFiles: [...targets].reverse(),
+    });
+
+    await expect(fs.readFile(secondArchivePath)).resolves.toEqual(
+      await fs.readFile(firstArchivePath),
+    );
   });
 });

@@ -6,6 +6,10 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+  createExpoFingerprint: vi.fn(async () => ({
+    hash: "expo-fingerprint",
+    sources: [],
+  })),
   getConfig: vi.fn(),
 }));
 
@@ -13,7 +17,12 @@ vi.mock("./expoConfig", () => ({
   getConfig: mocks.getConfig,
 }));
 
+vi.mock("./fingerprint", () => ({
+  createExpoFingerprint: mocks.createExpoFingerprint,
+}));
+
 import {
+  expo,
   getExpoBundleSigningPublicKey,
   getExpoFingerprintExtraSources,
 } from "./expo";
@@ -37,6 +46,7 @@ const createProject = async (publicKeyPath?: string) => {
 };
 
 beforeEach(() => {
+  mocks.createExpoFingerprint.mockClear();
   mocks.getConfig.mockReset();
 });
 
@@ -92,5 +102,21 @@ describe("getExpoFingerprintExtraSources", () => {
     const cwd = await createProject();
 
     await expect(getExpoFingerprintExtraSources(cwd)).resolves.toEqual([]);
+  });
+});
+
+describe("Expo native fingerprint", () => {
+  it("uses the Expo-owned provider", async () => {
+    const plugin = expo()({ cwd: "/expo-app" });
+    const options = { platform: "ios" as const };
+
+    await expect(plugin.nativeBuild?.fingerprint?.(options)).resolves.toEqual({
+      hash: "expo-fingerprint",
+      sources: [],
+    });
+    expect(mocks.createExpoFingerprint).toHaveBeenCalledWith(
+      "/expo-app",
+      options,
+    );
   });
 });

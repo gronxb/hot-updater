@@ -1,0 +1,1 @@
+09-14 23:14:26.310 17953 17989 I HotUpdaterLynx: engine-error fatal=false code=302 message={"error_code":302,"sub_code":30201,"error":"Src format is incorrect","sdk":"0.0.1","level":"error","consumers":[],"fix_suggestion":"Please check the font-face format.","src":"hot-updater:\/\/\/assets\/probe.ttf","type":"font"}

@@ -1,5 +1,4 @@
 import type { FingerprintChanges } from "../../utils/fingerprint/diff";
-import type { SigningConfigIssue } from "../../utils/signing/validateSigningConfig";
 
 export type DoctorFixability = "auto" | "command" | "blocked";
 export type NativePlatform = "ios" | "android";
@@ -7,20 +6,8 @@ export type NativePlatform = "ios" | "android";
 export interface NativeCheckIssue {
   type: "error" | "warning";
   platform: NativePlatform | "project";
-  code:
-    | "NATIVE_FILES_NOT_FOUND"
-    | "APP_DELEGATE_NOT_FOUND"
-    | "MAIN_APPLICATION_NOT_FOUND"
-    | "MISSING_IOS_BUNDLE_PROVIDER"
-    | "MISSING_ANDROID_BUNDLE_PROVIDER"
-    | "MISSING_FINGERPRINT_JSON"
-    | "MISSING_FINGERPRINT_HASH"
-    | "FINGERPRINT_HASH_MISMATCH"
-    | "FINGERPRINT_JSON_STALE"
-    | "FINGERPRINT_GENERATION_FAILED"
-    | "MISSING_CLIENT_PLUGIN"
-    | "CLIENT_PLUGINS_UNCHECKED"
-    | SigningConfigIssue["code"];
+  /** Integration-specific codes are reported alongside common native findings. */
+  code: string;
   message: string;
   resolution: string;
   fixability: DoctorFixability;

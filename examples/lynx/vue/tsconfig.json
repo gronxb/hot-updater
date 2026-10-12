@@ -1,0 +1,8 @@
+{
+  "extends": "../../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node", "vue-lynx/types", "@lynx-js/rspeedy/client"]
+  },
+  "vueCompilerOptions": { "plugins": ["vue-lynx/types/volar-plugin"] },
+  "include": ["src/**/*.ts", "src/**/*.vue", "lynx.config.ts"]
+}

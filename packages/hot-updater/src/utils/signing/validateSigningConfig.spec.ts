@@ -164,8 +164,8 @@ describe("validateSigningConfig", () => {
     expect(result.isValid).toBe(true);
     expect(result.issues).toEqual([]);
     expect(result.nativePublicKeys).toEqual({
-      android: { exists: true, paths: ["Expo app config"] },
-      ios: { exists: true, paths: ["Expo app config"] },
+      android: { exists: true, paths: ["Integration native configuration"] },
+      ios: { exists: true, paths: ["Integration native configuration"] },
     });
   });
 
@@ -205,5 +205,20 @@ describe("validateSigningConfig", () => {
       "MISSING_PUBLIC_KEY",
       "MISSING_PUBLIC_KEY",
     ]);
+  });
+
+  it("does not invoke RN config readers when a build plugin owns native signing configuration", async () => {
+    vi.clearAllMocks();
+    const publicKey = createPublicKey();
+    const result = await validateSigningConfig(createConfig(), {
+      expectedPublicKey: publicKey,
+      nativePublicKey: publicKey,
+      signingConfigSource: "build-plugin",
+    });
+    expect(result.isValid).toBe(true);
+    expect(parser.ios.exists).not.toHaveBeenCalled();
+    expect(parser.ios.get).not.toHaveBeenCalled();
+    expect(parser.android.exists).not.toHaveBeenCalled();
+    expect(parser.android.get).not.toHaveBeenCalled();
   });
 });

@@ -36,7 +36,6 @@ import { INIT_PROVIDER_NAMES } from "@/commands/initProviders";
 import { type PatchOptions, createPatch } from "@/commands/patch";
 import { runAndroidNative, runIosNative } from "@/commands/runNative";
 import { version } from "@/packageJson";
-import { ensureNoConflicts } from "@/utils/conflictDetection";
 import { printBanner } from "@/utils/printBanner";
 
 import {
@@ -142,11 +141,7 @@ for (const operation of ["setup", "upgrade"] as const) {
       ),
     )
     .addOption(
-      new Option("--build <adapter>", "app build adapter").choices([
-        "bare",
-        "rock",
-        "expo",
-      ]),
+      new Option("--build <integration>", "application integration package"),
     )
     .option(
       "--output <directory>",
@@ -167,9 +162,9 @@ program
   )
   .addOption(
     new Option(
-      "--build <adapter>",
-      "build adapter to use; skips the prompt",
-    ).choices(["bare", "rock", "expo"]),
+      "--build <integration>",
+      "application integration package or short name; skips the prompt",
+    ),
   )
   .option(
     "--from-env-file <path>",
@@ -729,7 +724,7 @@ keysCommand
   )
   .option(
     "-o, --output <path>",
-    "write the public key to an Expo trust-anchor file",
+    "write the public key to a native trust-anchor file",
   )
   .option("-y, --yes", "skip confirmation prompt when writing to native files")
   .action(keysExportPublic);
@@ -969,16 +964,5 @@ if (process.env["EXPERIMENTAL"]) {
       await runIosNative(options);
     });
 }
-
-program.hook("preAction", (_command, actionCommand) => {
-  if (
-    actionCommand.parent === agentInfraCommand ||
-    actionCommand.parent === infraCommand ||
-    (actionCommand.name() === "doctor" &&
-      actionCommand.opts()["scope"] !== undefined)
-  )
-    return;
-  ensureNoConflicts();
-});
 
 program.parse(process.argv);

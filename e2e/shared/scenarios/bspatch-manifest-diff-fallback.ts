@@ -86,6 +86,11 @@ export const bspatchManifestDiffFallbackScenario: ScenarioDefinition = {
         expectedBaseBundleIds: ["$intermediateBundleId"],
       },
     );
+    await app.control(
+      "require originals when no patch matches the running bundle",
+      "/e2e/proxy-control",
+      { archiveAvailable: false },
+    );
     await app.launch("launch manifest fallback app");
     await app.tap(
       "install manifest fallback update",
@@ -115,6 +120,11 @@ export const bspatchManifestDiffFallbackScenario: ScenarioDefinition = {
         bundleId: "$bundleId",
         previousBundleId: "$previousBundleId",
       },
+    );
+    await app.control(
+      "restore optional archive availability",
+      "/e2e/proxy-control",
+      { archiveAvailable: true },
     );
   },
 };

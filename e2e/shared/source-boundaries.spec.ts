@@ -13,6 +13,7 @@ const e2eSourceDirectories = [
   "e2e/shared/",
   "e2e/mobile/",
   "e2e/local/",
+  "e2e/lynx/",
 ] as const;
 const textScenarioFilePattern = /^e2e\/.*\.(?:ya?ml)$/i;
 const legacyHarnessTerms = [

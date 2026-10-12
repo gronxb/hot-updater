@@ -318,6 +318,40 @@ describe("core operations", () => {
     ).resolves.toMatchObject({ bundle_id: base.id });
   });
 
+  it("retains independently published patch bases during concurrent atomic upserts", async () => {
+    const { core } = setup();
+    const first = createBundleFixture("663");
+    const second = createBundleFixture("664");
+    const target = createBundleFixture("665");
+    for (const bundle of [first, second, target]) {
+      await core.deploy([deployment(bundle)]);
+    }
+    await Promise.all(
+      [first, second].map((base) =>
+        core.updateBundle(target.id, {
+          upsertPatch: { artifact: patchFrom(target, base), position: "last" },
+        }),
+      ),
+    );
+    const detail = await core.getBundle(target.id);
+    expect(detail?.patches.map((patch) => patch.base_bundle_id).sort()).toEqual(
+      [first.id, second.id],
+    );
+    await expect(
+      core.countBundleChildren([first.id, second.id]),
+    ).resolves.toEqual({ [first.id]: 1, [second.id]: 1 });
+    await core.updateBundle(target.id, {
+      upsertPatch: {
+        artifact: { ...patchFrom(target, first), byteSize: 43 },
+        position: "first",
+      },
+    });
+    expect((await core.getBundle(target.id))?.patches).toMatchObject([
+      { base_bundle_id: first.id, byte_size: 43, order_index: 0 },
+      { base_bundle_id: second.id, byte_size: 42, order_index: 1 },
+    ]);
+  });
+
   it("deletes an artifact with the last release on it, and the patches built on it", async () => {
     const { core } = setup();
     const base = createBundleFixture("671");

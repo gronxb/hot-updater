@@ -7,6 +7,7 @@ import {
 import type { MobileContext } from "./context.ts";
 
 const context: MobileContext = {
+  runtime: "react-native",
   platform: "android",
   deviceId: "emulator-5562",
   session: "isolated",

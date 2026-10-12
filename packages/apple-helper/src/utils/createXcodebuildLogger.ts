@@ -20,12 +20,7 @@ export const createXcodebuildLogger = ({ logPrefix }: { logPrefix: string }) =>
     progressStages: [
       ["Building targets in dependency order", "Target dependency graph"],
       ["Write Auxiliary File", "[CP] Check Pods Manifest.lock"],
-      [
-        "Running script",
-        "[CP-User] [RN]Check rncore",
-        "[CP-User] [Hermes] Replace Hermes",
-        "[CP-User] [RN]Check FBReactNativeSpec",
-      ],
+      ["Running script", "[CP-User]"],
       ["Processing", "ProcessProductPackaging", "ProcessProductPackagingDER"],
       ["Compiling"],
       ["RegisterExecutionPolicyException"],

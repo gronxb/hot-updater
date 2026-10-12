@@ -17,6 +17,7 @@ import {
   type ReleaseTarget,
   DatabaseConstraintError,
   DatabaseRowReferencedError,
+  MAX_BUNDLE_PATCHES,
 } from "@hot-updater/plugin-core";
 import {
   createReleaseCatalogScopeKey,
@@ -24,7 +25,12 @@ import {
   encodeChannelKey,
 } from "@hot-updater/protocol";
 
-import { toBundleRow, toReleaseRow, type CoreDatabase } from "./reads";
+import {
+  toPatchRow,
+  toBundleRow,
+  toReleaseRow,
+  type CoreDatabase,
+} from "./reads";
 import {
   changeRelease,
   changeReleases,
@@ -527,15 +533,44 @@ export const createCoreOperations = (
       db.transaction(async (tx) => {
         const current = await tx.findOne("bundles", { id });
         if (current === null) throw new DatabaseBundleNotFoundError(id);
-        const { patches, ...fields } = update;
+        const { patches, upsertPatch, ...fields } = update;
+        if (patches !== undefined && upsertPatch !== undefined) {
+          throw new Error("Cannot replace and upsert bundle patches together");
+        }
         const next = { ...rowToBundle(toBundleRow(current)), ...fields, id };
         const { id: _id, ...set } = bundleToRow(next);
         updateBundle(tx, current, set);
-        if (patches !== undefined) {
+        let nextPatches = patches;
+        if (upsertPatch !== undefined) {
+          if (
+            upsertPatch.position !== "first" &&
+            upsertPatch.position !== "last"
+          ) {
+            throw new Error("Invalid patch position");
+          }
+          const stored = await tx.findMany("bundle_patches", {
+            index: "byBundle",
+            where: { bundle_id: id },
+            limit: MAX_BUNDLE_PATCHES,
+          });
+          if (stored.next !== undefined)
+            throw new Error("Bundle patch limit exceeded");
+          const kept = (
+            rowToBundle(toBundleRow(current), stored.rows.map(toPatchRow))
+              .patches ?? []
+          ).filter(
+            (patch) => patch.baseBundleId !== upsertPatch.artifact.baseBundleId,
+          );
+          nextPatches =
+            upsertPatch.position === "first"
+              ? [upsertPatch.artifact, ...kept]
+              : [...kept, upsertPatch.artifact];
+        }
+        if (nextPatches !== undefined) {
           await replaceBundlePatches(
             tx,
             current,
-            bundleToPatchRows({ ...next, patches }),
+            bundleToPatchRows({ ...next, patches: nextPatches }),
           );
         }
       }),

@@ -6,10 +6,13 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import { resolveMobileRuntime, type MobileRuntime } from "./target.ts";
+
 const minBundleId = "00000000-0000-7000-8000-000000000000";
 
 export type NativeBuildOptions = {
   platform: "ios" | "android";
+  runtime?: MobileRuntime;
   deviceId?: string;
   dryRun: boolean;
 };
@@ -26,18 +29,25 @@ export function parseNativeBuildArgs(
 ): NativeBuildOptions {
   let platform: NativeBuildOptions["platform"] | undefined;
   let deviceId: string | undefined;
+  let runtime: MobileRuntime | undefined;
   let dryRun = false;
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === "--") continue;
     if (arg === "--dry-run") {
       dryRun = true;
-    } else if (arg === "--platform" || arg === "--device") {
+    } else if (
+      arg === "--platform" ||
+      arg === "--device" ||
+      arg === "--runtime"
+    ) {
       const value = argv[++index];
       if (!value || value.startsWith("--")) {
         throw new Error(`Missing value for ${arg}`);
       }
-      if (arg === "--device") {
+      if (arg === "--runtime") {
+        runtime = resolveMobileRuntime(value, {});
+      } else if (arg === "--device") {
         deviceId = value;
       } else if (value === "ios" || value === "android") {
         platform = value;
@@ -49,7 +59,7 @@ export function parseNativeBuildArgs(
     }
   }
   if (!platform) throw new Error("--platform ios|android is required");
-  return { platform, deviceId, dryRun };
+  return { platform, deviceId, dryRun, ...(runtime ? { runtime } : {}) };
 }
 
 export function createNativeBuildPlan(
@@ -57,6 +67,22 @@ export function createNativeBuildPlan(
   repositoryRoot: string,
   env: NodeJS.ProcessEnv = process.env,
 ): NativeBuildCommand[] {
+  if (resolveMobileRuntime(options.runtime, env) === "lynx") {
+    return [
+      {
+        command: process.execPath,
+        args: [
+          "scripts/build-e2e-native.mjs",
+          "--platform",
+          options.platform,
+          "--target",
+          "e2e",
+        ],
+        cwd: path.join(repositoryRoot, "examples/lynx"),
+        env: { NODE_ENV: "production", BABEL_ENV: "production" },
+      },
+    ];
+  }
   const cwd = path.join(repositoryRoot, "examples/v0.85.0", options.platform);
   if (options.platform === "android") {
     const architectures =
@@ -180,7 +206,7 @@ async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   if (argv.includes("--help") || argv.includes("-h")) {
     console.log(
-      "Usage: pnpm -w e2e:build -- --platform ios|android [--device <UDID>] [--dry-run]",
+      "Usage: pnpm -w e2e:build -- --platform ios|android [--runtime react-native|lynx] [--device <UDID>] [--dry-run]",
     );
     return 0;
   }

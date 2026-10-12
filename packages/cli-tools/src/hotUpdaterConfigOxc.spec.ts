@@ -15,7 +15,10 @@ const tempDirectories: string[] = [];
 
 const createSupabaseScaffold = () =>
   createHotUpdaterConfigScaffold({
-    build: "bare",
+    build: {
+      imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+      configString: "bare({ enableHermes: true })",
+    },
     storage: {
       imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
       configString: `supabaseStorage({

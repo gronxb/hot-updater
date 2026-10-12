@@ -5,8 +5,8 @@ import { parse as parseToml } from "@iarna/toml";
 
 import type { InfraClientAuth } from "../infra/clientAuth";
 import {
+  getInfraBuildVariants,
   getInfraFiles,
-  INFRA_BUILDS,
   type InfraManifest,
   readInfraTemplate,
 } from "../infra/scaffold";
@@ -66,8 +66,7 @@ export async function checkScaffold(infraDir: string): Promise<{
       !isText(value["provider"]) ||
       !isInitProvider(value["provider"]) ||
       !["scaffold", "setup", "upgrade"].includes(String(value["operation"])) ||
-      (value["operation"] !== "scaffold" &&
-        !INFRA_BUILDS.some((build) => build === value["build"])) ||
+      (value["operation"] !== "scaffold" && !isText(value["build"])) ||
       !isObject(value["files"])
     ) {
       throw new Error("Invalid manifest");
@@ -84,6 +83,7 @@ export async function checkScaffold(infraDir: string): Promise<{
   }
 
   const { source, template } = await readInfraTemplate(manifest.provider);
+  const buildVariants = await getInfraBuildVariants(source);
   if (
     manifest.cliVersion !== template.cliVersion ||
     manifest.providerVersion !== template.providerVersion ||
@@ -106,7 +106,7 @@ export async function checkScaffold(infraDir: string): Promise<{
     const packages = manifest.packages;
     const expectedPackages = Object.entries(template.packages).filter(
       ([name]) =>
-        !INFRA_BUILDS.some(
+        !buildVariants.some(
           (build) =>
             build !== manifest.build && name === `@hot-updater/${build}`,
         ),
@@ -114,7 +114,7 @@ export async function checkScaffold(infraDir: string): Promise<{
     if (
       !isObject(packages) ||
       expectedPackages.some(([name, version]) => packages[name] !== version) ||
-      INFRA_BUILDS.some(
+      buildVariants.some(
         (build) =>
           build !== manifest.build &&
           packages[`@hot-updater/${build}`] !== undefined,

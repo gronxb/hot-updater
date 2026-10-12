@@ -1,0 +1,207 @@
+PODS:
+  - HotUpdaterLynxArtifact (1.0.0):
+    - Lynx/Framework (= 4.0.3)
+  - HotUpdaterLynxSparkling/Core (1.0.0):
+    - HotUpdaterLynxArtifact (= 1.0.0)
+    - Lynx/Framework (= 4.0.3)
+    - Sparkling
+    - Sparkling-Router
+    - SparklingMethod/DIProvider
+  - HotUpdaterLynxSparkling/Diagnostics (1.0.0):
+    - HotUpdaterLynxSparkling/Core
+  - libwebp (1.5.0):
+    - libwebp/demux (= 1.5.0)
+    - libwebp/mux (= 1.5.0)
+    - libwebp/sharpyuv (= 1.5.0)
+    - libwebp/webp (= 1.5.0)
+  - libwebp/demux (1.5.0):
+    - libwebp/webp
+  - libwebp/mux (1.5.0):
+    - libwebp/demux
+  - libwebp/sharpyuv (1.5.0)
+  - libwebp/webp (1.5.0):
+    - libwebp/sharpyuv
+  - Lynx (4.0.3):
+    - Lynx/Framework (= 4.0.3)
+  - Lynx/Framework (4.0.3):
+    - Lynx/ReleaseResource
+    - LynxBase/Framework
+    - LynxServiceAPI
+    - PrimJS/napi/env
+    - PrimJS/napi/jsc
+    - PrimJS/napi/quickjs
+    - PrimJS/quickjs (= 4.0.0)
+  - Lynx/ReleaseResource (4.0.3)
+  - LynxBase (4.0.3):
+    - LynxBase/Framework (= 4.0.3)
+  - LynxBase/Framework (4.0.3):
+    - LynxServiceAPI/Core
+  - LynxLibraryRegistry (0.1.0):
+    - Lynx
+  - LynxService/Http (4.0.3):
+    - Lynx (= 4.0.3)
+    - LynxServiceAPI (= 4.0.3)
+  - LynxService/Image (4.0.3):
+    - Lynx (= 4.0.3)
+    - LynxServiceAPI (= 4.0.3)
+    - SDWebImage (= 5.15.5)
+    - SDWebImageWebPCoder (= 0.11.0)
+  - LynxService/Log (4.0.3):
+    - Lynx (= 4.0.3)
+    - LynxBase (= 4.0.3)
+    - LynxServiceAPI (= 4.0.3)
+  - LynxServiceAPI (4.0.3):
+    - LynxServiceAPI/Core (= 4.0.3)
+  - LynxServiceAPI/Core (4.0.3)
+  - Mantle (2.2.0):
+    - Mantle/extobjc (= 2.2.0)
+  - Mantle/extobjc (2.2.0)
+  - PrimJS/log (4.0.0)
+  - PrimJS/napi (4.0.0):
+    - PrimJS/napi/adapter (= 4.0.0)
+    - PrimJS/napi/core (= 4.0.0)
+    - PrimJS/napi/env (= 4.0.0)
+    - PrimJS/napi/jsc (= 4.0.0)
+    - PrimJS/napi/quickjs (= 4.0.0)
+  - PrimJS/napi/adapter (4.0.0):
+    - PrimJS/napi/core
+    - PrimJS/napi/env
+  - PrimJS/napi/core (4.0.0)
+  - PrimJS/napi/env (4.0.0):
+    - PrimJS/napi/core
+  - PrimJS/napi/jsc (4.0.0):
+    - PrimJS/log
+    - PrimJS/napi/core
+    - PrimJS/quickjs
+  - PrimJS/napi/quickjs (4.0.0):
+    - PrimJS/napi/core
+    - PrimJS/quickjs
+  - PrimJS/quickjs (4.0.0):
+    - PrimJS/log
+  - SDWebImage (5.15.5):
+    - SDWebImage/Core (= 5.15.5)
+  - SDWebImage/Core (5.15.5)
+  - SDWebImageWebPCoder (0.11.0):
+    - libwebp (~> 1.0)
+    - SDWebImage/Core (~> 5.15)
+  - SnapKit (5.7.1)
+  - Sparkling (2.1.0-rc.12):
+    - Sparkling/Application (= 2.1.0-rc.12)
+    - Sparkling/Service (= 2.1.0-rc.12)
+    - Sparkling/Utils (= 2.1.0-rc.12)
+  - Sparkling-Router (2.1.0-rc.12):
+    - Mantle (~> 2.2.0)
+    - Sparkling-Router/Core (= 2.1.0-rc.12)
+    - SparklingMethod/Core
+    - SparklingMethod/DIProvider
+  - Sparkling-Router/Core (2.1.0-rc.12):
+    - Mantle (~> 2.2.0)
+    - SparklingMethod/Core
+    - SparklingMethod/DIProvider
+  - Sparkling/Application (2.1.0-rc.12):
+    - SnapKit
+    - Sparkling/Service
+    - Sparkling/Utils
+    - SparklingMacro/RegisterMacro
+    - SparklingMethod/Core (= 2.1.0-rc.12)
+  - Sparkling/Service (2.1.0-rc.12):
+    - Sparkling/Service/LynxService (= 2.1.0-rc.12)
+    - Sparkling/Utils
+    - SparklingMethod/Core (= 2.1.0-rc.12)
+  - Sparkling/Service/LynxService (2.1.0-rc.12):
+    - Lynx/Framework
+    - LynxBase/Framework
+    - LynxServiceAPI
+    - Sparkling/Utils
+    - SparklingMacro/RegisterMacro
+    - SparklingMethod/Core (= 2.1.0-rc.12)
+    - SparklingMethod/Lynx (= 2.1.0-rc.12)
+  - Sparkling/Utils (2.1.0-rc.12)
+  - SparklingMacro (2.1.0-rc.12):
+    - SparklingMacro/RegisterMacro (= 2.1.0-rc.12)
+  - SparklingMacro/RegisterMacro (2.1.0-rc.12)
+  - SparklingMethod/Core (2.1.0-rc.12):
+    - Mantle (~> 2.2.0)
+  - SparklingMethod/DIProvider (2.1.0-rc.12):
+    - SparklingMethod/Core
+  - SparklingMethod/Lynx (2.1.0-rc.12):
+    - Lynx/Framework
+    - LynxBase/Framework
+    - LynxServiceAPI
+    - PrimJS/napi (>= 2.12.0)
+    - PrimJS/quickjs (>= 2.12.0)
+    - SparklingMethod/Core
+
+DEPENDENCIES:
+  - HotUpdaterLynxArtifact (from `../../../packages/lynx/ios`)
+  - HotUpdaterLynxSparkling/Core (from `../../../packages/lynx-sparkling/ios`)
+  - HotUpdaterLynxSparkling/Diagnostics (from `../../../packages/lynx-sparkling/ios`)
+  - Lynx/Framework (= 4.0.3)
+  - Lynx/ReleaseResource (= 4.0.3)
+  - LynxLibraryRegistry (from `generated/lynx-library`)
+  - LynxService/Http (= 4.0.3)
+  - LynxService/Image (= 4.0.3)
+  - LynxService/Log (= 4.0.3)
+  - Mantle (= 2.2.0)
+  - PrimJS/napi (= 4.0.0)
+  - PrimJS/quickjs (= 4.0.0)
+  - SDWebImage (= 5.15.5)
+  - SDWebImageWebPCoder (= 0.11.0)
+  - SnapKit (= 5.7.1)
+  - Sparkling (from `.upstream/sparkling/packages/sparkling-sdk/ios/Sparkling`)
+  - Sparkling-Router (from `.upstream/sparkling/packages/methods/sparkling-navigation/ios`)
+  - SparklingMacro (from `.upstream/sparkling/packages/sparkling-sdk/ios/SparklingMacro`)
+  - SparklingMethod/DIProvider (from `.upstream/sparkling/packages/sparkling-method/ios`)
+  - SparklingMethod/Lynx (from `.upstream/sparkling/packages/sparkling-method/ios`)
+
+SPEC REPOS:
+  trunk:
+    - libwebp
+    - Lynx
+    - LynxBase
+    - LynxService
+    - LynxServiceAPI
+    - Mantle
+    - PrimJS
+    - SDWebImage
+    - SDWebImageWebPCoder
+    - SnapKit
+
+EXTERNAL SOURCES:
+  HotUpdaterLynxArtifact:
+    :path: "../../../packages/lynx/ios"
+  HotUpdaterLynxSparkling:
+    :path: "../../../packages/lynx-sparkling/ios"
+  LynxLibraryRegistry:
+    :path: generated/lynx-library
+  Sparkling:
+    :path: ".upstream/sparkling/packages/sparkling-sdk/ios/Sparkling"
+  Sparkling-Router:
+    :path: ".upstream/sparkling/packages/methods/sparkling-navigation/ios"
+  SparklingMacro:
+    :path: ".upstream/sparkling/packages/sparkling-sdk/ios/SparklingMacro"
+  SparklingMethod:
+    :path: ".upstream/sparkling/packages/sparkling-method/ios"
+
+SPEC CHECKSUMS:
+  HotUpdaterLynxArtifact: 267b8c04d5380f4aa5fca75489a1c8108c18168f
+  HotUpdaterLynxSparkling: b40097689bc99b4713530f130110434721f42eaa
+  libwebp: 02b23773aedb6ff1fd38cec7a77b81414c6842a8
+  Lynx: e1fb48fd1c2d2fa187fa9259c8010005bd50e56e
+  LynxBase: c90f118654a8b5ca43ce4fe2dae9661bd289ec7f
+  LynxLibraryRegistry: b2017f1b3dd04bcac00caacc69d28fddcd6c9043
+  LynxService: 040c3a40fe8d2721c6f930cd23ac2dff93d7dea8
+  LynxServiceAPI: 015608819cdcbc6a398613170baf27d07a2b5797
+  Mantle: c5aa8794a29a022dfbbfc9799af95f477a69b62d
+  PrimJS: f048efc0923e73cde312466a110516f56b70834d
+  SDWebImage: fd7e1a22f00303e058058278639bf6196ee431fe
+  SDWebImageWebPCoder: 295a6573c512f54ad2dd58098e64e17dcf008499
+  SnapKit: d612e99e678a2d3b95bf60b0705ed0a35c03484a
+  Sparkling: 7448335464f9307de309b2678a8199f87f31ed8d
+  Sparkling-Router: c5b637cff27dd4ec6471a710b3e385309a4fa305
+  SparklingMacro: 2358dca825325d1b1055c3adfb79ee3e376b204d
+  SparklingMethod: 4c72f641b1798f0c592ce01d8807ac5b3a021bee
+
+PODFILE CHECKSUM: 2827d9be6f5a2f627615665e391362ab0cda2df0
+
+COCOAPODS: 1.17.0

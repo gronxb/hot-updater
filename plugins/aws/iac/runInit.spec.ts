@@ -172,7 +172,13 @@ beforeEach(() => {
 
 describe("AWS init", () => {
   it("deploys the prebuilt function, with its plugins' tables, the app's credential, and CloudFront's client headers", async () => {
-    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+    await runInit({
+      build: {
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      },
+      envFile: ".env.hotupdater",
+    });
 
     const ssmParameterName = getAwsV1SsmParameterName("hot-updater-edge");
     expect(mocks.migrateDynamoDB).toHaveBeenCalledWith(
@@ -228,7 +234,13 @@ describe("AWS init", () => {
       functionArn: FUNCTION_ARN,
     });
     expect(mocks.writeHotUpdaterFiles).toHaveBeenCalledWith(
-      getConfigScaffold("bare", { mode: "account" }),
+      getConfigScaffold(
+        {
+          imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+          configString: "bare({ enableHermes: true })",
+        },
+        { mode: "account" },
+      ),
       { cwd: process.cwd(), settings: "AWS" },
     );
     expect(mocks.printAppSetup).toHaveBeenCalledWith({
@@ -248,7 +260,13 @@ describe("AWS init", () => {
     };
     mocks.provisionClientCredential.mockResolvedValue(credential);
 
-    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+    await runInit({
+      build: {
+        imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+        configString: "bare({ enableHermes: true })",
+      },
+      envFile: ".env.hotupdater",
+    });
 
     expect(mocks.makeEnv).toHaveBeenCalledWith({
       HOT_UPDATER_API_KEY: "app-api-key",

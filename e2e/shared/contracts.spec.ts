@@ -5,6 +5,7 @@ import path from "node:path";
 
 import { describe, expect, it } from "vitest";
 
+import { readLynxDefaultScenarioNames } from "../lynx/suite-manifest.ts";
 import { resolveSuiteScenarioNames } from "./scenarios.ts";
 const repoDir = path.resolve(import.meta.dirname, "../..");
 const controlServerPath = path.join(
@@ -20,6 +21,7 @@ describe("E2E harness contract", () => {
       version: 1,
       runners: ["mobile"],
       resultVersion: 1,
+      runtimes: ["react-native", "lynx"],
     });
     const names = JSON.parse(
       await fs.readFile(path.join(repoDir, "e2e/scenario-names.json"), "utf8"),
@@ -32,6 +34,15 @@ describe("E2E harness contract", () => {
     );
     expect(mobile.status, mobile.stderr).toBe(0);
     expect(mobile.stdout.trim().split("\n")).toEqual(names);
+    const lynx = spawnSync(
+      process.execPath,
+      [path.join(repoDir, "e2e/lynx/scripts/run.ts"), "--list"],
+      { cwd: repoDir, encoding: "utf8" },
+    );
+    expect(lynx.status, lynx.stderr).toBe(0);
+    expect(lynx.stdout.trim().split("\n")).toEqual(
+      readLynxDefaultScenarioNames(repoDir),
+    );
   });
   it("keeps E2E control traffic on the control port when provider PORT is set", async () => {
     // Given: split provider jobs run the update server and control plane on

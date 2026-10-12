@@ -4,10 +4,28 @@ import type {
   ChannelRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import { getSha256 } from "@hot-updater/plugin-core";
 import type { Bundle } from "@hot-updater/protocol";
 
 const fixtureId = (suffix: string): string =>
   `00000000-0000-7000-8000-${suffix.padStart(12, "0")}`;
+
+export const fixtureManifestAssets = {
+  "index.ios.bundle": {
+    fileHash: "c".repeat(64),
+    downloadFileHash: "a".repeat(64),
+    downloadByteSize: 1_000,
+    downloadCompression: "br" as const,
+  },
+};
+
+export const createManifestFixture = (suffix: string, archive?: object) =>
+  JSON.stringify({
+    bundleId: fixtureId(suffix),
+    patchAssetPath: "index.ios.bundle",
+    assets: fixtureManifestAssets,
+    ...(archive ? { archive } : {}),
+  });
 
 const channelFixtureSuffix = (name: string): string => {
   let hash = 0;
@@ -31,7 +49,7 @@ export const createBundleRowFixture = (
   git_commit_hash: null,
   metadata: { app_version: suffix },
   manifest_storage_uri: `storage://bundles/${suffix}/manifest.json`,
-  manifest_file_hash: `manifest-hash-${suffix}`,
+  manifest_file_hash: getSha256(createManifestFixture(suffix)),
   asset_base_storage_uri: "storage://assets",
 });
 
@@ -86,6 +104,6 @@ export const createBundleFixture = (
   gitCommitHash: null,
   metadata: { app_version: suffix },
   manifestStorageUri: `storage://bundles/${suffix}/manifest.json`,
-  manifestFileHash: `manifest-hash-${suffix}`,
+  manifestFileHash: getSha256(createManifestFixture(suffix)),
   assetBaseStorageUri: "storage://assets",
 });

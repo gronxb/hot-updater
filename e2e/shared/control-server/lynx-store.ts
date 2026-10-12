@@ -1,0 +1,292 @@
+const LYNX_E2E_APP_ID = "com.hotupdater.lynxexample";
+
+export const LYNX_E2E_BUILTIN_BUNDLE_ID =
+  "00000000-0000-7000-8000-000000000000";
+export const RN_E2E_BUILTIN_BUNDLE_ID = "7000-8000-000000000000";
+
+export function isLynxE2eAppId(appId: string): boolean {
+  return appId === LYNX_E2E_APP_ID;
+}
+
+export function e2eBuiltInBundleId(appId: string): string {
+  return isLynxE2eAppId(appId)
+    ? LYNX_E2E_BUILTIN_BUNDLE_ID
+    : RN_E2E_BUILTIN_BUNDLE_ID;
+}
+
+export function lynxAndroidInstalledManifestPaths(
+  appId: string,
+  scope: string,
+  bundleId: string,
+): string[] {
+  const installation =
+    `/data/data/${appId}/files/hot-updater-lynx/scopes/${scope}` +
+    `/artifacts/installations/${bundleId}`;
+  return [
+    `${installation}/payload/manifest.json`,
+    `${installation}/manifest.json`,
+  ];
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
+}
+
+function asString(value: unknown): string | null {
+  return typeof value === "string" && value.length > 0 ? value : null;
+}
+
+function asNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+export function decodeLynxIosStoredSelection(
+  value: unknown,
+): Record<string, unknown> | null {
+  const stored = asRecord(value);
+  if (!stored) {
+    return null;
+  }
+  if (typeof stored.receipt !== "string") {
+    return asRecord(stored.receipt) ?? asRecord(stored);
+  }
+  try {
+    return asRecord(
+      JSON.parse(Buffer.from(stored.receipt, "base64").toString("utf8")),
+    );
+  } catch {
+    return null;
+  }
+}
+
+export function lynxReceipt(
+  journal: Record<string, unknown>,
+  platform: "ios" | "android",
+  key: "confirmed" | "next",
+): Record<string, unknown> | null {
+  const stored = journal[key];
+  return platform === "ios"
+    ? decodeLynxIosStoredSelection(stored)
+    : asRecord(stored);
+}
+
+export function lynxCrashedBundleIds(
+  journal: Record<string, unknown>,
+  platform: "ios" | "android",
+): string[] {
+  const raw = lynxStoredExclusions(journal, platform).crashedBundleIds;
+  const crashed = Array.isArray(raw)
+    ? raw.filter((id): id is string => typeof id === "string")
+    : [];
+  return crashed;
+}
+
+export function lynxStoredExclusions(
+  journal: Record<string, unknown>,
+  platform: "ios" | "android",
+) {
+  return platform === "ios"
+    ? {
+        unconfirmedReleaseIds: journal.unconfirmedReleaseIds,
+        crashedBundleIds: journal.crashedBundleIds,
+      }
+    : {
+        unconfirmedReleaseIds:
+          journal.unconfirmed === undefined ? [] : journal.unconfirmed,
+        crashedBundleIds: journal.crashed === undefined ? [] : journal.crashed,
+      };
+}
+
+function selectionFromReceipt(receipt: Record<string, unknown> | null) {
+  if (!receipt) {
+    return null;
+  }
+  return {
+    kind: asString(receipt.kind),
+    bundleId: asString(receipt.bundleId),
+    releaseId: asString(receipt.releaseId),
+    catalogId: asString(receipt.catalogId),
+    scopeKey: asString(receipt.scopeKey),
+    generation: asNumber(receipt.generation),
+    catalogHash: asString(receipt.catalogHash),
+    channel: asString(receipt.channel),
+    selectionContextHash: asString(receipt.selectionContextHash),
+  };
+}
+
+function highWaterFromReceipt(
+  receipt: Record<string, unknown> | null,
+  androidHighWater: Record<string, unknown> | null,
+) {
+  const catalogId =
+    asString(androidHighWater?.catalogId) ?? asString(receipt?.catalogId);
+  const scopeKey =
+    asString(androidHighWater?.scopeKey) ?? asString(receipt?.scopeKey);
+  const generation =
+    asNumber(androidHighWater?.generation) ?? asNumber(receipt?.generation);
+  const catalogHash =
+    asString(androidHighWater?.catalogHash) ?? asString(receipt?.catalogHash);
+  if (!catalogId || !scopeKey || generation === null || !catalogHash) {
+    return {};
+  }
+  return {
+    [`${catalogId}|${scopeKey}`]: { catalogHash, generation },
+  };
+}
+
+export function synthesizeLynxMetadata(
+  journal: Record<string, unknown>,
+  platform: "ios" | "android",
+): Record<string, unknown> {
+  const confirmed = lynxReceipt(journal, platform, "confirmed");
+  const next = lynxReceipt(journal, platform, "next");
+  const pending = asRecord(journal.pending);
+  const crashed = lynxCrashedBundleIds(journal, platform);
+  const nextBundleId = asString(next?.bundleId);
+  const nextIsCrashed = nextBundleId !== null && crashed.includes(nextBundleId);
+  const active = nextIsCrashed ? confirmed : (next ?? confirmed);
+  const confirmedIsBuiltin = asString(confirmed?.kind) === "BUILTIN";
+  const confirmedBundleId = confirmedIsBuiltin
+    ? null
+    : asString(confirmed?.bundleId);
+  const stagingBundleId = asString(active?.bundleId);
+  const nextIsBuiltin = asString(next?.kind) === "BUILTIN";
+  const verificationPending =
+    !nextIsCrashed &&
+    !nextIsBuiltin &&
+    (pending !== null ||
+      (next !== null && asString(next.bundleId) !== confirmedBundleId));
+
+  return {
+    schema: "metadata-v2",
+    stableBundleId: confirmedBundleId,
+    stableSelection: selectionFromReceipt(confirmed),
+    stagingBundleId,
+    stagingSelection: selectionFromReceipt(active),
+    verificationPending,
+    highestSeenCatalogs: highWaterFromReceipt(
+      active,
+      asRecord(journal.highWater),
+    ),
+  };
+}
+
+export function synthesizeLynxCrashHistory(
+  journal: Record<string, unknown>,
+  platform: "ios" | "android",
+): Record<string, unknown> {
+  const bundleIds = lynxCrashedBundleIds(journal, platform);
+  return {
+    bundles: bundleIds.map((bundleId, index) => ({
+      bundleId,
+      crashCount: 1,
+      crashedAt: index + 1,
+    })),
+    maxHistorySize: 10,
+  };
+}
+
+export function assertLynxAwaitingRetry(
+  journal: Record<string, unknown>,
+  platform: "ios" | "android",
+  bundleId: string,
+): void {
+  const exclusions = lynxStoredExclusions(journal, platform);
+  const records = asRecord(journal.interruptedReleases);
+  const waiting = Object.entries(records ?? {}).some(([releaseId, value]) => {
+    const record = asRecord(value);
+    return (
+      releaseId.length > 0 &&
+      record?.bundleId === bundleId &&
+      record.retryReady === true &&
+      typeof record.holdProcessToken === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+        record.holdProcessToken,
+      ) &&
+      Array.isArray(exclusions.unconfirmedReleaseIds) &&
+      !exclusions.unconfirmedReleaseIds.includes(releaseId)
+    );
+  });
+  if (
+    !waiting ||
+    !Array.isArray(exclusions.crashedBundleIds) ||
+    exclusions.crashedBundleIds.includes(bundleId)
+  ) {
+    throw new Error(
+      `Native Lynx journal does not permit a later retry of ${bundleId}`,
+    );
+  }
+}
+
+// The app transports the native notifyAppReady reply unchanged. Crash history
+// cannot establish which transition this launch actually completed.
+export function readLynxLaunchReport(screen: {
+  nativeLaunchReport: string | null;
+  currentBundleId: string | null;
+  currentReleaseId: string | null;
+}): Record<string, unknown> | null {
+  if (!screen.nativeLaunchReport) return null;
+  let report: Record<string, unknown> | null;
+  try {
+    report = asRecord(JSON.parse(screen.nativeLaunchReport));
+  } catch {
+    return null;
+  }
+  if (!report) return null;
+  if (report.status === "UNCHANGED") return report;
+  if (
+    (report.status !== "RECOVERED" && report.status !== "UPDATE_APPLIED") ||
+    !asString(report.transitionId) ||
+    !asString(report.fromBundleId) ||
+    !asString(report.toBundleId) ||
+    report.toBundleId !== screen.currentBundleId ||
+    (report.toReleaseId ?? null) !== screen.currentReleaseId
+  )
+    return null;
+  return report;
+}
+
+export function assertLynxStartupHang(
+  journal: Record<string, unknown>,
+  platform: "ios" | "android",
+  bundleId: string,
+): void {
+  const pending = asRecord(journal.pending);
+  const selection =
+    platform === "ios"
+      ? decodeLynxIosStoredSelection(pending?.selection)
+      : asRecord(pending?.selection);
+  const exclusions = lynxStoredExclusions(journal, platform);
+  if (
+    !asString(pending?.attemptId) ||
+    selection?.bundleId !== bundleId ||
+    pending?.fatal === true ||
+    !Array.isArray(exclusions.unconfirmedReleaseIds) ||
+    exclusions.unconfirmedReleaseIds.includes(selection?.releaseId) ||
+    !Array.isArray(exclusions.crashedBundleIds) ||
+    exclusions.crashedBundleIds.includes(bundleId)
+  )
+    throw new Error(
+      "Expected an unconfirmed native startup attempt without failure evidence",
+    );
+}
+
+export function assertLynxStartupInterruption(
+  journal: Record<string, unknown>,
+  platform: "ios" | "android",
+  bundleId: string,
+  releaseId: string,
+): void {
+  const exclusions = lynxStoredExclusions(journal, platform);
+  if (
+    !Array.isArray(exclusions.unconfirmedReleaseIds) ||
+    !exclusions.unconfirmedReleaseIds.includes(releaseId) ||
+    !Array.isArray(exclusions.crashedBundleIds) ||
+    exclusions.crashedBundleIds.includes(bundleId)
+  )
+    throw new Error(
+      "Expected an interrupted Release without a fatal Bundle exclusion",
+    );
+}

@@ -24,6 +24,7 @@ export const archiveXcodeProject = async ({
   sourceDir,
   platform,
   installPods,
+  podInstallEnvironment,
   destination,
   extraParams,
   configuration,
@@ -35,6 +36,7 @@ export const archiveXcodeProject = async ({
   destination?: IosBuildDestination[];
   extraParams?: string[];
   installPods: boolean;
+  podInstallEnvironment?: Record<string, string>;
   platform: ApplePlatform;
   xcodeScheme: string;
   sourceDir: string;
@@ -44,7 +46,7 @@ export const archiveXcodeProject = async ({
   const xcodeProject = await parseXcodeProjectInfo(sourceDir);
 
   if (installPods) {
-    await installPodsIfNeeded(sourceDir);
+    await installPodsIfNeeded(sourceDir, podInstallEnvironment);
   }
 
   const tmpDir = await createRandomTmpDir();

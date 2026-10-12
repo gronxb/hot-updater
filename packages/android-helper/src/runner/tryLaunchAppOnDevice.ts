@@ -25,7 +25,9 @@ export async function tryLaunchAppOnDevice({
   }
 
   const deviceId = device.deviceId;
-  await Device.tryRunAdbReverse({ deviceId, port });
+  if (port !== undefined) {
+    await Device.tryRunAdbReverse({ deviceId, port });
+  }
 
   const activity = mainActivity || ".MainActivity";
 
@@ -60,7 +62,7 @@ export async function tryLaunchAppOnDevice({
   try {
     await execa(adbPath, adbArgs);
     spinner.stop(
-      `Launched the app on ${device.readableName} (id: ${deviceId}) and listening on port ${port}.`,
+      `Launched the app on ${device.readableName} (id: ${deviceId}).`,
     );
   } catch {
     spinner.error("Failed to launch the app.");

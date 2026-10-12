@@ -88,7 +88,7 @@ export const startupHangRecoveryScenario: ScenarioDefinition = {
     );
     await app.terminate("stop stable process before hang launch");
     await app.control(
-      "verify JS hang before first render without crash marker",
+      "verify JS hang before startup confirmation without fatal crash",
       "/e2e/launch-startup-hang",
       {
         bundleId: "$hangBundleId",
@@ -201,10 +201,11 @@ export const startupHangRecoveryScenario: ScenarioDefinition = {
       },
     );
     await app.control(
-      "assert startup-hang failed bundle recorded",
-      "/e2e/assert-crash-history",
+      "assert startup-hang interruption recorded",
+      "/e2e/assert-startup-interruption",
       {
         bundleId: "$hangBundleId",
+        releaseId: "$hangReleaseId",
       },
     );
     await app.control(

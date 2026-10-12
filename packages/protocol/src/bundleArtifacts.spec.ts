@@ -3,11 +3,15 @@ import { describe, expect, it } from "vitest";
 import {
   getBundlePatch,
   getBundlePatches,
+  getManifestContentHash,
+  isArtifactIntegrityToken,
   getPatchBaseBundleId,
   getPatchBaseFileHash,
   getPatchFileHash,
   getPatchStorageUri,
 } from "./bundleArtifacts";
+
+const manifestContentHash = "a".repeat(64);
 
 const patches = [
   {
@@ -59,4 +63,73 @@ describe("bundle patch artifacts", () => {
     expect(getPatchFileHash(bundle)).toBeNull();
     expect(getPatchStorageUri(bundle)).toBeNull();
   });
+});
+
+describe("manifest content hash", () => {
+  it("uses explicit raw metadata for a signed manifest", () => {
+    expect(
+      getManifestContentHash({
+        manifestFileHash: "sig:c2lnbmF0dXJl",
+        metadata: { manifest_content_hash: manifestContentHash },
+      }),
+    ).toBe(manifestContentHash);
+  });
+
+  it("uses the plain manifest hash for an unsigned legacy bundle", () => {
+    expect(
+      getManifestContentHash({
+        manifestFileHash: manifestContentHash,
+        metadata: {},
+      }),
+    ).toBe(manifestContentHash);
+  });
+
+  it("ignores metadata when manifestFileHash is already a plain hash", () => {
+    expect(
+      getManifestContentHash({
+        manifestFileHash: manifestContentHash,
+        metadata: { manifest_content_hash: "b".repeat(64) },
+      }),
+    ).toBe(manifestContentHash);
+  });
+
+  it("rejects invalid metadata and signed values as content hashes", () => {
+    expect(
+      getManifestContentHash({
+        manifestFileHash: "sig:c2lnbmF0dXJl",
+        metadata: { manifest_content_hash: "not-a-sha256" },
+      }),
+    ).toBeNull();
+  });
+
+  it.each([
+    "not-a-signature",
+    "sig:",
+    "sig:not-base64",
+    "sig:abcde",
+    "SIG:c2lnbmF0dXJl",
+  ])("rejects malformed signature token %s even with metadata", (token) => {
+    expect(
+      getManifestContentHash({
+        manifestFileHash: token,
+        metadata: { manifest_content_hash: manifestContentHash },
+      }),
+    ).toBeNull();
+  });
+});
+
+describe("artifact integrity token", () => {
+  it.each(["a".repeat(64), "sig:c2lnbmF0dXJl"])(
+    "accepts canonical token %s",
+    (token) => {
+      expect(isArtifactIntegrityToken(token)).toBe(true);
+    },
+  );
+
+  it.each(["A".repeat(64), "sig:", "sig:not-base64", "malformed"])(
+    "rejects malformed token %s",
+    (token) => {
+      expect(isArtifactIntegrityToken(token)).toBe(false);
+    },
+  );
 });

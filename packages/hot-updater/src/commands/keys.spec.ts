@@ -70,10 +70,6 @@ vi.mock("../utils/configParser/iosParser", () => ({
   },
 }));
 
-vi.mock("../utils/expoDetection", () => ({
-  warnIfExpoCNG: vi.fn(),
-}));
-
 vi.mock("../utils/git", () => ({
   appendToProjectRootGitignore: vi.fn(),
 }));
@@ -104,6 +100,7 @@ const createProject = async () => {
 const configureProject = async (cwd: string, publicKey: string) => {
   mocks.getCwd.mockReturnValue(cwd);
   mocks.loadConfig.mockResolvedValue({
+    build: vi.fn(async () => ({ name: "test", build: vi.fn() })),
     signing: {
       name: "test-signing",
       getPublicKey: vi.fn(async () => ({ publicKey })),
@@ -211,6 +208,7 @@ describe("keysExportPublic", () => {
     await fs.writeFile(path.join(cwd, "private.pem"), privateKey);
     mocks.getCwd.mockReturnValue(cwd);
     mocks.loadConfig.mockResolvedValue({
+      build: vi.fn(async () => ({ name: "test", build: vi.fn() })),
       signing: { enabled: true, privateKeyPath: "private.pem" },
       platform: {
         android: {
@@ -227,7 +225,7 @@ describe("keysExportPublic", () => {
     );
   });
 
-  it("writes an Expo trust-anchor file without touching native files", async () => {
+  it("writes an integration trust-anchor file without touching native files", async () => {
     const { publicKey } = createKeyPair();
     const cwd = await createProject();
     await configureProject(cwd, publicKey);

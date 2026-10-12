@@ -36,7 +36,10 @@ const createProject = async () => {
     await writeFile(path.join(directory, "index.js"), exports.join("\n"));
   }
   const scaffold = createHotUpdaterConfigScaffold({
-    build: "bare",
+    build: {
+      imports: [{ pkg: "@hot-updater/bare", named: ["bare"] }],
+      configString: "bare({ enableHermes: true })",
+    },
     storage: {
       imports: [{ pkg: "@hot-updater/supabase", named: ["supabaseStorage"] }],
       configString:

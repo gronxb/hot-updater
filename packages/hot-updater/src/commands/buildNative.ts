@@ -39,9 +39,12 @@ const buildNativeInternal = async ({
           buildAndroid({
             schemeConfig: androidSchemeConfig!,
           })
-      : () =>
+      : async () =>
           buildIos({
             schemeConfig: iosSchemeConfig!,
+            podInstallEnvironment: iosSchemeConfig!.installPods
+              ? await buildAdapter.nativeBuild?.getPodInstallEnvironment?.()
+              : undefined,
           });
 
   try {

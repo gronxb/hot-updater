@@ -1,0 +1,244 @@
+package com.hotupdater.lynx
+
+import android.content.Context
+import android.content.pm.ApplicationInfo
+import java.io.File
+import android.os.Handler
+import android.os.Looper
+import com.lynx.jsbridge.LynxMethod
+import com.lynx.jsbridge.LynxModule
+import com.lynx.react.bridge.Callback
+import com.lynx.react.bridge.JavaOnlyArray
+import com.lynx.react.bridge.JavaOnlyMap
+import com.lynx.react.bridge.ReadableArray
+import com.lynx.react.bridge.ReadableMap
+import com.lynx.react.bridge.ReadableType
+import java.util.IdentityHashMap
+import kotlinx.coroutines.launch
+import org.json.JSONArray
+import org.json.JSONObject
+
+/** Framework-independent background native bridge; never accepts context or attempt IDs. */
+class HotUpdaterLynxModule(context: Context) : LynxModule(context) {
+    private val clientStorage by lazy {
+        LynxClientStorage(File(mContext.applicationContext.noBackupFilesDir, "hot-updater-lynx"))
+    }
+    @LynxMethod fun getPluginInfo(): JavaOnlyMap = pluginReply {
+        JSONObject().put("installId", clientStorage.installId())
+            .put("isDebugBuild", mContext.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0)
+    }
+    @LynxMethod fun getPluginStorageItem(key: String): JavaOnlyMap = pluginReply {
+        clientStorage.get(key) ?: JSONObject.NULL
+    }
+    @LynxMethod fun setPluginStorageItem(key: String, value: String?): JavaOnlyMap = pluginReply {
+        clientStorage.set(key, value)
+        true
+    }
+    private fun pluginReply(operation: () -> Any): JavaOnlyMap = toMap(
+        runCatching(operation).fold(
+            { JSONObject().put("ok", true).put("data", it) },
+            { JSONObject().put("ok", false).put("error", JSONObject()
+                .put("code", "PLUGIN_STORAGE_ERROR").put("message", it.message ?: "Plugin storage failed")) },
+        ),
+    )
+    @LynxMethod fun getStateSync(): JavaOnlyMap = nativeReply(runCatching {
+        // Release the registry lock before entering the controller's state lock.
+        val session = boundSession() ?: throw CatalogPolicy.Rejected("NO_CONTEXT", "No registered native context")
+        session.controller.state(session)
+    })
+    private fun boundSession(): LynxLaunchSession? = synchronized(registryLock) { sessions[mContext] }
+    @LynxMethod fun getState(callback: Callback) = call(callback) { session -> session.controller.state(session) }
+    @LynxMethod fun getLaunchConfiguration(callback: Callback) {
+        Handler(Looper.getMainLooper()).post {
+            val session = boundSession()
+            if (session == null) {
+                reply(callback, Result.failure(CatalogPolicy.Rejected(
+                    "NO_CONTEXT",
+                    "No registered native context",
+                )))
+            } else {
+                reply(callback, Result.success(JSONObject(
+                    synchronized(registryLock) { launchConfigurations[mContext] } ?: emptyMap<String, String>(),
+                )))
+            }
+        }
+    }
+    @LynxMethod fun getRuntimeEvents(callback: Callback) = call(callback) {
+        session -> session.controller.runtimeEvents(session)
+    }
+    @LynxMethod fun acceptCatalog(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.accept(session, json(params)) }
+    @LynxMethod fun validateSelection(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.validate(session, json(params)) }
+    @LynxMethod fun prepareSelection(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.prepare(session, json(params)) }
+    @LynxMethod fun stageSelection(params: ReadableMap, callback: Callback) = call(callback) { session -> session.controller.stage(session, json(params).getString("preparedId")) }
+    @LynxMethod fun setCohort(params: ReadableMap, callback: Callback) = call(callback) { session ->
+        session.controller.setCohort(params.getString("cohort"))
+        session.controller.state(session)
+    }
+    @LynxMethod fun resetChannel(callback: Callback) {
+        Handler(Looper.getMainLooper()).post {
+            val once = LynxOnceReply<JSONObject> { reply(callback, it) }
+            val result = runCatching {
+                val session = boundSession() ?: throw CatalogPolicy.Rejected(
+                    "CONTEXT_REJECTED",
+                    "No registered native context",
+                )
+                val reload = session.reloadAction()
+                reload("reset") { reloadResult ->
+                    once.settle(reloadResult.map { acceptance ->
+                        JSONObject(acceptance.toString()).put("reset", true)
+                    })
+                }
+            }
+            result.exceptionOrNull()?.let {
+                once.settle(Result.failure(it))
+            }
+        }
+    }
+    @LynxMethod fun clearCrashHistory(callback: Callback) = call(callback) { session ->
+        session.controller.clearCrashHistory()
+        session.controller.state(session)
+    }
+    @LynxMethod fun reload(callback: Callback) {
+        Handler(Looper.getMainLooper()).post {
+            val once = LynxOnceReply<JSONObject> { reply(callback, it) }
+            val result = runCatching {
+                val session = boundSession() ?: throw CatalogPolicy.Rejected(
+                    "CONTEXT_REJECTED",
+                    "No registered native context",
+                )
+                val reload = session.reloadAction()
+                reload("reload") { result -> once.settle(result) }
+            }
+            result.exceptionOrNull()?.let {
+                once.settle(Result.failure(it))
+            }
+        }
+    }
+    @LynxMethod fun notifyAppReady(callback: Callback) {
+        Handler(Looper.getMainLooper()).post {
+            val session = boundSession()
+            if (session == null) reply(callback, Result.failure(CatalogPolicy.Rejected("NO_CONTEXT", "No registered native context")))
+            else {
+                val ticket = session.beginBridgeReply { reply(callback, it) }
+                    ?: return@post
+                session.notifyReady { result ->
+                    session.finishBridgeReply(ticket, result)
+                }
+            }
+        }
+    }
+    private fun call(callback: Callback, operation: suspend (LynxLaunchSession) -> JSONObject) {
+        Handler(Looper.getMainLooper()).post {
+            val session = boundSession()
+            if (session == null) reply(callback, Result.failure(CatalogPolicy.Rejected("NO_CONTEXT", "No registered native context")))
+            else {
+                val ticket = session.beginBridgeReply { reply(callback, it) }
+                    ?: return@post
+                session.scope.launch {
+                    session.finishBridgeReply(
+                        ticket,
+                        runCatching { operation(session) },
+                    )
+                }
+            }
+        }
+    }
+    private fun json(map: ReadableMap) = lynxBridgeJson(map)
+    private fun reply(callback: Callback, result: Result<JSONObject>) {
+        callback.invoke(nativeReply(result))
+    }
+    private fun nativeReply(result: Result<JSONObject>): JavaOnlyMap {
+        val envelope = result.fold(
+            { JSONObject().put("ok", true).put("data", it) },
+            { error -> JSONObject().put("ok", false).put("error", JSONObject()
+                .put("code", when (error) { is CatalogPolicy.Rejected -> error.code; is LynxNativeOperationException -> error.code; is LynxIncompatibleArtifactException -> "INCOMPATIBLE"; else -> "NATIVE_ERROR" })
+                .put("message", error.message ?: "Native operation failed")) },
+        )
+        return toMap(envelope)
+    }
+    private fun toMap(value: JSONObject): JavaOnlyMap = JavaOnlyMap.from(value.keys().asSequence().associateWith { key -> toBridge(value.get(key)) })
+    private fun toBridge(value: Any): Any? = when (value) {
+        JSONObject.NULL -> null
+        is JSONObject -> toMap(value)
+        is org.json.JSONArray -> JavaOnlyArray.from((0 until value.length()).map { index -> toBridge(value.get(index)) })
+        else -> value
+    }
+    companion object {
+        private val registryLock = Any()
+        private val sessions = IdentityHashMap<Context, LynxLaunchSession>()
+        private val launchConfigurations = IdentityHashMap<Context, Map<String, String>>()
+        internal fun bind(
+            context: Context,
+            session: LynxLaunchSession,
+            launchConfiguration: Map<String, String> = emptyMap(),
+        ) = synchronized(registryLock) {
+            check(!sessions.containsKey(context))
+            sessions[context] = session
+            launchConfigurations[context] = launchConfiguration.toMap()
+        }
+        internal fun unbind(context: Context) = synchronized(registryLock) {
+            sessions.remove(context)
+            launchConfigurations.remove(context)
+        }
+    }
+}
+
+internal fun lynxBridgeJson(value: ReadableMap): JSONObject =
+    JSONObject().also { output ->
+        val keys = value.keySetIterator()
+        while (keys.hasNextKey()) {
+            val key = keys.nextKey()
+            output.put(key, lynxBridgeJsonValue(value, key))
+        }
+    }
+
+private fun lynxBridgeJsonValue(value: ReadableMap, key: String): Any =
+    when (value.getType(key)) {
+        ReadableType.Null -> JSONObject.NULL
+        ReadableType.Boolean -> value.getBoolean(key)
+        ReadableType.Int -> value.getInt(key)
+        ReadableType.Long -> value.getLong(key)
+        ReadableType.Number -> value.getDouble(key)
+        ReadableType.String -> value.getString(key)
+        ReadableType.Map -> lynxBridgeJson(value.getMap(key))
+        ReadableType.Array -> lynxBridgeJson(value.getArray(key))
+        else -> error("Unsupported bridge value for $key")
+    }
+
+private fun lynxBridgeJson(value: ReadableArray): JSONArray =
+    JSONArray().also { output ->
+        repeat(value.size()) { index ->
+            output.put(
+                when (value.getType(index)) {
+                    ReadableType.Null -> JSONObject.NULL
+                    ReadableType.Boolean -> value.getBoolean(index)
+                    ReadableType.Int -> value.getInt(index)
+                    ReadableType.Long -> value.getLong(index)
+                    ReadableType.Number -> value.getDouble(index)
+                    ReadableType.String -> value.getString(index)
+                    ReadableType.Map -> lynxBridgeJson(value.getMap(index))
+                    ReadableType.Array -> lynxBridgeJson(value.getArray(index))
+                    else -> error("Unsupported bridge value at $index")
+                },
+            )
+        }
+    }
+
+internal fun lynxBridgeJson(value: Map<String, Any?>): JSONObject =
+    JSONObject().also { output ->
+        value.forEach { (key, item) -> output.put(key, lynxBridgeJsonValue(item)) }
+    }
+
+private fun lynxBridgeJsonValue(value: Any?): Any = when (value) {
+    null, JSONObject.NULL -> JSONObject.NULL
+    is Map<*, *> -> JSONObject().also { output ->
+        value.forEach { (key, item) ->
+            require(key is String) { "Bridge object keys must be strings" }
+            output.put(key, lynxBridgeJsonValue(item))
+        }
+    }
+    is Iterable<*> -> JSONArray().also { output ->
+        value.forEach { output.put(lynxBridgeJsonValue(it)) }
+    }
+    else -> value
+}

@@ -17,6 +17,47 @@ import {
 } from "./profile.ts";
 
 describe("local standalone profile", () => {
+  it.each(["android", "ios"] as const)(
+    "isolates a local Lynx %s run from inherited RN paths and remote admin endpoints",
+    (platform) => {
+      const profile = createLocalProfile({
+        root: "/checkout",
+        platform,
+        runtime: "lynx",
+        runDir: "/checkout/e2e/results/local/run",
+        id: "abc",
+        providerPort: 4001,
+        controlPort: 4002,
+        storagePort: 4003,
+        token: "local-admin",
+        storagePassword: "local-storage",
+        env: {
+          HOT_UPDATER_E2E_ENV_TARGET_DIR: "/other/examples/v0.85.0",
+          HOT_UPDATER_E2E_IOS_APP_ID: "com.example.rn",
+          HOT_UPDATER_E2E_ANDROID_APK_PATH: "/other/app.apk",
+          HOT_UPDATER_STANDALONE_BASE_URL: "https://outside.invalid/admin",
+        },
+      });
+      expect(profile.appDir).toBe("/checkout/examples/lynx");
+      expect(profile.env.HOT_UPDATER_E2E_ENV_TARGET_DIR).toBe(profile.appDir);
+      expect(profile.env.HOT_UPDATER_E2E_IOS_APP_ID).toBe(
+        "com.hotupdater.lynxexample",
+      );
+      expect(profile.env.HOT_UPDATER_E2E_APP_ID).toBe(
+        "com.hotupdater.lynxexample",
+      );
+      expect(profile.env.HOT_UPDATER_E2E_ANDROID_BINARY_PATH).toBe(
+        "/checkout/examples/lynx/android/e2e-app/build/outputs/apk/release/e2e-app-release.apk",
+      );
+      expect(profile.env.HOT_UPDATER_E2E_IOS_BINARY_PATH).toBe(
+        "/checkout/examples/lynx/ios/build/e2e/Build/Products/Release-iphonesimulator/SparklingGoE2E.app",
+      );
+      expect(profile.env.HOT_UPDATER_STANDALONE_BASE_URL).toBeUndefined();
+      expect(
+        buildControlServerEnv(platform, profile.env).HOT_UPDATER_E2E_APP_ID,
+      ).toBe("com.hotupdater.lynxexample");
+    },
+  );
   it("isolates local services from inherited cloud client and native build settings", () => {
     const profile = createLocalProfile({
       root: "/checkout",

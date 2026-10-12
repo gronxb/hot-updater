@@ -17,8 +17,7 @@ export const createGradleLogger = ({ logPrefix }: { logPrefix: string }) =>
       "Could not resolve",
       "Failed to",
       "Unable to load script",
-      "Metro encountered an error",
-      "React Native CLI",
+      "encountered an error",
       "Android resource compilation failed",
       "Duplicate class",
       "Program type already present",
@@ -41,21 +40,8 @@ export const createGradleLogger = ({ logPrefix }: { logPrefix: string }) =>
       ":app:assembleRelease",
     ],
     progressStages: [
-      /* Initial setup and code generation */
-      [
-        "buildKotlinToolingMetadata",
-        "generateAutolinkingNewArchitectureFiles",
-        "generateAutolinkingPackageList",
-        "generateCodegenSchemaFromJavaScript",
-        "generateCodegenArtifactsFromSchema",
-        "generateReactNativeEntryPoint",
-      ],
-      /* Bundle JS and assets creation (React Native specific) */
-      [
-        "createBundleReleaseJsAndAssets",
-        "bundleReleaseJsAndAssets",
-        "bundleDebugJsAndAssets",
-      ],
+      /* Initial setup */
+      ["preBuild", "buildKotlinToolingMetadata"],
       /* Resource processing */
       [
         "generateReleaseResValues",

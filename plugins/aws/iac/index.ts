@@ -431,6 +431,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
   // The app's server URL is the CloudFront domain.
   printAppSetup({
+    ...(build.clientModule ? { sdkModule: build.clientModule } : {}),
     baseURL: `https://${distributionDomain}`,
     ...(credential === undefined ? {} : { credential }),
     clientPlugins: server.clientPlugins,

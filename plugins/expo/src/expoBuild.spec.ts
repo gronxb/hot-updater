@@ -42,10 +42,18 @@ async function createProject(files: Record<string, string>) {
 }
 
 beforeEach(() => {
-  mocks.execa.mockReset().mockResolvedValue({ stdout: "exported" });
+  mocks.execa.mockReset().mockImplementation(async (_command, args) => {
+    const output = args[args.indexOf("--bundle-output") + 1];
+    if (args.includes("--bundle-output"))
+      await fs.writeFile(output, "javascript");
+    return { stdout: "exported" };
+  });
   mocks.compileHermes
     .mockReset()
-    .mockResolvedValue({ hermesVersion: "Hermes" });
+    .mockImplementation(async ({ inputJsFile }: { inputJsFile: string }) => {
+      await fs.writeFile(`${inputJsFile}.hbc`, "bytecode");
+      return { hermesVersion: "Hermes" };
+    });
 });
 
 afterEach(async () => {
@@ -90,7 +98,19 @@ describe("Expo build engine from evaluated config", () => {
           'module.exports = ({ config }) => ({ ...config, jsEngine: "jsc", android: { jsEngine: "hermes" } });',
       });
 
-      await expo()({ cwd }).build({ platform });
+      const result = await expo()({ cwd }).build({ platform });
+
+      expect(result.patchAssetPath).toBe(`index.${platform}.bundle`);
+      expect(result.artifacts).toEqual([
+        {
+          name: `index.${platform}.bundle`,
+          path: path.join(
+            cwd,
+            `dist/index.${platform}.bundle${enableHermes ? ".hbc" : ""}`,
+          ),
+          downloadCompression: "br",
+        },
+      ]);
 
       expect(mocks.execa).toHaveBeenCalledWith(
         "npx",

@@ -41,6 +41,8 @@ type ControlClientOptions = {
 
 type ScreenStateWaitOptions = {
   readonly expectedValue?: string;
+  readonly failSubstrings?: readonly string[];
+  readonly pollGuard?: () => void;
   readonly rejectSubstrings?: readonly string[];
   readonly rejectValues?: readonly string[];
   readonly timeoutMs?: number;
@@ -342,8 +344,17 @@ export class ControlClient {
     const deadlineMs = this.nowMs() + timeoutMs;
     let lastObserved: string | undefined;
     for (;;) {
+      options.pollGuard?.();
       const value = readStringField(await this.readScreenState(), fieldName);
       lastObserved = value;
+      if (
+        value !== undefined &&
+        options.failSubstrings?.some((substring) => value.includes(substring))
+      ) {
+        throw new ControlProtocolError(
+          `${stage} observed failed ${fieldName}: ${JSON.stringify(value)}`,
+        );
+      }
       if (value !== undefined && isAcceptedScreenStateValue(value, options)) {
         return { [fieldName]: value };
       }

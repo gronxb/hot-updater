@@ -121,6 +121,7 @@ test("verified expected launch disconnect", async ({device, screen}) => {
       "device.openApp",
     ]);
     const context: MobileContext = {
+      runtime: "react-native",
       runId: "fixture",
       headSha: report.run.vcs.commit,
       profile: "fixture",

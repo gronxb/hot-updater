@@ -5,7 +5,6 @@ import {
   generateFingerprints,
   getFingerprintDiff,
 } from "../../utils/fingerprint";
-import { MissingFingerprintDependencyError } from "../../utils/fingerprint/dependency";
 import { checkFingerprintJson } from "./fingerprint";
 
 vi.mock("../../utils/fingerprint", async (importOriginal) => ({
@@ -42,7 +41,7 @@ describe("checkFingerprintJson", () => {
   });
 
   it("reports each platform whose fingerprint changed, with the sources that changed", async () => {
-    vi.mocked(getFingerprintDiff).mockResolvedValue([
+    vi.mocked(getFingerprintDiff).mockReturnValue([
       {
         op: "changed",
         beforeSource: source("ios/App/AppDelegate.swift"),
@@ -77,7 +76,7 @@ describe("checkFingerprintJson", () => {
     ]);
     expect(getFingerprintDiff).toHaveBeenCalledWith(
       fingerprint("ios-before"),
-      expect.objectContaining({ platform: "ios" }),
+      fingerprint("ios-now"),
     );
   });
 
@@ -98,7 +97,9 @@ describe("checkFingerprintJson", () => {
   });
 
   it("keeps the report when the changed sources cannot be listed", async () => {
-    vi.mocked(getFingerprintDiff).mockRejectedValue(new Error("diff failed"));
+    vi.mocked(getFingerprintDiff).mockImplementation(() => {
+      throw new Error("diff failed");
+    });
 
     const issues = await checkFingerprintJson({
       ios: fingerprint("ios-now"),
@@ -111,9 +112,9 @@ describe("checkFingerprintJson", () => {
     expect(issues[0]).not.toHaveProperty("changes");
   });
 
-  it("reports a fingerprint it cannot compute, with the install command for a missing dependency", async () => {
+  it("reports an integration fingerprint failure without prescribing an unrelated provider", async () => {
     vi.mocked(generateFingerprints).mockRejectedValue(
-      new MissingFingerprintDependencyError(),
+      new Error("Install the selected integration fingerprint provider"),
     );
 
     const issues = await checkFingerprintJson({
@@ -126,8 +127,10 @@ describe("checkFingerprintJson", () => {
         type: "error",
         platform: "project",
         code: "FINGERPRINT_GENERATION_FAILED",
-        fixability: "command",
-        commands: [expect.stringContaining("@expo/fingerprint")],
+        fixability: "auto",
+        message: expect.stringContaining(
+          "Install the selected integration fingerprint provider",
+        ),
       },
     ]);
   });

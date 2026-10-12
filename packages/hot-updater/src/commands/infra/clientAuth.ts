@@ -26,6 +26,7 @@ export type InfraClientPlugin = {
 
 /** What agent instructions depend on in the server's plugins. */
 export interface AgentInstructionsContext {
+  readonly sdkModule?: string;
   readonly clientAuth: InfraClientAuth;
   readonly clientPlugins: readonly InfraClientPlugin[];
 }
@@ -61,19 +62,25 @@ const isCondition = (value: string): value is Condition =>
  */
 const appImportLines = (
   clientPlugins: readonly InfraClientPlugin[],
+  sdkModule?: string,
 ): string[] => {
-  const namesByModule = new Map<string, string[]>([
-    ["@hot-updater/react-native", ["HotUpdater"]],
-  ]);
+  const namesByModule = new Map<string, string[]>(
+    sdkModule ? [[sdkModule, ["HotUpdater"]]] : [],
+  );
   for (const { module, name } of clientPlugins) {
     const names = namesByModule.get(module) ?? [];
     if (!names.includes(name)) names.push(name);
     namesByModule.set(module, names);
   }
-  return [...namesByModule].map(
-    ([module, names]) =>
-      `import { ${names.join(", ")} } from ${JSON.stringify(module)};`,
-  );
+  return [
+    ...(sdkModule
+      ? []
+      : ["// Import HotUpdater from your application integration."]),
+    ...[...namesByModule].map(
+      ([module, names]) =>
+        `import { ${names.join(", ")} } from ${JSON.stringify(module)};`,
+    ),
+  ];
 };
 
 /**
@@ -85,9 +92,10 @@ const appImportLines = (
 const expandClientPlugins = (
   line: string,
   clientPlugins: readonly InfraClientPlugin[],
+  sdkModule?: string,
 ): string[] => {
   if (line.includes("{{APP_IMPORTS}}")) {
-    return appImportLines(clientPlugins).map((imports) =>
+    return appImportLines(clientPlugins, sdkModule).map((imports) =>
       // A function inserts the text as it is, `$` included.
       line.replace("{{APP_IMPORTS}}", () => imports),
     );
@@ -115,7 +123,7 @@ const expandClientPlugins = (
  */
 export const renderAgentInstructions = (
   text: string,
-  { clientAuth, clientPlugins }: AgentInstructionsContext,
+  { clientAuth, clientPlugins, sdkModule }: AgentInstructionsContext,
 ): string => {
   const holds: Record<Condition, boolean> = {
     credential: clientAuth !== null,
@@ -143,7 +151,7 @@ export const renderAgentInstructions = (
       block === undefined ||
       (block.branch === "if") === holds[block.condition]
     ) {
-      lines.push(...expandClientPlugins(line, clientPlugins));
+      lines.push(...expandClientPlugins(line, clientPlugins, sdkModule));
     }
   }
   if (block !== undefined) throw new Error("Unclosed block.");

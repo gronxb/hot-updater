@@ -22,10 +22,13 @@ and server plugin authors import it from here and list it in
   something here, move it to `@hot-updater/protocol` and re-export it from this
   package.
 
-The public API is the package root, and it has no other entry. Hot Updater's
-own packages use it the way any adapter or plugin does: a name another package
-needs is on the root, with a JSDoc line that says why, and everything else stays
-private to this package.
+The server API is the package root. Hot Updater's own packages use it the way
+any adapter or plugin does: a name another package needs is on the root, with
+a JSDoc line that says why, and everything else stays private to this package.
+Build adapters import Node.js filesystem fingerprint helpers from
+`@hot-updater/plugin-core/fingerprint`; server and device code must not import
+that entry. The root's manifest authentication uses portable SHA-256 and does
+not load filesystem scanning or require Node.js compatibility flags.
 
 Core's tables are part of that API: `CoreSchema` types the `core` handle of
 `createEngine`, and `coreSchema` and `coreTarget` are what tooling creates. A

@@ -23,7 +23,7 @@ const templatesRoot = path.resolve(
   "../../../dist/infra-templates",
 );
 const providers = ["cloudflare", "supabase", "aws", "firebase"] as const;
-const builds = ["bare", "rock", "expo"] as const;
+const builds = ["bare", "rock", "expo", "lynx-build"] as const;
 let cwd: string;
 
 const run = (...args: string[]) => {
@@ -161,6 +161,11 @@ describe("published agent infrastructure commands", () => {
           "  plugins: [apiKeys(), insights(), remoteConfig()],\n",
         );
         expect(definition).not.toContain(`@hot-updater/${build}`);
+        if (build === "lynx-build") {
+          expect(config).toContain('from "./hot-updater.lynx"');
+          expect(config).toContain("build: createLynxBuild");
+          expect(definition).not.toContain("./hot-updater.lynx");
+        }
         expect(definition).not.toContain("process.loadEnvFile");
         const sources = [
           config,
@@ -364,6 +369,27 @@ describe("published agent infrastructure commands", () => {
     expect(
       run("setup", "--provider", "cloudflare", "--build", "expo").status,
     ).toBe(0);
+    expect(
+      await readFile(path.join(cwd, "hot-updater.config.ts"), "utf8"),
+    ).toBe('throw new Error("config must not execute");');
+  });
+
+  it("diagnoses expo-updates through the selected Expo integration", async () => {
+    await writeFile(
+      path.join(cwd, "package.json"),
+      JSON.stringify({
+        dependencies: { "expo-updates": "1.0.0", "hot-updater": "1.0.0" },
+      }),
+    );
+    const expoPath = path.resolve(
+      import.meta.dirname,
+      "../../../../../plugins/expo/dist/index.mjs",
+    );
+    await writeFile(
+      path.join(cwd, "hot-updater.config.ts"),
+      `import { expo } from ${JSON.stringify(pathToFileURL(expoPath).href)};
+       export default { build: expo(), updateStrategy: "appVersion" };`,
+    );
     const doctor = spawnSync(process.execPath, [cliPath, "doctor", "--json"], {
       cwd,
       encoding: "utf8",

@@ -54,7 +54,7 @@ describe("E2E fixture Release reset", () => {
             baseBundleId: base.id,
             baseFileHash: base.manifestFileHash,
             byteSize: 10,
-            patchFileHash: "patch-hash",
+            patchFileHash: "f".repeat(64),
             patchStorageUri: "storage://patches/production.patch",
           },
         ],

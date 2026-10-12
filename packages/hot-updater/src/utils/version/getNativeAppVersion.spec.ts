@@ -307,7 +307,7 @@ describe("getNativeAppVersion", () => {
   });
 
   describe("Android platform", () => {
-    it("should return app version from build.gradle", async () => {
+    it("prefers build.gradle when both Gradle script formats exist", async () => {
       // Arrange
       const buildGradleContent = `
 android {
@@ -323,7 +323,11 @@ android {
 }
       `;
 
-      mockFsReadFile.mockResolvedValue(buildGradleContent);
+      mockFsReadFile.mockImplementation(async (filePath: string) =>
+        filePath.endsWith(".kts")
+          ? 'android { defaultConfig { versionName = "9.0.0" } }'
+          : buildGradleContent,
+      );
 
       // Act
       const result = await getNativeAppVersion("android");
@@ -355,7 +359,7 @@ android {
       expect(result).toBe("2.0.1-beta");
     });
 
-    it("should return null when versionName is not found", async () => {
+    it("does not fall back when readable Groovy has no version", async () => {
       // Arrange
       const buildGradleContent = `
 android {
@@ -367,7 +371,11 @@ android {
 }
       `;
 
-      mockFsReadFile.mockResolvedValue(buildGradleContent);
+      mockFsReadFile.mockImplementation(async (filePath: string) =>
+        filePath.endsWith(".kts")
+          ? 'android { defaultConfig { versionName = "9.0.0" } }'
+          : buildGradleContent,
+      );
 
       // Act
       const result = await getNativeAppVersion("android");
@@ -376,9 +384,25 @@ android {
       expect(result).toBe(null);
     });
 
+    it.each(["EACCES", "EISDIR"])(
+      "does not fall back after %s",
+      async (code) => {
+        mockFsReadFile.mockImplementation(async (filePath: string) => {
+          if (filePath.endsWith(".kts")) {
+            return 'android { defaultConfig { versionName = "9.0.0" } }';
+          }
+          throw Object.assign(new Error("Cannot read build script"), { code });
+        });
+
+        expect(await getNativeAppVersion("android")).toBeNull();
+      },
+    );
+
     it("should return null when build.gradle file does not exist", async () => {
       // Arrange
-      mockFsReadFile.mockRejectedValue(new Error("File not found"));
+      mockFsReadFile.mockRejectedValue(
+        Object.assign(new Error("File not found"), { code: "ENOENT" }),
+      );
 
       // Act
       const result = await getNativeAppVersion("android");
@@ -673,8 +697,8 @@ android {
       expect(await getNativeAppVersion("android")).toBe("2.0.0");
     });
 
-    it("reads flavors in the Kotlin DSL form", async () => {
-      mockFsReadFile.mockResolvedValue(`
+    it("reads flavors from a scoped Kotlin Gradle module", async () => {
+      const kotlinBuildGradle = `
 android {
     defaultConfig {
         versionName = "1.0.0"
@@ -688,15 +712,30 @@ android {
         }
     }
 }
-`);
+`;
+      mockFsReadFile.mockImplementation(async (filePath: string) => {
+        if (filePath === "/mock/project/root/android/mobile/build.gradle.kts") {
+          return kotlinBuildGradle;
+        }
+        throw Object.assign(new Error("File not found"), { code: "ENOENT" });
+      });
 
-      expect(await resolveNativeAppVersion("android")).toEqual({
+      expect(
+        await resolveNativeAppVersion("android", {
+          android: { appModuleName: "mobile" },
+        }),
+      ).toEqual({
         version: null,
         candidates: [
           { label: "defaultConfig", version: "1.0.0" },
           { label: "dev flavor", version: "1.1.0" },
         ],
       });
+      expect(
+        await getNativeAppVersion("android", {
+          android: { appModuleName: "mobile", variant: "devRelease" },
+        }),
+      ).toBe("1.1.0");
     });
 
     it("reads the module a native build scheme names", async () => {

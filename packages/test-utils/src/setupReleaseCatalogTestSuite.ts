@@ -3,6 +3,7 @@ import type {
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
+import { getSha256 } from "@hot-updater/plugin-core";
 import type { ArtifactInfo, ReleaseCatalog } from "@hot-updater/protocol";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -18,6 +19,7 @@ import {
 import type { HttpTestClient, HttpTestRequestInit } from "./httpTestClient";
 import {
   RELEASE_CATALOG_MANIFEST_URIS,
+  RELEASE_CATALOG_STORAGE_FIXTURES,
   releaseCatalogArtifact,
   releaseCatalogDownloadUrl as downloadUrl,
 } from "./releaseCatalogHttpFixtures";
@@ -714,11 +716,17 @@ export const setupReleaseCatalogTestSuite = (options: {
         const target = {
           ...bundleRow("302"),
           manifest_storage_uri: RELEASE_CATALOG_MANIFEST_URIS[size],
-          manifest_file_hash: "manifest-hash",
+          manifest_file_hash: getSha256(
+            RELEASE_CATALOG_STORAGE_FIXTURES[
+              RELEASE_CATALOG_MANIFEST_URIS[size]
+            ]!,
+          ),
           asset_base_storage_uri: "storage://test-bucket/assets",
         };
         const patch = {
           ...createBundlePatchRowFixture("302", target.id, base.id),
+          base_file_hash: "c".repeat(64),
+          patch_file_hash: "d".repeat(64),
           byte_size: 10,
         };
         await api.deploy({ bundle: toDeployBundle(base), release: policy });

@@ -17,9 +17,11 @@ import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosS
 
 export const runIos = async ({
   schemeConfig,
+  podInstallEnvironment,
   runOption,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
+  podInstallEnvironment?: Record<string, string>;
   runOption: IosNativeRunOptions;
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
   const { interactive, device: deviceOption } = runOption;
@@ -55,6 +57,7 @@ export const runIos = async ({
       deviceType: selectedDevice.type,
       destination: [{ id: selectedDevice.udid }],
       installPods: schemeConfig.installPods,
+      podInstallEnvironment,
       extraParams: schemeConfig.extraParams,
       logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-run`,
     });
@@ -86,6 +89,7 @@ export const runIos = async ({
     deviceType: device.type,
     destination: [{ id: device.udid }],
     installPods: schemeConfig.installPods,
+    podInstallEnvironment,
     extraParams: schemeConfig.extraParams,
     logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-run`,
   });

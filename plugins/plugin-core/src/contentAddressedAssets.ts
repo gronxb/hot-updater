@@ -15,9 +15,8 @@ export const getContentAddressedAssetStoragePath = ({
   assetPath: string;
   fileHash: string;
 }) => {
-  // Shared asset storage is a plugin/server contract, not a React Native
-  // runtime API. The extension is derived from the logical download path so
-  // Hermes bundles keep their .br object while images/fonts keep theirs.
+  // The extension comes from the logical download path. Compressed artifacts
+  // keep .br, while opaque artifacts keep their declared extension.
   const extension = assetPath.endsWith(".br")
     ? ".br"
     : assetPath.includes(".")
