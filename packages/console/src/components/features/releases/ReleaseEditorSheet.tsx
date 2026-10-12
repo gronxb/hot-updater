@@ -18,6 +18,7 @@ import { BundleIdDisplay } from "@/components/BundleIdDisplay";
 import { BundleMetadata } from "@/components/features/bundles/BundleMetadata";
 import { RolloutCohortsDialog } from "@/components/features/bundles/RolloutCohortsDialog";
 import { ReleaseSections } from "@/components/features/FeatureSlots";
+import { InfoTooltip } from "@/components/InfoTooltip";
 import { PlatformIcon } from "@/components/PlatformIcon";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
@@ -472,9 +473,16 @@ export function ReleaseEditorSheet({
                     ) : null}
                     <Field>
                       <div className="flex items-center justify-between gap-4">
-                        <FieldLabel htmlFor="release-enabled">
-                          Enabled
-                        </FieldLabel>
+                        <div className="flex items-center gap-1">
+                          <FieldLabel htmlFor="release-enabled">
+                            Enabled
+                          </FieldLabel>
+                          <InfoTooltip label="About Enabled">
+                            Disabling rolls devices back to the previous enabled
+                            bundle on their next check, or to the built-in app
+                            when none remains.
+                          </InfoTooltip>
+                        </div>
                         <Switch
                           aria-label="Enabled"
                           checked={draft.enabled}
@@ -485,17 +493,19 @@ export function ReleaseEditorSheet({
                           }
                         />
                       </div>
-                      <FieldDescription>
-                        Disabling rolls devices back to the previous enabled
-                        bundle on their next check, or to the built-in app when
-                        none remains.
-                      </FieldDescription>
                     </Field>
                     <Field>
                       <div className="flex items-center justify-between gap-4">
-                        <FieldLabel htmlFor="release-force-update">
-                          Force update
-                        </FieldLabel>
+                        <div className="flex items-center gap-1">
+                          <FieldLabel htmlFor="release-force-update">
+                            Force update
+                          </FieldLabel>
+                          <InfoTooltip label="About Force update">
+                            Devices apply this bundle right away, and so do
+                            devices that skip it to update straight to a newer
+                            bundle.
+                          </InfoTooltip>
+                        </div>
                         <Switch
                           aria-label="Force update"
                           checked={draft.shouldForceUpdate}
@@ -506,10 +516,6 @@ export function ReleaseEditorSheet({
                           }
                         />
                       </div>
-                      <FieldDescription>
-                        Devices apply this bundle right away, and so do devices
-                        that skip it to update straight to a newer bundle.
-                      </FieldDescription>
                     </Field>
                     <Field>
                       <FieldLabel htmlFor="release-rollout-percentage">

@@ -1,6 +1,7 @@
 import { ChevronRight, RotateCw } from "lucide-react";
 import type { ReactNode } from "react";
 
+import { InfoTooltip } from "@/components/InfoTooltip";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -34,7 +35,6 @@ import { cn } from "@/lib/utils";
 
 import { EstimatedCount } from "./EstimatedCount";
 import { InsightsErrorAlert } from "./InsightsErrorAlert";
-import { InsightsInfo } from "./InsightsInfo";
 
 const share = (events: number, total: number) =>
   total === 0 ? "—" : `${((events / total) * 100).toFixed(1)}%`;
@@ -75,9 +75,7 @@ function FailureSummary({
         className="flex min-h-11 items-center gap-1 text-sm font-medium sm:min-h-7"
       >
         {title}
-        <InsightsInfo label={`About ${title.toLowerCase()}`}>
-          {info}
-        </InsightsInfo>
+        <InfoTooltip label={`About ${title.toLowerCase()}`}>{info}</InfoTooltip>
       </h3>
       <p className="text-3xl font-semibold tracking-tight tabular-nums">
         <Rate value={rate} />

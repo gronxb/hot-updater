@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router";
 import { ChartLine } from "lucide-react";
 
+import { InfoTooltip } from "@/components/InfoTooltip";
 import { buttonVariants } from "@/components/ui/button";
 import {
   Card,
@@ -23,7 +24,6 @@ import { adoptionWindow } from "@/lib/insights-search";
 import { cn } from "@/lib/utils";
 
 import type { ReleaseColumn } from "../FeatureSlots";
-import { InsightsInfo } from "./InsightsInfo";
 
 const activityStats = [
   { label: "Downloaded", field: "downloads", color: "text-primary/85" },
@@ -46,11 +46,11 @@ const notLaunched = (report: BundleActivityReport) =>
 
 function ReleaseMetricsInfo() {
   return (
-    <InsightsInfo label="About release insight metrics">
+    <InfoTooltip label="About release insight metrics">
       Downloaded: got this bundle. Launched: ran it. Crashed: crashed on it and
       rolled back. Once every installation restarts, Downloaded = Launched +
       Crashed.
-    </InsightsInfo>
+    </InfoTooltip>
   );
 }
 
@@ -205,10 +205,10 @@ export function BundleDownloadFailures({
           —
         </span>
       )}
-      <InsightsInfo label="About download failures">
+      <InfoTooltip label="About download failures">
         Failed downloads or installs of this bundle, at most one per
         installation a day. Rate = failures ÷ (failures + downloads).
-      </InsightsInfo>
+      </InfoTooltip>
     </div>
   );
 }

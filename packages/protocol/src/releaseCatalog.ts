@@ -209,11 +209,13 @@ export function selectDesiredRelease(
       ? release.releaseId > runningReleaseId
       : release.bundleId !== null && release.bundleId > input.currentBundleId;
   // `releases` keeps only the newest few Bundles, so the forced Releases an
-  // update carries the device past are read from the complete spine.
+  // update carries the device past are read from the complete spine. A forced
+  // Release of the running bundle is already satisfied.
   const passesForcedRelease = (selected: ReleaseCatalogDescriptor): boolean =>
     [selected, ...catalog.rollbackReleases].some(
       (passed) =>
         passed.shouldForceUpdate &&
+        passed.bundleId !== input.currentBundleId &&
         passed.releaseId <= selected.releaseId &&
         isNewerThanRunning(passed) &&
         isReleaseEligibleForCohort(passed, input.cohort),

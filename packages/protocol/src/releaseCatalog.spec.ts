@@ -416,6 +416,26 @@ describe("selectDesiredRelease force update", () => {
     ).toBe(false);
   });
 
+  it("treats a forced Release of the running bundle as satisfied", () => {
+    // Release 2 re-releases the running bundle 1 as forced; whether the device
+    // adopted it before Release 3 arrived must not change the outcome.
+    const releases = [
+      descriptor(3),
+      descriptor(2, { bundleId: bundleId(1), shouldForceUpdate: true }),
+      descriptor(1),
+    ];
+
+    expect(
+      selectDesiredRelease(catalog(releases), fromRelease(1)),
+    ).toMatchObject({ releaseId: releaseId(3), shouldForceUpdate: false });
+    expect(
+      selectDesiredRelease(catalog(releases), {
+        ...fromRelease(2),
+        currentBundleId: bundleId(1),
+      }),
+    ).toMatchObject({ releaseId: releaseId(3), shouldForceUpdate: false });
+  });
+
   it("does not force re-adopting the running bundle", () => {
     const desired = selectDesiredRelease(
       catalog([descriptor(2, { shouldForceUpdate: true })]),
