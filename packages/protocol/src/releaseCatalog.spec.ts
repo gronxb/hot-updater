@@ -436,6 +436,28 @@ describe("selectDesiredRelease force update", () => {
     ).toMatchObject({ releaseId: releaseId(3), shouldForceUpdate: false });
   });
 
+  it("ignores a newer forced Release whose bundle is below the native floor", () => {
+    // Release 2 promotes bundle 1, which the binary's floor (bundle 2)
+    // already supersedes, so the device could never select it.
+    const desired = selectDesiredRelease(
+      catalog([
+        descriptor(3),
+        descriptor(2, { bundleId: bundleId(1), shouldForceUpdate: true }),
+      ]),
+      {
+        ...fromRelease(1),
+        builtInBundleId: bundleId(2),
+        currentBundleId: bundleId(2),
+        minimumReleaseId: bundleId(2),
+      },
+    );
+
+    expect(desired).toMatchObject({
+      releaseId: releaseId(3),
+      shouldForceUpdate: false,
+    });
+  });
+
   it("does not force re-adopting the running bundle", () => {
     const desired = selectDesiredRelease(
       catalog([descriptor(2, { shouldForceUpdate: true })]),
