@@ -1,5 +1,21 @@
 # hot-updater
 
+## 1.0.1
+
+### Patch Changes
+
+- 367e60c: Support a named Firestore database. `firebaseDatabase` and `migrateFirebaseDatabase` take a `databaseId` option, which defaults to `(default)`. Firebase `hot-updater init` asks which database to use when the project has more than one, saves the choice as `HOT_UPDATER_FIREBASE_DATABASE_ID`, and uses it for the index deploy, the schema settings, the generated config, and the `hot-updater-v1` Function. The agent scaffold takes the database ID as a deployment input.
+- f838b56: `deploy` no longer guesses the target app version of a project that builds several apps: when Xcode app targets or Android product flavors declare different versions, it asks for `-t` and lists them, and `app-version` shows them. `build:ios`, `build:android`, and their `run:` commands read the version of the app target or flavor their scheme builds.
+- Updated dependencies [4e7c9c9]
+  - @hot-updater/protocol@1.0.1
+  - @hot-updater/console@1.0.1
+  - @hot-updater/android-helper@1.0.1
+  - @hot-updater/cli-tools@1.0.1
+  - @hot-updater/server@1.0.1
+  - @hot-updater/plugin-core@1.0.1
+  - @hot-updater/apple-helper@1.0.1
+  - @hot-updater/bsdiff@1.0.1
+
 ## 1.0.0
 
 ### Major Changes
