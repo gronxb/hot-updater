@@ -87,7 +87,7 @@ android {
     buildConfigField("String", "HOT_UPDATER_APP_BASE_URL", "\"$escapedProductionAppBaseUrl\"")
     buildConfigField("String", "LYNX_EMBEDDED_DESCRIPTOR", "\"${embeddedDescriptor()}\"")
     versionCode = 1
-    versionName = "0.0.1"
+    versionName = "1.0.0"
     ndk {
       abiFilters += providers.gradleProperty("hotUpdaterLynxAndroidAbis")
         .orNull?.split(",") ?: listOf("arm64-v8a", "x86_64")

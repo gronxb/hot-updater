@@ -23,7 +23,7 @@ android {
     buildConfigField("String", "LYNX_OTA_COMPATIBILITY_ID", "\"android-sparkling-2.1.0-rc.12-navsrc-937f70d7c3012a5a-lynx-4.0.3-primjs-4.0.0-managed-pages-v1\"")
     buildConfigField("String", "LYNX_EMBEDDED_DESCRIPTOR", "\"${embeddedDescriptor()}\"")
     versionCode = 1
-    versionName = "0.0.1"
+    versionName = "1.0.0"
     ndk {
       abiFilters += providers.gradleProperty("hotUpdaterLynxAndroidAbis")
         .orNull?.split(",") ?: listOf("arm64-v8a", "x86_64")
