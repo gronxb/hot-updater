@@ -47,8 +47,10 @@
   requires infrastructure changes, register its version/note and add
   `packages/hot-updater/infrastructure-upgrades/<version>.md`.
 - Each version file must have Compatibility, Steps, Cloudflare, Supabase, AWS,
-  Firebase, Vercel, and Verification sections. State when a provider needs no schema
-  migration. Build validation rejects missing files, missing sections, or files
+  Firebase, and Verification sections, plus a section for each provider added
+  before it (Vercel, in files after 1.0.0). Files released before a provider
+  stay unchanged: `PROVIDER_SECTIONS` records the last one as `addedAfter`.
+  State when a provider needs no schema migration. Build validation rejects missing files, missing sections, or files
   without a corresponding doctor requirement. Append a new file for each release;
   do not overwrite an older file to describe a newer release. Preserve history
   so agents can read the entire upgrade path before applying changes.

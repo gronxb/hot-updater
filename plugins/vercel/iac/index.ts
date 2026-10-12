@@ -36,6 +36,7 @@ import {
 import {
   createVercelApi,
   type VercelApi,
+  VercelApiError,
   type VercelBlobStore,
   type VercelProject,
 } from "./vercelApi";
@@ -234,6 +235,35 @@ const resolveBlobToken = async (
   return token;
 };
 
+/**
+ * The Function's HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN holds the selected
+ * store's token: one left from another store is replaced.
+ */
+const syncFunctionBlobToken = async (
+  api: VercelApi,
+  project: VercelProject,
+  store: VercelBlobStore,
+  blobToken: string,
+) => {
+  const current = (await api.listProjectEnv(project.id)).find(
+    (env) => env.key === BLOB_TOKEN_ENV && env.target.includes("production"),
+  );
+  if (
+    current !== undefined &&
+    (await api.getProjectEnvValue(project.id, current.id)) === blobToken
+  ) {
+    return;
+  }
+  try {
+    await api.setProductionEnv(project.id, BLOB_TOKEN_ENV, blobToken);
+  } catch (error) {
+    if (!(error instanceof VercelApiError)) throw error;
+    throw new InitError(
+      `Project ${project.name} keeps ${BLOB_TOKEN_ENV} for another Blob store, and Vercel refused to replace it with ${store.name}'s token: ${error.message}\nDisconnect the other store from the project's Storage tab, then rerun init.`,
+    );
+  }
+};
+
 const createNeonDatabase = async ({
   cwd,
   project,
@@ -305,10 +335,13 @@ const selectDatabaseUrl = async ({
   readonly teamId: string;
   readonly token: string;
 }): Promise<string> => {
+  const hasSavedUrl = isPostgresUrl(savedUrl);
+  // The project's own HOT_UPDATER_VERCEL_DATABASE_URL, which an earlier init
+  // set, is offered when no URL was saved locally.
   const listConnected = async () =>
     (await api.listProjectEnv(project.id)).filter(
       (env) =>
-        env.key !== DATABASE_URL_ENV &&
+        (env.key !== DATABASE_URL_ENV || !hasSavedUrl) &&
         env.target.includes("production") &&
         DATABASE_URL_ENV_PATTERN.test(env.key),
     );
@@ -326,7 +359,6 @@ const selectDatabaseUrl = async ({
   const savedKey = "\0saved";
   const enterKey = "\0enter";
   const neonKey = "\0neon";
-  const hasSavedUrl = isPostgresUrl(savedUrl);
   const selected = exitIfCancelled(
     await p.select({
       message: "Select the PostgreSQL database",
@@ -342,7 +374,10 @@ const selectDatabaseUrl = async ({
           : []),
         ...connected.map((env) => ({
           value: env.id,
-          label: `${env.key} (connected to ${project.name})`,
+          label:
+            env.key === DATABASE_URL_ENV
+              ? `${env.key} (set on ${project.name} by an earlier init)`
+              : `${env.key} (connected to ${project.name})`,
         })),
         {
           value: neonKey,
@@ -416,7 +451,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     saved.projectName,
     nonInteractive,
   );
-  const existingProject = await api.getProject(projectName);
+  // The saved project by its ID, so a project renamed in Vercel is still
+  // found; by name when the name changed or nothing was saved.
+  const existingProject =
+    (saved.projectId && projectName === saved.projectName
+      ? await api.getProject(saved.projectId)
+      : undefined) ?? (await api.getProject(projectName));
   if (existingProject) {
     await assertVercelProjectCanHostFunction({
       api,
@@ -525,15 +565,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       task: async () => {
         await api.setProductionEnv(project.id, DATABASE_URL_ENV, databaseUrl);
         await api.setProductionEnv(project.id, BLOB_ACCESS_ENV, store.access);
-        const projectEnv = await api.listProjectEnv(project.id);
-        if (
-          !projectEnv.some(
-            (env) =>
-              env.key === BLOB_TOKEN_ENV && env.target.includes("production"),
-          )
-        ) {
-          await api.setProductionEnv(project.id, BLOB_TOKEN_ENV, blobToken);
-        }
+        await syncFunctionBlobToken(api, project, store, blobToken);
         return "Set the Function's environment variables";
       },
     },

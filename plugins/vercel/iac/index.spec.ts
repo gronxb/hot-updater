@@ -89,6 +89,7 @@ vi.mock("./vercelFunction", async (importOriginal) => ({
 }));
 
 import { runInit } from "./index";
+import { VercelApiError } from "./vercelApi";
 
 const DATABASE_URL = "postgres://user:secret@db.example.com/neondb";
 const BLOB_TOKEN = "vercel_blob_rw_Store1_secret";
@@ -254,6 +255,151 @@ describe("Vercel init", () => {
       ["prj_1", "HOT_UPDATER_VERCEL_BLOB_ACCESS", "public"],
       ["prj_1", "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN", BLOB_TOKEN],
     ]);
+  });
+
+  it("replaces a token the Function keeps for another store", async () => {
+    givenInitEnv(replayEnv);
+    mocks.api.listBlobStores.mockResolvedValue([
+      {
+        access: "private",
+        connections: [
+          {
+            environmentVariables: ["BLOB_READ_WRITE_TOKEN"],
+            environments: ["production"],
+            id: "spc_1",
+            projectId: "prj_1",
+          },
+        ],
+        id: "store_Store1",
+        name: "hot-updater-storage",
+        region: "iad1",
+      },
+    ]);
+    mocks.api.getProject.mockResolvedValue(project);
+    mocks.api.hasProductionDeployment.mockResolvedValue(false);
+    mocks.api.listProjectEnv.mockResolvedValue([
+      { id: "env_blob", key: "BLOB_READ_WRITE_TOKEN", target: ["production"] },
+      {
+        id: "env_old",
+        key: "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN",
+        target: ["production"],
+      },
+    ]);
+    mocks.api.getProjectEnvValue.mockImplementation(
+      async (_project: string, envId: string) =>
+        envId === "env_old" ? "vercel_blob_rw_Old_secret" : BLOB_TOKEN,
+    );
+
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    expect(mocks.api.setProductionEnv).toHaveBeenCalledWith(
+      "prj_1",
+      "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN",
+      BLOB_TOKEN,
+    );
+  });
+
+  it("explains a token Vercel refuses to replace", async () => {
+    givenInitEnv(replayEnv);
+    mocks.api.listBlobStores.mockResolvedValue([
+      {
+        access: "private",
+        connections: [
+          {
+            environmentVariables: ["BLOB_READ_WRITE_TOKEN"],
+            environments: ["production"],
+            id: "spc_1",
+            projectId: "prj_1",
+          },
+        ],
+        id: "store_Store1",
+        name: "hot-updater-storage",
+        region: "iad1",
+      },
+    ]);
+    mocks.api.getProject.mockResolvedValue(project);
+    mocks.api.hasProductionDeployment.mockResolvedValue(false);
+    mocks.api.listProjectEnv.mockResolvedValue([
+      { id: "env_blob", key: "BLOB_READ_WRITE_TOKEN", target: ["production"] },
+      {
+        id: "env_old",
+        key: "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN",
+        target: ["production"],
+      },
+    ]);
+    mocks.api.getProjectEnvValue.mockImplementation(
+      async (_project: string, envId: string) =>
+        envId === "env_old" ? "vercel_blob_rw_Old_secret" : BLOB_TOKEN,
+    );
+    mocks.api.setProductionEnv.mockImplementation(
+      async (_project: string, key: string) => {
+        if (key === "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN") {
+          throw new VercelApiError(400, "env_owned", "owned by a connection");
+        }
+      },
+    );
+
+    await expect(
+      runInit({ build: "bare", envFile: ".env.hotupdater" }),
+    ).rejects.toThrow("Disconnect the other store");
+    expect(mocks.deployFunction).not.toHaveBeenCalled();
+  });
+
+  it("finds the saved project by its ID after a rename", async () => {
+    givenInitEnv({ ...replayEnv, HOT_UPDATER_VERCEL_PROJECT_ID: "prj_1" });
+    const renamed = { ...project, name: "ota-server" };
+    mocks.api.getProject.mockImplementation(async (idOrName: string) =>
+      idOrName === "prj_1" ? renamed : undefined,
+    );
+
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    expect(mocks.api.getProject).toHaveBeenCalledWith("prj_1");
+    expect(mocks.api.createProject).not.toHaveBeenCalled();
+    expect(mocks.makeEnv).toHaveBeenCalledWith(
+      expect.objectContaining({
+        HOT_UPDATER_VERCEL_PROJECT_NAME: "ota-server",
+      }),
+    );
+  });
+
+  it("offers the database URL an earlier init set on the project", async () => {
+    givenInitEnv({});
+    mocks.api.listTeams.mockResolvedValue([
+      { id: "team_1", name: "Team", slug: "team" },
+    ]);
+    mocks.api.listProjectEnv.mockResolvedValue([
+      {
+        id: "env_canonical",
+        key: "HOT_UPDATER_VERCEL_DATABASE_URL",
+        target: ["production"],
+      },
+      ...connectedEnv,
+    ]);
+    mocks.select
+      .mockResolvedValueOnce("\0create")
+      .mockImplementationOnce(
+        async ({
+          options,
+        }: {
+          options: { value: string; label: string }[];
+        }) => {
+          expect(options[0]?.label).toContain("by an earlier init");
+          return "env_canonical";
+        },
+      );
+    mocks.text
+      .mockResolvedValueOnce("hot-updater")
+      .mockResolvedValueOnce("hot-updater-storage");
+    mocks.confirm.mockResolvedValueOnce(true);
+
+    await runInit({ build: "bare" });
+
+    expect(mocks.api.getProjectEnvValue).toHaveBeenCalledWith(
+      "prj_1",
+      "env_canonical",
+    );
+    expect(mocks.password).not.toHaveBeenCalled();
   });
 
   it("refuses a project that serves another app before changing anything", async () => {

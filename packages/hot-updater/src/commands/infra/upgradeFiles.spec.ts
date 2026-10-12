@@ -75,12 +75,28 @@ describe("versioned infrastructure release files", () => {
   it.each(sections)(
     "blocks a release with no %s instructions",
     async (section) => {
-      await save("1.0.0", release("1.0.0", section));
+      await save("1.2.0", release("1.2.0", section));
       await expect(
-        readInfrastructureUpgradeFiles(directory, requirements.slice(0, 1)),
+        readInfrastructureUpgradeFiles(directory, requirements.slice(1, 2)),
       ).rejects.toThrow(`missing instructions for ${section}`);
     },
   );
+
+  it("keeps a release file that predates a provider without its section", async () => {
+    await save("1.0.0", release("1.0.0", "Vercel"));
+    const files = await readInfrastructureUpgradeFiles(
+      directory,
+      requirements.slice(0, 1),
+    );
+    expect(renderInfrastructureUpgradeIndex(files)).toContain(
+      "Vercel was added after 1.0.0",
+    );
+
+    await save("1.2.0", release("1.2.0", "Vercel"));
+    await expect(
+      readInfrastructureUpgradeFiles(directory, requirements.slice(0, 2)),
+    ).rejects.toThrow("1.2.0.md is missing instructions for Vercel");
+  });
 
   it("rejects out-of-order release registration and a file with the wrong version", async () => {
     for (const { version } of requirements) await save(version);
