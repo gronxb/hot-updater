@@ -1,4 +1,5 @@
 import { execFileSync, spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
@@ -43,13 +44,6 @@ export function isRetryableAgentDeviceFailure(value) {
     value.error?.code === "RUNNER_BUSY" &&
     value.error?.retriable === true
   );
-}
-
-export function formatAppleLogStart(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) throw new Error("Invalid Apple log start");
-  const pad = (part) => String(part).padStart(2, "0");
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
 export function iosActionTarget(snapshot, label) {
@@ -205,7 +199,6 @@ class IOSAdapter {
     this.binaryPath = binaryPath;
     this.resultsDir = resultsDir;
     this.session = session;
-    this.logStartedAt = new Date().toISOString();
   }
 
   async sourceBinaryHash() {
@@ -269,7 +262,6 @@ class IOSAdapter {
 
   resetCell() {
     this.terminate();
-    this.logStartedAt = new Date(Date.now() - 1000).toISOString();
     fs.rmSync(
       path.join(
         this.dataContainer(),
@@ -411,8 +403,12 @@ class IOSAdapter {
     this.device(iosNativeBackArguments());
   }
 
-  close() {
-    this.device(["close"]);
+  async close() {
+    try {
+      await this.stopNativeLogs();
+    } finally {
+      this.device(["close"]);
+    }
   }
 
   async screenshot(name) {
@@ -463,20 +459,57 @@ class IOSAdapter {
       }));
   }
 
-  readNativeLogs() {
-    return run("xcrun", [
-      "simctl",
-      "spawn",
-      this.deviceId,
-      "log",
-      "show",
-      "--style",
-      "compact",
-      "--start",
-      formatAppleLogStart(this.logStartedAt),
-      "--predicate",
-      'eventMessage CONTAINS "HotUpdater"',
-    ]);
+  async startNativeLogs() {
+    const subsystem = `com.hotupdater.lynxmatrix.capture.${randomUUID()}`;
+    this.nativeLogs = await startNativeLogCapture({
+      command: "xcrun",
+      args: [
+        "simctl",
+        "spawn",
+        this.deviceId,
+        "log",
+        "stream",
+        "--style",
+        "ndjson",
+        "--level",
+        "debug",
+        "--unreliable",
+        "--predicate",
+        `processImagePath == ${JSON.stringify(this.installedExecutable())} OR subsystem == ${JSON.stringify(subsystem)}`,
+      ],
+      apple: true,
+      directory: this.resultsDir,
+      writeMarker: (marker) =>
+        run(
+          "xcrun",
+          [
+            "simctl",
+            "spawn",
+            this.deviceId,
+            "log",
+            "emit",
+            "--public",
+            "--subsystem",
+            subsystem,
+            "--category",
+            "boundary",
+            marker,
+          ],
+          { timeout: 10_000 },
+        ),
+    });
+  }
+
+  async readNativeLogs() {
+    return this.nativeLogs.checkpoint();
+  }
+
+  async finishNativeLogs() {
+    return this.nativeLogs.finish();
+  }
+
+  async stopNativeLogs() {
+    await this.nativeLogs?.close();
   }
 
   readDiagnostics() {
@@ -486,7 +519,7 @@ class IOSAdapter {
     );
     return fs.existsSync(file)
       ? parseDiagnostics(fs.readFileSync(file, "utf8"))
-      : parseDiagnostics(this.readNativeLogs());
+      : parseDiagnostics(this.nativeLogs.read());
   }
 }
 
