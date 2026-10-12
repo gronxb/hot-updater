@@ -119,5 +119,9 @@ protocol v1 artifact lazily when needed.
 | `updateBundle` | `() => Promise<boolean>` | Stage or commit this selection; resolves with whether it succeeded. |
 
 A different Release can reference the same artifact. `ADOPT_RELEASE` commits
-that policy selection without downloading the artifact or forcing a reload.
-The built-in transition also does not require an artifact download.
+that policy selection without downloading the artifact. It does not force a
+reload when the app already runs that artifact. When the artifact is staged for
+the next launch instead, and the Release skips a forced bundle, the result has
+`shouldForceUpdate: true`: commit with `updateBundle()`, then reload to run the
+staged bundle. The built-in transition also does not require an artifact
+download.
