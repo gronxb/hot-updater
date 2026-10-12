@@ -6,6 +6,7 @@ import { PostgresDialect } from "kysely";
 import pg from "pg";
 
 import { vercelBlobStorage } from "../src/vercelBlobStorage";
+import { withoutEncodingVary } from "./withoutEncodingVary";
 
 /** The project environment variables init sets for the production target. */
 const requireEnv = (name: string) => {
@@ -43,7 +44,8 @@ const hotUpdater = createHotUpdater({
 });
 
 /** Every route of the client handler; `vercel.json` rewrites every path here. */
-const handler = (request: Request) => hotUpdater.handlers.client(request);
+const handler = async (request: Request) =>
+  withoutEncodingVary(await hotUpdater.handlers.client(request));
 
 export {
   handler as DELETE,
