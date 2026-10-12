@@ -12,18 +12,24 @@ import { ExecaError, execa } from "execa";
 import { getConfigScaffold } from "./configTemplate";
 import type { FirebaseCliEnv } from "./firebaseInitInputs";
 import {
+  parseFirestoreDatabaseIds,
+  resolveFirestoreDatabaseId,
+} from "./firestoreDatabase";
+import {
   initProvider as FIREBASE_INIT_PROVIDER,
   isFirebaseProjectId,
 } from "./init/index";
 
 export const setEnv = async ({
   applicationCredentials,
+  databaseId,
   projectId,
   storageBucket,
   build,
   region,
 }: {
   applicationCredentials?: string;
+  databaseId: string;
   projectId: string;
   storageBucket: string;
   build: BuildConfig;
@@ -38,6 +44,7 @@ export const setEnv = async ({
       },
       [FIREBASE_INIT_PROVIDER.inputs.projectId.envKey]: projectId,
       [FIREBASE_INIT_PROVIDER.inputs.region.envKey]: region,
+      [FIREBASE_INIT_PROVIDER.inputs.databaseId.envKey]: databaseId,
       HOT_UPDATER_FIREBASE_STORAGE_BUCKET: storageBucket,
     },
     ".env.hotupdater",
@@ -72,6 +79,7 @@ export type FirebaseUserInitialization =
     }
   | {
       readonly status: "ready";
+      readonly databaseId: string;
       readonly projectId: string;
       readonly projectNumber: number;
       readonly storageBucket: string;
@@ -168,6 +176,7 @@ export const initFirebaseUser = async (
   nonInteractive = false,
   cliEnv?: FirebaseCliEnv,
   resolveCliEnv?: ResolveFirebaseCliEnv,
+  preferredDatabaseId?: string,
 ): Promise<FirebaseUserInitialization> => {
   if (!cliEnv) {
     try {
@@ -304,6 +313,7 @@ export const initFirebaseUser = async (
     },
   ]);
 
+  let databaseIds: string[] = [];
   try {
     const databases = await execa(
       "gcloud",
@@ -323,9 +333,9 @@ export const initFirebaseUser = async (
         input: "N\n",
       },
     );
-    const databasesJson = JSON.parse(databases.stdout);
+    databaseIds = parseFirestoreDatabaseIds(JSON.parse(databases.stdout));
 
-    if (databasesJson.length === 0) {
+    if (databaseIds.length === 0) {
       p.log.warning("Firestore Database not found");
       p.log.step("Please enable Firestore in the Firebase Console:");
       p.log.step(
@@ -341,6 +351,12 @@ export const initFirebaseUser = async (
   } catch (err) {
     handleError(err instanceof Error ? err : new Error(String(err)));
   }
+
+  const databaseId = await resolveFirestoreDatabaseId({
+    databaseIds,
+    nonInteractive,
+    savedDatabaseId: preferredDatabaseId,
+  });
 
   let storageBucket: string | null = null;
   await p.tasks([
@@ -404,6 +420,7 @@ export const initFirebaseUser = async (
 
   return {
     status: "ready",
+    databaseId,
     storageBucket,
     projectNumber,
     projectId,

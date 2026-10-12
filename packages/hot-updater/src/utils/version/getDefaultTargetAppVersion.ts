@@ -1,33 +1,24 @@
 import type { Platform } from "@hot-updater/plugin-core";
 import { normalizeRange } from "verkit";
 
-import { getAndroidVersion } from "./getAndroidVersion";
-import { getIOSVersion } from "./getIOSVersion";
+import type { ResolvedAppVersion } from "./appVersionCandidates";
+import { resolveNativeAppVersion } from "./getNativeAppVersion";
 
+/**
+ * The target app version deploy defaults to, as a range. `version` is null
+ * when the native files declare none, or several (see `candidates`).
+ */
 export const getDefaultTargetAppVersion = async (
   platform: Platform,
-): Promise<string | null> => {
-  let version: string | null = null;
+): Promise<ResolvedAppVersion> => {
+  const resolved = await resolveNativeAppVersion(platform);
+  let version = resolved.version;
 
-  switch (platform) {
-    case "ios":
-      // Mirror getNativeAppVersion: Info.plist first, project.pbxproj as a
-      // fallback. Native app templates commonly ship Info.plist with
-      // CFBundleShortVersionString set to "$(MARKETING_VERSION)", which the
-      // plist parser cannot resolve, so the real version only lives in
-      // project.pbxproj for most projects.
-      version = await getIOSVersion({ parser: ["info-plist", "xcodeproj"] });
-      break;
-    case "android":
-      version = await getAndroidVersion({ parser: "app-build-gradle" });
-      break;
-  }
-
-  if (!version) return null;
+  if (!version) return resolved;
 
   const isAcceptableFormat =
     /^\d+\.\d+$/.test(version) || normalizeRange(version);
-  if (!isAcceptableFormat) return null;
+  if (!isAcceptableFormat) return { ...resolved, version: null };
 
   // If version only has one dot (e.g. 1.0), append .x
   const dotCount = version.split(".").length - 1;
@@ -35,5 +26,5 @@ export const getDefaultTargetAppVersion = async (
     version = `${version}.x`;
   }
 
-  return version;
+  return { ...resolved, version };
 };

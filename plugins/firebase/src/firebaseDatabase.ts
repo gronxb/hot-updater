@@ -17,6 +17,11 @@ import { FIREBASE_V1_COLLECTION } from "./firebaseInfrastructureNames";
 import { createFirestoreStore } from "./firestoreStore";
 
 export type FirebaseDatabaseConfig = AppOptions & {
+  /**
+   * The Firestore database the collection lives in, for a project with
+   * named databases. Defaults to the project's `(default)` database.
+   */
+  readonly databaseId?: string;
   /** The one collection the database keeps its items in. */
   readonly collection?: string;
   /**
@@ -29,13 +34,17 @@ export type FirebaseDatabaseConfig = AppOptions & {
 };
 
 const adapterOf = ({
+  databaseId,
   collection = FIREBASE_V1_COLLECTION,
   aggregateBatching: _,
   ...appOptions
 }: FirebaseDatabaseConfig) => {
   const app = getApps().length ? getApp() : initializeApp(appOptions);
+  const firestore = databaseId
+    ? getFirestore(app, databaseId)
+    : getFirestore(app);
   return createKvAdapter({
-    store: createFirestoreStore({ firestore: getFirestore(app), collection }),
+    store: createFirestoreStore({ firestore, collection }),
   });
 };
 

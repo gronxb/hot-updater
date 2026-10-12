@@ -462,7 +462,10 @@ describe("deploy rollout wiring", () => {
       id: () => "git-hash",
       summary: () => "git summary",
     } as Awaited<ReturnType<typeof getLatestGitCommit>>);
-    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue(null);
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue({
+      version: null,
+      candidates: [],
+    });
     vi.mocked(getNativeAppVersion).mockResolvedValue("1.0");
     mockCli.getStorageFileByteSize.mockResolvedValue(4);
     vi.mocked(createBundleManifest).mockImplementation(
@@ -1863,7 +1866,10 @@ describe("deploy rollout wiring", () => {
   });
 
   it("falls back to the auto-detected target app version in non-interactive mode when -t is omitted", async () => {
-    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue("1.5.0");
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue({
+      version: "1.5.0",
+      candidates: [{ label: "Info.plist", version: "1.5.0" }],
+    });
 
     await deploy({
       channel: "production",
@@ -1878,7 +1884,10 @@ describe("deploy rollout wiring", () => {
   });
 
   it("errors out in non-interactive mode when -t is omitted and the native config is unreadable", async () => {
-    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue(null);
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue({
+      version: null,
+      candidates: [],
+    });
 
     await deploy({
       channel: "production",
@@ -1893,8 +1902,67 @@ describe("deploy rollout wiring", () => {
     expect(await databaseHarness.bundles()).toEqual([]);
   });
 
+  it("errors out in non-interactive mode when -t is omitted and the native project builds several versions", async () => {
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue({
+      version: null,
+      candidates: [
+        { label: "BrandA (Release)", version: "5.5.1" },
+        { label: "BrandB (Release)", version: "5.8.0" },
+      ],
+    });
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+    });
+
+    expect(mockCli.p.log.error).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "builds several app versions (BrandA (Release): 5.5.1, BrandB (Release): 5.8.0)",
+      ),
+    );
+    expect(mockCli.p.log.error).toHaveBeenCalledWith(
+      expect.stringContaining("Pass -t <targetAppVersion>"),
+    );
+    expect(await databaseHarness.bundles()).toEqual([]);
+  });
+
+  it("prompts without a guessed initialValue when the native project builds several versions", async () => {
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue({
+      version: null,
+      candidates: [
+        { label: "BrandA (Release)", version: "5.5.1" },
+        { label: "BrandB (Release)", version: "5.8.0" },
+      ],
+    });
+    vi.mocked(getConsolePort).mockResolvedValue(3000);
+    mockCli.p.text.mockResolvedValue("5.8.0");
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: true,
+      platform: "ios",
+    });
+
+    expect(mockCli.p.text).toHaveBeenCalledWith(
+      expect.objectContaining({
+        message: expect.stringContaining("BrandB (Release): 5.8.0"),
+        initialValue: "",
+      }),
+    );
+    expect((await databaseHarness.releases())[0]).toMatchObject({
+      target_app_version: "5.8.0",
+    });
+  });
+
   it("uses the explicit -t value over the auto-detected default", async () => {
-    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue("1.5.0");
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue({
+      version: "1.5.0",
+      candidates: [{ label: "Info.plist", version: "1.5.0" }],
+    });
 
     await deploy({
       channel: "production",
@@ -1907,10 +1975,15 @@ describe("deploy rollout wiring", () => {
     expect((await databaseHarness.releases())[0]).toMatchObject({
       target_app_version: "1.2.0",
     });
+    // -t answers it: the native project is not read for a default.
+    expect(getDefaultTargetAppVersion).not.toHaveBeenCalled();
   });
 
   it("uses the interactive prompt with the auto-detected value as placeholder/initialValue", async () => {
-    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue("1.5.0");
+    vi.mocked(getDefaultTargetAppVersion).mockResolvedValue({
+      version: "1.5.0",
+      candidates: [{ label: "Info.plist", version: "1.5.0" }],
+    });
     vi.mocked(getConsolePort).mockResolvedValue(3000);
     mockCli.p.text.mockResolvedValue("1.7.0");
 

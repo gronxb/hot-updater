@@ -577,6 +577,20 @@ describe("deployment artifacts", () => {
     expect(source).toContain("__HOT_UPDATER_BUCKET_NAME__");
   });
 
+  it("points the Firebase function and its indexes at one Firestore database", async () => {
+    const root = path.join(templatesRoot, "firebase/firebase");
+    const config = await json(path.join(root, "firebase.json"));
+    expect(config.firestore).toEqual({
+      indexes: "firestore.indexes.json",
+      database: "__HOT_UPDATER_FIRESTORE_DATABASE_ID__",
+    });
+    const source = await readFile(
+      path.join(root, "functions/index.cjs"),
+      "utf8",
+    );
+    expect(source).toContain("__HOT_UPDATER_FIRESTORE_DATABASE_ID__");
+  });
+
   it.each(["aws", "firebase"])(
     "ships %s runtime dependencies instead of relying on monorepo imports",
     async (provider) => {
@@ -602,7 +616,7 @@ describe("deployment artifacts", () => {
         expect(pkg.dependencies[name], specifier).toMatch(/^\d+\.\d+\.\d+/);
       }
       expect(source).not.toMatch(
-        /HotUpdater\.(REGION|DYNAMODB_REGION|S3_BUCKET_NAME)/,
+        /HotUpdater\.(REGION|FIRESTORE_DATABASE_ID|DYNAMODB_REGION|S3_BUCKET_NAME)/,
       );
       const check = spawnSync(
         process.execPath,

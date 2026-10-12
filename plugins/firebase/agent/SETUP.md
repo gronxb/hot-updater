@@ -27,26 +27,35 @@ supply this CLI. Do this before remote provisioning.
     Service Account Credentials APIs. Create the default Firestore database and
     enable Storage when missing and authorized. Ask only for prerequisites that
     require user involvement. Query the canonical default bucket; never guess its suffix.
-  - Verify/record: database ready, APIs available, actual bucketName recorded.
+    List the databases the Firestore API can use (not Datastore mode, not
+    Firestore data access disabled)
+    (`gcloud firestore databases list --project <project-id>`) and select the
+    one Hot Updater uses: `(default)`, the only one, or the one the user names.
+  - Verify/record: database ready, APIs available, actual bucketName and
+    databaseId recorded.
     Check each service independently; project creation alone is not this step's success.
   - Retry: inspect each service's readiness, retain completed resources and continue
     unfinished setup. A newly created project does not require restarting the whole flow.
 
 - [ ] **fb.indexes — Prepare Firestore indexes**
   - Requires: fb.services.
-  - Run: merge firebase/firestore.indexes.json with existing indexes, preserving
-    unrelated indexes/rules. From firebase/ run
+  - Run: set `firestore.database` in firebase/firebase.json to the recorded
+    databaseId. Merge firebase/firestore.indexes.json with that database's
+    existing indexes (`npx firebase firestore:indexes --database <database-id>`),
+    preserving unrelated indexes/rules. From firebase/ run
     `npx firebase deploy --only firestore:indexes --project <project-id>`.
   - Verify/record: required indexes are ready in the selected project, not merely
     accepted for creation, and the TTL policy on `expireAt` in hot_updater_v1 is
-    active (`gcloud firestore fields ttls list --project <project-id>`), which
+    active (`gcloud firestore fields ttls list --project <project-id>
+    --database <database-id>`), which
     deletes rows past their tables' retention. Record the target/index readiness.
   - Retry: inspect current indexes and wait for building ones; do not remove/recreate them.
 
 - [ ] **fb.database-credential — Write the schema settings and register the client credential**
   - Requires: fb.indexes. Complete this before Function deployment, as init does.
   - Run: with working local ADC/service-account access, inspect the selected
-    project's hot_updater_v1 collection before running the helper. Read the
+    project's hot_updater_v1 collection, in the recorded database, before
+    running the helper. Read the
     settings document with `pk = private_hot_updater_settings` and
     `row.key = schema.engine`; its `row.value` must be the string `"1"` when
     present. A missing marker is acceptable only for an empty namespace. Stop
@@ -56,9 +65,10 @@ supply this CLI. Do this before remote provisioning.
     Then follow COMMON.md's Local CLI and client credential steps. A Firebase
     CLI/MCP login alone may not authenticate the Admin SDK.
     Run app/provision-client-credential.mjs from the app directory with
-    HOT_UPDATER_FIREBASE_STORAGE_BUCKET set to the bucket fb.services recorded:
+    HOT_UPDATER_FIREBASE_STORAGE_BUCKET and HOT_UPDATER_FIREBASE_DATABASE_ID set
+    to the bucket and database fb.services recorded:
     the helper loads app/hotUpdater.ts, the credential helper's server
-    definition, whose storage needs it. app/hotUpdater.ts stays in the
+    definition, whose storage and database read them. app/hotUpdater.ts stays in the
     scaffold and is never copied into the app. The helper first runs
     app/migrate.ts to write the schema settings of core and the plugins
     app/hotUpdater.ts runs, which the database checks before its first read
@@ -82,7 +92,8 @@ supply this CLI. Do this before remote provisioning.
 
 - [ ] **fb.function — Deploy the server**
   - Requires: fb.database-credential.
-  - Run: fill project ID in firebase/.firebaserc and region in functions/index.cjs.
+  - Run: fill project ID in firebase/.firebaserc, and region and the recorded
+    databaseId in functions/index.cjs.
     Install pinned functions/package.json dependencies. From firebase/ deploy only
     `npx firebase deploy --only functions:hot-updater-v1 --project <project-id>`.
     Preserve the existing region and optional HOT_UPDATER_CDN_URL setting.

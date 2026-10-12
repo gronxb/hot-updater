@@ -1,7 +1,12 @@
 import { p } from "@hot-updater/cli-tools";
 
 import { ui } from "../utils/cli-ui";
-import { getNativeAppVersion } from "../utils/version/getNativeAppVersion";
+import {
+  formatAppVersionCandidates,
+  isAmbiguousAppVersion,
+  type ResolvedAppVersion,
+} from "../utils/version/appVersionCandidates";
+import { resolveNativeAppVersion } from "../utils/version/getNativeAppVersion";
 
 export interface AppVersionOptions {
   json?: boolean;
@@ -12,17 +17,20 @@ export interface AppVersionResult {
   ios: string | null;
 }
 
-export const readAppVersions = async (): Promise<AppVersionResult> => {
-  const [androidVersion, iosVersion] = await Promise.all([
-    getNativeAppVersion("android"),
-    getNativeAppVersion("ios"),
+const readAppVersions = async () => {
+  const [android, ios] = await Promise.all([
+    resolveNativeAppVersion("android"),
+    resolveNativeAppVersion("ios"),
   ]);
-
-  return {
-    android: androidVersion,
-    ios: iosVersion,
-  };
+  return { android, ios };
 };
+
+const formatVersion = (resolved: ResolvedAppVersion) =>
+  isAmbiguousAppVersion(resolved)
+    ? ui.warning(
+        `several (${formatAppVersionCandidates(resolved.candidates)}); deploy needs -t`,
+      )
+    : ui.version(resolved.version);
 
 export const handleAppVersion = async (
   options: AppVersionOptions = {},
@@ -30,14 +38,24 @@ export const handleAppVersion = async (
   const versions = await readAppVersions();
 
   if (options.json) {
-    console.log(JSON.stringify(versions, null, 2));
+    // null when no version, or several: see the human-readable output.
+    console.log(
+      JSON.stringify(
+        {
+          android: versions.android.version,
+          ios: versions.ios.version,
+        } satisfies AppVersionResult,
+        null,
+        2,
+      ),
+    );
     return;
   }
 
   p.log.message(
     ui.block("App version", [
-      ui.kv("Android", ui.version(versions.android)),
-      ui.kv("iOS", ui.version(versions.ios)),
+      ui.kv("Android", formatVersion(versions.android)),
+      ui.kv("iOS", formatVersion(versions.ios)),
     ]),
   );
 };

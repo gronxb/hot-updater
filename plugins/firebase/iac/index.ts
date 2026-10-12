@@ -279,16 +279,28 @@ export const mergeIndexes = (
   };
 };
 
+/** Points the template's `firebase.json` at the database init sets up. */
+export const setFirestoreDatabase = async (cwd: string, databaseId: string) => {
+  const configPath = path.join(cwd, "firebase.json");
+  const config = JSON.parse(await fs.promises.readFile(configPath, "utf-8"));
+  config.firestore = { ...config.firestore, database: databaseId };
+  await fs.promises.writeFile(configPath, JSON.stringify(config, null, 2));
+};
+
 const deployFirestore = async (
   cwd: string,
+  databaseId: string,
   nonInteractive = false,
   cliEnv?: FirebaseCliEnv,
 ) => {
+  await setFirestoreDatabase(cwd, databaseId);
   const original = await execa(
     "npx",
     [
       "firebase",
       "firestore:indexes",
+      "--database",
+      databaseId,
       ...(nonInteractive ? ["--non-interactive"] : []),
     ],
     {
@@ -488,11 +500,13 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       });
       return cliEnv;
     },
+    savedInputs.databaseId,
   );
 
   if (initializeVariable.status === "ready") {
     await assertFirebaseInfrastructureCanInitialize({
       applicationCredentials,
+      databaseId: initializeVariable.databaseId,
       projectId: initializeVariable.projectId,
     });
     await ensureCloudFunctionsApiEnabled(initializeVariable.projectId, cliEnv);
@@ -516,6 +530,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const resolvedInputs = {
     ...savedInputs,
     applicationCredentials: applicationCredentials || undefined,
+    databaseId:
+      initializeVariable.status === "ready"
+        ? initializeVariable.databaseId
+        : savedInputs.databaseId,
     projectId: initializeVariable.projectId,
     region: currentRegion,
   };
@@ -541,9 +559,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   }
   const functionsCode = transformEnv(functionsIndexPath, {
     REGION: currentRegion,
+    FIRESTORE_DATABASE_ID: initializeVariable.databaseId,
   });
   await fs.promises.writeFile(functionsIndexPath, functionsCode);
   await setEnv({
+    databaseId: initializeVariable.databaseId,
     projectId: initializeVariable.projectId,
     storageBucket: initializeVariable.storageBucket,
     build,
@@ -584,7 +604,12 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     },
   ]);
 
-  await deployFirestore(tmpDir, nonInteractive, cliEnv);
+  await deployFirestore(
+    tmpDir,
+    initializeVariable.databaseId,
+    nonInteractive,
+    cliEnv,
+  );
   const credential = applicationCredentials
     ? cert(
         JSON.parse(await fs.promises.readFile(applicationCredentials, "utf-8")),
@@ -593,6 +618,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const existingApps = new Set(getApps());
   const databaseConfig = {
     credential,
+    databaseId: initializeVariable.databaseId,
     projectId: initializeVariable.projectId,
   };
   const database = firebaseDatabase(databaseConfig);

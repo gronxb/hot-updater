@@ -19,7 +19,7 @@ let handler: FunctionHandler;
 
 beforeAll(async () => {
   // The project and default bucket Firebase configures for the function,
-  // and the region init writes into it.
+  // and the region and Firestore database init write into it.
   vi.stubEnv(
     "FIREBASE_CONFIG",
     JSON.stringify({
@@ -27,7 +27,10 @@ beforeAll(async () => {
       storageBucket: "demo-hot-updater.appspot.com",
     }),
   );
-  vi.stubGlobal("HotUpdater", { REGION: "us-central1" });
+  vi.stubGlobal("HotUpdater", {
+    REGION: "us-central1",
+    FIRESTORE_DATABASE_ID: "(default)",
+  });
   const { hot } = await import("./index");
   handler = hot.updater.v1 as unknown as FunctionHandler;
 });

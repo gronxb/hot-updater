@@ -29,6 +29,7 @@ configuration below.
 import type { AppOptions } from "firebase-admin/app";
 
 type FirebaseDatabaseConfig = AppOptions & {
+  databaseId?: string; // A named Firestore database; defaults to "(default)"
   collection?: string; // The one collection it uses; defaults to "hot_updater_v1"
   aggregateBatching?:
     | { mode?: "log" | "memory"; windowMs?: number }
@@ -40,6 +41,13 @@ Pass `projectId` and `credential`, as for any Firebase Admin app. The database
 initializes the default Firebase Admin app with these options, or uses the
 default app when the process has already initialized one.
 
+Set `databaseId` to keep the collection in a [named Firestore
+database](https://firebase.google.com/docs/firestore/manage-databases) instead
+of the project's `(default)` one. The database must already exist. Pass the
+same `databaseId` to `migrateFirebaseDatabase` and wherever the server and
+`hot-updater.config.ts` create `firebaseDatabase`. Managed init asks for the
+database and records it as `HOT_UPDATER_FIREBASE_DATABASE_ID`.
+
 ## Collection and indexes
 
 The database keeps every row in one collection, `hot_updater_v1` by default, as
@@ -49,13 +57,15 @@ on `pk` ascending with `sk` ascending and descending, and `row` is exempt from
 single-field indexing. `firestore.indexes.json` from the managed setup declares
 both for `hot_updater_v1`; deploy it and wait until the indexes are ready
 before serving traffic. If you set `collection`, declare the same indexes and
-exemption for that collection instead.
+exemption for that collection instead. If you set `databaseId`, deploy them to
+that database: give the `firestore` entry of `firebase.json` its `database`
+field.
 
 Every document of a row with [retention](/docs/custom/server-plugins#retention),
 such as Insights events and rollups, carries an `expireAt` timestamp beside
 `pk` and `sk`. The same file declares a TTL policy on `expireAt`, exempt from
 indexing, and Firestore deletes those documents, usually within a day of
-their expiry. Declare it too if you set `collection`.
+their expiry. Declare it too if you set `collection` or `databaseId`.
 
 Then write the schema settings the database checks before its first read:
 
@@ -240,7 +250,8 @@ Cloud Function runs the same list. List the server's plugins in
 
 ## Dependencies
 
-Requires `firebase-admin` as a peer dependency:
+Requires `firebase-admin` 11.10.0 or later as a peer dependency, the first
+version that opens named databases:
 
 ```package-install
 npm install firebase-admin --save-dev

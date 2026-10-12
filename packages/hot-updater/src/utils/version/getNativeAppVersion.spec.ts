@@ -9,7 +9,10 @@ import fg from "fast-glob";
 import plist from "plist";
 import { beforeEach, describe, expect, it, type Mock, vi } from "vitest";
 
-import { getNativeAppVersion } from "./getNativeAppVersion";
+import {
+  getNativeAppVersion,
+  resolveNativeAppVersion,
+} from "./getNativeAppVersion";
 
 vi.mock("fs/promises", async () => {
   const actual =
@@ -382,6 +385,331 @@ android {
 
       // Assert
       expect(result).toBe(null);
+    });
+  });
+
+  describe("iOS project with several app targets (#1244)", () => {
+    const xcodeprojPath = "HotUpdaterExample.xcodeproj/project.pbxproj";
+
+    type Target = {
+      name: string;
+      productType?: string;
+      release: Record<string, string>;
+    };
+
+    // The object graph @bacons/xcode emits: PBXProject → targets →
+    // configuration lists → configurations, by ID.
+    const mockProject = (
+      targets: Target[],
+      projectRelease: Record<string, string> = {},
+    ) => {
+      const objects: Record<string, unknown> = {
+        PROJECT: {
+          isa: "PBXProject",
+          buildConfigurationList: "PROJECT_LIST",
+          targets: targets.map((target) => `TARGET_${target.name}`),
+        },
+        PROJECT_LIST: {
+          isa: "XCConfigurationList",
+          buildConfigurations: ["PROJECT_RELEASE"],
+        },
+        PROJECT_RELEASE: {
+          isa: "XCBuildConfiguration",
+          name: "Release",
+          buildSettings: projectRelease,
+        },
+      };
+      for (const target of targets) {
+        objects[`TARGET_${target.name}`] = {
+          isa: "PBXNativeTarget",
+          name: target.name,
+          productType:
+            target.productType ?? "com.apple.product-type.application",
+          buildConfigurationList: `LIST_${target.name}`,
+        };
+        objects[`LIST_${target.name}`] = {
+          isa: "XCConfigurationList",
+          buildConfigurations: [
+            `DEBUG_${target.name}`,
+            `RELEASE_${target.name}`,
+          ],
+        };
+        objects[`DEBUG_${target.name}`] = {
+          isa: "XCBuildConfiguration",
+          name: "Debug",
+          buildSettings: { MARKETING_VERSION: "0.0.1" },
+        };
+        objects[`RELEASE_${target.name}`] = {
+          isa: "XCBuildConfiguration",
+          name: "Release",
+          buildSettings: target.release,
+        };
+      }
+      mockGlobbySync.mockReturnValue([xcodeprojPath]);
+      mockXcodeProjectOpen.mockReturnValue({
+        toJSON: () => ({ objects, rootObject: "PROJECT" }),
+      });
+    };
+
+    const brands: Target[] = [
+      {
+        name: "BrandA",
+        release: {
+          MARKETING_VERSION: "5.5.1",
+          PRODUCT_BUNDLE_IDENTIFIER: "com.example.branda",
+        },
+      },
+      {
+        name: "BrandB",
+        release: {
+          MARKETING_VERSION: "5.8.0",
+          PRODUCT_BUNDLE_IDENTIFIER: "com.example.brandb",
+        },
+      },
+    ];
+
+    beforeEach(() => {
+      mockFileExist([]);
+    });
+
+    it("refuses to pick one when app targets declare different versions", async () => {
+      mockProject(brands);
+
+      expect(await resolveNativeAppVersion("ios")).toEqual({
+        version: null,
+        candidates: [
+          { label: "BrandA (Release)", version: "5.5.1" },
+          { label: "BrandB (Release)", version: "5.8.0" },
+        ],
+      });
+    });
+
+    it("reads the version when every app target declares the same one", async () => {
+      mockProject([
+        { name: "BrandA", release: { MARKETING_VERSION: "2.0.0" } },
+        { name: "BrandB", release: { MARKETING_VERSION: "2.0.0" } },
+      ]);
+
+      expect(await getNativeAppVersion("ios")).toBe("2.0.0");
+    });
+
+    it("ignores targets that are not applications", async () => {
+      mockProject([
+        { name: "App", release: { MARKETING_VERSION: "3.1.0" } },
+        {
+          name: "AppTests",
+          productType: "com.apple.product-type.bundle.unit-test",
+          release: { MARKETING_VERSION: "1.0" },
+        },
+      ]);
+
+      expect(await getNativeAppVersion("ios")).toBe("3.1.0");
+    });
+
+    it("counts a target whose version is not a literal as a candidate", async () => {
+      mockProject([
+        { name: "BrandA", release: { MARKETING_VERSION: "5.5.1" } },
+        { name: "BrandB", release: { MARKETING_VERSION: "$(BRAND_VERSION)" } },
+      ]);
+
+      expect(await resolveNativeAppVersion("ios")).toEqual({
+        version: null,
+        candidates: [
+          { label: "BrandA (Release)", version: "5.5.1" },
+          { label: "BrandB (Release)", version: null },
+        ],
+      });
+    });
+
+    it("inherits MARKETING_VERSION from the project configuration", async () => {
+      mockProject([{ name: "App", release: {} }], {
+        MARKETING_VERSION: "4.0.0",
+      });
+
+      expect(await getNativeAppVersion("ios")).toBe("4.0.0");
+    });
+
+    it("reads a target's own Info.plist over its MARKETING_VERSION", async () => {
+      mockProject([
+        {
+          name: "BrandA",
+          release: { MARKETING_VERSION: "5.5.1", INFOPLIST_FILE: "A.plist" },
+        },
+        {
+          name: "BrandB",
+          release: { MARKETING_VERSION: "5.5.1", INFOPLIST_FILE: "B.plist" },
+        },
+      ]);
+      mockFileExist(["/mock/project/root/ios/B.plist"]);
+      mockFsReadFile.mockResolvedValue(Buffer.from("mock plist"));
+      mockPlistParse.mockReturnValue({ CFBundleShortVersionString: "6.0.0" });
+
+      expect(await resolveNativeAppVersion("ios")).toEqual({
+        version: null,
+        candidates: [
+          { label: "BrandA (Release)", version: "5.5.1" },
+          { label: "BrandB (Release)", version: "6.0.0" },
+        ],
+      });
+    });
+
+    it("reads the target a native build scheme builds, by name", async () => {
+      mockProject(brands);
+
+      expect(
+        await getNativeAppVersion("ios", { ios: { scheme: "BrandB" } }),
+      ).toBe("5.8.0");
+    });
+
+    it("reads the target a native build scheme builds, by bundle identifier", async () => {
+      mockProject(brands);
+
+      expect(
+        await getNativeAppVersion("ios", {
+          ios: { scheme: "Other", bundleIdentifier: "com.example.branda" },
+        }),
+      ).toBe("5.5.1");
+    });
+
+    it("reads the scheme's configuration", async () => {
+      mockProject([{ name: "App", release: { MARKETING_VERSION: "1.0.0" } }]);
+
+      expect(
+        await getNativeAppVersion("ios", { ios: { configuration: "Debug" } }),
+      ).toBe("0.0.1");
+    });
+  });
+
+  describe("Android app with several product flavors (#1244)", () => {
+    const flavoredBuildGradle = `
+android {
+    defaultConfig {
+        applicationId "com.example.app"
+        versionCode 1
+        versionName "1.0.0"
+        // versionName "9.9.9"
+    }
+
+    flavorDimensions "brand", "env"
+    productFlavors {
+        brandA {
+            dimension "brand"
+            applicationId "com.example.branda"
+            versionName "5.5.1"
+        }
+        brandB {
+            dimension "brand"
+            applicationId "com.example.brandb"
+            versionName "5.8.0"
+            versionNameSuffix "-b"
+        }
+        staging {
+            dimension "env"
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled true
+        }
+    }
+}
+`;
+
+    it("refuses to pick one when flavors override the version", async () => {
+      mockFsReadFile.mockResolvedValue(flavoredBuildGradle);
+
+      expect(await resolveNativeAppVersion("android")).toEqual({
+        version: null,
+        candidates: [
+          { label: "defaultConfig", version: "1.0.0" },
+          { label: "brandA flavor", version: "5.5.1" },
+          { label: "brandB flavor", version: "5.8.0" },
+        ],
+      });
+    });
+
+    it("reads the flavor a native build variant builds", async () => {
+      mockFsReadFile.mockResolvedValue(flavoredBuildGradle);
+
+      expect(
+        await getNativeAppVersion("android", {
+          android: { variant: "brandBStagingRelease" },
+        }),
+      ).toBe("5.8.0");
+    });
+
+    it("reads the flavor a native build applicationId builds", async () => {
+      mockFsReadFile.mockResolvedValue(flavoredBuildGradle);
+
+      expect(
+        await getNativeAppVersion("android", {
+          android: { variant: "Release", applicationId: "com.example.branda" },
+        }),
+      ).toBe("5.5.1");
+    });
+
+    it("reads defaultConfig for a variant whose flavors do not override it", async () => {
+      mockFsReadFile.mockResolvedValue(flavoredBuildGradle);
+
+      expect(
+        await getNativeAppVersion("android", {
+          android: { variant: "stagingRelease" },
+        }),
+      ).toBe("1.0.0");
+    });
+
+    it("reads the version when every flavor overrides it with the same one", async () => {
+      mockFsReadFile.mockResolvedValue(`
+android {
+    defaultConfig { versionName "1.0.0" }
+    productFlavors {
+        dev { versionName "2.0.0" }
+        prod { versionName "2.0.0" }
+    }
+}
+`);
+
+      expect(await getNativeAppVersion("android")).toBe("2.0.0");
+    });
+
+    it("reads flavors in the Kotlin DSL form", async () => {
+      mockFsReadFile.mockResolvedValue(`
+android {
+    defaultConfig {
+        versionName = "1.0.0"
+    }
+    productFlavors {
+        create("dev") {
+            versionName = "1.1.0"
+        }
+        create("prod") {
+            applicationId = "com.example.app"
+        }
+    }
+}
+`);
+
+      expect(await resolveNativeAppVersion("android")).toEqual({
+        version: null,
+        candidates: [
+          { label: "defaultConfig", version: "1.0.0" },
+          { label: "dev flavor", version: "1.1.0" },
+        ],
+      });
+    });
+
+    it("reads the module a native build scheme names", async () => {
+      mockFsReadFile.mockResolvedValue(flavoredBuildGradle);
+
+      await getNativeAppVersion("android", {
+        android: { appModuleName: "mobile" },
+      });
+
+      expect(mockFsReadFile).toHaveBeenCalledWith(
+        "/mock/project/root/android/mobile/build.gradle",
+        "utf8",
+      );
     });
   });
 });
