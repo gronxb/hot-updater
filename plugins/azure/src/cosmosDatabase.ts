@@ -5,17 +5,13 @@ import {
   createKvAdapter,
   migrateCoreSchema,
   type PluginTables,
-  toolingTargetOf,
 } from "@hot-updater/plugin-core";
 
 import {
   AZURE_COSMOS_V1_CONTAINER,
   AZURE_COSMOS_V1_DATABASE,
 } from "./azureInfrastructureNames";
-import { createCosmosStore } from "./cosmosStore";
-
-/** The settings row that names the storage layout the container holds. */
-const ENGINE_KEY = "schema.engine";
+import { createCosmosStore, currentCosmosEngine } from "./cosmosStore";
 
 /**
  * The client's options: the account's `connectionString`, or its
@@ -48,7 +44,7 @@ const adapterOf = (config: CosmosDatabaseConfig) => {
     databaseId,
     containerId,
     // What every migration path checks a reused container against.
-    engine: toolingTargetOf([]).settings[ENGINE_KEY]!,
+    engine: currentCosmosEngine(),
   });
   return { client, adapter: createKvAdapter({ store }) };
 };

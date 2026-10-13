@@ -58,9 +58,14 @@ deployment.
       `publicNetworkAccess` not `Disabled`, and with IP or virtual network
       rules, an `0.0.0.0` rule that admits Azure datacenters and a rule that
       admits the machine running the migration (reading the `hot-updater`
-      database with the key answers, or 404s, rather than 403); when its
-      default consistency is not `Strong`, get the user's approval to change
-      it, since other apps on it read under it too. A new name must be free
+      database with the key answers, or 404s, rather than 403). An existing
+      `hot_updater_v1` container in the `hot-updater` database must be
+      partitioned by `/partition` alone, have no unique keys, and either hold
+      a `schema.engine` setting of this version's layout or no items at all
+      (`az cosmosdb sql container show`, then a cross-partition
+      `SELECT TOP 1 c.id FROM c`). When its default consistency is not
+      `Strong`, get the user's approval to change it, since other apps on it
+      read under it too. A new name must be free
       (`az cosmosdb check-name-exists` returns false).
     - Function App (`az functionapp show`): an existing one must be a Flex
       Consumption app on Node.js 22 or later (`properties.functionAppConfig.runtime`)

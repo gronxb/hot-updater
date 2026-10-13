@@ -26,10 +26,12 @@ import {
 import { AZURE_COSMOS_V1_CONTAINER } from "./azureInfrastructureNames";
 import { cosmosDatabase, migrateCosmosDatabase } from "./cosmosDatabase";
 import {
+  assertCosmosContainerReusable,
   COSMOS_LIMITS,
   COSMOS_PARTITION,
   COSMOS_PARTITION_KEY_PATH,
   createCosmosStore,
+  currentCosmosEngine,
 } from "./cosmosStore";
 
 // One emulator for every suite: it is heavy, so files do not each start one.
@@ -145,6 +147,41 @@ describe("cosmosDatabase", () => {
     await migrateCosmosDatabase(config());
     await migrateCosmosDatabase(config());
     await expect(core.listChannels()).resolves.toEqual([]);
+  });
+
+  it("checks a container read only, as init's preflight does before creating anything", async () => {
+    const databaseId = emulator.databaseId();
+    const container = emulator.client
+      .database(databaseId)
+      .container(AZURE_COSMOS_V1_CONTAINER);
+    try {
+      // A missing database passes and stays missing.
+      await assertCosmosContainerReusable(container, currentCosmosEngine());
+      await expect(
+        emulator.client.database(databaseId).read(),
+      ).rejects.toMatchObject({ code: 404 });
+
+      const { database } = await emulator.client.databases.createIfNotExists({
+        id: databaseId,
+      });
+      await database.containers.createIfNotExists({
+        id: AZURE_COSMOS_V1_CONTAINER,
+        partitionKey: { paths: [COSMOS_PARTITION_KEY_PATH] },
+        uniqueKeyPolicy: { uniqueKeys: [{ paths: ["/pk"] }] },
+      });
+      await expect(
+        assertCosmosContainerReusable(container, currentCosmosEngine()),
+      ).rejects.toThrow("has unique keys");
+      await database.container(AZURE_COSMOS_V1_CONTAINER).delete();
+
+      await migrateCosmosDatabase({ ...config(), databaseId });
+      await assertCosmosContainerReusable(container, currentCosmosEngine());
+      await expect(
+        assertCosmosContainerReusable(container, "9"),
+      ).rejects.toThrow('this version writes "9"');
+    } finally {
+      await emulator.dropDatabase(databaseId);
+    }
   });
 
   it("refuses a container partitioned by another path", async () => {

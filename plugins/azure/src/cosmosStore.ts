@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import type {
   Container,
+  ContainerDefinition,
   CosmosClient,
   IndexingPolicy,
   JSONObject,
@@ -15,6 +16,7 @@ import {
   type KvOp,
   SETTINGS_TABLE,
   type StoredRow,
+  toolingTargetOf,
 } from "@hot-updater/plugin-core";
 
 /**
@@ -202,23 +204,56 @@ const waitForIndexTransformation = async (container: Container) => {
 /** The settings row that names the storage layout a container holds. */
 const ENGINE_KEY = "schema.engine";
 
+/** The `schema.engine` setting this version's storage layout writes. */
+export const currentCosmosEngine = () =>
+  toolingTargetOf([]).settings[ENGINE_KEY]!;
+
 /**
- * Refuses a container a migration must not touch: one whose `schema.engine`
- * is another storage layout's, or a populated one without the setting.
- * Writing the settings would make the server read it as this layout. Point
- * reads and a scan: a reused container may index nothing yet, and the
- * migration only fixes its indexing once this check passes.
+ * Refuses a container whose fixed settings Hot Updater's items cannot live
+ * under: unique keys, or another partition key.
  */
-const assertMigratable = async (container: Container, expected: string) => {
+const assertContainerShape = (resource: ContainerDefinition) => {
+  // Every item of a write shares a partition and many share a `pk`, so any
+  // unique key would refuse them.
+  if ((resource.uniqueKeyPolicy?.uniqueKeys?.length ?? 0) > 0) {
+    throw new Error(
+      `Cosmos DB container ${resource.id} has unique keys, which Hot Updater's items cannot satisfy. Use another container.`,
+    );
+  }
+  const paths = resource.partitionKey?.paths ?? [];
+  if (paths.length !== 1 || paths[0] !== COSMOS_PARTITION_KEY_PATH) {
+    throw new Error(
+      `Cosmos DB container ${resource.id} is partitioned by ${paths.join(
+        ", ",
+      )}; Hot Updater needs ${COSMOS_PARTITION_KEY_PATH}. Use another container.`,
+    );
+  }
+};
+
+/**
+ * Refuses a container a migration must not touch: one with unique keys or
+ * another partition key, one whose `schema.engine` is another storage
+ * layout's, or a populated one without the setting. Writing the settings
+ * would make the server read it as this layout. Read only, so init checks
+ * a reused container before it creates anything. Point reads and a scan: a
+ * reused container may index nothing yet, and the migration only fixes its
+ * indexing once this check passes.
+ */
+export const assertCosmosContainerReusable = async (
+  container: Container,
+  expected: string,
+) => {
   const missing = (error: unknown) =>
     (error as { code?: unknown }).code === 404;
+  let existing: ContainerDefinition | undefined;
   try {
-    // No database or container yet: the migration creates them.
-    if ((await container.read()).resource === undefined) return;
+    existing = (await container.read()).resource;
   } catch (error) {
-    if (missing(error)) return;
-    throw error;
+    if (!missing(error)) throw error;
   }
+  // No database or container yet: the migration creates them.
+  if (existing === undefined) return;
+  assertContainerShape(existing);
   // A missing item reads as no resource.
   const { resource } = await container
     .item(
@@ -655,7 +690,9 @@ export const createCosmosStore = ({
     migrations: {
       /** Creates the database and the container when they are missing. */
       async apply() {
-        if (engine !== undefined) await assertMigratable(container, engine);
+        if (engine !== undefined) {
+          await assertCosmosContainerReusable(container, engine);
+        }
         const { database } = await client.databases.createIfNotExists({
           id: databaseId,
         });
@@ -669,21 +706,7 @@ export const createCosmosStore = ({
         if (resource === undefined) {
           throw new Error(`Cosmos DB returned no container ${containerId}.`);
         }
-        // Every item of a write shares a partition and many share a `pk`,
-        // so any unique key would refuse them.
-        if ((resource.uniqueKeyPolicy?.uniqueKeys?.length ?? 0) > 0) {
-          throw new Error(
-            `Cosmos DB container ${containerId} has unique keys, which Hot Updater's items cannot satisfy. Use another container.`,
-          );
-        }
-        const paths = resource.partitionKey?.paths ?? [];
-        if (paths.length !== 1 || paths[0] !== COSMOS_PARTITION_KEY_PATH) {
-          throw new Error(
-            `Cosmos DB container ${containerId} is partitioned by ${paths.join(
-              ", ",
-            )}; Hot Updater needs ${COSMOS_PARTITION_KEY_PATH}. Use another container.`,
-          );
-        }
+        assertContainerShape(resource);
         // An existing container keeps its own settings: every read is a
         // query, so it needs consistent, automatic indexing, the composite
         // index range reads order by, and a default TTL, without which
