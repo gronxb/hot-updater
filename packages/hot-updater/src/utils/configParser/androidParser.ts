@@ -2,8 +2,12 @@ import fs from "fs";
 import path from "path";
 
 import { getCwd } from "@hot-updater/cli-tools";
-import { XMLBuilder, XMLParser } from "fast-xml-parser";
+import { XMLParser } from "fast-xml-parser";
 
+import {
+  removeManifestMetaData,
+  setManifestMetaData,
+} from "./androidManifestEdit";
 import type { ConfigParser } from "./configParser";
 
 interface MetaDataElement {
@@ -31,7 +35,6 @@ const MANIFEST_KEYS = new Set([
 export class AndroidConfigParser implements ConfigParser {
   private androidManifestPaths: string[];
   private parser: XMLParser;
-  private builder: XMLBuilder;
 
   constructor(androidManifestPaths?: string[]) {
     this.androidManifestPaths = (androidManifestPaths || []).map((p) =>
@@ -48,13 +51,6 @@ export class AndroidConfigParser implements ConfigParser {
     };
 
     this.parser = new XMLParser(options);
-    this.builder = new XMLBuilder({
-      ...options,
-      format: true,
-      indentBy: "    ",
-      suppressBooleanAttributes: false,
-      processEntities: true,
-    });
   }
 
   async exists(): Promise<boolean> {
@@ -152,33 +148,12 @@ export class AndroidConfigParser implements ConfigParser {
           androidManifestPath,
           "utf-8",
         );
-        const result = this.parser.parse(content) as ManifestXml;
-        const application = this.getApplication(result);
+        const newContent = removeManifestMetaData(content, manifestKey);
 
-        if (!application?.["meta-data"]) {
+        if (newContent === null) {
           continue;
         }
 
-        const metaData = Array.isArray(application["meta-data"])
-          ? application["meta-data"]
-          : [application["meta-data"]];
-
-        const filtered = metaData.filter(
-          (item) => item["@_android:name"] !== manifestKey,
-        );
-
-        if (filtered.length === metaData.length) {
-          continue;
-        }
-
-        application["meta-data"] =
-          filtered.length === 0
-            ? undefined
-            : filtered.length === 1
-              ? filtered[0]
-              : filtered;
-
-        const newContent = this.builder.build(result);
         await fs.promises.writeFile(androidManifestPath, newContent, "utf-8");
         updatedPaths.push(path.relative(getCwd(), androidManifestPath));
       } catch (error) {
@@ -220,41 +195,15 @@ export class AndroidConfigParser implements ConfigParser {
           androidManifestPath,
           "utf-8",
         );
-        const result = this.parser.parse(content) as ManifestXml;
-        const application = this.getApplication(result);
+        const newContent = setManifestMetaData(content, key, value);
 
-        if (!application) {
+        if (newContent === null) {
           continue;
         }
 
-        if (!application["meta-data"]) {
-          application["meta-data"] = [];
+        if (newContent !== content) {
+          await fs.promises.writeFile(androidManifestPath, newContent, "utf-8");
         }
-
-        const metaData = Array.isArray(application["meta-data"])
-          ? application["meta-data"]
-          : [application["meta-data"]];
-
-        const existingIndex = metaData.findIndex(
-          (item) => item["@_android:name"] === key,
-        );
-
-        const metaDataElement: MetaDataElement = {
-          "@_android:name": key,
-          "@_android:value": value,
-        };
-
-        if (existingIndex !== -1) {
-          metaData[existingIndex] = metaDataElement;
-        } else {
-          metaData.push(metaDataElement);
-        }
-
-        application["meta-data"] =
-          metaData.length === 1 ? metaData[0] : metaData;
-
-        const newContent = this.builder.build(result);
-        await fs.promises.writeFile(androidManifestPath, newContent, "utf-8");
         updatedPaths.push(path.relative(getCwd(), androidManifestPath));
       } catch (error) {
         throw new Error(
