@@ -329,25 +329,37 @@ export const setManifestMetaData = (
   if (existing.length > 0) {
     return applyEdits(
       xml,
-      existing.map(({ openTag }) => {
-        const current = openTag.attributes.find(
-          (item) => item.name === "android:value",
-        );
-        if (current) {
-          return {
-            start: current.start,
-            end: current.end,
-            text: valueAttribute,
-          };
+      existing.flatMap(({ openTag }) => {
+        const attribute = (name: string) =>
+          openTag.attributes.find((item) => item.name === name);
+        const current = attribute("android:value");
+        // `android:resource` wins over `android:value` when Android reads
+        // application meta-data, so the element must be left with the value
+        // only: the resource attribute becomes the value, or is removed.
+        const resource = attribute("android:resource");
+
+        if (!current && resource) {
+          return [
+            { start: resource.start, end: resource.end, text: valueAttribute },
+          ];
         }
-        const nameAttribute = openTag.attributes.find(
-          (item) => item.name === "android:name",
-        )!;
-        return {
-          start: nameAttribute.end,
-          end: nameAttribute.end,
-          text: ` ${valueAttribute}`,
-        };
+        const edits = current
+          ? [{ start: current.start, end: current.end, text: valueAttribute }]
+          : [
+              {
+                start: attribute("android:name")!.end,
+                end: attribute("android:name")!.end,
+                text: ` ${valueAttribute}`,
+              },
+            ];
+        if (resource) {
+          let start = resource.start;
+          while (start > openTag.start && /\s/.test(xml[start - 1]!)) {
+            start -= 1;
+          }
+          edits.push({ start, end: resource.end, text: "" });
+        }
+        return edits;
       }),
     );
   }

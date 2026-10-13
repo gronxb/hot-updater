@@ -110,6 +110,28 @@ describe("setManifestMetaData", () => {
     );
   });
 
+  it("turns an android:resource meta-data into a value, which Android would otherwise read first", () => {
+    const xml = MANIFEST.replace(
+      `<meta-data android:name="${FINGERPRINT}" android:value="old-hash" />`,
+      `<meta-data android:name="${FINGERPRINT}" android:resource="@string/hash" />`,
+    );
+
+    expect(setManifestMetaData(xml, FINGERPRINT, "new-hash")).toBe(
+      MANIFEST.replace("old-hash", "new-hash"),
+    );
+  });
+
+  it("drops android:resource when the element also has android:value", () => {
+    const xml = MANIFEST.replace(
+      `<meta-data android:name="${FINGERPRINT}" android:value="old-hash" />`,
+      `<meta-data android:name="${FINGERPRINT}" android:value="old-hash"\n            android:resource="@string/hash" />`,
+    );
+
+    expect(setManifestMetaData(xml, FINGERPRINT, "new-hash")).toBe(
+      MANIFEST.replace("old-hash", "new-hash"),
+    );
+  });
+
   it("opens a self-closing <application /> to hold the key", () => {
     const xml = [
       '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
