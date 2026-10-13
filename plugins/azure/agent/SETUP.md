@@ -42,8 +42,11 @@ deployment.
     resource, as init does; stop on any failure:
     - Storage account (`az storage account show`): an existing one must be a
       general-purpose `StorageV2` (or `Storage`) account, since the Function
-      App's host storage needs Blob, Queue and Table services, and must allow
-      shared key access. A new name must pass `az storage account check-name`.
+      App's host storage needs Blob, Queue and Table services, must allow
+      shared key access, and must not restrict network access
+      (`publicNetworkAccess` not `Disabled`, `networkRuleSet.defaultAction`
+      not `Deny`): devices download from it, and the setup creates no virtual
+      network. A new name must pass `az storage account check-name`.
     - Cosmos DB account (`az cosmosdb show`): an existing one must be API for
       NoSQL (`kind` `GlobalDocumentDB`, no Mongo/Cassandra/Gremlin/Table
       capability), keep key authentication (`disableLocalAuth` not true) and

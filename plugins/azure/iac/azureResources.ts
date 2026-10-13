@@ -51,6 +51,8 @@ export const ensureResourceGroup = async (
 interface StorageAccount {
   readonly kind?: string;
   readonly allowSharedKeyAccess?: boolean | null;
+  readonly publicNetworkAccess?: string | null;
+  readonly networkRuleSet?: { readonly defaultAction?: string } | null;
 }
 
 /** Account kinds with the Blob, Queue, and Table services a Function App's host storage needs. */
@@ -102,6 +104,16 @@ export const assertStorageAccountCanInitialize = async ({
   if (account.allowSharedKeyAccess === false) {
     throw new InitError(
       `Storage account ${name} disallows shared key access, which the bundles' SAS URLs and the Function App's settings use. Allow it, or choose another account.`,
+    );
+  }
+  if (
+    account.publicNetworkAccess === "Disabled" ||
+    account.networkRuleSet?.defaultAction === "Deny"
+  ) {
+    // Devices download bundles from it, and init sets up no virtual network
+    // for the Function App's host storage.
+    throw new InitError(
+      `Storage account ${name} restricts network access, which devices downloading bundles and the Function App need. Choose another account.`,
     );
   }
   return true;

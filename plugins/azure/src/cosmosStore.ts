@@ -236,20 +236,12 @@ const assertMigratable = async (container: Container, expected: string) => {
     }
     return;
   }
-  // Every partition, and items of any shape: anything but the settings
-  // means another app's data.
+  // Without the marker, any item in any partition, whatever its shape, is
+  // data this layout did not write.
   const { resources } = await container.items
-    .query<string>(
-      {
-        query:
-          "SELECT TOP 1 VALUE c.id FROM c WHERE NOT (c.partition = @partition AND c.pk = @settings)",
-        parameters: [
-          { name: "@partition", value: COSMOS_PARTITION },
-          { name: "@settings", value: SETTINGS_TABLE.name },
-        ],
-      },
-      { enableScanInQuery: true },
-    )
+    .query<string>("SELECT TOP 1 VALUE c.id FROM c", {
+      enableScanInQuery: true,
+    })
     .fetchAll();
   if (resources.length > 0) {
     throw new Error(

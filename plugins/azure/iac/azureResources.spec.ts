@@ -107,6 +107,29 @@ describe("ensureResourceGroup", () => {
   });
 });
 
+describe("assertStorageAccountCanInitialize", () => {
+  it.each([
+    ["public network access disabled", { publicNetworkAccess: "Disabled" }],
+    [
+      "a firewall that denies by default",
+      { networkRuleSet: { defaultAction: "Deny" } },
+    ],
+  ])("refuses an account with %s", async (_, network) => {
+    const { assertStorageAccountCanInitialize } =
+      await import("./azureResources");
+    const { az } = fakeAz({
+      "storage account show": { kind: "StorageV2", ...network },
+    });
+    await expect(
+      assertStorageAccountCanInitialize({
+        az,
+        name: "storage",
+        resourceGroup: "rg",
+      }),
+    ).rejects.toThrow("restricts network access");
+  });
+});
+
 describe("ensureStorageAccount", () => {
   it.each(["BlobStorage", "BlockBlobStorage", "FileStorage"])(
     "refuses an existing %s account, which cannot host the Function App",
