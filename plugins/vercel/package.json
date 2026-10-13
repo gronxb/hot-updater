@@ -44,6 +44,8 @@
     "@hot-updater/protocol": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@vercel/blob": "catalog:vercel",
+    "@vercel/cli-auth": "catalog:vercel",
+    "@vercel/cli-config": "catalog:vercel",
     "pg": "catalog:db"
   },
   "devDependencies": {

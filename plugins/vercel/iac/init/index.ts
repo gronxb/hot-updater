@@ -1,8 +1,13 @@
 import type { InitProviderDefinition } from "@hot-updater/cli-tools";
 
-/** A Vercel project name: lowercase letters, digits, `.`, `_`, and `-`. */
+/**
+ * A Vercel project name: up to 100 lowercase letters, digits, `.`, `_`, and
+ * `-`, without the `---` sequence Vercel reserves.
+ */
 export const isVercelProjectName = (value: string | undefined) =>
-  value !== undefined && /^[a-z0-9][a-z0-9._-]{0,99}$/.test(value);
+  value !== undefined &&
+  /^[a-z0-9][a-z0-9._-]{0,99}$/.test(value) &&
+  !value.includes("---");
 
 /** A Blob store name: letters, digits, `_`, and `-`. */
 export const isVercelBlobStoreName = (value: string | undefined) =>

@@ -115,7 +115,7 @@ const resolveProjectName = async (
       validate: (value) =>
         isVercelProjectName(value)
           ? undefined
-          : "Use up to 100 lowercase letters, digits, '.', '_', or '-'.",
+          : "Use up to 100 lowercase letters, digits, '.', '_', or '-', without '---'.",
     }),
   );
 };
