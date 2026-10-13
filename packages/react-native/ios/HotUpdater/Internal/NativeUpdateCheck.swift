@@ -54,19 +54,25 @@ import Foundation
     @objc public let channel: String?
     /// Seconds each request may take.
     @objc public let requestTimeout: TimeInterval
+    /// The bundle that holds the embedded `main.jsbundle` and the
+    /// `HOT_UPDATER_*` Info.plist keys, as passed to `HotUpdater.bundleURL(bundle:)`:
+    /// a brownfield XCFramework passes its own bundle.
+    @objc public let bundle: Bundle
 
     @objc public init(
         baseURL: String,
         updateStrategy: HotUpdaterUpdateStrategy,
         requestHeaders: [String: String] = [:],
         channel: String? = nil,
-        requestTimeout: TimeInterval = 5
+        requestTimeout: TimeInterval = 5,
+        bundle: Bundle = .main
     ) {
         self.baseURL = baseURL
         self.updateStrategy = updateStrategy
         self.requestHeaders = requestHeaders
         self.channel = channel
         self.requestTimeout = requestTimeout
+        self.bundle = bundle
     }
 }
 

@@ -1074,6 +1074,33 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func builtInResolverUsesTheRegisteredBundleBeforeALaunch() throws {
+        // A brownfield framework's native update check stages an update
+        // before React Native passes the framework's bundle to a launch.
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let assetData = Data("framework-image".utf8)
+        let frameworkBundle = try makeFixtureBundle(
+            in: workingDirectory,
+            name: "Framework.bundle",
+            version: "1",
+            assetData: assetData
+        )
+        let resolver = IOSBuiltInAssetResolver(
+            cacheURL: workingDirectory.appendingPathComponent("builtin-index-v1.json"),
+            defaultBundle: { frameworkBundle }
+        )
+        let destination = workingDirectory.appendingPathComponent("destination.png")
+
+        #expect(resolver.copyIfMatches(
+            assetPath: "assets/image.png",
+            expectedHash: try #require(sha256(assetData, in: workingDirectory)),
+            destination: destination.path
+        ))
+        #expect(try Data(contentsOf: destination) == assetData)
+    }
+
+    @Test
     func builtInResolverRejectsEscapingLogicalPath() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(workingDirectory) }

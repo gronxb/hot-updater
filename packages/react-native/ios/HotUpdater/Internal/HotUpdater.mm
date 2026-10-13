@@ -493,6 +493,9 @@ RCT_EXPORT_MODULE();
 
 + (void)checkForUpdate:(HotUpdaterCheckOptions *)options
             completion:(void (^)(HotUpdaterUpdate * _Nullable_result, NSError * _Nullable))completion {
+    // Before the first sharedImpl, whose storage isolation key reads the
+    // bundle's HOT_UPDATER_* Info.plist keys.
+    [HotUpdaterConfig shared].bundle = options.bundle;
     [HotUpdaterNativeUpdateBridge checkForUpdate:options impl:[HotUpdater sharedImpl] completion:completion];
 }
 
@@ -500,6 +503,7 @@ RCT_EXPORT_MODULE();
         timeout:(NSTimeInterval)timeout
      onProgress:(void (^ _Nullable)(double))onProgress
      completion:(void (^)(HotUpdaterPrepareResult *))completion {
+    [HotUpdaterConfig shared].bundle = options.bundle;
     [HotUpdaterNativeUpdateBridge prepare:options
                                   timeout:timeout
                                      impl:[HotUpdater sharedImpl]

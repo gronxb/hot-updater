@@ -14,15 +14,21 @@ final class IOSBuiltInAssetResolver: BuiltInAssetResolver {
 
     private let cacheURL: URL
     private let lock = NSLock()
-    private var bundle: Bundle = .main
+    private var launchBundle: Bundle?
+    private let defaultBundle: () -> Bundle
+    /// The launch's bundle, or before a launch, the one the app registered
+    /// (`HotUpdaterConfig.bundle`), so an update staged before React Native
+    /// starts still finds the embedded files.
+    private var bundle: Bundle { launchBundle ?? defaultBundle() }
 
-    init(cacheURL: URL) {
+    init(cacheURL: URL, defaultBundle: @escaping () -> Bundle = { HotUpdaterConfig.shared.bundle }) {
         self.cacheURL = cacheURL
+        self.defaultBundle = defaultBundle
     }
 
     func use(bundle: Bundle) {
         lock.lock()
-        self.bundle = bundle
+        self.launchBundle = bundle
         lock.unlock()
     }
 
