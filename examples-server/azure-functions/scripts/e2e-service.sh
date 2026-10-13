@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # The managed Azure server on emulators: the Cosmos DB vNext emulator, Azurite,
 # and the Function `hot-updater init` deploys, run by Azure Functions Core
-# Tools on PORT.
+# Tools behind e2e-host.mjs on PORT.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -54,5 +54,4 @@ fs.writeFileSync(`${dir}/local.settings.json`, JSON.stringify({
 }));
 ' "${app_dir}"
 
-cd "${app_dir}"
-exec npx -y azure-functions-core-tools@4.16.0 start --port "${PORT}"
+exec node "${script_dir}/e2e-host.mjs" "${app_dir}"
