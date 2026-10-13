@@ -28,10 +28,12 @@ import {
   createAzureCli,
   describeSubscription,
   ensureResourceProviders,
-  isAzureCliInstalled,
+  azureCliVersion,
+  isAtLeastVersion,
   listFlexConsumptionLocations,
   listLocations,
   listSubscriptions,
+  MIN_AZURE_CLI_VERSION,
   normalizeLocation,
 } from "./azureCli";
 import {
@@ -180,10 +182,16 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     ]),
   ) as Partial<Record<keyof typeof inputs, string>>;
 
-  if (!(await isAzureCliInstalled())) {
+  const cliVersion = await azureCliVersion();
+  if (cliVersion === null) {
     p.log.error("The Azure CLI (az) is not installed.");
     p.log.step(link("https://learn.microsoft.com/cli/azure/install-azure-cli"));
     process.exit(1);
+  }
+  if (!isAtLeastVersion(cliVersion, MIN_AZURE_CLI_VERSION)) {
+    throw new InitError(
+      `Azure CLI ${cliVersion} has no Flex Consumption commands; upgrade it to ${MIN_AZURE_CLI_VERSION} or later (az upgrade).`,
+    );
   }
 
   const subscriptions = await listSubscriptions(nonInteractive);

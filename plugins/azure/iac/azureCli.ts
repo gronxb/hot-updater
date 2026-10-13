@@ -83,12 +83,31 @@ export const showOrNull = async <T>(
   }
 };
 
-export const isAzureCliInstalled = async () => {
+/** The oldest Azure CLI with the Flex Consumption commands init runs. */
+export const MIN_AZURE_CLI_VERSION = "2.60.0";
+
+/** Whether `version` is at least `minimum`, both dotted numbers. */
+export const isAtLeastVersion = (version: string, minimum: string) => {
+  const parts = (text: string) =>
+    text.split(".").map((part) => Number.parseInt(part, 10) || 0);
+  const [have, need] = [parts(version), parts(minimum)];
+  for (let at = 0; at < Math.max(have.length, need.length); at += 1) {
+    const difference = (have[at] ?? 0) - (need[at] ?? 0);
+    if (difference !== 0) return difference > 0;
+  }
+  return true;
+};
+
+/** The installed Azure CLI's version, or null when `az` is missing. */
+export const azureCliVersion = async (): Promise<string | null> => {
   try {
-    await execa("az", ["version", "--output", "json"]);
-    return true;
+    const { stdout } = await execa("az", ["version", "--output", "json"]);
+    const version = (JSON.parse(stdout) as Record<string, unknown>)[
+      "azure-cli"
+    ];
+    return typeof version === "string" ? version : "0";
   } catch {
-    return false;
+    return null;
   }
 };
 

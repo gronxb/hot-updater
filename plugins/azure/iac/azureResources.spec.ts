@@ -68,6 +68,18 @@ describe("default resource names", () => {
   });
 });
 
+describe("Azure CLI version", () => {
+  it("needs 2.60.0 or later for Flex Consumption", async () => {
+    const { isAtLeastVersion, MIN_AZURE_CLI_VERSION } =
+      await import("./azureCli");
+    expect(isAtLeastVersion("2.91.0", MIN_AZURE_CLI_VERSION)).toBe(true);
+    expect(isAtLeastVersion("2.60.0", MIN_AZURE_CLI_VERSION)).toBe(true);
+    expect(isAtLeastVersion("2.59.9", MIN_AZURE_CLI_VERSION)).toBe(false);
+    expect(isAtLeastVersion("2.9.0", MIN_AZURE_CLI_VERSION)).toBe(false);
+    expect(isAtLeastVersion("3.0", MIN_AZURE_CLI_VERSION)).toBe(true);
+  });
+});
+
 describe("ensureResourceGroup", () => {
   it("reuses an existing group's region without asking", async () => {
     const { az } = fakeAz({ "group show": { location: "koreacentral" } });

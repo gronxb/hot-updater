@@ -4,7 +4,8 @@ Read COMMON.md first. Follow these steps in order and record verified observatio
 in deployment.json. Use the Azure CLI (`az`) or other authorized Azure tools; paths
 below are relative to this scaffold. The azure/function/ directory holds the same
 bundled Function package as interactive init: `index.mjs`, `host.json` and
-`package.json`, which need no install. Verify `az version` and an authenticated
+`package.json`, which need no install. Verify `az version` (Azure CLI 2.60.0 or
+later, for the Flex Consumption commands) and an authenticated
 `az account show` before remote provisioning.
 
 ## Upgrade or reconcile an existing deployment
