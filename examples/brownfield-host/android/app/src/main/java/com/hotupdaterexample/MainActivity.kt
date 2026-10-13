@@ -14,17 +14,18 @@ import com.hotupdaterexample.brownfield.ReactNativeHostManager
  */
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+        // Start without restored fragments, as a ReactActivity does: a React
+        // Native screen does not survive its process, and Hot Updater
+        // restarts the process to apply or roll back a bundle.
+        super.onCreate(null)
         val container = FrameLayout(this).apply { id = R.id.react_native_root }
         setContentView(container)
-        if (savedInstanceState == null) {
-            ReactNativeHostManager.whenStarted {
-                if (!isFinishing && !supportFragmentManager.isStateSaved) {
-                    supportFragmentManager
-                        .beginTransaction()
-                        .replace(container.id, ReactNativeFragment.createReactNativeFragment("HotUpdaterExample"))
-                        .commitNow()
-                }
+        ReactNativeHostManager.whenStarted {
+            if (!isFinishing && !supportFragmentManager.isStateSaved) {
+                supportFragmentManager
+                    .beginTransaction()
+                    .replace(container.id, ReactNativeFragment.createReactNativeFragment("HotUpdaterExample"))
+                    .commitNow()
             }
         }
     }
