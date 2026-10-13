@@ -10,7 +10,6 @@ import android.os.Process
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.util.AtomicFile
-import com.facebook.react.ReactApplication
 import com.facebook.react.bridge.JSExceptionHandler
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.bridge.ReactMarker
@@ -237,8 +236,7 @@ internal class HotUpdaterRecoveryManager(
     // Each architecture's source set reaches its own React instance, so the old
     // architecture's ReactNativeHost is compiled only into old architecture builds.
     private fun installJavaScriptExceptionHooks() {
-        val application = appContext as? ReactApplication ?: return
-        JavaScriptExceptionHooks.install(application)
+        JavaScriptExceptionHooks.install(appContext)
     }
 
     private fun loadNativeLibrary(): Boolean {
