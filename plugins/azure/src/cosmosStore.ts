@@ -168,6 +168,32 @@ const missingContainer = (error: unknown): never => {
     : error;
 };
 
+/** The header of a container read that reports its index transformation, in percent. */
+const INDEX_TRANSFORMATION_PROGRESS =
+  "x-ms-documentdb-collection-index-transformation-progress";
+
+/** How long a migration waits for a changed indexing policy to apply. */
+const INDEX_TRANSFORMATION_TIMEOUT_MS = 30 * 60 * 1000;
+
+/**
+ * Waits until Cosmos DB has applied a changed indexing policy: until then,
+ * a query that orders by the new composite index fails.
+ */
+const waitForIndexTransformation = async (container: Container) => {
+  const deadline = Date.now() + INDEX_TRANSFORMATION_TIMEOUT_MS;
+  for (;;) {
+    const { headers } = await container.read({ populateQuotaInfo: true });
+    const progress = Number(headers[INDEX_TRANSFORMATION_PROGRESS] ?? 100);
+    if (!(progress < 100)) return;
+    if (Date.now() > deadline) {
+      throw new Error(
+        `Cosmos DB container ${container.id} is still indexing (${progress}%). Run the migration again once it finishes.`,
+      );
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2_000));
+  }
+};
+
 export interface CosmosStoreOptions {
   readonly client: CosmosClient;
   readonly databaseId: string;
@@ -616,6 +642,7 @@ export const createCosmosStore = ({
                 : [...(policy?.compositeIndexes ?? []), composite],
             },
           });
+          await waitForIndexTransformation(database.container(containerId));
         }
       },
     },
