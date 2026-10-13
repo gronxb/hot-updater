@@ -293,9 +293,64 @@ describe("E2E scenario contract", () => {
     ]);
 
     expect(listSuiteNames()).toEqual(["default", "brownfield"]);
-    expect(resolveSuiteScenarioNames("brownfield")).toEqual(
-      defaultScenarioNames.filter((name) => !needsGreenfieldApp.has(name)),
+    expect(resolveSuiteScenarioNames("brownfield")).toEqual([
+      ...defaultScenarioNames.filter((name) => !needsGreenfieldApp.has(name)),
+      // Only a native app shell runs HotUpdater.prepare before React Native.
+      "brownfield-native-required-update",
+      "brownfield-native-minor-update",
+    ]);
+  });
+
+  it("applies a required update natively before the first React Native screen", async () => {
+    const calls = await recordScenarioCalls(
+      "brownfield-native-required-update",
     );
+
+    expect(
+      calls.map((call) =>
+        call.kind === "control" ? `${call.kind} ${call.pathName}` : call.kind,
+      ),
+    ).toEqual([
+      "control /e2e/jobs/deploy-bundle",
+      "control /e2e/jobs/set-native-prepare",
+      "launch",
+      "control /e2e/jobs/wait-for-native-prepare",
+      "control /e2e/jobs/wait-for-metadata",
+      "assertText",
+      "assertText",
+      "assertText",
+    ]);
+    expect(calls[0]).toMatchObject({ body: { forceUpdate: true } });
+    expect(calls[3]).toMatchObject({
+      body: { nonce: "$nativePrepareNonce", status: "ready" },
+    });
+  });
+
+  it("stages a minor update natively for the next start", async () => {
+    const calls = await recordScenarioCalls("brownfield-native-minor-update");
+
+    expect(calls[0]).toMatchObject({
+      kind: "control",
+      pathName: "/e2e/jobs/deploy-bundle",
+    });
+    expect(calls[0]).not.toMatchObject({ body: { forceUpdate: true } });
+    expect(
+      calls
+        .filter(
+          (call): call is Extract<RecordedScenarioCall, { kind: "control" }> =>
+            call.kind === "control",
+        )
+        .map((call) => [call.pathName, call.body?.status ?? null]),
+    ).toEqual([
+      ["/e2e/jobs/deploy-bundle", null],
+      ["/e2e/jobs/set-native-prepare", null],
+      ["/e2e/jobs/wait-for-native-prepare", "pending"],
+      ["/e2e/jobs/wait-for-metadata", null],
+      ["/e2e/jobs/wait-for-native-prepare", "upToDate"],
+      ["/e2e/jobs/wait-for-metadata", null],
+    ]);
+    expect(calls.filter((call) => call.kind === "launch")).toHaveLength(2);
+    expect(calls.some((call) => call.kind === "tap")).toBe(false);
   });
 
   it("keeps repeated catalog checks as no-ops while already built-in", async () => {

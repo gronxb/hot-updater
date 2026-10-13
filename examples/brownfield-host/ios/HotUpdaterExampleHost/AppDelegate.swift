@@ -11,11 +11,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    startReactNativeWithHotUpdater(launchOptions: launchOptions)
-
     window = UIWindow(frame: UIScreen.main.bounds)
-    window?.rootViewController = ReactNativeViewController(moduleName: "HotUpdaterExample")
+    let launchScreen = UIViewController()
+    launchScreen.view.backgroundColor = .systemBackground
+    window?.rootViewController = launchScreen
     window?.makeKeyAndVisible()
+
+    Task { @MainActor in
+      await startReactNativeWithHotUpdater(launchOptions: launchOptions)
+      self.window?.rootViewController = ReactNativeViewController(moduleName: "HotUpdaterExample")
+    }
     return true
   }
 

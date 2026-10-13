@@ -50,7 +50,9 @@ import {
   startResetRemoteBundlesJob,
   startSeedCrashedBundleFrontierJob,
   startWaitForAndroidRestartJob,
+  startSetNativePrepareJob,
   startWaitForMetadataJob,
+  startWaitForNativePrepareJob,
 } from "./controller.ts";
 import { handlePatchE2eScreenState } from "./screen-state.ts";
 
@@ -467,6 +469,36 @@ app.post("/e2e/jobs/patch-release", async (c) => {
       shouldForceUpdate: payload.shouldForceUpdate,
       targetCohorts: payload.targetCohorts,
     }),
+  });
+});
+
+app.post("/e2e/jobs/set-native-prepare", async (c) => {
+  const payload = (await c.req.json()) as { strategy?: string };
+  if (payload.strategy !== "appVersion" && payload.strategy !== "fingerprint") {
+    return c.json({ error: "strategy must be appVersion or fingerprint" }, 400);
+  }
+  return c.json({
+    jobId: startSetNativePrepareJob({ strategy: payload.strategy }),
+  });
+});
+
+app.post("/e2e/jobs/wait-for-native-prepare", async (c) => {
+  const payload = (await c.req.json()) as { nonce?: string; status?: string };
+  const status = payload.status;
+  if (
+    !payload.nonce ||
+    (status !== "upToDate" &&
+      status !== "ready" &&
+      status !== "pending" &&
+      status !== "failed")
+  ) {
+    return c.json(
+      { error: "nonce and a prepare status are required" },
+      400,
+    );
+  }
+  return c.json({
+    jobId: startWaitForNativePrepareJob({ nonce: payload.nonce, status }),
   });
 });
 

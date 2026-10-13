@@ -233,6 +233,12 @@ const E2E_DEFAULT_COHORT = process.env.HOT_UPDATER_E2E_DEFAULT_COHORT || "782";
 const E2E_IOS_COHORT_DEFAULTS_KEY = "HotUpdater_CustomCohort";
 const E2E_ANDROID_COHORT_PREFS_FILE = "HotUpdaterCohort.xml";
 const E2E_ANDROID_COHORT_PREFS_KEY = "custom_cohort";
+// Read by the brownfield host's framework and library before React Native
+// starts (examples/v0.85.0 HotUpdaterExampleBrownfield and brownfieldlib).
+const E2E_IOS_NATIVE_PREPARE_DEFAULTS_KEY = "HotUpdaterE2ENativePrepare";
+const E2E_ANDROID_NATIVE_PREPARE_PREFS_FILE = "HotUpdaterE2E.xml";
+const E2E_ANDROID_NATIVE_PREPARE_PREFS_KEY = "nativePrepare";
+const NATIVE_PREPARE_REPORT_TIMEOUT_MS = 90_000;
 const E2E_RUNTIME_CONFIG_URL_ENV_KEY = "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL";
 const DEPLOY_MAX_OLD_SPACE_SIZE_ENV_KEY =
   "HOT_UPDATER_E2E_DEPLOY_MAX_OLD_SPACE_SIZE_MB";
@@ -4176,6 +4182,91 @@ function writeAndroidE2ECohort(cohort: string) {
   ]);
 }
 
+/**
+ * Turns on `HotUpdater.prepare` in the brownfield host for the next launches
+ * of this attempt: the host checks the control proxy for an update before
+ * React Native starts and posts `<nonce>:<status>` as `nativePrepareResult`.
+ * Resetting the app removes it.
+ */
+async function setNativePrepare(input: {
+  strategy: "appVersion" | "fingerprint";
+}): Promise<JobResult> {
+  if (process.env.HOT_UPDATER_E2E_TRACK !== "brownfield") {
+    throw new Error("Native prepare runs only on the brownfield track");
+  }
+  const nonce = randomUUID();
+  const request = JSON.stringify({
+    baseURL: handleRuntimeConfig().baseURL,
+    updateStrategy: input.strategy,
+    nonce,
+  });
+  if (fixtureSession.platform === "ios") {
+    captureCommand("xcrun", [
+      "simctl",
+      "spawn",
+      deviceId as string,
+      "defaults",
+      "write",
+      fixtureSession.appId,
+      E2E_IOS_NATIVE_PREPARE_DEFAULTS_KEY,
+      "-string",
+      request,
+    ]);
+  } else {
+    const prefsDir = `/data/data/${fixtureSession.appId}/shared_prefs`;
+    const prefsPath = `${prefsDir}/${E2E_ANDROID_NATIVE_PREPARE_PREFS_FILE}`;
+    const prefsXml = [
+      "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>",
+      "<map>",
+      `    <string name="${E2E_ANDROID_NATIVE_PREPARE_PREFS_KEY}">${encodeXmlText(request)}</string>`,
+      "</map>",
+      "",
+    ].join("\n");
+    captureCommand("adb", [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      fixtureSession.appId,
+      "sh",
+      "-c",
+      shellSingleQuote(
+        [
+          `mkdir -p ${shellSingleQuote(prefsDir)}`,
+          `printf %s ${shellSingleQuote(prefsXml)} > ${shellSingleQuote(prefsPath)}`,
+        ].join(" && "),
+      ),
+    ]);
+  }
+  logE2eFixture("native prepare enabled", {
+    nonce,
+    platform: fixtureSession.platform,
+    strategy: input.strategy,
+  });
+  return { nonce };
+}
+
+/** Waits for the host to report `status` for the request with `nonce`. */
+async function waitForNativePrepare(
+  input: { nonce: string; status: "upToDate" | "ready" | "pending" | "failed" },
+  signal: AbortSignal,
+): Promise<JobResult> {
+  const expected = `${input.nonce}:${input.status}`;
+  const deadline = Date.now() + NATIVE_PREPARE_REPORT_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    signal.throwIfAborted();
+    if (readE2eScreenStateSnapshot().nativePrepareResult === expected) {
+      return { nativePrepareResult: expected };
+    }
+    await sleep(250, undefined, { signal });
+  }
+  throw new Error(
+    `Native prepare did not report ${input.status}; last report: ${
+      readE2eScreenStateSnapshot().nativePrepareResult || "none"
+    }`,
+  );
+}
+
 async function seedMissingE2ECohort() {
   const existingCohort = readCurrentE2ECohort();
   if (existingCohort) {
@@ -6473,6 +6564,19 @@ export function startSeedCrashedBundleFrontierJob(input: {
 
 export function startResetRemoteBundlesJob() {
   return createJob(() => resetRemoteBundles());
+}
+
+export function startSetNativePrepareJob(input: {
+  strategy: "appVersion" | "fingerprint";
+}) {
+  return createJob(() => setNativePrepare(input));
+}
+
+export function startWaitForNativePrepareJob(input: {
+  nonce: string;
+  status: "upToDate" | "ready" | "pending" | "failed";
+}) {
+  return createJob((context) => waitForNativePrepare(input, context.signal));
 }
 
 export function startWaitForMetadataJob(

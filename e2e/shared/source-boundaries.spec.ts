@@ -29,6 +29,8 @@ const legacyHarnessPattern = new RegExp(
 );
 const controlServerPath = path.join(sharedDir, "control-server/controller.ts");
 const expectedScenarioModuleFiles = [
+  "brownfield-native-minor-update.ts",
+  "brownfield-native-required-update.ts",
   "bspatch-builtin-to-diff-ota.ts",
   "bspatch-consecutive-diff-ota.ts",
   "bspatch-disabled-chain-rollback.ts",

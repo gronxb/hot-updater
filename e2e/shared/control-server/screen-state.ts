@@ -8,6 +8,8 @@ export type E2eScreenState = {
   readonly updateActionResult: string;
   readonly startupCheckEpoch: string;
   readonly startupCheckSettledEpoch: string;
+  /** `<nonce>:<status>` the brownfield host posts after `HotUpdater.prepare`. */
+  readonly nativePrepareResult: string;
 };
 
 type E2eScreenStatePatch = Partial<E2eScreenState>;
@@ -20,6 +22,7 @@ const defaultE2eScreenState = {
   updateActionResult: "idle",
   startupCheckEpoch: "",
   startupCheckSettledEpoch: "",
+  nativePrepareResult: "",
 } as const satisfies E2eScreenState;
 
 let e2eScreenState: E2eScreenState = defaultE2eScreenState;
@@ -77,6 +80,10 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     payload,
     "startupCheckSettledEpoch",
   );
+  const nativePrepareResult = parseOptionalString(
+    payload,
+    "nativePrepareResult",
+  );
 
   return {
     ...(channelActionResult === undefined ? {} : { channelActionResult }),
@@ -84,6 +91,7 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     ...(cohortInput === undefined ? {} : { cohortInput }),
     ...(runtimeChannelInput === undefined ? {} : { runtimeChannelInput }),
     ...(updateActionResult === undefined ? {} : { updateActionResult }),
+    ...(nativePrepareResult === undefined ? {} : { nativePrepareResult }),
     ...(startupCheckSettledEpoch &&
     startupCheckSettledEpoch === e2eScreenState.startupCheckEpoch
       ? { startupCheckSettledEpoch }

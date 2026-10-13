@@ -6,6 +6,7 @@ import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import com.callstack.reactnativebrownfield.ReactNativeBrownfield
 import com.callstack.reactnativebrownfield.ReactNativeFragment
+import com.hotupdaterexample.brownfield.ReactNativeHostManager
 
 /**
  * A native screen that shows the example's React Native root on every launch,
@@ -17,10 +18,14 @@ class MainActivity : AppCompatActivity() {
         val container = FrameLayout(this).apply { id = R.id.react_native_root }
         setContentView(container)
         if (savedInstanceState == null) {
-            supportFragmentManager
-                .beginTransaction()
-                .replace(container.id, ReactNativeFragment.createReactNativeFragment("HotUpdaterExample"))
-                .commitNow()
+            ReactNativeHostManager.whenStarted {
+                if (!isFinishing && !supportFragmentManager.isStateSaved) {
+                    supportFragmentManager
+                        .beginTransaction()
+                        .replace(container.id, ReactNativeFragment.createReactNativeFragment("HotUpdaterExample"))
+                        .commitNow()
+                }
+            }
         }
     }
 
@@ -29,6 +34,8 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        ReactNativeBrownfield.shared.reactHost.onNewIntent(intent)
+        ReactNativeHostManager.whenStarted {
+            ReactNativeBrownfield.shared.reactHost.onNewIntent(intent)
+        }
     }
 }
