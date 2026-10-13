@@ -44,11 +44,16 @@ export const isNotFound = (error: unknown) =>
     error.message,
   );
 
-/** The resource providers init's resources need; a new subscription registers none. */
+/**
+ * The resource providers init's resources need; a new subscription registers
+ * none. The CLI requires Microsoft.App to create a Flex Consumption app,
+ * whose virtual network integration delegates a subnet to it.
+ */
 export const AZURE_RESOURCE_PROVIDERS = [
   "Microsoft.Storage",
   "Microsoft.DocumentDB",
   "Microsoft.Web",
+  "Microsoft.App",
 ] as const;
 
 /** Registers the resource providers a subscription has not, waiting for each. */

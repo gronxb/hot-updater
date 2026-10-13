@@ -210,7 +210,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       title: "Registering the Azure resource providers...",
       task: async () => {
         await ensureResourceProviders(az);
-        return "Storage, Cosmos DB, and Functions providers are registered";
+        return "Storage, Cosmos DB, Functions, and Container Apps providers are registered";
       },
     },
   ]);

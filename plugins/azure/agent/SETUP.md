@@ -28,7 +28,8 @@ deployment.
   - Inputs: authenticated account, workspace configuration and established region.
   - Run: list enabled subscriptions (`az account list`) and select the one the
     user names or the only one. Register the resource providers
-    Microsoft.Storage, Microsoft.DocumentDB, and Microsoft.Web when
+    Microsoft.Storage, Microsoft.DocumentDB, Microsoft.Web, and
+    Microsoft.App (which the CLI requires to create a Flex Consumption app) when
     `az provider show` reports them unregistered, as a new subscription does
     (`az provider register --namespace <namespace> --wait`). List the regions
     that host Flex Consumption
