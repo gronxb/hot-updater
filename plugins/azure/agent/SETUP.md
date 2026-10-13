@@ -55,8 +55,10 @@ deployment.
       it, since other apps on it read under it too. A new name must be free
       (`az cosmosdb check-name-exists` returns false).
     - Function App (`az functionapp show`): an existing one must be a Flex
-      Consumption app on Node.js 22 or later (`properties.functionAppConfig.runtime`),
-      since deploying replaces its package. A new name must be free across
+      Consumption app on Node.js 22 or later (`properties.functionAppConfig.runtime`)
+      that is Hot Updater's: its app settings include
+      HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING, or it runs no functions yet
+      (`az functionapp function list`). Deploying replaces its whole package. A new name must be free across
       azurewebsites.net (`az rest --method post --url
       https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft.Web/checknameavailability?api-version=2024-04-01
       --body '{"name":"<app>","type":"Microsoft.Web/sites"}'`).

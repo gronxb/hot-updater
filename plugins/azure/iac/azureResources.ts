@@ -364,6 +364,7 @@ export const assertFunctionAppCanInitialize = async ({
   );
   if (app !== null) {
     assertRunsFunction(name, app);
+    await assertHotUpdaterApp(az, name, resourceGroup);
     return;
   }
   const availability = await az<{
@@ -381,6 +382,38 @@ export const assertFunctionAppCanInitialize = async ({
   if (availability?.nameAvailable === false) {
     throw new InitError(
       `Function App name ${name} is not available: ${availability.message ?? "it is taken"}. Choose another name.`,
+    );
+  }
+};
+
+/**
+ * Refuses an existing app another project deploys to: deploying replaces its
+ * whole package. Init's app carries the Function's settings; an app with no
+ * functions yet, such as one an interrupted init created, is free to take.
+ */
+const assertHotUpdaterApp = async (
+  az: AzureCli,
+  name: string,
+  resourceGroup: string,
+) => {
+  const scope = ["--name", name, "--resource-group", resourceGroup];
+  const settings =
+    (await az<{ name: string }[]>([
+      "functionapp",
+      "config",
+      "appsettings",
+      "list",
+      ...scope,
+    ])) ?? [];
+  const ours = Object.values(FUNCTION_SETTINGS);
+  if (settings.some((setting) => ours.includes(setting.name as never))) {
+    return;
+  }
+  const functions =
+    (await az<unknown[]>(["functionapp", "function", "list", ...scope])) ?? [];
+  if (functions.length > 0) {
+    throw new InitError(
+      `Function App ${name} runs other functions and none of Hot Updater's settings; deploying would replace them. Choose another name.`,
     );
   }
 };

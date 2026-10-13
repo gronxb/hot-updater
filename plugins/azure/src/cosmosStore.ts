@@ -666,6 +666,13 @@ export const createCosmosStore = ({
         if (resource === undefined) {
           throw new Error(`Cosmos DB returned no container ${containerId}.`);
         }
+        // Every item of a write shares a partition and many share a `pk`,
+        // so any unique key would refuse them.
+        if ((resource.uniqueKeyPolicy?.uniqueKeys?.length ?? 0) > 0) {
+          throw new Error(
+            `Cosmos DB container ${containerId} has unique keys, which Hot Updater's items cannot satisfy. Use another container.`,
+          );
+        }
         const paths = resource.partitionKey?.paths ?? [];
         if (paths.length !== 1 || paths[0] !== COSMOS_PARTITION_KEY_PATH) {
           throw new Error(

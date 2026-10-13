@@ -374,6 +374,43 @@ describe("assertFunctionAppCanInitialize", () => {
     );
   });
 
+  it("refuses an existing app that runs another project's functions", async () => {
+    const { az } = fakeAz({
+      "functionapp show": {
+        functionAppConfig: { runtime: { name: "node", version: "22" } },
+      },
+      "functionapp config appsettings list": [{ name: "OTHER_SETTING" }],
+      "functionapp function list": [{ name: "orders" }],
+    });
+    await expect(
+      assertFunctionAppCanInitialize({ az, ...input }),
+    ).rejects.toThrow("runs other functions");
+  });
+
+  it("takes an existing app with Hot Updater's settings or no functions", async () => {
+    for (const answers of [
+      {
+        "functionapp config appsettings list": [
+          { name: "HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING" },
+        ],
+      },
+      {
+        "functionapp config appsettings list": [],
+        "functionapp function list": [],
+      },
+    ]) {
+      const { az } = fakeAz({
+        "functionapp show": {
+          functionAppConfig: { runtime: { name: "node", version: "22" } },
+        },
+        ...answers,
+      });
+      await expect(
+        assertFunctionAppCanInitialize({ az, ...input }),
+      ).resolves.toBeUndefined();
+    }
+  });
+
   it("accepts a free name and an existing app that runs the Function", async () => {
     const free = fakeAz({
       "functionapp show": notFound(),
