@@ -13,15 +13,16 @@ import com.callstack.reactnativebrownfield.ReactNativeFragment
  */
 class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
+        // Start without restored fragments, as a ReactActivity does: a React
+        // Native screen does not survive its process, and Hot Updater
+        // restarts the process to apply or roll back a bundle.
+        super.onCreate(null)
         val container = FrameLayout(this).apply { id = R.id.react_native_root }
         setContentView(container)
-        if (savedInstanceState == null) {
-            supportFragmentManager
-                .beginTransaction()
-                .replace(container.id, ReactNativeFragment.createReactNativeFragment("HotUpdaterExample"))
-                .commitNow()
-        }
+        supportFragmentManager
+            .beginTransaction()
+            .replace(container.id, ReactNativeFragment.createReactNativeFragment("HotUpdaterExample"))
+            .commitNow()
     }
 
     // A ReactActivity hands new deep links to React Native; a native screen
