@@ -10,7 +10,11 @@ bundled Function package as interactive init: `index.mjs`, `host.json` and
 - [ ] **az.scope — Select the subscription and resource group**
   - Inputs: authenticated account, workspace configuration and established region.
   - Run: list enabled subscriptions (`az account list`) and select the one the
-    user names or the only one. List the regions that host Flex Consumption
+    user names or the only one. Register the resource providers
+    Microsoft.Storage, Microsoft.DocumentDB, and Microsoft.Web when
+    `az provider show` reports them unregistered, as a new subscription does
+    (`az provider register --namespace <namespace> --wait`). List the regions
+    that host Flex Consumption
     (`az functionapp list-flexconsumption-locations`): the Function App shares
     the group's region. Query the resource group (`az group show`); reuse it
     only when its region is in that list, or create it in a listed region.
@@ -35,9 +39,8 @@ bundled Function package as interactive init: `index.mjs`, `host.json` and
 - [ ] **az.cosmos — Prepare the Cosmos DB account**
   - Requires: az.scope.
   - Run: query the account (`az cosmosdb show`). A new account is API for
-    NoSQL (`--kind GlobalDocumentDB`), serverless (`--capabilities
-EnableServerless`) in the group's region, with `Strong` default
-    consistency. An existing account must be API for NoSQL with `Strong`
+    NoSQL (`--kind GlobalDocumentDB`), serverless (`--capacity-mode
+    Serverless`) in the group's region, with `Strong` default consistency. An existing account must be API for NoSQL with `Strong`
     consistency; change another account's consistency only with the user's
     approval, since other apps on it read under it too. Account creation takes
     several minutes.

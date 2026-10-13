@@ -256,8 +256,9 @@ export const ensureCosmosAccount = async ({
       `regionName=${location}`,
       "failoverPriority=0",
       "isZoneRedundant=False",
-      "--capabilities",
-      "EnableServerless",
+      // The `EnableServerless` capability is refused by current API versions.
+      "--capacity-mode",
+      "Serverless",
       "--default-consistency-level",
       "Strong",
     ]);
@@ -300,6 +301,15 @@ interface FunctionApp {
   } | null;
 }
 
+/**
+ * A Function App as `az functionapp show` reports it: a Flex Consumption
+ * app keeps its fields under `properties`, other apps at the top.
+ */
+const siteOf = (
+  raw: (FunctionApp & { readonly properties?: FunctionApp }) | null,
+): FunctionApp | null =>
+  raw === null ? null : { ...raw, ...(raw.properties ?? {}) };
+
 /** Whether `app` runs the Function init deploys: Flex Consumption, Node.js 22 or later. */
 const runsFunction = (app: FunctionApp) => {
   const runtime = app.functionAppConfig?.runtime;
@@ -325,14 +335,16 @@ export const assertFunctionAppCanInitialize = async ({
   readonly name: string;
   readonly resourceGroup: string;
 }) => {
-  const app = await showOrNull<FunctionApp>(az, [
-    "functionapp",
-    "show",
-    "--name",
-    name,
-    "--resource-group",
-    resourceGroup,
-  ]);
+  const app = siteOf(
+    await showOrNull<FunctionApp>(az, [
+      "functionapp",
+      "show",
+      "--name",
+      name,
+      "--resource-group",
+      resourceGroup,
+    ]),
+  );
   if (app !== null) {
     assertRunsFunction(name, app);
     return;
@@ -380,11 +392,9 @@ export const ensureFunctionApp = async ({
   readonly storageAccount: string;
 }): Promise<string> => {
   const scope = ["--name", name, "--resource-group", resourceGroup];
-  let app = await showOrNull<FunctionApp>(az, [
-    "functionapp",
-    "show",
-    ...scope,
-  ]);
+  let app = siteOf(
+    await showOrNull<FunctionApp>(az, ["functionapp", "show", ...scope]),
+  );
   if (app === null) {
     app = await az<FunctionApp>([
       "functionapp",
@@ -399,7 +409,8 @@ export const ensureFunctionApp = async ({
       "--runtime-version",
       FUNCTION_NODE_VERSION,
     ]);
-    app = (await az<FunctionApp>(["functionapp", "show", ...scope])) ?? app;
+    app =
+      siteOf(await az<FunctionApp>(["functionapp", "show", ...scope])) ?? app;
   } else {
     assertRunsFunction(name, app);
   }

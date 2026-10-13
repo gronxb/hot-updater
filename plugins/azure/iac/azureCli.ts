@@ -21,8 +21,11 @@ export const createAzureCli =
     try {
       const { stdout } = await execa("az", [
         ...args,
-        // `az rest` takes no subscription; its URL names one.
-        ...(subscription === undefined || args[0] === "rest"
+        // `az rest` and `az account` take no subscription: a REST URL names
+        // one, and regions are the same in every subscription.
+        ...(subscription === undefined ||
+        args[0] === "rest" ||
+        args[0] === "account"
           ? []
           : ["--subscription", subscription]),
         "--only-show-errors",
@@ -41,9 +44,31 @@ export const createAzureCli =
 /** Whether `error` is the CLI's answer for a resource that does not exist. */
 export const isNotFound = (error: unknown) =>
   error instanceof Error &&
-  /\b(ResourceNotFound|ResourceGroupNotFound|NotFound|could not be found|was not found)\b/i.test(
+  /NotFound|Not Found|could not be found|was not found|can ?not find/i.test(
     error.message,
   );
+
+/** The resource providers init's resources need; a new subscription registers none. */
+export const AZURE_RESOURCE_PROVIDERS = [
+  "Microsoft.Storage",
+  "Microsoft.DocumentDB",
+  "Microsoft.Web",
+] as const;
+
+/** Registers the resource providers a subscription has not, waiting for each. */
+export const ensureResourceProviders = async (az: AzureCli) => {
+  for (const namespace of AZURE_RESOURCE_PROVIDERS) {
+    const provider = await az<{ registrationState?: string }>([
+      "provider",
+      "show",
+      "--namespace",
+      namespace,
+    ]);
+    if (provider?.registrationState !== "Registered") {
+      await az(["provider", "register", "--namespace", namespace, "--wait"]);
+    }
+  }
+};
 
 /** `az` the resource reads, or `null` when it does not exist. */
 export const showOrNull = async <T>(
@@ -72,7 +97,23 @@ export interface AzureSubscription {
   readonly name: string;
   readonly isDefault: boolean;
   readonly state: string;
+  readonly tenantId?: string;
+  readonly tenantDefaultDomain?: string;
+  readonly tenantDisplayName?: string;
+  readonly user?: { readonly name?: string };
 }
+
+/** Where a subscription lives and who signed in to it, to tell same-named ones apart. */
+export const describeSubscription = (subscription: AzureSubscription) =>
+  [
+    subscription.id,
+    subscription.tenantDefaultDomain ??
+      subscription.tenantDisplayName ??
+      subscription.tenantId,
+    subscription.user?.name,
+  ]
+    .filter(Boolean)
+    .join(" · ");
 
 export interface AzureLocation {
   readonly name: string;

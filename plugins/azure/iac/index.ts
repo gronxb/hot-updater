@@ -3,7 +3,6 @@ import path from "path";
 
 import {
   assembleServer,
-  confirmInitInputPersistence,
   getCwd,
   getHotUpdaterInitInputEnv,
   getInitProviderEnvVars,
@@ -27,6 +26,8 @@ import { cosmosDatabase, migrateCosmosDatabase } from "../src/cosmosDatabase";
 import {
   type AzureSubscription,
   createAzureCli,
+  describeSubscription,
+  ensureResourceProviders,
   isAzureCliInstalled,
   listFlexConsumptionLocations,
   listLocations,
@@ -118,7 +119,8 @@ const selectSubscription = async (
         subscriptions[0]?.id,
       options: subscriptions.map((subscription) => ({
         value: subscription.id,
-        label: `${subscription.name} (${subscription.id})`,
+        label: subscription.name,
+        hint: describeSubscription(subscription),
       })),
     }),
   );
@@ -167,7 +169,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   const cwd = getCwd();
   const nonInteractive = envFile !== undefined;
   const initEnvSources = await readHotUpdaterInitEnv(cwd, envFile);
-  const { managedEnv } = initEnvSources;
   const initInputEnv = getHotUpdaterInitInputEnv(
     initEnvSources,
     nonInteractive,
@@ -185,12 +186,26 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     process.exit(1);
   }
 
+  const subscriptions = await listSubscriptions(nonInteractive);
   const subscriptionId = await selectSubscription(
-    await listSubscriptions(nonInteractive),
+    subscriptions,
     saved.subscriptionId,
     nonInteractive,
   );
+  const subscription = subscriptions.find(({ id }) => id === subscriptionId)!;
+  p.log.info(
+    `Using subscription ${subscription.name} (${describeSubscription(subscription)})`,
+  );
   const az = createAzureCli(subscriptionId);
+  await p.tasks([
+    {
+      title: "Registering the Azure resource providers...",
+      task: async () => {
+        await ensureResourceProviders(az);
+        return "Storage, Cosmos DB, and Functions providers are registered";
+      },
+    },
+  ]);
 
   const resourceGroup = await resolveName({
     input: inputs.resourceGroup,
@@ -339,15 +354,11 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     storageConnectionString,
     cosmosConnectionString,
   };
-  const persistCredentialInputs = await confirmInitInputPersistence({
-    existingEnv: managedEnv,
-    inputs: resolvedInputs,
-    nonInteractive,
-    provider: AZURE_INIT_PROVIDER,
-  });
+  // The connection strings too: hot-updater.config.ts reads them, and init
+  // reads them from Azure again on every run.
   await makeEnv(
     getInitProviderEnvVars({
-      includeConsentInputs: persistCredentialInputs,
+      includeConsentInputs: true,
       inputs: resolvedInputs,
       provider: AZURE_INIT_PROVIDER,
     }),

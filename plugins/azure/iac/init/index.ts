@@ -81,16 +81,14 @@ export const initProvider = {
     },
     storageConnectionString: {
       envKey: "HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING",
-      help: "The storage account's connection string, which init reads from Azure",
+      help: "The storage account's connection string, which init reads from Azure and saves for hot-updater.config.ts",
       optional: true,
-      persistence: "with-consent",
       preflight: false,
     },
     cosmosConnectionString: {
       envKey: "HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING",
-      help: "The Cosmos DB account's connection string, which init reads from Azure",
+      help: "The Cosmos DB account's connection string, which init reads from Azure and saves for hot-updater.config.ts",
       optional: true,
-      persistence: "with-consent",
       preflight: false,
     },
   },

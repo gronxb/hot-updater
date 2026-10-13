@@ -2073,9 +2073,6 @@ importers:
       jszip:
         specifier: ^3.10.1
         version: 3.10.1
-      tsx:
-        specifier: ^4.20.6
-        version: 4.23.14
       vitest:
         specifier: 'catalog:'
         version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.14.6(@types/node@20.19.43)(typescript@7.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.14)(yaml@2.9.0))

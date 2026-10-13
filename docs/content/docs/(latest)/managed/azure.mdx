@@ -109,9 +109,9 @@ The initializer then prompts you to:
 
 After setup, review the local configuration. Interactive init writes the
 settings below to `.env.hotupdater`; an agent merges the needed settings into
-your project. The resource names are persisted for deterministic reruns. Init
-asks before it saves the two connection strings, which the CLI and the Console
-use to reach the storage account and Cosmos DB.
+your project. The resource names are persisted for deterministic reruns, and
+init saves the two connection strings, which `hot-updater.config.ts` reads to
+reach the storage account and Cosmos DB, again on every run.
 
 ```
 HOT_UPDATER_AZURE_SUBSCRIPTION_ID=your-subscription-id

@@ -151,7 +151,8 @@ describe("ensureCosmosAccount", () => {
     expect(create).toEqual(
       expect.arrayContaining([
         "GlobalDocumentDB",
-        "EnableServerless",
+        "--capacity-mode",
+        "Serverless",
         "Strong",
         "regionName=eastus",
       ]),
@@ -255,6 +256,21 @@ describe("ensureFunctionApp with an existing app", () => {
     location: "eastus",
     storageAccount: "storage",
   };
+
+  it("reads a Flex Consumption app's fields under properties", async () => {
+    const { az } = fakeAz({
+      "functionapp show": {
+        name: "app",
+        properties: {
+          defaultHostName: "app.azurewebsites.net",
+          functionAppConfig: { runtime: { name: "node", version: "22" } },
+        },
+      },
+    });
+    await expect(ensureFunctionApp({ az, ...input })).resolves.toBe(
+      "https://app.azurewebsites.net",
+    );
+  });
 
   it("reuses a Flex Consumption app on Node.js 22", async () => {
     const { az, calls } = fakeAz({
