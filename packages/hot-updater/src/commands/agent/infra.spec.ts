@@ -28,12 +28,13 @@ const providers = [
   "supabase",
   "aws",
   "firebase",
+  "vercel",
   "azure",
 ] as const;
-/** Providers whose credential script runs app/migrate.ts first. */
-const migrates = (provider: string) =>
-  provider === "firebase" || provider === "azure";
 const builds = ["bare", "rock", "expo"] as const;
+/** Providers whose credential script runs the server's migrator. */
+const migrates = (provider: string) =>
+  provider === "firebase" || provider === "vercel" || provider === "azure";
 let cwd: string;
 
 const run = (...args: string[]) => {
@@ -403,6 +404,7 @@ describe("deployment artifacts", () => {
         "@hot-updater/server",
         ...(provider === "aws" ? ["@aws-sdk/credential-providers"] : []),
         ...(provider === "firebase" ? ["firebase-admin"] : []),
+        ...(provider === "vercel" ? ["@hot-updater/postgres"] : []),
         ...(migrates(provider) ? ["@hot-updater/plugin-core"] : []),
       ]) {
         const target = path.join(cwd, "node_modules", name);
@@ -425,7 +427,7 @@ describe("deployment artifacts", () => {
         [
           "--input-type=module",
           "--eval",
-          // provision-client-credential.mjs's path: the clientAuth plugin's API on the definition's database, and Firestore's migration.
+          // provision-client-credential.mjs's path: the clientAuth plugin's API on the definition's database, and the migration of Firestore, Cosmos DB, and Vercel's PostgreSQL.
           `const { hotUpdater } = await import(${JSON.stringify(definitionUrl.href)}); const { plugin } = hotUpdater.clientAuth; console.log(plugin, typeof hotUpdater.api[plugin]); ${migrates(provider) ? `const { migrate } = await import(${JSON.stringify(migrationUrl.href)}); console.log(typeof migrate, typeof hotUpdater.database.createMigrator);` : ""} await hotUpdater.database.dispose?.();`,
         ],
         {
@@ -445,6 +447,10 @@ describe("deployment artifacts", () => {
             HOT_UPDATER_FIREBASE_PROJECT_ID: "test-project",
             // Firebase storage resolves its bucket when the definition loads.
             HOT_UPDATER_FIREBASE_STORAGE_BUCKET: "test-bucket",
+            // Vercel Blob reads its store from the token's shape.
+            HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN:
+              "vercel_blob_rw_test_secret",
+            HOT_UPDATER_VERCEL_DATABASE_URL: "postgres://test@127.0.0.1/test",
             // Azure's clients parse their connection strings when it loads.
             HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING:
               "DefaultEndpointsProtocol=https;AccountName=test;AccountKey=dGVzdA==;EndpointSuffix=core.windows.net",
@@ -461,15 +467,15 @@ describe("deployment artifacts", () => {
           : "apiKeys object",
       );
       if (migrates(provider)) {
-        // Firestore and Cosmos DB have no migration tooling: the credential
-        // script passes the server definition to migrate.ts, which runs its
-        // migrator and restates none of its database settings.
+        // The credential script passes the server definition to
+        // migrate.ts, which runs its migrator and restates none of its
+        // database settings.
         const migration = await readFile(migrationUrl, "utf8");
         expect(migration).toContain(
           ".createMigrator(toolingTargetOf(plugins))",
         );
         expect(migration).not.toMatch(
-          /firebaseDatabase|cosmosDatabase|HOT_UPDATER_|env/u,
+          /firebaseDatabase|cosmosDatabase|postgres\(|HOT_UPDATER_|env/u,
         );
       }
     },
@@ -607,6 +613,43 @@ describe("deployment artifacts", () => {
         specifier,
       ).toBe(true);
     }
+  });
+
+  it("ships the Vercel Function with every dependency bundled and one rewrite to it", async () => {
+    const root = path.join(templatesRoot, "vercel/vercel");
+    const config = await json(path.join(root, "vercel.json"));
+    expect(config.rewrites).toEqual([{ source: "/(.*)", destination: "/api" }]);
+    const entry = path.join(root, "api/index.mjs");
+    const source = await readFile(entry, "utf8");
+    expect(source).not.toMatch(/__HOT_UPDATER_[A-Z0-9_]+__/u);
+    // The deployment installs nothing: the Function loads and answers from
+    // a directory without node_modules.
+    await writeFile(
+      path.join(cwd, "function.mjs"),
+      await readFile(entry, "utf8"),
+    );
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        `const { GET } = await import("./function.mjs"); const response = await GET(new Request("https://example.vercel.app/version")); console.log(response.status, (await response.json()).infrastructureGeneration); process.exit(0);`,
+      ],
+      {
+        cwd,
+        encoding: "utf8",
+        timeout: 15_000,
+        env: {
+          PATH: process.env["PATH"],
+          HOT_UPDATER_VERCEL_BLOB_ACCESS: "private",
+          HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN:
+            "vercel_blob_rw_test_secret",
+          HOT_UPDATER_VERCEL_DATABASE_URL: "postgres://test@127.0.0.1/test",
+        },
+      },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe("200 1");
   });
 
   it.each(["aws", "firebase"])(

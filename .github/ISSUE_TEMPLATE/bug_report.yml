@@ -66,6 +66,7 @@ body:
         - Cloudflare
         - S3 & Lambda
         - Firebase
+        - Vercel
         - Azure
         - Other
     validations:

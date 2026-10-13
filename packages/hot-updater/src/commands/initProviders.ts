@@ -54,6 +54,12 @@ export const INIT_PROVIDER_PACKAGES = {
       import("@hot-updater/firebase/init"),
     packageName: "@hot-updater/firebase",
   },
+  vercel: {
+    devDependencies: ["vercel", "@hot-updater/postgres"],
+    label: "Vercel Blob + Functions + Postgres",
+    load: (): Promise<InitProviderModule> => import("@hot-updater/vercel/init"),
+    packageName: "@hot-updater/vercel",
+  },
   azure: {
     devDependencies: [],
     label: "Azure Blob Storage + Functions + Cosmos DB",

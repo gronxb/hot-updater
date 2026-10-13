@@ -187,6 +187,11 @@ describe("packed provider entrypoints", () => {
         "supabaseStorageDelivery",
       ],
     },
+    {
+      directory: "vercel",
+      packageName: "@hot-updater/vercel",
+      exports: ["vercelBlobStorage"],
+    },
   ])(
     "resolves $packageName from the packed ESM and CommonJS package",
     async ({ directory, packageName, exports, absentExports, handler }) => {

@@ -250,8 +250,9 @@ separate validation result.
     bucket using the exact local storage plugin's credential chain and endpoint:
     Cloudflare R2 S3 / AWS S3 `ListObjectsV2` with MaxKeys=1; Supabase Storage list
     with limit=1; Firebase Admin Storage getFiles with maxResults=1 and
-    autoPaginate=false; Azure Blob Storage `listBlobsFlat` with maxPageSize=1.
-    Load credentials privately in the probe process and report
+    autoPaginate=false; Vercel Blob `list({ limit: 1 })` with the local read-write
+    token; Azure Blob Storage `listBlobsFlat` with maxPageSize=1. Load
+    credentials privately in the probe process and report
     only success/count, never keys or object contents. A provider MCP session or
     the deployed runtime's access cannot substitute for local plugin access.
   - Verify/record: config loads with the intended provider/build, the server check

@@ -4,6 +4,7 @@ import type { InitProviderDefinition } from "@hot-updater/cli-tools";
 import * as cloudflareInit from "@hot-updater/cloudflare/init";
 import * as firebaseInit from "@hot-updater/firebase/init";
 import * as supabaseInit from "@hot-updater/supabase/init";
+import * as vercelInit from "@hot-updater/vercel/init";
 import { describe, expect, it } from "vitest";
 
 import { initHelp } from "./initHelp";
@@ -13,6 +14,7 @@ const providers: Readonly<Record<string, InitProviderDefinition>> = {
   aws: awsInit.initProvider,
   supabase: supabaseInit.initProvider,
   firebase: firebaseInit.initProvider,
+  vercel: vercelInit.initProvider,
   azure: azureInit.initProvider,
 };
 

@@ -11,7 +11,7 @@ Hot Updater is a self-hostable OTA (Over-The-Air) update solution for React Nati
 ### Adapters and Plugins
 An adapter fills one slot of a config (`build`, `storage`, `database`, `signing`); a plugin is an entry of a `plugins` list. `plugins/plugin-core/` (`@hot-updater/plugin-core`) is the public kit both are written against (the adapter contracts, the storage engine with its KV and SQL kits, and `definePlugin`), and the docs' overview (`docs/content/docs/(latest)/concepts/plugin-system.mdx`) describes how to write each one:
 - **Build Adapters**: Handle bundling (Metro, Expo, Rock) - located in `plugins/bare/`, `plugins/expo/`, `plugins/rock/`
-- **Storage Adapters**: Handle bundle storage (AWS S3, Cloudflare R2, Supabase Storage, Firebase Storage, Azure Blob Storage) - located in `plugins/aws/`, `plugins/cloudflare/`, `plugins/supabase/`, `plugins/firebase/`, `plugins/azure/`, `plugins/standalone/`
+- **Storage Adapters**: Handle bundle storage (AWS S3, Cloudflare R2, Supabase Storage, Firebase Storage, Vercel Blob, Azure Blob Storage) - located in `plugins/aws/`, `plugins/cloudflare/`, `plugins/supabase/`, `plugins/firebase/`, `plugins/vercel/`, `plugins/azure/`, `plugins/standalone/`
 - **Database Adapters**: Handle metadata storage on one storage engine (Cloudflare D1, Supabase, DynamoDB, Firestore, Cosmos DB, PostgreSQL) - use the same directories as storage and build on plugin-core's database kit; the built-in Kysely, Drizzle, Prisma, and MongoDB adapters live in `packages/server/src/adapters/` (`@hot-updater/server/adapters/*`)
 - **Signing Adapters**: Sign bundle artifacts (local PEM, remote, AWS KMS, Google Cloud KMS) - `hot-updater/signing`
 - **Integration Plugins**: Wrap a build adapter to upload source maps (Sentry, Datadog, BugSnag) - `plugins/*-plugin/`
@@ -52,7 +52,7 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
 - `@hot-updater/test-utils` holds all test-only code: adapter and plugin test suites, fixtures, `createMeasuredDatabase`, and test stores and executors.
   - It uses other packages' public API only.
   - No other package ships a test export or test helper, or keeps a path or hook that exists only for test-utils.
-- Each managed provider package (`plugins/aws`, `azure`, `cloudflare`, `firebase`, `supabase`) exposes one `./init` entry, which the CLI loads after installing the package, plus its runtime builds.
+- Each managed provider package (`plugins/aws`, `azure`, `cloudflare`, `firebase`, `supabase`, `vercel`) exposes one `./init` entry, which the CLI loads after installing the package, plus its runtime builds.
 - Dependencies are cut cleanly:
   - No package has an `/internal` entry or a deep import. Every cross-package import uses the other package's public API.
   - A shared convention is implemented in each package and documented here, not imported. An example is the official-plugin brand key `Symbol.for("@hot-updater/server/official-plugin")`.

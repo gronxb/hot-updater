@@ -59,8 +59,9 @@ invoked CLI: supported manifest identity and versions, required files and safe
 paths, unresolved deployment placeholders, JSON syntax, and provider settings.
 Provider checks cover Cloudflare DB/BUCKET bindings and runtime entry point,
 Supabase Function authentication configuration, AWS catalog/artifact/version
-routes and API-key cache separation, Firebase project/functions selection, and
-Azure's Function package and route prefix.
+routes and API-key cache separation, Firebase project/functions selection, the
+Vercel rewrite to the supplied Function, and Azure's Function package and route
+prefix.
 Use the CLI version that generated the scaffold. An older scaffold requires its
 matching CLI or a fresh upgrade scaffold; editing its version fields is not an
 upgrade.
@@ -359,7 +360,7 @@ If your server is outdated, `doctor` prints:
 Infrastructure update required. Deploy server infrastructure version x.x.x or newer.
 ```
 
-For managed providers (`aws`, `cloudflare`, `supabase`, `firebase`, `azure`), choose your
+For managed providers (`aws`, `cloudflare`, `supabase`, `firebase`, `vercel`, `azure`), choose your
 upgrade workflow. If the app/server is still on v0, follow
 [Move from v0 to v1](/docs/guides/upgrade-to-v1) before applying templates.
 

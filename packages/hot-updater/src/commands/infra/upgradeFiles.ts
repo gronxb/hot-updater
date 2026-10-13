@@ -16,6 +16,7 @@ const PROVIDER_SECTIONS = {
   supabase: { heading: "Supabase" },
   aws: { heading: "AWS" },
   firebase: { heading: "Firebase" },
+  vercel: { heading: "Vercel", addedAfter: "1.0.0" },
   azure: { heading: "Azure", addedAfter: "1.0.0" },
 } as const satisfies Record<
   InitProvider,
