@@ -23,6 +23,10 @@ async function recordRecoveryCalls(
       calls.push({ kind: "assertText", stage, testID });
       return Promise.resolve();
     },
+    background: (stage) => {
+      calls.push({ kind: "device", stage });
+      return Promise.resolve();
+    },
     control: (stage, _pathName, body) => {
       calls.push({ body, kind: "control", stage });
       return Promise.resolve();
@@ -31,6 +35,7 @@ async function recordRecoveryCalls(
       calls.push({ kind: "device", options, stage });
       return Promise.resolve();
     },
+    platform: "ios",
     reload: (stage) => {
       calls.push({ kind: "device", stage });
       return Promise.resolve();
