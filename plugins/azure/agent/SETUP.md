@@ -49,7 +49,9 @@ deployment.
       network. A new name must pass `az storage account check-name`.
     - Cosmos DB account (`az cosmosdb show`): an existing one must be API for
       NoSQL (`kind` `GlobalDocumentDB`, no Mongo/Cassandra/Gremlin/Table
-      capability), keep key authentication (`disableLocalAuth` not true) and
+      capability), keep key authentication (`disableLocalAuth` and
+      `disableKeyBasedMetadataWriteAccess` not true, since the migration
+      creates and updates the database and container with the key) and
       write in one region (`enableMultipleWriteLocations` not true), and be
       reachable from the Function App, which joins no virtual network:
       `publicNetworkAccess` not `Disabled`, and with IP or virtual network
@@ -74,7 +76,9 @@ deployment.
   - Run: reuse the account az.scope checked, or create a StorageV2, Standard_LRS
     account with TLS 1.2 and blob public access disabled. Shared key access
     must stay allowed: the bundles' SAS URLs and the Function's settings use
-    the account key. Create the private `hot-updater` blob container when missing.
+    the account key. Create the private `hot-updater` blob container when
+    missing, or make an existing one private (no anonymous `publicAccess`):
+    devices download bundles through SAS URLs.
   - Verify/record: storageAccount, its region and the container.
   - Retry: query the account and container; never create a second account to
     resolve a naming conflict the user did not approve.

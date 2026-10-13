@@ -2,7 +2,7 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
-import { BlobServiceClient } from "@azure/storage-blob";
+import { BlobServiceClient, type ContainerClient } from "@azure/storage-blob";
 import { createZip, InitError } from "@hot-updater/cli-tools";
 
 import { AZURE_BLOB_V1_CONTAINER } from "../src/azureInfrastructureNames";
@@ -161,10 +161,26 @@ export const ensureStorageAccount = async ({
       `Storage account ${name} returned no connection string.`,
     );
   }
-  await BlobServiceClient.fromConnectionString(connection.connectionString)
-    .getContainerClient(AZURE_BLOB_V1_CONTAINER)
-    .createIfNotExists();
+  await ensurePrivateContainer(
+    BlobServiceClient.fromConnectionString(
+      connection.connectionString,
+    ).getContainerClient(AZURE_BLOB_V1_CONTAINER),
+  );
   return connection.connectionString;
+};
+
+/**
+ * Creates the bundles' container, private, or makes a reused one private:
+ * devices download bundles through SAS URLs, never anonymously. Its stored
+ * access policies stay.
+ */
+export const ensurePrivateContainer = async (container: ContainerClient) => {
+  if ((await container.createIfNotExists()).succeeded) return;
+  const { blobPublicAccess, signedIdentifiers } =
+    await container.getAccessPolicy();
+  if (blobPublicAccess !== undefined) {
+    await container.setAccessPolicy(undefined, signedIdentifiers);
+  }
 };
 
 interface CosmosAccount {
@@ -173,6 +189,7 @@ interface CosmosAccount {
   readonly consistencyPolicy?: { readonly defaultConsistencyLevel?: string };
   readonly enableMultipleWriteLocations?: boolean;
   readonly disableLocalAuth?: boolean;
+  readonly disableKeyBasedMetadataWriteAccess?: boolean;
   readonly publicNetworkAccess?: string | null;
   readonly ipRules?: readonly { readonly ipAddressOrRange?: string }[] | null;
   readonly isVirtualNetworkFilterEnabled?: boolean | null;
@@ -236,6 +253,13 @@ export const assertCosmosAccountCanInitialize = async ({
   if (account.disableLocalAuth) {
     throw new InitError(
       `Cosmos DB account ${name} disables key authentication, which init and the Function App connect with. Allow it, or choose another account.`,
+    );
+  }
+  if (account.disableKeyBasedMetadataWriteAccess) {
+    // The migration creates the database and container and updates the
+    // container's indexing policy with the account key.
+    throw new InitError(
+      `Cosmos DB account ${name} blocks database and container changes with its keys, which the migration makes. Allow them, or choose another account.`,
     );
   }
   if (account.consistencyPolicy?.defaultConsistencyLevel === "Strong") {

@@ -91,7 +91,8 @@ The initializer then prompts you to:
    proposed names are derived from the subscription and resource group, so a
    rerun proposes the same ones.
 4. Create the storage account and its private `hot-updater` container when
-   they are missing.
+   they are missing. Init makes an existing container private: devices
+   download bundles through SAS URLs.
 5. Create a serverless Cosmos DB for NoSQL account with strong consistency when
    it is missing. This takes several minutes. Init asks before it changes an
    existing account's consistency.

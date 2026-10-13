@@ -256,6 +256,19 @@ describe("ensureCosmosAccount", () => {
     );
   });
 
+  it("refuses an account that blocks key-based database and container changes", async () => {
+    const { az } = fakeAz({
+      "cosmosdb show": {
+        kind: "GlobalDocumentDB",
+        disableKeyBasedMetadataWriteAccess: true,
+        consistencyPolicy: { defaultConsistencyLevel: "Strong" },
+      },
+    });
+    await expect(ensureCosmosAccount({ az, ...input })).rejects.toThrow(
+      "blocks database and container changes with its keys",
+    );
+  });
+
   it("refuses a multi-region-write account before asking to strengthen it", async () => {
     const confirmStrong = vi.fn(async () => true);
     const { az } = fakeAz({
