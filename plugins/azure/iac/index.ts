@@ -304,7 +304,9 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     name: storageAccount,
     resourceGroup,
   });
-  const { strengthen } = await assertCosmosAccountCanInitialize({
+  // Last: with approval, it makes an existing account's consistency strong,
+  // which Azure may refuse, so it changes nothing until the rest passed.
+  await assertCosmosAccountCanInitialize({
     az,
     name: cosmosAccount,
     resourceGroup,
@@ -343,8 +345,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       name: cosmosAccount,
       resourceGroup,
       location,
-      // Asked before anything was created.
-      confirmStrong: async () => strengthen,
+      // The preflight made an approved account strong already.
+      confirmStrong: async () => false,
     });
     spinner.stop(`Cosmos DB account ${cosmosAccount} is ready`);
   } catch (error) {

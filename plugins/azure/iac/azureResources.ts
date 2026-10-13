@@ -262,9 +262,10 @@ interface CosmosAccount {
 
 /**
  * Checks the Cosmos DB account before init creates anything: an existing one
- * must be an API for NoSQL account with strong consistency, which
- * `confirmStrong` may allow init to set, and a new name must be free.
- * Resolves whether init changes the account's consistency.
+ * must be an API for NoSQL account with strong consistency, and a new name
+ * must be free. When `confirmStrong` allows it, makes an existing account's
+ * consistency strong here, before anything is created, since Azure may
+ * refuse that change. Resolves whether the account exists.
  */
 export const assertCosmosAccountCanInitialize = async ({
   az,
@@ -279,7 +280,7 @@ export const assertCosmosAccountCanInitialize = async ({
   readonly confirmStrong: () => Promise<boolean>;
   /** Checks the account's container from this machine; throws when init cannot use it. */
   readonly inspect?: (connectionString: string) => Promise<void>;
-}): Promise<{ readonly exists: boolean; readonly strengthen: boolean }> => {
+}): Promise<{ readonly exists: boolean }> => {
   const account = await showOrNull<CosmosAccount>(az, [
     "cosmosdb",
     "show",
@@ -294,7 +295,7 @@ export const assertCosmosAccountCanInitialize = async ({
         `Cosmos DB account name ${name} is taken. Choose another name.`,
       );
     }
-    return { exists: false, strengthen: false };
+    return { exists: false };
   }
   const otherApi = account.capabilities?.find(({ name: capability }) =>
     /^Enable(Mongo|Cassandra|Gremlin|Table)$/.test(capability),
@@ -344,7 +345,7 @@ export const assertCosmosAccountCanInitialize = async ({
     );
   }
   if (account.consistencyPolicy?.defaultConsistencyLevel === "Strong") {
-    return { exists: true, strengthen: false };
+    return { exists: true };
   }
   if (account.enableMultipleWriteLocations) {
     throw new InitError(
@@ -356,7 +357,25 @@ export const assertCosmosAccountCanInitialize = async ({
       `Cosmos DB account ${name} must use strong consistency. Choose another account, or allow init to change it.`,
     );
   }
-  return { exists: true, strengthen: true };
+  try {
+    await az([
+      "cosmosdb",
+      "update",
+      "--name",
+      name,
+      "--resource-group",
+      resourceGroup,
+      "--default-consistency-level",
+      "Strong",
+    ]);
+  } catch (error) {
+    // Azure refuses it, for one, for an account whose regions lie more than
+    // 5,000 miles apart unless support enabled global strong consistency.
+    throw new InitError(
+      `Cosmos DB account ${name} could not change to strong consistency: ${error instanceof Error ? error.message : String(error)}. Choose another account.`,
+    );
+  }
+  return { exists: true };
 };
 
 /**
@@ -381,7 +400,7 @@ export const ensureCosmosAccount = async ({
   readonly inspect?: (connectionString: string) => Promise<void>;
 }): Promise<string> => {
   const scope = ["--name", name, "--resource-group", resourceGroup];
-  const { exists, strengthen } = await assertCosmosAccountCanInitialize({
+  const { exists } = await assertCosmosAccountCanInitialize({
     az,
     name,
     resourceGroup,
@@ -402,14 +421,6 @@ export const ensureCosmosAccount = async ({
       // The `EnableServerless` capability is refused by current API versions.
       "--capacity-mode",
       "Serverless",
-      "--default-consistency-level",
-      "Strong",
-    ]);
-  } else if (strengthen) {
-    await az([
-      "cosmosdb",
-      "update",
-      ...scope,
       "--default-consistency-level",
       "Strong",
     ]);

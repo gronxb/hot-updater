@@ -65,7 +65,11 @@ deployment.
       (`az cosmosdb sql container show`, then a cross-partition
       `SELECT TOP 1 c.id FROM c`). When its default consistency is not
       `Strong`, get the user's approval to change it, since other apps on it
-      read under it too. A new name must be free
+      read under it too, and change it as the last preflight step, before any
+      resource is created (`az cosmosdb update --default-consistency-level
+      Strong`): Azure refuses it for an account whose regions lie more than
+      5,000 miles apart unless support enabled global strong consistency, and
+      then stop. A new name must be free
       (`az cosmosdb check-name-exists` returns false).
     - Function App (`az functionapp show`): an existing one must be a Flex
       Consumption app on Node.js 22 or later (`properties.functionAppConfig.runtime`)
@@ -93,8 +97,8 @@ deployment.
 
 - [ ] **az.cosmos — Prepare the Cosmos DB account**
   - Requires: az.scope.
-  - Run: reuse the account az.scope checked, changing its consistency to
-    `Strong` when the user approved it there, or create one: API for NoSQL
+  - Run: reuse the account az.scope checked (and made `Strong` when the user
+    approved it there), or create one: API for NoSQL
     (`--kind GlobalDocumentDB`), serverless (`--capacity-mode Serverless`) in
     the group's region, with `Strong` default consistency. Account creation
     takes several minutes.

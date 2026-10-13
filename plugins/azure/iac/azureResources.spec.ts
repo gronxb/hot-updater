@@ -354,7 +354,7 @@ describe("ensureCosmosAccount", () => {
       "cosmosdb show": session,
       "cosmosdb keys list": keys,
     });
-    await ensureCosmosAccount({
+    await assertCosmosAccountCanInitialize({
       az: allowed.az,
       ...input,
       confirmStrong: async () => true,
@@ -362,6 +362,28 @@ describe("ensureCosmosAccount", () => {
     expect(allowed.calls.find((args) => args[1] === "update")).toEqual(
       expect.arrayContaining(["--default-consistency-level", "Strong"]),
     );
+  });
+
+  it("fails the preflight when Azure refuses strong consistency", async () => {
+    const { az } = fakeAz({
+      "cosmosdb show": {
+        kind: "GlobalDocumentDB",
+        consistencyPolicy: { defaultConsistencyLevel: "Session" },
+      },
+      "cosmosdb keys list": keys,
+      "cosmosdb update": () => {
+        throw new Error(
+          "Strong consistency is not allowed for regions more than 5000 miles apart",
+        );
+      },
+    });
+    await expect(
+      assertCosmosAccountCanInitialize({
+        az,
+        ...input,
+        confirmStrong: async () => true,
+      }),
+    ).rejects.toThrow("could not change to strong consistency");
   });
 });
 
