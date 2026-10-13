@@ -21,10 +21,9 @@ export const createAzureCli =
     try {
       const { stdout } = await execa("az", [
         ...args,
-        // `az rest` takes no subscription: its URL names one.
-        ...(subscription === undefined || args[0] === "rest"
-          ? []
-          : ["--subscription", subscription]),
+        // `az rest` too: its URL names the subscription, but the token comes
+        // from the tenant of the one `--subscription` selects.
+        ...(subscription === undefined ? [] : ["--subscription", subscription]),
         "--only-show-errors",
         "--output",
         "json",
