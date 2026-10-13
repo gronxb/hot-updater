@@ -35,12 +35,13 @@ deployment.
     that host Flex Consumption
     (`az functionapp list-flexconsumption-locations`): the Function App shares
     the group's region. Query the resource group (`az group show`); reuse it
-    only when its region is in that list, or create it in a listed region.
-    Stop before creating any resource in a group outside the list. Inspect
+    only when its region is in that list, or choose a listed region for a new
+    one and create it (`az group create`) only after every preflight below
+    passed. Stop before creating any resource in a group outside the list. Inspect
     existing Hot Updater resources and the upgrade files before adopting them.
     Preserve unrelated resources.
-  - Preflight, before creating any storage, Cosmos DB or Function App
-    resource, as init does; stop on any failure:
+  - Preflight, before creating the resource group or any storage, Cosmos DB
+    or Function App resource, as init does; stop on any failure:
     - Storage account (`az storage account show`): an existing one must be a
       general-purpose `StorageV2` (or `Storage`) account, since the Function
       App's host storage needs Blob, Queue and Table services, must allow

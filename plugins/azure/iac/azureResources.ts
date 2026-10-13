@@ -39,23 +39,31 @@ interface ResourceGroup {
   readonly location: string;
 }
 
-/** The group's region; init creates the group in `location` when it is missing. */
-export const ensureResourceGroup = async (
+/**
+ * The group's region, or the region `location` picks for a missing group,
+ * which `createResourceGroup` creates once every preflight passed.
+ */
+export const resolveResourceGroup = async (
   az: AzureCli,
   name: string,
   location: () => Promise<string>,
-): Promise<{ readonly location: string; readonly created: boolean }> => {
+): Promise<{ readonly location: string; readonly exists: boolean }> => {
   const group = await showOrNull<ResourceGroup>(az, [
     "group",
     "show",
     "--name",
     name,
   ]);
-  if (group !== null) return { location: group.location, created: false };
-  const region = await location();
-  await az(["group", "create", "--name", name, "--location", region]);
-  return { location: region, created: true };
+  if (group !== null) return { location: group.location, exists: true };
+  return { location: await location(), exists: false };
 };
+
+/** Creates the resource group `resolveResourceGroup` found missing. */
+export const createResourceGroup = (
+  az: AzureCli,
+  name: string,
+  location: string,
+) => az(["group", "create", "--name", name, "--location", location]);
 
 interface StorageAccount {
   readonly kind?: string;

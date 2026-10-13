@@ -40,12 +40,13 @@ import {
   assertCosmosAccountCanInitialize,
   assertFunctionAppCanInitialize,
   assertStorageAccountCanInitialize,
+  createResourceGroup,
   deployFunction,
   ensureCosmosAccount,
   ensureFunctionApp,
-  ensureResourceGroup,
   ensureStorageAccount,
   FUNCTION_SETTINGS,
+  resolveResourceGroup,
   setFunctionSettings,
   verifyFunction,
 } from "./azureResources";
@@ -223,7 +224,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     validate: isAzureResourceGroupName,
     hint: "Use up to 90 letters, digits, '.', '_', '-', '(' or ')', not ending in '.'.",
   });
-  const { location, created } = await ensureResourceGroup(
+  const { location, exists: groupExists } = await resolveResourceGroup(
     az,
     resourceGroup,
     async () => {
@@ -252,11 +253,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       );
     },
   );
-  p.log.info(
-    `${created ? "Created" : "Using"} resource group ${resourceGroup} in ${location}`,
-  );
   // The Function App shares the group's region; check it before creating
-  // anything else there.
+  // anything there.
   if (
     !(await listFlexConsumptionLocations(az)).has(normalizeLocation(location))
   ) {
@@ -319,6 +317,10 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
         }),
       ),
   });
+  if (!groupExists) await createResourceGroup(az, resourceGroup, location);
+  p.log.info(
+    `${groupExists ? "Using" : "Created"} resource group ${resourceGroup} in ${location}`,
+  );
 
   let storageConnectionString = "";
   let cosmosConnectionString = "";

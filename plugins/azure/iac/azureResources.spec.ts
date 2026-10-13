@@ -10,10 +10,11 @@ import {
   assertCosmosAccountCanInitialize,
   assertFunctionAppCanInitialize,
   AZURE_FUNCTION_PACKAGE,
+  createResourceGroup,
   deployFunction,
   ensureCosmosAccount,
   ensureFunctionApp,
-  ensureResourceGroup,
+  resolveResourceGroup,
 } from "./azureResources";
 import { getConfigScaffold } from "./configTemplate";
 import { defaultResourceNames } from "./index";
@@ -81,22 +82,25 @@ describe("Azure CLI version", () => {
   });
 });
 
-describe("ensureResourceGroup", () => {
+describe("resolveResourceGroup", () => {
   it("reuses an existing group's region without asking", async () => {
     const { az } = fakeAz({ "group show": { location: "koreacentral" } });
     const location = vi.fn();
-    await expect(ensureResourceGroup(az, "rg", location)).resolves.toEqual({
+    await expect(resolveResourceGroup(az, "rg", location)).resolves.toEqual({
       location: "koreacentral",
-      created: false,
+      exists: true,
     });
     expect(location).not.toHaveBeenCalled();
   });
 
-  it("creates a missing group in the region it asks for", async () => {
+  it("asks a missing group's region and leaves creating it to after the preflights", async () => {
     const { az, calls } = fakeAz({ "group show": notFound() });
     await expect(
-      ensureResourceGroup(az, "rg", async () => "eastus"),
-    ).resolves.toEqual({ location: "eastus", created: true });
+      resolveResourceGroup(az, "rg", async () => "eastus"),
+    ).resolves.toEqual({ location: "eastus", exists: false });
+    expect(calls.some((args) => args[1] === "create")).toBe(false);
+
+    await createResourceGroup(az, "rg", "eastus");
     expect(calls.at(-1)).toEqual([
       "group",
       "create",
