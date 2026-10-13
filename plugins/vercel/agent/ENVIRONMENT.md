@@ -13,7 +13,7 @@ environment variables.
 
 | Variable | Purpose and when needed | Where to obtain it |
 | --- | --- | --- |
-| `HOT_UPDATER_VERCEL_TEAM_ID` | Team that owns the project and Blob store; every API call and CLI deployment targets it. | Query the authenticated account's teams and record the team ID (`team_...`), not its slug. |
+| `HOT_UPDATER_VERCEL_TEAM_ID` | Team that owns the project and Blob store; every API call and CLI deployment targets it. A personal account Vercel has not moved to a team uses the user ID, and its API calls take no `teamId`. | Query the authenticated account's teams and record the team ID (`team_...`), not its slug; for a personal account, record the user ID. |
 | `HOT_UPDATER_VERCEL_PROJECT_NAME` | Project that runs the Function; its production domain is the client base URL. | Reuse the established project or derive a new name from the app; record the actual name. |
 | `HOT_UPDATER_VERCEL_PROJECT_ID` | Project ID for deployments (`VERCEL_PROJECT_ID`) and resource records. | Query or create the project and record its ID (`prj_...`). |
 | `HOT_UPDATER_VERCEL_BLOB_STORE_NAME` | Blob store name, used to find or create the store on reruns. | Reuse the established store or create one; record its actual name. |

@@ -51,24 +51,28 @@ export const stageFunctionDeployment = async (functionBundle: string) => {
  */
 export const deployFunction = async ({
   cwd,
+  orgId,
   projectId,
-  teamId,
+  scope,
   token,
 }: {
   readonly cwd: string;
+  /** The team's ID, or the user's for a personal account. */
+  readonly orgId: string;
   readonly projectId: string;
-  readonly teamId: string;
+  /** The CLI's `--scope`: the team's ID, or the personal account's username. */
+  readonly scope: string;
   readonly token: string;
 }) => {
   const staged = await stageFunctionDeployment(resolveFunctionBundle(cwd));
   try {
     await execa(
       "npx",
-      ["vercel", "deploy", staged.root, "--prod", "--yes", "--scope", teamId],
+      ["vercel", "deploy", staged.root, "--prod", "--yes", "--scope", scope],
       {
         cwd,
         env: {
-          VERCEL_ORG_ID: teamId,
+          VERCEL_ORG_ID: orgId,
           VERCEL_PROJECT_ID: projectId,
           VERCEL_TOKEN: token,
         },

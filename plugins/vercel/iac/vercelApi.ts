@@ -20,6 +20,16 @@ export interface VercelTeam {
   readonly slug: string;
 }
 
+export interface VercelUser {
+  readonly id: string;
+  readonly username: string;
+  /**
+   * Whether the account's resources live in teams only. An account Vercel
+   * has not moved to teams also has a personal scope, which takes no teamId.
+   */
+  readonly teamsOnly: boolean;
+}
+
 export interface VercelProject {
   readonly id: string;
   readonly name: string;
@@ -154,6 +164,21 @@ export const createVercelApi = ({
   };
 
   return {
+    async getUser(): Promise<VercelUser> {
+      const body = await request("GET", "/v2/user");
+      const user = isRecord(body) && isRecord(body.user) ? body.user : {};
+      if (typeof user.id !== "string") {
+        throw new Error("Vercel returned no user for the token.");
+      }
+      return {
+        id: user.id,
+        username: stringOf(user.username) ?? user.id,
+        teamsOnly:
+          typeof user.defaultTeamId === "string" ||
+          user.version === "northstar",
+      };
+    },
+
     async listTeams(): Promise<VercelTeam[]> {
       const teams: VercelTeam[] = [];
       let until: string | undefined;

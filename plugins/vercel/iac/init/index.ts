@@ -32,7 +32,7 @@ export const initProvider = {
   inputs: {
     teamId: {
       envKey: "HOT_UPDATER_VERCEL_TEAM_ID",
-      help: "Vercel team ID (team_...)",
+      help: "Vercel team ID (team_...), or the user ID of a personal account",
       prompt: {
         message: "Select a Vercel team",
         type: "select",

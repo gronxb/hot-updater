@@ -95,6 +95,26 @@ describe("vercelBlobStorage", () => {
     );
   });
 
+  it("refuses a dot-only segment before anything reaches Blob", async () => {
+    // Blob would store the segment as it is but normalize it on reads.
+    const storage = vercelBlobStorage({ access: "private", token });
+    for (const key of ["a/../b.txt", "./b.txt", "a/./b.txt"]) {
+      await expect(
+        storage.put({
+          body: new Blob(["x"]).stream(),
+          contentType: "text/plain",
+          key,
+        }),
+      ).rejects.toThrow(/must not be/);
+    }
+    for (const basePath of ["ota/..", "./ota"]) {
+      expect(() =>
+        vercelBlobStorage({ access: "private", basePath, token }),
+      ).toThrow(/must not be/);
+    }
+    expect(blob.put).not.toHaveBeenCalled();
+  });
+
   it("uploads a body of unknown length in parts", async () => {
     const storage = vercelBlobStorage({ access: "private", token });
 

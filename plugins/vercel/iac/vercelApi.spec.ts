@@ -19,6 +19,23 @@ describe("Vercel API", () => {
     expect(init.headers).toEqual({ authorization: "Bearer token" });
   });
 
+  it("tells an account moved to teams from one with a personal scope", async () => {
+    const userOf = (user: object) =>
+      createVercelApi({
+        fetch: async () => respond({ user }),
+        token: "t",
+      }).getUser();
+
+    expect(
+      await userOf({ defaultTeamId: "team_1", id: "u1", username: "octo" }),
+    ).toEqual({ id: "u1", teamsOnly: true, username: "octo" });
+    expect(await userOf({ id: "u1", username: "octo" })).toEqual({
+      id: "u1",
+      teamsOnly: false,
+      username: "octo",
+    });
+  });
+
   it("throws Vercel's error message", async () => {
     const api = createVercelApi({
       fetch: async () =>

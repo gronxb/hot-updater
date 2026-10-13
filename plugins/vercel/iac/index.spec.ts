@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
     createProject: vi.fn(),
     getProject: vi.fn(),
     getProjectEnvValue: vi.fn(),
+    getUser: vi.fn(),
     hasProductionDeployment: vi.fn(),
     listBlobStores: vi.fn(),
     listProjectEnv: vi.fn(),
@@ -123,6 +124,11 @@ const connectedEnv = [
 beforeEach(() => {
   vi.clearAllMocks();
   mocks.createVercelApi.mockReturnValue(mocks.api);
+  mocks.api.getUser.mockResolvedValue({
+    id: "user_1",
+    teamsOnly: true,
+    username: "octo",
+  });
   mocks.resolveVercelToken.mockResolvedValue("vercel-token");
   mocks.confirmInitInputPersistence.mockResolvedValue(true);
   mocks.readHotUpdaterTables.mockResolvedValue([]);
@@ -184,8 +190,9 @@ describe("Vercel init", () => {
     ]);
     expect(mocks.deployFunction).toHaveBeenCalledWith(
       expect.objectContaining({
+        orgId: "team_1",
         projectId: "prj_1",
-        teamId: "team_1",
+        scope: "team_1",
         token: "vercel-token",
       }),
     );
@@ -400,6 +407,54 @@ describe("Vercel init", () => {
       "env_canonical",
     );
     expect(mocks.password).not.toHaveBeenCalled();
+  });
+
+  it("deploys to the personal account of a user Vercel has not moved to teams", async () => {
+    givenInitEnv({});
+    mocks.api.getUser.mockResolvedValue({
+      id: "user_1",
+      teamsOnly: false,
+      username: "octo",
+    });
+    mocks.api.listTeams.mockResolvedValue([]);
+    mocks.api.listProjectEnv.mockImplementation(async () => [
+      { id: "env_db", key: "DATABASE_URL", target: ["production"] },
+      ...connectedEnv,
+    ]);
+    mocks.select
+      .mockResolvedValueOnce("\0create")
+      .mockResolvedValueOnce("env_db");
+    mocks.text
+      .mockResolvedValueOnce("hot-updater")
+      .mockResolvedValueOnce("hot-updater-storage");
+    mocks.confirm.mockResolvedValueOnce(true);
+
+    await runInit({ build: "bare" });
+
+    // A personal account's API calls take no teamId.
+    expect(mocks.createVercelApi).toHaveBeenLastCalledWith({
+      token: "vercel-token",
+    });
+    expect(mocks.deployFunction).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: "user_1", scope: "octo" }),
+    );
+    expect(mocks.makeEnv).toHaveBeenCalledWith(
+      expect.objectContaining({ HOT_UPDATER_VERCEL_TEAM_ID: "user_1" }),
+    );
+  });
+
+  it("replays a saved personal account", async () => {
+    givenInitEnv({ ...replayEnv, HOT_UPDATER_VERCEL_TEAM_ID: "user_1" });
+
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    expect(mocks.api.listTeams).not.toHaveBeenCalled();
+    expect(mocks.createVercelApi).toHaveBeenLastCalledWith({
+      token: "vercel-token",
+    });
+    expect(mocks.deployFunction).toHaveBeenCalledWith(
+      expect.objectContaining({ orgId: "user_1", scope: "octo" }),
+    );
   });
 
   it("refuses a project that serves another app before changing anything", async () => {

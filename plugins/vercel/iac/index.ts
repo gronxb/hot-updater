@@ -39,6 +39,7 @@ import {
   VercelApiError,
   type VercelBlobStore,
   type VercelProject,
+  type VercelUser,
 } from "./vercelApi";
 import { resolveVercelToken } from "./vercelAuth";
 import {
@@ -68,38 +69,77 @@ const exitIfCancelled = <T>(value: T | symbol): T => {
   return value as T;
 };
 
-const selectTeam = async (
+/** Where init creates the project and store: a team, or a personal account. */
+interface VercelScope {
+  /** The team's ID, or the user's for a personal account. */
+  readonly id: string;
+  /** The CLI's `--scope`: the team's ID, or the personal account's username. */
+  readonly cliScope: string;
+  readonly personal: boolean;
+}
+
+const personalScope = (user: VercelUser): VercelScope => ({
+  cliScope: user.username,
+  id: user.id,
+  personal: true,
+});
+
+const teamScope = (teamId: string): VercelScope => ({
+  cliScope: teamId,
+  id: teamId,
+  personal: false,
+});
+
+/**
+ * The team, or the personal account of a user Vercel has not moved to
+ * teams, that init deploys to.
+ */
+const selectScope = async (
   api: VercelApi,
-  savedTeamId: string | undefined,
+  savedId: string | undefined,
   nonInteractive: boolean,
-) => {
-  if (nonInteractive && savedTeamId) return savedTeamId;
-  const teams = await api.listTeams();
-  if (teams.length === 0) {
+): Promise<VercelScope> => {
+  const user = await api.getUser();
+  if (nonInteractive && savedId) {
+    return savedId === user.id ? personalScope(user) : teamScope(savedId);
+  }
+  const scopes = [
+    ...(user.teamsOnly
+      ? []
+      : [
+          {
+            label: `${user.username} (personal account)`,
+            scope: personalScope(user),
+          },
+        ]),
+    ...(await api.listTeams()).map((team) => ({
+      label: `${team.name} (${team.slug})`,
+      scope: teamScope(team.id),
+    })),
+  ];
+  if (scopes.length === 0) {
     throw new InitError("The Vercel account has no team to deploy to.");
   }
-  const saved = teams.find((team) => team.id === savedTeamId);
-  if (savedTeamId && !saved) {
+  const saved = scopes.find(({ scope }) => scope.id === savedId);
+  if (savedId && !saved) {
     p.log.warn("The saved Vercel team was not found. Select a team again.");
   }
   if (
     shouldAutoSelectOnlyInitResource({
-      availableResourceCount: teams.length,
-      savedIdentifier: saved?.id,
+      availableResourceCount: scopes.length,
+      savedIdentifier: saved?.scope.id,
     })
   ) {
-    return teams[0]!.id;
+    return scopes[0]!.scope;
   }
-  return exitIfCancelled(
+  const selected = exitIfCancelled(
     await p.select({
       message: inputs.teamId.prompt.message,
-      initialValue: saved?.id ?? teams[0]?.id,
-      options: teams.map((team) => ({
-        value: team.id,
-        label: `${team.name} (${team.slug})`,
-      })),
+      initialValue: saved?.scope.id ?? scopes[0]?.scope.id,
+      options: scopes.map(({ label, scope }) => ({ value: scope.id, label })),
     }),
   );
+  return scopes.find(({ scope }) => scope.id === selected)!.scope;
 };
 
 const resolveProjectName = async (
@@ -267,12 +307,12 @@ const syncFunctionBlobToken = async (
 const createNeonDatabase = async ({
   cwd,
   project,
-  teamId,
+  scope,
   token,
 }: {
   readonly cwd: string;
   readonly project: VercelProject;
-  readonly teamId: string;
+  readonly scope: VercelScope;
   readonly token: string;
 }) => {
   p.log.info(
@@ -293,12 +333,12 @@ const createNeonDatabase = async ({
       "production",
       "--no-env-pull",
       "--scope",
-      teamId,
+      scope.cliScope,
     ],
     {
       cwd: workDir,
       env: {
-        VERCEL_ORG_ID: teamId,
+        VERCEL_ORG_ID: scope.id,
         VERCEL_PROJECT_ID: project.id,
         VERCEL_TOKEN: token,
       },
@@ -325,14 +365,14 @@ const selectDatabaseUrl = async ({
   cwd,
   project,
   savedUrl,
-  teamId,
+  scope,
   token,
 }: {
   readonly api: VercelApi;
   readonly cwd: string;
   readonly project: VercelProject;
   readonly savedUrl?: string;
-  readonly teamId: string;
+  readonly scope: VercelScope;
   readonly token: string;
 }): Promise<string> => {
   const hasSavedUrl = isPostgresUrl(savedUrl);
@@ -391,7 +431,7 @@ const selectDatabaseUrl = async ({
   if (selected === savedKey) return savedUrl as string;
   if (selected === neonKey) {
     const before = new Set(connected.map((env) => env.id));
-    await createNeonDatabase({ cwd, project, teamId, token });
+    await createNeonDatabase({ cwd, project, scope, token });
     const added = (await listConnected()).filter((env) => !before.has(env.id));
     const preferred =
       added.find((env) => env.key === "DATABASE_URL") ??
@@ -440,12 +480,16 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     ...(saved.vercelToken ? { token: saved.vercelToken } : {}),
   });
 
-  const teamId = await selectTeam(
+  const scope = await selectScope(
     createVercelApi({ token }),
     saved.teamId,
     nonInteractive,
   );
-  const api = createVercelApi({ token, teamId });
+  // A personal account's calls take no teamId.
+  const api = createVercelApi({
+    token,
+    ...(scope.personal ? {} : { teamId: scope.id }),
+  });
 
   const projectName = await resolveProjectName(
     saved.projectName,
@@ -496,7 +540,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       api,
       cwd,
       project,
-      teamId,
+      scope,
       token,
       ...(saved.databaseUrl ? { savedUrl: saved.databaseUrl } : {}),
     });
@@ -534,7 +578,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     databaseUrl,
     projectId: project.id,
     projectName: project.name,
-    teamId,
+    teamId: scope.id,
     ...(saved.vercelToken ? { vercelToken: saved.vercelToken } : {}),
   };
   const persistCredentialInputs = await confirmInitInputPersistence({
@@ -571,7 +615,13 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     },
   ]);
 
-  await deployFunction({ cwd, projectId: project.id, teamId, token });
+  await deployFunction({
+    cwd,
+    orgId: scope.id,
+    projectId: project.id,
+    scope: scope.cliScope,
+    token,
+  });
   const deployedProject = (await api.getProject(project.id)) ?? project;
   const baseURL = productionBaseUrl(deployedProject);
   await verifyFunction(baseURL);
