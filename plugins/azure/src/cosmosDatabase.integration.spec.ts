@@ -421,6 +421,7 @@ describe("Cosmos DB wide counters", () => {
         type: "integer" as const,
         nullable: false,
       })),
+      { name: "note", type: "string", nullable: true },
       { name: "_v", type: "integer", nullable: false },
     ],
     key: ["id"],
@@ -465,6 +466,41 @@ describe("Cosmos DB wide counters", () => {
           _v: 2,
         });
       }
+    } finally {
+      await cleanup();
+    }
+  });
+  it("refuses, before sending, a write whose replaced rows outgrow a batch", async () => {
+    const { store, cleanup } = await createStore();
+    const adapter = createKvAdapter({ store });
+    const now = Date.now();
+    const zero = Object.fromEntries(COUNTERS.map((name) => [name, 0]));
+    const one = Object.fromEntries(COUNTERS.map((name) => [name, 1]));
+    const keys = Array.from({ length: 60 }, (_, at) => `big-${at}`);
+    try {
+      // Rows of 40 KB each, written apart.
+      for (const id of keys) {
+        await adapter.write([
+          {
+            type: "insert",
+            table: wide,
+            row: { id, at: now, ...zero, note: "x".repeat(40_000), _v: 0 },
+          },
+        ]);
+      }
+      const increments = keys.map((id) => ({
+        type: "increment" as const,
+        table: wide,
+        key: [id],
+        by: one,
+        init: { id, at: now, ...zero, note: null, _v: 0 },
+      }));
+      expect(adapter.fits(increments)).toBe(true);
+      await expect(adapter.write(increments)).rejects.toThrow(
+        "Write fewer of them at once",
+      );
+      const [row] = await adapter.get(wide, [[keys[0]!]]);
+      expect(row).toMatchObject({ c0: 0, _v: 0 });
     } finally {
       await cleanup();
     }

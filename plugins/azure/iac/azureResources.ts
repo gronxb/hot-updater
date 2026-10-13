@@ -15,7 +15,7 @@ import {
   assertCosmosContainerReusable,
   currentCosmosEngine,
 } from "../src/cosmosStore";
-import { type AzureCli, showOrNull } from "./azureCli";
+import { type AzureCli, cosmosServerlessArgs, showOrNull } from "./azureCli";
 
 /** The Function App settings the deployed function reads. */
 export const FUNCTION_SETTINGS = {
@@ -390,6 +390,7 @@ export const ensureCosmosAccount = async ({
   location,
   confirmStrong,
   inspect,
+  serverless = cosmosServerlessArgs,
 }: {
   readonly az: AzureCli;
   readonly name: string;
@@ -398,6 +399,8 @@ export const ensureCosmosAccount = async ({
   /** Whether init may make an existing account's consistency strong. */
   readonly confirmStrong: () => Promise<boolean>;
   readonly inspect?: (connectionString: string) => Promise<void>;
+  /** The installed CLI's arguments for a serverless account. */
+  readonly serverless?: () => Promise<readonly string[]>;
 }): Promise<string> => {
   const scope = ["--name", name, "--resource-group", resourceGroup];
   const { exists } = await assertCosmosAccountCanInitialize({
@@ -418,9 +421,7 @@ export const ensureCosmosAccount = async ({
       `regionName=${location}`,
       "failoverPriority=0",
       "isZoneRedundant=False",
-      // The `EnableServerless` capability is refused by current API versions.
-      "--capacity-mode",
-      "Serverless",
+      ...(await serverless()),
       "--default-consistency-level",
       "Strong",
     ]);

@@ -47,6 +47,11 @@ export const COSMOS_LIMITS = {
 /** The most operations one transactional batch takes. */
 const BATCH_OPERATIONS = 100;
 
+/** The most bytes of operations a transactional batch request takes, below its 2 MB. */
+const BATCH_BYTES = 2_000_000;
+
+const encoder = new TextEncoder();
+
 /** A query reads at most this many ids a call. */
 const GET_BATCH = 100;
 
@@ -326,9 +331,9 @@ interface ReadState {
 }
 
 /**
- * Whether an add takes more operations than one patch does. It replaces
- * its item instead, so every op stays one batch operation, which is what
- * `COSMOS_LIMITS.items` counts.
+ * Whether an add takes more operations than one patch does. When its
+ * patches would take a batch past its operations, it replaces the row it
+ * read instead, one operation, which is what `COSMOS_LIMITS.items` counts.
  */
 const isWideAdd = (op: KvOp) =>
   op.type === "add" &&
@@ -417,6 +422,7 @@ export const createCosmosStore = ({
   const operationsOf = (
     op: KvOp,
     state: ReadState | undefined,
+    replaceWide: boolean,
   ):
     | readonly (readonly [OperationInput, OnFailure])[]
     | { readonly failed: true } => {
@@ -541,7 +547,7 @@ export const createCosmosStore = ({
             ],
           ];
         }
-        if (isWideAdd(op)) {
+        if (replaceWide && isWideAdd(op)) {
           // A missing item fails an `exists` or `_v` guard; the ETag holds
           // the row read, so a write since replans.
           if (state === undefined) return { failed: true };
@@ -657,12 +663,40 @@ export const createCosmosStore = ({
           ],
           new Set(ops.filter(isWideAdd).map((op) => cosmosItemId(op.key))),
         );
-        const planned: Planned[] = [];
-        for (const [position, op] of ops.entries()) {
-          const operations = operationsOf(op, states.get(cosmosItemId(op.key)));
-          if ("failed" in operations) return { ok: false, failedOp: position };
-          for (const [operation, onFailure] of operations) {
-            planned.push({ position, operation, onFailure });
+        const plan = (replaceWide: boolean) => {
+          const planned: Planned[] = [];
+          for (const [position, op] of ops.entries()) {
+            const operations = operationsOf(
+              op,
+              states.get(cosmosItemId(op.key)),
+              replaceWide,
+            );
+            if ("failed" in operations) return { failedOp: position };
+            for (const [operation, onFailure] of operations) {
+              planned.push({ position, operation, onFailure });
+            }
+          }
+          return planned;
+        };
+        // Patches send only the counters; replacing whole rows is the
+        // fallback for wide adds whose patches take too many operations.
+        let planned = plan(false);
+        if ("failedOp" in planned) {
+          return { ok: false, failedOp: planned.failedOp };
+        }
+        if (planned.length > BATCH_OPERATIONS) {
+          const replaced = plan(true);
+          if ("failedOp" in replaced) {
+            return { ok: false, failedOp: replaced.failedOp };
+          }
+          planned = replaced;
+          const bytes = encoder.encode(
+            JSON.stringify(planned.map(({ operation }) => operation)),
+          ).length;
+          if (bytes > BATCH_BYTES) {
+            throw new Error(
+              `A Cosmos DB batch takes ${BATCH_BYTES} bytes; this write's rows of more counters than one patch takes need ${bytes}. Write fewer of them at once.`,
+            );
           }
         }
         if (planned.length === 0) return { ok: true };

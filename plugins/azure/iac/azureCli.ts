@@ -37,6 +37,21 @@ export const createAzureCli =
     }
   };
 
+/**
+ * The `az cosmosdb create` arguments for a serverless account. The core CLI
+ * calls a stable API version, which takes the `EnableServerless`
+ * capability; the cosmosdb-preview extension replaces the command with one
+ * on a preview API version that refuses it and takes `--capacity-mode`.
+ */
+export const cosmosServerlessArgs = async (): Promise<readonly string[]> => {
+  const { stdout } = await execa("az", ["cosmosdb", "create", "--help"], {
+    reject: false,
+  });
+  return stdout.includes("--capacity-mode")
+    ? ["--capacity-mode", "Serverless"]
+    : ["--capabilities", "EnableServerless"];
+};
+
 /** Whether `error` is the CLI's answer for a resource that does not exist. */
 export const isNotFound = (error: unknown) =>
   error instanceof Error &&

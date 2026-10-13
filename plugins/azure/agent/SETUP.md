@@ -99,7 +99,10 @@ deployment.
   - Requires: az.scope.
   - Run: reuse the account az.scope checked (and made `Strong` when the user
     approved it there), or create one: API for NoSQL
-    (`--kind GlobalDocumentDB`), serverless (`--capacity-mode Serverless`) in
+    (`--kind GlobalDocumentDB`), serverless (`--capabilities EnableServerless`
+    on the core CLI; `--capacity-mode Serverless` when `az cosmosdb create
+    --help` lists it, as the cosmosdb-preview extension does, whose preview
+    API refuses the capability) in
     the group's region, with `Strong` default consistency. Account creation
     takes several minutes.
   - Verify/record: cosmosAccount, API, capacity mode and consistency.

@@ -181,15 +181,19 @@ describe("ensureCosmosAccount", () => {
       "cosmosdb check-name-exists": false,
       "cosmosdb keys list": keys,
     });
-    await expect(ensureCosmosAccount({ az, ...input })).resolves.toBe(
-      "AccountEndpoint=https://primary/;AccountKey=p;",
-    );
+    await expect(
+      ensureCosmosAccount({
+        az,
+        ...input,
+        serverless: async () => ["--capabilities", "EnableServerless"],
+      }),
+    ).resolves.toBe("AccountEndpoint=https://primary/;AccountKey=p;");
     const create = calls.find((args) => args[1] === "create")!;
     expect(create).toEqual(
       expect.arrayContaining([
         "GlobalDocumentDB",
-        "--capacity-mode",
-        "Serverless",
+        "--capabilities",
+        "EnableServerless",
         "Strong",
         "regionName=eastus",
       ]),

@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   type AzureCli,
+  cosmosServerlessArgs,
   createAzureCli,
   ensureResourceProviders,
 } from "./azureCli";
@@ -72,5 +73,27 @@ describe("ensureResourceProviders", () => {
     expect(
       calls.filter((args) => args[1] === "register").map((args) => args[3]),
     ).toEqual(["Microsoft.DocumentDB", "Microsoft.App"]);
+  });
+});
+
+describe("cosmosServerlessArgs", () => {
+  it.each([
+    [
+      "the core CLI, on a stable API version",
+      "--capabilities --default-consistency-level",
+      ["--capabilities", "EnableServerless"],
+    ],
+    [
+      "the cosmosdb-preview extension, whose preview API refuses the capability",
+      "--capabilities --capacity-mode --default-consistency-level",
+      ["--capacity-mode", "Serverless"],
+    ],
+  ])("asks %s for a serverless account", async (_, help, args) => {
+    run.mockResolvedValue({ stdout: help } as never);
+
+    await expect(cosmosServerlessArgs()).resolves.toEqual(args);
+    expect(run).toHaveBeenCalledWith("az", ["cosmosdb", "create", "--help"], {
+      reject: false,
+    });
   });
 });
