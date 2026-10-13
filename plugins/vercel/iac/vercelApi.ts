@@ -163,6 +163,33 @@ export const createVercelApi = ({
     return json;
   };
 
+  /**
+   * Every item of a paginated list: Vercel answers a page with
+   * `pagination.next`, which the next request passes as `until`.
+   */
+  const paginate = async (
+    pathname: string,
+    key: string,
+  ): Promise<unknown[]> => {
+    const items: unknown[] = [];
+    let until: string | undefined;
+    do {
+      const page = await request("GET", pathname, {
+        query: { limit: "100", ...(until ? { until } : {}) },
+      });
+      const list = isRecord(page) ? page[key] : undefined;
+      if (Array.isArray(list)) items.push(...list);
+      const pagination =
+        isRecord(page) && isRecord(page.pagination) ? page.pagination : {};
+      until =
+        typeof pagination.next === "number" ||
+        typeof pagination.next === "string"
+          ? String(pagination.next)
+          : undefined;
+    } while (until !== undefined);
+    return items;
+  };
+
   return {
     async getUser(): Promise<VercelUser> {
       const body = await request("GET", "/v2/user");
@@ -180,31 +207,17 @@ export const createVercelApi = ({
     },
 
     async listTeams(): Promise<VercelTeam[]> {
-      const teams: VercelTeam[] = [];
-      let until: string | undefined;
-      do {
-        const page = await request("GET", "/v2/teams", {
-          query: { limit: "100", ...(until ? { until } : {}) },
-        });
-        const items =
-          isRecord(page) && Array.isArray(page.teams) ? page.teams : [];
-        for (const team of items) {
-          if (isRecord(team) && typeof team.id === "string") {
-            teams.push({
-              id: team.id,
-              name: stringOf(team.name) ?? team.id,
-              slug: stringOf(team.slug) ?? team.id,
-            });
-          }
-        }
-        const pagination =
-          isRecord(page) && isRecord(page.pagination) ? page.pagination : {};
-        until =
-          typeof pagination.next === "number"
-            ? String(pagination.next)
-            : undefined;
-      } while (until !== undefined);
-      return teams;
+      return (await paginate("/v2/teams", "teams")).flatMap((team) =>
+        isRecord(team) && typeof team.id === "string"
+          ? [
+              {
+                id: team.id,
+                name: stringOf(team.name) ?? team.id,
+                slug: stringOf(team.slug) ?? team.id,
+              },
+            ]
+          : [],
+      );
     },
 
     /** The project with this name or ID; undefined when the team has none. */
@@ -243,9 +256,7 @@ export const createVercelApi = ({
     },
 
     async listBlobStores(): Promise<VercelBlobStore[]> {
-      const page = await request("GET", "/v1/storage/stores");
-      const stores =
-        isRecord(page) && Array.isArray(page.stores) ? page.stores : [];
+      const stores = await paginate("/v1/storage/stores", "stores");
       return stores.flatMap((store) =>
         isRecord(store) && store.type === "blob" && typeof store.id === "string"
           ? [toBlobStore(store)]
@@ -291,11 +302,10 @@ export const createVercelApi = ({
     },
 
     async listProjectEnv(projectId: string): Promise<VercelProjectEnv[]> {
-      const page = await request(
-        "GET",
+      const envs = await paginate(
         `/v10/projects/${encodeURIComponent(projectId)}/env`,
+        "envs",
       );
-      const envs = isRecord(page) && Array.isArray(page.envs) ? page.envs : [];
       return envs.flatMap((env) =>
         isRecord(env) &&
         typeof env.id === "string" &&

@@ -14,7 +14,7 @@ describe("Vercel API", () => {
 
     const [url, init] = fetch.mock.calls[0] as unknown as [URL, RequestInit];
     expect(url.href).toBe(
-      "https://api.vercel.com/v10/projects/prj_1/env?teamId=team_1",
+      "https://api.vercel.com/v10/projects/prj_1/env?teamId=team_1&limit=100",
     );
     expect(init.headers).toEqual({ authorization: "Bearer token" });
   });
@@ -34,6 +34,35 @@ describe("Vercel API", () => {
       teamsOnly: false,
       username: "octo",
     });
+  });
+
+  it("follows every page of a project's environment variables", async () => {
+    const fetch = vi.fn(async (input: string | URL | Request) =>
+      new URL(String(input)).searchParams.get("until") === null
+        ? respond({
+            envs: [{ id: "env_1", key: "FIRST", target: ["production"] }],
+            pagination: { next: 1791000000000 },
+          })
+        : respond({
+            envs: [
+              {
+                id: "env_2",
+                key: "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN",
+                target: ["production"],
+              },
+            ],
+            pagination: { next: null },
+          }),
+    );
+    const api = createVercelApi({ fetch, teamId: "team_1", token: "token" });
+
+    expect((await api.listProjectEnv("prj_1")).map(({ key }) => key)).toEqual([
+      "FIRST",
+      "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN",
+    ]);
+    expect((fetch.mock.calls[1]![0] as URL).searchParams.get("until")).toBe(
+      "1791000000000",
+    );
   });
 
   it("throws Vercel's error message", async () => {
