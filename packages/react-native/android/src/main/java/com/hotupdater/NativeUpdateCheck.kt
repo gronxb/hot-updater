@@ -143,6 +143,11 @@ internal object NativeUpdateCheck {
         onProgress: ((Double) -> Unit)?,
     ): HotUpdaterPrepareResult =
         try {
+            // The app process checks; Hot Updater's restart process only
+            // relaunches it.
+            check(!HotUpdaterProcess.isRestartProcess(context)) {
+                "HotUpdater.prepare runs in the app's process, not Hot Updater's restart process"
+            }
             checker(context, impl).prepare(options, timeoutMillis, onProgress)
         } catch (error: CancellationException) {
             throw error

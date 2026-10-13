@@ -413,17 +413,24 @@ to the library:
 
 ```kotlin title="app/src/main/java/com/example/nativeapp/NativeApplication.kt"
 import android.app.Application
+import android.os.Build
 import com.brownfieldrn.ReactNativeHostManager
 
 class NativeApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        // Android also runs onCreate in Hot Updater's restart process. // [!code ++:2]
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && getProcessName() != packageName) return
         ReactNativeHostManager.start(this, checkForUpdates = !BuildConfig.DEBUG) { status ->
             // React Native is ready: enable the entries that open its screens.
         }
     }
 }
 ```
+
+Hot Updater restarts the app from a process of its own to apply a required
+update or roll back a crashed one, and Android runs `Application.onCreate` in
+every process of the app. Start React Native only in the main process.
 
 Show the screens with `ReactNativeFragment.createReactNativeFragment("BrownfieldRN")`
 or `ReactNativeBrownfield.shared.createView(...)`, as in the React Native
