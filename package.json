@@ -27,6 +27,7 @@
     "release": "pnpm clear && pnpm build && nx release --skip-publish",
     "publish:all": "nx release publish",
     "publish:rc": "nx release publish --tag rc",
+    "publish:v0": "nx release publish --tag v0",
     "changeset": "changeset"
   },
   "devDependencies": {

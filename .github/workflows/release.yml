@@ -3,8 +3,7 @@ name: Release
 on:
   push:
     branches:
-      - main
-      - next
+      - v0
 
 permissions:
   id-token: write
@@ -28,28 +27,12 @@ jobs:
           set -euo pipefail
 
           case "${GITHUB_REF_NAME}" in
-            main)
+            v0)
+              # v0 takes backports only. Its versions are older than the
+              # 1.x line on latest, so they publish under the v0 dist-tag.
               echo "enabled=true" >> "${GITHUB_OUTPUT}"
-              echo "publish=pnpm publish:all" >> "${GITHUB_OUTPUT}"
-              echo "title=chore: update versions" >> "${GITHUB_OUTPUT}"
-              ;;
-            next)
-              if [[ ! -f .changeset/pre.json ]]; then
-                echo "enabled=false" >> "${GITHUB_OUTPUT}"
-                echo "Skipping next release before prerelease mode is entered."
-                exit 0
-              fi
-
-              prerelease_mode="$(jq -r '.mode' .changeset/pre.json)"
-              if [[ "${prerelease_mode}" != "pre" ]]; then
-                echo "enabled=false" >> "${GITHUB_OUTPUT}"
-                echo "Skipping next release in Changesets mode: ${prerelease_mode}"
-                exit 0
-              fi
-
-              echo "enabled=true" >> "${GITHUB_OUTPUT}"
-              echo "publish=pnpm publish:rc" >> "${GITHUB_OUTPUT}"
-              echo "title=chore: update 1.0 RC versions" >> "${GITHUB_OUTPUT}"
+              echo "publish=pnpm publish:v0" >> "${GITHUB_OUTPUT}"
+              echo "title=chore: update v0 versions" >> "${GITHUB_OUTPUT}"
               ;;
             *)
               echo "Unsupported release branch: ${GITHUB_REF_NAME}" >&2
