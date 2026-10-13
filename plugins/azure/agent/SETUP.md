@@ -10,11 +10,15 @@ bundled Function package as interactive init: `index.mjs`, `host.json` and
 - [ ] **az.scope — Select the subscription and resource group**
   - Inputs: authenticated account, workspace configuration and established region.
   - Run: list enabled subscriptions (`az account list`) and select the one the
-    user names or the only one. Query the resource group (`az group show`);
-    reuse it and its region, or create it in the established region. Inspect
+    user names or the only one. List the regions that host Flex Consumption
+    (`az functionapp list-flexconsumption-locations`): the Function App shares
+    the group's region. Query the resource group (`az group show`); reuse it
+    only when its region is in that list, or create it in a listed region.
+    Stop before creating any resource in a group outside the list. Inspect
     existing Hot Updater resources and the upgrade files before adopting them.
     Preserve unrelated resources.
-  - Verify/record: subscriptionId, resourceGroup and location.
+  - Verify/record: subscriptionId, resourceGroup and a location that hosts
+    Flex Consumption.
   - Retry: query the same group before another create request.
 
 - [ ] **az.storage — Prepare the storage account**
@@ -77,8 +81,10 @@ EnableServerless`) in the group's region, with `Strong` default
 
 - [ ] **az.function — Deploy the server**
   - Requires: az.database-credential.
-  - Run: query the Function App; when missing, create it on a Flex Consumption
-    plan (`az functionapp create --flexconsumption-location <location>
+  - Run: query the Function App; reuse it only when it is a Flex Consumption
+    app on Node.js 22 or later (`functionAppConfig.runtime` in
+    `az functionapp show`), since deploying replaces its package. When it is
+    missing, create it on a Flex Consumption plan (`az functionapp create --flexconsumption-location <location>
 --runtime node --runtime-version 22 --storage-account <account>`). Set the
     app settings HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING,
     HOT_UPDATER_AZURE_BLOB_CONTAINER (`hot-updater`) and

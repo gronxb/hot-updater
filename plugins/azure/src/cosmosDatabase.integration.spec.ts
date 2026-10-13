@@ -163,6 +163,28 @@ describe("cosmosDatabase", () => {
     }
   });
 
+  it("adopts an existing container with its default indexing and no default TTL", async () => {
+    const databaseId = emulator.databaseId();
+    try {
+      const { database } = await emulator.client.databases.createIfNotExists({
+        id: databaseId,
+      });
+      await database.containers.createIfNotExists({
+        id: AZURE_COSMOS_V1_CONTAINER,
+        partitionKey: { paths: [COSMOS_PARTITION_KEY_PATH] },
+      });
+      await migrateCosmosDatabase({ ...config(), databaseId });
+      const core = createHotUpdater({
+        database: cosmosDatabase({ ...config(), databaseId }),
+        storage: createReleaseCatalogTestStorage(),
+        clientAccess: "public",
+      }).core;
+      await expect(core.listChannels()).resolves.toEqual([]);
+    } finally {
+      await emulator.dropDatabase(databaseId);
+    }
+  });
+
   setupDatabaseTestSuite({
     name: "cosmosDatabase (Cosmos DB emulator)",
     createHttpClient: (options) =>

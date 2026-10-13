@@ -206,6 +206,50 @@ describe("ensureFunctionApp", () => {
   });
 });
 
+describe("ensureFunctionApp with an existing app", () => {
+  const input = {
+    name: "app",
+    resourceGroup: "rg",
+    location: "eastus",
+    storageAccount: "storage",
+  };
+
+  it("reuses a Flex Consumption app on Node.js 22", async () => {
+    const { az, calls } = fakeAz({
+      "functionapp show": {
+        defaultHostName: "app.azurewebsites.net",
+        functionAppConfig: { runtime: { name: "node", version: "22" } },
+      },
+    });
+    await expect(ensureFunctionApp({ az, ...input })).resolves.toBe(
+      "https://app.azurewebsites.net",
+    );
+    expect(calls.some((args) => args[1] === "create")).toBe(false);
+  });
+
+  it.each([
+    [
+      "a Python app",
+      { functionAppConfig: { runtime: { name: "python", version: "3.11" } } },
+    ],
+    [
+      "an older Node.js app",
+      { functionAppConfig: { runtime: { name: "node", version: "20" } } },
+    ],
+    ["an app on another plan", { functionAppConfig: null }],
+  ])("refuses %s before anything deploys to it", async (_, config) => {
+    const { az } = fakeAz({
+      "functionapp show": {
+        defaultHostName: "app.azurewebsites.net",
+        ...config,
+      },
+    });
+    await expect(ensureFunctionApp({ az, ...input })).rejects.toThrow(
+      "not a Flex Consumption app on Node.js 22",
+    );
+  });
+});
+
 describe("deployFunction", () => {
   it("zips the bundle, host.json, and the package.json that loads it at the archive root", async () => {
     const functionDir = await fs.mkdtemp(

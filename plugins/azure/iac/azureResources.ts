@@ -222,7 +222,20 @@ export const ensureCosmosAccount = async ({
 interface FunctionApp {
   readonly defaultHostName?: string;
   readonly resourceGroup?: string;
+  /** A Flex Consumption app's configuration, with its language runtime. */
+  readonly functionAppConfig?: {
+    readonly runtime?: { readonly name?: string; readonly version?: string };
+  } | null;
 }
+
+/** Whether `app` runs the Function init deploys: Flex Consumption, Node.js 22 or later. */
+const runsFunction = (app: FunctionApp) => {
+  const runtime = app.functionAppConfig?.runtime;
+  return (
+    runtime?.name?.toLowerCase() === "node" &&
+    Number.parseInt(runtime.version ?? "", 10) >= Number(FUNCTION_NODE_VERSION)
+  );
+};
 
 /** The Function App's base URL, creating it on a Flex Consumption plan when it is missing. */
 export const ensureFunctionApp = async ({
@@ -259,6 +272,11 @@ export const ensureFunctionApp = async ({
       FUNCTION_NODE_VERSION,
     ]);
     app = (await az<FunctionApp>(["functionapp", "show", ...scope])) ?? app;
+  } else if (!runsFunction(app)) {
+    // Deploying would replace the package of an app on another stack.
+    throw new InitError(
+      `Function App ${name} is not a Flex Consumption app on Node.js ${FUNCTION_NODE_VERSION} or later. Choose another name, and init creates one.`,
+    );
   }
   if (!app?.defaultHostName) {
     throw new InitError(`Function App ${name} reported no host name.`);
