@@ -206,6 +206,43 @@ describe("ensureCosmosAccount", () => {
     );
   });
 
+  it.each([
+    ["public network access disabled", { publicNetworkAccess: "Disabled" }],
+    [
+      "an IP firewall without Azure datacenters",
+      { ipRules: [{ ipAddressOrRange: "203.0.113.4" }] },
+    ],
+    ["virtual network rules only", { isVirtualNetworkFilterEnabled: true }],
+  ])("refuses an account with %s", async (_, network) => {
+    const { az } = fakeAz({
+      "cosmosdb show": {
+        kind: "GlobalDocumentDB",
+        consistencyPolicy: { defaultConsistencyLevel: "Strong" },
+        ...network,
+      },
+    });
+    await expect(ensureCosmosAccount({ az, ...input })).rejects.toThrow(
+      "restricts network access",
+    );
+  });
+
+  it("accepts a firewall that admits Azure datacenters", async () => {
+    const { az } = fakeAz({
+      "cosmosdb show": {
+        kind: "GlobalDocumentDB",
+        consistencyPolicy: { defaultConsistencyLevel: "Strong" },
+        ipRules: [
+          { ipAddressOrRange: "203.0.113.4" },
+          { ipAddressOrRange: "0.0.0.0" },
+        ],
+      },
+      "cosmosdb keys list": keys,
+    });
+    await expect(ensureCosmosAccount({ az, ...input })).resolves.toBe(
+      "AccountEndpoint=https://primary/;AccountKey=p;",
+    );
+  });
+
   it("refuses an account that disables key authentication", async () => {
     const { az } = fakeAz({
       "cosmosdb show": {
@@ -510,37 +547,43 @@ describe("config scaffold container", () => {
 describe("region choices", () => {
   it("offers only physical regions that host Flex Consumption", async () => {
     const { listLocations } = await import("./azureCli");
-    const { az } = fakeAz({
+    const { az, calls } = fakeAz({
       "functionapp list-flexconsumption-locations": [
         { name: "eastus" },
         { name: "Korea Central" },
       ],
-      "account list-locations": [
-        {
-          name: "westus",
-          displayName: "West US",
-          metadata: { regionType: "Physical" },
-        },
-        {
-          name: "koreacentral",
-          displayName: "Korea Central",
-          metadata: { regionType: "Physical" },
-        },
-        {
-          name: "eastus",
-          displayName: "East US",
-          metadata: { regionType: "Physical" },
-        },
-        {
-          name: "eastusstg",
-          displayName: "East US (Stage)",
-          metadata: { regionType: "Logical" },
-        },
-      ],
+      rest: {
+        value: [
+          {
+            name: "westus",
+            displayName: "West US",
+            metadata: { regionType: "Physical" },
+          },
+          {
+            name: "koreacentral",
+            displayName: "Korea Central",
+            metadata: { regionType: "Physical" },
+          },
+          {
+            name: "eastus",
+            displayName: "East US",
+            metadata: { regionType: "Physical" },
+          },
+          {
+            name: "eastusstg",
+            displayName: "East US (Stage)",
+            metadata: { regionType: "Logical" },
+          },
+        ],
+      },
     });
-    expect((await listLocations(az)).map(({ name }) => name)).toEqual([
+    expect((await listLocations(az, "sub")).map(({ name }) => name)).toEqual([
       "eastus",
       "koreacentral",
     ]);
+    // The selected subscription's regions, not the CLI's current one's.
+    expect(calls.find((args) => args[0] === "rest")).toContain(
+      "https://management.azure.com/subscriptions/sub/locations?api-version=2022-12-01",
+    );
   });
 });

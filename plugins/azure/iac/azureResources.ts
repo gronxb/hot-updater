@@ -173,6 +173,9 @@ interface CosmosAccount {
   readonly consistencyPolicy?: { readonly defaultConsistencyLevel?: string };
   readonly enableMultipleWriteLocations?: boolean;
   readonly disableLocalAuth?: boolean;
+  readonly publicNetworkAccess?: string | null;
+  readonly ipRules?: readonly { readonly ipAddressOrRange?: string }[] | null;
+  readonly isVirtualNetworkFilterEnabled?: boolean | null;
 }
 
 /**
@@ -214,6 +217,20 @@ export const assertCosmosAccountCanInitialize = async ({
   if (account.kind !== "GlobalDocumentDB" || otherApi !== undefined) {
     throw new InitError(
       `Cosmos DB account ${name} is not an API for NoSQL account. Choose another name.`,
+    );
+  }
+  // The Function App joins no virtual network: it reaches the account only
+  // through public access open to Azure datacenters (the 0.0.0.0 rule).
+  const datacenters = account.ipRules?.some(
+    ({ ipAddressOrRange }) => ipAddressOrRange === "0.0.0.0",
+  );
+  if (
+    account.publicNetworkAccess === "Disabled" ||
+    ((account.ipRules?.length || account.isVirtualNetworkFilterEnabled) &&
+      !datacenters)
+  ) {
+    throw new InitError(
+      `Cosmos DB account ${name} restricts network access, which the Function App, outside any virtual network, cannot pass. Allow access from Azure datacenters, or choose another account.`,
     );
   }
   if (account.disableLocalAuth) {

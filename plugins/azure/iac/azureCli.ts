@@ -21,11 +21,8 @@ export const createAzureCli =
     try {
       const { stdout } = await execa("az", [
         ...args,
-        // `az rest` and `az account` take no subscription: a REST URL names
-        // one, and regions are the same in every subscription.
-        ...(subscription === undefined ||
-        args[0] === "rest" ||
-        args[0] === "account"
+        // `az rest` takes no subscription: its URL names one.
+        ...(subscription === undefined || args[0] === "rest"
           ? []
           : ["--subscription", subscription]),
         "--only-show-errors",
@@ -188,12 +185,24 @@ export const listFlexConsumptionLocations = async (
     ).map(({ name }) => normalizeLocation(name)),
   );
 
-/** Physical regions that host Flex Consumption, by name. */
+/**
+ * The subscription's physical regions that host Flex Consumption, by name.
+ * `az account list-locations` lists the CLI's current subscription's, so
+ * the subscription's own list comes over REST.
+ */
 export const listLocations = async (
   az: AzureCli,
+  subscriptionId: string,
 ): Promise<readonly AzureLocation[]> => {
   const flex = await listFlexConsumptionLocations(az);
-  return ((await az<AzureLocation[]>(["account", "list-locations"])) ?? [])
+  const locations = await az<{ value?: AzureLocation[] }>([
+    "rest",
+    "--method",
+    "get",
+    "--url",
+    `https://management.azure.com/subscriptions/${subscriptionId}/locations?api-version=2022-12-01`,
+  ]);
+  return (locations?.value ?? [])
     .filter(
       (location) =>
         location.metadata?.regionType === "Physical" &&

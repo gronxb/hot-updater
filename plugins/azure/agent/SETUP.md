@@ -50,7 +50,10 @@ deployment.
     - Cosmos DB account (`az cosmosdb show`): an existing one must be API for
       NoSQL (`kind` `GlobalDocumentDB`, no Mongo/Cassandra/Gremlin/Table
       capability), keep key authentication (`disableLocalAuth` not true) and
-      write in one region (`enableMultipleWriteLocations` not true); when its
+      write in one region (`enableMultipleWriteLocations` not true), and be
+      reachable from the Function App, which joins no virtual network:
+      `publicNetworkAccess` not `Disabled`, and with IP or virtual network
+      rules, an `0.0.0.0` rule that admits Azure datacenters; when its
       default consistency is not `Strong`, get the user's approval to change
       it, since other apps on it read under it too. A new name must be free
       (`az cosmosdb check-name-exists` returns false).

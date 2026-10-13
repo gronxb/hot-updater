@@ -227,7 +227,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     az,
     resourceGroup,
     async () => {
-      const locations = await listLocations(az);
+      const locations = await listLocations(az, subscriptionId);
       const savedLocation = locations.find(
         ({ name }) => name === saved.location,
       );
