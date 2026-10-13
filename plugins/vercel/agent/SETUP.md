@@ -7,6 +7,20 @@ to this scaffold. Record observations in deployment.json as described in
 COMMON.md. Before using the CLI fallback, install `vercel` as an app
 development dependency with its package manager and verify `npx vercel whoami`.
 
+## Upgrade or reconcile an existing deployment
+
+Read upgrades/README.md and the Vercel section of each applicable version file
+first; a listed change applies before anything below. Then reconcile the
+recorded project, Blob store and database with this scaffold: every step is
+idempotent. Repeat vc.database-credential, whose migration creates only what is
+missing, then vc.function, which sets the Function's variables and deploys this
+scaffold's Function to production, and finish with vc.complete. Reuse the
+recorded resources and saved client credential; never create replacements to
+upgrade. `hot-updater init` with the saved inputs performs the same migration
+and deployment.
+
+## Setup
+
 - [ ] **vc.project — Select the team and project**
   - Inputs: the app's existing configuration and authenticated Vercel access.
   - Run: query teams, then the intended project by name. Reuse a project only

@@ -116,7 +116,7 @@ export const renderInfrastructureUpgradeIndex = (
       return addedAfter === undefined
         ? []
         : [
-            `${section.heading} was added after ${addedAfter}: files through ${addedAfter} have no ${section.heading} section, and a ${section.heading} deployment starts from the files after it.`,
+            `${section.heading} was added after ${addedAfter}: files through ${addedAfter} have no ${section.heading} section. A ${section.heading} deployment applies the ${section.heading} sections of the files after ${addedAfter}; when none is listed, it needs no infrastructure change, and reconciling it with this scaffold follows the upgrade section of its SETUP.md.`,
             "",
           ];
     }),

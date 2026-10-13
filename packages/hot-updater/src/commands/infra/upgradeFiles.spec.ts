@@ -88,9 +88,9 @@ describe("versioned infrastructure release files", () => {
       directory,
       requirements.slice(0, 1),
     );
-    expect(renderInfrastructureUpgradeIndex(files)).toContain(
-      "Vercel was added after 1.0.0",
-    );
+    const index = renderInfrastructureUpgradeIndex(files);
+    expect(index).toContain("Vercel was added after 1.0.0");
+    expect(index).toContain("follows the upgrade section of its SETUP.md");
 
     await save("1.2.0", release("1.2.0", "Vercel"));
     await expect(
