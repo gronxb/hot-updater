@@ -307,8 +307,7 @@ interface FunctionApp {
  */
 const siteOf = (
   raw: (FunctionApp & { readonly properties?: FunctionApp }) | null,
-): FunctionApp | null =>
-  raw === null ? null : { ...raw, ...raw.properties };
+): FunctionApp | null => (raw === null ? null : { ...raw, ...raw.properties });
 
 /** Whether `app` runs the Function init deploys: Flex Consumption, Node.js 22 or later. */
 const runsFunction = (app: FunctionApp) => {
