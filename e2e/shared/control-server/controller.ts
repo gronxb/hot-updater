@@ -6565,47 +6565,37 @@ export function startWaitForMetadataJob(
   );
 }
 
-const ARCHIVE_INTERRUPTION_WAIT_MS = 90_000;
+const ARCHIVE_RESUME_WAIT_MS = 90_000;
 
 /**
- * Waits until the proxy has interrupted the archive download and, when
- * `resumed` is set, served the request that resumes it. The scenario waits
- * here before it brings the app back, so the download runs while the app is
- * in the background.
+ * Waits until the proxy has interrupted the archive download and served the
+ * request that resumes it. The scenario waits here before it brings the app
+ * back, so the download runs while the app is in the background.
  */
-async function waitForArchiveInterruption(
-  resumed: boolean,
-  signal?: AbortSignal,
-) {
-  const deadline = Date.now() + ARCHIVE_INTERRUPTION_WAIT_MS;
+async function waitForArchiveResume(signal?: AbortSignal) {
+  const deadline = Date.now() + ARCHIVE_RESUME_WAIT_MS;
   while (true) {
     throwIfAborted(signal);
     const observed = [...archiveInterruptions.values()].map(
       summarizeArchiveInterruption,
     );
     if (
-      observed.some(
-        (entry) => entry.interruptions > 0 && (!resumed || entry.resumes > 0),
-      )
+      observed.some((entry) => entry.interruptions > 0 && entry.resumes > 0)
     ) {
       return { archiveInterruptions: observed };
     }
     if (Date.now() >= deadline) {
       throw new ProxyAssertionError(
-        resumed
-          ? "The interrupted archive download was not resumed"
-          : "The archive download was not interrupted",
-        { observed, resumed },
+        "The interrupted archive download was not resumed",
+        { observed },
       );
     }
     await sleep(E2E_POLL_INTERVAL_MS, undefined, { signal });
   }
 }
 
-export function startWaitForArchiveInterruptionJob(resumed: boolean) {
-  return createJob((context) =>
-    waitForArchiveInterruption(resumed, context.signal),
-  );
+export function startWaitForArchiveResumeJob() {
+  return createJob((context) => waitForArchiveResume(context.signal));
 }
 
 export function startWaitForAndroidRestartJob(

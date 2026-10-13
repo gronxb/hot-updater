@@ -85,13 +85,15 @@ export const resumedBackgroundArchiveDownloadScenario: ScenarioDefinition = {
     // iOS downloads in its background URLSession while the app is inactive
     // or in the background.
     await app.background("send the app to the background");
-    // The app comes back only after the proxy served the archive, so the
-    // download ran in the background.
-    await app.control(
-      "wait for the archive download while in the background",
-      "/e2e/jobs/wait-for-archive-interruption",
-      { resumed: app.platform === "ios" },
-    );
+    if (app.platform === "ios") {
+      // The app comes back only after the proxy served the resumed archive,
+      // so the download ran in the background session. Android has no such
+      // session, and its install goes on once the app is back.
+      await app.control(
+        "wait for the resumed archive while in the background",
+        "/e2e/jobs/wait-for-archive-resume",
+      );
+    }
     await app.assertText(
       "assert resumed archive Release installed",
       "update-action-result",
