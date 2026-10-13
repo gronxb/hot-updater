@@ -80,7 +80,7 @@ describe("Release JSX runtime", () => {
     "evaluates native %s Release routes with an inherited development environment",
     (platform) => {
       const command = createNativeBuildPlan(
-        { platform, dryRun: false },
+        { platform, track: "greenfield", dryRun: false },
         root,
       ).at(-1)!;
       expect(

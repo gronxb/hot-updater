@@ -16,6 +16,11 @@ import {
   buildControlServerEnv,
   startControlServer,
 } from "../shared/scripts/control-server.ts";
+import {
+  defaultSuiteForTrack,
+  nativeAppPath,
+  parseE2eTrack,
+} from "../shared/tracks.ts";
 import { startOwnedAgentDeviceDaemon } from "./agent-device-daemon.ts";
 import { acquireAndroidReverses } from "./android-reverse.ts";
 import { collectAttemptEvidence } from "./attempt.ts";
@@ -49,6 +54,7 @@ export function parseMobileOptions(
     "results-dir",
     "suite",
     "scenario",
+    "track",
   ];
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -67,20 +73,23 @@ export function parseMobileOptions(
       throw new Error(`Duplicate argument: ${arg}`);
     else values[key] = value;
   }
+  const track = parseE2eTrack(values.track);
   if (flags.has("--help") || flags.has("--list"))
-    return { values, flags, scenarios };
+    return { values, flags, scenarios, track };
   if (values.platform !== "ios" && values.platform !== "android")
     throw new Error("--platform must be ios or android");
   if (scenarios.length && values.suite)
     throw new Error("Use either --suite or --scenario, not both");
   const selected = scenarios.length
     ? scenarios
-    : [...resolveSuiteScenarioNames(values.suite ?? "default")];
-  const known = new Set(listScenarioNames());
+    : [...resolveSuiteScenarioNames(values.suite ?? defaultSuiteForTrack(track))];
+  // A track runs only the scenarios its suite lists.
+  const known = new Set(listScenarioNames(defaultSuiteForTrack(track)));
   if (new Set(selected).size !== selected.length)
     throw new Error("Duplicate scenarios are not allowed");
   for (const name of selected)
-    if (!known.has(name)) throw new Error(`Unknown scenario: ${name}`);
+    if (!known.has(name))
+      throw new Error(`Unknown scenario for the ${track} track: ${name}`);
   values.device ??=
     env.HOT_UPDATER_E2E_DEVICE_ID ??
     (values.platform === "android"
@@ -98,7 +107,7 @@ export function parseMobileOptions(
       "--device must identify an explicitly leased device (iOS requires a UDID)",
     );
   }
-  return { values, flags, scenarios: selected };
+  return { values, flags, scenarios: selected, track };
 }
 
 function positiveTimeout(value: string | undefined, fallback: number): number {
@@ -198,12 +207,14 @@ export async function runMobile(
   const options = parseMobileOptions(argv, env);
   if (options.flags.has("--help")) {
     console.log(
-      "pnpm -w e2e -- --prepared --platform ios|android --device <UDID|serial> [--scenario <name>] [--suite default] [--dry-run] [--list]",
+      "pnpm -w e2e -- --prepared --platform ios|android --device <UDID|serial> [--track greenfield|brownfield] [--scenario <name>] [--suite default|brownfield] [--dry-run] [--list]",
     );
     return 0;
   }
   if (options.flags.has("--list")) {
-    console.log(listScenarioNames().join("\n"));
+    console.log(
+      listScenarioNames(defaultSuiteForTrack(options.track)).join("\n"),
+    );
     return 0;
   }
   if (options.flags.has("--dry-run")) {
@@ -211,6 +222,7 @@ export async function runMobile(
       JSON.stringify(
         {
           ...options.values,
+          track: options.track,
           scenarios: options.scenarios,
           workers: 1,
           retries: 0,
@@ -254,6 +266,7 @@ export async function runMobile(
   });
   const context: MobileContext = {
     platform,
+    track: options.track,
     deviceId,
     session,
     runId,
@@ -261,20 +274,7 @@ export async function runMobile(
     profile: options.values.profile ?? "local",
     resultsDir,
     appId: childEnv.HOT_UPDATER_E2E_APP_ID!,
-    appPath: path.resolve(
-      platform === "ios"
-        ? (env.HOT_UPDATER_E2E_IOS_BINARY_PATH ??
-            path.join(
-              path.resolve(
-                repoDir,
-                "examples/v0.85.0/ios",
-                env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH || "build",
-              ),
-              "Build/Products/Release-iphonesimulator/HotUpdaterExample.app",
-            ))
-        : (env.HOT_UPDATER_E2E_ANDROID_BINARY_PATH ??
-            "examples/v0.85.0/android/app/build/outputs/apk/release/app-release.apk"),
-    ),
+    appPath: nativeAppPath(options.track, platform, repoDir, env),
     scenarioNames: options.scenarios,
     controlBaseUrl: `http://${childEnv.HOT_UPDATER_E2E_SERVER_HOST}:${controlPort}`,
     testTimeoutMs: positiveTimeout(

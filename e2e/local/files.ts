@@ -16,9 +16,11 @@ export const localMutableFiles = [
   "ios/HotUpdaterExample.xcworkspace/contents.xcworkspacedata",
   "ios/HotUpdaterExample/Info.plist",
   "ios/HotUpdaterExample/PrivacyInfo.xcprivacy",
+  "ios/HotUpdaterExampleBrownfield/Info.plist",
   "android/app/src/main/AndroidManifest.xml",
   "android/app/src/debug/AndroidManifest.xml",
   "android/app/src/androidTest/AndroidManifest.xml",
+  "android/brownfieldlib/src/main/AndroidManifest.xml",
   "src/e2eBuildConfig.js",
 ] as const;
 

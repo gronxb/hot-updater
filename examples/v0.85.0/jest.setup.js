@@ -79,14 +79,6 @@ jest.mock(
   () => require("react-native-safe-area-context/jest/mock").default,
 );
 
-jest.mock("react-native-bootsplash", () => ({
-  hide: jest.fn(() => Promise.resolve()),
-}));
-
-jest.mock("react-native-launch-arguments", () => ({
-  LaunchArguments: { value: jest.fn(() => ({})) },
-}));
-
 jest.mock("react-native-screens", () =>
   Object.create(jest.requireActual("react-native-screens"), {
     enableScreens: { value: jest.fn() },

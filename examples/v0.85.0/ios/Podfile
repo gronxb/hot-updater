@@ -33,5 +33,19 @@ target 'HotUpdaterExample' do
       :mac_catalyst_enabled => false,
       # :ccache_enabled => true
     )
+
+    # Swift pods that build for distribution, such as Re.Pack's JWTDecode and
+    # SwiftyRSA, fail to verify their Swift interfaces when the brownfield
+    # framework packages them. ReactBrownfield's own pod skips the same check.
+    installer.pods_project.targets.each do |target|
+      target.build_configurations.each do |config|
+        config.build_settings['OTHER_SWIFT_FLAGS'] = '$(inherited) -no-verify-emitted-module-interface'
+      end
+    end
+  end
+
+  # The framework the brownfield E2E track packages as an XCFramework.
+  target 'HotUpdaterExampleBrownfield' do
+    inherit! :complete
   end
 end

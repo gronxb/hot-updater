@@ -23,6 +23,8 @@ PODS:
     - ReactNativeDependencies
     - SwiftyRSA (~> 1.7)
     - Yoga
+  - e2e-launch-arguments (0.0.0):
+    - React-Core
   - FBLazyVector (0.85.2)
   - hermes-engine (250829098.0.10):
     - hermes-engine/Pre-built (= 250829098.0.10)
@@ -1409,8 +1411,6 @@ PODS:
     - React-RCTFBReactNativeSpec
     - ReactCommon/turbomodule/core
     - ReactNativeDependencies
-  - react-native-launch-arguments (4.1.1):
-    - React
   - react-native-safe-area-context (5.8.0):
     - hermes-engine
     - RCTRequired
@@ -1808,6 +1808,30 @@ PODS:
     - ReactNativeDependencies
   - ReactAppDependencyProvider (0.85.2):
     - ReactCodegen
+  - ReactBrownfield (5.3.0):
+    - hermes-engine
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Core
+    - React-Core-prebuilt
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-jsi
+    - React-NativeModulesApple
+    - React-RCTAppDelegate
+    - React-RCTFabric
+    - React-renderercss
+    - React-rendererdebug
+    - React-utils
+    - ReactAppDependencyProvider
+    - ReactCodegen
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - ReactNativeDependencies
+    - Yoga
   - ReactCodegen (0.85.2):
     - hermes-engine
     - RCTRequired
@@ -1865,28 +1889,6 @@ PODS:
     - React-utils (= 0.85.2)
     - ReactNativeDependencies
   - ReactNativeDependencies (0.85.2)
-  - RNBootSplash (7.1.0):
-    - hermes-engine
-    - RCTRequired
-    - RCTTypeSafety
-    - React-Core
-    - React-Core-prebuilt
-    - React-debug
-    - React-Fabric
-    - React-featureflags
-    - React-graphics
-    - React-ImageManager
-    - React-jsi
-    - React-NativeModulesApple
-    - React-RCTFabric
-    - React-renderercss
-    - React-rendererdebug
-    - React-utils
-    - ReactCodegen
-    - ReactCommon/turbomodule/bridging
-    - ReactCommon/turbomodule/core
-    - ReactNativeDependencies
-    - Yoga
   - RNScreens (4.25.2):
     - hermes-engine
     - RCTRequired
@@ -1941,6 +1943,7 @@ PODS:
 
 DEPENDENCIES:
   - "callstack-repack (from `../node_modules/@callstack/repack`)"
+  - e2e-launch-arguments (from `../node_modules/e2e-launch-arguments`)
   - FBLazyVector (from `../node_modules/react-native/Libraries/FBLazyVector`)
   - hermes-engine (from `../node_modules/react-native/sdks/hermes-engine/hermes-engine.podspec`)
   - "HotUpdater (from `../node_modules/@hot-updater/react-native`)"
@@ -1981,7 +1984,6 @@ DEPENDENCIES:
   - React-logger (from `../node_modules/react-native/ReactCommon/logger`)
   - React-Mapbuffer (from `../node_modules/react-native/ReactCommon`)
   - React-microtasksnativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/microtasks`)
-  - react-native-launch-arguments (from `../node_modules/react-native-launch-arguments`)
   - react-native-safe-area-context (from `../node_modules/react-native-safe-area-context`)
   - React-NativeModulesApple (from `../node_modules/react-native/ReactCommon/react/nativemodule/core/platform/ios`)
   - React-networking (from `../node_modules/react-native/ReactCommon/react/networking`)
@@ -2014,10 +2016,10 @@ DEPENDENCIES:
   - React-utils (from `../node_modules/react-native/ReactCommon/react/utils`)
   - React-webperformancenativemodule (from `../node_modules/react-native/ReactCommon/react/nativemodule/webperformance`)
   - ReactAppDependencyProvider (from `build/generated/ios/ReactAppDependencyProvider`)
+  - "ReactBrownfield (from `../node_modules/@callstack/react-native-brownfield`)"
   - ReactCodegen (from `build/generated/ios/ReactCodegen`)
   - ReactCommon/turbomodule/core (from `../node_modules/react-native/ReactCommon`)
   - ReactNativeDependencies (from `../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec`)
-  - RNBootSplash (from `../node_modules/react-native-bootsplash`)
   - RNScreens (from `../node_modules/react-native-screens`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
@@ -2029,6 +2031,8 @@ SPEC REPOS:
 EXTERNAL SOURCES:
   callstack-repack:
     :path: "../node_modules/@callstack/repack"
+  e2e-launch-arguments:
+    :path: "../node_modules/e2e-launch-arguments"
   FBLazyVector:
     :path: "../node_modules/react-native/Libraries/FBLazyVector"
   hermes-engine:
@@ -2108,8 +2112,6 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon"
   React-microtasksnativemodule:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/microtasks"
-  react-native-launch-arguments:
-    :path: "../node_modules/react-native-launch-arguments"
   react-native-safe-area-context:
     :path: "../node_modules/react-native-safe-area-context"
   React-NativeModulesApple:
@@ -2174,14 +2176,14 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native/ReactCommon/react/nativemodule/webperformance"
   ReactAppDependencyProvider:
     :path: build/generated/ios/ReactAppDependencyProvider
+  ReactBrownfield:
+    :path: "../node_modules/@callstack/react-native-brownfield"
   ReactCodegen:
     :path: build/generated/ios/ReactCodegen
   ReactCommon:
     :path: "../node_modules/react-native/ReactCommon"
   ReactNativeDependencies:
     :podspec: "../node_modules/react-native/third-party-podspecs/ReactNativeDependencies.podspec"
-  RNBootSplash:
-    :path: "../node_modules/react-native-bootsplash"
   RNScreens:
     :path: "../node_modules/react-native-screens"
   Yoga:
@@ -2189,8 +2191,9 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   callstack-repack: 2d0e744d37013ccc33451e4c797d5dd67eae6e56
+  e2e-launch-arguments: fe84da5c90765d4729c40bfad9a52772203f1ccf
   FBLazyVector: 26fd21c75314e101f280d401e97f27d54f3f7064
-  hermes-engine: 00d4eec6b9a483a5f2309b4c092920b9588d0be7
+  hermes-engine: 80dc1f27fe07b847c909932261540e6a97e99116
   HotUpdater: bab4da2ebf4cf9f9e9b26b9e36d80e1942ac35e6
   JWTDecode: 2eed97c2fa46ccaf3049a787004eedf0be474a87
   RCTDeprecation: c7a2768f905d76ca6d2cfefb26e4349eacbdfca3
@@ -2201,7 +2204,7 @@ SPEC CHECKSUMS:
   React: 13cf8451582adb1bb324306e1893b91d1cba28c6
   React-callinvoker: 91e6a605826b684ad2e623811253b4d0c4196bef
   React-Core: 46818de5f211b2a2759ac823b591af8a0a95c2c1
-  React-Core-prebuilt: da6ba4ed1b5f15fda86a194db69b540f5d5b900d
+  React-Core-prebuilt: 202fe58e4823db6ad68d2c763eecda6fb96b2286
   React-CoreModules: a6a37afee48d4a31ab398640b0795462647d5c67
   React-cxxreact: 2ec3e2f7a8ae9303460d4ba94cde183ea90d64cd
   React-debug: 0d21117b897ce0359c9d2c9dfe952f237476a14a
@@ -2229,7 +2232,6 @@ SPEC CHECKSUMS:
   React-logger: 2c87840a9f6322a1226d0df337d9662f44ea6094
   React-Mapbuffer: 1fc10d873f00aa895836c316a9737ce7d43875ce
   React-microtasksnativemodule: 85ac7286ff84e8fc8e1956233748b8d4b2a6dcea
-  react-native-launch-arguments: eab68037b01ea7c78a0b3b55da3a5e967e9aaf92
   react-native-safe-area-context: fb5c8ee9f6dd62ef710611b3d370c501f42a4ac0
   React-NativeModulesApple: 993744f42aab769eb02bf5d256b6767c546d0bb5
   React-networking: 251bfddc651caca5e3039d1afa1d2eca890d0c56
@@ -2262,14 +2264,14 @@ SPEC CHECKSUMS:
   React-utils: 862e61256698fe3841aec1af476abf924a6737c3
   React-webperformancenativemodule: e745e43264767cb8f4334fc11bf3fbff880050d0
   ReactAppDependencyProvider: 22e2265d86a4e871e5e858f4e7ef1c8d01103680
+  ReactBrownfield: 829b4222a8a5f865d7acd285947aa8278255cd7e
   ReactCodegen: 9dffa3ec5e4d5d86bbfb62addaef6b486e6460b8
   ReactCommon: a804bb8d1dcf3ecdec3a77eb8bba19b7863bbbdb
-  ReactNativeDependencies: ae9e6f05e9a26f39de7f05682b6b88fdd783f628
-  RNBootSplash: babee2ef72807044d765c75e651896f0ce15a996
+  ReactNativeDependencies: e7b8f207113ae81b78ab5ae7321d0e35551b791f
   RNScreens: 991cc417cd396602a6cf59a42139e5a9d91462a9
   SwiftyRSA: 8c6dd1ea7db1b8dc4fb517a202f88bb1354bc2c6
   Yoga: 04bb4bfeb02c0000b940c1e6e89e856cd8de5a71
 
-PODFILE CHECKSUM: 7749f735803aa87a6f6b30dc02bd670231c05b9b
+PODFILE CHECKSUM: f3e46abf127305275c611658d6d4195bd15aba20
 
-COCOAPODS: 1.16.2
+COCOAPODS: 1.15.2

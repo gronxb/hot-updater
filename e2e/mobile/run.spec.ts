@@ -24,6 +24,28 @@ describe("mobile wrapper", () => {
     );
   });
 
+  it("runs a track's suite and rejects scenarios outside it", () => {
+    const args = ["--platform", "android", "--device", "emulator-5558"];
+    const brownfield = parseMobileOptions([...args, "--track", "brownfield"], {});
+    expect(brownfield.track).toBe("brownfield");
+    expect(brownfield.scenarios).toEqual(listScenarioNames("brownfield"));
+    expect(parseMobileOptions(args, {}).track).toBe("greenfield");
+    expect(() =>
+      parseMobileOptions(
+        [
+          ...args,
+          "--track",
+          "brownfield",
+          "--scenario",
+          "headless-launch-keeps-staged-bundle",
+        ],
+        {},
+      ),
+    ).toThrow(
+      "Unknown scenario for the brownfield track: headless-launch-keeps-staged-bundle",
+    );
+  });
+
   it("preserves bot comma-separated selection and rejects duplicates or unknown tests", () => {
     const names = listScenarioNames().slice(0, 2);
     const args = ["--", "--platform", "android", "--device", "emulator-5558"];

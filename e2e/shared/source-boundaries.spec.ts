@@ -90,6 +90,7 @@ describe("E2E source boundaries", () => {
           ![
             "e2e/runner-contract.json",
             "e2e/scenario-names.json",
+            "e2e/brownfield-scenario-names.json",
             "e2e/run.ts",
             "e2e/run.spec.ts",
             "e2e/README.md",
