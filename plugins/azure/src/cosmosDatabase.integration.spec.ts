@@ -407,3 +407,66 @@ describe("Cosmos DB TTL", () => {
     }
   });
 });
+
+describe("Cosmos DB wide counters", () => {
+  /** Twelve counters on an expiring row: more than one patch takes. */
+  const COUNTERS = Array.from({ length: 12 }, (_, at) => `c${at}`);
+  const wide: PhysicalTable = {
+    name: "wide",
+    columns: [
+      { name: "id", type: "string", nullable: false },
+      { name: "at", type: "integer", nullable: false },
+      ...COUNTERS.map((name) => ({
+        name,
+        type: "integer" as const,
+        nullable: false,
+      })),
+      { name: "_v", type: "integer", nullable: false },
+    ],
+    key: ["id"],
+    indexes: [],
+    retention: { column: "at", ms: 86_400_000 },
+  };
+
+  it("adds to many rows of many counters in one write the adapter says fits", async () => {
+    const { store, cleanup } = await createStore();
+    const adapter = createKvAdapter({ store });
+    const now = Date.now();
+    const zero = Object.fromEntries(COUNTERS.map((name) => [name, 0]));
+    const one = Object.fromEntries(COUNTERS.map((name) => [name, 1]));
+    const increments = Array.from({ length: 60 }, (_, at) => ({
+      type: "increment" as const,
+      table: wide,
+      key: [`row-${at}`],
+      by: one,
+      init: { id: `row-${at}`, at: now, ...zero, _v: 0 },
+    }));
+    try {
+      expect(adapter.fits(increments)).toBe(true);
+      // The first write creates the rows; the second replaces each one.
+      await adapter.write(increments);
+      await adapter.write(increments);
+      // Racing writes to one row each apply once.
+      await Promise.all([
+        adapter.write(increments.slice(0, 1)),
+        adapter.write(increments.slice(0, 1)),
+      ]);
+
+      const rows = await adapter.get(
+        wide,
+        increments.map(({ key }) => key),
+      );
+      expect(rows[0]).toMatchObject(
+        Object.fromEntries(COUNTERS.map((name) => [name, 4])),
+      );
+      for (const row of rows.slice(1)) {
+        expect(row).toMatchObject({
+          ...Object.fromEntries(COUNTERS.map((name) => [name, 2])),
+          _v: 2,
+        });
+      }
+    } finally {
+      await cleanup();
+    }
+  });
+});

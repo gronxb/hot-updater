@@ -321,7 +321,19 @@ interface ReadState {
   readonly etag: string;
   readonly v: unknown;
   readonly expireAt: number | null;
+  /** The stored row, read only for a wide add. */
+  readonly row?: unknown;
 }
+
+/**
+ * Whether an add takes more operations than one patch does. It replaces
+ * its item instead, so every op stays one batch operation, which is what
+ * `COSMOS_LIMITS.items` counts.
+ */
+const isWideAdd = (op: KvOp) =>
+  op.type === "add" &&
+  Object.keys(op.by).length + (op.expiresAt === undefined ? 0 : 2) >
+    PATCH_OPERATIONS;
 
 /**
  * The PostgreSQL behind the vNext emulator aborts a batch that races
@@ -342,7 +354,8 @@ const emulatorAborted = (error: unknown) =>
  * Replace, Read or patch on one that is missing, and a patch whose
  * predicate finds another `_v`. Deletes and `_v` checks read their items
  * first, since a Delete of a missing item fails the batch and a patch
- * restarts the item's TTL.
+ * restarts the item's TTL, and so does an add wider than one patch, which
+ * replaces the row it read.
  */
 export const createCosmosStore = ({
   client,
@@ -355,24 +368,36 @@ export const createCosmosStore = ({
     .database(databaseId)
     .container(containerId);
 
-  /** The state of the items `ids` names, by id; a missing item has none. */
-  const readStates = async (ids: readonly string[]) => {
+  /**
+   * The state of the items `ids` names, by id, with the rows of `rowIds`;
+   * a missing item has none.
+   */
+  const readStates = async (
+    ids: readonly string[],
+    rowIds: ReadonlySet<string>,
+  ) => {
     const states = new Map<string, ReadState>();
-    for (let at = 0; at < ids.length; at += GET_BATCH) {
-      const { resources } = await container.items
-        .query<{
-          id: string;
-          etag: string;
-          v?: unknown;
-          expireAt?: number | null;
-        }>(
-          `SELECT c.id, c._etag AS etag, c.row._v AS v, c.expireAt FROM c WHERE c.id IN (${idList(ids.slice(at, at + GET_BATCH))})`,
-          { partitionKey: COSMOS_PARTITION },
-        )
-        .fetchAll()
-        .catch(missingContainer);
-      for (const { id, etag, v, expireAt } of resources) {
-        states.set(id, { etag, v, expireAt: expireAt ?? null });
+    for (const [group, projection] of [
+      [ids.filter((id) => !rowIds.has(id)), ""],
+      [ids.filter((id) => rowIds.has(id)), ", c.row"],
+    ] as const) {
+      for (let at = 0; at < group.length; at += GET_BATCH) {
+        const { resources } = await container.items
+          .query<{
+            id: string;
+            etag: string;
+            v?: unknown;
+            expireAt?: number | null;
+            row?: unknown;
+          }>(
+            `SELECT c.id, c._etag AS etag, c.row._v AS v, c.expireAt${projection} FROM c WHERE c.id IN (${idList(group.slice(at, at + GET_BATCH))})`,
+            { partitionKey: COSMOS_PARTITION },
+          )
+          .fetchAll()
+          .catch(missingContainer);
+        for (const { id, etag, v, expireAt, row } of resources) {
+          states.set(id, { etag, v, expireAt: expireAt ?? null, row });
+        }
       }
     }
     return states;
@@ -380,9 +405,10 @@ export const createCosmosStore = ({
 
   /** Whether `op` reads its item before the write plans it. */
   const readsFirst = (op: KvOp) =>
-    op.condition === undefined
+    isWideAdd(op) ||
+    (op.condition === undefined
       ? op.type === "delete" || op.type === "add"
-      : "v" in op.condition && (op.type === "delete" || op.type === "check");
+      : "v" in op.condition && (op.type === "delete" || op.type === "check"));
 
   /**
    * The batch operations of `op`, given the state its item was read in;
@@ -515,6 +541,32 @@ export const createCosmosStore = ({
             ],
           ];
         }
+        if (isWideAdd(op)) {
+          // A missing item fails an `exists` or `_v` guard; the ETag holds
+          // the row read, so a write since replans.
+          if (state === undefined) return { failed: true };
+          if (
+            guard !== undefined &&
+            state.v !== (condition as { v: unknown }).v
+          ) {
+            return { failed: true };
+          }
+          const row: Record<string, unknown> = { ...toRow(state.row) };
+          for (const [name, delta] of Object.entries(op.by)) {
+            row[name] = Number(row[name] ?? 0) + delta;
+          }
+          const operation = {
+            operationType: "Replace",
+            id,
+            ifMatch: state.etag,
+            resourceBody: toItem(
+              op.key,
+              row as StoredRow,
+              op.expiresAt ?? state.expireAt ?? undefined,
+            ),
+          } as OperationInput;
+          return [[operation, "replan"]];
+        }
         // A patch of a missing item fails, which an `exists` guard needs.
         return patches(
           [
@@ -597,9 +649,14 @@ export const createCosmosStore = ({
     },
     async write(ops) {
       for (let attempt = 0; attempt < 5; attempt += 1) {
-        const states = await readStates([
-          ...new Set(ops.filter(readsFirst).map((op) => cosmosItemId(op.key))),
-        ]);
+        const states = await readStates(
+          [
+            ...new Set(
+              ops.filter(readsFirst).map((op) => cosmosItemId(op.key)),
+            ),
+          ],
+          new Set(ops.filter(isWideAdd).map((op) => cosmosItemId(op.key))),
+        );
         const planned: Planned[] = [];
         for (const [position, op] of ops.entries()) {
           const operations = operationsOf(op, states.get(cosmosItemId(op.key)));

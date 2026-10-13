@@ -23,7 +23,9 @@ npm install @hot-updater/server @hot-updater/azure
 Set up the backend with an [AI agent or the interactive
 CLI](/docs/managed/azure#step-2-configure-azure), then use the configuration
 below. To bring your own account, use an Azure Cosmos DB for NoSQL account with
-strong default consistency: the database's guarded writes read under it.
+strong default consistency: the database's guarded writes read under it. For
+the same reason, `cosmosDatabase` takes no `consistencyLevel` weaker than
+`"Strong"`.
 
 ## Configuration
 

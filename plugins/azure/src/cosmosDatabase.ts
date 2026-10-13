@@ -15,9 +15,14 @@ import { createCosmosStore, currentCosmosEngine } from "./cosmosStore";
 
 /**
  * The client's options: the account's `connectionString`, or its
- * `endpoint` with a `key` or Microsoft Entra `aadCredentials`.
+ * `endpoint` with a `key` or Microsoft Entra `aadCredentials`. Reads must
+ * be strongly consistent, so `consistencyLevel` takes only `"Strong"`.
  */
-export type CosmosDatabaseConfig = CosmosClientOptions & {
+export type CosmosDatabaseConfig = Omit<
+  CosmosClientOptions,
+  "consistencyLevel"
+> & {
+  readonly consistencyLevel?: "Strong";
   /** The database the container lives in. @default "hot-updater" */
   readonly databaseId?: string;
   /** The one container the database keeps its items in. @default "hot_updater_v1" */
@@ -38,6 +43,16 @@ const adapterOf = (config: CosmosDatabaseConfig) => {
     aggregateBatching: _,
     ...connection
   } = config;
+  // Point reads and the reads a write plans from must see every committed
+  // write; a weaker level would let another instance read stale state.
+  if (
+    connection.consistencyLevel !== undefined &&
+    connection.consistencyLevel !== "Strong"
+  ) {
+    throw new Error(
+      `cosmosDatabase reads with strong consistency; consistencyLevel "${String(connection.consistencyLevel)}" is weaker.`,
+    );
+  }
   const client = new CosmosClient(connection);
   const store = createCosmosStore({
     client,
