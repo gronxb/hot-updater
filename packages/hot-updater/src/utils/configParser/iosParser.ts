@@ -5,6 +5,7 @@ import { getCwd } from "@hot-updater/cli-tools";
 import plist from "plist";
 
 import type { ConfigParser } from "./configParser";
+import { formatPlistLikeXcode } from "./plistFormat";
 import { parsePlist } from "./plistUtils";
 
 // iOS Info.plist parser
@@ -92,10 +93,13 @@ export class IosConfigParser implements ConfigParser {
 
         delete plistObject[key];
 
-        const newPlistXml = plist.build(plistObject, {
-          indent: "\t",
-          pretty: true,
-        });
+        const newPlistXml = formatPlistLikeXcode(
+          plist.build(plistObject, {
+            indent: "\t",
+            pretty: true,
+          }),
+          plistBuffer.toString("utf-8"),
+        );
 
         await fs.promises.writeFile(plistFile, newPlistXml);
         updatedPaths.push(relativePath);
@@ -134,10 +138,13 @@ export class IosConfigParser implements ConfigParser {
 
         plistObject[key] = value;
 
-        const newPlistXml = plist.build(plistObject, {
-          indent: "\t",
-          pretty: true,
-        });
+        const newPlistXml = formatPlistLikeXcode(
+          plist.build(plistObject, {
+            indent: "\t",
+            pretty: true,
+          }),
+          plistBuffer.toString("utf-8"),
+        );
 
         await fs.promises.writeFile(plistFile, newPlistXml);
         updatedPaths.push(relativePath);
