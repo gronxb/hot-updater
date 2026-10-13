@@ -22,6 +22,7 @@ const inputFields: Record<string, string> = {
 const actionFields: Record<string, string> = {
   "action-activate-remote-config": "updateActionResult",
   "action-apply-captured-update": "updateActionResult",
+  "action-apply-captured-update-in-background": "updateActionResult",
   "action-apply-cohort-input": "cohortActionResult",
   "action-capture-current-channel-update": "updateActionResult",
   "action-fetch-and-activate-remote-config": "updateActionResult",
@@ -72,7 +73,7 @@ type DriverOptions = {
     ControlClient,
     "postJson" | "readScreenStateField" | "runJob" | "waitForScreenStateField"
   >;
-  readonly device: Pick<Device, "openApp" | "openLink">;
+  readonly device: Pick<Device, "home" | "openApp" | "openLink">;
   readonly screen: Pick<Screen, "getByTestId" | "getByRole">;
   readonly iosAlert: { get(): Promise<IosAlert | null> };
   readonly appId: string;
@@ -91,6 +92,10 @@ export class MobileAppDriver implements ScenarioAppDriver {
 
   get expectedLaunchFailures() {
     return this.verifiedLaunchFailures;
+  }
+
+  get platform() {
+    return this.options.platform;
   }
 
   constructor(options: DriverOptions) {
@@ -128,6 +133,15 @@ export class MobileAppDriver implements ScenarioAppDriver {
       await (options.exactText
         ? expect(target).toHaveText(expected[0]!)
         : expect(target).toContainText(containsAnyOf(expected)));
+    });
+  }
+
+  async background(stage: string) {
+    await this.runStage(stage, async () => {
+      this.options.signal.throwIfAborted();
+      await this.options.device.home();
+      // The next screen opens its route again, which brings the app forward.
+      this.activeScreenPath = undefined;
     });
   }
 

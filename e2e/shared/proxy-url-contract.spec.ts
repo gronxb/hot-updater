@@ -325,6 +325,85 @@ describe("E2E remote asset proxy URLs", () => {
       );
       expect(controller.handleProxyState().archiveFailuresRemaining).toBe(0);
 
+      controller.handleConfigureProxy({
+        archiveFailureMode: "interrupt",
+        archiveFailures: 1,
+        reset: true,
+      });
+      const resumablePayload = (await (
+        await controller.handleProxyUpdateRequest(
+          new Request(
+            "http://localhost:3107/hot-updater/artifacts/v1/target/from/current",
+          ),
+        )
+      ).json()) as { archiveUrl: string };
+      const interruptedArchiveResponse =
+        await controller.handleProxyRemoteAssetRequest(
+          new Request(resumablePayload.archiveUrl),
+        );
+      expect(interruptedArchiveResponse.status).toBe(200);
+      expect(interruptedArchiveResponse.headers.get("content-length")).toBe(
+        "13",
+      );
+      await expect(interruptedArchiveResponse.text()).rejects.toThrow(
+        "Injected E2E archive interruption",
+      );
+      const resumedArchiveResponse =
+        await controller.handleProxyRemoteAssetRequest(
+          new Request(resumablePayload.archiveUrl, {
+            headers: {
+              "if-range": interruptedArchiveResponse.headers.get("etag")!,
+              range: "bytes=6-",
+            },
+          }),
+        );
+      expect(resumedArchiveResponse.status).toBe(206);
+      expect(resumedArchiveResponse.headers.get("content-range")).toBe(
+        "bytes 6-12/13",
+      );
+      expect(await resumedArchiveResponse.text()).toBe("e-bytes");
+      expect(controller.handleProxyState()).toMatchObject({
+        archiveFailuresRemaining: 0,
+        archiveInterruptions: {
+          [new URL(resumablePayload.archiveUrl).pathname]: {
+            bytes: 13,
+            interruptions: 1,
+            resumes: 1,
+          },
+        },
+      });
+      const resumedTransfers = {
+        archiveInterruptions: 1,
+        archiveRequests: 2,
+        archiveResumes: 1,
+        currentBundleId: "current",
+        fileRequests: 0,
+        patchRequests: 0,
+        targetBundleId: "target",
+      };
+      expect(
+        controller.handleAssertBundleArtifactTransfers(resumedTransfers),
+      ).toMatchObject({
+        archive: { bytes: 13, requests: 2 },
+        archiveInterruption: { bytes: 13, interruptions: 1, resumes: 1 },
+      });
+      expect(() =>
+        controller.handleAssertBundleArtifactTransfers({
+          ...resumedTransfers,
+          archiveResumes: 0,
+        }),
+      ).toThrow("Unexpected Bundle artifact transfers");
+      // A mismatch is a definite result, so the runner does not quarantine.
+      const transferMismatch = await controlRoutes.request(
+        "/e2e/assert-bundle-artifact-transfers",
+        {
+          body: JSON.stringify({ ...resumedTransfers, archiveResumes: 0 }),
+          headers: { "content-type": "application/json" },
+          method: "POST",
+        },
+      );
+      expect(transferMismatch.status).toBe(422);
+
       controller.handleConfigureProxy({ archiveAvailable: false });
       const noArchivePayload = (await (
         await controller.handleProxyUpdateRequest(

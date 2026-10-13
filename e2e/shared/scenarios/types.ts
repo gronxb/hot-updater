@@ -22,6 +22,8 @@ export type ScenarioAppDriver = {
     contains: string | readonly string[],
     options?: AssertTextOptions,
   ) => Promise<void>;
+  /** Sends the app to the background by going to the home screen. */
+  readonly background: (stage: string) => Promise<void>;
   readonly control: (
     stage: string,
     pathName: string,
@@ -29,6 +31,7 @@ export type ScenarioAppDriver = {
     options?: ControlOptions,
   ) => Promise<void>;
   readonly launch: (stage: string, options?: LaunchOptions) => Promise<void>;
+  readonly platform: "ios" | "android";
   readonly reload: (stage: string) => Promise<void>;
   readonly resetAppState: (stage: string) => Promise<void>;
   readonly tap: (stage: string, testID: string) => Promise<void>;

@@ -39,6 +39,12 @@ import {
   hasNativeRestartEvidenceAfterMarker,
   isAndroidRecoveryProcessReady,
 } from "./android-restart-wait.ts";
+import {
+  createArchiveInterruption,
+  interruptArchive,
+  resumeArchive,
+  type ArchiveInterruption,
+} from "./archive-interruption.ts";
 import { createControlJobs, type JobExecutionContext } from "./control-jobs.ts";
 import {
   createCrashRecoveryArtifactNames,
@@ -499,6 +505,7 @@ type CapturedArtifactSelection = {
   readonly manifestUrlPresent: boolean;
   readonly targetBundleId: string;
 };
+type ArchiveFailureMode = "corrupt" | "interrupt" | "not-found";
 const proxyRequestCounts = {
   artifact: 0,
   catalog: 0,
@@ -511,8 +518,10 @@ const remoteAssetTransfers = new Map<
 >();
 let artifactFailuresRemaining = 0;
 let archiveAvailable = true;
-let archiveFailureMode: "corrupt" | "not-found" | null = null;
+let archiveFailureMode: ArchiveFailureMode | null = null;
 let archiveFailuresRemaining = 0;
+// Interrupted archives by proxy path, kept to answer their resumed requests.
+const archiveInterruptions = new Map<string, ArchiveInterruption>();
 const proxyPathCounts = new Map<string, number>();
 const capturedCatalogResponses = new Map<
   string,
@@ -3343,11 +3352,25 @@ function captureCatalogResponse(
   capturedCatalogResponses.set(pathname, generations);
 }
 
+function summarizeArchiveInterruption(entry: ArchiveInterruption | undefined) {
+  return {
+    bytes: entry?.body.byteLength ?? 0,
+    interruptions: entry?.interruptions ?? 0,
+    resumes: entry?.resumes ?? 0,
+  };
+}
+
 export function handleProxyState() {
   return {
     archiveAvailable,
     archiveFailureMode,
     archiveFailuresRemaining,
+    archiveInterruptions: Object.fromEntries(
+      [...archiveInterruptions].map(([pathname, entry]) => [
+        pathname,
+        summarizeArchiveInterruption(entry),
+      ]),
+    ),
     artifactFailuresRemaining,
     capturedArtifactSelections: [...capturedArtifactSelections],
     capturedCatalogGenerations: Object.fromEntries(
@@ -3383,7 +3406,7 @@ export function handleProxyState() {
 
 export function handleConfigureProxy(input: {
   archiveAvailable?: boolean;
-  archiveFailureMode?: "corrupt" | "not-found" | null;
+  archiveFailureMode?: ArchiveFailureMode | null;
   archiveFailures?: number;
   artifactDelayMs?: number;
   artifactFailures?: number;
@@ -3404,6 +3427,7 @@ export function handleConfigureProxy(input: {
     archiveAvailable = true;
     archiveFailureMode = null;
     archiveFailuresRemaining = 0;
+    archiveInterruptions.clear();
   }
   if (input.catalogMode !== undefined) catalogProxyMode = input.catalogMode;
   if (input.replayGeneration !== undefined) {
@@ -3476,7 +3500,9 @@ function getRemoteTransfer(url: string | null) {
 }
 
 export function handleAssertBundleArtifactTransfers(input: {
+  archiveInterruptions?: number;
   archiveRequests: number;
+  archiveResumes?: number;
   currentBundleId: string;
   fileRequests: number;
   maxRequestsPerAsset?: number;
@@ -3491,13 +3517,18 @@ export function handleAssertBundleArtifactTransfers(input: {
       entry.targetBundleId === input.targetBundleId,
   );
   if (!artifact) {
-    throw createEndpointError("Bundle artifact request was not observed", {
+    throw new ProxyAssertionError("Bundle artifact request was not observed", {
       expected: input,
       observed: [...capturedArtifactSelections],
     });
   }
 
   const archive = getRemoteTransfer(artifact.archiveUrl);
+  const archiveInterruption = summarizeArchiveInterruption(
+    artifact.archiveUrl === null
+      ? undefined
+      : archiveInterruptions.get(new URL(artifact.archiveUrl).pathname),
+  );
   const assets = artifact.assets.map((asset) => ({
     file: getRemoteTransfer(asset.fileUrl),
     patch: getRemoteTransfer(asset.patchUrl),
@@ -3525,6 +3556,7 @@ export function handleAssertBundleArtifactTransfers(input: {
     archive,
     archiveFailureMode,
     archiveFailuresRemaining,
+    archiveInterruption,
     assets,
     fileRequests,
     finalFiles,
@@ -3550,13 +3582,17 @@ export function handleAssertBundleArtifactTransfers(input: {
     fileRequests === input.fileRequests &&
     patchRequests === input.patchRequests &&
     archiveFailuresRemaining === 0 &&
+    (input.archiveInterruptions === undefined ||
+      archiveInterruption.interruptions === input.archiveInterruptions) &&
+    (input.archiveResumes === undefined ||
+      archiveInterruption.resumes === input.archiveResumes) &&
     (input.minNetworkAssets === undefined ||
       networkAssets.length >= input.minNetworkAssets) &&
     requestsAreBounded &&
     transferBytesPresent &&
     (finalFiles === null || finalFiles.ok);
   if (!matches) {
-    throw createEndpointError("Unexpected Bundle artifact transfers", {
+    throw new ProxyAssertionError("Unexpected Bundle artifact transfers", {
       expected: input,
       observed,
     });
@@ -3799,10 +3835,51 @@ export async function handleProxyRemoteAssetRequest(request: Request) {
   const headers = new Headers(request.headers);
   headers.delete("host");
 
+  const interruption = archiveInterruptions.get(requestUrl.pathname);
+  const resumed = interruption ? resumeArchive(interruption, request) : null;
+  if (resumed) {
+    transfer.bytes += resumed.sentBytes;
+    logE2eFixture("resumed interrupted archive", {
+      range: request.headers.get("range"),
+      source: requestUrl.pathname,
+      status: resumed.response.status,
+    });
+    return resumed.response;
+  }
+
+  if (
+    target.kind === "archive" &&
+    archiveFailureMode === "interrupt" &&
+    archiveFailuresRemaining > 0
+  ) {
+    archiveFailuresRemaining -= 1;
+    headers.delete("range");
+    headers.delete("if-range");
+    const origin = await fetch(targetUrl, { headers, method: "GET" });
+    if (!origin.ok) {
+      throw createEndpointError("Archive to interrupt was not served", {
+        source: requestUrl.pathname,
+        status: origin.status,
+      });
+    }
+    const entry = createArchiveInterruption(
+      new Uint8Array(await origin.arrayBuffer()),
+    );
+    archiveInterruptions.set(requestUrl.pathname, entry);
+    const interrupted = interruptArchive(entry);
+    transfer.bytes += interrupted.sentBytes;
+    logE2eFixture("interrupting archive download", {
+      bytes: entry.body.byteLength,
+      sentBytes: interrupted.sentBytes,
+      source: requestUrl.pathname,
+    });
+    return interrupted.response;
+  }
+
   let response: Response;
   if (
     target.kind === "archive" &&
-    archiveFailureMode !== null &&
+    (archiveFailureMode === "corrupt" || archiveFailureMode === "not-found") &&
     archiveFailuresRemaining > 0
   ) {
     archiveFailuresRemaining -= 1;
