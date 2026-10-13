@@ -48,7 +48,8 @@ the connection has one: a connection string, or a `StorageSharedKeyCredential`.
 With a Microsoft Entra `TokenCredential`, such as `DefaultAzureCredential` from
 `@azure/identity`, it signs with a user delegation key, which needs the
 identity's Storage Blob Delegator role besides read and write access to the
-container's blobs.
+container's blobs. A SAS connection string can upload, but it cannot sign
+download URLs: pass `getDownloadUrl` with one.
 
 ## Environment variables
 

@@ -75,7 +75,11 @@ await migrateCosmosDatabase(
 `migrateCosmosDatabase` takes the same configuration as `cosmosDatabase`, and
 an explicit array of the plugins the server runs: here the managed server's
 API keys, Insights, and Remote Config. It creates the database and container
-when they are missing, and refuses a container partitioned by another path.
+when they are missing. It refuses a container partitioned by another path, one
+whose `schema.engine` setting names another storage layout, and a populated
+one without that setting. On a container it reuses, it turns on consistent,
+automatic indexing, adds the composite index and a default TTL when they are
+missing, and waits until Cosmos DB has applied the indexing.
 `hot-updater init` and the managed setup's key script both run it.
 `hot-updater db migrate`, run with the file that exports a server's
 `hotUpdater`, does the same for the server's

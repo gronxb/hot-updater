@@ -1,4 +1,4 @@
-import type { TokenCredential } from "@azure/core-auth";
+import { isTokenCredential, type TokenCredential } from "@azure/core-auth";
 import {
   BlobSASPermissions,
   BlobServiceClient,
@@ -144,6 +144,13 @@ export function azureBlobStorage(
     const permissions = BlobSASPermissions.parse("r");
     if (blob.credential instanceof StorageSharedKeyCredential) {
       return blob.generateSasUrl({ permissions, expiresOn });
+    }
+    if (!isTokenCredential(blob.credential)) {
+      // A SAS connection string signs every request with its own token,
+      // which devices must not receive.
+      throw new Error(
+        "azureBlobStorage signs download URLs with an account key or a Microsoft Entra credential; a SAS connection string has neither. Pass getDownloadUrl, or connect with the account key.",
+      );
     }
     const sas = generateBlobSASQueryParameters(
       { containerName, blobName: key, permissions, expiresOn },

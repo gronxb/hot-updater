@@ -5,13 +5,18 @@ import {
   createKvAdapter,
   migrateCoreSchema,
   type PluginTables,
+  SETTINGS_TABLE,
+  toolingTargetOf,
 } from "@hot-updater/plugin-core";
 
 import {
   AZURE_COSMOS_V1_CONTAINER,
   AZURE_COSMOS_V1_DATABASE,
 } from "./azureInfrastructureNames";
-import { createCosmosStore } from "./cosmosStore";
+import { COSMOS_PARTITION, createCosmosStore } from "./cosmosStore";
+
+/** The settings row that names the storage layout the container holds. */
+const ENGINE_KEY = "schema.engine";
 
 /**
  * The client's options: the account's `connectionString`, or its
@@ -40,7 +45,54 @@ const adapterOf = (config: CosmosDatabaseConfig) => {
   } = config;
   const client = new CosmosClient(connection);
   const store = createCosmosStore({ client, databaseId, containerId });
-  return { client, adapter: createKvAdapter({ store }) };
+  return {
+    client,
+    container: client.database(databaseId).container(containerId),
+    adapter: createKvAdapter({ store }),
+  };
+};
+
+/**
+ * Refuses a container the migration must not touch: one whose
+ * `schema.engine` is another storage layout's, or a populated one without
+ * the marker. Writing the settings would make the server read it as this
+ * layout.
+ */
+const assertMigratable = async (
+  { container, adapter }: ReturnType<typeof adapterOf>,
+  expected: string | undefined,
+) => {
+  let engine: unknown;
+  try {
+    const [row] = await adapter.get(SETTINGS_TABLE, [[ENGINE_KEY]]);
+    engine = row?.["value"];
+  } catch (error) {
+    // No database or container yet: the migration creates them.
+    if ((error as { code?: unknown }).code === "42P01") return;
+    throw error;
+  }
+  if (engine !== undefined) {
+    if (engine !== expected) {
+      throw new Error(
+        `Cosmos DB container ${container.id} holds storage engine "${String(engine)}"; this version writes "${expected}". Use the Hot Updater version that wrote it, or another container.`,
+      );
+    }
+    return;
+  }
+  const { resources } = await container.items
+    .query<string>(
+      {
+        query: "SELECT TOP 1 VALUE c.id FROM c WHERE c.pk != @settings",
+        parameters: [{ name: "@settings", value: SETTINGS_TABLE.name }],
+      },
+      { partitionKey: COSMOS_PARTITION },
+    )
+    .fetchAll();
+  if (resources.length > 0) {
+    throw new Error(
+      `Cosmos DB container ${container.id} holds items but no ${ENGINE_KEY} setting. Use an empty container.`,
+    );
+  }
 };
 
 /**
@@ -53,10 +105,10 @@ export const migrateCosmosDatabase = (
   config: CosmosDatabaseConfig,
   plugins: readonly PluginTables[] = [],
 ) => {
-  const { client, adapter } = adapterOf(config);
-  return migrateCoreSchema(adapter, "cosmosDatabase", plugins).finally(() =>
-    client.dispose(),
-  );
+  const target = adapterOf(config);
+  return assertMigratable(target, toolingTargetOf(plugins).settings[ENGINE_KEY])
+    .then(() => migrateCoreSchema(target.adapter, "cosmosDatabase", plugins))
+    .finally(() => target.client.dispose());
 };
 
 /**
