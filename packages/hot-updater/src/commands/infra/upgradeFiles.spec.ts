@@ -18,6 +18,7 @@ const sections = [
   "AWS",
   "Firebase",
   "Vercel",
+  "Azure",
   "Verification",
 ];
 const release = (version: string, emptySection?: string) =>
@@ -82,21 +83,24 @@ describe("versioned infrastructure release files", () => {
     },
   );
 
-  it("keeps a release file that predates a provider without its section", async () => {
-    await save("1.0.0", release("1.0.0", "Vercel"));
-    const files = await readInfrastructureUpgradeFiles(
-      directory,
-      requirements.slice(0, 1),
-    );
-    const index = renderInfrastructureUpgradeIndex(files);
-    expect(index).toContain("Vercel was added after 1.0.0");
-    expect(index).toContain("follows the upgrade section of its SETUP.md");
+  it.each(["Vercel", "Azure"])(
+    "keeps a release file that predates %s without its section",
+    async (provider) => {
+      await save("1.0.0", release("1.0.0", provider));
+      const files = await readInfrastructureUpgradeFiles(
+        directory,
+        requirements.slice(0, 1),
+      );
+      const index = renderInfrastructureUpgradeIndex(files);
+      expect(index).toContain(`${provider} was added after 1.0.0`);
+      expect(index).toContain("follows the upgrade section of its SETUP.md");
 
-    await save("1.2.0", release("1.2.0", "Vercel"));
-    await expect(
-      readInfrastructureUpgradeFiles(directory, requirements.slice(0, 2)),
-    ).rejects.toThrow("1.2.0.md is missing instructions for Vercel");
-  });
+      await save("1.2.0", release("1.2.0", provider));
+      await expect(
+        readInfrastructureUpgradeFiles(directory, requirements.slice(0, 2)),
+      ).rejects.toThrow(`1.2.0.md is missing instructions for ${provider}`);
+    },
+  );
 
   it("rejects out-of-order release registration and a file with the wrong version", async () => {
     for (const { version } of requirements) await save(version);

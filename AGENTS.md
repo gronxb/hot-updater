@@ -3,7 +3,7 @@
 ## Project Structure & Modules
 
 - `packages/`: Core libraries (e.g., `protocol`, `server`, `hot-updater`, `react-native`, `console`, `test-utils`).
-- `plugins/`: Provider adapters, build adapters, and integration plugins (e.g., `aws`, `cloudflare`, `supabase`, `firebase`, `vercel`, `bare`, `expo`, `rock`, `sentry-plugin`).
+- `plugins/`: Provider adapters, build adapters, and integration plugins (e.g., `aws`, `azure`, `cloudflare`, `supabase`, `firebase`, `vercel`, `bare`, `expo`, `rock`, `sentry-plugin`).
 - `examples/`: React Native example apps by version (e.g., `v0.77.0`, `v0.85.0`).
 - `docs/`: Documentation site sources.
 - `scripts/`: Local tooling (e.g., `bench.mjs`, `changeset-minor.mjs`).
@@ -48,9 +48,9 @@
   `packages/hot-updater/infrastructure-upgrades/<version>.md`.
 - Each version file must have Compatibility, Steps, Cloudflare, Supabase, AWS,
   Firebase, and Verification sections, plus a section for each provider added
-  before it (Vercel, in files after 1.0.0). Files released before a provider
-  stay unchanged: `PROVIDER_SECTIONS` records the last one as `addedAfter`.
-  State when a provider needs no schema migration. Build validation rejects missing files, missing sections, or files
+  before it (Vercel and Azure, in files after 1.0.0). Files released before a
+  provider stay unchanged: `PROVIDER_SECTIONS` records the last one as
+  `addedAfter`. State when a provider needs no schema migration. Build validation rejects missing files, missing sections, or files
   without a corresponding doctor requirement. Append a new file for each release;
   do not overwrite an older file to describe a newer release. Preserve history
   so agents can read the entire upgrade path before applying changes.
@@ -100,5 +100,5 @@
 
 ## Security & Configuration
 
-- Do not commit secrets. Use `.env.hotupdater` for provider credentials (Supabase, Cloudflare, AWS, Firebase, Vercel, etc.).
+- Do not commit secrets. Use `.env.hotupdater` for provider credentials (Supabase, Cloudflare, AWS, Firebase, Vercel, Azure, etc.).
 - Keep tokens local; review `.gitignore` and provider guides in `README.md`/site docs.

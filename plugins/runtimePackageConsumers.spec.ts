@@ -143,6 +143,11 @@ describe("packed provider entrypoints", () => {
       handler: "@hot-updater/aws/lambda",
     },
     {
+      directory: "azure",
+      packageName: "@hot-updater/azure",
+      exports: ["azureBlobStorage", "cosmosDatabase", "migrateCosmosDatabase"],
+    },
+    {
       directory: "cloudflare",
       packageName: "@hot-updater/cloudflare",
       exports: ["d1Database", "r2Storage"],

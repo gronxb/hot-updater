@@ -16,7 +16,7 @@ import { type DoctorCheck, isObject, isText } from "./checks";
 // Check deployment inputs only. Instructions, examples and reference source
 // deliberately contain placeholders that are not sent to a provider.
 const isDeploymentInput = (file: string) =>
-  /^(worker|supabase|lambda|cloudfront|dynamodb|iam|firebase|vercel)\//.test(
+  /^(worker|supabase|lambda|cloudfront|dynamodb|iam|firebase|vercel|azure)\//.test(
     file,
   ) && !/\.(md|map)$/.test(file);
 const hasPlaceholder = (text: string) =>
@@ -391,6 +391,28 @@ export async function checkScaffold(infraDir: string): Promise<{
         "The supplied Vercel Function is missing or unsafe.",
         "vercel/api/index.mjs",
         "Restore api/index.mjs from the supplied Vercel scaffold.",
+      );
+    }
+  }
+  if (manifest.provider === "azure") {
+    // Every path reaches the one HTTP Function, which routes it.
+    const http = object(
+      object(json("azure/function/host.json")["extensions"])["http"],
+    );
+    if (http["routePrefix"] !== "") {
+      fail(
+        "INFRA_AZURE_ROUTES",
+        "Azure Functions must serve the supplied Function without a route prefix.",
+        "azure/function/host.json",
+        'Restore extensions.http.routePrefix to "" in host.json.',
+      );
+    }
+    if (json("azure/function/package.json")["main"] !== "index.mjs") {
+      fail(
+        "INFRA_RUNTIME_ENTRY",
+        "The Azure Function package must load the supplied index.mjs.",
+        "azure/function/package.json",
+        'Restore "main": "index.mjs" from the supplied Azure scaffold.',
       );
     }
   }

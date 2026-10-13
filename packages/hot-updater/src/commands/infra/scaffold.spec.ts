@@ -29,7 +29,7 @@ afterEach(async () => {
 });
 
 describe("public infrastructure scaffolding", () => {
-  it.each(["cloudflare", "supabase", "aws", "firebase", "vercel"])(
+  it.each(["cloudflare", "supabase", "aws", "firebase", "vercel", "azure"])(
     "extracts %s server templates without an app and shares them with both agent commands",
     async (provider) => {
       const result = run("infra", "scaffold", "--provider", provider);

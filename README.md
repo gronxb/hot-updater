@@ -97,8 +97,8 @@
   ### Adapters
 
   - **Build Adapter**: Support for bundlers like Metro, Expo, Rock
-  - **Storage Adapter**: Support for bundle storage like AWS S3, Supabase Storage, Cloudflare R2 Storage, Vercel Blob
-  - **Database Adapter**: Support for metadata storage like Supabase Database, PostgreSQL, Cloudflare D1
+  - **Storage Adapter**: Support for bundle storage like AWS S3, Supabase Storage, Cloudflare R2 Storage, Vercel Blob, Azure Blob Storage
+  - **Database Adapter**: Support for metadata storage like Supabase Database, PostgreSQL, Cloudflare D1, Azure Cosmos DB
 
   ### Configuration Example
 
@@ -259,6 +259,34 @@ export default defineConfig({
   }),
   database: postgres({
     connectionString: process.env.HOT_UPDATER_VERCEL_DATABASE_URL!,
+  }),
+  plugins: [apiKeys(), insights(), remoteConfig()],
+});
+```
+
+* [Azure](https://hot-updater.dev/docs/managed/azure)
+```tsx
+import { existsSync } from "node:fs";
+import { azureBlobStorage, cosmosDatabase } from '@hot-updater/azure';
+import { bare } from '@hot-updater/bare';
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
+import { defineConfig } from "hot-updater";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
+export default defineConfig({
+  build: bare({
+    enableHermes: true,
+  }),
+  updateStrategy: "appVersion",
+  storage: azureBlobStorage({
+    connectionString: process.env.HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING!,
+    containerName: "hot-updater",
+  }),
+  database: cosmosDatabase({
+    connectionString: process.env.HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING!,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
 });

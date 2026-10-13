@@ -55,6 +55,7 @@ describe("CLI docs links", () => {
     expect(files).toEqual(
       expect.arrayContaining([
         "plugins/aws/iac/index.ts",
+        "plugins/azure/iac/index.ts",
         "plugins/cloudflare/iac/index.ts",
         "plugins/firebase/iac/index.ts",
         "plugins/supabase/iac/index.ts",

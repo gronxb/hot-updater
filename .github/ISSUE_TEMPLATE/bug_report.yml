@@ -67,6 +67,7 @@ body:
         - S3 & Lambda
         - Firebase
         - Vercel
+        - Azure
         - Other
     validations:
       required: true

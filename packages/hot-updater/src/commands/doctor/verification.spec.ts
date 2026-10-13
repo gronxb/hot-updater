@@ -43,7 +43,7 @@ const prepare = async (
   const manifest = await readJson(scaffold.manifest);
   for (const file of Object.keys(manifest.files)) {
     if (
-      !/^(worker|supabase|lambda|cloudfront|dynamodb|iam|firebase|vercel)\//.test(
+      !/^(worker|supabase|lambda|cloudfront|dynamodb|iam|firebase|vercel|azure)\//.test(
         file,
       ) ||
       /\.(md|map)$/.test(file)
@@ -72,6 +72,7 @@ describe("doctor scaffold contract", () => {
     "aws",
     "firebase",
     "vercel",
+    "azure",
   ])(
     "accepts configured %s templates and preserves harmless customizations",
     async (provider) => {

@@ -9,6 +9,7 @@ import {
   symlink,
   writeFile,
 } from "node:fs/promises";
+import { isBuiltin } from "node:module";
 import os from "node:os";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -28,11 +29,12 @@ const providers = [
   "aws",
   "firebase",
   "vercel",
+  "azure",
 ] as const;
 const builds = ["bare", "rock", "expo"] as const;
 /** Providers whose credential script runs the server's migrator. */
 const migrates = (provider: string) =>
-  provider === "firebase" || provider === "vercel";
+  provider === "firebase" || provider === "vercel" || provider === "azure";
 let cwd: string;
 
 const run = (...args: string[]) => {
@@ -104,7 +106,8 @@ describe("published agent infrastructure commands", () => {
           expect(createHash("sha256").update(content).digest("hex")).toBe(hash);
         }
         // The config the app merges, the credential script with the server
-        // definition it provisions over, and Firestore's migration.
+        // definition it provisions over, and Firestore's or Cosmos DB's
+        // migration.
         expect(
           Object.keys(manifest.files)
             .filter((file) => file.startsWith("app/"))
@@ -112,9 +115,7 @@ describe("published agent infrastructure commands", () => {
         ).toEqual([
           "app/hot-updater.config.ts",
           "app/hotUpdater.ts",
-          ...(provider === "firebase" || provider === "vercel"
-            ? ["app/migrate.ts"]
-            : []),
+          ...(migrates(provider) ? ["app/migrate.ts"] : []),
           "app/provision-client-credential.mjs",
           "app/verify-server.mjs",
         ]);
@@ -176,7 +177,7 @@ describe("published agent infrastructure commands", () => {
         const sources = [
           config,
           definition,
-          ...(provider === "firebase" ? [await appFile("migrate.ts")] : []),
+          ...(migrates(provider) ? [await appFile("migrate.ts")] : []),
         ];
         const environment = await readFile(result.data.environment, "utf8");
         const example = await readFile(
@@ -402,12 +403,9 @@ describe("deployment artifacts", () => {
         `@hot-updater/${provider}`,
         "@hot-updater/server",
         ...(provider === "aws" ? ["@aws-sdk/credential-providers"] : []),
-        ...(provider === "firebase"
-          ? ["firebase-admin", "@hot-updater/plugin-core"]
-          : []),
-        ...(provider === "vercel"
-          ? ["@hot-updater/postgres", "@hot-updater/plugin-core"]
-          : []),
+        ...(provider === "firebase" ? ["firebase-admin"] : []),
+        ...(provider === "vercel" ? ["@hot-updater/postgres"] : []),
+        ...(migrates(provider) ? ["@hot-updater/plugin-core"] : []),
       ]) {
         const target = path.join(cwd, "node_modules", name);
         await mkdir(path.dirname(target), { recursive: true });
@@ -429,7 +427,7 @@ describe("deployment artifacts", () => {
         [
           "--input-type=module",
           "--eval",
-          // provision-client-credential.mjs's path: the clientAuth plugin's API on the definition's database, and the migration of Firestore and Vercel's PostgreSQL.
+          // provision-client-credential.mjs's path: the clientAuth plugin's API on the definition's database, and the migration of Firestore, Cosmos DB, and Vercel's PostgreSQL.
           `const { hotUpdater } = await import(${JSON.stringify(definitionUrl.href)}); const { plugin } = hotUpdater.clientAuth; console.log(plugin, typeof hotUpdater.api[plugin]); ${migrates(provider) ? `const { migrate } = await import(${JSON.stringify(migrationUrl.href)}); console.log(typeof migrate, typeof hotUpdater.database.createMigrator);` : ""} await hotUpdater.database.dispose?.();`,
         ],
         {
@@ -453,6 +451,11 @@ describe("deployment artifacts", () => {
             HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN:
               "vercel_blob_rw_test_secret",
             HOT_UPDATER_VERCEL_DATABASE_URL: "postgres://test@127.0.0.1/test",
+            // Azure's clients parse their connection strings when it loads.
+            HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING:
+              "DefaultEndpointsProtocol=https;AccountName=test;AccountKey=dGVzdA==;EndpointSuffix=core.windows.net",
+            HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING:
+              "AccountEndpoint=https://test.documents.azure.com:443/;AccountKey=dGVzdA==;",
           },
         },
       );
@@ -472,7 +475,7 @@ describe("deployment artifacts", () => {
           ".createMigrator(toolingTargetOf(plugins))",
         );
         expect(migration).not.toMatch(
-          /firebaseDatabase|postgres\(|HOT_UPDATER_|env/u,
+          /firebaseDatabase|cosmosDatabase|postgres\(|HOT_UPDATER_|env/u,
         );
       }
     },
@@ -583,6 +586,33 @@ describe("deployment artifacts", () => {
       "utf8",
     );
     expect(source).toContain("__HOT_UPDATER_FIRESTORE_DATABASE_ID__");
+  });
+
+  it("ships the Azure Function as one bundle the Functions host loads", async () => {
+    const root = path.join(templatesRoot, "azure/azure/function");
+    const pkg = await json(path.join(root, "package.json"));
+    expect(pkg).toMatchObject({ type: "module", main: "index.mjs" });
+    expect(pkg.dependencies).toBeUndefined();
+    expect(
+      (await json(path.join(root, "host.json"))).extensions.http.routePrefix,
+    ).toBe("");
+    const source = await readFile(path.join(root, pkg.main), "utf8");
+    // The Functions host supplies @azure/functions-core only to require(),
+    // which it intercepts; an ESM import of it would not load.
+    expect(source).not.toMatch(/\bfrom ["']@azure\/functions-core["']/u);
+    expect(source).toContain('__require("@azure/functions-core")');
+    // Only Node built-ins and the module the Functions host supplies.
+    for (const [, from, dynamic] of source.matchAll(
+      /^(?:import|export)\b[^\n]*?\bfrom ["']([^"']+)["']|\bimport\(["']([^"']+)["']\)/gm,
+    )) {
+      const specifier = (from ?? dynamic)!;
+      expect(
+        specifier.startsWith("node:") ||
+          isBuiltin(specifier) ||
+          specifier === "@azure/functions-core",
+        specifier,
+      ).toBe(true);
+    }
   });
 
   it("ships the Vercel Function with every dependency bundled and one rewrite to it", async () => {

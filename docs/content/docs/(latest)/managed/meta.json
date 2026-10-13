@@ -8,6 +8,7 @@
     "aws",
     "firebase",
     "vercel",
+    "azure",
     "../guides/agent-infrastructure",
     "../guides/infrastructure-templates"
   ]

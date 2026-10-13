@@ -17,6 +17,7 @@ const PROVIDER_SECTIONS = {
   aws: { heading: "AWS" },
   firebase: { heading: "Firebase" },
   vercel: { heading: "Vercel", addedAfter: "1.0.0" },
+  azure: { heading: "Azure", addedAfter: "1.0.0" },
 } as const satisfies Record<
   InitProvider,
   { readonly heading: string; readonly addedAfter?: string }

@@ -21,8 +21,8 @@ if (
 const { api, clientAuth, database, plugins } = hotUpdater;
 
 const credentialPath = new URL("./client-credential.local", import.meta.url);
-// Providers whose schema comes from the server's migrator (Firestore, and
-// Vercel's PostgreSQL) ship migrate.ts.
+// Providers whose schema comes from the server's migrator (Firestore, Cosmos
+// DB, and Vercel's PostgreSQL) ship migrate.ts.
 const migrationPath = new URL("./migrate.ts", import.meta.url);
 try {
   // The plugin that protects the deployed server's client routes, if any,

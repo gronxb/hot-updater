@@ -161,7 +161,7 @@ without digests. `register` stores a known plaintext key idempotently, and
 `provision` reuses a saved key or creates one. The plugin adds no API key
 management routes to `handlers.client` or `handlers.admin`.
 
-AWS, Cloudflare, Firebase, Supabase, and Vercel run `apiKeys()` in their managed
+AWS, Azure, Cloudflare, Firebase, Supabase, and Vercel run `apiKeys()` in their managed
 servers. Their init writes explicit factories from `hot-updater/plugins`
 in the CLI configuration, registers an
 existing `HOT_UPDATER_API_KEY` or creates one through it, then stores the

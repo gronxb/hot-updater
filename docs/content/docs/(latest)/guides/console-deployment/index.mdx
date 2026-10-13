@@ -70,7 +70,7 @@ export default defineConsoleConfig({
 The configuration mirrors your server: the same database and bucket, reached
 with the console host's own credentials, and the
 [server plugins](/docs/custom/server-plugins) your backend runs. The AWS,
-Cloudflare, Firebase, Supabase, and Vercel managed servers run
+Azure, Cloudflare, Firebase, Supabase, and Vercel managed servers run
 `apiKeys()`, `insights()`, and `remoteConfig()`. Import those factories from
 `@hot-updater/server/plugins` in the Console configuration. Read credentials from the console
 host's runtime environment variables, and leave mobile build adapters and
@@ -174,7 +174,7 @@ Follow one deployment guide:
 
 Your console can run on a different provider from your Hot Updater backend. For example, you can deploy the console to Vercel while keeping your database and bundles on Cloudflare.
 
-- Vercel, Netlify, or Docker support any managed backend: Cloudflare, AWS, Firebase, Supabase, or Vercel.
+- Vercel, Netlify, or Docker support any managed backend: Cloudflare, AWS, Firebase, Supabase, Vercel, or Azure.
 - For Cloudflare Workers, follow the Cloudflare guide when your backend also uses Cloudflare. For the other backends, choose one of the hosts above.
 
 For another host, select its preset from [Nitro's deployment catalog](https://nitro.build/deploy). The console needs a server runtime.

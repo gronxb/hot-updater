@@ -1,4 +1,5 @@
 import * as awsInit from "@hot-updater/aws/init";
+import * as azureInit from "@hot-updater/azure/init";
 import * as cloudflareInit from "@hot-updater/cloudflare/init";
 import * as firebaseInit from "@hot-updater/firebase/init";
 import * as supabaseInit from "@hot-updater/supabase/init";
@@ -13,6 +14,7 @@ import {
 
 const providerInits = {
   aws: awsInit,
+  azure: azureInit,
   cloudflare: cloudflareInit,
   firebase: firebaseInit,
   supabase: supabaseInit,
@@ -28,6 +30,7 @@ describe("init provider packages", () => {
       "supabase",
       "firebase",
       "vercel",
+      "azure",
     ];
 
     // When
@@ -35,7 +38,7 @@ describe("init provider packages", () => {
 
     // Then
     expect(INIT_PROVIDER_NAMES).toEqual(declaredProviders);
-    expect(results).toEqual([true, true, true, true, true]);
+    expect(results).toEqual(declaredProviders.map(() => true));
     expect(isInitProvider("unknown")).toBe(false);
     expect(isInitProvider(undefined)).toBe(false);
   });

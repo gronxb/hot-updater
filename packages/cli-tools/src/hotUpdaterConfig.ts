@@ -93,6 +93,7 @@ const MANAGED_IMPORT_PACKAGES = new Set([
   "@aws-sdk/credential-provider-sso",
   "@aws-sdk/credential-providers",
   "@hot-updater/aws",
+  "@hot-updater/azure",
   "@hot-updater/bare",
   "@hot-updater/cloudflare",
   "@hot-updater/expo",
