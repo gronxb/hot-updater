@@ -372,6 +372,13 @@ describe("E2E remote asset proxy URLs", () => {
           },
         },
       });
+      const resumedWaitJobId =
+        controller.startWaitForArchiveInterruptionJob(true);
+      await vi.waitFor(() => {
+        expect(controller.getJob(resumedWaitJobId)).toMatchObject({
+          status: "succeeded",
+        });
+      });
       const resumedTransfers = {
         archiveInterruptions: 1,
         archiveRequests: 2,

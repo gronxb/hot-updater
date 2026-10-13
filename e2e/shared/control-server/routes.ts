@@ -50,6 +50,7 @@ import {
   startResetRemoteBundlesJob,
   startSeedCrashedBundleFrontierJob,
   startWaitForAndroidRestartJob,
+  startWaitForArchiveInterruptionJob,
   startWaitForMetadataJob,
 } from "./controller.ts";
 import { handlePatchE2eScreenState } from "./screen-state.ts";
@@ -479,6 +480,16 @@ app.post("/e2e/jobs/patch-release", async (c) => {
       shouldForceUpdate: payload.shouldForceUpdate,
       targetCohorts: payload.targetCohorts,
     }),
+  });
+});
+
+app.post("/e2e/jobs/wait-for-archive-interruption", async (c) => {
+  const payload = (await c.req.json()) as { resumed?: boolean };
+  if (typeof payload.resumed !== "boolean") {
+    return c.json({ error: "resumed must be a boolean" }, 400);
+  }
+  return c.json({
+    jobId: startWaitForArchiveInterruptionJob(payload.resumed),
   });
 });
 
