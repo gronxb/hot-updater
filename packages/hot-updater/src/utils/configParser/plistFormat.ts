@@ -7,8 +7,10 @@ const closingTag = (name: string) => `</${name}>`;
  * writing one key does not shift every other line of the file.
  *
  * `plist.build` indents everything under `<plist>` one level, while Xcode
- * puts the root `<dict>` at column 0. Every element line under `<plist>` loses
- * one leading tab. Text of a multi-line value is left as it is: a text line
+ * puts the root `<dict>` at column 0. When the previous file had its root at
+ * column 0 (or there is no previous file), every element line under `<plist>`
+ * loses one leading tab. A file whose root is already indented under
+ * `<plist>` (the layout `plist.build` itself writes) is left indented. Text of a multi-line value is left as it is: a text line
  * never starts with a raw `<`, and lines between an opening and a closing text
  * tag are skipped. The file keeps the trailing newline it had.
  */
@@ -17,6 +19,7 @@ export function formatPlistLikeXcode(built: string, previous?: string): string {
   const formatted: string[] = [];
   let insidePlist = false;
   let openText: string | null = null;
+  const dedent = previous === undefined || rootIsAtColumnZero(previous);
 
   for (const line of lines) {
     if (openText !== null) {
@@ -30,7 +33,9 @@ export function formatPlistLikeXcode(built: string, previous?: string): string {
     if (line.startsWith("</plist>")) {
       insidePlist = false;
     }
-    formatted.push(insidePlist && /^\t+</.test(line) ? line.slice(1) : line);
+    formatted.push(
+      dedent && insidePlist && /^\t+</.test(line) ? line.slice(1) : line,
+    );
     if (/^<plist\b/.test(line)) {
       insidePlist = true;
     }
@@ -49,4 +54,10 @@ export function formatPlistLikeXcode(built: string, previous?: string): string {
     result += "\n";
   }
   return result;
+}
+
+/** Whether the first element under `<plist>` in `xml` starts at column 0. */
+function rootIsAtColumnZero(xml: string): boolean {
+  const match = /<plist\b[^>]*>[^\S\n]*\n([^\S\n]*)</.exec(xml);
+  return match ? match[1] === "" : true;
 }

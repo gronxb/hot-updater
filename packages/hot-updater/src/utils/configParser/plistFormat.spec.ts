@@ -35,6 +35,19 @@ const INFO_PLIST = `<?xml version="1.0" encoding="UTF-8"?>
 </plist>
 `;
 
+/** The same plist with the root <dict> indented one tab, as plist.build writes it. */
+const INDENTED_PLIST = plist
+  .build(plist.parse(INFO_PLIST), {
+    indent: "\t",
+    pretty: true,
+  })
+  .concat("\n");
+
+const EXAMPLE_PLIST = path.resolve(
+  __dirname,
+  "../../../../../examples/v0.77.0/ios/HotUpdaterExample/Info.plist",
+);
+
 const tempDirs: string[] = [];
 
 afterEach(async () => {
@@ -81,6 +94,16 @@ describe("formatPlistLikeXcode", () => {
     expect(plist.parse(formatPlistLikeXcode(built))).toEqual({ A: value });
   });
 
+  it("leaves a plist with a tab-indented root dict indented", () => {
+    expect(INDENTED_PLIST).toContain("\n\t<dict>\n");
+    const built = plist.build(plist.parse(INDENTED_PLIST), {
+      indent: "\t",
+      pretty: true,
+    });
+
+    expect(formatPlistLikeXcode(built, INDENTED_PLIST)).toBe(INDENTED_PLIST);
+  });
+
   it("adds a trailing newline only when the file had one", () => {
     const built = plist.build({ A: "b" }, { indent: "\t", pretty: true });
 
@@ -116,5 +139,30 @@ describe("IosConfigParser writes", () => {
     await parser.remove("HOT_UPDATER_FINGERPRINT_HASH");
 
     expect(await readFile(file, "utf-8")).toBe(INFO_PLIST);
+  });
+
+  it("round-trip leaves a tab-indented root dict byte-identical", async () => {
+    const file = await writeTemp(INDENTED_PLIST);
+    const parser = new IosConfigParser([file]);
+
+    await parser.set("HOT_UPDATER_FINGERPRINT_HASH", "first");
+    await parser.set("HOT_UPDATER_FINGERPRINT_HASH", "second");
+    await parser.remove("HOT_UPDATER_FINGERPRINT_HASH");
+
+    expect(await readFile(file, "utf-8")).toBe(INDENTED_PLIST);
+  });
+
+  it("round-trip leaves a checked-in example Info.plist byte-identical", async () => {
+    const original = await readFile(EXAMPLE_PLIST, "utf-8");
+    expect(original).toContain("\n\t<dict>\n");
+    expect(original).not.toContain("HOT_UPDATER_ROUND_TRIP_TEST");
+    const file = await writeTemp(original);
+    const parser = new IosConfigParser([file]);
+
+    await parser.set("HOT_UPDATER_ROUND_TRIP_TEST", "first");
+    await parser.set("HOT_UPDATER_ROUND_TRIP_TEST", "second");
+    await parser.remove("HOT_UPDATER_ROUND_TRIP_TEST");
+
+    expect(await readFile(file, "utf-8")).toBe(original);
   });
 });
