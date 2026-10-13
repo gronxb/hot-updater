@@ -72,7 +72,6 @@ vi.mock("./native", () => ({
   reload: mocks.reload,
   resetChannel: vi.fn(),
   setCohort: vi.fn(),
-  setReloadBehavior: vi.fn(),
   setStorageItem: vi.fn(),
   stageBundle: vi.fn(),
 }));
