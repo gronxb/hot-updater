@@ -104,6 +104,19 @@ describe("formatPlistLikeXcode", () => {
     expect(formatPlistLikeXcode(built, INDENTED_PLIST)).toBe(INDENTED_PLIST);
   });
 
+  it("finds an indented root dict after blank lines and comments", () => {
+    const previous = INDENTED_PLIST.replace(
+      '<plist version="1.0">\n',
+      '<plist version="1.0">\n\n\t<!-- generated -->\n\n',
+    );
+    const built = plist.build(plist.parse(previous), {
+      indent: "\t",
+      pretty: true,
+    });
+
+    expect(formatPlistLikeXcode(built, previous)).toBe(INDENTED_PLIST);
+  });
+
   it("adds a trailing newline only when the file had one", () => {
     const built = plist.build({ A: "b" }, { indent: "\t", pretty: true });
 

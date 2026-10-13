@@ -56,8 +56,23 @@ export function formatPlistLikeXcode(built: string, previous?: string): string {
   return result;
 }
 
-/** Whether the first element under `<plist>` in `xml` starts at column 0. */
+/**
+ * Whether the root element under `<plist>` in `xml` starts at column 0.
+ * Blank lines and XML comments before the root are skipped.
+ */
 function rootIsAtColumnZero(xml: string): boolean {
-  const match = /<plist\b[^>]*>[^\S\n]*\n([^\S\n]*)</.exec(xml);
-  return match ? match[1] === "" : true;
+  const open = /<plist\b[^>]*>/.exec(xml);
+  if (!open) {
+    return true;
+  }
+  const rest = xml
+    .slice(open.index + open[0].length)
+    .replace(/<!--[\s\S]*?-->/g, (comment) => comment.replace(/[^\n]/g, " "));
+  for (const line of rest.split("\n").slice(1)) {
+    const indent = /^[^\S\n]*(?=<)/.exec(line);
+    if (indent) {
+      return indent[0] === "";
+    }
+  }
+  return true;
 }
