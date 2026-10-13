@@ -170,6 +170,21 @@ describe("ensureCosmosAccount", () => {
     );
   });
 
+  it("refuses a multi-region-write account before asking to strengthen it", async () => {
+    const confirmStrong = vi.fn(async () => true);
+    const { az } = fakeAz({
+      "cosmosdb show": {
+        kind: "GlobalDocumentDB",
+        enableMultipleWriteLocations: true,
+        consistencyPolicy: { defaultConsistencyLevel: "Session" },
+      },
+    });
+    await expect(
+      ensureCosmosAccount({ az, ...input, confirmStrong }),
+    ).rejects.toThrow("writes in several regions");
+    expect(confirmStrong).not.toHaveBeenCalled();
+  });
+
   it("changes an existing account to strong consistency only when allowed", async () => {
     const session = {
       kind: "GlobalDocumentDB",

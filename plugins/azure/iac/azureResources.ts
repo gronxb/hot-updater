@@ -159,6 +159,7 @@ interface CosmosAccount {
   readonly kind?: string;
   readonly capabilities?: readonly { readonly name: string }[];
   readonly consistencyPolicy?: { readonly defaultConsistencyLevel?: string };
+  readonly enableMultipleWriteLocations?: boolean;
 }
 
 /**
@@ -204,6 +205,11 @@ export const assertCosmosAccountCanInitialize = async ({
   }
   if (account.consistencyPolicy?.defaultConsistencyLevel === "Strong") {
     return { exists: true, strengthen: false };
+  }
+  if (account.enableMultipleWriteLocations) {
+    throw new InitError(
+      `Cosmos DB account ${name} writes in several regions, which strong consistency does not allow. Choose another account.`,
+    );
   }
   if (!(await confirmStrong())) {
     throw new InitError(

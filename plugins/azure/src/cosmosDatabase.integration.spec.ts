@@ -166,44 +166,54 @@ describe("cosmosDatabase", () => {
   it.each([
     ["another storage engine", "9", false],
     ["no engine marker beside other items", null, true],
-  ])("refuses to migrate a container with %s", async (_, engine, otherItem) => {
-    const databaseId = emulator.databaseId();
-    try {
-      const named = { ...config(), databaseId };
-      await migrateCosmosDatabase(named);
-      const container = emulator.client
-        .database(databaseId)
-        .container(AZURE_COSMOS_V1_CONTAINER);
-      const { resources } = await container.items
-        .query<{ id: string; row: { key: string } }>(
-          "SELECT c.id, c.row FROM c",
-          { partitionKey: COSMOS_PARTITION },
-        )
-        .fetchAll();
-      const marker = resources.find(({ row }) => row.key === "schema.engine")!;
-      if (engine === null) {
-        await container.item(marker.id, COSMOS_PARTITION).delete();
-      } else {
-        await container
-          .item(marker.id, COSMOS_PARTITION)
-          .patch([{ op: "set", path: "/row/value", value: engine }]);
+    ["no engine marker beside another partition's items", null, "other"],
+  ] as const)(
+    "refuses to migrate a container with %s",
+    async (_, engine, otherItem) => {
+      const databaseId = emulator.databaseId();
+      try {
+        const named = { ...config(), databaseId };
+        await migrateCosmosDatabase(named);
+        const container = emulator.client
+          .database(databaseId)
+          .container(AZURE_COSMOS_V1_CONTAINER);
+        const { resources } = await container.items
+          .query<{ id: string; row: { key: string } }>(
+            "SELECT c.id, c.row FROM c",
+            { partitionKey: COSMOS_PARTITION },
+          )
+          .fetchAll();
+        const marker = resources.find(
+          ({ row }) => row.key === "schema.engine",
+        )!;
+        if (engine === null) {
+          await container.item(marker.id, COSMOS_PARTITION).delete();
+        } else {
+          await container
+            .item(marker.id, COSMOS_PARTITION)
+            .patch([{ op: "set", path: "/row/value", value: engine }]);
+        }
+        if (otherItem) {
+          await container.items.create(
+            otherItem === "other"
+              ? { id: "another-app", partition: "another-app" }
+              : {
+                  id: "existing-item",
+                  partition: COSMOS_PARTITION,
+                  pk: "bundles",
+                  sk: "a",
+                  row: {},
+                },
+          );
+        }
+        await expect(migrateCosmosDatabase(named)).rejects.toThrow(
+          engine === null ? "no schema.engine setting" : 'storage engine "9"',
+        );
+      } finally {
+        await emulator.dropDatabase(databaseId);
       }
-      if (otherItem) {
-        await container.items.create({
-          id: "existing-item",
-          partition: COSMOS_PARTITION,
-          pk: "bundles",
-          sk: "a",
-          row: {},
-        });
-      }
-      await expect(migrateCosmosDatabase(named)).rejects.toThrow(
-        engine === null ? "no schema.engine setting" : 'storage engine "9"',
-      );
-    } finally {
-      await emulator.dropDatabase(databaseId);
-    }
-  });
+    },
+  );
 
   it("adopts an existing container with its default indexing and no default TTL", async () => {
     const databaseId = emulator.databaseId();

@@ -98,13 +98,19 @@ const assertMigratable = async (
     }
     return;
   }
+  // Every partition, and items of any shape: anything but the settings
+  // means another app's data.
   const { resources } = await container.items
     .query<string>(
       {
-        query: "SELECT TOP 1 VALUE c.id FROM c WHERE c.pk != @settings",
-        parameters: [{ name: "@settings", value: SETTINGS_TABLE.name }],
+        query:
+          "SELECT TOP 1 VALUE c.id FROM c WHERE NOT (c.partition = @partition AND c.pk = @settings)",
+        parameters: [
+          { name: "@partition", value: COSMOS_PARTITION },
+          { name: "@settings", value: SETTINGS_TABLE.name },
+        ],
       },
-      { partitionKey: COSMOS_PARTITION, enableScanInQuery: true },
+      { enableScanInQuery: true },
     )
     .fetchAll();
   if (resources.length > 0) {
