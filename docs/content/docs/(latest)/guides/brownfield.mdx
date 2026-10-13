@@ -139,7 +139,7 @@ public func startReactNativeWithHotUpdater(onBundleLoaded: (() -> Void)? = nil) 
 `HotUpdater.bundleURL(bundle: ReactNativeBundle)` returns the downloaded
 update, or `main.jsbundle` embedded in the framework. Hot Updater also reads
 its `HOT_UPDATER_*` keys from this bundle's `Info.plist` and reuses the bundle
-when it reloads or rolls back.
+when it rolls back.
 
 Keep React Native Brownfield's default of loading the bundle with the first
 React Native screen. With `preloadBundle: true`, a new update loads while the
@@ -262,8 +262,8 @@ object ReactNativeHostManager {
 
 `HotUpdater.getJSBundleFile` returns the downloaded update, or
 `assets://index.android.bundle` embedded in the AAR. A native app has no
-`ReactApplication`, so `HotUpdater.setReactHost` gives Hot Updater the host to
-reload.
+`ReactApplication`, so `HotUpdater.setReactHost` gives Hot Updater the host it
+runs.
 
 <Callout type="warn">
   `ReactNativeBrownfield.initialize` loads React Native's native libraries.
@@ -417,27 +417,38 @@ npx hot-updater deploy -p ios -c production
 npx hot-updater deploy -p android -c production
 ```
 
-The artifact checks for updates through `HotUpdater.init`, downloads them, and
-loads them the next time React Native starts or reloads. See
-[Deploy](/docs/guides/deploy) and [Custom update flow](/docs/guides/custom-update).
+See [Deploy](/docs/guides/deploy).
 
-## Reload in a native app
+## Apply updates without reloading
 
-`hotUpdater.reload()` restarts only the React Native instance on iOS. On
-Android its default, `processRestart`, restarts the whole native app process.
-In a native app, reload only React Native:
+React Native runs for the life of the native app's process, so download an
+update and let it apply the next time the app starts. Do not call
+`hotUpdater.reload()` in a native app: on Android it restarts the whole native
+app, which opens again at its first native screen.
 
-```tsx title="src/hotUpdater.ts"
-export const hotUpdater = HotUpdater.init({
-  baseURL: "https://your-update-server-url",
-});
+```tsx title="src/updates.ts"
+import { hotUpdater, reportUpdateError } from "./hotUpdater";
 
-hotUpdater.setReloadBehavior("reload"); // [!code ++]
+export async function downloadUpdate() {
+  try {
+    const update = await hotUpdater.checkForUpdate({
+      updateStrategy: "fingerprint",
+    });
+
+    if (!update) {
+      return;
+    }
+
+    await update.updateBundle();
+  } catch (error) {
+    reportUpdateError(error);
+  }
+}
 ```
 
-The React Native screens on display restart with the new bundle; native
-screens stay as they are. Use `"custom"` when the native app must restore
-navigation itself. See [`setReloadBehavior`](/docs/react-native-api/setReloadBehavior).
+Call it where the React Native screen starts, for example in a top-level
+`useEffect`. The next launch of the native app loads the downloaded bundle. An
+update deployed as required (`shouldForceUpdate`) applies the same way.
 
 [Automatic rollback](/docs/concepts/automatic-rollback) works as in any app: a
 bundle that crashes before its first React Native screen appears rolls back to
@@ -455,9 +466,10 @@ the previous bundle, or to the one embedded in the artifact.
 
 2. Build the native app in Release and open a React Native screen. The channel
    and fingerprint match the values you embedded.
-3. Change a screen, deploy, and apply the update. The bundle ID changes and the
+3. Change a screen and deploy. Open the React Native screen so it downloads the
+   update, then close and reopen the native app. The bundle ID changes and the
    screen shows your change.
-4. Close and reopen the native app. The update stays applied.
+4. Close and reopen the native app again. The update stays applied.
 
 ## Troubleshooting
 
@@ -466,8 +478,7 @@ the previous bundle, or to the one embedded in the artifact.
 | The channel is `production` and the fingerprint is `null` | The artifact has no Hot Updater values. Run `channel set` and `fingerprint create`, check the framework's `Info.plist` and the library manifest, and package again. On Android, check that the library manifest has an `<application>` element. |
 | The native app fails with "no such module 'HotUpdater'" | The framework imports `HotUpdater` publicly. Use `internal import HotUpdater`. |
 | The update downloads but the screen does not change | The native app runs a Debug build, which loads Metro. Build it in Release. |
-| Reloading restarts the whole native app on Android | Set `hotUpdater.setReloadBehavior("reload")`. |
-| `reload()` does nothing on Android | `HotUpdater.setReactHost` was not called after `ReactNativeBrownfield.initialize`. |
+| The native app restarts at its first screen on Android | Something calls `hotUpdater.reload()`. Remove it; the update applies at the next launch. |
 | "Feature flags cannot be overridden more than once" on Android | `loadReactNative` ran before `ReactNativeBrownfield.initialize`. Remove it. |
 | The AAR keeps showing JavaScript from an earlier package | The library module reused an earlier bundle. Delete `android/brownfieldlib/build` and package again. |
 | Deploy reports a fingerprint mismatch | The native code changed after `fingerprint create`. Create the fingerprint again, package, and ship a new native app release. |
@@ -479,5 +490,5 @@ the previous bundle, or to the one embedded in the artifact.
 | iOS | `HotUpdater.bundleURL(bundle:)` | Returns the bundle to load; the bundle holds the embedded `main.jsbundle` and the `HOT_UPDATER_*` keys |
 | iOS | `HotUpdater.configure(withFingerprintHash:publicKey:channel:isolationKey:)` | Replaces embedded values at runtime |
 | Android | `HotUpdater.getJSBundleFile(context)` | Returns the bundle path to load |
-| Android | `HotUpdater.setReactHost(reactHost)` | Lets `reload()` restart a host that no `ReactApplication` owns |
+| Android | `HotUpdater.setReactHost(reactHost)` | Gives Hot Updater a host that no `ReactApplication` owns |
 | Android | `HotUpdater.configure(...)` | Replaces embedded values at runtime |

@@ -58,7 +58,7 @@ hotUpdater.setReloadBehavior("reload");
 
 - Android and iOS
 - Runs your own reload logic
-- Best when a brownfield host app must reopen a specific native container or screen itself
+- Best when the app must reopen a specific screen itself
 
 ```tsx
 import { NativeModules } from "react-native";
@@ -72,11 +72,9 @@ hotUpdater.setReloadBehavior("custom", async () => {
 ## When to use which
 
 - Use `processRestart` if you want the safest Android default
-- Use `reload` in brownfield apps when only the current React Native area should refresh
-- Use `custom` in brownfield apps when the host app must coordinate navigation or container restore itself
 
-In a brownfield app, `processRestart` restarts the whole native app on Android.
-See [Brownfield Apps](/docs/guides/brownfield#reload-in-a-native-app).
+A brownfield app should not reload; see
+[Brownfield Apps](/docs/guides/brownfield#apply-updates-without-reloading).
 
 ## Related APIs
 
