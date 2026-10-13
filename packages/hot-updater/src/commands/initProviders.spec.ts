@@ -2,6 +2,7 @@ import * as awsInit from "@hot-updater/aws/init";
 import * as cloudflareInit from "@hot-updater/cloudflare/init";
 import * as firebaseInit from "@hot-updater/firebase/init";
 import * as supabaseInit from "@hot-updater/supabase/init";
+import * as vercelInit from "@hot-updater/vercel/init";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -15,19 +16,26 @@ const providerInits = {
   cloudflare: cloudflareInit,
   firebase: firebaseInit,
   supabase: supabaseInit,
+  vercel: vercelInit,
 };
 
 describe("init provider packages", () => {
   it("derives provider guards from the package registry", () => {
     // Given
-    const declaredProviders = ["cloudflare", "aws", "supabase", "firebase"];
+    const declaredProviders = [
+      "cloudflare",
+      "aws",
+      "supabase",
+      "firebase",
+      "vercel",
+    ];
 
     // When
     const results = declaredProviders.map(isInitProvider);
 
     // Then
     expect(INIT_PROVIDER_NAMES).toEqual(declaredProviders);
-    expect(results).toEqual([true, true, true, true]);
+    expect(results).toEqual([true, true, true, true, true]);
     expect(isInitProvider("unknown")).toBe(false);
     expect(isInitProvider(undefined)).toBe(false);
   });

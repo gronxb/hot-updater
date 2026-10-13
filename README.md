@@ -97,7 +97,7 @@
   ### Adapters
 
   - **Build Adapter**: Support for bundlers like Metro, Expo, Rock
-  - **Storage Adapter**: Support for bundle storage like AWS S3, Supabase Storage, Cloudflare R2 Storage
+  - **Storage Adapter**: Support for bundle storage like AWS S3, Supabase Storage, Cloudflare R2 Storage, Vercel Blob
   - **Database Adapter**: Support for metadata storage like Supabase Database, PostgreSQL, Cloudflare D1
 
   ### Configuration Example
@@ -229,6 +229,36 @@ export default defineConfig({
   database: firebaseDatabase({
     projectId: process.env.HOT_UPDATER_FIREBASE_PROJECT_ID!,
     credential,
+  }),
+  plugins: [apiKeys(), insights(), remoteConfig()],
+});
+```
+
+* [Vercel Blob + Functions + Postgres](https://hot-updater.dev/docs/managed/vercel)
+```tsx
+import { existsSync } from "node:fs";
+import { bare } from "@hot-updater/bare";
+import { postgres } from "@hot-updater/postgres";
+import { vercelBlobStorage } from "@hot-updater/vercel";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
+import { defineConfig } from "hot-updater";
+
+if (existsSync(".env.hotupdater")) {
+  process.loadEnvFile(".env.hotupdater");
+}
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  updateStrategy: "appVersion",
+  storage: vercelBlobStorage({
+    token: process.env.HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN!,
+    access:
+      process.env.HOT_UPDATER_VERCEL_BLOB_ACCESS === "public"
+        ? "public"
+        : "private",
+  }),
+  database: postgres({
+    connectionString: process.env.HOT_UPDATER_VERCEL_DATABASE_URL!,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
 });

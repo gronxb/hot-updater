@@ -82,7 +82,7 @@ the build and native config plugins; configure it during
 
 For a managed provider, install the package for your selected infrastructure:
 
-<Tabs items={["Cloudflare", "Supabase", "AWS", "Firebase"]}>
+<Tabs items={["Cloudflare", "Supabase", "AWS", "Firebase", "Vercel"]}>
   <Tab value="Cloudflare">
 
 ```package-install
@@ -108,6 +108,13 @@ npm install @hot-updater/aws --save-dev
 
 ```package-install
 npm install @hot-updater/firebase --save-dev
+```
+
+  </Tab>
+  <Tab value="Vercel">
+
+```package-install
+npm install @hot-updater/vercel @hot-updater/postgres --save-dev
 ```
 
   </Tab>

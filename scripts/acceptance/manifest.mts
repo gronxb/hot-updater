@@ -96,7 +96,7 @@ export const rows: readonly AcceptanceRow[] = [
       ),
     ],
     writeLimit: false,
-    profiles: ["standalone-kysely"],
+    profiles: ["standalone-kysely", "vercel"],
     multiplier:
       "Rows examined equal logical rows: EXPLAIN allows 1 per key and row, 0 per read.",
   },
@@ -361,6 +361,7 @@ export const rows: readonly AcceptanceRow[] = [
       "standalone-prisma",
       "supabase",
       "cloudflare",
+      "vercel",
     ],
     multiplier:
       "Rows examined equal logical rows on pooled PostgreSQL and MySQL (EXPLAIN ANALYZE), 1 per key and row.",
@@ -417,6 +418,7 @@ export const rows: readonly AcceptanceRow[] = [
       "cloudflare",
       "firebase",
       "aws",
+      "vercel",
     ],
     multiplier: "One settings read per process, then none.",
   },
@@ -496,6 +498,7 @@ export const rows: readonly AcceptanceRow[] = [
       "cloudflare",
       "firebase",
       "aws",
+      "vercel",
     ],
     multiplier:
       "A pass, at most hourly across servers, reads the lease row and deletes at most 500 expired rows a table in one or two SQL statements; TTL backends (DynamoDB, Firestore, MongoDB) read nothing.",
@@ -540,6 +543,7 @@ export const rows: readonly AcceptanceRow[] = [
       "cloudflare",
       "firebase",
       "aws",
+      "vercel",
     ],
     multiplier:
       "Counts logical rows at its boundary; each backend's multiplier applies below it.",

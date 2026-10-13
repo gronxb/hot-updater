@@ -7,6 +7,7 @@
     "cloudflare",
     "aws",
     "firebase",
+    "vercel",
     "../guides/agent-infrastructure",
     "../guides/infrastructure-templates"
   ]

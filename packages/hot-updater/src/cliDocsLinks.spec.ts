@@ -58,6 +58,7 @@ describe("CLI docs links", () => {
         "plugins/cloudflare/iac/index.ts",
         "plugins/firebase/iac/index.ts",
         "plugins/supabase/iac/index.ts",
+        "plugins/vercel/iac/index.ts",
       ]),
     );
   });

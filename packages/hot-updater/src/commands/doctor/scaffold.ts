@@ -16,8 +16,9 @@ import { type DoctorCheck, isObject, isText } from "./checks";
 // Check deployment inputs only. Instructions, examples and reference source
 // deliberately contain placeholders that are not sent to a provider.
 const isDeploymentInput = (file: string) =>
-  /^(worker|supabase|lambda|cloudfront|dynamodb|iam|firebase)\//.test(file) &&
-  !/\.(md|map)$/.test(file);
+  /^(worker|supabase|lambda|cloudfront|dynamodb|iam|firebase|vercel)\//.test(
+    file,
+  ) && !/\.(md|map)$/.test(file);
 const hasPlaceholder = (text: string) =>
   /__HOT_UPDATER_[A-Z0-9_]+__|%%BUCKET_NAME%%/.test(text);
 
@@ -363,6 +364,33 @@ export async function checkScaffold(infraDir: string): Promise<{
         "Firebase must deploy the supplied functions directory.",
         "firebase/firebase.json",
         "Restore the functions source from the supplied Firebase configuration.",
+      );
+    }
+  }
+  if (manifest.provider === "vercel") {
+    const file = "vercel/vercel.json";
+    // Every path reaches the one Function, which routes it.
+    if (
+      !items(json(file)["rewrites"]).some(
+        (entry) =>
+          entry["source"] === "/(.*)" && entry["destination"] === "/api",
+      )
+    ) {
+      fail(
+        "INFRA_VERCEL_ROUTES",
+        "Vercel must rewrite every path to the supplied Function.",
+        file,
+        'Restore the rewrite { "source": "/(.*)", "destination": "/api" }.',
+      );
+    }
+    try {
+      await readScaffoldFile(infraDir, "vercel/api/index.mjs");
+    } catch {
+      fail(
+        "INFRA_RUNTIME_ENTRY",
+        "The supplied Vercel Function is missing or unsafe.",
+        "vercel/api/index.mjs",
+        "Restore api/index.mjs from the supplied Vercel scaffold.",
       );
     }
   }
