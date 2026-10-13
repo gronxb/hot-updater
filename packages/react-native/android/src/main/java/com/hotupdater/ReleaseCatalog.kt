@@ -188,9 +188,9 @@ internal object ReleaseCatalogs {
         val segments = scopeKey.split(":")
         val version = segments[0]
         val strategy = segments.getOrNull(1)
-        val platform = segments.getOrNull(2)
+        val platform = segments.getOrNull(2)?.takeIf { it == "ios" || it == "android" }
         val channelKey = segments.getOrNull(3)
-        require(version == "v1" && (platform == "ios" || platform == "android") && channelKey != null) {
+        require(version == "v1" && platform != null && channelKey != null) {
             "Invalid release catalog scope key"
         }
 
