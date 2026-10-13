@@ -34,7 +34,9 @@ import {
   normalizeLocation,
 } from "./azureCli";
 import {
+  assertCosmosAccountCanInitialize,
   assertFunctionAppCanInitialize,
+  assertStorageAccountCanInitialize,
   deployFunction,
   ensureCosmosAccount,
   ensureFunctionApp,
@@ -266,13 +268,31 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     hint: "Use 2 to 60 letters, digits, and inner '-'.",
   });
 
-  // Before any resource exists: an unusable Function App would leave the
-  // storage and Cosmos DB accounts behind.
+  // Every check before any resource exists: a refusal after one is created
+  // would leave it behind.
   await assertFunctionAppCanInitialize({
     az,
     subscriptionId,
     name: functionApp,
     resourceGroup,
+  });
+  await assertStorageAccountCanInitialize({
+    az,
+    name: storageAccount,
+    resourceGroup,
+  });
+  const { strengthen } = await assertCosmosAccountCanInitialize({
+    az,
+    name: cosmosAccount,
+    resourceGroup,
+    confirmStrong: async () =>
+      !nonInteractive &&
+      exitIfCancelled(
+        await p.confirm({
+          message: `Change Cosmos DB account ${cosmosAccount} to strong consistency? Other apps on it read under it too.`,
+          initialValue: false,
+        }),
+      ),
   });
 
   let storageConnectionString = "";
@@ -291,7 +311,7 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       },
     },
   ]);
-  // A new account takes several minutes; an existing one may need a confirmation.
+  // A new account takes several minutes.
   const spinner = p.spinner();
   spinner.start(`Preparing Cosmos DB account ${cosmosAccount}...`);
   try {
@@ -300,20 +320,8 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       name: cosmosAccount,
       resourceGroup,
       location,
-      confirmStrong: async () => {
-        if (nonInteractive) return false;
-        spinner.stop(
-          `Cosmos DB account ${cosmosAccount} uses weaker consistency`,
-        );
-        const allowed = exitIfCancelled(
-          await p.confirm({
-            message: `Change Cosmos DB account ${cosmosAccount} to strong consistency? Other apps on it read under it too.`,
-            initialValue: false,
-          }),
-        );
-        spinner.start(`Preparing Cosmos DB account ${cosmosAccount}...`);
-        return allowed;
-      },
+      // Asked before anything was created.
+      confirmStrong: async () => strengthen,
     });
     spinner.stop(`Cosmos DB account ${cosmosAccount} is ready`);
   } catch (error) {

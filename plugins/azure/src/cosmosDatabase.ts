@@ -3,6 +3,7 @@ import type { EngineDatabase } from "@hot-updater/plugin-core";
 import {
   createEngineDatabase,
   createKvAdapter,
+  encodeKvKey,
   migrateCoreSchema,
   type PluginTables,
   SETTINGS_TABLE,
@@ -13,7 +14,11 @@ import {
   AZURE_COSMOS_V1_CONTAINER,
   AZURE_COSMOS_V1_DATABASE,
 } from "./azureInfrastructureNames";
-import { COSMOS_PARTITION, createCosmosStore } from "./cosmosStore";
+import {
+  COSMOS_PARTITION,
+  cosmosItemId,
+  createCosmosStore,
+} from "./cosmosStore";
 
 /** The settings row that names the storage layout the container holds. */
 const ENGINE_KEY = "schema.engine";
@@ -59,18 +64,32 @@ const adapterOf = (config: CosmosDatabaseConfig) => {
  * layout.
  */
 const assertMigratable = async (
-  { container, adapter }: ReturnType<typeof adapterOf>,
+  { container }: ReturnType<typeof adapterOf>,
   expected: string | undefined,
 ) => {
-  let engine: unknown;
+  // Point reads and a scan: a reused container may index nothing yet, and
+  // the migration only fixes its indexing once this check passes.
+  const missing = (error: unknown) =>
+    (error as { code?: unknown }).code === 404;
   try {
-    const [row] = await adapter.get(SETTINGS_TABLE, [[ENGINE_KEY]]);
-    engine = row?.["value"];
-  } catch (error) {
     // No database or container yet: the migration creates them.
-    if ((error as { code?: unknown }).code === "42P01") return;
+    if ((await container.read()).resource === undefined) return;
+  } catch (error) {
+    if (missing(error)) return;
     throw error;
   }
+  // A missing item reads as no resource.
+  const { resource } = await container
+    .item(
+      cosmosItemId({ pk: SETTINGS_TABLE.name, sk: encodeKvKey([ENGINE_KEY]) }),
+      COSMOS_PARTITION,
+    )
+    .read<{ row?: { value?: unknown } }>()
+    .catch((error: unknown) => {
+      if (missing(error)) return { resource: undefined };
+      throw error;
+    });
+  const engine = resource?.row?.value;
   if (engine !== undefined) {
     if (engine !== expected) {
       throw new Error(
@@ -85,7 +104,7 @@ const assertMigratable = async (
         query: "SELECT TOP 1 VALUE c.id FROM c WHERE c.pk != @settings",
         parameters: [{ name: "@settings", value: SETTINGS_TABLE.name }],
       },
-      { partitionKey: COSMOS_PARTITION },
+      { partitionKey: COSMOS_PARTITION, enableScanInQuery: true },
     )
     .fetchAll();
   if (resources.length > 0) {

@@ -56,24 +56,28 @@ interface StorageAccount {
 /** Account kinds with the Blob, Queue, and Table services a Function App's host storage needs. */
 const FUNCTION_STORAGE_KINDS = new Set(["StorageV2", "Storage"]);
 
-/** The storage account's connection string, with the bundles' container in it. */
-export const ensureStorageAccount = async ({
+/**
+ * Checks the storage account before init creates anything: an existing one
+ * must be able to host the Function App and sign SAS URLs, and a new name
+ * must be free. Resolves whether the account exists.
+ */
+export const assertStorageAccountCanInitialize = async ({
   az,
   name,
   resourceGroup,
-  location,
 }: {
   readonly az: AzureCli;
   readonly name: string;
   readonly resourceGroup: string;
-  readonly location: string;
-}): Promise<string> => {
-  const scope = ["--name", name, "--resource-group", resourceGroup];
+}): Promise<boolean> => {
   const account = await showOrNull<StorageAccount>(az, [
     "storage",
     "account",
     "show",
-    ...scope,
+    "--name",
+    name,
+    "--resource-group",
+    resourceGroup,
   ]);
   if (account === null) {
     const check = await az<{ nameAvailable: boolean; message?: string }>([
@@ -88,6 +92,35 @@ export const ensureStorageAccount = async ({
         `Storage account name ${name} is not available: ${check.message ?? "it is taken"}. Choose another name.`,
       );
     }
+    return false;
+  }
+  if (!FUNCTION_STORAGE_KINDS.has(account.kind ?? "")) {
+    throw new InitError(
+      `Storage account ${name} is a ${account.kind} account; the Function App's host storage needs a general-purpose (StorageV2) account with Blob, Queue, and Table services. Choose another name.`,
+    );
+  }
+  if (account.allowSharedKeyAccess === false) {
+    throw new InitError(
+      `Storage account ${name} disallows shared key access, which the bundles' SAS URLs and the Function App's settings use. Allow it, or choose another account.`,
+    );
+  }
+  return true;
+};
+
+/** The storage account's connection string, with the bundles' container in it. */
+export const ensureStorageAccount = async ({
+  az,
+  name,
+  resourceGroup,
+  location,
+}: {
+  readonly az: AzureCli;
+  readonly name: string;
+  readonly resourceGroup: string;
+  readonly location: string;
+}): Promise<string> => {
+  const scope = ["--name", name, "--resource-group", resourceGroup];
+  if (!(await assertStorageAccountCanInitialize({ az, name, resourceGroup }))) {
     await az([
       "storage",
       "account",
@@ -104,14 +137,6 @@ export const ensureStorageAccount = async ({
       "--allow-blob-public-access",
       "false",
     ]);
-  } else if (!FUNCTION_STORAGE_KINDS.has(account.kind ?? "")) {
-    throw new InitError(
-      `Storage account ${name} is a ${account.kind} account; the Function App's host storage needs a general-purpose (StorageV2) account with Blob, Queue, and Table services. Choose another name.`,
-    );
-  } else if (account.allowSharedKeyAccess === false) {
-    throw new InitError(
-      `Storage account ${name} disallows shared key access, which the bundles' SAS URLs and the Function App's settings use. Allow it, or choose another account.`,
-    );
   }
   const connection = await az<{ connectionString: string }>([
     "storage",
@@ -137,6 +162,58 @@ interface CosmosAccount {
 }
 
 /**
+ * Checks the Cosmos DB account before init creates anything: an existing one
+ * must be an API for NoSQL account with strong consistency, which
+ * `confirmStrong` may allow init to set, and a new name must be free.
+ * Resolves whether init changes the account's consistency.
+ */
+export const assertCosmosAccountCanInitialize = async ({
+  az,
+  name,
+  resourceGroup,
+  confirmStrong,
+}: {
+  readonly az: AzureCli;
+  readonly name: string;
+  readonly resourceGroup: string;
+  readonly confirmStrong: () => Promise<boolean>;
+}): Promise<{ readonly exists: boolean; readonly strengthen: boolean }> => {
+  const account = await showOrNull<CosmosAccount>(az, [
+    "cosmosdb",
+    "show",
+    "--name",
+    name,
+    "--resource-group",
+    resourceGroup,
+  ]);
+  if (account === null) {
+    if (await az<boolean>(["cosmosdb", "check-name-exists", "--name", name])) {
+      throw new InitError(
+        `Cosmos DB account name ${name} is taken. Choose another name.`,
+      );
+    }
+    return { exists: false, strengthen: false };
+  }
+  const otherApi = account.capabilities?.find(({ name: capability }) =>
+    /^Enable(Mongo|Cassandra|Gremlin|Table)$/.test(capability),
+  );
+  if (account.kind !== "GlobalDocumentDB" || otherApi !== undefined) {
+    throw new InitError(
+      `Cosmos DB account ${name} is not an API for NoSQL account. Choose another name.`,
+    );
+  }
+  if (account.consistencyPolicy?.defaultConsistencyLevel === "Strong") {
+    return { exists: true, strengthen: false };
+  }
+  if (!(await confirmStrong())) {
+    throw new InitError(
+      `Cosmos DB account ${name} must use strong consistency. Choose another account, or allow init to change it.`,
+    );
+  }
+  return { exists: true, strengthen: true };
+};
+
+/**
  * The Cosmos DB account's connection string. A new account is serverless
  * with strong consistency, which the database's guarded writes read under;
  * an account of another API is refused.
@@ -156,17 +233,13 @@ export const ensureCosmosAccount = async ({
   readonly confirmStrong: () => Promise<boolean>;
 }): Promise<string> => {
   const scope = ["--name", name, "--resource-group", resourceGroup];
-  const account = await showOrNull<CosmosAccount>(az, [
-    "cosmosdb",
-    "show",
-    ...scope,
-  ]);
-  if (account === null) {
-    if (await az<boolean>(["cosmosdb", "check-name-exists", "--name", name])) {
-      throw new InitError(
-        `Cosmos DB account name ${name} is taken. Choose another name.`,
-      );
-    }
+  const { exists, strengthen } = await assertCosmosAccountCanInitialize({
+    az,
+    name,
+    resourceGroup,
+    confirmStrong,
+  });
+  if (!exists) {
     await az([
       "cosmosdb",
       "create",
@@ -182,29 +255,14 @@ export const ensureCosmosAccount = async ({
       "--default-consistency-level",
       "Strong",
     ]);
-  } else {
-    const otherApi = account.capabilities?.find(({ name: capability }) =>
-      /^Enable(Mongo|Cassandra|Gremlin|Table)$/.test(capability),
-    );
-    if (account.kind !== "GlobalDocumentDB" || otherApi !== undefined) {
-      throw new InitError(
-        `Cosmos DB account ${name} is not an API for NoSQL account. Choose another name.`,
-      );
-    }
-    if (account.consistencyPolicy?.defaultConsistencyLevel !== "Strong") {
-      if (!(await confirmStrong())) {
-        throw new InitError(
-          `Cosmos DB account ${name} must use strong consistency. Choose another account, or allow init to change it.`,
-        );
-      }
-      await az([
-        "cosmosdb",
-        "update",
-        ...scope,
-        "--default-consistency-level",
-        "Strong",
-      ]);
-    }
+  } else if (strengthen) {
+    await az([
+      "cosmosdb",
+      "update",
+      ...scope,
+      "--default-consistency-level",
+      "Strong",
+    ]);
   }
   const keys = await az<{
     connectionStrings?: readonly {
