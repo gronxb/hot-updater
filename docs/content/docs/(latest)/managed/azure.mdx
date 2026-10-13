@@ -20,8 +20,10 @@ provider resources here, then connect your app with the verified URL and key.
 You need the following resources and access. An AI agent can prepare missing
 resources through its available provider tools.
 
-- **Node.js**: The CLI requires 20.19+. Agent setup uses a client-key helper that
-  requires Node 22.18+ or Node 24+; prepare it before provisioning resources.
+- **Node.js 22+**: The Azure SDKs `@hot-updater/azure` uses require Node.js 22
+  or later, and the Function runs on Node.js 22. Agent setup uses a client-key
+  helper that requires Node 22.18+ or Node 24+; prepare it before provisioning
+  resources.
 - **Azure subscription**: Sign in with an account that can create resource
   groups, storage accounts, Cosmos DB accounts, and Function Apps in the
   subscription.
@@ -81,7 +83,9 @@ The initializer then prompts you to:
 
 1. Select the subscription. Init signs in with `az login` first when needed.
 2. Enter a resource group. Init reuses an existing group and its region, or
-   asks for a region and creates the group.
+   asks for a region and creates the group. Only regions that host Flex
+   Consumption Function Apps qualify, since the Function App shares the
+   group's region; init stops before creating anything in a group elsewhere.
 3. Name the storage account, the Cosmos DB account, and the Function App. The
    proposed names are derived from the subscription and resource group, so a
    rerun proposes the same ones.

@@ -3,6 +3,9 @@
   "type": "module",
   "version": "1.0.1",
   "description": "React Native OTA solution for self-hosted",
+  "engines": {
+    "node": ">=22"
+  },
   "main": "dist/index.cjs",
   "module": "dist/index.mjs",
   "types": "dist/index.d.cts",

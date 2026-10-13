@@ -547,6 +547,7 @@ export const createCosmosStore = ({
             ? []
             : [{ id: remaining[at]!, error: result.error, status }];
         });
+        if (failed.length === 0) return;
         const retried = failed.filter(
           ({ error, status }) =>
             TRANSIENT.has(status as number) || emulatorAborted(error),

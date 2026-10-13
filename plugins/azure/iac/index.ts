@@ -28,8 +28,10 @@ import {
   type AzureSubscription,
   createAzureCli,
   isAzureCliInstalled,
+  listFlexConsumptionLocations,
   listLocations,
   listSubscriptions,
+  normalizeLocation,
 } from "./azureCli";
 import {
   deployFunction,
@@ -227,6 +229,15 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   p.log.info(
     `${created ? "Created" : "Using"} resource group ${resourceGroup} in ${location}`,
   );
+  // The Function App shares the group's region; check it before creating
+  // anything else there.
+  if (
+    !(await listFlexConsumptionLocations(az)).has(normalizeLocation(location))
+  ) {
+    throw new InitError(
+      `Resource group ${resourceGroup} is in ${location}, which has no Flex Consumption Function Apps. Choose another resource group, or a new one in a supported region (az functionapp list-flexconsumption-locations).`,
+    );
+  }
 
   const defaults = defaultResourceNames(subscriptionId, resourceGroup);
   const storageAccount = await resolveName({

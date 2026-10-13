@@ -281,3 +281,41 @@ describe("config scaffold container", () => {
     );
   });
 });
+
+describe("region choices", () => {
+  it("offers only physical regions that host Flex Consumption", async () => {
+    const { listLocations } = await import("./azureCli");
+    const { az } = fakeAz({
+      "functionapp list-flexconsumption-locations": [
+        { name: "eastus" },
+        { name: "Korea Central" },
+      ],
+      "account list-locations": [
+        {
+          name: "westus",
+          displayName: "West US",
+          metadata: { regionType: "Physical" },
+        },
+        {
+          name: "koreacentral",
+          displayName: "Korea Central",
+          metadata: { regionType: "Physical" },
+        },
+        {
+          name: "eastus",
+          displayName: "East US",
+          metadata: { regionType: "Physical" },
+        },
+        {
+          name: "eastusstg",
+          displayName: "East US (Stage)",
+          metadata: { regionType: "Logical" },
+        },
+      ],
+    });
+    expect((await listLocations(az)).map(({ name }) => name)).toEqual([
+      "eastus",
+      "koreacentral",
+    ]);
+  });
+});

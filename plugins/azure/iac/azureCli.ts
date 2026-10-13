@@ -108,10 +108,33 @@ export const listSubscriptions = async (
   return subscriptions;
 };
 
-/** Physical regions, by name. */
+/** A region's name as `az` takes it: `East US` and `eastus` are both `eastus`. */
+export const normalizeLocation = (location: string) =>
+  location.toLowerCase().replaceAll(" ", "");
+
+/** The regions that host Flex Consumption Function Apps, by normalized name. */
+export const listFlexConsumptionLocations = async (
+  az: AzureCli,
+): Promise<ReadonlySet<string>> =>
+  new Set(
+    (
+      (await az<{ name: string }[]>([
+        "functionapp",
+        "list-flexconsumption-locations",
+      ])) ?? []
+    ).map(({ name }) => normalizeLocation(name)),
+  );
+
+/** Physical regions that host Flex Consumption, by name. */
 export const listLocations = async (
   az: AzureCli,
-): Promise<readonly AzureLocation[]> =>
-  ((await az<AzureLocation[]>(["account", "list-locations"])) ?? [])
-    .filter((location) => location.metadata?.regionType === "Physical")
+): Promise<readonly AzureLocation[]> => {
+  const flex = await listFlexConsumptionLocations(az);
+  return ((await az<AzureLocation[]>(["account", "list-locations"])) ?? [])
+    .filter(
+      (location) =>
+        location.metadata?.regionType === "Physical" &&
+        flex.has(normalizeLocation(location.name)),
+    )
     .sort((left, right) => left.name.localeCompare(right.name));
+};
