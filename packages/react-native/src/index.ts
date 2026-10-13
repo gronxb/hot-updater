@@ -29,7 +29,6 @@ import {
   reload,
   resetChannel,
   setCohort,
-  setReloadBehavior,
   stageBundle,
   type UpdateParams,
 } from "./native";
@@ -80,7 +79,6 @@ export {
   type RemoteConfigValueSource,
 } from "@hot-updater/plugin-remote-config/client";
 export type {
-  CustomReloadHandler,
   HotUpdaterEvent,
   HotUpdaterProgressArtifactType,
   HotUpdaterProgressEvent,
@@ -88,8 +86,6 @@ export type {
   ManifestAsset,
   NotifyAppReadyResult,
   ActiveUpdateState,
-  ReloadBehavior,
-  ReloadBehaviorSetting,
 } from "./native";
 export * from "./store";
 export {
@@ -136,21 +132,10 @@ const createMissingNetworkConfigError = () =>
 /** The methods that read or change native state, the same on every instance. */
 const nativeMethods = {
   /**
-   * Reloads the app.
+   * Restarts the app so it loads the current bundle: a cold process restart
+   * on Android, an in-place React Native reload on iOS.
    */
   reload,
-
-  /**
-   * Configures how `hotUpdater.reload()` behaves.
-   *
-   * This can be called unconditionally on both platforms.
-   * The default is `processRestart`.
-   *
-   * - `reload`: built-in React Native reload on both platforms
-   * - `processRestart`: Android process restart, iOS behaves like normal reload
-   * - `custom`: run a custom JS handler on both platforms
-   */
-  setReloadBehavior,
 
   /**
    * Returns whether an update has finished downloading in this app session.

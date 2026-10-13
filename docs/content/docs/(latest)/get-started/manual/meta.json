@@ -6,6 +6,7 @@
   "pages": [
     "../choose-provider",
     "../installation",
-    "../app-setup"
+    "../app-setup",
+    "../../guides/brownfield"
   ]
 }

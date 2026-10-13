@@ -25,7 +25,7 @@ export interface Spec extends TurboModule {
   // Methods
   reload(): Promise<void>;
   /**
-   * Android process restart path used by `setReloadBehavior("processRestart")`.
+   * Android process restart, which `hotUpdater.reload()` uses on Android.
    *
    * iOS exposes the same method name for API parity, but it behaves the same as `reload()`.
    */

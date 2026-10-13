@@ -109,7 +109,7 @@ public class SignatureVerifier {
         if let override = HotUpdaterConfig.shared.publicKey, !override.isEmpty {
             return override
         }
-        guard let publicKeyPEM = Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_PUBLIC_KEY") as? String else {
+        guard let publicKeyPEM = HotUpdaterConfig.shared.infoValue(forKey: "HOT_UPDATER_PUBLIC_KEY") else {
             NSLog("[SignatureVerifier] HOT_UPDATER_PUBLIC_KEY not found in Info.plist")
             return nil
         }
