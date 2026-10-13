@@ -48,7 +48,6 @@ const mocks = vi.hoisted(() => {
     reload: vi.fn(),
     resetChannel: vi.fn(),
     setCohort: vi.fn(),
-    setReloadBehavior: vi.fn(),
     stageBundle: vi.fn(),
   };
 });
@@ -94,7 +93,6 @@ vi.mock("./native", () => ({
   reload: mocks.reload,
   resetChannel: mocks.resetChannel,
   setCohort: mocks.setCohort,
-  setReloadBehavior: mocks.setReloadBehavior,
   stageBundle: mocks.stageBundle,
 }));
 

@@ -181,7 +181,7 @@ extern "C" BOOL HotUpdaterPerformRecoveryReload(void)
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     [impl resetLaunchPreparation];
 
-    NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
+    NSURL *bundleURL = [impl bundleURLWithBundle:[HotUpdaterConfig shared].bundle];
     if (!bundleURL) {
       RCTLogWarn(@"[HotUpdater.mm] Failed to resolve bundle URL for recovery reload");
       return;
@@ -217,8 +217,8 @@ extern "C" NSString *HotUpdaterGetMinBundleId(void)
     // hot-updater CLI passes to xcodebuild and the Info.plist slot it adds
     // (`$(HOT_UPDATER_MIN_BUNDLE_ID)`) carries into the app, as Android
     // takes -PMIN_BUNDLE_ID.
-    NSString *customValue = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"HOT_UPDATER_MIN_BUNDLE_ID"];
-    if ([customValue isKindOfClass:[NSString class]]) {
+    NSString *customValue = [[HotUpdaterConfig shared] infoValueForKey:@"HOT_UPDATER_MIN_BUNDLE_ID"];
+    if (customValue) {
       NSString *trimmed = [customValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
       // An unset build setting leaves the slot empty or unexpanded; anything
       // but a UUID falls back to the compile time below.
@@ -462,22 +462,25 @@ RCT_EXPORT_MODULE();
 
 // Get bundleURL with default bundle using singleton
 + (NSURL *)bundleURL {
-    return [[HotUpdater sharedImpl] bundleURLWithBundle:[NSBundle mainBundle]];
+    return [self bundleURLWithBundle:[NSBundle mainBundle]];
 }
 
 // Get bundleURL with specific bundle using singleton
 + (NSURL *)bundleURLWithBundle:(NSBundle *)bundle {
+    // Record the bundle before the first sharedImpl, whose storage isolation
+    // key reads the bundle's HOT_UPDATER_* Info.plist keys.
+    [HotUpdaterConfig shared].bundle = bundle;
     return [[HotUpdater sharedImpl] bundleURLWithBundle:bundle];
 }
 
 // Get bundleURL with default bundle using instance impl
 - (NSURL *)bundleURL {
-    return [[HotUpdater sharedImpl] bundleURLWithBundle:[NSBundle mainBundle]];
+    return [HotUpdater bundleURLWithBundle:[NSBundle mainBundle]];
 }
 
 // Get bundleURL with specific bundle using instance impl
 - (NSURL *)bundleURLWithBundle:(NSBundle *)bundle {
-    return [[HotUpdater sharedImpl] bundleURLWithBundle:bundle];
+    return [HotUpdater bundleURLWithBundle:bundle];
 }
 
 + (void)configureWithFingerprintHash:(NSString *)fingerprintHash
@@ -540,7 +543,7 @@ RCT_EXPORT_MODULE();
         @try {
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
             [impl resetLaunchPreparation];
-            NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
+            NSURL *bundleURL = [impl bundleURLWithBundle:[HotUpdaterConfig shared].bundle];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
             if (bundleURL) {
                 RCTReloadCommandSetBundleURL(bundleURL);
@@ -728,7 +731,7 @@ RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
         @try {
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
             [impl resetLaunchPreparation];
-            NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
+            NSURL *bundleURL = [impl bundleURLWithBundle:[HotUpdaterConfig shared].bundle];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
             if (bundleURL) {
                 RCTReloadCommandSetBundleURL(bundleURL);
