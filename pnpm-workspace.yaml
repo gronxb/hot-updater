@@ -10,6 +10,13 @@ overrides:
   protobufjs: 7.6.6
   recharts@3.8.0>es-toolkit: 1.46.0
 
+# @bacons/xcode imports @xmldom/xmldom without declaring it, so the CLI
+# bundles whichever copy pnpm hoists. Pin the one it was built with.
+packageExtensions:
+  "@bacons/xcode@1.0.0-alpha.33":
+    dependencies:
+      "@xmldom/xmldom": 0.9.10
+
 allowBuilds:
   '@bugsnag/cli': true
   '@firebase/util': true
