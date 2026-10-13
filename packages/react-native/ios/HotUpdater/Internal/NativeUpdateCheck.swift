@@ -30,12 +30,15 @@ import Foundation
 
 /// The outcome of `prepare`.
 @objc public enum HotUpdaterPrepareStatus: Int {
-    /// The app runs what the server wants.
+    /// The bundle this start runs is what the server wants. It may have been
+    /// downloaded by an earlier start.
     case upToDate
     /// A required update was staged before React Native read the bundle, so
     /// React Native starts with it.
     case ready
-    /// An update is downloading or staged; it applies at the next start.
+    /// An update is downloading or staged and applies at the first start
+    /// after it is staged: this one when it is staged before React Native
+    /// reads the bundle.
     case pending
     /// The check or the required update failed; see `error`.
     case failed
@@ -81,6 +84,9 @@ import Foundation
     let bundleId: String
     /// `INSTALL`, `ADOPT_RELEASE`, or `USE_BUILTIN`.
     let transitionKind: String
+    /// The update selects the bundle the app already launches, so staging it
+    /// only records the selection.
+    let runsCurrentBundle: Bool
     private let checker: NativeUpdateChecker
     private let stagedLock = NSLock()
     private var staged = false
@@ -95,6 +101,7 @@ import Foundation
         message: String?,
         bundleId: String,
         transitionKind: String,
+        runsCurrentBundle: Bool,
         checker: NativeUpdateChecker,
         install: @escaping (Date?, @escaping (Double) -> Void) async throws -> Bool
     ) {
@@ -105,6 +112,7 @@ import Foundation
         self.message = message
         self.bundleId = bundleId
         self.transitionKind = transitionKind
+        self.runsCurrentBundle = runsCurrentBundle
         self.checker = checker
         self.install = install
     }
@@ -715,6 +723,22 @@ final class NativeUpdateChecker {
     ) async -> HotUpdaterPrepareResult {
         staging.progress.add(onProgress)
         let update = staging.update
+        // Recording the selection of the bundle this start already runs, such
+        // as on the first start after an update, leaves nothing to apply.
+        if update.runsCurrentBundle {
+            switch await wait(for: staging, until: deadline) {
+            case .finished(.success(false)):
+                return HotUpdaterPrepareResult(
+                    status: .failed,
+                    update: update,
+                    error: NativeUpdateCheckError.staleReleaseCatalog
+                )
+            case .finished(.failure(let error)):
+                return HotUpdaterPrepareResult(status: .failed, update: update, error: error)
+            case .finished(.success(true)), .stopped:
+                return HotUpdaterPrepareResult(status: .upToDate)
+            }
+        }
         // An update that is not required downloads in the background.
         guard update.shouldForceUpdate else {
             return HotUpdaterPrepareResult(status: .pending, update: update)
@@ -1084,6 +1108,7 @@ final class NativeUpdateChecker {
             message: release?.message,
             bundleId: desired.bundleId,
             transitionKind: transitionKind,
+            runsCurrentBundle: desired.bundleId.jsEquals(currentBundleId),
             checker: self,
             install: updateBundleForSelection
         )

@@ -258,6 +258,27 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func prepareIsUpToDateWhenItAdoptsTheReleaseOfTheBundleThisStartRuns() async throws {
+        // The first start after an update: the stored selection names the
+        // bundle the app ran before it, so the catalog is selected again.
+        let host = FakeUpdateHost()
+        host.bundleIdValue = bundle2
+        host.active = receipt(release2, bundle2, generation: 1)
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(generation: 2, releases: [descriptor(release3, bundle2, force: true)])
+        )
+        let checker = makeChecker(host, transport)
+
+        let result = await checker.prepare(options(), timeout: 5)
+
+        #expect(result.status == .upToDate)
+        #expect(result.update == nil)
+        #expect(result.error == nil)
+        #expect(host.stagedParams.isEmpty)
+        #expect((host.committedParams.first?["selection"] as? [String: Any])?["releaseId"] as? String == release3)
+    }
+
+    @Test
     func prepareIsPendingWhenReactNativeAlreadyReadTheBundle() async throws {
         let host = FakeUpdateHost()
         host.launchPrepared = true

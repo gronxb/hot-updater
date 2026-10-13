@@ -162,7 +162,8 @@ class HotUpdater {
          * one deadline of [timeoutMillis] covering the wait for another check,
          * the requests, and the download of a required update. The deadline and
          * cancellation end the wait, never the download: it continues, applies
-         * at the next launch, and a later `prepare` or `updateBundle` joins it.
+         * at the first launch after it is staged, and a later `prepare` or
+         * `updateBundle` joins it.
          * An update that is not required downloads in the background without
          * a wait. Never throws: failures are returned, logged, and queued for
          * JavaScript's `onUpdateError`.

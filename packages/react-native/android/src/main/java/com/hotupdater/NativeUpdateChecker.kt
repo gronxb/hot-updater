@@ -306,6 +306,22 @@ internal class NativeUpdateChecker(
     ): HotUpdaterPrepareResult {
         val update = staging.update!!
         val result = staging.result!!
+        // Recording the selection of the bundle this launch already runs, such
+        // as on the first launch after an update, leaves nothing to apply.
+        if (update.runsCurrentBundle) {
+            return try {
+                val outcome = withTimeoutOrNull(remainingMillis(deadline).coerceAtLeast(0)) { result.await() }
+                if (outcome != null && !outcome.committed) {
+                    HotUpdaterPrepareResult.Failed(StaleReleaseCatalogException(), update)
+                } else {
+                    HotUpdaterPrepareResult.UpToDate
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                HotUpdaterPrepareResult.Failed(error, update)
+            }
+        }
         if (!update.shouldForceUpdate) return HotUpdaterPrepareResult.Pending(update)
         onProgress?.let(staging.progress::add)
         return try {
@@ -711,6 +727,7 @@ internal class NativeUpdateChecker(
                 rolloutCohortCount = release?.rolloutCohortCount ?: ReleaseSelector.DEFAULT_ROLLOUT_COHORT_COUNT,
                 targetCohorts = release?.targetCohorts?.toList() ?: emptyList(),
                 transitionKind = transitionKind,
+                runsCurrentBundle = desired.bundleId == input.currentBundleId,
                 targetKey = "${desired.kind.name}:${desired.bundleId}:${desired.releaseId}:${input.targetChannel}",
                 install = { onProgress -> updateBundle(update, selection, onProgress) },
             )

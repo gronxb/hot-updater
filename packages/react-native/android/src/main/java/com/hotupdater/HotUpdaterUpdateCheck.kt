@@ -54,6 +54,8 @@ class HotUpdaterUpdate internal constructor(
     internal val rolloutCohortCount: Int,
     internal val targetCohorts: List<String>,
     internal val transitionKind: String,
+    /** The update selects the bundle the app already launches, so staging it only records the selection. */
+    internal val runsCurrentBundle: Boolean,
     /** What staging this update produces; a staging already running for it is joined. */
     internal val targetKey: String,
     private val install: suspend (((Double) -> Unit)?) -> Boolean,
@@ -72,7 +74,7 @@ class HotUpdaterUpdate internal constructor(
 
 /** What `HotUpdater.prepare` found and did. */
 sealed class HotUpdaterPrepareResult {
-    /** No update. */
+    /** The bundle this launch runs is what the server wants. It may have been downloaded by an earlier launch. */
     object UpToDate : HotUpdaterPrepareResult()
 
     /** The update was staged before React Native read the bundle, so this launch runs it. */
@@ -81,10 +83,11 @@ sealed class HotUpdaterPrepareResult {
     ) : HotUpdaterPrepareResult()
 
     /**
-     * The update applies at a later launch: it is still downloading, it is
-     * not required and downloads in the background, or React Native had
-     * already read the bundle. [HotUpdaterUpdate.shouldForceUpdate] tells a
-     * required one.
+     * The update applies at the first launch after it is staged: it is still
+     * downloading, it is not required and downloads in the background, or
+     * React Native had already read the bundle. It runs at this launch only
+     * when it is staged before React Native reads the bundle.
+     * [HotUpdaterUpdate.shouldForceUpdate] tells a required one.
      */
     data class Pending(
         val update: HotUpdaterUpdate,

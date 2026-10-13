@@ -472,6 +472,26 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `prepare is up to date when it adopts the Release of the bundle this launch runs`() =
+        runBlocking {
+            // The first launch after an update: the stored selection names the
+            // bundle the app ran before it, so the catalog is selected again.
+            val state =
+                FakeState().apply {
+                    launchedBundleId = BUNDLE_B
+                    activeSelection = PersistedSelection.bareBundle(BUNDLE_B)
+                    stableSelection = PersistedSelection.bareBundle(BUNDLE_B)
+                }
+            val checker = NativeUpdateChecker(state, FakeTransport(routes(forcedCatalog())))
+
+            val result = withTimeout(5_000) { checker.prepare(OPTIONS, 5_000, null) }
+
+            assertEquals(HotUpdaterPrepareResult.UpToDate, result)
+            assertEquals(0, state.stageCount.get())
+            assertEquals(RELEASE_B, state.committed.single().releaseId)
+        }
+
+    @Test
     fun `a required rollback to the built-in bundle commits and is ready before a launch`() =
         runBlocking {
             val receipt =
