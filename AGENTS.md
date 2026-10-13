@@ -47,7 +47,8 @@
   requires infrastructure changes, register its version/note and add
   `packages/hot-updater/infrastructure-upgrades/<version>.md`.
 - Each version file must have Compatibility, Steps, Cloudflare, Supabase, AWS,
-  Firebase, Azure, and Verification sections. State when a provider needs no schema
+  Firebase, Azure, and Verification sections; a provider added after a release
+  (Azure after 1.0.0) needs its section only in later files. State when a provider needs no schema
   migration. Build validation rejects missing files, missing sections, or files
   without a corresponding doctor requirement. Append a new file for each release;
   do not overwrite an older file to describe a newer release. Preserve history

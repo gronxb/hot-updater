@@ -160,6 +160,7 @@ interface CosmosAccount {
   readonly capabilities?: readonly { readonly name: string }[];
   readonly consistencyPolicy?: { readonly defaultConsistencyLevel?: string };
   readonly enableMultipleWriteLocations?: boolean;
+  readonly disableLocalAuth?: boolean;
 }
 
 /**
@@ -201,6 +202,11 @@ export const assertCosmosAccountCanInitialize = async ({
   if (account.kind !== "GlobalDocumentDB" || otherApi !== undefined) {
     throw new InitError(
       `Cosmos DB account ${name} is not an API for NoSQL account. Choose another name.`,
+    );
+  }
+  if (account.disableLocalAuth) {
+    throw new InitError(
+      `Cosmos DB account ${name} disables key authentication, which init and the Function App connect with. Allow it, or choose another account.`,
     );
   }
   if (account.consistencyPolicy?.defaultConsistencyLevel === "Strong") {

@@ -171,6 +171,19 @@ describe("ensureCosmosAccount", () => {
     );
   });
 
+  it("refuses an account that disables key authentication", async () => {
+    const { az } = fakeAz({
+      "cosmosdb show": {
+        kind: "GlobalDocumentDB",
+        disableLocalAuth: true,
+        consistencyPolicy: { defaultConsistencyLevel: "Strong" },
+      },
+    });
+    await expect(ensureCosmosAccount({ az, ...input })).rejects.toThrow(
+      "disables key authentication",
+    );
+  });
+
   it("refuses a multi-region-write account before asking to strengthen it", async () => {
     const confirmStrong = vi.fn(async () => true);
     const { az } = fakeAz({

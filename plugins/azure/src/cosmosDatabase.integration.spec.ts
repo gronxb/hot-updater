@@ -3,6 +3,8 @@ import {
   type PhysicalTable,
   HotUpdaterSchemaMigrationRequiredError,
   SETTINGS_TABLE,
+  toolingTargetOf,
+  type ToolingDatabase,
 } from "@hot-updater/plugin-core";
 import { createHotUpdater } from "@hot-updater/server";
 import { createInsightsModel, insights } from "@hot-updater/server/plugins";
@@ -214,6 +216,39 @@ describe("cosmosDatabase", () => {
       }
     },
   );
+
+  it("refuses a container of another storage engine on hot-updater db migrate's path too", async () => {
+    const databaseId = emulator.databaseId();
+    try {
+      const named = { ...config(), databaseId };
+      await migrateCosmosDatabase(named);
+      const container = emulator.client
+        .database(databaseId)
+        .container(AZURE_COSMOS_V1_CONTAINER);
+      const { resources } = await container.items
+        .query<{ id: string; row: { key: string } }>(
+          "SELECT c.id, c.row FROM c",
+          { partitionKey: COSMOS_PARTITION },
+        )
+        .fetchAll();
+      const marker = resources.find(({ row }) => row.key === "schema.engine")!;
+      await container
+        .item(marker.id, COSMOS_PARTITION)
+        .patch([{ op: "set", path: "/row/value", value: "9" }]);
+      // What hot-updater db migrate and the scaffold's migrate.ts run.
+      const database = cosmosDatabase(named) as ToolingDatabase;
+      try {
+        const migration = await database.createMigrator!(
+          toolingTargetOf([insights()]),
+        ).migrateToLatest({ updateSettings: true });
+        await expect(migration.execute()).rejects.toThrow('storage engine "9"');
+      } finally {
+        await database.dispose?.();
+      }
+    } finally {
+      await emulator.dropDatabase(databaseId);
+    }
+  });
 
   it("adopts an existing container with its default indexing and no default TTL", async () => {
     const databaseId = emulator.databaseId();

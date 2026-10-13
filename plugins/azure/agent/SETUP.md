@@ -7,6 +7,22 @@ bundled Function package as interactive init: `index.mjs`, `host.json` and
 `package.json`, which need no install. Verify `az version` and an authenticated
 `az account show` before remote provisioning.
 
+## Upgrade or reconcile an existing deployment
+
+Read upgrades/README.md and the Azure section of each applicable version file
+first; a listed change applies before anything below. Then reconcile the
+recorded resource group, storage account, Cosmos DB account and Function App
+with this scaffold: every step is idempotent and reuses what exists. Repeat
+az.database-credential, whose migration creates only what is missing and
+refuses a container of another storage layout, then az.function, which sets
+the Function App's settings and deploys this scaffold's package, and finish
+with az.complete. Reuse the recorded resources and saved client credential;
+never create replacements to upgrade. `hot-updater init` with the saved inputs
+(`--from-env-file .env.hotupdater`) performs the same checks, migration and
+deployment.
+
+## Setup
+
 - [ ] **az.scope — Select the subscription and resource group**
   - Inputs: authenticated account, workspace configuration and established region.
   - Run: list enabled subscriptions (`az account list`) and select the one the

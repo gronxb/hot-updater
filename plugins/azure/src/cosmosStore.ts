@@ -8,11 +8,13 @@ import type {
   OperationInput,
   PatchOperation,
 } from "@azure/cosmos";
-import type {
-  KeyValueStore,
-  KvKey,
-  KvOp,
-  StoredRow,
+import {
+  encodeKvKey,
+  type KeyValueStore,
+  type KvKey,
+  type KvOp,
+  SETTINGS_TABLE,
+  type StoredRow,
 } from "@hot-updater/plugin-core";
 
 /**
@@ -194,11 +196,79 @@ const waitForIndexTransformation = async (container: Container) => {
   }
 };
 
+/** The settings row that names the storage layout a container holds. */
+const ENGINE_KEY = "schema.engine";
+
+/**
+ * Refuses a container a migration must not touch: one whose `schema.engine`
+ * is another storage layout's, or a populated one without the setting.
+ * Writing the settings would make the server read it as this layout. Point
+ * reads and a scan: a reused container may index nothing yet, and the
+ * migration only fixes its indexing once this check passes.
+ */
+const assertMigratable = async (container: Container, expected: string) => {
+  const missing = (error: unknown) =>
+    (error as { code?: unknown }).code === 404;
+  try {
+    // No database or container yet: the migration creates them.
+    if ((await container.read()).resource === undefined) return;
+  } catch (error) {
+    if (missing(error)) return;
+    throw error;
+  }
+  // A missing item reads as no resource.
+  const { resource } = await container
+    .item(
+      cosmosItemId({ pk: SETTINGS_TABLE.name, sk: encodeKvKey([ENGINE_KEY]) }),
+      COSMOS_PARTITION,
+    )
+    .read<{ row?: { value?: unknown } }>()
+    .catch((error: unknown) => {
+      if (missing(error)) return { resource: undefined };
+      throw error;
+    });
+  const found = resource?.row?.value;
+  if (found !== undefined) {
+    if (found !== expected) {
+      throw new Error(
+        `Cosmos DB container ${container.id} holds storage engine "${String(found)}"; this version writes "${expected}". Use the Hot Updater version that wrote it, or another container.`,
+      );
+    }
+    return;
+  }
+  // Every partition, and items of any shape: anything but the settings
+  // means another app's data.
+  const { resources } = await container.items
+    .query<string>(
+      {
+        query:
+          "SELECT TOP 1 VALUE c.id FROM c WHERE NOT (c.partition = @partition AND c.pk = @settings)",
+        parameters: [
+          { name: "@partition", value: COSMOS_PARTITION },
+          { name: "@settings", value: SETTINGS_TABLE.name },
+        ],
+      },
+      { enableScanInQuery: true },
+    )
+    .fetchAll();
+  if (resources.length > 0) {
+    throw new Error(
+      `Cosmos DB container ${container.id} holds items but no ${ENGINE_KEY} setting. Use an empty container.`,
+    );
+  }
+};
+
 export interface CosmosStoreOptions {
   readonly client: CosmosClient;
   readonly databaseId: string;
   /** The one container every item lives in. */
   readonly containerId: string;
+  /**
+   * The `schema.engine` setting this storage layout writes. A migration
+   * refuses a reused container whose setting differs, or one that holds
+   * other items without it.
+   */
+  readonly engine?: string;
   /** Test-only: the most items one `query` page returns. */
   readonly nativePageSize?: number;
 }
@@ -248,6 +318,7 @@ export const createCosmosStore = ({
   client,
   databaseId,
   containerId,
+  engine,
   nativePageSize,
 }: CosmosStoreOptions): KeyValueStore => {
   const container: Container = client
@@ -589,6 +660,7 @@ export const createCosmosStore = ({
     migrations: {
       /** Creates the database and the container when they are missing. */
       async apply() {
+        if (engine !== undefined) await assertMigratable(container, engine);
         const { database } = await client.databases.createIfNotExists({
           id: databaseId,
         });
