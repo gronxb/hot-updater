@@ -54,6 +54,7 @@
     "@types/node": "catalog:",
     "execa": "catalog:tools",
     "jszip": "^3.10.1",
+    "tsx": "^4.20.6",
     "vitest": "catalog:"
   }
 }

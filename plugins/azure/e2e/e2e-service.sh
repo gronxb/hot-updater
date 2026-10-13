@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The managed Azure server on emulators: the Cosmos DB vNext emulator, Azurite,
+# The E2E runner's managed Azure server, on emulators: the Cosmos DB vNext emulator, Azurite,
 # and the Function `hot-updater init` deploys, run by Azure Functions Core
 # Tools behind e2e-host.mjs on PORT.
 set -euo pipefail
@@ -32,11 +32,11 @@ done
 
 # The bootstrap creates the container and the database, writes the schema
 # settings, and registers the E2E API key, as init does.
-pnpm e2e:bootstrap
+"${script_dir}/../node_modules/.bin/tsx" "${script_dir}/e2e-bootstrap.ts"
 
 # The Function App init deploys, from the built @hot-updater/azure.
 app_dir="$(mktemp -d "${TMPDIR:-/tmp}/hot-updater-azure-function-XXXXXX")"
-function_dir="$(node -p 'require("path").dirname(require.resolve("@hot-updater/azure/package.json"))')/dist/functions"
+function_dir="${script_dir}/../dist/functions"
 cp "${function_dir}/index.mjs" "${function_dir}/host.json" "${app_dir}/"
 node -e '
 const fs = require("fs");

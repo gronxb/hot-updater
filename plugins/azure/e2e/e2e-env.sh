@@ -1,5 +1,5 @@
 # The emulator ports and connection strings of the service on PORT. Sourced by
-# e2e-service.sh and e2e-cleanup.sh; hot-updater.config.ts of the E2E app
+# e2e-service.sh and e2e-cleanup.sh; the E2E bot's azure profile config
 # derives the same values from PORT.
 service_port="${PORT:?PORT is required}"
 export COSMOS_PORT=$((service_port + 15000))

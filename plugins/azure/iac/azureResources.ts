@@ -49,8 +49,12 @@ export const ensureResourceGroup = async (
 };
 
 interface StorageAccount {
+  readonly kind?: string;
   readonly allowSharedKeyAccess?: boolean | null;
 }
+
+/** Account kinds with the Blob, Queue, and Table services a Function App's host storage needs. */
+const FUNCTION_STORAGE_KINDS = new Set(["StorageV2", "Storage"]);
 
 /** The storage account's connection string, with the bundles' container in it. */
 export const ensureStorageAccount = async ({
@@ -100,6 +104,10 @@ export const ensureStorageAccount = async ({
       "--allow-blob-public-access",
       "false",
     ]);
+  } else if (!FUNCTION_STORAGE_KINDS.has(account.kind ?? "")) {
+    throw new InitError(
+      `Storage account ${name} is a ${account.kind} account; the Function App's host storage needs a general-purpose (StorageV2) account with Blob, Queue, and Table services. Choose another name.`,
+    );
   } else if (account.allowSharedKeyAccess === false) {
     throw new InitError(
       `Storage account ${name} disallows shared key access, which the bundles' SAS URLs and the Function App's settings use. Allow it, or choose another account.`,

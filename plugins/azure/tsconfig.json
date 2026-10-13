@@ -1,5 +1,5 @@
 {
   "extends": "../../tsconfig.base.json",
-  "include": ["src", "functions", "iac", "test-utils"],
+  "include": ["src", "functions", "iac", "test-utils", "e2e"],
   "exclude": ["dist"]
 }

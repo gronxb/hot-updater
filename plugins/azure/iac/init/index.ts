@@ -1,8 +1,12 @@
 import type { InitProviderDefinition } from "@hot-updater/cli-tools";
 
-/** A resource group name: up to 90 letters, digits, `.`, `_`, `-`, `(`, `)`, not ending in `.`. */
+/**
+ * A resource group name: 1 to 90 letters, digits, `_`, `-`, `.`, `(`, and
+ * `)`, Unicode letters and digits included, not ending in `.`.
+ */
 export const isAzureResourceGroupName = (value: string | undefined) =>
-  value !== undefined && /^[-\w.()]{0,89}[-\w()]$/u.test(value);
+  value !== undefined &&
+  /^[\p{L}\p{N}_\-.()]{0,89}[\p{L}\p{N}_\-()]$/u.test(value);
 
 /** A storage account name: 3 to 24 lowercase letters and digits. */
 export const isAzureStorageAccountName = (value: string | undefined) =>

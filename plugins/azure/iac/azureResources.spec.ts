@@ -54,7 +54,12 @@ describe("default resource names", () => {
 
   it("validates names as Azure does", () => {
     expect(isAzureResourceGroupName("hot-updater")).toBe(true);
+    expect(isAzureResourceGroupName("a")).toBe(true);
+    expect(isAzureResourceGroupName("a".repeat(90))).toBe(true);
+    expect(isAzureResourceGroupName("a".repeat(91))).toBe(false);
+    expect(isAzureResourceGroupName("배포-(rg)_1.x")).toBe(true);
     expect(isAzureResourceGroupName("ends-with-dot.")).toBe(false);
+    expect(isAzureResourceGroupName("has space")).toBe(false);
     expect(isAzureStorageAccountName("Upper")).toBe(false);
     expect(isAzureStorageAccountName("a".repeat(25))).toBe(false);
     expect(isAzureCosmosAccountName("-leading")).toBe(false);
@@ -87,6 +92,27 @@ describe("ensureResourceGroup", () => {
       "eastus",
     ]);
   });
+});
+
+describe("ensureStorageAccount", () => {
+  it.each(["BlobStorage", "BlockBlobStorage", "FileStorage"])(
+    "refuses an existing %s account, which cannot host the Function App",
+    async (kind) => {
+      const { ensureStorageAccount } = await import("./azureResources");
+      const { az, calls } = fakeAz({ "storage account show": { kind } });
+      await expect(
+        ensureStorageAccount({
+          az,
+          name: "storage",
+          resourceGroup: "rg",
+          location: "eastus",
+        }),
+      ).rejects.toThrow("general-purpose (StorageV2)");
+      expect(calls.some((args) => args[2] === "show-connection-string")).toBe(
+        false,
+      );
+    },
+  );
 });
 
 describe("ensureCosmosAccount", () => {

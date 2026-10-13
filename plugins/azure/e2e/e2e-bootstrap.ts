@@ -1,13 +1,11 @@
 import { existsSync } from "node:fs";
 
 import { BlobServiceClient } from "@azure/storage-blob";
-import {
-  azureBlobStorage,
-  cosmosDatabase,
-  migrateCosmosDatabase,
-} from "@hot-updater/azure";
 import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+
+import { azureBlobStorage } from "../src/azureBlobStorage";
+import { cosmosDatabase, migrateCosmosDatabase } from "../src/cosmosDatabase";
 
 // HOT_UPDATER_API_KEY comes from the E2E environment file; the emulator
 // connection strings from e2e-env.sh.
