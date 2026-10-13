@@ -245,6 +245,62 @@ const runsFunction = (app: FunctionApp) => {
   );
 };
 
+/**
+ * Checks the Function App before init creates anything: an existing app in
+ * the group must run the Function, and a new name must be free across
+ * `azurewebsites.net`.
+ */
+export const assertFunctionAppCanInitialize = async ({
+  az,
+  subscriptionId,
+  name,
+  resourceGroup,
+}: {
+  readonly az: AzureCli;
+  readonly subscriptionId: string;
+  readonly name: string;
+  readonly resourceGroup: string;
+}) => {
+  const app = await showOrNull<FunctionApp>(az, [
+    "functionapp",
+    "show",
+    "--name",
+    name,
+    "--resource-group",
+    resourceGroup,
+  ]);
+  if (app !== null) {
+    assertRunsFunction(name, app);
+    return;
+  }
+  const availability = await az<{
+    nameAvailable?: boolean;
+    message?: string;
+  }>([
+    "rest",
+    "--method",
+    "post",
+    "--url",
+    `https://management.azure.com/subscriptions/${subscriptionId}/providers/Microsoft.Web/checknameavailability?api-version=2024-04-01`,
+    "--body",
+    JSON.stringify({ name, type: "Microsoft.Web/sites" }),
+  ]);
+  if (availability?.nameAvailable === false) {
+    throw new InitError(
+      `Function App name ${name} is not available: ${availability.message ?? "it is taken"}. Choose another name.`,
+    );
+  }
+};
+
+const assertRunsFunction = (name: string, app: FunctionApp) => {
+  if (!runsFunction(app)) {
+    // Deploying would replace the package of an app on another stack.
+    throw new InitError(
+      `Function App ${name} is not a Flex Consumption app on Node.js ${FUNCTION_NODE_VERSION} or later. Choose another name, and init creates one.`,
+    );
+  }
+};
+
 /** The Function App's base URL, creating it on a Flex Consumption plan when it is missing. */
 export const ensureFunctionApp = async ({
   az,
@@ -280,11 +336,8 @@ export const ensureFunctionApp = async ({
       FUNCTION_NODE_VERSION,
     ]);
     app = (await az<FunctionApp>(["functionapp", "show", ...scope])) ?? app;
-  } else if (!runsFunction(app)) {
-    // Deploying would replace the package of an app on another stack.
-    throw new InitError(
-      `Function App ${name} is not a Flex Consumption app on Node.js ${FUNCTION_NODE_VERSION} or later. Choose another name, and init creates one.`,
-    );
+  } else {
+    assertRunsFunction(name, app);
   }
   if (!app?.defaultHostName) {
     throw new InitError(`Function App ${name} reported no host name.`);

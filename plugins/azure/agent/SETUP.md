@@ -84,7 +84,11 @@ EnableServerless`) in the group's region, with `Strong` default
   - Run: query the Function App; reuse it only when it is a Flex Consumption
     app on Node.js 22 or later (`functionAppConfig.runtime` in
     `az functionapp show`), since deploying replaces its package. When it is
-    missing, create it on a Flex Consumption plan (`az functionapp create --flexconsumption-location <location>
+    missing, check in az.scope, before creating any resource, that its name is
+    free across azurewebsites.net (`az rest --method post --url
+    https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft.Web/checknameavailability?api-version=2024-04-01
+    --body '{"name":"<app>","type":"Microsoft.Web/sites"}'`). Create it on a
+    Flex Consumption plan (`az functionapp create --flexconsumption-location <location>
 --runtime node --runtime-version 22 --storage-account <account>`). Set the
     app settings HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING,
     HOT_UPDATER_AZURE_BLOB_CONTAINER (`hot-updater`) and

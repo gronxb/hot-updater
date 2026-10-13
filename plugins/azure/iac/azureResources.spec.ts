@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { AzureCli } from "./azureCli";
 import {
+  assertFunctionAppCanInitialize,
   AZURE_FUNCTION_PACKAGE,
   deployFunction,
   ensureCosmosAccount,
@@ -273,6 +274,44 @@ describe("ensureFunctionApp with an existing app", () => {
     await expect(ensureFunctionApp({ az, ...input })).rejects.toThrow(
       "not a Flex Consumption app on Node.js 22",
     );
+  });
+});
+
+describe("assertFunctionAppCanInitialize", () => {
+  const input = { subscriptionId: "sub", name: "app", resourceGroup: "rg" };
+
+  it("refuses a new name another app holds", async () => {
+    const { az, calls } = fakeAz({
+      "functionapp show": notFound(),
+      rest: { nameAvailable: false, message: "Hostname 'app' already exists." },
+    });
+    await expect(
+      assertFunctionAppCanInitialize({ az, ...input }),
+    ).rejects.toThrow("Hostname 'app' already exists.");
+    expect(calls.at(-1)).toEqual(
+      expect.arrayContaining([
+        "https://management.azure.com/subscriptions/sub/providers/Microsoft.Web/checknameavailability?api-version=2024-04-01",
+      ]),
+    );
+  });
+
+  it("accepts a free name and an existing app that runs the Function", async () => {
+    const free = fakeAz({
+      "functionapp show": notFound(),
+      rest: { nameAvailable: true },
+    });
+    await expect(
+      assertFunctionAppCanInitialize({ az: free.az, ...input }),
+    ).resolves.toBeUndefined();
+    const existing = fakeAz({
+      "functionapp show": {
+        functionAppConfig: { runtime: { name: "node", version: "22" } },
+      },
+    });
+    await expect(
+      assertFunctionAppCanInitialize({ az: existing.az, ...input }),
+    ).resolves.toBeUndefined();
+    expect(existing.calls.some((args) => args[0] === "rest")).toBe(false);
   });
 });
 

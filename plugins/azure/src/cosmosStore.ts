@@ -584,15 +584,14 @@ export const createCosmosStore = ({
             )}; Hot Updater needs ${COSMOS_PARTITION_KEY_PATH}. Use another container.`,
           );
         }
-        // An existing container keeps its own settings: it needs the
-        // composite index range reads order by, and a default TTL, without
-        // which Cosmos DB ignores the items' own.
+        // An existing container keeps its own settings: every read is a
+        // query, so it needs consistent, automatic indexing, the composite
+        // index range reads order by, and a default TTL, without which
+        // Cosmos DB ignores the items' own.
         const policy = resource.indexingPolicy;
-        if (policy?.indexingMode === "none") {
-          throw new Error(
-            `Cosmos DB container ${containerId} does not index its items; Hot Updater needs consistent indexing. Use another container.`,
-          );
-        }
+        const indexed =
+          (policy?.indexingMode ?? "consistent") === "consistent" &&
+          policy?.automatic !== false;
         const composite = COSMOS_INDEXING_POLICY.compositeIndexes![0]!;
         const ordered = policy?.compositeIndexes?.some(
           (index) =>
@@ -604,19 +603,18 @@ export const createCosmosStore = ({
         );
         const expires =
           resource.defaultTtl !== undefined && resource.defaultTtl !== null;
-        if (!ordered || !expires) {
+        if (!indexed || !ordered || !expires) {
           await database.container(containerId).replace({
             ...resource,
             defaultTtl: expires ? resource.defaultTtl : -1,
-            indexingPolicy: ordered
-              ? policy
-              : {
-                  ...policy,
-                  compositeIndexes: [
-                    ...(policy?.compositeIndexes ?? []),
-                    composite,
-                  ],
-                },
+            indexingPolicy: {
+              ...policy,
+              indexingMode: "consistent",
+              automatic: true,
+              compositeIndexes: ordered
+                ? policy?.compositeIndexes
+                : [...(policy?.compositeIndexes ?? []), composite],
+            },
           });
         }
       },

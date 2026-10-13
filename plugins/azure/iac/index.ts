@@ -34,6 +34,7 @@ import {
   normalizeLocation,
 } from "./azureCli";
 import {
+  assertFunctionAppCanInitialize,
   deployFunction,
   ensureCosmosAccount,
   ensureFunctionApp,
@@ -263,6 +264,15 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     nonInteractive,
     validate: isAzureFunctionAppName,
     hint: "Use 2 to 60 letters, digits, and inner '-'.",
+  });
+
+  // Before any resource exists: an unusable Function App would leave the
+  // storage and Cosmos DB accounts behind.
+  await assertFunctionAppCanInitialize({
+    az,
+    subscriptionId,
+    name: functionApp,
+    resourceGroup,
   });
 
   let storageConnectionString = "";

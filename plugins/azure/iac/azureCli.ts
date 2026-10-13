@@ -21,7 +21,10 @@ export const createAzureCli =
     try {
       const { stdout } = await execa("az", [
         ...args,
-        ...(subscription === undefined ? [] : ["--subscription", subscription]),
+        // `az rest` takes no subscription; its URL names one.
+        ...(subscription === undefined || args[0] === "rest"
+          ? []
+          : ["--subscription", subscription]),
         "--only-show-errors",
         "--output",
         "json",
