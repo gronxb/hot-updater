@@ -591,6 +591,10 @@ describe("deployment artifacts", () => {
       (await json(path.join(root, "host.json"))).extensions.http.routePrefix,
     ).toBe("");
     const source = await readFile(path.join(root, pkg.main), "utf8");
+    // The Functions host supplies @azure/functions-core only to require(),
+    // which it intercepts; an ESM import of it would not load.
+    expect(source).not.toMatch(/\bfrom ["']@azure\/functions-core["']/u);
+    expect(source).toContain('__require("@azure/functions-core")');
     // Only Node built-ins and the module the Functions host supplies.
     for (const [, from, dynamic] of source.matchAll(
       /^(?:import|export)\b[^\n]*?\bfrom ["']([^"']+)["']|\bimport\(["']([^"']+)["']\)/gm,
