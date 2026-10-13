@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { AzureCli } from "./azureCli";
 import {
+  assertCosmosAccountCanInitialize,
   assertFunctionAppCanInitialize,
   AZURE_FUNCTION_PACKAGE,
   deployFunction,
@@ -226,7 +227,8 @@ describe("ensureCosmosAccount", () => {
     );
   });
 
-  it("accepts a firewall that admits Azure datacenters", async () => {
+  it("accepts a firewall that admits Azure datacenters and this machine", async () => {
+    const reach = vi.fn(async () => {});
     const { az } = fakeAz({
       "cosmosdb show": {
         kind: "GlobalDocumentDB",
@@ -238,9 +240,48 @@ describe("ensureCosmosAccount", () => {
       },
       "cosmosdb keys list": keys,
     });
-    await expect(ensureCosmosAccount({ az, ...input })).resolves.toBe(
+    await expect(ensureCosmosAccount({ az, ...input, reach })).resolves.toBe(
       "AccountEndpoint=https://primary/;AccountKey=p;",
     );
+    expect(reach).toHaveBeenCalledWith(
+      "AccountEndpoint=https://primary/;AccountKey=p;",
+    );
+  });
+
+  it("refuses a firewall that admits Azure datacenters but not this machine, before anything is created", async () => {
+    const { az, calls } = fakeAz({
+      "cosmosdb show": {
+        kind: "GlobalDocumentDB",
+        consistencyPolicy: { defaultConsistencyLevel: "Strong" },
+        ipRules: [{ ipAddressOrRange: "0.0.0.0" }],
+      },
+      "cosmosdb keys list": keys,
+    });
+    await expect(
+      assertCosmosAccountCanInitialize({
+        az,
+        name: input.name,
+        resourceGroup: input.resourceGroup,
+        confirmStrong: input.confirmStrong,
+        reach: async () => {
+          throw new Error("Request originated from IP 198.51.100.7");
+        },
+      }),
+    ).rejects.toThrow("refuses this machine");
+    expect(calls.every((args) => args[1] !== "create")).toBe(true);
+  });
+
+  it("reaches an account without a firewall without probing it", async () => {
+    const reach = vi.fn(async () => {});
+    const { az } = fakeAz({
+      "cosmosdb show": {
+        kind: "GlobalDocumentDB",
+        consistencyPolicy: { defaultConsistencyLevel: "Strong" },
+      },
+      "cosmosdb keys list": keys,
+    });
+    await ensureCosmosAccount({ az, ...input, reach });
+    expect(reach).not.toHaveBeenCalled();
   });
 
   it("refuses an account that disables key authentication", async () => {

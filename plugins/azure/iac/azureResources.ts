@@ -2,10 +2,14 @@ import fs from "fs/promises";
 import os from "os";
 import path from "path";
 
+import { CosmosClient } from "@azure/cosmos";
 import { BlobServiceClient, type ContainerClient } from "@azure/storage-blob";
 import { createZip, InitError } from "@hot-updater/cli-tools";
 
-import { AZURE_BLOB_V1_CONTAINER } from "../src/azureInfrastructureNames";
+import {
+  AZURE_BLOB_V1_CONTAINER,
+  AZURE_COSMOS_V1_DATABASE,
+} from "../src/azureInfrastructureNames";
 import { type AzureCli, showOrNull } from "./azureCli";
 
 /** The Function App settings the deployed function reads. */
@@ -183,6 +187,58 @@ export const ensurePrivateContainer = async (container: ContainerClient) => {
   }
 };
 
+/** The Cosmos DB account's primary read-write connection string. */
+const cosmosConnectionString = async (
+  az: AzureCli,
+  name: string,
+  resourceGroup: string,
+) => {
+  const keys = await az<{
+    connectionStrings?: readonly {
+      connectionString: string;
+      description?: string;
+      keyKind?: string;
+    }[];
+  }>([
+    "cosmosdb",
+    "keys",
+    "list",
+    "--name",
+    name,
+    "--resource-group",
+    resourceGroup,
+    "--type",
+    "connection-strings",
+  ]);
+  const primary =
+    keys?.connectionStrings?.find(
+      ({ description, keyKind }) =>
+        keyKind === "Primary" ||
+        description === "Primary SQL Connection String",
+    ) ?? keys?.connectionStrings?.[0];
+  if (!primary?.connectionString) {
+    throw new InitError(
+      `Cosmos DB account ${name} returned no connection string.`,
+    );
+  }
+  return primary.connectionString;
+};
+
+/**
+ * Reads the database init migrates from this machine, which a firewall
+ * that admits only Azure datacenters answers with 403; a missing database
+ * is reached all the same.
+ */
+export const reachCosmosAccount = async (connectionString: string) => {
+  try {
+    await new CosmosClient(connectionString)
+      .database(AZURE_COSMOS_V1_DATABASE)
+      .read();
+  } catch (error) {
+    if ((error as { code?: unknown }).code !== 404) throw error;
+  }
+};
+
 interface CosmosAccount {
   readonly kind?: string;
   readonly capabilities?: readonly { readonly name: string }[];
@@ -206,11 +262,14 @@ export const assertCosmosAccountCanInitialize = async ({
   name,
   resourceGroup,
   confirmStrong,
+  reach = reachCosmosAccount,
 }: {
   readonly az: AzureCli;
   readonly name: string;
   readonly resourceGroup: string;
   readonly confirmStrong: () => Promise<boolean>;
+  /** Reaches the account's data from this machine; throws when it cannot. */
+  readonly reach?: (connectionString: string) => Promise<void>;
 }): Promise<{ readonly exists: boolean; readonly strengthen: boolean }> => {
   const account = await showOrNull<CosmosAccount>(az, [
     "cosmosdb",
@@ -262,6 +321,17 @@ export const assertCosmosAccountCanInitialize = async ({
       `Cosmos DB account ${name} blocks database and container changes with its keys, which the migration makes. Allow them, or choose another account.`,
     );
   }
+  // Init migrates the database from this machine, which a firewall that
+  // admits only Azure datacenters blocks.
+  if (account.ipRules?.length || account.isVirtualNetworkFilterEnabled) {
+    try {
+      await reach(await cosmosConnectionString(az, name, resourceGroup));
+    } catch (error) {
+      throw new InitError(
+        `Cosmos DB account ${name} refuses this machine, from which init migrates the database: ${error instanceof Error ? error.message : String(error)}. Add this machine's IP address to its firewall, or choose another account.`,
+      );
+    }
+  }
   if (account.consistencyPolicy?.defaultConsistencyLevel === "Strong") {
     return { exists: true, strengthen: false };
   }
@@ -289,6 +359,7 @@ export const ensureCosmosAccount = async ({
   resourceGroup,
   location,
   confirmStrong,
+  reach,
 }: {
   readonly az: AzureCli;
   readonly name: string;
@@ -296,6 +367,7 @@ export const ensureCosmosAccount = async ({
   readonly location: string;
   /** Whether init may make an existing account's consistency strong. */
   readonly confirmStrong: () => Promise<boolean>;
+  readonly reach?: (connectionString: string) => Promise<void>;
 }): Promise<string> => {
   const scope = ["--name", name, "--resource-group", resourceGroup];
   const { exists, strengthen } = await assertCosmosAccountCanInitialize({
@@ -303,6 +375,7 @@ export const ensureCosmosAccount = async ({
     name,
     resourceGroup,
     confirmStrong,
+    reach,
   });
   if (!exists) {
     await az([
@@ -330,25 +403,7 @@ export const ensureCosmosAccount = async ({
       "Strong",
     ]);
   }
-  const keys = await az<{
-    connectionStrings?: readonly {
-      connectionString: string;
-      description?: string;
-      keyKind?: string;
-    }[];
-  }>(["cosmosdb", "keys", "list", ...scope, "--type", "connection-strings"]);
-  const primary =
-    keys?.connectionStrings?.find(
-      ({ description, keyKind }) =>
-        keyKind === "Primary" ||
-        description === "Primary SQL Connection String",
-    ) ?? keys?.connectionStrings?.[0];
-  if (!primary?.connectionString) {
-    throw new InitError(
-      `Cosmos DB account ${name} returned no connection string.`,
-    );
-  }
-  return primary.connectionString;
+  return cosmosConnectionString(az, name, resourceGroup);
 };
 
 interface FunctionApp {

@@ -30,14 +30,16 @@ export const COSMOS_PARTITION_KEY_PATH = "/partition";
 
 /**
  * A transactional batch takes 100 operations and a 2 MB request, an item
- * 2 MB; the bytes leave room for each item's envelope. Every op takes one
- * operation but an `exists: false` check or delete, which takes two; the
- * engine writes neither.
+ * 2 MB. The kit measures a row's JSON, but a map or array value is stored
+ * as JSON text whose quotes and backslashes escape again, so an item takes
+ * up to twice the measured bytes; the rest leaves room for each item's
+ * envelope. Every op takes one operation but an `exists: false` check or
+ * delete, which takes two; the engine writes neither.
  */
 export const COSMOS_LIMITS = {
   items: 100,
-  bytes: 1_800_000,
-  itemBytes: 1_800_000,
+  bytes: 1_000_000,
+  itemBytes: 1_000_000,
 } as const;
 
 /** The most operations one transactional batch takes. */
@@ -118,7 +120,8 @@ const ttlOf = (expireAt: number | null | undefined) =>
     ? -1
     : Math.max(MIN_TTL_SECONDS, Math.ceil((expireAt - Date.now()) / 1000));
 
-const toItem = (key: KvKey, row: StoredRow, expiresAt?: number) => ({
+/** The item Cosmos DB stores for a row. */
+export const toItem = (key: KvKey, row: StoredRow, expiresAt?: number) => ({
   id: cosmosItemId(key),
   partition: COSMOS_PARTITION,
   pk: key.pk,

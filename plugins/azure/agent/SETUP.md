@@ -55,7 +55,9 @@ deployment.
       write in one region (`enableMultipleWriteLocations` not true), and be
       reachable from the Function App, which joins no virtual network:
       `publicNetworkAccess` not `Disabled`, and with IP or virtual network
-      rules, an `0.0.0.0` rule that admits Azure datacenters; when its
+      rules, an `0.0.0.0` rule that admits Azure datacenters and a rule that
+      admits the machine running the migration (reading the `hot-updater`
+      database with the key answers, or 404s, rather than 403); when its
       default consistency is not `Strong`, get the user's approval to change
       it, since other apps on it read under it too. A new name must be free
       (`az cosmosdb check-name-exists` returns false).
