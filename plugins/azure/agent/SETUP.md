@@ -37,14 +37,32 @@ deployment.
     Stop before creating any resource in a group outside the list. Inspect
     existing Hot Updater resources and the upgrade files before adopting them.
     Preserve unrelated resources.
-  - Verify/record: subscriptionId, resourceGroup and a location that hosts
-    Flex Consumption.
+  - Preflight, before creating any storage, Cosmos DB or Function App
+    resource, as init does; stop on any failure:
+    - Storage account (`az storage account show`): an existing one must be a
+      general-purpose `StorageV2` (or `Storage`) account, since the Function
+      App's host storage needs Blob, Queue and Table services, and must allow
+      shared key access. A new name must pass `az storage account check-name`.
+    - Cosmos DB account (`az cosmosdb show`): an existing one must be API for
+      NoSQL (`kind` `GlobalDocumentDB`, no Mongo/Cassandra/Gremlin/Table
+      capability), keep key authentication (`disableLocalAuth` not true) and
+      write in one region (`enableMultipleWriteLocations` not true); when its
+      default consistency is not `Strong`, get the user's approval to change
+      it, since other apps on it read under it too. A new name must be free
+      (`az cosmosdb check-name-exists` returns false).
+    - Function App (`az functionapp show`): an existing one must be a Flex
+      Consumption app on Node.js 22 or later (`properties.functionAppConfig.runtime`),
+      since deploying replaces its package. A new name must be free across
+      azurewebsites.net (`az rest --method post --url
+      https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft.Web/checknameavailability?api-version=2024-04-01
+      --body '{"name":"<app>","type":"Microsoft.Web/sites"}'`).
+  - Verify/record: subscriptionId, resourceGroup, a location that hosts Flex
+    Consumption, and the preflight results.
   - Retry: query the same group before another create request.
 
 - [ ] **az.storage — Prepare the storage account**
   - Requires: az.scope.
-  - Run: query the storage account; when missing, check its name
-    (`az storage account check-name`) and create a StorageV2, Standard_LRS
+  - Run: reuse the account az.scope checked, or create a StorageV2, Standard_LRS
     account with TLS 1.2 and blob public access disabled. Shared key access
     must stay allowed: the bundles' SAS URLs and the Function's settings use
     the account key. Create the private `hot-updater` blob container when missing.
@@ -54,12 +72,11 @@ deployment.
 
 - [ ] **az.cosmos — Prepare the Cosmos DB account**
   - Requires: az.scope.
-  - Run: query the account (`az cosmosdb show`). A new account is API for
-    NoSQL (`--kind GlobalDocumentDB`), serverless (`--capacity-mode
-    Serverless`) in the group's region, with `Strong` default consistency. An existing account must be API for NoSQL with `Strong`
-    consistency; change another account's consistency only with the user's
-    approval, since other apps on it read under it too. Account creation takes
-    several minutes.
+  - Run: reuse the account az.scope checked, changing its consistency to
+    `Strong` when the user approved it there, or create one: API for NoSQL
+    (`--kind GlobalDocumentDB`), serverless (`--capacity-mode Serverless`) in
+    the group's region, with `Strong` default consistency. Account creation
+    takes several minutes.
   - Verify/record: cosmosAccount, API, capacity mode and consistency.
   - Retry: query the account's provisioning state instead of creating it again.
 
@@ -83,32 +100,27 @@ deployment.
     first runs app/migrate.ts, which creates the database and container when
     they are missing and writes the schema settings of core and the plugins
     app/hotUpdater.ts runs (the database answers 503 until they exist),
-    <!-- if credential -->
-        then registers the client {{CREDENTIAL_LABEL}}.
+<!-- if credential -->
+    then registers the client {{CREDENTIAL_LABEL}}.
   - Verify/record: helper succeeds against the chosen account and the
-    {{CREDENTIAL_LABEL}} is persisted privately. Do not create settings items by hand.
+    {{CREDENTIAL_LABEL}} is persisted privately. Do not create settings items
+    by hand.
   - Retry: repeat the compatibility preflight, then rerun the helper with the
     saved {{CREDENTIAL_LABEL}}. Never edit settings to bypass a failed check or
     rotate the {{CREDENTIAL_LABEL}}.
-    <!-- else -->
-        and registers no client credential, since client routes are public.
+<!-- else -->
+    and registers no client credential, since client routes are public.
   - Verify/record: helper succeeds against the chosen account. Do not create
     settings items by hand.
   - Retry: repeat the compatibility preflight, then rerun the helper. Never edit
-  settings to bypass a failed check.
-  <!-- end -->
+    settings to bypass a failed check.
+<!-- end -->
 
 - [ ] **az.function — Deploy the server**
   - Requires: az.database-credential.
-  - Run: query the Function App; reuse it only when it is a Flex Consumption
-    app on Node.js 22 or later (`functionAppConfig.runtime` in
-    `az functionapp show`), since deploying replaces its package. When it is
-    missing, check in az.scope, before creating any resource, that its name is
-    free across azurewebsites.net (`az rest --method post --url
-    https://management.azure.com/subscriptions/<subscription-id>/providers/Microsoft.Web/checknameavailability?api-version=2024-04-01
-    --body '{"name":"<app>","type":"Microsoft.Web/sites"}'`). Create it on a
-    Flex Consumption plan (`az functionapp create --flexconsumption-location <location>
---runtime node --runtime-version 22 --storage-account <account>`). Set the
+  - Run: reuse the app az.scope checked, or create it on a Flex Consumption
+    plan (`az functionapp create --flexconsumption-location <location>
+    --runtime node --runtime-version 22 --storage-account <account>`). Set the
     app settings HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING,
     HOT_UPDATER_AZURE_BLOB_CONTAINER (`hot-updater`) and
     HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING, preserving unrelated settings.
