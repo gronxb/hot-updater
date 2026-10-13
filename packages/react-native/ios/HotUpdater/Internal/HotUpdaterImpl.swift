@@ -263,7 +263,18 @@ private func hotUpdaterGetMinBundleId() -> String {
     public func updateBundle(_ params: NSDictionary?,
                                          resolver resolve: @escaping RCTPromiseResolveBlock,
                                          rejecter reject: @escaping RCTPromiseRejectBlock) {
-        
+        updateBundle(params, onProgress: nil, resolver: resolve, rejecter: reject)
+    }
+
+    /**
+     * `updateBundle`, also reporting progress (0 to 1) to `onProgress` on the
+     * main thread.
+     */
+    func updateBundle(_ params: NSDictionary?,
+                      onProgress: ((Double) -> Void)?,
+                      resolver resolve: @escaping RCTPromiseResolveBlock,
+                      rejecter reject: @escaping RCTPromiseRejectBlock) {
+
         do {
             // Validate parameters (this runs on calling thread - typically JS thread)
             guard let data = params else {
@@ -382,6 +393,7 @@ private func hotUpdaterGetMinBundleId() -> String {
                     if let callback = progressCallback {
                         callback([payload.progress])
                     }
+                    onProgress?(payload.progress)
                 }
             }) { [weak self] result in
                 guard let self = self else {
@@ -675,6 +687,38 @@ private func hotUpdaterGetMinBundleId() -> String {
 
     public func resetLaunchPreparation() {
         currentLaunchSelection = nil
+    }
+
+    // MARK: - Native Update Check
+
+    /**
+     * The bundle the native update check counts as running: the launched one,
+     * or before React Native starts, the one its launch would pick. Preparing
+     * the launch here would keep a forced update staged before React Native
+     * starts from applying in this session.
+     */
+    /// Whether React Native has read the bundle in this process.
+    func isLaunchPrepared() -> Bool {
+        currentLaunchSelection != nil
+    }
+
+    func bundleIdForUpdateCheck() -> String? {
+        if let currentLaunchSelection {
+            return currentLaunchSelection.launchedBundleId
+        }
+        return bundleStorage.peekLaunchBundleId()
+    }
+
+    func releaseCatalogCacheValue(_ partition: String) -> String? {
+        releaseCatalogCache.get(partition: partition)
+    }
+
+    func setReleaseCatalogCacheValue(_ partition: String, value: String) -> Bool {
+        releaseCatalogCache.set(partition: partition, value: value)
+    }
+
+    func removeReleaseCatalogCacheValue(_ partition: String) {
+        releaseCatalogCache.remove(partition: partition)
     }
 
     @objc

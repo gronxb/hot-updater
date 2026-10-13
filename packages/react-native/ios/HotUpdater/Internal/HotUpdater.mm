@@ -488,6 +488,26 @@ RCT_EXPORT_MODULE();
     [config configureWithFingerprintHash:fingerprintHash publicKey:publicKey channel:channel isolationKey:isolationKey];
 }
 
++ (void)checkForUpdate:(HotUpdaterCheckOptions *)options
+            completion:(void (^)(HotUpdaterUpdate * _Nullable_result, NSError * _Nullable))completion {
+    [HotUpdaterNativeUpdateBridge checkForUpdate:options impl:[HotUpdater sharedImpl] completion:completion];
+}
+
++ (void)prepare:(HotUpdaterCheckOptions *)options
+        timeout:(NSTimeInterval)timeout
+     onProgress:(void (^ _Nullable)(double))onProgress
+     completion:(void (^)(HotUpdaterPrepareResult *))completion {
+    [HotUpdaterNativeUpdateBridge prepare:options
+                                  timeout:timeout
+                                     impl:[HotUpdater sharedImpl]
+                               onProgress:onProgress
+                               completion:completion];
+}
+
++ (void)resetChannelWithCompletion:(void (^)(BOOL))completion {
+    [HotUpdaterNativeUpdateBridge resetChannelWithImpl:[HotUpdater sharedImpl] completion:completion];
+}
+
 #pragma mark - Progress Updates & Event Emitting (Keep in ObjC Wrapper)
 
 - (void)handleDownloadProgress:(NSNotification *)notification {
@@ -667,6 +687,10 @@ RCT_EXPORT_MODULE();
     [impl setStorageItem:key value:value];
 }
 
+- (NSString * _Nullable)takeNativeUpdateEvents {
+    return [HotUpdaterNativeUpdateBridge takeEventsWithImpl:[HotUpdater sharedImpl]];
+}
+
 - (NSString * _Nullable)getBaseURL {
     NSLog(@"[HotUpdater.mm] getBaseURL called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
@@ -830,6 +854,10 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getStorageItem:(NSString *)key) {
 RCT_EXPORT_METHOD(setStorageItem:(NSString *)key value:(NSString * _Nullable)value) {
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     [impl setStorageItem:key value:value];
+}
+
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(takeNativeUpdateEvents) {
+    return [HotUpdaterNativeUpdateBridge takeEventsWithImpl:[HotUpdater sharedImpl]];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {

@@ -425,6 +425,8 @@ class HotUpdaterModule internal constructor(
         getInstance().setStorageItem(key, value)
     }
 
+    override fun takeNativeUpdateEvents(): String? = getInstance().takeNativeUpdateEvents()
+
     override fun resetChannel(promise: Promise) {
         moduleScope.launch {
             try {

@@ -1,0 +1,1195 @@
+#if canImport(Testing)
+import Foundation
+import Testing
+
+@testable import HotUpdaterCore
+
+private let builtInBundleId = "01900000-0000-7000-8000-000000000000"
+private let bundle1 = "01910000-0000-7000-8000-000000000001"
+private let bundle2 = "01910000-0000-7000-8000-000000000002"
+private let release1 = "01920000-0000-7000-8000-000000000001"
+private let release2 = "01920000-0000-7000-8000-000000000002"
+private let release3 = "01920000-0000-7000-8000-000000000003"
+private let catalogId = "catalog-1"
+private let catalogHash = "sha256:" + String(repeating: "a", count: 64)
+private let baseURL = "https://updates.example.com/api/"
+private let scopeKey = "v1:app-version:ios:\(try! encodeChannelKey("production"))"
+private let catalogURL =
+    "https://updates.example.com/api/release-catalogs/app-version/ios/\(try! encodeChannelKey("production"))/\(canonicalizeAppVersion("1.0.0")!)"
+
+struct NativeUpdateCheckTests {
+    // MARK: checkForUpdate
+
+    @Test
+    func noCatalogReturnsNilWithoutAnEvent() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport { _, _ in
+            NativeUpdateResponse(status: 404, headers: ["x-hot-updater-catalog": " None "], body: "")
+        }
+        let checker = makeChecker(host, transport)
+
+        let update = try await checker.checkForUpdate(options(headers: ["X-API-Key": "secret"]))
+
+        #expect(update == nil)
+        let request = try #require(transport.requests.first)
+        #expect(request.url.absoluteString == catalogURL)
+        #expect(request.headers == ["accept": "application/json", "x-api-key": "secret"])
+        #expect(request.timeout == 5)
+        #expect(host.events().isEmpty)
+        #expect(await checker.prepare(options(), timeout: 1).status == .upToDate)
+        #expect(host.events().isEmpty)
+    }
+
+    @Test
+    func notModifiedUsesTheCachedCatalog() async throws {
+        let host = FakeUpdateHost()
+        let body = catalog(releases: [descriptor(release2, bundle2)])
+        let responses = Responses([
+            NativeUpdateResponse(status: 200, headers: ["etag": "\"v1\""], body: body),
+            NativeUpdateResponse(status: 304, headers: [:], body: ""),
+        ])
+        let transport = FakeUpdateTransport { _, _ in responses.next() }
+        let checker = makeChecker(host, transport)
+
+        let first = try await checker.checkForUpdate(options())
+        let second = try await checker.checkForUpdate(options())
+
+        #expect(first?.id == release2)
+        #expect(second?.id == release2)
+        #expect(transport.requests.count == 2)
+        #expect(transport.requests[0].headers["if-none-match"] == nil)
+        #expect(transport.requests[1].headers["if-none-match"] == "\"v1\"")
+        let cached = try #require(host.catalogCache.values.first)
+        #expect(cached == "1\n\"v1\"\n\(body)")
+        #expect(host.catalogCache.keys.first?.hasPrefix("native:") == true)
+    }
+
+    @Test
+    func notModifiedWithoutACachedCatalogRefetches() async throws {
+        let host = FakeUpdateHost()
+        let responses = Responses([
+            NativeUpdateResponse(status: 304, headers: [:], body: ""),
+            NativeUpdateResponse(status: 200, headers: [:], body: catalog(releases: [descriptor(release2, bundle2)])),
+        ])
+        let transport = FakeUpdateTransport { _, _ in responses.next() }
+        let checker = makeChecker(host, transport)
+
+        let update = try await checker.checkForUpdate(options())
+
+        #expect(update?.id == release2)
+        #expect(transport.requests.count == 2)
+        #expect(transport.requests.allSatisfy { $0.headers["if-none-match"] == nil })
+    }
+
+    @Test
+    func updateStagesThroughNativeUpdateBundle() async throws {
+        let host = FakeUpdateHost()
+        host.stage = { _, _ in ["delivery": "patch", "patchFallback": true] }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2, message: "Fixes")])
+        )
+        let occurredAt = Date(timeIntervalSince1970: 1_700_000_000.123)
+        let checker = NativeUpdateChecker(host: host, transport: transport, now: { occurredAt })
+
+        let update = try #require(try await checker.checkForUpdate(options()))
+
+        #expect(update.id == release2)
+        #expect(update.releaseId == release2)
+        #expect(update.status == .update)
+        #expect(update.transitionKind == "INSTALL")
+        #expect(update.shouldForceUpdate == false)
+        #expect(update.message == "Fixes")
+        #expect(host.stagedParams.isEmpty)
+
+        #expect(try await update.updateBundle())
+
+        #expect(transport.requests.last?.url.absoluteString
+            == "https://updates.example.com/api/artifacts/v1/\(bundle2)/from/\(builtInBundleId)")
+        let params = try #require(host.stagedParams.first)
+        #expect(Set(params.keys) == ["assets", "bundleId", "channel", "manifestFileHash", "manifestUrl", "selection"])
+        #expect(params["bundleId"] as? String == bundle2)
+        #expect(params["channel"] as? String == "production")
+        #expect(params["manifestUrl"] as? String == "https://cdn.example.com/manifest.json")
+        #expect(params["manifestFileHash"] as? String == "sha256:manifest")
+        let assets = try #require(params["assets"] as? [String: Any])
+        #expect((assets["index.ios.bundle"] as? [String: Any])?["fileHash"] as? String == "hash")
+        let selection = try #require(params["selection"] as? [String: Any])
+        #expect(selection["kind"] as? String == "BUNDLE")
+        #expect(selection["releaseId"] as? String == release2)
+        #expect(selection["bundleId"] as? String == bundle2)
+        #expect(selection["catalogId"] as? String == catalogId)
+        #expect(selection["scopeKey"] as? String == scopeKey)
+        #expect((selection["generation"] as? NSNumber)?.int64Value == 1)
+        #expect(selection["catalogHash"] as? String == catalogHash)
+        #expect(selection["channel"] as? String == "production")
+        #expect(selection["selectionContextHash"] as? String == host.acceptedGuards.first?["selectionContextHash"] as? String)
+
+        let events = host.events()
+        #expect(events.map { $0["name"] as? String } == ["onUpdateCheck", "onBundleDownloaded"])
+        #expect(events.allSatisfy { ($0["occurredAt"] as? NSNumber)?.int64Value == 1_700_000_000_123 })
+        let check = try #require(events[0]["payload"] as? [String: Any])
+        #expect(check["status"] as? String == "UPDATE_AVAILABLE")
+        #expect(check["fromBundleId"] as? String == builtInBundleId)
+        #expect(check["fromReleaseId"] is NSNull)
+        #expect(check["toBundleId"] as? String == bundle2)
+        #expect(check["toReleaseId"] as? String == release2)
+        #expect(check["transitionKind"] as? String == "INSTALL")
+        #expect(check["updateStatus"] as? String == "UPDATE")
+        #expect(check["shouldForceUpdate"] as? Bool == false)
+        #expect(check["updateStrategy"] as? String == "appVersion")
+        let downloaded = try #require(events[1]["payload"] as? [String: Any])
+        #expect(downloaded["channel"] as? String == "production")
+        #expect(downloaded["fromBundleId"] as? String == builtInBundleId)
+        #expect(downloaded["toBundleId"] as? String == bundle2)
+        #expect(downloaded["toReleaseId"] as? String == release2)
+        #expect(downloaded["delivery"] as? String == "patch")
+        #expect(downloaded["patchFallback"] as? Bool == true)
+        #expect(downloaded["updateStrategy"] as? String == "appVersion")
+    }
+
+    @Test
+    func adoptReleaseCommitsWithoutDownloadOrUnchangedEvent() async throws {
+        let host = FakeUpdateHost()
+        host.bundleIdValue = bundle2
+        host.active = receipt(release2, bundle2, generation: 1)
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(generation: 2, releases: [descriptor(release3, bundle2, force: true)])
+        )
+        let checker = makeChecker(host, transport)
+
+        let update = try #require(try await checker.checkForUpdate(options()))
+
+        #expect(update.transitionKind == "ADOPT_RELEASE")
+        #expect(update.shouldForceUpdate == false)
+        #expect(try await update.updateBundle())
+        #expect(host.stagedParams.isEmpty)
+        #expect(transport.requests.count == 1)
+        let committed = try #require(host.committedParams.first)
+        #expect((committed["selection"] as? [String: Any])?["releaseId"] as? String == release3)
+        #expect((committed["guard"] as? [String: Any])?["catalogId"] as? String == catalogId)
+        let events = host.events()
+        #expect(events.count == 1)
+        #expect((events[0]["payload"] as? [String: Any])?["status"] as? String == "UPDATE_AVAILABLE")
+    }
+
+    @Test
+    func rollbackToBuiltInCommits() async throws {
+        let host = FakeUpdateHost()
+        host.bundleIdValue = bundle1
+        host.active = receipt(release1, bundle1, generation: 1)
+        let transport = FakeUpdateTransport.serving(catalog: catalog(generation: 2, releases: []))
+        let checker = makeChecker(host, transport)
+
+        let update = try #require(try await checker.checkForUpdate(options()))
+
+        #expect(update.transitionKind == "USE_BUILTIN")
+        #expect(update.status == .rollback)
+        #expect(update.id == builtInBundleId)
+        #expect(update.releaseId == nil)
+        #expect(update.shouldForceUpdate)
+        #expect(try await update.updateBundle())
+        #expect(host.stagedParams.isEmpty)
+        let selection = try #require(host.committedParams.first?["selection"] as? [String: Any])
+        #expect(selection["kind"] as? String == "BUILTIN")
+        #expect(selection["bundleId"] as? String == builtInBundleId)
+        #expect(selection["releaseId"] is NSNull)
+        let check = try #require(host.events().first?["payload"] as? [String: Any])
+        #expect(check["fromReleaseId"] as? String == release1)
+        #expect(check["toReleaseId"] is NSNull)
+        #expect(check["updateStatus"] as? String == "ROLLBACK")
+    }
+
+    @Test
+    func invalidBaseURLFailsWithoutARequest() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport.serving(catalog: catalog(releases: []))
+        let checker = makeChecker(host, transport)
+
+        for url in ["", "updates.example.com", "ftp://updates.example.com", "https://"] {
+            await #expect(throws: NativeUpdateCheckError.self) {
+                _ = try await checker.checkForUpdate(options(baseURL: url))
+            }
+            let result = await checker.prepare(options(baseURL: url), timeout: 1)
+            #expect(result.status == .failed)
+            #expect(result.update == nil)
+            #expect(result.error?.localizedDescription == "Invalid baseURL: \(url)")
+        }
+        #expect(transport.requests.isEmpty)
+        #expect(host.events().isEmpty)
+    }
+
+    @Test
+    func explicitChannelWhileSwitchedThrows() async throws {
+        let host = FakeUpdateHost()
+        host.channelValue = "beta"
+        let transport = FakeUpdateTransport.serving(catalog: catalog(releases: []))
+        let checker = makeChecker(host, transport)
+
+        do {
+            _ = try await checker.checkForUpdate(options(channel: "staging"))
+            Issue.record("Expected the check to throw")
+        } catch {
+            #expect(error.localizedDescription
+                == "Runtime channel is already switched to \"beta\". Call hotUpdater.resetChannel() before checking \"staging\".")
+        }
+        #expect(transport.requests.isEmpty)
+        #expect(host.events().isEmpty)
+    }
+
+    // MARK: prepare
+
+    // The prepare tests run on a frozen clock, so a slow machine never makes a
+    // request run out of time; only the deadline's own timer is real.
+
+    @Test
+    func prepareIsReadyWhenARequiredUpdateStagesBeforeReactNativeReadsTheBundle() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
+        )
+        let checker = makeChecker(host, transport)
+
+        let result = await checker.prepare(options(), timeout: 5)
+
+        #expect(result.status == .ready)
+        #expect(result.update?.id == release2)
+        #expect(result.error == nil)
+        #expect(host.stageCalls == 1)
+    }
+
+    @Test
+    func prepareIsPendingWhenReactNativeAlreadyReadTheBundle() async throws {
+        let host = FakeUpdateHost()
+        host.launchPrepared = true
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
+        )
+        let checker = makeChecker(host, transport)
+
+        let result = await checker.prepare(options(), timeout: 5)
+
+        #expect(result.status == .pending)
+        #expect(result.update?.shouldForceUpdate == true)
+        #expect(host.stageCalls == 1)
+    }
+
+    @Test
+    func prepareReturnsPendingBeforeAMinorUpdateFinishesDownloading() async throws {
+        let host = FakeUpdateHost()
+        let download = Latch()
+        host.stage = { _, _ in
+            await download.wait()
+            return ["delivery": "manifest", "patchFallback": false]
+        }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2)])
+        )
+        let checker = makeChecker(host, transport)
+
+        let result = await checker.prepare(options(), timeout: 30)
+
+        #expect(result.status == .pending)
+        #expect(result.update?.id == release2)
+        #expect(!host.stageFinished.isOpen)
+        download.open()
+        // Joins the download, or finds the update staged.
+        #expect(try await result.update?.updateBundle() == true)
+        #expect(host.stageCalls == 1)
+        #expect(host.events().map { $0["name"] as? String } == ["onUpdateCheck", "onBundleDownloaded"])
+    }
+
+    @Test
+    func prepareStopsWaitingForARequiredUpdateAtTheDeadline() async throws {
+        let host = FakeUpdateHost()
+        let download = Latch()
+        host.stage = { _, _ in
+            await download.wait()
+            return ["delivery": "archive", "patchFallback": false]
+        }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
+        )
+        let checker = makeChecker(host, transport)
+
+        let result = await checker.prepare(options(), timeout: 0.2)
+
+        #expect(result.status == .pending)
+        #expect(result.update?.id == release2)
+        #expect(!host.stageFinished.isOpen)
+        // The download continues after prepare returns.
+        download.open()
+        await host.stageFinished.wait()
+        #expect(host.stageCalls == 1)
+    }
+
+    @Test
+    func theDeadlineCoversTheCatalogRequest() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport { _, timeout in
+            try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+            throw URLError(.timedOut)
+        }
+        let checker = makeChecker(host, transport)
+
+        let result = await checker.prepare(options(), timeout: 0.3)
+
+        #expect(result.status == .failed)
+        #expect(result.update == nil)
+        #expect(transport.requests.count == 1)
+        #expect(abs((transport.requests.first?.timeout ?? 0) - 0.3) < 1e-6)
+        let payload = try #require(host.events().first?["payload"] as? [String: Any])
+        #expect(payload["stage"] as? String == "check")
+        #expect(payload["transport"] as? String == "timeout")
+    }
+
+    @Test
+    func theDeadlineCoversTheArtifactRequest() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
+        )
+        let checker = makeChecker(host, transport)
+
+        _ = await checker.prepare(options(), timeout: 0.5)
+
+        #expect(transport.requests.count == 2)
+        let artifact = try #require(transport.requests.last)
+        #expect(artifact.url.path.contains("/artifacts/v1/"))
+        #expect(abs(artifact.timeout - 0.5) < 1e-6)
+    }
+
+    @Test
+    func prepareFailsForATimeoutThatIsNotPositive() async {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport.serving(catalog: catalog(releases: []))
+        let checker = makeChecker(host, transport)
+
+        for timeout in [0, -1, Double.nan] {
+            let result = await checker.prepare(options(), timeout: timeout)
+            #expect(result.status == .failed)
+            #expect(result.error != nil)
+        }
+        #expect(transport.requests.isEmpty)
+    }
+
+    @Test
+    func prepareFailsWithTheUpdateWhenTheRequiredUpdateFails() async throws {
+        let host = FakeUpdateHost()
+        host.stage = { _, _ in
+            throw NativeUpdateRejection(
+                code: "DOWNLOAD_FAILED",
+                message: "Forbidden",
+                userInfo: ["stage": "download", "reason": "http", "httpStatus": NSNumber(value: 403)]
+            )
+        }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
+        )
+        let checker = makeChecker(host, transport)
+
+        let result = await checker.prepare(options(), timeout: 5)
+
+        #expect(result.status == .failed)
+        #expect(result.update?.id == release2)
+        #expect(result.error?.localizedDescription == "Forbidden")
+    }
+
+    @Test
+    func concurrentPreparesShareOneDownload() async throws {
+        let host = FakeUpdateHost()
+        let download = Latch()
+        host.stage = { _, _ in
+            await download.wait()
+            return ["delivery": "archive", "patchFallback": false]
+        }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
+        )
+        let checker = makeChecker(host, transport)
+
+        // The second call queues behind the first one's check, or arrives
+        // after it handed the gate to its download; either way it joins.
+        let first = Task { await checker.prepare(options(), timeout: 30) }
+        let second = Task { await checker.prepare(options(), timeout: 30) }
+        await host.stageStarted.wait()
+        first.cancel()
+        second.cancel()
+        let results = [await first.value, await second.value]
+
+        #expect(results.map(\.status) == [.pending, .pending])
+        #expect(results[0].update != nil)
+        #expect(results[0].update === results[1].update)
+        #expect(transport.requests.count == 2)
+        download.open()
+        await host.stageFinished.wait()
+        #expect(host.stageCalls == 1)
+    }
+
+    @Test
+    func aLaterPrepareJoinsTheDownloadInProgress() async throws {
+        let host = FakeUpdateHost()
+        let download = Latch()
+        host.stage = { _, _ in
+            await download.wait()
+            return ["delivery": "archive", "patchFallback": false]
+        }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
+        )
+        let checker = makeChecker(host, transport)
+        let first = Task { await checker.prepare(options(), timeout: 30) }
+        await host.stageStarted.wait()
+        first.cancel()
+        let pending = await first.value
+        #expect(pending.status == .pending)
+
+        // The download is held, so the later call can only join it.
+        let later = Task { await checker.prepare(options(), timeout: 30) { _ in } }
+        later.cancel()
+        let joined = await later.value
+
+        #expect(joined.status == .pending)
+        #expect(joined.update === pending.update)
+        #expect(transport.requests.count == 2)
+        download.open()
+        await host.stageFinished.wait()
+        #expect(host.stageCalls == 1)
+    }
+
+    @Test
+    func updateBundleJoinsTheDownloadInProgress() async throws {
+        let host = FakeUpdateHost()
+        let download = Latch()
+        host.stage = { _, _ in
+            await download.wait()
+            return ["delivery": "archive", "patchFallback": false]
+        }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2)])
+        )
+        let checker = makeChecker(host, transport)
+        let prepared = await checker.prepare(options(), timeout: 5)
+        let update = try #require(prepared.update)
+        await host.stageStarted.wait()
+
+        let cancelled = Task { try await update.updateBundle() }
+        cancelled.cancel()
+        await #expect(throws: CancellationError.self) {
+            _ = try await cancelled.value
+        }
+        // Joined while the download runs, or after it staged this update:
+        // either way there is one download.
+        let joined = Task { try await update.updateBundle() }
+        download.open()
+
+        #expect(try await joined.value)
+        #expect(try await update.updateBundle())
+        #expect(host.stageCalls == 1)
+    }
+
+    @Test
+    func updateBundleOnAStagedUpdateDoesNotDownloadAgain() async throws {
+        let host = FakeUpdateHost()
+        let download = Latch()
+        host.stage = { _, _ in
+            await download.wait()
+            return ["delivery": "archive", "patchFallback": false]
+        }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2)])
+        )
+        let checker = makeChecker(host, transport)
+        let prepared = await checker.prepare(options(), timeout: 5)
+        #expect(prepared.status == .pending)
+        let update = try #require(prepared.update)
+        download.open()
+        await host.stageFinished.wait()
+
+        #expect(try await update.updateBundle())
+        #expect(try await update.updateBundle())
+
+        #expect(host.stageCalls == 1)
+        #expect(transport.requests.count == 2)
+    }
+
+    @Test
+    func aPrepareWaitingForAnotherCheckStopsAtTheDeadline() async throws {
+        let host = FakeUpdateHost()
+        let catalogResponse = Latch()
+        let requested = Latch()
+        let transport = FakeUpdateTransport { _, _ in
+            requested.open()
+            await catalogResponse.wait()
+            return NativeUpdateResponse(status: 404, headers: ["x-hot-updater-catalog": "none"], body: "")
+        }
+        let checker = makeChecker(host, transport)
+        let running = Task { try await checker.checkForUpdate(options()) }
+        await requested.wait()
+
+        let result = await checker.prepare(options(), timeout: 0.2)
+
+        #expect(result.status == .failed)
+        #expect(result.update == nil)
+        #expect(transport.requests.count == 1)
+        catalogResponse.open()
+        _ = try await running.value
+    }
+
+    @Test
+    func cancellingPrepareEndsTheWaitButNotTheDownload() async throws {
+        let host = FakeUpdateHost()
+        let download = Latch()
+        host.stage = { _, _ in
+            await download.wait()
+            return ["delivery": "archive", "patchFallback": false]
+        }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
+        )
+        let checker = makeChecker(host, transport)
+
+        let task = Task { await checker.prepare(options(), timeout: 30) }
+        await host.stageStarted.wait()
+        task.cancel()
+        let result = await task.value
+
+        #expect(result.status == .pending)
+        #expect(!host.stageFinished.isOpen)
+        download.open()
+        #expect(try await result.update?.updateBundle() == true)
+        #expect(host.stageCalls == 1)
+        #expect(host.events().last?["name"] as? String == "onBundleDownloaded")
+    }
+
+    @Test
+    func progressArrivesOnTheMainQueue() async throws {
+        let host = FakeUpdateHost()
+        host.stage = { _, progress in
+            for value in [0.0, 0.001, 0.25, 0.5, 1.0] {
+                progress(value)
+            }
+            return ["delivery": "archive", "patchFallback": false]
+        }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
+        )
+        let checker = makeChecker(host, transport)
+        let received = ProgressRecorder()
+
+        let result = await checker.prepare(options(), timeout: 5) { received.record($0) }
+
+        #expect(result.status == .ready)
+        await received.complete.wait()
+        #expect(received.values == [0.0, 0.25, 0.5, 1.0])
+        #expect(received.allOnMain)
+    }
+
+    @Test
+    func resetChannelWaitsForTheDownloadInProgress() async throws {
+        let host = FakeUpdateHost()
+        let download = Latch()
+        host.stage = { _, _ in
+            await download.wait()
+            return ["delivery": "archive", "patchFallback": false]
+        }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2)])
+        )
+        let checker = makeChecker(host, transport)
+        _ = await checker.prepare(options(), timeout: 5)
+        await host.stageStarted.wait()
+
+        let reset = Task { await checker.resetChannel() }
+        // Whenever the reset task runs, the held download keeps it waiting.
+        for _ in 0..<100 {
+            await Task.yield()
+        }
+        #expect(host.resetCalls == 0)
+        download.open()
+
+        #expect(await reset.value)
+        #expect(host.resetCalls == 1)
+        #expect(host.stageFinished.isOpen)
+    }
+
+    // MARK: Errors
+
+    @Test
+    func catalogHTTPErrorReportsCheckFailure() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport { _, _ in
+            NativeUpdateResponse(status: 500, headers: [:], body: "oops")
+        }
+        let checker = makeChecker(host, transport)
+
+        await #expect(throws: NativeUpdateCheckError.self) {
+            _ = try await checker.checkForUpdate(options())
+        }
+        let result = await checker.prepare(options(), timeout: 1)
+
+        #expect(result.status == .failed)
+        #expect(result.update == nil)
+        #expect(result.error?.localizedDescription == "Request failed with HTTP 500")
+        let events = host.events()
+        #expect(events.count == 2)
+        #expect(events.allSatisfy { $0["name"] as? String == "onUpdateError" })
+        let payload = try #require(events[0]["payload"] as? [String: Any])
+        #expect(payload["stage"] as? String == "check")
+        #expect(payload["reason"] as? String == "http")
+        #expect(payload["resource"] as? String == "catalog")
+        #expect(payload["httpStatus"] as? Int == 500)
+        #expect(payload["channel"] as? String == "production")
+        #expect(payload["bundleId"] as? String == builtInBundleId)
+        #expect(payload["releaseId"] is NSNull)
+        #expect(payload["updateStrategy"] as? String == "appVersion")
+        #expect(payload["message"] as? String == "Request failed with HTTP 500")
+        #expect(payload["targetBundleId"] == nil)
+        #expect(payload["transport"] == nil)
+    }
+
+    @Test
+    func invalidCatalogReportsInvalidResponse() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport { _, _ in
+            NativeUpdateResponse(status: 200, headers: ["etag": "v1"], body: "{}")
+        }
+        let checker = makeChecker(host, transport)
+
+        await #expect(throws: NativeUpdateCheckError.self) {
+            _ = try await checker.checkForUpdate(options())
+        }
+
+        let payload = try #require(host.events().first?["payload"] as? [String: Any])
+        #expect(payload["reason"] as? String == "invalid_response")
+        #expect(host.catalogCache.isEmpty)
+    }
+
+    @Test
+    func networkFailureNamesItsTransport() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport { _, _ in throw URLError(.notConnectedToInternet) }
+        let checker = makeChecker(host, transport)
+
+        await #expect(throws: URLError.self) {
+            _ = try await checker.checkForUpdate(options())
+        }
+
+        let payload = try #require(host.events().first?["payload"] as? [String: Any])
+        #expect(payload["reason"] as? String == "network")
+        #expect(payload["transport"] as? String == "offline")
+    }
+
+    @Test
+    func nativeStagingFailureReportsItsClassification() async throws {
+        let host = FakeUpdateHost()
+        host.stage = { _, _ in
+            throw NativeUpdateRejection(
+                code: "DOWNLOAD_FAILED",
+                message: "Forbidden",
+                userInfo: [
+                    "stage": "download",
+                    "reason": "http",
+                    "resource": "file",
+                    "httpStatus": NSNumber(value: 403),
+                    "originCode": "AccessDenied",
+                ]
+            )
+        }
+        let transport = FakeUpdateTransport.serving(catalog: catalog(releases: [descriptor(release2, bundle2)]))
+        let checker = makeChecker(host, transport)
+        let update = try #require(try await checker.checkForUpdate(options()))
+
+        await #expect(throws: NativeUpdateRejection.self) {
+            _ = try await update.updateBundle()
+        }
+
+        let events = host.events()
+        #expect(events.map { $0["name"] as? String } == ["onUpdateCheck", "onUpdateError"])
+        let payload = try #require(events[1]["payload"] as? [String: Any])
+        #expect(payload["stage"] as? String == "download")
+        #expect(payload["reason"] as? String == "http")
+        #expect(payload["resource"] as? String == "file")
+        #expect(payload["httpStatus"] as? Int == 403)
+        #expect(payload["originCode"] as? String == "AccessDenied")
+        #expect(payload["targetBundleId"] as? String == bundle2)
+        #expect(payload["targetReleaseId"] as? String == release2)
+        #expect(payload["message"] as? String == "Forbidden")
+    }
+
+    @Test
+    func staleSelectionIsNotAnUpdateFailure() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport.serving(catalog: catalog(releases: [descriptor(release2, bundle2)]))
+        let checker = makeChecker(host, transport)
+        let update = try #require(try await checker.checkForUpdate(options()))
+        host.isCurrent = false
+
+        await #expect(throws: NativeUpdateCheckError.self) {
+            _ = try await update.updateBundle()
+        }
+
+        #expect(host.events().count == 1)
+        #expect(host.stagedParams.isEmpty)
+    }
+
+    // MARK: Event queue
+
+    @Test
+    func eventQueueKeepsTheNewestTwentyOfEachName() {
+        let storage = MemoryEventStorage()
+        storage.setStorageItem(NativeUpdateEvents.storageKey, value: "not json")
+        for index in 0..<25 {
+            NativeUpdateEvents.append(
+                name: "onUpdateError",
+                payload: ["index": index],
+                occurredAt: Date(timeIntervalSince1970: Double(index)),
+                to: storage
+            )
+            if index < 3 {
+                NativeUpdateEvents.append(name: "onUpdateCheck", payload: ["index": index], occurredAt: Date(), to: storage)
+            }
+        }
+
+        let events = storage.events()
+        let errors = events.filter { $0["name"] as? String == "onUpdateError" }
+        #expect(errors.count == NativeUpdateEvents.maxEventsPerName)
+        #expect(errors.map { ($0["payload"] as? [String: Any])?["index"] as? Int } == Array(5..<25))
+        #expect((errors.first?["occurredAt"] as? NSNumber)?.int64Value == 5_000)
+        #expect(events.filter { $0["name"] as? String == "onUpdateCheck" }.count == 3)
+    }
+
+    @Test
+    func takingEventsReturnsAndClearsThem() {
+        let storage = MemoryEventStorage()
+        #expect(NativeUpdateEvents.take(from: storage) == nil)
+
+        NativeUpdateEvents.append(name: "onUpdateCheck", payload: [:], occurredAt: Date(), to: storage)
+        let taken = NativeUpdateEvents.take(from: storage)
+
+        let events = try? JSONSerialization.jsonObject(with: Data((taken ?? "").utf8)) as? [[String: Any]]
+        #expect(events?.count == 1)
+        #expect(storage.storageItem(NativeUpdateEvents.storageKey) == nil)
+        #expect(NativeUpdateEvents.take(from: storage) == nil)
+
+        storage.setStorageItem(NativeUpdateEvents.storageKey, value: "[]")
+        #expect(NativeUpdateEvents.take(from: storage) == nil)
+        #expect(storage.storageItem(NativeUpdateEvents.storageKey) == nil)
+    }
+
+    @Test
+    func takingEventsNeverLosesAConcurrentAppend() async {
+        let storage = MemoryEventStorage()
+        let names = (0..<50).map { "event-\($0)" }
+        let taken = TakenEvents()
+
+        await withTaskGroup(of: Void.self) { group in
+            for name in names {
+                group.addTask {
+                    for _ in 0..<4 {
+                        NativeUpdateEvents.append(name: name, payload: [:], occurredAt: Date(), to: storage)
+                    }
+                }
+            }
+            for _ in 0..<20 {
+                group.addTask {
+                    taken.add(NativeUpdateEvents.take(from: storage))
+                }
+            }
+        }
+        taken.add(NativeUpdateEvents.take(from: storage))
+
+        #expect(taken.count == names.count * 4)
+    }
+
+    @Test
+    func encodesURIComponentsAsJavaScript() {
+        #expect(NativeUpdateChecker.encodeURIComponent("a b/c?d=e&f+g!~*'()") == "a%20b%2Fc%3Fd%3De%26f%2Bg!~*'()")
+    }
+}
+
+// MARK: - Fixtures
+
+private func options(
+    baseURL: String = baseURL,
+    headers: [String: String] = [:],
+    channel: String? = nil
+) -> HotUpdaterCheckOptions {
+    HotUpdaterCheckOptions(
+        baseURL: baseURL,
+        updateStrategy: .appVersion,
+        requestHeaders: headers,
+        channel: channel
+    )
+}
+
+private func descriptor(
+    _ releaseId: String,
+    _ bundleId: String,
+    force: Bool = false,
+    message: String? = nil
+) -> [String: Any] {
+    [
+        "releaseId": releaseId,
+        "kind": "BUNDLE",
+        "bundleId": bundleId,
+        "rolloutCohortCount": 1000,
+        "targetCohorts": [String](),
+        "shouldForceUpdate": force,
+        "message": message ?? NSNull(),
+    ]
+}
+
+private func catalog(generation: Int = 1, releases: [[String: Any]]) -> String {
+    let object: [String: Any] = [
+        "schemaVersion": 1,
+        "catalogId": catalogId,
+        "scopeKey": scopeKey,
+        "generation": generation,
+        "catalogHash": catalogHash,
+        "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
+        "releases": releases,
+        "rollbackReleases": releases,
+    ]
+    let data = try! JSONSerialization.data(withJSONObject: object, options: [.sortedKeys])
+    return String(decoding: data, as: UTF8.self)
+}
+
+private func receipt(_ releaseId: String, _ bundleId: String, generation: Int64) -> PersistedSelection {
+    PersistedSelection(
+        kind: "BUNDLE",
+        releaseId: releaseId,
+        bundleId: bundleId,
+        catalogId: catalogId,
+        scopeKey: scopeKey,
+        generation: generation,
+        catalogHash: catalogHash,
+        channel: "production",
+        selectionContextHash: "previous"
+    )
+}
+
+private let artifactBody = """
+{"artifactProtocolVersion":1,"manifestUrl":"https://cdn.example.com/manifest.json",\
+"manifestFileHash":"sha256:manifest","assets":{"index.ios.bundle":{"fileHash":"hash",\
+"file":{"url":"https://cdn.example.com/index.ios.bundle"}}}}
+"""
+
+private let frozenNow = Date(timeIntervalSince1970: 1_700_000_000)
+
+private func makeChecker(_ host: FakeUpdateHost, _ transport: FakeUpdateTransport) -> NativeUpdateChecker {
+    NativeUpdateChecker(host: host, transport: transport, now: { frozenNow })
+}
+
+private func parseEvents(_ value: String?) -> [[String: Any]] {
+    guard let value,
+          let events = try? JSONSerialization.jsonObject(with: Data(value.utf8)) as? [[String: Any]] else {
+        return []
+    }
+    return events
+}
+
+// MARK: - Fakes
+
+private final class Flag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var value = false
+
+    var isSet: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func set() {
+        lock.lock()
+        value = true
+        lock.unlock()
+    }
+}
+
+private final class Latch: @unchecked Sendable {
+    private let lock = NSLock()
+    private var opened = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+
+    func wait() async {
+        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
+            lock.lock()
+            if opened {
+                lock.unlock()
+                continuation.resume()
+            } else {
+                waiters.append(continuation)
+                lock.unlock()
+            }
+        }
+    }
+
+    var isOpen: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return opened
+    }
+
+    func open() {
+        lock.lock()
+        opened = true
+        let waiters = self.waiters
+        self.waiters = []
+        lock.unlock()
+        waiters.forEach { $0.resume() }
+    }
+}
+
+private final class Responses: @unchecked Sendable {
+    private let lock = NSLock()
+    private var responses: [NativeUpdateResponse]
+
+    init(_ responses: [NativeUpdateResponse]) {
+        self.responses = responses
+    }
+
+    func next() -> NativeUpdateResponse {
+        lock.lock()
+        defer { lock.unlock() }
+        return responses.removeFirst()
+    }
+}
+
+private final class ProgressRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var recorded: [Double] = []
+    private var onMain = true
+
+    var values: [Double] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
+    }
+
+    var allOnMain: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return onMain
+    }
+
+    let complete = Latch()
+
+    func record(_ value: Double) {
+        lock.lock()
+        recorded.append(value)
+        onMain = onMain && Thread.isMainThread
+        lock.unlock()
+        if value >= 1 {
+            complete.open()
+        }
+    }
+}
+
+private final class TakenEvents: @unchecked Sendable {
+    private let lock = NSLock()
+    private var total = 0
+
+    var count: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return total
+    }
+
+    func add(_ value: String?) {
+        let events = parseEvents(value).count
+        lock.lock()
+        total += events
+        lock.unlock()
+    }
+}
+
+private class MemoryEventStorage: NativeUpdateEventStorage, @unchecked Sendable {
+    private let storageLock = NSLock()
+    private var storage: [String: String] = [:]
+
+    func events() -> [[String: Any]] {
+        parseEvents(storageItem(NativeUpdateEvents.storageKey))
+    }
+
+    func storageItem(_ key: String) -> String? {
+        storageLock.lock()
+        defer { storageLock.unlock() }
+        return storage[key]
+    }
+
+    func setStorageItem(_ key: String, value: String?) {
+        storageLock.lock()
+        defer { storageLock.unlock() }
+        storage[key] = value
+    }
+}
+
+private final class FakeUpdateTransport: NativeUpdateTransport, @unchecked Sendable {
+    struct Request {
+        let url: URL
+        let headers: [String: String]
+        let timeout: TimeInterval
+    }
+
+    private let lock = NSLock()
+    private var recorded: [Request] = []
+    private let respond: (URL, TimeInterval) async throws -> NativeUpdateResponse
+
+    init(_ respond: @escaping (URL, TimeInterval) async throws -> NativeUpdateResponse) {
+        self.respond = respond
+    }
+
+    static func serving(catalog body: String) -> FakeUpdateTransport {
+        FakeUpdateTransport { url, _ in
+            if url.path.contains("/artifacts/v1/") {
+                return NativeUpdateResponse(status: 200, headers: [:], body: artifactBody)
+            }
+            return NativeUpdateResponse(status: 200, headers: [:], body: body)
+        }
+    }
+
+    var requests: [Request] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
+    }
+
+    func get(_ url: URL, headers: [String: String], timeout: TimeInterval) async throws -> NativeUpdateResponse {
+        record(Request(url: url, headers: headers, timeout: timeout))
+        return try await respond(url, timeout)
+    }
+
+    private func record(_ request: Request) {
+        lock.lock()
+        defer { lock.unlock() }
+        recorded.append(request)
+    }
+}
+
+private final class FakeUpdateHost: MemoryEventStorage, NativeUpdateHost, @unchecked Sendable {
+    private let lock = NSLock()
+
+    var appVersion: String? = "1.0.0"
+    let minBundleId = builtInBundleId
+    var bundleIdValue: String?
+    var launchPrepared = false
+    var channelValue = "production"
+    var defaultChannelValue = "production"
+    var active: PersistedSelection?
+    var stable: PersistedSelection?
+    var isCurrent = true
+    var catalogCache: [String: String] = [:]
+    var stage: ([String: Any], @escaping (Double) -> Void) async throws -> Any? = { _, _ in
+        ["delivery": "archive", "patchFallback": false]
+    }
+    private(set) var acceptedGuards: [[String: Any]] = []
+    private(set) var committedParams: [[String: Any]] = []
+    private(set) var stagedParams: [[String: Any]] = []
+    private(set) var resets = 0
+    /// Opened when native `updateBundle` is first called, and when it first returns.
+    let stageStarted = Latch()
+    let stageFinished = Latch()
+
+    var stageCalls: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return stagedParams.count
+    }
+
+    var resetCalls: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return resets
+    }
+
+    func bundleId() -> String? { bundleIdValue }
+    func isLaunchPrepared() -> Bool { launchPrepared }
+    func channel() -> String { channelValue }
+    func defaultChannel() -> String { defaultChannelValue }
+    func cohort() -> String { "1" }
+    func fingerprintHash() -> String? { nil }
+    func crashHistory() -> [String] { [] }
+
+    func activeUpdateState() -> [String: Any] {
+        lock.lock()
+        defer { lock.unlock() }
+        return [
+            "activeSelection": active?.dictionary ?? NSNull(),
+            "stableSelection": stable?.dictionary ?? NSNull(),
+            "verificationPending": false,
+            "highestSeenCatalogs": [String: Any](),
+        ]
+    }
+
+    func acceptReleaseCatalog(_ params: [String: Any]) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        acceptedGuards.append(params)
+        return true
+    }
+
+    func isReleaseSelectionCurrent(_: [String: Any]) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return isCurrent
+    }
+
+    func commitReleaseSelection(_ params: [String: Any]) async throws -> Bool {
+        recordCommit(params)
+        return true
+    }
+
+    func updateBundle(_ params: [String: Any], progress: @escaping (Double) -> Void) async throws -> Any? {
+        let stage = recordStage(params)
+        stageStarted.open()
+        defer { stageFinished.open() }
+        return try await stage(params, progress)
+    }
+
+    func resetChannel() async -> Bool {
+        recordReset()
+        return true
+    }
+
+    private func recordCommit(_ params: [String: Any]) {
+        lock.lock()
+        defer { lock.unlock() }
+        committedParams.append(params)
+    }
+
+    private func recordStage(
+        _ params: [String: Any]
+    ) -> ([String: Any], @escaping (Double) -> Void) async throws -> Any? {
+        lock.lock()
+        defer { lock.unlock() }
+        stagedParams.append(params)
+        return stage
+    }
+
+    private func recordReset() {
+        lock.lock()
+        defer { lock.unlock() }
+        resets += 1
+    }
+
+    func releaseCatalogCache(_ partition: String) -> String? {
+        lock.lock()
+        defer { lock.unlock() }
+        return catalogCache[partition]
+    }
+
+    func setReleaseCatalogCache(_ partition: String, value: String) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        catalogCache[partition] = value
+        return true
+    }
+
+    func removeReleaseCatalogCache(_ partition: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        catalogCache[partition] = nil
+    }
+}
+#endif

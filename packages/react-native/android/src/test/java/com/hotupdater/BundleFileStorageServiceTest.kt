@@ -154,6 +154,71 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `peekLaunchBundleId reads the next launch without preparing it`() {
+        val rootDir = temporaryFolder.newFolder()
+        val preferences = InMemoryPreferencesService()
+        assertNull(createService(rootDir, preferences).peekLaunchBundleId())
+        listOf("stable-bundle", "staged-bundle").forEach { bundleId ->
+            val directory = createBundleDir(rootDir, bundleId)
+            writeFile(directory, "index.android.bundle")
+            writeManifest(directory, listOf("index.android.bundle"))
+        }
+        val metadata =
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = "stable-bundle",
+                stagingBundleId = "staged-bundle",
+                verificationPending = true,
+            )
+        writeMetadata(rootDir, metadata)
+        val service = createService(rootDir, preferences)
+        val saved = loadMetadata(rootDir)
+
+        assertEquals("staged-bundle", service.peekLaunchBundleId())
+        assertEquals("staged-bundle", service.peekLaunchBundleId())
+        assertEquals(saved, loadMetadata(rootDir))
+        val launch = service.prepareLaunch(null)
+        assertEquals("staged-bundle", launch.launchedBundleId)
+        assertTrue(launch.shouldRollbackOnCrash)
+    }
+
+    @Test
+    fun `peekLaunchBundleId skips a staged bundle the launch would not load`() {
+        val rootDir = temporaryFolder.newFolder()
+        val preferences = InMemoryPreferencesService()
+        val stableDirectory = createBundleDir(rootDir, "stable-bundle")
+        writeFile(stableDirectory, "index.android.bundle")
+        writeManifest(stableDirectory, listOf("index.android.bundle"))
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = "stable-bundle",
+                stagingBundleId = "missing-bundle",
+                verificationPending = true,
+            ),
+        )
+        assertEquals("stable-bundle", createService(rootDir, preferences).peekLaunchBundleId())
+
+        val stagedDirectory = createBundleDir(rootDir, "staged-bundle")
+        writeFile(stagedDirectory, "index.android.bundle")
+        writeManifest(stagedDirectory, listOf("index.android.bundle"))
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = "stable-bundle",
+                stagingBundleId = "staged-bundle",
+                verificationPending = true,
+                launchInProgress = true,
+            ),
+        )
+        // The next process rolls back a pending bundle whose launch never finished.
+        assertEquals("stable-bundle", createService(rootDir, preferences).peekLaunchBundleId())
+        assertTrue(loadMetadata(rootDir)!!.launchInProgress)
+    }
+
+    @Test
     fun `launch start records only the pending staged bundle`() {
         val rootDir = temporaryFolder.newFolder()
         val preferences = InMemoryPreferencesService()

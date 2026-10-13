@@ -85,6 +85,82 @@ struct BundleFileStorageServiceTests {
         #expect(downloads.requestedURLs == [manifestURL, fileURL])
     }
 
+    @Test
+    func peekLaunchBundleIdReadsTheStagedBundleWithoutPreparingTheLaunch() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        for bundleId in ["stable-bundle", "staged-bundle"] {
+            let directory = try createBundleDirectory(documentsDirectory: root, bundleId: bundleId)
+            try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+            try writeManifest(in: directory, bundleId: bundleId)
+        }
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "stable-bundle",
+            stagingBundleId: "staged-bundle",
+            verificationPending: true
+        ))
+        let metadataFile = root.appendingPathComponent("bundle-store/\(BundleMetadata.metadataFilename)")
+        let before = try Data(contentsOf: metadataFile)
+        let service = makeStorageService(documentsDirectory: root)
+
+        #expect(service.peekLaunchBundleId() == "staged-bundle")
+        #expect(service.peekLaunchBundleId() == "staged-bundle")
+
+        #expect(try Data(contentsOf: metadataFile) == before)
+        let launch = service.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(launch.launchedBundleId == "staged-bundle")
+        #expect(launch.shouldRollbackOnCrash)
+    }
+
+    @Test
+    func peekLaunchBundleIdSkipsAStagedBundleWithoutItsFile() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let stable = try createBundleDirectory(documentsDirectory: root, bundleId: "stable-bundle")
+        try writeBundle(in: stable, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stable, bundleId: "stable-bundle")
+        let staged = try createBundleDirectory(documentsDirectory: root, bundleId: "staged-bundle")
+        try writeManifest(in: staged, bundleId: "staged-bundle")
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "stable-bundle",
+            stagingBundleId: "staged-bundle"
+        ))
+
+        #expect(makeStorageService(documentsDirectory: root).peekLaunchBundleId() == "stable-bundle")
+    }
+
+    @Test
+    func peekLaunchBundleIdSkipsAStagedBundleWhoseLaunchDidNotFinish() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let preferences = InMemoryPreferencesService()
+        try leaveUnfinishedLaunch(documentsDirectory: root, preferences: preferences)
+        let metadataFile = root.appendingPathComponent("bundle-store/\(BundleMetadata.metadataFilename)")
+        let before = try Data(contentsOf: metadataFile)
+        let nextProcess = makeStorageService(documentsDirectory: root, preferences: preferences)
+
+        #expect(nextProcess.peekLaunchBundleId() == "stable-bundle")
+
+        #expect(try Data(contentsOf: metadataFile) == before)
+        #expect(!nextProcess.getCrashHistory().contains("retried-bundle"))
+        #expect(nextProcess.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "stable-bundle")
+    }
+
+    @Test
+    func peekLaunchBundleIdIsNilWithoutDownloadedBundles() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+
+        let service = makeStorageService(documentsDirectory: root)
+        let store = root.appendingPathComponent("bundle-store").path
+        let before = try? FileManager.default.contentsOfDirectory(atPath: store)
+
+        #expect(service.peekLaunchBundleId() == nil)
+        #expect((try? FileManager.default.contentsOfDirectory(atPath: store)) == before)
+    }
+
     @Test(arguments: ["before-rename", "complete", "corrupt"])
     func interruptedPromotionKeepsCompleteBundle(state: String) throws {
         let root = try makeWorkingDirectory()

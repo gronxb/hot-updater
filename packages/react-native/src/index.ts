@@ -33,6 +33,7 @@ import {
   stageBundle,
   type UpdateParams,
 } from "./native";
+import { replayNativeUpdateEvents } from "./nativeUpdateEvents";
 import { createAppPluginHost } from "./pluginHost";
 import { hotUpdaterStore } from "./store";
 import { type HotUpdaterWrapOptions, wrap } from "./wrap";
@@ -564,6 +565,7 @@ export const HotUpdater = {
       onError,
     });
     void launch.read({ onNotifyAppReady, onError });
+    replayNativeUpdateEvents(launch.emit);
     return Object.freeze({
       ...instance,
       ...apis,

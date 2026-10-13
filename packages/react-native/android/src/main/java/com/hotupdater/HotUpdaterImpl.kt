@@ -485,6 +485,27 @@ class HotUpdaterImpl {
         return null
     }
 
+    /** Whether React Native read the bundle in this process, which fixes this launch's bundle. */
+    fun hasLaunchSelection(): Boolean = currentLaunchSelection != null
+
+    /** Takes the queued native update events for JavaScript's `takeNativeUpdateEvents`. */
+    fun takeNativeUpdateEvents(): String? = NativeUpdateEventQueue(::getStorageItem, ::setStorageItem).take()
+
+    /**
+     * The bundle the native update check counts as running: the launched one,
+     * or before React Native starts, the one its launch would pick. Preparing
+     * the launch here would arm crash monitoring and keep a forced update
+     * staged before React Native starts from applying in this process.
+     */
+    fun getBundleIdForUpdateCheck(): String? {
+        val launchSelection = currentLaunchSelection
+        if (launchSelection != null) {
+            return launchSelection.launchedBundleId
+        }
+
+        return bundleStorage.peekLaunchBundleId()
+    }
+
     /**
      * Gets the current manifest from bundle storage.
      */

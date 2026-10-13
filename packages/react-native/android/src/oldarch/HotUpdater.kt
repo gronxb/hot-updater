@@ -99,6 +99,12 @@ class HotUpdater {
         /**
          * Programmatic configuration for brownfield/AAR setups where manifest
          * metadata or string resources in the host app are not desirable.
+         * A null argument means no override.
+         *
+         * [channel] is the app's fixed default channel: it must not change
+         * after the first launch, because it is part of the storage isolation
+         * key and changing it discards the stored bundles. Switch channels at
+         * runtime with [HotUpdaterCheckOptions.channel] and [resetChannel].
          */
         fun configure(
             fingerprintHash: String? = null,
@@ -130,6 +136,46 @@ class HotUpdater {
             // No-op for old architecture
         }
 
+        /**
+         * Returns to the default channel, as JavaScript's `resetChannel` does.
+         * @return true when the channel was reset
+         */
         suspend fun resetChannel(context: Context): Boolean = getInstance(context).resetChannel()
+
+        /**
+         * Checks for an update as JavaScript's `checkForUpdate` does, without
+         * React Native, for custom flows. Waits for a check or staging already
+         * running without a deadline; `prepare` is the bounded entry point.
+         * Plugin events are queued for JavaScript to replay.
+         * @return the update, or null when there is none
+         * @throws Exception when the check fails
+         */
+        suspend fun checkForUpdate(
+            context: Context,
+            options: HotUpdaterCheckOptions,
+        ): HotUpdaterUpdate? = NativeUpdateCheck.checkForUpdate(context, { getInstance(context) }, options)
+
+        /**
+         * Checks for an update and starts it before React Native loads, within
+         * one deadline of [timeoutMillis] covering the wait for another check,
+         * the requests, and the download of a required update. The deadline and
+         * cancellation end the wait, never the download: it continues, applies
+         * at the next launch, and a later `prepare` or `updateBundle` joins it.
+         * An update that is not required downloads in the background without
+         * a wait. Never throws: failures are returned, logged, and queued for
+         * JavaScript's `onUpdateError`.
+         *
+         * @param onProgress receives the download progress of a required
+         * update as a fraction from 0 to 1, throttled, on any thread, while
+         * `prepare` waits for it.
+         * @return [HotUpdaterPrepareResult.Ready] only when the update was
+         * staged before React Native read the bundle in this process
+         */
+        suspend fun prepare(
+            context: Context,
+            options: HotUpdaterCheckOptions,
+            timeoutMillis: Long = 3_000,
+            onProgress: ((Double) -> Unit)? = null,
+        ): HotUpdaterPrepareResult = NativeUpdateCheck.prepare(context, { getInstance(context) }, options, timeoutMillis, onProgress)
     }
 }

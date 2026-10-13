@@ -196,6 +196,13 @@ export interface Spec extends TurboModule {
    */
   setStorageItem: (key: string, value: string | null) => void;
 
+  /**
+   * Takes the events of the update checks native code ran without JavaScript
+   * (`HotUpdater.prepare`), as a JSON array, and clears them in one step.
+   * Returns null when there are none.
+   */
+  takeNativeUpdateEvents: () => string | null;
+
   // EventEmitter
   addListener(eventName: string): void;
   removeListeners(count: number): void;

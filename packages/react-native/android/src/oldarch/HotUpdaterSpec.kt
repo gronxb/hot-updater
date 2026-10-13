@@ -69,5 +69,7 @@ abstract class HotUpdaterSpec internal constructor(
         value: String?,
     )
 
+    abstract fun takeNativeUpdateEvents(): String?
+
     abstract fun resetChannel(promise: Promise)
 }

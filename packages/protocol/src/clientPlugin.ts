@@ -65,6 +65,12 @@ export type UpdateCheckResult =
       readonly updateStatus: "UPDATE" | "ROLLBACK";
       readonly shouldForceUpdate: boolean;
       readonly updateStrategy: UpdateStrategy;
+      /**
+       * When the event happened, in epoch milliseconds, for an event native code
+       * recorded before this runtime started (`HotUpdater.prepare`). Absent when
+       * the event happens now.
+       */
+      readonly occurredAt?: number;
     };
 
 /** A bundle the SDK downloaded, verified, and staged for the next launch. */
@@ -83,6 +89,12 @@ export interface BundleDownloadedInfo {
   readonly delivery: "patch" | "manifest" | "archive";
   /** A patch was tried, but the file or the archive was downloaded instead. */
   readonly patchFallback: boolean;
+  /**
+   * When the event happened, in epoch milliseconds, for an event native code
+   * recorded before this runtime started (`HotUpdater.prepare`). Absent when
+   * the event happens now.
+   */
+  readonly occurredAt?: number;
 }
 
 /**
@@ -148,6 +160,12 @@ export interface UpdateError {
   readonly updateStrategy: UpdateStrategy;
   /** The error the SDK caught. */
   readonly cause: unknown;
+  /**
+   * When the event happened, in epoch milliseconds, for an event native code
+   * recorded before this runtime started (`HotUpdater.prepare`). Absent when
+   * the event happens now.
+   */
+  readonly occurredAt?: number;
 }
 
 /** A response from the update server's catalog or artifact API. */

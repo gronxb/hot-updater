@@ -283,6 +283,10 @@ public protocol BundleStorageService {
     func getCachedBundleURL() -> URL?
     func getFallbackBundleURL(bundle: Bundle) -> URL? // Synchronous as it's lightweight
     func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection
+    /// The bundle the next `prepareLaunch` would run, read without changing
+    /// anything: no recovery is applied and the launch is not prepared. Nil
+    /// is the built-in bundle.
+    func peekLaunchBundleId() -> String?
 
     // Bundle update
     func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL?, assets: [String: ChangedAssetDescriptor], progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<UpdateDelivery, Error>) -> Void)
@@ -327,6 +331,7 @@ public protocol BundleStorageService {
 }
 
 public extension BundleStorageService {
+    func peekLaunchBundleId() -> String? { nil }
     func stageReleaseSelection(_: PersistedSelection) -> Bool { false }
     func acceptReleaseCatalog(catalogId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Bool { false }
     func getActiveUpdateState() -> [String: Any] { [:] }
@@ -1982,6 +1987,32 @@ class BundleFileStorageService: BundleStorageService {
             launchedBundleId: nil,
             shouldRollbackOnCrash: false
         )
+    }
+
+    func peekLaunchBundleId() -> String? {
+        // Reads the store without bundleStoreDir(), which creates it.
+        let storeDir = (fileSystem.documentsPath() as NSString).appendingPathComponent("bundle-store")
+        let metadataFile = URL(fileURLWithPath: storeDir).appendingPathComponent(BundleMetadata.metadataFilename)
+        guard let metadata = BundleMetadata.load(from: metadataFile, expectedIsolationKey: isolationKey) else {
+            return nil
+        }
+        func hasBundleFile(_ bundleId: String) -> Bool {
+            let directory = (storeDir as NSString).appendingPathComponent(bundleId)
+            guard case .success(let bundlePath) = findBundleFile(in: directory, expectedBundleId: bundleId) else {
+                return false
+            }
+            return bundlePath != nil
+        }
+        // The first launch of a process rolls back a pending bundle whose last
+        // launch never finished (see prepareLaunch).
+        let rollsBackStaging = !hasPreparedLaunch && metadata.verificationPending && metadata.launchInProgress
+        if let stagingBundleId = metadata.stagingBundleId, !rollsBackStaging, hasBundleFile(stagingBundleId) {
+            return stagingBundleId
+        }
+        if let stableBundleId = metadata.stableBundleId, hasBundleFile(stableBundleId) {
+            return stableBundleId
+        }
+        return nil
     }
 
     func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection {

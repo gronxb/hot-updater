@@ -12,6 +12,7 @@ let coreSources = [
     "HashUtils.swift",
     "HotUpdaterConfig.swift",
     "KeyValueStorageService.swift",
+    "NativeUpdateCheck.swift",
     "NotificationExtension.swift",
     "ReleaseCatalog.swift",
     "ReleaseCatalogCacheService.swift",
@@ -29,6 +30,7 @@ let coreExcludedFiles = [
     "HotUpdater-Bridging-Header.h",
     "HotUpdater.mm",
     "HotUpdaterImpl.swift",
+    "HotUpdaterNativeUpdates.swift",
 ]
 
 let bsdiffPatchBridgeExcludedFiles =

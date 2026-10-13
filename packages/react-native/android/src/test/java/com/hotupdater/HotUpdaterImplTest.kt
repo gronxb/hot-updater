@@ -1,5 +1,6 @@
 package com.hotupdater
 
+import android.content.ContextWrapper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -114,6 +115,37 @@ class HotUpdaterImplTest {
     }
 
     @Test
+    fun `the update check counts the bundle the launch would pick until a bundle launches`() {
+        val impl = allocateWithoutConstructor<HotUpdaterImpl>()
+        setField(impl, "bundleStorage", FakeBundleStorageService(bundleId = null, nextLaunchBundleId = "staged-bundle"))
+        val state = HotUpdaterImplUpdateCheckState(ContextWrapper(null), impl)
+
+        assertNull(impl.getBundleId())
+        assertEquals("staged-bundle", impl.getBundleIdForUpdateCheck())
+        assertEquals("staged-bundle", state.getBundleId())
+
+        setCurrentLaunchSelection(
+            impl,
+            LaunchSelection(
+                bundleUrl = "file:///bundle-store/launched-bundle/index.android.bundle",
+                launchedBundleId = "launched-bundle",
+                shouldRollbackOnCrash = false,
+            ),
+        )
+        assertEquals("launched-bundle", state.getBundleId())
+
+        setCurrentLaunchSelection(
+            impl,
+            LaunchSelection(
+                bundleUrl = "assets://index.android.bundle",
+                launchedBundleId = null,
+                shouldRollbackOnCrash = false,
+            ),
+        )
+        assertNull(state.getBundleId())
+    }
+
+    @Test
     fun `notifyAppReady reads the report without completing the current launch`() {
         val storage = FakeBundleStorageService(bundleId = null)
         val impl = allocateWithoutConstructor<HotUpdaterImpl>()
@@ -195,72 +227,5 @@ class HotUpdaterImplTest {
         val allocateInstance = unsafe.javaClass.getMethod("allocateInstance", Class::class.java)
         @Suppress("UNCHECKED_CAST")
         return allocateInstance.invoke(unsafe, T::class.java) as T
-    }
-
-    private class FakeBundleStorageService(
-        private val bundleId: String?,
-        private val manifest: Map<String, Any?> = emptyMap(),
-        private val baseURL: String = "",
-        private val launchedBundleManifests: Map<String, Map<String, Any?>> =
-            emptyMap(),
-        private val launchedBundleBaseURLs: Map<String, String> = emptyMap(),
-    ) : BundleStorageService {
-        var lastCompletedBundleId: String? = null
-
-        override fun setBundleURL(localPath: String?): Boolean = true
-
-        override fun getCachedBundleURL(): String? = null
-
-        override fun getFallbackBundleURL(): String = "assets://index.android.bundle"
-
-        override fun prepareLaunch(pendingRecovery: PendingCrashRecovery?): LaunchSelection =
-            LaunchSelection(
-                bundleUrl = "assets://index.android.bundle",
-                launchedBundleId = null,
-                shouldRollbackOnCrash = false,
-            )
-
-        override suspend fun updateBundle(
-            bundleId: String,
-            manifestUrl: String,
-            manifestFileHash: String,
-            assets: Map<String, ChangedAssetDescriptor>,
-            archiveUrl: String?,
-            progressCallback: (UpdateProgressPayload) -> Unit,
-        ) = UpdateBundleResult(BundleDelivery.MANIFEST, patchFallback = false)
-
-        override fun markLaunchStarted(launchedBundleId: String?) = Unit
-
-        override fun markLaunchCompleted(currentBundleId: String?) {
-            lastCompletedBundleId = currentBundleId
-        }
-
-        override fun notifyAppReady(): Map<String, Any?> = mapOf("status" to "UNCHANGED")
-
-        override fun getCrashHistory(): CrashedHistory = CrashedHistory()
-
-        override fun clearCrashHistory(): Boolean = true
-
-        override fun getBaseURL(): String = baseURL
-
-        override fun getBaseURLForBundle(bundleId: String?): String =
-            if (bundleId == null) {
-                ""
-            } else {
-                launchedBundleBaseURLs[bundleId] ?: ""
-            }
-
-        override fun getBundleId(): String? = bundleId
-
-        override fun getManifest(): Map<String, Any?> = manifest
-
-        override fun getManifestForBundle(bundleId: String?): Map<String, Any?> =
-            if (bundleId == null) {
-                emptyMap()
-            } else {
-                launchedBundleManifests[bundleId] ?: emptyMap()
-            }
-
-        override suspend fun resetChannel(): Boolean = true
     }
 }

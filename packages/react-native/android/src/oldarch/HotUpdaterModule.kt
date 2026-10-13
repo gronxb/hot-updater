@@ -451,6 +451,9 @@ class HotUpdaterModule internal constructor(
         getInstance().setStorageItem(key, value)
     }
 
+    @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun takeNativeUpdateEvents(): String? = getInstance().takeNativeUpdateEvents()
+
     @ReactMethod
     override fun resetChannel(promise: Promise) {
         moduleScope.launch {

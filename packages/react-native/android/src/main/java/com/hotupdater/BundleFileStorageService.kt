@@ -110,6 +110,13 @@ interface BundleStorageService {
     fun prepareLaunch(pendingRecovery: PendingCrashRecovery?): LaunchSelection
 
     /**
+     * The bundle [prepareLaunch] would load, read from the saved metadata
+     * without changing it: no recovery is applied and the launch is not
+     * prepared. Null is the built-in bundle.
+     */
+    fun peekLaunchBundleId(): String? = null
+
+    /**
      * Updates the bundle from the specified URL
      * @param bundleId ID of the bundle to update
      * @param manifestUrl URL of the target bundle manifest
@@ -1602,6 +1609,20 @@ class BundleFileStorageService(
             "prepareLaunch: bundleId=${selection.launchedBundleId} shouldRollback=${selection.shouldRollbackOnCrash} url=${selection.bundleUrl}",
         )
         return selection
+    }
+
+    override fun peekLaunchBundleId(): String? {
+        val metadata = loadMetadataOrNull() ?: return null
+        // The first launch of a process rolls back a pending bundle whose last
+        // launch never finished (see prepareLaunch).
+        val rollsBackStaging = !hasPreparedLaunch && metadata.verificationPending && metadata.launchInProgress
+        metadata.stagingBundleId?.let { stagingBundleId ->
+            if (!rollsBackStaging && getBundleUrlForId(stagingBundleId) != null) return stagingBundleId
+        }
+        metadata.stableBundleId?.let { stableBundleId ->
+            if (getBundleUrlForId(stableBundleId) != null) return stableBundleId
+        }
+        return null
     }
 
     override suspend fun updateBundle(

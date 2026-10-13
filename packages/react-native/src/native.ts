@@ -687,6 +687,12 @@ export const setStorageItem = (key: string, value: string | null): void => {
   HotUpdaterNative.setStorageItem(key, value);
 };
 
+/** Takes and clears the events of the native update checks, as JSON. */
+export const takeNativeUpdateEvents = (): string | null => {
+  const value: unknown = HotUpdaterNative.takeNativeUpdateEvents();
+  return typeof value === "string" ? value : null;
+};
+
 /**
  * Result returned by notifyAppReady()
  */

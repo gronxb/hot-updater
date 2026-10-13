@@ -8,13 +8,15 @@ import java.net.UnknownHostException
 import javax.net.ssl.SSLException
 
 /**
- * Where an update failed: [DOWNLOAD] covers transferring and verifying the
- * update's files, [INSTALL] producing the bundle on disk.
+ * Where an update failed: [CHECK] covers the Release catalog request,
+ * [DOWNLOAD] transferring and verifying the update's files, [INSTALL]
+ * producing the bundle on disk.
  * Values match `UpdateErrorStage` in packages/react-native/src/clientPlugin.ts.
  */
 enum class UpdateFailureStage(
     val value: String,
 ) {
+    CHECK("check"),
     DOWNLOAD("download"),
     INSTALL("install"),
 }
@@ -41,6 +43,8 @@ enum class UpdateFailureReason(
 enum class UpdateFailureResource(
     val value: String,
 ) {
+    CATALOG("catalog"),
+    ARTIFACT("artifact"),
     MANIFEST("manifest"),
     FILE("file"),
     PATCH("patch"),
@@ -152,7 +156,7 @@ data class UpdateFailure(
          * [SocketException] a refused, unreachable, or reset connection, and
          * OkHttp reports a canceled call as an IOException "Canceled".
          */
-        private fun transportOf(
+        internal fun transportOf(
             error: IOException,
             isOffline: () -> Boolean,
         ): UpdateFailureTransport? =
