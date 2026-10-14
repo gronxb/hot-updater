@@ -7,8 +7,9 @@ icon: Download
 ## Usage
 
 Use the pre-filled `updateBundle()` helper returned by `checkForUpdate()`. It
-resolves the protocol v1 manifest artifact, stages the selected transition, and
-does not reload the currently running React Native runtime.
+resolves the manifest artifact, over artifact protocol v2 when the app's native
+code installs it and v1 otherwise, stages the selected transition, and does not
+reload the currently running React Native runtime.
 
 ```tsx
 import { HotUpdater } from "@hot-updater/react-native";
@@ -45,9 +46,7 @@ supplies them after resolving the artifact endpoint.
 | `manifestUrl` | `string` | Yes | Target manifest URL. |
 | `manifestFileHash` | `string` | Yes | SHA256 hash or `sig:<base64_signature>` for the manifest. |
 | `archiveUrl` | `string \| null` | No | Full `tar.br` archive URL; integrity and sizes come from the verified manifest. |
-| `assets` | `Record<string, ArtifactAsset>` | Yes | Without `filesUrl`, the original descriptor for every target file, with optional Hermes patches. With `filesUrl`, only the Hermes patch, as `{ [path]: { patch } }`. |
-| `filesUrl` | `string \| null` | No | Where native `POST`s the paths of the files it downloads one by one, for their URLs. |
-| `requestHeaders` | `Record<string, string> \| null` | No | Headers for the `filesUrl` request, such as the client API key. |
+| `assets` | `Record<string, ArtifactAsset>` | Yes | Original descriptor for every target file, with optional Hermes patches. |
 | `channel` | `string` | No | Channel committed with the staged selection. |
 | `selection` | `object \| null` | No | Release Catalog selection receipt. |
 
