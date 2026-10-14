@@ -73,12 +73,15 @@ recovered from the Releases.
 ```text
 GET /release-catalogs/app-version/:platform/:channelKey/:appVersion
 GET /release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash
+GET /artifacts/v2/:targetBundleId/from/:currentBundleId
+POST /artifacts/v2/:targetBundleId/files
 GET /artifacts/v1/:targetBundleId/from/:currentBundleId
 ```
 
 The update check is one point read of the scope's catalog row; it scans no
 Releases or Bundles. Artifact resolution reads both Bundles in one batch and
-their patch with one unique read. Catalog URLs carry no installation state:
+their patch with one unique read; a files request reads the target Bundle with
+one point read. Catalog URLs carry no installation state:
 the device selects its update from the catalog.
 
 | Answer                                                                        | Status and headers                                                                                                                                                                                                                        |
@@ -89,7 +92,9 @@ the device selects its update from the catalog.
 | A channel key that is not the base64url of a channel name, or a malformed fingerprint hash | `400`                                                                                                                                                                                                                        |
 | A missing or invalid client key                                               | `401`                                                                                                                                                                                                                                     |
 | Client auth that cannot read its keys, or a database the schema fence refuses | `503`                                                                                                                                                                                                                                     |
-| An artifact                                                                   | `200`                                                                                                                                                                                                                                     |
+| An artifact, or the files a device asked for                                  | `200`                                                                                                                                                                                                                                     |
+| A files request with no paths, more than 100, repeated paths, or a body that is not JSON | `400`                                                                                                                                                                                                                         |
+| A files request with a path the target's manifest does not name               | `404`                                                                                                                                                                                                                                     |
 
 Every answer other than a catalog, its `304`, and a scope's missing catalog is
 `private, no-store`. A shared cache in front of the client routes keys a
@@ -120,14 +125,29 @@ refreshes in the background as soon as the catalog expires.
 
 ## Artifact responses
 
-An artifact response for protocol 1 has the target manifest's URL and hash, an
-optional archive URL, and the original file for every asset of the target
-manifest. The Hermes bundle may also carry a patch from the current Bundle.
-When both download sizes are known, the server includes the patch only if it
-is smaller than the original. The original stays in the response, so
-a device can recover from a missing or corrupt base file or a failed patch. See
-[bundle diffing](/docs/guides/bundle-diffing) for patches and the manifest's
-download fields.
+An artifact response for protocol 2 has the target manifest's URL and hash, an
+optional archive URL, and the Hermes bundle's patch from the current Bundle,
+which the server includes only if it is smaller than the original when both
+download sizes are known. It has no URL per file, so the server signs at most
+three URLs whatever the Bundle's size.
+
+The device then reuses the files it already has, from the current Bundle or the
+built-in one, and chooses between the archive and the files it still needs. Only
+for files it downloads one by one does it `POST` their manifest paths, at most
+100 at a time, as `{ "paths": [...] }` to `/artifacts/v2/:targetBundleId/files`,
+and the server signs those paths only:
+
+```json
+{ "files": { "index.android.bundle": { "url": "https://…", "compression": "br" } } }
+```
+
+A device can still download a file's original after a missing or corrupt base
+file or a failed patch. See [bundle diffing](/docs/guides/bundle-diffing) for
+patches and the manifest's download fields.
+
+`/artifacts/v1` is the protocol of SDKs older than protocol 2: its response
+signs the original of every file of the target. An SDK that gets a `404` from
+`/artifacts/v2`, from a server older than protocol 2, asks `/artifacts/v1`.
 
 ## Self-hosted servers
 
