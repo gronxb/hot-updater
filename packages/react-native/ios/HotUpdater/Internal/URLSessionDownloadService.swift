@@ -167,6 +167,8 @@ class URLSessionDownloadService: NSObject, DownloadService {
 
         // Foreground session (existing behavior)
         let defaultConfig = URLSessionConfiguration.default
+        // An install downloads up to this many files at once from one host.
+        defaultConfig.httpMaximumConnectionsPerHost = BundleFileStorageService.parallelFileDownloads
         session = URLSession(configuration: defaultConfig, delegate: self, delegateQueue: nil)
 
         // Background session for persistent downloads

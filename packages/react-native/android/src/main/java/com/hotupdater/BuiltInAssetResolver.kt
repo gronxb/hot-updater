@@ -15,6 +15,18 @@ interface BuiltInAssetResolver {
         expectedHash: String,
         destination: File,
     ): Boolean
+
+    /**
+     * Copies the packaged asset at [assetPath] when the native build recorded
+     * [expectedHash] as the hash of its source, although its packaged bytes
+     * differ, as AAPT2's PNG crunch leaves them. Returns the SHA-256 of the
+     * copied bytes, or null when the asset is not the same.
+     */
+    fun copyIfSourceMatches(
+        assetPath: String,
+        expectedHash: String,
+        destination: File,
+    ): String? = null
 }
 
 internal class AndroidBuiltInAssetResolver(
@@ -27,6 +39,9 @@ internal class AndroidBuiltInAssetResolver(
     )
 
     private val lock = Any()
+
+    /** Source hashes the native build recorded, by asset path. */
+    private val sourceHashes: Map<String, String> by lazy { readSourceHashes() }
 
     override fun copyIfMatches(
         assetPath: String,
@@ -48,6 +63,38 @@ internal class AndroidBuiltInAssetResolver(
             index.locators[normalizedPath] = locator
             writeIndex(index)
             true
+        }
+
+    override fun copyIfSourceMatches(
+        assetPath: String,
+        expectedHash: String,
+        destination: File,
+    ): String? =
+        synchronized(lock) {
+            val normalizedPath = RelativePathResolver.normalizeRelativePath(assetPath) ?: return@synchronized null
+            if (!sourceHashes[normalizedPath].equals(expectedHash, ignoreCase = true)) return@synchronized null
+            val packageIdentity = packageIdentity() ?: return@synchronized null
+            val index = readIndex(packageIdentity)
+            val locator = index.locators[normalizedPath] ?: resolveLocator(normalizedPath) ?: return@synchronized null
+            val packagedHash = copyLocator(locator, destination) { true } ?: return@synchronized null
+
+            index.locators[normalizedPath] = locator
+            writeIndex(index)
+            packagedHash
+        }
+
+    private fun readSourceHashes(): Map<String, String> =
+        try {
+            val json = JSONObject(context.assets.open(SOURCE_HASHES_ASSET).bufferedReader().use { it.readText() })
+            if (json.optInt("schemaVersion") != SOURCE_HASHES_SCHEMA_VERSION) {
+                emptyMap()
+            } else {
+                val assets = json.optJSONObject("assets") ?: JSONObject()
+                assets.keys().asSequence().associateWith { assets.getString(it) }
+            }
+        } catch (_: Exception) {
+            // A build without the record reuses only byte-identical assets.
+            emptyMap()
         }
 
     private fun resolveLocator(assetPath: String): String? {
@@ -123,8 +170,15 @@ internal class AndroidBuiltInAssetResolver(
         locator: String,
         expectedHash: String,
         destination: File,
-    ): Boolean {
-        val input = openLocator(locator) ?: return false
+    ): Boolean = copyLocator(locator, destination) { it.equals(expectedHash, ignoreCase = true) } != null
+
+    /** Copies the located bytes when [accepts] their SHA-256, and returns it. */
+    private fun copyLocator(
+        locator: String,
+        destination: File,
+        accepts: (String) -> Boolean,
+    ): String? {
+        val input = openLocator(locator) ?: return null
         val tempFile = File(destination.parentFile, "${destination.name}.builtin.tmp")
         return try {
             destination.parentFile?.mkdirs()
@@ -141,21 +195,20 @@ internal class AndroidBuiltInAssetResolver(
                 }
             }
             val actualHash = digest.digest().joinToString("") { "%02x".format(it) }
-            if (!actualHash.equals(expectedHash, ignoreCase = true)) {
+            if (!accepts(actualHash)) {
                 tempFile.delete()
-                false
+                null
             } else {
                 if (destination.exists()) destination.delete()
-                tempFile.renameTo(destination) ||
-                    run {
-                        tempFile.copyTo(destination, overwrite = true)
-                        tempFile.delete()
-                        true
-                    }
+                if (!tempFile.renameTo(destination)) {
+                    tempFile.copyTo(destination, overwrite = true)
+                    tempFile.delete()
+                }
+                actualHash
             }
         } catch (_: Exception) {
             tempFile.delete()
-            false
+            null
         }
     }
 
@@ -282,5 +335,9 @@ internal class AndroidBuiltInAssetResolver(
 
     companion object {
         private const val SCHEMA_VERSION = 1
+
+        /** Written by the native build: see android/hot-updater-builtin-assets.gradle. */
+        private const val SOURCE_HASHES_ASSET = "hot-updater-builtin-assets.json"
+        private const val SOURCE_HASHES_SCHEMA_VERSION = 1
     }
 }

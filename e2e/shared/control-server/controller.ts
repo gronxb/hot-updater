@@ -2598,25 +2598,52 @@ function readBundleAssetFileHash(bundleId: string, assetPath: string) {
     : readAndroidBundleAssetFileHash(bundleId, assetPath);
 }
 
+/**
+ * The packaged built-in assets an Android Bundle uses in place of the
+ * manifest's bytes, by path: their source matched, their bytes were
+ * re-encoded by the native build.
+ */
+function readBuiltInEquivalents(bundleId: string): Record<string, string> {
+  if (fixtureSession.platform === "ios") return {};
+  const snapshot = readAndroidStoreSnapshot(
+    `${bundleId}/builtin-assets.json`,
+    `bundle-${bundleId}-builtin-assets.json`,
+  );
+  const assets = snapshot.value?.assets;
+  if (!assets || typeof assets !== "object" || Array.isArray(assets)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(assets).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
+}
+
 function readBundleAssetsStoredEvidence(args: {
   assetPaths: string[];
   bundleId: string;
 }) {
   const manifest = readBundleManifestSnapshot(args.bundleId);
+  const builtInEquivalents = readBuiltInEquivalents(args.bundleId);
   const assets = args.assetPaths.map((assetPath) => {
     const manifestAssetPath = resolveManifestAssetPath(assetPath);
     const expectedHash = getManifestAssetFileHash(manifest, manifestAssetPath);
     const assetFile = readBundleAssetFileHash(args.bundleId, manifestAssetPath);
+    const builtInEquivalentHash = builtInEquivalents[manifestAssetPath] ?? null;
 
     return {
       assetFile,
       assetPath: manifestAssetPath,
+      builtInEquivalentHash,
       expectedHash,
       ok:
         expectedHash !== null &&
         assetFile.exists &&
         assetFile.readError === null &&
-        assetFile.fileHash === expectedHash,
+        (assetFile.fileHash === expectedHash ||
+          (builtInEquivalentHash !== null &&
+            assetFile.fileHash === builtInEquivalentHash)),
       requestedAssetPath: assetPath,
     };
   });
@@ -2628,6 +2655,7 @@ function readBundleAssetsStoredEvidence(args: {
   return {
     assets,
     bundleId: args.bundleId,
+    builtInEquivalents,
     manifest,
     ok,
   };
@@ -6173,6 +6201,13 @@ function readFirstOtaReuseEvidence(bundleId: string) {
       finalFiles.ok &&
       required.some(({ path }) => path.endsWith(imageSuffix)) &&
       required.some(({ path }) => path.endsWith(crunchedImageSuffix)) &&
+      // Android's release build re-encodes it: only its recorded source matches.
+      (fixtureSession.platform === "ios" ||
+        required.some(
+          ({ path }) =>
+            path.endsWith(crunchedImageSuffix) &&
+            typeof finalFiles.builtInEquivalents[path] === "string",
+        )) &&
       required.some(({ path }) => path.endsWith("builtin_reuse.ttf")) &&
       required.every(({ path }) =>
         reused.some((asset) => asset.path === path),

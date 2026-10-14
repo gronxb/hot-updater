@@ -239,6 +239,19 @@ class BundleFileStorageService(
         private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
         private val SHA256_PATTERN = Regex("^[0-9a-f]{64}$")
 
+        /** Files downloaded at once when the archive is not used. */
+        private const val PARALLEL_FILE_DOWNLOADS = 16
+
+        /**
+         * What one request costs beyond the first [PARALLEL_FILE_DOWNLOADS], in
+         * bytes: each waits a round trip for a free slot, about 100 ms, which
+         * at 5 MB/s over 16 slots is the time of 32 KiB.
+         */
+        private const val REQUEST_OVERHEAD_BYTES = 32L * 1024
+
+        /** Beside manifest.json, the built-in assets a Bundle uses as they are packaged. */
+        private const val BUILT_IN_EQUIVALENTS_FILE = "builtin-assets.json"
+
         /** A patch produced a file that does not match the target, or none at all. */
         private val PATCH_FAILURE =
             UpdateFailure(UpdateFailureStage.INSTALL, UpdateFailureReason.PATCH, resource = UpdateFailureResource.PATCH)
@@ -716,10 +729,61 @@ class BundleFileStorageService(
         val manifest = parseBundleManifestFromFile(File(bundleDir, "manifest.json")) ?: return false
         if (manifest.bundleId != bundleId) return false
         if (resolveBundleFile(bundleDir, bundleId) == null) return false
+        val builtInEquivalents = readBuiltInEquivalents(bundleDir)
         return manifest.assets.all { (assetPath, asset) ->
             val file = RelativePathResolver.resolveInside(bundleDir, assetPath)
-            file?.isFile == true && runCatching { verifyManifestAssetFileOrThrow(file, asset) }.isSuccess
+            file?.isFile == true &&
+                (
+                    runCatching { verifyManifestAssetFileOrThrow(file, asset) }.isSuccess ||
+                        builtInEquivalents[assetPath]?.let { isBuiltInEquivalent(file, asset, it) } == true
+                )
         }
+    }
+
+    /**
+     * Whether [file] holds the packaged bytes, [packagedHash], of the asset the
+     * native build recorded with the manifest's source hash. The manifest's
+     * signature still covers that source hash.
+     */
+    private fun isBuiltInEquivalent(
+        file: File,
+        asset: ParsedManifestAsset,
+        packagedHash: String,
+    ): Boolean =
+        HashUtils.calculateSHA256(file).equals(packagedHash, ignoreCase = true) &&
+            runCatching {
+                if (SignatureVerifier.isSigningEnabled(context)) {
+                    val signature = asset.signature ?: throw SignatureVerificationException.InvalidSignatureFormat()
+                    SignatureVerifier.verifyHashSignature(context, asset.fileHash, signature)
+                }
+            }.isSuccess
+
+    /** Packaged assets an installed Bundle uses in place of the manifest's bytes. */
+    private fun readBuiltInEquivalents(bundleDir: File): Map<String, String> =
+        try {
+            val file = File(bundleDir, BUILT_IN_EQUIVALENTS_FILE)
+            if (!file.isFile) {
+                emptyMap()
+            } else {
+                val assets = JSONObject(file.readText()).optJSONObject("assets") ?: JSONObject()
+                assets.keys().asSequence().associateWith { assets.getString(it) }
+            }
+        } catch (_: Exception) {
+            emptyMap()
+        }
+
+    private fun writeBuiltInEquivalents(
+        bundleDir: File,
+        equivalents: Map<String, String>,
+    ) {
+        val file = File(bundleDir, BUILT_IN_EQUIVALENTS_FILE)
+        if (equivalents.isEmpty()) {
+            file.delete()
+            return
+        }
+        val assets = JSONObject()
+        equivalents.toSortedMap().forEach { (path, hash) -> assets.put(path, hash) }
+        file.writeText("${JSONObject().put("assets", assets)}\n")
     }
 
     private fun recoverInterruptedPromotions(): Boolean {
@@ -1945,10 +2009,15 @@ class BundleFileStorageService(
         }
         if (archive.tarByteSize < logicalBytes) return null
         val tarFramingBytes = archive.tarByteSize - logicalBytes
-        if (individualBytes > MAX_SAFE_INTEGER - tarFramingBytes) return null
-        val framedByteLimit = individualBytes + tarFramingBytes
+        // Many small files cost more in requests than in bytes.
+        val requestOverheadBytes =
+            (downloads.size - PARALLEL_FILE_DOWNLOADS).coerceAtLeast(0) * REQUEST_OVERHEAD_BYTES
+        if (individualBytes > MAX_SAFE_INTEGER - requestOverheadBytes) return null
+        val individualCost = individualBytes + requestOverheadBytes
+        if (individualCost > MAX_SAFE_INTEGER - tarFramingBytes) return null
+        val framedByteLimit = individualCost + tarFramingBytes
 
-        if (archive.downloadByteSize <= individualBytes) return archive
+        if (archive.downloadByteSize <= individualCost) return archive
         if (downloads.size != manifest.assets.size || downloads.values.any { it.patch != null }) return null
         return archive.takeIf { it.downloadByteSize <= framedByteLimit }
     }
@@ -2154,6 +2223,8 @@ class BundleFileStorageService(
                 if (!tmpDir.isDirectory && !tmpDir.mkdirs()) throw HotUpdaterException.directoryCreationFailed()
                 pruneStagingDirectory(tmpDir, targetManifest.assets.keys)
             }
+            // Packaged assets of the same source whose bytes differ, by path.
+            val builtInEquivalents = mutableMapOf<String, String>()
             val downloads =
                 updateStep(UpdateFailureStage.INSTALL, UpdateFailureResource.FILE) {
                     val targetEntries = targetManifest.assets.entries.sortedBy { it.key }
@@ -2194,6 +2265,12 @@ class BundleFileStorageService(
                             verifyManifestAssetFileOrThrow(targetFile, expectedAsset)
                             return@forEachIndexed
                         }
+                        val packagedHash = builtInAssetResolver.copyIfSourceMatches(assetPath, expectedAsset.fileHash, targetFile)
+                        if (packagedHash != null && isBuiltInEquivalent(targetFile, expectedAsset, packagedHash)) {
+                            builtInEquivalents[assetPath] = packagedHash
+                            return@forEachIndexed
+                        }
+                        if (packagedHash != null) targetFile.delete()
                         downloads[assetPath] = changedAssets.getValue(assetPath)
                     }
                     downloads
@@ -2219,6 +2296,8 @@ class BundleFileStorageService(
 
             val fileDeliveries =
                 if (archiveProgress != null) {
+                    // The archive replaced every file with the manifest's bytes.
+                    builtInEquivalents.clear()
                     diffFiles = archiveProgress
                     emptyList()
                 } else {
@@ -2226,7 +2305,7 @@ class BundleFileStorageService(
                     emitDiffProgress(progressCallback, "downloading", diffFiles)
                     val progressLock = Any()
                     coroutineScope {
-                        val permits = Semaphore(4)
+                        val permits = Semaphore(PARALLEL_FILE_DOWNLOADS)
                         diffFiles
                             .toList()
                             .map { progressFile ->
@@ -2272,6 +2351,7 @@ class BundleFileStorageService(
                 )
 
                 manifestFile.copyTo(File(tmpDir, "manifest.json"), overwrite = true)
+                writeBuiltInEquivalents(tmpDir, builtInEquivalents)
 
                 val extractedIndex = tmpDir.walk().find { it.name == "index.android.bundle" }
                 if (extractedIndex == null) {

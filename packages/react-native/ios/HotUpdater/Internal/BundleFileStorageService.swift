@@ -336,6 +336,12 @@ public extension BundleStorageService {
 
 class BundleFileStorageService: BundleStorageService {
     private static let maximumSafeByteSize: Int64 = 9_007_199_254_740_991
+    /// Files downloaded at once when the archive is not used.
+    static let parallelFileDownloads = 16
+    /// What one request costs beyond the first `parallelFileDownloads`, in
+    /// bytes: each waits a round trip for a free slot, about 100 ms, which at
+    /// 5 MB/s over 16 slots is the time of 32 KiB.
+    private static let requestOverheadByteSize: Int64 = 32 * 1024
 
     private struct ActiveBundleMetadataSnapshot {
         let activeBundleId: String
@@ -1168,7 +1174,15 @@ class BundleFileStorageService: BundleStorageService {
         guard !overheadUnderflowed,
               tarOverhead >= 0 else { return false }
 
-        if archive.downloadByteSize <= individualLowerBound {
+        // Many small files cost more in requests than in bytes.
+        let requestOverhead = Int64(max(0, downloads.count - Self.parallelFileDownloads))
+            * Self.requestOverheadByteSize
+        let (individualCost, costOverflowed) = individualLowerBound
+            .addingReportingOverflow(requestOverhead)
+        guard !costOverflowed,
+              individualCost <= Self.maximumSafeByteSize else { return false }
+
+        if archive.downloadByteSize <= individualCost {
             return true
         }
 
@@ -1176,7 +1190,7 @@ class BundleFileStorageService: BundleStorageService {
               !hasOfferedPatch else {
             return false
         }
-        let (archiveBound, boundOverflowed) = individualLowerBound
+        let (archiveBound, boundOverflowed) = individualCost
             .addingReportingOverflow(tarOverhead)
         guard !boundOverflowed,
               archiveBound <= Self.maximumSafeByteSize else { return false }
@@ -2681,7 +2695,7 @@ class BundleFileStorageService: BundleStorageService {
                 emitDiffProgress(progressHandler: progressHandler, phase: "downloading", files: diffFiles)
                 let progressLock = NSLock()
                 let workers = OperationQueue()
-                workers.maxConcurrentOperationCount = 4
+                workers.maxConcurrentOperationCount = Self.parallelFileDownloads
                 var installError: Error?
                 var installOutcomes: [AssetInstallOutcome] = []
                 for progressFile in diffFiles {

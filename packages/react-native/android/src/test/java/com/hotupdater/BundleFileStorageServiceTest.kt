@@ -639,6 +639,70 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `first OTA reuses a built in asset the build re-encoded from the same source`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder("first-ota-re-encoded-built-in")
+            val bundleContent = "target-bundle"
+            val sourceContent = "source-image"
+            val packagedContent = "crunched-image"
+            val assets =
+                linkedMapOf(
+                    "index.android.bundle" to sha256(rootDir, bundleContent),
+                    "drawable-mdpi/image.png" to sha256(rootDir, sourceContent),
+                    "drawable-mdpi/changed.png" to sha256(rootDir, "changed-image"),
+                )
+            val manifest = manifestJson("target-bundle", assets)
+            val downloads =
+                MappingDownloadService(
+                    mapOf(
+                        "https://example.com/manifest.json" to manifest,
+                        "https://example.com/index.android.bundle" to bundleContent,
+                        "https://example.com/drawable-mdpi/changed.png" to "changed-image",
+                    ),
+                )
+            val service =
+                createService(
+                    rootDir,
+                    downloadService = downloads,
+                    builtInAssetResolver =
+                        SourceMappingBuiltInAssetResolver(
+                            mapOf(
+                                "drawable-mdpi/image.png" to (sha256(rootDir, sourceContent) to packagedContent),
+                                // The store build's source of this one is older.
+                                "drawable-mdpi/changed.png" to (sha256(rootDir, "old-image") to "crunched-old"),
+                            ),
+                        ),
+                )
+
+            service.updateBundle(
+                bundleId = "target-bundle",
+                manifestUrl = "https://example.com/manifest.json",
+                manifestFileHash = sha256(rootDir, manifest),
+                assets = assets.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) },
+                progressCallback = {},
+            )
+
+            assertEquals(
+                setOf(
+                    "https://example.com/manifest.json",
+                    "https://example.com/drawable-mdpi/changed.png",
+                    "https://example.com/index.android.bundle",
+                ),
+                downloads.calls.toSet(),
+            )
+            val targetDir = File(bundleStoreDir(rootDir), "target-bundle")
+            assertEquals(packagedContent, File(targetDir, "drawable-mdpi/image.png").readText())
+            assertEquals("changed-image", File(targetDir, "drawable-mdpi/changed.png").readText())
+            assertEquals(
+                mapOf("drawable-mdpi/image.png" to sha256(rootDir, packagedContent)),
+                JSONObject(File(targetDir, "builtin-assets.json").readText())
+                    .getJSONObject("assets")
+                    .let { json -> json.keys().asSequence().associateWith { json.getString(it) } },
+            )
+            assertEquals("target-bundle", loadMetadata(rootDir)?.stagingBundleId)
+        }
+
+    @Test
     fun `manifest driven install reuses matching built in asset before first OTA`() =
         runBlocking {
             val rootDir = temporaryFolder.newFolder("first-ota-manifest-install")
@@ -1258,10 +1322,10 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
-    fun `independent downloads overlap with at most four active requests`() =
+    fun `independent downloads overlap with at most sixteen active requests`() =
         runBlocking {
             val root = temporaryFolder.newFolder("parallel-originals")
-            val paths = listOf("index.android.bundle") + (0..8).map { "assets/$it.png" }
+            val paths = listOf("index.android.bundle") + (0..23).map { "assets/$it.png" }
             val hash = sha256(root, "content")
             val manifest = manifestJson("target", paths.associateWith { hash })
             val mapping =
@@ -1300,8 +1364,8 @@ class BundleFileStorageServiceTest {
                 paths.associateWith { ChangedAssetDescriptor("https://example.com/$it", hash) },
                 progressCallback = progress::add,
             )
-            assertTrue("Expected concurrent requests, observed ${maximum.get()}", maximum.get() > 1)
-            assertTrue("Concurrency must be bounded", maximum.get() <= 4)
+            assertTrue("Expected more than four concurrent requests, observed ${maximum.get()}", maximum.get() > 4)
+            assertTrue("Concurrency must be bounded", maximum.get() <= 16)
             assertEquals(paths.size, progress.last().details?.completedFilesCount)
         }
 
@@ -2545,6 +2609,29 @@ class BundleFileStorageServiceTest {
             fileSizeCallback?.invoke(bytes.size.toLong())
             progressCallback(DownloadProgress(1.0, bytes.size.toLong(), bytes.size.toLong()))
             return DownloadResult.Success(destination)
+        }
+    }
+
+    /** Packaged assets whose bytes differ from the source the build recorded. */
+    private class SourceMappingBuiltInAssetResolver(
+        private val sources: Map<String, Pair<String, String>>,
+    ) : BuiltInAssetResolver {
+        override fun copyIfMatches(
+            assetPath: String,
+            expectedHash: String,
+            destination: File,
+        ): Boolean = false
+
+        override fun copyIfSourceMatches(
+            assetPath: String,
+            expectedHash: String,
+            destination: File,
+        ): String? {
+            val (sourceHash, packaged) = sources[assetPath] ?: return null
+            if (sourceHash != expectedHash) return null
+            destination.parentFile?.mkdirs()
+            destination.writeText(packaged)
+            return HashUtils.calculateSHA256(destination)
         }
     }
 

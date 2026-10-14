@@ -1485,7 +1485,7 @@ struct BundleFileStorageServiceTests {
     func independentOriginalDownloadsOverlap() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
-        let paths = ["index.ios.bundle"] + (0..<9).map { "assets/\($0).png" }
+        let paths = ["index.ios.bundle"] + (0..<24).map { "assets/\($0).png" }
         let bytes = Data("target bytes".utf8)
         let hash = try #require(sha256(bytes, in: root))
         let hashes = Dictionary(uniqueKeysWithValues: paths.map { ($0, hash) })
@@ -1502,8 +1502,8 @@ struct BundleFileStorageServiceTests {
                 (path, ChangedAssetDescriptor(fileUrl: URL(string: "https://example.com/\(path)")!, fileHash: hash))
             }))
         #expect(result.failureError == nil)
-        #expect(downloads.maximumConcurrentAssets <= 4)
-        #expect(downloads.maximumConcurrentAssets > 1,
+        #expect(downloads.maximumConcurrentAssets <= 16)
+        #expect(downloads.maximumConcurrentAssets > 4,
             "Independent downloads must overlap within the fixed concurrency limit")
     }
 
