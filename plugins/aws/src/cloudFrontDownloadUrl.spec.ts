@@ -164,10 +164,8 @@ describe("cloudFrontDownloadUrl", () => {
 
       expect(getSignedUrl).toHaveBeenCalledTimes(2);
       expect(new URL(reused.url).search).toBe(new URL(first.url).search);
-      const renewedExpiry =
-        readVerifiedPolicy(renewed.url).Statement[0]!.Condition.DateLessThan[
-          "AWS:EpochTime"
-        ];
+      const renewedExpiry = readVerifiedPolicy(renewed.url).Statement[0]!
+        .Condition.DateLessThan["AWS:EpochTime"];
       expect(renewedExpiry * 1000).toBe(Date.now() + 600_000);
     } finally {
       vi.useRealTimers();

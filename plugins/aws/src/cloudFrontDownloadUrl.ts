@@ -1,9 +1,16 @@
 import { SSM } from "@aws-sdk/client-ssm";
 import { getSignedUrl } from "@aws-sdk/cloudfront-signer";
+import {
+  BUNDLE_STORAGE_PREFIX,
+  CONTENT_ADDRESSED_ASSET_PREFIX,
+} from "@hot-updater/plugin-core";
 
 import { applySsmRuntimeAwsConfig } from "./runtimeAwsConfig";
 
 const ONE_YEAR_IN_SECONDS = 60 * 60 * 24 * 365;
+
+/** Signatures kept per process; one per Bundle plus one for shared assets. */
+const MAX_CACHED_SIGNATURES = 1000;
 
 interface CloudFrontPrivateKeyFromGetter {
   getPrivateKey: () => Promise<string>;
@@ -27,6 +34,12 @@ export type CloudFrontDownloadUrlOptions = (
 };
 
 const privateKeyCache = new Map<string, Promise<string>>();
+
+/** Signed query strings by key pair and policy resource. */
+const signatureCache = new Map<
+  string,
+  { readonly query: string; readonly renewAt: number }
+>();
 
 const getPrivateKeyFromSsm = async (region: string, parameterName: string) => {
   const response = await new SSM(
@@ -62,6 +75,35 @@ const resolvePrivateKey = (config: CloudFrontDownloadUrlOptions) => {
   return pending;
 };
 
+/**
+ * The URL path one signature covers: every file of one Bundle
+ * (`bundles/<bundleId>/*`), or every content-addressed asset (`assets/*`),
+ * whose SHA-256 names cannot be listed without a manifest that names them.
+ * Any other object is signed alone.
+ */
+const getSignedPathScope = (pathname: string) => {
+  const segments = pathname.split("/");
+  const assets = segments.length - 4;
+  if (
+    segments[assets] === CONTENT_ADDRESSED_ASSET_PREFIX &&
+    segments[assets + 1] === "sha256"
+  ) {
+    return `${segments.slice(0, assets + 1).join("/")}/*`;
+  }
+  const bundles = segments.lastIndexOf(BUNDLE_STORAGE_PREFIX);
+  if (bundles >= 0 && segments.length - bundles > 2) {
+    return `${segments.slice(0, bundles + 2).join("/")}/*`;
+  }
+  return pathname;
+};
+
+/**
+ * Download URLs signed with a CloudFront key pair. An update check returns a
+ * URL for every file of the Bundle, hundreds for an app with many assets, so
+ * one custom-policy signature covers a Bundle's files and another the shared
+ * assets: each is reused for every URL under it until half its lifetime has
+ * passed, instead of one RSA signature per file.
+ */
 export const cloudFrontDownloadUrl =
   (config: CloudFrontDownloadUrlOptions) =>
   async ({ storageUri }: { storageUri: string }) => {
@@ -73,14 +115,46 @@ export const cloudFrontDownloadUrl =
     const url = new URL(config.publicBaseUrl);
     url.pathname = storageUrl.pathname;
     url.search = "";
-    return {
-      url: getSignedUrl({
-        url: url.toString(),
-        keyPairId: config.keyPairId,
-        privateKey: await resolvePrivateKey(config),
-        dateLessThan: new Date(
-          Date.now() + (config.expiresSeconds ?? ONE_YEAR_IN_SECONDS) * 1000,
-        ).toISOString(),
+    url.hash = "";
+    const resource = `${url.origin}${getSignedPathScope(url.pathname)}`;
+    const cacheKey = `${config.keyPairId}\n${resource}`;
+    const privateKey = await resolvePrivateKey(config);
+
+    // Nothing awaits from here on, so concurrent calls for one scope sign once.
+    const cached = signatureCache.get(cacheKey);
+    if (cached && Date.now() < cached.renewAt) {
+      return { url: `${url}${cached.query}` };
+    }
+
+    const expiresSeconds = config.expiresSeconds ?? ONE_YEAR_IN_SECONDS;
+    const signedAt = Date.now();
+    const signedUrl = getSignedUrl({
+      url: url.toString(),
+      keyPairId: config.keyPairId,
+      privateKey,
+      policy: JSON.stringify({
+        Statement: [
+          {
+            Resource: resource,
+            Condition: {
+              DateLessThan: {
+                "AWS:EpochTime": Math.floor(
+                  (signedAt + expiresSeconds * 1000) / 1000,
+                ),
+              },
+            },
+          },
+        ],
       }),
-    };
+    });
+    const query = new URL(signedUrl).search;
+    signatureCache.delete(cacheKey);
+    signatureCache.set(cacheKey, {
+      query,
+      renewAt: signedAt + (expiresSeconds * 1000) / 2,
+    });
+    if (signatureCache.size > MAX_CACHED_SIGNATURES) {
+      signatureCache.delete(signatureCache.keys().next().value!);
+    }
+    return { url: `${url}${query}` };
   };
