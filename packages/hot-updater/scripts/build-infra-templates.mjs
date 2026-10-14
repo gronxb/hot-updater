@@ -439,7 +439,6 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       projectId: null,
       projectName: null,
       blobStoreId: null,
-      blobAccess: null,
     });
   } else if (provider === "azure") {
     // The zip package init deploys to the Function App.
@@ -519,10 +518,6 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       { searchFrom: root },
     );
   if (provider === "vercel") {
-    // The config's database adapter.
-    appPackages["@hot-updater/postgres"] = (
-      await json(path.join(repoRoot, "plugins/postgres/package.json"))
-    ).version;
     // migrate.ts reads the tables the definition's plugins need.
     appPackages["@hot-updater/plugin-core"] = (
       await json(path.join(repoRoot, "plugins/plugin-core/package.json"))

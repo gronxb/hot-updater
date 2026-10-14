@@ -13,10 +13,6 @@ export const isVercelProjectName = (value: string | undefined) =>
 export const isVercelBlobStoreName = (value: string | undefined) =>
   value !== undefined && /^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$/.test(value);
 
-export const isVercelBlobAccess = (
-  value: string | undefined,
-): value is "public" | "private" => value === "public" || value === "private";
-
 export const isPostgresUrl = (value: string | undefined) => {
   if (value === undefined) return false;
   try {
@@ -69,16 +65,6 @@ export const initProvider = {
       envKey: "HOT_UPDATER_VERCEL_BLOB_STORE_ID",
       help: "Blob store ID (store_...), saved by init",
       optional: true,
-    },
-    blobAccess: {
-      envKey: "HOT_UPDATER_VERCEL_BLOB_ACCESS",
-      help: "The Blob store's access: private (the default) or public",
-      optional: true,
-      prompt: {
-        message: "Make the new Blob store private?",
-        type: "confirm",
-      },
-      validate: isVercelBlobAccess,
     },
     blobReadWriteToken: {
       envKey: "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN",

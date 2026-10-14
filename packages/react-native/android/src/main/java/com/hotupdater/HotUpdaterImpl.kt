@@ -165,64 +165,15 @@ class HotUpdaterImpl {
             ) ?: DEFAULT_CHANNEL
 
         /**
-         * Get minimum bundle ID string
-         * @return The minimum bundle ID string
+         * The bundle ID of the bundle this build ships (MIN_BUNDLE_ID),
+         * written by the generateHotUpdaterMinBundleId build task
          */
         fun getMinBundleId(): String {
             if (BuildConfig.DEBUG) {
                 return "00000000-0000-0000-0000-000000000000"
             }
-            return BuildConfig.MIN_BUNDLE_ID.takeIf { it != "null" } ?: generateMinBundleIdFromBuildTimestamp()
+            return HotUpdaterMinBundleId.get()
         }
-
-        /**
-         * Generates a bundle ID based on build timestamp
-         * @return The generated minimum bundle ID string
-         */
-        private fun generateMinBundleIdFromBuildTimestamp(): String =
-            try {
-                val buildTimestampMs = BuildConfig.BUILD_TIMESTAMP
-                val bytes =
-                    ByteArray(16).apply {
-                        this[0] = ((buildTimestampMs shr 40) and 0xFF).toByte()
-                        this[1] = ((buildTimestampMs shr 32) and 0xFF).toByte()
-                        this[2] = ((buildTimestampMs shr 24) and 0xFF).toByte()
-                        this[3] = ((buildTimestampMs shr 16) and 0xFF).toByte()
-                        this[4] = ((buildTimestampMs shr 8) and 0xFF).toByte()
-                        this[5] = (buildTimestampMs and 0xFF).toByte()
-                        this[6] = 0x70.toByte()
-                        this[7] = 0x00.toByte()
-                        this[8] = 0x80.toByte()
-                        this[9] = 0x00.toByte()
-                        this[10] = 0x00.toByte()
-                        this[11] = 0x00.toByte()
-                        this[12] = 0x00.toByte()
-                        this[13] = 0x00.toByte()
-                        this[14] = 0x00.toByte()
-                        this[15] = 0x00.toByte()
-                    }
-                String.format(
-                    "%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-                    bytes[0].toInt() and 0xFF,
-                    bytes[1].toInt() and 0xFF,
-                    bytes[2].toInt() and 0xFF,
-                    bytes[3].toInt() and 0xFF,
-                    bytes[4].toInt() and 0xFF,
-                    bytes[5].toInt() and 0xFF,
-                    bytes[6].toInt() and 0xFF,
-                    bytes[7].toInt() and 0xFF,
-                    bytes[8].toInt() and 0xFF,
-                    bytes[9].toInt() and 0xFF,
-                    bytes[10].toInt() and 0xFF,
-                    bytes[11].toInt() and 0xFF,
-                    bytes[12].toInt() and 0xFF,
-                    bytes[13].toInt() and 0xFF,
-                    bytes[14].toInt() and 0xFF,
-                    bytes[15].toInt() and 0xFF,
-                )
-            } catch (e: Exception) {
-                "00000000-0000-0000-0000-000000000000"
-            }
 
         /**
          * Gets the current fingerprint hash

@@ -29,7 +29,6 @@
     "@hot-updater/server": "workspace:*",
     "@hot-updater/standalone": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
-    "@hot-updater/postgres": "workspace:*",
     "@hot-updater/vercel": "workspace:*",
     "@react-native-community/cli": "20.1.0",
     "@react-native-community/cli-platform-android": "20.1.0",

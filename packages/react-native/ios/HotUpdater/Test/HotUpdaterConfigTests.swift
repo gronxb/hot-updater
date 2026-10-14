@@ -26,12 +26,12 @@ struct HotUpdaterConfigTests {
     @Test
     func skipsEmptyValues() throws {
         // An unset build setting leaves an Info.plist slot empty.
-        let framework = try makeBundle(info: ["HOT_UPDATER_MIN_BUNDLE_ID": ""])
+        let framework = try makeBundle(info: ["HOT_UPDATER_FINGERPRINT_HASH": ""])
         defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
         let config = HotUpdaterConfig()
         config.bundle = framework
 
-        #expect(config.infoValue(forKey: "HOT_UPDATER_MIN_BUNDLE_ID") == nil)
+        #expect(config.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH") == nil)
     }
 
     private func makeBundle(info: [String: String]) throws -> Bundle {
