@@ -1,8 +1,8 @@
 # Mobile E2E runner
 
 The runner uses `e2e@0.18.0`, `@e2e-dev/mobile@0.10.0`, and
-`agent-device@0.21.22` to execute the 32 scenarios in
-[`../scenario-names.json`](../scenario-names.json), or the 31 of the
+`agent-device@0.21.22` to execute the 33 scenarios in
+[`../scenario-names.json`](../scenario-names.json), or the 32 of the
 brownfield track in
 [`../brownfield-scenario-names.json`](../brownfield-scenario-names.json). The shared control server
 prepares OTA fixtures and verifies native recovery and Console Insights.

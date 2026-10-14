@@ -44,7 +44,7 @@ class HotUpdaterInstance internal constructor(
     fun getAppVersion(): String? = HotUpdaterImpl.getAppVersion(context)
 
     /** The bundle this launch runs, or null for the built-in bundle or before [getJSBundleFile] is read. */
-    fun getBundleId(): String? = impl.getBundleId()
+    fun getBundleId(): String? = impl.getRunningBundleId()
 
     fun getMinBundleId(): String = HotUpdaterImpl.getMinBundleId()
 

@@ -722,6 +722,13 @@ private func hotUpdaterGetMinBundleId() -> String {
         return nil
     }
 
+    /// The bundle this process runs. A channel reset clears
+    /// currentLaunchSelection for the next launch, but the running bundle
+    /// stays until React Native reloads.
+    func runningBundleId() -> String? {
+        (currentLaunchSelection ?? runningLaunchSelection)?.launchedBundleId
+    }
+
     /**
      * Gets the current manifest from bundle storage.
      */
