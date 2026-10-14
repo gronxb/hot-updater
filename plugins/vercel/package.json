@@ -1,0 +1,60 @@
+{
+  "name": "@hot-updater/vercel",
+  "type": "module",
+  "version": "1.0.2",
+  "description": "React Native OTA solution for self-hosted",
+  "main": "dist/index.cjs",
+  "module": "dist/index.mjs",
+  "types": "dist/index.d.cts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./init": {
+      "types": "./dist/init/index.d.cts",
+      "import": "./dist/init/index.mjs",
+      "require": "./dist/init/index.cjs"
+    },
+    "./package.json": "./package.json"
+  },
+  "license": "MIT",
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "!**/*.spec.ts",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "test:type": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hot-updater/cli-tools": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*",
+    "@hot-updater/postgres": "workspace:*",
+    "@hot-updater/protocol": "workspace:*",
+    "@hot-updater/server": "workspace:*",
+    "@vercel/blob": "catalog:vercel",
+    "@vercel/cli-auth": "catalog:vercel",
+    "@vercel/cli-config": "catalog:vercel",
+    "pg": "catalog:db"
+  },
+  "devDependencies": {
+    "@hot-updater/test-utils": "workspace:*",
+    "@types/node": "catalog:",
+    "@types/pg": "^8.11.10",
+    "@vercel/functions": "catalog:vercel",
+    "execa": "catalog:tools",
+    "kysely": "catalog:db",
+    "vitest": "catalog:"
+  }
+}

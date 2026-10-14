@@ -7,6 +7,8 @@
     "cloudflare",
     "aws",
     "firestore",
+    "postgres",
+    "azure",
     "---Your own database---",
     "../custom/database/kysely",
     "../custom/database/drizzle",

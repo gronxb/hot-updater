@@ -55,6 +55,32 @@ enum DownloadError: Error, Equatable {
         return .httpStatus(httpResponse.statusCode, originCode: originCode)
     }
 
+    /// The size of the file a successful response leaves, or nil when the
+    /// response does not tell. A 206 answers a range: when the system resumes
+    /// an interrupted background download, `expectedContentLength` counts
+    /// only the resumed range while the file holds every byte, so the size is
+    /// the total in `Content-Range: bytes <first>-<last>/<total>`.
+    static func expectedFileSize(for response: URLResponse?) -> Int64? {
+        if let httpResponse = response as? HTTPURLResponse,
+           httpResponse.statusCode == 206 {
+            guard let contentRange = httpResponse.value(forHTTPHeaderField: "Content-Range"),
+                  let separator = contentRange.lastIndex(of: "/"),
+                  let total = Int64(
+                      contentRange[contentRange.index(after: separator)...]
+                          .trimmingCharacters(in: .whitespaces)
+                  ),
+                  total > 0 else {
+                return nil
+            }
+            return total
+        }
+        guard let expectedContentLength = response?.expectedContentLength,
+              expectedContentLength > 0 else {
+            return nil
+        }
+        return expectedContentLength
+    }
+
     /// The `<Code>` of an S3, R2, or GCS style `<Error>` document in the
     /// first 4 KB of `body`, such as "AccessDenied". Nothing else from the
     /// body is kept, and a code must be 1-64 characters of [A-Za-z0-9._-].
@@ -215,7 +241,7 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
         }
 
         // Verify file size
-        let expectedSize = downloadTask.response?.expectedContentLength ?? -1
+        let expectedSize = DownloadError.expectedFileSize(for: downloadTask.response)
         let actualSize: Int64?
         do {
             let attributes = try FileManager.default.attributesOfItem(atPath: location.path)
@@ -225,7 +251,7 @@ extension URLSessionDownloadService: URLSessionDownloadDelegate {
             actualSize = nil
         }
 
-        if expectedSize > 0, let actualSize = actualSize, actualSize != expectedSize {
+        if let expectedSize, let actualSize, actualSize != expectedSize {
             NSLog("[DownloadService] Download incomplete: \(actualSize) / \(expectedSize) bytes")
             // Delete incomplete file
             try? FileManager.default.removeItem(at: location)

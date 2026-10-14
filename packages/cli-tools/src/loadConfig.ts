@@ -8,7 +8,7 @@ import type {
   RequiredDeep,
   StorageAdapter,
 } from "@hot-updater/plugin-core";
-import { merge } from "es-toolkit";
+import { mergeWith } from "es-toolkit";
 import fg from "fast-glob";
 import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
 
@@ -112,9 +112,21 @@ export type ConfigResponse = RequiredDeep<
 
 type ConfigSource = Partial<ConfigInput> | null | undefined;
 
+/**
+ * An array in the config replaces the default one. A plain deep merge goes
+ * index by index, so `infoPlistPaths: ["ios/App/Info.plist"]` over three
+ * discovered Info.plist files only overwrote the first and kept the others.
+ * The array is still copied deeply, as `merge` copied it.
+ */
+const replaceArrays = (_targetValue: unknown, sourceValue: unknown): unknown =>
+  Array.isArray(sourceValue)
+    ? mergeWith([], sourceValue, replaceArrays)
+    : undefined;
+
 const mergeConfigSources = (...sources: ConfigSource[]) => {
   const mergedConfig = sources.reduceRight<Partial<ConfigInput>>(
-    (mergedConfig, source) => merge(mergedConfig, source ?? {}),
+    (mergedConfig, source) =>
+      mergeWith(mergedConfig, source ?? {}, replaceArrays),
     {},
   );
 
