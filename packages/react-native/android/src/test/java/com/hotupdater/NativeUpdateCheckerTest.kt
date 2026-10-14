@@ -681,6 +681,36 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `an update of the same target that waited on the lock is staged`() =
+        runBlocking {
+            val state = FakeState()
+            val catalogRoutes = routes(minorCatalog())
+            val transport = FakeTransport(catalogRoutes)
+            val checker = NativeUpdateChecker(state, transport)
+            val first = checker.checkForUpdate(OPTIONS)!!
+            val second = checker.checkForUpdate(OPTIONS)!!
+
+            // A check holds the lock while both results queue for it.
+            val catalogHeld = CompletableDeferred<Unit>()
+            transport.handler = { request ->
+                catalogHeld.await()
+                catalogRoutes(request)
+            }
+            val check = async(Dispatchers.Default) { checker.checkForUpdate(OPTIONS) }
+            delay(100)
+            transport.handler = catalogRoutes
+            val firstStaging = async(Dispatchers.Default) { first.updateBundle() }
+            val secondStaging = async(Dispatchers.Default) { second.updateBundle() }
+            delay(100)
+            catalogHeld.complete(Unit)
+
+            withTimeout(5_000) { check.await() }
+            assertTrue(withTimeout(5_000) { firstStaging.await() })
+            assertTrue(withTimeout(5_000) { secondStaging.await() })
+            assertEquals(1, state.stageCount.get())
+        }
+
+    @Test
     fun `a reset waits for a background download`() =
         runBlocking {
             val gate = CompletableDeferred<Unit>()
