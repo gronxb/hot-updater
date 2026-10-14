@@ -137,10 +137,11 @@ class HotUpdater {
         }
 
         /**
-         * Returns to the default channel, as JavaScript's `resetChannel` does.
+         * Returns to the default channel, as JavaScript's `resetChannel` does,
+         * once a check or download running in this process finishes.
          * @return true when the channel was reset
          */
-        suspend fun resetChannel(context: Context): Boolean = getInstance(context).resetChannel()
+        suspend fun resetChannel(context: Context): Boolean = NativeUpdateCheck.resetChannel(context) { getInstance(context) }
 
         /**
          * Checks for an update as JavaScript's `checkForUpdate` does, without

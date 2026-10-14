@@ -729,8 +729,9 @@ RCT_EXPORT_MODULE();
 
 - (void)resetChannel:(RCTPromiseResolveBlock)resolve
               reject:(RCTPromiseRejectBlock)reject {
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    [impl resetChannel:resolve rejecter:reject];
+    [HotUpdaterNativeUpdateBridge resetChannelWithImpl:[HotUpdater sharedImpl]
+                                              resolver:resolve
+                                              rejecter:reject];
 }
 
 - (facebook::react::ModuleConstants<JS::NativeHotUpdater::Constants::Builder>)constantsToExport {
@@ -898,8 +899,9 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getManifest) {
 
 RCT_EXPORT_METHOD(resetChannel:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    [impl resetChannel:resolve rejecter:reject];
+    [HotUpdaterNativeUpdateBridge resetChannelWithImpl:[HotUpdater sharedImpl]
+                                              resolver:resolve
+                                              rejecter:reject];
 }
 
 - (NSDictionary *)constantsToExport {
