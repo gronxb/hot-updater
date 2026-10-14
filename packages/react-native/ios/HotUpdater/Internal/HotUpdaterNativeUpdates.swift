@@ -241,7 +241,7 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
 
     /// The bundle this launch runs, or nil for the built-in bundle or before
     /// `bundleURL()` is read.
-    @objc public func getBundleId() -> String? { impl.getBundleId() }
+    @objc public func getBundleId() -> String? { impl.runningBundleId() }
 
     @objc public func getMinBundleId() -> String { HotUpdaterImpl.minBundleId() }
 

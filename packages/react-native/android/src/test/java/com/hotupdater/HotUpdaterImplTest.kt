@@ -164,6 +164,8 @@ class HotUpdaterImplTest {
             assertTrue(impl.resetChannel())
 
             assertEquals("channel-bundle", impl.getBundleIdForUpdateCheck())
+            // The instance's getter reports the running bundle; the TurboModule's reads the next launch's.
+            assertEquals("channel-bundle", impl.getRunningBundleId())
             assertNull(impl.getBundleId())
         }
 
