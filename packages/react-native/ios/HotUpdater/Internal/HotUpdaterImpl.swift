@@ -61,21 +61,6 @@ private func hotUpdaterGetMinBundleId() -> String {
     // Read by native update checks on other threads while React Native sets it.
     private let launchSelectionLock = NSLock()
     private var launchSelectionValue: LaunchSelection?
-    // Set before the launch reads the metadata, so a staging that commits while
-    // React Native picks its bundle counts as after the launch.
-    private var launchSelectionStartedValue = false
-    private var launchSelectionStarted: Bool {
-        get {
-            launchSelectionLock.lock()
-            defer { launchSelectionLock.unlock() }
-            return launchSelectionStartedValue
-        }
-        set {
-            launchSelectionLock.lock()
-            launchSelectionStartedValue = newValue
-            launchSelectionLock.unlock()
-        }
-    }
     private var currentLaunchSelection: LaunchSelection? {
         get {
             launchSelectionLock.lock()
@@ -737,15 +722,9 @@ private func hotUpdaterGetMinBundleId() -> String {
     public func resetLaunchPreparation() {
         currentLaunchSelection = nil
         runningLaunchSelection = nil
-        launchSelectionStarted = false
     }
 
     // MARK: - Native Update Check
-
-    /// Whether React Native has read the bundle in this process.
-    func isLaunchPrepared() -> Bool {
-        launchSelectionStarted || runningLaunchSelection != nil
-    }
 
     /**
      * The bundle the native update check counts as running: the launched one,
@@ -811,7 +790,6 @@ private func hotUpdaterGetMinBundleId() -> String {
             return currentLaunchSelection
         }
 
-        launchSelectionStarted = true
         let pendingRecovery = recoveryManager.consumePendingCrashRecovery()
         let selection = bundleStorage.prepareLaunch(bundle: bundle, pendingRecovery: pendingRecovery)
         markLaunchStartedInForeground(selection)

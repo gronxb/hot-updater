@@ -12,8 +12,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   value !== null && typeof value === "object" && !Array.isArray(value);
 
 /**
- * Reports the update checks native code ran without JavaScript, such as
- * `HotUpdater.prepare` in a brownfield app, with the catalog and artifact
+ * Reports the update checks native code ran without JavaScript, such as a
+ * brownfield app's native `HotUpdaterInstance`, with the catalog and artifact
  * responses they received, to the instance's plugins before this launch's
  * report, which they precede. Native takes and clears them in one step, so
  * each is reported at most once. A native error carries a message instead of

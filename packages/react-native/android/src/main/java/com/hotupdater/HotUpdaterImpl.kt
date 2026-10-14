@@ -28,11 +28,6 @@ class HotUpdaterImpl {
     @Volatile
     private var currentLaunchSelection: LaunchSelection? = null
 
-    // Set before the launch reads the metadata, so a staging that commits while
-    // React Native picks its bundle counts as after the launch.
-    @Volatile
-    private var launchSelectionStarted = false
-
     // The selection React Native runs in this process. A channel reset clears
     // currentLaunchSelection, so React Native's next read picks the default
     // channel's bundle, but the running bundle stays until a reload.
@@ -299,7 +294,6 @@ class HotUpdaterImpl {
         try {
             currentLaunchSelection = null
             runningLaunchSelection = null
-            launchSelectionStarted = false
             withContext(Dispatchers.Main) {
                 performReactReload(reactContext)
             }
@@ -312,7 +306,6 @@ class HotUpdaterImpl {
         try {
             currentLaunchSelection = null
             runningLaunchSelection = null
-            launchSelectionStarted = false
             withContext(Dispatchers.Main) {
                 if (!restartApplication(reactContext)) {
                     Log.w(TAG, "Falling back to in-process reload because process restart could not be started")
@@ -465,9 +458,6 @@ class HotUpdaterImpl {
         return null
     }
 
-    /** Whether React Native read the bundle in this process, which fixes this launch's bundle. */
-    fun hasLaunchSelection(): Boolean = launchSelectionStarted || runningLaunchSelection != null
-
     /** Takes the queued native update events for JavaScript's `takeNativeUpdateEvents`. */
     fun takeNativeUpdateEvents(): String? =
         NativeUpdateEventQueue(::getStorageItem, ::setStorageItem, build = {
@@ -529,7 +519,6 @@ class HotUpdaterImpl {
     private fun prepareLaunchLocked(): LaunchSelection {
         currentLaunchSelection?.let { return it }
 
-        launchSelectionStarted = true
         val pendingRecovery = recoveryManager.consumePendingCrashRecovery()
         val selection = bundleStorage.prepareLaunch(pendingRecovery)
         // A headless JS task, such as a background push, loads the bundle without

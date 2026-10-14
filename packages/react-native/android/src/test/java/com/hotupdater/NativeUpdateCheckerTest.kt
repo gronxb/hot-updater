@@ -38,7 +38,7 @@ class NativeUpdateCheckerTest {
         private val CATALOG_URL = "$BASE_URL/release-catalogs/app-version/android/$CHANNEL_KEY/1.2.0"
         private val ARTIFACT_URL = "$BASE_URL/artifacts/v1/$BUNDLE_B/from/$MIN_BUNDLE_ID"
         private val OPTIONS =
-            HotUpdaterCheckOptions(
+            NativeCheckRequest(
                 baseURL = "$BASE_URL/",
                 updateStrategy = HotUpdaterUpdateStrategy.APP_VERSION,
                 requestHeaders = mapOf("Authorization" to "Bearer token"),
@@ -60,7 +60,6 @@ class NativeUpdateCheckerTest {
         var appVersionName: String? = "1.2.0"
         var launchedBundleId: String? = null
         var bundleIdSource: (() -> String?)? = null
-        var launched = false
         var defaultChannelName = "production"
         var channelName = "production"
         var cohortValue = "500"
@@ -83,8 +82,6 @@ class NativeUpdateCheckerTest {
         override fun getAppVersion(): String? = appVersionName
 
         override fun getBundleId(): String? = bundleIdSource?.invoke() ?: launchedBundleId
-
-        override fun hasLaunchedBundle(): Boolean = launched
 
         override fun getMinBundleId(): String = MIN_BUNDLE_ID
 
@@ -272,7 +269,7 @@ class NativeUpdateCheckerTest {
             val checker = NativeUpdateChecker(state, transport)
 
             assertNull(checker.checkForUpdate(OPTIONS))
-            assertEquals(HotUpdaterPrepareResult.UpToDate, checker.prepare(OPTIONS, 1_000, null))
+            assertNull(checker.checkForUpdate(OPTIONS))
 
             val request = transport.requests.first()
             assertEquals(CATALOG_URL, request.url)
@@ -467,7 +464,6 @@ class NativeUpdateCheckerTest {
             setImplField(impl, "runningLaunchSelection", launched)
             setImplField(impl, "currentLaunchSelection", launched)
             val adapter = HotUpdaterImplUpdateCheckState(ContextWrapper(null), impl)
-            assertTrue(adapter.hasLaunchedBundle())
             val state = FakeState().apply { bundleIdSource = { adapter.getBundleId() } }
             val transport = FakeTransport(routes(minorCatalog()))
             val checker = NativeUpdateChecker(state, transport)
@@ -519,27 +515,7 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
-    fun `prepare is up to date when it adopts the Release of the bundle this launch runs`() =
-        runBlocking {
-            // The first launch after an update: the stored selection names the
-            // bundle the app ran before it, so the catalog is selected again.
-            val state =
-                FakeState().apply {
-                    launchedBundleId = BUNDLE_B
-                    activeSelection = PersistedSelection.bareBundle(BUNDLE_B)
-                    stableSelection = PersistedSelection.bareBundle(BUNDLE_B)
-                }
-            val checker = NativeUpdateChecker(state, FakeTransport(routes(forcedCatalog())))
-
-            val result = withTimeout(5_000) { checker.prepare(OPTIONS, 5_000, null) }
-
-            assertEquals(HotUpdaterPrepareResult.UpToDate, result)
-            assertEquals(0, state.stageCount.get())
-            assertEquals(RELEASE_B, state.committed.single().releaseId)
-        }
-
-    @Test
-    fun `a required rollback to the built-in bundle commits and is ready before a launch`() =
+    fun `a required rollback to the built-in bundle commits`() =
         runBlocking {
             val receipt =
                 PersistedSelection(
@@ -561,14 +537,14 @@ class NativeUpdateCheckerTest {
                 }
             val transport = FakeTransport(routes(catalog(emptyList(), generation = 2)))
             val checker = NativeUpdateChecker(state, transport)
-            // A download an earlier prepare queued, which the built-in bundle replaces.
+            // A download an earlier check queued, which the built-in bundle replaces.
             NativeUpdateEventQueue(state::getStorageItem, state::setStorageItem, build = {
                 NativeUpdateEventQueue.buildOf(state.getAppVersion(), state.getMinBundleId(), state.getCohort())
             }).add("onBundleDownloaded", JSONObject())
 
-            val result = checker.prepare(OPTIONS, 5_000, null)
+            val update = checker.checkForUpdate(OPTIONS)!!
+            assertTrue(update.updateBundle())
 
-            val update = (result as HotUpdaterPrepareResult.Ready).update
             assertEquals("USE_BUILTIN", update.transitionKind)
             assertEquals(HotUpdaterUpdateStatus.ROLLBACK, update.status)
             assertEquals(MIN_BUNDLE_ID, update.id)
@@ -584,7 +560,7 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
-    fun `prepare waits for a required update and reports its progress`() =
+    fun `updateBundle waits for the staging and reports its progress`() =
         runBlocking {
             val gate = CompletableDeferred<Unit>()
             val state = FakeState().apply { stageGate = gate }
@@ -595,81 +571,12 @@ class NativeUpdateCheckerTest {
                 state.stageEntered.await()
                 gate.complete(Unit)
             }
-            val result = checker.prepare(OPTIONS, 10_000) { synchronized(progress) { progress.add(it) } }
+            val update = checker.checkForUpdate(OPTIONS)!!
+            assertTrue(update.updateBundle { synchronized(progress) { progress.add(it) } })
 
-            assertEquals(RELEASE_B, (result as HotUpdaterPrepareResult.Ready).update.id)
+            assertEquals(RELEASE_B, update.id)
             assertTrue(state.staged.isCompleted)
             assertEquals(listOf(0.25, 0.75, 1.0), synchronized(progress) { progress.toList() })
-        }
-
-    @Test
-    fun `prepare after React Native read the bundle is pending even when staged in time`() =
-        runBlocking {
-            val state = FakeState().apply { launched = true }
-            val checker = NativeUpdateChecker(state, FakeTransport(routes(forcedCatalog())))
-
-            val result = checker.prepare(OPTIONS, 5_000, null)
-
-            assertEquals(RELEASE_B, (result as HotUpdaterPrepareResult.Pending).update.id)
-            assertTrue(state.staged.isCompleted)
-        }
-
-    @Test
-    fun `the deadline ends the wait for a required update and the download continues`() =
-        runBlocking {
-            val gate = CompletableDeferred<Unit>()
-            val state = FakeState().apply { stageGate = gate }
-            val checker = NativeUpdateChecker(state, FakeTransport(routes(forcedCatalog())))
-
-            val started = System.nanoTime()
-            val result = checker.prepare(OPTIONS, 500, null)
-
-            assertTrue(elapsedMillis(started) < 3_000)
-            val update = (result as HotUpdaterPrepareResult.Pending).update
-            assertTrue(update.shouldForceUpdate)
-            assertFalse(state.staged.isCompleted)
-
-            gate.complete(Unit)
-            assertEquals(BUNDLE_B, withTimeout(5_000) { state.staged.await() }.bundleId)
-        }
-
-    @Test
-    fun `prepare returns before a minor update finishes downloading`() =
-        runBlocking {
-            val gate = CompletableDeferred<Unit>()
-            val state = FakeState().apply { stageGate = gate }
-            val checker = NativeUpdateChecker(state, FakeTransport(routes(minorCatalog())))
-
-            val result = withTimeout(5_000) { checker.prepare(OPTIONS, 60_000, null) }
-
-            assertFalse((result as HotUpdaterPrepareResult.Pending).update.shouldForceUpdate)
-            assertFalse(state.staged.isCompleted)
-            gate.complete(Unit)
-            assertEquals(BUNDLE_B, withTimeout(5_000) { state.staged.await() }.bundleId)
-        }
-
-    @Test
-    fun `prepare joins a running download within its deadline and never stages it twice`() =
-        runBlocking {
-            val gate = CompletableDeferred<Unit>()
-            val state = FakeState().apply { stageGate = gate }
-            val checker = NativeUpdateChecker(state, FakeTransport(routes(forcedCatalog())))
-            val update = checker.checkForUpdate(OPTIONS)!!
-            val background = async(Dispatchers.Default) { update.updateBundle() }
-            state.stageEntered.await()
-
-            val started = System.nanoTime()
-            val joined = checker.prepare(OPTIONS, 200, null)
-
-            assertTrue(elapsedMillis(started) < 2_000)
-            assertSame(update, (joined as HotUpdaterPrepareResult.Pending).update)
-            val joining = async(start = CoroutineStart.UNDISPATCHED) { update.updateBundle() }
-            gate.complete(Unit)
-            assertTrue(withTimeout(5_000) { background.await() })
-            assertTrue(withTimeout(5_000) { joining.await() })
-            // The update already staged, so calling it again does not download it again.
-            assertTrue(update.updateBundle())
-            assertEquals(1, state.stageCount.get())
         }
 
     @Test
@@ -784,16 +691,6 @@ class NativeUpdateCheckerTest {
     }
 
     @Test
-    fun `a timeout too large for nanoseconds does not expire at once`() =
-        runBlocking {
-            val checker = NativeUpdateChecker(FakeState(), FakeTransport(routes(forcedCatalog())))
-
-            val result = checker.prepare(OPTIONS, Long.MAX_VALUE, null)
-
-            assertEquals(RELEASE_B, (result as HotUpdaterPrepareResult.Ready).update.id)
-        }
-
-    @Test
     fun `a hostless artifact URL is invalid`() =
         runBlocking {
             for (url in listOf("https://", "https:///manifest.json")) {
@@ -837,25 +734,6 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
-    fun `a check the prepare deadline ends is reported as a timeout`() =
-        runBlocking {
-            val state = FakeState()
-            val transport =
-                FakeTransport {
-                    delay(5_000)
-                    ok(minorCatalog())
-                }
-            val checker = NativeUpdateChecker(state, transport)
-
-            assertTrue(checker.prepare(OPTIONS, 200, null) is HotUpdaterPrepareResult.Failed)
-
-            val failure = state.events().single { it.getString("name") == "onUpdateError" }.getJSONObject("payload")
-            assertEquals("check", failure.getString("stage"))
-            assertEquals("network", failure.getString("reason"))
-            assertEquals("timeout", failure.getString("transport"))
-        }
-
-    @Test
     fun `a reset drops the queued downloads of the bundles it deletes`() =
         runBlocking {
             val state = FakeState()
@@ -875,7 +753,8 @@ class NativeUpdateCheckerTest {
             val gate = CompletableDeferred<Unit>()
             val state = FakeState().apply { stageGate = gate }
             val checker = NativeUpdateChecker(state, FakeTransport(routes(minorCatalog())))
-            assertTrue(checker.prepare(OPTIONS, 5_000, null) is HotUpdaterPrepareResult.Pending)
+            val update = checker.checkForUpdate(OPTIONS)!!
+            val staging = async(Dispatchers.Default) { update.updateBundle() }
             state.stageEntered.await()
 
             val reset = async(Dispatchers.Default) { checker.whenIdle { state.stageCount.get() } }
@@ -884,136 +763,8 @@ class NativeUpdateCheckerTest {
             gate.complete(Unit)
 
             assertEquals(1, withTimeout(5_000) { reset.await() })
+            assertTrue(staging.await())
             assertTrue(state.staged.isCompleted)
-        }
-
-    @Test
-    fun `prepare joins a running download only for the same request`() =
-        runBlocking {
-            val gate = CompletableDeferred<Unit>()
-            val state = FakeState().apply { stageGate = gate }
-            val checker = NativeUpdateChecker(state, FakeTransport(routes(minorCatalog())))
-            val first = checker.prepare(OPTIONS, 5_000, null) as HotUpdaterPrepareResult.Pending
-            state.stageEntered.await()
-
-            val otherChannel =
-                HotUpdaterCheckOptions(
-                    baseURL = OPTIONS.baseURL,
-                    updateStrategy = OPTIONS.updateStrategy,
-                    channel = "beta",
-                )
-            val otherKey =
-                HotUpdaterCheckOptions(
-                    baseURL = OPTIONS.baseURL,
-                    updateStrategy = OPTIONS.updateStrategy,
-                    requestHeaders = mapOf("Authorization" to "Bearer other"),
-                )
-            val other = checker.prepare(otherChannel, 200, null)
-            val otherCredentials = checker.prepare(otherKey, 200, null)
-            val cohort = state.cohortValue
-            state.cohortValue = "501"
-            val otherCohort = checker.prepare(OPTIONS, 200, null)
-            state.cohortValue = cohort
-            val same = checker.prepare(OPTIONS, 200, null)
-
-            assertTrue(other is HotUpdaterPrepareResult.Failed)
-            assertTrue(otherCredentials is HotUpdaterPrepareResult.Failed)
-            // A prepare its deadline ended while waiting reports a check timeout.
-            val timeouts =
-                state.events().filter { it.getString("name") == "onUpdateError" }.map { it.getJSONObject("payload") }
-            assertTrue(timeouts.any { it.getString("stage") == "check" && it.optString("transport") == "timeout" })
-            // The prepare that waited under cohort 501 reports its timeout under 501.
-            assertTrue(
-                state.queued().any { it.getString("name") == "onUpdateError" && it.getString("build").endsWith("|501") },
-            )
-            assertTrue(otherCohort is HotUpdaterPrepareResult.Failed)
-            assertSame(first.update, (same as HotUpdaterPrepareResult.Pending).update)
-            gate.complete(Unit)
-            Unit
-        }
-
-    @Test
-    fun `a joined prepare checks again when the staging fails before its deadline`() =
-        runBlocking {
-            val gate = CompletableDeferred<Unit>()
-            val state =
-                FakeState().apply {
-                    stageGate = gate
-                    // The first caller's shorter deadline ended its artifact request.
-                    nextStageError = java.io.IOException("timeout")
-                }
-            val checker = NativeUpdateChecker(state, FakeTransport(routes(forcedCatalog())))
-            assertTrue(checker.prepare(OPTIONS, 200, null) is HotUpdaterPrepareResult.Pending)
-
-            val later = async(Dispatchers.Default) { checker.prepare(OPTIONS, 10_000, null) }
-            delay(100)
-            gate.complete(Unit)
-
-            assertTrue(withTimeout(10_000) { later.await() } is HotUpdaterPrepareResult.Ready)
-            assertEquals(2, state.stageCount.get())
-        }
-
-    @Test
-    fun `the deadline does not bound a required update's artifact request`() =
-        runBlocking {
-            val state = FakeState()
-            val transport = FakeTransport(routes(forcedCatalog()))
-            val checker = NativeUpdateChecker(state, transport)
-
-            checker.prepare(OPTIONS, 1_000, null)
-            withTimeout(5_000) { state.staged.await() }
-
-            // The staging outlives prepare, so its request keeps the request timeout.
-            assertEquals(5_000L, transport.requests.single { it.url == ARTIFACT_URL }.timeoutMillis)
-        }
-
-    @Test
-    fun `the deadline covers the wait for another check holding the lock`() =
-        runBlocking {
-            val release = CompletableDeferred<Unit>()
-            val requested = CompletableDeferred<Unit>()
-            val state = FakeState()
-            val body = minorCatalog()
-            val checker =
-                NativeUpdateChecker(
-                    state,
-                    FakeTransport { request ->
-                        requested.complete(Unit)
-                        release.await()
-                        if (request.url == CATALOG_URL) ok(body) else ok(artifact())
-                    },
-                )
-            val custom = async(Dispatchers.Default) { checker.checkForUpdate(OPTIONS) }
-            requested.await()
-
-            val started = System.nanoTime()
-            val result = checker.prepare(OPTIONS, 200, null)
-
-            assertTrue(elapsedMillis(started) < 1_000)
-            assertTrue((result as HotUpdaterPrepareResult.Failed).error is TimeoutException)
-            assertNull(result.update)
-            release.complete(Unit)
-            assertEquals(RELEASE_B, withTimeout(5_000) { custom.await() }?.id)
-        }
-
-    @Test
-    fun `the deadline covers the catalog request`() =
-        runBlocking {
-            val state = FakeState()
-            val transport =
-                FakeTransport {
-                    delay(10_000)
-                    ok(minorCatalog())
-                }
-            val checker = NativeUpdateChecker(state, transport)
-
-            val started = System.nanoTime()
-            val result = checker.prepare(OPTIONS, 300, null)
-
-            assertTrue(elapsedMillis(started) < 1_500)
-            assertTrue(result is HotUpdaterPrepareResult.Failed)
-            assertNull((result as HotUpdaterPrepareResult.Failed).update)
-            assertTrue(transport.requests.single().timeoutMillis <= 300)
         }
 
     @Test
@@ -1051,26 +802,44 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
-    fun `a non-positive timeout fails`() =
-        runBlocking {
-            val transport = FakeTransport(routes(minorCatalog()))
-            val checker = NativeUpdateChecker(FakeState(), transport)
+    fun `a check merges its options over the instance's as JavaScript does`() {
+        val instance =
+            HotUpdaterOptions(
+                baseURL = BASE_URL,
+                requestHeaders = mapOf("X-API-Key" to "instance", "x-tenant" to "a"),
+                requestTimeoutMillis = 7_000,
+            )
 
-            assertTrue(checker.prepare(OPTIONS, 0, null) is HotUpdaterPrepareResult.Failed)
-            assertTrue(transport.requests.isEmpty())
-        }
+        val merged =
+            NativeCheckRequest(
+                instance,
+                HotUpdaterCheckOptions(
+                    updateStrategy = HotUpdaterUpdateStrategy.FINGERPRINT,
+                    channel = "beta",
+                    requestHeaders = mapOf("x-api-key" to "check"),
+                ),
+            )
+        assertEquals(BASE_URL, merged.baseURL)
+        assertEquals(HotUpdaterUpdateStrategy.FINGERPRINT, merged.updateStrategy)
+        assertEquals("beta", merged.channel)
+        // The check's header replaces the instance's of the same name, whatever its case.
+        assertEquals(mapOf("x-tenant" to "a", "x-api-key" to "check"), merged.requestHeaders)
+        assertEquals(7_000L, merged.requestTimeoutMillis)
+
+        val ownTimeout =
+            NativeCheckRequest(instance, HotUpdaterCheckOptions(HotUpdaterUpdateStrategy.APP_VERSION, requestTimeoutMillis = 2_000))
+        assertEquals(2_000L, ownTimeout.requestTimeoutMillis)
+    }
 
     @Test
-    fun `an invalid baseURL fails prepare and throws from checkForUpdate`() =
+    fun `an invalid baseURL throws from checkForUpdate`() =
         runBlocking {
             val transport = FakeTransport(routes(minorCatalog()))
             val state = FakeState()
             val checker = NativeUpdateChecker(state, transport)
             for (baseURL in listOf("updates.example.com", "https://", "https:///api")) {
-                val options = HotUpdaterCheckOptions(baseURL = baseURL, updateStrategy = HotUpdaterUpdateStrategy.APP_VERSION)
+                val options = NativeCheckRequest(baseURL = baseURL, updateStrategy = HotUpdaterUpdateStrategy.APP_VERSION)
 
-                val result = checker.prepare(options, 1_000, null)
-                assertTrue((result as HotUpdaterPrepareResult.Failed).error is IllegalArgumentException)
                 try {
                     checker.checkForUpdate(options)
                     fail("Expected the check to fail")
@@ -1080,7 +849,7 @@ class NativeUpdateCheckerTest {
             assertTrue(transport.requests.isEmpty())
             // Reported as JavaScript reports a check whose request fails.
             val events = state.events()
-            assertEquals(6, events.size)
+            assertEquals(3, events.size)
             assertTrue(events.all { it.getString("name") == "onUpdateError" })
             assertEquals("check", events.first().getJSONObject("payload").getString("stage"))
         }
@@ -1092,18 +861,18 @@ class NativeUpdateCheckerTest {
             val transport = FakeTransport { UpdateCheckResponse(500, "Internal Server Error", emptyMap(), "oops") }
             val checker = NativeUpdateChecker(state, transport)
             val options =
-                HotUpdaterCheckOptions(
+                NativeCheckRequest(
                     baseURL = "https://updates.example.com/artifacts/hot-updater",
                     updateStrategy = HotUpdaterUpdateStrategy.APP_VERSION,
                 )
 
-            checker.prepare(options, 1_000, null)
+            runCatching { checker.checkForUpdate(options) }
 
             assertEquals("catalog", state.httpResponses().single().getString("resource"))
         }
 
     @Test
-    fun `an HTTP 500 from the catalog throws, fails prepare, and queues onUpdateError`() =
+    fun `an HTTP 500 from the catalog throws and queues onUpdateError`() =
         runBlocking {
             val state = FakeState()
             val transport = FakeTransport { UpdateCheckResponse(500, "Internal Server Error", emptyMap(), "oops") }
@@ -1130,15 +899,10 @@ class NativeUpdateCheckerTest {
             assertEquals("Request failed with HTTP 500 Internal Server Error", payload.getString("message"))
             assertFalse(payload.has("targetBundleId"))
             assertFalse(payload.has("transport"))
-
-            val result = checker.prepare(OPTIONS, 1_000, null)
-            assertTrue((result as HotUpdaterPrepareResult.Failed).error is UpdateHttpException)
-            assertNull(result.update)
-            assertEquals(2, state.events().size)
         }
 
     @Test
-    fun `a failed required update fails prepare with the update`() =
+    fun `a failed update throws from updateBundle and queues onUpdateError`() =
         runBlocking {
             val state =
                 FakeState().apply {
@@ -1146,10 +910,11 @@ class NativeUpdateCheckerTest {
                 }
             val checker = NativeUpdateChecker(state, FakeTransport(routes(forcedCatalog())))
 
-            val result = checker.prepare(OPTIONS, 5_000, null) as HotUpdaterPrepareResult.Failed
+            val update = checker.checkForUpdate(OPTIONS)!!
+            val error = assertThrows(HotUpdaterException::class.java) { runBlocking { update.updateBundle() } }
 
-            assertEquals("DOWNLOAD_FAILED", (result.error as HotUpdaterException).code)
-            assertEquals(RELEASE_B, result.update?.id)
+            assertEquals("DOWNLOAD_FAILED", error.code)
+            assertEquals(RELEASE_B, update.id)
             val payload = state.events().last().getJSONObject("payload")
             assertEquals("download", payload.getString("stage"))
             assertEquals("http", payload.getString("reason"))
@@ -1214,7 +979,7 @@ class NativeUpdateCheckerTest {
                 }
             val checker = NativeUpdateChecker(state, transport)
 
-            val update = checker.checkForUpdate(HotUpdaterCheckOptions(BASE_URL, HotUpdaterUpdateStrategy.APP_VERSION, channel = "beta"))!!
+            val update = checker.checkForUpdate(NativeCheckRequest(BASE_URL, HotUpdaterUpdateStrategy.APP_VERSION, channel = "beta"))!!
             assertTrue(update.updateBundle())
 
             assertEquals("beta", state.staged.await().channel)
@@ -1232,7 +997,7 @@ class NativeUpdateCheckerTest {
             val state = FakeState().apply { channelName = "beta" }
             val transport = FakeTransport(routes(catalog(emptyList())))
             val checker = NativeUpdateChecker(state, transport)
-            val options = HotUpdaterCheckOptions(BASE_URL, HotUpdaterUpdateStrategy.APP_VERSION, channel = "staging")
+            val options = NativeCheckRequest(BASE_URL, HotUpdaterUpdateStrategy.APP_VERSION, channel = "staging")
 
             try {
                 checker.checkForUpdate(options)
@@ -1243,7 +1008,6 @@ class NativeUpdateCheckerTest {
                     error.message,
                 )
             }
-            assertTrue(checker.prepare(options, 1_000, null) is HotUpdaterPrepareResult.Failed)
             assertTrue(transport.requests.isEmpty())
             assertTrue(state.events().isEmpty())
         }
@@ -1321,14 +1085,15 @@ class NativeUpdateCheckerTest {
             val gate = CompletableDeferred<Unit>()
             val state = FakeState().apply { stageGate = gate }
             val checker = NativeUpdateChecker(state, FakeTransport(routes(minorCatalog())))
-            assertTrue(checker.prepare(OPTIONS, 5_000, null) is HotUpdaterPrepareResult.Pending)
+            val update = checker.checkForUpdate(OPTIONS)!!
+            val staging = async(Dispatchers.Default) { update.updateBundle() }
             state.stageEntered.await()
 
             // The cohort changes while the staging selected for 500 downloads.
             state.cohortValue = "501"
             gate.complete(Unit)
             withTimeout(5_000) { state.staged.await() }
-            delay(100)
+            assertTrue(staging.await())
 
             val selected =
                 NativeUpdateEventQueue(state::getStorageItem, state::setStorageItem, build = {

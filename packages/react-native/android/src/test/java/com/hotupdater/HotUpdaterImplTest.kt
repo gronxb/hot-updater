@@ -158,13 +158,11 @@ class HotUpdaterImplTest {
                     launchedBundleId = "channel-bundle",
                     shouldRollbackOnCrash = false,
                 )
-            setField(impl, "launchSelectionStarted", true)
             setField(impl, "runningLaunchSelection", launched)
             setCurrentLaunchSelection(impl, launched)
 
             assertTrue(impl.resetChannel())
 
-            assertTrue(impl.hasLaunchSelection())
             assertEquals("channel-bundle", impl.getBundleIdForUpdateCheck())
             assertNull(impl.getBundleId())
         }

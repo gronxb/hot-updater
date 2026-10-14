@@ -7,23 +7,16 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.async
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
-import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
-import java.io.InterruptedIOException
 import java.net.MalformedURLException
 import java.net.URL
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.TimeoutException
 
 /*
  * The update check native code runs without JavaScript, ported from
@@ -88,9 +81,6 @@ internal interface UpdateCheckState {
 
     /** The running bundle, or before React Native starts the one its launch would pick; null is the built-in bundle. */
     fun getBundleId(): String?
-
-    /** Whether React Native already read the bundle in this process, which fixes this launch's bundle. */
-    fun hasLaunchedBundle(): Boolean
 
     fun getMinBundleId(): String
 
@@ -187,6 +177,21 @@ internal class ProgressFanout {
     }
 }
 
+private val HTTP_URL = Regex("^https?://.+", RegexOption.IGNORE_CASE)
+
+/** Throws unless [baseURL] is an absolute HTTP(S) URL with a host, as `HotUpdater.init` requires. */
+internal fun requireValidBaseURL(baseURL: String) {
+    val valid =
+        HTTP_URL.matches(baseURL) &&
+            try {
+                // java.net.URL parses a hostless "https:///api"; a request needs a host.
+                !URL(baseURL).host.isNullOrEmpty()
+            } catch (_: MalformedURLException) {
+                false
+            }
+    require(valid) { "Invalid baseURL: $baseURL" }
+}
+
 internal class NativeUpdateChecker(
     private val state: UpdateCheckState,
     private val transport: UpdateCheckTransport,
@@ -196,19 +201,15 @@ internal class NativeUpdateChecker(
         private const val TAG = "HotUpdaterCheck"
         private const val PLATFORM = "android"
         private const val NIL_UUID = "00000000-0000-0000-0000-000000000000"
-        private const val LOCK_POLL_MILLIS = 20L
 
         /** The longest response body queued: the queue lives in the key-value store. */
         private const val HTTP_RESPONSE_BODY_LIMIT = 4_096
         private const val INVALID_COHORT_MESSAGE =
             "Invalid cohort. Use 1-1000 or a lowercase slug without spaces, up to ${ReleaseSelector.MAX_COHORT_LENGTH} characters."
-        private val HTTP_URL = Regex("^https?://.+", RegexOption.IGNORE_CASE)
     }
 
     private class StagingOutcome(
         val committed: Boolean,
-        /** Staged before React Native read the bundle in this process. */
-        val beforeLaunch: Boolean,
     )
 
     private class Staging(
@@ -216,9 +217,6 @@ internal class NativeUpdateChecker(
         val result: Deferred<StagingOutcome>?,
         val progress: ProgressFanout,
     )
-
-    /** A placeholder: the lock is held by a check that has not started a staging yet. */
-    private val lockHeldByCheck = Staging(null, null, ProgressFanout())
 
     /** Held from a check through the staging it starts, so one runs at a time in this process. */
     private val mutex = Mutex()
@@ -280,180 +278,8 @@ internal class NativeUpdateChecker(
             block()
         }
 
-    /** Waits for the lock and the requests without a deadline beyond each request's timeout. */
-    suspend fun checkForUpdate(options: HotUpdaterCheckOptions): HotUpdaterUpdate? =
-        mutex.withLock { check(options, deadline = null) }?.update
-
-    /**
-     * Checks for an update and starts it within one deadline of [timeoutMillis]
-     * covering the lock wait, the catalog request, and the wait for a required
-     * update.
-     * The deadline and cancellation end the wait, never the staging. Never
-     * throws except to cancel.
-     */
-    suspend fun prepare(
-        options: HotUpdaterCheckOptions,
-        timeoutMillis: Long,
-        onProgress: ((Double) -> Unit)?,
-    ): HotUpdaterPrepareResult {
-        if (timeoutMillis <= 0) {
-            return HotUpdaterPrepareResult.Failed(IllegalArgumentException("timeoutMillis must be positive"), null)
-        }
-        // Saturates, so a timeout such as Long.MAX_VALUE never wraps into the
-        // past; differences of nanoTime stay correct when the sum wraps.
-        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
-        return try {
-            while (true) {
-                // Read together with the lock, so a staging is either joined or
-                // finished and its lock released: never started twice.
-                val running =
-                    synchronized(inFlightLock) {
-                        inFlight ?: if (mutex.tryLock()) null else lockHeldByCheck
-                    }
-                if (running == null) break
-                // A staging from other options is waited for, then this request is checked.
-                if (running !== lockHeldByCheck && running.update?.requestKey == requestKey(options, currentCohort())) {
-                    val joined = awaitStaging(running, deadline, onProgress)
-                    // The staging may have failed on its own caller's shorter
-                    // timeout; this call checks again within its own deadline.
-                    if (joined is HotUpdaterPrepareResult.Failed && remainingMillis(deadline) > 0) continue
-                    return joined
-                }
-                val remaining = remainingMillis(deadline)
-                if (remaining <= 0) {
-                    reportLockTimeout(options)
-                    return HotUpdaterPrepareResult.Failed(
-                        TimeoutException("Timed out waiting for another update check"),
-                        null,
-                    )
-                }
-                delay(minOf(LOCK_POLL_MILLIS, remaining))
-            }
-            var handedOff = false
-            try {
-                val checked =
-                    try {
-                        withTimeout(remainingMillis(deadline).coerceAtLeast(1)) { check(options, deadline) }
-                    } catch (error: TimeoutCancellationException) {
-                        return HotUpdaterPrepareResult.Failed(TimeoutException("Timed out checking for an update"), null)
-                    } ?: return HotUpdaterPrepareResult.UpToDate
-                val update = checked.update
-                // The deadline ends the wait, not the staging: its requests
-                // keep their own timeouts after prepare returns.
-                val staging = startStaging(update, checked.selection, artifactDeadline = null)
-                handedOff = true
-                awaitStaging(staging, deadline, onProgress)
-            } finally {
-                if (!handedOff) mutex.unlock()
-            }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
-            Log.w(TAG, "Update check failed", error)
-            HotUpdaterPrepareResult.Failed(error, null)
-        }
-    }
-
-    /**
-     * What a check reads: the server, the strategy, the channel it asks for,
-     * the cohort it selects for, and the headers, which can name the
-     * credentials or tenant.
-     */
-    private fun requestKey(
-        options: HotUpdaterCheckOptions,
-        cohort: String,
-    ): String =
-        // JSON, so no field can spell another, such as a channel with a newline.
-        JSONArray()
-            .put(options.baseURL.trimEnd('/'))
-            .put(options.updateStrategy.value)
-            .put(options.channel?.takeIf { it.isNotEmpty() }.orEmpty())
-            .put(cohort)
-            .put(
-                JSONArray().apply {
-                    effectiveHeaders(options.requestHeaders)
-                        .entries
-                        .sortedBy { it.key }
-                        .forEach { (name, value) -> put(JSONArray().put(name).put(value)) }
-                },
-            ).toString()
-
-    private fun currentCohort(): String = ReleaseSelector.normalizeCohortValue(state.getCohort())
-
-    /**
-     * Queues a prepare that its deadline ended while another check or staging
-     * held the lock, as the check it never ran would report its own timeout.
-     */
-    private fun reportLockTimeout(options: HotUpdaterCheckOptions) {
-        val timeout = InterruptedIOException("Timed out waiting for another update check")
-        reportUpdateError(
-            timeout,
-            classifyUpdateError(timeout, UpdateFailureStage.CHECK, UpdateFailureResource.CATALOG),
-            ErrorScope(
-                bundleId = resolveBundleId(state.getBundleId()),
-                channel = options.channel?.takeIf { it.isNotEmpty() } ?: state.getChannel(),
-                updateStrategy = options.updateStrategy,
-            ),
-            // The waiting prepare's cohort, not the one the check holding the lock captured.
-            cohort = currentCohort(),
-        )
-    }
-
-    private fun remainingMillis(deadline: Long): Long = (deadline - System.nanoTime()) / 1_000_000
-
-    private fun requestTimeout(
-        options: HotUpdaterCheckOptions,
-        deadline: Long?,
-    ): Long =
-        if (deadline == null) {
-            options.requestTimeoutMillis
-        } else {
-            minOf(options.requestTimeoutMillis, remainingMillis(deadline).coerceAtLeast(1))
-        }
-
-    /** A required update is waited for until [deadline]; any other is not. */
-    private suspend fun awaitStaging(
-        staging: Staging,
-        deadline: Long,
-        onProgress: ((Double) -> Unit)?,
-    ): HotUpdaterPrepareResult {
-        val update = staging.update!!
-        val result = staging.result!!
-        // Recording the selection of the bundle this launch already runs, such
-        // as on the first launch after an update, leaves nothing to apply.
-        if (update.runsCurrentBundle) {
-            return try {
-                val outcome = withTimeoutOrNull(remainingMillis(deadline).coerceAtLeast(0)) { result.await() }
-                if (outcome != null && !outcome.committed) {
-                    HotUpdaterPrepareResult.Failed(StaleReleaseCatalogException(), update)
-                } else {
-                    HotUpdaterPrepareResult.UpToDate
-                }
-            } catch (error: CancellationException) {
-                throw error
-            } catch (error: Exception) {
-                HotUpdaterPrepareResult.Failed(error, update)
-            }
-        }
-        if (!update.shouldForceUpdate) return HotUpdaterPrepareResult.Pending(update)
-        onProgress?.let(staging.progress::add)
-        return try {
-            val outcome =
-                withTimeoutOrNull(remainingMillis(deadline).coerceAtLeast(0)) { result.await() }
-            when {
-                outcome == null -> HotUpdaterPrepareResult.Pending(update)
-                !outcome.committed -> HotUpdaterPrepareResult.Failed(StaleReleaseCatalogException(), update)
-                outcome.beforeLaunch -> HotUpdaterPrepareResult.Ready(update)
-                else -> HotUpdaterPrepareResult.Pending(update)
-            }
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
-            HotUpdaterPrepareResult.Failed(error, update)
-        } finally {
-            onProgress?.let(staging.progress::remove)
-        }
-    }
+    /** Waits for the lock, then checks; cancelling the caller ends the wait and the requests. */
+    suspend fun checkForUpdate(options: NativeCheckRequest): HotUpdaterUpdate? = mutex.withLock { check(options) }?.update
 
     /**
      * `HotUpdaterUpdate.updateBundle`: joins a staging of the same target,
@@ -485,7 +311,7 @@ internal class NativeUpdateChecker(
                     return true
                 }
                 try {
-                    startStaging(update, selection, artifactDeadline = null)
+                    startStaging(update, selection)
                 } catch (error: Throwable) {
                     mutex.unlock()
                     throw error
@@ -512,20 +338,19 @@ internal class NativeUpdateChecker(
     private fun startStaging(
         update: HotUpdaterUpdate,
         selection: SelectedUpdate,
-        artifactDeadline: Long?,
     ): Staging {
         val progress = ProgressFanout()
         lateinit var staging: Staging
         val result =
             stagingScope.async(start = CoroutineStart.LAZY) {
                 try {
-                    val committed = install(selection, progress, artifactDeadline)
+                    val committed = install(selection, progress)
                     if (committed) {
                         selection.staged = true
                         lastCommittedTargetKey = update.targetKey
                         progress.report(1.0)
                     }
-                    StagingOutcome(committed, beforeLaunch = !state.hasLaunchedBundle())
+                    StagingOutcome(committed)
                 } catch (error: Exception) {
                     Log.w(TAG, "Update failed", error)
                     throw error
@@ -542,24 +367,12 @@ internal class NativeUpdateChecker(
         return staging
     }
 
-    private fun validateOptions(options: HotUpdaterCheckOptions) {
-        val baseURL = options.baseURL
-        val valid =
-            HTTP_URL.matches(baseURL) &&
-                try {
-                    // java.net.URL parses a hostless "https:///api"; a request needs a host.
-                    !URL(baseURL).host.isNullOrEmpty()
-                } catch (_: MalformedURLException) {
-                    false
-                }
-        require(valid) { "Invalid baseURL: $baseURL" }
+    private fun validateOptions(options: NativeCheckRequest) {
+        requireValidBaseURL(options.baseURL)
         require(options.requestTimeoutMillis > 0) { "requestTimeoutMillis must be positive" }
     }
 
-    private suspend fun check(
-        options: HotUpdaterCheckOptions,
-        deadline: Long?,
-    ): CheckedUpdate? {
+    private suspend fun check(options: NativeCheckRequest): CheckedUpdate? {
         val currentAppVersion = state.getAppVersion()
         val currentBundleId = resolveBundleId(state.getBundleId())
         val minimumReleaseId = state.getMinBundleId()
@@ -603,21 +416,7 @@ internal class NativeUpdateChecker(
                 // Invalid options fail the check as a failed request does in
                 // JavaScript, so they are reported too.
                 validateOptions(options)
-                checkReleaseCatalog(input, deadline)
-            } catch (error: TimeoutCancellationException) {
-                // prepare's deadline ended the check, not its caller: reported as a
-                // request timeout, as iOS reports it.
-                val timeout = InterruptedIOException("Timed out checking for an update")
-                reportUpdateError(
-                    timeout,
-                    classifyUpdateError(timeout, UpdateFailureStage.CHECK, UpdateFailureResource.CATALOG),
-                    ErrorScope(
-                        bundleId = currentBundleId,
-                        channel = targetChannel,
-                        updateStrategy = options.updateStrategy,
-                    ),
-                )
-                throw error
+                checkReleaseCatalog(input)
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -683,7 +482,7 @@ internal class NativeUpdateChecker(
     }
 
     private class CheckInput(
-        val options: HotUpdaterCheckOptions,
+        val options: NativeCheckRequest,
         val baseURL: String,
         val currentAppVersion: String,
         val currentBundleId: String,
@@ -726,10 +525,7 @@ internal class NativeUpdateChecker(
         var staged = false
     }
 
-    private suspend fun checkReleaseCatalog(
-        input: CheckInput,
-        deadline: Long?,
-    ): CheckedUpdate? {
+    private suspend fun checkReleaseCatalog(input: CheckInput): CheckedUpdate? {
         val options = input.options
         val channelKey = ReleaseCatalogs.encodeChannelKey(input.targetChannel)
         val strategy = options.updateStrategy.releaseStrategy
@@ -757,7 +553,7 @@ internal class NativeUpdateChecker(
                         encodeURIComponent(strategyValue),
                 expectedScope = expectedScope,
                 requestHeaders = options.requestHeaders,
-                requestTimeoutMillis = requestTimeout(options, deadline),
+                requestTimeoutMillis = options.requestTimeoutMillis,
             )
                 // The server says this scope has no catalog yet: no update, not a failure.
                 ?: return null
@@ -926,7 +722,6 @@ internal class NativeUpdateChecker(
                 targetCohorts = release?.targetCohorts?.toList() ?: emptyList(),
                 transitionKind = transitionKind,
                 runsCurrentBundle = desired.bundleId == input.currentBundleId,
-                requestKey = requestKey(options, input.cohort),
                 // JSON, so no field can spell another, such as a channel with a colon.
                 targetKey =
                     JSONArray()
@@ -951,10 +746,9 @@ internal class NativeUpdateChecker(
     private suspend fun install(
         selection: SelectedUpdate,
         progress: ProgressFanout,
-        artifactDeadline: Long?,
     ): Boolean {
         try {
-            return installSelection(selection, progress, artifactDeadline)
+            return installSelection(selection, progress)
         } catch (error: CancellationException) {
             throw error
         } catch (error: Exception) {
@@ -973,7 +767,6 @@ internal class NativeUpdateChecker(
     private suspend fun installSelection(
         selection: SelectedUpdate,
         progress: ProgressFanout,
-        artifactDeadline: Long?,
     ): Boolean {
         val input = selection.input
         val options = input.options
@@ -1007,7 +800,7 @@ internal class NativeUpdateChecker(
                 currentBundleId = input.currentBundleId,
                 targetBundleId = selection.desiredBundleId,
                 requestHeaders = options.requestHeaders,
-                requestTimeoutMillis = requestTimeout(options, artifactDeadline),
+                requestTimeoutMillis = options.requestTimeoutMillis,
             )
         if (!state.isReleaseSelectionCurrent(selection.guard)) {
             throw StaleReleaseCatalogException()

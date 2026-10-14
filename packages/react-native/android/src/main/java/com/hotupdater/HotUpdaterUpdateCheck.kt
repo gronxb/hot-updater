@@ -16,27 +16,60 @@ enum class HotUpdaterUpdateStatus {
 }
 
 /**
- * What `HotUpdater.checkForUpdate` and `HotUpdater.prepare` check: the options
- * JavaScript passes to `HotUpdater.init` and `checkForUpdate`.
+ * The values JavaScript passes to `HotUpdater.init`: the server and the
+ * request defaults of a [HotUpdaterInstance].
  */
-class HotUpdaterCheckOptions(
+class HotUpdaterOptions(
     /** The update server's absolute HTTP(S) URL. */
     val baseURL: String,
-    val updateStrategy: HotUpdaterUpdateStrategy,
+    /** Sent with every request; a check's own headers override them. */
     val requestHeaders: Map<String, String> = emptyMap(),
+    /** Each request's timeout, unless a check sets its own. */
+    val requestTimeoutMillis: Long = 5_000,
+)
+
+/** The values JavaScript passes to `checkForUpdate`. */
+class HotUpdaterCheckOptions(
+    val updateStrategy: HotUpdaterUpdateStrategy,
     /**
      * Checks this channel instead of the current one, as JavaScript's
      * `checkForUpdate({ channel })` does: the switch is saved only once the
      * update is staged, and checking another channel while the runtime channel
-     * is already switched is an error until `HotUpdater.resetChannel`.
+     * is already switched is an error until [HotUpdaterInstance.resetChannel].
      */
     val channel: String? = null,
-    /**
-     * Each request's timeout. In `prepare`, the catalog request also ends at
-     * its deadline; the download's requests keep this timeout after it returns.
-     */
-    val requestTimeoutMillis: Long = 5_000,
+    /** Merged over the instance's headers; these win. */
+    val requestHeaders: Map<String, String> = emptyMap(),
+    /** Each request's timeout; null uses the instance's. */
+    val requestTimeoutMillis: Long? = null,
 )
+
+/**
+ * One check's settings: the instance's, with the check's own over them, as
+ * JavaScript's `checkForUpdate` merges them.
+ */
+internal class NativeCheckRequest(
+    val baseURL: String,
+    val updateStrategy: HotUpdaterUpdateStrategy,
+    val requestHeaders: Map<String, String> = emptyMap(),
+    val channel: String? = null,
+    val requestTimeoutMillis: Long = 5_000,
+) {
+    constructor(instance: HotUpdaterOptions, check: HotUpdaterCheckOptions) : this(
+        baseURL = instance.baseURL,
+        updateStrategy = check.updateStrategy,
+        requestHeaders =
+            LinkedHashMap(instance.requestHeaders).apply {
+                // Header names are case-insensitive: the check's spelling replaces the instance's.
+                check.requestHeaders.forEach { (name, value) ->
+                    keys.removeAll { it.equals(name, ignoreCase = true) }
+                    put(name, value)
+                }
+            },
+        channel = check.channel,
+        requestTimeoutMillis = check.requestTimeoutMillis ?: instance.requestTimeoutMillis,
+    )
+}
 
 /**
  * The update a check found, with the fields of JavaScript's
@@ -60,8 +93,6 @@ class HotUpdaterUpdate internal constructor(
     internal val runsCurrentBundle: Boolean,
     /** What staging this update produces; a staging already running for it is joined. */
     internal val targetKey: String,
-    /** The options the check ran with; `prepare` joins a staging only from an equal request. */
-    internal val requestKey: String,
     private val install: suspend (((Double) -> Unit)?) -> Boolean,
 ) {
     /**
@@ -74,32 +105,4 @@ class HotUpdaterUpdate internal constructor(
      * throttled, on any thread.
      */
     suspend fun updateBundle(onProgress: ((Double) -> Unit)? = null): Boolean = install(onProgress)
-}
-
-/** What `HotUpdater.prepare` found and did. */
-sealed class HotUpdaterPrepareResult {
-    /** The bundle this launch runs is what the server wants. It may have been downloaded by an earlier launch. */
-    object UpToDate : HotUpdaterPrepareResult()
-
-    /** The update was staged before React Native read the bundle, so this launch runs it. */
-    data class Ready(
-        val update: HotUpdaterUpdate,
-    ) : HotUpdaterPrepareResult()
-
-    /**
-     * The update applies at the first launch after it is staged: it is still
-     * downloading, it is not required and downloads in the background, or
-     * React Native had already read the bundle. It runs at this launch only
-     * when it is staged before React Native reads the bundle.
-     * [HotUpdaterUpdate.shouldForceUpdate] tells a required one.
-     */
-    data class Pending(
-        val update: HotUpdaterUpdate,
-    ) : HotUpdaterPrepareResult()
-
-    /** The check or the update failed. [update] is set when the failure came after an update was selected. */
-    data class Failed(
-        val error: Throwable,
-        val update: HotUpdaterUpdate?,
-    ) : HotUpdaterPrepareResult()
 }
