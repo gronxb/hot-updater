@@ -218,7 +218,7 @@ internal class NativeUpdateChecker(
     private val inFlightLock = Any()
     private var inFlight: Staging? = null
 
-    /** The target the last staging committed, for a result of the same target that waited on the lock. */
+    /** The target the last staging committed, for another retained result of the same target. */
     @Volatile
     private var lastCommittedTargetKey: String? = null
     private val events =
@@ -415,13 +415,20 @@ internal class NativeUpdateChecker(
             running ?: run {
                 if (selection.staged) return true
                 mutex.lock()
+                // A staging of the same target may have committed while this call
+                // waited, or before it was made; it counts while the selection is current.
+                if (selection.staged || lastCommittedTargetKey == update.targetKey) {
+                    val current =
+                        try {
+                            selection.staged || state.isReleaseSelectionCurrent(selection.guard)
+                        } finally {
+                            mutex.unlock()
+                        }
+                    if (!current) throw StaleReleaseCatalogException()
+                    selection.staged = true
+                    return true
+                }
                 try {
-                    // A staging of the same target may have committed while this call waited.
-                    if (selection.staged || lastCommittedTargetKey == update.targetKey) {
-                        selection.staged = true
-                        mutex.unlock()
-                        return true
-                    }
                     startStaging(update, selection, artifactDeadline = null)
                 } catch (error: Throwable) {
                     mutex.unlock()

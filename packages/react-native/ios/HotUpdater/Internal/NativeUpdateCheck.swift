@@ -105,6 +105,8 @@ import Foundation
     private var staged = false
     /// Stages the update; the deadline bounds the artifact request.
     let install: (Date?, @escaping (Double) -> Void) async throws -> Bool
+    /// Whether the selection this update stages is still the current one.
+    let isSelectionCurrent: () -> Bool
 
     init(
         id: String,
@@ -118,7 +120,8 @@ import Foundation
         targetKey: String,
         requestKey: String,
         checker: NativeUpdateChecker,
-        install: @escaping (Date?, @escaping (Double) -> Void) async throws -> Bool
+        install: @escaping (Date?, @escaping (Double) -> Void) async throws -> Bool,
+        isSelectionCurrent: @escaping () -> Bool = { true }
     ) {
         self.id = id
         self.releaseId = releaseId
@@ -132,6 +135,7 @@ import Foundation
         self.requestKey = requestKey
         self.checker = checker
         self.install = install
+        self.isSelectionCurrent = isSelectionCurrent
     }
 
     /// Downloads, verifies, and stages the update for the next launch, or
@@ -704,6 +708,10 @@ final class NativeUpdateChecker {
     private let transport: NativeUpdateTransport
     private let now: () -> Date
     private let gate = NativeUpdateGate()
+    private let committedTargetLock = NSLock()
+    /// The target the last staging committed, for another retained result of
+    /// the same target.
+    private var lastCommittedTargetKey: String?
 
     init(
         host: NativeUpdateHost,
@@ -803,9 +811,15 @@ final class NativeUpdateChecker {
         case .stopped:
             throw CancellationError()
         case .acquired:
-            // A staging of this update may have finished while this call waited.
-            if update.isStaged {
+            // A staging of the same target may have committed while this call
+            // waited, or before it was made; it counts while the selection is current.
+            if update.isStaged || committedTarget == update.targetKey {
+                let current = update.isStaged || update.isSelectionCurrent()
                 gate.release()
+                guard current else {
+                    throw NativeUpdateCheckError.staleReleaseCatalog
+                }
+                update.markStaged()
                 return true
             }
             staging = startStaging(update, deadline: nil)
@@ -837,7 +851,22 @@ final class NativeUpdateChecker {
             return nil
         }
         defer { gate.release() }
+        // What runs here, such as a reset, can undo what was staged.
+        committedTarget = nil
         return await body()
+    }
+
+    private var committedTarget: String? {
+        get {
+            committedTargetLock.lock()
+            defer { committedTargetLock.unlock() }
+            return lastCommittedTargetKey
+        }
+        set {
+            committedTargetLock.lock()
+            lastCommittedTargetKey = newValue
+            committedTargetLock.unlock()
+        }
     }
 
     private func finishPrepare(
@@ -907,6 +936,7 @@ final class NativeUpdateChecker {
             }
             if case .success(true) = result {
                 update.markStaged()
+                committedTarget = update.targetKey
             }
             staging.finish(result)
             gate.release(finishing: staging)
@@ -1258,7 +1288,8 @@ final class NativeUpdateChecker {
             ].joined(separator: ":"),
             requestKey: Self.requestKey(options, cohort: cohort),
             checker: self,
-            install: updateBundleForSelection
+            install: updateBundleForSelection,
+            isSelectionCurrent: { [host] in host.isReleaseSelectionCurrent(guardParams) }
         )
     }
 
