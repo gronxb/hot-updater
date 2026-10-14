@@ -1,6 +1,7 @@
 package com.hotupdater
 
 import android.content.ContextWrapper
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -146,6 +147,29 @@ class HotUpdaterImplTest {
     }
 
     @Test
+    fun `a channel reset keeps the bundle React Native runs until a reload`() =
+        runBlocking {
+            val impl = allocateWithoutConstructor<HotUpdaterImpl>()
+            setField(impl, "bundleStorage", FakeBundleStorageService(bundleId = null, nextLaunchBundleId = "default-bundle"))
+            setField(impl, "preferences", MapPreferences())
+            val launched =
+                LaunchSelection(
+                    bundleUrl = "file:///bundle-store/channel-bundle/index.android.bundle",
+                    launchedBundleId = "channel-bundle",
+                    shouldRollbackOnCrash = false,
+                )
+            setField(impl, "launchSelectionStarted", true)
+            setField(impl, "runningLaunchSelection", launched)
+            setCurrentLaunchSelection(impl, launched)
+
+            assertTrue(impl.resetChannel())
+
+            assertTrue(impl.hasLaunchSelection())
+            assertEquals("channel-bundle", impl.getBundleIdForUpdateCheck())
+            assertNull(impl.getBundleId())
+        }
+
+    @Test
     fun `notifyAppReady reads the report without completing the current launch`() {
         val storage = FakeBundleStorageService(bundleId = null)
         val impl = allocateWithoutConstructor<HotUpdaterImpl>()
@@ -180,6 +204,19 @@ class HotUpdaterImplTest {
 
         impl.setStorageItem("plugins/insights/queue", null)
         assertNull(impl.getStorageItem("plugins/insights/queue"))
+    }
+
+    private class MapPreferences : PreferencesService {
+        private val values = mutableMapOf<String, String>()
+
+        override fun getItem(key: String): String? = values[key]
+
+        override fun setItem(
+            key: String,
+            value: String?,
+        ) {
+            if (value == null) values.remove(key) else values[key] = value
+        }
     }
 
     private fun createImpl(

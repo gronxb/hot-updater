@@ -457,15 +457,15 @@ class NativeUpdateCheckerTest {
     fun `after a launch the check counts the launched bundle as running`() =
         runBlocking {
             val impl = implWithStorage(FakeBundleStorageService(bundleId = null, nextLaunchBundleId = BUNDLE_B))
-            setImplField(
-                impl,
-                "currentLaunchSelection",
+            val launched =
                 LaunchSelection(
                     bundleUrl = "file:///bundle-store/$BUNDLE_A/index.android.bundle",
                     launchedBundleId = BUNDLE_A,
                     shouldRollbackOnCrash = false,
-                ),
-            )
+                )
+            // As the launch sets them.
+            setImplField(impl, "runningLaunchSelection", launched)
+            setImplField(impl, "currentLaunchSelection", launched)
             val adapter = HotUpdaterImplUpdateCheckState(ContextWrapper(null), impl)
             assertTrue(adapter.hasLaunchedBundle())
             val state = FakeState().apply { bundleIdSource = { adapter.getBundleId() } }
