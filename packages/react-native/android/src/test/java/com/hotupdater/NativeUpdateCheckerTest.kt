@@ -736,6 +736,23 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `an artifact response that is not strict JSON is invalid`() =
+        runBlocking {
+            val state = FakeState()
+            val catalogRoutes = routes(minorCatalog())
+            val transport =
+                FakeTransport { request ->
+                    // org.json reads the object and ignores what follows; JSON.parse rejects it.
+                    if (request.url == ARTIFACT_URL) ok(artifact() + " trailing") else catalogRoutes(request)
+                }
+            val checker = NativeUpdateChecker(state, transport)
+            val update = checker.checkForUpdate(OPTIONS)!!
+
+            assertThrows(InvalidUpdateResponseException::class.java) { runBlocking { update.updateBundle() } }
+            assertEquals(0, state.stageCount.get())
+        }
+
+    @Test
     fun `a reset waits for a background download`() =
         runBlocking {
             val gate = CompletableDeferred<Unit>()
