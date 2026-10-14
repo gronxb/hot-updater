@@ -291,6 +291,7 @@ class NativeUpdateCheckerTest {
             assertEquals(listOf("onHttpResponse", "onUpdateCheck"), state.queued().take(2).map { it.getString("name") })
             val response = state.httpResponses().first()
             assertEquals("catalog", response.getString("resource"))
+            assertEquals("production", response.getString("channel"))
             assertEquals(java.net.URL(CATALOG_URL).path, response.getString("path"))
             assertEquals(404, response.getInt("status"))
             assertFalse(response.getBoolean("bodyTruncated"))

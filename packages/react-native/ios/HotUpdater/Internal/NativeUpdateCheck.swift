@@ -789,6 +789,10 @@ final class NativeUpdateChecker {
     private let now: () -> Date
     private let gate = NativeUpdateGate()
     private let committedTargetLock = NSLock()
+    /// The channel the check or staging holding the gate requests, recorded
+    /// with its HTTP responses: an explicit channel is not the runtime one
+    /// until the switch commits.
+    private var requestChannelValue: String?
     /// The target the last staging committed, for another retained result of
     /// the same target.
     private var lastCommittedTargetKey: String?
@@ -936,6 +940,19 @@ final class NativeUpdateChecker {
         return await body()
     }
 
+    private var requestChannel: String? {
+        get {
+            committedTargetLock.lock()
+            defer { committedTargetLock.unlock() }
+            return requestChannelValue
+        }
+        set {
+            committedTargetLock.lock()
+            requestChannelValue = newValue
+            committedTargetLock.unlock()
+        }
+    }
+
     private var committedTarget: String? {
         get {
             committedTargetLock.lock()
@@ -1069,6 +1086,7 @@ final class NativeUpdateChecker {
         }
 
         let fingerprintHash = host.fingerprintHash()
+        requestChannel = targetChannel
 
         let update: HotUpdaterUpdate?
         do {
@@ -1270,6 +1288,7 @@ final class NativeUpdateChecker {
         )
 
         let installSelection = { [self] (deadline: Date?, progress: @escaping (Double) -> Void) async throws -> Bool in
+            requestChannel = targetChannel
             guard host.isReleaseSelectionCurrent(guardParams) else {
                 throw NativeUpdateCheckError.staleReleaseCatalog
             }
@@ -1534,7 +1553,7 @@ final class NativeUpdateChecker {
     private func queueHttpResponse(_ url: URL, _ response: NativeUpdateResponse) {
         let path = url.path.isEmpty ? "/" : url.path
         let truncated = response.body.count > Self.httpResponseBodyLimit
-        queueEvent("onHttpResponse", [
+        var payload: [String: Any] = [
             "resource": path.contains("/artifacts/") ? "artifact" : "catalog",
             "path": path,
             "status": response.status,
@@ -1542,7 +1561,9 @@ final class NativeUpdateChecker {
                 ? NSNull()
                 : truncated ? String(response.body.prefix(Self.httpResponseBodyLimit)) : response.body,
             "bodyTruncated": truncated,
-        ])
+        ]
+        if let requestChannel { payload["channel"] = requestChannel }
+        queueEvent("onHttpResponse", payload)
     }
 
     private struct Artifact {
