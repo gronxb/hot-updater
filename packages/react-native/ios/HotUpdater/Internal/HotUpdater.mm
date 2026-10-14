@@ -515,6 +515,13 @@ RCT_EXPORT_MODULE();
     [HotUpdaterNativeUpdateBridge resetChannelWithImpl:[HotUpdater sharedImpl] completion:completion];
 }
 
++ (void)resetChannelWithBundle:(NSBundle *)bundle completion:(void (^)(BOOL))completion {
+    // Before the first sharedImpl, whose storage isolation key reads the
+    // bundle's HOT_UPDATER_* Info.plist keys.
+    [HotUpdaterConfig shared].bundle = bundle;
+    [HotUpdaterNativeUpdateBridge resetChannelWithImpl:[HotUpdater sharedImpl] completion:completion];
+}
+
 #pragma mark - Progress Updates & Event Emitting (Keep in ObjC Wrapper)
 
 - (void)handleDownloadProgress:(NSNotification *)notification {

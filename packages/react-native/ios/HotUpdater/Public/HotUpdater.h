@@ -104,6 +104,16 @@ NS_ASSUME_NONNULL_BEGIN
 + (void)resetChannelWithCompletion:(void (^)(BOOL success))completion
     NS_SWIFT_NAME(resetChannel(completion:));
 
+/**
+ * `resetChannel` for a brownfield framework: `bundle` holds the framework's
+ * `HOT_UPDATER_*` keys, which name the storage the reset clears. Pass the same
+ * bundle as `HotUpdaterCheckOptions.bundle` when the reset can run before
+ * `prepare` or `bundleURL(bundle:)` in a process.
+ * Swift: `await HotUpdater.resetChannel(bundle: frameworkBundle)`.
+ */
++ (void)resetChannelWithBundle:(NSBundle *)bundle completion:(void (^)(BOOL success))completion
+    NS_SWIFT_NAME(resetChannel(bundle:completion:));
+
 NS_ASSUME_NONNULL_END
 
 /**

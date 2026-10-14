@@ -593,7 +593,8 @@ The channel comes from the framework's `Info.plist` or the library's
 manifest. Do not change it with `HotUpdater.configure(channel:)` at runtime:
 changing it deletes the downloaded bundles. To move a device to another
 channel, pass `channel` in `HotUpdaterCheckOptions`; the switch is saved once
-that channel's update downloads, and `HotUpdater.resetChannel()` switches back.
+that channel's update downloads, and `HotUpdater.resetChannel` switches back;
+on iOS, pass the framework bundle as `resetChannel(bundle:)`.
 
 [Automatic rollback](/docs/concepts/automatic-rollback) works as in any app: a
 bundle that crashes before its first React Native screen appears rolls back to
@@ -644,7 +645,7 @@ the previous bundle, or to the one embedded in the artifact.
 | --- | --- | --- |
 | iOS | `HotUpdater.prepare(_:timeout:onProgress:)` | Checks for an update before React Native starts and waits for a required one; returns a `HotUpdaterPrepareResult` |
 | iOS | `HotUpdater.checkForUpdate(_:)`, `update.updateBundle(onProgress:)` | Checks and downloads in a flow of your own |
-| iOS | `HotUpdater.resetChannel()` | Clears a channel switched at runtime |
+| iOS | `HotUpdater.resetChannel(bundle:)` | Clears a channel switched at runtime; `bundle` holds the `HOT_UPDATER_*` keys |
 | iOS | `HotUpdaterCheckOptions(baseURL:updateStrategy:requestHeaders:channel:requestTimeout:bundle:)` | The update server, strategy, headers, and the bundle that holds the `HOT_UPDATER_*` keys |
 | iOS | `HotUpdater.bundleURL(bundle:)` | Returns the bundle to load; the bundle holds the embedded `main.jsbundle` and the `HOT_UPDATER_*` keys |
 | iOS | `HotUpdater.configure(withFingerprintHash:publicKey:channel:isolationKey:)` | Replaces embedded values at runtime |
