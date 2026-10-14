@@ -493,6 +493,17 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func objectiveCSetsEveryCheckOption() throws {
+        // Objective-C reaches the per-check headers and timeout through these.
+        let initializer = NSSelectorFromString("initWithUpdateStrategy:channel:requestHeaders:requestTimeout:")
+        #expect(HotUpdaterCheckOptions.instancesRespond(to: initializer))
+        let options = HotUpdaterCheckOptions(updateStrategy: .fingerprint, requestHeaders: ["x": "1"], requestTimeout: 3)
+        #expect(options.value(forKey: "requestTimeout") as? NSNumber == 3)
+        #expect(options.value(forKey: "requestHeaders") as? [String: String] == ["x": "1"])
+        #expect(HotUpdaterCheckOptions(updateStrategy: .fingerprint).value(forKey: "requestTimeout") == nil)
+    }
+
+    @Test
     func anArtifactResponseThatIsNotStrictJSONIsInvalid() async throws {
         let host = FakeUpdateHost()
         // JSONSerialization accepts the trailing comma; JSON.parse does not.
