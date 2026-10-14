@@ -608,6 +608,37 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func anUpdateThatJoinedAStagingIsStaged() async throws {
+        let host = FakeUpdateHost()
+        let download = Latch()
+        host.stage = { _, _ in
+            await download.wait()
+            return ["delivery": "archive", "patchFallback": false]
+        }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2)])
+        )
+        let checker = makeChecker(host, transport)
+        let first = try #require(try await checker.checkForUpdate(options()))
+        let second = try #require(try await checker.checkForUpdate(options()))
+        #expect(first.targetKey == second.targetKey)
+
+        let firstStaging = Task { try await first.updateBundle() }
+        await host.stageStarted.wait()
+        let joined = Task { try await second.updateBundle() }
+        // Gives the second call time to join before the download ends.
+        try await Task.sleep(nanoseconds: 100_000_000)
+        download.open()
+        #expect(try await firstStaging.value)
+        #expect(try await joined.value)
+        let requests = transport.requests.count
+
+        #expect(try await second.updateBundle())
+        #expect(host.stageCalls == 1)
+        #expect(transport.requests.count == requests)
+    }
+
+    @Test
     func updateBundleOnAStagedUpdateDoesNotDownloadAgain() async throws {
         let host = FakeUpdateHost()
         let download = Latch()

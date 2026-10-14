@@ -786,7 +786,10 @@ final class NativeUpdateChecker {
         defer { staging.progress.remove(listener) }
         switch await wait(for: staging, until: nil) {
         case .finished(let result):
-            return try result.get()
+            let committed = try result.get()
+            // A joined staging of the same target staged this update too.
+            if committed { update.markStaged() }
+            return committed
         case .stopped:
             throw CancellationError()
         }
