@@ -1375,6 +1375,10 @@ final class NativeUpdateChecker {
                     "guard": guardParams,
                     "selection": receipt.dictionary,
                 ])
+                if committed, transitionKind == "USE_BUILTIN" {
+                    // The built-in bundle replaced every staged one: their downloads are void.
+                    NativeUpdateEvents.remove(name: "onBundleDownloaded", from: host)
+                }
                 if committed, transitionKind == "ADOPT_RELEASE" {
                     // The running bundle is now selected as a newer Release.
                     queueUnchanged(
@@ -1724,7 +1728,8 @@ final class NativeUpdateChecker {
         guard value.range(of: "^https?://", options: [.regularExpression, .caseInsensitive]) != nil else {
             throw NativeUpdateCheckError.invalidResponse("Artifact URLs must be absolute HTTP(S) URLs.")
         }
-        guard URL(string: value) != nil else {
+        // Foundation parses a hostless "https://"; a download needs a host.
+        guard let url = URL(string: value), url.host?.isEmpty == false else {
             throw NativeUpdateCheckError.invalidResponse("Invalid artifact URL: \(value)")
         }
     }

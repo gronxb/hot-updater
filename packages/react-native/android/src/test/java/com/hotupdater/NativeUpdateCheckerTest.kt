@@ -561,6 +561,10 @@ class NativeUpdateCheckerTest {
                 }
             val transport = FakeTransport(routes(catalog(emptyList(), generation = 2)))
             val checker = NativeUpdateChecker(state, transport)
+            // A download an earlier prepare queued, which the built-in bundle replaces.
+            NativeUpdateEventQueue(state::getStorageItem, state::setStorageItem, build = {
+                NativeUpdateEventQueue.buildOf(state.getAppVersion(), state.getMinBundleId(), state.getCohort())
+            }).add("onBundleDownloaded", JSONObject())
 
             val result = checker.prepare(OPTIONS, 5_000, null)
 
