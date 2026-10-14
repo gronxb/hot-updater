@@ -77,6 +77,7 @@ internal class ReleaseCatalogClient(
                     url = "$baseURL/artifacts/v1/${encodeURIComponent(targetBundleId)}/from/${encodeURIComponent(currentBundleId)}",
                     headers = headers,
                     timeoutMillis = requestTimeoutMillis,
+                    resource = "artifact",
                 ),
             )
         if (response.status != 200) {
