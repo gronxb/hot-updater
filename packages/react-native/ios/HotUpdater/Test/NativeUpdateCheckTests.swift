@@ -705,6 +705,25 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func anArtifactResponseThatIsNotStrictJSONIsInvalid() async throws {
+        let host = FakeUpdateHost()
+        // JSONSerialization accepts the trailing comma; JSON.parse does not.
+        let body = String(artifactBody.dropLast()) + ",}"
+        let transport = FakeUpdateTransport { url, _ in
+            if url.path.contains("/artifacts/v1/") {
+                return NativeUpdateResponse(status: 200, headers: [:], body: body)
+            }
+            return NativeUpdateResponse(status: 200, headers: [:],
+                body: catalog(releases: [descriptor(release2, bundle2)]))
+        }
+        let checker = makeChecker(host, transport)
+        let update = try #require(try await checker.checkForUpdate(options()))
+
+        await #expect(throws: NativeUpdateCheckError.self) { _ = try await update.updateBundle() }
+        #expect(host.stageCalls == 0)
+    }
+
+    @Test
     func aPatchThatIsNotAnObjectIsInvalid() async throws {
         for patch in ["true", "\"patch\"", "[]"] {
             let host = FakeUpdateHost()
