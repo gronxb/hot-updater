@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.Process
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -497,14 +498,20 @@ class HotUpdaterImpl {
         return emptyMap()
     }
 
-    suspend fun resetChannel(): Boolean {
-        val success = bundleStorage.resetChannel()
-        if (success) {
-            preferences.setItem(CHANNEL_STORAGE_KEY, null)
-            currentLaunchSelection = null
+    suspend fun resetChannel(): Boolean =
+        withContext(Dispatchers.IO) {
+            // Under the launch lock, so React Native never selects a bundle the
+            // reset is about to delete. The storage reset runs on another IO
+            // thread, so blocking this one cannot deadlock.
+            synchronized(launchPreparationLock) {
+                val success = runBlocking { bundleStorage.resetChannel() }
+                if (success) {
+                    preferences.setItem(CHANNEL_STORAGE_KEY, null)
+                    currentLaunchSelection = null
+                }
+                success
+            }
         }
-        return success
-    }
 
     private fun prepareLaunchIfNeeded(): LaunchSelection =
         synchronized(launchPreparationLock) {
