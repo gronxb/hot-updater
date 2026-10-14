@@ -1,9 +1,9 @@
-# rn-brownfield / android
+# rn-brownfield / android-app
 
 Minimal native Android host for the brownfield example. It has no React
 Native tooling of its own: `app/build.gradle` depends on
 `com.rnbrownfieldreact:rnbrownfield:0.0.1-local`, which
-`pnpm publish-local:aar` in `../react-native` publishes to `~/.m2/repository`,
+`pnpm publish-local:aar` in `../rn-app` publishes to `~/.m2/repository`,
 and `settings.gradle` resolves that group from `mavenLocal()`.
 
 - `MainApplication` calls `ReactNativeHostManager.initialize(this)` once, so

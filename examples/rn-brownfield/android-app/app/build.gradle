@@ -45,7 +45,7 @@ android {
 }
 
 dependencies {
-    // Published by `pnpm publish-local:aar` in ../react-native. React Native and
+    // Published by `pnpm publish-local:aar` in ../rn-app. React Native and
     // Hermes come transitively through the AAR's POM.
     implementation("com.rnbrownfieldreact:rnbrownfield:0.0.1-local")
     implementation("androidx.appcompat:appcompat:1.7.1")
