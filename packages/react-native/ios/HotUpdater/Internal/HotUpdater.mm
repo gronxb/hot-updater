@@ -15,11 +15,6 @@
 #import "HotUpdaterInterface.h"
 typedef NSObject<HotUpdaterImplInterface> HotUpdaterImpl;
 typedef NSObject<HotUpdaterConfigInterface> HotUpdaterConfig;
-
-static NSBundle *HotUpdaterBundleOfOptions(HotUpdaterCheckOptions *options)
-{
-  return [HotUpdaterNativeUpdates() bundleOfOptions:options];
-}
 #else
 #if __has_include("HotUpdater/HotUpdater-Swift.h")
 #import "HotUpdater/HotUpdater-Swift.h"
@@ -27,9 +22,10 @@ static NSBundle *HotUpdaterBundleOfOptions(HotUpdaterCheckOptions *options)
 #import "HotUpdater-Swift.h"
 #endif
 
+// The process's impl, which HotUpdaterInstance uses too.
 static HotUpdaterImpl *HotUpdaterMakeImpl(void)
 {
-  return [[HotUpdaterImpl alloc] init];
+  return [HotUpdaterNativeUpdateBridge sharedImpl];
 }
 
 static NSString *HotUpdaterAppVersion(void)
@@ -46,11 +42,6 @@ static HotUpdaterConfig *HotUpdaterSharedConfig(void)
 static Class HotUpdaterNativeUpdates(void)
 {
   return [HotUpdaterNativeUpdateBridge class];
-}
-
-static NSBundle *HotUpdaterBundleOfOptions(HotUpdaterCheckOptions *options)
-{
-  return options.bundle;
 }
 #endif
 
@@ -447,37 +438,6 @@ RCT_EXPORT_MODULE();
                         isolationKey:(NSString *)isolationKey {
     HotUpdaterConfig *config = HotUpdaterSharedConfig();
     [config configureWithFingerprintHash:fingerprintHash publicKey:publicKey channel:channel isolationKey:isolationKey];
-}
-
-+ (HotUpdaterNativeUpdateTask *)checkForUpdate:(HotUpdaterCheckOptions *)options
-                                   completion:(void (^)(HotUpdaterUpdate * _Nullable_result, NSError * _Nullable))completion {
-    // Before the first sharedImpl, whose storage isolation key reads the
-    // bundle's HOT_UPDATER_* Info.plist keys.
-    HotUpdaterSharedConfig().bundle = HotUpdaterBundleOfOptions(options);
-    return [HotUpdaterNativeUpdates() checkForUpdate:options impl:[HotUpdater sharedImpl] completion:completion];
-}
-
-+ (HotUpdaterNativeUpdateTask *)prepare:(HotUpdaterCheckOptions *)options
-                                timeout:(NSTimeInterval)timeout
-                             onProgress:(void (^ _Nullable)(double))onProgress
-                             completion:(void (^)(HotUpdaterPrepareResult *))completion {
-    HotUpdaterSharedConfig().bundle = HotUpdaterBundleOfOptions(options);
-    return [HotUpdaterNativeUpdates() prepare:options
-                                      timeout:timeout
-                                         impl:[HotUpdater sharedImpl]
-                                   onProgress:onProgress
-                                   completion:completion];
-}
-
-+ (void)resetChannelWithCompletion:(void (^)(BOOL))completion {
-    [HotUpdaterNativeUpdates() resetChannelWithImpl:[HotUpdater sharedImpl] completion:completion];
-}
-
-+ (void)resetChannelWithBundle:(NSBundle *)bundle completion:(void (^)(BOOL))completion {
-    // Before the first sharedImpl, whose storage isolation key reads the
-    // bundle's HOT_UPDATER_* Info.plist keys.
-    HotUpdaterSharedConfig().bundle = bundle;
-    [HotUpdaterNativeUpdates() resetChannelWithImpl:[HotUpdater sharedImpl] completion:completion];
 }
 
 #pragma mark - Progress Updates & Event Emitting (Keep in ObjC Wrapper)

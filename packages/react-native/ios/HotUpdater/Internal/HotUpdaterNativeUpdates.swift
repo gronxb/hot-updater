@@ -16,8 +16,6 @@ final class HotUpdaterImplUpdateHost: NativeUpdateHost {
 
     func bundleId() -> String? { impl.bundleIdForUpdateCheck() }
 
-    func isLaunchPrepared() -> Bool { impl.isLaunchPrepared() }
-
     func channel() -> String { impl.getChannel() }
 
     func defaultChannel() -> String { impl.getDefaultChannel() }
@@ -93,15 +91,20 @@ final class HotUpdaterImplUpdateHost: NativeUpdateHost {
     }
 }
 
-/// Backs the `HotUpdater` class methods for native update checks; call those
-/// instead.
+/// The process's impl and native update checker, shared by
+/// `HotUpdaterInstance` and the TurboModule.
 @objc(HotUpdaterNativeUpdateBridge)
 public final class HotUpdaterNativeUpdateBridge: NSObject {
     private static let lock = NSLock()
     private static var sharedChecker: NativeUpdateChecker?
 
+    /// The process's impl, which HotUpdater.mm's `sharedImpl` returns too.
+    /// Record the bundle in `HotUpdaterConfig` first: creating it reads that
+    /// bundle's Info.plist.
+    @objc public static let sharedImpl = HotUpdaterImpl()
+
     /// One checker per process, so its gate serializes every native check.
-    private static func checker(impl: HotUpdaterImpl) -> NativeUpdateChecker {
+    static func checker(impl: HotUpdaterImpl) -> NativeUpdateChecker {
         lock.lock()
         defer { lock.unlock() }
         if let sharedChecker {
@@ -110,49 +113,6 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
         let checker = NativeUpdateChecker(host: HotUpdaterImplUpdateHost(impl: impl))
         sharedChecker = checker
         return checker
-    }
-
-    @discardableResult
-    @objc(checkForUpdate:impl:completion:)
-    public static func checkForUpdate(
-        _ options: HotUpdaterCheckOptions,
-        impl: HotUpdaterImpl,
-        completion: @escaping (HotUpdaterUpdate?, Error?) -> Void
-    ) -> HotUpdaterNativeUpdateTask {
-        let checker = checker(impl: impl)
-        return HotUpdaterNativeUpdateTask {
-            do {
-                let update = try await checker.checkForUpdate(options)
-                DispatchQueue.main.async { completion(update, nil) }
-            } catch {
-                DispatchQueue.main.async { completion(nil, error) }
-            }
-        }
-    }
-
-    @discardableResult
-    @objc(prepare:timeout:impl:onProgress:completion:)
-    public static func prepare(
-        _ options: HotUpdaterCheckOptions,
-        timeout: TimeInterval,
-        impl: HotUpdaterImpl,
-        onProgress: ((Double) -> Void)?,
-        completion: @escaping (HotUpdaterPrepareResult) -> Void
-    ) -> HotUpdaterNativeUpdateTask {
-        let checker = checker(impl: impl)
-        return HotUpdaterNativeUpdateTask {
-            let result = await checker.prepare(options, timeout: timeout, onProgress: onProgress)
-            DispatchQueue.main.async { completion(result) }
-        }
-    }
-
-    @objc(resetChannelWithImpl:completion:)
-    public static func resetChannel(impl: HotUpdaterImpl, completion: @escaping (Bool) -> Void) {
-        let checker = checker(impl: impl)
-        Task {
-            let reset = await checker.resetChannel()
-            DispatchQueue.main.async { completion(reset) }
-        }
     }
 
     /// JavaScript's `resetChannel`, run once a native check or download
@@ -196,6 +156,100 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
             )
         )
     }
+}
+
+/// The native counterpart of the instance JavaScript's `HotUpdater.init`
+/// returns, for apps that check for and stage updates before React Native
+/// starts: `checkForUpdate`, the returned update's `updateBundle`,
+/// `resetChannel`, and the getters, with this instance's server and request
+/// defaults. `bundleURL()` is the bundle React Native starts with.
+///
+/// An update staged before `bundleURL()` is read applies at this launch;
+/// one staged after it applies at the next launch.
+@objc public final class HotUpdaterInstance: NSObject, @unchecked Sendable {
+    @objc public let options: HotUpdaterOptions
+    private let impl: HotUpdaterImpl
+
+    /// Throws when `baseURL` is not an absolute HTTP(S) URL, as
+    /// `HotUpdater.init` does.
+    @objc public init(_ options: HotUpdaterOptions) throws {
+        _ = try NativeUpdateChecker.validatedBaseURL(options.baseURL)
+        self.options = options
+        // Before the impl exists: creating it reads this bundle's Info.plist.
+        HotUpdaterConfig.shared.bundle = options.bundle
+        impl = HotUpdaterNativeUpdateBridge.sharedImpl
+        super.init()
+    }
+
+    private var checker: NativeUpdateChecker {
+        HotUpdaterNativeUpdateBridge.checker(impl: impl)
+    }
+
+    /// The update the app should apply, or nil when there is none. Unlike
+    /// JavaScript, which returns null and calls `onError`, a failed check
+    /// throws; it is still reported to plugins as `onUpdateError`. Waits for
+    /// other native update work; cancel the caller to stop waiting.
+    public func checkForUpdate(_ options: HotUpdaterCheckOptions) async throws -> HotUpdaterUpdate? {
+        try await checker.checkForUpdate(NativeCheckRequest(self.options, options))
+    }
+
+    /// `checkForUpdate` for Objective-C; completes on the main queue.
+    /// `cancel` on the returned task cancels the check.
+    @discardableResult
+    @objc(checkForUpdate:completion:)
+    public func checkForUpdate(
+        _ options: HotUpdaterCheckOptions,
+        completion: @escaping (HotUpdaterUpdate?, Error?) -> Void
+    ) -> HotUpdaterNativeUpdateTask {
+        let request = NativeCheckRequest(self.options, options)
+        let checker = checker
+        return HotUpdaterNativeUpdateTask {
+            do {
+                let update = try await checker.checkForUpdate(request)
+                DispatchQueue.main.async { completion(update, nil) }
+            } catch {
+                DispatchQueue.main.async { completion(nil, error) }
+            }
+        }
+    }
+
+    /// The bundle React Native starts with: the staged update, or the
+    /// `main.jsbundle` embedded in `options.bundle`. Reading it fixes this
+    /// launch's bundle.
+    @objc public func bundleURL() -> URL? {
+        HotUpdaterConfig.shared.bundle = options.bundle
+        return impl.bundleURL(bundle: options.bundle)
+    }
+
+    /// Clears the runtime channel switch and returns to the default channel's
+    /// bundle at the next launch, once other native update work finishes.
+    public func resetChannel() async -> Bool {
+        await checker.resetChannel()
+    }
+
+    /// `resetChannel` for Objective-C; completes on the main queue.
+    @objc(resetChannelWithCompletion:)
+    public func resetChannel(completion: @escaping (Bool) -> Void) {
+        let checker = checker
+        Task {
+            let reset = await checker.resetChannel()
+            DispatchQueue.main.async { completion(reset) }
+        }
+    }
+
+    @objc public func getAppVersion() -> String? { HotUpdaterImpl.appVersion }
+
+    /// The bundle this launch runs, or nil for the built-in bundle or before
+    /// `bundleURL()` is read.
+    @objc public func getBundleId() -> String? { impl.getBundleId() }
+
+    @objc public func getMinBundleId() -> String { HotUpdaterImpl.minBundleId() }
+
+    @objc public func getChannel() -> String { impl.getChannel() }
+
+    @objc public func getDefaultChannel() -> String { impl.getDefaultChannel() }
+
+    @objc public func getFingerprintHash() -> String? { impl.getFingerprintHash() }
 }
 
 /// A native update call started from Objective-C; cancelling it cancels the

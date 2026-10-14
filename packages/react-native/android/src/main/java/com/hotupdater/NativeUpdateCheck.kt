@@ -1,8 +1,6 @@
 package com.hotupdater
 
 import android.content.Context
-import android.util.Log
-import kotlinx.coroutines.CancellationException
 
 /** The native state behind the TurboModule, read and written through [HotUpdaterImpl]. */
 internal class HotUpdaterImplUpdateCheckState(
@@ -14,8 +12,6 @@ internal class HotUpdaterImplUpdateCheckState(
     override fun getAppVersion(): String? = HotUpdaterImpl.getAppVersion(context)
 
     override fun getBundleId(): String? = impl.getBundleIdForUpdateCheck()
-
-    override fun hasLaunchedBundle(): Boolean = impl.hasLaunchSelection()
 
     override fun getMinBundleId(): String = HotUpdaterImpl.getMinBundleId()
 
@@ -111,10 +107,8 @@ internal class HotUpdaterImplUpdateCheckState(
     }
 }
 
-/** The process's one native update checker, behind `HotUpdater.checkForUpdate` and `HotUpdater.prepare`. */
+/** The process's one native update checker, behind [HotUpdaterInstance] and the TurboModule's `resetChannel`. */
 internal object NativeUpdateCheck {
-    private const val TAG = "HotUpdaterCheck"
-
     @Volatile
     private var checker: NativeUpdateChecker? = null
 
@@ -139,17 +133,17 @@ internal object NativeUpdateCheck {
         call: String,
     ) {
         check(!HotUpdaterProcess.isRestartProcess(context)) {
-            "HotUpdater.$call runs in the app's process, not Hot Updater's restart process"
+            "$call runs in the app's process, not Hot Updater's restart process"
         }
     }
 
     suspend fun checkForUpdate(
         context: Context,
         impl: () -> HotUpdaterImpl,
-        options: HotUpdaterCheckOptions,
+        request: NativeCheckRequest,
     ): HotUpdaterUpdate? {
-        requireAppProcess(context, "checkForUpdate")
-        return checker(context, impl).checkForUpdate(options)
+        requireAppProcess(context, "HotUpdaterInstance.checkForUpdate")
+        return checker(context, impl).checkForUpdate(request)
     }
 
     /** Clears the runtime channel once a check or staging running in this process finishes. */
@@ -157,21 +151,4 @@ internal object NativeUpdateCheck {
         context: Context,
         impl: () -> HotUpdaterImpl,
     ): Boolean = checker(context, impl).resetChannel { impl().resetChannel() }
-
-    suspend fun prepare(
-        context: Context,
-        impl: () -> HotUpdaterImpl,
-        options: HotUpdaterCheckOptions,
-        timeoutMillis: Long,
-        onProgress: ((Double) -> Unit)?,
-    ): HotUpdaterPrepareResult =
-        try {
-            requireAppProcess(context, "prepare")
-            checker(context, impl).prepare(options, timeoutMillis, onProgress)
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
-            Log.w(TAG, "Failed to prepare an update", error)
-            HotUpdaterPrepareResult.Failed(error, null)
-        }
 }

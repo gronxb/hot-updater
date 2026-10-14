@@ -1,11 +1,6 @@
 #import <React/RCTEventEmitter.h>
 #import <React/RCTBundleURLProvider.h>
 
-@class HotUpdaterCheckOptions;
-@class HotUpdaterNativeUpdateTask;
-@class HotUpdaterPrepareResult;
-@class HotUpdaterUpdate;
-
 #ifdef RCT_NEW_ARCH_ENABLED
 #import <HotUpdaterSpec/HotUpdaterSpec.h>
 @interface HotUpdater : RCTEventEmitter <NativeHotUpdaterSpec>
@@ -50,71 +45,13 @@
  * `channel` is the app's fixed default channel, not a runtime switch: keep it
  * the same from the first launch on. It is part of the storage isolation
  * key, so changing it deletes the downloaded bundles. To check another
- * channel at runtime, pass `channel` in `HotUpdaterCheckOptions`, and undo
- * that with `resetChannel`.
+ * channel at runtime, pass `channel` to `HotUpdaterInstance.checkForUpdate`,
+ * and undo that with its `resetChannel`.
  */
 + (void)configureWithFingerprintHash:(nullable NSString *)fingerprintHash
                            publicKey:(nullable NSString *)publicKey
                              channel:(nullable NSString *)channel
                         isolationKey:(nullable NSString *)isolationKey;
-
-NS_ASSUME_NONNULL_BEGIN
-
-// Native update checks for apps that check and stage updates before React
-// Native starts. Completions and progress run on the main queue: do not block
-// the main thread waiting for them.
-
-/**
- * Checks for an update without the JavaScript runtime, as JavaScript's
- * `checkForUpdate` does. Completes with nil when there is no update. Waits
- * for other native update work without a deadline; `prepare` is the bounded
- * call. `cancel` on the returned task cancels the check.
- * Swift: `try await HotUpdater.checkForUpdate(options)`.
- */
-+ (HotUpdaterNativeUpdateTask *)checkForUpdate:(HotUpdaterCheckOptions *)options
-                                   completion:(void (^)(HotUpdaterUpdate * _Nullable_result update, NSError * _Nullable error))completion
-    NS_SWIFT_NAME(__checkForUpdate(_:completion:));
-
-/**
- * Checks for an update and stages it before React Native starts. `timeout`
- * is one deadline, in seconds, for waiting on other native update work, the
- * catalog request, and a required update's download; it must be greater
- * than 0. It ends the wait, not the download, whose requests keep their own
- * timeouts. A required update staged before React Native reads the
- * bundle completes `ready`. When the deadline passes, or the update is not
- * required, the download continues and the call completes `pending`: the
- * update applies at the first start after it is staged, and a later `prepare`
- * or `updateBundle` joins it. Selecting the bundle this start already runs
- * completes `upToDate`. Never
- * fails with an exception: a failure completes `failed` with `error`.
- * `cancel` on the returned task ends the wait, as the deadline does.
- * Swift: `await HotUpdater.prepare(options, timeout: 3)`.
- */
-+ (HotUpdaterNativeUpdateTask *)prepare:(HotUpdaterCheckOptions *)options
-                                timeout:(NSTimeInterval)timeout
-                             onProgress:(void (^ _Nullable)(double progress))onProgress
-                             completion:(void (^)(HotUpdaterPrepareResult *result))completion
-    NS_SWIFT_NAME(__prepare(_:timeout:onProgress:completion:));
-
-/**
- * Clears the runtime channel switch and returns to the default channel's
- * bundle at the next start, as JavaScript's `resetChannel` does.
- * Swift: `await HotUpdater.resetChannel()`.
- */
-+ (void)resetChannelWithCompletion:(void (^)(BOOL success))completion
-    NS_SWIFT_NAME(resetChannel(completion:));
-
-/**
- * `resetChannel` for a brownfield framework: `bundle` holds the framework's
- * `HOT_UPDATER_*` keys, which name the storage the reset clears. Pass the same
- * bundle as `HotUpdaterCheckOptions.bundle` when the reset can run before
- * `prepare` or `bundleURL(bundle:)` in a process.
- * Swift: `await HotUpdater.resetChannel(bundle: frameworkBundle)`.
- */
-+ (void)resetChannelWithBundle:(NSBundle *)bundle completion:(void (^)(BOOL success))completion
-    NS_SWIFT_NAME(resetChannel(bundle:completion:));
-
-NS_ASSUME_NONNULL_END
 
 /**
  * 다운로드 진행 상황 업데이트 시간을 추적하는 속성

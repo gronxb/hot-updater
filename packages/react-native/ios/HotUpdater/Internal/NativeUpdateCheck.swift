@@ -28,51 +28,98 @@ import Foundation
     case rollback
 }
 
-/// The outcome of `prepare`.
-@objc public enum HotUpdaterPrepareStatus: Int {
-    /// The bundle this start runs is what the server wants. It may have been
-    /// downloaded by an earlier start.
-    case upToDate
-    /// A required update was staged before React Native read the bundle, so
-    /// React Native starts with it.
-    case ready
-    /// An update is downloading or staged and applies at the first start
-    /// after it is staged: this one when it is staged before React Native
-    /// reads the bundle.
-    case pending
-    /// The check or the required update failed; see `error`.
-    case failed
-}
-
-/// The values the app passes to `HotUpdater.init`.
-@objc public final class HotUpdaterCheckOptions: NSObject, @unchecked Sendable {
+/// The values JavaScript passes to `HotUpdater.init`: the server and the
+/// request defaults of a `HotUpdaterInstance`.
+@objc public final class HotUpdaterOptions: NSObject, @unchecked Sendable {
+    /// The server exposing the Hot Updater v1 client HTTP protocol.
     @objc public let baseURL: String
-    @objc public let updateStrategy: HotUpdaterUpdateStrategy
+    /// Sent with every request; a check's own headers override them.
     @objc public let requestHeaders: [String: String]
-    /// Checks this channel instead of the current one. The switch is only
-    /// persisted once the returned update is staged.
-    @objc public let channel: String?
-    /// Seconds each request may take.
+    /// Seconds each request may take, unless a check sets its own.
     @objc public let requestTimeout: TimeInterval
     /// The bundle that holds the embedded `main.jsbundle` and the
-    /// `HOT_UPDATER_*` Info.plist keys, as passed to `HotUpdater.bundleURL(bundle:)`:
-    /// a brownfield XCFramework passes its own bundle.
+    /// `HOT_UPDATER_*` Info.plist keys: a brownfield XCFramework passes its
+    /// own bundle.
     @objc public let bundle: Bundle
 
     @objc public init(
         baseURL: String,
+        requestHeaders: [String: String] = [:],
+        requestTimeout: TimeInterval = 5,
+        bundle: Bundle = .main
+    ) {
+        self.baseURL = baseURL
+        self.requestHeaders = requestHeaders
+        self.requestTimeout = requestTimeout
+        self.bundle = bundle
+    }
+}
+
+/// The values JavaScript passes to `checkForUpdate`.
+@objc public final class HotUpdaterCheckOptions: NSObject, @unchecked Sendable {
+    @objc public let updateStrategy: HotUpdaterUpdateStrategy
+    /// Checks this channel instead of the current one. The switch is only
+    /// persisted once the returned update is staged.
+    @objc public let channel: String?
+    /// Merged over the instance's headers; these win.
+    @objc public let requestHeaders: [String: String]
+    /// Seconds each request may take; nil uses the instance's.
+    public let requestTimeout: TimeInterval?
+
+    public init(
+        updateStrategy: HotUpdaterUpdateStrategy,
+        channel: String? = nil,
+        requestHeaders: [String: String] = [:],
+        requestTimeout: TimeInterval? = nil
+    ) {
+        self.updateStrategy = updateStrategy
+        self.channel = channel
+        self.requestHeaders = requestHeaders
+        self.requestTimeout = requestTimeout
+    }
+
+    @objc public convenience init(updateStrategy: HotUpdaterUpdateStrategy, channel: String?) {
+        self.init(updateStrategy: updateStrategy, channel: channel, requestHeaders: [:], requestTimeout: nil)
+    }
+}
+
+/// One check's settings: the instance's, with the check's own over them, as
+/// JavaScript's `checkForUpdate` merges them.
+struct NativeCheckRequest {
+    let baseURL: String
+    let updateStrategy: HotUpdaterUpdateStrategy
+    let requestHeaders: [String: String]
+    let channel: String?
+    let requestTimeout: TimeInterval
+
+    init(
+        baseURL: String,
         updateStrategy: HotUpdaterUpdateStrategy,
         requestHeaders: [String: String] = [:],
         channel: String? = nil,
-        requestTimeout: TimeInterval = 5,
-        bundle: Bundle = .main
+        requestTimeout: TimeInterval = 5
     ) {
         self.baseURL = baseURL
         self.updateStrategy = updateStrategy
         self.requestHeaders = requestHeaders
         self.channel = channel
         self.requestTimeout = requestTimeout
-        self.bundle = bundle
+    }
+
+    init(_ instance: HotUpdaterOptions, _ check: HotUpdaterCheckOptions) {
+        var headers = instance.requestHeaders
+        for (name, value) in check.requestHeaders {
+            // Header names are case-insensitive: the check's spelling replaces the instance's.
+            headers = headers.filter { $0.key.lowercased() != name.lowercased() }
+            headers[name] = value
+        }
+        self.init(
+            baseURL: instance.baseURL,
+            updateStrategy: check.updateStrategy,
+            requestHeaders: headers,
+            channel: check.channel,
+            requestTimeout: check.requestTimeout ?? instance.requestTimeout
+        )
     }
 }
 
@@ -101,14 +148,11 @@ import Foundation
     /// from one catalog and selection context. A staging already running
     /// joins only the same target.
     let targetKey: String
-    /// The options the check ran with; `prepare` joins a staging only from an
-    /// equal request.
-    let requestKey: String
     private let checker: NativeUpdateChecker
     private let stagedLock = NSLock()
     private var staged = false
-    /// Stages the update; the deadline bounds the artifact request.
-    let install: (NativeUpdateDeadline?, @escaping (Double) -> Void) async throws -> Bool
+    /// Stages the update.
+    let install: (@escaping (Double) -> Void) async throws -> Bool
     /// Whether the selection this update stages is still the current one.
     let isSelectionCurrent: () -> Bool
 
@@ -124,9 +168,8 @@ import Foundation
         transitionKind: String,
         runsCurrentBundle: Bool,
         targetKey: String,
-        requestKey: String,
         checker: NativeUpdateChecker,
-        install: @escaping (NativeUpdateDeadline?, @escaping (Double) -> Void) async throws -> Bool,
+        install: @escaping (@escaping (Double) -> Void) async throws -> Bool,
         isSelectionCurrent: @escaping () -> Bool = { true }
     ) {
         self.id = id
@@ -140,7 +183,6 @@ import Foundation
         self.transitionKind = transitionKind
         self.runsCurrentBundle = runsCurrentBundle
         self.targetKey = targetKey
-        self.requestKey = requestKey
         self.checker = checker
         self.install = install
         self.isSelectionCurrent = isSelectionCurrent
@@ -185,22 +227,6 @@ import Foundation
     }
 }
 
-/// What `prepare` found and did.
-@objc public final class HotUpdaterPrepareResult: NSObject, @unchecked Sendable {
-    @objc public let status: HotUpdaterPrepareStatus
-    /// Set for `ready` and `pending`, and for `failed` when the update failed
-    /// after it was selected.
-    @objc public let update: HotUpdaterUpdate?
-    /// Set for `failed`.
-    @objc public let error: NSError?
-
-    init(status: HotUpdaterPrepareStatus, update: HotUpdaterUpdate? = nil, error: Error? = nil) {
-        self.status = status
-        self.update = update
-        self.error = error.map { $0 as NSError }
-    }
-}
-
 // MARK: - Host
 
 /// A response from the update server. Header names are lowercase.
@@ -237,9 +263,6 @@ protocol NativeUpdateHost: NativeUpdateEventStorage {
     /// The running bundle, or the one the next launch runs before React Native
     /// has started; nil or the nil UUID for the built-in bundle.
     func bundleId() -> String?
-    /// Whether React Native has read the bundle in this process, so a bundle
-    /// staged now waits for the next start.
-    func isLaunchPrepared() -> Bool
     func channel() -> String
     func defaultChannel() -> String
     func cohort() -> String
@@ -381,11 +404,6 @@ enum NativeUpdateEvents {
 
 // MARK: - Concurrency
 
-private func nanoseconds(_ seconds: TimeInterval) -> UInt64 {
-    guard seconds.isFinite, seconds > 0 else { return 0 }
-    return UInt64(min(seconds, Double(UInt64.max / 1_000_000_000)) * 1_000_000_000)
-}
-
 /// A staging in progress, from the moment it is published on the gate until
 /// it finishes; callers that join it wait for its result.
 final class NativeUpdateStaging: @unchecked Sendable {
@@ -442,7 +460,7 @@ final class NativeUpdateGate: @unchecked Sendable {
         case acquired
         /// The caller joins this staging; it does not hold the gate.
         case joined(NativeUpdateStaging)
-        /// The timeout passed or the calling task was cancelled first.
+        /// The calling task was cancelled first.
         case stopped
     }
 
@@ -462,10 +480,8 @@ final class NativeUpdateGate: @unchecked Sendable {
     private var waiters: [Waiter] = []
 
     /// Joins the running staging when `joins` accepts it, or else waits for
-    /// the gate, for at most `timeout` seconds and until the calling task is
-    /// cancelled.
+    /// the gate until the calling task is cancelled.
     func enter(
-        timeout: TimeInterval?,
         joins: @escaping (NativeUpdateStaging) -> Bool = { _ in false }
     ) async -> Entry {
         let waiter = Waiter(joins: joins)
@@ -491,12 +507,6 @@ final class NativeUpdateGate: @unchecked Sendable {
                 waiter.continuation = continuation
                 waiters.append(waiter)
                 lock.unlock()
-                if let timeout {
-                    Task {
-                        try? await Task.sleep(nanoseconds: nanoseconds(timeout))
-                        self.abandon(waiter)
-                    }
-                }
             }
         } onCancel: {
             abandon(waiter)
@@ -553,7 +563,7 @@ final class NativeUpdateGate: @unchecked Sendable {
 /// How a wait for a staging ended.
 private enum StagingWait {
     case finished(Result<Bool, Error>)
-    /// The deadline passed or the waiting task was cancelled.
+    /// The waiting task was cancelled.
     case stopped
 }
 
@@ -641,7 +651,7 @@ final class NativeUpdateProgress: @unchecked Sendable {
         lock.unlock()
         guard !tokens.isEmpty else { return }
         DispatchQueue.main.async { [self] in
-            // A listener removed since, as prepare returns, gets no value.
+            // A listener removed since, as a cancelled caller returns, gets no value.
             for token in tokens {
                 lock.lock()
                 let listener = listeners[token]
@@ -820,20 +830,6 @@ private final class RunningDataTask: @unchecked Sendable {
 
 // MARK: - Update check
 
-/// A point on the monotonic clock, so a change of the device's wall clock
-/// neither extends nor ends a deadline early.
-struct NativeUpdateDeadline {
-    private let uptime: TimeInterval
-
-    init(after interval: TimeInterval) {
-        uptime = ProcessInfo.processInfo.systemUptime + interval
-    }
-
-    var remaining: TimeInterval {
-        uptime - ProcessInfo.processInfo.systemUptime
-    }
-}
-
 final class NativeUpdateChecker {
     private static let nilUUID = "00000000-0000-0000-0000-000000000000"
     private static let maxETagBytes = 1024
@@ -842,8 +838,7 @@ final class NativeUpdateChecker {
 
     private let host: NativeUpdateHost
     private let transport: NativeUpdateTransport
-    /// The wall clock, for the times events record; deadlines use the
-    /// monotonic clock.
+    /// The wall clock, for the times events record.
     private let now: () -> Date
     private let gate = NativeUpdateGate()
     private let committedTargetLock = NSLock()
@@ -871,96 +866,12 @@ final class NativeUpdateChecker {
     /// The update the app should apply, or nil. A failed check queues
     /// `onUpdateError` and throws. Waits for other native update work
     /// without a deadline.
-    func checkForUpdate(_ options: HotUpdaterCheckOptions) async throws -> HotUpdaterUpdate? {
-        guard case .acquired = await gate.enter(timeout: nil) else {
+    func checkForUpdate(_ request: NativeCheckRequest) async throws -> HotUpdaterUpdate? {
+        guard case .acquired = await gate.enter() else {
             throw CancellationError()
         }
         defer { gate.release() }
-        return try await check(options, deadline: nil)
-    }
-
-    /// Checks and stages an update within one deadline, `timeout` seconds from
-    /// now, that covers waiting for other native update work, the catalog
-    /// request, and a required update's download. The deadline and
-    /// cancellation end the wait, never the download. A download already
-    /// running is joined instead of checking again. Never throws.
-    func prepare(
-        _ options: HotUpdaterCheckOptions,
-        timeout: TimeInterval,
-        onProgress: ((Double) -> Void)? = nil
-    ) async -> HotUpdaterPrepareResult {
-        // An infinite timeout would end every wait at once: waits sleep for
-        // a finite number of nanoseconds.
-        guard timeout.isFinite, timeout > 0 else {
-            return HotUpdaterPrepareResult(
-                status: .failed,
-                error: NativeUpdateCheckError.hotUpdater("prepare timeout must be a finite number greater than 0")
-            )
-        }
-        let deadline = NativeUpdateDeadline(after: timeout)
-
-        // A staging from other options is waited for, then this request is checked.
-        let requestKey = Self.requestKey(options, cohort: normalizeCohortValue(host.cohort()))
-        var failedStaging: NativeUpdateStaging?
-        entering: while true {
-            switch await gate.enter(
-                timeout: remaining(until: deadline),
-                joins: { $0 !== failedStaging && $0.update.requestKey == requestKey }
-            ) {
-            case .joined(let staging):
-                let joined = await finishPrepare(staging, deadline: deadline, onProgress: onProgress)
-                // The staging may have failed on its own caller's shorter
-                // timeout; this call checks again within its own deadline.
-                if joined.status == .failed, remaining(until: deadline) > 0 {
-                    failedStaging = staging
-                    continue entering
-                }
-                return joined
-            case .stopped:
-                let error: Error = Task.isCancelled
-                    ? CancellationError()
-                    : NativeUpdateCheckError.hotUpdater("Timed out waiting for another update check")
-                if !Task.isCancelled {
-                    // As the check it never ran would report its own timeout.
-                    reportUpdateError(
-                        URLError(.timedOut),
-                        stage: "check",
-                        resource: "catalog",
-                        scope: ErrorScope(
-                            channel: options.channel.flatMap { $0.isEmpty ? nil : $0 } ?? host.channel(),
-                            bundleId: resolveBundleId(host.bundleId()),
-                            updateStrategy: options.updateStrategy,
-                            targetBundleId: nil,
-                            targetReleaseId: nil
-                        ),
-                        // The waiting prepare's cohort, not the one the check
-                        // holding the gate captured.
-                        cohort: normalizeCohortValue(host.cohort())
-                    )
-                }
-                NSLog("[HotUpdater] prepare: \(error.localizedDescription)")
-                return HotUpdaterPrepareResult(status: .failed, error: error)
-            case .acquired:
-                break entering
-            }
-        }
-
-        let update: HotUpdaterUpdate?
-        do {
-            update = try await check(options, deadline: deadline)
-        } catch {
-            gate.release()
-            NSLog("[HotUpdater] Update check failed: \(error.localizedDescription)")
-            return HotUpdaterPrepareResult(status: .failed, error: error)
-        }
-        guard let update else {
-            gate.release()
-            return HotUpdaterPrepareResult(status: .upToDate)
-        }
-        // The deadline ends the wait, not the staging: its requests keep their
-        // own timeouts after prepare returns, as on Android.
-        let staging = startStaging(update, deadline: nil)
-        return await finishPrepare(staging, deadline: deadline, onProgress: onProgress)
+        return try await check(request)
     }
 
     /// Stages `update`, joins its staging already running, or returns true at
@@ -971,7 +882,7 @@ final class NativeUpdateChecker {
             return true
         }
         let staging: NativeUpdateStaging
-        switch await gate.enter(timeout: nil, joins: { $0.update.targetKey == update.targetKey }) {
+        switch await gate.enter(joins: { $0.update.targetKey == update.targetKey }) {
         case .joined(let running):
             staging = running
         case .stopped:
@@ -988,11 +899,11 @@ final class NativeUpdateChecker {
                 update.markStaged()
                 return true
             }
-            staging = startStaging(update, deadline: nil)
+            staging = startStaging(update)
         }
         let listener = staging.progress.add(onProgress)
         defer { staging.progress.remove(listener, afterPending: staging.isFinished) }
-        switch await wait(for: staging, until: nil) {
+        switch await wait(for: staging) {
         case .finished(let result):
             let committed = try result.get()
             // A joined staging of the same target staged this update too.
@@ -1019,7 +930,7 @@ final class NativeUpdateChecker {
     /// Returns nil when the wait is cancelled.
     @discardableResult
     func whenIdle<T>(_ body: () async -> T) async -> T? {
-        guard case .acquired = await gate.enter(timeout: nil) else {
+        guard case .acquired = await gate.enter() else {
             return nil
         }
         defer { gate.release() }
@@ -1067,68 +978,15 @@ final class NativeUpdateChecker {
         }
     }
 
-    private func finishPrepare(
-        _ staging: NativeUpdateStaging,
-        deadline: NativeUpdateDeadline,
-        onProgress: ((Double) -> Void)?
-    ) async -> HotUpdaterPrepareResult {
-        // The listener ends with this call; the staging may go on.
-        let listener = staging.progress.add(onProgress)
-        defer { staging.progress.remove(listener, afterPending: staging.isFinished) }
-        let update = staging.update
-        // Recording the selection of the bundle this start already runs, such
-        // as on the first start after an update, leaves nothing to apply.
-        if update.runsCurrentBundle {
-            switch await wait(for: staging, until: deadline) {
-            case .finished(.success(false)):
-                return HotUpdaterPrepareResult(
-                    status: .failed,
-                    update: update,
-                    error: NativeUpdateCheckError.staleReleaseCatalog
-                )
-            case .finished(.failure(let error)):
-                return HotUpdaterPrepareResult(status: .failed, update: update, error: error)
-            case .finished(.success(true)), .stopped:
-                return HotUpdaterPrepareResult(status: .upToDate)
-            }
-        }
-        // An update that is not required downloads in the background.
-        guard update.shouldForceUpdate else {
-            return HotUpdaterPrepareResult(status: .pending, update: update)
-        }
-        switch await wait(for: staging, until: deadline) {
-        case .stopped:
-            NSLog("[HotUpdater] prepare stopped waiting; the update keeps downloading")
-            return HotUpdaterPrepareResult(status: .pending, update: update)
-        case .finished(.success(true)):
-            // A bundle staged after React Native read the bundle waits for the
-            // next start.
-            return HotUpdaterPrepareResult(status: host.isLaunchPrepared() ? .pending : .ready, update: update)
-        case .finished(.success(false)):
-            return HotUpdaterPrepareResult(
-                status: .failed,
-                update: update,
-                error: NativeUpdateCheckError.staleReleaseCatalog
-            )
-        case .finished(.failure(let error)):
-            NSLog("[HotUpdater] Update failed: \(error.localizedDescription)")
-            return HotUpdaterPrepareResult(status: .failed, update: update, error: error)
-        }
-    }
-
-    private func remaining(until deadline: NativeUpdateDeadline) -> TimeInterval {
-        deadline.remaining
-    }
-
     /// Hands the gate the caller holds to a staging of `update`, published
     /// before it starts, which releases the gate when it finishes.
-    private func startStaging(_ update: HotUpdaterUpdate, deadline: NativeUpdateDeadline?) -> NativeUpdateStaging {
+    private func startStaging(_ update: HotUpdaterUpdate) -> NativeUpdateStaging {
         let staging = NativeUpdateStaging(update: update)
         gate.publish(staging)
         Task { [self] in
             let result: Result<Bool, Error>
             do {
-                result = .success(try await update.install(deadline, staging.progress.report))
+                result = .success(try await update.install(staging.progress.report))
             } catch {
                 result = .failure(error)
             }
@@ -1142,18 +1000,11 @@ final class NativeUpdateChecker {
         return staging
     }
 
-    /// Waits for a staging until `deadline` or cancellation, which leave the
-    /// staging running.
-    private func wait(for staging: NativeUpdateStaging, until deadline: NativeUpdateDeadline?) async -> StagingWait {
+    /// Waits for a staging until it finishes or the caller is cancelled,
+    /// which leaves the staging running.
+    private func wait(for staging: NativeUpdateStaging) async -> StagingWait {
         let race = StagingWaitRace()
         staging.onFinish { race.finish(.finished($0)) }
-        if let deadline {
-            let timeout = remaining(until: deadline)
-            Task {
-                try? await Task.sleep(nanoseconds: nanoseconds(timeout))
-                race.finish(.stopped)
-            }
-        }
         return await withTaskCancellationHandler {
             await race.wait()
         } onCancel: {
@@ -1163,7 +1014,7 @@ final class NativeUpdateChecker {
 
     // MARK: checkForUpdate
 
-    private func check(_ options: HotUpdaterCheckOptions, deadline: NativeUpdateDeadline?) async throws -> HotUpdaterUpdate? {
+    private func check(_ options: NativeCheckRequest) async throws -> HotUpdaterUpdate? {
         let currentAppVersion = host.appVersion
         let currentBundleId = resolveBundleId(host.bundleId())
         let minimumReleaseId = host.minBundleId
@@ -1194,14 +1045,12 @@ final class NativeUpdateChecker {
             // Invalid options fail the check as a failed request does in
             // JavaScript, so they are reported too.
             let baseURL = try Self.validatedBaseURL(options.baseURL)
-            // Each request's timeout, which also bounds prepare's catalog request.
             guard options.requestTimeout.isFinite, options.requestTimeout > 0 else {
                 throw NativeUpdateCheckError.hotUpdater("requestTimeout must be a positive number of seconds")
             }
             update = try await checkReleaseCatalog(
                 options: options,
                 baseURL: baseURL,
-                deadline: deadline,
                 currentAppVersion: currentAppVersion,
                 currentBundleId: currentBundleId,
                 minimumReleaseId: minimumReleaseId,
@@ -1235,9 +1084,8 @@ final class NativeUpdateChecker {
     }
 
     private func checkReleaseCatalog(
-        options: HotUpdaterCheckOptions,
+        options: NativeCheckRequest,
         baseURL: String,
-        deadline: NativeUpdateDeadline?,
         currentAppVersion: String,
         currentBundleId: String,
         minimumReleaseId: String,
@@ -1271,8 +1119,7 @@ final class NativeUpdateChecker {
             baseURL: baseURL,
             url: catalogURL,
             expectedScope: expectedScope,
-            options: options,
-            deadline: deadline
+            options: options
         ) else {
             return nil
         }
@@ -1395,7 +1242,7 @@ final class NativeUpdateChecker {
             targetReleaseId: desired.releaseId
         )
 
-        let installSelection = { [self] (deadline: NativeUpdateDeadline?, progress: @escaping (Double) -> Void) async throws -> Bool in
+        let installSelection = { [self] (progress: @escaping (Double) -> Void) async throws -> Bool in
             requestChannel = targetChannel
             requestCohort = cohort
             guard host.isReleaseSelectionCurrent(guardParams) else {
@@ -1427,8 +1274,7 @@ final class NativeUpdateChecker {
                 baseURL: baseURL,
                 currentBundleId: currentBundleId,
                 targetBundleId: desired.bundleId,
-                options: options,
-                deadline: deadline
+                options: options
             )
             guard host.isReleaseSelectionCurrent(guardParams) else {
                 throw NativeUpdateCheckError.staleReleaseCatalog
@@ -1460,9 +1306,9 @@ final class NativeUpdateChecker {
             }
             return true
         }
-        let updateBundleForSelection = { [self] (deadline: NativeUpdateDeadline?, progress: @escaping (Double) -> Void) async throws -> Bool in
+        let updateBundleForSelection = { [self] (progress: @escaping (Double) -> Void) async throws -> Bool in
             do {
-                return try await installSelection(deadline, progress)
+                return try await installSelection(progress)
             } catch {
                 reportUpdateError(error, stage: "download", resource: "artifact", scope: errorScope)
                 throw error
@@ -1501,7 +1347,6 @@ final class NativeUpdateChecker {
                 desired.kind.rawValue, desired.bundleId, desired.releaseId ?? NSNull(), targetChannel,
                 catalogId, catalog.generation, catalog.catalogHash, selectionContextHash,
             ]),
-            requestKey: Self.requestKey(options, cohort: cohort),
             checker: self,
             install: updateBundleForSelection,
             isSelectionCurrent: { [host] in host.isReleaseSelectionCurrent(guardParams) }
@@ -1509,21 +1354,6 @@ final class NativeUpdateChecker {
     }
 
     // MARK: State
-
-    /// What a check reads: the server, the strategy, the channel it asks for,
-    /// the cohort it selects for, and the headers, which can name the
-    /// credentials or tenant.
-    private static func requestKey(_ options: HotUpdaterCheckOptions, cohort: String) -> String {
-        var baseURL = options.baseURL
-        while baseURL.hasSuffix("/") { baseURL.removeLast() }
-        // The headers the transport sends, so two options that send the same
-        // headers share a key, as the catalog cache partition does.
-        let headers = normalizedHeaders(options.requestHeaders)
-            .sorted { $0.key < $1.key }
-            .map { [$0.key, $0.value] }
-        // JSON, so no field can spell another, such as a channel with a newline.
-        return jsonKey([baseURL, options.updateStrategy.name, options.channel ?? "", cohort, headers])
-    }
 
     private static func jsonKey(_ fields: [Any]) -> String {
         let data = (try? JSONSerialization.data(withJSONObject: fields)) ?? Data()
@@ -1610,7 +1440,7 @@ final class NativeUpdateChecker {
     // MARK: HTTP
 
     /// `baseURL` without trailing slashes; it must be an absolute HTTP(S) URL.
-    private static func validatedBaseURL(_ baseURL: String) throws -> String {
+    static func validatedBaseURL(_ baseURL: String) throws -> String {
         var value = baseURL
         while value.hasSuffix("/") {
             value.removeLast()
@@ -1640,27 +1470,18 @@ final class NativeUpdateChecker {
         return normalized
     }
 
-    /// Requests `url` with `requestTimeout`, cut to what is left before `deadline`.
+    /// Requests `url` with the check's `requestTimeout`.
     private func get(
         _ url: String,
         resource: String,
         headers: [String: String],
-        options: HotUpdaterCheckOptions,
-        deadline: NativeUpdateDeadline?
+        options: NativeCheckRequest
     ) async throws -> NativeUpdateResponse {
         guard let requestURL = URL(string: url) else {
             throw URLError(.badURL)
         }
-        var timeout = options.requestTimeout
-        if let deadline {
-            let remaining = deadline.remaining
-            guard remaining > 0 else {
-                throw URLError(.timedOut)
-            }
-            timeout = min(timeout, remaining)
-        }
         do {
-            let response = try await transport.get(requestURL, headers: headers, timeout: timeout)
+            let response = try await transport.get(requestURL, headers: headers, timeout: options.requestTimeout)
             queueHttpResponse(requestURL, resource: resource, response)
             return response
         } catch let error as NativeUpdateResponseBodyError {
@@ -1703,8 +1524,7 @@ final class NativeUpdateChecker {
         baseURL: String,
         currentBundleId: String,
         targetBundleId: String,
-        options: HotUpdaterCheckOptions,
-        deadline: NativeUpdateDeadline?
+        options: NativeCheckRequest
     ) async throws -> Artifact {
         var headers = Self.normalizedHeaders(options.requestHeaders)
         if headers["accept"] == nil {
@@ -1714,8 +1534,7 @@ final class NativeUpdateChecker {
             "\(baseURL)/artifacts/v1/\(Self.encodeURIComponent(targetBundleId))/from/\(Self.encodeURIComponent(currentBundleId))",
             resource: "artifact",
             headers: headers,
-            options: options,
-            deadline: deadline
+            options: options
         )
         guard response.status == 200 else {
             throw NativeUpdateCheckError.http(status: response.status)
@@ -1835,13 +1654,12 @@ final class NativeUpdateChecker {
     private func fetchCatalogResponse(
         url: String,
         etag: String?,
-        options: HotUpdaterCheckOptions,
-        deadline: NativeUpdateDeadline?
+        options: NativeCheckRequest
     ) async throws -> NativeUpdateResponse {
         var headers = Self.normalizedHeaders(options.requestHeaders)
         headers["accept"] = "application/json"
         headers["if-none-match"] = etag
-        return try await get(url, resource: "catalog", headers: headers, options: options, deadline: deadline)
+        return try await get(url, resource: "catalog", headers: headers, options: options)
     }
 
     /// The scope's catalog, or nil when the server answers that the scope has
@@ -1850,18 +1668,17 @@ final class NativeUpdateChecker {
         baseURL: String,
         url: String,
         expectedScope: ReleaseCatalogScope,
-        options: HotUpdaterCheckOptions,
-        deadline: NativeUpdateDeadline?
+        options: NativeCheckRequest
     ) async throws -> ReleaseCatalog? {
         let partition = Self.catalogCachePartition(baseURL: baseURL, url: url, headers: options.requestHeaders)
         let cached = readValidatedCache(partition: partition, expectedScope: expectedScope)
-        let response = try await fetchCatalogResponse(url: url, etag: cached?.etag, options: options, deadline: deadline)
+        let response = try await fetchCatalogResponse(url: url, etag: cached?.etag, options: options)
 
         if response.status == 304 {
             if let cached {
                 return cached.catalog
             }
-            let repairResponse = try await fetchCatalogResponse(url: url, etag: nil, options: options, deadline: deadline)
+            let repairResponse = try await fetchCatalogResponse(url: url, etag: nil, options: options)
             return try consumeCatalogResponse(repairResponse, expectedScope: expectedScope, partition: partition)
         }
         return try consumeCatalogResponse(response, expectedScope: expectedScope, partition: partition)
