@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "engines": {
     "node": ">=20.19.0"
   },
@@ -77,12 +77,14 @@
     "@expo/fingerprint": "^0.15.4",
     "@google-cloud/kms": "6.0.0",
     "@hot-updater/aws": "workspace:*",
+    "@hot-updater/azure": "workspace:*",
     "@hot-updater/cloudflare": "workspace:*",
     "@hot-updater/firebase": "workspace:*",
     "@hot-updater/mock": "workspace:*",
     "@hot-updater/server": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "@hot-updater/test-utils": "workspace:*",
+    "@hot-updater/vercel": "workspace:*",
     "@types/connect": "^3.4.38",
     "@types/node": "catalog:",
     "@types/plist": "^3.0.5",
@@ -106,9 +108,11 @@
     "@expo/fingerprint": "*",
     "@google-cloud/kms": "^6.0.0",
     "@hot-updater/aws": "workspace:^",
+    "@hot-updater/azure": "workspace:^",
     "@hot-updater/cloudflare": "workspace:^",
     "@hot-updater/firebase": "workspace:^",
-    "@hot-updater/supabase": "workspace:^"
+    "@hot-updater/supabase": "workspace:^",
+    "@hot-updater/vercel": "workspace:^"
   },
   "peerDependenciesMeta": {
     "@aws-sdk/client-kms": {
@@ -130,6 +134,12 @@
       "optional": true
     },
     "@hot-updater/firebase": {
+      "optional": true
+    },
+    "@hot-updater/vercel": {
+      "optional": true
+    },
+    "@hot-updater/azure": {
       "optional": true
     },
     "@hot-updater/server": {

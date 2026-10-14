@@ -171,6 +171,47 @@ describe("loadConfig", () => {
     ]);
   });
 
+  it("narrows the discovered native config files to the ones the config lists", async () => {
+    for (const file of [
+      "ios/App/Info.plist",
+      "ios/AppTests/Info.plist",
+      "ios/NotificationService/Info.plist",
+    ]) {
+      await writeProjectFile(projectRoot, file, "<plist />");
+    }
+    for (const file of [
+      "android/app/src/debug/AndroidManifest.xml",
+      "android/app/src/main/AndroidManifest.xml",
+    ]) {
+      await writeProjectFile(projectRoot, file, "<manifest />");
+    }
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      [
+        "export default {",
+        "  platform: {",
+        "    ios: { infoPlistPaths: ['ios/NotificationService/Info.plist'] },",
+        "    android: {",
+        "      androidManifestPaths: ['android/app/src/main/AndroidManifest.xml'],",
+        "    },",
+        "  },",
+        "};",
+        "",
+      ].join("\n"),
+    );
+
+    const { loadConfig } = await import("./loadConfig");
+    const config = await loadConfig(null);
+
+    expect(config.platform.ios.infoPlistPaths).toEqual([
+      "ios/NotificationService/Info.plist",
+    ]);
+    expect(config.platform.android.androidManifestPaths).toEqual([
+      "android/app/src/main/AndroidManifest.xml",
+    ]);
+  });
+
   it("loads the file once for several platforms, so a config object gives them the same adapters", async () => {
     await writeProjectFile(
       projectRoot,

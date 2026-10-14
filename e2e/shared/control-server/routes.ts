@@ -50,6 +50,7 @@ import {
   startResetRemoteBundlesJob,
   startSeedCrashedBundleFrontierJob,
   startWaitForAndroidRestartJob,
+  startWaitForArchiveResumeJob,
   startWaitForMetadataJob,
 } from "./controller.ts";
 import { handlePatchE2eScreenState } from "./screen-state.ts";
@@ -153,7 +154,7 @@ app.all("/e2e/proxy-url/:targetId", async (c) => {
 app.post("/e2e/proxy-control", async (c) => {
   const payload = (await c.req.json()) as {
     archiveAvailable?: boolean;
-    archiveFailureMode?: "corrupt" | "not-found" | null;
+    archiveFailureMode?: "corrupt" | "interrupt" | "not-found" | null;
     archiveFailures?: number;
     artifactDelayMs?: number;
     artifactFailures?: number;
@@ -197,10 +198,14 @@ app.post("/e2e/proxy-control", async (c) => {
     payload.archiveFailureMode !== undefined &&
     payload.archiveFailureMode !== null &&
     payload.archiveFailureMode !== "corrupt" &&
+    payload.archiveFailureMode !== "interrupt" &&
     payload.archiveFailureMode !== "not-found"
   ) {
     return c.json(
-      { error: "archiveFailureMode must be corrupt, not-found, or null" },
+      {
+        error:
+          "archiveFailureMode must be corrupt, interrupt, not-found, or null",
+      },
       400,
     );
   }
@@ -249,7 +254,9 @@ app.post("/e2e/assert-bundle-artifact-selection", async (c) => {
 
 app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
   const payload = (await c.req.json()) as {
+    archiveInterruptions?: number;
     archiveRequests?: number;
+    archiveResumes?: number;
     currentBundleId?: string;
     fileRequests?: number;
     maxRequestsPerAsset?: number;
@@ -275,7 +282,11 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
         payload.maxRequestsPerAsset < 1)) ||
     (payload.minNetworkAssets !== undefined &&
       (!Number.isSafeInteger(payload.minNetworkAssets) ||
-        payload.minNetworkAssets < 0))
+        payload.minNetworkAssets < 0)) ||
+    [payload.archiveInterruptions, payload.archiveResumes].some(
+      (value) =>
+        value !== undefined && (!Number.isSafeInteger(value) || value < 0),
+    )
   ) {
     return c.json(
       {
@@ -287,7 +298,9 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
   }
   return c.json(
     handleAssertBundleArtifactTransfers({
+      archiveInterruptions: payload.archiveInterruptions,
       archiveRequests: payload.archiveRequests!,
+      archiveResumes: payload.archiveResumes,
       currentBundleId: payload.currentBundleId,
       fileRequests: payload.fileRequests!,
       maxRequestsPerAsset: payload.maxRequestsPerAsset,
@@ -468,6 +481,10 @@ app.post("/e2e/jobs/patch-release", async (c) => {
       targetCohorts: payload.targetCohorts,
     }),
   });
+});
+
+app.post("/e2e/jobs/wait-for-archive-resume", (c) => {
+  return c.json({ jobId: startWaitForArchiveResumeJob() });
 });
 
 app.post("/e2e/jobs/wait-for-metadata", async (c) => {

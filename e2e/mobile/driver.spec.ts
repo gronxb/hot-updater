@@ -97,6 +97,9 @@ function fixture(platform: "ios" | "android" = "ios") {
     closeApp: vi.fn(async () => {
       calls.push("close");
     }),
+    home: vi.fn(async () => {
+      calls.push("home");
+    }),
     openApp: vi.fn(async () => {
       calls.push("open");
     }),
