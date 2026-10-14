@@ -1613,6 +1613,13 @@ class BundleFileStorageService(
             if (metadata?.verificationPending == true && metadata.launchInProgress) {
                 metadata.stagingBundleId?.let { rollbackPendingBundle(it, unfinishedLaunch = true) }
             }
+            // A pending bundle whose file is gone rolls back, as selectLaunch does.
+            val settled = loadMetadataOrNull()
+            settled?.stagingBundleId?.let { stagingBundleId ->
+                if (settled.verificationPending && getBundleUrlForId(stagingBundleId) == null) {
+                    rollbackPendingBundle(stagingBundleId)
+                }
+            }
         }
     }
 

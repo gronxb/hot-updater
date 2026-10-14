@@ -753,6 +753,27 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `a 200 whose body breaks is reported before the check fails`() =
+        runBlocking {
+            val state = FakeState()
+            val transport =
+                FakeTransport {
+                    throw UpdateResponseBodyException(
+                        UpdateCheckResponse(200, "OK", emptyMap(), null),
+                        java.io.IOException("connection reset"),
+                    )
+                }
+            val checker = NativeUpdateChecker(state, transport)
+
+            assertThrows(java.io.IOException::class.java) { runBlocking { checker.checkForUpdate(OPTIONS) } }
+
+            val response = state.httpResponses().single()
+            assertEquals(200, response.getInt("status"))
+            assertTrue(response.isNull("body"))
+            assertEquals("onUpdateError", state.events().single().getString("name"))
+        }
+
+    @Test
     fun `a reset waits for a background download`() =
         runBlocking {
             val gate = CompletableDeferred<Unit>()
