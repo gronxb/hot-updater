@@ -590,6 +590,12 @@ RCT_EXPORT_MODULE();
     if (params.selection()) {
         paramDict[@"selection"] = params.selection();
     }
+    if (params.filesUrl()) {
+        paramDict[@"filesUrl"] = params.filesUrl();
+    }
+    if (params.requestHeaders()) {
+        paramDict[@"requestHeaders"] = params.requestHeaders();
+    }
 
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     [impl updateBundle:paramDict resolver:resolve rejecter:reject];
