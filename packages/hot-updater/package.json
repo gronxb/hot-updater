@@ -1,7 +1,7 @@
 {
   "name": "hot-updater",
   "type": "module",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "engines": {
     "node": ">=20.19.0"
   },
@@ -173,7 +173,6 @@
     "es-toolkit": "1.47.0",
     "execa": "9.5.2",
     "fast-glob": "3.3.3",
-    "fast-xml-builder": "1.2.0",
     "fast-xml-parser": "5.7.2",
     "fastq": "1.20.1",
     "figures": "6.1.0",
@@ -225,7 +224,6 @@
     "verkit": "0.4.0",
     "which": "2.0.2",
     "wsl-utils": "0.1.0",
-    "xml-naming": "0.1.0",
     "xmlbuilder": [
       "14.0.0",
       "15.1.1"
