@@ -635,6 +635,30 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `an update that joined a staging is staged`() =
+        runBlocking {
+            val gate = CompletableDeferred<Unit>()
+            val state = FakeState().apply { stageGate = gate }
+            val transport = FakeTransport(routes(minorCatalog()))
+            val checker = NativeUpdateChecker(state, transport)
+            val first = checker.checkForUpdate(OPTIONS)!!
+            val second = checker.checkForUpdate(OPTIONS)!!
+            assertEquals(first.targetKey, second.targetKey)
+
+            val staging = async(Dispatchers.Default) { first.updateBundle() }
+            state.stageEntered.await()
+            val joined = async(start = CoroutineStart.UNDISPATCHED) { second.updateBundle() }
+            gate.complete(Unit)
+            assertTrue(withTimeout(5_000) { staging.await() })
+            assertTrue(withTimeout(5_000) { joined.await() })
+            val requests = transport.requests.size
+
+            assertTrue(second.updateBundle())
+            assertEquals(1, state.stageCount.get())
+            assertEquals(requests, transport.requests.size)
+        }
+
+    @Test
     fun `a reset waits for a background download`() =
         runBlocking {
             val gate = CompletableDeferred<Unit>()
