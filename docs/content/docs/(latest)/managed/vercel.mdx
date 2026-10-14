@@ -45,8 +45,7 @@ and build configuration.
 
 ## Step 2: Configure Vercel
 
-Before reusing a populated database, complete the [schema
-checks](#schema-validation). Then choose how to set up Vercel:
+Choose how to set up Vercel:
 
 <Tabs items={["AI agent", "Terminal"]}>
   <Tab value="AI agent">
@@ -214,29 +213,6 @@ export default defineConfig({
   updateStrategy: "appVersion", // or "fingerprint"
 });
 ```
-
-### Schema validation
-
-Init connects to the database and checks whether `bundles` and
-`release_catalogs` exist. It rejects a database with `bundles` but no
-`release_catalogs`, a Hot Updater v0 database. Otherwise it runs the server's
-migrator, which creates the missing tables of core, Insights, API keys, and
-Remote Config and writes their schema settings to
-`private_hot_updater_settings`. It does not validate every column or index of
-tables that already exist.
-
-Before reusing a populated database, inspect its tables and settings with a
-read-only query:
-
-```sql
-SELECT table_name FROM information_schema.tables
- WHERE table_schema = current_schema() ORDER BY table_name;
-SELECT key, value FROM private_hot_updater_settings;
-```
-
-Reuse only a database whose `schema.engine` is `1`. If its schema is
-incompatible, use a new database and preserve the existing one. Do not edit
-schema settings to bypass compatibility checks.
 
 ### Production domain and protection
 
