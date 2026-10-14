@@ -73,15 +73,15 @@ class HttpArtifactFileResolver(
                     // As JSON.parse reads it, which org.json's parser does not.
                     val files =
                         (StrictJson.parse(body ?: "") as? JSONObject)?.opt("files") as? JSONObject
-                            ?: throw IllegalStateException("Artifact files response has no files")
+                            ?: throw InvalidUpdateResponseException("Artifact files response has no files")
                     paths.associateWith { path ->
                         val file =
                             files.opt(path) as? JSONObject
-                                ?: throw IllegalStateException("Artifact files response omits $path")
+                                ?: throw InvalidUpdateResponseException("Artifact files response omits $path")
                         ResolvedArtifactFile(
                             url =
                                 file.opt("url") as? String
-                                    ?: throw IllegalStateException("Artifact files response has no URL for $path"),
+                                    ?: throw InvalidUpdateResponseException("Artifact files response has no URL for $path"),
                             compression = file.opt("compression") as? String,
                         )
                     }
