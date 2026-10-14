@@ -34,13 +34,20 @@ final class HTTPArtifactFileResolver: ArtifactFileResolver {
     private let filesUrl: URL
     private let headers: [String: String]
     private let timeout: TimeInterval
-    private let session: URLSession
+    private let protocolClasses: [AnyClass]?
 
-    init(filesUrl: URL, headers: [String: String], timeout: TimeInterval = defaultTimeout, session: URLSession = .shared) {
+    /// `protocolClasses` replaces the session's URL protocols; tests stub
+    /// the network with it.
+    init(
+        filesUrl: URL,
+        headers: [String: String],
+        timeout: TimeInterval = defaultTimeout,
+        protocolClasses: [AnyClass]? = nil
+    ) {
         self.filesUrl = filesUrl
         self.headers = headers
         self.timeout = timeout
-        self.session = session
+        self.protocolClasses = protocolClasses
     }
 
     func resolve(paths: [String]) throws -> [String: ResolvedArtifactFile] {
@@ -52,6 +59,18 @@ final class HTTPArtifactFileResolver: ArtifactFileResolver {
         }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["paths": paths])
+
+        // The resource timeout bounds the whole request, as Android's call
+        // timeout does; the request's own interval only bounds idle time.
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.urlCache = nil
+        configuration.timeoutIntervalForRequest = timeout
+        configuration.timeoutIntervalForResource = timeout
+        if let protocolClasses {
+            configuration.protocolClasses = protocolClasses
+        }
+        let session = URLSession(configuration: configuration)
+        defer { session.finishTasksAndInvalidate() }
 
         let finished = DispatchSemaphore(value: 0)
         var result: Result<Data, Error> = .failure(ArtifactFileResolverError.invalidResponse)
