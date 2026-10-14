@@ -52,6 +52,12 @@ export type UpdateCheckResult =
       readonly releaseId: string | null;
       /** The Release before the check; it differs after an adoption. */
       readonly previousReleaseId: string | null;
+      /**
+       * When the event happened, in epoch milliseconds, for an event native code
+       * recorded before this runtime started (`HotUpdater.prepare`). Absent when
+       * the event happens now.
+       */
+      readonly occurredAt?: number;
     }
   | {
       /** The check found a Release to install, adopt, or roll back to. */
