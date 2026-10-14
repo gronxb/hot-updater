@@ -62,15 +62,27 @@ internal class OkHttpUpdateCheckTransport(
             try {
                 response.body?.string()
             } catch (error: IOException) {
-                // A broken error body must not hide an HTTP error already received.
-                if (response.code == 200) throw error
+                // A broken error body must not hide an HTTP error already received;
+                // a 200 without its body fails, still reporting the response.
+                if (response.code == 200) throw UpdateResponseBodyException(responseOf(response, null), error)
                 null
             }
-        return UpdateCheckResponse(
-            status = response.code,
-            statusText = response.message,
-            headers = response.headers.associate { (name, value) -> name to value },
-            body = body,
-        )
+        return responseOf(response, body)
     }
+
+    private fun responseOf(
+        response: Response,
+        body: String?,
+    ) = UpdateCheckResponse(
+        status = response.code,
+        statusText = response.message,
+        headers = response.headers.associate { (name, value) -> name to value },
+        body = body,
+    )
 }
+
+/** A response whose body could not be read: the request fails, but [response] arrived. */
+internal class UpdateResponseBodyException(
+    val response: UpdateCheckResponse,
+    override val cause: IOException,
+) : IOException(cause.message, cause)

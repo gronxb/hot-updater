@@ -230,7 +230,14 @@ internal class NativeUpdateChecker(
     private val recordingTransport =
         object : UpdateCheckTransport {
             override suspend fun get(request: UpdateCheckRequest): UpdateCheckResponse =
-                transport.get(request).also { queueHttpResponse(request.url, it) }
+                try {
+                    transport.get(request).also { queueHttpResponse(request.url, it) }
+                } catch (error: UpdateResponseBodyException) {
+                    // The response arrived without its body: reported with a null body, as
+                    // fetchUpdateResponse.ts does, and the request fails as it did.
+                    queueHttpResponse(request.url, error.response)
+                    throw error.cause
+                }
         }
     private val catalogClient = ReleaseCatalogClient(state, recordingTransport)
 

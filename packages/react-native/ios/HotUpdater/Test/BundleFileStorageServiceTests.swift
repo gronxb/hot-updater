@@ -151,6 +151,29 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func settlingRollsBackAPendingBundleWhoseFileIsGone() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let stable = try createBundleDirectory(documentsDirectory: root, bundleId: "stable-bundle")
+        try writeBundle(in: stable, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stable, bundleId: "stable-bundle")
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "stable-bundle",
+            stagingBundleId: "missing-bundle",
+            verificationPending: true
+        ))
+        let service = makeStorageService(documentsDirectory: root)
+
+        service.settlePreviousLaunch { nil }
+
+        // The selection no longer names the missing bundle, so a check reads what the launch runs.
+        #expect(loadMetadata(documentsDirectory: root)?.stagingBundleId == "stable-bundle")
+        #expect(service.peekLaunchBundleId() == "stable-bundle")
+        #expect(service.getCrashHistory().contains("missing-bundle"))
+    }
+
+    @Test
     func peekLaunchBundleIdIsNilWithoutDownloadedBundles() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
