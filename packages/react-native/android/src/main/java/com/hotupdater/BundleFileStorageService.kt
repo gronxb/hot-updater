@@ -1854,9 +1854,14 @@ class BundleFileStorageService(
                 }
             for (path in paths) {
                 val file = files[path] ?: throw HotUpdaterException.invalidBundle()
-                try {
-                    URL(file.url)
-                } catch (error: java.net.MalformedURLException) {
+                val url =
+                    try {
+                        URL(file.url)
+                    } catch (error: java.net.MalformedURLException) {
+                        throw HotUpdaterException.invalidFileUrl(path, file.url, UpdateFailureResource.FILE)
+                    }
+                // java.net.URL also takes file: URLs and a hostless "https://"; a download needs neither.
+                if (url.protocol.lowercase() !in setOf("http", "https") || url.host.isNullOrEmpty()) {
                     throw HotUpdaterException.invalidFileUrl(path, file.url, UpdateFailureResource.FILE)
                 }
                 downloads[path] = downloads.getValue(path).copy(fileUrl = file.url, fileCompression = file.compression)

@@ -2165,6 +2165,16 @@ class BundleFileStorageService: BundleStorageService {
                 guard let file = files[path], let descriptor = downloads[path] else {
                     throw BundleStorageError.invalidBundle
                 }
+                // A download needs an absolute HTTP(S) URL with a host.
+                guard ["http", "https"].contains(file.url.scheme?.lowercased() ?? ""),
+                      file.url.host?.isEmpty == false else {
+                    throw UpdateFailureError(
+                        underlying: NSError(domain: "HotUpdater", code: 0, userInfo: [
+                            NSLocalizedDescriptionKey: "Invalid '\(path)' provided: \(file.url.absoluteString)"
+                        ]),
+                        failure: UpdateFailure.invalidResponse.with(resource: .file)
+                    )
+                }
                 downloads[path] = ChangedAssetDescriptor(
                     fileUrl: file.url,
                     fileHash: descriptor.fileHash,
