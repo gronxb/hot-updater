@@ -16,7 +16,15 @@ Pod::Spec.new do |s|
   s.source_files  = "ios/**/*.{h,m,mm,swift}"
   s.public_header_files = "ios/HotUpdater/Public/*.h"
   s.private_header_files = "ios/HotUpdater/Internal/*.h"
-  s.exclude_files = ["ios/HotUpdater/Package.swift", "ios/HotUpdater/Test/**/*.{swift,h,m,mm}"]
+  # ios/HotUpdater/Interface, ios/Plugins and HotUpdaterInterface.swift are
+  # for Swift Package Manager builds (Package.swift) only.
+  s.exclude_files = [
+    "ios/HotUpdater/Package.swift",
+    "ios/HotUpdater/Test/**/*.{swift,h,m,mm}",
+    "ios/HotUpdater/Interface/**/*",
+    "ios/HotUpdater/Internal/HotUpdaterInterface.swift",
+    "ios/Plugins/**/*"
+  ]
   s.libraries = "bz2"
 
   s.pod_target_xcconfig = {

@@ -1,15 +1,20 @@
 #!/bin/zsh
-# Writes this build's MIN_BUNDLE_ID into a header HotUpdaterMinBundleId.m
-# compiles. HotUpdater.podspec runs it before every compile of the pod.
+# Writes this build's MIN_BUNDLE_ID before every build of HotUpdater:
+# - CocoaPods: HotUpdater.podspec runs it as a script phase, which writes
+#   $(DERIVED_FILE_DIR)/HotUpdaterBuildMinBundleId.h for
+#   HotUpdaterMinBundleId.m.
+# - Swift Package Manager: Package.swift's build tool plugin runs it with
+#   `--swift <dir>`, which writes <dir>/HotUpdaterBuildMinBundleId.swift.
+# Both define HotUpdaterBuildMinBundleId(), which HotUpdater.mm returns in
+# Release.
 #
 # MIN_BUNDLE_ID is a UUIDv7 with zeroed random bits on the same epoch
 # millisecond clock as the bundle IDs `hot-updater deploy` issues, so a bundle
 # built after this native build sorts after it. The hot-updater CLI passes its
-# own value as the HOT_UPDATER_MIN_BUNDLE_ID build setting, which wins.
+# own value as HOT_UPDATER_MIN_BUNDLE_ID, which wins.
 set -eu
 zmodload zsh/datetime
 
-output="${DERIVED_FILE_DIR}/HotUpdaterBuildMinBundleId.h"
 min_bundle_id="${HOT_UPDATER_MIN_BUNDLE_ID:-}"
 
 if [[ -n "$min_bundle_id" ]]; then
@@ -24,5 +29,18 @@ else
     $(( timestamp_ms >> 16 )) $(( timestamp_ms & 0xffff )))
 fi
 
-mkdir -p "${output:h}"
-printf '#define HOT_UPDATER_BUILD_MIN_BUNDLE_ID "%s"\n' "$min_bundle_id" > "$output"
+if [[ "${1:-}" == "--swift" ]]; then
+  output="${2:?usage: generate-min-bundle-id.zsh --swift <output dir>}/HotUpdaterBuildMinBundleId.swift"
+  mkdir -p "${output:h}"
+  printf '%s\n' \
+    'import Foundation' \
+    '' \
+    '@_cdecl("HotUpdaterBuildMinBundleId")' \
+    'public func hotUpdaterBuildMinBundleId() -> NSString {' \
+    "    \"$min_bundle_id\"" \
+    '}' > "$output"
+else
+  output="${DERIVED_FILE_DIR}/HotUpdaterBuildMinBundleId.h"
+  mkdir -p "${output:h}"
+  printf '#define HOT_UPDATER_BUILD_MIN_BUNDLE_ID "%s"\n' "$min_bundle_id" > "$output"
+fi

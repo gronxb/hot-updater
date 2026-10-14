@@ -9,10 +9,33 @@
 #include <signal.h>
 #include <unistd.h>
 
+#if defined(SWIFT_PACKAGE)
+// Swift Package Manager: the Swift classes, through the protocols they conform
+// to (see HotUpdaterInterface.h).
+#import "HotUpdaterInterface.h"
+typedef NSObject<HotUpdaterImplInterface> HotUpdaterImpl;
+typedef NSObject<HotUpdaterConfigInterface> HotUpdaterConfig;
+#else
 #if __has_include("HotUpdater/HotUpdater-Swift.h")
 #import "HotUpdater/HotUpdater-Swift.h"
 #else
 #import "HotUpdater-Swift.h"
+#endif
+
+static HotUpdaterImpl *HotUpdaterMakeImpl(void)
+{
+  return [[HotUpdaterImpl alloc] init];
+}
+
+static NSString *HotUpdaterAppVersion(void)
+{
+  return [HotUpdaterImpl appVersion];
+}
+
+static HotUpdaterConfig *HotUpdaterSharedConfig(void)
+{
+  return [HotUpdaterConfig shared];
+}
 #endif
 
 @interface HotUpdater (InternalSharedImpl)
@@ -356,7 +379,7 @@ RCT_EXPORT_MODULE();
     static HotUpdaterImpl *_sharedImpl = nil;
     static dispatch_once_t onceToken;
     dispatch_once(&onceToken, ^{
-        _sharedImpl = [[HotUpdaterImpl alloc] init];
+        _sharedImpl = HotUpdaterMakeImpl();
     });
     return _sharedImpl;
 }
@@ -371,7 +394,7 @@ RCT_EXPORT_MODULE();
 - (NSDictionary *)_buildConstantsDictionary {
     return @{
         @"MIN_BUNDLE_ID": [self getMinBundleId] ?: [NSNull null],
-        @"APP_VERSION": [HotUpdaterImpl appVersion] ?: [NSNull null],
+        @"APP_VERSION": HotUpdaterAppVersion() ?: [NSNull null],
         @"CHANNEL": [[HotUpdater sharedImpl] getChannel] ?: [NSNull null],
         @"DEFAULT_CHANNEL": [[HotUpdater sharedImpl] getDefaultChannel] ?: [NSNull null],
         @"FINGERPRINT_HASH": [[HotUpdater sharedImpl] getFingerprintHash] ?: [NSNull null]
@@ -403,7 +426,7 @@ RCT_EXPORT_MODULE();
                            publicKey:(NSString *)publicKey
                              channel:(NSString *)channel
                         isolationKey:(NSString *)isolationKey {
-    HotUpdaterConfig *config = [HotUpdaterConfig shared];
+    HotUpdaterConfig *config = HotUpdaterSharedConfig();
     [config configureWithFingerprintHash:fingerprintHash publicKey:publicKey channel:channel isolationKey:isolationKey];
 }
 
@@ -629,7 +652,7 @@ RCT_EXPORT_MODULE();
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     return facebook::react::typedConstants<JS::NativeHotUpdater::Constants::Builder>({
         .MIN_BUNDLE_ID = [self getMinBundleId],
-        .APP_VERSION = [HotUpdaterImpl appVersion],
+        .APP_VERSION = HotUpdaterAppVersion(),
         .CHANNEL = [impl getChannel],
         .DEFAULT_CHANNEL = [impl getDefaultChannel],
         .FINGERPRINT_HASH = [impl getFingerprintHash],
