@@ -69,7 +69,7 @@ describe("proxy assertion HTTP completion", () => {
         observed: {
           artifactFailuresRemaining: 0,
           pathCardinality: 2,
-          requestCounts: { artifact: 2, catalog: 3, other: 0 },
+          requestCounts: { artifact: 2, catalog: 3, files: 0, other: 0 },
         },
       },
     });

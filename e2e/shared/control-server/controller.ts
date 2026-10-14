@@ -533,6 +533,7 @@ type ArchiveFailureMode = "corrupt" | "interrupt" | "not-found";
 const proxyRequestCounts = {
   artifact: 0,
   catalog: 0,
+  files: 0,
   other: 0,
 };
 const capturedArtifactSelections: CapturedArtifactSelection[] = [];
@@ -3498,6 +3499,10 @@ function captureArtifactFiles(encodedBundleId: string, payload: unknown) {
 
 function classifyProxiedUpdatePath(pathname: string) {
   if (pathname.includes("/release-catalogs/")) return "catalog" as const;
+  // Artifact protocol v2's files requests, which follow an artifact request.
+  if (/\/artifacts\/v2\/[^/]+\/files\/?$/.test(pathname)) {
+    return "files" as const;
+  }
   if (pathname.includes("/artifacts/")) return "artifact" as const;
   return "other" as const;
 }
@@ -3628,6 +3633,7 @@ export function handleConfigureProxy(input: {
   if (input.reset) {
     proxyRequestCounts.artifact = 0;
     proxyRequestCounts.catalog = 0;
+    proxyRequestCounts.files = 0;
     proxyRequestCounts.other = 0;
     proxyPathCounts.clear();
     capturedArtifactSelections.length = 0;
@@ -3995,7 +4001,10 @@ export async function handleProxyUpdateRequest(request: Request) {
               requestUrl.pathname,
             )
           : rewriteUpdateInfoAssetUrls(payload);
-      if (requestKind === "artifact" && response.ok) {
+      if (
+        (requestKind === "artifact" || requestKind === "files") &&
+        response.ok
+      ) {
         captureArtifactSelection(requestUrl.pathname, rewrittenPayload);
       }
       const rewrittenBody = JSON.stringify(rewrittenPayload);
