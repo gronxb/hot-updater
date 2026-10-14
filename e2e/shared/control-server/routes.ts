@@ -227,13 +227,13 @@ app.post("/e2e/assert-proxy", async (c) => {
 app.post("/e2e/assert-bundle-artifact-selection", async (c) => {
   const payload = (await c.req.json()) as {
     currentBundleId?: string;
-    selection?: "manifest-v1";
+    selection?: "manifest-v2";
     targetBundleId?: string;
   };
   if (
     !payload.currentBundleId ||
     !payload.targetBundleId ||
-    payload.selection !== "manifest-v1"
+    payload.selection !== "manifest-v2"
   ) {
     return c.json(
       {
@@ -259,6 +259,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     archiveResumes?: number;
     currentBundleId?: string;
     fileRequests?: number;
+    filesRequests?: number;
     maxRequestsPerAsset?: number;
     minNetworkAssets?: number;
     patchRequests?: number;
@@ -271,7 +272,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     payload.patchRequests,
   ];
   if (
-    !payload.currentBundleId ||
+    payload.currentBundleId === "" ||
     !payload.targetBundleId ||
     counts.some(
       (value) =>
@@ -283,7 +284,11 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     (payload.minNetworkAssets !== undefined &&
       (!Number.isSafeInteger(payload.minNetworkAssets) ||
         payload.minNetworkAssets < 0)) ||
-    [payload.archiveInterruptions, payload.archiveResumes].some(
+    [
+      payload.archiveInterruptions,
+      payload.archiveResumes,
+      payload.filesRequests,
+    ].some(
       (value) =>
         value !== undefined && (!Number.isSafeInteger(value) || value < 0),
     )
@@ -291,7 +296,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     return c.json(
       {
         error:
-          "bundle ids and non-negative archive, file, and patch request counts are required",
+          "a target bundle id and non-negative archive, file, and patch request counts are required",
       },
       400,
     );
@@ -303,6 +308,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
       archiveResumes: payload.archiveResumes,
       currentBundleId: payload.currentBundleId,
       fileRequests: payload.fileRequests!,
+      filesRequests: payload.filesRequests,
       maxRequestsPerAsset: payload.maxRequestsPerAsset,
       minNetworkAssets: payload.minNetworkAssets,
       patchRequests: payload.patchRequests!,
@@ -314,7 +320,11 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
 
 app.post("/e2e/jobs/deploy-bundle", async (c) => {
   const payload = (await c.req.json()) as {
-    bundleProfile?: "default" | "multiAssetReplacement" | "sizeAwareLargeDiff";
+    bundleProfile?:
+      | "assetHeavy"
+      | "default"
+      | "multiAssetReplacement"
+      | "sizeAwareLargeDiff";
     channel?: string;
     disabled?: boolean;
     diffBaseBundleId?: string;
@@ -350,13 +360,14 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   if (
     payload.bundleProfile !== undefined &&
     payload.bundleProfile !== "default" &&
+    payload.bundleProfile !== "assetHeavy" &&
     payload.bundleProfile !== "multiAssetReplacement" &&
     payload.bundleProfile !== "sizeAwareLargeDiff"
   ) {
     return c.json(
       {
         error:
-          "bundleProfile must be default, multiAssetReplacement, or sizeAwareLargeDiff",
+          "bundleProfile must be default, assetHeavy, multiAssetReplacement, or sizeAwareLargeDiff",
       },
       400,
     );

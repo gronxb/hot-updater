@@ -1,5 +1,12 @@
 # @hot-updater/plugin-remote-config
 
+## 1.0.6
+
+### Patch Changes
+
+- Updated dependencies [5702bf5]
+  - @hot-updater/protocol@1.0.6
+
 ## 1.0.5
 
 ### Patch Changes
