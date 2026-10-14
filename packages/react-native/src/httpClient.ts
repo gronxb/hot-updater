@@ -1,15 +1,19 @@
 import {
+  ARTIFACT_FILES_PROTOCOL_VERSION,
   ARTIFACT_PROTOCOL_VERSION,
   canonicalizeAppVersion,
   encodeChannelKey,
   resolveBaseURL,
+  type ArtifactAssetFile,
   type ArtifactInfo,
+  type ArtifactInfoV2,
+  type ChangedAssetPatch,
   type HotUpdaterBaseURL,
   type ReleaseCatalog,
   type UpdateHttpResponse,
 } from "@hot-updater/protocol";
 
-import { fetchJSON } from "./fetchJSON";
+import { fetchJSON, FetchJSONResponseError } from "./fetchJSON";
 import { fetchReleaseCatalogWithCache } from "./releaseCatalogCache";
 import { InvalidUpdateResponseError } from "./updateError";
 
@@ -30,12 +34,32 @@ export interface ArtifactRequest {
   readonly requestTimeout?: number;
 }
 
+/**
+ * How native downloads a Bundle. In artifact protocol v1, `assets` holds a
+ * URL for every file. In v2, it holds only the Hermes patch, and native asks
+ * `filesUrl` for the URLs of the files it downloads one by one.
+ */
+export interface ResolvedArtifact {
+  readonly manifestUrl: string;
+  readonly manifestFileHash: string;
+  readonly archiveUrl?: string;
+  readonly assets: Record<
+    string,
+    {
+      readonly file?: ArtifactAssetFile;
+      readonly fileHash?: string;
+      readonly patch?: ChangedAssetPatch | null;
+    }
+  >;
+  readonly filesUrl?: string;
+}
+
 export interface HotUpdaterHttpSession {
   /** Resolves to null when the server says the scope has no catalog, so no update. */
   fetchReleaseCatalog: (
     params: ReleaseCatalogRequest,
   ) => Promise<ReleaseCatalog | null>;
-  resolveArtifact: (params: ArtifactRequest) => Promise<ArtifactInfo>;
+  resolveArtifact: (params: ArtifactRequest) => Promise<ResolvedArtifact>;
 }
 
 export interface HotUpdaterHttpClient {
@@ -59,6 +83,7 @@ const requireArtifactUrl = (value: string): string => {
   return value;
 };
 
+// Legacy: artifact protocol v1: validates a server that predates v2; remove with the fallback.
 const requireArtifactUrls = (info: ArtifactInfo): ArtifactInfo => {
   requireArtifactUrl(info.manifestUrl);
   if (info.archiveUrl) requireArtifactUrl(info.archiveUrl);
@@ -88,6 +113,25 @@ const requireArtifactProtocolV1 = (info: ArtifactInfo): ArtifactInfo => {
       );
     }
   }
+  return info;
+};
+
+const requireArtifactProtocolV2 = (info: ArtifactInfoV2): ArtifactInfoV2 => {
+  if (
+    info?.artifactProtocolVersion !== ARTIFACT_FILES_PROTOCOL_VERSION ||
+    !info.manifestUrl ||
+    !info.manifestFileHash ||
+    (info.archiveUrl !== undefined && typeof info.archiveUrl !== "string") ||
+    (info.patch !== undefined &&
+      (!info.patch?.assetPath || !info.patch.patchUrl))
+  ) {
+    throw new InvalidUpdateResponseError(
+      `Server does not support artifact protocol ${ARTIFACT_FILES_PROTOCOL_VERSION}.`,
+    );
+  }
+  requireArtifactUrl(info.manifestUrl);
+  if (info.archiveUrl) requireArtifactUrl(info.archiveUrl);
+  if (info.patch) requireArtifactUrl(info.patch.patchUrl);
   return info;
 };
 
@@ -133,16 +177,47 @@ const createSession = (
       url,
     });
   },
-  resolveArtifact: async (params): Promise<ArtifactInfo> => {
-    const info = await fetchJSON<ArtifactInfo>({
+  resolveArtifact: async (params): Promise<ResolvedArtifact> => {
+    const target = encodeURIComponent(params.targetBundleId);
+    const route = `${target}/from/${encodeURIComponent(params.currentBundleId)}`;
+    const request = {
       ...(onResponse ? { onResponse } : {}),
       requestHeaders: params.requestHeaders,
       requestTimeout: params.requestTimeout,
-      url: `${baseURL}/artifacts/v1/${encodeURIComponent(
-        params.targetBundleId,
-      )}/from/${encodeURIComponent(params.currentBundleId)}`,
-    });
-    return requireArtifactUrls(requireArtifactProtocolV1(info));
+    };
+    let info: ArtifactInfoV2;
+    try {
+      info = await fetchJSON<ArtifactInfoV2>({
+        ...request,
+        url: `${baseURL}/artifacts/v2/${route}`,
+      });
+    } catch (error) {
+      // Legacy: artifact protocol v1: a server older than v2 has no such route. Remove this
+      // fallback once no supported server predates v2.
+      if (!(error instanceof FetchJSONResponseError) || error.status !== 404) {
+        throw error;
+      }
+      return requireArtifactUrls(
+        requireArtifactProtocolV1(
+          await fetchJSON<ArtifactInfo>({
+            ...request,
+            url: `${baseURL}/artifacts/v1/${route}`,
+          }),
+        ),
+      );
+    }
+    const { archiveUrl, manifestFileHash, manifestUrl, patch } =
+      requireArtifactProtocolV2(info);
+    const { assetPath, ...assetPatch } = patch ?? { assetPath: undefined };
+    return {
+      ...(archiveUrl ? { archiveUrl } : {}),
+      assets: assetPath
+        ? { [assetPath]: { patch: assetPatch as ChangedAssetPatch } }
+        : {},
+      filesUrl: `${baseURL}/artifacts/v2/${target}/files`,
+      manifestFileHash,
+      manifestUrl,
+    };
   },
 });
 

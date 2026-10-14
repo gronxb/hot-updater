@@ -109,7 +109,7 @@ export const sizeAwareArtifactSelectionScenario: ScenarioDefinition = {
       "/e2e/assert-bundle-artifact-selection",
       {
         currentBundleId: "$sizeAwareBaseBundleId",
-        selection: "manifest-v1",
+        selection: "manifest-v2",
         targetBundleId: "$sizeAwareSmallBundleId",
       },
     );
@@ -228,7 +228,7 @@ export const sizeAwareArtifactSelectionScenario: ScenarioDefinition = {
         "/e2e/assert-bundle-artifact-selection",
         {
           currentBundleId: input.baseBundleId,
-          selection: "manifest-v1",
+          selection: "manifest-v2",
           targetBundleId: bundleId,
         },
       );

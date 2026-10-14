@@ -263,6 +263,7 @@ class HotUpdaterImpl {
         channel: String?,
         selection: PersistedSelection? = null,
         archiveUrl: String? = null,
+        fileResolver: ArtifactFileResolver? = null,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult {
         val result =
@@ -272,6 +273,7 @@ class HotUpdaterImpl {
                 manifestFileHash = manifestFileHash,
                 assets = assets,
                 archiveUrl = archiveUrl,
+                fileResolver = fileResolver,
                 selection = selection,
                 progressCallback = progressCallback,
             )

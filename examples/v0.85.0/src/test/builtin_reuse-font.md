@@ -12,3 +12,9 @@ Its MIT license is included in `builtin_reuse-image-license.txt`. The app-local
 copy gives native and OTA builds the same logical path even when E2E shards
 share another checkout's node_modules. It uses stock native packaging; no
 AAPT optimization override or decode/re-encode is used to enable reuse.
+
+`builtin_reuse_uncrunched.png` is a synthetic 64×64 RGB gradient made for this
+repository, stored with zlib level 0 so that AAPT2's PNG crunch in Android
+release builds re-encodes it (12,420 bytes before, a few hundred after). The
+packaged bytes then differ from the OTA's, while the source is the same: the
+E2E checks that the first OTA still reuses it instead of downloading it.

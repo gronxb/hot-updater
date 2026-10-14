@@ -144,6 +144,7 @@ interface BundleStorageService {
         manifestFileHash: String,
         assets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String? = null,
+        fileResolver: ArtifactFileResolver? = null,
         selection: PersistedSelection? = null,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult
@@ -257,6 +258,16 @@ class BundleFileStorageService(
         private const val TAG = "BundleStorage"
         private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
         private val SHA256_PATTERN = Regex("^[0-9a-f]{64}$")
+
+        /** Files downloaded at once when the archive is not used. */
+        private const val PARALLEL_FILE_DOWNLOADS = 16
+
+        /**
+         * What one request costs beyond the first [PARALLEL_FILE_DOWNLOADS], in
+         * bytes: each waits a round trip for a free slot, about 100 ms, which
+         * at 5 MB/s over 16 slots is the time of 32 KiB.
+         */
+        private const val REQUEST_OVERHEAD_BYTES = 32L * 1024
 
         /** A patch produced a file that does not match the target, or none at all. */
         private val PATCH_FAILURE =
@@ -738,8 +749,33 @@ class BundleFileStorageService(
         if (resolveBundleFile(bundleDir, bundleId) == null) return false
         return manifest.assets.all { (assetPath, asset) ->
             val file = RelativePathResolver.resolveInside(bundleDir, assetPath)
-            file?.isFile == true && runCatching { verifyManifestAssetFileOrThrow(file, asset) }.isSuccess
+            file?.isFile == true &&
+                (
+                    runCatching { verifyManifestAssetFileOrThrow(file, asset) }.isSuccess ||
+                        isBuiltInEquivalent(assetPath, file, asset)
+                )
         }
+    }
+
+    /**
+     * Whether [file] holds the packaged bytes of the built-in asset the native
+     * build recorded with the manifest's source hash, as AAPT2 re-encodes a
+     * PNG. Both come from the APK, never from app storage. The manifest's
+     * signature still covers that source hash.
+     */
+    private fun isBuiltInEquivalent(
+        assetPath: String,
+        file: File,
+        asset: ParsedManifestAsset,
+    ): Boolean {
+        val packagedHash = builtInAssetResolver.packagedHashIfSourceMatches(assetPath, asset.fileHash) ?: return false
+        return HashUtils.calculateSHA256(file).equals(packagedHash, ignoreCase = true) &&
+            runCatching {
+                if (SignatureVerifier.isSigningEnabled(context)) {
+                    val signature = asset.signature ?: throw SignatureVerificationException.InvalidSignatureFormat()
+                    SignatureVerifier.verifyHashSignature(context, asset.fileHash, signature)
+                }
+            }.isSuccess
     }
 
     private fun recoverInterruptedPromotions(): Boolean {
@@ -1686,6 +1722,7 @@ class BundleFileStorageService(
         manifestFileHash: String,
         assets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String?,
+        fileResolver: ArtifactFileResolver?,
         selection: PersistedSelection?,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult =
@@ -1701,6 +1738,7 @@ class BundleFileStorageService(
                 manifestFileHash = manifestFileHash,
                 changedAssets = assets,
                 archiveUrl = archiveUrl,
+                fileResolver = fileResolver,
                 selection = selection,
                 progressCallback = progressCallback,
             )
@@ -1712,6 +1750,7 @@ class BundleFileStorageService(
         manifestFileHash: String,
         changedAssets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String?,
+        fileResolver: ArtifactFileResolver?,
         selection: PersistedSelection?,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult {
@@ -1744,6 +1783,7 @@ class BundleFileStorageService(
                 manifestFileHash = manifestFileHash,
                 changedAssets = changedAssets,
                 archiveUrl = archiveUrl,
+                fileResolver = fileResolver,
                 selection = selection,
                 bundleStoreDir = bundleStoreDir,
                 finalBundleDir = finalBundleDir,
@@ -1794,6 +1834,35 @@ class BundleFileStorageService(
                 )
             }
         }
+
+    /**
+     * Asks [fileResolver] for the URLs of [downloads], in requests of at most
+     * [ArtifactFileResolver.ARTIFACT_FILES_REQUEST_LIMIT] paths.
+     */
+    private suspend fun resolveFileUrls(
+        fileResolver: ArtifactFileResolver,
+        downloads: MutableMap<String, ChangedAssetDescriptor>,
+    ) {
+        for (paths in downloads.keys.sorted().chunked(ArtifactFileResolver.ARTIFACT_FILES_REQUEST_LIMIT)) {
+            val files =
+                try {
+                    fileResolver.resolve(paths)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    throw downloadError(error)
+                }
+            for (path in paths) {
+                val file = files[path] ?: throw HotUpdaterException.invalidBundle()
+                try {
+                    URL(file.url)
+                } catch (error: java.net.MalformedURLException) {
+                    throw HotUpdaterException.invalidFileUrl(path, file.url, UpdateFailureResource.FILE)
+                }
+                downloads[path] = downloads.getValue(path).copy(fileUrl = file.url, fileCompression = file.compression)
+            }
+        }
+    }
 
     /** The rejection for a download that returned [error]. */
     private fun downloadError(error: Exception): HotUpdaterException =
@@ -2030,10 +2099,15 @@ class BundleFileStorageService(
         }
         if (archive.tarByteSize < logicalBytes) return null
         val tarFramingBytes = archive.tarByteSize - logicalBytes
-        if (individualBytes > MAX_SAFE_INTEGER - tarFramingBytes) return null
-        val framedByteLimit = individualBytes + tarFramingBytes
+        // Many small files cost more in requests than in bytes.
+        val requestOverheadBytes =
+            (downloads.size - PARALLEL_FILE_DOWNLOADS).coerceAtLeast(0) * REQUEST_OVERHEAD_BYTES
+        if (individualBytes > MAX_SAFE_INTEGER - requestOverheadBytes) return null
+        val individualCost = individualBytes + requestOverheadBytes
+        if (individualCost > MAX_SAFE_INTEGER - tarFramingBytes) return null
+        val framedByteLimit = individualCost + tarFramingBytes
 
-        if (archive.downloadByteSize <= individualBytes) return archive
+        if (archive.downloadByteSize <= individualCost) return archive
         if (downloads.size != manifest.assets.size || downloads.values.any { it.patch != null }) return null
         return archive.takeIf { it.downloadByteSize <= framedByteLimit }
     }
@@ -2159,6 +2233,7 @@ class BundleFileStorageService(
         manifestFileHash: String,
         changedAssets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String?,
+        fileResolver: ArtifactFileResolver?,
         selection: PersistedSelection?,
         bundleStoreDir: File,
         finalBundleDir: File,
@@ -2221,20 +2296,40 @@ class BundleFileStorageService(
                     if (manifest.bundleId != bundleId) {
                         throw HotUpdaterException.invalidBundle()
                     }
-                    // Reuse never bypasses the complete artifact contract.
-                    if (manifest.assets.keys != changedAssets.keys) throw HotUpdaterException.invalidBundle()
+                    if (fileResolver == null) {
+                        // Legacy: artifact protocol v1, where every file comes with its URL.
+                        // Reuse never bypasses the complete artifact contract.
+                        if (manifest.assets.keys != changedAssets.keys) throw HotUpdaterException.invalidBundle()
+                    } else if (!manifest.assets.keys.containsAll(changedAssets.keys)) {
+                        // In v2, `assets` holds only the Hermes patch.
+                        throw HotUpdaterException.invalidBundle()
+                    }
                     manifest.assets.forEach { (path, asset) ->
-                        val descriptor = changedAssets.getValue(path)
+                        val descriptor = changedAssets[path]
                         if (RelativePathResolver.normalizeRelativePath(path) != path ||
                             path == "manifest.json" ||
-                            descriptor.fileUrl.isNullOrBlank() ||
-                            !descriptor.fileHash.equals(asset.fileHash, ignoreCase = true) ||
+                            (fileResolver == null && descriptor?.fileUrl.isNullOrBlank()) ||
+                            (fileResolver == null && !descriptor!!.fileHash.equals(asset.fileHash, ignoreCase = true)) ||
                             RelativePathResolver.resolveInside(tmpDir, path) == null
                         ) {
                             throw HotUpdaterException.invalidBundle()
                         }
                     }
                     manifest
+                }
+            // In v2, the manifest names every file; URLs come once the install
+            // knows which files it downloads.
+            val plannedAssets =
+                if (fileResolver == null) {
+                    changedAssets
+                } else {
+                    targetManifest.assets.mapValues { (path, asset) ->
+                        ChangedAssetDescriptor(
+                            fileUrl = null,
+                            fileHash = asset.fileHash,
+                            patch = changedAssets[path]?.patch,
+                        )
+                    }
                 }
             updateStep(UpdateFailureStage.INSTALL, resource = null) {
                 if (!tmpDir.isDirectory && !tmpDir.mkdirs()) throw HotUpdaterException.directoryCreationFailed()
@@ -2280,7 +2375,12 @@ class BundleFileStorageService(
                             verifyManifestAssetFileOrThrow(targetFile, expectedAsset)
                             return@forEachIndexed
                         }
-                        downloads[assetPath] = changedAssets.getValue(assetPath)
+                        val packagedHash = builtInAssetResolver.copyIfSourceMatches(assetPath, expectedAsset.fileHash, targetFile)
+                        if (packagedHash != null && isBuiltInEquivalent(assetPath, targetFile, expectedAsset)) {
+                            return@forEachIndexed
+                        }
+                        if (packagedHash != null) targetFile.delete()
+                        downloads[assetPath] = plannedAssets.getValue(assetPath)
                     }
                     downloads
                 }
@@ -2308,11 +2408,16 @@ class BundleFileStorageService(
                     diffFiles = archiveProgress
                     emptyList()
                 } else {
+                    if (fileResolver != null) {
+                        updateStep(UpdateFailureStage.DOWNLOAD, UpdateFailureResource.FILE) {
+                            resolveFileUrls(fileResolver, downloads)
+                        }
+                    }
                     diffFiles = createDiffProgressFiles(downloads)
                     emitDiffProgress(progressCallback, "downloading", diffFiles)
                     val progressLock = Any()
                     coroutineScope {
-                        val permits = Semaphore(4)
+                        val permits = Semaphore(PARALLEL_FILE_DOWNLOADS)
                         diffFiles
                             .toList()
                             .map { progressFile ->

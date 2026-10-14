@@ -6,12 +6,18 @@ import java.net.MalformedURLException
 import java.net.URL
 import java.util.Locale
 
-/** An artifact response as protocol 1 describes it, its assets parsed like the TurboModule's `updateBundle`. */
+/**
+ * How native downloads a Bundle, as httpClient.ts resolves it, its assets
+ * parsed like the TurboModule's `updateBundle`. In artifact protocol v1,
+ * [assets] holds a URL for every file. In v2, it holds only the Hermes patch,
+ * and the staging asks [filesUrl] for the URLs of the files it downloads.
+ */
 internal class ResolvedArtifact(
     val manifestUrl: String,
     val manifestFileHash: String,
     val archiveUrl: String?,
     val assets: Map<String, ChangedAssetDescriptor>,
+    val filesUrl: String? = null,
 )
 
 /**
@@ -27,6 +33,7 @@ internal class ReleaseCatalogClient(
         private const val MAX_ETAG_BYTES = 1024
         private const val MAX_CACHE_ENTRY_BYTES = ReleaseCatalogs.MAX_RELEASE_CATALOG_WIRE_BYTES + MAX_ETAG_BYTES + 3
         private const val ARTIFACT_PROTOCOL_VERSION = 1.0
+        private const val ARTIFACT_FILES_PROTOCOL_VERSION = 2.0
         private const val MAX_SAFE_INTEGER = 9_007_199_254_740_991L
         private val HTTP_URL = Regex("^https?://.*", setOf(RegexOption.IGNORE_CASE, RegexOption.DOT_MATCHES_ALL))
     }
@@ -70,10 +77,42 @@ internal class ReleaseCatalogClient(
     ): ResolvedArtifact {
         val headers = LinkedHashMap(effectiveHeaders(requestHeaders))
         if (!headers.containsKey("accept")) headers["accept"] = "application/json"
+        val target = encodeURIComponent(targetBundleId)
+        val route = "$target/from/${encodeURIComponent(currentBundleId)}"
         val response =
             transport.get(
                 UpdateCheckRequest(
-                    url = "$baseURL/artifacts/v1/${encodeURIComponent(targetBundleId)}/from/${encodeURIComponent(currentBundleId)}",
+                    url = "$baseURL/artifacts/v2/$route",
+                    headers = headers,
+                    timeoutMillis = requestTimeoutMillis,
+                    resource = "artifact",
+                ),
+            )
+        // Legacy: artifact protocol v1: a server older than v2 has no such
+        // route. Remove this fallback once no supported server predates v2.
+        if (response.status == 404) {
+            return resolveArtifactV1(baseURL, route, headers, requestTimeoutMillis)
+        }
+        if (response.status != 200) {
+            throw UpdateHttpException(response.status, response.statusText)
+        }
+        return parseArtifactV2(
+            response.body ?: throw InvalidUpdateResponseException("Received an empty artifact response"),
+            filesUrl = "$baseURL/artifacts/v2/$target/files",
+        )
+    }
+
+    // Legacy: artifact protocol v1: reads a server that predates v2; remove with the fallback.
+    private suspend fun resolveArtifactV1(
+        baseURL: String,
+        route: String,
+        headers: Map<String, String>,
+        requestTimeoutMillis: Long,
+    ): ResolvedArtifact {
+        val response =
+            transport.get(
+                UpdateCheckRequest(
+                    url = "$baseURL/artifacts/v1/$route",
                     headers = headers,
                     timeoutMillis = requestTimeoutMillis,
                     resource = "artifact",
@@ -83,6 +122,56 @@ internal class ReleaseCatalogClient(
             throw UpdateHttpException(response.status, response.statusText)
         }
         return parseArtifact(response.body ?: throw InvalidUpdateResponseException("Received an empty artifact response"))
+    }
+
+    /** `requireArtifactProtocolV2` of httpClient.ts; the patch becomes its asset's only entry. */
+    private fun parseArtifactV2(
+        body: String,
+        filesUrl: String,
+    ): ResolvedArtifact {
+        // As JSON.parse reads it, which org.json's parser does not.
+        val info =
+            StrictJson.parse(body) as? JSONObject
+                ?: throw InvalidUpdateResponseException("Received an invalid artifact response")
+        val protocolVersion = info.opt("artifactProtocolVersion")
+        val manifestUrl = info.opt("manifestUrl") as? String
+        val manifestFileHash = info.opt("manifestFileHash") as? String
+        val archiveUrl = info.opt("archiveUrl")
+        val patch = info.opt("patch")
+        val patchObject = patch as? JSONObject
+        if (
+            protocolVersion !is Number ||
+            protocolVersion.toDouble() != ARTIFACT_FILES_PROTOCOL_VERSION ||
+            manifestUrl.isNullOrEmpty() ||
+            manifestFileHash.isNullOrEmpty() ||
+            (archiveUrl != null && archiveUrl !is String) ||
+            (
+                patch != null &&
+                    (
+                        (patchObject?.opt("assetPath") as? String).isNullOrEmpty() ||
+                            (patchObject?.opt("patchUrl") as? String).isNullOrEmpty()
+                    )
+            )
+        ) {
+            throw InvalidUpdateResponseException("Server does not support artifact protocol 2.")
+        }
+        requireArtifactUrl(manifestUrl)
+        val archive = (archiveUrl as? String)?.takeIf { it.isNotEmpty() }
+        archive?.let(::requireArtifactUrl)
+        val assets = linkedMapOf<String, ChangedAssetDescriptor>()
+        if (patchObject != null) {
+            // An incomplete patch is skipped, as the TurboModule's asset parsing skips it.
+            parsePatch(patchObject)?.let {
+                assets[patchObject.getString("assetPath")] = ChangedAssetDescriptor(fileUrl = null, fileHash = "", patch = it)
+            }
+        }
+        return ResolvedArtifact(
+            manifestUrl = manifestUrl,
+            manifestFileHash = manifestFileHash,
+            archiveUrl = archive,
+            assets = assets,
+            filesUrl = filesUrl,
+        )
     }
 
     /** Any stable string per server, route, and headers; it need not match JavaScript's partition. */

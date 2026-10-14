@@ -109,6 +109,7 @@ const defaultScenarioNames = [
   "catalog-only-no-update",
   "same-bundle-release-adoption",
   "size-aware-artifact-selection",
+  "asset-heavy-ota-uses-archive",
   "stale-catalog-after-newer-generation",
   "slow-old-artifact-after-newer-install",
   "failed-download-same-generation-retry",
@@ -287,7 +288,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(32);
+    expect(new Set(listScenarioNames()).size).toBe(33);
   });
 
   it("runs every default scenario a native app shell can host in the brownfield suite", () => {
@@ -1423,6 +1424,42 @@ describe("E2E scenario contract", () => {
     ]);
   });
 
+  it("installs many small assets from the archive after reusing a large one", async () => {
+    const scenarioName = "asset-heavy-ota-uses-archive";
+    const calls = await recordScenarioCalls(scenarioName);
+    const deployCalls = calls.filter(
+      (call) =>
+        call.kind === "control" && call.pathName === "/e2e/jobs/deploy-bundle",
+    );
+
+    expect(deployCalls).toHaveLength(2);
+    for (const label of ["first", "next"]) {
+      expect(
+        await controlStepBody(
+          scenarioName,
+          `deploy asset-heavy ${label} bundle`,
+        ),
+      ).toMatchObject({ bundleProfile: "assetHeavy", mode: "reset" });
+    }
+    expect(
+      await controlStepDefinition(
+        scenarioName,
+        "assert asset-heavy next installs from the archive",
+      ),
+    ).toMatchObject({
+      body: {
+        archiveRequests: 1,
+        currentBundleId: "$assetHeavyFirstBundleId",
+        fileRequests: 0,
+        filesRequests: 0,
+        patchRequests: 0,
+        targetBundleId: "$assetHeavyNextBundleId",
+        verifyAllAssetHashes: true,
+      },
+      pathName: "/e2e/assert-bundle-artifact-transfers",
+    });
+  });
+
   it("proves small-patch selection and bounded corrupt-archive fallback", async () => {
     const scenarioName = "size-aware-artifact-selection";
     const calls = await recordScenarioCalls(scenarioName);
@@ -1469,7 +1506,7 @@ describe("E2E scenario contract", () => {
     ).toMatchObject({
       body: {
         currentBundleId: "$sizeAwareBaseBundleId",
-        selection: "manifest-v1",
+        selection: "manifest-v2",
         targetBundleId: "$sizeAwareSmallBundleId",
       },
       pathName: "/e2e/assert-bundle-artifact-selection",
@@ -1539,7 +1576,7 @@ describe("E2E scenario contract", () => {
     ).toMatchObject({
       body: {
         currentBundleId: "$sizeAwareSmallBundleId",
-        selection: "manifest-v1",
+        selection: "manifest-v2",
         targetBundleId: "$sizeAwareLargeSuccessBundleId",
       },
       pathName: "/e2e/assert-bundle-artifact-selection",
@@ -1552,7 +1589,7 @@ describe("E2E scenario contract", () => {
     ).toMatchObject({
       body: {
         currentBundleId: "$sizeAwareLargeSuccessBundleId",
-        selection: "manifest-v1",
+        selection: "manifest-v2",
         targetBundleId: "$sizeAwareLargeFallbackBundleId",
       },
       pathName: "/e2e/assert-bundle-artifact-selection",

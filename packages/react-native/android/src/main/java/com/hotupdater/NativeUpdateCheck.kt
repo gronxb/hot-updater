@@ -67,6 +67,10 @@ internal class HotUpdaterImplUpdateCheckState(
             channel = request.channel,
             selection = request.selection,
             archiveUrl = request.archiveUrl,
+            fileResolver =
+                request.filesUrl?.let {
+                    HttpArtifactFileResolver(it, request.requestHeaders, request.requestTimeoutMillis)
+                },
             progressCallback = { onProgress(it.progress) },
         )
 

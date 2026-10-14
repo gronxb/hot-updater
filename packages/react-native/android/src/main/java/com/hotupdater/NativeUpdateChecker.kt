@@ -73,6 +73,11 @@ internal data class StageBundleRequest(
     val assets: Map<String, ChangedAssetDescriptor>,
     val archiveUrl: String?,
     val selection: PersistedSelection,
+    /** Artifact protocol v2: where the staging asks for the URLs of the files it downloads. */
+    val filesUrl: String? = null,
+    /** The check's headers and timeout, which the files request repeats. */
+    val requestHeaders: Map<String, String> = emptyMap(),
+    val requestTimeoutMillis: Long = HttpArtifactFileResolver.DEFAULT_TIMEOUT_MS,
 )
 
 /** The native state the check reads and writes, the same the TurboModule exposes. */
@@ -816,6 +821,9 @@ internal class NativeUpdateChecker(
                         assets = artifact.assets,
                         archiveUrl = artifact.archiveUrl,
                         selection = selection.receipt,
+                        filesUrl = artifact.filesUrl,
+                        requestHeaders = options.requestHeaders,
+                        requestTimeoutMillis = options.requestTimeoutMillis,
                     ),
                     progress::report,
                 )
