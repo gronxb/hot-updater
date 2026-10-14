@@ -675,10 +675,15 @@ class NativeUpdateCheckerTest {
                 )
             val other = checker.prepare(otherChannel, 200, null)
             val otherCredentials = checker.prepare(otherKey, 200, null)
+            val cohort = state.cohortValue
+            state.cohortValue = "501"
+            val otherCohort = checker.prepare(OPTIONS, 200, null)
+            state.cohortValue = cohort
             val same = checker.prepare(OPTIONS, 200, null)
 
             assertTrue(other is HotUpdaterPrepareResult.Failed)
             assertTrue(otherCredentials is HotUpdaterPrepareResult.Failed)
+            assertTrue(otherCohort is HotUpdaterPrepareResult.Failed)
             assertSame(first.update, (same as HotUpdaterPrepareResult.Pending).update)
             gate.complete(Unit)
             Unit
