@@ -392,6 +392,14 @@ async function checkForReleaseCatalogUpdate(input: {
       manifestFileHash: artifact.manifestFileHash,
       manifestUrl: artifact.manifestUrl,
       ...(artifact.archiveUrl ? { archiveUrl: artifact.archiveUrl } : {}),
+      ...(artifact.filesUrl
+        ? {
+            filesUrl: artifact.filesUrl,
+            ...(options.requestHeaders
+              ? { requestHeaders: options.requestHeaders }
+              : {}),
+          }
+        : {}),
       selection: receipt,
       shouldSkipCurrentBundleIdCheck: true,
       status: desired.status,

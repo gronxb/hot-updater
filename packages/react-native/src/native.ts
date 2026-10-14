@@ -461,6 +461,10 @@ export async function stageBundle(
         manifestFileHash: targetManifestFileHash,
         manifestUrl: targetManifestUrl,
         ...(params.archiveUrl ? { archiveUrl: params.archiveUrl } : {}),
+        ...(params.filesUrl ? { filesUrl: params.filesUrl } : {}),
+        ...(params.filesUrl && params.requestHeaders
+          ? { requestHeaders: params.requestHeaders }
+          : {}),
         ...(selection === undefined ? {} : { selection }),
       });
       sessionState.markBundleInstalled(updateBundleId, targetChannel);

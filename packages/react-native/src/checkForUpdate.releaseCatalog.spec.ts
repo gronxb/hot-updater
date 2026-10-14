@@ -296,6 +296,34 @@ describe("checkForUpdate Release catalog protocol", () => {
     );
   });
 
+  it("lets native ask for the files it downloads, with the check's headers", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client, resolveArtifact } = createClient();
+    resolveArtifact.mockResolvedValueOnce({
+      assets: {},
+      filesUrl: "https://updates.example.com/artifacts/v2/target/files",
+      manifestFileHash: "manifest-hash",
+      manifestUrl: "https://updates.example.com/manifest.json",
+    } as never);
+
+    const result = await checkForUpdate({
+      emit,
+      client,
+      requestHeaders: { "x-api-key": "client-key" },
+      updateStrategy: "appVersion",
+    });
+    await expect(result?.updateBundle()).resolves.toBe(true);
+
+    expect(mocks.stageBundle).toHaveBeenCalledWith(
+      expect.objectContaining({
+        assets: {},
+        bundleId: TARGET_BUNDLE_ID,
+        filesUrl: "https://updates.example.com/artifacts/v2/target/files",
+        requestHeaders: { "x-api-key": "client-key" },
+      }),
+    );
+  });
+
   it("adopts a newer Release for the same Bundle without resolving bytes", async () => {
     const active: PersistedSelectionReceipt = {
       catalogId: CATALOG_ID,
