@@ -16,8 +16,10 @@ idempotent. Repeat vc.database-credential, whose migration creates only what is
 missing, then vc.function, which sets the Function's variables and deploys this
 scaffold's Function to production, and finish with vc.complete. Reuse the
 recorded resources and saved client credential; never create replacements to
-upgrade. `hot-updater init` with the saved inputs performs the same migration
-and deployment.
+upgrade, except a recorded public Blob store: repeat vc.storage to create a
+private store, then deploy the bundles again with the new token. `hot-updater
+init` with the saved inputs performs the same migration and deployment, and
+replaces a saved public store the same way.
 
 ## Setup
 

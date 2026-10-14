@@ -451,8 +451,11 @@ describe("Vercel init", () => {
     );
   });
 
-  it("refuses a public Blob store: bundles download only through signed URLs", async () => {
-    givenInitEnv(replayEnv);
+  it("refuses a saved public Blob store in a replay, naming the env to change", async () => {
+    givenInitEnv({
+      ...replayEnv,
+      HOT_UPDATER_VERCEL_BLOB_STORE_ID: "store_Store1",
+    });
     mocks.api.listBlobStores.mockResolvedValue([
       {
         access: "public",
@@ -465,8 +468,63 @@ describe("Vercel init", () => {
 
     await expect(
       runInit({ build: "bare", envFile: ".env.hotupdater" }),
-    ).rejects.toThrow("is public");
+    ).rejects.toThrow(
+      "remove HOT_UPDATER_VERCEL_BLOB_STORE_ID and set HOT_UPDATER_VERCEL_BLOB_STORE_NAME",
+    );
     expect(mocks.api.createProject).not.toHaveBeenCalled();
+  });
+
+  it("replaces a saved public Blob store with a new private one when interactive", async () => {
+    givenInitEnv({
+      HOT_UPDATER_VERCEL_BLOB_STORE_ID: "store_pub",
+      HOT_UPDATER_VERCEL_BLOB_STORE_NAME: "pub",
+    });
+    mocks.api.listTeams.mockResolvedValue([
+      { id: "team_1", name: "Team", slug: "team" },
+    ]);
+    mocks.api.listBlobStores.mockResolvedValue([
+      {
+        access: "public",
+        connections: [],
+        id: "store_pub",
+        name: "pub",
+        region: "iad1",
+      },
+    ]);
+    mocks.api.createBlobStore.mockResolvedValue({ id: "store_Store1" });
+    mocks.api.listProjectEnv.mockImplementation(async () => [
+      { id: "env_db", key: "DATABASE_URL", target: ["production"] },
+      ...(mocks.api.connectBlobStore.mock.calls.length > 0 ? connectedEnv : []),
+    ]);
+    mocks.select
+      .mockImplementationOnce(
+        async ({ options }: { options: { value: string }[] }) => {
+          expect(options.map(({ value }) => value)).toEqual(["\0create"]);
+          return "\0create";
+        },
+      )
+      .mockResolvedValueOnce("env_db");
+    mocks.text
+      .mockResolvedValueOnce("hot-updater")
+      .mockImplementationOnce(
+        async ({ initialValue }: { initialValue?: string }) => {
+          expect(initialValue).not.toBe("pub");
+          return "pub-private";
+        },
+      );
+
+    await runInit({ build: "bare" });
+
+    expect(mocks.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining("Blob store pub is public"),
+    );
+    expect(mocks.api.createBlobStore).toHaveBeenCalledWith({
+      access: "private",
+      name: "pub-private",
+    });
+    expect(mocks.api.connectBlobStore).toHaveBeenCalledWith(
+      expect.objectContaining({ storeId: "store_Store1" }),
+    );
   });
 
   it("lists only private Blob stores to select", async () => {

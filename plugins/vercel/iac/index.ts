@@ -178,22 +178,28 @@ const selectBlobStore = async ({
     (savedId === undefined
       ? stores.find((store) => store.name === savedName)
       : undefined);
-  // Bundles download only through signed URLs, so the store must be private.
-  if (found?.access === "public") {
-    throw new InitError(
-      `Blob store ${found.name} is public. Hot Updater keeps bundles in a private store: select or create a private one.`,
-    );
-  }
-  const saved = found;
+  // Bundles download only through signed URLs, so a public store saved by
+  // an earlier init is replaced with a private one.
+  const publicStore = found?.access === "public" ? found : undefined;
+  const saved = publicStore ? undefined : found;
   const privateStores = stores.filter((store) => store.access === "private");
   if (nonInteractive) {
+    if (publicStore) {
+      throw new InitError(
+        `Blob store ${publicStore.name} is public. Hot Updater keeps bundles in a private store: remove ${inputs.blobStoreId.envKey} and set ${inputs.blobStoreName.envKey} to a private or new store.`,
+      );
+    }
     if (saved) return { kind: "existing", store: saved };
     if (savedName) return { kind: "create", name: savedName };
     throw new InitError(
       `${inputs.blobStoreName.envKey} is required to select the Blob store.`,
     );
   }
-  if ((savedId || savedName) && !saved) {
+  if (publicStore) {
+    p.log.warn(
+      `Blob store ${publicStore.name} is public. Hot Updater keeps bundles in a private store: select or create a private one.`,
+    );
+  } else if ((savedId || savedName) && !saved) {
     p.log.warn("The saved Blob store was not found. Select a store again.");
   }
   const createKey = "\0create";
@@ -216,7 +222,10 @@ const selectBlobStore = async ({
   const prompt = inputs.blobStoreName.prompt;
   const name = exitIfCancelled(
     await p.text({
-      ...getInitProviderTextPromptValues(prompt, savedName),
+      ...getInitProviderTextPromptValues(
+        prompt,
+        savedName === publicStore?.name ? undefined : savedName,
+      ),
       message: prompt.message,
       validate: (value) =>
         isVercelBlobStoreName(value)
