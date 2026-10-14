@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { generateMinBundleId } from "./generateMinBundleId";
+import { createUUIDv7After, extractTimestampFromUUIDv7 } from "./uuidv7";
 
 describe("generateMinBundleId", () => {
   it("should generate a string", () => {
@@ -39,5 +40,15 @@ describe("generateMinBundleId", () => {
 
     expect(timestamp).toBeGreaterThanOrEqual(startTime);
     expect(timestamp).toBeLessThanOrEqual(endTime);
+  });
+
+  it("sorts after the bundle IDs issued before its millisecond and not after the ones issued from it", () => {
+    const id = generateMinBundleId();
+    const timestamp = extractTimestampFromUUIDv7(id);
+
+    for (let i = 0; i < 100; i++) {
+      expect(createUUIDv7After(null, timestamp - 1) < id).toBe(true);
+      expect(createUUIDv7After(null, timestamp) >= id).toBe(true);
+    }
   });
 });

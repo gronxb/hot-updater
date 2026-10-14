@@ -21,8 +21,21 @@ Pod::Spec.new do |s|
 
   s.pod_target_xcconfig = {
     "DEFINES_MODULE" => "YES",
-    "OTHER_SWIFT_FLAGS" => "-enable-experimental-feature AccessLevelOnImport"
+    "OTHER_SWIFT_FLAGS" => "-enable-experimental-feature AccessLevelOnImport",
+    "HEADER_SEARCH_PATHS" => "\"$(DERIVED_FILE_DIR)\""
   }
+
+  # Every build, before compiling, writes the build's MIN_BUNDLE_ID into the
+  # header HotUpdaterMinBundleId.m includes, so Xcode, xcodebuild and the CLI
+  # all ship the time they built.
+  s.script_phases = [{
+    :name => "[HotUpdater] Generate MIN_BUNDLE_ID",
+    :script => File.read(File.join(__dir__, "ios/scripts/generate-min-bundle-id.zsh")),
+    :shell_path => "/bin/zsh",
+    :execution_position => :before_compile,
+    :output_files => ["$(DERIVED_FILE_DIR)/HotUpdaterBuildMinBundleId.h"],
+    :always_out_of_date => "1"
+  }]
 
   # Use install_modules_dependencies helper to install the dependencies if React Native version >=0.71.0.
   # See https://github.com/facebook/react-native/blob/febf6b7f33fdb4904669f99d795eba4c0f95d7bf/scripts/cocoapods/new_architecture.rb#L79.
@@ -35,7 +48,7 @@ Pod::Spec.new do |s|
     if ENV["RCT_NEW_ARCH_ENABLED"] == "1" then
       s.compiler_flags = folly_compiler_flags + " -DRCT_NEW_ARCH_ENABLED=1"
       s.pod_target_xcconfig    = {
-          "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\"",
+          "HEADER_SEARCH_PATHS" => "\"$(PODS_ROOT)/boost\" \"$(DERIVED_FILE_DIR)\"",
           "OTHER_CPLUSPLUSFLAGS" => "-DFOLLY_NO_CONFIG -DFOLLY_MOBILE=1 -DFOLLY_USE_LIBCPP=1",
           "CLANG_CXX_LANGUAGE_STANDARD" => "c++17"
       }
