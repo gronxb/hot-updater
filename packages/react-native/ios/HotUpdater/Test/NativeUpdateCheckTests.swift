@@ -675,6 +675,31 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func aRetainedResultOfACommittedTargetIsStagedWhileItsSelectionIsCurrent() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2)])
+        )
+        let checker = makeChecker(host, transport)
+        let first = try #require(try await checker.checkForUpdate(options()))
+        let second = try #require(try await checker.checkForUpdate(options()))
+        let third = try #require(try await checker.checkForUpdate(options()))
+
+        #expect(try await first.updateBundle())
+        let requests = transport.requests.count
+        #expect(try await second.updateBundle())
+        #expect(host.stageCalls == 1)
+        #expect(transport.requests.count == requests)
+
+        // A newer catalog superseded the selection without staging anything.
+        host.isCurrent = false
+        await #expect(throws: NativeUpdateCheckError.self) {
+            _ = try await third.updateBundle()
+        }
+        #expect(host.stageCalls == 1)
+    }
+
+    @Test
     func updateBundleOnAStagedUpdateDoesNotDownloadAgain() async throws {
         let host = FakeUpdateHost()
         let download = Latch()

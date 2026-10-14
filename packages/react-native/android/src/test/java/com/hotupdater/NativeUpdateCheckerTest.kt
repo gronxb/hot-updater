@@ -16,6 +16,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -707,6 +708,30 @@ class NativeUpdateCheckerTest {
             withTimeout(5_000) { check.await() }
             assertTrue(withTimeout(5_000) { firstStaging.await() })
             assertTrue(withTimeout(5_000) { secondStaging.await() })
+            assertEquals(1, state.stageCount.get())
+        }
+
+    @Test
+    fun `a retained result of a committed target is staged while its selection is current`() =
+        runBlocking {
+            val state = FakeState()
+            var catalogBody = minorCatalog()
+            val transport = FakeTransport { request -> routes(catalogBody)(request) }
+            val checker = NativeUpdateChecker(state, transport)
+            val first = checker.checkForUpdate(OPTIONS)!!
+            val second = checker.checkForUpdate(OPTIONS)!!
+            val third = checker.checkForUpdate(OPTIONS)!!
+
+            assertTrue(first.updateBundle())
+            val requests = transport.requests.size
+            assertTrue(second.updateBundle())
+            assertEquals(1, state.stageCount.get())
+            assertEquals(requests, transport.requests.size)
+
+            // A newer catalog supersedes the selection without staging anything.
+            catalogBody = catalog(listOf(release(RELEASE_B, BUNDLE_B)), generation = 2)
+            checker.checkForUpdate(OPTIONS)
+            assertThrows(StaleReleaseCatalogException::class.java) { runBlocking { third.updateBundle() } }
             assertEquals(1, state.stageCount.get())
         }
 
