@@ -78,6 +78,8 @@ internal data class StageBundleRequest(
     /** The check's headers and timeout, which the files request repeats. */
     val requestHeaders: Map<String, String> = emptyMap(),
     val requestTimeoutMillis: Long = HttpArtifactFileResolver.DEFAULT_TIMEOUT_MS,
+    /** Reports each files response as `onHttpResponse`, as the other artifact requests are. */
+    val onFilesResponse: ((status: Int, body: String?) -> Unit)? = null,
 )
 
 /** The native state the check reads and writes, the same the TurboModule exposes. */
@@ -828,6 +830,15 @@ internal class NativeUpdateChecker(
                         filesUrl = artifact.filesUrl,
                         requestHeaders = options.requestHeaders,
                         requestTimeoutMillis = options.requestTimeoutMillis,
+                        onFilesResponse =
+                            artifact.filesUrl?.let { filesUrl ->
+                                { status, body ->
+                                    queueHttpResponse(
+                                        UpdateCheckRequest(filesUrl, emptyMap(), options.requestTimeoutMillis, "artifact"),
+                                        UpdateCheckResponse(status, "", emptyMap(), body),
+                                    )
+                                }
+                            },
                     ),
                     progress::report,
                 )

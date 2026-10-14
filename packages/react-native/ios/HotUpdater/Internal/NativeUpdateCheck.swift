@@ -298,7 +298,13 @@ protocol NativeUpdateHost: NativeUpdateEventStorage {
     func commitReleaseSelection(_ params: [String: Any]) async throws -> Bool
     /// Native `updateBundle`; resolves with `{ delivery, patchFallback }`.
     /// Rejects with `NativeUpdateRejection`.
-    func updateBundle(_ params: [String: Any], progress: @escaping (Double) -> Void) async throws -> Any?
+    /// `onFilesResponse` receives each artifact files response's status and
+    /// body (nil when it could not be read), for `onHttpResponse`.
+    func updateBundle(
+        _ params: [String: Any],
+        onFilesResponse: ((Int, String?) -> Void)?,
+        progress: @escaping (Double) -> Void
+    ) async throws -> Any?
     func resetChannel() async -> Bool
     func releaseCatalogCache(_ partition: String) -> String?
     func setReleaseCatalogCache(_ partition: String, value: String) -> Bool
@@ -1328,7 +1334,18 @@ final class NativeUpdateChecker {
                 params["requestHeaders"] = options.requestHeaders
                 params["requestTimeout"] = options.requestTimeout * 1000
             }
-            let staged = try await host.updateBundle(params, progress: progress)
+            // The files responses are reported like the other artifact requests.
+            let onFilesResponse: ((Int, String?) -> Void)? = artifact.filesUrl.flatMap(URL.init(string:)).map { url in
+                { [self] status, body in
+                    queueHttpResponse(url, resource: "artifact", NativeUpdateResponse(
+                        status: status,
+                        headers: [:],
+                        body: body ?? "",
+                        bodyReadFailed: body == nil
+                    ))
+                }
+            }
+            let staged = try await host.updateBundle(params, onFilesResponse: onFilesResponse, progress: progress)
             if let delivery = Self.readBundleDelivery(staged),
                !desired.bundleId.jsEquals(currentBundleId) {
                 var payload: [String: Any] = [

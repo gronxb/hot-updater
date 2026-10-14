@@ -69,7 +69,7 @@ internal class HotUpdaterImplUpdateCheckState(
             archiveUrl = request.archiveUrl,
             fileResolver =
                 request.filesUrl?.let {
-                    HttpArtifactFileResolver(it, request.requestHeaders, request.requestTimeoutMillis)
+                    HttpArtifactFileResolver(it, request.requestHeaders, request.requestTimeoutMillis, request.onFilesResponse)
                 },
             progressCallback = { onProgress(it.progress) },
         )

@@ -43,9 +43,19 @@ final class HotUpdaterImplUpdateHost: NativeUpdateHost {
         return (value as? Bool) ?? false
     }
 
-    func updateBundle(_ params: [String: Any], progress: @escaping (Double) -> Void) async throws -> Any? {
+    func updateBundle(
+        _ params: [String: Any],
+        onFilesResponse: ((Int, String?) -> Void)?,
+        progress: @escaping (Double) -> Void
+    ) async throws -> Any? {
         try await promise { resolve, reject in
-            self.impl.updateBundle(params, onProgress: progress, resolver: resolve, rejecter: reject)
+            self.impl.updateBundle(
+                params,
+                onProgress: progress,
+                onFilesResponse: onFilesResponse,
+                resolver: resolve,
+                rejecter: reject
+            )
         }
     }
 
