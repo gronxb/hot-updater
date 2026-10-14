@@ -621,6 +621,37 @@ describe("insights() client plugin", () => {
       ]);
     });
 
+    it("attaches a replayed response to a failure on the channel its check targeted", async () => {
+      const app = await launch();
+
+      app.runtime.hooks.onHttpResponse({
+        resource: "catalog",
+        channel: "beta",
+        path: "/api/release-catalogs/app-version/ios/beta/1.0.0",
+        status: 500,
+        body: "down",
+        bodyTruncated: false,
+      });
+      app.updateError(
+        downloadFailure({
+          stage: "check",
+          reason: "http",
+          httpStatus: 500,
+          channel: "beta",
+        }),
+      );
+      await flush();
+
+      expect(sentEvents()[0]?.metadata?.httpResponse).toMatchObject({
+        resource: "catalog",
+        status: 500,
+        body: "down",
+      });
+      expect(sentEvents()[0]?.metadata?.httpResponse).not.toHaveProperty(
+        "channel",
+      );
+    });
+
     it("dates a no-update check native code recorded on an earlier day", async () => {
       const app = await launch();
       const yesterday = MORNING - DAY_MS;

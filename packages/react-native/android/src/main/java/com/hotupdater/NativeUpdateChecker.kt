@@ -219,6 +219,14 @@ internal class NativeUpdateChecker(
     private val inFlightLock = Any()
     private var inFlight: Staging? = null
 
+    /**
+     * The channel the check or staging holding the lock requests, recorded with
+     * its HTTP responses: an explicit channel is not the runtime one until the
+     * switch commits.
+     */
+    @Volatile
+    private var requestChannel: String? = null
+
     /** The target the last staging committed, for another retained result of the same target. */
     @Volatile
     private var lastCommittedTargetKey: String? = null
@@ -545,6 +553,7 @@ internal class NativeUpdateChecker(
                 cohort = cohort,
                 fingerprintHash = state.getFingerprintHash(),
             )
+        requestChannel = targetChannel
 
         val checked =
             try {
@@ -600,6 +609,7 @@ internal class NativeUpdateChecker(
             "onHttpResponse",
             JSONObject().apply {
                 put("resource", if (path.contains("/artifacts/")) "artifact" else "catalog")
+                requestChannel?.let { put("channel", it) }
                 put("path", path)
                 put("status", response.status)
                 putNullable("body", body?.take(HTTP_RESPONSE_BODY_LIMIT))
@@ -920,6 +930,7 @@ internal class NativeUpdateChecker(
     ): Boolean {
         val input = selection.input
         val options = input.options
+        requestChannel = input.targetChannel
         if (!state.isReleaseSelectionCurrent(selection.guard)) {
             throw StaleReleaseCatalogException()
         }

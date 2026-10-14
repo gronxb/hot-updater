@@ -345,8 +345,12 @@ const setUpInsights = (
     const body =
       response.body === null ? null : boundedText(response.body, 4_096);
     // Observe locally. Only an existing lifecycle report can send this snapshot.
-    state.recordHttpResponse(context.getChannel(), context.appVersion, {
-      ...response,
+    // A replayed response keeps the channel its check targeted, which the
+    // failure it explains reports.
+    const channel = response.channel ?? context.getChannel();
+    state.recordHttpResponse(channel, context.appVersion, {
+      resource: response.resource,
+      status: response.status,
       path: boundedText(response.path, 1_024),
       body,
       bodyTruncated: response.bodyTruncated || body !== response.body,
