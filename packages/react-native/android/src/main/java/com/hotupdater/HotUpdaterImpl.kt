@@ -27,6 +27,11 @@ class HotUpdaterImpl {
     @Volatile
     private var currentLaunchSelection: LaunchSelection? = null
 
+    // Set before the launch reads the metadata, so a staging that commits while
+    // React Native picks its bundle counts as after the launch.
+    @Volatile
+    private var launchSelectionStarted = false
+
     /**
      * Primary constructor with dependency injection (for testing)
      */
@@ -284,6 +289,7 @@ class HotUpdaterImpl {
     suspend fun reload(reactContext: Context) {
         try {
             currentLaunchSelection = null
+            launchSelectionStarted = false
             withContext(Dispatchers.Main) {
                 performReactReload(reactContext)
             }
@@ -295,6 +301,7 @@ class HotUpdaterImpl {
     suspend fun reloadProcess(reactContext: Context) {
         try {
             currentLaunchSelection = null
+            launchSelectionStarted = false
             withContext(Dispatchers.Main) {
                 if (!restartApplication(reactContext)) {
                     Log.w(TAG, "Falling back to in-process reload because process restart could not be started")
@@ -448,7 +455,7 @@ class HotUpdaterImpl {
     }
 
     /** Whether React Native read the bundle in this process, which fixes this launch's bundle. */
-    fun hasLaunchSelection(): Boolean = currentLaunchSelection != null
+    fun hasLaunchSelection(): Boolean = launchSelectionStarted || currentLaunchSelection != null
 
     /** Takes the queued native update events for JavaScript's `takeNativeUpdateEvents`. */
     fun takeNativeUpdateEvents(): String? =
@@ -492,6 +499,7 @@ class HotUpdaterImpl {
         if (success) {
             preferences.setItem(CHANNEL_STORAGE_KEY, null)
             currentLaunchSelection = null
+            launchSelectionStarted = false
         }
         return success
     }
@@ -499,6 +507,7 @@ class HotUpdaterImpl {
     private fun prepareLaunchIfNeeded(): LaunchSelection {
         currentLaunchSelection?.let { return it }
 
+        launchSelectionStarted = true
         val pendingRecovery = recoveryManager.consumePendingCrashRecovery()
         val selection = bundleStorage.prepareLaunch(pendingRecovery)
         // A headless JS task, such as a background push, loads the bundle without
