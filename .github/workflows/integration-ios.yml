@@ -4,9 +4,15 @@ on:
       - main
     paths:
       - "packages/react-native/ios/**"
+      - "packages/react-native/Package.swift"
+      - "packages/react-native/react-native.config.js"
+      - "examples/v0.87.1-spm/**"
   pull_request:
     paths:
       - "packages/react-native/ios/**"
+      - "packages/react-native/Package.swift"
+      - "packages/react-native/react-native.config.js"
+      - "examples/v0.87.1-spm/**"
 
 name: iOS Integration
 
@@ -86,3 +92,42 @@ jobs:
           cd ../..
         env:
           HOT_UPDATER_CHANNEL: dev
+
+  build-swift-package-manager:
+    runs-on: macos-26
+    name: Build iOS (Swift Package Manager)
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
+      - name: Setup pnpm
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b
+      - name: Setup Node.js
+        uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+      - run: pnpm install --frozen-lockfile
+
+      - name: Library Build
+        run: pnpm nx run @hot-updater/react-native:build
+
+      - name: Generate Swift packages
+        working-directory: examples/v0.87.1-spm
+        run: pnpm spm
+
+      # Two builds over one DerivedData must ship different MIN_BUNDLE_IDs:
+      # the build tool plugin regenerates the value on every build.
+      - name: Build iOS
+        working-directory: examples/v0.87.1-spm/ios
+        run: |
+          build() {
+            xcodebuild -project HotUpdaterExample.xcodeproj -scheme HotUpdaterExample \
+              -configuration Release -sdk iphonesimulator \
+              -destination "generic/platform=iOS Simulator" \
+              -derivedDataPath DerivedData build >&2
+            strings DerivedData/Build/Products/Release-iphonesimulator/HotUpdaterExample.app/HotUpdaterExample \
+              | grep -E '^[0-9a-f]{8}-[0-9a-f]{4}-7000-8000-000000000000$' | sort -u
+          }
+          first=$(build)
+          second=$(build)
+          echo "MIN_BUNDLE_ID: $first, then $second"
+          test -n "$first" && test -n "$second" && test "$first" != "$second"

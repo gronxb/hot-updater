@@ -1,0 +1,7 @@
+# This app builds with Swift Package Manager (`pnpm spm`), not CocoaPods.
+# React Native's CLI still finds the iOS project through this file, so it
+# stays, without any pods.
+platform :ios, '15.1'
+
+target 'HotUpdaterExample' do
+end
