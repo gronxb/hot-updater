@@ -198,7 +198,8 @@ export interface Spec extends TurboModule {
 
   /**
    * Takes the events of the update checks native code ran without JavaScript
-   * (`HotUpdater.prepare`), as a JSON array, and clears them in one step.
+   * (a native `HotUpdaterInstance`), as a JSON array, and clears them in one
+   * step.
    * Returns null when there are none.
    */
   takeNativeUpdateEvents: () => string | null;
