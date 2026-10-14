@@ -11,7 +11,39 @@ import Foundation
 /// number is infinite. A Swift string cannot hold an unpaired surrogate, so
 /// one becomes U+FFFD where `JSON.parse` keeps it. Iterative, so deep nesting
 /// cannot overflow the stack.
+///
+/// JavaScript compares object keys by UTF-16 code units, but Swift strings
+/// compare canonically: `"scope\u{212A}ey"` (Kelvin sign) equals `"scopeKey"`.
+/// So an object key that is not its own canonical decomposition, where two
+/// different keys could compare equal, is stored escaped. Lookups by plain
+/// names then match only that exact key; `originalKey` recovers the escaped
+/// one.
 enum StrictJson {
+    /// Starts every escaped key. A key that starts with it is escaped too.
+    private static let escapedKeyPrefix = "\u{E000}"
+
+    /// The object key under which `key` is stored.
+    static func storedKey(_ key: String) -> String {
+        if !key.hasPrefix(escapedKeyPrefix),
+           key.utf16.elementsEqual(key.decomposedStringWithCanonicalMapping.utf16) {
+            return key
+        }
+        return escapedKeyPrefix + key.utf16.map { String(format: "%04x", $0) }.joined()
+    }
+
+    /// The key as the JSON text spelled it, for a key read from a parsed object.
+    static func originalKey(_ storedKey: String) -> String {
+        guard storedKey.hasPrefix(escapedKeyPrefix) else { return storedKey }
+        let hex = Array(storedKey.dropFirst(escapedKeyPrefix.count))
+        var units: [UInt16] = []
+        var index = 0
+        while index + 4 <= hex.count, let unit = UInt16(String(hex[index..<(index + 4)]), radix: 16) {
+            units.append(unit)
+            index += 4
+        }
+        return String(decoding: units, as: UTF16.self)
+    }
+
     static func isValid(_ text: String) -> Bool {
         parse(text) != nil
     }
@@ -38,7 +70,7 @@ enum StrictJson {
 
         func add(_ value: Any) {
             if isObject {
-                object[key] = value
+                object[StrictJson.storedKey(key)] = value
             } else {
                 array.append(value)
             }
