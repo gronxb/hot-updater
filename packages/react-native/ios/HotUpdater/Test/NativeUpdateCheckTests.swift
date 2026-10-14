@@ -246,6 +246,28 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func invalidRequestTimeoutFailsWithoutARequest() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport.serving(catalog: catalog(releases: []))
+        let checker = makeChecker(host, transport)
+
+        for requestTimeout in [0, -1, TimeInterval.nan, TimeInterval.infinity] {
+            let invalid = HotUpdaterCheckOptions(
+                baseURL: baseURL,
+                updateStrategy: .appVersion,
+                requestTimeout: requestTimeout
+            )
+            await #expect(throws: NativeUpdateCheckError.self) {
+                _ = try await checker.checkForUpdate(invalid)
+            }
+            let result = await checker.prepare(invalid, timeout: 1)
+            #expect(result.status == .failed)
+            #expect(result.error?.localizedDescription == "requestTimeout must be a positive number of seconds")
+        }
+        #expect(transport.requests.isEmpty)
+    }
+
+    @Test
     func explicitChannelWhileSwitchedThrows() async throws {
         let host = FakeUpdateHost()
         host.channelValue = "beta"
