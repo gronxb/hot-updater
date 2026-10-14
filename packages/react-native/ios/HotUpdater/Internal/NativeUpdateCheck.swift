@@ -288,10 +288,10 @@ enum NativeUpdateEvents {
 
     private static let lock = NSLock()
 
-    /// A native build: its app version and the minimum bundle ID its build
-    /// generated.
-    static func build(appVersion: String?, minBundleId: String) -> String {
-        "\(appVersion ?? "")|\(minBundleId)"
+    /// What an event is reported under: the native build (its app version and
+    /// the minimum bundle ID its build generated) and the cohort.
+    static func build(appVersion: String?, minBundleId: String, cohort: String) -> String {
+        "\(appVersion ?? "")|\(minBundleId)|\(normalizeCohortValue(cohort))"
     }
 
     /// Appends an event of the native `build` it happened in, dropping the
@@ -329,9 +329,10 @@ enum NativeUpdateEvents {
 
     /// The queued events as a JSON array, or nil when there are none; the
     /// queue is cleared either way.
-    /// Takes the events of the current native `build`, clearing the queue. An
-    /// event of another build, such as the app version before an upgrade, is
-    /// dropped so none is reported against a release it did not happen in.
+    /// Takes the events of the current native `build` and cohort, clearing the
+    /// queue. An event of another, such as the app version before an upgrade
+    /// or a cohort set since, is dropped so none is reported against a release
+    /// or cohort it did not happen in.
     static func take(from storage: NativeUpdateEventStorage, build: String) -> String? {
         lock.lock()
         defer { lock.unlock() }
@@ -1860,7 +1861,7 @@ final class NativeUpdateChecker {
             name: name,
             payload: payload,
             occurredAt: now(),
-            build: NativeUpdateEvents.build(appVersion: host.appVersion, minBundleId: host.minBundleId),
+            build: NativeUpdateEvents.build(appVersion: host.appVersion, minBundleId: host.minBundleId, cohort: host.cohort()),
             to: host
         )
     }
