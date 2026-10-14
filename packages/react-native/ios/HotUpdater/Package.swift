@@ -30,6 +30,7 @@ let coreExcludedFiles = [
     "CohortService.swift",
     "HotUpdater-Bridging-Header.h",
     "HotUpdater.mm",
+    "HotUpdaterAsync.swift",
     "HotUpdaterImpl.swift",
     "HotUpdaterInterface.swift",
     "HotUpdaterMinBundleId.m",
