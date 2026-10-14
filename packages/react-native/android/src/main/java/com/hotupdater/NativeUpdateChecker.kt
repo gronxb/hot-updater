@@ -403,7 +403,10 @@ internal class NativeUpdateChecker(
         val result = staging.result!!
         onProgress?.let(staging.progress::add)
         try {
-            return result.await().committed
+            val committed = result.await().committed
+            // A joined staging of the same target staged this update too.
+            if (committed) selection.staged = true
+            return committed
         } finally {
             onProgress?.let(staging.progress::remove)
         }
