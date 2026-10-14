@@ -26,6 +26,9 @@ async function handleResetChannel() {
   `isChannelSwitched()` return `false` as soon as the reset succeeds
 - Keeps the current JavaScript runtime running until you reload or restart
 - Runs even when `hotUpdater.isChannelSwitched()` is already `false`
+- Waits for an update check or download that native code started, such as
+  `HotUpdater.prepare` in a brownfield app, so it cannot save its channel
+  after the reset
 
 ## Example
 

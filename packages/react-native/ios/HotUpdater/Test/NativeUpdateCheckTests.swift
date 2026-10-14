@@ -447,6 +447,27 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func cancellingTheCheckReportsNoFailure() async throws {
+        let host = FakeUpdateHost()
+        let requested = Latch()
+        let transport = FakeUpdateTransport { _, _ in
+            requested.open()
+            try await Task.sleep(nanoseconds: 30_000_000_000)
+            throw CancellationError()
+        }
+        let checker = makeChecker(host, transport)
+
+        let check = Task { try await checker.checkForUpdate(options()) }
+        await requested.wait()
+        check.cancel()
+
+        await #expect(throws: CancellationError.self) {
+            _ = try await check.value
+        }
+        #expect(host.events().isEmpty)
+    }
+
+    @Test
     func aLaterPrepareJoinsTheDownloadInProgress() async throws {
         let host = FakeUpdateHost()
         let download = Latch()
