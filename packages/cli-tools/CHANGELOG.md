@@ -1,5 +1,22 @@
 # @hot-updater/cli-tools
 
+## 1.0.5
+
+### Patch Changes
+
+- @hot-updater/protocol@1.0.5
+  - @hot-updater/server@1.0.5
+  - @hot-updater/plugin-core@1.0.5
+
+## 1.0.4
+
+### Patch Changes
+
+- 33bdc32: `@hot-updater/vercel` re-exports `postgres`, so a managed Vercel project installs only `@hot-updater/vercel`. `hot-updater init` writes `import { postgres, vercelBlobStorage } from "@hot-updater/vercel"` and, on a rerun, moves an existing `postgres` import from `@hot-updater/postgres` there. You can then remove `@hot-updater/postgres` from the app's devDependencies.
+- @hot-updater/protocol@1.0.4
+  - @hot-updater/server@1.0.4
+  - @hot-updater/plugin-core@1.0.4
+
 ## 1.0.3
 
 ### Patch Changes

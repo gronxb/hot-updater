@@ -238,8 +238,7 @@ export default defineConfig({
 ```tsx
 import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
-import { postgres } from "@hot-updater/postgres";
-import { vercelBlobStorage } from "@hot-updater/vercel";
+import { postgres, vercelBlobStorage } from "@hot-updater/vercel";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { defineConfig } from "hot-updater";
 
@@ -252,10 +251,6 @@ export default defineConfig({
   updateStrategy: "appVersion",
   storage: vercelBlobStorage({
     token: process.env.HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN!,
-    access:
-      process.env.HOT_UPDATER_VERCEL_BLOB_ACCESS === "public"
-        ? "public"
-        : "private",
   }),
   database: postgres({
     connectionString: process.env.HOT_UPDATER_VERCEL_DATABASE_URL!,

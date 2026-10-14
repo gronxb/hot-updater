@@ -38,8 +38,7 @@ and build configuration.
 
 ## Step 2: Configure Cloudflare
 
-Before reusing a populated D1 database, complete the [schema
-checks](#schema-validation). Then choose how to set up Cloudflare:
+Choose how to set up Cloudflare:
 
 <Tabs items={["AI agent", "Terminal"]}>
   <Tab value="AI agent">
@@ -219,62 +218,6 @@ export default defineConfig({
 The persisted
 `HOT_UPDATER_CLOUDFLARE_R2_PRIVATE` value replays the privacy choice on later
 init runs.
-
-### Schema validation
-
-Init checks whether `bundles` and `release_catalogs` exist. It rejects a database
-with `bundles` but no `release_catalogs`; it does not validate all columns,
-indexes, schema settings, or migration history. A database that passes this check
-can still fail after init applies migrations and deploys the Worker.
-
-Before reusing a populated database:
-
-1. Inspect its table and index definitions with a read-only query:
-
-   ```bash
-   npx wrangler d1 execute <database-name> --remote \
-     --command "SELECT name, sql FROM sqlite_schema WHERE type IN ('table', 'index') ORDER BY name;"
-   ```
-
-2. Compare the Hot Updater definitions with the installed package's
-   `node_modules/@hot-updater/cloudflare/worker/migrations/0001_hot-updater_1.0.0.sql`,
-   the schema of core, Insights, API keys, and Remote Config. If the settings
-   and migration-history tables exist, inspect them too:
-
-   ```bash
-   npx wrangler d1 execute <database-name> --remote \
-     --command "SELECT key, value FROM private_hot_updater_settings;"
-   npx wrangler d1 execute <database-name> --remote \
-     --command "SELECT name FROM d1_migrations ORDER BY id;"
-   ```
-
-   The [schema settings](/docs/database-adapters/cloudflare#schema-settings) must
-   match the installed schema. A recorded migration name alone does not prove
-   compatibility, and init will not rerun an already-recorded migration.
-3. Reuse only a verified compatible database. If its schema or migration history
-   is incompatible, create a new D1 database and preserve the existing one. Do not
-   edit schema settings to bypass compatibility checks.
-
-### Release catalog cache
-
-The generated Worker configuration uses Wrangler `4.69.0` or newer, a current
-compatibility date, and:
-
-```json
-{
-  "cache": { "enabled": true }
-}
-```
-
-This is Cloudflare's cache in front of Worker execution, not
-`caches.default` inside the Worker. Successful catalog responses use a
-five-second shared TTL and vary by `x-api-key` and content encoding. The cache
-follows the catalog's `CDN-Cache-Control`: for five seconds after a catalog
-expires, it answers with the expired copy while the Worker revalidates it in
-the background (`CF-Cache-Status: UPDATING`). A deploy or a Roll back reaches
-devices within 15 seconds. Confirm
-`CF-Cache-Status: HIT` when validating a warm request; response headers alone
-do not prove that Worker and D1 execution were skipped.
 
 ## Step 4: If you use Expo, add the config plugin
 
