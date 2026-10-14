@@ -31,23 +31,23 @@ final class HotUpdaterImplUpdateHost: NativeUpdateHost {
     func activeUpdateState() -> [String: Any] { impl.getActiveUpdateState() }
 
     func acceptReleaseCatalog(_ params: [String: Any]) -> Bool {
-        impl.acceptReleaseCatalog(params as NSDictionary)
+        impl.acceptReleaseCatalog(params)
     }
 
     func isReleaseSelectionCurrent(_ params: [String: Any]) -> Bool {
-        impl.isReleaseSelectionCurrent(params as NSDictionary)
+        impl.isReleaseSelectionCurrent(params)
     }
 
     func commitReleaseSelection(_ params: [String: Any]) async throws -> Bool {
         let value = try await promise { resolve, reject in
-            self.impl.commitReleaseSelection(params as NSDictionary, resolver: resolve, rejecter: reject)
+            self.impl.commitReleaseSelection(params, resolver: resolve, rejecter: reject)
         }
         return (value as? Bool) ?? false
     }
 
     func updateBundle(_ params: [String: Any], progress: @escaping (Double) -> Void) async throws -> Any? {
         try await promise { resolve, reject in
-            self.impl.updateBundle(params as NSDictionary, onProgress: progress, resolver: resolve, rejecter: reject)
+            self.impl.updateBundle(params, onProgress: progress, resolver: resolve, rejecter: reject)
         }
     }
 

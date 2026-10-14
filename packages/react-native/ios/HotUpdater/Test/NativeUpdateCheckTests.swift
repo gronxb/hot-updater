@@ -197,6 +197,14 @@ struct NativeUpdateCheckTests {
         host.active = receipt(release1, bundle1, generation: 1)
         let transport = FakeUpdateTransport.serving(catalog: catalog(generation: 2, releases: []))
         let checker = makeChecker(host, transport)
+        // A download an earlier prepare queued, which the built-in bundle replaces.
+        NativeUpdateEvents.append(
+            name: "onBundleDownloaded",
+            payload: [:],
+            occurredAt: Date(),
+            build: NativeUpdateEvents.build(appVersion: host.appVersion, minBundleId: host.minBundleId, cohort: host.cohort()),
+            to: host
+        )
 
         let update = try #require(try await checker.checkForUpdate(options()))
 
@@ -211,6 +219,7 @@ struct NativeUpdateCheckTests {
         #expect(selection["kind"] as? String == "BUILTIN")
         #expect(selection["bundleId"] as? String == builtInBundleId)
         #expect(selection["releaseId"] is NSNull)
+        #expect(!host.events().contains { $0["name"] as? String == "onBundleDownloaded" })
         let check = try #require(host.events().first?["payload"] as? [String: Any])
         #expect(check["fromReleaseId"] as? String == release1)
         #expect(check["toReleaseId"] is NSNull)

@@ -978,6 +978,10 @@ internal class NativeUpdateChecker(
 
         if (selection.transitionKind != "INSTALL") {
             val committed = NativeCall.run { state.commitReleaseSelection(selection.receipt) }
+            if (committed && selection.transitionKind == "USE_BUILTIN") {
+                // The built-in bundle replaced every staged one: their downloads are void.
+                events.remove("onBundleDownloaded")
+            }
             if (committed && selection.transitionKind == "ADOPT_RELEASE") {
                 // The running bundle is now selected as a newer Release.
                 queueUnchanged(
