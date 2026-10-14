@@ -104,7 +104,7 @@ import Foundation
     private let stagedLock = NSLock()
     private var staged = false
     /// Stages the update; the deadline bounds the artifact request.
-    let install: (Date?, @escaping (Double) -> Void) async throws -> Bool
+    let install: (NativeUpdateDeadline?, @escaping (Double) -> Void) async throws -> Bool
     /// Whether the selection this update stages is still the current one.
     let isSelectionCurrent: () -> Bool
 
@@ -120,7 +120,7 @@ import Foundation
         targetKey: String,
         requestKey: String,
         checker: NativeUpdateChecker,
-        install: @escaping (Date?, @escaping (Double) -> Void) async throws -> Bool,
+        install: @escaping (NativeUpdateDeadline?, @escaping (Double) -> Void) async throws -> Bool,
         isSelectionCurrent: @escaping () -> Bool = { true }
     ) {
         self.id = id
@@ -812,6 +812,20 @@ private final class RunningDataTask: @unchecked Sendable {
 
 // MARK: - Update check
 
+/// A point on the monotonic clock, so a change of the device's wall clock
+/// neither extends nor ends a deadline early.
+struct NativeUpdateDeadline {
+    private let uptime: TimeInterval
+
+    init(after interval: TimeInterval) {
+        uptime = ProcessInfo.processInfo.systemUptime + interval
+    }
+
+    var remaining: TimeInterval {
+        uptime - ProcessInfo.processInfo.systemUptime
+    }
+}
+
 final class NativeUpdateChecker {
     private static let nilUUID = "00000000-0000-0000-0000-000000000000"
     private static let maxETagBytes = 1024
@@ -820,6 +834,8 @@ final class NativeUpdateChecker {
 
     private let host: NativeUpdateHost
     private let transport: NativeUpdateTransport
+    /// The wall clock, for the times events record; deadlines use the
+    /// monotonic clock.
     private let now: () -> Date
     private let gate = NativeUpdateGate()
     private let committedTargetLock = NSLock()
@@ -871,7 +887,7 @@ final class NativeUpdateChecker {
                 error: NativeUpdateCheckError.hotUpdater("prepare timeout must be greater than 0")
             )
         }
-        let deadline = now().addingTimeInterval(timeout)
+        let deadline = NativeUpdateDeadline(after: timeout)
 
         // A staging from other options is waited for, then this request is checked.
         let requestKey = Self.requestKey(options, cohort: normalizeCohortValue(host.cohort()))
@@ -1043,7 +1059,7 @@ final class NativeUpdateChecker {
 
     private func finishPrepare(
         _ staging: NativeUpdateStaging,
-        deadline: Date,
+        deadline: NativeUpdateDeadline,
         onProgress: ((Double) -> Void)?
     ) async -> HotUpdaterPrepareResult {
         // The listener ends with this call; the staging may go on.
@@ -1090,13 +1106,13 @@ final class NativeUpdateChecker {
         }
     }
 
-    private func remaining(until deadline: Date) -> TimeInterval {
-        deadline.timeIntervalSince(now())
+    private func remaining(until deadline: NativeUpdateDeadline) -> TimeInterval {
+        deadline.remaining
     }
 
     /// Hands the gate the caller holds to a staging of `update`, published
     /// before it starts, which releases the gate when it finishes.
-    private func startStaging(_ update: HotUpdaterUpdate, deadline: Date?) -> NativeUpdateStaging {
+    private func startStaging(_ update: HotUpdaterUpdate, deadline: NativeUpdateDeadline?) -> NativeUpdateStaging {
         let staging = NativeUpdateStaging(update: update)
         gate.publish(staging)
         Task { [self] in
@@ -1118,7 +1134,7 @@ final class NativeUpdateChecker {
 
     /// Waits for a staging until `deadline` or cancellation, which leave the
     /// staging running.
-    private func wait(for staging: NativeUpdateStaging, until deadline: Date?) async -> StagingWait {
+    private func wait(for staging: NativeUpdateStaging, until deadline: NativeUpdateDeadline?) async -> StagingWait {
         let race = StagingWaitRace()
         staging.onFinish { race.finish(.finished($0)) }
         if let deadline {
@@ -1137,7 +1153,7 @@ final class NativeUpdateChecker {
 
     // MARK: checkForUpdate
 
-    private func check(_ options: HotUpdaterCheckOptions, deadline: Date?) async throws -> HotUpdaterUpdate? {
+    private func check(_ options: HotUpdaterCheckOptions, deadline: NativeUpdateDeadline?) async throws -> HotUpdaterUpdate? {
         let baseURL = try Self.validatedBaseURL(options.baseURL)
         let currentAppVersion = host.appVersion
         let currentBundleId = resolveBundleId(host.bundleId())
@@ -1205,7 +1221,7 @@ final class NativeUpdateChecker {
     private func checkReleaseCatalog(
         options: HotUpdaterCheckOptions,
         baseURL: String,
-        deadline: Date?,
+        deadline: NativeUpdateDeadline?,
         currentAppVersion: String,
         currentBundleId: String,
         minimumReleaseId: String,
@@ -1363,7 +1379,7 @@ final class NativeUpdateChecker {
             targetReleaseId: desired.releaseId
         )
 
-        let installSelection = { [self] (deadline: Date?, progress: @escaping (Double) -> Void) async throws -> Bool in
+        let installSelection = { [self] (deadline: NativeUpdateDeadline?, progress: @escaping (Double) -> Void) async throws -> Bool in
             requestChannel = targetChannel
             requestCohort = cohort
             guard host.isReleaseSelectionCurrent(guardParams) else {
@@ -1428,7 +1444,7 @@ final class NativeUpdateChecker {
             }
             return true
         }
-        let updateBundleForSelection = { [self] (deadline: Date?, progress: @escaping (Double) -> Void) async throws -> Bool in
+        let updateBundleForSelection = { [self] (deadline: NativeUpdateDeadline?, progress: @escaping (Double) -> Void) async throws -> Bool in
             do {
                 return try await installSelection(deadline, progress)
             } catch {
@@ -1611,14 +1627,14 @@ final class NativeUpdateChecker {
         _ url: String,
         headers: [String: String],
         options: HotUpdaterCheckOptions,
-        deadline: Date?
+        deadline: NativeUpdateDeadline?
     ) async throws -> NativeUpdateResponse {
         guard let requestURL = URL(string: url) else {
             throw URLError(.badURL)
         }
         var timeout = options.requestTimeout
         if let deadline {
-            let remaining = deadline.timeIntervalSince(now())
+            let remaining = deadline.remaining
             guard remaining > 0 else {
                 throw URLError(.timedOut)
             }
@@ -1669,7 +1685,7 @@ final class NativeUpdateChecker {
         currentBundleId: String,
         targetBundleId: String,
         options: HotUpdaterCheckOptions,
-        deadline: Date?
+        deadline: NativeUpdateDeadline?
     ) async throws -> Artifact {
         var headers = Self.normalizedHeaders(options.requestHeaders)
         if headers["accept"] == nil {
@@ -1791,7 +1807,7 @@ final class NativeUpdateChecker {
         url: String,
         etag: String?,
         options: HotUpdaterCheckOptions,
-        deadline: Date?
+        deadline: NativeUpdateDeadline?
     ) async throws -> NativeUpdateResponse {
         var headers = Self.normalizedHeaders(options.requestHeaders)
         headers["accept"] = "application/json"
@@ -1806,7 +1822,7 @@ final class NativeUpdateChecker {
         url: String,
         expectedScope: ReleaseCatalogScope,
         options: HotUpdaterCheckOptions,
-        deadline: Date?
+        deadline: NativeUpdateDeadline?
     ) async throws -> ReleaseCatalog? {
         let partition = Self.catalogCachePartition(baseURL: baseURL, url: url, headers: options.requestHeaders)
         let cached = readValidatedCache(partition: partition, expectedScope: expectedScope)
