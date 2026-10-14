@@ -17,6 +17,15 @@ export interface UpdateBundleParams {
   archiveUrl?: string | null;
   /** Every target file with its download URL and optional Hermes patch. */
   assets: UnsafeObject;
+  /**
+   * Legacy: JavaScript from the first artifact protocol v2 SDK sends these
+   * here, with only the Hermes patch in `assets`, and native keeps accepting
+   * them so its OTA Bundles still install. Current JavaScript sends them to
+   * `installArtifact`.
+   */
+  filesUrl?: string | null;
+  requestHeaders?: UnsafeObject | null;
+  requestTimeout?: number | null;
   /** Full Release Catalog selection receipt committed with the staged Bundle. */
   selection?: UnsafeObject | null;
 }

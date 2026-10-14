@@ -295,7 +295,10 @@ export const addListener = <T extends keyof HotUpdaterEvent>(
   };
 };
 
-export type UpdateParams = UpdateBundleParams & {
+export type UpdateParams = Omit<
+  UpdateBundleParams,
+  "filesUrl" | "requestHeaders" | "requestTimeout"
+> & {
   status: UpdateStatus;
   shouldSkipCurrentBundleIdCheck?: boolean;
 };
