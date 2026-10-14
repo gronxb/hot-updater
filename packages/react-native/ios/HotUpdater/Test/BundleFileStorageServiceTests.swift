@@ -2854,6 +2854,9 @@ struct BundleFileStorageServiceTests {
         let selection = try #require(loadMetadata(documentsDirectory: root)?.stagingSelection)
         #expect(selection.bundleId == "target")
         #expect(selection.releaseId == nil)
+        // A check from before that staging no longer stages over it.
+        #expect(service.isReleaseSelectionCurrent(catalogId: "project-a", scopeKey: "scope-production",
+            generation: 1, catalogHash: "hash-1", channel: "production", selectionContextHash: "context-1") == false)
     }
 
     @Test
