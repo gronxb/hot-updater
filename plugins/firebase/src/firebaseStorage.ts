@@ -23,6 +23,9 @@ export interface FirebaseStorageConfig extends AppOptions {
   signedUrlExpiresIn?: number;
 }
 
+/** Signed URLs kept per adapter, enough for a few Bundles' assets. */
+const MAX_CACHED_SIGNED_URLS = 10_000;
+
 export const firebaseStorage = (
   config: FirebaseStorageConfig,
 ): StorageAdapterWith<
@@ -31,6 +34,44 @@ export const firebaseStorage = (
   const app = getApps().length ? getApp() : initializeApp(config);
   const bucket = getStorage(app).bucket(config.storageBucket);
   const getStorageKey = createStorageKeyBuilder(config.basePath);
+  /**
+   * Signed URLs by object. Without a private key, as in Cloud Functions, each
+   * signature is an IAM signBlob request, and an update check returns a URL
+   * for every asset of its Bundle: each URL is reused until half its lifetime
+   * has passed.
+   */
+  const signedUrls = new Map<
+    string,
+    { readonly url: Promise<string>; readonly renewAt: number }
+  >();
+  const signUrl = async (key: string) => {
+    const expiresAt = Date.now() + (config.signedUrlExpiresIn ?? 3600) * 1000;
+    const [url] = await bucket.file(key).getSignedUrl({
+      action: "read",
+      expires: expiresAt,
+    });
+    if (!url) throw new Error("Failed to generate Firebase download URL");
+    return url;
+  };
+  const getSignedUrl = (key: string) => {
+    const cached = signedUrls.get(key);
+    if (cached && Date.now() < cached.renewAt) return cached.url;
+
+    const url = signUrl(key);
+    const entry = {
+      url,
+      renewAt: Date.now() + ((config.signedUrlExpiresIn ?? 3600) * 1000) / 2,
+    };
+    signedUrls.delete(key);
+    signedUrls.set(key, entry);
+    if (signedUrls.size > MAX_CACHED_SIGNED_URLS) {
+      signedUrls.delete(signedUrls.keys().next().value!);
+    }
+    url.catch(() => {
+      if (signedUrls.get(key) === entry) signedUrls.delete(key);
+    });
+    return url;
+  };
 
   const parseAndValidate = (storageUri: string) => {
     const parsed = parseStorageUri(storageUri, "gs");
@@ -100,12 +141,7 @@ export const firebaseStorage = (
           url: downloadUrl.toString(),
         };
       }
-      const [url] = await bucket.file(key).getSignedUrl({
-        action: "read",
-        expires: Date.now() + (config.signedUrlExpiresIn ?? 3600) * 1000,
-      });
-      if (!url) throw new Error("Failed to generate Firebase download URL");
-      return { url };
+      return { url: await getSignedUrl(key) };
     },
     async exists({ storageUri }) {
       const { key } = parseAndValidate(storageUri);

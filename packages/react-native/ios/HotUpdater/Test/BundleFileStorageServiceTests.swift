@@ -1485,7 +1485,7 @@ struct BundleFileStorageServiceTests {
     func independentOriginalDownloadsOverlap() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
-        let paths = ["index.ios.bundle"] + (0..<9).map { "assets/\($0).png" }
+        let paths = ["index.ios.bundle"] + (0..<24).map { "assets/\($0).png" }
         let bytes = Data("target bytes".utf8)
         let hash = try #require(sha256(bytes, in: root))
         let hashes = Dictionary(uniqueKeysWithValues: paths.map { ($0, hash) })
@@ -1502,8 +1502,8 @@ struct BundleFileStorageServiceTests {
                 (path, ChangedAssetDescriptor(fileUrl: URL(string: "https://example.com/\(path)")!, fileHash: hash))
             }))
         #expect(result.failureError == nil)
-        #expect(downloads.maximumConcurrentAssets <= 4)
-        #expect(downloads.maximumConcurrentAssets > 1,
+        #expect(downloads.maximumConcurrentAssets <= 16)
+        #expect(downloads.maximumConcurrentAssets > 4,
             "Independent downloads must overlap within the fixed concurrency limit")
     }
 
@@ -1624,6 +1624,212 @@ struct BundleFileStorageServiceTests {
             #expect(try Data(contentsOf: installed.appendingPathComponent(path)) == data)
         }
         #expect(fileSystem.didFailBackupRemoval)
+    }
+
+    @Test
+    func artifactProtocolV2AsksOnlyForTheFilesItDownloadsInRequestsOf100() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        var reused: [String: Data] = [:]
+        for index in 0..<10 {
+            reused["assets/reused\(index).png"] = Data("reused\(index)".utf8)
+        }
+        var changed: [String: Data] = ["index.ios.bundle": Data("bundle".utf8)]
+        for index in 0..<149 {
+            changed["assets/changed\(index).png"] = Data("changed\(index)".utf8)
+        }
+        let files = reused.merging(changed) { current, _ in current }
+        let manifest = try makeManifestData(
+            bundleId: "target",
+            assets: try files.mapValues { try #require(sha256($0, in: root)) }
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        var contents = [manifestURL: manifest]
+        for (path, data) in changed {
+            contents[URL(string: "https://cdn.example.com/\(path)")!] = data
+        }
+        let downloads = MappingDownloadService(contents: contents)
+        let resolver = RecordingArtifactFileResolver()
+        let service = makeStorageService(
+            documentsDirectory: root,
+            downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: reused)
+        )
+
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: [:],
+            fileResolver: resolver
+        )
+
+        if case .failure(let error) = result { Issue.record("install failed: \(error)") }
+        #expect(resolver.requests.map(\.count) == [100, 50])
+        #expect(Set(resolver.requests.flatMap { $0 }) == Set(changed.keys))
+        #expect(Set(downloads.requestedURLs) == Set([manifestURL] + changed.keys.map {
+            URL(string: "https://cdn.example.com/\($0)")!
+        }))
+        let installed = root.appendingPathComponent("bundle-store/target")
+        #expect(try Data(contentsOf: installed.appendingPathComponent("assets/changed148.png")) == changed["assets/changed148.png"])
+        #expect(try Data(contentsOf: installed.appendingPathComponent("assets/reused3.png")) == reused["assets/reused3.png"])
+    }
+
+    @Test
+    func artifactProtocolV2AsksForNoFileWhenItTakesTheArchive() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let files = [
+            "index.ios.bundle": deterministicNoise(count: 64, seed: 1),
+            "assets/image.png": deterministicNoise(count: 64, seed: 2),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 10_000
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let downloads = MappingDownloadService(contents: [manifestURL: manifest, archiveURL: archive])
+        let resolver = RecordingArtifactFileResolver()
+        let service = makeStorageService(
+            documentsDirectory: root,
+            downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:])
+        )
+
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            archiveURL: archiveURL,
+            assets: [:],
+            fileResolver: resolver
+        )
+
+        if case .failure(let error) = result { Issue.record("install failed: \(error)") }
+        #expect((try? result.get()) == UpdateDelivery(method: .archive, patchFallback: false))
+        #expect(resolver.requests.isEmpty)
+        #expect(downloads.requestedURLs == [manifestURL, archiveURL])
+    }
+
+    @Test
+    func firstOtaReusesBuiltInAssetsAndDownloadsOnlyChangedFilesDespiteAnArchive() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        var unchanged: [String: Data] = [:]
+        for index in 0..<40 {
+            unchanged["assets/icon\(index).png"] = deterministicNoise(count: 16, seed: UInt64(index + 1))
+        }
+        let changed = [
+            "index.ios.bundle": deterministicNoise(count: 64, seed: 100),
+            "assets/new.png": deterministicNoise(count: 16, seed: 101),
+        ]
+        let files = unchanged.merging(changed) { current, _ in current }
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 16
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        var contents = [manifestURL: manifest, archiveURL: archive]
+        for (path, data) in files {
+            contents[URL(string: "https://example.com/\(path)")!] = data
+        }
+        let downloads = MappingDownloadService(contents: contents)
+        let service = makeStorageService(
+            documentsDirectory: root,
+            downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: unchanged)
+        )
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            archiveURL: archiveURL,
+            assets: Dictionary(uniqueKeysWithValues: try files.map { path, data in
+                (path, ChangedAssetDescriptor(
+                    fileUrl: URL(string: "https://example.com/\(path)")!,
+                    fileHash: try #require(sha256(data, in: root))
+                ))
+            })
+        )
+        if case .failure(let error) = result { Issue.record("install failed: \(error)") }
+        #expect((try? result.get()) == UpdateDelivery(method: .manifest, patchFallback: false))
+        #expect(Set(downloads.requestedURLs) == Set([manifestURL] + changed.keys.map {
+            URL(string: "https://example.com/\($0)")!
+        }))
+        #expect(downloads.requestedURLs.count == 3)
+    }
+
+    @Test
+    func manySmallNetworkFilesTakeTheArchiveEvenWhenItCarriesMoreBytes() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        var files = [
+            "index.ios.bundle": deterministicNoise(count: 64, seed: 1),
+            "assets/large.png": deterministicNoise(count: 8192, seed: 2),
+        ]
+        for index in 0..<40 {
+            files["assets/icon\(index).png"] = deterministicNoise(count: 16, seed: UInt64(index + 3))
+        }
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        // The large file is reused, so the archive carries more bytes than the
+        // 41 files left; 41 requests still cost more than one archive.
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 16
+        )
+        #expect(archive.count > 16 * (files.count - 1))
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        var contents = [manifestURL: manifest, archiveURL: archive]
+        for (path, data) in files {
+            contents[URL(string: "https://example.com/\(path)")!] = data
+        }
+        let downloads = MappingDownloadService(contents: contents)
+        let service = makeStorageService(
+            documentsDirectory: root,
+            downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [
+                "assets/large.png": files["assets/large.png"]!,
+            ])
+        )
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            archiveURL: archiveURL,
+            assets: Dictionary(uniqueKeysWithValues: try files.map { path, data in
+                (path, ChangedAssetDescriptor(
+                    fileUrl: URL(string: "https://example.com/\(path)")!,
+                    fileHash: try #require(sha256(data, in: root))
+                ))
+            })
+        )
+        if case .failure(let error) = result { Issue.record("archive install failed: \(error)") }
+        #expect((try? result.get()) == UpdateDelivery(method: .archive, patchFallback: false))
+        #expect(downloads.requestedURLs == [manifestURL, archiveURL])
     }
 
     @Test
@@ -3163,6 +3369,26 @@ private final class MappingDownloadService: DownloadService {
     }
 }
 
+private final class RecordingArtifactFileResolver: ArtifactFileResolver {
+    private let lock = NSLock()
+    private var recorded: [[String]] = []
+
+    var requests: [[String]] {
+        lock.lock()
+        defer { lock.unlock() }
+        return recorded
+    }
+
+    func resolve(paths: [String]) throws -> [String: ResolvedArtifactFile] {
+        lock.lock()
+        recorded.append(paths)
+        lock.unlock()
+        return Dictionary(uniqueKeysWithValues: paths.map {
+            ($0, ResolvedArtifactFile(url: URL(string: "https://cdn.example.com/\($0)")!, compression: nil))
+        })
+    }
+}
+
 private final class MappingBuiltInAssetResolver: BuiltInAssetResolver {
     private let contents: [String: Data]
 
@@ -3375,7 +3601,8 @@ private func updateBundle(
     manifestURL: URL,
     manifestHash: String,
     archiveURL: URL? = nil,
-    assets: [String: ChangedAssetDescriptor]
+    assets: [String: ChangedAssetDescriptor],
+    fileResolver: ArtifactFileResolver? = nil
 ) -> Result<UpdateDelivery, Error> {
     let completed = DispatchSemaphore(value: 0)
     var result: Result<UpdateDelivery, Error> = .failure(BundleStorageError.unknown(nil))
@@ -3385,6 +3612,7 @@ private func updateBundle(
         manifestFileHash: manifestHash,
         archiveUrl: archiveURL,
         assets: assets,
+        fileResolver: fileResolver,
         progressHandler: { _ in }
     ) {
         result = $0

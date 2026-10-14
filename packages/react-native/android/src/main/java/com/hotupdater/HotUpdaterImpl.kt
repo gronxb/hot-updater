@@ -241,6 +241,7 @@ class HotUpdaterImpl {
         channel: String?,
         selection: PersistedSelection? = null,
         archiveUrl: String? = null,
+        fileResolver: ArtifactFileResolver? = null,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult {
         if (selection != null && !bundleStorage.stageReleaseSelection(selection)) {
@@ -253,6 +254,7 @@ class HotUpdaterImpl {
                 manifestFileHash,
                 assets,
                 archiveUrl,
+                fileResolver,
                 progressCallback,
             )
 

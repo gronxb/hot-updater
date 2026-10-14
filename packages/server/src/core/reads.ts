@@ -18,9 +18,12 @@ import type {
   CoreSchema,
 } from "@hot-updater/plugin-core";
 import {
+  ARTIFACT_FILES_PROTOCOL_VERSION,
   ARTIFACT_PROTOCOL_VERSION,
   NIL_UUID,
+  type ArtifactFiles,
   type ArtifactInfo,
+  type ArtifactInfoV2,
   type ReleaseCatalog,
 } from "@hot-updater/protocol";
 
@@ -29,7 +32,11 @@ import {
   releaseCatalogScopeKeyOf,
   type ReleaseCatalogRequest,
 } from "../db/releaseCatalog";
-import { resolveManifestArtifacts } from "../db/updateArtifacts";
+import {
+  resolveManifestArtifactFiles,
+  resolveManifestArtifacts,
+  resolveManifestArtifactsV2,
+} from "../db/updateArtifacts";
 import { baseBundleIdsOf } from "./baseCandidates";
 
 export type CoreDatabase = HotUpdaterDatabase<CoreSchema>;
@@ -181,14 +188,15 @@ export const createCoreReads = (
     },
 
     /** Artifact resolution: one batch read of both bundles and one unique read of their patch. */
-    async getArtifactInfo(
+    getArtifactInfo: (async (
       targetBundleId: string,
       currentBundleId: string,
-      artifactProtocolVersion: 1,
-    ): Promise<ArtifactInfo | null> {
+      artifactProtocolVersion: 1 | 2,
+    ): Promise<ArtifactInfo | ArtifactInfoV2 | null> => {
       const { readStorageText } = storage;
       if (
-        artifactProtocolVersion !== ARTIFACT_PROTOCOL_VERSION ||
+        (artifactProtocolVersion !== ARTIFACT_PROTOCOL_VERSION &&
+          artifactProtocolVersion !== ARTIFACT_FILES_PROTOCOL_VERSION) ||
         readStorageText === undefined
       ) {
         return null;
@@ -209,7 +217,7 @@ export const createCoreReads = (
           : null,
       ]);
       if (target === null || target === undefined) return null;
-      return resolveManifestArtifacts({
+      const input = {
         currentBundle: current ? rowToBundle(toBundleRow(current)) : null,
         readStorageText,
         resolveFileUrl: storage.resolveFileUrl,
@@ -217,6 +225,26 @@ export const createCoreReads = (
           toBundleRow(target),
           patch === null ? [] : [toPatchRow(patch)],
         ),
+      };
+      return artifactProtocolVersion === ARTIFACT_FILES_PROTOCOL_VERSION
+        ? resolveManifestArtifactsV2(input)
+        : resolveManifestArtifacts(input);
+    }) as CoreReads["getArtifactInfo"],
+
+    /** A Bundle's file URLs: one point read of the bundle and its manifest. */
+    async getArtifactFiles(
+      bundleId: string,
+      paths: readonly string[],
+    ): Promise<ArtifactFiles | null> {
+      const { readStorageText } = storage;
+      if (readStorageText === undefined) return null;
+      const row = await db.findOne("bundles", { id: bundleId });
+      if (row === null) return null;
+      return resolveManifestArtifactFiles({
+        paths,
+        readStorageText,
+        resolveFileUrl: storage.resolveFileUrl,
+        targetBundle: rowToBundle(toBundleRow(row)),
       });
     },
 
