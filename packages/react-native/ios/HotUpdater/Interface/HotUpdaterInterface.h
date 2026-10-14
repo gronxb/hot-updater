@@ -59,9 +59,31 @@ NS_ASSUME_NONNULL_BEGIN
     NS_SWIFT_NAME(configureWithFingerprintHash(_:publicKey:channel:isolationKey:));
 @end
 
+// The native update check's Objective-C entry points. The options, update,
+// result and task are the Swift classes HotUpdater.h names, which this module
+// can't see, so they cross as `id`.
+@protocol HotUpdaterNativeUpdatesInterface <NSObject>
+- (NSBundle *)bundleOfOptions:(id)options;
+- (id)checkForUpdate:(id)options
+                impl:(id<HotUpdaterImplInterface>)impl
+          completion:(void (^)(id _Nullable_result update, NSError *_Nullable error))completion
+    NS_SWIFT_NAME(checkForUpdate(_:impl:completion:));
+- (id)prepare:(id)options
+       timeout:(NSTimeInterval)timeout
+          impl:(id<HotUpdaterImplInterface>)impl
+    onProgress:(void (^_Nullable)(double progress))onProgress
+    completion:(void (^)(id result))completion;
+- (void)resetChannelWithImpl:(id<HotUpdaterImplInterface>)impl completion:(void (^)(BOOL success))completion;
+- (void)resetChannelWithImpl:(id<HotUpdaterImplInterface>)impl
+                    resolver:(RCTPromiseResolveBlock)resolve
+                    rejecter:(RCTPromiseRejectBlock)reject;
+- (nullable NSString *)takeEventsWithImpl:(id<HotUpdaterImplInterface>)impl;
+@end
+
 // Implemented in HotUpdaterInterface.swift.
 FOUNDATION_EXTERN id<HotUpdaterImplInterface> HotUpdaterMakeImpl(void);
 FOUNDATION_EXTERN NSString *_Nullable HotUpdaterAppVersion(void);
 FOUNDATION_EXTERN id<HotUpdaterConfigInterface> HotUpdaterSharedConfig(void);
+FOUNDATION_EXTERN id<HotUpdaterNativeUpdatesInterface> HotUpdaterNativeUpdates(void);
 
 NS_ASSUME_NONNULL_END

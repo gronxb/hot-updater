@@ -213,6 +213,10 @@ public final class HotUpdaterNativeUpdateTask: NSObject, @unchecked Sendable {
     }
 }
 
+// Swift Package Manager builds this file in a module that can't see the
+// Objective-C++ `HotUpdater` class (see HotUpdaterInterface.h): Swift callers
+// there use the completion handler methods.
+#if !SWIFT_PACKAGE
 /// Holds the task a Swift caller's cancellation cancels, which may arrive
 /// before the task starts.
 private final class NativeUpdateTaskHandle: @unchecked Sendable {
@@ -280,3 +284,4 @@ extension HotUpdater {
         }
     }
 }
+#endif
