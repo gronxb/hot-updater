@@ -120,7 +120,7 @@ const setUpInsights = (
 
   /**
    * `occurredAt` dates an event native code recorded before this runtime
-   * started, such as a download `HotUpdater.prepare` finished.
+   * started, such as a download a native `HotUpdaterInstance` finished.
    */
   const createEvent = (
     movement: Movement,
