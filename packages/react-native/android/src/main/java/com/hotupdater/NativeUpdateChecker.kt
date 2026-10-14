@@ -728,7 +728,17 @@ internal class NativeUpdateChecker(
                 targetCohorts = release?.targetCohorts?.toList() ?: emptyList(),
                 transitionKind = transitionKind,
                 runsCurrentBundle = desired.bundleId == input.currentBundleId,
-                targetKey = "${desired.kind.name}:${desired.bundleId}:${desired.releaseId}:${input.targetChannel}",
+                targetKey =
+                    listOf(
+                        desired.kind.name,
+                        desired.bundleId,
+                        desired.releaseId,
+                        input.targetChannel,
+                        guard.catalogId,
+                        guard.generation,
+                        guard.catalogHash,
+                        guard.selectionContextHash,
+                    ).joinToString(":"),
                 install = { onProgress -> updateBundle(update, selection, onProgress) },
             )
         return CheckedUpdate(update, selection)
