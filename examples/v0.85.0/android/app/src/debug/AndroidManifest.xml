@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android" xmlns:tools="http://schemas.android.com/tools">
     <application android:usesCleartextTraffic="true" tools:targetApi="28" tools:ignore="GoogleAppIndexingWarning">
-        <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="83616c528e60267b5216f0a4fabec0c95ccf793d"/>
+        <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="75d99306d175bd4344d098f500584445f4e9f072"/>
     </application>
 </manifest>
