@@ -1,3 +1,7 @@
+// Writes src/hotUpdaterBuildConfig.js from the environment before Metro
+// resolves App.tsx, for every bundle this project produces.
+require('./hot-updater-build-config.cjs');
+
 const path = require('path');
 const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 
@@ -5,13 +9,18 @@ const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 // symlinks them here, so Metro must also watch the monorepo root.
 const monorepoRoot = path.resolve(__dirname, '../../..');
 
-// Packages that must exist exactly once in the bundle. A dependency without
-// its own copy (for example @callstack/react-native-brownfield, which has no
-// react-native peer dependency) would otherwise resolve `react-native` through
-// pnpm's hidden hoist directory, node_modules/.pnpm/node_modules, which holds
-// whatever version another workspace package pulled in. Two React Native
-// copies in one bundle break TurboModule lookups at startup.
-const singletons = ['react', 'react-native'];
+// Packages always resolved from this project, wherever the import is.
+// - `react` and `react-native` must exist exactly once in the bundle. A
+//   dependency without its own copy (for example
+//   @callstack/react-native-brownfield, which has no react-native peer
+//   dependency) would otherwise resolve `react-native` through pnpm's hidden
+//   hoist directory, node_modules/.pnpm/node_modules, which holds whatever
+//   version another workspace package pulled in. Two React Native copies in
+//   one bundle break TurboModule lookups at startup.
+// - `@babel/runtime` helpers are imports Metro's Babel preset adds to every
+//   file it transforms, including the workspace packages behind
+//   @hot-updater/react-native, which have no copy of their own.
+const projectModules = ['react', 'react-native', '@babel/runtime'];
 const projectEntry = path.join(__dirname, 'index.js');
 
 /**
@@ -24,10 +33,10 @@ const config = {
   watchFolders: [monorepoRoot],
   resolver: {
     resolveRequest: (context, moduleName, platform) => {
-      const singleton = singletons.some(
-        (name) => moduleName === name || moduleName.startsWith(`${name}/`),
+      const fromProject = projectModules.some(
+        name => moduleName === name || moduleName.startsWith(`${name}/`),
       );
-      if (singleton) {
+      if (fromProject) {
         // Resolve as if the import came from this project's entry file, so
         // Metro walks this project's node_modules first.
         return context.resolveRequest(

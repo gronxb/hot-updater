@@ -81,4 +81,12 @@ tasks.matching { Regex("(merge\\w+Assets|package\\w+Resources)").matches(it.name
 dependencies {
     api("com.facebook.react:react-android:0.86.0")
     api("com.facebook.hermes:hermes-android:250829098.0.14")
+
+    // The brownfield plugin embeds the classes of the autolinked
+    // @hot-updater/react-native module into this AAR and adds that module's
+    // Maven dependencies (commons-compress, okhttp, coroutines, lifecycle) to
+    // the published POM. Its vendored brotli decoder is a plain jar with no
+    // Maven coordinates, which the plugin drops, so declare it here: a local
+    // jar dependency of a library module is packaged into the AAR's libs/.
+    implementation(files(rootProject.file("../node_modules/@hot-updater/react-native/android/libs/hot-updater-brotli-dec-1.2.0.jar")))
 }

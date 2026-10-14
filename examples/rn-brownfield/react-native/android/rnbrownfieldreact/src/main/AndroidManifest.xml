@@ -1,0 +1,8 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Merged into the host app's manifest. `hot-updater fingerprint create`
+         and `hot-updater channel set` write their meta-data here (see
+         `platform.android` in ../../../hot-updater.config.ts). -->
+    <application>
+        <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="9f02c6724e300477141163f29b7134e4bc98bca2" />
+    </application>
+</manifest>

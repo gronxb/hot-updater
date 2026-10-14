@@ -1,18 +1,24 @@
 import React from 'react';
 import {
+  Modal,
   Pressable,
   SafeAreaView,
+  ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
 import ReactNativeBrownfield from '@callstack/react-native-brownfield';
 
+import { HotUpdaterCard } from './src/components/HotUpdaterCard';
+import { NativeHostCard } from './src/components/NativeHostCard';
+import { hotUpdater } from './src/hotUpdater';
+
 type Props = {
   host?: string;
 };
 
-export default function App({ host }: Props) {
+function App({ host }: Props) {
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
@@ -25,24 +31,33 @@ export default function App({ host }: Props) {
         </Pressable>
       </View>
 
-      <View style={styles.content}>
-        <View style={styles.card}>
-          <Text style={styles.title}>Hello from React Native</Text>
-          <Text style={styles.body}>
-            This screen is a React Native root view pushed full-screen by the
-            native host. The JavaScript bundle ships inside the
-            RnBrownfieldReact XCFramework and the rnbrownfieldreact AAR.
-          </Text>
-          <Text style={styles.body}>
-            The back button above calls popToNative(), which pops this screen
-            off the host's native navigation stack.
-          </Text>
-          <Text style={styles.meta}>Host: {host ?? 'unknown'}</Text>
-        </View>
-      </View>
+      <ScrollView contentContainerStyle={styles.content}>
+        <NativeHostCard host={host} />
+        <HotUpdaterCard />
+      </ScrollView>
     </SafeAreaView>
   );
 }
+
+// Checks for an update when the screen mounts and applies it, showing the
+// fallback until the check completes.
+export default hotUpdater.wrap({
+  updateStrategy: 'fingerprint',
+  fallbackComponent: ({ progress, status }) => (
+    <Modal transparent visible={true}>
+      <View style={styles.fallback}>
+        <Text style={styles.fallbackLabel}>
+          {status === 'UPDATING' ? 'Updating...' : 'Checking for update...'}
+        </Text>
+        {progress > 0 ? (
+          <Text style={styles.fallbackLabel}>
+            {Math.round(progress * 100)}%
+          </Text>
+        ) : null}
+      </View>
+    </Modal>
+  ),
+})(App);
 
 const styles = StyleSheet.create({
   screen: {
@@ -68,28 +83,21 @@ const styles = StyleSheet.create({
     color: '#2563eb',
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     justifyContent: 'center',
+    paddingVertical: 24,
+    gap: 16,
   },
-  card: {
-    marginHorizontal: 24,
-    padding: 24,
-    borderRadius: 16,
-    backgroundColor: '#ffffff',
-    gap: 12,
+  fallback: {
+    flex: 1,
+    padding: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
-  title: {
-    fontSize: 22,
-    fontWeight: '600',
-    color: '#111827',
-  },
-  body: {
-    fontSize: 16,
-    lineHeight: 22,
-    color: '#374151',
-  },
-  meta: {
-    fontSize: 14,
-    color: '#6b7280',
+  fallbackLabel: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: 'bold',
   },
 });

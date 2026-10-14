@@ -10,17 +10,30 @@
     "android": "rock run:android",
     "package:ios": "rock package:ios --scheme RnBrownfieldReact --configuration Release",
     "package:aar": "rock package:aar --variant Release --module-name rnbrownfieldreact",
-    "publish-local:aar": "pnpm package:aar && rock publish-local:aar --module-name rnbrownfieldreact"
+    "publish-local:aar": "pnpm package:aar && rock publish-local:aar --module-name rnbrownfieldreact",
+    "fingerprint": "hot-updater fingerprint create",
+    "channel": "hot-updater channel set",
+    "deploy:android": "hot-updater deploy -p android -i",
+    "deploy:ios": "hot-updater deploy -p ios -i",
+    "console": "hot-updater console"
   },
   "dependencies": {
     "@callstack/react-native-brownfield": "5.3.0",
+    "@hot-updater/react-native": "workspace:*",
     "react": "19.2.0",
     "react-native": "0.86.0"
+  },
+  "dependenciesMeta": {
+    "@hot-updater/react-native": {
+      "injected": true
+    }
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
     "@babel/preset-env": "^7.25.3",
     "@babel/runtime": "^7.25.0",
+    "@hot-updater/rock": "workspace:*",
+    "@hot-updater/supabase": "workspace:*",
     "@react-native/babel-preset": "0.86.0",
     "@react-native/codegen": "0.86.0",
     "@react-native/eslint-config": "0.86.0",
@@ -35,6 +48,7 @@
     "@types/react": "^19.2.0",
     "eslint": "^8.19.0",
     "hermes-compiler": "250829098.0.14",
+    "hot-updater": "workspace:*",
     "prettier": "2.8.8",
     "rock": "0.15.2",
     "typescript": "^5.8.3"

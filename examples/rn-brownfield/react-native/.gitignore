@@ -79,3 +79,10 @@ yarn-error.log
 
 # Native libs copied by the brownfield Gradle plugin
 **/*.so
+
+# hot-updater
+.env.hotupdater
+.hot-updater/output
+
+# Public Hot Updater settings generated before bundling
+src/hotUpdaterBuildConfig.js
