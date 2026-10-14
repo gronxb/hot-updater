@@ -81,7 +81,9 @@ pnpm -w e2e -- --platform android --track brownfield --device emulator-5554
 The track runs the `brownfield` suite,
 [`brownfield-scenario-names.json`](brownfield-scenario-names.json): every
 default scenario except the three a native app shell cannot host, a headless
-launch and the two that reload from JavaScript. `e2e:build --track brownfield`
+launch and the two that reload from JavaScript, plus the two brownfield-only
+scenarios of `HotUpdater.prepare`, a required update staged before React Native
+starts and a minor one that applies at the next start. `e2e:build --track brownfield`
 packages the frameworks with `brownfield package:ios` and the AAR into
 `examples/v0.85.0/android/brownfieldlib/build/maven`, then builds the host
 apps.
