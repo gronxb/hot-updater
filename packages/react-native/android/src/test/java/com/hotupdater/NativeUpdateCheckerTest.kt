@@ -770,6 +770,28 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `a hostless artifact URL is invalid`() =
+        runBlocking {
+            for (url in listOf("https://", "https:///manifest.json")) {
+                val state = FakeState()
+                val catalogRoutes = routes(minorCatalog())
+                val transport =
+                    FakeTransport { request ->
+                        if (request.url == ARTIFACT_URL) {
+                            ok(artifact().replace("https://cdn.example.com/b/manifest.json", url))
+                        } else {
+                            catalogRoutes(request)
+                        }
+                    }
+                val checker = NativeUpdateChecker(state, transport)
+                val update = checker.checkForUpdate(OPTIONS)!!
+
+                assertThrows(InvalidUpdateResponseException::class.java) { runBlocking { update.updateBundle() } }
+                assertEquals(0, state.stageCount.get())
+            }
+        }
+
+    @Test
     fun `a 200 whose body breaks is reported before the check fails`() =
         runBlocking {
             val state = FakeState()

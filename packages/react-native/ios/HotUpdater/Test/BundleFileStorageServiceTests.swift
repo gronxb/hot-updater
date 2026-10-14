@@ -1294,6 +1294,24 @@ struct BundleFileStorageServiceTests {
             metadata.highestSeenCatalogs["project-a|scope-production"]
                 == CatalogHighWater(generation: 2, catalogHash: "hash-2")
         )
+        // A selection made before the reset no longer stages.
+        #expect(service.isReleaseSelectionCurrent(
+            catalogId: "project-a",
+            scopeKey: "scope-production",
+            generation: 2,
+            catalogHash: "hash-2",
+            channel: "production",
+            selectionContextHash: "context-2"
+        ) == false)
+        // The same catalog, checked again, selects again.
+        #expect(service.acceptReleaseCatalog(
+            catalogId: "project-a",
+            scopeKey: "scope-production",
+            generation: 2,
+            catalogHash: "hash-2",
+            channel: "production",
+            selectionContextHash: "context-2"
+        ))
     }
 
     @Test
@@ -2738,15 +2756,15 @@ struct BundleFileStorageServiceTests {
             builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
         #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-production",
             generation: 1, catalogHash: "hash-1", channel: "production", selectionContextHash: "context-1"))
-        #expect(service.stageReleaseSelection(releaseSelection(releaseId: "release-one", bundleId: "target",
-            generation: 1, catalogHash: "hash-1", selectionContextHash: "context-1")))
         // A newer catalog arrives while the bundle downloads.
         #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-production",
             generation: 2, catalogHash: "hash-2", channel: "production", selectionContextHash: "context-2"))
 
         let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
             manifestHash: try #require(sha256(manifest, in: root)),
-            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)],
+            selection: releaseSelection(releaseId: "release-one", bundleId: "target",
+                generation: 1, catalogHash: "hash-1", selectionContextHash: "context-1"))
         let error = try #require(result.failureError)
         #expect(!(error is UpdateFailureError))
         let rejection = UpdateFailureError.rejectionError(for: error)
@@ -2755,6 +2773,41 @@ struct BundleFileStorageServiceTests {
         #expect((rejection.userInfo[NSUnderlyingErrorKey] as? NSError)?.localizedDescription
             == "Release catalog selection is stale")
         #expect(loadMetadata(documentsDirectory: root)?.stagingBundleId == nil)
+    }
+
+    @Test
+    func selectionStaysWithItsOwnStaging() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("target hermes".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": hash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let missingURL = URL(string: "https://example.com/missing.ios.bundle")!
+        let service = makeStorageService(documentsDirectory: root,
+            downloadService: MappingDownloadService(contents: [manifestURL: manifest, fileURL: bytes]),
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-production",
+            generation: 1, catalogHash: "hash-1", channel: "production", selectionContextHash: "context-1"))
+        let manifestHash = try #require(sha256(manifest, in: root))
+
+        let failed = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: manifestHash,
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: missingURL, fileHash: hash)],
+            selection: releaseSelection(releaseId: "release-one", bundleId: "target",
+                generation: 1, catalogHash: "hash-1", selectionContextHash: "context-1"))
+        #expect(failed.failureError != nil)
+
+        // A later staging of the same bundle without a selection stages a
+        // bare bundle, not the failed staging's Release.
+        let staged = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: manifestHash,
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
+        #expect(staged.failureError == nil)
+        let selection = try #require(loadMetadata(documentsDirectory: root)?.stagingSelection)
+        #expect(selection.bundleId == "target")
+        #expect(selection.releaseId == nil)
     }
 
     @Test
@@ -3503,7 +3556,8 @@ private func updateBundle(
     manifestURL: URL,
     manifestHash: String,
     archiveURL: URL? = nil,
-    assets: [String: ChangedAssetDescriptor]
+    assets: [String: ChangedAssetDescriptor],
+    selection: PersistedSelection? = nil
 ) -> Result<UpdateDelivery, Error> {
     let completed = DispatchSemaphore(value: 0)
     var result: Result<UpdateDelivery, Error> = .failure(BundleStorageError.unknown(nil))
@@ -3513,6 +3567,7 @@ private func updateBundle(
         manifestFileHash: manifestHash,
         archiveUrl: archiveURL,
         assets: assets,
+        selection: selection,
         progressHandler: { _ in }
     ) {
         result = $0

@@ -129,11 +129,28 @@ internal object NativeUpdateCheck {
             ).also { checker = it }
         }
 
+    /**
+     * The app process checks; Hot Updater's restart process only relaunches
+     * it. A check there would settle the previous launch and consume the crash
+     * marker before the relaunched app reads them.
+     */
+    private fun requireAppProcess(
+        context: Context,
+        call: String,
+    ) {
+        check(!HotUpdaterProcess.isRestartProcess(context)) {
+            "HotUpdater.$call runs in the app's process, not Hot Updater's restart process"
+        }
+    }
+
     suspend fun checkForUpdate(
         context: Context,
         impl: () -> HotUpdaterImpl,
         options: HotUpdaterCheckOptions,
-    ): HotUpdaterUpdate? = checker(context, impl).checkForUpdate(options)
+    ): HotUpdaterUpdate? {
+        requireAppProcess(context, "checkForUpdate")
+        return checker(context, impl).checkForUpdate(options)
+    }
 
     /** Clears the runtime channel once a check or staging running in this process finishes. */
     suspend fun resetChannel(
@@ -149,11 +166,7 @@ internal object NativeUpdateCheck {
         onProgress: ((Double) -> Unit)?,
     ): HotUpdaterPrepareResult =
         try {
-            // The app process checks; Hot Updater's restart process only
-            // relaunches it.
-            check(!HotUpdaterProcess.isRestartProcess(context)) {
-                "HotUpdater.prepare runs in the app's process, not Hot Updater's restart process"
-            }
+            requireAppProcess(context, "prepare")
             checker(context, impl).prepare(options, timeoutMillis, onProgress)
         } catch (error: CancellationException) {
             throw error
