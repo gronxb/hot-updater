@@ -37,9 +37,11 @@ internal class NativeUpdateEventQueue(
         ): String = "${appVersion.orEmpty()}|$minBundleId|${ReleaseSelector.normalizeCohortValue(cohort)}"
     }
 
+    /** [eventBuild] replaces [build] for an event that happened under another cohort. */
     fun add(
         name: String,
         payload: JSONObject,
+        eventBuild: String? = null,
     ) {
         synchronized(lock) {
             val events = read() ?: JSONArray()
@@ -48,7 +50,7 @@ internal class NativeUpdateEventQueue(
                     .put("name", name)
                     .put("payload", payload)
                     .put("occurredAt", clock())
-                    .put("build", build()),
+                    .put("build", eventBuild ?: build()),
             )
             var sameName = (0 until events.length()).count { nameAt(events, it) == name }
             var index = 0

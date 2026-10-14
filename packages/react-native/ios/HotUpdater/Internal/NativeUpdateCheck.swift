@@ -886,7 +886,10 @@ final class NativeUpdateChecker {
                             updateStrategy: options.updateStrategy,
                             targetBundleId: nil,
                             targetReleaseId: nil
-                        )
+                        ),
+                        // The waiting prepare's cohort, not the one the check
+                        // holding the gate captured.
+                        cohort: normalizeCohortValue(host.cohort())
                     )
                 }
                 NSLog("[HotUpdater] prepare: \(error.localizedDescription)")
@@ -1434,10 +1437,11 @@ final class NativeUpdateChecker {
             bundleId: desired.bundleId,
             transitionKind: transitionKind,
             runsCurrentBundle: desired.bundleId.jsEquals(currentBundleId),
-            targetKey: [
-                desired.kind.rawValue, desired.bundleId, desired.releaseId ?? "null", targetChannel,
-                catalogId, String(catalog.generation), catalog.catalogHash, selectionContextHash,
-            ].joined(separator: ":"),
+            // JSON, so no field can spell another, such as a channel with a colon.
+            targetKey: Self.jsonKey([
+                desired.kind.rawValue, desired.bundleId, desired.releaseId ?? NSNull(), targetChannel,
+                catalogId, catalog.generation, catalog.catalogHash, selectionContextHash,
+            ]),
             requestKey: Self.requestKey(options, cohort: cohort),
             checker: self,
             install: updateBundleForSelection,
@@ -1459,7 +1463,10 @@ final class NativeUpdateChecker {
             .sorted { $0.key < $1.key }
             .map { [$0.key, $0.value] }
         // JSON, so no field can spell another, such as a channel with a newline.
-        let fields: [Any] = [baseURL, options.updateStrategy.name, options.channel ?? "", cohort, headers]
+        return jsonKey([baseURL, options.updateStrategy.name, options.channel ?? "", cohort, headers])
+    }
+
+    private static func jsonKey(_ fields: [Any]) -> String {
         let data = (try? JSONSerialization.data(withJSONObject: fields)) ?? Data()
         return String(decoding: data, as: UTF8.self)
     }
@@ -1894,7 +1901,15 @@ final class NativeUpdateChecker {
         return classification
     }
 
-    private func reportUpdateError(_ error: Error, stage: String, resource: String?, scope: ErrorScope) {
+    /// `cohort` tags the event when it happened under another cohort than the
+    /// running check's.
+    private func reportUpdateError(
+        _ error: Error,
+        stage: String,
+        resource: String?,
+        scope: ErrorScope,
+        cohort: String? = nil
+    ) {
         // A caller that cancels its wait has not seen the update fail.
         if error is CancellationError { return }
         guard var payload = Self.classifyUpdateError(error, stage: stage, resource: resource) else {
@@ -1911,10 +1926,10 @@ final class NativeUpdateChecker {
             payload["targetReleaseId"] = targetReleaseId
         }
         payload["message"] = error.localizedDescription
-        queueEvent("onUpdateError", payload)
+        queueEvent("onUpdateError", payload, cohort: cohort)
     }
 
-    private func queueEvent(_ name: String, _ payload: [String: Any]) {
+    private func queueEvent(_ name: String, _ payload: [String: Any], cohort: String? = nil) {
         NativeUpdateEvents.append(
             name: name,
             payload: payload,
@@ -1922,7 +1937,7 @@ final class NativeUpdateChecker {
             build: NativeUpdateEvents.build(
                 appVersion: host.appVersion,
                 minBundleId: host.minBundleId,
-                cohort: requestCohort ?? host.cohort()
+                cohort: cohort ?? requestCohort ?? host.cohort()
             ),
             to: host
         )
