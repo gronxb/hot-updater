@@ -185,8 +185,18 @@ const selectBlobStore = async ({
   const privateStores = stores.filter((store) => store.access === "private");
   if (nonInteractive) {
     if (publicStore) {
+      // A changed name replaces the saved public store.
+      const named =
+        savedName === publicStore.name
+          ? undefined
+          : stores.find((store) => store.name === savedName);
+      if (named?.access === "private")
+        return { kind: "existing", store: named };
+      if (savedName && savedName !== publicStore.name && !named) {
+        return { kind: "create", name: savedName };
+      }
       throw new InitError(
-        `Blob store ${publicStore.name} is public. Hot Updater keeps bundles in a private store: remove ${inputs.blobStoreId.envKey} and set ${inputs.blobStoreName.envKey} to a private or new store.`,
+        `Blob store ${publicStore.name} is public. Hot Updater keeps bundles in a private store: set ${inputs.blobStoreName.envKey} to a private or new store.`,
       );
     }
     if (saved) return { kind: "existing", store: saved };

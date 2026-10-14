@@ -451,7 +451,7 @@ describe("Vercel init", () => {
     );
   });
 
-  it("refuses a saved public Blob store in a replay, naming the env to change", async () => {
+  it("refuses a saved public Blob store in a replay that keeps its name", async () => {
     givenInitEnv({
       ...replayEnv,
       HOT_UPDATER_VERCEL_BLOB_STORE_ID: "store_Store1",
@@ -468,10 +468,38 @@ describe("Vercel init", () => {
 
     await expect(
       runInit({ build: "bare", envFile: ".env.hotupdater" }),
-    ).rejects.toThrow(
-      "remove HOT_UPDATER_VERCEL_BLOB_STORE_ID and set HOT_UPDATER_VERCEL_BLOB_STORE_NAME",
-    );
+    ).rejects.toThrow("set HOT_UPDATER_VERCEL_BLOB_STORE_NAME");
     expect(mocks.api.createProject).not.toHaveBeenCalled();
+  });
+
+  it("creates the renamed private store in a replay that saved a public store's ID", async () => {
+    givenInitEnv({
+      ...replayEnv,
+      HOT_UPDATER_VERCEL_BLOB_STORE_ID: "store_pub",
+      HOT_UPDATER_VERCEL_BLOB_STORE_NAME: "hot-updater-private",
+    });
+    mocks.api.listBlobStores.mockResolvedValue([
+      {
+        access: "public",
+        connections: [],
+        id: "store_pub",
+        name: "hot-updater-storage",
+        region: "iad1",
+      },
+    ]);
+
+    await runInit({ build: "bare", envFile: ".env.hotupdater" });
+
+    expect(mocks.api.createBlobStore).toHaveBeenCalledWith({
+      access: "private",
+      name: "hot-updater-private",
+    });
+    expect(mocks.makeEnv).toHaveBeenCalledWith(
+      expect.objectContaining({
+        HOT_UPDATER_VERCEL_BLOB_STORE_ID: "store_Store1",
+        HOT_UPDATER_VERCEL_BLOB_STORE_NAME: "hot-updater-private",
+      }),
+    );
   });
 
   it("replaces a saved public Blob store with a new private one when interactive", async () => {
