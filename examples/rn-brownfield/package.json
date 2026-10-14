@@ -1,0 +1,10 @@
+{
+  "name": "@examples/rn-brownfield",
+  "version": "0.0.1",
+  "private": true,
+  "description": "React Native brownfield example: react-native/ is packaged as an AAR and an XCFramework that the native android/ and ios/ host apps embed.",
+  "scripts": {
+    "demo:android": "pnpm --filter @examples/rn-brownfield-react-native publish-local:aar && pnpm --filter @examples/rn-brownfield-android build && pnpm --filter @examples/rn-brownfield-android android",
+    "demo:ios": "pnpm --filter @examples/rn-brownfield-react-native package:ios && pnpm --filter @examples/rn-brownfield-ios frameworks && pnpm --filter @examples/rn-brownfield-ios ios"
+  }
+}
