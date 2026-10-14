@@ -870,6 +870,10 @@ class NativeUpdateCheckerTest {
             val timeouts =
                 state.events().filter { it.getString("name") == "onUpdateError" }.map { it.getJSONObject("payload") }
             assertTrue(timeouts.any { it.getString("stage") == "check" && it.optString("transport") == "timeout" })
+            // The prepare that waited under cohort 501 reports its timeout under 501.
+            assertTrue(
+                state.queued().any { it.getString("name") == "onUpdateError" && it.getString("build").endsWith("|501") },
+            )
             assertTrue(otherCohort is HotUpdaterPrepareResult.Failed)
             assertSame(first.update, (same as HotUpdaterPrepareResult.Pending).update)
             gate.complete(Unit)
