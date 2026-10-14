@@ -48,9 +48,10 @@ class MainActivity : AppCompatActivity() {
     // that hosts a ReactNativeFragment has to do it itself.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setIntent(intent)
-        // React Native's host drops an intent that arrives before its bundle
-        // loads, so every link waits for it, in order.
+        // The launch intent stays the activity's, as with a ReactActivity, so
+        // JavaScript reads the cold-start link as the initial URL. React
+        // Native's host drops an intent that arrives before its bundle loads,
+        // so every later link waits for it, in order.
         ReactNativeHostManager.whenBundleLoaded {
             ReactNativeBrownfield.shared.reactHost.onNewIntent(intent)
         }
