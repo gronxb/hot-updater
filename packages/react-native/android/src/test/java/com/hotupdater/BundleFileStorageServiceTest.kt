@@ -975,6 +975,13 @@ class BundleFileStorageServiceTest {
                     isolationKey = TEST_ISOLATION_KEY,
                     stagingBundleId = bundleDir.name,
                     stagingSelection = oldSelection,
+                    pendingTransition =
+                        PendingSelectionTransition(
+                            fromReleaseId = "release-zero",
+                            fromBundleId = "bundle-zero",
+                            toReleaseId = "release-one",
+                            toBundleId = bundleDir.name,
+                        ),
                 ),
             )
             assertTrue(
@@ -1001,6 +1008,11 @@ class BundleFileStorageServiceTest {
             assertTrue(bundleDir.isDirectory)
             assertEquals(newSelection, loadMetadata(rootDir)?.stagingSelection)
             assertFalse(loadMetadata(rootDir)?.verificationPending ?: true)
+            // The launch reports the adopted Release as the one applied.
+            assertEquals(
+                PendingSelectionTransition("release-zero", "bundle-zero", "release-two", bundleDir.name),
+                loadMetadata(rootDir)?.pendingTransition,
+            )
         }
 
     @Test
