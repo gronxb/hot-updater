@@ -1,7 +1,7 @@
 // swift-tools-version: 5.9
 import PackageDescription
 
-// Wraps the XCFrameworks that `pnpm package:ios` in ../../react-native emits
+// Wraps the XCFrameworks that `pnpm package:ios` in ../../rn-app emits
 // (copied here by `pnpm frameworks`) as one product the host app links.
 let package = Package(
     name: "RnBrownfieldReact",

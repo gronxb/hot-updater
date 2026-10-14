@@ -1,12 +1,12 @@
-# rn-brownfield / ios
+# rn-brownfield / ios-app
 
 Minimal native iOS host for the brownfield example. It has no React Native
 tooling of its own: `BrownfieldHost.xcodeproj` links the `RnBrownfieldReact`
 product of the local Swift package in `frameworks/`, whose binary targets are
-the XCFrameworks that `pnpm package:ios` in `../react-native` emits.
+the XCFrameworks that `pnpm package:ios` in `../rn-app` emits.
 
 - `pnpm frameworks` copies them from
-  `../react-native/.rock/cache/ios/package/` into `frameworks/` (gitignored).
+  `../rn-app/.rock/cache/ios/package/` into `frameworks/` (gitignored).
 - `AppDelegate.swift` sets `ReactNativeBrownfield.shared.bundle = ReactNativeBundle`
   and `bundleURLOverride = makeHotUpdaterBundleURLOverride()` (both exported by
   the XCFramework; the override returns the bundle Hot Updater downloaded, or

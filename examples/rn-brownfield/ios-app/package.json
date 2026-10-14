@@ -1,10 +1,10 @@
 {
-  "name": "@examples/rn-brownfield-ios",
+  "name": "@examples/rn-brownfield-ios-app",
   "version": "0.0.1",
   "private": true,
-  "description": "Native iOS host that links the XCFrameworks packaged by ../react-native through a local Swift package.",
+  "description": "Native iOS host that links the XCFrameworks packaged by ../rn-app through a local Swift package.",
   "scripts": {
-    "frameworks": "rm -rf frameworks/*.xcframework && cp -R ../react-native/.rock/cache/ios/package/*.xcframework frameworks/",
+    "frameworks": "rm -rf frameworks/*.xcframework && cp -R ../rn-app/.rock/cache/ios/package/*.xcframework frameworks/",
     "build": "xcodebuild -project BrownfieldHost.xcodeproj -scheme BrownfieldHost -configuration Release -destination 'generic/platform=iOS Simulator' -derivedDataPath build CODE_SIGN_IDENTITY=\"\" CODE_SIGNING_REQUIRED=NO build",
     "install:sim": "xcrun simctl install booted build/Build/Products/Release-iphonesimulator/BrownfieldHost.app",
     "launch": "xcrun simctl launch booted com.hotupdater.brownfieldhost",
