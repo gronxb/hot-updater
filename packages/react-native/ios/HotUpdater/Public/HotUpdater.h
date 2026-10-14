@@ -2,6 +2,7 @@
 #import <React/RCTBundleURLProvider.h>
 
 @class HotUpdaterCheckOptions;
+@class HotUpdaterNativeUpdateTask;
 @class HotUpdaterPrepareResult;
 @class HotUpdaterUpdate;
 
@@ -67,11 +68,12 @@ NS_ASSUME_NONNULL_BEGIN
  * Checks for an update without the JavaScript runtime, as JavaScript's
  * `checkForUpdate` does. Completes with nil when there is no update. Waits
  * for other native update work without a deadline; `prepare` is the bounded
- * call. Swift: `try await HotUpdater.checkForUpdate(options)`.
+ * call. `cancel` on the returned task cancels the check.
+ * Swift: `try await HotUpdater.checkForUpdate(options)`.
  */
-+ (void)checkForUpdate:(HotUpdaterCheckOptions *)options
-            completion:(void (^)(HotUpdaterUpdate * _Nullable_result update, NSError * _Nullable error))completion
-    NS_SWIFT_NAME(checkForUpdate(_:completion:));
++ (HotUpdaterNativeUpdateTask *)checkForUpdate:(HotUpdaterCheckOptions *)options
+                                   completion:(void (^)(HotUpdaterUpdate * _Nullable_result update, NSError * _Nullable error))completion
+    NS_SWIFT_NAME(__checkForUpdate(_:completion:));
 
 /**
  * Checks for an update and stages it before React Native starts. `timeout`
@@ -84,12 +86,13 @@ NS_ASSUME_NONNULL_BEGIN
  * or `updateBundle` joins it. Selecting the bundle this start already runs
  * completes `upToDate`. Never
  * fails with an exception: a failure completes `failed` with `error`.
+ * `cancel` on the returned task ends the wait, as the deadline does.
  * Swift: `await HotUpdater.prepare(options, timeout: 3)`.
  */
-+ (void)prepare:(HotUpdaterCheckOptions *)options
-        timeout:(NSTimeInterval)timeout
-     onProgress:(void (^ _Nullable)(double progress))onProgress
-     completion:(void (^)(HotUpdaterPrepareResult *result))completion
++ (HotUpdaterNativeUpdateTask *)prepare:(HotUpdaterCheckOptions *)options
+                                timeout:(NSTimeInterval)timeout
+                             onProgress:(void (^ _Nullable)(double progress))onProgress
+                             completion:(void (^)(HotUpdaterPrepareResult *result))completion
     NS_SWIFT_NAME(__prepare(_:timeout:onProgress:completion:));
 
 /**
