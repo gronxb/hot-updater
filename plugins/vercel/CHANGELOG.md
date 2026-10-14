@@ -1,5 +1,29 @@
 # @hot-updater/vercel
 
+## 1.0.5
+
+### Patch Changes
+
+- 73f2f64: `hot-updater init` for Vercel reuses and offers private Blob stores only.
+- @hot-updater/cli-tools@1.0.5
+  - @hot-updater/protocol@1.0.5
+  - @hot-updater/server@1.0.5
+  - @hot-updater/plugin-core@1.0.5
+  - @hot-updater/postgres@1.0.5
+
+## 1.0.4
+
+### Patch Changes
+
+- 33bdc32: Keep Vercel bundles in a private Blob store only. `vercelBlobStorage` no longer takes `access`: it works with a private store, and devices download through signed URLs that expire, issued only to requests with a valid API key. `hot-updater init` lists and creates private stores only. A project that init set up with a public store needs a private one: rerun `hot-updater init`, which warns about the saved public store and asks before replacing it, and select or create a private store (a non-interactive run uses `HOT_UPDATER_VERCEL_BLOB_STORE_NAME` once it names a private or new store). Bundles deployed to the public store stop downloading until you deploy them again. Remove `access` from `vercelBlobStorage` in `hot-updater.config.ts`; `HOT_UPDATER_VERCEL_BLOB_ACCESS` is no longer read.
+- 33bdc32: `@hot-updater/vercel` re-exports `postgres`, so a managed Vercel project installs only `@hot-updater/vercel`. `hot-updater init` writes `import { postgres, vercelBlobStorage } from "@hot-updater/vercel"` and, on a rerun, moves an existing `postgres` import from `@hot-updater/postgres` there. You can then remove `@hot-updater/postgres` from the app's devDependencies.
+- Updated dependencies [33bdc32]
+  - @hot-updater/cli-tools@1.0.4
+  - @hot-updater/protocol@1.0.4
+  - @hot-updater/server@1.0.4
+  - @hot-updater/plugin-core@1.0.4
+  - @hot-updater/postgres@1.0.4
+
 ## 1.0.3
 
 ### Patch Changes

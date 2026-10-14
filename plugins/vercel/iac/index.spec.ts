@@ -101,7 +101,6 @@ const project = {
 };
 
 const replayEnv = {
-  HOT_UPDATER_VERCEL_BLOB_ACCESS: "private",
   HOT_UPDATER_VERCEL_BLOB_STORE_NAME: "hot-updater-storage",
   HOT_UPDATER_VERCEL_DATABASE_URL: DATABASE_URL,
   HOT_UPDATER_VERCEL_PROJECT_NAME: "hot-updater",
@@ -186,7 +185,6 @@ describe("Vercel init", () => {
     // The connection already added the token for production.
     expect(mocks.api.setProductionEnv.mock.calls).toEqual([
       ["prj_1", "HOT_UPDATER_VERCEL_DATABASE_URL", DATABASE_URL],
-      ["prj_1", "HOT_UPDATER_VERCEL_BLOB_ACCESS", "private"],
     ]);
     expect(mocks.deployFunction).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -201,7 +199,6 @@ describe("Vercel init", () => {
     );
     expect(mocks.makeEnv).toHaveBeenCalledWith(
       expect.objectContaining({
-        HOT_UPDATER_VERCEL_BLOB_ACCESS: "private",
         HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN: BLOB_TOKEN,
         HOT_UPDATER_VERCEL_BLOB_STORE_ID: "store_Store1",
         HOT_UPDATER_VERCEL_DATABASE_URL: DATABASE_URL,
@@ -232,7 +229,7 @@ describe("Vercel init", () => {
     givenInitEnv(replayEnv);
     mocks.api.listBlobStores.mockResolvedValue([
       {
-        access: "public",
+        access: "private",
         connections: [
           {
             environmentVariables: ["BLOB_READ_WRITE_TOKEN"],
@@ -259,7 +256,6 @@ describe("Vercel init", () => {
     expect(mocks.api.connectBlobStore).not.toHaveBeenCalled();
     expect(mocks.api.setProductionEnv.mock.calls).toEqual([
       ["prj_1", "HOT_UPDATER_VERCEL_DATABASE_URL", DATABASE_URL],
-      ["prj_1", "HOT_UPDATER_VERCEL_BLOB_ACCESS", "public"],
       ["prj_1", "HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN", BLOB_TOKEN],
     ]);
   });
@@ -398,7 +394,6 @@ describe("Vercel init", () => {
     mocks.text
       .mockResolvedValueOnce("hot-updater")
       .mockResolvedValueOnce("hot-updater-storage");
-    mocks.confirm.mockResolvedValueOnce(true);
 
     await runInit({ build: "bare" });
 
@@ -427,7 +422,6 @@ describe("Vercel init", () => {
     mocks.text
       .mockResolvedValueOnce("hot-updater")
       .mockResolvedValueOnce("hot-updater-storage");
-    mocks.confirm.mockResolvedValueOnce(true);
 
     await runInit({ build: "bare" });
 
@@ -454,6 +448,65 @@ describe("Vercel init", () => {
     });
     expect(mocks.deployFunction).toHaveBeenCalledWith(
       expect.objectContaining({ orgId: "user_1", scope: "octo" }),
+    );
+  });
+
+  it("refuses a production token that belongs to another Blob store", async () => {
+    givenInitEnv(replayEnv);
+    mocks.api.getProjectEnvValue.mockImplementation(
+      async (_project: string, envId: string) =>
+        envId === "env_blob" ? "vercel_blob_rw_Other_secret" : DATABASE_URL,
+    );
+
+    await expect(
+      runInit({ build: "bare", envFile: ".env.hotupdater" }),
+    ).rejects.toThrow("belongs to another Blob store");
+    expect(mocks.deployFunction).not.toHaveBeenCalled();
+  });
+
+  it("lists only private Blob stores to select", async () => {
+    givenInitEnv({});
+    mocks.api.listTeams.mockResolvedValue([
+      { id: "team_1", name: "Team", slug: "team" },
+    ]);
+    mocks.api.listBlobStores.mockResolvedValue([
+      {
+        access: "public",
+        connections: [],
+        id: "store_pub",
+        name: "pub",
+        region: "iad1",
+      },
+      {
+        access: "private",
+        connections: [],
+        id: "store_Store1",
+        name: "priv",
+        region: "iad1",
+      },
+    ]);
+    mocks.api.listProjectEnv.mockImplementation(async () => [
+      { id: "env_db", key: "DATABASE_URL", target: ["production"] },
+      ...(mocks.api.connectBlobStore.mock.calls.length > 0 ? connectedEnv : []),
+    ]);
+    mocks.select
+      .mockImplementationOnce(
+        async ({ options }: { options: { value: string }[] }) => {
+          expect(options.map(({ value }) => value)).toEqual([
+            "store_Store1",
+            "\0create",
+          ]);
+          return "store_Store1";
+        },
+      )
+      .mockResolvedValueOnce("env_db");
+    mocks.text.mockResolvedValueOnce("hot-updater");
+
+    await runInit({ build: "bare" });
+
+    expect(mocks.api.createBlobStore).not.toHaveBeenCalled();
+    expect(mocks.api.connectBlobStore).toHaveBeenCalledWith(
+      expect.objectContaining({ storeId: "store_Store1" }),
     );
   });
 
@@ -509,12 +562,11 @@ describe("Vercel init", () => {
     mocks.text
       .mockResolvedValueOnce("hot-updater")
       .mockResolvedValueOnce("ota-bundles");
-    mocks.confirm.mockResolvedValueOnce(false);
 
     await runInit({ build: "bare" });
 
     expect(mocks.api.createBlobStore).toHaveBeenCalledWith({
-      access: "public",
+      access: "private",
       name: "ota-bundles",
     });
     expect(mocks.api.getProjectEnvValue).toHaveBeenCalledWith(
@@ -548,7 +600,6 @@ describe("Vercel init", () => {
     mocks.text
       .mockResolvedValueOnce("hot-updater")
       .mockResolvedValueOnce("hot-updater-storage");
-    mocks.confirm.mockResolvedValueOnce(true);
 
     await runInit({ build: "bare" });
 
@@ -591,7 +642,6 @@ describe("Vercel init", () => {
     mocks.text
       .mockResolvedValueOnce("hot-updater")
       .mockResolvedValueOnce("hot-updater-storage");
-    mocks.confirm.mockResolvedValueOnce(true);
 
     await expect(runInit({ build: "bare" })).rejects.toThrow(
       "did not create the Neon database",

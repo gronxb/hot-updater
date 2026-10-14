@@ -256,21 +256,6 @@ export default defineConfig({
 });
 ```
 
-### Resource names
-
-Managed Firestore keeps every item in the `hot_updater_v1` collection of the
-selected database, and the managed Function is named `hot-updater-v1`.
-Bundles use the project's canonical Storage bucket with independent object
-keys.
-
-### Release catalog cache
-
-Firebase uses the direct `hot-updater-v1` Function URL in `origin-only` mode.
-Init prints the deployed URL and does not deploy Firebase Hosting, because the
-default Hosting site may already belong to the app or another service.
-Catalog checks still use the precompiled Release Catalog and the runtime's
-short in-process cache, but every device request invokes the Function.
-
 ## Step 4: If you use Expo, add the config plugin
 
 Follow the Expo path in [Set up your app](/docs/get-started/app-setup). It applies

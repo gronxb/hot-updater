@@ -68,7 +68,9 @@ export const buildXcodeProject = async ({
     );
   }
 
+  const minBundleId = generateMinBundleId();
   const buildArgs = prepareBuildArgs({
+    minBundleId,
     configuration,
     derivedDataPath,
     deviceType,
@@ -92,6 +94,10 @@ Command        xcodebuild ${buildArgs.join(" ")}
   try {
     await runXcodebuildWithLogging({
       args: buildArgs,
+      // The build setting reaches the podspec's script phase, and the
+      // environment reaches Package.swift's build tool plugin, which
+      // can't read build settings.
+      env: { HOT_UPDATER_MIN_BUNDLE_ID: minBundleId },
       sourceDir,
       logPrefix,
       successMessage: "Build completed successfully",
@@ -121,12 +127,14 @@ const prepareBuildArgs = ({
   resolvedDestinations,
   derivedDataPath,
   extraParams,
+  minBundleId,
 }: {
   configuration: string;
   derivedDataPath: string;
   deviceType: AppleDeviceType;
   resolvedDestinations: string[];
   extraParams?: string[];
+  minBundleId: string;
   platform: ApplePlatform;
   xcodeScheme: string;
   sourceDir: string;
@@ -148,7 +156,7 @@ const prepareBuildArgs = ({
     sdk,
     "-derivedDataPath",
     derivedDataPath,
-    `HOT_UPDATER_MIN_BUNDLE_ID=${generateMinBundleId()}`,
+    `HOT_UPDATER_MIN_BUNDLE_ID=${minBundleId}`,
     "build",
   ];
 
