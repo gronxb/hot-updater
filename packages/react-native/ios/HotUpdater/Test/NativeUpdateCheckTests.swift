@@ -643,6 +643,32 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func progressEndsWhenPrepareReturns() async throws {
+        let host = FakeUpdateHost()
+        let download = Latch()
+        host.stage = { _, progress in
+            await download.wait()
+            progress(0.5)
+            progress(1.0)
+            return ["delivery": "archive", "patchFallback": false]
+        }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2)])
+        )
+        let checker = makeChecker(host, transport)
+        let earlier = ProgressRecorder()
+
+        let result = await checker.prepare(options(), timeout: 5) { earlier.record($0) }
+        #expect(result.status == .pending)
+        await host.stageStarted.wait()
+        download.open()
+        #expect(try await result.update?.updateBundle() == true)
+        await MainActor.run {}
+
+        #expect(earlier.values.isEmpty)
+    }
+
+    @Test
     func resetChannelWaitsForTheDownloadInProgress() async throws {
         let host = FakeUpdateHost()
         let download = Latch()
