@@ -439,7 +439,8 @@ const bodyCases: {
       ],
       [
         "trailing comma in an array",
-        (body: string) => body.replace('"targetCohorts":[]', '"targetCohorts":[1,]'),
+        (body: string) =>
+          body.replace('"targetCohorts":[]', '"targetCohorts":[1,]'),
       ],
       [
         "hexadecimal number",
