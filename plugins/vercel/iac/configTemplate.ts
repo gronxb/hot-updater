@@ -13,10 +13,6 @@ export const getConfigScaffold = (
     imports: [{ pkg: "@hot-updater/vercel", named: ["vercelBlobStorage"] }],
     configString: `vercelBlobStorage({
     token: process.env.HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN!,
-    access:
-      process.env.HOT_UPDATER_VERCEL_BLOB_ACCESS === "public"
-        ? "public"
-        : "private",
   })`,
   };
   const databaseConfig: ProviderConfig = {

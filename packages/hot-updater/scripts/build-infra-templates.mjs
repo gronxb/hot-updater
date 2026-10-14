@@ -438,7 +438,6 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       projectId: null,
       projectName: null,
       blobStoreId: null,
-      blobAccess: null,
     });
   } else if (provider === "firebase") {
     const firebase = path.join(output, "firebase");
