@@ -29,6 +29,7 @@ const legacyHarnessPattern = new RegExp(
 );
 const controlServerPath = path.join(sharedDir, "control-server/controller.ts");
 const expectedScenarioModuleFiles = [
+  "asset-heavy-ota-uses-archive.ts",
   "bspatch-builtin-to-diff-ota.ts",
   "bspatch-consecutive-diff-ota.ts",
   "bspatch-disabled-chain-rollback.ts",

@@ -2,6 +2,7 @@
 import PackageDescription
 
 let coreSources = [
+    "ArtifactFileResolver.swift",
     "FileUtilities.swift",
     "BrotliFileDecompressor.swift",
     "TarArchiveExtractor.swift",

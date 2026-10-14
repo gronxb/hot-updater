@@ -35,6 +35,7 @@ class NativeUpdateCheckerTest {
         private val SCOPE_KEY = "v1:app-version:android:$CHANNEL_KEY"
         private val CATALOG_URL = "$BASE_URL/release-catalogs/app-version/android/$CHANNEL_KEY/1.2.0"
         private val ARTIFACT_URL = "$BASE_URL/artifacts/v1/$BUNDLE_B/from/$MIN_BUNDLE_ID"
+        private val ARTIFACT_V2_URL = "$BASE_URL/artifacts/v2/$BUNDLE_B/from/$MIN_BUNDLE_ID"
         private val OPTIONS =
             NativeCheckRequest(
                 baseURL = "$BASE_URL/",
@@ -322,7 +323,99 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
-    fun `an update stages through the native updateBundle and queues its events`() =
+    fun `an artifact protocol v2 update stages with the files URL and the check's headers and timeout`() =
+        runBlocking {
+            val state = FakeState()
+            val v2 =
+                JSONObject()
+                    .put("artifactProtocolVersion", 2)
+                    .put("manifestUrl", "https://cdn.example.com/b/manifest.json")
+                    .put("manifestFileHash", "sig:manifest")
+                    .put("archiveUrl", "https://cdn.example.com/b/bundle.tar.br")
+                    .put(
+                        "patch",
+                        JSONObject()
+                            .put("assetPath", "index.android.bundle")
+                            .put("algorithm", "bsdiff")
+                            .put("baseBundleId", MIN_BUNDLE_ID)
+                            .put("baseFileHash", "hash-base")
+                            .put("patchFileHash", "hash-patch")
+                            .put("patchUrl", "https://cdn.example.com/b/index.android.bundle.bsdiff"),
+                    ).toString()
+            val catalogRoutes = routes(minorCatalog())
+            val transport = FakeTransport { if (it.url == ARTIFACT_V2_URL) ok(v2) else catalogRoutes(it) }
+            val checker = NativeUpdateChecker(state, transport)
+
+            assertTrue(checker.checkForUpdate(OPTIONS)!!.updateBundle())
+
+            assertEquals(listOf(CATALOG_URL, ARTIFACT_V2_URL), transport.requests.map { it.url })
+            val request = state.staged.await()
+            assertEquals("$BASE_URL/artifacts/v2/$BUNDLE_B/files", request.filesUrl)
+            assertEquals(mapOf("Authorization" to "Bearer token"), request.requestHeaders)
+            assertEquals(5_000L, request.requestTimeoutMillis)
+            assertEquals("https://cdn.example.com/b/bundle.tar.br", request.archiveUrl)
+            assertEquals(
+                mapOf(
+                    "index.android.bundle" to
+                        ChangedAssetDescriptor(
+                            fileUrl = null,
+                            fileHash = "",
+                            patch =
+                                BsdiffPatchDescriptor(
+                                    algorithm = "bsdiff",
+                                    baseBundleId = MIN_BUNDLE_ID,
+                                    baseFileHash = "hash-base",
+                                    patchFileHash = "hash-patch",
+                                    patchUrl = "https://cdn.example.com/b/index.android.bundle.bsdiff",
+                                    byteSize = null,
+                                ),
+                        ),
+                ),
+                request.assets,
+            )
+        }
+
+    @Test
+    fun `an artifact protocol v2 error other than 404 does not fall back to v1`() =
+        runBlocking {
+            val state = FakeState()
+            val catalogRoutes = routes(minorCatalog())
+            val transport =
+                FakeTransport {
+                    if (it.url == ARTIFACT_V2_URL) UpdateCheckResponse(500, "Server Error", emptyMap(), "") else catalogRoutes(it)
+                }
+            val update = NativeUpdateChecker(state, transport).checkForUpdate(OPTIONS)!!
+
+            assertThrows(UpdateHttpException::class.java) { runBlocking { update.updateBundle() } }
+            assertFalse(transport.requests.any { it.url == ARTIFACT_URL })
+            assertEquals(0, state.stageCount.get())
+        }
+
+    @Test
+    fun `an artifact protocol v2 response that is not v2 is invalid`() =
+        runBlocking {
+            val manifest = "\"manifestUrl\":\"https://cdn.example.com/m.json\""
+            val bodies =
+                listOf(
+                    artifact(),
+                    "{\"artifactProtocolVersion\":2,$manifest}",
+                    "{\"artifactProtocolVersion\":2,$manifest,\"manifestFileHash\":\"h\",\"patch\":null}",
+                    "{\"artifactProtocolVersion\":2,$manifest,\"manifestFileHash\":\"h\",\"patch\":{\"assetPath\":\"a\"}}",
+                    "{\"artifactProtocolVersion\":2,\"manifestUrl\":\"/m.json\",\"manifestFileHash\":\"h\"}",
+                )
+            for (body in bodies) {
+                val state = FakeState()
+                val catalogRoutes = routes(minorCatalog())
+                val transport = FakeTransport { if (it.url == ARTIFACT_V2_URL) ok(body) else catalogRoutes(it) }
+                val update = NativeUpdateChecker(state, transport).checkForUpdate(OPTIONS)!!
+
+                assertThrows(body, InvalidUpdateResponseException::class.java) { runBlocking { update.updateBundle() } }
+                assertEquals(0, state.stageCount.get())
+            }
+        }
+
+    @Test
+    fun `a server older than artifact protocol v2 stages through the v1 request and queues its events`() =
         runBlocking {
             val state = FakeState()
             val transport = FakeTransport(routes(catalog(listOf(release(RELEASE_B, BUNDLE_B, message = "Fixes")))))
@@ -341,8 +434,9 @@ class NativeUpdateCheckerTest {
             assertTrue(update.updateBundle { progress.add(it) })
 
             assertEquals(listOf(0.25, 0.75, 1.0), progress)
-            assertEquals(ARTIFACT_URL, transport.requests.last().url)
-            assertEquals(listOf("catalog", "artifact"), state.httpResponses().map { it.getString("resource") })
+            assertEquals(listOf(CATALOG_URL, ARTIFACT_V2_URL, ARTIFACT_URL), transport.requests.map { it.url })
+            assertEquals(listOf("catalog", "artifact", "artifact"), state.httpResponses().map { it.getString("resource") })
+            assertEquals(listOf(200, 404, 200), state.httpResponses().map { it.getInt("status") })
             assertEquals(java.net.URL(ARTIFACT_URL).path, state.httpResponses().last().getString("path"))
             val request = state.staged.await()
             assertEquals(BUNDLE_B, request.bundleId)
@@ -350,6 +444,7 @@ class NativeUpdateCheckerTest {
             assertEquals("https://cdn.example.com/b/manifest.json", request.manifestUrl)
             assertEquals("sig:manifest", request.manifestFileHash)
             assertEquals("https://cdn.example.com/b/bundle.tar.br", request.archiveUrl)
+            assertNull(request.filesUrl)
             assertEquals(
                 ChangedAssetDescriptor(
                     fileUrl = "https://cdn.example.com/b/index.android.bundle",

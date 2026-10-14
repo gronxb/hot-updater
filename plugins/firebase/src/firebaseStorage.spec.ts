@@ -117,6 +117,57 @@ describe("firebaseStorage", () => {
     expect(bucket.file).not.toHaveBeenCalled();
   });
 
+  it("reuses an object's signed URL until half of its lifetime has passed", async () => {
+    vi.useFakeTimers({ now: Date.UTC(2026, 9, 14) });
+    try {
+      // Without a private key, every signature is an IAM signBlob request.
+      let signed = 0;
+      file.getSignedUrl.mockImplementation(async () => [
+        `https://storage.googleapis.com/updates/a.png?signature=${(signed += 1)}`,
+      ]);
+      const storage = firebaseStorage({
+        projectId: "project",
+        signedUrlExpiresIn: 600,
+        storageBucket: "updates",
+      });
+      const resolve = async (storageUri: string) =>
+        (await storage.getDownloadUrl({ storageUri })).url;
+
+      // One update check resolves the same shared asset for many devices.
+      const urls = await Promise.all(
+        Array.from({ length: 20 }, () => resolve("gs://updates/a.png")),
+      );
+      vi.advanceTimersByTime(299_000);
+      const reused = await resolve("gs://updates/a.png");
+      const other = await resolve("gs://updates/b.png");
+      vi.advanceTimersByTime(2_000);
+      const renewed = await resolve("gs://updates/a.png");
+
+      expect(new Set([...urls, reused])).toEqual(
+        new Set(["https://storage.googleapis.com/updates/a.png?signature=1"]),
+      );
+      expect(other).toContain("signature=2");
+      expect(renewed).toContain("signature=3");
+      expect(file.getSignedUrl).toHaveBeenCalledTimes(3);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("signs again after a failed signature", async () => {
+    file.getSignedUrl
+      .mockRejectedValueOnce(new Error("signBlob unavailable"))
+      .mockResolvedValueOnce(["https://storage.googleapis.com/updates/a.png"]);
+    const storage = createStorage();
+
+    await expect(
+      storage.getDownloadUrl({ storageUri: "gs://updates/a.png" }),
+    ).rejects.toThrow("signBlob unavailable");
+    await expect(
+      storage.getDownloadUrl({ storageUri: "gs://updates/a.png" }),
+    ).resolves.toEqual({ url: "https://storage.googleapis.com/updates/a.png" });
+  });
+
   it("returns a configured CDN URL as its download URL", async () => {
     const storage = firebaseStorage({
       cdnUrl: "https://cdn.example.com/downloads/",

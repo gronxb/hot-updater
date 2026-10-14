@@ -84,6 +84,7 @@ keys/private-key.pem
 # hot-updater
 .hot-updater/log
 src/test/_fixture-archive-300mb-random.bmp
+src/test/_fixture-asset-heavy/
 
 # Public E2E settings generated before bundling
 src/e2eBuildConfig.js

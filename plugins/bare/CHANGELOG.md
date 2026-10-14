@@ -1,5 +1,13 @@
 # @hot-updater/bare
 
+## 1.0.6
+
+### Patch Changes
+
+- Updated dependencies [5702bf5]
+  - @hot-updater/plugin-core@1.0.6
+  - @hot-updater/cli-tools@1.0.6
+
 ## 1.0.5
 
 ### Patch Changes

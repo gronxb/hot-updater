@@ -298,7 +298,7 @@ public protocol BundleStorageService {
     /// Stages a bundle. `selection` is the Release selection the staging
     /// commits; it travels with this staging, and the staging fails as stale
     /// when it is no longer current.
-    func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL?, assets: [String: ChangedAssetDescriptor], selection: PersistedSelection?, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<UpdateDelivery, Error>) -> Void)
+    func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL?, assets: [String: ChangedAssetDescriptor], fileResolver: ArtifactFileResolver?, selection: PersistedSelection?, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<UpdateDelivery, Error>) -> Void)
     /// Whether a staging of `selection` would still commit.
     func isSelectionCurrent(_ selection: PersistedSelection) -> Bool
     func acceptReleaseCatalog(catalogId: String, scopeKey: String, generation: Int64, catalogHash: String, channel: String, selectionContextHash: String) -> Bool
@@ -352,6 +352,12 @@ public extension BundleStorageService {
 
 class BundleFileStorageService: BundleStorageService {
     private static let maximumSafeByteSize: Int64 = 9_007_199_254_740_991
+    /// Files downloaded at once when the archive is not used.
+    static let parallelFileDownloads = 16
+    /// What one request costs beyond the first `parallelFileDownloads`, in
+    /// bytes: each waits a round trip for a free slot, about 100 ms, which at
+    /// 5 MB/s over 16 slots is the time of 32 KiB.
+    private static let requestOverheadByteSize: Int64 = 32 * 1024
 
     private struct ActiveBundleMetadataSnapshot {
         let activeBundleId: String
@@ -1185,7 +1191,15 @@ class BundleFileStorageService: BundleStorageService {
         guard !overheadUnderflowed,
               tarOverhead >= 0 else { return false }
 
-        if archive.downloadByteSize <= individualLowerBound {
+        // Many small files cost more in requests than in bytes.
+        let requestOverhead = Int64(max(0, downloads.count - Self.parallelFileDownloads))
+            * Self.requestOverheadByteSize
+        let (individualCost, costOverflowed) = individualLowerBound
+            .addingReportingOverflow(requestOverhead)
+        guard !costOverflowed,
+              individualCost <= Self.maximumSafeByteSize else { return false }
+
+        if archive.downloadByteSize <= individualCost {
             return true
         }
 
@@ -1193,7 +1207,7 @@ class BundleFileStorageService: BundleStorageService {
               !hasOfferedPatch else {
             return false
         }
-        let (archiveBound, boundOverflowed) = individualLowerBound
+        let (archiveBound, boundOverflowed) = individualCost
             .addingReportingOverflow(tarOverhead)
         guard !boundOverflowed,
               archiveBound <= Self.maximumSafeByteSize else { return false }
@@ -2100,7 +2114,7 @@ class BundleFileStorageService: BundleStorageService {
      * @param progressHandler Callback for download and extraction progress (0.0 to 1.0)
      * @param completion Callback with result of the operation
      */
-    func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL? = nil, assets: [String: ChangedAssetDescriptor], selection: PersistedSelection? = nil, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<UpdateDelivery, Error>) -> Void) {
+    func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL? = nil, assets: [String: ChangedAssetDescriptor], fileResolver: ArtifactFileResolver? = nil, selection: PersistedSelection? = nil, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<UpdateDelivery, Error>) -> Void) {
         // Check if bundle is in crashed history
         if getCrashHistory().contains(bundleId) {
             NSLog("[BundleStorage] Bundle '\(bundleId)' is in crashed history, rejecting update")
@@ -2123,11 +2137,41 @@ class BundleFileStorageService: BundleStorageService {
                 manifestFileHash: manifestFileHash,
                 archiveUrl: archiveUrl,
                 changedAssets: assets,
+                fileResolver: fileResolver,
                 selection: selection,
                 storeDir: storeDir,
                 progressHandler: progressHandler,
                 completion: completion
             )
+        }
+    }
+
+    /// Asks `fileResolver` for the URLs of `downloads`, in requests of at
+    /// most `artifactFilesRequestLimit` paths.
+    private func resolveFileUrls(
+        fileResolver: ArtifactFileResolver,
+        downloads: inout [String: ChangedAssetDescriptor]
+    ) throws {
+        let paths = downloads.keys.sorted()
+        for start in stride(from: 0, to: paths.count, by: artifactFilesRequestLimit) {
+            let chunk = Array(paths[start..<min(start + artifactFilesRequestLimit, paths.count)])
+            let files: [String: ResolvedArtifactFile]
+            do {
+                files = try fileResolver.resolve(paths: chunk)
+            } catch {
+                throw BundleStorageError.downloadFailed(error)
+            }
+            for path in chunk {
+                guard let file = files[path], let descriptor = downloads[path] else {
+                    throw BundleStorageError.invalidBundle
+                }
+                downloads[path] = ChangedAssetDescriptor(
+                    fileUrl: file.url,
+                    fileHash: descriptor.fileHash,
+                    fileCompression: file.compression,
+                    patch: descriptor.patch
+                )
+            }
         }
     }
 
@@ -2581,6 +2625,7 @@ class BundleFileStorageService: BundleStorageService {
         manifestFileHash: String,
         archiveUrl: URL?,
         changedAssets: [String: ChangedAssetDescriptor],
+        fileResolver: ArtifactFileResolver?,
         selection: PersistedSelection?,
         storeDir: String,
         progressHandler: @escaping (UpdateProgressPayload) -> Void,
@@ -2668,20 +2713,43 @@ class BundleFileStorageService: BundleStorageService {
             else {
                 throw BundleStorageError.invalidBundle
             }
-            // Validate the entire wire contract even when every byte can be reused.
-            guard Set(targetManifest.assets.keys) == Set(changedAssets.keys) else {
-                throw BundleStorageError.invalidBundle
+            if fileResolver == nil {
+                // Legacy: artifact protocol v1, where every file comes with its URL.
+                // Validate the entire wire contract even when every byte can be reused.
+                guard Set(targetManifest.assets.keys) == Set(changedAssets.keys) else {
+                    throw BundleStorageError.invalidBundle
+                }
+            } else {
+                // In v2, `assets` holds only the Hermes patch.
+                guard Set(changedAssets.keys).isSubset(of: Set(targetManifest.assets.keys)) else {
+                    throw BundleStorageError.invalidBundle
+                }
             }
             for (path, asset) in targetManifest.assets {
                 guard FileUtilities.normalizedRelativePath(from: path) == path,
-                      path != "manifest.json",
-                      let descriptor = changedAssets[path],
-                      descriptor.fileUrl != nil,
-                      descriptor.fileHash.caseInsensitiveCompare(asset.fileHash) == .orderedSame else {
+                      path != "manifest.json" else {
                     throw BundleStorageError.invalidBundle
+                }
+                if fileResolver == nil {
+                    guard let descriptor = changedAssets[path],
+                          descriptor.fileUrl != nil,
+                          descriptor.fileHash.caseInsensitiveCompare(asset.fileHash) == .orderedSame else {
+                        throw BundleStorageError.invalidBundle
+                    }
                 }
                 _ = try FileUtilities.fileURL(for: path, destinationRoot: tmpDir)
             }
+            // In v2, the manifest names every file; URLs come once the install
+            // knows which files it downloads.
+            let plannedAssets: [String: ChangedAssetDescriptor] = fileResolver == nil
+                ? changedAssets
+                : targetManifest.assets.reduce(into: [:]) { planned, entry in
+                    planned[entry.key] = ChangedAssetDescriptor(
+                        fileUrl: nil,
+                        fileHash: entry.value.fileHash,
+                        patch: changedAssets[entry.key]?.patch
+                    )
+                }
 
             // Downloads, patches, and extraction below classify their own errors.
             failurePhase = .storage
@@ -2734,7 +2802,7 @@ class BundleFileStorageService: BundleStorageService {
                     }
                     continue
                 }
-                downloads[assetPath] = changedAssets[assetPath]
+                downloads[assetPath] = plannedAssets[assetPath]
             }
 
             var archiveInstalled = false
@@ -2769,11 +2837,18 @@ class BundleFileStorageService: BundleStorageService {
             }
 
             if !archiveInstalled {
+                if let fileResolver {
+                    failurePhase = .transfer
+                    failureResource = .file
+                    try resolveFileUrls(fileResolver: fileResolver, downloads: &downloads)
+                    failurePhase = .storage
+                    failureResource = nil
+                }
                 diffFiles = createDiffProgressFiles(changedAssets: downloads)
                 emitDiffProgress(progressHandler: progressHandler, phase: "downloading", files: diffFiles)
                 let progressLock = NSLock()
                 let workers = OperationQueue()
-                workers.maxConcurrentOperationCount = 4
+                workers.maxConcurrentOperationCount = Self.parallelFileDownloads
                 var installError: Error?
                 var installOutcomes: [AssetInstallOutcome] = []
                 for progressFile in diffFiles {

@@ -103,7 +103,11 @@ const { createInsightsModel, createInsightsProvider } = await importPublished<
 >("@hot-updater/server/plugins");
 
 type Platform = "ios" | "android";
-type BundleProfile = "default" | "multiAssetReplacement" | "sizeAwareLargeDiff";
+type BundleProfile =
+  | "assetHeavy"
+  | "default"
+  | "multiAssetReplacement"
+  | "sizeAwareLargeDiff";
 
 type JobResult = Record<string, unknown>;
 
@@ -283,6 +287,20 @@ const MULTI_ASSET_FIXTURES = [
     requirePath: PAX_LONG_ASSET_REQUIRE_PATH,
   },
 ] as const;
+// Many small assets, each new per deploy, beside one large asset that stays the
+// same. Random pixels keep the archive from compressing them below the files.
+const ASSET_HEAVY_RELATIVE_DIR = "src/test/_fixture-asset-heavy";
+const ASSET_HEAVY_REQUIRE_DIR = "../test/_fixture-asset-heavy";
+const ASSET_HEAVY_SMALL_COUNT = 64;
+const ASSET_HEAVY_SMALL_SIZE = 8;
+const ASSET_HEAVY_LARGE_SIZE = 256;
+const ASSET_HEAVY_FILE_NAMES = [
+  "large.bmp",
+  ...Array.from(
+    { length: ASSET_HEAVY_SMALL_COUNT },
+    (_, index) => `small-${String(index).padStart(2, "0")}.bmp`,
+  ),
+];
 const MULTI_ASSET_BMP_WIDTH = 64;
 const MULTI_ASSET_BMP_HEIGHT = 64;
 const MULTI_ASSET_BMP_HEADER_SIZE = 54;
@@ -490,11 +508,17 @@ type CapturedProxyResponse = {
 };
 type CapturedArtifactSelection = {
   readonly archiveUrl: string | null;
+  /**
+   * The URLs the device got per file: in artifact protocol v2, the patch from
+   * the artifact response, and each file it asked the files route for.
+   */
   readonly assets: ReadonlyArray<{
-    fileUrl: string;
+    fileUrl: string | null;
     patchUrl: string | null;
     path: string;
   }>;
+  /** Artifact protocol v2 files requests for this target. */
+  readonly filesRequests: number;
   readonly artifactProtocolVersion: number | null;
   readonly assetCount: number;
   readonly assetFileCount: number;
@@ -509,6 +533,7 @@ type ArchiveFailureMode = "corrupt" | "interrupt" | "not-found";
 const proxyRequestCounts = {
   artifact: 0,
   catalog: 0,
+  files: 0,
   other: 0,
 };
 const capturedArtifactSelections: CapturedArtifactSelection[] = [];
@@ -860,6 +885,57 @@ async function restoreMultiAssetFixtures() {
   }
 }
 
+function createRandomBmpBuffer(size: number, seedInput: string) {
+  const rowSize = Math.ceil((size * 3) / 4) * 4;
+  const header = Buffer.alloc(MULTI_ASSET_BMP_HEADER_SIZE);
+  header.write("BM", 0, "ascii");
+  header.writeUInt32LE(MULTI_ASSET_BMP_HEADER_SIZE + rowSize * size, 2);
+  header.writeUInt32LE(MULTI_ASSET_BMP_HEADER_SIZE, 10);
+  header.writeUInt32LE(40, 14);
+  header.writeInt32LE(size, 18);
+  header.writeInt32LE(size, 22);
+  header.writeUInt16LE(1, 26);
+  header.writeUInt16LE(24, 28);
+  header.writeUInt32LE(rowSize * size, 34);
+  header.writeInt32LE(2835, 38);
+  header.writeInt32LE(2835, 42);
+  const pixelData = Buffer.alloc(rowSize * size);
+  fillDeterministicPseudoRandomChunk(
+    pixelData,
+    createHash("sha256").update(seedInput).digest().readUInt32LE(0),
+  );
+  return Buffer.concat([header, pixelData]);
+}
+
+async function ensureAssetHeavyFixtures(marker: string) {
+  const directory = path.join(EXAMPLE_DIR, ASSET_HEAVY_RELATIVE_DIR);
+  await fsPromises.mkdir(directory, { recursive: true });
+  for (const fileName of ASSET_HEAVY_FILE_NAMES) {
+    await fsPromises.writeFile(
+      path.join(directory, fileName),
+      fileName === "large.bmp"
+        ? createRandomBmpBuffer(ASSET_HEAVY_LARGE_SIZE, "asset-heavy-large")
+        : createRandomBmpBuffer(
+            ASSET_HEAVY_SMALL_SIZE,
+            `${marker}:${fileName}`,
+          ),
+    );
+  }
+
+  logE2eFixture("asset-heavy fixtures ready", {
+    count: ASSET_HEAVY_FILE_NAMES.length,
+    directory: path.relative(REPO_DIR, directory),
+    marker,
+  });
+}
+
+async function removeAssetHeavyFixtures() {
+  await fsPromises.rm(path.join(EXAMPLE_DIR, ASSET_HEAVY_RELATIVE_DIR), {
+    force: true,
+    recursive: true,
+  });
+}
+
 function createSizeAwareLargeBmpHeader() {
   const header = Buffer.alloc(SIZE_AWARE_LARGE_BMP_HEADER_SIZE);
   const pixelDataSize =
@@ -988,6 +1064,17 @@ async function applyAppScenario({
         ...MULTI_ASSET_FIXTURES.map(
           (fixture) =>
             `  void Image.resolveAssetSource(require(${JSON.stringify(fixture.requirePath)}));`,
+        ),
+        `  ${DEPLOY_ASSET_GUARD_END}`,
+      ].join("\n");
+    }
+
+    if (bundleProfile === "assetHeavy") {
+      return [
+        DEPLOY_ASSET_GUARD_START,
+        ...ASSET_HEAVY_FILE_NAMES.map(
+          (fileName) =>
+            `  void Image.resolveAssetSource(require(${JSON.stringify(`${ASSET_HEAVY_REQUIRE_DIR}/${fileName}`)}));`,
         ),
         `  ${DEPLOY_ASSET_GUARD_END}`,
       ].join("\n");
@@ -2518,25 +2605,54 @@ function readBundleAssetFileHash(bundleId: string, assetPath: string) {
     : readAndroidBundleAssetFileHash(bundleId, assetPath);
 }
 
+/**
+ * The built-in assets the device's resolver copied, by path. On Android a
+ * re-encoded PNG keeps its packaged bytes, which native checks against the
+ * APK; this test evidence only names them.
+ */
+function readBuiltInLocators(): Record<string, string> {
+  if (fixtureSession.platform === "ios") return {};
+  const locators = readAndroidStoreSnapshot(
+    "builtin-index-v1.json",
+    "builtin-index-v1.json",
+  ).value?.locators;
+  if (!locators || typeof locators !== "object" || Array.isArray(locators)) {
+    return {};
+  }
+  return Object.fromEntries(
+    Object.entries(locators).filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
+}
+
 function readBundleAssetsStoredEvidence(args: {
   assetPaths: string[];
   bundleId: string;
 }) {
   const manifest = readBundleManifestSnapshot(args.bundleId);
+  const builtInLocators = readBuiltInLocators();
   const assets = args.assetPaths.map((assetPath) => {
     const manifestAssetPath = resolveManifestAssetPath(assetPath);
     const expectedHash = getManifestAssetFileHash(manifest, manifestAssetPath);
     const assetFile = readBundleAssetFileHash(args.bundleId, manifestAssetPath);
+    // Re-encoded by the release build: packaged bytes, from the APK.
+    const builtInEquivalent =
+      fixtureSession.platform === "android" &&
+      expectedHash !== null &&
+      assetFile.fileHash !== expectedHash &&
+      typeof builtInLocators[manifestAssetPath] === "string";
 
     return {
       assetFile,
       assetPath: manifestAssetPath,
+      builtInEquivalent,
       expectedHash,
       ok:
         expectedHash !== null &&
         assetFile.exists &&
         assetFile.readError === null &&
-        assetFile.fileHash === expectedHash,
+        (assetFile.fileHash === expectedHash || builtInEquivalent),
       requestedAssetPath: assetPath,
     };
   });
@@ -3101,6 +3217,40 @@ function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
       }),
     );
   }
+  const v2Patch = (payload as { patch?: { assetPath?: unknown } }).patch;
+  if (v2Patch && typeof v2Patch === "object") {
+    (rewritten as { patch?: unknown }).patch = {
+      ...v2Patch,
+      patchUrl: rewriteRemoteAssetUrl(
+        (v2Patch as { patchUrl?: unknown }).patchUrl,
+        {
+          ...(typeof v2Patch.assetPath === "string"
+            ? { assetPath: v2Patch.assetPath }
+            : {}),
+          kind: "patch",
+        },
+      ),
+    };
+  }
+  const files = (payload as { files?: unknown }).files;
+  if (files && typeof files === "object" && !Array.isArray(files)) {
+    (rewritten as { files?: unknown }).files = Object.fromEntries(
+      Object.entries(files as Record<string, unknown>).map(
+        ([assetPath, file]) => [
+          assetPath,
+          file && typeof file === "object"
+            ? {
+                ...file,
+                url: rewriteRemoteAssetUrl((file as { url?: unknown }).url, {
+                  assetPath,
+                  kind: "file",
+                }),
+              }
+            : file,
+        ],
+      ),
+    );
+  }
   if (!archiveAvailable) {
     delete rewritten.archiveUrl;
   }
@@ -3205,10 +3355,18 @@ function summarizeUpdateInfoPayload(payload: unknown) {
 }
 
 function captureArtifactSelection(pathname: string, payload: unknown) {
-  const match = pathname.match(
-    /^\/hot-updater\/artifacts\/v1\/([^/]+)\/from\/([^/]+)\/?$/,
+  if (!payload || typeof payload !== "object") return;
+  const filesMatch = pathname.match(
+    /^\/hot-updater\/artifacts\/v2\/([^/]+)\/files\/?$/,
   );
-  if (!match || !payload || typeof payload !== "object") {
+  if (filesMatch) {
+    captureArtifactFiles(filesMatch[1]!, payload);
+    return;
+  }
+  const match = pathname.match(
+    /^\/hot-updater\/artifacts\/v[12]\/([^/]+)\/from\/([^/]+)\/?$/,
+  );
+  if (!match) {
     return;
   }
 
@@ -3227,7 +3385,19 @@ function captureArtifactSelection(pathname: string, payload: unknown) {
     assets?: unknown;
     manifestFileHash?: unknown;
     manifestUrl?: unknown;
+    patch?: { assetPath?: unknown; patchUrl?: unknown };
   };
+  const v2Patch =
+    typeof artifact.patch?.assetPath === "string" &&
+    typeof artifact.patch.patchUrl === "string"
+      ? [
+          {
+            fileUrl: null,
+            patchUrl: artifact.patch.patchUrl,
+            path: artifact.patch.assetPath,
+          },
+        ]
+      : [];
   const assetsPresent =
     artifact.assets !== undefined && artifact.assets !== null;
   const assetEntries =
@@ -3248,19 +3418,22 @@ function captureArtifactSelection(pathname: string, payload: unknown) {
           patch?: { patchUrl?: unknown };
         }
       >,
-    ).flatMap(([path, asset]) => {
-      if (typeof asset?.file?.url !== "string") return [];
-      return [
-        {
-          fileUrl: asset.file.url,
-          patchUrl:
-            typeof asset.patch?.patchUrl === "string"
-              ? asset.patch.patchUrl
-              : null,
-          path,
-        },
-      ];
-    }),
+    )
+      .flatMap(([path, asset]) => {
+        if (typeof asset?.file?.url !== "string") return [];
+        return [
+          {
+            fileUrl: asset.file.url,
+            patchUrl:
+              typeof asset.patch?.patchUrl === "string"
+                ? asset.patch.patchUrl
+                : null,
+            path,
+          },
+        ];
+      })
+      .concat(v2Patch),
+    filesRequests: 0,
     artifactProtocolVersion:
       typeof artifact.artifactProtocolVersion === "number"
         ? artifact.artifactProtocolVersion
@@ -3286,8 +3459,51 @@ function captureArtifactSelection(pathname: string, payload: unknown) {
   });
 }
 
+/** Adds a files response's URLs to the target's latest artifact selection. */
+function captureArtifactFiles(encodedBundleId: string, payload: unknown) {
+  let targetBundleId: string;
+  try {
+    targetBundleId = decodeURIComponent(encodedBundleId);
+  } catch {
+    return;
+  }
+  const index = capturedArtifactSelections.findLastIndex(
+    (entry) => entry.targetBundleId === targetBundleId,
+  );
+  const files = (payload as { files?: unknown }).files;
+  if (index < 0 || !files || typeof files !== "object") return;
+  const selection = capturedArtifactSelections[index]!;
+  const resolved = Object.entries(files as Record<string, { url?: unknown }>)
+    .filter(([, file]) => typeof file?.url === "string")
+    .map(([path, file]) => [path, file.url as string] as const);
+  const resolvedPaths = new Set(resolved.map(([path]) => path));
+  capturedArtifactSelections[index] = {
+    ...selection,
+    assets: [
+      ...selection.assets.map((asset) =>
+        resolvedPaths.has(asset.path)
+          ? {
+              ...asset,
+              fileUrl: resolved.find(([path]) => path === asset.path)![1],
+            }
+          : asset,
+      ),
+      ...resolved
+        .filter(
+          ([path]) => !selection.assets.some((asset) => asset.path === path),
+        )
+        .map(([path, fileUrl]) => ({ fileUrl, patchUrl: null, path })),
+    ],
+    filesRequests: selection.filesRequests + 1,
+  };
+}
+
 function classifyProxiedUpdatePath(pathname: string) {
   if (pathname.includes("/release-catalogs/")) return "catalog" as const;
+  // Artifact protocol v2's files requests, which follow an artifact request.
+  if (/\/artifacts\/v2\/[^/]+\/files\/?$/.test(pathname)) {
+    return "files" as const;
+  }
   if (pathname.includes("/artifacts/")) return "artifact" as const;
   return "other" as const;
 }
@@ -3418,6 +3634,7 @@ export function handleConfigureProxy(input: {
   if (input.reset) {
     proxyRequestCounts.artifact = 0;
     proxyRequestCounts.catalog = 0;
+    proxyRequestCounts.files = 0;
     proxyRequestCounts.other = 0;
     proxyPathCounts.clear();
     capturedArtifactSelections.length = 0;
@@ -3456,7 +3673,7 @@ export function handleConfigureProxy(input: {
 
 export function handleAssertBundleArtifactSelection(input: {
   currentBundleId: string;
-  selection: "manifest-v1";
+  selection: "manifest-v2";
   targetBundleId: string;
 }) {
   const observed = capturedArtifactSelections.findLast(
@@ -3471,11 +3688,10 @@ export function handleAssertBundleArtifactSelection(input: {
     });
   }
 
+  // Artifact protocol v2 carries no URL per file.
   const matches =
-    observed.artifactProtocolVersion === 1 &&
-    observed.assetsPresent &&
-    observed.assetCount > 0 &&
-    observed.assetFileCount === observed.assetCount &&
+    observed.artifactProtocolVersion === 2 &&
+    !observed.assetsPresent &&
     observed.manifestFileHashPresent &&
     observed.manifestUrlPresent;
   if (!matches) {
@@ -3493,6 +3709,14 @@ export function handleAssertBundleArtifactSelection(input: {
   return observed;
 }
 
+/** Every file of a staged Bundle, as its manifest lists them. */
+function readManifestAssetPaths(bundleId: string): string[] {
+  const assets = readBundleManifestSnapshot(bundleId).value?.assets;
+  return assets && typeof assets === "object" && !Array.isArray(assets)
+    ? Object.keys(assets)
+    : [];
+}
+
 function getRemoteTransfer(url: string | null) {
   if (url === null) return { bytes: 0, requests: 0 };
   const pathname = new URL(url).pathname;
@@ -3503,8 +3727,11 @@ export function handleAssertBundleArtifactTransfers(input: {
   archiveInterruptions?: number;
   archiveRequests: number;
   archiveResumes?: number;
-  currentBundleId: string;
+  /** The Bundle the request came from; any, when omitted, as from built-in. */
+  currentBundleId?: string;
   fileRequests: number;
+  /** Artifact protocol v2 files requests; any, when omitted. */
+  filesRequests?: number;
   maxRequestsPerAsset?: number;
   minNetworkAssets?: number;
   patchRequests: number;
@@ -3513,7 +3740,8 @@ export function handleAssertBundleArtifactTransfers(input: {
 }) {
   const artifact = capturedArtifactSelections.findLast(
     (entry) =>
-      entry.currentBundleId === input.currentBundleId &&
+      (input.currentBundleId === undefined ||
+        entry.currentBundleId === input.currentBundleId) &&
       entry.targetBundleId === input.targetBundleId,
   );
   if (!artifact) {
@@ -3548,7 +3776,7 @@ export function handleAssertBundleArtifactTransfers(input: {
   const finalFiles =
     input.verifyAllAssetHashes === true
       ? readBundleAssetsStoredEvidence({
-          assetPaths: artifact.assets.map((asset) => asset.path),
+          assetPaths: readManifestAssetPaths(input.targetBundleId),
           bundleId: input.targetBundleId,
         })
       : null;
@@ -3559,6 +3787,7 @@ export function handleAssertBundleArtifactTransfers(input: {
     archiveInterruption,
     assets,
     fileRequests,
+    filesRequests: artifact.filesRequests,
     finalFiles,
     networkAssetCount: networkAssets.length,
     patchRequests,
@@ -3581,6 +3810,8 @@ export function handleAssertBundleArtifactTransfers(input: {
     archive.requests === input.archiveRequests &&
     fileRequests === input.fileRequests &&
     patchRequests === input.patchRequests &&
+    (input.filesRequests === undefined ||
+      artifact.filesRequests === input.filesRequests) &&
     archiveFailuresRemaining === 0 &&
     (input.archiveInterruptions === undefined ||
       archiveInterruption.interruptions === input.archiveInterruptions) &&
@@ -3771,7 +4002,10 @@ export async function handleProxyUpdateRequest(request: Request) {
               requestUrl.pathname,
             )
           : rewriteUpdateInfoAssetUrls(payload);
-      if (requestKind === "artifact" && response.ok) {
+      if (
+        (requestKind === "artifact" || requestKind === "files") &&
+        response.ok
+      ) {
         captureArtifactSelection(requestUrl.pathname, rewrittenPayload);
       }
       const rewrittenBody = JSON.stringify(rewrittenPayload);
@@ -5117,6 +5351,7 @@ async function bootstrap() {
     fixtureSession.sizeAwareLargeAssetPath,
   );
   await restoreMultiAssetFixtures();
+  await removeAssetHeavyFixtures();
   await restoreFile(
     fixtureSession.configBackupPath,
     fixtureSession.configSourceFile,
@@ -5163,6 +5398,10 @@ async function deployFixtureBundle(
   if (bundleProfile === "sizeAwareLargeDiff") {
     throwIfAborted(signal);
     await ensureSizeAwareLargeAsset(request.marker);
+  }
+  if (bundleProfile === "assetHeavy") {
+    throwIfAborted(signal);
+    await ensureAssetHeavyFixtures(request.marker);
   }
 
   throwIfAborted(signal);
@@ -6038,28 +6277,39 @@ function readFirstOtaReuseEvidence(bundleId: string) {
   const artifact = capturedArtifactSelections.findLast(
     (entry) => entry.targetBundleId === bundleId,
   );
-  const assets = artifact?.assets ?? [];
+  // Every file of the Bundle: in artifact protocol v2, the device asks for
+  // the URLs of only the files it downloads.
+  const assets = readManifestAssetPaths(bundleId).map((path) => ({
+    fileUrl:
+      artifact?.assets.find((asset) => asset.path === path)?.fileUrl ?? null,
+    path,
+  }));
   const archive = getRemoteTransfer(artifact?.archiveUrl ?? null);
   // App-local paths stay identical when E2E shards share a symlinked node_modules.
   const imageSuffix = "builtin_reuse.png";
+  // Android release builds re-encode this PNG, so only its source matches.
+  const crunchedImageSuffix = "builtin_reuse_uncrunched.png";
   // A font fixture is required too, so an empty resolver cannot satisfy this assertion.
   const required = assets.filter(
     ({ path }) =>
-      path.endsWith(imageSuffix) || path.endsWith("builtin_reuse.ttf"),
+      path.endsWith(imageSuffix) ||
+      path.endsWith(crunchedImageSuffix) ||
+      path.endsWith("builtin_reuse.ttf"),
   );
   const reused = assets.filter(
     ({ path }) => typeof locators?.[path] === "string",
   );
   const evidence = assets.map(({ fileUrl, path: assetPath }) => {
-    const proxyPath = new URL(fileUrl).pathname;
-    const transfer = remoteAssetTransfers.get(proxyPath) ?? {
+    const proxyPath = fileUrl === null ? null : new URL(fileUrl).pathname;
+    const transfer = (proxyPath && remoteAssetTransfers.get(proxyPath)) || {
       requests: 0,
       bytes: 0,
     };
     return {
       assetPath,
       reused: typeof locators?.[assetPath] === "string",
-      observed: proxyPath.startsWith("/e2e/proxy-url/"),
+      // A file the device never asked a URL for was never downloaded.
+      observed: proxyPath === null || proxyPath.startsWith("/e2e/proxy-url/"),
       ...transfer,
     };
   });
@@ -6081,6 +6331,14 @@ function readFirstOtaReuseEvidence(bundleId: string) {
       archive.bytes === 0 &&
       finalFiles.ok &&
       required.some(({ path }) => path.endsWith(imageSuffix)) &&
+      required.some(({ path }) => path.endsWith(crunchedImageSuffix)) &&
+      // Android's release build re-encodes it: only its recorded source matches.
+      (fixtureSession.platform === "ios" ||
+        finalFiles.assets.some(
+          (asset) =>
+            asset.assetPath.endsWith(crunchedImageSuffix) &&
+            asset.builtInEquivalent,
+        )) &&
       required.some(({ path }) => path.endsWith("builtin_reuse.ttf")) &&
       required.every(({ path }) =>
         reused.some((asset) => asset.path === path),
@@ -6497,6 +6755,7 @@ async function cleanup() {
     fixtureSession.sizeAwareLargeAssetPath,
   );
   await restoreMultiAssetFixtures();
+  await removeAssetHeavyFixtures();
 
   fixtureSession.appBackupPath = null;
   fixtureSession.configBackupPath = null;
