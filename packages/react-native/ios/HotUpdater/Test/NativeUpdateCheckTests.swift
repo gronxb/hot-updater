@@ -36,7 +36,7 @@ struct NativeUpdateCheckTests {
         #expect(request.url.absoluteString == catalogURL)
         #expect(request.headers == ["accept": "application/json", "x-api-key": "secret"])
         #expect(request.timeout == 5)
-        #expect(await checker.prepare(options(), timeout: 1).status == .upToDate)
+        #expect(try await checker.checkForUpdate(options()) == nil)
         // As checkForUpdate.ts, each check that finds nothing reports the bundle the app keeps.
         let events = host.events()
         #expect(events.map { $0["name"] as? String } == ["onUpdateCheck", "onUpdateCheck"])
@@ -200,7 +200,7 @@ struct NativeUpdateCheckTests {
         host.active = receipt(release1, bundle1, generation: 1)
         let transport = FakeUpdateTransport.serving(catalog: catalog(generation: 2, releases: []))
         let checker = makeChecker(host, transport)
-        // A download an earlier prepare queued, which the built-in bundle replaces.
+        // A download an earlier check queued, which the built-in bundle replaces.
         NativeUpdateEvents.append(
             name: "onBundleDownloaded",
             payload: [:],
@@ -230,6 +230,30 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func aCheckMergesItsOptionsOverTheInstancesAsJavaScriptDoes() {
+        let instance = HotUpdaterOptions(
+            baseURL: baseURL,
+            requestHeaders: ["X-API-Key": "instance", "x-tenant": "a"],
+            requestTimeout: 7
+        )
+
+        let merged = NativeCheckRequest(instance, HotUpdaterCheckOptions(
+            updateStrategy: .fingerprint,
+            channel: "beta",
+            requestHeaders: ["x-api-key": "check"]
+        ))
+        #expect(merged.baseURL == baseURL)
+        #expect(merged.updateStrategy == .fingerprint)
+        #expect(merged.channel == "beta")
+        // The check's header replaces the instance's of the same name, whatever its case.
+        #expect(merged.requestHeaders == ["x-api-key": "check", "x-tenant": "a"])
+        #expect(merged.requestTimeout == 7)
+
+        let ownTimeout = NativeCheckRequest(instance, HotUpdaterCheckOptions(updateStrategy: .appVersion, requestTimeout: 2))
+        #expect(ownTimeout.requestTimeout == 2)
+    }
+
+    @Test
     func invalidBaseURLFailsWithoutARequest() async throws {
         let host = FakeUpdateHost()
         let transport = FakeUpdateTransport.serving(catalog: catalog(releases: []))
@@ -239,15 +263,11 @@ struct NativeUpdateCheckTests {
             await #expect(throws: NativeUpdateCheckError.self) {
                 _ = try await checker.checkForUpdate(options(baseURL: url))
             }
-            let result = await checker.prepare(options(baseURL: url), timeout: 1)
-            #expect(result.status == .failed)
-            #expect(result.update == nil)
-            #expect(result.error?.localizedDescription == "Invalid baseURL: \(url)")
         }
         #expect(transport.requests.isEmpty)
         // Reported as JavaScript reports a check whose request fails.
         let events = host.events()
-        #expect(events.count == 8)
+        #expect(events.count == 4)
         #expect(events.allSatisfy { $0["name"] as? String == "onUpdateError" })
         #expect((events.first?["payload"] as? [String: Any])?["stage"] as? String == "check")
     }
@@ -259,20 +279,20 @@ struct NativeUpdateCheckTests {
         let checker = makeChecker(host, transport)
 
         for requestTimeout in [0, -1, TimeInterval.nan, TimeInterval.infinity] {
-            let invalid = HotUpdaterCheckOptions(
+            let invalid = NativeCheckRequest(
                 baseURL: baseURL,
                 updateStrategy: .appVersion,
                 requestTimeout: requestTimeout
             )
-            await #expect(throws: NativeUpdateCheckError.self) {
+            do {
                 _ = try await checker.checkForUpdate(invalid)
+                Issue.record("Expected the check to throw")
+            } catch {
+                #expect(error.localizedDescription == "requestTimeout must be a positive number of seconds")
             }
-            let result = await checker.prepare(invalid, timeout: 1)
-            #expect(result.status == .failed)
-            #expect(result.error?.localizedDescription == "requestTimeout must be a positive number of seconds")
         }
         #expect(transport.requests.isEmpty)
-        #expect(host.events().count == 8)
+        #expect(host.events().count == 4)
         #expect(host.events().allSatisfy { $0["name"] as? String == "onUpdateError" })
     }
 
@@ -294,235 +314,7 @@ struct NativeUpdateCheckTests {
         #expect(host.events().isEmpty)
     }
 
-    // MARK: prepare
-
-    // The prepare tests run on a frozen clock, so a slow machine never makes a
-    // request run out of time; only the deadline's own timer is real.
-
-    @Test
-    func prepareIsReadyWhenARequiredUpdateStagesBeforeReactNativeReadsTheBundle() async throws {
-        let host = FakeUpdateHost()
-        let transport = FakeUpdateTransport.serving(
-            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
-        )
-        let checker = makeChecker(host, transport)
-
-        let result = await checker.prepare(options(), timeout: 5)
-
-        #expect(result.status == .ready)
-        #expect(result.update?.id == release2)
-        #expect(result.error == nil)
-        #expect(host.stageCalls == 1)
-    }
-
-    @Test
-    func prepareIsUpToDateWhenItAdoptsTheReleaseOfTheBundleThisStartRuns() async throws {
-        // The first start after an update: the stored selection names the
-        // bundle the app ran before it, so the catalog is selected again.
-        let host = FakeUpdateHost()
-        host.bundleIdValue = bundle2
-        host.active = receipt(release2, bundle2, generation: 1)
-        let transport = FakeUpdateTransport.serving(
-            catalog: catalog(generation: 2, releases: [descriptor(release3, bundle2, force: true)])
-        )
-        let checker = makeChecker(host, transport)
-
-        let result = await checker.prepare(options(), timeout: 5)
-
-        #expect(result.status == .upToDate)
-        #expect(result.update == nil)
-        #expect(result.error == nil)
-        #expect(host.stagedParams.isEmpty)
-        #expect((host.committedParams.first?["selection"] as? [String: Any])?["releaseId"] as? String == release3)
-    }
-
-    @Test
-    func prepareIsPendingWhenReactNativeAlreadyReadTheBundle() async throws {
-        let host = FakeUpdateHost()
-        host.launchPrepared = true
-        let transport = FakeUpdateTransport.serving(
-            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
-        )
-        let checker = makeChecker(host, transport)
-
-        let result = await checker.prepare(options(), timeout: 5)
-
-        #expect(result.status == .pending)
-        #expect(result.update?.shouldForceUpdate == true)
-        #expect(host.stageCalls == 1)
-    }
-
-    @Test
-    func prepareReturnsPendingBeforeAMinorUpdateFinishesDownloading() async throws {
-        let host = FakeUpdateHost()
-        let download = Latch()
-        host.stage = { _, _ in
-            await download.wait()
-            return ["delivery": "manifest", "patchFallback": false]
-        }
-        let transport = FakeUpdateTransport.serving(
-            catalog: catalog(releases: [descriptor(release2, bundle2)])
-        )
-        let checker = makeChecker(host, transport)
-
-        let result = await checker.prepare(options(), timeout: 30)
-
-        #expect(result.status == .pending)
-        #expect(result.update?.id == release2)
-        #expect(!host.stageFinished.isOpen)
-        download.open()
-        // Joins the download, or finds the update staged.
-        #expect(try await result.update?.updateBundle() == true)
-        #expect(host.stageCalls == 1)
-        #expect(host.events().map { $0["name"] as? String } == ["onUpdateCheck", "onBundleDownloaded"])
-    }
-
-    @Test
-    func prepareStopsWaitingForARequiredUpdateAtTheDeadline() async throws {
-        let host = FakeUpdateHost()
-        let download = Latch()
-        host.stage = { _, _ in
-            await download.wait()
-            return ["delivery": "archive", "patchFallback": false]
-        }
-        let transport = FakeUpdateTransport.serving(
-            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
-        )
-        let checker = makeChecker(host, transport)
-
-        let result = await checker.prepare(options(), timeout: 0.2)
-
-        #expect(result.status == .pending)
-        #expect(result.update?.id == release2)
-        #expect(!host.stageFinished.isOpen)
-        // The download continues after prepare returns.
-        download.open()
-        await host.stageFinished.wait()
-        #expect(host.stageCalls == 1)
-    }
-
-    @Test
-    func aWallClockChangeDoesNotMoveTheDeadline() async throws {
-        let host = FakeUpdateHost()
-        let download = Latch()
-        host.stage = { _, _ in
-            await download.wait()
-            return ["delivery": "archive", "patchFallback": false]
-        }
-        let transport = FakeUpdateTransport.serving(
-            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
-        )
-        // The wall clock goes back an hour each time it is read.
-        let clock = NSLock()
-        var wallClock = frozenNow
-        let checker = NativeUpdateChecker(host: host, transport: transport, now: {
-            clock.lock()
-            defer { clock.unlock() }
-            wallClock = wallClock.addingTimeInterval(-3600)
-            return wallClock
-        })
-        // Bounds the test if the deadline moved: the download then finishes
-        // first and prepare is ready.
-        Task {
-            try? await Task.sleep(nanoseconds: 5_000_000_000)
-            download.open()
-        }
-
-        let result = await checker.prepare(options(), timeout: 0.2)
-
-        #expect(result.status == .pending)
-        download.open()
-        await host.stageFinished.wait()
-    }
-
-    @Test
-    func theDeadlineCoversTheCatalogRequest() async throws {
-        let host = FakeUpdateHost()
-        let transport = FakeUpdateTransport { _, timeout in
-            try await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
-            throw URLError(.timedOut)
-        }
-        let checker = makeChecker(host, transport)
-
-        let result = await checker.prepare(options(), timeout: 0.3)
-
-        #expect(result.status == .failed)
-        #expect(result.update == nil)
-        #expect(transport.requests.count == 1)
-        // What is left of the deadline when the request starts.
-        let requestTimeout = transport.requests.first?.timeout ?? 0
-        #expect(requestTimeout <= 0.3 && requestTimeout > 0.2)
-        let payload = try #require(host.events().first?["payload"] as? [String: Any])
-        #expect(payload["stage"] as? String == "check")
-        #expect(payload["transport"] as? String == "timeout")
-    }
-
-    @Test
-    func prepareFailsForATimeoutThatIsNotPositive() async {
-        let host = FakeUpdateHost()
-        let transport = FakeUpdateTransport.serving(catalog: catalog(releases: []))
-        let checker = makeChecker(host, transport)
-
-        for timeout in [0, -1, Double.nan, Double.infinity] {
-            let result = await checker.prepare(options(), timeout: timeout)
-            #expect(result.status == .failed)
-            #expect(result.error != nil)
-        }
-        #expect(transport.requests.isEmpty)
-    }
-
-    @Test
-    func prepareFailsWithTheUpdateWhenTheRequiredUpdateFails() async throws {
-        let host = FakeUpdateHost()
-        host.stage = { _, _ in
-            throw NativeUpdateRejection(
-                code: "DOWNLOAD_FAILED",
-                message: "Forbidden",
-                userInfo: ["stage": "download", "reason": "http", "httpStatus": NSNumber(value: 403)]
-            )
-        }
-        let transport = FakeUpdateTransport.serving(
-            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
-        )
-        let checker = makeChecker(host, transport)
-
-        let result = await checker.prepare(options(), timeout: 5)
-
-        #expect(result.status == .failed)
-        #expect(result.update?.id == release2)
-        #expect(result.error?.localizedDescription == "Forbidden")
-    }
-
-    @Test
-    func concurrentPreparesShareOneDownload() async throws {
-        let host = FakeUpdateHost()
-        let download = Latch()
-        host.stage = { _, _ in
-            await download.wait()
-            return ["delivery": "archive", "patchFallback": false]
-        }
-        let transport = FakeUpdateTransport.serving(
-            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
-        )
-        let checker = makeChecker(host, transport)
-
-        // The second call queues behind the first one's check, or arrives
-        // after it handed the gate to its download; either way it joins.
-        let first = Task { await checker.prepare(options(), timeout: 30) }
-        let second = Task { await checker.prepare(options(), timeout: 30) }
-        await host.stageStarted.wait()
-        first.cancel()
-        second.cancel()
-        let results = [await first.value, await second.value]
-
-        #expect(results.map(\.status) == [.pending, .pending])
-        #expect(results[0].update != nil)
-        #expect(results[0].update === results[1].update)
-        #expect(transport.requests.count == 2)
-        download.open()
-        await host.stageFinished.wait()
-        #expect(host.stageCalls == 1)
-    }
+    // MARK: Checks and stagings
 
     @Test
     func a200WhoseBodyBreaksIsReportedBeforeTheCheckFails() async throws {
@@ -567,122 +359,6 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
-    func prepareJoinsADownloadOnlyForTheSameRequest() async throws {
-        let host = FakeUpdateHost()
-        let download = Latch()
-        host.stage = { _, _ in
-            await download.wait()
-            return ["delivery": "archive", "patchFallback": false]
-        }
-        let transport = FakeUpdateTransport.serving(
-            catalog: catalog(releases: [descriptor(release2, bundle2)])
-        )
-        let checker = makeChecker(host, transport)
-        let first = await checker.prepare(options(), timeout: 5)
-        #expect(first.status == .pending)
-        await host.stageStarted.wait()
-
-        let other = await checker.prepare(options(channel: "beta"), timeout: 0.2)
-        let otherKey = await checker.prepare(options(headers: ["X-API-Key": "other"]), timeout: 0.2)
-        host.cohortValue = "2"
-        let otherCohort = await checker.prepare(options(), timeout: 0.2)
-        host.cohortValue = "1"
-        let same = await checker.prepare(options(), timeout: 0.2)
-
-        #expect(other.status == .failed)
-        #expect(otherKey.status == .failed)
-        // A prepare its deadline ended while waiting reports a check timeout.
-        let failures = host.events()
-            .filter { $0["name"] as? String == "onUpdateError" }
-            .compactMap { $0["payload"] as? [String: Any] }
-        #expect(failures.contains { $0["stage"] as? String == "check" && $0["transport"] as? String == "timeout" })
-        // The prepare that waited under cohort 2 reports its timeout under 2.
-        #expect(host.queued().contains {
-            $0["name"] as? String == "onUpdateError" && ($0["build"] as? String)?.hasSuffix("|2") == true
-        })
-        #expect(otherCohort.status == .failed)
-        #expect(same.status == .pending)
-        #expect(same.update === first.update)
-        download.open()
-        await host.stageFinished.wait()
-    }
-
-    @Test
-    func aJoinedPrepareChecksAgainWhenTheStagingFailsBeforeItsDeadline() async throws {
-        let host = FakeUpdateHost()
-        let download = Latch()
-        let failsFirst = LockedValue(true)
-        host.stage = { _, _ in
-            guard failsFirst.value else {
-                return ["delivery": "archive", "patchFallback": false]
-            }
-            failsFirst.value = false
-            await download.wait()
-            // The first caller's shorter deadline ended its artifact request.
-            throw URLError(.timedOut)
-        }
-        let transport = FakeUpdateTransport.serving(
-            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
-        )
-        let checker = makeChecker(host, transport)
-        #expect(await checker.prepare(options(), timeout: 0.2).status == .pending)
-
-        let later = Task { await checker.prepare(options(), timeout: 10) }
-        try await Task.sleep(nanoseconds: 100_000_000)
-        download.open()
-
-        #expect(await later.value.status == .ready)
-        #expect(host.stageCalls == 2)
-    }
-
-    @Test
-    func theDeadlineDoesNotBoundARequiredUpdatesArtifactRequest() async throws {
-        let host = FakeUpdateHost()
-        let transport = FakeUpdateTransport.serving(
-            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
-        )
-        let checker = makeChecker(host, transport)
-
-        _ = await checker.prepare(options(), timeout: 1)
-        await host.stageFinished.wait()
-
-        // The staging outlives prepare, so its request keeps the request timeout.
-        let artifact = try #require(transport.requests.first { $0.url.path.contains("/artifacts/v1/") })
-        #expect(artifact.timeout == 5)
-    }
-
-    @Test
-    func aLaterPrepareJoinsTheDownloadInProgress() async throws {
-        let host = FakeUpdateHost()
-        let download = Latch()
-        host.stage = { _, _ in
-            await download.wait()
-            return ["delivery": "archive", "patchFallback": false]
-        }
-        let transport = FakeUpdateTransport.serving(
-            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
-        )
-        let checker = makeChecker(host, transport)
-        let first = Task { await checker.prepare(options(), timeout: 30) }
-        await host.stageStarted.wait()
-        first.cancel()
-        let pending = await first.value
-        #expect(pending.status == .pending)
-
-        // The download is held, so the later call can only join it.
-        let later = Task { await checker.prepare(options(), timeout: 30) { _ in } }
-        later.cancel()
-        let joined = await later.value
-
-        #expect(joined.status == .pending)
-        #expect(joined.update === pending.update)
-        #expect(transport.requests.count == 2)
-        download.open()
-        await host.stageFinished.wait()
-        #expect(host.stageCalls == 1)
-    }
-
-    @Test
     func updateBundleJoinsTheDownloadInProgress() async throws {
         let host = FakeUpdateHost()
         let download = Latch()
@@ -694,8 +370,8 @@ struct NativeUpdateCheckTests {
             catalog: catalog(releases: [descriptor(release2, bundle2)])
         )
         let checker = makeChecker(host, transport)
-        let prepared = await checker.prepare(options(), timeout: 5)
-        let update = try #require(prepared.update)
+        let update = try #require(try await checker.checkForUpdate(options()))
+        let first = Task { try await update.updateBundle() }
         await host.stageStarted.wait()
 
         let cancelled = Task { try await update.updateBundle() }
@@ -708,6 +384,7 @@ struct NativeUpdateCheckTests {
         let joined = Task { try await update.updateBundle() }
         download.open()
 
+        #expect(try await first.value)
         #expect(try await joined.value)
         #expect(try await update.updateBundle())
         #expect(host.stageCalls == 1)
@@ -864,11 +541,8 @@ struct NativeUpdateCheckTests {
             catalog: catalog(releases: [descriptor(release2, bundle2)])
         )
         let checker = makeChecker(host, transport)
-        let prepared = await checker.prepare(options(), timeout: 5)
-        #expect(prepared.status == .pending)
-        let update = try #require(prepared.update)
+        let update = try #require(try await checker.checkForUpdate(options()))
         download.open()
-        await host.stageFinished.wait()
 
         #expect(try await update.updateBundle())
         #expect(try await update.updateBundle())
@@ -878,30 +552,7 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
-    func aPrepareWaitingForAnotherCheckStopsAtTheDeadline() async throws {
-        let host = FakeUpdateHost()
-        let catalogResponse = Latch()
-        let requested = Latch()
-        let transport = FakeUpdateTransport { _, _ in
-            requested.open()
-            await catalogResponse.wait()
-            return NativeUpdateResponse(status: 404, headers: ["x-hot-updater-catalog": "none"], body: "")
-        }
-        let checker = makeChecker(host, transport)
-        let running = Task { try await checker.checkForUpdate(options()) }
-        await requested.wait()
-
-        let result = await checker.prepare(options(), timeout: 0.2)
-
-        #expect(result.status == .failed)
-        #expect(result.update == nil)
-        #expect(transport.requests.count == 1)
-        catalogResponse.open()
-        _ = try await running.value
-    }
-
-    @Test
-    func cancellingPrepareEndsTheWaitButNotTheDownload() async throws {
+    func cancellingUpdateBundleEndsTheWaitButNotTheDownload() async throws {
         let host = FakeUpdateHost()
         let download = Latch()
         host.stage = { _, _ in
@@ -913,15 +564,17 @@ struct NativeUpdateCheckTests {
         )
         let checker = makeChecker(host, transport)
 
-        let task = Task { await checker.prepare(options(), timeout: 30) }
+        let update = try #require(try await checker.checkForUpdate(options()))
+        let task = Task { try await update.updateBundle() }
         await host.stageStarted.wait()
         task.cancel()
-        let result = await task.value
+        await #expect(throws: CancellationError.self) {
+            _ = try await task.value
+        }
 
-        #expect(result.status == .pending)
         #expect(!host.stageFinished.isOpen)
         download.open()
-        #expect(try await result.update?.updateBundle() == true)
+        #expect(try await update.updateBundle())
         #expect(host.stageCalls == 1)
         #expect(host.events().last?["name"] as? String == "onBundleDownloaded")
         #expect(host.httpResponses().map { $0["resource"] as? String } == ["catalog", "artifact"])
@@ -942,38 +595,11 @@ struct NativeUpdateCheckTests {
         let checker = makeChecker(host, transport)
         let received = ProgressRecorder()
 
-        let result = await checker.prepare(options(), timeout: 5) { received.record($0) }
-
-        #expect(result.status == .ready)
+        let update = try #require(try await checker.checkForUpdate(options()))
+        #expect(try await update.updateBundle { received.record($0) })
         await received.complete.wait()
         #expect(received.values == [0.0, 0.25, 0.5, 1.0])
         #expect(received.allOnMain)
-    }
-
-    @Test
-    func progressEndsWhenPrepareReturns() async throws {
-        let host = FakeUpdateHost()
-        let download = Latch()
-        host.stage = { _, progress in
-            await download.wait()
-            progress(0.5)
-            progress(1.0)
-            return ["delivery": "archive", "patchFallback": false]
-        }
-        let transport = FakeUpdateTransport.serving(
-            catalog: catalog(releases: [descriptor(release2, bundle2)])
-        )
-        let checker = makeChecker(host, transport)
-        let earlier = ProgressRecorder()
-
-        let result = await checker.prepare(options(), timeout: 5) { earlier.record($0) }
-        #expect(result.status == .pending)
-        await host.stageStarted.wait()
-        download.open()
-        #expect(try await result.update?.updateBundle() == true)
-        await MainActor.run {}
-
-        #expect(earlier.values.isEmpty)
     }
 
     @Test
@@ -994,36 +620,6 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
-    func noProgressArrivesAfterATimedOutPrepareReturns() async throws {
-        let host = FakeUpdateHost()
-        let download = Latch()
-        host.stage = { _, progress in
-            progress(0.5)
-            await download.wait()
-            progress(1.0)
-            return ["delivery": "archive", "patchFallback": false]
-        }
-        let transport = FakeUpdateTransport.serving(
-            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
-        )
-        let checker = makeChecker(host, transport)
-        let returned = LockedValue(false)
-        let late = LockedValue(0)
-
-        let result = await checker.prepare(options(), timeout: 0.3) { _ in
-            if returned.value { late.value += 1 }
-        }
-        returned.value = true
-        #expect(result.status == .pending)
-        await MainActor.run {}
-        download.open()
-        await host.stageFinished.wait()
-        await MainActor.run {}
-
-        #expect(late.value == 0)
-    }
-
-    @Test
     func resetChannelWaitsForTheDownloadInProgress() async throws {
         let host = FakeUpdateHost()
         let download = Latch()
@@ -1035,7 +631,8 @@ struct NativeUpdateCheckTests {
             catalog: catalog(releases: [descriptor(release2, bundle2)])
         )
         let checker = makeChecker(host, transport)
-        _ = await checker.prepare(options(), timeout: 5)
+        let update = try #require(try await checker.checkForUpdate(options()))
+        let staging = Task { try await update.updateBundle() }
         await host.stageStarted.wait()
 
         let reset = Task { await checker.resetChannel() }
@@ -1047,6 +644,7 @@ struct NativeUpdateCheckTests {
         download.open()
 
         #expect(await reset.value)
+        #expect(try await staging.value)
         #expect(host.resetCalls == 1)
         #expect(host.stageFinished.isOpen)
     }
@@ -1061,7 +659,7 @@ struct NativeUpdateCheckTests {
         }
         let checker = makeChecker(host, transport)
 
-        _ = await checker.prepare(options(baseURL: "https://updates.example.com/artifacts/hot-updater"), timeout: 1)
+        _ = try? await checker.checkForUpdate(options(baseURL: "https://updates.example.com/artifacts/hot-updater"))
 
         #expect(host.httpResponses().map { $0["resource"] as? String } == ["catalog"])
     }
@@ -1074,14 +672,15 @@ struct NativeUpdateCheckTests {
         }
         let checker = makeChecker(host, transport)
 
-        await #expect(throws: NativeUpdateCheckError.self) {
-            _ = try await checker.checkForUpdate(options())
+        for _ in 0..<2 {
+            do {
+                _ = try await checker.checkForUpdate(options())
+                Issue.record("Expected the check to throw")
+            } catch {
+                #expect(error.localizedDescription == "Request failed with HTTP 500")
+            }
         }
-        let result = await checker.prepare(options(), timeout: 1)
 
-        #expect(result.status == .failed)
-        #expect(result.update == nil)
-        #expect(result.error?.localizedDescription == "Request failed with HTTP 500")
         let events = host.events()
         #expect(events.count == 2)
         #expect(events.allSatisfy { $0["name"] as? String == "onUpdateError" })
@@ -1295,8 +894,8 @@ private func options(
     baseURL: String = baseURL,
     headers: [String: String] = [:],
     channel: String? = nil
-) -> HotUpdaterCheckOptions {
-    HotUpdaterCheckOptions(
+) -> NativeCheckRequest {
+    NativeCheckRequest(
         baseURL: baseURL,
         updateStrategy: .appVersion,
         requestHeaders: headers,
@@ -1588,7 +1187,6 @@ private final class FakeUpdateHost: MemoryEventStorage, NativeUpdateHost, @unche
     var appVersion: String? = "1.0.0"
     let minBundleId = builtInBundleId
     var bundleIdValue: String?
-    var launchPrepared = false
     var channelValue = "production"
     var defaultChannelValue = "production"
     var active: PersistedSelection?
@@ -1619,7 +1217,6 @@ private final class FakeUpdateHost: MemoryEventStorage, NativeUpdateHost, @unche
     }
 
     func bundleId() -> String? { bundleIdValue }
-    func isLaunchPrepared() -> Bool { launchPrepared }
     func channel() -> String { channelValue }
     func defaultChannel() -> String { defaultChannelValue }
     var cohortValue = "1"
