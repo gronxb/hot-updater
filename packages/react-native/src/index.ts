@@ -549,8 +549,10 @@ export const HotUpdater = {
       requestTimeout,
       onError,
     });
-    void launch.read({ onNotifyAppReady, onError });
+    // Native events happened before this launch's report, such as the download
+    // it applies, so plugins receive them first.
     replayNativeUpdateEvents(launch.emit);
+    void launch.read({ onNotifyAppReady, onError });
     return Object.freeze({
       ...instance,
       ...apis,

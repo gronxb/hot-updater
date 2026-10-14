@@ -774,6 +774,25 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `a check the prepare deadline ends is reported as a timeout`() =
+        runBlocking {
+            val state = FakeState()
+            val transport =
+                FakeTransport {
+                    delay(5_000)
+                    ok(minorCatalog())
+                }
+            val checker = NativeUpdateChecker(state, transport)
+
+            assertTrue(checker.prepare(OPTIONS, 200, null) is HotUpdaterPrepareResult.Failed)
+
+            val failure = state.events().single { it.getString("name") == "onUpdateError" }.getJSONObject("payload")
+            assertEquals("check", failure.getString("stage"))
+            assertEquals("network", failure.getString("reason"))
+            assertEquals("timeout", failure.getString("transport"))
+        }
+
+    @Test
     fun `a reset waits for a background download`() =
         runBlocking {
             val gate = CompletableDeferred<Unit>()
