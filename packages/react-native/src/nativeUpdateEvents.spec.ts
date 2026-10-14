@@ -61,6 +61,23 @@ describe("replayNativeUpdateEvents", () => {
     expect(replay()).toEqual([]);
   });
 
+  it("emits the catalog and artifact responses native checks received", () => {
+    const response = {
+      resource: "catalog",
+      path: "/api/release-catalogs/app-version/ios/production/1.0.0",
+      status: 200,
+      body: "{}",
+      bodyTruncated: false,
+    };
+    queue.value = JSON.stringify([
+      { name: "onHttpResponse", payload: response, occurredAt: 5 },
+    ]);
+
+    expect(replay()).toEqual([
+      { name: "onHttpResponse", payload: { ...response, occurredAt: 5 } },
+    ]);
+  });
+
   it("turns a native error message into the cause", () => {
     queue.value = JSON.stringify([
       {

@@ -183,6 +183,12 @@ export interface UpdateHttpResponse {
   /** The response as text, or null if the body could not be read. */
   readonly body: string | null;
   readonly bodyTruncated: boolean;
+  /**
+   * When the response arrived, in epoch milliseconds, for a response native
+   * code received before this runtime started (`HotUpdater.prepare`). Absent
+   * when it arrives now.
+   */
+  readonly occurredAt?: number;
 }
 
 /**

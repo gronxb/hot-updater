@@ -164,7 +164,13 @@ class NativeUpdateCheckerTest {
 
         override fun isOffline(): Boolean = false
 
-        fun events(): List<JSONObject> {
+        /** The queued lifecycle events, without the HTTP responses ([httpResponses]). */
+        fun events(): List<JSONObject> = queued().filter { it.getString("name") != "onHttpResponse" }
+
+        fun httpResponses(): List<JSONObject> =
+            queued().filter { it.getString("name") == "onHttpResponse" }.map { it.getJSONObject("payload") }
+
+        fun queued(): List<JSONObject> {
             val stored = getStorageItem(NativeUpdateEventQueue.STORAGE_KEY) ?: return emptyList()
             val array = JSONArray(stored)
             return (0 until array.length()).map { array.getJSONObject(it) }
@@ -280,6 +286,13 @@ class NativeUpdateCheckerTest {
             assertEquals(MIN_BUNDLE_ID, payload.getString("bundleId"))
             assertTrue(payload.isNull("releaseId"))
             assertTrue(payload.isNull("previousReleaseId"))
+            // Each catalog response is queued before the check it answered, as fetchUpdateResponse.ts reports it.
+            assertEquals(listOf("onHttpResponse", "onUpdateCheck"), state.queued().take(2).map { it.getString("name") })
+            val response = state.httpResponses().first()
+            assertEquals("catalog", response.getString("resource"))
+            assertEquals(java.net.URL(CATALOG_URL).path, response.getString("path"))
+            assertEquals(404, response.getInt("status"))
+            assertFalse(response.getBoolean("bodyTruncated"))
         }
 
     @Test
@@ -322,6 +335,8 @@ class NativeUpdateCheckerTest {
 
             assertEquals(listOf(0.25, 0.75, 1.0), progress)
             assertEquals(ARTIFACT_URL, transport.requests.last().url)
+            assertEquals(listOf("catalog", "artifact"), state.httpResponses().map { it.getString("resource") })
+            assertEquals(java.net.URL(ARTIFACT_URL).path, state.httpResponses().last().getString("path"))
             val request = state.staged.await()
             assertEquals(BUNDLE_B, request.bundleId)
             assertEquals("production", request.channel)

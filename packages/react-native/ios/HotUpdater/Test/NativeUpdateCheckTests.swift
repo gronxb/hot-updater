@@ -45,6 +45,13 @@ struct NativeUpdateCheckTests {
         #expect(payload["bundleId"] as? String == builtInBundleId)
         #expect(payload["releaseId"] is NSNull)
         #expect(payload["previousReleaseId"] is NSNull)
+        // Each catalog response is queued before the check it answered, as fetchUpdateResponse.ts reports it.
+        #expect(host.queued().prefix(2).map { $0["name"] as? String } == ["onHttpResponse", "onUpdateCheck"])
+        let response = try #require(host.httpResponses().first)
+        #expect(response["resource"] as? String == "catalog")
+        #expect(response["path"] as? String == URL(string: catalogURL)?.path)
+        #expect(response["status"] as? Int == 404)
+        #expect(response["bodyTruncated"] as? Bool == false)
     }
 
     @Test
@@ -739,6 +746,7 @@ struct NativeUpdateCheckTests {
         #expect(try await result.update?.updateBundle() == true)
         #expect(host.stageCalls == 1)
         #expect(host.events().last?["name"] as? String == "onBundleDownloaded")
+        #expect(host.httpResponses().map { $0["resource"] as? String } == ["catalog", "artifact"])
     }
 
     @Test
@@ -1229,7 +1237,18 @@ private class MemoryEventStorage: NativeUpdateEventStorage, @unchecked Sendable 
     private let storageLock = NSLock()
     private var storage: [String: String] = [:]
 
+    /// The queued lifecycle events, without the HTTP responses (`httpResponses()`).
     func events() -> [[String: Any]] {
+        queued().filter { $0["name"] as? String != "onHttpResponse" }
+    }
+
+    func httpResponses() -> [[String: Any]] {
+        queued()
+            .filter { $0["name"] as? String == "onHttpResponse" }
+            .compactMap { $0["payload"] as? [String: Any] }
+    }
+
+    func queued() -> [[String: Any]] {
         parseEvents(storageItem(NativeUpdateEvents.storageKey))
     }
 
