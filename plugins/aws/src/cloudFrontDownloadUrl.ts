@@ -35,12 +35,6 @@ export type CloudFrontDownloadUrlOptions = (
 
 const privateKeyCache = new Map<string, Promise<string>>();
 
-/** Signed query strings by key pair and policy resource. */
-const signatureCache = new Map<
-  string,
-  { readonly query: string; readonly renewAt: number }
->();
-
 const getPrivateKeyFromSsm = async (region: string, parameterName: string) => {
   const response = await new SSM(
     applySsmRuntimeAwsConfig({ region }),
@@ -104,9 +98,14 @@ const getSignedPathScope = (pathname: string) => {
  * assets: each is reused for every URL under it until half its lifetime has
  * passed, instead of one RSA signature per file.
  */
-export const cloudFrontDownloadUrl =
-  (config: CloudFrontDownloadUrlOptions) =>
-  async ({ storageUri }: { storageUri: string }) => {
+export const cloudFrontDownloadUrl = (config: CloudFrontDownloadUrlOptions) => {
+  /** Signed query strings by policy resource, for this configuration only. */
+  const signatureCache = new Map<
+    string,
+    { readonly query: string; readonly renewAt: number }
+  >();
+
+  return async ({ storageUri }: { storageUri: string }) => {
     const storageUrl = new URL(storageUri);
     if (storageUrl.protocol !== "s3:") {
       throw new Error("CloudFront download URLs require an s3 storage URI.");
@@ -117,7 +116,7 @@ export const cloudFrontDownloadUrl =
     url.search = "";
     url.hash = "";
     const resource = `${url.origin}${getSignedPathScope(url.pathname)}`;
-    const cacheKey = `${config.keyPairId}\n${resource}`;
+    const cacheKey = resource;
     const privateKey = await resolvePrivateKey(config);
 
     // Nothing awaits from here on, so concurrent calls for one scope sign once.
@@ -158,3 +157,4 @@ export const cloudFrontDownloadUrl =
     }
     return { url: `${url}${query}` };
   };
+};

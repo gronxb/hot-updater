@@ -172,6 +172,30 @@ describe("cloudFrontDownloadUrl", () => {
     }
   });
 
+  it("keeps each configuration's signatures to its own lifetime", async () => {
+    const publicBaseUrl = nextPublicBaseUrl();
+    const configure = (expiresSeconds: number) =>
+      cloudFrontDownloadUrl({
+        keyPairId: "K123",
+        getPrivateKey: async () => privateKey,
+        publicBaseUrl,
+        expiresSeconds,
+      });
+
+    const long = await configure(3600)({ storageUri: assetUri(1) });
+    const short = await configure(60)({ storageUri: assetUri(1) });
+
+    expect(getSignedUrl).toHaveBeenCalledTimes(2);
+    const expiry = (url: string) =>
+      readVerifiedPolicy(url).Statement[0]!.Condition.DateLessThan[
+        "AWS:EpochTime"
+      ] *
+        1000 -
+      Date.now();
+    expect(expiry(long.url)).toBeGreaterThan(3_500_000);
+    expect(expiry(short.url)).toBeLessThanOrEqual(60_000);
+  });
+
   it("loads and caches the private key from SSM", async () => {
     const getParameter = vi
       .spyOn(SSM.prototype, "getParameter")
