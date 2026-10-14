@@ -214,26 +214,6 @@ export default defineConfig({
 });
 ```
 
-### Production domain and protection
-
-The Function serves every path of the project's production domain through a
-`vercel.json` rewrite. Devices must reach that domain without signing in, so
-init stops when Vercel's Deployment Protection covers production. Vercel's
-default Standard Protection covers deployment URLs and previews and leaves the
-production domain public. A custom domain added to the project also serves the
-Function; use it as the client base URL instead.
-
-Init deploys to the project's default Function region. To move the Function
-closer to your database, change the region in the project's settings; init keeps
-it on later deployments.
-
-### Release catalog cache
-
-Catalog responses carry `Cache-Control: public, max-age=0, s-maxage=5` and
-`Vary: x-api-key`. Vercel's CDN caches each catalog for five seconds per API key,
-so a deploy or a Roll back reaches devices within 15 seconds. Check
-`x-vercel-cache: HIT` when validating a warm request.
-
 ## Step 4: If you use Expo, add the config plugin
 
 Follow the Expo path in [Set up your app](/docs/get-started/app-setup). It applies

@@ -219,27 +219,6 @@ The persisted
 `HOT_UPDATER_CLOUDFLARE_R2_PRIVATE` value replays the privacy choice on later
 init runs.
 
-### Release catalog cache
-
-The generated Worker configuration uses Wrangler `4.69.0` or newer, a current
-compatibility date, and:
-
-```json
-{
-  "cache": { "enabled": true }
-}
-```
-
-This is Cloudflare's cache in front of Worker execution, not
-`caches.default` inside the Worker. Successful catalog responses use a
-five-second shared TTL and vary by `x-api-key` and content encoding. The cache
-follows the catalog's `CDN-Cache-Control`: for five seconds after a catalog
-expires, it answers with the expired copy while the Worker revalidates it in
-the background (`CF-Cache-Status: UPDATING`). A deploy or a Roll back reaches
-devices within 15 seconds. Confirm
-`CF-Cache-Status: HIT` when validating a warm request; response headers alone
-do not prove that Worker and D1 execution were skipped.
-
 ## Step 4: If you use Expo, add the config plugin
 
 Follow the Expo path in [Set up your app](/docs/get-started/app-setup). It applies
