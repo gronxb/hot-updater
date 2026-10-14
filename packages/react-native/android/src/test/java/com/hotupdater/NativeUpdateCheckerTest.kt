@@ -866,6 +866,10 @@ class NativeUpdateCheckerTest {
 
             assertTrue(other is HotUpdaterPrepareResult.Failed)
             assertTrue(otherCredentials is HotUpdaterPrepareResult.Failed)
+            // A prepare its deadline ended while waiting reports a check timeout.
+            val timeouts =
+                state.events().filter { it.getString("name") == "onUpdateError" }.map { it.getJSONObject("payload") }
+            assertTrue(timeouts.any { it.getString("stage") == "check" && it.optString("transport") == "timeout" })
             assertTrue(otherCohort is HotUpdaterPrepareResult.Failed)
             assertSame(first.update, (same as HotUpdaterPrepareResult.Pending).update)
             gate.complete(Unit)
