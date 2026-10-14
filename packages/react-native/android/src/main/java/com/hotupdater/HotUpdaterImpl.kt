@@ -32,6 +32,12 @@ class HotUpdaterImpl {
     @Volatile
     private var launchSelectionStarted = false
 
+    // The selection React Native runs in this process. A channel reset clears
+    // currentLaunchSelection, so React Native's next read picks the default
+    // channel's bundle, but the running bundle stays until a reload.
+    @Volatile
+    private var runningLaunchSelection: LaunchSelection? = null
+
     /**
      * Primary constructor with dependency injection (for testing)
      */
@@ -289,6 +295,7 @@ class HotUpdaterImpl {
     suspend fun reload(reactContext: Context) {
         try {
             currentLaunchSelection = null
+            runningLaunchSelection = null
             launchSelectionStarted = false
             withContext(Dispatchers.Main) {
                 performReactReload(reactContext)
@@ -301,6 +308,7 @@ class HotUpdaterImpl {
     suspend fun reloadProcess(reactContext: Context) {
         try {
             currentLaunchSelection = null
+            runningLaunchSelection = null
             launchSelectionStarted = false
             withContext(Dispatchers.Main) {
                 if (!restartApplication(reactContext)) {
@@ -455,7 +463,7 @@ class HotUpdaterImpl {
     }
 
     /** Whether React Native read the bundle in this process, which fixes this launch's bundle. */
-    fun hasLaunchSelection(): Boolean = launchSelectionStarted || currentLaunchSelection != null
+    fun hasLaunchSelection(): Boolean = launchSelectionStarted || runningLaunchSelection != null
 
     /** Takes the queued native update events for JavaScript's `takeNativeUpdateEvents`. */
     fun takeNativeUpdateEvents(): String? =
@@ -473,7 +481,7 @@ class HotUpdaterImpl {
      * this process.
      */
     fun getBundleIdForUpdateCheck(): String? {
-        val launchSelection = currentLaunchSelection
+        val launchSelection = currentLaunchSelection ?: runningLaunchSelection
         if (launchSelection != null) {
             return launchSelection.launchedBundleId
         }
@@ -499,7 +507,6 @@ class HotUpdaterImpl {
         if (success) {
             preferences.setItem(CHANNEL_STORAGE_KEY, null)
             currentLaunchSelection = null
-            launchSelectionStarted = false
         }
         return success
     }
@@ -530,6 +537,7 @@ class HotUpdaterImpl {
                 restartApplication(context)
             },
         )
+        runningLaunchSelection = selection
         currentLaunchSelection = selection
         return selection
     }

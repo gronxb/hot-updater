@@ -88,6 +88,22 @@ private func hotUpdaterGetMinBundleId() -> String {
             launchSelectionLock.unlock()
         }
     }
+    // The selection React Native runs in this process. A channel reset clears
+    // currentLaunchSelection, so React Native's next read picks the default
+    // channel's bundle, but the running bundle stays until a reload.
+    private var runningLaunchSelectionValue: LaunchSelection?
+    private var runningLaunchSelection: LaunchSelection? {
+        get {
+            launchSelectionLock.lock()
+            defer { launchSelectionLock.unlock() }
+            return runningLaunchSelectionValue
+        }
+        set {
+            launchSelectionLock.lock()
+            runningLaunchSelectionValue = newValue
+            launchSelectionLock.unlock()
+        }
+    }
     private var launchStartObservers: [NSObjectProtocol] = []
 
     private static let DEFAULT_CHANNEL = "production"
@@ -717,6 +733,7 @@ private func hotUpdaterGetMinBundleId() -> String {
 
     public func resetLaunchPreparation() {
         currentLaunchSelection = nil
+        runningLaunchSelection = nil
         launchSelectionStarted = false
     }
 
@@ -724,7 +741,7 @@ private func hotUpdaterGetMinBundleId() -> String {
 
     /// Whether React Native has read the bundle in this process.
     func isLaunchPrepared() -> Bool {
-        launchSelectionStarted || currentLaunchSelection != nil
+        launchSelectionStarted || runningLaunchSelection != nil
     }
 
     /**
@@ -734,8 +751,8 @@ private func hotUpdaterGetMinBundleId() -> String {
      * starts from applying in this session.
      */
     func bundleIdForUpdateCheck() -> String? {
-        if let currentLaunchSelection {
-            return currentLaunchSelection.launchedBundleId
+        if let launchSelection = currentLaunchSelection ?? runningLaunchSelection {
+            return launchSelection.launchedBundleId
         }
         // Settles what the previous process left first, so the check reads the
         // selection, launch state, and crash history this launch will use.
@@ -768,7 +785,6 @@ private func hotUpdaterGetMinBundleId() -> String {
                 NSLog("[HotUpdaterImpl] Failed to clear channel override: \(error)")
             }
             self.currentLaunchSelection = nil
-            self.launchSelectionStarted = false
             resolver(success)
         case .failure(let error):
             let normalizedCode = HotUpdaterImpl.normalizeErrorCode(from: error)
@@ -789,6 +805,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         recoveryManager.startMonitoring(bundleId: selection.launchedBundleId, shouldRollback: selection.shouldRollbackOnCrash) { [weak self] launchedBundleId in
             self?.bundleStorage.markLaunchCompleted(bundleId: launchedBundleId)
         }
+        runningLaunchSelection = selection
         currentLaunchSelection = selection
         return selection
     }
