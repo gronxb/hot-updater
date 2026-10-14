@@ -50,6 +50,48 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `settling before the launch rolls back an unfinished launch and keeps its RECOVERED report`() {
+        val rootDir = temporaryFolder.newFolder()
+        val preferences = InMemoryPreferencesService()
+        listOf("stable-bundle", "hung-bundle").forEach { bundleId ->
+            val directory = createBundleDir(rootDir, bundleId)
+            writeFile(directory, "index.android.bundle")
+            writeManifest(directory, listOf("index.android.bundle"))
+        }
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = "stable-bundle",
+                stagingBundleId = "hung-bundle",
+                verificationPending = true,
+            ),
+        )
+        val firstProcess = createService(rootDir, preferences)
+        firstProcess.prepareLaunch(null)
+        firstProcess.markLaunchStarted("hung-bundle")
+
+        // A native update check reads the selection before React Native starts.
+        val nextProcess = createService(rootDir, preferences)
+        var consumed = 0
+        nextProcess.settlePreviousLaunch {
+            consumed++
+            null
+        }
+        nextProcess.settlePreviousLaunch {
+            consumed++
+            null
+        }
+
+        assertEquals(1, consumed)
+        assertEquals("stable-bundle", nextProcess.peekLaunchBundleId())
+        assertFalse(loadMetadata(rootDir)!!.launchInProgress)
+        assertTrue(nextProcess.getCrashHistory().contains("hung-bundle"))
+        assertEquals("stable-bundle", nextProcess.prepareLaunch(null).launchedBundleId)
+        assertEquals("RECOVERED", nextProcess.notifyAppReady()["status"])
+    }
+
+    @Test
     fun `metadata in another schema is not loaded`() {
         val rootDir = temporaryFolder.newFolder()
         val stableDir = createBundleDir(rootDir, "stable-bundle")
@@ -213,9 +255,11 @@ class BundleFileStorageServiceTest {
                 launchInProgress = true,
             ),
         )
-        // The next process rolls back a pending bundle whose launch never finished.
-        assertEquals("stable-bundle", createService(rootDir, preferences).peekLaunchBundleId())
-        assertTrue(loadMetadata(rootDir)!!.launchInProgress)
+        // Settling rolls back a pending bundle whose launch never finished.
+        val nextProcess = createService(rootDir, preferences)
+        nextProcess.settlePreviousLaunch { null }
+        assertEquals("stable-bundle", nextProcess.peekLaunchBundleId())
+        assertFalse(loadMetadata(rootDir)!!.launchInProgress)
     }
 
     @Test

@@ -132,20 +132,22 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
-    func peekLaunchBundleIdSkipsAStagedBundleWhoseLaunchDidNotFinish() throws {
+    func settlingBeforeTheLaunchRollsBackAnUnfinishedLaunchAndKeepsItsReport() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
         let preferences = InMemoryPreferencesService()
         try leaveUnfinishedLaunch(documentsDirectory: root, preferences: preferences)
-        let metadataFile = root.appendingPathComponent("bundle-store/\(BundleMetadata.metadataFilename)")
-        let before = try Data(contentsOf: metadataFile)
         let nextProcess = makeStorageService(documentsDirectory: root, preferences: preferences)
+        var consumed = 0
 
+        // A native update check reads the selection before React Native starts.
+        nextProcess.settlePreviousLaunch { consumed += 1; return nil }
+        nextProcess.settlePreviousLaunch { consumed += 1; return nil }
+
+        #expect(consumed == 1)
         #expect(nextProcess.peekLaunchBundleId() == "stable-bundle")
-
-        #expect(try Data(contentsOf: metadataFile) == before)
-        #expect(!nextProcess.getCrashHistory().contains("retried-bundle"))
         #expect(nextProcess.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "stable-bundle")
+        #expect(nextProcess.notifyAppReady()["status"] as? String == "RECOVERED")
     }
 
     @Test

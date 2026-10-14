@@ -110,9 +110,19 @@ interface BundleStorageService {
     fun prepareLaunch(pendingRecovery: PendingCrashRecovery?): LaunchSelection
 
     /**
+     * Settles what the previous process left once per process, before the
+     * first read of the selection: interrupted promotions, a crash rollback,
+     * and a launch that never finished. [prepareLaunch] runs it first; a native
+     * update check that runs before React Native starts runs it earlier.
+     * [pendingRecovery] is called only when this run settles.
+     */
+    fun settlePreviousLaunch(pendingRecovery: () -> PendingCrashRecovery?) {}
+
+    /**
      * The bundle [prepareLaunch] would load, read from the saved metadata
-     * without changing it: no recovery is applied and the launch is not
-     * prepared. Null is the built-in bundle.
+     * without preparing the launch. Null is the built-in bundle. Call
+     * [settlePreviousLaunch] first, or a bundle the next launch rolls back
+     * is returned.
      */
     fun peekLaunchBundleId(): String? = null
 
@@ -604,6 +614,8 @@ class BundleFileStorageService(
     }
 
     private var hasPreparedLaunch = false
+    private val settleLock = Any()
+    private var hasSettledPreviousLaunch = false
     private var currentLaunchReport: LaunchReport? = null
 
     // The staged bundle this process launched before its first content. Only that
@@ -1587,17 +1599,31 @@ class BundleFileStorageService(
 
     override fun getFallbackBundleURL(): String = "assets://index.android.bundle"
 
-    override fun prepareLaunch(pendingRecovery: PendingCrashRecovery?): LaunchSelection {
-        recoverInterruptedPromotions()
-        saveLaunchReport(null)
-        applyPendingRecoveryIfNeeded(pendingRecovery)
-        // Only a new storage instance consumes an unfinished launch. Repeated bundle
-        // lookups or bridge reloads in this process must not reject its own launch.
-        if (!hasPreparedLaunch) {
+    override fun settlePreviousLaunch(pendingRecovery: () -> PendingCrashRecovery?) {
+        synchronized(settleLock) {
+            if (hasSettledPreviousLaunch) return
+            hasSettledPreviousLaunch = true
+            recoverInterruptedPromotions()
+            // Cleared before the rollbacks below, so the launch reports their RECOVERED.
+            saveLaunchReport(null)
+            applyPendingRecoveryIfNeeded(pendingRecovery())
+            // Only a new storage instance consumes an unfinished launch. Repeated bundle
+            // lookups or bridge reloads in this process must not reject its own launch.
             val metadata = loadMetadataOrNull()
             if (metadata?.verificationPending == true && metadata.launchInProgress) {
                 metadata.stagingBundleId?.let { rollbackPendingBundle(it, unfinishedLaunch = true) }
             }
+        }
+    }
+
+    override fun prepareLaunch(pendingRecovery: PendingCrashRecovery?): LaunchSelection {
+        if (hasPreparedLaunch) {
+            // A later launch in this process, after a reset or a reload.
+            recoverInterruptedPromotions()
+            saveLaunchReport(null)
+            applyPendingRecoveryIfNeeded(pendingRecovery)
+        } else {
+            settlePreviousLaunch { pendingRecovery }
         }
         hasPreparedLaunch = true
 
@@ -1613,11 +1639,8 @@ class BundleFileStorageService(
 
     override fun peekLaunchBundleId(): String? {
         val metadata = loadMetadataOrNull() ?: return null
-        // The first launch of a process rolls back a pending bundle whose last
-        // launch never finished (see prepareLaunch).
-        val rollsBackStaging = !hasPreparedLaunch && metadata.verificationPending && metadata.launchInProgress
         metadata.stagingBundleId?.let { stagingBundleId ->
-            if (!rollsBackStaging && getBundleUrlForId(stagingBundleId) != null) return stagingBundleId
+            if (getBundleUrlForId(stagingBundleId) != null) return stagingBundleId
         }
         metadata.stableBundleId?.let { stableBundleId ->
             if (getBundleUrlForId(stableBundleId) != null) return stableBundleId
