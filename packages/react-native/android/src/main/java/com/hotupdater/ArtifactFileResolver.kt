@@ -70,17 +70,19 @@ class HttpArtifactFileResolver(
                     if (!response.isSuccessful) {
                         throw HttpStatusException(response.code, response.message)
                     }
+                    // As JSON.parse reads it, which org.json's parser does not.
                     val files =
-                        JSONObject(body ?: "").optJSONObject("files")
+                        (StrictJson.parse(body ?: "") as? JSONObject)?.opt("files") as? JSONObject
                             ?: throw IllegalStateException("Artifact files response has no files")
                     paths.associateWith { path ->
                         val file =
-                            files.optJSONObject(path)
+                            files.opt(path) as? JSONObject
                                 ?: throw IllegalStateException("Artifact files response omits $path")
                         ResolvedArtifactFile(
-                            url = file.getString("url"),
-                            compression =
-                                if (file.has("compression") && !file.isNull("compression")) file.getString("compression") else null,
+                            url =
+                                file.opt("url") as? String
+                                    ?: throw IllegalStateException("Artifact files response has no URL for $path"),
+                            compression = file.opt("compression") as? String,
                         )
                     }
                 }
