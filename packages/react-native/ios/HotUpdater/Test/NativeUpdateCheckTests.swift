@@ -727,6 +727,10 @@ struct NativeUpdateCheckTests {
         await #expect(throws: NativeUpdateCheckError.self) {
             _ = try await third.updateBundle()
         }
+        // So does the result that staged it.
+        await #expect(throws: NativeUpdateCheckError.self) {
+            _ = try await first.updateBundle()
+        }
         #expect(host.stageCalls == 1)
     }
 

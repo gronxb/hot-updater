@@ -464,14 +464,15 @@ internal class NativeUpdateChecker(
         val running = synchronized(inFlightLock) { inFlight?.takeIf { it.update?.targetKey == update.targetKey } }
         val staging =
             running ?: run {
-                if (selection.staged) return true
+                // A reset or a newer catalog can undo a staging; it counts only while current.
+                if (selection.staged && state.isReleaseSelectionCurrent(selection.guard)) return true
                 mutex.lock()
                 // A staging of the same target may have committed while this call
                 // waited, or before it was made; it counts while the selection is current.
                 if (selection.staged || lastCommittedTargetKey == update.targetKey) {
                     val current =
                         try {
-                            selection.staged || state.isReleaseSelectionCurrent(selection.guard)
+                            state.isReleaseSelectionCurrent(selection.guard)
                         } finally {
                             mutex.unlock()
                         }

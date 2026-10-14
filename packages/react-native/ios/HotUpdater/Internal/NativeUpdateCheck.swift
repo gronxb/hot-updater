@@ -920,7 +920,8 @@ final class NativeUpdateChecker {
     /// Stages `update`, joins its staging already running, or returns true at
     /// once when it was already staged.
     func updateBundle(_ update: HotUpdaterUpdate, onProgress: ((Double) -> Void)?) async throws -> Bool {
-        if update.isStaged {
+        // A reset or a newer catalog can undo a staging; it counts only while current.
+        if update.isStaged, update.isSelectionCurrent() {
             return true
         }
         let staging: NativeUpdateStaging
@@ -933,7 +934,7 @@ final class NativeUpdateChecker {
             // A staging of the same target may have committed while this call
             // waited, or before it was made; it counts while the selection is current.
             if update.isStaged || committedTarget == update.targetKey {
-                let current = update.isStaged || update.isSelectionCurrent()
+                let current = update.isSelectionCurrent()
                 gate.release()
                 guard current else {
                     throw NativeUpdateCheckError.staleReleaseCatalog
