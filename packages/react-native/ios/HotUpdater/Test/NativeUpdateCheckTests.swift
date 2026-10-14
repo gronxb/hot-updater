@@ -454,7 +454,7 @@ struct NativeUpdateCheckTests {
         let transport = FakeUpdateTransport.serving(catalog: catalog(releases: []))
         let checker = makeChecker(host, transport)
 
-        for timeout in [0, -1, Double.nan] {
+        for timeout in [0, -1, Double.nan, Double.infinity] {
             let result = await checker.prepare(options(), timeout: timeout)
             #expect(result.status == .failed)
             #expect(result.error != nil)
