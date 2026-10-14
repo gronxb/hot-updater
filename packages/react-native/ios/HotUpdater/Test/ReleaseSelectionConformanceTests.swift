@@ -163,6 +163,16 @@ struct ReleaseSelectionConformanceTests {
     }
 
     @Test
+    func parseKeepsAnUnpairedSurrogateAsJSONParseDoes() throws {
+        // The fixture can't hold this case: JSONSerialization, which loads it,
+        // rejects an unpaired surrogate. JSON.parse accepts the catalog.
+        let valid = try #require(cases("parseReleaseCatalog").first { $0["name"] as? String == "valid app-version catalog" })
+        let body = (valid["body"] as! String).replacingOccurrences(of: "\"message\":\"Fix\"", with: "\"message\":\"Fix \\ud800\"")
+        let catalog = try #require(parseReleaseCatalog(body, expectedScope: scopeInput(valid["expectedScope"] as! [String: Any])))
+        #expect(catalog.releases.first?.message == "Fix \u{FFFD}")
+    }
+
+    @Test
     func selectDesired() {
         for (index, testCase) in cases("selectDesiredRelease").enumerated() {
             let pool = (testCase["pool"] as! [[String: Any]]).map(descriptor)
