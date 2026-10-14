@@ -22,6 +22,7 @@ import java.io.InterruptedIOException
 import java.net.MalformedURLException
 import java.net.URL
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.TimeoutException
 
 /*
@@ -298,7 +299,9 @@ internal class NativeUpdateChecker(
         if (timeoutMillis <= 0) {
             return HotUpdaterPrepareResult.Failed(IllegalArgumentException("timeoutMillis must be positive"), null)
         }
-        val deadline = System.nanoTime() + timeoutMillis * 1_000_000
+        // Saturates, so a timeout such as Long.MAX_VALUE never wraps into the
+        // past; differences of nanoTime stay correct when the sum wraps.
+        val deadline = System.nanoTime() + TimeUnit.MILLISECONDS.toNanos(timeoutMillis)
         return try {
             while (true) {
                 // Read together with the lock, so a staging is either joined or

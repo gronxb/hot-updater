@@ -337,6 +337,15 @@ const bodyCases: {
     scope: appVersionScope,
   },
   {
+    // JavaScript compares keys by code units; Swift strings compare canonically.
+    name: "a canonically equivalent key is not the property",
+    body: JSON.stringify(validCatalog(appVersionScope)).replace(
+      '"scopeKey"',
+      '"scope\\u212aey"',
+    ),
+    scope: appVersionScope,
+  },
+  {
     name: "generation written as 3.0",
     body: JSON.stringify(validCatalog(appVersionScope)).replace(
       '"generation":3',
