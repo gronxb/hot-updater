@@ -173,6 +173,19 @@ struct ReleaseSelectionConformanceTests {
     }
 
     @Test
+    func objectKeysCompareByCodeUnitsAsInJavaScript() throws {
+        let text = "{\"scopeKey\":1,\"scope\\u212aey\":2,\"\\u00e9\":3,\"e\\u0301\":4}"
+        let object = try #require(StrictJson.parse(text) as? [String: Any])
+        // Four distinct keys, as JSON.parse keeps them.
+        #expect(object.count == 4)
+        #expect((object["scopeKey"] as? NSNumber)?.intValue == 1)
+        let originals = object.keys.map { Array(StrictJson.originalKey($0).utf16) }
+        #expect(originals.contains(Array("scope\u{212A}ey".utf16)))
+        #expect(originals.contains(Array("\u{00E9}".utf16)))
+        #expect(originals.contains(Array("e\u{0301}".utf16)))
+    }
+
+    @Test
     func selectDesired() {
         for (index, testCase) in cases("selectDesiredRelease").enumerated() {
             let pool = (testCase["pool"] as! [[String: Any]]).map(descriptor)
