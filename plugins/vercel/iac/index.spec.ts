@@ -468,7 +468,7 @@ describe("Vercel init", () => {
 
     await expect(
       runInit({ build: "bare", envFile: ".env.hotupdater" }),
-    ).rejects.toThrow("set HOT_UPDATER_VERCEL_BLOB_STORE_NAME");
+    ).rejects.toThrow("Set HOT_UPDATER_VERCEL_BLOB_STORE_NAME");
     expect(mocks.api.createProject).not.toHaveBeenCalled();
   });
 
@@ -494,6 +494,9 @@ describe("Vercel init", () => {
       access: "private",
       name: "hot-updater-private",
     });
+    expect(mocks.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining("stop downloading until you deploy them again"),
+    );
     expect(mocks.makeEnv).toHaveBeenCalledWith(
       expect.objectContaining({
         HOT_UPDATER_VERCEL_BLOB_STORE_ID: "store_Store1",
@@ -532,6 +535,7 @@ describe("Vercel init", () => {
         },
       )
       .mockResolvedValueOnce("env_db");
+    mocks.confirm.mockResolvedValueOnce(true);
     mocks.text
       .mockResolvedValueOnce("hot-updater")
       .mockImplementationOnce(
@@ -544,7 +548,12 @@ describe("Vercel init", () => {
     await runInit({ build: "bare" });
 
     expect(mocks.log.warn).toHaveBeenCalledWith(
-      expect.stringContaining("Blob store pub is public"),
+      expect.stringContaining(
+        "bundles deployed to pub stop downloading until you deploy them again",
+      ),
+    );
+    expect(mocks.confirm).toHaveBeenCalledWith(
+      expect.objectContaining({ initialValue: false }),
     );
     expect(mocks.api.createBlobStore).toHaveBeenCalledWith({
       access: "private",
@@ -553,6 +562,40 @@ describe("Vercel init", () => {
     expect(mocks.api.connectBlobStore).toHaveBeenCalledWith(
       expect.objectContaining({ storeId: "store_Store1" }),
     );
+  });
+
+  it("changes nothing when the replacement of a public Blob store is declined", async () => {
+    givenInitEnv({
+      HOT_UPDATER_VERCEL_BLOB_STORE_ID: "store_pub",
+      HOT_UPDATER_VERCEL_BLOB_STORE_NAME: "pub",
+    });
+    mocks.api.listTeams.mockResolvedValue([
+      { id: "team_1", name: "Team", slug: "team" },
+    ]);
+    mocks.api.listBlobStores.mockResolvedValue([
+      {
+        access: "public",
+        connections: [],
+        id: "store_pub",
+        name: "pub",
+        region: "iad1",
+      },
+    ]);
+    mocks.text.mockResolvedValueOnce("hot-updater");
+    mocks.confirm.mockResolvedValueOnce(false);
+    const exit = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("exit");
+    });
+
+    try {
+      await expect(runInit({ build: "bare" })).rejects.toThrow("exit");
+      expect(exit).toHaveBeenCalledWith(1);
+    } finally {
+      exit.mockRestore();
+    }
+    expect(mocks.api.createProject).not.toHaveBeenCalled();
+    expect(mocks.api.createBlobStore).not.toHaveBeenCalled();
+    expect(mocks.deployFunction).not.toHaveBeenCalled();
   });
 
   it("lists only private Blob stores to select", async () => {

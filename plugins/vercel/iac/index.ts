@@ -179,24 +179,30 @@ const selectBlobStore = async ({
       ? stores.find((store) => store.name === savedName)
       : undefined);
   // Bundles download only through signed URLs, so a public store saved by
-  // an earlier init is replaced with a private one.
+  // an earlier init is replaced with a private one. The bundles deployed to
+  // it keep its URIs, which the new store's Function cannot serve.
   const publicStore = found?.access === "public" ? found : undefined;
+  const replacement =
+    publicStore &&
+    `Blob store ${publicStore.name} is public. Hot Updater keeps bundles in a private store, and the bundles deployed to ${publicStore.name} stop downloading until you deploy them again.`;
   const saved = publicStore ? undefined : found;
   const privateStores = stores.filter((store) => store.access === "private");
   if (nonInteractive) {
     if (publicStore) {
-      // A changed name replaces the saved public store.
-      const named =
-        savedName === publicStore.name
-          ? undefined
-          : stores.find((store) => store.name === savedName);
-      if (named?.access === "private")
-        return { kind: "existing", store: named };
-      if (savedName && savedName !== publicStore.name && !named) {
-        return { kind: "create", name: savedName };
+      // A changed name is the decision to replace the saved public store.
+      const named = stores.find((store) => store.name === savedName);
+      if (savedName && savedName !== publicStore.name) {
+        if (named?.access === "private") {
+          p.log.warn(replacement!);
+          return { kind: "existing", store: named };
+        }
+        if (!named) {
+          p.log.warn(replacement!);
+          return { kind: "create", name: savedName };
+        }
       }
       throw new InitError(
-        `Blob store ${publicStore.name} is public. Hot Updater keeps bundles in a private store: set ${inputs.blobStoreName.envKey} to a private or new store.`,
+        `${replacement} Set ${inputs.blobStoreName.envKey} to a private or new store to replace it.`,
       );
     }
     if (saved) return { kind: "existing", store: saved };
@@ -206,9 +212,14 @@ const selectBlobStore = async ({
     );
   }
   if (publicStore) {
-    p.log.warn(
-      `Blob store ${publicStore.name} is public. Hot Updater keeps bundles in a private store: select or create a private one.`,
+    p.log.warn(replacement!);
+    const replace = exitIfCancelled(
+      await p.confirm({
+        message: `Replace ${publicStore.name} with a private Blob store?`,
+        initialValue: false,
+      }),
     );
+    if (!replace) process.exit(1);
   } else if ((savedId || savedName) && !saved) {
     p.log.warn("The saved Blob store was not found. Select a store again.");
   }

@@ -120,8 +120,9 @@ environment variables.
 
 The Blob store is always private: devices download bundles only through signed
 URLs that expire, which the server issues to requests with a valid API key. Init
-does not use a public store: when the saved store is public, it asks you to
-select or create a private one, and you deploy the bundles again.
+does not use a public store: when the saved store is public, it asks before
+replacing it with a private one. Bundles deployed to the public store stop
+downloading until you deploy them again.
 
 Managed init reuses `HOT_UPDATER_API_KEY` when supplied or creates an API key,
 registers it in the database, and persists the plaintext value locally. Send this
