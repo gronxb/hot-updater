@@ -493,9 +493,11 @@ struct NativeUpdateCheckTests {
         await host.stageStarted.wait()
 
         let other = await checker.prepare(options(channel: "beta"), timeout: 0.2)
+        let otherKey = await checker.prepare(options(headers: ["X-API-Key": "other"]), timeout: 0.2)
         let same = await checker.prepare(options(), timeout: 0.2)
 
         #expect(other.status == .failed)
+        #expect(otherKey.status == .failed)
         #expect(same.status == .pending)
         #expect(same.update === first.update)
         download.open()
