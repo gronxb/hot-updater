@@ -260,7 +260,7 @@ private func hotUpdaterGetMinBundleId() -> String {
      * @param reject Promise reject callback; download and install failures
      *   carry `stage`, `reason`, and their details in the error's userInfo
      */
-    public func updateBundle(_ params: NSDictionary?,
+    public func updateBundle(_ params: [AnyHashable: Any]?,
                                          resolver resolve: @escaping RCTPromiseResolveBlock,
                                          rejecter reject: @escaping RCTPromiseRejectBlock) {
         
@@ -448,7 +448,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         )
     }
 
-    public func acceptReleaseCatalog(_ params: NSDictionary?) -> Bool {
+    public func acceptReleaseCatalog(_ params: [AnyHashable: Any]?) -> Bool {
         guard let data = params as? [String: Any],
               let catalogId = data["catalogId"] as? String,
               let scopeKey = data["scopeKey"] as? String,
@@ -507,7 +507,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         }
     }
 
-    public func isReleaseSelectionCurrent(_ params: NSDictionary?) -> Bool {
+    public func isReleaseSelectionCurrent(_ params: [AnyHashable: Any]?) -> Bool {
         guard let data = params as? [String: Any],
               let catalogId = data["catalogId"] as? String,
               let scopeKey = data["scopeKey"] as? String,
@@ -528,7 +528,7 @@ private func hotUpdaterGetMinBundleId() -> String {
     }
 
     public func commitReleaseSelection(
-        _ params: NSDictionary?,
+        _ params: [AnyHashable: Any]?,
         resolver resolve: @escaping RCTPromiseResolveBlock,
         rejecter reject: @escaping RCTPromiseRejectBlock
     ) {
