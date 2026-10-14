@@ -58,7 +58,21 @@ private func hotUpdaterGetMinBundleId() -> String {
     private let recoveryManager: HotUpdaterRecoveryManager
     private let releaseCatalogCache: ReleaseCatalogCacheService
     private let keyValueStorage: KeyValueStorageService
-    private var currentLaunchSelection: LaunchSelection?
+    // Read by native update checks on other threads while React Native sets it.
+    private let launchSelectionLock = NSLock()
+    private var launchSelectionValue: LaunchSelection?
+    private var currentLaunchSelection: LaunchSelection? {
+        get {
+            launchSelectionLock.lock()
+            defer { launchSelectionLock.unlock() }
+            return launchSelectionValue
+        }
+        set {
+            launchSelectionLock.lock()
+            launchSelectionValue = newValue
+            launchSelectionLock.unlock()
+        }
+    }
     private var launchStartObservers: [NSObjectProtocol] = []
 
     private static let DEFAULT_CHANNEL = "production"
