@@ -7,9 +7,13 @@ the XCFrameworks that `pnpm package:ios` in `../react-native` emits.
 
 - `pnpm frameworks` copies them from
   `../react-native/.rock/cache/ios/package/` into `frameworks/` (gitignored).
-- `AppDelegate.swift` sets `ReactNativeBrownfield.shared.bundle = ReactNativeBundle`,
-  starts React Native, and installs a `UINavigationController` (navigation bar
-  hidden) whose root is `NativeViewController`.
+- `AppDelegate.swift` sets `ReactNativeBrownfield.shared.bundle = ReactNativeBundle`
+  and `bundleURLOverride = makeHotUpdaterBundleURLOverride()` (both exported by
+  the XCFramework; the override returns the bundle Hot Updater downloaded, or
+  the embedded one), starts React Native, and installs a
+  `UINavigationController` (navigation bar hidden) whose root is
+  `NativeViewController`. The host links nothing from Hot Updater itself: the
+  SDK is compiled into `RnBrownfieldReact.framework`.
 - `NativeViewController.swift` is the native screen; its button pushes a
   `ReactNativeViewController(moduleName: "RnBrownfield")`. `popToNative()` from
   JavaScript pops that controller off the navigation stack. The controller's

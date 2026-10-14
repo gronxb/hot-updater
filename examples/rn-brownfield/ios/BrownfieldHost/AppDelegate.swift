@@ -10,9 +10,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
         // Point the brownfield runtime at the JS bundle embedded in
-        // RnBrownfieldReact.xcframework and start React Native ahead of time,
-        // so the React Native screen is ready when the user opens it.
+        // RnBrownfieldReact.xcframework, let Hot Updater replace it with the
+        // last update it downloaded, and start React Native ahead of time, so
+        // the React Native screen is ready when the user opens it.
         ReactNativeBrownfield.shared.bundle = ReactNativeBundle
+        ReactNativeBrownfield.shared.bundleURLOverride = makeHotUpdaterBundleURLOverride()
         ReactNativeBrownfield.shared.startReactNative {
             print("[BrownfieldHost] React Native bundle loaded")
         }
