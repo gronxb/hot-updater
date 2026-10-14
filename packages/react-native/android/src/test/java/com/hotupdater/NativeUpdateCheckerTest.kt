@@ -804,6 +804,20 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `a reset drops the queued downloads of the bundles it deletes`() =
+        runBlocking {
+            val state = FakeState()
+            val checker = NativeUpdateChecker(state, FakeTransport(routes(minorCatalog())))
+            assertTrue(checker.checkForUpdate(OPTIONS)!!.updateBundle())
+            assertTrue(state.events().any { it.getString("name") == "onBundleDownloaded" })
+
+            assertTrue(checker.resetChannel { true })
+
+            assertTrue(state.events().none { it.getString("name") == "onBundleDownloaded" })
+            assertTrue(state.events().any { it.getString("name") == "onUpdateCheck" })
+        }
+
+    @Test
     fun `a reset waits for a background download`() =
         runBlocking {
             val gate = CompletableDeferred<Unit>()

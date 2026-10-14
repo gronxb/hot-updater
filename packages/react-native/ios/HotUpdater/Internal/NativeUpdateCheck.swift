@@ -329,6 +329,19 @@ enum NativeUpdateEvents {
 
     /// The queued events as a JSON array, or nil when there are none; the
     /// queue is cleared either way.
+    /// Drops every queued event named `name`.
+    static func remove(name: String, from storage: NativeUpdateEventStorage) {
+        lock.lock()
+        defer { lock.unlock() }
+        let kept = read(storage).filter { ($0 as? [String: Any])?["name"] as? String != name }
+        guard !kept.isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: kept) else {
+            storage.setStorageItem(storageKey, value: nil)
+            return
+        }
+        storage.setStorageItem(storageKey, value: String(data: data, encoding: .utf8))
+    }
+
     /// Takes the events of the current native `build` and cohort, clearing the
     /// queue. An event of another, such as the app version before an upgrade
     /// or a cohort set since, is dropped so none is reported against a release
@@ -926,8 +939,14 @@ final class NativeUpdateChecker {
     }
 
     /// Clears the runtime channel once other native update work finishes.
+    /// A reset deletes staged bundles, so their queued downloads are dropped
+    /// rather than replayed.
     func resetChannel() async -> Bool {
-        await whenIdle { await self.host.resetChannel() } ?? false
+        await whenIdle {
+            let reset = await self.host.resetChannel()
+            if reset { NativeUpdateEvents.remove(name: "onBundleDownloaded", from: self.host) }
+            return reset
+        } ?? false
     }
 
     /// Runs `body` once no check or staging runs, as a channel reset must: a
@@ -1421,9 +1440,13 @@ final class NativeUpdateChecker {
         while baseURL.hasSuffix("/") { baseURL.removeLast() }
         // The headers the transport sends, so two options that send the same
         // headers share a key, as the catalog cache partition does.
-        let headers = normalizedHeaders(options.requestHeaders).map { "\($0.key):\($0.value)" }.sorted()
-        return ([baseURL, options.updateStrategy.name, options.channel ?? "", cohort] + headers)
-            .joined(separator: "\n")
+        let headers = normalizedHeaders(options.requestHeaders)
+            .sorted { $0.key < $1.key }
+            .map { [$0.key, $0.value] }
+        // JSON, so no field can spell another, such as a channel with a newline.
+        let fields: [Any] = [baseURL, options.updateStrategy.name, options.channel ?? "", cohort, headers]
+        let data = (try? JSONSerialization.data(withJSONObject: fields)) ?? Data()
+        return String(decoding: data, as: UTF8.self)
     }
 
     private func queueUnchanged(channel: String, bundleId: String, releaseId: String?, previousReleaseId: String?) {

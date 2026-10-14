@@ -846,6 +846,23 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func aResetDropsTheQueuedDownloadsOfTheBundlesItDeletes() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2)])
+        )
+        let checker = makeChecker(host, transport)
+        let update = try #require(try await checker.checkForUpdate(options()))
+        #expect(try await update.updateBundle())
+        #expect(host.events().contains { $0["name"] as? String == "onBundleDownloaded" })
+
+        #expect(await checker.resetChannel())
+
+        #expect(!host.events().contains { $0["name"] as? String == "onBundleDownloaded" })
+        #expect(host.events().contains { $0["name"] as? String == "onUpdateCheck" })
+    }
+
+    @Test
     func resetChannelWaitsForTheDownloadInProgress() async throws {
         let host = FakeUpdateHost()
         let download = Latch()

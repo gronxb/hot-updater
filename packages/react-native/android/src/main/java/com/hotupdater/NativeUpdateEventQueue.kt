@@ -64,6 +64,18 @@ internal class NativeUpdateEventQueue(
         }
     }
 
+    /** Drops every queued event named [name]. */
+    fun remove(name: String) {
+        synchronized(lock) {
+            val events = read() ?: return
+            val kept = JSONArray()
+            for (index in 0 until events.length()) {
+                if (nameAt(events, index) != name) kept.put(events.get(index))
+            }
+            setItem(STORAGE_KEY, if (kept.length() == 0) null else kept.toString())
+        }
+    }
+
     /** The queued events as a JSON array, cleared from the store, or null when there are none. */
     fun take(): String? =
         synchronized(lock) {
