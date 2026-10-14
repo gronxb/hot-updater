@@ -100,8 +100,9 @@ objects.
 
 <Callout type="warn">
   The configured database must own every object under the configured storage
-  prefix. If databases or environments share a bucket, assign each one a
-  separate storage `basePath` before pruning.
+  prefix; without `basePath`, that is the whole bucket. If databases or
+  environments share a bucket, assign each one a separate storage `basePath`
+  before pruning.
 </Callout>
 
 Storage pruning currently requires the `listObjects` and `deleteObjects`
