@@ -362,11 +362,17 @@ const sources = (dir) =>
     return SOURCE.test(entry.name) ? [full] : [];
   });
 
-/** The package whose directory holds `file`. */
+/**
+ * The package whose directory holds `file`: the innermost one, since a
+ * workspace package may hold other workspace packages (examples/rn-brownfield
+ * holds its react-native, android, and ios packages).
+ */
 const ownerOf = (/** @type {string} */ file) =>
-  packages.find(
-    (pkg) => file === pkg.dir || file.startsWith(`${pkg.dir}${path.sep}`),
-  );
+  packages
+    .filter(
+      (pkg) => file === pkg.dir || file.startsWith(`${pkg.dir}${path.sep}`),
+    )
+    .sort((a, b) => b.dir.length - a.dir.length)[0];
 
 /** `vi` calls that load a module by its specifier. */
 const VI_LOADS = new Set(["mock", "doMock", "importActual", "importMock"]);
@@ -425,6 +431,8 @@ const OUTSIDE = [
 for (const pkg of [...packages, ...OUTSIDE]) {
   if (!existsSync(pkg.dir)) continue;
   for (const file of sources(pkg.dir)) {
+    // A nested workspace package's sources are checked with that package.
+    if (!OUTSIDE.includes(pkg) && ownerOf(file) !== pkg) continue;
     const text = readFileSync(file, "utf8");
     if (!/@hot-updater\/|\.\.\/|\bimport\s*\(/.test(text)) continue;
     const at = path.relative(root, file).split(path.sep).join("/");

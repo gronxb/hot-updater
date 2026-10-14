@@ -67,7 +67,13 @@ want: the hosts only pick up a change through a repackaged artifact. Run
 `pnpm start` and `pnpm ios` / `pnpm android` in `react-native/` to iterate on
 the React Native app on its own, outside the hosts.
 
-## Next steps
+## Hot Updater
 
-Hot Updater is not wired in yet. The plan is to add `@hot-updater/react-native`
-to `react-native/`, so the hosts receive OTA updates for the embedded bundle.
+`react-native/` integrates `@hot-updater/react-native` with Supabase, so the
+hosts receive OTA updates for the embedded bundle. The React Native screen's
+second card shows the running bundle, channel, fingerprint, and update
+progress, with a Reload button. Setup, deploy commands, and what differs from
+a standalone app are in [`react-native/README.md`](react-native/README.md).
+Hot Updater reads the server URL and client API key from `.env.hotupdater` in
+`react-native/` when the artifacts are packaged, so configure it before the
+demo scripts.
