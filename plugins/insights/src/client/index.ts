@@ -203,20 +203,25 @@ const setUpInsights = (
     bundleId: string,
     releaseId: string | null,
     fromReleaseId: string | null,
+    occurredAt?: number,
   ) => {
     // After a download the server shows the update as waiting; a later
     // no-change report from this runtime would hide it.
     if (didDownload) return;
     enqueue(
-      createEvent({
-        type: "UNCHANGED",
-        channel,
-        fromBundleId: null,
-        fromReleaseId,
-        toBundleId: bundleId,
-        toReleaseId: releaseId,
-        updateStrategy: null,
-      }),
+      createEvent(
+        {
+          type: "UNCHANGED",
+          channel,
+          fromBundleId: null,
+          fromReleaseId,
+          toBundleId: bundleId,
+          toReleaseId: releaseId,
+          updateStrategy: null,
+        },
+        undefined,
+        occurredAt,
+      ),
     );
   };
 
@@ -247,6 +252,7 @@ const setUpInsights = (
       result.previousReleaseId === result.releaseId
         ? null
         : result.previousReleaseId,
+      result.occurredAt,
     );
   };
 
