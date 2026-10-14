@@ -22,6 +22,8 @@ class HotUpdaterImpl {
     private val installIdentity: InstallIdentityService
     private val keyValueStorage: KeyValueStorageService
     private val activityStartGate: ActivityStartGate
+    // Read by native update checks on other threads while React Native sets it.
+    @Volatile
     private var currentLaunchSelection: LaunchSelection? = null
 
     /**
