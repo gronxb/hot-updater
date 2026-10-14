@@ -520,6 +520,10 @@ struct NativeUpdateCheckTests {
             .filter { $0["name"] as? String == "onUpdateError" }
             .compactMap { $0["payload"] as? [String: Any] }
         #expect(failures.contains { $0["stage"] as? String == "check" && $0["transport"] as? String == "timeout" })
+        // The prepare that waited under cohort 2 reports its timeout under 2.
+        #expect(host.queued().contains {
+            $0["name"] as? String == "onUpdateError" && ($0["build"] as? String)?.hasSuffix("|2") == true
+        })
         #expect(otherCohort.status == .failed)
         #expect(same.status == .pending)
         #expect(same.update === first.update)

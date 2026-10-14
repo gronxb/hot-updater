@@ -390,6 +390,8 @@ internal class NativeUpdateChecker(
                 channel = options.channel?.takeIf { it.isNotEmpty() } ?: state.getChannel(),
                 updateStrategy = options.updateStrategy,
             ),
+            // The waiting prepare's cohort, not the one the check holding the lock captured.
+            cohort = currentCohort(),
         )
     }
 
@@ -917,17 +919,18 @@ internal class NativeUpdateChecker(
                 transitionKind = transitionKind,
                 runsCurrentBundle = desired.bundleId == input.currentBundleId,
                 requestKey = requestKey(options, input.cohort),
+                // JSON, so no field can spell another, such as a channel with a colon.
                 targetKey =
-                    listOf(
-                        desired.kind.name,
-                        desired.bundleId,
-                        desired.releaseId,
-                        input.targetChannel,
-                        guard.catalogId,
-                        guard.generation,
-                        guard.catalogHash,
-                        guard.selectionContextHash,
-                    ).joinToString(":"),
+                    JSONArray()
+                        .put(desired.kind.name)
+                        .put(desired.bundleId)
+                        .put(desired.releaseId ?: JSONObject.NULL)
+                        .put(input.targetChannel)
+                        .put(guard.catalogId)
+                        .put(guard.generation)
+                        .put(guard.catalogHash)
+                        .put(guard.selectionContextHash)
+                        .toString(),
                 install = { onProgress -> updateBundle(update, selection, onProgress) },
             )
         return CheckedUpdate(update, selection)
@@ -1091,10 +1094,12 @@ internal class NativeUpdateChecker(
             }
         }
 
+    /** [cohort] tags the event when it happened under another cohort than the running check's. */
     private fun reportUpdateError(
         error: Exception,
         failure: UpdateFailure?,
         scope: ErrorScope,
+        cohort: String? = null,
     ) {
         if (failure == null) return
         events.add(
@@ -1109,6 +1114,7 @@ internal class NativeUpdateChecker(
                 scope.targetReleaseId?.let { put("targetReleaseId", it) }
                 put("message", error.message ?: error.javaClass.name)
             },
+            cohort?.let { NativeUpdateEventQueue.buildOf(state.getAppVersion(), state.getMinBundleId(), it) },
         )
     }
 
