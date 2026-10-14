@@ -616,7 +616,7 @@ the previous bundle, or to the one embedded in the artifact.
 | The update downloads but the screen does not change | The native app runs a Debug build, which loads Metro. Build it in Release. |
 | The native app restarts at its first screen on Android | Something calls `hotUpdater.reload()`. Remove it; the update applies at the next launch. |
 | Downloaded updates disappear | Something calls `HotUpdater.configure(channel:)` with a different channel, which deletes the downloaded bundles. Embed the channel instead. |
-| "Feature flags cannot be overridden more than once" on Android | `loadReactNative` ran before `ReactNativeBrownfield.initialize`. Remove it. |
+| "Feature flags cannot be overridden more than once" on Android | `loadReactNative` ran before `ReactNativeBrownfield.initialize`. Remove it, and pass the React host as a factory, `ReactNativeBrownfield.initialize(application) { getDefaultReactHost(...) }`, as the host manager above does. A host built before `initialize` fails with "SoLoader.init() not yet called". |
 | The AAR keeps showing JavaScript from an earlier package | The library module reused an earlier bundle. Delete `android/brownfieldlib/build` and package again. |
 | Deploy reports a fingerprint mismatch | The native code changed after `fingerprint create`. Create the fingerprint again, package, and ship a new native app release. |
 
