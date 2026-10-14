@@ -5,6 +5,7 @@ import Testing
 @testable import HotUpdaterCore
 
 private let builtInBundleId = "01900000-0000-7000-8000-000000000000"
+private let testBuild = "1.2.0|build"
 private let bundle1 = "01910000-0000-7000-8000-000000000001"
 private let bundle2 = "01910000-0000-7000-8000-000000000002"
 private let release1 = "01920000-0000-7000-8000-000000000001"
@@ -509,6 +510,34 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func aJoinedPrepareChecksAgainWhenTheStagingFailsBeforeItsDeadline() async throws {
+        let host = FakeUpdateHost()
+        let download = Latch()
+        let failsFirst = LockedValue(true)
+        host.stage = { _, _ in
+            guard failsFirst.value else {
+                return ["delivery": "archive", "patchFallback": false]
+            }
+            failsFirst.value = false
+            await download.wait()
+            // The first caller's shorter deadline ended its artifact request.
+            throw URLError(.timedOut)
+        }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
+        )
+        let checker = makeChecker(host, transport)
+        #expect(await checker.prepare(options(), timeout: 0.2).status == .pending)
+
+        let later = Task { await checker.prepare(options(), timeout: 10) }
+        try await Task.sleep(nanoseconds: 100_000_000)
+        download.open()
+
+        #expect(await later.value.status == .ready)
+        #expect(host.stageCalls == 2)
+    }
+
+    @Test
     func aLaterPrepareJoinsTheDownloadInProgress() async throws {
         let host = FakeUpdateHost()
         let download = Latch()
@@ -912,6 +941,20 @@ struct NativeUpdateCheckTests {
     // MARK: Event queue
 
     @Test
+    func takingTheEventsDropsThoseOfAnotherNativeBuild() throws {
+        let storage = MemoryEventStorage()
+        NativeUpdateEvents.append(name: "onBundleDownloaded", payload: [:], occurredAt: Date(), build: "1.2.0|first", to: storage)
+        // The app was upgraded before JavaScript took the event.
+        NativeUpdateEvents.append(name: "onUpdateCheck", payload: [:], occurredAt: Date(), build: "1.3.0|second", to: storage)
+
+        let taken = try #require(NativeUpdateEvents.take(from: storage, build: "1.3.0|second"))
+        let events = try #require(try JSONSerialization.jsonObject(with: Data(taken.utf8)) as? [[String: Any]])
+
+        #expect(events.map { $0["name"] as? String } == ["onUpdateCheck"])
+        #expect(storage.storageItem(NativeUpdateEvents.storageKey) == nil)
+    }
+
+    @Test
     func eventQueueKeepsTheNewestTwentyOfEachName() {
         let storage = MemoryEventStorage()
         storage.setStorageItem(NativeUpdateEvents.storageKey, value: "not json")
@@ -920,10 +963,11 @@ struct NativeUpdateCheckTests {
                 name: "onUpdateError",
                 payload: ["index": index],
                 occurredAt: Date(timeIntervalSince1970: Double(index)),
+                build: testBuild,
                 to: storage
             )
             if index < 3 {
-                NativeUpdateEvents.append(name: "onUpdateCheck", payload: ["index": index], occurredAt: Date(), to: storage)
+                NativeUpdateEvents.append(name: "onUpdateCheck", payload: ["index": index], occurredAt: Date(), build: testBuild, to: storage)
             }
         }
 
@@ -938,18 +982,18 @@ struct NativeUpdateCheckTests {
     @Test
     func takingEventsReturnsAndClearsThem() {
         let storage = MemoryEventStorage()
-        #expect(NativeUpdateEvents.take(from: storage) == nil)
+        #expect(NativeUpdateEvents.take(from: storage, build: testBuild) == nil)
 
-        NativeUpdateEvents.append(name: "onUpdateCheck", payload: [:], occurredAt: Date(), to: storage)
-        let taken = NativeUpdateEvents.take(from: storage)
+        NativeUpdateEvents.append(name: "onUpdateCheck", payload: [:], occurredAt: Date(), build: testBuild, to: storage)
+        let taken = NativeUpdateEvents.take(from: storage, build: testBuild)
 
         let events = try? JSONSerialization.jsonObject(with: Data((taken ?? "").utf8)) as? [[String: Any]]
         #expect(events?.count == 1)
         #expect(storage.storageItem(NativeUpdateEvents.storageKey) == nil)
-        #expect(NativeUpdateEvents.take(from: storage) == nil)
+        #expect(NativeUpdateEvents.take(from: storage, build: testBuild) == nil)
 
         storage.setStorageItem(NativeUpdateEvents.storageKey, value: "[]")
-        #expect(NativeUpdateEvents.take(from: storage) == nil)
+        #expect(NativeUpdateEvents.take(from: storage, build: testBuild) == nil)
         #expect(storage.storageItem(NativeUpdateEvents.storageKey) == nil)
     }
 
@@ -963,17 +1007,17 @@ struct NativeUpdateCheckTests {
             for name in names {
                 group.addTask {
                     for _ in 0..<4 {
-                        NativeUpdateEvents.append(name: name, payload: [:], occurredAt: Date(), to: storage)
+                        NativeUpdateEvents.append(name: name, payload: [:], occurredAt: Date(), build: testBuild, to: storage)
                     }
                 }
             }
             for _ in 0..<20 {
                 group.addTask {
-                    taken.add(NativeUpdateEvents.take(from: storage))
+                    taken.add(NativeUpdateEvents.take(from: storage, build: testBuild))
                 }
             }
         }
-        taken.add(NativeUpdateEvents.take(from: storage))
+        taken.add(NativeUpdateEvents.take(from: storage, build: testBuild))
 
         #expect(taken.count == names.count * 4)
     }

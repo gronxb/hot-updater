@@ -68,6 +68,9 @@ class NativeUpdateCheckerTest {
         var stageGate: CompletableDeferred<Unit>? = null
         var stageResult = UpdateBundleResult(BundleDelivery.PATCH, patchFallback = false)
         var stageError: Exception? = null
+
+        /** Fails only the next staging. */
+        @Volatile var nextStageError: Exception? = null
         val stageCount = AtomicInteger()
         val staged = CompletableDeferred<StageBundleRequest>()
         val stageEntered = CompletableDeferred<Unit>()
@@ -124,6 +127,10 @@ class NativeUpdateCheckerTest {
             onProgress(0.255)
             onProgress(0.75)
             stageError?.let { throw it }
+            nextStageError?.let {
+                nextStageError = null
+                throw it
+            }
             activeSelection = request.selection
             staged.complete(request)
             return stageResult
@@ -714,6 +721,27 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `a joined prepare checks again when the staging fails before its deadline`() =
+        runBlocking {
+            val gate = CompletableDeferred<Unit>()
+            val state =
+                FakeState().apply {
+                    stageGate = gate
+                    // The first caller's shorter deadline ended its artifact request.
+                    nextStageError = java.io.IOException("timeout")
+                }
+            val checker = NativeUpdateChecker(state, FakeTransport(routes(forcedCatalog())))
+            assertTrue(checker.prepare(OPTIONS, 200, null) is HotUpdaterPrepareResult.Pending)
+
+            val later = async(Dispatchers.Default) { checker.prepare(OPTIONS, 10_000, null) }
+            delay(100)
+            gate.complete(Unit)
+
+            assertTrue(withTimeout(10_000) { later.await() } is HotUpdaterPrepareResult.Ready)
+            assertEquals(2, state.stageCount.get())
+        }
+
+    @Test
     fun `the deadline covers the wait for another check holding the lock`() =
         runBlocking {
             val release = CompletableDeferred<Unit>()
@@ -977,6 +1005,7 @@ class NativeUpdateCheckerTest {
             NativeUpdateEventQueue(
                 getItem = { storage[it] },
                 setItem = { key, value -> if (value == null) storage.remove(key) else storage[key] = value },
+                build = { "1.2.0|build" },
                 clock = { now++ },
             )
 
@@ -996,12 +1025,35 @@ class NativeUpdateCheckerTest {
     }
 
     @Test
+    fun `taking the events drops those of another native build`() {
+        val storage = mutableMapOf<String, String>()
+        var build = "1.2.0|first"
+        val queue =
+            NativeUpdateEventQueue(
+                getItem = { storage[it] },
+                setItem = { key, value -> if (value == null) storage.remove(key) else storage[key] = value },
+                build = { build },
+            )
+        queue.add("onBundleDownloaded", JSONObject().put("toBundleId", BUNDLE_B))
+
+        // The app was upgraded before JavaScript took the event.
+        build = "1.3.0|second"
+        queue.add("onUpdateCheck", JSONObject().put("status", "UNCHANGED"))
+        val taken = JSONArray(queue.take())
+
+        assertEquals(1, taken.length())
+        assertEquals("onUpdateCheck", taken.getJSONObject(0).getString("name"))
+        assertFalse(storage.containsKey(NativeUpdateEventQueue.STORAGE_KEY))
+    }
+
+    @Test
     fun `taking the events returns them once and clears the queue`() {
         val storage = mutableMapOf<String, String>()
         val queue =
             NativeUpdateEventQueue(
                 getItem = { storage[it] },
                 setItem = { key, value -> if (value == null) storage.remove(key) else storage[key] = value },
+                build = { "1.2.0|build" },
             )
         assertNull(queue.take())
 
