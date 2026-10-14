@@ -112,14 +112,15 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
         return checker
     }
 
+    @discardableResult
     @objc(checkForUpdate:impl:completion:)
     public static func checkForUpdate(
         _ options: HotUpdaterCheckOptions,
         impl: HotUpdaterImpl,
         completion: @escaping (HotUpdaterUpdate?, Error?) -> Void
-    ) {
+    ) -> HotUpdaterNativeUpdateTask {
         let checker = checker(impl: impl)
-        Task {
+        return HotUpdaterNativeUpdateTask {
             do {
                 let update = try await checker.checkForUpdate(options)
                 DispatchQueue.main.async { completion(update, nil) }
@@ -129,6 +130,7 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
         }
     }
 
+    @discardableResult
     @objc(prepare:timeout:impl:onProgress:completion:)
     public static func prepare(
         _ options: HotUpdaterCheckOptions,
@@ -136,9 +138,9 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
         impl: HotUpdaterImpl,
         onProgress: ((Double) -> Void)?,
         completion: @escaping (HotUpdaterPrepareResult) -> Void
-    ) {
+    ) -> HotUpdaterNativeUpdateTask {
         let checker = checker(impl: impl)
-        Task {
+        return HotUpdaterNativeUpdateTask {
             let result = await checker.prepare(options, timeout: timeout, onProgress: onProgress)
             DispatchQueue.main.async { completion(result) }
         }
@@ -160,6 +162,45 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
     }
 }
 
+/// A native update call started from Objective-C; cancelling it cancels the
+/// check and its requests, as cancelling a Swift task does.
+@objc(HotUpdaterNativeUpdateTask)
+public final class HotUpdaterNativeUpdateTask: NSObject, @unchecked Sendable {
+    private let task: Task<Void, Never>
+
+    init(_ operation: @escaping @Sendable () async -> Void) {
+        task = Task { await operation() }
+    }
+
+    @objc public func cancel() {
+        task.cancel()
+    }
+}
+
+/// Holds the task a Swift caller's cancellation cancels, which may arrive
+/// before the task starts.
+private final class NativeUpdateTaskHandle: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: HotUpdaterNativeUpdateTask?
+    private var cancelled = false
+
+    func set(_ task: HotUpdaterNativeUpdateTask) {
+        lock.lock()
+        self.task = task
+        let cancelled = self.cancelled
+        lock.unlock()
+        if cancelled { task.cancel() }
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        let task = self.task
+        lock.unlock()
+        task?.cancel()
+    }
+}
+
 extension HotUpdater {
     /// Checks for an update and stages it before React Native starts, within
     /// one `timeout` that covers waiting for other native update work, the
@@ -171,10 +212,35 @@ extension HotUpdater {
         timeout: TimeInterval = 3,
         onProgress: ((Double) -> Void)? = nil
     ) async -> HotUpdaterPrepareResult {
-        await withCheckedContinuation { continuation in
-            __prepare(options, timeout: timeout, onProgress: onProgress) { result in
-                continuation.resume(returning: result)
+        let handle = NativeUpdateTaskHandle()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                handle.set(__prepare(options, timeout: timeout, onProgress: onProgress) { result in
+                    continuation.resume(returning: result)
+                })
             }
+        } onCancel: {
+            handle.cancel()
+        }
+    }
+
+    /// Checks for an update without the JavaScript runtime, as JavaScript's
+    /// `checkForUpdate` does; nil when there is no update. Cancelling the
+    /// caller cancels the check.
+    public static func checkForUpdate(_ options: HotUpdaterCheckOptions) async throws -> HotUpdaterUpdate? {
+        let handle = NativeUpdateTaskHandle()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                handle.set(__checkForUpdate(options) { update, error in
+                    if let error {
+                        continuation.resume(throwing: error)
+                    } else {
+                        continuation.resume(returning: update)
+                    }
+                })
+            }
+        } onCancel: {
+            handle.cancel()
         }
     }
 }

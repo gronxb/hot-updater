@@ -529,15 +529,20 @@ struct NativeUpdateCheckTests {
         let first = try #require(try await checker.checkForUpdate(options()))
         catalogBody.value = catalog(generation: 2, releases: [descriptor(release3, bundle2)])
         let second = try #require(try await checker.checkForUpdate(options()))
+        // The same Release from a newer catalog is another selection too.
+        catalogBody.value = catalog(generation: 3, releases: [descriptor(release3, bundle2)])
+        let third = try #require(try await checker.checkForUpdate(options()))
 
         let firstStaging = Task { try await first.updateBundle() }
         await host.stageStarted.wait()
         let secondStaging = Task { try await second.updateBundle() }
+        let thirdStaging = Task { try await third.updateBundle() }
         download.open()
 
         #expect(try await firstStaging.value)
         #expect(try await secondStaging.value)
-        #expect(host.stageCalls == 2)
+        #expect(try await thirdStaging.value)
+        #expect(host.stageCalls == 3)
     }
 
     @Test

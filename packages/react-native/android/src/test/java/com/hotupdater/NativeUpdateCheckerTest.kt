@@ -13,6 +13,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
@@ -686,6 +687,22 @@ class NativeUpdateCheckerTest {
             assertTrue(withTimeout(5_000) { first.await() })
             assertTrue(withTimeout(5_000) { second.await() })
             assertEquals(1, state.stageCount.get())
+        }
+
+    @Test
+    fun `a staging joins only the same selection`() =
+        runBlocking {
+            // The same Release from another catalog generation is another
+            // selection, with its own guard and receipt, so it must not join.
+            val transport = FakeTransport(routes(minorCatalog()))
+            val checker = NativeUpdateChecker(FakeState(), transport)
+            val first = checker.checkForUpdate(OPTIONS)!!
+            val again = NativeUpdateChecker(FakeState(), transport).checkForUpdate(OPTIONS)!!
+            transport.handler = routes(catalog(listOf(release(RELEASE_B, BUNDLE_B)), generation = 2))
+            val newer = checker.checkForUpdate(OPTIONS)!!
+
+            assertEquals(first.targetKey, again.targetKey)
+            assertNotEquals(first.targetKey, newer.targetKey)
         }
 
     @Test

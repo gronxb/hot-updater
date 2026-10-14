@@ -93,8 +93,9 @@ import Foundation
     /// The update selects the bundle the app already launches, so staging it
     /// only records the selection.
     let runsCurrentBundle: Bool
-    /// The selection the update stages: kind, bundle, Release, and channel. A
-    /// staging already running joins only the same target.
+    /// The selection the update stages: kind, bundle, Release, and channel,
+    /// from one catalog and selection context. A staging already running
+    /// joins only the same target.
     let targetKey: String
     private let checker: NativeUpdateChecker
     private let stagedLock = NSLock()
@@ -735,7 +736,9 @@ final class NativeUpdateChecker {
             gate.release()
             return HotUpdaterPrepareResult(status: .upToDate)
         }
-        let staging = startStaging(update, deadline: deadline)
+        // Only a required update's download is bounded by the deadline; any
+        // other keeps its own request timeout in the background, as on Android.
+        let staging = startStaging(update, deadline: update.shouldForceUpdate ? deadline : nil)
         return await finishPrepare(staging, deadline: deadline, onProgress: onProgress)
     }
 
@@ -1170,7 +1173,10 @@ final class NativeUpdateChecker {
             bundleId: desired.bundleId,
             transitionKind: transitionKind,
             runsCurrentBundle: desired.bundleId.jsEquals(currentBundleId),
-            targetKey: "\(desired.kind.rawValue):\(desired.bundleId):\(desired.releaseId ?? "null"):\(targetChannel)",
+            targetKey: [
+                desired.kind.rawValue, desired.bundleId, desired.releaseId ?? "null", targetChannel,
+                catalogId, String(catalog.generation), catalog.catalogHash, selectionContextHash,
+            ].joined(separator: ":"),
             checker: self,
             install: updateBundleForSelection
         )
