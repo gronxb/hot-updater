@@ -17,8 +17,9 @@
 
 @interface HotUpdater (InternalSharedImpl)
 + (HotUpdaterImpl *)sharedImpl;
-+ (NSString *)generateUUIDv7FromTimestamp:(uint64_t)timestampMs;
 @end
+
+extern "C" NSString *HotUpdaterBuildMinBundleId(void);
 
 namespace {
 constexpr size_t kHotUpdaterMaxBundleIdLength = 128;
@@ -207,61 +208,11 @@ extern "C" BOOL HotUpdaterPerformRecoveryReload(void)
 
 extern "C" NSString *HotUpdaterGetMinBundleId(void)
 {
-  static NSString *uuid = nil;
-  static dispatch_once_t onceToken;
-  dispatch_once(&onceToken, ^{
 #if DEBUG
-    uuid = @"00000000-0000-0000-0000-000000000000";
+  return @"00000000-0000-0000-0000-000000000000";
 #else
-    // Step 1: Use the HOT_UPDATER_MIN_BUNDLE_ID build setting, which the
-    // hot-updater CLI passes to xcodebuild and the Info.plist slot it adds
-    // (`$(HOT_UPDATER_MIN_BUNDLE_ID)`) carries into the app, as Android
-    // takes -PMIN_BUNDLE_ID.
-    NSString *customValue = [[NSBundle mainBundle] objectForInfoDictionaryKey:@"HOT_UPDATER_MIN_BUNDLE_ID"];
-    if ([customValue isKindOfClass:[NSString class]]) {
-      NSString *trimmed = [customValue stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
-      // An unset build setting leaves the slot empty or unexpanded; anything
-      // but a UUID falls back to the compile time below.
-      NSUUID *parsed = trimmed.length > 0 ? [[NSUUID alloc] initWithUUIDString:trimmed] : nil;
-      if (parsed) {
-        uuid = parsed.UUIDString.lowercaseString;
-        RCTLogInfo(@"[HotUpdater.mm] Using MIN_BUNDLE_ID from the HOT_UPDATER_MIN_BUNDLE_ID build setting: %@", uuid);
-        return;
-      }
-      if (trimmed.length > 0 && ![trimmed isEqualToString:@"$(HOT_UPDATER_MIN_BUNDLE_ID)"]) {
-        RCTLogWarn(@"[HotUpdater.mm] Ignoring HOT_UPDATER_MIN_BUNDLE_ID %@: not a UUID", trimmed);
-      }
-    }
-
-    // Step 2: Fall back to the compile time (26-hour subtraction)
-    RCTLogInfo(@"[HotUpdater.mm] No HOT_UPDATER_MIN_BUNDLE_ID build setting, using the compile time");
-
-    NSString *compileDateStr = [NSString stringWithFormat:@"%s %s", __DATE__, __TIME__];
-    NSDateFormatter *formatter = [[NSDateFormatter alloc] init];
-
-    // Parse __DATE__ __TIME__ as UTC to ensure consistent timezone handling across all build environments
-    [formatter setTimeZone:[NSTimeZone timeZoneWithName:@"UTC"]];
-    [formatter setLocale:[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"]];
-    [formatter setDateFormat:@"MMM d yyyy HH:mm:ss"];
-    NSDate *buildDate = [formatter dateFromString:compileDateStr];
-    if (!buildDate) {
-      RCTLogWarn(@"[HotUpdater.mm] Could not parse build date: %@", compileDateStr);
-      uuid = @"00000000-0000-0000-0000-000000000000";
-      return;
-    }
-
-    // Subtract 26 hours (93600 seconds) to ensure MIN_BUNDLE_ID is always in the past
-    // This guarantees that uuidv7-based bundleIds (generated at runtime) will always be newer than MIN_BUNDLE_ID
-    // Why 26 hours? Global timezone range spans from UTC-12 to UTC+14 (total 26 hours)
-    // By subtracting 26 hours, MIN_BUNDLE_ID becomes a safe "past timestamp" regardless of build timezone
-    // Example: Build at 15:00 in any timezone -> parse as 15:00 UTC -> subtract 26h -> 13:00 UTC (previous day)
-    NSTimeInterval adjustedTimestamp = [buildDate timeIntervalSince1970] - 93600.0;
-    uint64_t buildTimestampMs = (uint64_t)(adjustedTimestamp * 1000.0);
-
-    uuid = [HotUpdater generateUUIDv7FromTimestamp:buildTimestampMs];
+  return HotUpdaterBuildMinBundleId();
 #endif
-  });
-  return uuid;
 }
 
 extern "C" void *HotUpdaterCopyMinBundleId(void)
@@ -412,42 +363,10 @@ RCT_EXPORT_MODULE();
 
 #pragma mark - React Native Constants (Keep getMinBundleId, delegate others)
 
-// Returns the minimum bundle ID string, either from Info.plist or generated from build timestamp
+// Returns the bundle ID of the bundle this build ships (MIN_BUNDLE_ID)
 - (NSString *)getMinBundleId {
      return HotUpdaterGetMinBundleId();
 }
-
-// Helper method: Generate UUID v7 from timestamp (milliseconds)
-+ (NSString *)generateUUIDv7FromTimestamp:(uint64_t)timestampMs {
-    unsigned char bytes[16];
-
-    // UUID v7 format: timestamp_ms (48 bits) + ver (4 bits) + random (12 bits) + variant (2 bits) + random (62 bits)
-    bytes[0] = (timestampMs >> 40) & 0xFF;
-    bytes[1] = (timestampMs >> 32) & 0xFF;
-    bytes[2] = (timestampMs >> 24) & 0xFF;
-    bytes[3] = (timestampMs >> 16) & 0xFF;
-    bytes[4] = (timestampMs >> 8) & 0xFF;
-    bytes[5] = timestampMs & 0xFF;
-
-    // Version 7
-    bytes[6] = 0x70;
-    bytes[7] = 0x00;
-
-    // Variant bits (10xxxxxx)
-    bytes[8] = 0x80;
-    bytes[9] = 0x00;
-
-    // Remaining bytes (zeros for deterministic MIN_BUNDLE_ID)
-    for (int i = 10; i < 16; i++) {
-        bytes[i] = 0x00;
-    }
-
-    return [NSString stringWithFormat:
-            @"%02x%02x%02x%02x-%02x%02x-%02x%02x-%02x%02x-%02x%02x%02x%02x%02x%02x",
-            bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
-            bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]];
-}
-
 
 - (NSDictionary *)_buildConstantsDictionary {
     return @{

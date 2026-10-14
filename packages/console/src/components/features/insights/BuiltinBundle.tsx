@@ -2,9 +2,8 @@ import { Badge } from "@/components/ui/badge";
 
 /**
  * A built-in bundle's ID: every native build makes it from its build time with
- * the random bits zeroed (the CLI's `generateMinBundleId`, and the iOS and
- * Android fallbacks), or the nil UUID when iOS can't read its build time. A
- * deployed bundle's ID is a random UUIDv7, so it never has this shape.
+ * the random bits zeroed, or the nil UUID in a debug build. A deployed
+ * bundle's ID is a random UUIDv7, so it never has this shape.
  */
 const BUILTIN_BUNDLE_ID =
   /^(?:[0-9a-f]{8}-[0-9a-f]{4}-7000-8000-000000000000|00000000-0000-0000-0000-000000000000)$/iu;

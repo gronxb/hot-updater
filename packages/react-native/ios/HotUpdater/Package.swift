@@ -27,6 +27,7 @@ let coreExcludedFiles = [
     "HotUpdater-Bridging-Header.h",
     "HotUpdater.mm",
     "HotUpdaterImpl.swift",
+    "HotUpdaterMinBundleId.m",
 ]
 
 let bsdiffPatchBridgeExcludedFiles =
