@@ -7,7 +7,9 @@ Native tooling of its own: `app/build.gradle` depends on
 and `settings.gradle` resolves that group from `mavenLocal()`.
 
 - `MainApplication` calls `ReactNativeHostManager.initialize(this)` once, so
-  the bundle is loaded before the user opens the React Native screen.
+  the bundle is loaded before the user opens the React Native screen. That
+  call, inside the AAR, asks Hot Updater which bundle to load (a downloaded
+  update or the embedded one); the host has no Hot Updater code of its own.
 - `MainActivity` is the native screen (`res/layout/activity_main.xml`); its
   button starts `ReactNativeActivity`.
 - `ReactNativeActivity` sets `ReactNativeBrownfield.shared.createView(this, "RnBrownfield", ...)`
