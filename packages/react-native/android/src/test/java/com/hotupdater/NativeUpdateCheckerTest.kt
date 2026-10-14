@@ -667,10 +667,18 @@ class NativeUpdateCheckerTest {
                     updateStrategy = OPTIONS.updateStrategy,
                     channel = "beta",
                 )
+            val otherKey =
+                HotUpdaterCheckOptions(
+                    baseURL = OPTIONS.baseURL,
+                    updateStrategy = OPTIONS.updateStrategy,
+                    requestHeaders = mapOf("Authorization" to "Bearer other"),
+                )
             val other = checker.prepare(otherChannel, 200, null)
+            val otherCredentials = checker.prepare(otherKey, 200, null)
             val same = checker.prepare(OPTIONS, 200, null)
 
             assertTrue(other is HotUpdaterPrepareResult.Failed)
+            assertTrue(otherCredentials is HotUpdaterPrepareResult.Failed)
             assertSame(first.update, (same as HotUpdaterPrepareResult.Pending).update)
             gate.complete(Unit)
             Unit

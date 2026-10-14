@@ -295,12 +295,20 @@ internal class NativeUpdateChecker(
         }
     }
 
-    /** What a check reads: the server, the strategy, and the channel it asks for. */
+    /**
+     * What a check reads: the server, the strategy, the channel it asks for,
+     * and the headers, which can name the credentials or tenant.
+     */
     private fun requestKey(options: HotUpdaterCheckOptions): String =
-        listOf(
-            options.baseURL.trimEnd('/'),
-            options.updateStrategy.value,
-            options.channel?.takeIf { it.isNotEmpty() }.orEmpty(),
+        (
+            listOf(
+                options.baseURL.trimEnd('/'),
+                options.updateStrategy.value,
+                options.channel?.takeIf { it.isNotEmpty() }.orEmpty(),
+            ) +
+                options.requestHeaders
+                    .map { (name, value) -> "${name.lowercase()}:$value" }
+                    .sorted()
         ).joinToString("\n")
 
     private fun remainingMillis(deadline: Long): Long = (deadline - System.nanoTime()) / 1_000_000

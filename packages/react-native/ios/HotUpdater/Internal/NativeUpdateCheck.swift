@@ -1233,11 +1233,13 @@ final class NativeUpdateChecker {
 
     // MARK: State
 
-    /// What a check reads: the server, the strategy, and the channel it asks for.
+    /// What a check reads: the server, the strategy, the channel it asks for,
+    /// and the headers, which can name the credentials or tenant.
     private static func requestKey(_ options: HotUpdaterCheckOptions) -> String {
         var baseURL = options.baseURL
         while baseURL.hasSuffix("/") { baseURL.removeLast() }
-        return [baseURL, options.updateStrategy.name, options.channel ?? ""].joined(separator: "\n")
+        let headers = options.requestHeaders.map { "\($0.key.lowercased()):\($0.value)" }.sorted()
+        return ([baseURL, options.updateStrategy.name, options.channel ?? ""] + headers).joined(separator: "\n")
     }
 
     private func queueUnchanged(channel: String, bundleId: String, releaseId: String?, previousReleaseId: String?) {
