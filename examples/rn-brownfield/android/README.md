@@ -6,9 +6,14 @@ Native tooling of its own: `app/build.gradle` depends on
 `pnpm publish-local:aar` in `../react-native` publishes to `~/.m2/repository`,
 and `settings.gradle` resolves that group from `mavenLocal()`.
 
-- `MainApplication` calls `ReactNativeHostManager.initialize(this)` once.
-- `MainActivity` sets `ReactNativeBrownfield.shared.createView(this, "RnBrownfield", ...)`
-  as its content view.
+- `MainApplication` calls `ReactNativeHostManager.initialize(this)` once, so
+  the bundle is loaded before the user opens the React Native screen.
+- `MainActivity` is the native screen (`res/layout/activity_main.xml`); its
+  button starts `ReactNativeActivity`.
+- `ReactNativeActivity` sets `ReactNativeBrownfield.shared.createView(this, "RnBrownfield", ...)`
+  as its content view. `popToNative()` from JavaScript, and the hardware back
+  button once JavaScript has nothing left to pop, go through its
+  `onBackPressedDispatcher`, which finishes it and returns to `MainActivity`.
 
 ```sh
 pnpm build            # ./gradlew :app:assembleRelease
