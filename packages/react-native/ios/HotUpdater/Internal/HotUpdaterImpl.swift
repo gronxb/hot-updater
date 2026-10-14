@@ -367,7 +367,9 @@ private func hotUpdaterGetMinBundleId() -> String {
                 // The update check's headers, which the artifact files request repeats.
                 let headers = (data["requestHeaders"] as? [String: Any] ?? [:])
                     .compactMapValues { $0 as? String }
-                fileResolver = HTTPArtifactFileResolver(filesUrl: filesUrl, headers: headers)
+                let timeout = (data["requestTimeout"] as? NSNumber).map { $0.doubleValue / 1000 }
+                    .flatMap { $0 > 0 ? $0 : nil } ?? HTTPArtifactFileResolver.defaultTimeout
+                fileResolver = HTTPArtifactFileResolver(filesUrl: filesUrl, headers: headers, timeout: timeout)
             }
             let selection = (data["selection"] as? [String: Any]).flatMap(Self.parseSelection)
             if let selection, !bundleStorage.stageReleaseSelection(selection) {

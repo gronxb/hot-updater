@@ -538,6 +538,9 @@ RCT_EXPORT_MODULE();
     if (params.requestHeaders()) {
         paramDict[@"requestHeaders"] = params.requestHeaders();
     }
+    if (params.requestTimeout().has_value()) {
+        paramDict[@"requestTimeout"] = @(params.requestTimeout().value());
+    }
 
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     [impl updateBundle:paramDict resolver:resolve rejecter:reject];

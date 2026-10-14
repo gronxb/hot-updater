@@ -250,8 +250,14 @@ class HotUpdaterModule internal constructor(
                         return@launch
                     }
                 }
+                val requestTimeoutMs =
+                    if (params.hasKey("requestTimeout") && !params.isNull("requestTimeout")) {
+                        params.getDouble("requestTimeout").toLong().takeIf { it > 0 }
+                    } else {
+                        null
+                    } ?: HttpArtifactFileResolver.DEFAULT_TIMEOUT_MS
                 val fileResolver =
-                    filesUrl?.let { HttpArtifactFileResolver(it, parseRequestHeaders(params)) }
+                    filesUrl?.let { HttpArtifactFileResolver(it, parseRequestHeaders(params), requestTimeoutMs) }
 
                 val impl = getInstance()
 

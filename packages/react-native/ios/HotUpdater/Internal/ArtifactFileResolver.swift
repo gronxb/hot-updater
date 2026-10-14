@@ -26,26 +26,31 @@ enum ArtifactFileResolverError: Error {
 }
 
 /// POSTs `{ paths }` to the files URL the SDK composed, with the update
-/// check's headers.
+/// check's headers and request timeout.
 final class HTTPArtifactFileResolver: ArtifactFileResolver {
+    /// The SDK's request timeout when the app sets none.
+    static let defaultTimeout: TimeInterval = 5
+
     private let filesUrl: URL
     private let headers: [String: String]
+    private let timeout: TimeInterval
     private let session: URLSession
 
-    init(filesUrl: URL, headers: [String: String], session: URLSession = .shared) {
+    init(filesUrl: URL, headers: [String: String], timeout: TimeInterval = defaultTimeout, session: URLSession = .shared) {
         self.filesUrl = filesUrl
         self.headers = headers
+        self.timeout = timeout
         self.session = session
     }
 
     func resolve(paths: [String]) throws -> [String: ResolvedArtifactFile] {
-        var request = URLRequest(url: filesUrl, timeoutInterval: 30)
+        var request = URLRequest(url: filesUrl, timeoutInterval: timeout)
         request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
         for (name, value) in headers {
             request.setValue(value, forHTTPHeaderField: name)
         }
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["paths": paths])
 
         let finished = DispatchSemaphore(value: 0)

@@ -27,6 +27,8 @@ export interface UpdateBundleParams {
   filesUrl?: string | null;
   /** Headers for the `filesUrl` request, as the update check sent them. */
   requestHeaders?: UnsafeObject | null;
+  /** Milliseconds the `filesUrl` request may take, as the update check's. */
+  requestTimeout?: number | null;
   /** Full Release Catalog selection receipt committed with the staged Bundle. */
   selection?: UnsafeObject | null;
 }

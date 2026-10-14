@@ -99,10 +99,14 @@ const getSignedPathScope = (pathname: string) => {
  * passed, instead of one RSA signature per file.
  */
 export const cloudFrontDownloadUrl = (config: CloudFrontDownloadUrlOptions) => {
-  /** Signed query strings by policy resource, for this configuration only. */
+  /**
+   * Signed query strings by policy resource, for this configuration only.
+   * A signing in flight is shared, so a batch of URLs asks the private key
+   * once per scope, and a cached signature needs no key at all.
+   */
   const signatureCache = new Map<
     string,
-    { readonly query: string; readonly renewAt: number }
+    { readonly query: Promise<string>; readonly renewAt: number }
   >();
 
   return async ({ storageUri }: { storageUri: string }) => {
@@ -116,45 +120,49 @@ export const cloudFrontDownloadUrl = (config: CloudFrontDownloadUrlOptions) => {
     url.search = "";
     url.hash = "";
     const resource = `${url.origin}${getSignedPathScope(url.pathname)}`;
-    const cacheKey = resource;
-    const privateKey = await resolvePrivateKey(config);
 
-    // Nothing awaits from here on, so concurrent calls for one scope sign once.
-    const cached = signatureCache.get(cacheKey);
+    const cached = signatureCache.get(resource);
     if (cached && Date.now() < cached.renewAt) {
-      return { url: `${url}${cached.query}` };
+      return { url: `${url}${await cached.query}` };
     }
 
     const expiresSeconds = config.expiresSeconds ?? ONE_YEAR_IN_SECONDS;
     const signedAt = Date.now();
-    const signedUrl = getSignedUrl({
-      url: url.toString(),
-      keyPairId: config.keyPairId,
-      privateKey,
-      policy: JSON.stringify({
-        Statement: [
-          {
-            Resource: resource,
-            Condition: {
-              DateLessThan: {
-                "AWS:EpochTime": Math.floor(
-                  (signedAt + expiresSeconds * 1000) / 1000,
-                ),
-              },
-            },
-          },
-        ],
-      }),
-    });
-    const query = new URL(signedUrl).search;
-    signatureCache.delete(cacheKey);
-    signatureCache.set(cacheKey, {
-      query,
-      renewAt: signedAt + (expiresSeconds * 1000) / 2,
-    });
+    const query = resolvePrivateKey(config).then(
+      (privateKey) =>
+        new URL(
+          getSignedUrl({
+            url: url.toString(),
+            keyPairId: config.keyPairId,
+            privateKey,
+            policy: JSON.stringify({
+              Statement: [
+                {
+                  Resource: resource,
+                  Condition: {
+                    DateLessThan: {
+                      "AWS:EpochTime": Math.floor(
+                        (signedAt + expiresSeconds * 1000) / 1000,
+                      ),
+                    },
+                  },
+                },
+              ],
+            }),
+          }),
+        ).search,
+    );
+    const entry = { query, renewAt: signedAt + (expiresSeconds * 1000) / 2 };
+    signatureCache.delete(resource);
+    signatureCache.set(resource, entry);
     if (signatureCache.size > MAX_CACHED_SIGNATURES) {
       signatureCache.delete(signatureCache.keys().next().value!);
     }
-    return { url: `${url}${query}` };
+    query.catch(() => {
+      if (signatureCache.get(resource) === entry) {
+        signatureCache.delete(resource);
+      }
+    });
+    return { url: `${url}${await query}` };
   };
 };

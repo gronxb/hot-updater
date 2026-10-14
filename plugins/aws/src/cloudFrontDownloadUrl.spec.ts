@@ -105,6 +105,8 @@ describe("cloudFrontDownloadUrl", () => {
     );
 
     expect(getSignedUrl).toHaveBeenCalledTimes(2);
+    // A secret store is asked once per signature, not once per URL.
+    expect(getPrivateKey).toHaveBeenCalledTimes(2);
     const [bundleUrls, assetUrls] = [urls.slice(0, 3), urls.slice(3)];
     for (const [index, url] of urls.entries()) {
       const storageUrl = new URL([...bundleUris, ...assetUris][index]!);
@@ -194,6 +196,24 @@ describe("cloudFrontDownloadUrl", () => {
       Date.now();
     expect(expiry(long.url)).toBeGreaterThan(3_500_000);
     expect(expiry(short.url)).toBeLessThanOrEqual(60_000);
+  });
+
+  it("serves a cached signature while the secret store is unavailable", async () => {
+    const getPrivateKey = vi
+      .fn<() => Promise<string>>()
+      .mockResolvedValueOnce(privateKey)
+      .mockRejectedValue(new Error("secret store unavailable"));
+    const getDownloadUrl = cloudFrontDownloadUrl({
+      keyPairId: "K123",
+      getPrivateKey,
+      publicBaseUrl: nextPublicBaseUrl(),
+    });
+
+    const first = await getDownloadUrl({ storageUri: assetUri(1) });
+    const cached = await getDownloadUrl({ storageUri: assetUri(2) });
+
+    expect(new URL(cached.url).search).toBe(new URL(first.url).search);
+    expect(getPrivateKey).toHaveBeenCalledOnce();
   });
 
   it("loads and caches the private key from SSM", async () => {

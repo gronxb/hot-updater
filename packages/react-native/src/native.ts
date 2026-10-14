@@ -465,6 +465,9 @@ export async function stageBundle(
         ...(params.filesUrl && params.requestHeaders
           ? { requestHeaders: params.requestHeaders }
           : {}),
+        ...(params.filesUrl && params.requestTimeout
+          ? { requestTimeout: params.requestTimeout }
+          : {}),
         ...(selection === undefined ? {} : { selection }),
       });
       sessionState.markBundleInstalled(updateBundleId, targetChannel);

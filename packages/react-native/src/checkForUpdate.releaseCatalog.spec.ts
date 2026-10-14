@@ -310,6 +310,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       emit,
       client,
       requestHeaders: { "x-api-key": "client-key" },
+      requestTimeout: 60_000,
       updateStrategy: "appVersion",
     });
     await expect(result?.updateBundle()).resolves.toBe(true);
@@ -320,6 +321,7 @@ describe("checkForUpdate Release catalog protocol", () => {
         bundleId: TARGET_BUNDLE_ID,
         filesUrl: "https://updates.example.com/artifacts/v2/target/files",
         requestHeaders: { "x-api-key": "client-key" },
+        requestTimeout: 60_000,
       }),
     );
   });
