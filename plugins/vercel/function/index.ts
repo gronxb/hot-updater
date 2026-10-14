@@ -19,13 +19,6 @@ const requireEnv = (name: string) => {
   return value;
 };
 
-const access = requireEnv("HOT_UPDATER_VERCEL_BLOB_ACCESS");
-if (access !== "public" && access !== "private") {
-  throw new Error(
-    'HOT_UPDATER_VERCEL_BLOB_ACCESS must be "public" or "private".',
-  );
-}
-
 const pool = new pg.Pool({
   connectionString: requireEnv("HOT_UPDATER_VERCEL_DATABASE_URL"),
   idleTimeoutMillis: 5_000,
@@ -38,7 +31,6 @@ const hotUpdater = createHotUpdater({
   database: postgres({ dialect: new PostgresDialect({ pool }) }),
   plugins: [insights(), apiKeys(), remoteConfig()],
   storage: vercelBlobStorage({
-    access,
     token: requireEnv("HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN"),
   }),
 });

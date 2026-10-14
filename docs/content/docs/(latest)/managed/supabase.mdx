@@ -219,33 +219,6 @@ The generated Supabase migrations enable Row Level Security on Hot Updater
 tables and keep direct table/function access limited to the service role used by
 the CLI and deployed Edge Function.
 
-### Resource names and storage
-
-Managed tables, indexes, settings, and RPC functions use the fixed
-`hot_updater_v1_*` namespace, and the managed Edge Function defaults to
-`hot-updater-v1`.
-
-The same Storage bucket can be reused because each bundle has its own object
-key. Init does not change an existing bucket between public and private; doing
-so could break an already installed app. A reused public bucket therefore
-remains public, while a newly created bucket is private.
-
-### Release catalog cache
-
-Supabase officially uses the direct Edge Function URL in `origin-only` mode.
-`hot-updater init` generates that URL in the React Native configuration, and
-`hot-updater doctor --server-base-url <direct-edge-url>` reports the mode as a
-healthy informational status.
-
-The request still benefits from the Release Catalog architecture: the Edge
-Function serves an already compiled catalog, coalesces concurrent cold reads,
-and performs one exact catalog-row read on an in-process cache miss instead of
-running per-install rollout decisions. However, Supabase does not document a
-reusable response cache in front of Function execution, so every device check
-still invokes the Edge Function. Supabase origin-only measurements must report
-Edge Function invocations and Postgres reads separately and must not be
-presented as shared-CDN hit metrics.
-
 ## Step 4: If you use Expo, add the config plugin
 
 Follow the Expo path in [Set up your app](/docs/get-started/app-setup). It applies

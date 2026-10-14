@@ -23,7 +23,6 @@ import {
   isFingerprintEquals,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
-import { setIosMinBundleIdSlotIntoInfoPlist } from "@/utils/setIosMinBundleIdSlotIntoInfoPlist";
 import {
   formatAppVersionCandidates,
   isAmbiguousAppVersion,
@@ -166,10 +165,6 @@ export async function prepareNativeBuild(
     : path.join(cwd, artifactResultStorePath);
 
   if (platform === "ios") {
-    await setIosMinBundleIdSlotIntoInfoPlist({
-      infoPlistPaths: config.platform?.ios.infoPlistPaths,
-    });
-
     return {
       outputPath: resolvedOutputPath,
       config,
