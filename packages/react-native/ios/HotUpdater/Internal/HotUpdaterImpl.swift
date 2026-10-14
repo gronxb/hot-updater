@@ -692,21 +692,24 @@ private func hotUpdaterGetMinBundleId() -> String {
 
     // MARK: - Native Update Check
 
+    /// Whether React Native has read the bundle in this process.
+    func isLaunchPrepared() -> Bool {
+        currentLaunchSelection != nil
+    }
+
     /**
      * The bundle the native update check counts as running: the launched one,
      * or before React Native starts, the one its launch would pick. Preparing
      * the launch here would keep a forced update staged before React Native
      * starts from applying in this session.
      */
-    /// Whether React Native has read the bundle in this process.
-    func isLaunchPrepared() -> Bool {
-        currentLaunchSelection != nil
-    }
-
     func bundleIdForUpdateCheck() -> String? {
         if let currentLaunchSelection {
             return currentLaunchSelection.launchedBundleId
         }
+        // Settles what the previous process left first, so the check reads the
+        // selection, launch state, and crash history this launch will use.
+        bundleStorage.settlePreviousLaunch(pendingRecovery: recoveryManager.consumePendingCrashRecovery)
         return bundleStorage.peekLaunchBundleId()
     }
 
