@@ -77,7 +77,7 @@ pnpm -w e2e -- --prepared --platform android --device <emulator-serial>
 ```
 
 `--list` lists the shared scenarios. `--scenario <name>` selects one and can
-be repeated; `--suite default` selects all 32. `--track brownfield` runs the
+be repeated; `--suite default` selects all 33. `--track brownfield` runs the
 brownfield host apps (see [the brownfield track](../README.md#brownfield-track))
 with the `brownfield` suite, and both `e2e:build` and the run take it. `--dry-run` prints the selection
 without accessing a device. Existing `HOT_UPDATER_E2E_SCENARIOS` comma-separated
