@@ -448,6 +448,27 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func a200WhoseBodyBreaksIsReportedBeforeTheCheckFails() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport { _, _ in
+            throw NativeUpdateResponseBodyError(
+                response: NativeUpdateResponse(status: 200, headers: [:], body: "", bodyReadFailed: true),
+                underlying: URLError(.networkConnectionLost)
+            )
+        }
+        let checker = makeChecker(host, transport)
+
+        await #expect(throws: URLError.self) {
+            _ = try await checker.checkForUpdate(options())
+        }
+
+        let response = try #require(host.httpResponses().first)
+        #expect(response["status"] as? Int == 200)
+        #expect(response["body"] is NSNull)
+        #expect(host.events().map { $0["name"] as? String } == ["onUpdateError"])
+    }
+
+    @Test
     func cancellingTheCheckReportsNoFailure() async throws {
         let host = FakeUpdateHost()
         let requested = Latch()
@@ -1505,6 +1526,41 @@ struct URLSessionUpdateTransportTests {
         }
         #expect(StallingURLProtocol.stopped)
     }
+
+    @Test
+    func a200WhoseBodyBreaksFailsWithTheResponseThatArrived() async throws {
+        let transport = URLSessionUpdateTransport(protocolClasses: [BrokenBodyURLProtocol.self])
+
+        await #expect {
+            _ = try await transport.get(URL(string: "https://updates.example.com/catalog")!, headers: [:], timeout: 5)
+        } throws: { error in
+            guard let error = error as? NativeUpdateResponseBodyError else { return false }
+            return error.response.status == 200 && error.response.bodyReadFailed
+        }
+    }
+}
+
+/// Sends a 200's headers, then loses the connection.
+private final class BrokenBodyURLProtocol: URLProtocol {
+    override class func canInit(with _: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json", "Content-Length": "100"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data("{\"a\"".utf8))
+        // The connection drops while the body is in transit.
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { [self] in
+            client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
+        }
+    }
+
+    override func stopLoading() {}
 }
 
 /// Never answers, so only cancellation ends the request.
