@@ -177,6 +177,12 @@ export interface UpdateError {
 /** A response from the update server's catalog or artifact API. */
 export interface UpdateHttpResponse {
   readonly resource: "catalog" | "artifact";
+  /**
+   * The channel the request checked, for a response native code received
+   * before this runtime started (`HotUpdater.prepare`). Absent when the
+   * response belongs to the current channel.
+   */
+  readonly channel?: string;
   /** Request path only; authentication headers and query parameters are omitted. */
   readonly path: string;
   readonly status: number;

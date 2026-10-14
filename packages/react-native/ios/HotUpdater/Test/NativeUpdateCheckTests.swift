@@ -49,6 +49,7 @@ struct NativeUpdateCheckTests {
         #expect(host.queued().prefix(2).map { $0["name"] as? String } == ["onHttpResponse", "onUpdateCheck"])
         let response = try #require(host.httpResponses().first)
         #expect(response["resource"] as? String == "catalog")
+        #expect(response["channel"] as? String == "production")
         #expect(response["path"] as? String == URL(string: catalogURL)?.path)
         #expect(response["status"] as? Int == 404)
         #expect(response["bodyTruncated"] as? Bool == false)
