@@ -250,7 +250,7 @@ class NativeUpdateCheckerTest {
     private fun elapsedMillis(since: Long) = (System.nanoTime() - since) / 1_000_000
 
     @Test
-    fun `no catalog for the scope is no update and no event`() =
+    fun `no catalog for the scope is no update, reported as unchanged`() =
         runBlocking {
             val state = FakeState()
             val transport =
@@ -265,7 +265,14 @@ class NativeUpdateCheckerTest {
             assertEquals("application/json", request.headers["Accept"])
             assertEquals("Bearer token", request.headers["Authorization"])
             assertEquals(5_000L, request.timeoutMillis)
-            assertTrue(state.events().isEmpty())
+            // As checkForUpdate.ts, each check that finds nothing reports the bundle the app keeps.
+            val events = state.events()
+            assertEquals(listOf("onUpdateCheck", "onUpdateCheck"), events.map { it.getString("name") })
+            val payload = events.first().getJSONObject("payload")
+            assertEquals("UNCHANGED", payload.getString("status"))
+            assertEquals(MIN_BUNDLE_ID, payload.getString("bundleId"))
+            assertTrue(payload.isNull("releaseId"))
+            assertTrue(payload.isNull("previousReleaseId"))
         }
 
     @Test
@@ -445,7 +452,7 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
-    fun `adopting the running bundle's Release commits without a download or an UNCHANGED event`() =
+    fun `adopting the running bundle's Release commits without a download and reports it unchanged`() =
         runBlocking {
             val state =
                 FakeState().apply {
@@ -467,9 +474,14 @@ class NativeUpdateCheckerTest {
             val committed = state.committed.single()
             assertEquals(BUNDLE_B, committed.bundleId)
             assertEquals(RELEASE_B, committed.releaseId)
-            val event = state.events().single().getJSONObject("payload")
-            assertEquals("UPDATE_AVAILABLE", event.getString("status"))
-            assertEquals("ADOPT_RELEASE", event.getString("transitionKind"))
+            val (available, unchanged) = state.events().map { it.getJSONObject("payload") }
+            assertEquals("UPDATE_AVAILABLE", available.getString("status"))
+            assertEquals("ADOPT_RELEASE", available.getString("transitionKind"))
+            // As checkForUpdate.ts, the running bundle is now selected as the Release.
+            assertEquals("UNCHANGED", unchanged.getString("status"))
+            assertEquals(BUNDLE_B, unchanged.getString("bundleId"))
+            assertEquals(RELEASE_B, unchanged.getString("releaseId"))
+            assertTrue(unchanged.isNull("previousReleaseId"))
         }
 
     @Test
@@ -638,6 +650,30 @@ class NativeUpdateCheckerTest {
 
             assertEquals(1, withTimeout(5_000) { reset.await() })
             assertTrue(state.staged.isCompleted)
+        }
+
+    @Test
+    fun `prepare joins a running download only for the same request`() =
+        runBlocking {
+            val gate = CompletableDeferred<Unit>()
+            val state = FakeState().apply { stageGate = gate }
+            val checker = NativeUpdateChecker(state, FakeTransport(routes(minorCatalog())))
+            val first = checker.prepare(OPTIONS, 5_000, null) as HotUpdaterPrepareResult.Pending
+            state.stageEntered.await()
+
+            val otherChannel =
+                HotUpdaterCheckOptions(
+                    baseURL = OPTIONS.baseURL,
+                    updateStrategy = OPTIONS.updateStrategy,
+                    channel = "beta",
+                )
+            val other = checker.prepare(otherChannel, 200, null)
+            val same = checker.prepare(OPTIONS, 200, null)
+
+            assertTrue(other is HotUpdaterPrepareResult.Failed)
+            assertSame(first.update, (same as HotUpdaterPrepareResult.Pending).update)
+            gate.complete(Unit)
+            Unit
         }
 
     @Test

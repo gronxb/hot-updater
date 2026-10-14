@@ -254,7 +254,10 @@ internal class NativeUpdateChecker(
                         inFlight ?: if (mutex.tryLock()) null else lockHeldByCheck
                     }
                 if (running == null) break
-                if (running !== lockHeldByCheck) return awaitStaging(running, deadline, onProgress)
+                // A staging from other options is waited for, then this request is checked.
+                if (running !== lockHeldByCheck && running.update?.requestKey == requestKey(options)) {
+                    return awaitStaging(running, deadline, onProgress)
+                }
                 val remaining = remainingMillis(deadline)
                 if (remaining <= 0) {
                     return HotUpdaterPrepareResult.Failed(
@@ -291,6 +294,14 @@ internal class NativeUpdateChecker(
             HotUpdaterPrepareResult.Failed(error, null)
         }
     }
+
+    /** What a check reads: the server, the strategy, and the channel it asks for. */
+    private fun requestKey(options: HotUpdaterCheckOptions): String =
+        listOf(
+            options.baseURL.trimEnd('/'),
+            options.updateStrategy.value,
+            options.channel?.takeIf { it.isNotEmpty() }.orEmpty(),
+        ).joinToString("\n")
 
     private fun remainingMillis(deadline: Long): Long = (deadline - System.nanoTime()) / 1_000_000
 
@@ -475,22 +486,47 @@ internal class NativeUpdateChecker(
                 fingerprintHash = state.getFingerprintHash(),
             )
 
-        try {
-            return checkReleaseCatalog(input, deadline)
-        } catch (error: CancellationException) {
-            throw error
-        } catch (error: Exception) {
-            reportUpdateError(
-                error,
-                classifyUpdateError(error, UpdateFailureStage.CHECK, UpdateFailureResource.CATALOG),
-                ErrorScope(
-                    bundleId = currentBundleId,
-                    channel = targetChannel,
-                    updateStrategy = options.updateStrategy,
-                ),
-            )
-            throw error
+        val checked =
+            try {
+                checkReleaseCatalog(input, deadline)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                reportUpdateError(
+                    error,
+                    classifyUpdateError(error, UpdateFailureStage.CHECK, UpdateFailureResource.CATALOG),
+                    ErrorScope(
+                        bundleId = currentBundleId,
+                        channel = targetChannel,
+                        updateStrategy = options.updateStrategy,
+                    ),
+                )
+                throw error
+            }
+        if (checked == null) {
+            // The app keeps its bundle, as checkForUpdate.ts reports it.
+            val releaseId = runningReleaseId(currentBundleId, currentChannel)
+            queueUnchanged(currentChannel, currentBundleId, releaseId, previousReleaseId = releaseId)
         }
+        return checked
+    }
+
+    private fun queueUnchanged(
+        channel: String,
+        bundleId: String,
+        releaseId: String?,
+        previousReleaseId: String?,
+    ) {
+        events.add(
+            "onUpdateCheck",
+            JSONObject().apply {
+                put("status", "UNCHANGED")
+                put("channel", channel)
+                put("bundleId", bundleId)
+                putNullable("releaseId", releaseId)
+                putNullable("previousReleaseId", previousReleaseId)
+            },
+        )
     }
 
     private class CheckInput(
@@ -528,6 +564,8 @@ internal class NativeUpdateChecker(
         val guard: ReleaseSelectionGuard,
         val transitionKind: String,
         val fromReleaseId: String?,
+        /** The Release the active selection had before this update. */
+        val activeReleaseId: String?,
         val errorScope: ErrorScope,
     ) {
         /** This update already staged or committed; calling `updateBundle` again returns at once. */
@@ -687,6 +725,7 @@ internal class NativeUpdateChecker(
                 guard = guard,
                 transitionKind = transitionKind,
                 fromReleaseId = fromReleaseId,
+                activeReleaseId = active?.releaseId,
                 errorScope =
                     ErrorScope(
                         bundleId = input.currentBundleId,
@@ -734,6 +773,7 @@ internal class NativeUpdateChecker(
                 targetCohorts = release?.targetCohorts?.toList() ?: emptyList(),
                 transitionKind = transitionKind,
                 runsCurrentBundle = desired.bundleId == input.currentBundleId,
+                requestKey = requestKey(options),
                 targetKey =
                     listOf(
                         desired.kind.name,
@@ -788,7 +828,17 @@ internal class NativeUpdateChecker(
         }
 
         if (selection.transitionKind != "INSTALL") {
-            return NativeCall.run { state.commitReleaseSelection(selection.receipt) }
+            val committed = NativeCall.run { state.commitReleaseSelection(selection.receipt) }
+            if (committed && selection.transitionKind == "ADOPT_RELEASE") {
+                // The running bundle is now selected as a newer Release.
+                queueUnchanged(
+                    channel = selection.receipt.channel,
+                    bundleId = selection.receipt.bundleId,
+                    releaseId = selection.receipt.releaseId,
+                    previousReleaseId = selection.activeReleaseId,
+                )
+            }
+            return committed
         }
 
         val artifact =
