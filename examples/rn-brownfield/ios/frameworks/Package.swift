@@ -11,7 +11,6 @@ let package = Package(
             name: "RnBrownfieldReact",
             targets: [
                 "RnBrownfieldReact",
-                "ReactBrownfield",
                 "hermesvm",
                 "React",
                 "ReactNativeDependencies",
@@ -22,8 +21,13 @@ let package = Package(
         // The framework target of the React Native project: its JS bundle,
         // assets, native modules, and the ReactNativeBundle helper.
         .binaryTarget(name: "RnBrownfieldReact", path: "RnBrownfieldReact.xcframework"),
-        // @callstack/react-native-brownfield's host API.
-        .binaryTarget(name: "ReactBrownfield", path: "ReactBrownfield.xcframework"),
+        // ReactBrownfield.xcframework is deliberately not a target: its code is
+        // already inside RnBrownfieldReact.framework, and linking the static
+        // archive too would give the host a second copy of every brownfield
+        // class (two ReactNativeBrownfield.shared singletons, the pushed React
+        // Native screen stays empty). The host's Swift compiler still needs the
+        // `ReactBrownfield` module that RnBrownfieldReact re-exports, so the Xcode
+        // project adds the xcframework's slice to FRAMEWORK_SEARCH_PATHS instead.
         // Hermes engine.
         .binaryTarget(name: "hermesvm", path: "hermesvm.xcframework"),
         // React Native core prebuilts.
