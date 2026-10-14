@@ -1869,6 +1869,37 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func artifactProtocolV2RejectsAFileURLThatIsNotAbsoluteHTTP() throws {
+        for fileURL in ["https://", "file:///tmp/payload", "ftp://cdn.example.com/index.ios.bundle"] {
+            let root = try makeWorkingDirectory()
+            defer { cleanupWorkingDirectory(root) }
+            let manifest = try makeManifestData(
+                bundleId: "target",
+                assets: ["index.ios.bundle": try #require(sha256(Data("bundle".utf8), in: root))]
+            )
+            let manifestURL = URL(string: "https://example.com/manifest.json")!
+            let downloads = MappingDownloadService(contents: [manifestURL: manifest])
+            let service = makeStorageService(
+                documentsDirectory: root,
+                downloadService: downloads,
+                builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:])
+            )
+
+            let result = updateBundle(
+                service,
+                bundleId: "target",
+                manifestURL: manifestURL,
+                manifestHash: try #require(sha256(manifest, in: root)),
+                assets: [:],
+                fileResolver: RecordingArtifactFileResolver { _ in URL(string: fileURL)! }
+            )
+
+            #expect(updateFailure(of: result) == UpdateFailure.invalidResponse.with(resource: .file), "\(fileURL)")
+            #expect(downloads.requestedURLs == [manifestURL])
+        }
+    }
+
+    @Test
     func artifactProtocolV2AsksForNoFileWhenItTakesTheArchive() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
@@ -3602,6 +3633,11 @@ private final class MappingDownloadService: DownloadService {
 private final class RecordingArtifactFileResolver: ArtifactFileResolver {
     private let lock = NSLock()
     private var recorded: [[String]] = []
+    private let urlOf: (String) -> URL
+
+    init(urlOf: @escaping (String) -> URL = { URL(string: "https://cdn.example.com/\($0)")! }) {
+        self.urlOf = urlOf
+    }
 
     var requests: [[String]] {
         lock.lock()
@@ -3614,7 +3650,7 @@ private final class RecordingArtifactFileResolver: ArtifactFileResolver {
         recorded.append(paths)
         lock.unlock()
         return Dictionary(uniqueKeysWithValues: paths.map {
-            ($0, ResolvedArtifactFile(url: URL(string: "https://cdn.example.com/\($0)")!, compression: nil))
+            ($0, ResolvedArtifactFile(url: urlOf($0), compression: nil))
         })
     }
 }

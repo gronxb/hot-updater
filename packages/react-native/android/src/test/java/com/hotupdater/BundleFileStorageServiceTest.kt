@@ -1928,6 +1928,40 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    fun `artifact protocol v2 rejects a file URL that is not absolute HTTP(S)`() =
+        runBlocking {
+            for (fileUrl in listOf("https://", "file:///tmp/payload", "ftp://cdn.example.com/index.android.bundle")) {
+                val root = temporaryFolder.newFolder()
+                val hashes = mapOf("index.android.bundle" to sha256(root, "bundle"))
+                val manifest = manifestJson(bundleId = "target", assets = hashes)
+                val downloads = BinaryMappingDownloadService(mapOf(MANIFEST_URL to manifest.toByteArray()))
+
+                val error =
+                    runCatching {
+                        createService(
+                            root,
+                            downloadService = downloads,
+                            builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+                        ).updateBundle(
+                            bundleId = "target",
+                            manifestUrl = MANIFEST_URL,
+                            manifestFileHash = sha256(root, manifest),
+                            assets = emptyMap(),
+                            fileResolver = RecordingArtifactFileResolver { fileUrl },
+                            progressCallback = {},
+                        )
+                    }.exceptionOrNull()
+
+                assertUpdateFailure(
+                    error,
+                    "INVALID_FILE_URL",
+                    UpdateFailure.download(UpdateFailureReason.INVALID_RESPONSE).copy(resource = UpdateFailureResource.FILE),
+                )
+                assertEquals(listOf(MANIFEST_URL), downloads.calls)
+            }
+        }
+
+    @Test
     fun `artifact protocol v2 asks for no file when it takes the archive`() =
         runBlocking {
             val root = temporaryFolder.newFolder("artifact-files-archive")
