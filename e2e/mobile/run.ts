@@ -82,7 +82,11 @@ export function parseMobileOptions(
     throw new Error("Use either --suite or --scenario, not both");
   const selected = scenarios.length
     ? scenarios
-    : [...resolveSuiteScenarioNames(values.suite ?? defaultSuiteForTrack(track))];
+    : [
+        ...resolveSuiteScenarioNames(
+          values.suite ?? defaultSuiteForTrack(track),
+        ),
+      ];
   // A track runs only the scenarios its suite lists.
   const known = new Set(listScenarioNames(defaultSuiteForTrack(track)));
   if (new Set(selected).size !== selected.length)
@@ -213,7 +217,9 @@ export async function runMobile(
   }
   if (options.flags.has("--list")) {
     console.log(
-      listScenarioNames(defaultSuiteForTrack(options.track)).join("\n"),
+      listScenarioNames(
+        options.values.suite ?? defaultSuiteForTrack(options.track),
+      ).join("\n"),
     );
     return 0;
   }
