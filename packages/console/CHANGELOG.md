@@ -1,5 +1,14 @@
 # @hot-updater/console
 
+## 1.0.4
+
+### Patch Changes
+
+- @hot-updater/bsdiff@1.0.4
+  - @hot-updater/protocol@1.0.4
+  - @hot-updater/server@1.0.4
+  - @hot-updater/plugin-core@1.0.4
+
 ## 1.0.3
 
 ### Patch Changes
