@@ -881,10 +881,12 @@ final class NativeUpdateChecker {
         timeout: TimeInterval,
         onProgress: ((Double) -> Void)? = nil
     ) async -> HotUpdaterPrepareResult {
-        guard timeout > 0 else {
+        // An infinite timeout would end every wait at once: waits sleep for
+        // a finite number of nanoseconds.
+        guard timeout.isFinite, timeout > 0 else {
             return HotUpdaterPrepareResult(
                 status: .failed,
-                error: NativeUpdateCheckError.hotUpdater("prepare timeout must be greater than 0")
+                error: NativeUpdateCheckError.hotUpdater("prepare timeout must be a finite number greater than 0")
             )
         }
         let deadline = NativeUpdateDeadline(after: timeout)
