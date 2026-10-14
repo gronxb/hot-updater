@@ -316,14 +316,15 @@ internal class NativeUpdateChecker(
                     return true
                 }
                 try {
-                    startStaging(update, selection)
+                    startStaging(update, selection, onProgress)
                 } catch (error: Throwable) {
                     mutex.unlock()
                     throw error
                 }
             }
         val result = staging.result!!
-        onProgress?.let(staging.progress::add)
+        // A new staging registered the listener before it started.
+        if (running != null) onProgress?.let(staging.progress::add)
         try {
             val committed = result.await().committed
             // A joined staging of the same target staged this update too.
@@ -343,8 +344,11 @@ internal class NativeUpdateChecker(
     private fun startStaging(
         update: HotUpdaterUpdate,
         selection: SelectedUpdate,
+        onProgress: ((Double) -> Unit)?,
     ): Staging {
         val progress = ProgressFanout()
+        // Before the staging starts, so its first reports reach the caller.
+        onProgress?.let(progress::add)
         lateinit var staging: Staging
         val result =
             stagingScope.async(start = CoroutineStart.LAZY) {
