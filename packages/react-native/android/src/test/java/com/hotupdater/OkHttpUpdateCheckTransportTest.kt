@@ -37,6 +37,33 @@ class OkHttpUpdateCheckTransportTest {
         }
 
     @Test
+    fun `a 200 whose body breaks fails with the response that arrived`() =
+        runBlocking {
+            ServerSocket(0).use { server ->
+                thread {
+                    server.accept().use { socket ->
+                        socket.getInputStream().bufferedReader().let { reader ->
+                            while (reader.readLine()?.isNotEmpty() == true) Unit
+                        }
+                        // Promises 100 bytes and closes after 4.
+                        socket.getOutputStream().write("HTTP/1.1 200 OK\r\nContent-Length: 100\r\n\r\n{\"a\"".toByteArray())
+                    }
+                }
+
+                val error =
+                    runCatching {
+                        OkHttpUpdateCheckTransport().get(
+                            UpdateCheckRequest("http://127.0.0.1:${server.localPort}/", emptyMap(), 5_000),
+                        )
+                    }.exceptionOrNull()
+
+                val failure = error as UpdateResponseBodyException
+                assertEquals(200, failure.response.status)
+                assertEquals(null, failure.response.body)
+            }
+        }
+
+    @Test
     fun `a response carries its status, headers, and body`() =
         runBlocking {
             ServerSocket(0).use { server ->

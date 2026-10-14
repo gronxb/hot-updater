@@ -2037,6 +2037,18 @@ class BundleFileStorageService: BundleStorageService {
            let stagingBundleId = metadata.stagingBundleId {
             rollbackPendingBundle(stagingBundleId, unfinishedLaunch: true)
         }
+        // A pending bundle whose file is gone rolls back, as selectLaunch does.
+        if let metadata = loadMetadataOrNull(),
+           metadata.verificationPending,
+           let stagingBundleId = metadata.stagingBundleId,
+           case .success(let storeDir) = bundleStoreDir() {
+            let stagingBundleDir = (storeDir as NSString).appendingPathComponent(stagingBundleId)
+            if case .success(let bundlePath) = findBundleFile(in: stagingBundleDir, expectedBundleId: stagingBundleId),
+               bundlePath != nil {
+                return
+            }
+            rollbackPendingBundle(stagingBundleId)
+        }
     }
 
     func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection {

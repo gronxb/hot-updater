@@ -92,6 +92,31 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `settling rolls back a pending bundle whose file is gone`() {
+        val rootDir = temporaryFolder.newFolder()
+        val stableDir = createBundleDir(rootDir, "stable-bundle")
+        writeFile(stableDir, "index.android.bundle")
+        writeManifest(stableDir, listOf("index.android.bundle"))
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = "stable-bundle",
+                stagingBundleId = "missing-bundle",
+                verificationPending = true,
+            ),
+        )
+        val service = createService(rootDir, InMemoryPreferencesService())
+
+        service.settlePreviousLaunch { null }
+
+        // The selection no longer names the missing bundle, so a check reads what the launch runs.
+        assertEquals("stable-bundle", loadMetadata(rootDir)!!.stagingBundleId)
+        assertEquals("stable-bundle", service.peekLaunchBundleId())
+        assertTrue(service.getCrashHistory().contains("missing-bundle"))
+    }
+
+    @Test
     fun `metadata in another schema is not loaded`() {
         val rootDir = temporaryFolder.newFolder()
         val stableDir = createBundleDir(rootDir, "stable-bundle")
