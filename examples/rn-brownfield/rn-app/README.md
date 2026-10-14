@@ -1,4 +1,4 @@
-# rn-brownfield / react-native
+# rn-brownfield / rn-app
 
 The React Native app of the brownfield example, created with
 `npm create rock` and the `brownfield-ios` and `brownfield-android` plugins.
@@ -72,10 +72,10 @@ Native code, so the artifacts do that themselves:
   `ReactNativeBrownfield.shared.bundleURLOverride`; it returns
   `HotUpdater.bundleURL(bundle: ReactNativeBundle)`, the downloaded bundle or
   the one embedded in the framework.
-- `android/rnbrownfieldreact/build.gradle.kts` re-declares the SDK's runtime
-  dependencies as `api` and embeds its vendored brotli jar: the brownfield
-  Gradle plugin embeds the SDK's classes into the AAR but not its
-  `implementation` dependencies.
+- `android/rnbrownfieldreact/build.gradle.kts` declares the SDK's vendored
+  brotli jar as a local dependency so it lands in the AAR's `libs/`. The
+  brownfield Gradle plugin embeds the SDK's classes and adds its Maven
+  dependencies to the POM, but drops a jar without Maven coordinates.
 - The app's "App version" is the host app's version. The `fingerprint`
   strategy keys updates on the artifact's native code, so hosts can bump their
   own version without a new OTA; the SDK's download cache is still keyed by

@@ -1,8 +1,8 @@
 {
-  "name": "@examples/rn-brownfield-react-native",
+  "name": "@examples/rn-brownfield-rn-app",
   "version": "0.0.1",
   "private": true,
-  "description": "React Native app packaged as an AAR and an XCFramework for the native hosts in ../android and ../ios.",
+  "description": "React Native app packaged as an AAR and an XCFramework for the native hosts in ../android-app and ../ios-app.",
   "scripts": {
     "start": "rock start",
     "lint": "eslint .",
