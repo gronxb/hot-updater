@@ -735,8 +735,8 @@ final class NativeUpdateChecker {
     }
 
     /// Checks and stages an update within one deadline, `timeout` seconds from
-    /// now, that covers waiting for other native update work, the catalog and
-    /// artifact requests, and a required update's download. The deadline and
+    /// now, that covers waiting for other native update work, the catalog
+    /// request, and a required update's download. The deadline and
     /// cancellation end the wait, never the download. A download already
     /// running is joined instead of checking again. Never throws.
     func prepare(
@@ -792,9 +792,9 @@ final class NativeUpdateChecker {
             gate.release()
             return HotUpdaterPrepareResult(status: .upToDate)
         }
-        // Only a required update's download is bounded by the deadline; any
-        // other keeps its own request timeout in the background, as on Android.
-        let staging = startStaging(update, deadline: update.shouldForceUpdate ? deadline : nil)
+        // The deadline ends the wait, not the staging: its requests keep their
+        // own timeouts after prepare returns, as on Android.
+        let staging = startStaging(update, deadline: nil)
         return await finishPrepare(staging, deadline: deadline, onProgress: onProgress)
     }
 

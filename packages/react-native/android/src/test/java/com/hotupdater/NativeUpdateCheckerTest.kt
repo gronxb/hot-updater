@@ -812,6 +812,20 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `the deadline does not bound a required update's artifact request`() =
+        runBlocking {
+            val state = FakeState()
+            val transport = FakeTransport(routes(forcedCatalog()))
+            val checker = NativeUpdateChecker(state, transport)
+
+            checker.prepare(OPTIONS, 1_000, null)
+            withTimeout(5_000) { state.staged.await() }
+
+            // The staging outlives prepare, so its request keeps the request timeout.
+            assertEquals(5_000L, transport.requests.single { it.url == ARTIFACT_URL }.timeoutMillis)
+        }
+
+    @Test
     fun `the deadline covers the wait for another check holding the lock`() =
         runBlocking {
             val release = CompletableDeferred<Unit>()

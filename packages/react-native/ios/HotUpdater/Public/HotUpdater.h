@@ -78,8 +78,9 @@ NS_ASSUME_NONNULL_BEGIN
 /**
  * Checks for an update and stages it before React Native starts. `timeout`
  * is one deadline, in seconds, for waiting on other native update work, the
- * catalog and artifact requests, and a required update's download; it must
- * be greater than 0. A required update staged before React Native reads the
+ * catalog request, and a required update's download; it must be greater
+ * than 0. It ends the wait, not the download, whose requests keep their own
+ * timeouts. A required update staged before React Native reads the
  * bundle completes `ready`. When the deadline passes, or the update is not
  * required, the download continues and the call completes `pending`: the
  * update applies at the first start after it is staged, and a later `prepare`

@@ -253,7 +253,8 @@ internal class NativeUpdateChecker(
 
     /**
      * Checks for an update and starts it within one deadline of [timeoutMillis]
-     * covering the lock wait, the requests, and the wait for a required update.
+     * covering the lock wait, the catalog request, and the wait for a required
+     * update.
      * The deadline and cancellation end the wait, never the staging. Never
      * throws except to cancel.
      */
@@ -302,12 +303,9 @@ internal class NativeUpdateChecker(
                         return HotUpdaterPrepareResult.Failed(TimeoutException("Timed out checking for an update"), null)
                     } ?: return HotUpdaterPrepareResult.UpToDate
                 val update = checked.update
-                val staging =
-                    startStaging(
-                        update,
-                        checked.selection,
-                        artifactDeadline = if (update.shouldForceUpdate) deadline else null,
-                    )
+                // The deadline ends the wait, not the staging: its requests
+                // keep their own timeouts after prepare returns.
+                val staging = startStaging(update, checked.selection, artifactDeadline = null)
                 handedOff = true
                 awaitStaging(staging, deadline, onProgress)
             } finally {
