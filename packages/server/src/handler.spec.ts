@@ -1,4 +1,7 @@
-import type { ReleaseCatalog } from "@hot-updater/protocol";
+import {
+  ARTIFACT_FILES_REQUEST_LIMIT,
+  type ReleaseCatalog,
+} from "@hot-updater/protocol";
 import { describe, expect, it, vi } from "vitest";
 
 import { createHotUpdaterHandlers } from "./handler";
@@ -141,6 +144,98 @@ describe("createHandlers client routes", () => {
       },
     });
     expect(getArtifactInfo).toHaveBeenCalledWith("target", "current", 1);
+  });
+
+  it("serves artifact protocol v2 without a URL per asset", async () => {
+    const api = createApi();
+    const getArtifactInfo = vi
+      .spyOn(api.core, "getArtifactInfo")
+      .mockResolvedValue({
+        artifactProtocolVersion: 2,
+        manifestFileHash: "manifest-hash",
+        manifestUrl: "https://cdn.example.com/manifest.json",
+      });
+    const handler = createHandlers(api).client;
+
+    const response = await handler(
+      new Request("http://localhost/artifacts/v2/target/from/current"),
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("content-type")).toBe(
+      "application/vnd.hot-updater.artifact+json; version=2",
+    );
+    await expect(response.json()).resolves.toEqual({
+      artifactProtocolVersion: 2,
+      manifestFileHash: "manifest-hash",
+      manifestUrl: "https://cdn.example.com/manifest.json",
+    });
+    expect(getArtifactInfo).toHaveBeenCalledWith("target", "current", 2);
+  });
+
+  it("resolves the files a device downloads, after authenticating it", async () => {
+    const api = createApi();
+    const getArtifactFiles = vi
+      .spyOn(api.core, "getArtifactFiles")
+      .mockImplementation(async (_bundleId, paths) =>
+        paths.includes("missing.png")
+          ? null
+          : {
+              files: Object.fromEntries(
+                paths.map((path) => [
+                  path,
+                  { url: `https://cdn.example.com/${path}` },
+                ]),
+              ),
+            },
+      );
+    const handler = createHotUpdaterHandlers({
+      api,
+      clientPolicy: {
+        authenticate: async (request) =>
+          request.headers.get("x-api-key") === "valid",
+        varyHeaders: ["x-api-key"],
+      },
+    }).client;
+    const post = (body: unknown, apiKey = "valid") =>
+      handler(
+        new Request("http://localhost/artifacts/v2/target/files", {
+          body: JSON.stringify(body),
+          headers: { "content-type": "application/json", "x-api-key": apiKey },
+          method: "POST",
+        }),
+      );
+
+    const resolved = await post({ paths: ["a.png", "b.png"] });
+    expect(resolved.status).toBe(200);
+    expect(resolved.headers.get("cache-control")).toBe("private, no-store");
+    await expect(resolved.json()).resolves.toEqual({
+      files: {
+        "a.png": { url: "https://cdn.example.com/a.png" },
+        "b.png": { url: "https://cdn.example.com/b.png" },
+      },
+    });
+    expect(getArtifactFiles).toHaveBeenCalledWith("target", ["a.png", "b.png"]);
+
+    expect((await post({ paths: ["missing.png"] })).status).toBe(404);
+    expect((await post({ paths: ["a.png"] }, "invalid")).status).toBe(401);
+    for (const body of [
+      {},
+      { paths: [] },
+      { paths: "a.png" },
+      { paths: [1] },
+      { paths: ["a.png", "a.png"] },
+      {
+        paths: Array.from(
+          { length: ARTIFACT_FILES_REQUEST_LIMIT + 1 },
+          (_, index) => `${index}.png`,
+        ),
+      },
+    ]) {
+      expect((await post(body)).status).toBe(400);
+    }
+    expect(getArtifactFiles).toHaveBeenCalledTimes(2);
   });
 
   it("authenticates artifact protocol v1 before resolving artifacts", async () => {
