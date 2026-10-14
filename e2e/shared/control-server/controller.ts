@@ -508,11 +508,17 @@ type CapturedProxyResponse = {
 };
 type CapturedArtifactSelection = {
   readonly archiveUrl: string | null;
+  /**
+   * The URLs the device got per file: in artifact protocol v2, the patch from
+   * the artifact response, and each file it asked the files route for.
+   */
   readonly assets: ReadonlyArray<{
-    fileUrl: string;
+    fileUrl: string | null;
     patchUrl: string | null;
     path: string;
   }>;
+  /** Artifact protocol v2 files requests for this target. */
+  readonly filesRequests: number;
   readonly artifactProtocolVersion: number | null;
   readonly assetCount: number;
   readonly assetFileCount: number;
@@ -3209,6 +3215,40 @@ function rewriteUpdateInfoAssetUrls(payload: unknown): unknown {
       }),
     );
   }
+  const v2Patch = (payload as { patch?: { assetPath?: unknown } }).patch;
+  if (v2Patch && typeof v2Patch === "object") {
+    (rewritten as { patch?: unknown }).patch = {
+      ...v2Patch,
+      patchUrl: rewriteRemoteAssetUrl(
+        (v2Patch as { patchUrl?: unknown }).patchUrl,
+        {
+          ...(typeof v2Patch.assetPath === "string"
+            ? { assetPath: v2Patch.assetPath }
+            : {}),
+          kind: "patch",
+        },
+      ),
+    };
+  }
+  const files = (payload as { files?: unknown }).files;
+  if (files && typeof files === "object" && !Array.isArray(files)) {
+    (rewritten as { files?: unknown }).files = Object.fromEntries(
+      Object.entries(files as Record<string, unknown>).map(
+        ([assetPath, file]) => [
+          assetPath,
+          file && typeof file === "object"
+            ? {
+                ...file,
+                url: rewriteRemoteAssetUrl((file as { url?: unknown }).url, {
+                  assetPath,
+                  kind: "file",
+                }),
+              }
+            : file,
+        ],
+      ),
+    );
+  }
   if (!archiveAvailable) {
     delete rewritten.archiveUrl;
   }
@@ -3313,10 +3353,18 @@ function summarizeUpdateInfoPayload(payload: unknown) {
 }
 
 function captureArtifactSelection(pathname: string, payload: unknown) {
-  const match = pathname.match(
-    /^\/hot-updater\/artifacts\/v1\/([^/]+)\/from\/([^/]+)\/?$/,
+  if (!payload || typeof payload !== "object") return;
+  const filesMatch = pathname.match(
+    /^\/hot-updater\/artifacts\/v2\/([^/]+)\/files\/?$/,
   );
-  if (!match || !payload || typeof payload !== "object") {
+  if (filesMatch) {
+    captureArtifactFiles(filesMatch[1]!, payload);
+    return;
+  }
+  const match = pathname.match(
+    /^\/hot-updater\/artifacts\/v[12]\/([^/]+)\/from\/([^/]+)\/?$/,
+  );
+  if (!match) {
     return;
   }
 
@@ -3335,7 +3383,19 @@ function captureArtifactSelection(pathname: string, payload: unknown) {
     assets?: unknown;
     manifestFileHash?: unknown;
     manifestUrl?: unknown;
+    patch?: { assetPath?: unknown; patchUrl?: unknown };
   };
+  const v2Patch =
+    typeof artifact.patch?.assetPath === "string" &&
+    typeof artifact.patch.patchUrl === "string"
+      ? [
+          {
+            fileUrl: null,
+            patchUrl: artifact.patch.patchUrl,
+            path: artifact.patch.assetPath,
+          },
+        ]
+      : [];
   const assetsPresent =
     artifact.assets !== undefined && artifact.assets !== null;
   const assetEntries =
@@ -3356,19 +3416,22 @@ function captureArtifactSelection(pathname: string, payload: unknown) {
           patch?: { patchUrl?: unknown };
         }
       >,
-    ).flatMap(([path, asset]) => {
-      if (typeof asset?.file?.url !== "string") return [];
-      return [
-        {
-          fileUrl: asset.file.url,
-          patchUrl:
-            typeof asset.patch?.patchUrl === "string"
-              ? asset.patch.patchUrl
-              : null,
-          path,
-        },
-      ];
-    }),
+    )
+      .flatMap(([path, asset]) => {
+        if (typeof asset?.file?.url !== "string") return [];
+        return [
+          {
+            fileUrl: asset.file.url,
+            patchUrl:
+              typeof asset.patch?.patchUrl === "string"
+                ? asset.patch.patchUrl
+                : null,
+            path,
+          },
+        ];
+      })
+      .concat(v2Patch),
+    filesRequests: 0,
     artifactProtocolVersion:
       typeof artifact.artifactProtocolVersion === "number"
         ? artifact.artifactProtocolVersion
@@ -3392,6 +3455,45 @@ function captureArtifactSelection(pathname: string, payload: unknown) {
     manifestUrlPresent: typeof artifact.manifestUrl === "string",
     targetBundleId,
   });
+}
+
+/** Adds a files response's URLs to the target's latest artifact selection. */
+function captureArtifactFiles(encodedBundleId: string, payload: unknown) {
+  let targetBundleId: string;
+  try {
+    targetBundleId = decodeURIComponent(encodedBundleId);
+  } catch {
+    return;
+  }
+  const index = capturedArtifactSelections.findLastIndex(
+    (entry) => entry.targetBundleId === targetBundleId,
+  );
+  const files = (payload as { files?: unknown }).files;
+  if (index < 0 || !files || typeof files !== "object") return;
+  const selection = capturedArtifactSelections[index]!;
+  const resolved = Object.entries(files as Record<string, { url?: unknown }>)
+    .filter(([, file]) => typeof file?.url === "string")
+    .map(([path, file]) => [path, file.url as string] as const);
+  const resolvedPaths = new Set(resolved.map(([path]) => path));
+  capturedArtifactSelections[index] = {
+    ...selection,
+    assets: [
+      ...selection.assets.map((asset) =>
+        resolvedPaths.has(asset.path)
+          ? {
+              ...asset,
+              fileUrl: resolved.find(([path]) => path === asset.path)![1],
+            }
+          : asset,
+      ),
+      ...resolved
+        .filter(
+          ([path]) => !selection.assets.some((asset) => asset.path === path),
+        )
+        .map(([path, fileUrl]) => ({ fileUrl, patchUrl: null, path })),
+    ],
+    filesRequests: selection.filesRequests + 1,
+  };
 }
 
 function classifyProxiedUpdatePath(pathname: string) {
@@ -3564,7 +3666,7 @@ export function handleConfigureProxy(input: {
 
 export function handleAssertBundleArtifactSelection(input: {
   currentBundleId: string;
-  selection: "manifest-v1";
+  selection: "manifest-v2";
   targetBundleId: string;
 }) {
   const observed = capturedArtifactSelections.findLast(
@@ -3579,11 +3681,10 @@ export function handleAssertBundleArtifactSelection(input: {
     });
   }
 
+  // Artifact protocol v2 carries no URL per file.
   const matches =
-    observed.artifactProtocolVersion === 1 &&
-    observed.assetsPresent &&
-    observed.assetCount > 0 &&
-    observed.assetFileCount === observed.assetCount &&
+    observed.artifactProtocolVersion === 2 &&
+    !observed.assetsPresent &&
     observed.manifestFileHashPresent &&
     observed.manifestUrlPresent;
   if (!matches) {
@@ -3601,6 +3702,14 @@ export function handleAssertBundleArtifactSelection(input: {
   return observed;
 }
 
+/** Every file of a staged Bundle, as its manifest lists them. */
+function readManifestAssetPaths(bundleId: string): string[] {
+  const assets = readBundleManifestSnapshot(bundleId).value?.assets;
+  return assets && typeof assets === "object" && !Array.isArray(assets)
+    ? Object.keys(assets)
+    : [];
+}
+
 function getRemoteTransfer(url: string | null) {
   if (url === null) return { bytes: 0, requests: 0 };
   const pathname = new URL(url).pathname;
@@ -3614,6 +3723,8 @@ export function handleAssertBundleArtifactTransfers(input: {
   /** The Bundle the request came from; any, when omitted, as from built-in. */
   currentBundleId?: string;
   fileRequests: number;
+  /** Artifact protocol v2 files requests; any, when omitted. */
+  filesRequests?: number;
   maxRequestsPerAsset?: number;
   minNetworkAssets?: number;
   patchRequests: number;
@@ -3658,7 +3769,7 @@ export function handleAssertBundleArtifactTransfers(input: {
   const finalFiles =
     input.verifyAllAssetHashes === true
       ? readBundleAssetsStoredEvidence({
-          assetPaths: artifact.assets.map((asset) => asset.path),
+          assetPaths: readManifestAssetPaths(input.targetBundleId),
           bundleId: input.targetBundleId,
         })
       : null;
@@ -3669,6 +3780,7 @@ export function handleAssertBundleArtifactTransfers(input: {
     archiveInterruption,
     assets,
     fileRequests,
+    filesRequests: artifact.filesRequests,
     finalFiles,
     networkAssetCount: networkAssets.length,
     patchRequests,
@@ -3691,6 +3803,8 @@ export function handleAssertBundleArtifactTransfers(input: {
     archive.requests === input.archiveRequests &&
     fileRequests === input.fileRequests &&
     patchRequests === input.patchRequests &&
+    (input.filesRequests === undefined ||
+      artifact.filesRequests === input.filesRequests) &&
     archiveFailuresRemaining === 0 &&
     (input.archiveInterruptions === undefined ||
       archiveInterruption.interruptions === input.archiveInterruptions) &&
@@ -6153,7 +6267,13 @@ function readFirstOtaReuseEvidence(bundleId: string) {
   const artifact = capturedArtifactSelections.findLast(
     (entry) => entry.targetBundleId === bundleId,
   );
-  const assets = artifact?.assets ?? [];
+  // Every file of the Bundle: in artifact protocol v2, the device asks for
+  // the URLs of only the files it downloads.
+  const assets = readManifestAssetPaths(bundleId).map((path) => ({
+    fileUrl:
+      artifact?.assets.find((asset) => asset.path === path)?.fileUrl ?? null,
+    path,
+  }));
   const archive = getRemoteTransfer(artifact?.archiveUrl ?? null);
   // App-local paths stay identical when E2E shards share a symlinked node_modules.
   const imageSuffix = "builtin_reuse.png";
@@ -6170,15 +6290,16 @@ function readFirstOtaReuseEvidence(bundleId: string) {
     ({ path }) => typeof locators?.[path] === "string",
   );
   const evidence = assets.map(({ fileUrl, path: assetPath }) => {
-    const proxyPath = new URL(fileUrl).pathname;
-    const transfer = remoteAssetTransfers.get(proxyPath) ?? {
+    const proxyPath = fileUrl === null ? null : new URL(fileUrl).pathname;
+    const transfer = (proxyPath && remoteAssetTransfers.get(proxyPath)) || {
       requests: 0,
       bytes: 0,
     };
     return {
       assetPath,
       reused: typeof locators?.[assetPath] === "string",
-      observed: proxyPath.startsWith("/e2e/proxy-url/"),
+      // A file the device never asked a URL for was never downloaded.
+      observed: proxyPath === null || proxyPath.startsWith("/e2e/proxy-url/"),
       ...transfer,
     };
   });

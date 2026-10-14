@@ -1368,6 +1368,7 @@ describe("E2E scenario contract", () => {
         archiveRequests: 1,
         currentBundleId: "$assetHeavyFirstBundleId",
         fileRequests: 0,
+        filesRequests: 0,
         patchRequests: 0,
         targetBundleId: "$assetHeavyNextBundleId",
         verifyAllAssetHashes: true,
@@ -1422,7 +1423,7 @@ describe("E2E scenario contract", () => {
     ).toMatchObject({
       body: {
         currentBundleId: "$sizeAwareBaseBundleId",
-        selection: "manifest-v1",
+        selection: "manifest-v2",
         targetBundleId: "$sizeAwareSmallBundleId",
       },
       pathName: "/e2e/assert-bundle-artifact-selection",
@@ -1492,7 +1493,7 @@ describe("E2E scenario contract", () => {
     ).toMatchObject({
       body: {
         currentBundleId: "$sizeAwareSmallBundleId",
-        selection: "manifest-v1",
+        selection: "manifest-v2",
         targetBundleId: "$sizeAwareLargeSuccessBundleId",
       },
       pathName: "/e2e/assert-bundle-artifact-selection",
@@ -1505,7 +1506,7 @@ describe("E2E scenario contract", () => {
     ).toMatchObject({
       body: {
         currentBundleId: "$sizeAwareLargeSuccessBundleId",
-        selection: "manifest-v1",
+        selection: "manifest-v2",
         targetBundleId: "$sizeAwareLargeFallbackBundleId",
       },
       pathName: "/e2e/assert-bundle-artifact-selection",

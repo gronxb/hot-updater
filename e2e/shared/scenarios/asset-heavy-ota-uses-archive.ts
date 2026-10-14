@@ -61,6 +61,8 @@ const installAssetHeavyBundle = async (
         ? { currentBundleId: input.currentBundleId }
         : {}),
       fileRequests: 0,
+      // The archive needs no URL per file, so the server signs none.
+      filesRequests: 0,
       patchRequests: 0,
       targetBundleId: bundleId,
       verifyAllAssetHashes: true,

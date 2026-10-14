@@ -227,13 +227,13 @@ app.post("/e2e/assert-proxy", async (c) => {
 app.post("/e2e/assert-bundle-artifact-selection", async (c) => {
   const payload = (await c.req.json()) as {
     currentBundleId?: string;
-    selection?: "manifest-v1";
+    selection?: "manifest-v2";
     targetBundleId?: string;
   };
   if (
     !payload.currentBundleId ||
     !payload.targetBundleId ||
-    payload.selection !== "manifest-v1"
+    payload.selection !== "manifest-v2"
   ) {
     return c.json(
       {
@@ -259,6 +259,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     archiveResumes?: number;
     currentBundleId?: string;
     fileRequests?: number;
+    filesRequests?: number;
     maxRequestsPerAsset?: number;
     minNetworkAssets?: number;
     patchRequests?: number;
@@ -283,7 +284,11 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     (payload.minNetworkAssets !== undefined &&
       (!Number.isSafeInteger(payload.minNetworkAssets) ||
         payload.minNetworkAssets < 0)) ||
-    [payload.archiveInterruptions, payload.archiveResumes].some(
+    [
+      payload.archiveInterruptions,
+      payload.archiveResumes,
+      payload.filesRequests,
+    ].some(
       (value) =>
         value !== undefined && (!Number.isSafeInteger(value) || value < 0),
     )
@@ -303,6 +308,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
       archiveResumes: payload.archiveResumes,
       currentBundleId: payload.currentBundleId,
       fileRequests: payload.fileRequests!,
+      filesRequests: payload.filesRequests,
       maxRequestsPerAsset: payload.maxRequestsPerAsset,
       minNetworkAssets: payload.minNetworkAssets,
       patchRequests: payload.patchRequests!,
