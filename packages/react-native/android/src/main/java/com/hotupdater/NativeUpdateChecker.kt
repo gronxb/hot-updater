@@ -217,6 +217,10 @@ internal class NativeUpdateChecker(
     private val mutex = Mutex()
     private val inFlightLock = Any()
     private var inFlight: Staging? = null
+
+    /** The target the last staging committed, for a result of the same target that waited on the lock. */
+    @Volatile
+    private var lastCommittedTargetKey: String? = null
     private val events =
         NativeUpdateEventQueue(state::getStorageItem, state::setStorageItem, build = {
             NativeUpdateEventQueue.buildOf(state.getAppVersion(), state.getMinBundleId())
@@ -234,7 +238,12 @@ internal class NativeUpdateChecker(
      * Runs [block] once no check or staging runs, as a channel reset must: a
      * staging that finished after the reset would save its channel again.
      */
-    suspend fun <T> whenIdle(block: suspend () -> T): T = mutex.withLock { block() }
+    suspend fun <T> whenIdle(block: suspend () -> T): T =
+        mutex.withLock {
+            // What runs here, such as a reset, can undo what was staged.
+            lastCommittedTargetKey = null
+            block()
+        }
 
     /** Waits for the lock and the requests without a deadline beyond each request's timeout. */
     suspend fun checkForUpdate(options: HotUpdaterCheckOptions): HotUpdaterUpdate? {
@@ -407,7 +416,9 @@ internal class NativeUpdateChecker(
                 if (selection.staged) return true
                 mutex.lock()
                 try {
-                    if (selection.staged) {
+                    // A staging of the same target may have committed while this call waited.
+                    if (selection.staged || lastCommittedTargetKey == update.targetKey) {
+                        selection.staged = true
                         mutex.unlock()
                         return true
                     }
@@ -448,6 +459,7 @@ internal class NativeUpdateChecker(
                     val committed = install(selection, progress, artifactDeadline)
                     if (committed) {
                         selection.staged = true
+                        lastCommittedTargetKey = update.targetKey
                         progress.report(1.0)
                     }
                     StagingOutcome(committed, beforeLaunch = !state.hasLaunchedBundle())
