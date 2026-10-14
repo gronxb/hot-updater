@@ -355,8 +355,8 @@ internal class NativeUpdateChecker(
                 options.channel?.takeIf { it.isNotEmpty() }.orEmpty(),
                 cohort,
             ) +
-                options.requestHeaders
-                    .map { (name, value) -> "${name.lowercase()}:$value" }
+                effectiveHeaders(options.requestHeaders)
+                    .map { (name, value) -> "$name:$value" }
                     .sorted()
         ).joinToString("\n")
 
