@@ -100,12 +100,14 @@ final class HTTPArtifactFileResolver: ArtifactFileResolver {
         task.resume()
         finished.wait()
 
-        guard let json = try JSONSerialization.jsonObject(with: result.get()) as? [String: Any],
-              let files = json["files"] as? [String: [String: Any]] else {
+        // As JSON.parse reads it, which JSONSerialization does not.
+        let body = String(decoding: try result.get(), as: UTF8.self)
+        guard let json = StrictJson.parse(body) as? [String: Any],
+              let files = json["files"] as? [String: Any] else {
             throw ArtifactFileResolverError.invalidResponse
         }
         return try paths.reduce(into: [:]) { resolved, path in
-            guard let file = files[path],
+            guard let file = files[StrictJson.storedKey(path)] as? [String: Any],
                   let urlString = file["url"] as? String,
                   let url = URL(string: urlString) else {
                 throw ArtifactFileResolverError.invalidResponse

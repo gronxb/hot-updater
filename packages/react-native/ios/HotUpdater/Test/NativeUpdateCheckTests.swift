@@ -1493,6 +1493,41 @@ struct URLSessionUpdateTransportTests {
 
 struct HTTPArtifactFileResolverTests {
     @Test
+    func aFilesResponseIsReadAsJSONParseReadsIt() throws {
+        let bodies = [
+            #"{"files":{"a.png":{"url":"https://cdn.example.com/a.png"}}} trailing"#,
+            #"{'files':{"a.png":{"url":"https://cdn.example.com/a.png"}}}"#,
+            #"{"files":{"a.png":{"url":"https://cdn.example.com/a.png",}}}"#,
+            #"{"files":{"a.png":{"url":1}}}"#,
+        ]
+        for body in bodies {
+            FilesBodyURLProtocol.body.value = body
+            let resolver = HTTPArtifactFileResolver(
+                filesUrl: URL(string: "https://updates.example.com/artifacts/v2/b/files")!,
+                headers: [:],
+                protocolClasses: [FilesBodyURLProtocol.self]
+            )
+            #expect(throws: (any Error).self, "\(body)") { _ = try resolver.resolve(paths: ["a.png"]) }
+        }
+    }
+
+    @Test
+    func aFilesResponseResolvesAPathThatIsNotItsOwnDecomposition() throws {
+        // "한글.png" in NFC: Swift compares it canonically, JSON.parse by code units.
+        let path = "assets/\u{D55C}\u{AE00}.png"
+        FilesBodyURLProtocol.body.value = #"{"files":{"\#(path)":{"url":"https://cdn.example.com/k.png","compression":"br"}}}"#
+        let resolver = HTTPArtifactFileResolver(
+            filesUrl: URL(string: "https://updates.example.com/artifacts/v2/b/files")!,
+            headers: [:],
+            protocolClasses: [FilesBodyURLProtocol.self]
+        )
+
+        let files = try resolver.resolve(paths: [path])
+
+        #expect(files[path] == ResolvedArtifactFile(url: URL(string: "https://cdn.example.com/k.png")!, compression: "br"))
+    }
+
+    @Test
     func aFailingFilesResponseIsReportedBeforeItFails() throws {
         let responses = LockedValue<[(Int, String?)]>([])
         let resolver = HTTPArtifactFileResolver(
@@ -1521,6 +1556,23 @@ struct HTTPArtifactFileResolverTests {
         // The body keeps arriving for 6 s, never idle for the timeout.
         #expect(Date().timeIntervalSince(started) < 4)
     }
+}
+
+/// Answers 200 with `body`.
+private final class FilesBodyURLProtocol: URLProtocol {
+    static let body = LockedValue("")
+
+    override class func canInit(with _: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: [:])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data(Self.body.value.utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
 
 /// Answers 500 with "boom".
