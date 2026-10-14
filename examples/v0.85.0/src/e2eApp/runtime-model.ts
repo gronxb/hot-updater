@@ -19,6 +19,7 @@ export type E2eRuntimeModel = {
   readonly initialCohort: string;
   readonly installRuntimeChannelUpdate: () => Promise<void>;
   readonly applyCapturedUpdate: () => Promise<void>;
+  readonly applyCapturedUpdateInBackground: () => Promise<void>;
   readonly installUpdate: (input: InstallUpdateInput) => Promise<void>;
   readonly isUpdateDownloaded: boolean;
   readonly launchStatusText: string;

@@ -1,6 +1,8 @@
 const ACTION_SCREEN_URLS = {
   applyCapturedUpdateAction:
     "hotupdaterexample://e2e/action/apply-captured-update",
+  applyCapturedUpdateInBackgroundAction:
+    "hotupdaterexample://e2e/action/apply-captured-update-in-background",
   applyCohortInputAction: "hotupdaterexample://e2e/action/apply-cohort-input",
   captureCurrentChannelUpdateAction:
     "hotupdaterexample://e2e/action/capture-current-channel-update",
@@ -26,6 +28,8 @@ const ACTION_SCREEN_URLS = {
 
 const ACTION_TEST_ID_SCREEN_PATHS = {
   "action-apply-captured-update": "applyCapturedUpdateAction",
+  "action-apply-captured-update-in-background":
+    "applyCapturedUpdateInBackgroundAction",
   "action-apply-cohort-input": "applyCohortInputAction",
   "action-capture-current-channel-update":
     "captureCurrentChannelUpdateAction",

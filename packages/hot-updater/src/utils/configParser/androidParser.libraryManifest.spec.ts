@@ -51,7 +51,7 @@ describe("AndroidConfigParser on a brownfield library manifest", () => {
       );
       const xml = await readFile(manifestPath, "utf-8");
       expect(xml).toContain(
-        '<meta-data android:name="com.hotupdater.CHANNEL" android:value="production"/>',
+        '<meta-data android:name="com.hotupdater.CHANNEL" android:value="production" />',
       );
     },
   );

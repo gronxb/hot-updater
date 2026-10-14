@@ -1,0 +1,508 @@
+import {
+  createKvAdapter,
+  type PhysicalTable,
+  HotUpdaterSchemaMigrationRequiredError,
+  SETTINGS_TABLE,
+  toolingTargetOf,
+  type ToolingDatabase,
+} from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
+import { createInsightsModel, insights } from "@hot-updater/server/plugins";
+import {
+  setupAggregateBatchingTestSuite,
+  setupDatabaseAdapterConformanceSuite,
+  setupDatabaseTestSuite,
+  setupReadBudgetTestSuite,
+  startHttpTestServer,
+  insightsTestSuite,
+  createReleaseCatalogTestStorage,
+} from "@hot-updater/test-utils";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
+
+import {
+  type CosmosEmulator,
+  startCosmosEmulator,
+} from "../test-utils/azureEmulators";
+import { AZURE_COSMOS_V1_CONTAINER } from "./azureInfrastructureNames";
+import { cosmosDatabase, migrateCosmosDatabase } from "./cosmosDatabase";
+import {
+  assertCosmosContainerReusable,
+  COSMOS_LIMITS,
+  COSMOS_PARTITION,
+  COSMOS_PARTITION_KEY_PATH,
+  createCosmosStore,
+  currentCosmosEngine,
+} from "./cosmosStore";
+
+// One emulator for every suite: it is heavy, so files do not each start one.
+let emulator: CosmosEmulator;
+beforeAll(async () => {
+  emulator = await startCosmosEmulator();
+}, 240_000);
+afterAll(async () => {
+  await emulator?.stop();
+});
+
+/** A store in a database of its own, which its migration creates. */
+const createStore = async (nativePageSize?: number) => {
+  const databaseId = emulator.databaseId();
+  const store = createCosmosStore({
+    client: emulator.client,
+    databaseId,
+    containerId: AZURE_COSMOS_V1_CONTAINER,
+    nativePageSize,
+  });
+  await store.migrations!.apply();
+  return {
+    store,
+    container: emulator.client
+      .database(databaseId)
+      .container(AZURE_COSMOS_V1_CONTAINER),
+    cleanup: () => emulator.dropDatabase(databaseId),
+  };
+};
+
+setupDatabaseAdapterConformanceSuite({
+  name: "key-value (Cosmos DB emulator)",
+  // 34 conformance inserts are 102 items, over the 100 one batch takes.
+  maxOps: 33,
+  // Cosmos DB deletes expired items itself, by their `ttl`.
+  retention: "ttl",
+  createAdapter: async ({ nativePageSize }) => {
+    const { store, cleanup } = await createStore(nativePageSize);
+    return { adapter: createKvAdapter({ store }), cleanup };
+  },
+});
+
+/**
+ * `cosmosDatabase()`'s storage without its schema fence: the key-value
+ * helper over the Cosmos DB store in the emulator, its pages as small as the
+ * suite's.
+ */
+setupReadBudgetTestSuite({
+  name: "key-value (Cosmos DB emulator)",
+  createAdapter: async ({ nativePageSize }) => {
+    const { store, cleanup } = await createStore(nativePageSize);
+    return { adapter: createKvAdapter({ store }), indexCopies: true, cleanup };
+  },
+});
+
+/** `cosmosDatabase()`'s batching in the Cosmos DB emulator, a database per case. */
+setupAggregateBatchingTestSuite({
+  name: "key-value (Cosmos DB emulator)",
+  createAdapter: async () => {
+    const { store, cleanup } = await createStore();
+    return { adapter: createKvAdapter({ store }), cleanup };
+  },
+  // Past the 100 items one batch takes: the compaction splits it.
+  oversizedRows: COSMOS_LIMITS.items + 50,
+});
+
+describe("cosmosDatabase", () => {
+  const config = () => ({
+    connectionString: emulator.connectionString,
+    connectionPolicy: { enableEndpointDiscovery: false },
+    databaseId: "hot-updater-database-spec",
+  });
+  /** Every item but the schema settings, which the database checks first. */
+  const clearData = async () => {
+    const container = emulator.client
+      .database(config().databaseId)
+      .container(AZURE_COSMOS_V1_CONTAINER);
+    const { resources } = await container.items
+      .query<{ id: string }>(
+        {
+          query: "SELECT c.id FROM c WHERE c.pk != @settings",
+          parameters: [{ name: "@settings", value: SETTINGS_TABLE.name }],
+        },
+        { partitionKey: COSMOS_PARTITION },
+      )
+      .fetchAll();
+    const results = await container.items.executeBulkOperations(
+      resources.map(({ id }) => ({
+        operationType: "Delete" as const,
+        id,
+        partitionKey: COSMOS_PARTITION,
+      })),
+    );
+    const failed = results.filter(
+      ({ response }) => response === undefined || response.statusCode >= 400,
+    );
+    if (failed.length > 0) {
+      throw new Error(`clearData left ${failed.length} item(s)`, {
+        cause: failed[0]!.error,
+      });
+    }
+  };
+
+  it("serves only after the migration creates the container and writes the schema settings", async () => {
+    const core = createHotUpdater({
+      database: cosmosDatabase(config()),
+      storage: createReleaseCatalogTestStorage(),
+      clientAccess: "public",
+    }).core;
+    await expect(core.listChannels()).rejects.toBeInstanceOf(
+      HotUpdaterSchemaMigrationRequiredError,
+    );
+    await migrateCosmosDatabase(config());
+    await migrateCosmosDatabase(config());
+    await expect(core.listChannels()).resolves.toEqual([]);
+  });
+
+  it("checks a container read only, as init's preflight does before creating anything", async () => {
+    const databaseId = emulator.databaseId();
+    const container = emulator.client
+      .database(databaseId)
+      .container(AZURE_COSMOS_V1_CONTAINER);
+    try {
+      // A missing database passes and stays missing.
+      await assertCosmosContainerReusable(container, currentCosmosEngine());
+      await expect(
+        emulator.client.database(databaseId).read(),
+      ).rejects.toMatchObject({ code: 404 });
+
+      const { database } = await emulator.client.databases.createIfNotExists({
+        id: databaseId,
+      });
+      await database.containers.createIfNotExists({
+        id: AZURE_COSMOS_V1_CONTAINER,
+        partitionKey: { paths: [COSMOS_PARTITION_KEY_PATH] },
+        uniqueKeyPolicy: { uniqueKeys: [{ paths: ["/pk"] }] },
+      });
+      await expect(
+        assertCosmosContainerReusable(container, currentCosmosEngine()),
+      ).rejects.toThrow("has unique keys");
+      await database.container(AZURE_COSMOS_V1_CONTAINER).delete();
+
+      await migrateCosmosDatabase({ ...config(), databaseId });
+      await assertCosmosContainerReusable(container, currentCosmosEngine());
+      await expect(
+        assertCosmosContainerReusable(container, "9"),
+      ).rejects.toThrow('this version writes "9"');
+    } finally {
+      await emulator.dropDatabase(databaseId);
+    }
+  });
+
+  it("refuses a container partitioned by another path", async () => {
+    const databaseId = emulator.databaseId();
+    try {
+      const { database } = await emulator.client.databases.createIfNotExists({
+        id: databaseId,
+      });
+      await database.containers.createIfNotExists({
+        id: AZURE_COSMOS_V1_CONTAINER,
+        partitionKey: { paths: ["/id"] },
+      });
+      await expect(
+        migrateCosmosDatabase({ ...config(), databaseId }),
+      ).rejects.toThrow(COSMOS_PARTITION_KEY_PATH);
+    } finally {
+      await emulator.dropDatabase(databaseId);
+    }
+  });
+
+  it.each([
+    ["another storage engine", "9", false],
+    ["no engine marker beside other items", null, true],
+    ["no engine marker beside another partition's items", null, "other"],
+  ] as const)(
+    "refuses to migrate a container with %s",
+    async (_, engine, otherItem) => {
+      const databaseId = emulator.databaseId();
+      try {
+        const named = { ...config(), databaseId };
+        await migrateCosmosDatabase(named);
+        const container = emulator.client
+          .database(databaseId)
+          .container(AZURE_COSMOS_V1_CONTAINER);
+        const { resources } = await container.items
+          .query<{ id: string; row: { key: string } }>(
+            "SELECT c.id, c.row FROM c",
+            { partitionKey: COSMOS_PARTITION },
+          )
+          .fetchAll();
+        const marker = resources.find(
+          ({ row }) => row.key === "schema.engine",
+        )!;
+        if (engine === null) {
+          await container.item(marker.id, COSMOS_PARTITION).delete();
+        } else {
+          await container
+            .item(marker.id, COSMOS_PARTITION)
+            .patch([{ op: "set", path: "/row/value", value: engine }]);
+        }
+        if (otherItem) {
+          await container.items.create(
+            otherItem === "other"
+              ? { id: "another-app", partition: "another-app" }
+              : {
+                  id: "existing-item",
+                  partition: COSMOS_PARTITION,
+                  pk: "bundles",
+                  sk: "a",
+                  row: {},
+                },
+          );
+        }
+        await expect(migrateCosmosDatabase(named)).rejects.toThrow(
+          engine === null ? "no schema.engine setting" : 'storage engine "9"',
+        );
+      } finally {
+        await emulator.dropDatabase(databaseId);
+      }
+    },
+  );
+
+  it("refuses a container of another storage engine on hot-updater db migrate's path too", async () => {
+    const databaseId = emulator.databaseId();
+    try {
+      const named = { ...config(), databaseId };
+      await migrateCosmosDatabase(named);
+      const container = emulator.client
+        .database(databaseId)
+        .container(AZURE_COSMOS_V1_CONTAINER);
+      const { resources } = await container.items
+        .query<{ id: string; row: { key: string } }>(
+          "SELECT c.id, c.row FROM c",
+          { partitionKey: COSMOS_PARTITION },
+        )
+        .fetchAll();
+      const marker = resources.find(({ row }) => row.key === "schema.engine")!;
+      await container
+        .item(marker.id, COSMOS_PARTITION)
+        .patch([{ op: "set", path: "/row/value", value: "9" }]);
+      // What hot-updater db migrate and the scaffold's migrate.ts run.
+      const database = cosmosDatabase(named) as ToolingDatabase;
+      try {
+        const migration = await database.createMigrator!(
+          toolingTargetOf([insights()]),
+        ).migrateToLatest({ updateSettings: true });
+        await expect(migration.execute()).rejects.toThrow('storage engine "9"');
+      } finally {
+        await database.dispose?.();
+      }
+    } finally {
+      await emulator.dropDatabase(databaseId);
+    }
+  });
+
+  it("adopts an existing container with its default indexing and no default TTL", async () => {
+    const databaseId = emulator.databaseId();
+    try {
+      const { database } = await emulator.client.databases.createIfNotExists({
+        id: databaseId,
+      });
+      await database.containers.createIfNotExists({
+        id: AZURE_COSMOS_V1_CONTAINER,
+        partitionKey: { paths: [COSMOS_PARTITION_KEY_PATH] },
+      });
+      await migrateCosmosDatabase({ ...config(), databaseId });
+      const core = createHotUpdater({
+        database: cosmosDatabase({ ...config(), databaseId }),
+        storage: createReleaseCatalogTestStorage(),
+        clientAccess: "public",
+      }).core;
+      await expect(core.listChannels()).resolves.toEqual([]);
+    } finally {
+      await emulator.dropDatabase(databaseId);
+    }
+  });
+
+  setupDatabaseTestSuite({
+    name: "cosmosDatabase (Cosmos DB emulator)",
+    createHttpClient: (options) =>
+      startHttpTestServer(
+        createHotUpdater({
+          ...options,
+          plugins: [insights()],
+          clientAccess: "public",
+        }).handlers,
+      ),
+    plugins: [
+      insightsTestSuite({
+        createModel: (database) =>
+          createInsightsModel(
+            createHotUpdater({
+              database,
+              storage: createReleaseCatalogTestStorage(),
+              plugins: [insights()],
+              clientAccess: "public",
+            }).api.insights,
+          ),
+      }),
+    ],
+    createDatabase: () => cosmosDatabase(config()),
+    migrate: () => migrateCosmosDatabase(config(), [insights()]),
+    reset: clearData,
+    dispose: () => undefined,
+  });
+});
+
+describe("Cosmos DB TTL", () => {
+  /** Rows expire a day after `at`, with one index copy each. */
+  const expiring: PhysicalTable = {
+    name: "expiring",
+    columns: [
+      { name: "id", type: "string", nullable: false },
+      { name: "grp", type: "string", nullable: false },
+      { name: "at", type: "integer", nullable: false },
+      { name: "hits", type: "integer", nullable: false },
+      { name: "_v", type: "integer", nullable: false },
+    ],
+    key: ["id"],
+    indexes: [{ name: "byGroup", eq: ["grp"], sort: ["at"] }],
+    retention: { column: "at", ms: 86_400_000 },
+  };
+
+  it("stamps the expiry on every item of an expiring row, and on a counter it creates or adds to", async () => {
+    const { store, container, cleanup } = await createStore();
+    const adapter = createKvAdapter({ store });
+    const items = async () => {
+      const { resources } = await container.items
+        .query<{ expireAt: number | null; ttl: number }>(
+          "SELECT c.expireAt, c.ttl FROM c",
+          { partitionKey: COSMOS_PARTITION },
+        )
+        .fetchAll();
+      return resources;
+    };
+    try {
+      const now = Date.now();
+      await adapter.write([
+        {
+          type: "insert",
+          table: expiring,
+          row: { id: "a", grp: "g", at: now, hits: 0, _v: 0 },
+        },
+      ]);
+      // The row and its index copy, each with the TTL left until the expiry.
+      const written = await items();
+      expect(written.map(({ expireAt }) => expireAt)).toEqual([
+        now + 86_400_000,
+        now + 86_400_000,
+      ]);
+      expect(written.map(({ ttl }) => ttl)).toEqual([86_400, 86_400]);
+
+      const counters = { ...expiring, name: "counters", indexes: [] };
+      const add = () =>
+        adapter.write([
+          {
+            type: "increment",
+            table: counters,
+            key: ["c"],
+            by: { hits: 1 },
+            init: { id: "c", grp: "g", at: now + 1_000, hits: 0, _v: 0 },
+          },
+        ]);
+      await add();
+      await add();
+      const [row] = await adapter.get(counters, [["c"]]);
+      expect(row).toMatchObject({ hits: 2, _v: 2 });
+      expect(
+        (await items()).filter(({ expireAt }) => expireAt === now + 86_401_000),
+      ).toHaveLength(1);
+    } finally {
+      await cleanup();
+    }
+  });
+});
+
+describe("Cosmos DB wide counters", () => {
+  /** Twelve counters on an expiring row: more than one patch takes. */
+  const COUNTERS = Array.from({ length: 12 }, (_, at) => `c${at}`);
+  const wide: PhysicalTable = {
+    name: "wide",
+    columns: [
+      { name: "id", type: "string", nullable: false },
+      { name: "at", type: "integer", nullable: false },
+      ...COUNTERS.map((name) => ({
+        name,
+        type: "integer" as const,
+        nullable: false,
+      })),
+      { name: "note", type: "string", nullable: true },
+      { name: "_v", type: "integer", nullable: false },
+    ],
+    key: ["id"],
+    indexes: [],
+    retention: { column: "at", ms: 86_400_000 },
+  };
+
+  it("adds to many rows of many counters in one write the adapter says fits", async () => {
+    const { store, cleanup } = await createStore();
+    const adapter = createKvAdapter({ store });
+    const now = Date.now();
+    const zero = Object.fromEntries(COUNTERS.map((name) => [name, 0]));
+    const one = Object.fromEntries(COUNTERS.map((name) => [name, 1]));
+    const increments = Array.from({ length: 60 }, (_, at) => ({
+      type: "increment" as const,
+      table: wide,
+      key: [`row-${at}`],
+      by: one,
+      init: { id: `row-${at}`, at: now, ...zero, _v: 0 },
+    }));
+    try {
+      expect(adapter.fits(increments)).toBe(true);
+      // The first write creates the rows; the second replaces each one.
+      await adapter.write(increments);
+      await adapter.write(increments);
+      // Racing writes to one row each apply once.
+      await Promise.all([
+        adapter.write(increments.slice(0, 1)),
+        adapter.write(increments.slice(0, 1)),
+      ]);
+
+      const rows = await adapter.get(
+        wide,
+        increments.map(({ key }) => key),
+      );
+      expect(rows[0]).toMatchObject(
+        Object.fromEntries(COUNTERS.map((name) => [name, 4])),
+      );
+      for (const row of rows.slice(1)) {
+        expect(row).toMatchObject({
+          ...Object.fromEntries(COUNTERS.map((name) => [name, 2])),
+          _v: 2,
+        });
+      }
+    } finally {
+      await cleanup();
+    }
+  });
+  it("refuses, before sending, a write whose replaced rows outgrow a batch", async () => {
+    const { store, cleanup } = await createStore();
+    const adapter = createKvAdapter({ store });
+    const now = Date.now();
+    const zero = Object.fromEntries(COUNTERS.map((name) => [name, 0]));
+    const one = Object.fromEntries(COUNTERS.map((name) => [name, 1]));
+    const keys = Array.from({ length: 60 }, (_, at) => `big-${at}`);
+    try {
+      // Rows of 40 KB each, written apart.
+      for (const id of keys) {
+        await adapter.write([
+          {
+            type: "insert",
+            table: wide,
+            row: { id, at: now, ...zero, note: "x".repeat(40_000), _v: 0 },
+          },
+        ]);
+      }
+      const increments = keys.map((id) => ({
+        type: "increment" as const,
+        table: wide,
+        key: [id],
+        by: one,
+        init: { id, at: now, ...zero, note: null, _v: 0 },
+      }));
+      expect(adapter.fits(increments)).toBe(true);
+      await expect(adapter.write(increments)).rejects.toThrow(
+        "Write fewer of them at once",
+      );
+      const [row] = await adapter.get(wide, [[keys[0]!]]);
+      expect(row).toMatchObject({ c0: 0, _v: 0 });
+    } finally {
+      await cleanup();
+    }
+  });
+});

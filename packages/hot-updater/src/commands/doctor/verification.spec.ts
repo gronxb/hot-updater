@@ -43,7 +43,7 @@ const prepare = async (
   const manifest = await readJson(scaffold.manifest);
   for (const file of Object.keys(manifest.files)) {
     if (
-      !/^(worker|supabase|lambda|cloudfront|dynamodb|iam|firebase)\//.test(
+      !/^(worker|supabase|lambda|cloudfront|dynamodb|iam|firebase|vercel|azure)\//.test(
         file,
       ) ||
       /\.(md|map)$/.test(file)
@@ -66,7 +66,14 @@ const successful = (
 ) => checks.length > 0 && checks.every((check) => check.status === "pass");
 
 describe("doctor scaffold contract", () => {
-  it.each<InitProvider>(["cloudflare", "supabase", "aws", "firebase"])(
+  it.each<InitProvider>([
+    "cloudflare",
+    "supabase",
+    "aws",
+    "firebase",
+    "vercel",
+    "azure",
+  ])(
     "accepts configured %s templates and preserves harmless customizations",
     async (provider) => {
       const scaffold = await prepare(provider);
