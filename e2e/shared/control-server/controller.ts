@@ -541,8 +541,7 @@ let artifactResponseDelayMs = 0;
 // can order a download after a launch; the limit keeps a forgotten hold from
 // hanging the run.
 const ARTIFACT_HOLD_LIMIT_MS = 120_000;
-let artifactHold: { promise: Promise<void>; release: () => void } | null =
-  null;
+let artifactHold: { promise: Promise<void>; release: () => void } | null = null;
 
 function setArtifactHold(held: boolean) {
   if (held) {
@@ -4299,6 +4298,7 @@ function writeAndroidE2ECohort(cohort: string) {
 async function setNativePrepare(input: {
   strategy: "appVersion" | "fingerprint";
   requestTimeoutMs?: number;
+  prepareTimeoutMs?: number;
 }): Promise<JobResult> {
   if (process.env.HOT_UPDATER_E2E_TRACK !== "brownfield") {
     throw new Error("Native prepare runs only on the brownfield track");
@@ -4311,6 +4311,9 @@ async function setNativePrepare(input: {
     ...(input.requestTimeoutMs === undefined
       ? {}
       : { requestTimeoutMs: input.requestTimeoutMs }),
+    ...(input.prepareTimeoutMs === undefined
+      ? {}
+      : { prepareTimeoutMs: input.prepareTimeoutMs }),
   });
   if (fixtureSession.platform === "ios") {
     captureCommand("xcrun", [
@@ -6683,6 +6686,7 @@ export function startResetRemoteBundlesJob() {
 export function startSetNativePrepareJob(input: {
   strategy: "appVersion" | "fingerprint";
   requestTimeoutMs?: number;
+  prepareTimeoutMs?: number;
 }) {
   return createJob(() => setNativePrepare(input));
 }

@@ -27,7 +27,13 @@ export const brownfieldNativeRequiredUpdateScenario: ScenarioDefinition = {
     await app.control(
       "turn on the native update check",
       "/e2e/jobs/set-native-prepare",
-      { strategy: "appVersion" },
+      // A slow provider must not turn the required update pending: the
+      // requests and the wait get room beyond the hosts' defaults.
+      {
+        strategy: "appVersion",
+        requestTimeoutMs: 60_000,
+        prepareTimeoutMs: 90_000,
+      },
       { saveResultFieldsAs: { nonce: "nativePrepareNonce" } },
     );
     await app.launch("launch with the native update check");

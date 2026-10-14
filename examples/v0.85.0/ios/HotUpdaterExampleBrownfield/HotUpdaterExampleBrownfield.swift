@@ -30,7 +30,7 @@ public func startReactNativeWithHotUpdater(
         requestTimeout: (request.requestTimeoutMs ?? 5_000) / 1_000,
         bundle: ReactNativeBundle
       ),
-      timeout: 10
+      timeout: (request.prepareTimeoutMs ?? 10_000) / 1_000
     )
     await request.report(status: result.status)
   }
@@ -64,6 +64,7 @@ private struct NativePrepareRequest: Decodable {
   let updateStrategy: String
   let nonce: String
   let requestTimeoutMs: Double?
+  let prepareTimeoutMs: Double?
 
   static func read() -> NativePrepareRequest? {
     guard let value = UserDefaults.standard.string(forKey: "HotUpdaterE2ENativePrepare") else {

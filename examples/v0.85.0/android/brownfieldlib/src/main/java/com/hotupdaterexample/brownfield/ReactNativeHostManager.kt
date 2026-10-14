@@ -10,14 +10,14 @@ import com.hotupdater.HotUpdater
 import com.hotupdater.HotUpdaterCheckOptions
 import com.hotupdater.HotUpdaterPrepareResult
 import com.hotupdater.HotUpdaterUpdateStrategy
-import java.net.HttpURLConnection
-import java.net.URL
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.net.HttpURLConnection
+import java.net.URL
 
 /**
  * Starts React Native for the brownfield E2E host, as the brownfield guide
@@ -48,7 +48,7 @@ object ReactNativeHostManager {
                                 },
                             requestTimeoutMillis = request.requestTimeoutMillis,
                         ),
-                        timeoutMillis = 10_000,
+                        timeoutMillis = request.prepareTimeoutMillis,
                     )
                 request.report(result)
             }
@@ -102,6 +102,7 @@ private class NativePrepareRequest(
     val updateStrategy: String,
     val nonce: String,
     val requestTimeoutMillis: Long,
+    val prepareTimeoutMillis: Long,
 ) {
     /** Publishes `<nonce>:<status>` to the control server's screen state. */
     suspend fun report(result: HotUpdaterPrepareResult) {
@@ -143,6 +144,7 @@ private class NativePrepareRequest(
                     updateStrategy = json.getString("updateStrategy"),
                     nonce = json.getString("nonce"),
                     requestTimeoutMillis = json.optLong("requestTimeoutMs", 5_000),
+                    prepareTimeoutMillis = json.optLong("prepareTimeoutMs", 10_000),
                 )
             }.getOrNull()
         }

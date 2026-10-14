@@ -496,6 +496,7 @@ app.post("/e2e/jobs/set-native-prepare", async (c) => {
   const payload = (await c.req.json()) as {
     strategy?: string;
     requestTimeoutMs?: number;
+    prepareTimeoutMs?: number;
   };
   if (payload.strategy !== "appVersion" && payload.strategy !== "fingerprint") {
     return c.json({ error: "strategy must be appVersion or fingerprint" }, 400);
@@ -510,10 +511,21 @@ app.post("/e2e/jobs/set-native-prepare", async (c) => {
       400,
     );
   }
+  if (
+    payload.prepareTimeoutMs !== undefined &&
+    (!Number.isSafeInteger(payload.prepareTimeoutMs) ||
+      payload.prepareTimeoutMs <= 0)
+  ) {
+    return c.json(
+      { error: "prepareTimeoutMs must be a positive integer" },
+      400,
+    );
+  }
   return c.json({
     jobId: startSetNativePrepareJob({
       strategy: payload.strategy,
       requestTimeoutMs: payload.requestTimeoutMs,
+      prepareTimeoutMs: payload.prepareTimeoutMs,
     }),
   });
 });
@@ -528,10 +540,7 @@ app.post("/e2e/jobs/wait-for-native-prepare", async (c) => {
       status !== "pending" &&
       status !== "failed")
   ) {
-    return c.json(
-      { error: "nonce and a prepare status are required" },
-      400,
-    );
+    return c.json({ error: "nonce and a prepare status are required" }, 400);
   }
   return c.json({
     jobId: startWaitForNativePrepareJob({ nonce: payload.nonce, status }),
