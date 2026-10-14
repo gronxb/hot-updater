@@ -32,6 +32,7 @@ internal object StrictJson {
                                 if (!member()) return false
                             }
                         }
+
                         '[' -> {
                             index++
                             skipWhitespace()
@@ -42,14 +43,27 @@ internal object StrictJson {
                                 containers.addLast('[')
                             }
                         }
+
                         '"' -> {
                             if (!string()) return false
                             expectValue = false
                         }
-                        't' -> if (literal("true")) expectValue = false else return false
-                        'f' -> if (literal("false")) expectValue = false else return false
-                        'n' -> if (literal("null")) expectValue = false else return false
-                        else -> if (number()) expectValue = false else return false
+
+                        't' -> {
+                            if (literal("true")) expectValue = false else return false
+                        }
+
+                        'f' -> {
+                            if (literal("false")) expectValue = false else return false
+                        }
+
+                        'n' -> {
+                            if (literal("null")) expectValue = false else return false
+                        }
+
+                        else -> {
+                            if (number()) expectValue = false else return false
+                        }
                     }
                 } else {
                     val container = containers.lastOrNull() ?: return index == text.length
@@ -62,19 +76,28 @@ internal object StrictJson {
                             }
                             expectValue = true
                         }
-                        '}' -> if (container == '{') {
-                            index++
-                            containers.removeLast()
-                        } else {
+
+                        '}' -> {
+                            if (container == '{') {
+                                index++
+                                containers.removeLast()
+                            } else {
+                                return false
+                            }
+                        }
+
+                        ']' -> {
+                            if (container == '[') {
+                                index++
+                                containers.removeLast()
+                            } else {
+                                return false
+                            }
+                        }
+
+                        else -> {
                             return false
                         }
-                        ']' -> if (container == '[') {
-                            index++
-                            containers.removeLast()
-                        } else {
-                            return false
-                        }
-                        else -> return false
                     }
                 }
             }
@@ -94,17 +117,29 @@ internal object StrictJson {
             while (index < text.length) {
                 val char = text[index++]
                 when {
-                    char == '"' -> return true
-                    char < ' ' -> return false
+                    char == '"' -> {
+                        return true
+                    }
+
+                    char < ' ' -> {
+                        return false
+                    }
+
                     char == '\\' -> {
                         if (index >= text.length) return false
                         when (text[index++]) {
-                            '"', '\\', '/', 'b', 'f', 'n', 'r', 't' -> Unit
+                            '"', '\\', '/', 'b', 'f', 'n', 'r', 't' -> {
+                                Unit
+                            }
+
                             'u' -> {
                                 if (index + 4 > text.length) return false
                                 repeat(4) { if (!isHexDigit(text[index++])) return false }
                             }
-                            else -> return false
+
+                            else -> {
+                                return false
+                            }
                         }
                     }
                 }
