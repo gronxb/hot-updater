@@ -1207,6 +1207,29 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `a staging's events report the cohort its check selected for`() =
+        runBlocking {
+            val gate = CompletableDeferred<Unit>()
+            val state = FakeState().apply { stageGate = gate }
+            val checker = NativeUpdateChecker(state, FakeTransport(routes(minorCatalog())))
+            assertTrue(checker.prepare(OPTIONS, 5_000, null) is HotUpdaterPrepareResult.Pending)
+            state.stageEntered.await()
+
+            // The cohort changes while the staging selected for 500 downloads.
+            state.cohortValue = "501"
+            gate.complete(Unit)
+            withTimeout(5_000) { state.staged.await() }
+            delay(100)
+
+            val selected =
+                NativeUpdateEventQueue(state::getStorageItem, state::setStorageItem, build = {
+                    NativeUpdateEventQueue.buildOf(state.getAppVersion(), state.getMinBundleId(), "500")
+                }).take()
+            val names = JSONArray(selected).let { events -> (0 until events.length()).map { events.getJSONObject(it).getString("name") } }
+            assertTrue(names.contains("onBundleDownloaded"))
+        }
+
+    @Test
     fun `taking the events returns them once and clears the queue`() {
         val storage = mutableMapOf<String, String>()
         val queue =
