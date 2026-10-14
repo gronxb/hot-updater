@@ -301,17 +301,6 @@ export const createVercelApi = ({
       );
     },
 
-    /** Removes a store's connection, and the variables it added, from a project. */
-    async disconnectBlobStore(
-      storeId: string,
-      connectionId: string,
-    ): Promise<void> {
-      await request(
-        "DELETE",
-        `/v1/storage/stores/${encodeURIComponent(storeId)}/connections/${encodeURIComponent(connectionId)}`,
-      );
-    },
-
     async listProjectEnv(projectId: string): Promise<VercelProjectEnv[]> {
       const envs = await paginate(
         `/v10/projects/${encodeURIComponent(projectId)}/env`,

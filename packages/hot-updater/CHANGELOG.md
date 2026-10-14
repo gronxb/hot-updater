@@ -1,5 +1,19 @@
 # hot-updater
 
+## 1.0.5
+
+### Patch Changes
+
+- Updated dependencies [1d3ac77]
+  - @hot-updater/console@1.0.5
+  - @hot-updater/android-helper@1.0.5
+  - @hot-updater/apple-helper@1.0.5
+  - @hot-updater/bsdiff@1.0.5
+  - @hot-updater/cli-tools@1.0.5
+  - @hot-updater/protocol@1.0.5
+  - @hot-updater/server@1.0.5
+  - @hot-updater/plugin-core@1.0.5
+
 ## 1.0.4
 
 ### Patch Changes
