@@ -561,6 +561,14 @@ final class NativeUpdateProgress: @unchecked Sendable {
 // MARK: - Transport
 
 final class URLSessionUpdateTransport: NativeUpdateTransport {
+    private let protocolClasses: [AnyClass]?
+
+    /// `protocolClasses` replaces the session's URL protocols; tests stub
+    /// the network with it.
+    init(protocolClasses: [AnyClass]? = nil) {
+        self.protocolClasses = protocolClasses
+    }
+
     func get(_ url: URL, headers: [String: String], timeout: TimeInterval) async throws -> NativeUpdateResponse {
         var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: timeout)
         request.httpMethod = "GET"
@@ -575,31 +583,73 @@ final class URLSessionUpdateTransport: NativeUpdateTransport {
         configuration.requestCachePolicy = .reloadIgnoringLocalCacheData
         configuration.timeoutIntervalForRequest = timeout
         configuration.timeoutIntervalForResource = timeout
+        if let protocolClasses {
+            configuration.protocolClasses = protocolClasses
+        }
         let session = URLSession(configuration: configuration)
         defer { session.finishTasksAndInvalidate() }
 
-        return try await withCheckedThrowingContinuation { continuation in
-            session.dataTask(with: request) { data, response, error in
-                if let error {
-                    continuation.resume(throwing: error)
-                    return
+        // Cancelling the caller cancels the request, so a cancelled check
+        // stops waiting at once instead of at the timeout.
+        let running = RunningDataTask()
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { continuation in
+                let task = session.dataTask(with: request) { data, response, error in
+                    if let error {
+                        if (error as? URLError)?.code == .cancelled {
+                            continuation.resume(throwing: CancellationError())
+                        } else {
+                            continuation.resume(throwing: error)
+                        }
+                        return
+                    }
+                    guard let response = response as? HTTPURLResponse else {
+                        continuation.resume(throwing: URLError(.badServerResponse))
+                        return
+                    }
+                    var headers = [String: String]()
+                    for (name, value) in response.allHeaderFields {
+                        guard let name = name as? String else { continue }
+                        headers[name.lowercased()] = "\(value)"
+                    }
+                    continuation.resume(returning: NativeUpdateResponse(
+                        status: response.statusCode,
+                        headers: headers,
+                        body: String(decoding: data ?? Data(), as: UTF8.self)
+                    ))
                 }
-                guard let response = response as? HTTPURLResponse else {
-                    continuation.resume(throwing: URLError(.badServerResponse))
-                    return
-                }
-                var headers = [String: String]()
-                for (name, value) in response.allHeaderFields {
-                    guard let name = name as? String else { continue }
-                    headers[name.lowercased()] = "\(value)"
-                }
-                continuation.resume(returning: NativeUpdateResponse(
-                    status: response.statusCode,
-                    headers: headers,
-                    body: String(decoding: data ?? Data(), as: UTF8.self)
-                ))
-            }.resume()
+                running.start(task)
+            }
+        } onCancel: {
+            running.cancel()
         }
+    }
+}
+
+/// The data task of one request; cancelling before it starts cancels it as
+/// it starts.
+private final class RunningDataTask: @unchecked Sendable {
+    private let lock = NSLock()
+    private var task: URLSessionDataTask?
+    private var cancelled = false
+
+    func start(_ task: URLSessionDataTask) {
+        lock.lock()
+        self.task = task
+        let cancelled = self.cancelled
+        lock.unlock()
+        task.resume()
+        if cancelled {
+            task.cancel()
+        }
+    }
+
+    func cancel() {
+        lock.lock()
+        cancelled = true
+        let task = self.task
+        lock.unlock()
+        task?.cancel()
     }
 }
 
