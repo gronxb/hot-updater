@@ -124,6 +124,7 @@ interface BundleStorageService {
         manifestFileHash: String,
         assets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String? = null,
+        fileResolver: ArtifactFileResolver? = null,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult
 
@@ -1674,6 +1675,7 @@ class BundleFileStorageService(
         manifestFileHash: String,
         assets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String?,
+        fileResolver: ArtifactFileResolver?,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult =
         updateMutex.withLock {
@@ -1683,6 +1685,7 @@ class BundleFileStorageService(
                 manifestFileHash = manifestFileHash,
                 changedAssets = assets,
                 archiveUrl = archiveUrl,
+                fileResolver = fileResolver,
                 progressCallback = progressCallback,
             )
         }
@@ -1693,6 +1696,7 @@ class BundleFileStorageService(
         manifestFileHash: String,
         changedAssets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String?,
+        fileResolver: ArtifactFileResolver?,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult {
         Log.d(
@@ -1724,6 +1728,7 @@ class BundleFileStorageService(
                 manifestFileHash = manifestFileHash,
                 changedAssets = changedAssets,
                 archiveUrl = archiveUrl,
+                fileResolver = fileResolver,
                 bundleStoreDir = bundleStoreDir,
                 finalBundleDir = finalBundleDir,
                 progressCallback = progressCallback,
@@ -1773,6 +1778,35 @@ class BundleFileStorageService(
                 )
             }
         }
+
+    /**
+     * Asks [fileResolver] for the URLs of [downloads], in requests of at most
+     * [ArtifactFileResolver.ARTIFACT_FILES_REQUEST_LIMIT] paths.
+     */
+    private suspend fun resolveFileUrls(
+        fileResolver: ArtifactFileResolver,
+        downloads: MutableMap<String, ChangedAssetDescriptor>,
+    ) {
+        for (paths in downloads.keys.sorted().chunked(ArtifactFileResolver.ARTIFACT_FILES_REQUEST_LIMIT)) {
+            val files =
+                try {
+                    fileResolver.resolve(paths)
+                } catch (error: CancellationException) {
+                    throw error
+                } catch (error: Exception) {
+                    throw downloadError(error)
+                }
+            for (path in paths) {
+                val file = files[path] ?: throw HotUpdaterException.invalidBundle()
+                try {
+                    URL(file.url)
+                } catch (error: java.net.MalformedURLException) {
+                    throw HotUpdaterException.invalidFileUrl(path, file.url, UpdateFailureResource.FILE)
+                }
+                downloads[path] = downloads.getValue(path).copy(fileUrl = file.url, fileCompression = file.compression)
+            }
+        }
+    }
 
     /** The rejection for a download that returned [error]. */
     private fun downloadError(error: Exception): HotUpdaterException =
@@ -2143,6 +2177,7 @@ class BundleFileStorageService(
         manifestFileHash: String,
         changedAssets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String?,
+        fileResolver: ArtifactFileResolver?,
         bundleStoreDir: File,
         finalBundleDir: File,
         progressCallback: (UpdateProgressPayload) -> Unit,
@@ -2204,20 +2239,40 @@ class BundleFileStorageService(
                     if (manifest.bundleId != bundleId) {
                         throw HotUpdaterException.invalidBundle()
                     }
-                    // Reuse never bypasses the complete artifact contract.
-                    if (manifest.assets.keys != changedAssets.keys) throw HotUpdaterException.invalidBundle()
+                    if (fileResolver == null) {
+                        // Legacy: artifact protocol v1, where every file comes with its URL.
+                        // Reuse never bypasses the complete artifact contract.
+                        if (manifest.assets.keys != changedAssets.keys) throw HotUpdaterException.invalidBundle()
+                    } else if (!manifest.assets.keys.containsAll(changedAssets.keys)) {
+                        // In v2, `assets` holds only the Hermes patch.
+                        throw HotUpdaterException.invalidBundle()
+                    }
                     manifest.assets.forEach { (path, asset) ->
-                        val descriptor = changedAssets.getValue(path)
+                        val descriptor = changedAssets[path]
                         if (RelativePathResolver.normalizeRelativePath(path) != path ||
                             path == "manifest.json" ||
-                            descriptor.fileUrl.isNullOrBlank() ||
-                            !descriptor.fileHash.equals(asset.fileHash, ignoreCase = true) ||
+                            (fileResolver == null && descriptor?.fileUrl.isNullOrBlank()) ||
+                            (fileResolver == null && !descriptor!!.fileHash.equals(asset.fileHash, ignoreCase = true)) ||
                             RelativePathResolver.resolveInside(tmpDir, path) == null
                         ) {
                             throw HotUpdaterException.invalidBundle()
                         }
                     }
                     manifest
+                }
+            // In v2, the manifest names every file; URLs come once the install
+            // knows which files it downloads.
+            val plannedAssets =
+                if (fileResolver == null) {
+                    changedAssets
+                } else {
+                    targetManifest.assets.mapValues { (path, asset) ->
+                        ChangedAssetDescriptor(
+                            fileUrl = null,
+                            fileHash = asset.fileHash,
+                            patch = changedAssets[path]?.patch,
+                        )
+                    }
                 }
             updateStep(UpdateFailureStage.INSTALL, resource = null) {
                 if (!tmpDir.isDirectory && !tmpDir.mkdirs()) throw HotUpdaterException.directoryCreationFailed()
@@ -2271,7 +2326,7 @@ class BundleFileStorageService(
                             return@forEachIndexed
                         }
                         if (packagedHash != null) targetFile.delete()
-                        downloads[assetPath] = changedAssets.getValue(assetPath)
+                        downloads[assetPath] = plannedAssets.getValue(assetPath)
                     }
                     downloads
                 }
@@ -2301,6 +2356,11 @@ class BundleFileStorageService(
                     diffFiles = archiveProgress
                     emptyList()
                 } else {
+                    if (fileResolver != null) {
+                        updateStep(UpdateFailureStage.DOWNLOAD, UpdateFailureResource.FILE) {
+                            resolveFileUrls(fileResolver, downloads)
+                        }
+                    }
                     diffFiles = createDiffProgressFiles(downloads)
                     emitDiffProgress(progressCallback, "downloading", diffFiles)
                     val progressLock = Any()

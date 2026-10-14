@@ -1634,6 +1634,91 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    fun `artifact protocol v2 asks only for the files it downloads, in requests of 100`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("artifact-files-resolver")
+            val reused = (0 until 10).associate { "drawable-mdpi/reused$it.png" to "reused$it" }
+            val changed =
+                mapOf("index.android.bundle" to "bundle") +
+                    (0 until 149).associate { "drawable-mdpi/changed$it.png" to "changed$it" }
+            val contents = reused + changed
+            val hashes = contents.mapValues { sha256(root, it.value) }
+            val manifest = manifestJson(bundleId = "target", assets = hashes)
+            val downloads =
+                BinaryMappingDownloadService(
+                    mapOf(MANIFEST_URL to manifest.toByteArray()) +
+                        changed.mapKeys { "https://cdn.example.com/${it.key}" }.mapValues { it.value.toByteArray() },
+                )
+            val resolver = RecordingArtifactFileResolver { path -> "https://cdn.example.com/$path" }
+
+            createService(
+                root,
+                downloadService = downloads,
+                builtInAssetResolver = MappingBuiltInAssetResolver(reused),
+            ).updateBundle(
+                bundleId = "target",
+                manifestUrl = MANIFEST_URL,
+                manifestFileHash = sha256(root, manifest),
+                assets = emptyMap(),
+                fileResolver = resolver,
+                progressCallback = {},
+            )
+
+            assertEquals(listOf(100, 50), resolver.requests.map { it.size })
+            assertEquals(changed.keys, resolver.requests.flatten().toSet())
+            assertEquals(
+                setOf(MANIFEST_URL) + changed.keys.map { "https://cdn.example.com/$it" },
+                downloads.calls.toSet(),
+            )
+            val targetDir = File(bundleStoreDir(root), "target")
+            assertEquals("changed148", File(targetDir, "drawable-mdpi/changed148.png").readText())
+            assertEquals("reused3", File(targetDir, "drawable-mdpi/reused3.png").readText())
+        }
+
+    @Test
+    fun `artifact protocol v2 asks for no file when it takes the archive`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("artifact-files-archive")
+            val archiveBytes = Base64.getDecoder().decode(TarBrArchiveExtractorTest.VALID)
+            val contents = mapOf("assets/image.png" to "image", "index.android.bundle" to "bundle")
+            val hashes = contents.mapValues { sha256(root, it.value) }
+            val manifest =
+                manifestJson(
+                    bundleId = "target",
+                    assets = hashes,
+                    byteSizes =
+                        contents.mapValues {
+                            it.value
+                                .toByteArray()
+                                .size
+                                .toLong()
+                        },
+                    downloadByteSizes = contents.mapValues { 10_000L },
+                    archive = archiveJson(root, archiveBytes, tarByteSize = 3072),
+                )
+            val downloads =
+                BinaryMappingDownloadService(mapOf(MANIFEST_URL to manifest.toByteArray(), ARCHIVE_URL to archiveBytes))
+            val resolver = RecordingArtifactFileResolver { path -> "https://cdn.example.com/$path" }
+
+            createService(
+                root,
+                downloadService = downloads,
+                builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+            ).updateBundle(
+                bundleId = "target",
+                manifestUrl = MANIFEST_URL,
+                manifestFileHash = sha256(root, manifest),
+                assets = emptyMap(),
+                archiveUrl = ARCHIVE_URL,
+                fileResolver = resolver,
+                progressCallback = {},
+            )
+
+            assertEquals(emptyList<List<String>>(), resolver.requests)
+            assertEquals(listOf(MANIFEST_URL, ARCHIVE_URL), downloads.calls)
+        }
+
+    @Test
     fun `first OTA reuses built in assets and downloads only changed files despite an archive`() =
         runBlocking {
             val root = temporaryFolder.newFolder("first-ota-built-in-over-archive")
@@ -2683,6 +2768,17 @@ class BundleFileStorageServiceTest {
             fileSizeCallback?.invoke(bytes.size.toLong())
             progressCallback(DownloadProgress(1.0, bytes.size.toLong(), bytes.size.toLong()))
             return DownloadResult.Success(destination)
+        }
+    }
+
+    private class RecordingArtifactFileResolver(
+        private val urlOf: (String) -> String,
+    ) : ArtifactFileResolver {
+        val requests = CopyOnWriteArrayList<List<String>>()
+
+        override suspend fun resolve(paths: List<String>): Map<String, ResolvedArtifactFile> {
+            requests += paths
+            return paths.associateWith { ResolvedArtifactFile(url = urlOf(it), compression = null) }
         }
     }
 

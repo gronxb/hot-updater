@@ -59,7 +59,8 @@ class HotUpdaterModule internal constructor(
         while (iterator.hasNextKey()) {
             val assetPath = iterator.nextKey()
             val assetMap = changedAssetsMap.getMap(assetPath) ?: continue
-            val assetHash = assetMap.getString("fileHash") ?: continue
+            // In artifact protocol v2, an entry holds only the Hermes patch.
+            val assetHash = if (assetMap.hasKey("fileHash")) assetMap.getString("fileHash") else null
             val patchMap = assetMap.getMap("patch")
             val patch =
                 if (patchMap != null) {
@@ -107,16 +108,34 @@ class HotUpdaterModule internal constructor(
             if (assetUrl == null && patch == null) {
                 continue
             }
+            if (assetHash == null && assetUrl != null) {
+                continue
+            }
             parsedAssets[assetPath] =
                 ChangedAssetDescriptor(
                     fileUrl = assetUrl,
-                    fileHash = assetHash,
+                    fileHash = assetHash ?: "",
                     fileCompression = fileCompression,
                     patch = patch,
                 )
         }
 
         return parsedAssets
+    }
+
+    /** The update check's request headers, which the artifact files request repeats. */
+    private fun parseRequestHeaders(params: ReadableMap): Map<String, String> {
+        if (!params.hasKey("requestHeaders") || params.isNull("requestHeaders")) return emptyMap()
+        val headers = params.getMap("requestHeaders") ?: return emptyMap()
+        val parsed = linkedMapOf<String, String>()
+        val iterator = headers.keySetIterator()
+        while (iterator.hasNextKey()) {
+            val name = iterator.nextKey()
+            if (headers.getType(name) == com.facebook.react.bridge.ReadableType.String) {
+                headers.getString(name)?.let { parsed[name] = it }
+            }
+        }
+        return parsed
     }
 
     private fun parseSelection(params: ReadableMap): PersistedSelection? {
@@ -211,6 +230,24 @@ class HotUpdaterModule internal constructor(
                     }
                 }
                 val selection = parseSelection(params)
+                val filesUrl =
+                    if (params.hasKey("filesUrl") && !params.isNull("filesUrl")) {
+                        params.getString("filesUrl")
+                    } else {
+                        null
+                    }
+                if (filesUrl != null) {
+                    try {
+                        java.net.URL(filesUrl)
+                    } catch (e: java.net.MalformedURLException) {
+                        promise.rejectUpdateBundle(
+                            HotUpdaterException.invalidFileUrl("filesUrl", filesUrl, UpdateFailureResource.FILE),
+                        )
+                        return@launch
+                    }
+                }
+                val fileResolver =
+                    filesUrl?.let { HttpArtifactFileResolver(it, parseRequestHeaders(params)) }
 
                 val impl = getInstance()
 
@@ -223,6 +260,7 @@ class HotUpdaterModule internal constructor(
                         channel,
                         selection,
                         archiveUrl,
+                        fileResolver,
                     ) { progress ->
                         // Post to Main thread for React Native event emission
                         Handler(Looper.getMainLooper()).post {
