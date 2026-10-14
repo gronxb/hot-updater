@@ -743,6 +743,8 @@ class NativeUpdateCheckerTest {
             catalogBody = catalog(listOf(release(RELEASE_B, BUNDLE_B)), generation = 2)
             checker.checkForUpdate(OPTIONS)
             assertThrows(StaleReleaseCatalogException::class.java) { runBlocking { third.updateBundle() } }
+            // So does the result that staged it.
+            assertThrows(StaleReleaseCatalogException::class.java) { runBlocking { first.updateBundle() } }
             assertEquals(1, state.stageCount.get())
         }
 
