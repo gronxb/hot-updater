@@ -494,7 +494,7 @@ class HotUpdaterImpl {
     /** Takes the queued native update events for JavaScript's `takeNativeUpdateEvents`. */
     fun takeNativeUpdateEvents(): String? =
         NativeUpdateEventQueue(::getStorageItem, ::setStorageItem, build = {
-            NativeUpdateEventQueue.buildOf(getAppVersion(), getMinBundleId())
+            NativeUpdateEventQueue.buildOf(getAppVersion(), getMinBundleId(), CohortService(context).getCohort())
         }).take()
 
     /**

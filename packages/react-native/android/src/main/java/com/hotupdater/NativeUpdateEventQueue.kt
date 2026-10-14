@@ -9,9 +9,9 @@ import org.json.JSONObject
  * JSON array of `{ name, payload, occurredAt }`, oldest first, keeping the
  * newest [MAX_EVENTS_PER_NAME] of each name. Every occurrence is kept, and
  * [take] hands each event out at most once. Each event records the native
- * [build] it happened in; [take] drops events of another build, such as the
- * app version before an upgrade, so none is reported against a release it
- * did not happen in.
+ * [build] and cohort it happened in; [take] drops events of another, such as
+ * the app version before an upgrade or a cohort set since, so none is
+ * reported against a release or cohort it did not happen in.
  */
 internal class NativeUpdateEventQueue(
     private val getItem: (String) -> String?,
@@ -26,11 +26,15 @@ internal class NativeUpdateEventQueue(
         /** Guards appends and takes across every queue over the same store. */
         private val lock = Any()
 
-        /** A native build: its app version and the minimum bundle ID its build generated. */
+        /**
+         * What an event is reported under: the native build (its app version
+         * and the minimum bundle ID its build generated) and the cohort.
+         */
         fun buildOf(
             appVersion: String?,
             minBundleId: String,
-        ): String = "${appVersion.orEmpty()}|$minBundleId"
+            cohort: String,
+        ): String = "${appVersion.orEmpty()}|$minBundleId|${ReleaseSelector.normalizeCohortValue(cohort)}"
     }
 
     fun add(

@@ -232,7 +232,7 @@ internal class NativeUpdateChecker(
     private var lastCommittedTargetKey: String? = null
     private val events =
         NativeUpdateEventQueue(state::getStorageItem, state::setStorageItem, build = {
-            NativeUpdateEventQueue.buildOf(state.getAppVersion(), state.getMinBundleId())
+            NativeUpdateEventQueue.buildOf(state.getAppVersion(), state.getMinBundleId(), state.getCohort())
         })
 
     /** Queues each catalog and artifact response for `onHttpResponse`, as fetchUpdateResponse.ts reports it. */

@@ -1189,6 +1189,24 @@ class NativeUpdateCheckerTest {
     }
 
     @Test
+    fun `events queued before a cohort change are not replayed under the new cohort`() =
+        runBlocking {
+            val state = FakeState()
+            val transport =
+                FakeTransport { UpdateCheckResponse(404, "Not Found", mapOf("X-Hot-Updater-Catalog" to "none"), "") }
+            NativeUpdateChecker(state, transport).checkForUpdate(OPTIONS)
+
+            fun take() =
+                NativeUpdateEventQueue(state::getStorageItem, state::setStorageItem, build = {
+                    NativeUpdateEventQueue.buildOf(state.getAppVersion(), state.getMinBundleId(), state.getCohort())
+                }).take()
+
+            state.cohortValue = "501"
+
+            assertNull(take())
+        }
+
+    @Test
     fun `taking the events returns them once and clears the queue`() {
         val storage = mutableMapOf<String, String>()
         val queue =

@@ -996,6 +996,21 @@ struct NativeUpdateCheckTests {
     // MARK: Event queue
 
     @Test
+    func eventsQueuedBeforeACohortChangeAreNotReplayedUnderTheNewCohort() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport { _, _ in
+            NativeUpdateResponse(status: 404, headers: ["x-hot-updater-catalog": "none"], body: "")
+        }
+        _ = try await makeChecker(host, transport).checkForUpdate(options())
+        #expect(!host.events().isEmpty)
+
+        host.cohortValue = "2"
+
+        let build = NativeUpdateEvents.build(appVersion: host.appVersion, minBundleId: host.minBundleId, cohort: host.cohort())
+        #expect(NativeUpdateEvents.take(from: host, build: build) == nil)
+    }
+
+    @Test
     func takingTheEventsDropsThoseOfAnotherNativeBuild() throws {
         let storage = MemoryEventStorage()
         NativeUpdateEvents.append(name: "onBundleDownloaded", payload: [:], occurredAt: Date(), build: "1.2.0|first", to: storage)
