@@ -439,6 +439,8 @@ func getUtf8ByteLength(_ value: String) -> Int {
 /// cohort limits. Any other body is nil, and unknown fields are dropped.
 func parseReleaseCatalog(_ body: String, expectedScope: ReleaseCatalogScope) -> ReleaseCatalog? {
     guard getUtf8ByteLength(body) <= ReleaseCatalogLimits.maxReleaseCatalogWireBytes,
+          // JSONSerialization accepts syntax JSON.parse rejects; take only what JSON.parse takes.
+          StrictJson.isValid(body),
           let object = try? JSONSerialization.jsonObject(with: Data(body.utf8), options: [.fragmentsAllowed]),
           let catalog = object as? [String: Any] else {
         return nil

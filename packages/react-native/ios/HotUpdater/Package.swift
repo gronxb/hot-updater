@@ -16,6 +16,7 @@ let coreSources = [
     "ReleaseCatalog.swift",
     "ReleaseCatalogCacheService.swift",
     "ReleaseSelection.swift",
+    "StrictJson.swift",
     "SignatureVerifier.swift",
     "UpdateFailure.swift",
     "URLSessionDownloadService.swift",
