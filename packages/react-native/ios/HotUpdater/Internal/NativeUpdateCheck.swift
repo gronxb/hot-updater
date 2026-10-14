@@ -1155,6 +1155,10 @@ final class NativeUpdateChecker {
 
     private func check(_ options: HotUpdaterCheckOptions, deadline: NativeUpdateDeadline?) async throws -> HotUpdaterUpdate? {
         let baseURL = try Self.validatedBaseURL(options.baseURL)
+        // Each request's timeout, which also bounds prepare's catalog request.
+        guard options.requestTimeout.isFinite, options.requestTimeout > 0 else {
+            throw NativeUpdateCheckError.hotUpdater("requestTimeout must be a positive number of seconds")
+        }
         let currentAppVersion = host.appVersion
         let currentBundleId = resolveBundleId(host.bundleId())
         let minimumReleaseId = host.minBundleId
