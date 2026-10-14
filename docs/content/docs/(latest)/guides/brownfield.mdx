@@ -421,7 +421,7 @@ class NativeApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         // Android also runs onCreate in Hot Updater's restart process. // [!code ++:2]
-        if (currentProcessName() != packageName) return
+        if (currentProcessName() != applicationInfo.processName) return
         ReactNativeHostManager.start(this, checkForUpdates = !BuildConfig.DEBUG) { status ->
             // React Native is ready: enable the entries that open its screens.
         }
@@ -438,7 +438,9 @@ class NativeApplication : Application() {
 
 Hot Updater restarts the app from a process of its own to apply a required
 update or roll back a crashed one, and Android runs `Application.onCreate` in
-every process of the app. Start React Native only in the main process.
+every process of the app. Start React Native only in the main process, named
+`applicationInfo.processName`: the package name unless the manifest's
+`<application>` sets `android:process`.
 
 Show the screens with `ReactNativeFragment.createReactNativeFragment("BrownfieldRN")`
 or `ReactNativeBrownfield.shared.createView(...)`, as in the React Native

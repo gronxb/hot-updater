@@ -11,7 +11,7 @@ class MainApplication : Application() {
         // Android also runs onCreate in other processes of the app, such as
         // the one Hot Updater restarts the app from; start React Native only
         // in the main one, as the brownfield guide does.
-        if (currentProcessName() != packageName) return
+        if (currentProcessName() != applicationInfo.processName) return
         ReactNativeHostManager.start(this)
     }
 
