@@ -350,7 +350,7 @@ const setUpInsights = (
       path: boundedText(response.path, 1_024),
       body,
       bodyTruncated: response.bodyTruncated || body !== response.body,
-      receivedAtMs: context.now(),
+      receivedAtMs: response.occurredAt ?? context.now(),
     });
   };
 

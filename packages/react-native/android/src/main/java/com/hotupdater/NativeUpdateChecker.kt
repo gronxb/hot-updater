@@ -190,6 +190,9 @@ internal class NativeUpdateChecker(
         private const val PLATFORM = "android"
         private const val NIL_UUID = "00000000-0000-0000-0000-000000000000"
         private const val LOCK_POLL_MILLIS = 20L
+
+        /** The longest response body queued: the queue lives in the key-value store. */
+        private const val HTTP_RESPONSE_BODY_LIMIT = 4_096
         private const val INVALID_COHORT_MESSAGE =
             "Invalid cohort. Use 1-1000 or a lowercase slug without spaces, up to ${ReleaseSelector.MAX_COHORT_LENGTH} characters."
         private val HTTP_URL = Regex("^https?://.+", RegexOption.IGNORE_CASE)
@@ -218,7 +221,14 @@ internal class NativeUpdateChecker(
         NativeUpdateEventQueue(state::getStorageItem, state::setStorageItem, build = {
             NativeUpdateEventQueue.buildOf(state.getAppVersion(), state.getMinBundleId())
         })
-    private val catalogClient = ReleaseCatalogClient(state, transport)
+
+    /** Queues each catalog and artifact response for `onHttpResponse`, as fetchUpdateResponse.ts reports it. */
+    private val recordingTransport =
+        object : UpdateCheckTransport {
+            override suspend fun get(request: UpdateCheckRequest): UpdateCheckResponse =
+                transport.get(request).also { queueHttpResponse(request.url, it) }
+        }
+    private val catalogClient = ReleaseCatalogClient(state, recordingTransport)
 
     /**
      * Runs [block] once no check or staging runs, as a channel reset must: a
@@ -534,6 +544,29 @@ internal class NativeUpdateChecker(
             queueUnchanged(currentChannel, currentBundleId, releaseId, previousReleaseId = releaseId)
         }
         return checked
+    }
+
+    private fun queueHttpResponse(
+        url: String,
+        response: UpdateCheckResponse,
+    ) {
+        val path =
+            try {
+                URL(url).path.ifEmpty { "/" }
+            } catch (_: MalformedURLException) {
+                "/"
+            }
+        val body = response.body
+        events.add(
+            "onHttpResponse",
+            JSONObject().apply {
+                put("resource", if (path.contains("/artifacts/")) "artifact" else "catalog")
+                put("path", path)
+                put("status", response.status)
+                putNullable("body", body?.take(HTTP_RESPONSE_BODY_LIMIT))
+                put("bodyTruncated", body != null && body.length > HTTP_RESPONSE_BODY_LIMIT)
+            },
+        )
     }
 
     private fun queueUnchanged(

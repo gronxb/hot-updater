@@ -1403,7 +1403,26 @@ final class NativeUpdateChecker {
             }
             timeout = min(timeout, remaining)
         }
-        return try await transport.get(requestURL, headers: headers, timeout: timeout)
+        let response = try await transport.get(requestURL, headers: headers, timeout: timeout)
+        queueHttpResponse(requestURL, response)
+        return response
+    }
+
+    /// The longest response body queued: the queue lives in the key-value store.
+    private static let httpResponseBodyLimit = 4_096
+
+    /// Queues a catalog or artifact response for `onHttpResponse`, as
+    /// fetchUpdateResponse.ts reports it.
+    private func queueHttpResponse(_ url: URL, _ response: NativeUpdateResponse) {
+        let path = url.path.isEmpty ? "/" : url.path
+        let truncated = response.body.count > Self.httpResponseBodyLimit
+        queueEvent("onHttpResponse", [
+            "resource": path.contains("/artifacts/") ? "artifact" : "catalog",
+            "path": path,
+            "status": response.status,
+            "body": truncated ? String(response.body.prefix(Self.httpResponseBodyLimit)) : response.body,
+            "bodyTruncated": truncated,
+        ])
     }
 
     private struct Artifact {

@@ -2,6 +2,7 @@ import type {
   BundleDownloadedInfo,
   UpdateCheckResult,
   UpdateError,
+  UpdateHttpResponse,
 } from "@hot-updater/protocol";
 
 import type { LaunchReporter } from "./appReady";
@@ -12,7 +13,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 
 /**
  * Reports the update checks native code ran without JavaScript, such as
- * `HotUpdater.prepare` in a brownfield app, to the instance's plugins after
+ * `HotUpdater.prepare` in a brownfield app, with the catalog and artifact
+ * responses they received, to the instance's plugins after
  * the launch. Native takes and clears them in one step, so each is reported
  * at most once. A native error carries a message instead of the caught error,
  * and each event keeps the time it happened as `occurredAt`.
@@ -49,6 +51,9 @@ export const replayNativeUpdateEvents = (emit: LaunchReporter["emit"]) => {
           "onBundleDownloaded",
           () => payload as unknown as BundleDownloadedInfo,
         );
+        break;
+      case "onHttpResponse":
+        emit("onHttpResponse", () => payload as unknown as UpdateHttpResponse);
         break;
       case "onUpdateError": {
         const { message, ...error } = payload;
