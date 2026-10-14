@@ -6,8 +6,14 @@ packaged into native artifacts, and two native apps that embed them.
 | Folder          | What it is                                                                 |
 | --------------- | -------------------------------------------------------------------------- |
 | `react-native/` | A [Rock](https://rockjs.dev) app with the brownfield plugins. `rock package:aar` builds the `rnbrownfieldreact` AAR and `rock package:ios` builds the `RnBrownfieldReact` XCFramework. |
-| `android/`      | A plain Gradle app that depends on `com.rnbrownfieldreact:rnbrownfield:0.0.1-local` from the local Maven repository and renders the `RnBrownfield` component. |
-| `ios/`          | A plain Xcode app that links the XCFrameworks through a local Swift package in `ios/frameworks/` and renders the `RnBrownfield` component. |
+| `android/`      | A plain Gradle app that depends on `com.rnbrownfieldreact:rnbrownfield:0.0.1-local` from the local Maven repository. Its native screen opens the `RnBrownfield` component in a second Activity. |
+| `ios/`          | A plain Xcode app that links the XCFrameworks through a local Swift package in `ios/frameworks/`. Its native screen pushes the `RnBrownfield` component onto a navigation stack. |
+
+Both hosts show the same flow: a native card ("Hello from iOS Native" /
+"Hello from Android Native") with an "Open React Native" button, which opens
+the React Native screen full-screen. That screen has a "Back to native" button
+that calls `popToNative()` from `@callstack/react-native-brownfield`, which
+pops the UIKit navigation stack on iOS and finishes the Activity on Android.
 
 The React Native side uses [`@callstack/react-native-brownfield`](https://oss.callstack.com/react-native-brownfield/):
 `ReactNativeHostManager` (Android) and `ReactNativeBundle` (iOS) ship inside

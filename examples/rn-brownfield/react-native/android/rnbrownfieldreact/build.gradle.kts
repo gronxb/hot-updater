@@ -65,6 +65,19 @@ publishing {
     }
 }
 
+// The brownfield plugin adds ../app/build/generated/{assets,res}/react/<variant>
+// to this module's source sets, but Gradle does not treat those directories as
+// task inputs. After the first build, a changed JS bundle leaves the asset and
+// resource merges UP-TO-DATE and the AAR ships the previous bundle. Removing
+// their outputs before they run forces a full merge on every `package:aar`.
+val dropMergedReactSources by tasks.registering(Delete::class) {
+    delete(layout.buildDirectory.dir("intermediates/assets"))
+    delete(layout.buildDirectory.dir("intermediates/packaged_res"))
+}
+tasks.matching { Regex("(merge\\w+Assets|package\\w+Resources)").matches(it.name) }.configureEach {
+    dependsOn(dropMergedReactSources)
+}
+
 dependencies {
     api("com.facebook.react:react-android:0.86.0")
     api("com.facebook.hermes:hermes-android:250829098.0.14")
