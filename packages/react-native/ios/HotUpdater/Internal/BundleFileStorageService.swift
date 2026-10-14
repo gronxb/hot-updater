@@ -1429,14 +1429,15 @@ class BundleFileStorageService: BundleStorageService {
     }
 
     /// The selection contexts that stay current once `selection` commits: only
-    /// its own scope's. A check of another scope, such as another channel,
-    /// made before this commit no longer stages over it.
+    /// its own scope's, or none for a staging without a Release selection. A
+    /// check made before this commit, of another scope such as another channel,
+    /// no longer stages over it.
     private func contextsAfterCommitting(
         _ contexts: [String: String],
         _ selection: PersistedSelection?
     ) -> [String: String] {
         guard let catalogId = selection?.catalogId, let scopeKey = selection?.scopeKey else {
-            return contexts
+            return [:]
         }
         let stateKey = releaseScopeStateKey(catalogId: catalogId, scopeKey: scopeKey)
         return contexts.filter { $0.key == stateKey }
