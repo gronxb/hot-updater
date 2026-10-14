@@ -1246,15 +1246,16 @@ class BundleFileStorageService(
 
     /**
      * The selection contexts that stay current once [selection] commits: only
-     * its own scope's. A check of another scope, such as another channel,
-     * made before this commit no longer stages over it.
+     * its own scope's, or none for a staging without a Release selection. A
+     * check made before this commit, of another scope such as another channel,
+     * no longer stages over it.
      */
     private fun contextsAfterCommitting(
         contexts: Map<String, String>,
         selection: PersistedSelection?,
     ): Map<String, String> {
-        val catalogId = selection?.catalogId ?: return contexts
-        val scopeKey = selection.scopeKey ?: return contexts
+        val catalogId = selection?.catalogId ?: return emptyMap()
+        val scopeKey = selection.scopeKey ?: return emptyMap()
         val stateKey = releaseScopeStateKey(catalogId, scopeKey)
         return contexts.filterKeys { it == stateKey }
     }

@@ -2367,6 +2367,8 @@ class BundleFileStorageServiceTest {
             val staging = loadMetadata(root)?.stagingSelection
             assertEquals("target", staging?.bundleId)
             assertNull(staging?.releaseId)
+            // A check from before that staging no longer stages over it.
+            assertFalse(service.isReleaseSelectionCurrent("project-a", "scope-production", 1, "hash-1", "production", "context-1"))
         }
 
     /** Installs bundle "target" with one file, returning the failure, if any. */
