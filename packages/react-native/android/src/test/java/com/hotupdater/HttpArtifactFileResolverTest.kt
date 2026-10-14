@@ -81,7 +81,7 @@ class HttpArtifactFileResolverTest {
             )
         for (text in bodies) {
             body = text
-            assertThrows(text, IllegalStateException::class.java) {
+            assertThrows(text, InvalidUpdateResponseException::class.java) {
                 runBlocking { resolver { _, _ -> }.resolve(listOf("a.png")) }
             }
         }

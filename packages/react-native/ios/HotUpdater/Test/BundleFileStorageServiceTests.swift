@@ -1900,6 +1900,33 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func artifactProtocolV2ReportsAMalformedFilesResponseAsAnInvalidResponse() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let manifest = try makeManifestData(
+            bundleId: "target",
+            assets: ["index.ios.bundle": try #require(sha256(Data("bundle".utf8), in: root))]
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let service = makeStorageService(
+            documentsDirectory: root,
+            downloadService: MappingDownloadService(contents: [manifestURL: manifest]),
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:])
+        )
+
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: [:],
+            fileResolver: FailingArtifactFileResolver()
+        )
+
+        #expect(updateFailure(of: result) == UpdateFailure.invalidResponse.with(resource: .file))
+    }
+
+    @Test
     func artifactProtocolV2AsksForNoFileWhenItTakesTheArchive() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
@@ -3627,6 +3654,12 @@ private final class MappingDownloadService: DownloadService {
             completion(.failure(error))
         }
         return nil
+    }
+}
+
+private final class FailingArtifactFileResolver: ArtifactFileResolver {
+    func resolve(paths: [String]) throws -> [String: ResolvedArtifactFile] {
+        throw ArtifactFileResolverError.invalidResponse
     }
 }
 
