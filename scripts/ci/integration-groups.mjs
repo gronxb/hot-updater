@@ -58,6 +58,12 @@ export const integrationGroups = [
     include: ["plugins/aws/**/*.integration.spec.ts"],
   },
   {
+    // The Cosmos DB vNext emulator and Azurite in Docker.
+    name: "azure",
+    project: "integration:default",
+    include: ["plugins/azure/**/*.integration.spec.ts"],
+  },
+  {
     // The Firestore, Storage, and Functions emulators.
     name: "firebase",
     project: "integration:default",

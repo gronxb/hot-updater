@@ -287,6 +287,7 @@ describe("E2E navigation stack contract", () => {
     expect(routeModuleFiles).toEqual([
       "activate-remote-config-action-route.tsx",
       "apply-captured-update-action-route.tsx",
+      "apply-captured-update-in-background-action-route.tsx",
       "apply-cohort-input-action-route.tsx",
       "capture-current-channel-update-action-route.tsx",
       "channel-action-result-route.tsx",
@@ -326,7 +327,7 @@ describe("E2E navigation stack contract", () => {
     const stackScreens = routeModuleSources.flatMap(
       (source) => source.match(/<Stack\.Screen/g) ?? [],
     );
-    expect(stackScreens).toHaveLength(37);
+    expect(stackScreens).toHaveLength(38);
     expect(e2eAppRoutesSource).not.toContain("routeGroups");
     expect(e2eAppRoutesSource).not.toContain("routeScreens");
     for (const [index, source] of routeModuleSources.entries()) {
