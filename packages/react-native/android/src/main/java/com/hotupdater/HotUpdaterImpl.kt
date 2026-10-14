@@ -493,9 +493,12 @@ class HotUpdaterImpl {
 
     /**
      * The bundle the native update check counts as running: the launched one,
-     * or before React Native starts, the one its launch would pick. Preparing
-     * the launch here would arm crash monitoring and keep a forced update
-     * staged before React Native starts from applying in this process.
+     * or before React Native starts, the one its launch would pick. Before
+     * React Native starts, what the previous process left is settled first, so
+     * the check reads the selection, launch state, and crash history the
+     * launch will use. Preparing the launch here would arm crash monitoring and
+     * keep a forced update staged before React Native starts from applying in
+     * this process.
      */
     fun getBundleIdForUpdateCheck(): String? {
         val launchSelection = currentLaunchSelection
@@ -503,6 +506,7 @@ class HotUpdaterImpl {
             return launchSelection.launchedBundleId
         }
 
+        bundleStorage.settlePreviousLaunch(recoveryManager::consumePendingCrashRecovery)
         return bundleStorage.peekLaunchBundleId()
     }
 

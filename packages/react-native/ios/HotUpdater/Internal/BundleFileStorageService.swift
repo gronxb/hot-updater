@@ -283,9 +283,15 @@ public protocol BundleStorageService {
     func getCachedBundleURL() -> URL?
     func getFallbackBundleURL(bundle: Bundle) -> URL? // Synchronous as it's lightweight
     func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection
-    /// The bundle the next `prepareLaunch` would run, read without changing
-    /// anything: no recovery is applied and the launch is not prepared. Nil
-    /// is the built-in bundle.
+    /// Settles what the previous process left once per process, before the
+    /// first read of the selection: a crash rollback and a launch that never
+    /// finished. `prepareLaunch` runs it first; a native update check that runs
+    /// before React Native starts runs it earlier. `pendingRecovery` is called
+    /// only when this run settles.
+    func settlePreviousLaunch(pendingRecovery: () -> PendingCrashRecovery?)
+    /// The bundle the next `prepareLaunch` would run, read without preparing
+    /// the launch. Nil is the built-in bundle. Call `settlePreviousLaunch`
+    /// first, or a bundle the next launch rolls back is returned.
     func peekLaunchBundleId() -> String?
 
     // Bundle update
@@ -331,6 +337,7 @@ public protocol BundleStorageService {
 }
 
 public extension BundleStorageService {
+    func settlePreviousLaunch(pendingRecovery _: () -> PendingCrashRecovery?) {}
     func peekLaunchBundleId() -> String? { nil }
     func stageReleaseSelection(_: PersistedSelection) -> Bool { false }
     func acceptReleaseCatalog(catalogId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Bool { false }
@@ -378,6 +385,8 @@ class BundleFileStorageService: BundleStorageService {
     private let fileOperationQueue: DispatchQueue
 
     private var hasPreparedLaunch = false
+    private let settleLock = NSLock()
+    private var hasSettledPreviousLaunch = false
     private var currentLaunchReport: LaunchReport?
     // The staged bundle this process launched before its first content. Only that
     // launch is pending; a bundle staged later waits for the next launch.
@@ -2003,10 +2012,7 @@ class BundleFileStorageService: BundleStorageService {
             }
             return bundlePath != nil
         }
-        // The first launch of a process rolls back a pending bundle whose last
-        // launch never finished (see prepareLaunch).
-        let rollsBackStaging = !hasPreparedLaunch && metadata.verificationPending && metadata.launchInProgress
-        if let stagingBundleId = metadata.stagingBundleId, !rollsBackStaging, hasBundleFile(stagingBundleId) {
+        if let stagingBundleId = metadata.stagingBundleId, hasBundleFile(stagingBundleId) {
             return stagingBundleId
         }
         if let stableBundleId = metadata.stableBundleId, hasBundleFile(stableBundleId) {
@@ -2015,19 +2021,33 @@ class BundleFileStorageService: BundleStorageService {
         return nil
     }
 
-    func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection {
-        builtInAssetResolver.use(bundle: bundle)
+    func settlePreviousLaunch(pendingRecovery: () -> PendingCrashRecovery?) {
+        settleLock.lock()
+        defer { settleLock.unlock() }
+        guard !hasSettledPreviousLaunch else { return }
+        hasSettledPreviousLaunch = true
+        // Cleared before the rollbacks below, so the launch reports their RECOVERED.
         saveLaunchReport(nil)
-        loadOrCreateInstallIdentity()
-        applyPendingRecoveryIfNeeded(pendingRecovery)
+        applyPendingRecoveryIfNeeded(pendingRecovery())
         // Only a new storage instance consumes an unfinished launch. Repeated bundle
         // lookups or bridge reloads in this process must not reject its own launch.
-        if !hasPreparedLaunch,
-           let metadata = loadMetadataOrNull(),
+        if let metadata = loadMetadataOrNull(),
            metadata.verificationPending,
            metadata.launchInProgress,
            let stagingBundleId = metadata.stagingBundleId {
             rollbackPendingBundle(stagingBundleId, unfinishedLaunch: true)
+        }
+    }
+
+    func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection {
+        builtInAssetResolver.use(bundle: bundle)
+        loadOrCreateInstallIdentity()
+        if hasPreparedLaunch {
+            // A later launch in this process, after a reset or a reload.
+            saveLaunchReport(nil)
+            applyPendingRecoveryIfNeeded(pendingRecovery)
+        } else {
+            settlePreviousLaunch { pendingRecovery }
         }
         hasPreparedLaunch = true
         // A launch is recorded only once it can show UI (markLaunchStarted).
