@@ -122,15 +122,22 @@ struct NativeUpdateCheckTests {
         #expect(try await update.updateBundle())
 
         #expect(transport.requests.last?.url.absoluteString
-            == "https://updates.example.com/api/artifacts/v1/\(bundle2)/from/\(builtInBundleId)")
+            == "https://updates.example.com/api/artifacts/v2/\(bundle2)/from/\(builtInBundleId)")
         let params = try #require(host.stagedParams.first)
-        #expect(Set(params.keys) == ["assets", "bundleId", "channel", "manifestFileHash", "manifestUrl", "selection"])
+        #expect(Set(params.keys) == [
+            "assets", "bundleId", "channel", "filesUrl", "manifestFileHash", "manifestUrl",
+            "requestHeaders", "requestTimeout", "selection",
+        ])
         #expect(params["bundleId"] as? String == bundle2)
         #expect(params["channel"] as? String == "production")
         #expect(params["manifestUrl"] as? String == "https://cdn.example.com/manifest.json")
         #expect(params["manifestFileHash"] as? String == "sha256:manifest")
-        let assets = try #require(params["assets"] as? [String: Any])
-        #expect((assets["index.ios.bundle"] as? [String: Any])?["fileHash"] as? String == "hash")
+        #expect((params["assets"] as? [String: Any])?.isEmpty == true)
+        // The staging asks for the URLs of the files it downloads, with the
+        // check's headers and timeout, as checkForUpdate.ts passes them.
+        #expect(params["filesUrl"] as? String == "https://updates.example.com/api/artifacts/v2/\(bundle2)/files")
+        #expect(params["requestHeaders"] as? [String: String] == [:])
+        #expect(params["requestTimeout"] as? Double == 5_000)
         let selection = try #require(params["selection"] as? [String: Any])
         #expect(selection["kind"] as? String == "BUNDLE")
         #expect(selection["releaseId"] as? String == release2)
@@ -388,6 +395,101 @@ struct NativeUpdateCheckTests {
         #expect(try await joined.value)
         #expect(try await update.updateBundle())
         #expect(host.stageCalls == 1)
+    }
+
+    @Test
+    func anArtifactProtocolV2PatchStagesAsTheAssetsPatch() async throws {
+        let host = FakeUpdateHost()
+        let body = """
+        {"artifactProtocolVersion":2,"manifestUrl":"https://cdn.example.com/manifest.json",\
+        "manifestFileHash":"sha256:manifest","archiveUrl":"https://cdn.example.com/bundle.zip",\
+        "patch":{"assetPath":"index.ios.bundle","patchUrl":"https://cdn.example.com/index.patch",\
+        "patchFileHash":"sha256:patch","baseBundleId":"\(builtInBundleId)","baseFileHash":"sha256:base"}}
+        """
+        let transport = FakeUpdateTransport(artifactV2: { _ in
+            NativeUpdateResponse(status: 200, headers: [:], body: body)
+        }) { _, _ in
+            NativeUpdateResponse(status: 200, headers: [:], body: catalog(releases: [descriptor(release2, bundle2)]))
+        }
+        let checker = makeChecker(host, transport)
+        let update = try #require(try await checker.checkForUpdate(options(headers: ["x-api-key": "key"])))
+
+        #expect(try await update.updateBundle())
+
+        let params = try #require(host.stagedParams.first)
+        #expect(params["archiveUrl"] as? String == "https://cdn.example.com/bundle.zip")
+        #expect(params["requestHeaders"] as? [String: String] == ["x-api-key": "key"])
+        let assets = try #require(params["assets"] as? [String: Any])
+        #expect(Array(assets.keys) == ["index.ios.bundle"])
+        let patch = try #require((assets["index.ios.bundle"] as? [String: Any])?["patch"] as? [String: Any])
+        #expect(patch["patchUrl"] as? String == "https://cdn.example.com/index.patch")
+        #expect(patch["patchFileHash"] as? String == "sha256:patch")
+        #expect(patch["assetPath"] == nil)
+    }
+
+    @Test
+    func aServerOlderThanArtifactProtocolV2GetsTheV1Request() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport { url, _ in
+            if url.path.contains("/artifacts/v1/") {
+                return NativeUpdateResponse(status: 200, headers: [:], body: artifactBody)
+            }
+            return NativeUpdateResponse(status: 200, headers: [:], body: catalog(releases: [descriptor(release2, bundle2)]))
+        }
+        let checker = makeChecker(host, transport)
+        let update = try #require(try await checker.checkForUpdate(options()))
+
+        #expect(try await update.updateBundle())
+
+        #expect(Array(transport.requests.dropFirst().map(\.url.absoluteString)) == [
+            "https://updates.example.com/api/artifacts/v2/\(bundle2)/from/\(builtInBundleId)",
+            "https://updates.example.com/api/artifacts/v1/\(bundle2)/from/\(builtInBundleId)",
+        ])
+        let params = try #require(host.stagedParams.first)
+        #expect(Set(params.keys) == ["assets", "bundleId", "channel", "manifestFileHash", "manifestUrl", "selection"])
+        let assets = try #require(params["assets"] as? [String: Any])
+        #expect((assets["index.ios.bundle"] as? [String: Any])?["fileHash"] as? String == "hash")
+        #expect(host.httpResponses().map { $0["status"] as? Int } == [200, 404, 200])
+    }
+
+    @Test
+    func anArtifactProtocolV2ErrorOtherThan404DoesNotFallBack() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport(artifactV2: { _ in
+            NativeUpdateResponse(status: 500, headers: [:], body: "")
+        }) { _, _ in
+            NativeUpdateResponse(status: 200, headers: [:], body: catalog(releases: [descriptor(release2, bundle2)]))
+        }
+        let checker = makeChecker(host, transport)
+        let update = try #require(try await checker.checkForUpdate(options()))
+
+        await #expect(throws: NativeUpdateCheckError.self) { _ = try await update.updateBundle() }
+        #expect(!transport.requests.contains { $0.url.path.contains("/artifacts/v1/") })
+        #expect(host.stageCalls == 0)
+    }
+
+    @Test
+    func anArtifactProtocolV2ResponseThatIsNotV2IsInvalid() async throws {
+        let bodies = [
+            artifactBody,
+            #"{"artifactProtocolVersion":2,"manifestUrl":"https://cdn.example.com/m.json"}"#,
+            #"{"artifactProtocolVersion":2,"manifestUrl":"https://cdn.example.com/m.json","manifestFileHash":"h","patch":null}"#,
+            #"{"artifactProtocolVersion":2,"manifestUrl":"https://cdn.example.com/m.json","manifestFileHash":"h","patch":{"assetPath":"a"}}"#,
+            #"{"artifactProtocolVersion":2,"manifestUrl":"/m.json","manifestFileHash":"h"}"#,
+        ]
+        for body in bodies {
+            let host = FakeUpdateHost()
+            let transport = FakeUpdateTransport(artifactV2: { _ in
+                NativeUpdateResponse(status: 200, headers: [:], body: body)
+            }) { _, _ in
+                NativeUpdateResponse(status: 200, headers: [:], body: catalog(releases: [descriptor(release2, bundle2)]))
+            }
+            let checker = makeChecker(host, transport)
+            let update = try #require(try await checker.checkForUpdate(options()))
+
+            await #expect(throws: NativeUpdateCheckError.self) { _ = try await update.updateBundle() }
+            #expect(host.stageCalls == 0)
+        }
     }
 
     @Test
@@ -955,6 +1057,11 @@ private let artifactBody = """
 "file":{"url":"https://cdn.example.com/index.ios.bundle"}}}}
 """
 
+private let artifactV2Body = """
+{"artifactProtocolVersion":2,"manifestUrl":"https://cdn.example.com/manifest.json",\
+"manifestFileHash":"sha256:manifest"}
+"""
+
 private let frozenNow = Date(timeIntervalSince1970: 1_700_000_000)
 
 private func makeChecker(_ host: FakeUpdateHost, _ transport: FakeUpdateTransport) -> NativeUpdateChecker {
@@ -1149,13 +1256,22 @@ private final class FakeUpdateTransport: NativeUpdateTransport, @unchecked Senda
     private let lock = NSLock()
     private var recorded: [Request] = []
     private let respond: (URL, TimeInterval) async throws -> NativeUpdateResponse
+    private let artifactV2: ((URL) -> NativeUpdateResponse)?
 
-    init(_ respond: @escaping (URL, TimeInterval) async throws -> NativeUpdateResponse) {
+    /// `artifactV2` answers artifact protocol v2 requests. Without it they get
+    /// 404, as from a server older than v2, and the check falls back to v1.
+    init(
+        artifactV2: ((URL) -> NativeUpdateResponse)? = nil,
+        _ respond: @escaping (URL, TimeInterval) async throws -> NativeUpdateResponse
+    ) {
+        self.artifactV2 = artifactV2
         self.respond = respond
     }
 
     static func serving(catalog body: String) -> FakeUpdateTransport {
-        FakeUpdateTransport { url, _ in
+        FakeUpdateTransport(artifactV2: { _ in
+            NativeUpdateResponse(status: 200, headers: [:], body: artifactV2Body)
+        }) { url, _ in
             if url.path.contains("/artifacts/v1/") {
                 return NativeUpdateResponse(status: 200, headers: [:], body: artifactBody)
             }
@@ -1171,6 +1287,9 @@ private final class FakeUpdateTransport: NativeUpdateTransport, @unchecked Senda
 
     func get(_ url: URL, headers: [String: String], timeout: TimeInterval) async throws -> NativeUpdateResponse {
         record(Request(url: url, headers: headers, timeout: timeout))
+        if url.path.contains("/artifacts/v2/") {
+            return artifactV2?(url) ?? NativeUpdateResponse(status: 404, headers: [:], body: "Not Found")
+        }
         return try await respond(url, timeout)
     }
 

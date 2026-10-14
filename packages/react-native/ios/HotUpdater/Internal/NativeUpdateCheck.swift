@@ -1290,6 +1290,13 @@ final class NativeUpdateChecker {
             if let archiveUrl = artifact.archiveUrl {
                 params["archiveUrl"] = archiveUrl
             }
+            if let filesUrl = artifact.filesUrl {
+                // The files request repeats the check's headers and timeout, as
+                // checkForUpdate.ts passes them.
+                params["filesUrl"] = filesUrl
+                params["requestHeaders"] = options.requestHeaders
+                params["requestTimeout"] = options.requestTimeout * 1000
+            }
             let staged = try await host.updateBundle(params, progress: progress)
             if let delivery = Self.readBundleDelivery(staged),
                !desired.bundleId.jsEquals(currentBundleId) {
@@ -1513,11 +1520,16 @@ final class NativeUpdateChecker {
         queueEvent("onHttpResponse", payload)
     }
 
+    /// How native downloads a Bundle, as httpClient.ts resolves it. In
+    /// artifact protocol v1, `assets` holds a URL for every file. In v2, it
+    /// holds only the Hermes patch, and the staging asks `filesUrl` for the
+    /// URLs of the files it downloads.
     private struct Artifact {
         let assets: [String: Any]
         let manifestUrl: String
         let manifestFileHash: String
         let archiveUrl: String?
+        let filesUrl: String?
     }
 
     private func resolveArtifact(
@@ -1530,8 +1542,50 @@ final class NativeUpdateChecker {
         if headers["accept"] == nil {
             headers["accept"] = "application/json"
         }
+        let target = Self.encodeURIComponent(targetBundleId)
+        let route = "\(target)/from/\(Self.encodeURIComponent(currentBundleId))"
         let response = try await get(
-            "\(baseURL)/artifacts/v1/\(Self.encodeURIComponent(targetBundleId))/from/\(Self.encodeURIComponent(currentBundleId))",
+            "\(baseURL)/artifacts/v2/\(route)",
+            resource: "artifact",
+            headers: headers,
+            options: options
+        )
+        // Legacy: artifact protocol v1: a server older than v2 has no such
+        // route. Remove this fallback once no supported server predates v2.
+        if response.status == 404 {
+            return try await resolveArtifactV1(baseURL: baseURL, route: route, headers: headers, options: options)
+        }
+        guard response.status == 200 else {
+            throw NativeUpdateCheckError.http(status: response.status)
+        }
+        // As JSON.parse reads it, which JSONSerialization does not.
+        guard let info = StrictJson.parse(response.body) as? [String: Any] else {
+            throw NativeUpdateCheckError.invalidResponse("Received an invalid artifact response")
+        }
+        try Self.requireArtifactProtocolV2(info)
+        var assets: [String: Any] = [:]
+        if var patch = info["patch"] as? [String: Any],
+           let assetPath = patch.removeValue(forKey: "assetPath") as? String {
+            assets[assetPath] = ["patch": patch]
+        }
+        return Artifact(
+            assets: assets,
+            manifestUrl: info["manifestUrl"] as! String,
+            manifestFileHash: info["manifestFileHash"] as! String,
+            archiveUrl: (info["archiveUrl"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            filesUrl: "\(baseURL)/artifacts/v2/\(target)/files"
+        )
+    }
+
+    // Legacy: artifact protocol v1: reads a server that predates v2; remove with the fallback.
+    private func resolveArtifactV1(
+        baseURL: String,
+        route: String,
+        headers: [String: String],
+        options: NativeCheckRequest
+    ) async throws -> Artifact {
+        let response = try await get(
+            "\(baseURL)/artifacts/v1/\(route)",
             resource: "artifact",
             headers: headers,
             options: options
@@ -1539,7 +1593,6 @@ final class NativeUpdateChecker {
         guard response.status == 200 else {
             throw NativeUpdateCheckError.http(status: response.status)
         }
-        // As JSON.parse reads it, which JSONSerialization does not.
         guard let info = StrictJson.parse(response.body) as? [String: Any] else {
             throw NativeUpdateCheckError.invalidResponse("Received an invalid artifact response")
         }
@@ -1549,8 +1602,39 @@ final class NativeUpdateChecker {
             assets: info["assets"] as! [String: Any],
             manifestUrl: info["manifestUrl"] as! String,
             manifestFileHash: info["manifestFileHash"] as! String,
-            archiveUrl: (info["archiveUrl"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+            archiveUrl: (info["archiveUrl"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            filesUrl: nil
         )
+    }
+
+    private static func requireArtifactProtocolV2(_ info: [String: Any]) throws {
+        let unsupported = NativeUpdateCheckError.invalidResponse("Server does not support artifact protocol 2.")
+        guard let version = info["artifactProtocolVersion"] as? NSNumber,
+              CFGetTypeID(version) != CFBooleanGetTypeID(),
+              version.doubleValue == 2,
+              let manifestUrl = info["manifestUrl"] as? String, !manifestUrl.isEmpty,
+              let manifestFileHash = info["manifestFileHash"] as? String, !manifestFileHash.isEmpty else {
+            throw unsupported
+        }
+        if let archiveUrl = info["archiveUrl"], !(archiveUrl is String) {
+            throw unsupported
+        }
+        var patchUrl: String?
+        if let patch = info["patch"] {
+            guard let patch = patch as? [String: Any],
+                  let assetPath = patch["assetPath"] as? String, !assetPath.isEmpty,
+                  let url = patch["patchUrl"] as? String, !url.isEmpty else {
+                throw unsupported
+            }
+            patchUrl = url
+        }
+        try requireArtifactUrl(manifestUrl)
+        if let archiveUrl = info["archiveUrl"] as? String, !archiveUrl.isEmpty {
+            try requireArtifactUrl(archiveUrl)
+        }
+        if let patchUrl {
+            try requireArtifactUrl(patchUrl)
+        }
     }
 
     private static func requireArtifactProtocolV1(_ info: [String: Any]) throws {
