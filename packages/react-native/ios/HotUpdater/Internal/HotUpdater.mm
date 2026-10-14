@@ -205,7 +205,7 @@ extern "C" BOOL HotUpdaterPerformRecoveryReload(void)
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     [impl resetLaunchPreparation];
 
-    NSURL *bundleURL = [impl bundleURLWithBundle:[HotUpdaterConfig shared].bundle];
+    NSURL *bundleURL = [impl bundleURLWithBundle:HotUpdaterSharedConfig().bundle];
     if (!bundleURL) {
       RCTLogWarn(@"[HotUpdater.mm] Failed to resolve bundle URL for recovery reload");
       return;
@@ -411,7 +411,7 @@ RCT_EXPORT_MODULE();
 + (NSURL *)bundleURLWithBundle:(NSBundle *)bundle {
     // Record the bundle before the first sharedImpl, whose storage isolation
     // key reads the bundle's HOT_UPDATER_* Info.plist keys.
-    [HotUpdaterConfig shared].bundle = bundle;
+    HotUpdaterSharedConfig().bundle = bundle;
     return [[HotUpdater sharedImpl] bundleURLWithBundle:bundle];
 }
 
@@ -516,7 +516,7 @@ RCT_EXPORT_MODULE();
         @try {
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
             [impl resetLaunchPreparation];
-            NSURL *bundleURL = [impl bundleURLWithBundle:[HotUpdaterConfig shared].bundle];
+            NSURL *bundleURL = [impl bundleURLWithBundle:HotUpdaterSharedConfig().bundle];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
             if (bundleURL) {
                 RCTReloadCommandSetBundleURL(bundleURL);
@@ -709,7 +709,7 @@ RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
         @try {
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
             [impl resetLaunchPreparation];
-            NSURL *bundleURL = [impl bundleURLWithBundle:[HotUpdaterConfig shared].bundle];
+            NSURL *bundleURL = [impl bundleURLWithBundle:HotUpdaterSharedConfig().bundle];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
             if (bundleURL) {
                 RCTReloadCommandSetBundleURL(bundleURL);
