@@ -168,6 +168,10 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
             await checker.whenIdle {
                 await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
                     impl.resetChannel({ value in
+                        // The reset deleted staged bundles; their queued downloads go too.
+                        if (value as? Bool) == true {
+                            NativeUpdateEvents.remove(name: "onBundleDownloaded", from: HotUpdaterImplUpdateHost(impl: impl))
+                        }
                         resolve(value)
                         done.resume()
                     }, rejecter: { code, message, error in

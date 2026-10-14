@@ -14,6 +14,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.withTimeoutOrNull
+import org.json.JSONArray
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
@@ -255,6 +256,15 @@ internal class NativeUpdateChecker(
     private val catalogClient = ReleaseCatalogClient(state, recordingTransport)
 
     /**
+     * Resets the channel once no check or staging runs. A reset deletes staged
+     * bundles, so their queued downloads are dropped rather than replayed.
+     */
+    suspend fun resetChannel(reset: suspend () -> Boolean): Boolean =
+        whenIdle {
+            reset().also { reset -> if (reset) events.remove("onBundleDownloaded") }
+        }
+
+    /**
      * Runs [block] once no check or staging runs, as a channel reset must: a
      * staging that finished after the reset would save its channel again.
      */
@@ -348,17 +358,20 @@ internal class NativeUpdateChecker(
         options: HotUpdaterCheckOptions,
         cohort: String,
     ): String =
-        (
-            listOf(
-                options.baseURL.trimEnd('/'),
-                options.updateStrategy.value,
-                options.channel?.takeIf { it.isNotEmpty() }.orEmpty(),
-                cohort,
-            ) +
-                effectiveHeaders(options.requestHeaders)
-                    .map { (name, value) -> "$name:$value" }
-                    .sorted()
-        ).joinToString("\n")
+        // JSON, so no field can spell another, such as a channel with a newline.
+        JSONArray()
+            .put(options.baseURL.trimEnd('/'))
+            .put(options.updateStrategy.value)
+            .put(options.channel?.takeIf { it.isNotEmpty() }.orEmpty())
+            .put(cohort)
+            .put(
+                JSONArray().apply {
+                    effectiveHeaders(options.requestHeaders)
+                        .entries
+                        .sortedBy { it.key }
+                        .forEach { (name, value) -> put(JSONArray().put(name).put(value)) }
+                },
+            ).toString()
 
     private fun currentCohort(): String = ReleaseSelector.normalizeCohortValue(state.getCohort())
 
