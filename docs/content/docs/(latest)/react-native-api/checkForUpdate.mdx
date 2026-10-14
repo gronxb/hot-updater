@@ -91,8 +91,9 @@ selected artifact when called:
 - Fingerprint catalog: `GET {baseURL}/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash`
 - Artifact resolution: `GET {baseURL}/artifacts/v2/:targetBundleId/from/:currentBundleId`,
   then `POST {baseURL}/artifacts/v2/:targetBundleId/files` for the files the
-  device downloads one by one. A server older than protocol 2 answers `404`,
-  and the client asks `GET {baseURL}/artifacts/v1/:targetBundleId/from/:currentBundleId`.
+  device downloads one by one. When an older server answers `404`, or the
+  app's native code predates these routes, the client asks
+  `GET {baseURL}/artifacts/v1/:targetBundleId/from/:currentBundleId`.
 
 `:channelKey` is the base64url-encoded channel name.
 
