@@ -15,8 +15,20 @@ export interface UpdateBundleParams {
   manifestFileHash: string;
   /** Optional tar.br URL; integrity and sizes come from the verified manifest. */
   archiveUrl?: string | null;
-  /** Full protocol v1 target file descriptor map. */
+  /**
+   * Target file descriptors: every file with its URL in artifact protocol v1,
+   * or only the Hermes patch in v2, where native asks `filesUrl`.
+   */
   assets: UnsafeObject;
+  /**
+   * Artifact protocol v2: where native POSTs the paths of the files it
+   * downloads one by one, after reusing local files and choosing the archive.
+   */
+  filesUrl?: string | null;
+  /** Headers for the `filesUrl` request, as the update check sent them. */
+  requestHeaders?: UnsafeObject | null;
+  /** Milliseconds the `filesUrl` request may take, as the update check's. */
+  requestTimeout?: number | null;
   /** Full Release Catalog selection receipt committed with the staged Bundle. */
   selection?: UnsafeObject | null;
 }

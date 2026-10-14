@@ -100,6 +100,14 @@ const storage = s3Storage({
 });
 ```
 
+An update check returns a URL for every file of its Bundle, hundreds for an
+app with many assets. `cloudFrontDownloadUrl` signs one custom policy for a
+Bundle's files (`bundles/<bundleId>/*`) and one for the shared,
+content-addressed assets (`assets/*`), and reuses each until half of
+`expiresSeconds` (one year by default) has passed. A URL holder can therefore
+read any shared asset whose SHA-256 name it knows, which no one can list
+without a manifest that names it.
+
 Use the CloudFront distribution's artifact domain and public key ID. The SSM
 parameter stores JSON containing `privateKey`; grant the server role permission
 to read and decrypt it. These settings and the private key remain on the

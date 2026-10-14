@@ -1,5 +1,6 @@
 import { canonicalizeAppVersion } from "@hot-updater/plugin-core";
 import {
+  ARTIFACT_FILES_REQUEST_LIMIT,
   createReleaseCatalogScopeKey,
   type ReleaseCatalog,
   type ReleaseCatalogScopeKeyInput,
@@ -12,6 +13,8 @@ const CATALOG_CONTENT_TYPE =
   "application/vnd.hot-updater.release-catalog+json; version=1";
 const ARTIFACT_CONTENT_TYPE =
   "application/vnd.hot-updater.artifact+json; version=1";
+const ARTIFACT_V2_CONTENT_TYPE =
+  "application/vnd.hot-updater.artifact+json; version=2";
 const ORIGIN_CACHE_TTL_MS = 5_000;
 const ORIGIN_CACHE_MAX_ENTRIES = 128;
 /** Marks the 404 of a scope that has no catalog. */
@@ -35,6 +38,29 @@ const CATALOG_CACHE_CONTROL = "public, max-age=0, s-maxage=5";
  */
 const CATALOG_CDN_CACHE_CONTROL =
   "public, max-age=5, stale-while-revalidate=5, stale-if-error=0";
+
+/** The paths of an artifact files request, or null when malformed. */
+const readArtifactFilePaths = async (
+  request: Request,
+): Promise<string[] | null> => {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return null;
+  }
+  const paths = (body as { paths?: unknown } | null)?.paths;
+  if (
+    !Array.isArray(paths) ||
+    paths.length === 0 ||
+    paths.length > ARTIFACT_FILES_REQUEST_LIMIT ||
+    !paths.every((path) => typeof path === "string" && path.length > 0) ||
+    new Set(paths).size !== paths.length
+  ) {
+    return null;
+  }
+  return paths as string[];
+};
 
 const privateNotFound = (): Response =>
   Response.json(
@@ -205,6 +231,44 @@ export const createReleaseCatalogRouteHandlers = (): Record<
       );
     },
 
+    artifactV2: async (params, _request, { core }) => {
+      const info = await core.getArtifactInfo(
+        requireRouteParam(params, "targetBundleId"),
+        requireRouteParam(params, "currentBundleId"),
+        2,
+      );
+      if (info === null) return privateNotFound();
+      return new Response(JSON.stringify(info), {
+        status: 200,
+        headers: {
+          "cache-control": "private, no-store",
+          "content-type": ARTIFACT_V2_CONTENT_TYPE,
+        },
+      });
+    },
+
+    artifactFilesV2: async (params, request, { core }) => {
+      const paths = await readArtifactFilePaths(request);
+      if (paths === null) {
+        return badRequest(
+          `paths must be 1 to ${ARTIFACT_FILES_REQUEST_LIMIT} unique strings`,
+        );
+      }
+      const files = await core.getArtifactFiles(
+        requireRouteParam(params, "targetBundleId"),
+        paths,
+      );
+      if (files === null) return privateNotFound();
+      return new Response(JSON.stringify(files), {
+        status: 200,
+        headers: {
+          "cache-control": "private, no-store",
+          "content-type": ARTIFACT_V2_CONTENT_TYPE,
+        },
+      });
+    },
+
+    // Legacy: artifact protocol v1, for apps whose SDK predates v2; remove with it.
     artifactV1: async (params, _request, { core }) => {
       const info = await core.getArtifactInfo(
         requireRouteParam(params, "targetBundleId"),

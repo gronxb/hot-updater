@@ -1,0 +1,67 @@
+import groovy.json.JsonOutput
+import java.security.MessageDigest
+
+/**
+ * Records, in the app's assets, the SHA-256 of every asset React Native's
+ * bundle task emits, keyed by its path in the bundle, as an OTA manifest lists
+ * it (`drawable-mdpi/logo.png`).
+ *
+ * AAPT2 re-encodes PNGs in release builds (`crunchPngs`), so the packaged
+ * bytes no longer match the OTA's while the image is the same. With this
+ * record, the first OTA after a store install still reuses such an asset
+ * instead of downloading it: the record proves it came from the same source.
+ */
+class HotUpdaterBuiltInAssetIndex implements Action<Task> {
+  static final String FILE_NAME = "hot-updater-builtin-assets.json"
+
+  private final Provider<Directory> resourcesDir
+  private final Provider<Directory> jsBundleDir
+
+  HotUpdaterBuiltInAssetIndex(Provider<Directory> resourcesDir, Provider<Directory> jsBundleDir) {
+    this.resourcesDir = resourcesDir
+    this.jsBundleDir = jsBundleDir
+  }
+
+  private static String sha256(File file) {
+    MessageDigest digest = MessageDigest.getInstance("SHA-256")
+    file.withInputStream { input ->
+      byte[] buffer = new byte[65536]
+      int read
+      while ((read = input.read(buffer)) > 0) {
+        digest.update(buffer, 0, read)
+      }
+    }
+    return digest.digest().collect { String.format("%02x", it) }.join()
+  }
+
+  @Override
+  void execute(Task task) {
+    File resources = resourcesDir.get().asFile
+    File output = jsBundleDir.get().asFile
+    Map<String, String> assets = new TreeMap<>()
+    if (resources.isDirectory()) {
+      resources.eachFileRecurse { File file ->
+        if (!file.isFile()) return
+        String path = resources.toPath().relativize(file.toPath()).toString().replace(File.separatorChar, '/' as char)
+        // A nine-patch's border becomes a chunk, not a re-encoding of the image.
+        if (path.endsWith(".9.png")) return
+        assets[path] = sha256(file)
+      }
+    }
+    output.mkdirs()
+    new File(output, FILE_NAME).text = JsonOutput.toJson([schemaVersion: 1, assets: assets])
+  }
+}
+
+def hotUpdaterRecordBuiltInAssets = { Project app ->
+  app.tasks.matching { it.name ==~ /createBundle.+JsAndAssets/ }.configureEach { Task task ->
+    if (!task.hasProperty("resourcesDir") || !task.hasProperty("jsBundleDir")) return
+    task.doLast(new HotUpdaterBuiltInAssetIndex(task.resourcesDir, task.jsBundleDir))
+  }
+}
+
+rootProject.allprojects { Project candidate ->
+  candidate.pluginManager.withPlugin("com.android.application") {
+    hotUpdaterRecordBuiltInAssets(candidate)
+  }
+}

@@ -42,6 +42,15 @@ export interface ArtifactAsset {
 
 export const ARTIFACT_PROTOCOL_VERSION = 1 as const;
 
+/**
+ * Artifact protocol in which a device asks for the URLs of only the files it
+ * downloads one by one, after reusing local files and choosing the archive.
+ */
+export const ARTIFACT_FILES_PROTOCOL_VERSION = 2 as const;
+
+/** Paths one artifact files request may resolve; a device splits more. */
+export const ARTIFACT_FILES_REQUEST_LIMIT = 100;
+
 export interface Bundle {
   /**
    * The unique identifier for the bundle. uuidv7
@@ -103,4 +112,30 @@ export interface ArtifactInfo {
    * descriptor for every target asset; patches are optional optimizations.
    */
   assets: Record<string, ArtifactAsset>;
+}
+
+/**
+ * How a device downloads a Bundle in artifact protocol v2: no URL per file,
+ * so the response and its signing stay the same size for any number of files.
+ */
+export interface ArtifactInfoV2 {
+  artifactProtocolVersion: typeof ARTIFACT_FILES_PROTOCOL_VERSION;
+  manifestUrl: string;
+  /** SHA256 hash of the manifest file, optionally `sig:<base64_signature>`. */
+  manifestFileHash: string;
+  /** Optional bulk transport. Hash and sizes come from the verified manifest. */
+  archiveUrl?: string;
+  /** The Hermes bytecode patch from the device's current Bundle, if smaller than its file. */
+  patch?: ChangedAssetPatch & { assetPath: string };
+}
+
+/** The request body of `POST /artifacts/v2/:bundleId/files`. */
+export interface ArtifactFilesRequest {
+  /** Manifest asset paths, unique, at most {@link ARTIFACT_FILES_REQUEST_LIMIT}. */
+  paths: string[];
+}
+
+/** Download URLs for the requested manifest asset paths. */
+export interface ArtifactFiles {
+  files: Record<string, ArtifactAssetFile>;
 }

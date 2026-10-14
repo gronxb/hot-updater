@@ -124,6 +124,16 @@ describe("createHotUpdater with plugins", () => {
         path: "/artifacts/v1/:targetBundleId/from/:currentBundleId",
         access: "client",
       },
+      {
+        method: "GET",
+        path: "/artifacts/v2/:targetBundleId/from/:currentBundleId",
+        access: "client",
+      },
+      {
+        method: "POST",
+        path: "/artifacts/v2/:targetBundleId/files",
+        access: "client",
+      },
       { method: "GET", path: "/version", access: "admin" },
       { method: "POST", path: "/releases", access: "admin" },
       { method: "POST", path: "/releases/:id/promote", access: "admin" },

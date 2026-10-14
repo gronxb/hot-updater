@@ -361,11 +361,8 @@ private func hotUpdaterGetMinBundleId() -> String {
                 return
             }
             let assets = assetsPayload.reduce(into: [String: ChangedAssetDescriptor]()) { partialResult, entry in
-                guard let fileHash = entry.value["fileHash"] as? String,
-                      !fileHash.isEmpty
-                else {
-                    return
-                }
+                // In artifact protocol v2, an entry holds only the Hermes patch.
+                let fileHash = entry.value["fileHash"] as? String ?? ""
 
                 let patchPayload = entry.value["patch"] as? [String: Any]
                 let patch = patchPayload.flatMap { payload -> BsdiffPatchDescriptor? in
@@ -391,7 +388,8 @@ private func hotUpdaterGetMinBundleId() -> String {
                 let filePayload = entry.value["file"] as? [String: Any]
                 let fileUrl = (filePayload?["url"] as? String).flatMap { URL(string: $0) }
                 let fileCompression = filePayload?["compression"] as? String
-                guard fileUrl != nil || patch != nil else {
+                guard fileUrl != nil || patch != nil,
+                      !fileHash.isEmpty || fileUrl == nil else {
                     return
                 }
 
@@ -401,6 +399,22 @@ private func hotUpdaterGetMinBundleId() -> String {
                     fileCompression: fileCompression,
                     patch: patch
                 )
+            }
+            var fileResolver: ArtifactFileResolver?
+            if let filesUrlString = data["filesUrl"] as? String {
+                guard let filesUrl = URL(string: filesUrlString) else {
+                    let error = UpdateFailure.invalidResponse.with(resource: .file).error(
+                        description: "Invalid 'filesUrl' provided: \(filesUrlString)"
+                    )
+                    reject("INVALID_FILE_URL", error.localizedDescription, error)
+                    return
+                }
+                // The update check's headers, which the artifact files request repeats.
+                let headers = (data["requestHeaders"] as? [String: Any] ?? [:])
+                    .compactMapValues { $0 as? String }
+                let timeout = (data["requestTimeout"] as? NSNumber).map { $0.doubleValue / 1000 }
+                    .flatMap { $0 > 0 ? $0 : nil } ?? HTTPArtifactFileResolver.defaultTimeout
+                fileResolver = HTTPArtifactFileResolver(filesUrl: filesUrl, headers: headers, timeout: timeout)
             }
             let selection = (data["selection"] as? [String: Any]).flatMap(Self.parseSelection)
             if let selection, !bundleStorage.isSelectionCurrent(selection) {
@@ -416,7 +430,7 @@ private func hotUpdaterGetMinBundleId() -> String {
             NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), manifestUrl: \(manifestUrl.absoluteString)")
 
             // Heavy work is delegated to bundle storage service with safe error handling
-            bundleStorage.updateBundle(bundleId: bundleId, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, archiveUrl: archiveUrl, assets: assets, selection: selection, progressHandler: { payload in
+            bundleStorage.updateBundle(bundleId: bundleId, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, archiveUrl: archiveUrl, assets: assets, fileResolver: fileResolver, selection: selection, progressHandler: { payload in
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(
                         name: .updateProgressDidChange,
