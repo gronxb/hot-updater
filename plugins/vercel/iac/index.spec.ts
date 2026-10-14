@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   api: {
     connectBlobStore: vi.fn(),
+    disconnectBlobStore: vi.fn(),
     createBlobStore: vi.fn(),
     createProject: vi.fn(),
     getProject: vi.fn(),
@@ -516,7 +517,14 @@ describe("Vercel init", () => {
     mocks.api.listBlobStores.mockResolvedValue([
       {
         access: "public",
-        connections: [],
+        connections: [
+          {
+            environmentVariables: ["HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN"],
+            environments: ["production"],
+            id: "conn_pub",
+            projectId: "prj_1",
+          },
+        ],
         id: "store_pub",
         name: "pub",
         region: "iad1",
@@ -562,6 +570,14 @@ describe("Vercel init", () => {
     expect(mocks.api.connectBlobStore).toHaveBeenCalledWith(
       expect.objectContaining({ storeId: "store_Store1" }),
     );
+    // The public store's connection gives up the token variable first.
+    expect(mocks.api.disconnectBlobStore).toHaveBeenCalledWith(
+      "store_pub",
+      "conn_pub",
+    );
+    expect(
+      mocks.api.disconnectBlobStore.mock.invocationCallOrder[0],
+    ).toBeLessThan(mocks.api.connectBlobStore.mock.invocationCallOrder[0]!);
   });
 
   it("changes nothing when the replacement of a public Blob store is declined", async () => {
@@ -595,6 +611,19 @@ describe("Vercel init", () => {
     }
     expect(mocks.api.createProject).not.toHaveBeenCalled();
     expect(mocks.api.createBlobStore).not.toHaveBeenCalled();
+    expect(mocks.deployFunction).not.toHaveBeenCalled();
+  });
+
+  it("refuses a production token that belongs to another Blob store", async () => {
+    givenInitEnv(replayEnv);
+    mocks.api.getProjectEnvValue.mockImplementation(
+      async (_project: string, envId: string) =>
+        envId === "env_blob" ? "vercel_blob_rw_Other_secret" : DATABASE_URL,
+    );
+
+    await expect(
+      runInit({ build: "bare", envFile: ".env.hotupdater" }),
+    ).rejects.toThrow("belongs to another Blob store");
     expect(mocks.deployFunction).not.toHaveBeenCalled();
   });
 

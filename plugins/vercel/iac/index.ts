@@ -158,7 +158,10 @@ const resolveProjectName = async (
   );
 };
 
-/** The saved store, or one the user selects or creates; undefined to create `name`. */
+/**
+ * The saved store, or one the user selects or creates; `replaces` is a saved
+ * public store the selection takes the place of.
+ */
 const selectBlobStore = async ({
   nonInteractive,
   savedId,
@@ -170,8 +173,10 @@ const selectBlobStore = async ({
   readonly savedName?: string;
   readonly stores: readonly VercelBlobStore[];
 }): Promise<
-  | { readonly kind: "existing"; readonly store: VercelBlobStore }
-  | { readonly kind: "create"; readonly name: string }
+  (
+    | { readonly kind: "existing"; readonly store: VercelBlobStore }
+    | { readonly kind: "create"; readonly name: string }
+  ) & { readonly replaces?: VercelBlobStore }
 > => {
   const found =
     stores.find((store) => store.id === savedId) ??
@@ -194,11 +199,11 @@ const selectBlobStore = async ({
       if (savedName && savedName !== publicStore.name) {
         if (named?.access === "private") {
           p.log.warn(replacement!);
-          return { kind: "existing", store: named };
+          return { kind: "existing", store: named, replaces: publicStore };
         }
         if (!named) {
           p.log.warn(replacement!);
-          return { kind: "create", name: savedName };
+          return { kind: "create", name: savedName, replaces: publicStore };
         }
       }
       throw new InitError(
@@ -238,7 +243,8 @@ const selectBlobStore = async ({
     }),
   );
   const store = privateStores.find((candidate) => candidate.id === selected);
-  if (store) return { kind: "existing", store };
+  const replaces = publicStore ? { replaces: publicStore } : {};
+  if (store) return { kind: "existing", store, ...replaces };
 
   const prompt = inputs.blobStoreName.prompt;
   const name = exitIfCancelled(
@@ -254,7 +260,7 @@ const selectBlobStore = async ({
           : "Use up to 32 letters, digits, '_', or '-'.",
     }),
   );
-  return { kind: "create", name };
+  return { kind: "create", name, ...replaces };
 };
 
 /**
@@ -291,6 +297,12 @@ const resolveBlobToken = async (
   if (!token?.startsWith("vercel_blob_rw_")) {
     throw new InitError(
       `Blob store ${store.name} is connected to project ${project.name} without a read-write token for production. Reconnect it from the project's Storage tab with a read-write token, then rerun init.`,
+    );
+  }
+  // `vercel_blob_rw_<id>_<secret>` names its store, `store_<id>`.
+  if (`store_${token.split("_")[3]}` !== store.id) {
+    throw new InitError(
+      `The production ${tokenEnv} of project ${project.name} belongs to another Blob store, not ${store.name}. Disconnect that store from the project's Storage tab, then rerun init.`,
     );
   }
   return token;
@@ -565,6 +577,16 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
   // Before any Blob store or deployment change: a database init can reach
   // and may initialize.
   assertPostgresCanInitialize(await readHotUpdaterTables(databaseUrl));
+
+  // The replaced public store's connection holds the token variable the
+  // new store's connection takes.
+  for (const connection of storeSelection.replaces?.connections ?? []) {
+    if (connection.projectId !== project.id) continue;
+    await api.disconnectBlobStore(storeSelection.replaces!.id, connection.id);
+    p.log.info(
+      `Disconnected Blob store ${storeSelection.replaces!.name} from ${project.name}`,
+    );
+  }
 
   let store: VercelBlobStore;
   if (storeSelection.kind === "existing") {
