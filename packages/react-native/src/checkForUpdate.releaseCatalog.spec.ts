@@ -50,6 +50,7 @@ const mocks = vi.hoisted(() => {
     isChannelSwitched: vi.fn(() => false),
     isReleaseSelectionCurrent: vi.fn(() => true),
     resetChannel: vi.fn(),
+    supportsArtifactFiles: vi.fn(() => true),
     stageBundle: vi.fn(
       async (): Promise<{
         delivery: "patch" | "manifest" | "archive";
@@ -278,6 +279,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     await expect(result?.updateBundle()).resolves.toBe(true);
 
     expect(resolveArtifact).toHaveBeenCalledWith({
+      artifactProtocol: 2,
       currentBundleId: CURRENT_BUNDLE_ID,
       requestHeaders: undefined,
       requestTimeout: undefined,
@@ -300,7 +302,6 @@ describe("checkForUpdate Release catalog protocol", () => {
     const { checkForUpdate } = await import("./checkForUpdate");
     const { client, resolveArtifact } = createClient();
     resolveArtifact.mockResolvedValueOnce({
-      assets: {},
       filesUrl: "https://updates.example.com/artifacts/v2/target/files",
       manifestFileHash: "manifest-hash",
       manifestUrl: "https://updates.example.com/manifest.json",
@@ -317,12 +318,32 @@ describe("checkForUpdate Release catalog protocol", () => {
 
     expect(mocks.stageBundle).toHaveBeenCalledWith(
       expect.objectContaining({
-        assets: {},
         bundleId: TARGET_BUNDLE_ID,
         filesUrl: "https://updates.example.com/artifacts/v2/target/files",
         requestHeaders: { "x-api-key": "client-key" },
         requestTimeout: 60_000,
       }),
+    );
+    expect(mocks.stageBundle.mock.calls[0]![0]).not.toHaveProperty("assets");
+  });
+
+  it("asks artifact protocol v1 for native that installs v1 only", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client, resolveArtifact } = createClient();
+    mocks.supportsArtifactFiles.mockReturnValueOnce(false);
+
+    const result = await checkForUpdate({
+      emit,
+      client,
+      updateStrategy: "appVersion",
+    });
+    await expect(result?.updateBundle()).resolves.toBe(true);
+
+    expect(resolveArtifact).toHaveBeenCalledWith(
+      expect.objectContaining({ artifactProtocol: 1 }),
+    );
+    expect(mocks.stageBundle).toHaveBeenCalledWith(
+      expect.objectContaining({ assets: {} }),
     );
   });
 

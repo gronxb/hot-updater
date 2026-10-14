@@ -683,6 +683,70 @@ describe("notifyAppReady", () => {
     });
   });
 
+  it("installs an artifact protocol v2 Bundle through native installArtifact", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-123");
+    const installArtifact = vi.fn().mockResolvedValue({
+      delivery: "archive",
+      patchFallback: false,
+    });
+    Object.assign(nativeModuleMock, { installArtifact });
+    try {
+      const { stageBundle } = await import("./native");
+
+      await stageBundle({
+        bundleId: "bundle-789",
+        filesUrl: "https://example.com/artifacts/v2/bundle-789/files",
+        manifestFileHash: "sig:manifest",
+        manifestUrl: "https://example.com/manifest.json",
+        patch: {
+          algorithm: "bsdiff",
+          assetPath: "index.ios.bundle",
+          baseBundleId: "bundle-123",
+          baseFileHash: "hash-prev",
+          patchFileHash: "hash-patch",
+          patchUrl: "https://example.com/files/index.ios.bundle.bsdiff",
+        },
+        requestHeaders: { "x-api-key": "key" },
+        requestTimeout: 5000,
+        status: "UPDATE",
+      });
+
+      expect(installArtifact).toHaveBeenCalledWith({
+        bundleId: "bundle-789",
+        channel: undefined,
+        filesUrl: "https://example.com/artifacts/v2/bundle-789/files",
+        manifestFileHash: "sig:manifest",
+        manifestUrl: "https://example.com/manifest.json",
+        patch: {
+          algorithm: "bsdiff",
+          assetPath: "index.ios.bundle",
+          baseBundleId: "bundle-123",
+          baseFileHash: "hash-prev",
+          patchFileHash: "hash-patch",
+          patchUrl: "https://example.com/files/index.ios.bundle.bsdiff",
+        },
+        requestHeaders: { "x-api-key": "key" },
+        requestTimeout: 5000,
+      });
+      expect(nativeModuleMock.updateBundle).not.toHaveBeenCalled();
+    } finally {
+      Reflect.deleteProperty(nativeModuleMock, "installArtifact");
+    }
+  });
+
+  it("knows artifact protocol v2 only from native that has installArtifact", async () => {
+    const { supportsArtifactFiles } = await import("./native");
+    // Native built from an SDK older than protocol v2 has no such method.
+    expect(supportsArtifactFiles()).toBe(false);
+
+    Object.assign(nativeModuleMock, { installArtifact: vi.fn() });
+    try {
+      expect(supportsArtifactFiles()).toBe(true);
+    } finally {
+      Reflect.deleteProperty(nativeModuleMock, "installArtifact");
+    }
+  });
+
   it("resolves how native delivered a staged bundle", async () => {
     nativeModuleMock.getBundleId.mockReturnValue("bundle-123");
     nativeModuleMock.updateBundle.mockResolvedValue({
