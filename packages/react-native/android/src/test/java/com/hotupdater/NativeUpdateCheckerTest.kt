@@ -1358,6 +1358,8 @@ class NativeUpdateCheckerTest {
         val allocateInstance = unsafe.javaClass.getMethod("allocateInstance", Class::class.java)
         val impl = allocateInstance.invoke(unsafe, HotUpdaterImpl::class.java) as HotUpdaterImpl
         setImplField(impl, "bundleStorage", storage)
+        // Field initializers don't run without the constructor.
+        setImplField(impl, "launchPreparationLock", Any())
         return impl
     }
 

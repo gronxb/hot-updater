@@ -38,6 +38,10 @@ class HotUpdaterImpl {
     @Volatile
     private var runningLaunchSelection: LaunchSelection? = null
 
+    // Serializes the launch's bundle selection with the update check's read
+    // of it, so a check never reads metadata the launch is still selecting from.
+    private val launchPreparationLock = Any()
+
     /**
      * Primary constructor with dependency injection (for testing)
      */
@@ -478,15 +482,16 @@ class HotUpdaterImpl {
      * keep a forced update staged before React Native starts from applying in
      * this process.
      */
-    fun getBundleIdForUpdateCheck(): String? {
-        val launchSelection = currentLaunchSelection ?: runningLaunchSelection
-        if (launchSelection != null) {
-            return launchSelection.launchedBundleId
-        }
+    fun getBundleIdForUpdateCheck(): String? =
+        synchronized(launchPreparationLock) {
+            val launchSelection = currentLaunchSelection ?: runningLaunchSelection
+            if (launchSelection != null) {
+                return@synchronized launchSelection.launchedBundleId
+            }
 
-        bundleStorage.settlePreviousLaunch(recoveryManager::consumePendingCrashRecovery)
-        return bundleStorage.peekLaunchBundleId()
-    }
+            bundleStorage.settlePreviousLaunch(recoveryManager::consumePendingCrashRecovery)
+            bundleStorage.peekLaunchBundleId()
+        }
 
     /**
      * Gets the current manifest from bundle storage.
@@ -509,7 +514,12 @@ class HotUpdaterImpl {
         return success
     }
 
-    private fun prepareLaunchIfNeeded(): LaunchSelection {
+    private fun prepareLaunchIfNeeded(): LaunchSelection =
+        synchronized(launchPreparationLock) {
+            prepareLaunchLocked()
+        }
+
+    private fun prepareLaunchLocked(): LaunchSelection {
         currentLaunchSelection?.let { return it }
 
         launchSelectionStarted = true

@@ -1016,6 +1016,40 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    fun `a committed selection makes another scope's selection stale`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder("selection-across-scopes")
+            val service = createService(rootDir)
+            val bundleDir = createBundleDir(rootDir, "bundle-one")
+            writeFile(bundleDir, "index.android.bundle")
+            writeManifest(bundleDir, listOf("index.android.bundle"))
+            writeMetadata(
+                rootDir,
+                BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stagingBundleId = bundleDir.name),
+            )
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 1, "hash-1", "production", "context-1"))
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-beta", 1, "hash-beta", "beta", "context-beta"))
+            val beta =
+                PersistedSelection(
+                    kind = "BUNDLE",
+                    releaseId = "release-beta",
+                    bundleId = bundleDir.name,
+                    catalogId = "project-a",
+                    scopeKey = "scope-beta",
+                    generation = 1,
+                    catalogHash = "hash-beta",
+                    channel = "beta",
+                    selectionContextHash = "context-beta",
+                )
+
+            assertTrue(service.commitReleaseSelection(beta))
+
+            // A production check kept from before the beta commit no longer stages.
+            assertFalse(service.isReleaseSelectionCurrent("project-a", "scope-production", 1, "hash-1", "production", "context-1"))
+            assertTrue(service.isReleaseSelectionCurrent("project-a", "scope-beta", 1, "hash-beta", "beta", "context-beta"))
+        }
+
+    @Test
     fun `crash restores the complete stable receipt but retains newer high water`() {
         val rootDir = temporaryFolder.newFolder("release-crash-ledger")
         val service = createService(rootDir)

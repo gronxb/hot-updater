@@ -1329,7 +1329,7 @@ class BundleFileStorageService: BundleStorageService {
                 toBundleId: stagingSelection.bundleId
             ),
             highestSeenCatalogs: metadata.highestSeenCatalogs,
-            currentSelectionContexts: metadata.currentSelectionContexts,
+            currentSelectionContexts: contextsAfterCommitting(metadata.currentSelectionContexts, incomingSelection),
             updatedAt: Date().timeIntervalSince1970 * 1000
         )
     }
@@ -1426,6 +1426,20 @@ class BundleFileStorageService: BundleStorageService {
 
     private func releaseScopeStateKey(catalogId: String, scopeKey: String) -> String {
         "\(catalogId)|\(scopeKey)"
+    }
+
+    /// The selection contexts that stay current once `selection` commits: only
+    /// its own scope's. A check of another scope, such as another channel,
+    /// made before this commit no longer stages over it.
+    private func contextsAfterCommitting(
+        _ contexts: [String: String],
+        _ selection: PersistedSelection?
+    ) -> [String: String] {
+        guard let catalogId = selection?.catalogId, let scopeKey = selection?.scopeKey else {
+            return contexts
+        }
+        let stateKey = releaseScopeStateKey(catalogId: catalogId, scopeKey: scopeKey)
+        return contexts.filter { $0.key == stateKey }
     }
 
     private func selectionContextValue(channel: String, selectionContextHash: String) -> String {
@@ -1572,6 +1586,7 @@ class BundleFileStorageService: BundleStorageService {
             metadata.pendingSelectionTransition = nil
         }
         metadata.updatedAt = Date().timeIntervalSince1970 * 1000
+        metadata.currentSelectionContexts = contextsAfterCommitting(metadata.currentSelectionContexts, selection)
         guard saveMetadata(metadata) else { return false }
         do {
             try preferences.setItem(

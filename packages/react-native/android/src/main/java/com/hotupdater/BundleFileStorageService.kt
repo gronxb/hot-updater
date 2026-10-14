@@ -1125,6 +1125,7 @@ class BundleFileStorageService(
                 ),
             verificationPending = true,
             launchInProgress = false,
+            currentSelectionContexts = contextsAfterCommitting(metadata.currentSelectionContexts, incomingSelection),
             updatedAt = System.currentTimeMillis(),
         )
     }
@@ -1242,6 +1243,21 @@ class BundleFileStorageService(
         catalogId: String,
         scopeKey: String,
     ): String = "$catalogId|$scopeKey"
+
+    /**
+     * The selection contexts that stay current once [selection] commits: only
+     * its own scope's. A check of another scope, such as another channel,
+     * made before this commit no longer stages over it.
+     */
+    private fun contextsAfterCommitting(
+        contexts: Map<String, String>,
+        selection: PersistedSelection?,
+    ): Map<String, String> {
+        val catalogId = selection?.catalogId ?: return contexts
+        val scopeKey = selection.scopeKey ?: return contexts
+        val stateKey = releaseScopeStateKey(catalogId, scopeKey)
+        return contexts.filterKeys { it == stateKey }
+    }
 
     private fun selectionContextValue(
         channel: String,
@@ -1392,7 +1408,11 @@ class BundleFileStorageService(
                             updatedAt = System.currentTimeMillis(),
                         )
                     }
-                if (!saveMetadata(nextMetadata)) return@synchronized false
+                val committedMetadata =
+                    nextMetadata.copy(
+                        currentSelectionContexts = contextsAfterCommitting(nextMetadata.currentSelectionContexts, selection),
+                    )
+                if (!saveMetadata(committedMetadata)) return@synchronized false
 
                 if (selection.channel == defaultChannelProvider()) {
                     preferences.setItem("HotUpdaterChannel", null)
