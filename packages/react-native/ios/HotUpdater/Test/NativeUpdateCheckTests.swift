@@ -684,6 +684,29 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func aPatchThatIsNotAnObjectIsInvalid() async throws {
+        for patch in ["true", "\"patch\"", "[]"] {
+            let host = FakeUpdateHost()
+            let body = artifactBody.replacingOccurrences(
+                of: "\"fileHash\":\"hash\",",
+                with: "\"fileHash\":\"hash\",\"patch\":\(patch),"
+            )
+            let transport = FakeUpdateTransport { url, _ in
+                if url.path.contains("/artifacts/v1/") {
+                    return NativeUpdateResponse(status: 200, headers: [:], body: body)
+                }
+                return NativeUpdateResponse(status: 200, headers: [:],
+                    body: catalog(releases: [descriptor(release2, bundle2)]))
+            }
+            let checker = makeChecker(host, transport)
+            let update = try #require(try await checker.checkForUpdate(options()))
+
+            await #expect(throws: NativeUpdateCheckError.self) { _ = try await update.updateBundle() }
+            #expect(host.stageCalls == 0)
+        }
+    }
+
+    @Test
     func updateBundleJoinsOnlyTheSameSelection() async throws {
         // The same bundle promoted to a newer Release is another selection: it
         // stages and commits its own receipt instead of joining the first.
