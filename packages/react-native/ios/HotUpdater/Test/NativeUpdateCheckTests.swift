@@ -515,6 +515,11 @@ struct NativeUpdateCheckTests {
 
         #expect(other.status == .failed)
         #expect(otherKey.status == .failed)
+        // A prepare its deadline ended while waiting reports a check timeout.
+        let failures = host.events()
+            .filter { $0["name"] as? String == "onUpdateError" }
+            .compactMap { $0["payload"] as? [String: Any] }
+        #expect(failures.contains { $0["stage"] as? String == "check" && $0["transport"] as? String == "timeout" })
         #expect(otherCohort.status == .failed)
         #expect(same.status == .pending)
         #expect(same.update === first.update)
