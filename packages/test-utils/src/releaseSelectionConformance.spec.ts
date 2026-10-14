@@ -330,10 +330,10 @@ const bodyCases: {
   },
   {
     name: "an unknown field may overflow to Infinity",
-    body: JSON.stringify({ ...validCatalog(appVersionScope), extra: 0 }).replace(
-      '"extra":0',
-      '"extra":1e400',
-    ),
+    body: JSON.stringify({
+      ...validCatalog(appVersionScope),
+      extra: 0,
+    }).replace('"extra":0', '"extra":1e400'),
     scope: appVersionScope,
   },
   {
