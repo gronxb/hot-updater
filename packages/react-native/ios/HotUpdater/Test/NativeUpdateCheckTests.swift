@@ -876,6 +876,36 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func noProgressArrivesAfterATimedOutPrepareReturns() async throws {
+        let host = FakeUpdateHost()
+        let download = Latch()
+        host.stage = { _, progress in
+            progress(0.5)
+            await download.wait()
+            progress(1.0)
+            return ["delivery": "archive", "patchFallback": false]
+        }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
+        )
+        let checker = makeChecker(host, transport)
+        let returned = LockedValue(false)
+        let late = LockedValue(0)
+
+        let result = await checker.prepare(options(), timeout: 0.3) { _ in
+            if returned.value { late.value += 1 }
+        }
+        returned.value = true
+        #expect(result.status == .pending)
+        await MainActor.run {}
+        download.open()
+        await host.stageFinished.wait()
+        await MainActor.run {}
+
+        #expect(late.value == 0)
+    }
+
+    @Test
     func resetChannelWaitsForTheDownloadInProgress() async throws {
         let host = FakeUpdateHost()
         let download = Latch()
