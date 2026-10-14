@@ -9,9 +9,16 @@ extension HotUpdaterImpl: HotUpdaterImplInterface {}
 
 extension HotUpdaterConfig: HotUpdaterConfigInterface {}
 
+extension HotUpdaterNativeUpdateBridge {
+    /// The process's impl, shared by HotUpdater.mm's `sharedImpl` and the
+    /// `HotUpdater` module's async API. Record the bundle in
+    /// `HotUpdaterConfig` first: creating it reads that bundle's Info.plist.
+    public static let sharedImpl = HotUpdaterImpl()
+}
+
 @_cdecl("HotUpdaterMakeImpl")
 public func hotUpdaterMakeImpl() -> HotUpdaterImplInterface {
-    HotUpdaterImpl()
+    HotUpdaterNativeUpdateBridge.sharedImpl
 }
 
 @_cdecl("HotUpdaterAppVersion")
