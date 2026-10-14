@@ -118,9 +118,14 @@ const setUpInsights = (
   const pending = new Map<InsightsEventBody, PendingEvent>();
   let send: InsightsEventSender | null = null;
 
+  /**
+   * `occurredAt` dates an event native code recorded before this runtime
+   * started, such as a download `HotUpdater.prepare` finished.
+   */
   const createEvent = (
     movement: Movement,
     eventId?: (now: number, installId: string) => string,
+    occurredAt?: number,
   ): PendingEvent | null => {
     if (context === null || state === null) return null;
     const appVersion = context.appVersion;
@@ -130,7 +135,7 @@ const setUpInsights = (
       );
       return null;
     }
-    const now = context.now();
+    const now = occurredAt ?? context.now();
     const installId = context.installId;
     const userId = state.readUserId();
     const response = state.readHttpResponse(movement.channel, appVersion);
@@ -139,7 +144,7 @@ const setUpInsights = (
       ...(response
         ? { metadata: { ...movement.metadata, httpResponse: response } }
         : {}),
-      eventId: eventId?.(now, installId) ?? createUUIDv7(),
+      eventId: eventId?.(now, installId) ?? createUUIDv7(now),
       installId,
       ...(userId === null ? {} : { userId }),
       platform: context.platform,
@@ -255,19 +260,23 @@ const setUpInsights = (
     lastDownloadedSelection = selection;
     didDownload = true;
     enqueue(
-      createEvent({
-        type: "UPDATE_DOWNLOADED",
-        channel: info.channel,
-        fromBundleId: info.fromBundleId,
-        fromReleaseId: info.fromReleaseId,
-        toBundleId: info.toBundleId,
-        toReleaseId: info.toReleaseId,
-        updateStrategy: info.updateStrategy,
-        metadata: {
-          delivery: info.delivery,
-          ...(info.patchFallback ? { patchFallback: true } : {}),
+      createEvent(
+        {
+          type: "UPDATE_DOWNLOADED",
+          channel: info.channel,
+          fromBundleId: info.fromBundleId,
+          fromReleaseId: info.fromReleaseId,
+          toBundleId: info.toBundleId,
+          toReleaseId: info.toReleaseId,
+          updateStrategy: info.updateStrategy,
+          metadata: {
+            delivery: info.delivery,
+            ...(info.patchFallback ? { patchFallback: true } : {}),
+          },
         },
-      }),
+        undefined,
+        info.occurredAt,
+      ),
     );
   };
 
@@ -319,6 +328,7 @@ const setUpInsights = (
           [installId, utcDay(now), failureKey].join("\n"),
           utcDayStart(now),
         ),
+      error.occurredAt,
     );
     enqueue(event === null ? null : { ...event, failureKey });
   };
