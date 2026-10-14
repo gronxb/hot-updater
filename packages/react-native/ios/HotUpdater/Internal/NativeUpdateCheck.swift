@@ -874,6 +874,21 @@ final class NativeUpdateChecker {
                 let error: Error = Task.isCancelled
                     ? CancellationError()
                     : NativeUpdateCheckError.hotUpdater("Timed out waiting for another update check")
+                if !Task.isCancelled {
+                    // As the check it never ran would report its own timeout.
+                    reportUpdateError(
+                        URLError(.timedOut),
+                        stage: "check",
+                        resource: "catalog",
+                        scope: ErrorScope(
+                            channel: options.channel.flatMap { $0.isEmpty ? nil : $0 } ?? host.channel(),
+                            bundleId: resolveBundleId(host.bundleId()),
+                            updateStrategy: options.updateStrategy,
+                            targetBundleId: nil,
+                            targetReleaseId: nil
+                        )
+                    )
+                }
                 NSLog("[HotUpdater] prepare: \(error.localizedDescription)")
                 return HotUpdaterPrepareResult(status: .failed, error: error)
             case .acquired:

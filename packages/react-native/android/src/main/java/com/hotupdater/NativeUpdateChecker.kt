@@ -317,6 +317,7 @@ internal class NativeUpdateChecker(
                 }
                 val remaining = remainingMillis(deadline)
                 if (remaining <= 0) {
+                    reportLockTimeout(options)
                     return HotUpdaterPrepareResult.Failed(
                         TimeoutException("Timed out waiting for another update check"),
                         null,
@@ -374,6 +375,23 @@ internal class NativeUpdateChecker(
             ).toString()
 
     private fun currentCohort(): String = ReleaseSelector.normalizeCohortValue(state.getCohort())
+
+    /**
+     * Queues a prepare that its deadline ended while another check or staging
+     * held the lock, as the check it never ran would report its own timeout.
+     */
+    private fun reportLockTimeout(options: HotUpdaterCheckOptions) {
+        val timeout = InterruptedIOException("Timed out waiting for another update check")
+        reportUpdateError(
+            timeout,
+            classifyUpdateError(timeout, UpdateFailureStage.CHECK, UpdateFailureResource.CATALOG),
+            ErrorScope(
+                bundleId = resolveBundleId(state.getBundleId()),
+                channel = options.channel?.takeIf { it.isNotEmpty() } ?: state.getChannel(),
+                updateStrategy = options.updateStrategy,
+            ),
+        )
+    }
 
     private fun remainingMillis(deadline: Long): Long = (deadline - System.nanoTime()) / 1_000_000
 
