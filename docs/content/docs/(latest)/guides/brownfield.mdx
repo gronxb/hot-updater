@@ -415,16 +415,24 @@ to the library:
 import android.app.Application
 import android.os.Build
 import com.brownfieldrn.ReactNativeHostManager
+import java.io.File
 
 class NativeApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         // Android also runs onCreate in Hot Updater's restart process. // [!code ++:2]
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P && getProcessName() != packageName) return
+        if (currentProcessName() != packageName) return
         ReactNativeHostManager.start(this, checkForUpdates = !BuildConfig.DEBUG) { status ->
             // React Native is ready: enable the entries that open its screens.
         }
     }
+
+    private fun currentProcessName(): String = // [!code ++:5]
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            getProcessName()
+        } else {
+            File("/proc/self/cmdline").readText().trimEnd('\u0000')
+        }
 }
 ```
 
