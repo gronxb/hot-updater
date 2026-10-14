@@ -1,5 +1,32 @@
 # @hot-updater/react-native
 
+## 1.0.6
+
+### Patch Changes
+
+- 5702bf5: Make the first OTA of an asset-heavy app fast (#1549).
+  - Artifact protocol v2: `GET /artifacts/v2/:target/from/:current` signs only the manifest, archive, and Hermes patch URLs. The app then asks `POST /artifacts/v2/:target/files` for just the files it downloads one by one, after reusing local and built-in files and choosing the archive. Signing and the response no longer grow with a Bundle's file count, on every storage. Redeploy the server to serve v2; until then the SDK falls back to `/artifacts/v1`, which apps on older SDKs keep using.
+  - `cloudFrontDownloadUrl` signs one CloudFront policy for a Bundle's files and one for the shared assets, instead of one RSA signature per file.
+  - `firebaseStorage` reuses each object's signed URL until half its lifetime has passed, instead of a `signBlob` request per file on every update check.
+  - The app downloads up to 16 files at once, and takes the Bundle's archive when the files left would cost more in requests than the archive's extra bytes.
+  - On Android, the native build records each asset's source hash, so the first OTA reuses built-in PNGs that the release build re-encoded (AAPT2 crunch) instead of downloading them.
+
+- 57a990d: Every native build now ships its own build time as `MIN_BUNDLE_ID`, on the same epoch millisecond clock as the bundle IDs `hot-updater deploy` issues, whether it is built in Xcode, with `xcodebuild`, with Gradle, or through the CLI. A bundle deployed before the native build is no longer applied to it on iOS (#1543).
+  - iOS: a script phase in `HotUpdater.podspec` writes the value into a header before every compile of the pod. It replaces the compile time of `HotUpdater.mm` minus 26 hours, which stayed at the last compile of that file while DerivedData was reused, and the `HOT_UPDATER_MIN_BUNDLE_ID` Info.plist key. The `HOT_UPDATER_MIN_BUNDLE_ID` build setting still wins, and `hot-updater build:ios` no longer adds the Info.plist slot.
+  - Android: a build task writes the value into a generated source on every build, replacing `BuildConfig.BUILD_TIMESTAMP` and `BuildConfig.MIN_BUNDLE_ID`. `-PMIN_BUNDLE_ID` still wins.
+  - A `HOT_UPDATER_MIN_BUNDLE_ID` or `MIN_BUNDLE_ID` that is not a UUIDv7 fails the build.
+
+  Run `pod install` and rebuild the native app.
+
+- 3135b1c: `@hot-updater/react-native` ships a `Package.swift`, so React Native 0.87's experimental Swift Package Manager mode (`npx react-native spm`) autolinks it without `npx react-native spm scaffold`, which can't translate its mixed Swift and Objective-C++ sources. CocoaPods builds keep using `HotUpdater.podspec` and are unchanged.
+  - A build tool plugin runs the same script as the podspec's script phase before every build, so SwiftPM builds also ship their own build time as `MIN_BUNDLE_ID`, and a `HOT_UPDATER_MIN_BUNDLE_ID` that is not a UUIDv7 fails the build. The plugin can read only the environment, not build settings, so `hot-updater build:ios` now passes its `HOT_UPDATER_MIN_BUNDLE_ID` both ways.
+  - `react-native.config.js` sets `spm.name` to `HotUpdater`, which keeps `import HotUpdater` in `AppDelegate.swift` working.
+
+- Updated dependencies [5702bf5]
+  - @hot-updater/protocol@1.0.6
+  - @hot-updater/plugin-insights@1.0.6
+  - @hot-updater/plugin-remote-config@1.0.6
+
 ## 1.0.5
 
 ### Patch Changes
