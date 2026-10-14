@@ -1054,7 +1054,8 @@ class NativeUpdateCheckerTest {
     fun `an invalid baseURL fails prepare and throws from checkForUpdate`() =
         runBlocking {
             val transport = FakeTransport(routes(minorCatalog()))
-            val checker = NativeUpdateChecker(FakeState(), transport)
+            val state = FakeState()
+            val checker = NativeUpdateChecker(state, transport)
             for (baseURL in listOf("updates.example.com", "https://", "https:///api")) {
                 val options = HotUpdaterCheckOptions(baseURL = baseURL, updateStrategy = HotUpdaterUpdateStrategy.APP_VERSION)
 
@@ -1067,6 +1068,11 @@ class NativeUpdateCheckerTest {
                 }
             }
             assertTrue(transport.requests.isEmpty())
+            // Reported as JavaScript reports a check whose request fails.
+            val events = state.events()
+            assertEquals(6, events.size)
+            assertTrue(events.all { it.getString("name") == "onUpdateError" })
+            assertEquals("check", events.first().getJSONObject("payload").getString("stage"))
         }
 
     @Test

@@ -85,11 +85,15 @@ import Foundation
     @objc public let status: HotUpdaterUpdateStatus
     @objc public let shouldForceUpdate: Bool
     @objc public let message: String?
+    /// How many of the 1000 rollout cohorts receive the Release.
+    @objc public let rolloutCohortCount: Int
+    /// Cohorts that receive the Release whatever `rolloutCohortCount` says.
+    @objc public let targetCohorts: [String]
+    /// `INSTALL`, `ADOPT_RELEASE`, or `USE_BUILTIN`.
+    @objc public let transitionKind: String
 
     /// The bundle the update stages.
     let bundleId: String
-    /// `INSTALL`, `ADOPT_RELEASE`, or `USE_BUILTIN`.
-    let transitionKind: String
     /// The update selects the bundle the app already launches, so staging it
     /// only records the selection.
     let runsCurrentBundle: Bool
@@ -114,6 +118,8 @@ import Foundation
         status: HotUpdaterUpdateStatus,
         shouldForceUpdate: Bool,
         message: String?,
+        rolloutCohortCount: Int = 1000,
+        targetCohorts: [String] = [],
         bundleId: String,
         transitionKind: String,
         runsCurrentBundle: Bool,
@@ -128,6 +134,8 @@ import Foundation
         self.status = status
         self.shouldForceUpdate = shouldForceUpdate
         self.message = message
+        self.rolloutCohortCount = rolloutCohortCount
+        self.targetCohorts = targetCohorts
         self.bundleId = bundleId
         self.transitionKind = transitionKind
         self.runsCurrentBundle = runsCurrentBundle
@@ -1156,11 +1164,6 @@ final class NativeUpdateChecker {
     // MARK: checkForUpdate
 
     private func check(_ options: HotUpdaterCheckOptions, deadline: NativeUpdateDeadline?) async throws -> HotUpdaterUpdate? {
-        let baseURL = try Self.validatedBaseURL(options.baseURL)
-        // Each request's timeout, which also bounds prepare's catalog request.
-        guard options.requestTimeout.isFinite, options.requestTimeout > 0 else {
-            throw NativeUpdateCheckError.hotUpdater("requestTimeout must be a positive number of seconds")
-        }
         let currentAppVersion = host.appVersion
         let currentBundleId = resolveBundleId(host.bundleId())
         let minimumReleaseId = host.minBundleId
@@ -1188,6 +1191,13 @@ final class NativeUpdateChecker {
 
         let update: HotUpdaterUpdate?
         do {
+            // Invalid options fail the check as a failed request does in
+            // JavaScript, so they are reported too.
+            let baseURL = try Self.validatedBaseURL(options.baseURL)
+            // Each request's timeout, which also bounds prepare's catalog request.
+            guard options.requestTimeout.isFinite, options.requestTimeout > 0 else {
+                throw NativeUpdateCheckError.hotUpdater("requestTimeout must be a positive number of seconds")
+            }
             update = try await checkReleaseCatalog(
                 options: options,
                 baseURL: baseURL,
@@ -1481,6 +1491,8 @@ final class NativeUpdateChecker {
             status: desired.status == .rollback ? .rollback : .update,
             shouldForceUpdate: shouldForceUpdate,
             message: release?.message,
+            rolloutCohortCount: release?.rolloutCohortCount ?? 1000,
+            targetCohorts: release?.targetCohorts ?? [],
             bundleId: desired.bundleId,
             transitionKind: transitionKind,
             runsCurrentBundle: desired.bundleId.jsEquals(currentBundleId),
