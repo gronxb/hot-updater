@@ -200,6 +200,15 @@ struct NativeUpdateResponse {
     let status: Int
     let headers: [String: String]
     let body: String
+    /// The status and headers arrived but the body did not.
+    var bodyReadFailed = false
+}
+
+/// A 200 whose body could not be read: the request fails, but `response`
+/// arrived and is still reported to `onHttpResponse`.
+struct NativeUpdateResponseBodyError: Error {
+    let response: NativeUpdateResponse
+    let underlying: Error
 }
 
 protocol NativeUpdateTransport {
@@ -629,7 +638,10 @@ final class URLSessionUpdateTransport: NativeUpdateTransport {
         if let protocolClasses {
             configuration.protocolClasses = protocolClasses
         }
-        let session = URLSession(configuration: configuration)
+        // A delegate sees the status and headers before the body, so a body
+        // that breaks still reports the response that arrived.
+        let collector = DataTaskCollector()
+        let session = URLSession(configuration: configuration, delegate: collector, delegateQueue: nil)
         defer { session.finishTasksAndInvalidate() }
 
         // Cancelling the caller cancels the request, so a cancelled check
@@ -637,35 +649,103 @@ final class URLSessionUpdateTransport: NativeUpdateTransport {
         let running = RunningDataTask()
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
-                let task = session.dataTask(with: request) { data, response, error in
+                collector.onComplete = { data, response, error in
                     if let error {
                         if (error as? URLError)?.code == .cancelled {
                             continuation.resume(throwing: CancellationError())
+                        } else if let response {
+                            // The status arrived but the body broke: a broken error body
+                            // must not hide the HTTP error, and a 200 fails with its
+                            // response, as on Android.
+                            let partial = NativeUpdateResponse(
+                                status: response.statusCode,
+                                headers: Self.headers(of: response),
+                                body: "",
+                                bodyReadFailed: true
+                            )
+                            if response.statusCode == 200 {
+                                continuation.resume(throwing: NativeUpdateResponseBodyError(response: partial, underlying: error))
+                            } else {
+                                continuation.resume(returning: partial)
+                            }
                         } else {
                             continuation.resume(throwing: error)
                         }
                         return
                     }
-                    guard let response = response as? HTTPURLResponse else {
+                    guard let response else {
                         continuation.resume(throwing: URLError(.badServerResponse))
                         return
                     }
-                    var headers = [String: String]()
-                    for (name, value) in response.allHeaderFields {
-                        guard let name = name as? String else { continue }
-                        headers[name.lowercased()] = "\(value)"
-                    }
                     continuation.resume(returning: NativeUpdateResponse(
                         status: response.statusCode,
-                        headers: headers,
-                        body: String(decoding: data ?? Data(), as: UTF8.self)
+                        headers: Self.headers(of: response),
+                        body: String(decoding: data, as: UTF8.self)
                     ))
                 }
-                running.start(task)
+                running.start(session.dataTask(with: request))
             }
         } onCancel: {
             running.cancel()
         }
+    }
+}
+
+extension URLSessionUpdateTransport {
+    fileprivate static func headers(of response: HTTPURLResponse) -> [String: String] {
+        var headers = [String: String]()
+        for (name, value) in response.allHeaderFields {
+            guard let name = name as? String else { continue }
+            headers[name.lowercased()] = "\(value)"
+        }
+        return headers
+    }
+}
+
+/// Collects one data task's response, body, and completion for its caller.
+private final class DataTaskCollector: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    private let lock = NSLock()
+    private var response: HTTPURLResponse?
+    private var data = Data()
+    private var completion: ((Data, HTTPURLResponse?, Error?) -> Void)?
+
+    var onComplete: ((Data, HTTPURLResponse?, Error?) -> Void)? {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return completion
+        }
+        set {
+            lock.lock()
+            completion = newValue
+            lock.unlock()
+        }
+    }
+
+    func urlSession(
+        _: URLSession,
+        dataTask _: URLSessionDataTask,
+        didReceive response: URLResponse,
+        completionHandler: @escaping (URLSession.ResponseDisposition) -> Void
+    ) {
+        lock.lock()
+        self.response = response as? HTTPURLResponse
+        lock.unlock()
+        completionHandler(.allow)
+    }
+
+    func urlSession(_: URLSession, dataTask _: URLSessionDataTask, didReceive data: Data) {
+        lock.lock()
+        self.data.append(data)
+        lock.unlock()
+    }
+
+    func urlSession(_: URLSession, task _: URLSessionTask, didCompleteWithError error: Error?) {
+        lock.lock()
+        let result = (data, response, completion)
+        completion = nil
+        lock.unlock()
+        result.2?(result.0, result.1, error)
     }
 }
 
@@ -1434,9 +1514,16 @@ final class NativeUpdateChecker {
             }
             timeout = min(timeout, remaining)
         }
-        let response = try await transport.get(requestURL, headers: headers, timeout: timeout)
-        queueHttpResponse(requestURL, response)
-        return response
+        do {
+            let response = try await transport.get(requestURL, headers: headers, timeout: timeout)
+            queueHttpResponse(requestURL, response)
+            return response
+        } catch let error as NativeUpdateResponseBodyError {
+            // Reported with a null body, as fetchUpdateResponse.ts does, and the
+            // request fails as it did.
+            queueHttpResponse(requestURL, error.response)
+            throw error.underlying
+        }
     }
 
     /// The longest response body queued: the queue lives in the key-value store.
@@ -1451,7 +1538,9 @@ final class NativeUpdateChecker {
             "resource": path.contains("/artifacts/") ? "artifact" : "catalog",
             "path": path,
             "status": response.status,
-            "body": truncated ? String(response.body.prefix(Self.httpResponseBodyLimit)) : response.body,
+            "body": response.bodyReadFailed
+                ? NSNull()
+                : truncated ? String(response.body.prefix(Self.httpResponseBodyLimit)) : response.body,
             "bodyTruncated": truncated,
         ])
     }
