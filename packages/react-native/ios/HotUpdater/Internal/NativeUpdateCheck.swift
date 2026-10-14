@@ -1708,8 +1708,8 @@ final class NativeUpdateChecker {
         guard response.status == 200 else {
             throw NativeUpdateCheckError.http(status: response.status)
         }
-        guard let object = try? JSONSerialization.jsonObject(with: Data(response.body.utf8), options: [.fragmentsAllowed]),
-              let info = object as? [String: Any] else {
+        // As JSON.parse reads it, which JSONSerialization does not.
+        guard let info = StrictJson.parse(response.body) as? [String: Any] else {
             throw NativeUpdateCheckError.invalidResponse("Received an invalid artifact response")
         }
         try Self.requireArtifactProtocolV1(info)
