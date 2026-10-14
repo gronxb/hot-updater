@@ -794,6 +794,9 @@ final class NativeUpdateChecker {
     /// with its HTTP responses: an explicit channel is not the runtime one
     /// until the switch commits.
     private var requestChannelValue: String?
+    /// The cohort the check or staging holding the gate selected for, which
+    /// its events report.
+    private var requestCohortValue: String?
     /// The target the last staging committed, for another retained result of
     /// the same target.
     private var lastCommittedTargetKey: String?
@@ -954,6 +957,19 @@ final class NativeUpdateChecker {
         }
     }
 
+    private var requestCohort: String? {
+        get {
+            committedTargetLock.lock()
+            defer { committedTargetLock.unlock() }
+            return requestCohortValue
+        }
+        set {
+            committedTargetLock.lock()
+            requestCohortValue = newValue
+            committedTargetLock.unlock()
+        }
+    }
+
     private var committedTarget: String? {
         get {
             committedTargetLock.lock()
@@ -1088,6 +1104,7 @@ final class NativeUpdateChecker {
 
         let fingerprintHash = host.fingerprintHash()
         requestChannel = targetChannel
+        requestCohort = cohort
 
         let update: HotUpdaterUpdate?
         do {
@@ -1290,6 +1307,7 @@ final class NativeUpdateChecker {
 
         let installSelection = { [self] (deadline: Date?, progress: @escaping (Double) -> Void) async throws -> Bool in
             requestChannel = targetChannel
+            requestCohort = cohort
             guard host.isReleaseSelectionCurrent(guardParams) else {
                 throw NativeUpdateCheckError.staleReleaseCatalog
             }
@@ -1861,7 +1879,11 @@ final class NativeUpdateChecker {
             name: name,
             payload: payload,
             occurredAt: now(),
-            build: NativeUpdateEvents.build(appVersion: host.appVersion, minBundleId: host.minBundleId, cohort: host.cohort()),
+            build: NativeUpdateEvents.build(
+                appVersion: host.appVersion,
+                minBundleId: host.minBundleId,
+                cohort: requestCohort ?? host.cohort()
+            ),
             to: host
         )
     }

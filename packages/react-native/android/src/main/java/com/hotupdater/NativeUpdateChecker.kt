@@ -227,12 +227,16 @@ internal class NativeUpdateChecker(
     @Volatile
     private var requestChannel: String? = null
 
+    /** The cohort the check or staging holding the lock selected for, which its events report. */
+    @Volatile
+    private var requestCohort: String? = null
+
     /** The target the last staging committed, for another retained result of the same target. */
     @Volatile
     private var lastCommittedTargetKey: String? = null
     private val events =
         NativeUpdateEventQueue(state::getStorageItem, state::setStorageItem, build = {
-            NativeUpdateEventQueue.buildOf(state.getAppVersion(), state.getMinBundleId(), state.getCohort())
+            NativeUpdateEventQueue.buildOf(state.getAppVersion(), state.getMinBundleId(), requestCohort ?: state.getCohort())
         })
 
     /** Queues each catalog and artifact response for `onHttpResponse`, as fetchUpdateResponse.ts reports it. */
@@ -554,6 +558,7 @@ internal class NativeUpdateChecker(
                 fingerprintHash = state.getFingerprintHash(),
             )
         requestChannel = targetChannel
+        requestCohort = cohort
 
         val checked =
             try {
@@ -931,6 +936,7 @@ internal class NativeUpdateChecker(
         val input = selection.input
         val options = input.options
         requestChannel = input.targetChannel
+        requestCohort = input.cohort
         if (!state.isReleaseSelectionCurrent(selection.guard)) {
             throw StaleReleaseCatalogException()
         }
