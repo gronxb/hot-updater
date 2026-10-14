@@ -1,5 +1,21 @@
 # hot-updater
 
+## 1.0.3
+
+### Patch Changes
+
+- 67dae2e: The CLI keeps an `AndroidManifest.xml` as it is when it writes Hot Updater's meta-data. `fingerprint create`, `keys export-public`, `channel set` and `keys remove` used to parse the manifest and build it again, which dropped every XML comment and reformatted the whole file, so one command left a diff across the app's manifest. The CLI now replaces the `android:value` of the matching `<meta-data>` under `<application>` in place, or adds the element as the last child indented like its siblings, and removing a key takes only its line. Comments, attribute layout, indentation, line endings and the order of elements stay as they were.
+- 1a38fc5: The CLI writes an `Info.plist` back in the layout Xcode uses. `fingerprint create`, `keys export-public`, `channel set` and `keys remove` rebuilt the plist with the root `<dict>` indented one level under `<plist>`, while Xcode keeps it at column 0, so one key changed every line of the file and dropped its trailing newline. When the existing file has its root at column 0, element lines under `<plist>` now lose that extra tab, and a file whose root is already indented, as 1.0.2 wrote it, stays indented. Text of multi-line values stays as it is and the trailing newline is kept, so writing one key into an Xcode-written Info.plist no longer shifts its other lines. Lines the plist package does not round-trip still change; for example, an empty `<string></string>` becomes `<string/>` and XML comments are dropped.
+- Updated dependencies [407ec2c]
+  - @hot-updater/cli-tools@1.0.3
+  - @hot-updater/android-helper@1.0.3
+  - @hot-updater/apple-helper@1.0.3
+  - @hot-updater/bsdiff@1.0.3
+  - @hot-updater/console@1.0.3
+  - @hot-updater/protocol@1.0.3
+  - @hot-updater/server@1.0.3
+  - @hot-updater/plugin-core@1.0.3
+
 ## 1.0.2
 
 ### Patch Changes
