@@ -19,7 +19,10 @@ if [[ -n "$min_bundle_id" ]]; then
     exit 1
   fi
 else
-  integer timestamp_ms=$(( epochtime[1] * 1000 + epochtime[2] / 1000000 ))
+  # Each read of $epochtime reads the clock again, so copy both elements at
+  # once to keep the seconds and nanoseconds from the same instant.
+  now=($epochtime)
+  integer timestamp_ms=$(( now[1] * 1000 + now[2] / 1000000 ))
   min_bundle_id=$(printf '%08x-%04x-7000-8000-000000000000' \
     $(( timestamp_ms >> 16 )) $(( timestamp_ms & 0xffff )))
 fi
