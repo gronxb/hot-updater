@@ -2,8 +2,10 @@ package com.hotupdater
 
 import android.content.ContextWrapper
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -320,6 +322,22 @@ class NativeUpdateCheckerTest {
             assertEquals(RELEASE_B, update?.id)
             assertEquals("\"v1\"", transport.requests.last().headers["if-none-match"])
             assertNull(transport.requests.first().headers["if-none-match"])
+        }
+
+    @Test
+    fun `updateBundle reports the progress a staging makes as soon as it starts`() =
+        runBlocking {
+            val state = FakeState()
+            val transport = FakeTransport(routes(minorCatalog()))
+            // The staging runs as soon as it starts, before updateBundle could
+            // register its listener after the start.
+            val checker = NativeUpdateChecker(state, transport, CoroutineScope(SupervisorJob() + Dispatchers.Unconfined))
+            val update = checker.checkForUpdate(OPTIONS)!!
+
+            val progress = mutableListOf<Double>()
+            assertTrue(update.updateBundle { progress.add(it) })
+
+            assertEquals(listOf(0.25, 0.75, 1.0), progress)
         }
 
     @Test

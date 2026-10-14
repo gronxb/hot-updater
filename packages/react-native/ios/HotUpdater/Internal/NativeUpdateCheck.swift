@@ -81,6 +81,30 @@ import Foundation
     @objc public convenience init(updateStrategy: HotUpdaterUpdateStrategy, channel: String?) {
         self.init(updateStrategy: updateStrategy, channel: channel, requestHeaders: [:], requestTimeout: nil)
     }
+
+    /// The full initializer for Objective-C, where `requestTimeout` is seconds
+    /// as an `NSNumber`, or nil for the instance's.
+    @available(swift, obsoleted: 1.0, message: "Use init(updateStrategy:channel:requestHeaders:requestTimeout:)")
+    @objc(initWithUpdateStrategy:channel:requestHeaders:requestTimeout:)
+    public convenience init(
+        updateStrategy: HotUpdaterUpdateStrategy,
+        channel: String?,
+        requestHeaders: [String: String],
+        objcRequestTimeout: NSNumber?
+    ) {
+        self.init(
+            updateStrategy: updateStrategy,
+            channel: channel,
+            requestHeaders: requestHeaders,
+            requestTimeout: objcRequestTimeout?.doubleValue
+        )
+    }
+
+    /// `requestTimeout` for Objective-C: seconds, or nil for the instance's.
+    @available(swift, obsoleted: 1.0, message: "Use requestTimeout")
+    @objc(requestTimeout) public var objcRequestTimeout: NSNumber? {
+        requestTimeout.map { NSNumber(value: $0) }
+    }
 }
 
 /// One check's settings: the instance's, with the check's own over them, as
@@ -882,9 +906,11 @@ final class NativeUpdateChecker {
             return true
         }
         let staging: NativeUpdateStaging
+        let listener: Int?
         switch await gate.enter(joins: { $0.update.targetKey == update.targetKey }) {
         case .joined(let running):
             staging = running
+            listener = running.progress.add(onProgress)
         case .stopped:
             throw CancellationError()
         case .acquired:
@@ -899,9 +925,8 @@ final class NativeUpdateChecker {
                 update.markStaged()
                 return true
             }
-            staging = startStaging(update)
+            (staging, listener) = startStaging(update, onProgress: onProgress)
         }
-        let listener = staging.progress.add(onProgress)
         defer { staging.progress.remove(listener, afterPending: staging.isFinished) }
         switch await wait(for: staging) {
         case .finished(let result):
@@ -979,9 +1004,15 @@ final class NativeUpdateChecker {
     }
 
     /// Hands the gate the caller holds to a staging of `update`, published
-    /// before it starts, which releases the gate when it finishes.
-    private func startStaging(_ update: HotUpdaterUpdate) -> NativeUpdateStaging {
+    /// before it starts, which releases the gate when it finishes. The
+    /// caller's progress listener is added before the staging starts, so its
+    /// first reports reach the caller; the token removes it.
+    private func startStaging(
+        _ update: HotUpdaterUpdate,
+        onProgress: ((Double) -> Void)?
+    ) -> (NativeUpdateStaging, Int?) {
         let staging = NativeUpdateStaging(update: update)
+        let listener = staging.progress.add(onProgress)
         gate.publish(staging)
         Task { [self] in
             let result: Result<Bool, Error>
@@ -997,7 +1028,7 @@ final class NativeUpdateChecker {
             staging.finish(result)
             gate.release(finishing: staging)
         }
-        return staging
+        return (staging, listener)
     }
 
     /// Waits for a staging until it finishes or the caller is cancelled,

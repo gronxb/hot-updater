@@ -460,6 +460,12 @@ class HotUpdaterImpl {
         return null
     }
 
+    /**
+     * The bundle this process runs. A channel reset clears [currentLaunchSelection]
+     * for the next launch, but the running bundle stays until React Native reloads.
+     */
+    fun getRunningBundleId(): String? = (currentLaunchSelection ?: runningLaunchSelection)?.launchedBundleId
+
     /** Takes the queued native update events for JavaScript's `takeNativeUpdateEvents`. */
     fun takeNativeUpdateEvents(): String? =
         NativeUpdateEventQueue(::getStorageItem, ::setStorageItem, build = {
