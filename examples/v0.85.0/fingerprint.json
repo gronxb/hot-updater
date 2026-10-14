@@ -1089,7 +1089,7 @@
         "reasons": [
           "rncoreAutolinking"
         ],
-        "hash": "b28f4b92e15edde29a590417b7341604b3b941da",
+        "hash": "e8a70d767ba6e09a663b9392c99520172a6871d9",
         "debugInfo": {
           "path": "node_modules/@hot-updater/react-native",
           "children": [
@@ -1247,7 +1247,7 @@
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/NativeUpdateChecker.kt",
-                                      "hash": "f0521366db4afda395b5db178dfcea91c50b289d"
+                                      "hash": "3af3497851c268f935cfc2a6ea53dfaa3f934da2"
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/NativeUpdateEventQueue.kt",
@@ -1388,16 +1388,16 @@
                                       "hash": "8b5b0ea79da48638f801babfc2152fa49b8dce2b"
                                     }
                                   ],
-                                  "hash": "d1b74b5b04915554295ad76df0e51c3970b0b862"
+                                  "hash": "774562958a52204dcd094e07eca530c5d977d4fa"
                                 }
                               ],
-                              "hash": "5aa6bb95202795125ab4a9406abbe8a65cc320da"
+                              "hash": "467e2b1a243e14f1e07d128958cd1d959f6ee817"
                             }
                           ],
-                          "hash": "c7aecf9ac0c3349bf9c804c56656ca5cdad4fb70"
+                          "hash": "b3b507132dc7c198524228cd7d570822d8a4bd07"
                         }
                       ],
-                      "hash": "d289505107441740083df2b03179d429ede09c42"
+                      "hash": "1fdc4a1b29b983f0fe5613d4610acbfd50f50cff"
                     },
                     {
                       "path": "node_modules/@hot-updater/react-native/android/src/newarch",
@@ -1521,7 +1521,7 @@
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/test/java/com/hotupdater/NativeUpdateCheckerTest.kt",
-                                      "hash": "b45c76948b452a22633b6f617c22f7acb611aedc"
+                                      "hash": "c7df4dc7905dd3c641aa0e438e55316c5af916f8"
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/test/java/com/hotupdater/NoBackupContext.kt",
@@ -1560,22 +1560,22 @@
                                       "hash": "f52878e2629a8557eb69d2cd91893c00ac168ff7"
                                     }
                                   ],
-                                  "hash": "327aa6d4343c2adf97ce50270ab76a73c1505bee"
+                                  "hash": "85fe600d199033f5063b38bf96e56dad2b461541"
                                 }
                               ],
-                              "hash": "8a9d0c8b2d5565ac15ef926f7c7a54b07c00a2fa"
+                              "hash": "41de79265936668409606238b8966dd2eb6cf6c8"
                             }
                           ],
-                          "hash": "c08594c81453d54df8ffa946867bb9ccfe932597"
+                          "hash": "fcb6088cf0702fb2526c65fd57e7be37a97362b8"
                         }
                       ],
-                      "hash": "ce079e2acd84cd6a08f528c383662bb44db4c947"
+                      "hash": "4d128926ba753e4278339b3e5023d2c4ff40d43a"
                     }
                   ],
-                  "hash": "5e45a1fc5a08642d16f2c2930a38bc36b3964c03"
+                  "hash": "6e2f8b058e098c78d0302c16c8db9698eda077ff"
                 }
               ],
-              "hash": "d601b66c70bb99dc9b47eaed34b737f6dd1c30f3"
+              "hash": "ad06a120193279690dd2e4e2b199adfa5ef74abd"
             },
             {
               "path": "node_modules/@hot-updater/react-native/HotUpdater.podspec",
@@ -1656,7 +1656,7 @@
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/NativeUpdateCheck.swift",
-                          "hash": "e382216de098b4341e03e6ff9e509e332580367c"
+                          "hash": "f631d31919ac3301a3aa137eba818954edaf694a"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/NotificationExtension.swift",
@@ -1699,7 +1699,7 @@
                           "hash": "11ede903c1b4e7d8caff8df2785e770c2d0451bb"
                         }
                       ],
-                      "hash": "e0b03093b287ab2a0eb698464594902021c4b98b"
+                      "hash": "dd5bcda03114a83cbc4ca6913de147ff00dafed7"
                     },
                     {
                       "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Package.swift",
@@ -1758,7 +1758,7 @@
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Test/NativeUpdateCheckTests.swift",
-                          "hash": "ca8a9235bf10ec7fb8c3030f132a59ee713b7bb6"
+                          "hash": "922a9d0b97b131b3dca819f279dd5da6eb42e011"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Test/RecoverySurfaceStartTests.swift",
@@ -1777,16 +1777,16 @@
                           "hash": "5f4fc31a698214b226662eab825f98d9c14db0e0"
                         }
                       ],
-                      "hash": "6f60c986c2076862d640d23884de2cee15d1708d"
+                      "hash": "72f8b2f2341faa098446c0556caa93a5bc501279"
                     }
                   ],
-                  "hash": "8dd5beaaa83a3f05653be96c24f4ab82b82b95f8"
+                  "hash": "b959f4ffe3e9f3bdb112f69b36086381af6b3994"
                 }
               ],
-              "hash": "bf7da0d9e015fc5651a945a48b0665f8def8356f"
+              "hash": "e2b3fc82a182a6e5c470cf6b0e43affda1e1623b"
             }
           ],
-          "hash": "b28f4b92e15edde29a590417b7341604b3b941da"
+          "hash": "e8a70d767ba6e09a663b9392c99520172a6871d9"
         }
       },
       {
@@ -4716,7 +4716,7 @@
         }
       }
     ],
-    "hash": "a5703c9efc1717093e0b91b8c1d0c650ea7fcc1b"
+    "hash": "7552413649f2ec0c80eb307741b26c67756865f6"
   },
   "android": {
     "sources": [
@@ -5808,7 +5808,7 @@
         "reasons": [
           "rncoreAutolinking"
         ],
-        "hash": "b28f4b92e15edde29a590417b7341604b3b941da",
+        "hash": "e8a70d767ba6e09a663b9392c99520172a6871d9",
         "debugInfo": {
           "path": "node_modules/@hot-updater/react-native",
           "children": [
@@ -5966,7 +5966,7 @@
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/NativeUpdateChecker.kt",
-                                      "hash": "f0521366db4afda395b5db178dfcea91c50b289d"
+                                      "hash": "3af3497851c268f935cfc2a6ea53dfaa3f934da2"
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/NativeUpdateEventQueue.kt",
@@ -6107,16 +6107,16 @@
                                       "hash": "8b5b0ea79da48638f801babfc2152fa49b8dce2b"
                                     }
                                   ],
-                                  "hash": "d1b74b5b04915554295ad76df0e51c3970b0b862"
+                                  "hash": "774562958a52204dcd094e07eca530c5d977d4fa"
                                 }
                               ],
-                              "hash": "5aa6bb95202795125ab4a9406abbe8a65cc320da"
+                              "hash": "467e2b1a243e14f1e07d128958cd1d959f6ee817"
                             }
                           ],
-                          "hash": "c7aecf9ac0c3349bf9c804c56656ca5cdad4fb70"
+                          "hash": "b3b507132dc7c198524228cd7d570822d8a4bd07"
                         }
                       ],
-                      "hash": "d289505107441740083df2b03179d429ede09c42"
+                      "hash": "1fdc4a1b29b983f0fe5613d4610acbfd50f50cff"
                     },
                     {
                       "path": "node_modules/@hot-updater/react-native/android/src/newarch",
@@ -6240,7 +6240,7 @@
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/test/java/com/hotupdater/NativeUpdateCheckerTest.kt",
-                                      "hash": "b45c76948b452a22633b6f617c22f7acb611aedc"
+                                      "hash": "c7df4dc7905dd3c641aa0e438e55316c5af916f8"
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/test/java/com/hotupdater/NoBackupContext.kt",
@@ -6279,22 +6279,22 @@
                                       "hash": "f52878e2629a8557eb69d2cd91893c00ac168ff7"
                                     }
                                   ],
-                                  "hash": "327aa6d4343c2adf97ce50270ab76a73c1505bee"
+                                  "hash": "85fe600d199033f5063b38bf96e56dad2b461541"
                                 }
                               ],
-                              "hash": "8a9d0c8b2d5565ac15ef926f7c7a54b07c00a2fa"
+                              "hash": "41de79265936668409606238b8966dd2eb6cf6c8"
                             }
                           ],
-                          "hash": "c08594c81453d54df8ffa946867bb9ccfe932597"
+                          "hash": "fcb6088cf0702fb2526c65fd57e7be37a97362b8"
                         }
                       ],
-                      "hash": "ce079e2acd84cd6a08f528c383662bb44db4c947"
+                      "hash": "4d128926ba753e4278339b3e5023d2c4ff40d43a"
                     }
                   ],
-                  "hash": "5e45a1fc5a08642d16f2c2930a38bc36b3964c03"
+                  "hash": "6e2f8b058e098c78d0302c16c8db9698eda077ff"
                 }
               ],
-              "hash": "d601b66c70bb99dc9b47eaed34b737f6dd1c30f3"
+              "hash": "ad06a120193279690dd2e4e2b199adfa5ef74abd"
             },
             {
               "path": "node_modules/@hot-updater/react-native/HotUpdater.podspec",
@@ -6375,7 +6375,7 @@
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/NativeUpdateCheck.swift",
-                          "hash": "e382216de098b4341e03e6ff9e509e332580367c"
+                          "hash": "f631d31919ac3301a3aa137eba818954edaf694a"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/NotificationExtension.swift",
@@ -6418,7 +6418,7 @@
                           "hash": "11ede903c1b4e7d8caff8df2785e770c2d0451bb"
                         }
                       ],
-                      "hash": "e0b03093b287ab2a0eb698464594902021c4b98b"
+                      "hash": "dd5bcda03114a83cbc4ca6913de147ff00dafed7"
                     },
                     {
                       "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Package.swift",
@@ -6477,7 +6477,7 @@
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Test/NativeUpdateCheckTests.swift",
-                          "hash": "ca8a9235bf10ec7fb8c3030f132a59ee713b7bb6"
+                          "hash": "922a9d0b97b131b3dca819f279dd5da6eb42e011"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Test/RecoverySurfaceStartTests.swift",
@@ -6496,16 +6496,16 @@
                           "hash": "5f4fc31a698214b226662eab825f98d9c14db0e0"
                         }
                       ],
-                      "hash": "6f60c986c2076862d640d23884de2cee15d1708d"
+                      "hash": "72f8b2f2341faa098446c0556caa93a5bc501279"
                     }
                   ],
-                  "hash": "8dd5beaaa83a3f05653be96c24f4ab82b82b95f8"
+                  "hash": "b959f4ffe3e9f3bdb112f69b36086381af6b3994"
                 }
               ],
-              "hash": "bf7da0d9e015fc5651a945a48b0665f8def8356f"
+              "hash": "e2b3fc82a182a6e5c470cf6b0e43affda1e1623b"
             }
           ],
-          "hash": "b28f4b92e15edde29a590417b7341604b3b941da"
+          "hash": "e8a70d767ba6e09a663b9392c99520172a6871d9"
         }
       },
       {
@@ -9401,13 +9401,13 @@
       {
         "type": "contents",
         "id": "android/brownfieldlib/src/main/java/com/hotupdaterexample/brownfield/ReactNativeHostManager.kt",
-        "contents": "package com.hotupdaterexample.brownfield\n\nimport android.app.Application\nimport android.content.Context\nimport com.callstack.reactnativebrownfield.ReactNativeBrownfield\nimport com.facebook.react.PackageList\nimport com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost\nimport com.hotupdater.HotUpdater\nimport com.hotupdater.HotUpdaterCheckOptions\nimport com.hotupdater.HotUpdaterPrepareResult\nimport com.hotupdater.HotUpdaterUpdateStrategy\nimport java.net.HttpURLConnection\nimport java.net.URL\nimport kotlinx.coroutines.CoroutineScope\nimport kotlinx.coroutines.Dispatchers\nimport kotlinx.coroutines.SupervisorJob\nimport kotlinx.coroutines.launch\nimport kotlinx.coroutines.withContext\nimport org.json.JSONObject\n\n/**\n * Starts React Native for the brownfield E2E host, as the brownfield guide\n * does: when a scenario turns it on, `HotUpdater.prepare` checks for an update\n * first.\n */\nobject ReactNativeHostManager {\n    // Outlives every activity, so closing a screen never cancels the start.\n    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)\n    private val onStarted = mutableListOf<() -> Unit>()\n    private var started = false\n\n    fun start(application: Application) {\n        scope.launch {\n            NativePrepareRequest.read(application)?.let { request ->\n                val result =\n                    HotUpdater.prepare(\n                        application,\n                        HotUpdaterCheckOptions(\n                            baseURL = request.baseURL,\n                            updateStrategy =\n                                if (request.updateStrategy == \"fingerprint\") {\n                                    HotUpdaterUpdateStrategy.FINGERPRINT\n                                } else {\n                                    HotUpdaterUpdateStrategy.APP_VERSION\n                                },\n                            requestTimeoutMillis = request.requestTimeoutMillis,\n                        ),\n                        timeoutMillis = 10_000,\n                    )\n                request.report(result)\n            }\n            ReactNativeBrownfield.initialize(application) {\n                getDefaultReactHost(\n                    context = application,\n                    packageList = PackageList(application).packages,\n                    jsMainModulePath = \"index\",\n                    jsBundleAssetPath = \"index.android.bundle\",\n                    jsBundleFilePath = HotUpdater.getJSBundleFile(application),\n                    useDevSupport = false,\n                    jsRuntimeFactory = null,\n                )\n            }\n            HotUpdater.setReactHost(ReactNativeBrownfield.shared.reactHost)\n            started = true\n            onStarted.toList().forEach { it() }\n            onStarted.clear()\n        }\n    }\n\n    /** Runs [callback] on the main thread once React Native has started. */\n    fun whenStarted(callback: () -> Unit) {\n        if (started) callback() else onStarted.add(callback)\n    }\n}\n\n/**\n * The native update check a scenario turns on. The E2E control server writes\n * it to this app's shared preferences; resetting the app removes it.\n */\nprivate class NativePrepareRequest(\n    val baseURL: String,\n    val updateStrategy: String,\n    val nonce: String,\n    val requestTimeoutMillis: Long,\n) {\n    /** Publishes `<nonce>:<status>` to the control server's screen state. */\n    suspend fun report(result: HotUpdaterPrepareResult) {\n        val status =\n            when (result) {\n                HotUpdaterPrepareResult.UpToDate -> \"upToDate\"\n                is HotUpdaterPrepareResult.Ready -> \"ready\"\n                is HotUpdaterPrepareResult.Pending -> \"pending\"\n                is HotUpdaterPrepareResult.Failed -> \"failed\"\n            }\n        withContext(Dispatchers.IO) {\n            runCatching {\n                val base = URL(baseURL)\n                val connection = URL(base.protocol, base.host, base.port, \"/e2e/screen-state\").openConnection() as HttpURLConnection\n                connection.requestMethod = \"POST\"\n                connection.connectTimeout = 5_000\n                connection.readTimeout = 5_000\n                connection.doOutput = true\n                connection.setRequestProperty(\"Content-Type\", \"application/json\")\n                connection.outputStream.use {\n                    it.write(JSONObject().put(\"nativePrepareResult\", \"$nonce:$status\").toString().toByteArray())\n                }\n                connection.responseCode\n                connection.disconnect()\n            }\n        }\n    }\n\n    companion object {\n        fun read(context: Context): NativePrepareRequest? {\n            val value =\n                context\n                    .getSharedPreferences(\"HotUpdaterE2E\", Context.MODE_PRIVATE)\n                    .getString(\"nativePrepare\", null) ?: return null\n            return runCatching {\n                val json = JSONObject(value)\n                NativePrepareRequest(\n                    baseURL = json.getString(\"baseURL\"),\n                    updateStrategy = json.getString(\"updateStrategy\"),\n                    nonce = json.getString(\"nonce\"),\n                    requestTimeoutMillis = json.optLong(\"requestTimeoutMs\", 5_000),\n                )\n            }.getOrNull()\n        }\n    }\n}\n",
+        "contents": "package com.hotupdaterexample.brownfield\n\nimport android.app.Application\nimport android.content.Context\nimport com.callstack.reactnativebrownfield.OnJSBundleLoaded\nimport com.callstack.reactnativebrownfield.ReactNativeBrownfield\nimport com.facebook.react.PackageList\nimport com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost\nimport com.hotupdater.HotUpdater\nimport com.hotupdater.HotUpdaterCheckOptions\nimport com.hotupdater.HotUpdaterPrepareResult\nimport com.hotupdater.HotUpdaterUpdateStrategy\nimport java.net.HttpURLConnection\nimport java.net.URL\nimport kotlinx.coroutines.CoroutineScope\nimport kotlinx.coroutines.Dispatchers\nimport kotlinx.coroutines.SupervisorJob\nimport kotlinx.coroutines.launch\nimport kotlinx.coroutines.withContext\nimport org.json.JSONObject\n\n/**\n * Starts React Native for the brownfield E2E host, as the brownfield guide\n * does: when a scenario turns it on, `HotUpdater.prepare` checks for an update\n * first.\n */\nobject ReactNativeHostManager {\n    // Outlives every activity, so closing a screen never cancels the start.\n    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)\n    private val onStarted = mutableListOf<() -> Unit>()\n    private var started = false\n    private val onBundleLoaded = mutableListOf<() -> Unit>()\n    private var bundleLoaded = false\n\n    fun start(application: Application) {\n        scope.launch {\n            NativePrepareRequest.read(application)?.let { request ->\n                val result =\n                    HotUpdater.prepare(\n                        application,\n                        HotUpdaterCheckOptions(\n                            baseURL = request.baseURL,\n                            updateStrategy =\n                                if (request.updateStrategy == \"fingerprint\") {\n                                    HotUpdaterUpdateStrategy.FINGERPRINT\n                                } else {\n                                    HotUpdaterUpdateStrategy.APP_VERSION\n                                },\n                            requestTimeoutMillis = request.requestTimeoutMillis,\n                        ),\n                        timeoutMillis = 10_000,\n                    )\n                request.report(result)\n            }\n            val loaded =\n                OnJSBundleLoaded {\n                    scope.launch {\n                        bundleLoaded = true\n                        onBundleLoaded.toList().forEach { it() }\n                        onBundleLoaded.clear()\n                    }\n                }\n            ReactNativeBrownfield.initialize(application, loaded) {\n                getDefaultReactHost(\n                    context = application,\n                    packageList = PackageList(application).packages,\n                    jsMainModulePath = \"index\",\n                    jsBundleAssetPath = \"index.android.bundle\",\n                    jsBundleFilePath = HotUpdater.getJSBundleFile(application),\n                    useDevSupport = false,\n                    jsRuntimeFactory = null,\n                )\n            }\n            HotUpdater.setReactHost(ReactNativeBrownfield.shared.reactHost)\n            started = true\n            onStarted.toList().forEach { it() }\n            onStarted.clear()\n        }\n    }\n\n    /** Runs [callback] on the main thread once React Native has started. */\n    fun whenStarted(callback: () -> Unit) {\n        if (started) callback() else onStarted.add(callback)\n    }\n\n    /**\n     * Runs [callback] on the main thread once the JavaScript bundle has loaded,\n     * when React Native can take a deep link: before that, its React host drops\n     * new intents.\n     */\n    fun whenBundleLoaded(callback: () -> Unit) {\n        if (bundleLoaded) callback() else onBundleLoaded.add(callback)\n    }\n}\n\n/**\n * The native update check a scenario turns on. The E2E control server writes\n * it to this app's shared preferences; resetting the app removes it.\n */\nprivate class NativePrepareRequest(\n    val baseURL: String,\n    val updateStrategy: String,\n    val nonce: String,\n    val requestTimeoutMillis: Long,\n) {\n    /** Publishes `<nonce>:<status>` to the control server's screen state. */\n    suspend fun report(result: HotUpdaterPrepareResult) {\n        val status =\n            when (result) {\n                HotUpdaterPrepareResult.UpToDate -> \"upToDate\"\n                is HotUpdaterPrepareResult.Ready -> \"ready\"\n                is HotUpdaterPrepareResult.Pending -> \"pending\"\n                is HotUpdaterPrepareResult.Failed -> \"failed\"\n            }\n        withContext(Dispatchers.IO) {\n            runCatching {\n                val base = URL(baseURL)\n                val connection = URL(base.protocol, base.host, base.port, \"/e2e/screen-state\").openConnection() as HttpURLConnection\n                connection.requestMethod = \"POST\"\n                connection.connectTimeout = 5_000\n                connection.readTimeout = 5_000\n                connection.doOutput = true\n                connection.setRequestProperty(\"Content-Type\", \"application/json\")\n                connection.outputStream.use {\n                    it.write(JSONObject().put(\"nativePrepareResult\", \"$nonce:$status\").toString().toByteArray())\n                }\n                connection.responseCode\n                connection.disconnect()\n            }\n        }\n    }\n\n    companion object {\n        fun read(context: Context): NativePrepareRequest? {\n            val value =\n                context\n                    .getSharedPreferences(\"HotUpdaterE2E\", Context.MODE_PRIVATE)\n                    .getString(\"nativePrepare\", null) ?: return null\n            return runCatching {\n                val json = JSONObject(value)\n                NativePrepareRequest(\n                    baseURL = json.getString(\"baseURL\"),\n                    updateStrategy = json.getString(\"updateStrategy\"),\n                    nonce = json.getString(\"nonce\"),\n                    requestTimeoutMillis = json.optLong(\"requestTimeoutMs\", 5_000),\n                )\n            }.getOrNull()\n        }\n    }\n}\n",
         "reasons": [
           "custom-user-config"
         ],
-        "hash": "bad6d46b0ededdc50091b50ec74d79df4efedf62",
+        "hash": "ea3e1fae43951b0023d9a12233d6f769ea546974",
         "debugInfo": {
-          "hash": "bad6d46b0ededdc50091b50ec74d79df4efedf62"
+          "hash": "ea3e1fae43951b0023d9a12233d6f769ea546974"
         }
       },
       {
@@ -9447,6 +9447,6 @@
         }
       }
     ],
-    "hash": "035228d763d2adf24654809456a45a270ed71ba9"
+    "hash": "2ddf0b006b63ebe828fcabfec421f1fb05cac6cf"
   }
 }
