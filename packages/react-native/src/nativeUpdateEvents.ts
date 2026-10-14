@@ -14,10 +14,11 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
 /**
  * Reports the update checks native code ran without JavaScript, such as
  * `HotUpdater.prepare` in a brownfield app, with the catalog and artifact
- * responses they received, to the instance's plugins after
- * the launch. Native takes and clears them in one step, so each is reported
- * at most once. A native error carries a message instead of the caught error,
- * and each event keeps the time it happened as `occurredAt`.
+ * responses they received, to the instance's plugins before this launch's
+ * report, which they precede. Native takes and clears them in one step, so
+ * each is reported at most once. A native error carries a message instead of
+ * the caught error, and each event keeps the time it happened as
+ * `occurredAt`.
  */
 export const replayNativeUpdateEvents = (emit: LaunchReporter["emit"]) => {
   let value: string | null;
