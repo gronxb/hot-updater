@@ -138,6 +138,14 @@ struct NativeUpdateCheckTests {
         #expect(params["filesUrl"] as? String == "https://updates.example.com/api/artifacts/v2/\(bundle2)/files")
         #expect(params["requestHeaders"] as? [String: String] == [:])
         #expect(params["requestTimeout"] as? Double == 5_000)
+        // The staging's files responses are reported like the other artifact requests.
+        let reportFiles = try #require(host.filesResponse)
+        reportFiles(500, "boom")
+        let files = try #require(host.httpResponses().last)
+        #expect(files["resource"] as? String == "artifact")
+        #expect(files["path"] as? String == "/api/artifacts/v2/\(bundle2)/files")
+        #expect(files["status"] as? Int == 500)
+        #expect(files["body"] as? String == "boom")
         let selection = try #require(params["selection"] as? [String: Any])
         #expect(selection["kind"] as? String == "BUNDLE")
         #expect(selection["releaseId"] as? String == release2)
@@ -1329,6 +1337,8 @@ private final class FakeUpdateHost: MemoryEventStorage, NativeUpdateHost, @unche
     private(set) var acceptedGuards: [[String: Any]] = []
     private(set) var committedParams: [[String: Any]] = []
     private(set) var stagedParams: [[String: Any]] = []
+    /// The last staging's files response reporter.
+    private(set) var filesResponse: ((Int, String?) -> Void)?
     private(set) var resets = 0
     /// Opened when native `updateBundle` is first called, and when it first returns.
     let stageStarted = Latch()
@@ -1383,7 +1393,14 @@ private final class FakeUpdateHost: MemoryEventStorage, NativeUpdateHost, @unche
         return true
     }
 
-    func updateBundle(_ params: [String: Any], progress: @escaping (Double) -> Void) async throws -> Any? {
+    func updateBundle(
+        _ params: [String: Any],
+        onFilesResponse: ((Int, String?) -> Void)?,
+        progress: @escaping (Double) -> Void
+    ) async throws -> Any? {
+        lock.lock()
+        filesResponse = onFilesResponse
+        lock.unlock()
         let stage = recordStage(params)
         stageStarted.open()
         defer { stageFinished.open() }
@@ -1476,6 +1493,21 @@ struct URLSessionUpdateTransportTests {
 
 struct HTTPArtifactFileResolverTests {
     @Test
+    func aFailingFilesResponseIsReportedBeforeItFails() throws {
+        let responses = LockedValue<[(Int, String?)]>([])
+        let resolver = HTTPArtifactFileResolver(
+            filesUrl: URL(string: "https://updates.example.com/artifacts/v2/b/files")!,
+            headers: [:],
+            protocolClasses: [FailingFilesURLProtocol.self],
+            onResponse: { status, body in responses.value.append((status, body)) }
+        )
+
+        #expect(throws: (any Error).self) { _ = try resolver.resolve(paths: ["index.ios.bundle"]) }
+        #expect(responses.value.map(\.0) == [500])
+        #expect(responses.value.map(\.1) == ["boom"])
+    }
+
+    @Test
     func theRequestTimeoutBoundsAFilesResponseThatKeepsArriving() throws {
         let resolver = HTTPArtifactFileResolver(
             filesUrl: URL(string: "https://updates.example.com/artifacts/v2/b/files")!,
@@ -1489,6 +1521,21 @@ struct HTTPArtifactFileResolverTests {
         // The body keeps arriving for 6 s, never idle for the timeout.
         #expect(Date().timeIntervalSince(started) < 4)
     }
+}
+
+/// Answers 500 with "boom".
+private final class FailingFilesURLProtocol: URLProtocol {
+    override class func canInit(with _: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let response = HTTPURLResponse(url: request.url!, statusCode: 500, httpVersion: "HTTP/1.1", headerFields: [:])!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data("boom".utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }
 
 /// Sends a 200, then a byte every 100 ms for 6 s, so the request is never idle.

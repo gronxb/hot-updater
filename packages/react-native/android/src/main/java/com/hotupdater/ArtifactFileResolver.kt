@@ -32,12 +32,14 @@ interface ArtifactFileResolver {
 
 /**
  * POSTs `{ paths }` to the files URL the SDK composed, with the update check's
- * headers and request timeout.
+ * headers and request timeout. [onResponse] receives each response's status
+ * and body, or a null body when it could not be read.
  */
 class HttpArtifactFileResolver(
     private val filesUrl: String,
     private val headers: Map<String, String>,
     private val timeoutMs: Long = DEFAULT_TIMEOUT_MS,
+    private val onResponse: ((status: Int, body: String?) -> Unit)? = null,
 ) : ArtifactFileResolver {
     override suspend fun resolve(paths: List<String>): Map<String, ResolvedArtifactFile> =
         withContext(Dispatchers.IO) {
@@ -57,11 +59,19 @@ class HttpArtifactFileResolver(
                 .newCall(request)
                 .execute()
                 .use { response ->
+                    val body =
+                        try {
+                            response.body?.string()
+                        } catch (error: java.io.IOException) {
+                            onResponse?.invoke(response.code, null)
+                            throw error
+                        }
+                    onResponse?.invoke(response.code, body)
                     if (!response.isSuccessful) {
                         throw HttpStatusException(response.code, response.message)
                     }
                     val files =
-                        JSONObject(response.body?.string() ?: "").optJSONObject("files")
+                        JSONObject(body ?: "").optJSONObject("files")
                             ?: throw IllegalStateException("Artifact files response has no files")
                     paths.associateWith { path ->
                         val file =

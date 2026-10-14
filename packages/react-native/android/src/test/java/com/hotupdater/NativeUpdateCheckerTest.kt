@@ -371,6 +371,13 @@ class NativeUpdateCheckerTest {
             assertEquals("$BASE_URL/artifacts/v2/$BUNDLE_B/files", request.filesUrl)
             assertEquals(mapOf("Authorization" to "Bearer token"), request.requestHeaders)
             assertEquals(5_000L, request.requestTimeoutMillis)
+            // The staging's files responses are reported like the other artifact requests.
+            request.onFilesResponse!!(500, "boom")
+            val files = state.httpResponses().last()
+            assertEquals("artifact", files.getString("resource"))
+            assertEquals("/api/artifacts/v2/$BUNDLE_B/files", files.getString("path"))
+            assertEquals(500, files.getInt("status"))
+            assertEquals("boom", files.getString("body"))
             assertEquals("https://cdn.example.com/b/bundle.tar.br", request.archiveUrl)
             assertEquals(
                 mapOf(
