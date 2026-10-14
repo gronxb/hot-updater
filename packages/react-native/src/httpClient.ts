@@ -83,6 +83,7 @@ const requireArtifactUrl = (value: string): string => {
   return value;
 };
 
+// Legacy: artifact protocol v1: validates a server that predates v2; remove with the fallback.
 const requireArtifactUrls = (info: ArtifactInfo): ArtifactInfo => {
   requireArtifactUrl(info.manifestUrl);
   if (info.archiveUrl) requireArtifactUrl(info.archiveUrl);
@@ -191,7 +192,8 @@ const createSession = (
         url: `${baseURL}/artifacts/v2/${route}`,
       });
     } catch (error) {
-      // A server older than artifact protocol v2 has no such route.
+      // Legacy: artifact protocol v1: a server older than v2 has no such route. Remove this
+      // fallback once no supported server predates v2.
       if (!(error instanceof FetchJSONResponseError) || error.status !== 404) {
         throw error;
       }

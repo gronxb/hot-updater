@@ -268,6 +268,7 @@ export const createReleaseCatalogRouteHandlers = (): Record<
       });
     },
 
+    // Legacy: artifact protocol v1, for apps whose SDK predates v2; remove with it.
     artifactV1: async (params, _request, { core }) => {
       const info = await core.getArtifactInfo(
         requireRouteParam(params, "targetBundleId"),

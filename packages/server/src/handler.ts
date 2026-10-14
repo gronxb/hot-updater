@@ -212,6 +212,7 @@ export function createHotUpdaterHandlers({
     "/release-catalogs/fingerprint/:platform/:channelKey/:fingerprintHash",
     "fingerprintReleaseCatalog",
   );
+  // Legacy: artifact protocol v1, for apps whose SDK predates v2; remove with it.
   addClientRoute(
     "GET",
     "/artifacts/v1/:targetBundleId/from/:currentBundleId",

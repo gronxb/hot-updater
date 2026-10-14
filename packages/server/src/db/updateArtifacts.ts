@@ -328,6 +328,11 @@ async function resolveAssets(
   };
 }
 
+/**
+ * Legacy: artifact protocol v1. Signs a URL for every file of the target, which grows with the
+ * Bundle's file count; apps whose SDK predates protocol v2 still ask for it.
+ * Remove with the `/artifacts/v1` route once no supported app uses it.
+ */
 export async function resolveManifestArtifacts({
   currentBundle,
   resolveFileUrl,

@@ -37,7 +37,10 @@ export interface CoreReads {
   getReleaseCatalog(
     input: ReleaseCatalogRequest,
   ): Promise<ReleaseCatalog | null>;
-  /** How a device on `currentBundleId` downloads `targetBundleId`. */
+  /**
+   * How a device on `currentBundleId` downloads `targetBundleId`.
+   * Legacy: artifact protocol v1 (`1`): a URL per file, for apps whose SDK predates v2.
+   */
   getArtifactInfo(
     targetBundleId: string,
     currentBundleId: string,
