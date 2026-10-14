@@ -48,6 +48,7 @@ const expectedScenarioModuleFiles = [
   "release-ota-recovery.ts",
   "remote-config-fetch-activate.ts",
   "republished-crashed-bundle-skipped.ts",
+  "resumed-background-archive-download.ts",
   "runtime-channel-crash-restore.ts",
   "runtime-channel-switch-reset.ts",
   "same-bundle-release-adoption.ts",

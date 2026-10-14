@@ -23,6 +23,7 @@ Valid profiles:
 - `cloudflare`
 - `firebase`
 - `aws`
+- `vercel`
 
 Use the user-mentioned profile. If none is mentioned, use
 `standalone-kysely`.

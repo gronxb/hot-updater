@@ -106,8 +106,11 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   const refresh = useCallback(async () => {
     setRuntimeSnapshot(await refreshRuntimeSnapshot());
   }, []);
-  const { applyCapturedUpdate, captureCurrentChannelUpdate } =
-    useCapturedUpdateActions({ refresh, setUpdateActionResult });
+  const {
+    applyCapturedUpdate,
+    applyCapturedUpdateInBackground,
+    captureCurrentChannelUpdate,
+  } = useCapturedUpdateActions({ refresh, setUpdateActionResult });
   const remoteConfigActions = useRemoteConfigActions({ setUpdateActionResult });
 
   const clearCrashHistory = async () => {
@@ -230,6 +233,7 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
   return {
     ...remoteConfigActions,
     applyCapturedUpdate,
+    applyCapturedUpdateInBackground,
     applyCohortInput,
     captureCurrentChannelUpdate,
     channelActionResult,

@@ -1,5 +1,15 @@
 # @hot-updater/android-helper
 
+## 1.0.2
+
+### Patch Changes
+
+- Updated dependencies [ddfb139]
+- Updated dependencies [d4d1d07]
+  - @hot-updater/cli-tools@1.0.2
+  - @hot-updater/protocol@1.0.2
+  - @hot-updater/plugin-core@1.0.2
+
 ## 1.0.1
 
 ### Patch Changes

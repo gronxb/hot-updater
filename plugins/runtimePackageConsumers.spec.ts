@@ -143,6 +143,11 @@ describe("packed provider entrypoints", () => {
       handler: "@hot-updater/aws/lambda",
     },
     {
+      directory: "azure",
+      packageName: "@hot-updater/azure",
+      exports: ["azureBlobStorage", "cosmosDatabase", "migrateCosmosDatabase"],
+    },
+    {
       directory: "cloudflare",
       packageName: "@hot-updater/cloudflare",
       exports: ["d1Database", "r2Storage"],
@@ -181,6 +186,11 @@ describe("packed provider entrypoints", () => {
         "supabaseEdgeFunctionStorage",
         "supabaseStorageDelivery",
       ],
+    },
+    {
+      directory: "vercel",
+      packageName: "@hot-updater/vercel",
+      exports: ["vercelBlobStorage"],
     },
   ])(
     "resolves $packageName from the packed ESM and CommonJS package",

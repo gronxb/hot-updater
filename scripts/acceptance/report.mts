@@ -41,6 +41,9 @@ import {
 } from "./manifest.mts";
 
 const root = path.resolve(import.meta.dirname, "../..");
+/** Every e2e profile some row names: a row that names all of them reads "All". */
+const ALL_PROFILE_COUNT = new Set(rows.flatMap(({ profiles }) => profiles))
+  .size;
 const relative = (file: string) => path.relative(root, file);
 
 const { values: args } = parseArgs({
@@ -979,8 +982,8 @@ const table = [
       row.atomicity,
       row.profiles.length === 0
         ? "N/A"
-        : row.profiles.length === 9
-          ? "All nine"
+        : row.profiles.length === ALL_PROFILE_COUNT
+          ? "All"
           : row.profiles.join(", "),
       failing.length === 0 ? "Smooth" : failing.join(", "),
     ]

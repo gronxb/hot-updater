@@ -1,4 +1,5 @@
 import { useRef } from "react";
+import { AppState } from "react-native";
 
 import { hotUpdater } from "./runtime";
 
@@ -55,5 +56,24 @@ export const useCapturedUpdateActions = ({
     }
   };
 
-  return { applyCapturedUpdate, captureCurrentChannelUpdate };
+  // Applies the captured update once the app leaves the foreground, so the
+  // download starts while iOS reports the app inactive or in the background.
+  const applyCapturedUpdateInBackground = async () => {
+    if (!capturedUpdateRef.current) {
+      await setUpdateActionResult("captured-update -> missing");
+      return;
+    }
+    const subscription = AppState.addEventListener("change", (state) => {
+      if (state === "active") return;
+      subscription.remove();
+      void applyCapturedUpdate();
+    });
+    await setUpdateActionResult("captured-update -> waiting for background");
+  };
+
+  return {
+    applyCapturedUpdate,
+    applyCapturedUpdateInBackground,
+    captureCurrentChannelUpdate,
+  };
 };

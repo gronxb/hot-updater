@@ -37,7 +37,7 @@ with its available tools. A scaffold is not a deployment.
 4. For setup or upgrade, run the agent command's bootstrap when choices are
    incomplete. Use the discovered provider/build flags to generate the files;
    prefer structured output when available. Current templates cover Cloudflare,
-   Supabase, AWS, and Firebase with Bare, Rock, or Expo app configuration.
+   Supabase, AWS, Firebase, Vercel, and Azure with Bare, Rock, or Expo app configuration.
 5. Read the returned instructions, common instructions, environment guide,
    manifest and deployment record before applying anything. ENVIRONMENT.md
    (returned as `environment`) explains each env.example variable's purpose,
