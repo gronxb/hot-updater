@@ -255,7 +255,7 @@ internal class NativeUpdateChecker(
                     }
                 if (running == null) break
                 // A staging from other options is waited for, then this request is checked.
-                if (running !== lockHeldByCheck && running.update?.requestKey == requestKey(options)) {
+                if (running !== lockHeldByCheck && running.update?.requestKey == requestKey(options, currentCohort())) {
                     return awaitStaging(running, deadline, onProgress)
                 }
                 val remaining = remainingMillis(deadline)
@@ -297,19 +297,26 @@ internal class NativeUpdateChecker(
 
     /**
      * What a check reads: the server, the strategy, the channel it asks for,
-     * and the headers, which can name the credentials or tenant.
+     * the cohort it selects for, and the headers, which can name the
+     * credentials or tenant.
      */
-    private fun requestKey(options: HotUpdaterCheckOptions): String =
+    private fun requestKey(
+        options: HotUpdaterCheckOptions,
+        cohort: String,
+    ): String =
         (
             listOf(
                 options.baseURL.trimEnd('/'),
                 options.updateStrategy.value,
                 options.channel?.takeIf { it.isNotEmpty() }.orEmpty(),
+                cohort,
             ) +
                 options.requestHeaders
                     .map { (name, value) -> "${name.lowercase()}:$value" }
                     .sorted()
         ).joinToString("\n")
+
+    private fun currentCohort(): String = ReleaseSelector.normalizeCohortValue(state.getCohort())
 
     private fun remainingMillis(deadline: Long): Long = (deadline - System.nanoTime()) / 1_000_000
 
@@ -781,7 +788,7 @@ internal class NativeUpdateChecker(
                 targetCohorts = release?.targetCohorts?.toList() ?: emptyList(),
                 transitionKind = transitionKind,
                 runsCurrentBundle = desired.bundleId == input.currentBundleId,
-                requestKey = requestKey(options),
+                requestKey = requestKey(options, input.cohort),
                 targetKey =
                     listOf(
                         desired.kind.name,
