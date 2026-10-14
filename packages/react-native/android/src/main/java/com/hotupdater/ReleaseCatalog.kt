@@ -232,6 +232,8 @@ internal object ReleaseCatalogs {
         expectedScope: ReleaseCatalogScope,
     ): ReleaseCatalog? {
         if (utf8ByteLength(body) > MAX_RELEASE_CATALOG_WIRE_BYTES) return null
+        // org.json accepts syntax JSON.parse rejects; take only what JSON.parse takes.
+        if (!StrictJson.isValid(body)) return null
 
         return try {
             val tokener = JSONTokener(body)

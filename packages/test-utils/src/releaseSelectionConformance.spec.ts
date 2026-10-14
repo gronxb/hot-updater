@@ -424,6 +424,46 @@ const bodyCases: {
     scope: { ...fingerprintScope, platform: "ios" },
   },
   { name: "not JSON", body: "{", scope: appVersionScope },
+  // Syntax lenient parsers accept and JSON.parse rejects.
+  ...(
+    [
+      ["single-quoted strings", (body: string) => body.replaceAll('"', "'")],
+      [
+        "unquoted key",
+        (body: string) => body.replace('"catalogId"', "catalogId"),
+      ],
+      ["comment", (body: string) => `/* catalog */${body}`],
+      [
+        "trailing comma in an object",
+        (body: string) => body.replace(/}$/, ",}"),
+      ],
+      [
+        "trailing comma in an array",
+        (body: string) => body.replace('"targetCohorts":[]', '"targetCohorts":[1,]'),
+      ],
+      [
+        "hexadecimal number",
+        (body: string) => body.replace('"generation":3', '"generation":0x3'),
+      ],
+      [
+        "leading zero",
+        (body: string) => body.replace('"generation":3', '"generation":03'),
+      ],
+      [
+        "NaN",
+        (body: string) => body.replace('"generation":3', '"generation":NaN'),
+      ],
+      [
+        "unescaped control character",
+        // A raw tab inside a string.
+        (body: string) => body.replace('"Fix"', '"F\tix"'),
+      ],
+    ] as const
+  ).map(([name, rewrite]) => ({
+    name,
+    body: rewrite(JSON.stringify(validCatalog(appVersionScope))),
+    scope: appVersionScope,
+  })),
   { name: "JSON array", body: "[]", scope: appVersionScope },
   { name: "JSON null", body: "null", scope: appVersionScope },
 ];

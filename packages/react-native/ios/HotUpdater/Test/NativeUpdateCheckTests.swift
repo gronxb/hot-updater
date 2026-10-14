@@ -1213,4 +1213,50 @@ private final class FakeUpdateHost: MemoryEventStorage, NativeUpdateHost, @unche
         catalogCache[partition] = nil
     }
 }
+struct URLSessionUpdateTransportTests {
+    @Test
+    func cancellingTheCallerCancelsTheRequest() async throws {
+        let transport = URLSessionUpdateTransport(protocolClasses: [StallingURLProtocol.self])
+        let request = Task {
+            try await transport.get(
+                URL(string: "https://updates.example.com/catalog")!,
+                headers: [:],
+                timeout: 30
+            )
+        }
+        try await Task.sleep(nanoseconds: 200_000_000)
+        let started = Date()
+        request.cancel()
+
+        await #expect(throws: CancellationError.self) {
+            _ = try await request.value
+        }
+        #expect(Date().timeIntervalSince(started) < 5)
+        // URLSession stops the protocol shortly after the task cancels.
+        for _ in 0..<50 where !StallingURLProtocol.stopped {
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        #expect(StallingURLProtocol.stopped)
+    }
+}
+
+/// Never answers, so only cancellation ends the request.
+private final class StallingURLProtocol: URLProtocol {
+    private static let lock = NSLock()
+    private static var stoppedValue = false
+    static var stopped: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return stoppedValue
+    }
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {}
+    override func stopLoading() {
+        Self.lock.lock()
+        Self.stoppedValue = true
+        Self.lock.unlock()
+    }
+}
 #endif
