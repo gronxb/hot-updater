@@ -1,5 +1,5 @@
 import type { BundleRow, StorageAdapter } from "@hot-updater/plugin-core";
-import type { ArtifactInfo } from "@hot-updater/protocol";
+import type { ArtifactFiles, ArtifactInfo } from "@hot-updater/protocol";
 
 import { createBundleRowFixture } from "./databaseTestFixtures";
 
@@ -35,6 +35,16 @@ export const releaseCatalogArtifact = (bundle: BundleRow): ArtifactInfo => ({
         ),
       },
     },
+  },
+});
+
+/** The files response for the Hermes bundle of {@link releaseCatalogArtifact}. */
+export const releaseCatalogArtifactFiles = (
+  bundle: BundleRow,
+): ArtifactFiles => ({
+  files: {
+    "index.ios.bundle":
+      releaseCatalogArtifact(bundle).assets["index.ios.bundle"]!.file,
   },
 });
 
