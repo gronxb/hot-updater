@@ -1634,6 +1634,74 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    fun `first OTA reuses built in assets and downloads only changed files despite an archive`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("first-ota-built-in-over-archive")
+            val archiveBytes = Base64.getDecoder().decode(TarBrArchiveExtractorTest.VALID)
+            val unchanged = (0 until 40).associate { "drawable-mdpi/icon$it.png" to "icon$it" }
+            val changed = mapOf("index.android.bundle" to "bundle", "drawable-mdpi/new.png" to "new")
+            val contents = unchanged + changed
+            val hashes = contents.mapValues { sha256(root, it.value) }
+            val manifest =
+                manifestJson(
+                    bundleId = "target",
+                    assets = hashes,
+                    byteSizes = contents.mapValues { it.value.toByteArray().size.toLong() },
+                    downloadByteSizes = contents.mapValues { 300L },
+                    archive =
+                        archiveJson(root, archiveBytes, tarByteSize = 64 * 1024)
+                            .put("downloadByteSize", 300L * contents.size),
+                )
+            val downloads =
+                BinaryMappingDownloadService(
+                    mapOf(MANIFEST_URL to manifest.toByteArray(), ARCHIVE_URL to archiveBytes) +
+                        contents.mapKeys { "https://example.com/${it.key}" }.mapValues { it.value.toByteArray() },
+                )
+            // Half of the unchanged icons were re-encoded by the release build.
+            val reEncoded = unchanged.keys.filterIndexed { index, _ -> index % 2 == 0 }.toSet()
+            val resolver =
+                object : BuiltInAssetResolver {
+                    override fun copyIfMatches(
+                        assetPath: String,
+                        expectedHash: String,
+                        destination: File,
+                    ): Boolean {
+                        if (assetPath in reEncoded) return false
+                        val content = unchanged[assetPath] ?: return false
+                        destination.parentFile?.mkdirs()
+                        destination.writeText(content)
+                        return true
+                    }
+
+                    override fun copyIfSourceMatches(
+                        assetPath: String,
+                        expectedHash: String,
+                        destination: File,
+                    ): String? {
+                        if (assetPath !in reEncoded || hashes[assetPath] != expectedHash) return null
+                        destination.parentFile?.mkdirs()
+                        destination.writeText("crunched-$assetPath")
+                        return HashUtils.calculateSHA256(destination)
+                    }
+                }
+
+            createService(root, downloadService = downloads, builtInAssetResolver = resolver).updateBundle(
+                bundleId = "target",
+                manifestUrl = MANIFEST_URL,
+                manifestFileHash = sha256(root, manifest),
+                assets = hashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) },
+                archiveUrl = ARCHIVE_URL,
+                progressCallback = {},
+            )
+
+            assertEquals(
+                setOf(MANIFEST_URL) + changed.keys.map { "https://example.com/$it" },
+                downloads.calls.toSet(),
+            )
+            assertEquals(3, downloads.calls.size)
+        }
+
+    @Test
     fun `many small network files take the archive even when it carries more bytes`() =
         runBlocking {
             val root = temporaryFolder.newFolder("archive-many-files")
