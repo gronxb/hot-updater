@@ -3583,7 +3583,8 @@ export function handleAssertBundleArtifactTransfers(input: {
   archiveInterruptions?: number;
   archiveRequests: number;
   archiveResumes?: number;
-  currentBundleId: string;
+  /** The Bundle the request came from; any, when omitted, as from built-in. */
+  currentBundleId?: string;
   fileRequests: number;
   maxRequestsPerAsset?: number;
   minNetworkAssets?: number;
@@ -3593,7 +3594,8 @@ export function handleAssertBundleArtifactTransfers(input: {
 }) {
   const artifact = capturedArtifactSelections.findLast(
     (entry) =>
-      entry.currentBundleId === input.currentBundleId &&
+      (input.currentBundleId === undefined ||
+        entry.currentBundleId === input.currentBundleId) &&
       entry.targetBundleId === input.targetBundleId,
   );
   if (!artifact) {

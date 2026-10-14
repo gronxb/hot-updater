@@ -9,7 +9,8 @@ import type { ScenarioAppDriver, ScenarioDefinition } from "./types.ts";
 const installAssetHeavyBundle = async (
   app: ScenarioAppDriver,
   input: {
-    currentBundleId: string;
+    /** Omitted for the first OTA, which comes from the built-in Bundle. */
+    currentBundleId?: string;
     label: string;
     marker: string;
     resultKey: string;
@@ -56,7 +57,9 @@ const installAssetHeavyBundle = async (
     "/e2e/assert-bundle-artifact-transfers",
     {
       archiveRequests: 1,
-      currentBundleId: input.currentBundleId,
+      ...(input.currentBundleId
+        ? { currentBundleId: input.currentBundleId }
+        : {}),
       fileRequests: 0,
       patchRequests: 0,
       targetBundleId: bundleId,
@@ -89,14 +92,7 @@ const installAssetHeavyBundle = async (
 export const assetHeavyOtaUsesArchiveScenario: ScenarioDefinition = {
   name: "asset-heavy-ota-uses-archive",
   run: async (app) => {
-    await app.control(
-      "capture built-in bundle",
-      "/e2e/capture-built-in-bundle-id",
-      {},
-      { saveResultAs: "builtInBundleId" },
-    );
     await installAssetHeavyBundle(app, {
-      currentBundleId: "$builtInBundleId",
       label: "first",
       marker: "asset-heavy-first-detox",
       resultKey: "assetHeavyFirst",

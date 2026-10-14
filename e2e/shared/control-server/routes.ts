@@ -271,7 +271,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     payload.patchRequests,
   ];
   if (
-    !payload.currentBundleId ||
+    payload.currentBundleId === "" ||
     !payload.targetBundleId ||
     counts.some(
       (value) =>
@@ -291,7 +291,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     return c.json(
       {
         error:
-          "bundle ids and non-negative archive, file, and patch request counts are required",
+          "a target bundle id and non-negative archive, file, and patch request counts are required",
       },
       400,
     );
