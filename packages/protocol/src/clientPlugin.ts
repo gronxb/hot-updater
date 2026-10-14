@@ -53,9 +53,9 @@ export type UpdateCheckResult =
       /** The Release before the check; it differs after an adoption. */
       readonly previousReleaseId: string | null;
       /**
-       * When the event happened, in epoch milliseconds, for an event native code
-       * recorded before this runtime started (`HotUpdater.prepare`). Absent when
-       * the event happens now.
+       * When the event happened, in epoch milliseconds, for an event native
+       * code recorded before this runtime started (a native
+       * `HotUpdaterInstance`). Absent when the event happens now.
        */
       readonly occurredAt?: number;
     }
@@ -72,9 +72,9 @@ export type UpdateCheckResult =
       readonly shouldForceUpdate: boolean;
       readonly updateStrategy: UpdateStrategy;
       /**
-       * When the event happened, in epoch milliseconds, for an event native code
-       * recorded before this runtime started (`HotUpdater.prepare`). Absent when
-       * the event happens now.
+       * When the event happened, in epoch milliseconds, for an event native
+       * code recorded before this runtime started (a native
+       * `HotUpdaterInstance`). Absent when the event happens now.
        */
       readonly occurredAt?: number;
     };
@@ -97,8 +97,8 @@ export interface BundleDownloadedInfo {
   readonly patchFallback: boolean;
   /**
    * When the event happened, in epoch milliseconds, for an event native code
-   * recorded before this runtime started (`HotUpdater.prepare`). Absent when
-   * the event happens now.
+   * recorded before this runtime started (a native `HotUpdaterInstance`).
+   * Absent when the event happens now.
    */
   readonly occurredAt?: number;
 }
@@ -168,8 +168,8 @@ export interface UpdateError {
   readonly cause: unknown;
   /**
    * When the event happened, in epoch milliseconds, for an event native code
-   * recorded before this runtime started (`HotUpdater.prepare`). Absent when
-   * the event happens now.
+   * recorded before this runtime started (a native `HotUpdaterInstance`).
+   * Absent when the event happens now.
    */
   readonly occurredAt?: number;
 }
@@ -178,8 +178,8 @@ export interface UpdateError {
 export interface UpdateHttpResponse {
   readonly resource: "catalog" | "artifact";
   /**
-   * The channel the request checked, for a response native code received
-   * before this runtime started (`HotUpdater.prepare`). Absent when the
+   * The channel the request checked, for a response native code received before
+   * this runtime started (a native `HotUpdaterInstance`). Absent when the
    * response belongs to the current channel.
    */
   readonly channel?: string;
@@ -191,8 +191,8 @@ export interface UpdateHttpResponse {
   readonly bodyTruncated: boolean;
   /**
    * When the response arrived, in epoch milliseconds, for a response native
-   * code received before this runtime started (`HotUpdater.prepare`). Absent
-   * when it arrives now.
+   * code received before this runtime started (a native `HotUpdaterInstance`).
+   * Absent when it arrives now.
    */
   readonly occurredAt?: number;
 }
