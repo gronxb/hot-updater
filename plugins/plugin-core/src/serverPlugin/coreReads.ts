@@ -1,4 +1,9 @@
-import type { ArtifactInfo, ReleaseCatalog } from "@hot-updater/protocol";
+import type {
+  ArtifactFiles,
+  ArtifactInfo,
+  ArtifactInfoV2,
+  ReleaseCatalog,
+} from "@hot-updater/protocol";
 
 import type { BundleDetail, KeysetInput, ReleaseFilter } from "../coreApi";
 import type {
@@ -38,6 +43,20 @@ export interface CoreReads {
     currentBundleId: string,
     artifactProtocolVersion: 1,
   ): Promise<ArtifactInfo | null>;
+  /** The same in artifact protocol v2, which carries no URL per file. */
+  getArtifactInfo(
+    targetBundleId: string,
+    currentBundleId: string,
+    artifactProtocolVersion: 2,
+  ): Promise<ArtifactInfoV2 | null>;
+  /**
+   * Download URLs for the manifest files of `bundleId` that a device downloads
+   * one by one; null when the Bundle or any path is unknown.
+   */
+  getArtifactFiles(
+    bundleId: string,
+    paths: readonly string[],
+  ): Promise<ArtifactFiles | null>;
   getBundle(id: string): Promise<BundleDetail | null>;
   /** Each base bundle's reference counter: one batch read of the bundle rows, and no patches. */
   countBundleChildren(

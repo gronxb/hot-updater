@@ -51,7 +51,9 @@ const targetManifest = {
 
 const setup = () => {
   const resolveFileUrl = vi.fn(async (storageUri: string | null) =>
-    storageUri ? `https://download.test/${encodeURIComponent(storageUri)}` : null,
+    storageUri
+      ? `https://download.test/${encodeURIComponent(storageUri)}`
+      : null,
   );
   const readStorageText = vi.fn(async (uri: string) =>
     uri === TARGET_MANIFEST_URI ? JSON.stringify(targetManifest) : null,

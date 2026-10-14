@@ -124,7 +124,7 @@ describe("createHandlers client routes", () => {
         },
         manifestFileHash: "manifest-hash",
         manifestUrl: "https://cdn.example.com/manifest.json",
-      });
+      } as never);
     const handler = createHandlers(api).client;
 
     const response = await handler(
@@ -247,7 +247,7 @@ describe("createHandlers client routes", () => {
         assets: {},
         manifestFileHash: "manifest-hash",
         manifestUrl: "https://cdn.example.com/manifest.json",
-      });
+      } as never);
     const authenticate = vi.fn(async (request: Request) => {
       const apiKey = request.headers.get("x-api-key");
       if (apiKey === "unavailable") {

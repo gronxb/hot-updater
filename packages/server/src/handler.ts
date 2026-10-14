@@ -217,6 +217,16 @@ export function createHotUpdaterHandlers({
     "/artifacts/v1/:targetBundleId/from/:currentBundleId",
     "artifactV1",
   );
+  addClientRoute(
+    "GET",
+    "/artifacts/v2/:targetBundleId/from/:currentBundleId",
+    "artifactV2",
+  );
+  addClientRoute(
+    "POST",
+    "/artifacts/v2/:targetBundleId/files",
+    "artifactFilesV2",
+  );
 
   const adminRouter = createRouter<string>();
   const addAdminRoute = mount(adminRouter, true);
