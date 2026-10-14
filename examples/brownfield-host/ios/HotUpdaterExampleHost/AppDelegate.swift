@@ -6,10 +6,11 @@ import UIKit
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
   var window: UIWindow?
-  private var reactNativeStarted = false
-  /// Deep links that arrived while the native update check ran, before React
-  /// Native's Linking exists: the first becomes the launch URL, and the rest
-  /// open once React Native has started.
+  /// Whether the JavaScript bundle has loaded, so Linking can receive URLs.
+  private var bundleLoaded = false
+  /// Deep links that arrived before the JavaScript bundle loaded, when React
+  /// Native's Linking cannot receive them: the first becomes the launch URL
+  /// when React Native starts, and the rest open once the bundle has loaded.
   private var urlsBeforeStart: [URL] = []
 
   func application(
@@ -29,14 +30,15 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
           options[.url] = self.urlsBeforeStart.removeFirst()
         }
         return options
+      }, onBundleLoaded: {
+        self.bundleLoaded = true
+        let laterURLs = self.urlsBeforeStart
+        self.urlsBeforeStart = []
+        for url in laterURLs {
+          _ = openReactNativeURL(application, url: url, options: [:])
+        }
       })
-      self.reactNativeStarted = true
       self.window?.rootViewController = ReactNativeViewController(moduleName: "HotUpdaterExample")
-      let laterURLs = self.urlsBeforeStart
-      self.urlsBeforeStart = []
-      for url in laterURLs {
-        _ = openReactNativeURL(application, url: url, options: [:])
-      }
     }
     return true
   }
@@ -46,7 +48,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
-    guard reactNativeStarted else {
+    guard bundleLoaded else {
       urlsBeforeStart.append(url)
       return true
     }

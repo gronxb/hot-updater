@@ -16,9 +16,11 @@ class InternalClassForBundle {}
 /// a scenario turns it on, `HotUpdater.prepare` checks for an update first, as
 /// the brownfield guide's start function does. `launchOptions` is read once
 /// React Native starts, so it can carry a URL that arrived meanwhile.
+/// `onBundleLoaded` runs on the main thread once the JavaScript bundle loads.
 @MainActor
 public func startReactNativeWithHotUpdater(
-  launchOptions: () -> [UIApplication.LaunchOptionsKey: Any]?
+  launchOptions: () -> [UIApplication.LaunchOptionsKey: Any]?,
+  onBundleLoaded: (() -> Void)? = nil
 ) async {
   if let request = NativePrepareRequest.read() {
     let result = await HotUpdater.prepare(
@@ -41,7 +43,7 @@ public func startReactNativeWithHotUpdater(
       Dictionary(uniqueKeysWithValues: options.map { (AnyHashable($0.key), $0.value) })
     },
     preloadBundle: false,
-    onBundleLoaded: nil
+    onBundleLoaded: onBundleLoaded
   )
 }
 
