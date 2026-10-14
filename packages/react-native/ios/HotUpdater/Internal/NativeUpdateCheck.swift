@@ -1419,7 +1419,9 @@ final class NativeUpdateChecker {
     private static func requestKey(_ options: HotUpdaterCheckOptions, cohort: String) -> String {
         var baseURL = options.baseURL
         while baseURL.hasSuffix("/") { baseURL.removeLast() }
-        let headers = options.requestHeaders.map { "\($0.key.lowercased()):\($0.value)" }.sorted()
+        // The headers the transport sends, so two options that send the same
+        // headers share a key, as the catalog cache partition does.
+        let headers = normalizedHeaders(options.requestHeaders).map { "\($0.key):\($0.value)" }.sorted()
         return ([baseURL, options.updateStrategy.name, options.channel ?? "", cohort] + headers)
             .joined(separator: "\n")
     }
