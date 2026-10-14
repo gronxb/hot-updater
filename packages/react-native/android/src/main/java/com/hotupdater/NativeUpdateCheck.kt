@@ -135,6 +135,12 @@ internal object NativeUpdateCheck {
         options: HotUpdaterCheckOptions,
     ): HotUpdaterUpdate? = checker(context, impl).checkForUpdate(options)
 
+    /** Clears the runtime channel once a check or staging running in this process finishes. */
+    suspend fun resetChannel(
+        context: Context,
+        impl: () -> HotUpdaterImpl,
+    ): Boolean = checker(context, impl).whenIdle { impl().resetChannel() }
+
     suspend fun prepare(
         context: Context,
         impl: () -> HotUpdaterImpl,

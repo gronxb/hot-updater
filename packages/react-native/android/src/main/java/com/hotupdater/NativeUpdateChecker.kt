@@ -217,6 +217,12 @@ internal class NativeUpdateChecker(
     private val events = NativeUpdateEventQueue(state::getStorageItem, state::setStorageItem)
     private val catalogClient = ReleaseCatalogClient(state, transport)
 
+    /**
+     * Runs [block] once no check or staging runs, as a channel reset must: a
+     * staging that finished after the reset would save its channel again.
+     */
+    suspend fun <T> whenIdle(block: suspend () -> T): T = mutex.withLock { block() }
+
     /** Waits for the lock and the requests without a deadline beyond each request's timeout. */
     suspend fun checkForUpdate(options: HotUpdaterCheckOptions): HotUpdaterUpdate? {
         validateOptions(options)

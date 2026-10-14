@@ -787,11 +787,19 @@ final class NativeUpdateChecker {
 
     /// Clears the runtime channel once other native update work finishes.
     func resetChannel() async -> Bool {
+        await whenIdle { await self.host.resetChannel() } ?? false
+    }
+
+    /// Runs `body` once no check or staging runs, as a channel reset must: a
+    /// staging that finished after the reset would save its channel again.
+    /// Returns nil when the wait is cancelled.
+    @discardableResult
+    func whenIdle<T>(_ body: () async -> T) async -> T? {
         guard case .acquired = await gate.enter(timeout: nil) else {
-            return false
+            return nil
         }
         defer { gate.release() }
-        return await host.resetChannel()
+        return await body()
     }
 
     private func finishPrepare(
@@ -1591,6 +1599,8 @@ final class NativeUpdateChecker {
     }
 
     private func reportUpdateError(_ error: Error, stage: String, resource: String?, scope: ErrorScope) {
+        // A caller that cancels its wait has not seen the update fail.
+        if error is CancellationError { return }
         guard var payload = Self.classifyUpdateError(error, stage: stage, resource: resource) else {
             return
         }

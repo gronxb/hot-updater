@@ -623,6 +623,24 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `a reset waits for a background download`() =
+        runBlocking {
+            val gate = CompletableDeferred<Unit>()
+            val state = FakeState().apply { stageGate = gate }
+            val checker = NativeUpdateChecker(state, FakeTransport(routes(minorCatalog())))
+            assertTrue(checker.prepare(OPTIONS, 5_000, null) is HotUpdaterPrepareResult.Pending)
+            state.stageEntered.await()
+
+            val reset = async(Dispatchers.Default) { checker.whenIdle { state.stageCount.get() } }
+            delay(100)
+            assertFalse(reset.isCompleted)
+            gate.complete(Unit)
+
+            assertEquals(1, withTimeout(5_000) { reset.await() })
+            assertTrue(state.staged.isCompleted)
+        }
+
+    @Test
     fun `the deadline covers the wait for another check holding the lock`() =
         runBlocking {
             val release = CompletableDeferred<Unit>()

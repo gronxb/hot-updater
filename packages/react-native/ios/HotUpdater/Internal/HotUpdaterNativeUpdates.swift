@@ -155,6 +155,30 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
         }
     }
 
+    /// JavaScript's `resetChannel`, run once a native check or download
+    /// finishes, which would save its channel again after the reset.
+    @objc(resetChannelWithImpl:resolver:rejecter:)
+    public static func resetChannel(
+        impl: HotUpdaterImpl,
+        resolver resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        let checker = checker(impl: impl)
+        Task {
+            await checker.whenIdle {
+                await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+                    impl.resetChannel({ value in
+                        resolve(value)
+                        done.resume()
+                    }, rejecter: { code, message, error in
+                        reject(code, message, error)
+                        done.resume()
+                    })
+                }
+            }
+        }
+    }
+
     /// The queued plugin events as a JSON array, cleared as they are taken.
     @objc(takeEventsWithImpl:)
     public static func takeEvents(impl: HotUpdaterImpl) -> String? {
