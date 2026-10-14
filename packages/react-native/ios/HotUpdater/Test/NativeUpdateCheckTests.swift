@@ -1474,6 +1474,64 @@ struct URLSessionUpdateTransportTests {
     }
 }
 
+struct HTTPArtifactFileResolverTests {
+    @Test
+    func theRequestTimeoutBoundsAFilesResponseThatKeepsArriving() throws {
+        let resolver = HTTPArtifactFileResolver(
+            filesUrl: URL(string: "https://updates.example.com/artifacts/v2/b/files")!,
+            headers: [:],
+            timeout: 1,
+            protocolClasses: [TricklingURLProtocol.self]
+        )
+        let started = Date()
+
+        #expect(throws: (any Error).self) { _ = try resolver.resolve(paths: ["index.ios.bundle"]) }
+        // The body keeps arriving for 6 s, never idle for the timeout.
+        #expect(Date().timeIntervalSince(started) < 4)
+    }
+}
+
+/// Sends a 200, then a byte every 100 ms for 6 s, so the request is never idle.
+private final class TricklingURLProtocol: URLProtocol {
+    private var stopped = false
+    private let lock = NSLock()
+
+    override class func canInit(with _: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: "HTTP/1.1",
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        trickle(remaining: 60)
+    }
+
+    private func trickle(remaining: Int) {
+        DispatchQueue.global().asyncAfter(deadline: .now() + 0.1) { [self] in
+            lock.lock()
+            let isStopped = stopped
+            lock.unlock()
+            guard !isStopped else { return }
+            if remaining == 0 {
+                client?.urlProtocolDidFinishLoading(self)
+                return
+            }
+            client?.urlProtocol(self, didLoad: Data(" ".utf8))
+            trickle(remaining: remaining - 1)
+        }
+    }
+
+    override func stopLoading() {
+        lock.lock()
+        stopped = true
+        lock.unlock()
+    }
+}
+
 /// Sends a 200's headers, then loses the connection.
 private final class BrokenBodyURLProtocol: URLProtocol {
     override class func canInit(with _: URLRequest) -> Bool { true }
