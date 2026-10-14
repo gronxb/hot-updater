@@ -280,10 +280,8 @@ internal class NativeUpdateChecker(
         }
 
     /** Waits for the lock and the requests without a deadline beyond each request's timeout. */
-    suspend fun checkForUpdate(options: HotUpdaterCheckOptions): HotUpdaterUpdate? {
-        validateOptions(options)
-        return mutex.withLock { check(options, deadline = null) }?.update
-    }
+    suspend fun checkForUpdate(options: HotUpdaterCheckOptions): HotUpdaterUpdate? =
+        mutex.withLock { check(options, deadline = null) }?.update
 
     /**
      * Checks for an update and starts it within one deadline of [timeoutMillis]
@@ -302,7 +300,6 @@ internal class NativeUpdateChecker(
         }
         val deadline = System.nanoTime() + timeoutMillis * 1_000_000
         return try {
-            validateOptions(options)
             while (true) {
                 // Read together with the lock, so a staging is either joined or
                 // finished and its lock released: never started twice.
@@ -600,6 +597,9 @@ internal class NativeUpdateChecker(
 
         val checked =
             try {
+                // Invalid options fail the check as a failed request does in
+                // JavaScript, so they are reported too.
+                validateOptions(options)
                 checkReleaseCatalog(input, deadline)
             } catch (error: TimeoutCancellationException) {
                 // prepare's deadline ended the check, not its caller: reported as a

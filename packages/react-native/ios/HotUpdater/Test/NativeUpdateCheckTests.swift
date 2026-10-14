@@ -114,6 +114,9 @@ struct NativeUpdateCheckTests {
         #expect(update.transitionKind == "INSTALL")
         #expect(update.shouldForceUpdate == false)
         #expect(update.message == "Fixes")
+        #expect(update.rolloutCohortCount == 1000)
+        #expect(update.targetCohorts.isEmpty)
+        #expect(update.transitionKind == "INSTALL")
         #expect(host.stagedParams.isEmpty)
 
         #expect(try await update.updateBundle())
@@ -242,7 +245,11 @@ struct NativeUpdateCheckTests {
             #expect(result.error?.localizedDescription == "Invalid baseURL: \(url)")
         }
         #expect(transport.requests.isEmpty)
-        #expect(host.events().isEmpty)
+        // Reported as JavaScript reports a check whose request fails.
+        let events = host.events()
+        #expect(events.count == 8)
+        #expect(events.allSatisfy { $0["name"] as? String == "onUpdateError" })
+        #expect((events.first?["payload"] as? [String: Any])?["stage"] as? String == "check")
     }
 
     @Test
@@ -265,6 +272,8 @@ struct NativeUpdateCheckTests {
             #expect(result.error?.localizedDescription == "requestTimeout must be a positive number of seconds")
         }
         #expect(transport.requests.isEmpty)
+        #expect(host.events().count == 8)
+        #expect(host.events().allSatisfy { $0["name"] as? String == "onUpdateError" })
     }
 
     @Test

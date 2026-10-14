@@ -50,9 +50,12 @@ class HotUpdaterUpdate internal constructor(
     /** A required update: the device should not keep running its current bundle. */
     val shouldForceUpdate: Boolean,
     val message: String?,
-    internal val rolloutCohortCount: Int,
-    internal val targetCohorts: List<String>,
-    internal val transitionKind: String,
+    /** How many of the 1000 rollout cohorts receive the Release. */
+    val rolloutCohortCount: Int,
+    /** Cohorts that receive the Release whatever [rolloutCohortCount] says. */
+    val targetCohorts: List<String>,
+    /** `INSTALL`, `ADOPT_RELEASE`, or `USE_BUILTIN`. */
+    val transitionKind: String,
     /** The update selects the bundle the app already launches, so staging it only records the selection. */
     internal val runsCurrentBundle: Boolean,
     /** What staging this update produces; a staging already running for it is joined. */
