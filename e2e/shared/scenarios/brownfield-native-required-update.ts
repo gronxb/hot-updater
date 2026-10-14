@@ -28,11 +28,13 @@ export const brownfieldNativeRequiredUpdateScenario: ScenarioDefinition = {
       "turn on the native update check",
       "/e2e/jobs/set-native-prepare",
       // A slow provider must not turn the required update pending: the
-      // requests and the wait get room beyond the hosts' defaults.
+      // requests and the wait get room beyond the hosts' defaults, while the
+      // wait stays within the launch's 60-second screen-state wait, since
+      // React Native starts only after it.
       {
         strategy: "appVersion",
-        requestTimeoutMs: 60_000,
-        prepareTimeoutMs: 90_000,
+        requestTimeoutMs: 20_000,
+        prepareTimeoutMs: 45_000,
       },
       { saveResultFieldsAs: { nonce: "nativePrepareNonce" } },
     );
