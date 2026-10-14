@@ -1041,16 +1041,35 @@ class NativeUpdateCheckerTest {
         runBlocking {
             val transport = FakeTransport(routes(minorCatalog()))
             val checker = NativeUpdateChecker(FakeState(), transport)
-            val options = HotUpdaterCheckOptions(baseURL = "updates.example.com", updateStrategy = HotUpdaterUpdateStrategy.APP_VERSION)
+            for (baseURL in listOf("updates.example.com", "https://", "https:///api")) {
+                val options = HotUpdaterCheckOptions(baseURL = baseURL, updateStrategy = HotUpdaterUpdateStrategy.APP_VERSION)
 
-            val result = checker.prepare(options, 1_000, null)
-            assertTrue((result as HotUpdaterPrepareResult.Failed).error is IllegalArgumentException)
-            try {
-                checker.checkForUpdate(options)
-                fail("Expected the check to fail")
-            } catch (_: IllegalArgumentException) {
+                val result = checker.prepare(options, 1_000, null)
+                assertTrue((result as HotUpdaterPrepareResult.Failed).error is IllegalArgumentException)
+                try {
+                    checker.checkForUpdate(options)
+                    fail("Expected the check to fail")
+                } catch (_: IllegalArgumentException) {
+                }
             }
             assertTrue(transport.requests.isEmpty())
+        }
+
+    @Test
+    fun `a catalog response is reported as the catalog under an artifacts base path`() =
+        runBlocking {
+            val state = FakeState()
+            val transport = FakeTransport { UpdateCheckResponse(500, "Internal Server Error", emptyMap(), "oops") }
+            val checker = NativeUpdateChecker(state, transport)
+            val options =
+                HotUpdaterCheckOptions(
+                    baseURL = "https://updates.example.com/artifacts/hot-updater",
+                    updateStrategy = HotUpdaterUpdateStrategy.APP_VERSION,
+                )
+
+            checker.prepare(options, 1_000, null)
+
+            assertEquals("catalog", state.httpResponses().single().getString("resource"))
         }
 
     @Test
