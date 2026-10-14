@@ -1962,6 +1962,39 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    fun `artifact protocol v2 reports a malformed files response as an invalid response`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder()
+            val manifest = manifestJson(bundleId = "target", assets = mapOf("index.android.bundle" to sha256(root, "bundle")))
+            val resolver =
+                object : ArtifactFileResolver {
+                    override suspend fun resolve(paths: List<String>): Map<String, ResolvedArtifactFile> =
+                        throw InvalidUpdateResponseException("Artifact files response has no files")
+                }
+
+            val error =
+                runCatching {
+                    createService(
+                        root,
+                        downloadService = BinaryMappingDownloadService(mapOf(MANIFEST_URL to manifest.toByteArray())),
+                        builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+                    ).updateBundle(
+                        bundleId = "target",
+                        manifestUrl = MANIFEST_URL,
+                        manifestFileHash = sha256(root, manifest),
+                        assets = emptyMap(),
+                        fileResolver = resolver,
+                        progressCallback = {},
+                    )
+                }.exceptionOrNull()
+
+            assertEquals(
+                UpdateFailure.download(UpdateFailureReason.INVALID_RESPONSE).copy(resource = UpdateFailureResource.FILE),
+                (error as HotUpdaterException).failure,
+            )
+        }
+
+    @Test
     fun `artifact protocol v2 asks for no file when it takes the archive`() =
         runBlocking {
             val root = temporaryFolder.newFolder("artifact-files-archive")

@@ -124,7 +124,7 @@ data class UpdateFailure(
                     install(UpdateFailureReason.STORAGE)
                 }
 
-                is MalformedURLException -> {
+                is MalformedURLException, is InvalidUpdateResponseException -> {
                     download(UpdateFailureReason.INVALID_RESPONSE)
                 }
 
