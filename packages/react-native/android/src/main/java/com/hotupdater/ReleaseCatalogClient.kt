@@ -2,7 +2,6 @@ package com.hotupdater
 
 import org.json.JSONArray
 import org.json.JSONObject
-import org.json.JSONTokener
 import java.net.MalformedURLException
 import java.net.URL
 import java.util.Locale
@@ -194,11 +193,9 @@ internal class ReleaseCatalogClient(
 
     /** `requireArtifactProtocolV1` and `requireArtifactUrls` of httpClient.ts, then the TurboModule's asset parsing. */
     private fun parseArtifact(body: String): ResolvedArtifact {
-        // org.json also accepts what JSON.parse rejects, such as comments or trailing data.
-        if (!StrictJson.isValid(body)) throw InvalidUpdateResponseException("Received an invalid artifact response")
-        val tokener = JSONTokener(body)
+        // As JSON.parse reads it, which org.json's parser does not.
         val info =
-            tokener.nextValue() as? JSONObject
+            StrictJson.parse(body) as? JSONObject
                 ?: throw InvalidUpdateResponseException("Received an invalid artifact response")
         val protocolVersion = info.opt("artifactProtocolVersion")
         val assets = info.opt("assets") as? JSONObject

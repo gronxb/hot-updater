@@ -1,13 +1,206 @@
 package com.hotupdater
 
+import org.json.JSONArray
+import org.json.JSONObject
+
 /**
- * Checks that a text is exactly one JSON value (RFC 8259), as `JSON.parse`
- * accepts it. `org.json` also accepts comments, single quotes, unquoted keys,
- * trailing commas, and other non-JSON syntax, so the catalog parser checks
- * here first. Iterative, so deep nesting cannot overflow the stack.
+ * Parses exactly one JSON value (RFC 8259) as `JSON.parse` does, into
+ * `org.json` values. `org.json` also accepts comments, single quotes, unquoted
+ * keys, trailing commas, and other non-JSON syntax, and Android's
+ * `JSONObject` rejects a number that overflows to infinity, which `JSON.parse`
+ * accepts, so update responses are parsed here instead. Iterative, so deep
+ * nesting cannot overflow the stack.
  */
 internal object StrictJson {
+    /**
+     * Stands for a number that overflows to infinity, which `JSONObject`
+     * cannot hold. It is neither a number, a string, nor null, so a known
+     * field that reads it fails as `Infinity` fails in JavaScript.
+     */
+    object NonFiniteNumber
+
     fun isValid(text: String): Boolean = Checker(text).check()
+
+    /** The value of [text], or null when [text] is not exactly one JSON value. */
+    fun parse(text: String): Any? {
+        if (!isValid(text)) return null
+        return Builder(text).build()
+    }
+
+    /** Builds the value of a text [Checker] accepted. */
+    private class Builder(
+        private val text: String,
+    ) {
+        private var index = 0
+
+        private class Container(
+            val value: Any,
+        ) {
+            var key = ""
+
+            fun add(item: Any) {
+                when (value) {
+                    is JSONObject -> value.put(key, item)
+                    is JSONArray -> value.put(item)
+                }
+            }
+        }
+
+        fun build(): Any {
+            val containers = ArrayDeque<Container>()
+            var expectValue = true
+            while (true) {
+                skipWhitespace()
+                if (expectValue) {
+                    val value: Any =
+                        when (text[index]) {
+                            '{' -> {
+                                index++
+                                skipWhitespace()
+                                if (text[index] == '}') {
+                                    index++
+                                    JSONObject()
+                                } else {
+                                    containers.addLast(Container(JSONObject()).apply { key = member() })
+                                    continue
+                                }
+                            }
+
+                            '[' -> {
+                                index++
+                                skipWhitespace()
+                                if (text[index] == ']') {
+                                    index++
+                                    JSONArray()
+                                } else {
+                                    containers.addLast(Container(JSONArray()))
+                                    continue
+                                }
+                            }
+
+                            '"' -> {
+                                string()
+                            }
+
+                            't' -> {
+                                literal("true", true)
+                            }
+
+                            'f' -> {
+                                literal("false", false)
+                            }
+
+                            'n' -> {
+                                literal("null", JSONObject.NULL)
+                            }
+
+                            else -> {
+                                number()
+                            }
+                        }
+                    expectValue = false
+                    val container = containers.lastOrNull() ?: return value
+                    container.add(value)
+                } else {
+                    val container = containers.last()
+                    when (text[index++]) {
+                        ',' -> {
+                            if (container.value is JSONObject) {
+                                skipWhitespace()
+                                container.key = member()
+                            }
+                            expectValue = true
+                        }
+
+                        else -> {
+                            // The closing bracket the checker matched.
+                            containers.removeLast()
+                            val parent = containers.lastOrNull() ?: return container.value
+                            parent.add(container.value)
+                        }
+                    }
+                }
+            }
+        }
+
+        private fun member(): String {
+            val key = string()
+            skipWhitespace()
+            index++ // ':'
+            return key
+        }
+
+        private fun string(): String {
+            index++
+            val builder = StringBuilder()
+            while (true) {
+                val char = text[index++]
+                when (char) {
+                    '"' -> {
+                        return builder.toString()
+                    }
+
+                    '\\' -> {
+                        when (val escape = text[index++]) {
+                            'b' -> {
+                                builder.append('\b')
+                            }
+
+                            'f' -> {
+                                builder.append('\u000C')
+                            }
+
+                            'n' -> {
+                                builder.append('\n')
+                            }
+
+                            'r' -> {
+                                builder.append('\r')
+                            }
+
+                            't' -> {
+                                builder.append('\t')
+                            }
+
+                            'u' -> {
+                                builder.append(text.substring(index, index + 4).toInt(16).toChar())
+                                index += 4
+                            }
+
+                            else -> {
+                                builder.append(escape)
+                            }
+                        }
+                    }
+
+                    else -> {
+                        builder.append(char)
+                    }
+                }
+            }
+        }
+
+        private fun number(): Any {
+            val start = index
+            while (index < text.length && text[index] in "+-0123456789.eE") index++
+            val value = text.substring(start, index).toDouble()
+            return if (value.isInfinite()) NonFiniteNumber else value
+        }
+
+        private fun literal(
+            word: String,
+            value: Any,
+        ): Any {
+            index += word.length
+            return value
+        }
+
+        private fun skipWhitespace() {
+            while (index < text.length && text[index].let { it == ' ' || it == '\t' || it == '\n' || it == '\r' }) {
+                index++
+            }
+        }
+    }
 
     private class Checker(
         private val text: String,
