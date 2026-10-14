@@ -74,6 +74,7 @@ class ReactIntegrationManager(
             // Ensure initialized; if not, start and wait
             waitForReactContextInitialized(instanceManager)
 
+            ContentAppearedLog.rearm(instanceManager.currentReactContext?.currentActivity)
             instanceManager.recreateReactContextInBackground()
         } catch (e: Exception) {
             try {

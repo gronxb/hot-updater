@@ -23,6 +23,7 @@ internal object BridgeReactInstance {
         @Suppress("DEPRECATION")
         val reactNativeHost = application.reactNativeHost
         try {
+            ContentAppearedLog.rearm(reactNativeHost.reactInstanceManager.currentReactContext?.currentActivity)
             reactNativeHost.reactInstanceManager.recreateReactContextInBackground()
         } catch (e: Exception) {
             val currentActivity = reactNativeHost.reactInstanceManager.currentReactContext?.currentActivity
