@@ -314,7 +314,11 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
 
 app.post("/e2e/jobs/deploy-bundle", async (c) => {
   const payload = (await c.req.json()) as {
-    bundleProfile?: "default" | "multiAssetReplacement" | "sizeAwareLargeDiff";
+    bundleProfile?:
+      | "assetHeavy"
+      | "default"
+      | "multiAssetReplacement"
+      | "sizeAwareLargeDiff";
     channel?: string;
     disabled?: boolean;
     diffBaseBundleId?: string;
@@ -350,13 +354,14 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
   if (
     payload.bundleProfile !== undefined &&
     payload.bundleProfile !== "default" &&
+    payload.bundleProfile !== "assetHeavy" &&
     payload.bundleProfile !== "multiAssetReplacement" &&
     payload.bundleProfile !== "sizeAwareLargeDiff"
   ) {
     return c.json(
       {
         error:
-          "bundleProfile must be default, multiAssetReplacement, or sizeAwareLargeDiff",
+          "bundleProfile must be default, assetHeavy, multiAssetReplacement, or sizeAwareLargeDiff",
       },
       400,
     );

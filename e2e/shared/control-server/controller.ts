@@ -103,7 +103,11 @@ const { createInsightsModel, createInsightsProvider } = await importPublished<
 >("@hot-updater/server/plugins");
 
 type Platform = "ios" | "android";
-type BundleProfile = "default" | "multiAssetReplacement" | "sizeAwareLargeDiff";
+type BundleProfile =
+  | "assetHeavy"
+  | "default"
+  | "multiAssetReplacement"
+  | "sizeAwareLargeDiff";
 
 type JobResult = Record<string, unknown>;
 
@@ -283,6 +287,20 @@ const MULTI_ASSET_FIXTURES = [
     requirePath: PAX_LONG_ASSET_REQUIRE_PATH,
   },
 ] as const;
+// Many small assets, each new per deploy, beside one large asset that stays the
+// same. Random pixels keep the archive from compressing them below the files.
+const ASSET_HEAVY_RELATIVE_DIR = "src/test/_fixture-asset-heavy";
+const ASSET_HEAVY_REQUIRE_DIR = "../test/_fixture-asset-heavy";
+const ASSET_HEAVY_SMALL_COUNT = 64;
+const ASSET_HEAVY_SMALL_SIZE = 8;
+const ASSET_HEAVY_LARGE_SIZE = 256;
+const ASSET_HEAVY_FILE_NAMES = [
+  "large.bmp",
+  ...Array.from(
+    { length: ASSET_HEAVY_SMALL_COUNT },
+    (_, index) => `small-${String(index).padStart(2, "0")}.bmp`,
+  ),
+];
 const MULTI_ASSET_BMP_WIDTH = 64;
 const MULTI_ASSET_BMP_HEIGHT = 64;
 const MULTI_ASSET_BMP_HEADER_SIZE = 54;
@@ -860,6 +878,57 @@ async function restoreMultiAssetFixtures() {
   }
 }
 
+function createRandomBmpBuffer(size: number, seedInput: string) {
+  const rowSize = Math.ceil((size * 3) / 4) * 4;
+  const header = Buffer.alloc(MULTI_ASSET_BMP_HEADER_SIZE);
+  header.write("BM", 0, "ascii");
+  header.writeUInt32LE(MULTI_ASSET_BMP_HEADER_SIZE + rowSize * size, 2);
+  header.writeUInt32LE(MULTI_ASSET_BMP_HEADER_SIZE, 10);
+  header.writeUInt32LE(40, 14);
+  header.writeInt32LE(size, 18);
+  header.writeInt32LE(size, 22);
+  header.writeUInt16LE(1, 26);
+  header.writeUInt16LE(24, 28);
+  header.writeUInt32LE(rowSize * size, 34);
+  header.writeInt32LE(2835, 38);
+  header.writeInt32LE(2835, 42);
+  const pixelData = Buffer.alloc(rowSize * size);
+  fillDeterministicPseudoRandomChunk(
+    pixelData,
+    createHash("sha256").update(seedInput).digest().readUInt32LE(0),
+  );
+  return Buffer.concat([header, pixelData]);
+}
+
+async function ensureAssetHeavyFixtures(marker: string) {
+  const directory = path.join(EXAMPLE_DIR, ASSET_HEAVY_RELATIVE_DIR);
+  await fsPromises.mkdir(directory, { recursive: true });
+  for (const fileName of ASSET_HEAVY_FILE_NAMES) {
+    await fsPromises.writeFile(
+      path.join(directory, fileName),
+      fileName === "large.bmp"
+        ? createRandomBmpBuffer(ASSET_HEAVY_LARGE_SIZE, "asset-heavy-large")
+        : createRandomBmpBuffer(
+            ASSET_HEAVY_SMALL_SIZE,
+            `${marker}:${fileName}`,
+          ),
+    );
+  }
+
+  logE2eFixture("asset-heavy fixtures ready", {
+    count: ASSET_HEAVY_FILE_NAMES.length,
+    directory: path.relative(REPO_DIR, directory),
+    marker,
+  });
+}
+
+async function removeAssetHeavyFixtures() {
+  await fsPromises.rm(path.join(EXAMPLE_DIR, ASSET_HEAVY_RELATIVE_DIR), {
+    force: true,
+    recursive: true,
+  });
+}
+
 function createSizeAwareLargeBmpHeader() {
   const header = Buffer.alloc(SIZE_AWARE_LARGE_BMP_HEADER_SIZE);
   const pixelDataSize =
@@ -988,6 +1057,17 @@ async function applyAppScenario({
         ...MULTI_ASSET_FIXTURES.map(
           (fixture) =>
             `  void Image.resolveAssetSource(require(${JSON.stringify(fixture.requirePath)}));`,
+        ),
+        `  ${DEPLOY_ASSET_GUARD_END}`,
+      ].join("\n");
+    }
+
+    if (bundleProfile === "assetHeavy") {
+      return [
+        DEPLOY_ASSET_GUARD_START,
+        ...ASSET_HEAVY_FILE_NAMES.map(
+          (fileName) =>
+            `  void Image.resolveAssetSource(require(${JSON.stringify(`${ASSET_HEAVY_REQUIRE_DIR}/${fileName}`)}));`,
         ),
         `  ${DEPLOY_ASSET_GUARD_END}`,
       ].join("\n");
@@ -5117,6 +5197,7 @@ async function bootstrap() {
     fixtureSession.sizeAwareLargeAssetPath,
   );
   await restoreMultiAssetFixtures();
+  await removeAssetHeavyFixtures();
   await restoreFile(
     fixtureSession.configBackupPath,
     fixtureSession.configSourceFile,
@@ -5163,6 +5244,10 @@ async function deployFixtureBundle(
   if (bundleProfile === "sizeAwareLargeDiff") {
     throwIfAborted(signal);
     await ensureSizeAwareLargeAsset(request.marker);
+  }
+  if (bundleProfile === "assetHeavy") {
+    throwIfAborted(signal);
+    await ensureAssetHeavyFixtures(request.marker);
   }
 
   throwIfAborted(signal);
@@ -6042,10 +6127,14 @@ function readFirstOtaReuseEvidence(bundleId: string) {
   const archive = getRemoteTransfer(artifact?.archiveUrl ?? null);
   // App-local paths stay identical when E2E shards share a symlinked node_modules.
   const imageSuffix = "builtin_reuse.png";
+  // Android release builds re-encode this PNG, so only its source matches.
+  const crunchedImageSuffix = "builtin_reuse_uncrunched.png";
   // A font fixture is required too, so an empty resolver cannot satisfy this assertion.
   const required = assets.filter(
     ({ path }) =>
-      path.endsWith(imageSuffix) || path.endsWith("builtin_reuse.ttf"),
+      path.endsWith(imageSuffix) ||
+      path.endsWith(crunchedImageSuffix) ||
+      path.endsWith("builtin_reuse.ttf"),
   );
   const reused = assets.filter(
     ({ path }) => typeof locators?.[path] === "string",
@@ -6081,6 +6170,7 @@ function readFirstOtaReuseEvidence(bundleId: string) {
       archive.bytes === 0 &&
       finalFiles.ok &&
       required.some(({ path }) => path.endsWith(imageSuffix)) &&
+      required.some(({ path }) => path.endsWith(crunchedImageSuffix)) &&
       required.some(({ path }) => path.endsWith("builtin_reuse.ttf")) &&
       required.every(({ path }) =>
         reused.some((asset) => asset.path === path),
@@ -6497,6 +6587,7 @@ async function cleanup() {
     fixtureSession.sizeAwareLargeAssetPath,
   );
   await restoreMultiAssetFixtures();
+  await removeAssetHeavyFixtures();
 
   fixtureSession.appBackupPath = null;
   fixtureSession.configBackupPath = null;
