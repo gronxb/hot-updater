@@ -2,7 +2,6 @@ package com.hotupdater
 
 import org.json.JSONArray
 import org.json.JSONObject
-import org.json.JSONTokener
 import java.text.Normalizer
 import kotlin.math.abs
 import kotlin.math.floor
@@ -232,15 +231,9 @@ internal object ReleaseCatalogs {
         expectedScope: ReleaseCatalogScope,
     ): ReleaseCatalog? {
         if (utf8ByteLength(body) > MAX_RELEASE_CATALOG_WIRE_BYTES) return null
-        // org.json accepts syntax JSON.parse rejects; take only what JSON.parse takes.
-        if (!StrictJson.isValid(body)) return null
-
         return try {
-            val tokener = JSONTokener(body)
-            val root = tokener.nextValue()
-            // JSON.parse rejects anything after the value.
-            if (tokener.nextClean() != '\u0000') return null
-            if (root !is JSONObject) return null
+            // As JSON.parse reads it, which org.json's parser does not.
+            val root = StrictJson.parse(body) as? JSONObject ?: return null
             val catalog = parseCatalogObject(root) ?: return null
             if (!hasExpectedScope(catalog.scopeKey, expectedScope)) return null
             val distinctTargetCohorts =
