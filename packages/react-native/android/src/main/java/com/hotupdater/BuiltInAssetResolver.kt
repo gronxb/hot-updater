@@ -27,6 +27,16 @@ interface BuiltInAssetResolver {
         expectedHash: String,
         destination: File,
     ): String? = null
+
+    /**
+     * The SHA-256 of the packaged asset at [assetPath] when the native build
+     * recorded [expectedHash] as its source; null otherwise. Read from the
+     * APK itself, so nothing in app storage can vouch for a file.
+     */
+    fun packagedHashIfSourceMatches(
+        assetPath: String,
+        expectedHash: String,
+    ): String? = null
 }
 
 internal class AndroidBuiltInAssetResolver(
@@ -42,6 +52,9 @@ internal class AndroidBuiltInAssetResolver(
 
     /** Source hashes the native build recorded, by asset path. */
     private val sourceHashes: Map<String, String> by lazy { readSourceHashes() }
+
+    /** Packaged bytes' hashes by locator, read from the APK in this process only. */
+    private val packagedHashes = mutableMapOf<String, String>()
 
     override fun copyIfMatches(
         assetPath: String,
@@ -74,13 +87,42 @@ internal class AndroidBuiltInAssetResolver(
             val normalizedPath = RelativePathResolver.normalizeRelativePath(assetPath) ?: return@synchronized null
             if (!sourceHashes[normalizedPath].equals(expectedHash, ignoreCase = true)) return@synchronized null
             val packageIdentity = packageIdentity() ?: return@synchronized null
-            val index = readIndex(packageIdentity)
-            val locator = index.locators[normalizedPath] ?: resolveLocator(normalizedPath) ?: return@synchronized null
+            // Resolved again, never from the cached index in app storage.
+            val locator = resolveLocator(normalizedPath) ?: return@synchronized null
             val packagedHash = copyLocator(locator, destination) { true } ?: return@synchronized null
+            packagedHashes[locator] = packagedHash
 
+            val index = readIndex(packageIdentity)
             index.locators[normalizedPath] = locator
             writeIndex(index)
             packagedHash
+        }
+
+    override fun packagedHashIfSourceMatches(
+        assetPath: String,
+        expectedHash: String,
+    ): String? =
+        synchronized(lock) {
+            val normalizedPath = RelativePathResolver.normalizeRelativePath(assetPath) ?: return@synchronized null
+            if (!sourceHashes[normalizedPath].equals(expectedHash, ignoreCase = true)) return@synchronized null
+            val locator = resolveLocator(normalizedPath) ?: return@synchronized null
+            packagedHashes[locator] ?: hashLocator(locator)?.also { packagedHashes[locator] = it }
+        }
+
+    private fun hashLocator(locator: String): String? =
+        try {
+            openLocator(locator)?.use { source ->
+                val digest = MessageDigest.getInstance("SHA-256")
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val count = source.read(buffer)
+                    if (count < 0) break
+                    digest.update(buffer, 0, count)
+                }
+                digest.digest().joinToString("") { "%02x".format(it) }
+            }
+        } catch (_: Exception) {
+            null
         }
 
     private fun readSourceHashes(): Map<String, String> =

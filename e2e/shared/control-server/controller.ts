@@ -2606,22 +2606,21 @@ function readBundleAssetFileHash(bundleId: string, assetPath: string) {
 }
 
 /**
- * The packaged built-in assets an Android Bundle uses in place of the
- * manifest's bytes, by path: their source matched, their bytes were
- * re-encoded by the native build.
+ * The built-in assets the device's resolver copied, by path. On Android a
+ * re-encoded PNG keeps its packaged bytes, which native checks against the
+ * APK; this test evidence only names them.
  */
-function readBuiltInEquivalents(bundleId: string): Record<string, string> {
+function readBuiltInLocators(): Record<string, string> {
   if (fixtureSession.platform === "ios") return {};
-  const snapshot = readAndroidStoreSnapshot(
-    `${bundleId}/builtin-assets.json`,
-    `bundle-${bundleId}-builtin-assets.json`,
-  );
-  const assets = snapshot.value?.assets;
-  if (!assets || typeof assets !== "object" || Array.isArray(assets)) {
+  const locators = readAndroidStoreSnapshot(
+    "builtin-index-v1.json",
+    "builtin-index-v1.json",
+  ).value?.locators;
+  if (!locators || typeof locators !== "object" || Array.isArray(locators)) {
     return {};
   }
   return Object.fromEntries(
-    Object.entries(assets).filter(
+    Object.entries(locators).filter(
       (entry): entry is [string, string] => typeof entry[1] === "string",
     ),
   );
@@ -2632,25 +2631,28 @@ function readBundleAssetsStoredEvidence(args: {
   bundleId: string;
 }) {
   const manifest = readBundleManifestSnapshot(args.bundleId);
-  const builtInEquivalents = readBuiltInEquivalents(args.bundleId);
+  const builtInLocators = readBuiltInLocators();
   const assets = args.assetPaths.map((assetPath) => {
     const manifestAssetPath = resolveManifestAssetPath(assetPath);
     const expectedHash = getManifestAssetFileHash(manifest, manifestAssetPath);
     const assetFile = readBundleAssetFileHash(args.bundleId, manifestAssetPath);
-    const builtInEquivalentHash = builtInEquivalents[manifestAssetPath] ?? null;
+    // Re-encoded by the release build: packaged bytes, from the APK.
+    const builtInEquivalent =
+      fixtureSession.platform === "android" &&
+      expectedHash !== null &&
+      assetFile.fileHash !== expectedHash &&
+      typeof builtInLocators[manifestAssetPath] === "string";
 
     return {
       assetFile,
       assetPath: manifestAssetPath,
-      builtInEquivalentHash,
+      builtInEquivalent,
       expectedHash,
       ok:
         expectedHash !== null &&
         assetFile.exists &&
         assetFile.readError === null &&
-        (assetFile.fileHash === expectedHash ||
-          (builtInEquivalentHash !== null &&
-            assetFile.fileHash === builtInEquivalentHash)),
+        (assetFile.fileHash === expectedHash || builtInEquivalent),
       requestedAssetPath: assetPath,
     };
   });
@@ -2662,7 +2664,6 @@ function readBundleAssetsStoredEvidence(args: {
   return {
     assets,
     bundleId: args.bundleId,
-    builtInEquivalents,
     manifest,
     ok,
   };
@@ -6333,10 +6334,10 @@ function readFirstOtaReuseEvidence(bundleId: string) {
       required.some(({ path }) => path.endsWith(crunchedImageSuffix)) &&
       // Android's release build re-encodes it: only its recorded source matches.
       (fixtureSession.platform === "ios" ||
-        required.some(
-          ({ path }) =>
-            path.endsWith(crunchedImageSuffix) &&
-            typeof finalFiles.builtInEquivalents[path] === "string",
+        finalFiles.assets.some(
+          (asset) =>
+            asset.assetPath.endsWith(crunchedImageSuffix) &&
+            asset.builtInEquivalent,
         )) &&
       required.some(({ path }) => path.endsWith("builtin_reuse.ttf")) &&
       required.every(({ path }) =>

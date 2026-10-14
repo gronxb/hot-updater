@@ -250,9 +250,6 @@ class BundleFileStorageService(
          */
         private const val REQUEST_OVERHEAD_BYTES = 32L * 1024
 
-        /** Beside manifest.json, the built-in assets a Bundle uses as they are packaged. */
-        private const val BUILT_IN_EQUIVALENTS_FILE = "builtin-assets.json"
-
         /** A patch produced a file that does not match the target, or none at all. */
         private val PATCH_FAILURE =
             UpdateFailure(UpdateFailureStage.INSTALL, UpdateFailureReason.PATCH, resource = UpdateFailureResource.PATCH)
@@ -730,61 +727,35 @@ class BundleFileStorageService(
         val manifest = parseBundleManifestFromFile(File(bundleDir, "manifest.json")) ?: return false
         if (manifest.bundleId != bundleId) return false
         if (resolveBundleFile(bundleDir, bundleId) == null) return false
-        val builtInEquivalents = readBuiltInEquivalents(bundleDir)
         return manifest.assets.all { (assetPath, asset) ->
             val file = RelativePathResolver.resolveInside(bundleDir, assetPath)
             file?.isFile == true &&
                 (
                     runCatching { verifyManifestAssetFileOrThrow(file, asset) }.isSuccess ||
-                        builtInEquivalents[assetPath]?.let { isBuiltInEquivalent(file, asset, it) } == true
+                        isBuiltInEquivalent(assetPath, file, asset)
                 )
         }
     }
 
     /**
-     * Whether [file] holds the packaged bytes, [packagedHash], of the asset the
-     * native build recorded with the manifest's source hash. The manifest's
+     * Whether [file] holds the packaged bytes of the built-in asset the native
+     * build recorded with the manifest's source hash, as AAPT2 re-encodes a
+     * PNG. Both come from the APK, never from app storage. The manifest's
      * signature still covers that source hash.
      */
     private fun isBuiltInEquivalent(
+        assetPath: String,
         file: File,
         asset: ParsedManifestAsset,
-        packagedHash: String,
-    ): Boolean =
-        HashUtils.calculateSHA256(file).equals(packagedHash, ignoreCase = true) &&
+    ): Boolean {
+        val packagedHash = builtInAssetResolver.packagedHashIfSourceMatches(assetPath, asset.fileHash) ?: return false
+        return HashUtils.calculateSHA256(file).equals(packagedHash, ignoreCase = true) &&
             runCatching {
                 if (SignatureVerifier.isSigningEnabled(context)) {
                     val signature = asset.signature ?: throw SignatureVerificationException.InvalidSignatureFormat()
                     SignatureVerifier.verifyHashSignature(context, asset.fileHash, signature)
                 }
             }.isSuccess
-
-    /** Packaged assets an installed Bundle uses in place of the manifest's bytes. */
-    private fun readBuiltInEquivalents(bundleDir: File): Map<String, String> =
-        try {
-            val file = File(bundleDir, BUILT_IN_EQUIVALENTS_FILE)
-            if (!file.isFile) {
-                emptyMap()
-            } else {
-                val assets = JSONObject(file.readText()).optJSONObject("assets") ?: JSONObject()
-                assets.keys().asSequence().associateWith { assets.getString(it) }
-            }
-        } catch (_: Exception) {
-            emptyMap()
-        }
-
-    private fun writeBuiltInEquivalents(
-        bundleDir: File,
-        equivalents: Map<String, String>,
-    ) {
-        val file = File(bundleDir, BUILT_IN_EQUIVALENTS_FILE)
-        if (equivalents.isEmpty()) {
-            file.delete()
-            return
-        }
-        val assets = JSONObject()
-        equivalents.toSortedMap().forEach { (path, hash) -> assets.put(path, hash) }
-        file.writeText("${JSONObject().put("assets", assets)}\n")
     }
 
     private fun recoverInterruptedPromotions(): Boolean {
@@ -2278,8 +2249,6 @@ class BundleFileStorageService(
                 if (!tmpDir.isDirectory && !tmpDir.mkdirs()) throw HotUpdaterException.directoryCreationFailed()
                 pruneStagingDirectory(tmpDir, targetManifest.assets.keys)
             }
-            // Packaged assets of the same source whose bytes differ, by path.
-            val builtInEquivalents = mutableMapOf<String, String>()
             val downloads =
                 updateStep(UpdateFailureStage.INSTALL, UpdateFailureResource.FILE) {
                     val targetEntries = targetManifest.assets.entries.sortedBy { it.key }
@@ -2321,8 +2290,7 @@ class BundleFileStorageService(
                             return@forEachIndexed
                         }
                         val packagedHash = builtInAssetResolver.copyIfSourceMatches(assetPath, expectedAsset.fileHash, targetFile)
-                        if (packagedHash != null && isBuiltInEquivalent(targetFile, expectedAsset, packagedHash)) {
-                            builtInEquivalents[assetPath] = packagedHash
+                        if (packagedHash != null && isBuiltInEquivalent(assetPath, targetFile, expectedAsset)) {
                             return@forEachIndexed
                         }
                         if (packagedHash != null) targetFile.delete()
@@ -2351,8 +2319,6 @@ class BundleFileStorageService(
 
             val fileDeliveries =
                 if (archiveProgress != null) {
-                    // The archive replaced every file with the manifest's bytes.
-                    builtInEquivalents.clear()
                     diffFiles = archiveProgress
                     emptyList()
                 } else {
@@ -2411,7 +2377,6 @@ class BundleFileStorageService(
                 )
 
                 manifestFile.copyTo(File(tmpDir, "manifest.json"), overwrite = true)
-                writeBuiltInEquivalents(tmpDir, builtInEquivalents)
 
                 val extractedIndex = tmpDir.walk().find { it.name == "index.android.bundle" }
                 if (extractedIndex == null) {

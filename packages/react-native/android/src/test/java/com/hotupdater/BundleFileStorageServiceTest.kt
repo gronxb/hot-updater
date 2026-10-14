@@ -693,12 +693,7 @@ class BundleFileStorageServiceTest {
             val targetDir = File(bundleStoreDir(rootDir), "target-bundle")
             assertEquals(packagedContent, File(targetDir, "drawable-mdpi/image.png").readText())
             assertEquals("changed-image", File(targetDir, "drawable-mdpi/changed.png").readText())
-            assertEquals(
-                mapOf("drawable-mdpi/image.png" to sha256(rootDir, packagedContent)),
-                JSONObject(File(targetDir, "builtin-assets.json").readText())
-                    .getJSONObject("assets")
-                    .let { json -> json.keys().asSequence().associateWith { json.getString(it) } },
-            )
+            assertFalse(File(targetDir, "builtin-assets.json").exists())
             assertEquals("target-bundle", loadMetadata(rootDir)?.stagingBundleId)
         }
 
@@ -1291,6 +1286,61 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `startup rejects a re-encoded built in file that only a stored record vouches for`() {
+        val root = temporaryFolder.newFolder("forged-built-in-record")
+        val final = createCompleteBundle(root, "target", "new")
+        writeFile(final, "drawable-mdpi/image.png", "tampered")
+        File(final, "manifest.json").writeText(
+            manifestJson(
+                "target",
+                mapOf(
+                    "index.android.bundle" to sha256(root, "new"),
+                    "drawable-mdpi/image.png" to sha256(root, "source"),
+                ),
+            ),
+        )
+        // A record in app storage is no proof: anything that writes the file can write it.
+        File(final, "builtin-assets.json").writeText(
+            JSONObject()
+                .put("assets", JSONObject().put("drawable-mdpi/image.png", sha256(root, "tampered")))
+                .toString(),
+        )
+        createCompleteBundle(root, "target.install-backup", "old", manifestBundleId = "target")
+
+        createService(root, builtInAssetResolver = SourceMappingBuiltInAssetResolver(emptyMap()))
+
+        assertEquals("old", File(bundleStoreDir(root), "target/index.android.bundle").readText())
+    }
+
+    @Test
+    fun `startup keeps a re-encoded built in file that the APK vouches for`() {
+        val root = temporaryFolder.newFolder("apk-vouched-built-in")
+        val final = createCompleteBundle(root, "target", "new")
+        writeFile(final, "drawable-mdpi/image.png", "crunched")
+        File(final, "manifest.json").writeText(
+            manifestJson(
+                "target",
+                mapOf(
+                    "index.android.bundle" to sha256(root, "new"),
+                    "drawable-mdpi/image.png" to sha256(root, "source"),
+                ),
+            ),
+        )
+        createCompleteBundle(root, "target.install-backup", "old", manifestBundleId = "target")
+
+        createService(
+            root,
+            builtInAssetResolver =
+                SourceMappingBuiltInAssetResolver(
+                    mapOf("drawable-mdpi/image.png" to (sha256(root, "source") to "crunched")),
+                ),
+        )
+
+        assertEquals("new", File(bundleStoreDir(root), "target/index.android.bundle").readText())
+        assertEquals("crunched", File(bundleStoreDir(root), "target/drawable-mdpi/image.png").readText())
+    }
+
+    @Test
     fun `retry reuses completed staging files and replaces partial files without stale assets`() =
         runBlocking {
             val root = temporaryFolder.newFolder("interrupted-retry")
@@ -1773,6 +1823,14 @@ class BundleFileStorageServiceTest {
                         destination.parentFile?.mkdirs()
                         destination.writeText("crunched-$assetPath")
                         return HashUtils.calculateSHA256(destination)
+                    }
+
+                    override fun packagedHashIfSourceMatches(
+                        assetPath: String,
+                        expectedHash: String,
+                    ): String? {
+                        if (assetPath !in reEncoded || hashes[assetPath] != expectedHash) return null
+                        return sha256(root, "crunched-$assetPath")
                     }
                 }
 
@@ -2802,6 +2860,18 @@ class BundleFileStorageServiceTest {
             destination.parentFile?.mkdirs()
             destination.writeText(packaged)
             return HashUtils.calculateSHA256(destination)
+        }
+
+        override fun packagedHashIfSourceMatches(
+            assetPath: String,
+            expectedHash: String,
+        ): String? {
+            val (sourceHash, packaged) = sources[assetPath] ?: return null
+            if (sourceHash != expectedHash) return null
+            return java.security.MessageDigest
+                .getInstance("SHA-256")
+                .digest(packaged.toByteArray())
+                .joinToString("") { "%02x".format(it) }
         }
     }
 
