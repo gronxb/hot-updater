@@ -4,7 +4,6 @@ import {
   canonicalizeAppVersion,
   encodeChannelKey,
   resolveBaseURL,
-  type ArtifactAssetFile,
   type ArtifactInfo,
   type ArtifactInfoV2,
   type ChangedAssetPatch,
