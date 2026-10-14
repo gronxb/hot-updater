@@ -84,7 +84,7 @@ The initializer then prompts you to:
 1. Sign in with the Vercel CLI, unless `VERCEL_TOKEN` is set
 2. Choose the Vercel team, or your personal account if Vercel has not moved it to a team
 3. Enter the project name; init creates the project when it doesn't exist
-4. Choose an existing Blob store or create a new one, private by default
+4. Choose an existing private Blob store or create a new one
 5. Choose the PostgreSQL database: one connected to the project, a new Neon
    database, or a connection URL you enter
 6. Migrate the database and set the Function's environment variables
@@ -99,8 +99,7 @@ The initializer then prompts you to:
 
 After setup, review the local configuration. Interactive init writes the settings
 below to `.env.hotupdater`; an agent merges the needed settings into your project.
-Resource names, IDs, and the Blob store's access are persisted for deterministic
-reruns. The Blob token, the database URL and `VERCEL_TOKEN` are persisted only
+Resource names and IDs are persisted for deterministic reruns. The Blob token, the database URL and `VERCEL_TOKEN` are persisted only
 when you consent.
 
 ```
@@ -109,7 +108,6 @@ HOT_UPDATER_VERCEL_PROJECT_NAME=your-project-name
 HOT_UPDATER_VERCEL_PROJECT_ID=your-project-id
 HOT_UPDATER_VERCEL_BLOB_STORE_NAME=your-blob-store-name
 HOT_UPDATER_VERCEL_BLOB_STORE_ID=your-blob-store-id
-HOT_UPDATER_VERCEL_BLOB_ACCESS=private
 HOT_UPDATER_API_KEY=your-api-key
 # Included only when credential persistence is approved:
 HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN=your-blob-read-write-token
@@ -118,8 +116,12 @@ HOT_UPDATER_VERCEL_DATABASE_URL=your-postgres-url
 
 Init connects the Blob store to the project's production environment, which adds
 `HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN` to the project, and sets
-`HOT_UPDATER_VERCEL_DATABASE_URL` and `HOT_UPDATER_VERCEL_BLOB_ACCESS` there. The
-Function reads these production environment variables.
+`HOT_UPDATER_VERCEL_DATABASE_URL` there. The Function reads these production
+environment variables.
+
+The Blob store is always private: devices download bundles only through signed
+URLs that expire, which the server issues to requests with a valid API key. Init
+does not use a public store.
 
 Managed init reuses `HOT_UPDATER_API_KEY` when supplied or creates an API key,
 registers it in the database, and persists the plaintext value locally. Send this
@@ -204,10 +206,6 @@ export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: vercelBlobStorage({
     token: process.env.HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN!,
-    access:
-      process.env.HOT_UPDATER_VERCEL_BLOB_ACCESS === "public"
-        ? "public"
-        : "private",
   }),
   database: postgres({
     connectionString: process.env.HOT_UPDATER_VERCEL_DATABASE_URL!,

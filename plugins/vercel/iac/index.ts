@@ -29,7 +29,6 @@ import { getConfigScaffold } from "./configTemplate";
 import {
   initProvider as VERCEL_INIT_PROVIDER,
   isPostgresUrl,
-  isVercelBlobAccess,
   isVercelBlobStoreName,
   isVercelProjectName,
 } from "./init/index";
@@ -58,7 +57,6 @@ const inputs = VERCEL_INIT_PROVIDER.inputs;
 const BLOB_ENV_PREFIX = "HOT_UPDATER_VERCEL_BLOB";
 const BLOB_TOKEN_ENV = inputs.blobReadWriteToken.envKey;
 const DATABASE_URL_ENV = inputs.databaseUrl.envKey;
-const BLOB_ACCESS_ENV = inputs.blobAccess.envKey;
 /** Project env vars a Marketplace Postgres database adds, such as Neon's `DATABASE_URL`. */
 const DATABASE_URL_ENV_PATTERN = /(?:^|_)(?:DATABASE_URL|POSTGRES_URL)$/;
 
@@ -175,11 +173,19 @@ const selectBlobStore = async ({
   | { readonly kind: "existing"; readonly store: VercelBlobStore }
   | { readonly kind: "create"; readonly name: string }
 > => {
-  const saved =
+  const found =
     stores.find((store) => store.id === savedId) ??
     (savedId === undefined
       ? stores.find((store) => store.name === savedName)
       : undefined);
+  // Bundles download only through signed URLs, so the store must be private.
+  if (found?.access === "public") {
+    throw new InitError(
+      `Blob store ${found.name} is public. Hot Updater keeps bundles in a private store: select or create a private one.`,
+    );
+  }
+  const saved = found;
+  const privateStores = stores.filter((store) => store.access === "private");
   if (nonInteractive) {
     if (saved) return { kind: "existing", store: saved };
     if (savedName) return { kind: "create", name: savedName };
@@ -194,17 +200,17 @@ const selectBlobStore = async ({
   const selected = exitIfCancelled(
     await p.select({
       message: "Select the Blob store for bundles",
-      initialValue: saved?.id ?? stores[0]?.id ?? createKey,
+      initialValue: saved?.id ?? privateStores[0]?.id ?? createKey,
       options: [
-        ...stores.map((store) => ({
+        ...privateStores.map((store) => ({
           value: store.id,
-          label: `${store.name} (${store.access}${store.region ? `, ${store.region}` : ""})`,
+          label: `${store.name}${store.region ? ` (${store.region})` : ""}`,
         })),
         { value: createKey, label: "Create a new Blob store" },
       ],
     }),
   );
-  const store = stores.find((candidate) => candidate.id === selected);
+  const store = privateStores.find((candidate) => candidate.id === selected);
   if (store) return { kind: "existing", store };
 
   const prompt = inputs.blobStoreName.prompt;
@@ -219,21 +225,6 @@ const selectBlobStore = async ({
     }),
   );
   return { kind: "create", name };
-};
-
-const resolveNewStoreAccess = async (
-  savedAccess: string | undefined,
-  nonInteractive: boolean,
-): Promise<"public" | "private"> => {
-  if (isVercelBlobAccess(savedAccess) && nonInteractive) return savedAccess;
-  if (nonInteractive) return "private";
-  const isPrivate = exitIfCancelled(
-    await p.confirm({
-      message: inputs.blobAccess.prompt.message,
-      initialValue: savedAccess !== "public",
-    }),
-  );
-  return isPrivate ? "private" : "public";
 };
 
 /**
@@ -515,10 +506,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     ...(saved.blobStoreId ? { savedId: saved.blobStoreId } : {}),
     ...(saved.blobStoreName ? { savedName: saved.blobStoreName } : {}),
   });
-  const newStoreAccess =
-    storeSelection.kind === "create"
-      ? await resolveNewStoreAccess(saved.blobAccess, nonInteractive)
-      : undefined;
 
   let databaseUrl = nonInteractive ? saved.databaseUrl : undefined;
   if (nonInteractive && !isPostgresUrl(databaseUrl)) {
@@ -554,24 +541,22 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
     store = storeSelection.store;
     p.log.info(`Selected Blob store: ${store.name}`);
   } else {
-    const access = newStoreAccess ?? "private";
     const { id } = await api.createBlobStore({
-      access,
+      access: "private",
       name: storeSelection.name,
     });
     store = {
-      access,
+      access: "private",
       connections: [],
       id,
       name: storeSelection.name,
       region: undefined,
     };
-    p.log.info(`Created Blob store: ${store.name} (${access})`);
+    p.log.info(`Created Blob store: ${store.name} (private)`);
   }
   const blobToken = await resolveBlobToken(api, project, store);
 
   const resolvedInputs = {
-    blobAccess: store.access,
     blobReadWriteToken: blobToken,
     blobStoreId: store.id,
     blobStoreName: store.name,
@@ -608,7 +593,6 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
       title: "Setting the Function's environment variables...",
       task: async () => {
         await api.setProductionEnv(project.id, DATABASE_URL_ENV, databaseUrl);
-        await api.setProductionEnv(project.id, BLOB_ACCESS_ENV, store.access);
         await syncFunctionBlobToken(api, project, store, blobToken);
         return "Set the Function's environment variables";
       },

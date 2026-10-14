@@ -439,7 +439,6 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       projectId: null,
       projectName: null,
       blobStoreId: null,
-      blobAccess: null,
     });
   } else if (provider === "azure") {
     // The zip package init deploys to the Function App.

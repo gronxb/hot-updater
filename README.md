@@ -252,10 +252,6 @@ export default defineConfig({
   updateStrategy: "appVersion",
   storage: vercelBlobStorage({
     token: process.env.HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN!,
-    access:
-      process.env.HOT_UPDATER_VERCEL_BLOB_ACCESS === "public"
-        ? "public"
-        : "private",
   }),
   database: postgres({
     connectionString: process.env.HOT_UPDATER_VERCEL_DATABASE_URL!,
