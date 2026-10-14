@@ -306,6 +306,7 @@ private func hotUpdaterGetMinBundleId() -> String {
      */
     func updateBundle(_ params: [AnyHashable: Any]?,
                       onProgress: ((Double) -> Void)?,
+                      onFilesResponse: ((Int, String?) -> Void)? = nil,
                       resolver resolve: @escaping RCTPromiseResolveBlock,
                       rejecter reject: @escaping RCTPromiseRejectBlock) {
 
@@ -414,7 +415,12 @@ private func hotUpdaterGetMinBundleId() -> String {
                     .compactMapValues { $0 as? String }
                 let timeout = (data["requestTimeout"] as? NSNumber).map { $0.doubleValue / 1000 }
                     .flatMap { $0 > 0 ? $0 : nil } ?? HTTPArtifactFileResolver.defaultTimeout
-                fileResolver = HTTPArtifactFileResolver(filesUrl: filesUrl, headers: headers, timeout: timeout)
+                fileResolver = HTTPArtifactFileResolver(
+                    filesUrl: filesUrl,
+                    headers: headers,
+                    timeout: timeout,
+                    onResponse: onFilesResponse
+                )
             }
             let selection = (data["selection"] as? [String: Any]).flatMap(Self.parseSelection)
             if let selection, !bundleStorage.isSelectionCurrent(selection) {
