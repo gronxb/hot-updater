@@ -115,7 +115,9 @@ guide to remove unreferenced bundle objects and shared assets safely.
 
 Use a separate `basePath` for every database or environment that shares a
 bucket. Pruning assumes that the configured database owns every object below
-its storage prefix.
+its storage prefix; without `basePath`, that is the whole bucket. Do not run
+`hot-updater storage prune --yes` while another active Hot Updater database
+uses the same bucket and prefix.
 
 ## Custom server usage
 

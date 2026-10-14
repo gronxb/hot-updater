@@ -52,7 +52,9 @@ export const archiveXcodeProject = async ({
   const archiveName = `${xcodeProject.name.replace(".xcworkspace", "").replace(".xcodeproj", "")}.xcarchive`;
   const archivePath = path.join(tmpDir, archiveName);
 
+  const minBundleId = generateMinBundleId();
   const archiveArgs = prepareArchiveArgs({
+    minBundleId,
     archivePath,
     platform,
     sourceDir,
@@ -74,6 +76,10 @@ Command    xcodebuild ${archiveArgs.join(" ")}
   try {
     await runXcodebuildWithLogging({
       args: archiveArgs,
+      // The build setting reaches the podspec's script phase, and the
+      // environment reaches Package.swift's build tool plugin, which
+      // can't read build settings.
+      env: { HOT_UPDATER_MIN_BUNDLE_ID: minBundleId },
       failureMessage: "Archive failed",
       logPrefix,
       sourceDir,
@@ -96,11 +102,13 @@ const prepareArchiveArgs = ({
   xcconfig,
   extraParams,
   destination = [],
+  minBundleId,
 }: {
   archivePath: string;
   configuration?: string;
   destination?: IosBuildDestination[];
   extraParams?: string[];
+  minBundleId: string;
   platform: ApplePlatform;
   xcodeScheme: string;
   xcconfig?: string;
@@ -117,7 +125,7 @@ const prepareArchiveArgs = ({
     "archive",
     "-archivePath",
     archivePath,
-    `HOT_UPDATER_MIN_BUNDLE_ID=${generateMinBundleId()}`,
+    `HOT_UPDATER_MIN_BUNDLE_ID=${minBundleId}`,
   ];
 
   if (xcconfig) {

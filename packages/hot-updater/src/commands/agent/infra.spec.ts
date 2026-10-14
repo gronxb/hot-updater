@@ -404,7 +404,6 @@ describe("deployment artifacts", () => {
         "@hot-updater/server",
         ...(provider === "aws" ? ["@aws-sdk/credential-providers"] : []),
         ...(provider === "firebase" ? ["firebase-admin"] : []),
-        ...(provider === "vercel" ? ["@hot-updater/postgres"] : []),
         ...(migrates(provider) ? ["@hot-updater/plugin-core"] : []),
       ]) {
         const target = path.join(cwd, "node_modules", name);
@@ -641,7 +640,6 @@ describe("deployment artifacts", () => {
         timeout: 15_000,
         env: {
           PATH: process.env["PATH"],
-          HOT_UPDATER_VERCEL_BLOB_ACCESS: "private",
           HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN:
             "vercel_blob_rw_test_secret",
           HOT_UPDATER_VERCEL_DATABASE_URL: "postgres://test@127.0.0.1/test",
