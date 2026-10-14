@@ -32,9 +32,8 @@ class HotUpdaterCheckOptions(
      */
     val channel: String? = null,
     /**
-     * Each request's timeout. In `prepare`, the catalog request, and the
-     * artifact request of a required update it waits for, also end at its
-     * deadline.
+     * Each request's timeout. In `prepare`, the catalog request also ends at
+     * its deadline; the download's requests keep this timeout after it returns.
      */
     val requestTimeoutMillis: Long = 5_000,
 )

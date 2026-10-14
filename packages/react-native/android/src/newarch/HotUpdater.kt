@@ -161,7 +161,7 @@ class HotUpdater {
         /**
          * Checks for an update and starts it before React Native loads, within
          * one deadline of [timeoutMillis] covering the wait for another check,
-         * the requests, and the download of a required update. The deadline and
+         * the catalog request, and the download of a required update. The deadline and
          * cancellation end the wait, never the download: it continues, applies
          * at the first launch after it is staged, and a later `prepare` or
          * `updateBundle` joins it.

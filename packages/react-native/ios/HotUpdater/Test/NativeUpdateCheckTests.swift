@@ -381,22 +381,6 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
-    func theDeadlineCoversTheArtifactRequest() async throws {
-        let host = FakeUpdateHost()
-        let transport = FakeUpdateTransport.serving(
-            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
-        )
-        let checker = makeChecker(host, transport)
-
-        _ = await checker.prepare(options(), timeout: 0.5)
-
-        #expect(transport.requests.count == 2)
-        let artifact = try #require(transport.requests.last)
-        #expect(artifact.url.path.contains("/artifacts/v1/"))
-        #expect(abs(artifact.timeout - 0.5) < 1e-6)
-    }
-
-    @Test
     func prepareFailsForATimeoutThatIsNotPositive() async {
         let host = FakeUpdateHost()
         let transport = FakeUpdateTransport.serving(catalog: catalog(releases: []))
@@ -542,6 +526,22 @@ struct NativeUpdateCheckTests {
 
         #expect(await later.value.status == .ready)
         #expect(host.stageCalls == 2)
+    }
+
+    @Test
+    func theDeadlineDoesNotBoundARequiredUpdatesArtifactRequest() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
+        )
+        let checker = makeChecker(host, transport)
+
+        _ = await checker.prepare(options(), timeout: 1)
+        await host.stageFinished.wait()
+
+        // The staging outlives prepare, so its request keeps the request timeout.
+        let artifact = try #require(transport.requests.first { $0.url.path.contains("/artifacts/v1/") })
+        #expect(artifact.timeout == 5)
     }
 
     @Test
