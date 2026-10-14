@@ -494,10 +494,14 @@ struct NativeUpdateCheckTests {
 
         let other = await checker.prepare(options(channel: "beta"), timeout: 0.2)
         let otherKey = await checker.prepare(options(headers: ["X-API-Key": "other"]), timeout: 0.2)
+        host.cohortValue = "2"
+        let otherCohort = await checker.prepare(options(), timeout: 0.2)
+        host.cohortValue = "1"
         let same = await checker.prepare(options(), timeout: 0.2)
 
         #expect(other.status == .failed)
         #expect(otherKey.status == .failed)
+        #expect(otherCohort.status == .failed)
         #expect(same.status == .pending)
         #expect(same.update === first.update)
         download.open()
@@ -1271,7 +1275,8 @@ private final class FakeUpdateHost: MemoryEventStorage, NativeUpdateHost, @unche
     func isLaunchPrepared() -> Bool { launchPrepared }
     func channel() -> String { channelValue }
     func defaultChannel() -> String { defaultChannelValue }
-    func cohort() -> String { "1" }
+    var cohortValue = "1"
+    func cohort() -> String { cohortValue }
     func fingerprintHash() -> String? { nil }
     func crashHistory() -> [String] { [] }
 

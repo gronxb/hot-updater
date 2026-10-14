@@ -730,7 +730,7 @@ final class NativeUpdateChecker {
         let deadline = now().addingTimeInterval(timeout)
 
         // A staging from other options is waited for, then this request is checked.
-        let requestKey = Self.requestKey(options)
+        let requestKey = Self.requestKey(options, cohort: normalizeCohortValue(host.cohort()))
         switch await gate.enter(timeout: remaining(until: deadline), joins: { $0.update.requestKey == requestKey }) {
         case .joined(let staging):
             return await finishPrepare(staging, deadline: deadline, onProgress: onProgress)
@@ -1225,7 +1225,7 @@ final class NativeUpdateChecker {
                 desired.kind.rawValue, desired.bundleId, desired.releaseId ?? "null", targetChannel,
                 catalogId, String(catalog.generation), catalog.catalogHash, selectionContextHash,
             ].joined(separator: ":"),
-            requestKey: Self.requestKey(options),
+            requestKey: Self.requestKey(options, cohort: cohort),
             checker: self,
             install: updateBundleForSelection
         )
@@ -1234,12 +1234,14 @@ final class NativeUpdateChecker {
     // MARK: State
 
     /// What a check reads: the server, the strategy, the channel it asks for,
-    /// and the headers, which can name the credentials or tenant.
-    private static func requestKey(_ options: HotUpdaterCheckOptions) -> String {
+    /// the cohort it selects for, and the headers, which can name the
+    /// credentials or tenant.
+    private static func requestKey(_ options: HotUpdaterCheckOptions, cohort: String) -> String {
         var baseURL = options.baseURL
         while baseURL.hasSuffix("/") { baseURL.removeLast() }
         let headers = options.requestHeaders.map { "\($0.key.lowercased()):\($0.value)" }.sorted()
-        return ([baseURL, options.updateStrategy.name, options.channel ?? ""] + headers).joined(separator: "\n")
+        return ([baseURL, options.updateStrategy.name, options.channel ?? "", cohort] + headers)
+            .joined(separator: "\n")
     }
 
     private func queueUnchanged(channel: String, bundleId: String, releaseId: String?, previousReleaseId: String?) {
