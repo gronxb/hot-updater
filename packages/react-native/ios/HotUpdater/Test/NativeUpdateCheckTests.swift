@@ -982,6 +982,19 @@ struct NativeUpdateCheckTests {
     // MARK: Errors
 
     @Test
+    func aCatalogResponseIsReportedAsTheCatalogUnderAnArtifactsBasePath() async throws {
+        let host = FakeUpdateHost()
+        let transport = FakeUpdateTransport { _, _ in
+            NativeUpdateResponse(status: 500, headers: [:], body: "oops")
+        }
+        let checker = makeChecker(host, transport)
+
+        _ = await checker.prepare(options(baseURL: "https://updates.example.com/artifacts/hot-updater"), timeout: 1)
+
+        #expect(host.httpResponses().map { $0["resource"] as? String } == ["catalog"])
+    }
+
+    @Test
     func catalogHTTPErrorReportsCheckFailure() async throws {
         let host = FakeUpdateHost()
         let transport = FakeUpdateTransport { _, _ in

@@ -35,6 +35,8 @@ internal class UpdateCheckRequest(
     val url: String,
     val headers: Map<String, String>,
     val timeoutMillis: Long,
+    /** "catalog" or "artifact", as `onHttpResponse` reports the request. */
+    val resource: String = "catalog",
 )
 
 internal class UpdateCheckResponse(
@@ -245,11 +247,11 @@ internal class NativeUpdateChecker(
         object : UpdateCheckTransport {
             override suspend fun get(request: UpdateCheckRequest): UpdateCheckResponse =
                 try {
-                    transport.get(request).also { queueHttpResponse(request.url, it) }
+                    transport.get(request).also { queueHttpResponse(request, it) }
                 } catch (error: UpdateResponseBodyException) {
                     // The response arrived without its body: reported with a null body, as
                     // fetchUpdateResponse.ts does, and the request fails as it did.
-                    queueHttpResponse(request.url, error.response)
+                    queueHttpResponse(request, error.response)
                     throw error.cause
                 }
         }
@@ -543,8 +545,8 @@ internal class NativeUpdateChecker(
         val valid =
             HTTP_URL.matches(baseURL) &&
                 try {
-                    URL(baseURL)
-                    true
+                    // java.net.URL parses a hostless "https:///api"; a request needs a host.
+                    !URL(baseURL).host.isNullOrEmpty()
                 } catch (_: MalformedURLException) {
                     false
                 }
@@ -634,12 +636,12 @@ internal class NativeUpdateChecker(
     }
 
     private fun queueHttpResponse(
-        url: String,
+        request: UpdateCheckRequest,
         response: UpdateCheckResponse,
     ) {
         val path =
             try {
-                URL(url).path.ifEmpty { "/" }
+                URL(request.url).path.ifEmpty { "/" }
             } catch (_: MalformedURLException) {
                 "/"
             }
@@ -647,7 +649,7 @@ internal class NativeUpdateChecker(
         events.add(
             "onHttpResponse",
             JSONObject().apply {
-                put("resource", if (path.contains("/artifacts/")) "artifact" else "catalog")
+                put("resource", request.resource)
                 requestChannel?.let { put("channel", it) }
                 put("path", path)
                 put("status", response.status)

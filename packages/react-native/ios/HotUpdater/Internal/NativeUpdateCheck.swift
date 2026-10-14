@@ -1625,6 +1625,7 @@ final class NativeUpdateChecker {
     /// Requests `url` with `requestTimeout`, cut to what is left before `deadline`.
     private func get(
         _ url: String,
+        resource: String,
         headers: [String: String],
         options: HotUpdaterCheckOptions,
         deadline: NativeUpdateDeadline?
@@ -1642,12 +1643,12 @@ final class NativeUpdateChecker {
         }
         do {
             let response = try await transport.get(requestURL, headers: headers, timeout: timeout)
-            queueHttpResponse(requestURL, response)
+            queueHttpResponse(requestURL, resource: resource, response)
             return response
         } catch let error as NativeUpdateResponseBodyError {
             // Reported with a null body, as fetchUpdateResponse.ts does, and the
             // request fails as it did.
-            queueHttpResponse(requestURL, error.response)
+            queueHttpResponse(requestURL, resource: resource, error.response)
             throw error.underlying
         }
     }
@@ -1656,12 +1657,12 @@ final class NativeUpdateChecker {
     private static let httpResponseBodyLimit = 4_096
 
     /// Queues a catalog or artifact response for `onHttpResponse`, as
-    /// fetchUpdateResponse.ts reports it.
-    private func queueHttpResponse(_ url: URL, _ response: NativeUpdateResponse) {
+    /// fetchUpdateResponse.ts reports it. `resource` is "catalog" or "artifact".
+    private func queueHttpResponse(_ url: URL, resource: String, _ response: NativeUpdateResponse) {
         let path = url.path.isEmpty ? "/" : url.path
         let truncated = response.body.count > Self.httpResponseBodyLimit
         var payload: [String: Any] = [
-            "resource": path.contains("/artifacts/") ? "artifact" : "catalog",
+            "resource": resource,
             "path": path,
             "status": response.status,
             "body": response.bodyReadFailed
@@ -1693,6 +1694,7 @@ final class NativeUpdateChecker {
         }
         let response = try await get(
             "\(baseURL)/artifacts/v1/\(Self.encodeURIComponent(targetBundleId))/from/\(Self.encodeURIComponent(currentBundleId))",
+            resource: "artifact",
             headers: headers,
             options: options,
             deadline: deadline
@@ -1812,7 +1814,7 @@ final class NativeUpdateChecker {
         var headers = Self.normalizedHeaders(options.requestHeaders)
         headers["accept"] = "application/json"
         headers["if-none-match"] = etag
-        return try await get(url, headers: headers, options: options, deadline: deadline)
+        return try await get(url, resource: "catalog", headers: headers, options: options, deadline: deadline)
     }
 
     /// The scope's catalog, or nil when the server answers that the scope has
