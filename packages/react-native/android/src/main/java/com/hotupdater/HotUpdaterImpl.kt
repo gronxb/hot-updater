@@ -497,7 +497,10 @@ class HotUpdaterImpl {
     fun hasLaunchSelection(): Boolean = currentLaunchSelection != null
 
     /** Takes the queued native update events for JavaScript's `takeNativeUpdateEvents`. */
-    fun takeNativeUpdateEvents(): String? = NativeUpdateEventQueue(::getStorageItem, ::setStorageItem).take()
+    fun takeNativeUpdateEvents(): String? =
+        NativeUpdateEventQueue(::getStorageItem, ::setStorageItem, build = {
+            NativeUpdateEventQueue.buildOf(getAppVersion(), getMinBundleId())
+        }).take()
 
     /**
      * The bundle the native update check counts as running: the launched one,

@@ -8,11 +8,15 @@ import org.json.JSONObject
  * for JavaScript to take after the next launch (nativeUpdateEvents.ts): a
  * JSON array of `{ name, payload, occurredAt }`, oldest first, keeping the
  * newest [MAX_EVENTS_PER_NAME] of each name. Every occurrence is kept, and
- * [take] hands each event out at most once.
+ * [take] hands each event out at most once. Each event records the native
+ * [build] it happened in; [take] drops events of another build, such as the
+ * app version before an upgrade, so none is reported against a release it
+ * did not happen in.
  */
 internal class NativeUpdateEventQueue(
     private val getItem: (String) -> String?,
     private val setItem: (String, String?) -> Unit,
+    private val build: () -> String,
     private val clock: () -> Long = System::currentTimeMillis,
 ) {
     companion object {
@@ -21,6 +25,12 @@ internal class NativeUpdateEventQueue(
 
         /** Guards appends and takes across every queue over the same store. */
         private val lock = Any()
+
+        /** A native build: its app version and the minimum bundle ID its build generated. */
+        fun buildOf(
+            appVersion: String?,
+            minBundleId: String,
+        ): String = "${appVersion.orEmpty()}|$minBundleId"
     }
 
     fun add(
@@ -33,7 +43,8 @@ internal class NativeUpdateEventQueue(
                 JSONObject()
                     .put("name", name)
                     .put("payload", payload)
-                    .put("occurredAt", clock()),
+                    .put("occurredAt", clock())
+                    .put("build", build()),
             )
             var sameName = (0 until events.length()).count { nameAt(events, it) == name }
             var index = 0
@@ -55,7 +66,15 @@ internal class NativeUpdateEventQueue(
             if (getItem(STORAGE_KEY) == null) return@synchronized null
             val events = read()
             setItem(STORAGE_KEY, null)
-            events?.takeIf { it.length() > 0 }?.toString()
+            val current = build()
+            val taken = JSONArray()
+            if (events != null) {
+                for (index in 0 until events.length()) {
+                    val event = events.optJSONObject(index) ?: continue
+                    if (event.optString("build") == current) taken.put(event)
+                }
+            }
+            taken.takeIf { it.length() > 0 }?.toString()
         }
 
     private fun read(): JSONArray? =

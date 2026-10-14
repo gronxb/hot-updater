@@ -182,7 +182,11 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
     /// The queued plugin events as a JSON array, cleared as they are taken.
     @objc(takeEventsWithImpl:)
     public static func takeEvents(impl: HotUpdaterImpl) -> String? {
-        NativeUpdateEvents.take(from: HotUpdaterImplUpdateHost(impl: impl))
+        let host = HotUpdaterImplUpdateHost(impl: impl)
+        return NativeUpdateEvents.take(
+            from: host,
+            build: NativeUpdateEvents.build(appVersion: host.appVersion, minBundleId: host.minBundleId)
+        )
     }
 }
 

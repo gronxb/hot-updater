@@ -275,12 +275,19 @@ enum NativeUpdateEvents {
 
     private static let lock = NSLock()
 
-    /// Appends an event, dropping the oldest of the same name beyond
-    /// `maxEventsPerName`.
+    /// A native build: its app version and the minimum bundle ID its build
+    /// generated.
+    static func build(appVersion: String?, minBundleId: String) -> String {
+        "\(appVersion ?? "")|\(minBundleId)"
+    }
+
+    /// Appends an event of the native `build` it happened in, dropping the
+    /// oldest of the same name beyond `maxEventsPerName`.
     static func append(
         name: String,
         payload: [String: Any],
         occurredAt: Date,
+        build: String,
         to storage: NativeUpdateEventStorage
     ) {
         lock.lock()
@@ -291,6 +298,7 @@ enum NativeUpdateEvents {
             "name": name,
             "payload": payload,
             "occurredAt": NSNumber(value: Int64((occurredAt.timeIntervalSince1970 * 1000).rounded())),
+            "build": build,
         ] as [String: Any])
         let sameName = events.indices.filter { (events[$0] as? [String: Any])?["name"] as? String == name }
         if sameName.count > maxEventsPerName {
@@ -308,7 +316,10 @@ enum NativeUpdateEvents {
 
     /// The queued events as a JSON array, or nil when there are none; the
     /// queue is cleared either way.
-    static func take(from storage: NativeUpdateEventStorage) -> String? {
+    /// Takes the events of the current native `build`, clearing the queue. An
+    /// event of another build, such as the app version before an upgrade, is
+    /// dropped so none is reported against a release it did not happen in.
+    static func take(from storage: NativeUpdateEventStorage, build: String) -> String? {
         lock.lock()
         defer { lock.unlock() }
 
@@ -316,8 +327,12 @@ enum NativeUpdateEvents {
             return nil
         }
         storage.setStorageItem(storageKey, value: nil)
-        let events = parse(stored)
-        return events?.isEmpty == false ? stored : nil
+        let events = (parse(stored) ?? []).filter { ($0 as? [String: Any])?["build"] as? String == build }
+        guard !events.isEmpty,
+              let data = try? JSONSerialization.data(withJSONObject: events) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
     }
 
     private static func read(_ storage: NativeUpdateEventStorage) -> [Any] {
@@ -731,17 +746,30 @@ final class NativeUpdateChecker {
 
         // A staging from other options is waited for, then this request is checked.
         let requestKey = Self.requestKey(options, cohort: normalizeCohortValue(host.cohort()))
-        switch await gate.enter(timeout: remaining(until: deadline), joins: { $0.update.requestKey == requestKey }) {
-        case .joined(let staging):
-            return await finishPrepare(staging, deadline: deadline, onProgress: onProgress)
-        case .stopped:
-            let error: Error = Task.isCancelled
-                ? CancellationError()
-                : NativeUpdateCheckError.hotUpdater("Timed out waiting for another update check")
-            NSLog("[HotUpdater] prepare: \(error.localizedDescription)")
-            return HotUpdaterPrepareResult(status: .failed, error: error)
-        case .acquired:
-            break
+        var failedStaging: NativeUpdateStaging?
+        entering: while true {
+            switch await gate.enter(
+                timeout: remaining(until: deadline),
+                joins: { $0 !== failedStaging && $0.update.requestKey == requestKey }
+            ) {
+            case .joined(let staging):
+                let joined = await finishPrepare(staging, deadline: deadline, onProgress: onProgress)
+                // The staging may have failed on its own caller's shorter
+                // timeout; this call checks again within its own deadline.
+                if joined.status == .failed, remaining(until: deadline) > 0 {
+                    failedStaging = staging
+                    continue entering
+                }
+                return joined
+            case .stopped:
+                let error: Error = Task.isCancelled
+                    ? CancellationError()
+                    : NativeUpdateCheckError.hotUpdater("Timed out waiting for another update check")
+                NSLog("[HotUpdater] prepare: \(error.localizedDescription)")
+                return HotUpdaterPrepareResult(status: .failed, error: error)
+            case .acquired:
+                break entering
+            }
         }
 
         let update: HotUpdaterUpdate?
@@ -1668,6 +1696,12 @@ final class NativeUpdateChecker {
     }
 
     private func queueEvent(_ name: String, _ payload: [String: Any]) {
-        NativeUpdateEvents.append(name: name, payload: payload, occurredAt: now(), to: host)
+        NativeUpdateEvents.append(
+            name: name,
+            payload: payload,
+            occurredAt: now(),
+            build: NativeUpdateEvents.build(appVersion: host.appVersion, minBundleId: host.minBundleId),
+            to: host
+        )
     }
 }

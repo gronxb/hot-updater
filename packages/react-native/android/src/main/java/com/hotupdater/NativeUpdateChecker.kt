@@ -214,7 +214,10 @@ internal class NativeUpdateChecker(
     private val mutex = Mutex()
     private val inFlightLock = Any()
     private var inFlight: Staging? = null
-    private val events = NativeUpdateEventQueue(state::getStorageItem, state::setStorageItem)
+    private val events =
+        NativeUpdateEventQueue(state::getStorageItem, state::setStorageItem, build = {
+            NativeUpdateEventQueue.buildOf(state.getAppVersion(), state.getMinBundleId())
+        })
     private val catalogClient = ReleaseCatalogClient(state, transport)
 
     /**
@@ -256,7 +259,11 @@ internal class NativeUpdateChecker(
                 if (running == null) break
                 // A staging from other options is waited for, then this request is checked.
                 if (running !== lockHeldByCheck && running.update?.requestKey == requestKey(options, currentCohort())) {
-                    return awaitStaging(running, deadline, onProgress)
+                    val joined = awaitStaging(running, deadline, onProgress)
+                    // The staging may have failed on its own caller's shorter
+                    // timeout; this call checks again within its own deadline.
+                    if (joined is HotUpdaterPrepareResult.Failed && remainingMillis(deadline) > 0) continue
+                    return joined
                 }
                 val remaining = remainingMillis(deadline)
                 if (remaining <= 0) {
