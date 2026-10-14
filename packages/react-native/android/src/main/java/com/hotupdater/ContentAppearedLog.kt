@@ -6,8 +6,9 @@ import android.view.ViewGroup
 import com.facebook.react.ReactRootView
 
 /**
- * An in-process reload restarts each surface in its existing view, and a view
- * logs CONTENT_APPEARED only for its first content. Asks every React root view
+ * A New Architecture reload restarts each surface in its existing view, and a
+ * view logs CONTENT_APPEARED only for its first content (the old architecture
+ * asks for it again when it runs the app). Asks every React root view
  * of the activity to log it again, so the reloaded bundle's first content
  * completes its launch, as a cold start does. Otherwise the next process rolls
  * the working bundle back as an unfinished launch.
