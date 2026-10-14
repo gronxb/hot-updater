@@ -27,6 +27,7 @@
     "ios",
     "cpp",
     "*.podspec",
+    "Package.swift",
     "react-native.config.js",
     "!ios/build",
     "!ios/HotUpdater/Test",

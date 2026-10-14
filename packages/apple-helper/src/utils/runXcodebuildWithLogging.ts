@@ -30,15 +30,17 @@ export const isXcbeautifyAvailable = async () => {
 
 const createRawXcodebuildProcess = ({
   args,
+  env,
   sourceDir,
 }: {
   args: string[];
+  env?: Record<string, string>;
   sourceDir: string;
 }) => {
   return execa("xcodebuild", args, {
     cwd: sourceDir,
     all: true,
-    env: { ...process.env, NSUnbufferedIO: "YES" },
+    env: { ...process.env, ...env, NSUnbufferedIO: "YES" },
   });
 };
 
@@ -99,12 +101,14 @@ const processOutputStream = async ({
 
 export const runXcodebuildWithLogging = async ({
   args,
+  env,
   sourceDir,
   successMessage,
   failureMessage,
   logPrefix,
 }: {
   args: string[];
+  env?: Record<string, string>;
   failureMessage: string;
   logPrefix: string;
   sourceDir: string;
@@ -127,7 +131,11 @@ export const runXcodebuildWithLogging = async ({
   try {
     if (useXcbeautify) {
       // Keep both processes as direct children so Ctrl+C cleanup can kill them explicitly.
-      const xcodebuildProcess = createRawXcodebuildProcess({ args, sourceDir });
+      const xcodebuildProcess = createRawXcodebuildProcess({
+        args,
+        env,
+        sourceDir,
+      });
       const xcbeautifyProcess = createXcbeautifyProcess({ cwd: sourceDir });
       activeProcesses.push(xcodebuildProcess, xcbeautifyProcess);
 
@@ -150,7 +158,11 @@ export const runXcodebuildWithLogging = async ({
 
       await Promise.all([xcbeautifyProcess, xcodebuildProcess, pipingPromise]);
     } else {
-      const xcodebuildProcess = createRawXcodebuildProcess({ args, sourceDir });
+      const xcodebuildProcess = createRawXcodebuildProcess({
+        args,
+        env,
+        sourceDir,
+      });
       activeProcesses.push(xcodebuildProcess);
 
       await processOutputStream({

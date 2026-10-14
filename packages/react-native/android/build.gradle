@@ -72,7 +72,6 @@ android {
     targetSdkVersion getExtOrIntegerDefault("targetSdkVersion")
     buildConfigField "boolean", "IS_NEW_ARCHITECTURE_ENABLED", isNewArchitectureEnabled().toString()
     consumerProguardFiles 'proguard-rules.pro'
-    buildConfigField "long", "BUILD_TIMESTAMP", "${System.currentTimeMillis()}L"
 
     ndk {
       abiFilters(*reactNativeArchitectures())
@@ -83,9 +82,6 @@ android {
         arguments "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
       }
     }
-
-    def minBundleId = project.hasProperty("MIN_BUNDLE_ID") ? project.properties["MIN_BUNDLE_ID"] : null
-    buildConfigField "String", "MIN_BUNDLE_ID", minBundleId == null ? "\"null\"" : "\"${minBundleId}\""
   }
 
   buildFeatures {
@@ -136,6 +132,8 @@ android {
     }
   }
 }
+
+apply from: "$projectDir/hot-updater-min-bundle-id.gradle"
 
 repositories {
   mavenCentral()
