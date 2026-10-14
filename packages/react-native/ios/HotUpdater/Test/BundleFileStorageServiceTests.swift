@@ -1627,6 +1627,62 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func manySmallNetworkFilesTakeTheArchiveEvenWhenItCarriesMoreBytes() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        var files = [
+            "index.ios.bundle": deterministicNoise(count: 64, seed: 1),
+            "assets/large.png": deterministicNoise(count: 8192, seed: 2),
+        ]
+        for index in 0..<40 {
+            files["assets/icon\(index).png"] = deterministicNoise(count: 16, seed: UInt64(index + 3))
+        }
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        // The large file is reused, so the archive carries more bytes than the
+        // 41 files left; 41 requests still cost more than one archive.
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 16
+        )
+        #expect(archive.count > 16 * (files.count - 1))
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        var contents = [manifestURL: manifest, archiveURL: archive]
+        for (path, data) in files {
+            contents[URL(string: "https://example.com/\(path)")!] = data
+        }
+        let downloads = MappingDownloadService(contents: contents)
+        let service = makeStorageService(
+            documentsDirectory: root,
+            downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [
+                "assets/large.png": files["assets/large.png"]!,
+            ])
+        )
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            archiveURL: archiveURL,
+            assets: Dictionary(uniqueKeysWithValues: try files.map { path, data in
+                (path, ChangedAssetDescriptor(
+                    fileUrl: URL(string: "https://example.com/\(path)")!,
+                    fileHash: try #require(sha256(data, in: root))
+                ))
+            })
+        )
+        if case .failure(let error) = result { Issue.record("archive install failed: \(error)") }
+        #expect((try? result.get()) == UpdateDelivery(method: .archive, patchFallback: false))
+        #expect(downloads.requestedURLs == [manifestURL, archiveURL])
+    }
+
+    @Test
     func declinesFullNetworkArchiveBeyondTarOverheadAllowance() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }

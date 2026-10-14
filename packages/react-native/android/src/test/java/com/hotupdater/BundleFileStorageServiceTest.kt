@@ -1570,6 +1570,61 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    fun `many small network files take the archive even when it carries more bytes`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("archive-many-files")
+            val archiveBytes = Base64.getDecoder().decode(TarBrArchiveExtractorTest.VALID)
+            val icons = (0 until 40).associate { "assets/icon$it.png" to "icon$it" }
+            val contents = mapOf("assets/large.png" to "large", "index.android.bundle" to "bundle") + icons
+            val hashes = contents.mapValues { sha256(root, it.value) }
+            val downloadByteSizes =
+                mapOf("assets/large.png" to 500_000L, "index.android.bundle" to 100_000L) + icons.mapValues { 300L }
+            // The large file is reused, so the archive carries 500 kB more than
+            // the 41 files left; 41 requests still cost more than one archive.
+            val manifest =
+                manifestJson(
+                    bundleId = "target",
+                    assets = hashes,
+                    byteSizes =
+                        contents.mapValues {
+                            it.value
+                                .toByteArray()
+                                .size
+                                .toLong()
+                        },
+                    downloadByteSizes = downloadByteSizes,
+                    archive =
+                        archiveJson(root, archiveBytes, tarByteSize = 64 * 1024)
+                            .put("downloadByteSize", downloadByteSizes.values.sum()),
+                )
+            val downloads =
+                BinaryMappingDownloadService(
+                    mapOf(MANIFEST_URL to manifest.toByteArray(), ARCHIVE_URL to archiveBytes) +
+                        contents.mapKeys { "https://example.com/${it.key}" }.mapValues { it.value.toByteArray() },
+                )
+            val service =
+                createService(
+                    rootDir = root,
+                    downloadService = downloads,
+                    builtInAssetResolver = MappingBuiltInAssetResolver(mapOf("assets/large.png" to "large")),
+                )
+
+            service.updateBundle(
+                bundleId = "target",
+                manifestUrl = MANIFEST_URL,
+                manifestFileHash = sha256(root, manifest),
+                assets = hashes.mapValues { (path, hash) -> ChangedAssetDescriptor("https://example.com/$path", hash) },
+                archiveUrl = ARCHIVE_URL,
+                progressCallback = {},
+            )
+
+            // This archive is not the target's, so after trying it the install
+            // falls back to the files: only the order shows the choice.
+            assertEquals(listOf(MANIFEST_URL, ARCHIVE_URL), downloads.calls.take(2))
+            assertFalse(downloads.calls.contains("https://example.com/assets/large.png"))
+        }
+
+    @Test
     fun `archive selection declines incomplete expensive and overflowing cost plans`() =
         runBlocking {
             data class CostCase(
