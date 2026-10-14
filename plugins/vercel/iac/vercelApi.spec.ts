@@ -189,4 +189,16 @@ describe("Vercel API", () => {
       projectId: "prj_1",
     });
   });
+
+  it("disconnects one connection of a store", async () => {
+    const fetch = vi.fn(async () => respond({}));
+    const api = createVercelApi({ fetch, teamId: "team_1", token: "token" });
+
+    await api.disconnectBlobStore("store_1", "conn_1");
+
+    const [url, init] = fetch.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(init.method).toBe("DELETE");
+    expect(url.pathname).toBe("/v1/storage/stores/store_1/connections/conn_1");
+    expect(url.searchParams.get("teamId")).toBe("team_1");
+  });
 });

@@ -150,7 +150,6 @@ setupStorageAdapterTestSuite({
     objects.clear();
     return {
       storage: vercelBlobStorage({
-        access: "private",
         basePath: "ota",
         token: "vercel_blob_rw_abc123_secret",
       }),

@@ -37,7 +37,7 @@ Native project before running init or an agent scaffold. Install the CLI, React
 Native SDK, and the build adapter that matches your app, then install this provider:
 
 ```package-install
-npm install @hot-updater/vercel @hot-updater/postgres --save-dev
+npm install @hot-updater/vercel --save-dev
 ```
 
 An agent can perform these steps after inspecting the app's package manager
@@ -45,8 +45,7 @@ and build configuration.
 
 ## Step 2: Configure Vercel
 
-Before reusing a populated database, complete the [schema
-checks](#schema-validation). Then choose how to set up Vercel:
+Choose how to set up Vercel:
 
 <Tabs items={["AI agent", "Terminal"]}>
   <Tab value="AI agent">
@@ -84,7 +83,7 @@ The initializer then prompts you to:
 1. Sign in with the Vercel CLI, unless `VERCEL_TOKEN` is set
 2. Choose the Vercel team, or your personal account if Vercel has not moved it to a team
 3. Enter the project name; init creates the project when it doesn't exist
-4. Choose an existing Blob store or create a new one, private by default
+4. Choose an existing private Blob store or create a new one
 5. Choose the PostgreSQL database: one connected to the project, a new Neon
    database, or a connection URL you enter
 6. Migrate the database and set the Function's environment variables
@@ -99,8 +98,7 @@ The initializer then prompts you to:
 
 After setup, review the local configuration. Interactive init writes the settings
 below to `.env.hotupdater`; an agent merges the needed settings into your project.
-Resource names, IDs, and the Blob store's access are persisted for deterministic
-reruns. The Blob token, the database URL and `VERCEL_TOKEN` are persisted only
+Resource names and IDs are persisted for deterministic reruns. The Blob token, the database URL and `VERCEL_TOKEN` are persisted only
 when you consent.
 
 ```
@@ -109,7 +107,6 @@ HOT_UPDATER_VERCEL_PROJECT_NAME=your-project-name
 HOT_UPDATER_VERCEL_PROJECT_ID=your-project-id
 HOT_UPDATER_VERCEL_BLOB_STORE_NAME=your-blob-store-name
 HOT_UPDATER_VERCEL_BLOB_STORE_ID=your-blob-store-id
-HOT_UPDATER_VERCEL_BLOB_ACCESS=private
 HOT_UPDATER_API_KEY=your-api-key
 # Included only when credential persistence is approved:
 HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN=your-blob-read-write-token
@@ -118,8 +115,14 @@ HOT_UPDATER_VERCEL_DATABASE_URL=your-postgres-url
 
 Init connects the Blob store to the project's production environment, which adds
 `HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN` to the project, and sets
-`HOT_UPDATER_VERCEL_DATABASE_URL` and `HOT_UPDATER_VERCEL_BLOB_ACCESS` there. The
-Function reads these production environment variables.
+`HOT_UPDATER_VERCEL_DATABASE_URL` there. The Function reads these production
+environment variables.
+
+The Blob store is always private: devices download bundles only through signed
+URLs that expire, which the server issues to requests with a valid API key. Init
+does not use a public store: when the saved store is public, it asks before
+replacing it with a private one. Bundles deployed to the public store stop
+downloading until you deploy them again.
 
 Managed init reuses `HOT_UPDATER_API_KEY` when supplied or creates an API key,
 registers it in the database, and persists the plaintext value locally. Send this
@@ -190,8 +193,7 @@ config that a function returns, it leaves the file unchanged and prints the
 
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
-import { postgres } from "@hot-updater/postgres";
-import { vercelBlobStorage } from "@hot-updater/vercel";
+import { postgres, vercelBlobStorage } from "@hot-updater/vercel";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { defineConfig } from "hot-updater";
 import { existsSync } from "node:fs";
@@ -204,10 +206,6 @@ export default defineConfig({
   build: bare({ enableHermes: true }),
   storage: vercelBlobStorage({
     token: process.env.HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN!,
-    access:
-      process.env.HOT_UPDATER_VERCEL_BLOB_ACCESS === "public"
-        ? "public"
-        : "private",
   }),
   database: postgres({
     connectionString: process.env.HOT_UPDATER_VERCEL_DATABASE_URL!,
@@ -216,49 +214,6 @@ export default defineConfig({
   updateStrategy: "appVersion", // or "fingerprint"
 });
 ```
-
-### Schema validation
-
-Init connects to the database and checks whether `bundles` and
-`release_catalogs` exist. It rejects a database with `bundles` but no
-`release_catalogs`, a Hot Updater v0 database. Otherwise it runs the server's
-migrator, which creates the missing tables of core, Insights, API keys, and
-Remote Config and writes their schema settings to
-`private_hot_updater_settings`. It does not validate every column or index of
-tables that already exist.
-
-Before reusing a populated database, inspect its tables and settings with a
-read-only query:
-
-```sql
-SELECT table_name FROM information_schema.tables
- WHERE table_schema = current_schema() ORDER BY table_name;
-SELECT key, value FROM private_hot_updater_settings;
-```
-
-Reuse only a database whose `schema.engine` is `1`. If its schema is
-incompatible, use a new database and preserve the existing one. Do not edit
-schema settings to bypass compatibility checks.
-
-### Production domain and protection
-
-The Function serves every path of the project's production domain through a
-`vercel.json` rewrite. Devices must reach that domain without signing in, so
-init stops when Vercel's Deployment Protection covers production. Vercel's
-default Standard Protection covers deployment URLs and previews and leaves the
-production domain public. A custom domain added to the project also serves the
-Function; use it as the client base URL instead.
-
-Init deploys to the project's default Function region. To move the Function
-closer to your database, change the region in the project's settings; init keeps
-it on later deployments.
-
-### Release catalog cache
-
-Catalog responses carry `Cache-Control: public, max-age=0, s-maxage=5` and
-`Vary: x-api-key`. Vercel's CDN caches each catalog for five seconds per API key,
-so a deploy or a Roll back reaches devices within 15 seconds. Check
-`x-vercel-cache: HIT` when validating a warm request.
 
 ## Step 4: If you use Expo, add the config plugin
 

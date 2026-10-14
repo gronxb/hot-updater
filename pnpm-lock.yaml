@@ -1222,9 +1222,6 @@ importers:
       '@hot-updater/firebase':
         specifier: workspace:*
         version: link:../../plugins/firebase
-      '@hot-updater/postgres':
-        specifier: workspace:*
-        version: link:../../plugins/postgres
       '@hot-updater/react-native':
         specifier: workspace:*
         version: link:../../packages/react-native
