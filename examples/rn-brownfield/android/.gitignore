@@ -1,0 +1,11 @@
+.DS_Store
+build/
+.gradle
+.idea
+.kotlin/
+.cxx/
+local.properties
+*.iml
+*.hprof
+*.keystore
+!debug.keystore

@@ -1,0 +1,25 @@
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
+    repositories {
+        // `pnpm publish-local:aar` in ../react-native publishes the AAR to ~/.m2.
+        // Scoped so only the React Native artifact resolves from there.
+        mavenLocal {
+            content {
+                includeGroup "com.rnbrownfieldreact"
+            }
+        }
+        google()
+        mavenCentral()
+    }
+}
+
+rootProject.name = 'BrownfieldHost'
+include ':app'

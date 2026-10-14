@@ -1,0 +1,52 @@
+apply plugin: "com.android.application"
+apply plugin: "org.jetbrains.kotlin.android"
+
+android {
+    buildToolsVersion rootProject.ext.buildToolsVersion
+    compileSdk rootProject.ext.compileSdkVersion
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    namespace "com.hotupdater.brownfieldhost"
+    defaultConfig {
+        applicationId "com.hotupdater.brownfieldhost"
+        minSdkVersion rootProject.ext.minSdkVersion
+        targetSdkVersion rootProject.ext.targetSdkVersion
+        versionCode 1
+        versionName "1.0"
+    }
+    signingConfigs {
+        debug {
+            storeFile file('debug.keystore')
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+        }
+    }
+    buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
+        release {
+            // The release AAR is the one with the embedded JS bundle; the debug
+            // AAR expects a Metro dev server. Signed with the debug key so it
+            // installs on an emulator without a keystore of its own.
+            signingConfig signingConfigs.debug
+            minifyEnabled false
+            proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
+        }
+    }
+}
+
+dependencies {
+    // Published by `pnpm publish-local:aar` in ../react-native. React Native and
+    // Hermes come transitively through the AAR's POM.
+    implementation("com.rnbrownfieldreact:rnbrownfield:0.0.1-local")
+    implementation("androidx.appcompat:appcompat:1.7.1")
+}
