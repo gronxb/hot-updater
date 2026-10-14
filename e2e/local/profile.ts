@@ -110,7 +110,13 @@ export default defineConfig({
     commonHeaders: { Authorization: "Bearer " + process.env.HOT_UPDATER_ADMIN_TOKEN! },
   }),
   plugins: [insights(), remoteConfig()],
-  fingerprint: { debug: true },
+  fingerprint: {
+    debug: true,
+    extraSources: {
+      ios: ["ios/HotUpdaterExampleBrownfield/**/*.swift"],
+      android: ["android/brownfieldlib/src/**/*.kt", "android/brownfieldlib/build.gradle.kts"],
+    },
+  },
   /* E2E_AUTO_PATCH_CONFIG_START */
   patch: { enabled: true, maxBaseBundles: 2 },
   /* E2E_AUTO_PATCH_CONFIG_END */
