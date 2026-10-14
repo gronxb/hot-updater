@@ -509,6 +509,38 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func updateBundleJoinsOnlyTheSameSelection() async throws {
+        // The same bundle promoted to a newer Release is another selection: it
+        // stages and commits its own receipt instead of joining the first.
+        let host = FakeUpdateHost()
+        let download = Latch()
+        host.stage = { _, _ in
+            await download.wait()
+            return ["delivery": "archive", "patchFallback": false]
+        }
+        let catalogBody = LockedValue(catalog(generation: 1, releases: [descriptor(release2, bundle2)]))
+        let transport = FakeUpdateTransport { url, _ in
+            if url.path.contains("/artifacts/v1/") {
+                return NativeUpdateResponse(status: 200, headers: [:], body: artifactBody)
+            }
+            return NativeUpdateResponse(status: 200, headers: [:], body: catalogBody.value)
+        }
+        let checker = makeChecker(host, transport)
+        let first = try #require(try await checker.checkForUpdate(options()))
+        catalogBody.value = catalog(generation: 2, releases: [descriptor(release3, bundle2)])
+        let second = try #require(try await checker.checkForUpdate(options()))
+
+        let firstStaging = Task { try await first.updateBundle() }
+        await host.stageStarted.wait()
+        let secondStaging = Task { try await second.updateBundle() }
+        download.open()
+
+        #expect(try await firstStaging.value)
+        #expect(try await secondStaging.value)
+        #expect(host.stageCalls == 2)
+    }
+
+    @Test
     func updateBundleOnAStagedUpdateDoesNotDownloadAgain() async throws {
         let host = FakeUpdateHost()
         let download = Latch()
@@ -1043,6 +1075,28 @@ private class MemoryEventStorage: NativeUpdateEventStorage, @unchecked Sendable 
         storageLock.lock()
         defer { storageLock.unlock() }
         storage[key] = value
+    }
+}
+
+private final class LockedValue<Value>: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: Value
+
+    init(_ value: Value) {
+        stored = value
+    }
+
+    var value: Value {
+        get {
+            lock.lock()
+            defer { lock.unlock() }
+            return stored
+        }
+        set {
+            lock.lock()
+            stored = newValue
+            lock.unlock()
+        }
     }
 }
 

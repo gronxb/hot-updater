@@ -93,6 +93,9 @@ import Foundation
     /// The update selects the bundle the app already launches, so staging it
     /// only records the selection.
     let runsCurrentBundle: Bool
+    /// The selection the update stages: kind, bundle, Release, and channel. A
+    /// staging already running joins only the same target.
+    let targetKey: String
     private let checker: NativeUpdateChecker
     private let stagedLock = NSLock()
     private var staged = false
@@ -108,6 +111,7 @@ import Foundation
         bundleId: String,
         transitionKind: String,
         runsCurrentBundle: Bool,
+        targetKey: String,
         checker: NativeUpdateChecker,
         install: @escaping (Date?, @escaping (Double) -> Void) async throws -> Bool
     ) {
@@ -119,6 +123,7 @@ import Foundation
         self.bundleId = bundleId
         self.transitionKind = transitionKind
         self.runsCurrentBundle = runsCurrentBundle
+        self.targetKey = targetKey
         self.checker = checker
         self.install = install
     }
@@ -741,7 +746,7 @@ final class NativeUpdateChecker {
             return true
         }
         let staging: NativeUpdateStaging
-        switch await gate.enter(timeout: nil, joins: { $0.update.bundleId.jsEquals(update.bundleId) }) {
+        switch await gate.enter(timeout: nil, joins: { $0.update.targetKey == update.targetKey }) {
         case .joined(let running):
             staging = running
         case .stopped:
@@ -1165,6 +1170,7 @@ final class NativeUpdateChecker {
             bundleId: desired.bundleId,
             transitionKind: transitionKind,
             runsCurrentBundle: desired.bundleId.jsEquals(currentBundleId),
+            targetKey: "\(desired.kind.rawValue):\(desired.bundleId):\(desired.releaseId ?? "null"):\(targetChannel)",
             checker: self,
             install: updateBundleForSelection
         )
