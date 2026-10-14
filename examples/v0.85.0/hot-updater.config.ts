@@ -61,7 +61,10 @@ export default defineConfig({
     // The brownfield framework and library module this example packages
     // itself as, as the brownfield guide adds them.
     extraSources: {
-      ios: ["ios/HotUpdaterExampleBrownfield/**/*.swift"],
+      ios: [
+        "ios/HotUpdaterExampleBrownfield/**/*.swift",
+        "ios/HotUpdaterExample.xcodeproj/project.pbxproj",
+      ],
       android: [
         "android/brownfieldlib/src/**/*.kt",
         "android/brownfieldlib/build.gradle.kts",
