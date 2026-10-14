@@ -185,7 +185,11 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
         let host = HotUpdaterImplUpdateHost(impl: impl)
         return NativeUpdateEvents.take(
             from: host,
-            build: NativeUpdateEvents.build(appVersion: host.appVersion, minBundleId: host.minBundleId)
+            build: NativeUpdateEvents.build(
+                appVersion: host.appVersion,
+                minBundleId: host.minBundleId,
+                cohort: host.cohort()
+            )
         )
     }
 }
