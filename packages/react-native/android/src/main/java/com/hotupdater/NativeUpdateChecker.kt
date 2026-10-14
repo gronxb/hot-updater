@@ -175,6 +175,8 @@ internal class ProgressFanout {
             lastReported = value
         }
         listeners.forEach { listener ->
+            // A caller that stopped waiting while this report ran removed it.
+            if (!listeners.contains(listener)) return@forEach
             try {
                 listener(value)
             } catch (error: Exception) {

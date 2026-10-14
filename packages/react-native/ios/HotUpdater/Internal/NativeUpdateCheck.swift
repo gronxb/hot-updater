@@ -1760,8 +1760,17 @@ final class NativeUpdateChecker {
         for asset in (info["assets"] as? [String: Any] ?? [:]).values {
             let asset = asset as? [String: Any]
             try requireArtifactUrl((asset?["file"] as? [String: Any])?["url"] as? String ?? "")
-            if let patch = asset?["patch"] as? [String: Any] {
+            // A patch is an object, or null, false or absent for none, as
+            // JavaScript and Android read it.
+            switch asset?["patch"] {
+            case nil, is NSNull:
+                break
+            case let patch as [String: Any]:
                 try requireArtifactUrl(patch["patchUrl"] as? String ?? "")
+            case let flag as Bool where !flag:
+                break
+            default:
+                throw NativeUpdateCheckError.invalidResponse("Artifact patch descriptors must be objects.")
             }
         }
     }

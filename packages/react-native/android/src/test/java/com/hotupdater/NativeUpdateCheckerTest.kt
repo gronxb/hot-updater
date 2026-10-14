@@ -770,6 +770,20 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `a progress listener removed during a report is not called`() {
+        val fanout = ProgressFanout()
+        val received = mutableListOf<Double>()
+        val later: (Double) -> Unit = { received.add(it) }
+        // The first listener's caller stops waiting while the report runs.
+        fanout.add { fanout.remove(later) }
+        fanout.add(later)
+
+        fanout.report(0.5)
+
+        assertTrue(received.isEmpty())
+    }
+
+    @Test
     fun `a hostless artifact URL is invalid`() =
         runBlocking {
             for (url in listOf("https://", "https:///manifest.json")) {
