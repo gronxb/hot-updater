@@ -6,6 +6,10 @@ import UIKit
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
   var window: UIWindow?
+  private var reactNativeStarted = false
+  /// A deep link that arrived while the native update check ran; React
+  /// Native's Linking does not exist yet, so it becomes the launch URL.
+  private var urlBeforeStart: URL?
 
   func application(
     _ application: UIApplication,
@@ -18,7 +22,14 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     window?.makeKeyAndVisible()
 
     Task { @MainActor in
-      await startReactNativeWithHotUpdater(launchOptions: launchOptions)
+      await startReactNativeWithHotUpdater(launchOptions: {
+        var options = launchOptions ?? [:]
+        if let url = self.urlBeforeStart {
+          options[.url] = url
+        }
+        return options
+      })
+      self.reactNativeStarted = true
       self.window?.rootViewController = ReactNativeViewController(moduleName: "HotUpdaterExample")
     }
     return true
@@ -29,6 +40,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     open url: URL,
     options: [UIApplication.OpenURLOptionsKey: Any] = [:]
   ) -> Bool {
-    openReactNativeURL(app, url: url, options: options)
+    guard reactNativeStarted else {
+      urlBeforeStart = url
+      return true
+    }
+    return openReactNativeURL(app, url: url, options: options)
   }
 }
