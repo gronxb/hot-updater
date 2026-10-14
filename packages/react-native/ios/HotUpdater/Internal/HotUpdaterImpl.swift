@@ -104,6 +104,9 @@ private func hotUpdaterGetMinBundleId() -> String {
             launchSelectionLock.unlock()
         }
     }
+    // Serializes the launch's bundle selection with the update check's read
+    // of it, so a check never reads metadata the launch is still selecting from.
+    private let launchPreparationLock = NSLock()
     private var launchStartObservers: [NSObjectProtocol] = []
 
     private static let DEFAULT_CHANNEL = "production"
@@ -751,6 +754,8 @@ private func hotUpdaterGetMinBundleId() -> String {
      * starts from applying in this session.
      */
     func bundleIdForUpdateCheck() -> String? {
+        launchPreparationLock.lock()
+        defer { launchPreparationLock.unlock() }
         if let launchSelection = currentLaunchSelection ?? runningLaunchSelection {
             return launchSelection.launchedBundleId
         }
@@ -794,6 +799,8 @@ private func hotUpdaterGetMinBundleId() -> String {
     }
 
     private func prepareLaunchIfNeeded(bundle: Bundle) -> LaunchSelection {
+        launchPreparationLock.lock()
+        defer { launchPreparationLock.unlock() }
         if let currentLaunchSelection {
             return currentLaunchSelection
         }

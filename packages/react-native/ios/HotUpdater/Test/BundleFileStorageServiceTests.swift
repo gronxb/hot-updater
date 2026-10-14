@@ -1374,6 +1374,43 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func aCommittedSelectionMakesAnotherScopesSelectionStale() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+        let bundleDirectory = try createBundleDirectory(documentsDirectory: workingDirectory, bundleId: "bundle-one")
+        try writeBundle(in: bundleDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: bundleDirectory, bundleId: "bundle-one")
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(isolationKey: testIsolationKey, stagingBundleId: "bundle-one")
+        )
+        #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-production",
+            generation: 1, catalogHash: "hash-1", channel: "production", selectionContextHash: "context-1"))
+        #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-beta",
+            generation: 1, catalogHash: "hash-beta", channel: "beta", selectionContextHash: "context-beta"))
+        let beta = PersistedSelection(
+            kind: "BUNDLE",
+            releaseId: "release-beta",
+            bundleId: "bundle-one",
+            catalogId: "project-a",
+            scopeKey: "scope-beta",
+            generation: 1,
+            catalogHash: "hash-beta",
+            channel: "beta",
+            selectionContextHash: "context-beta"
+        )
+
+        #expect(service.commitReleaseSelection(beta))
+
+        // A production check kept from before the beta commit no longer stages.
+        #expect(service.isReleaseSelectionCurrent(catalogId: "project-a", scopeKey: "scope-production",
+            generation: 1, catalogHash: "hash-1", channel: "production", selectionContextHash: "context-1") == false)
+        #expect(service.isReleaseSelectionCurrent(catalogId: "project-a", scopeKey: "scope-beta",
+            generation: 1, catalogHash: "hash-beta", channel: "beta", selectionContextHash: "context-beta"))
+    }
+
+    @Test
     func crashRestoresCompleteStableReceiptButRetainsNewerHighWater() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(workingDirectory) }

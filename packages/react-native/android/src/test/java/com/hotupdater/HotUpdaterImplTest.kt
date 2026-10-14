@@ -262,7 +262,11 @@ class HotUpdaterImplTest {
         field.isAccessible = true
         val unsafe = field.get(null)
         val allocateInstance = unsafe.javaClass.getMethod("allocateInstance", Class::class.java)
+
         @Suppress("UNCHECKED_CAST")
-        return allocateInstance.invoke(unsafe, T::class.java) as T
+        val instance = allocateInstance.invoke(unsafe, T::class.java) as T
+        // Field initializers don't run without the constructor.
+        if (instance is HotUpdaterImpl) setField(instance, "launchPreparationLock", Any())
+        return instance
     }
 }
