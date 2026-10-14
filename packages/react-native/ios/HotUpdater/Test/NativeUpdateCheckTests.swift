@@ -371,6 +371,41 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func aWallClockChangeDoesNotMoveTheDeadline() async throws {
+        let host = FakeUpdateHost()
+        let download = Latch()
+        host.stage = { _, _ in
+            await download.wait()
+            return ["delivery": "archive", "patchFallback": false]
+        }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2, force: true)])
+        )
+        // The wall clock goes back an hour each time it is read.
+        let clock = NSLock()
+        var wallClock = frozenNow
+        let checker = NativeUpdateChecker(host: host, transport: transport, now: {
+            clock.lock()
+            defer { clock.unlock() }
+            wallClock = wallClock.addingTimeInterval(-3600)
+            return wallClock
+        })
+        // Bounds the test if the deadline moved.
+        Task {
+            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            download.open()
+        }
+        let started = ProcessInfo.processInfo.systemUptime
+
+        let result = await checker.prepare(options(), timeout: 0.2)
+
+        #expect(result.status == .pending)
+        #expect(ProcessInfo.processInfo.systemUptime - started < 2)
+        download.open()
+        await host.stageFinished.wait()
+    }
+
+    @Test
     func theDeadlineCoversTheCatalogRequest() async throws {
         let host = FakeUpdateHost()
         let transport = FakeUpdateTransport { _, timeout in
@@ -384,7 +419,9 @@ struct NativeUpdateCheckTests {
         #expect(result.status == .failed)
         #expect(result.update == nil)
         #expect(transport.requests.count == 1)
-        #expect(abs((transport.requests.first?.timeout ?? 0) - 0.3) < 1e-6)
+        // What is left of the deadline when the request starts.
+        let requestTimeout = transport.requests.first?.timeout ?? 0
+        #expect(requestTimeout <= 0.3 && requestTimeout > 0.2)
         let payload = try #require(host.events().first?["payload"] as? [String: Any])
         #expect(payload["stage"] as? String == "check")
         #expect(payload["transport"] as? String == "timeout")
