@@ -550,7 +550,13 @@ function setArtifactHold(held: boolean) {
     const promise = new Promise<void>((resolve) => {
       release = resolve;
     });
-    artifactHold = { promise, release };
+    const hold = { promise, release };
+    artifactHold = hold;
+    // A hold a failed scenario never released ends for every request, so the
+    // proxy answers at once again and a later hold can start.
+    setTimeout(() => {
+      if (artifactHold === hold) setArtifactHold(false);
+    }, ARTIFACT_HOLD_LIMIT_MS).unref();
     return;
   }
   artifactHold?.release();
@@ -558,9 +564,7 @@ function setArtifactHold(held: boolean) {
 }
 
 async function waitForArtifactRelease() {
-  const hold = artifactHold;
-  if (!hold) return;
-  await Promise.race([hold.promise, sleep(ARTIFACT_HOLD_LIMIT_MS)]);
+  await artifactHold?.promise;
 }
 let bootstrapJobId: string | null = null;
 let androidLaunchLogMarker: string | null = null;
