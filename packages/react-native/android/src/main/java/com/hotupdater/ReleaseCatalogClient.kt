@@ -69,10 +69,8 @@ internal class ReleaseCatalogClient(
         requestHeaders: Map<String, String>,
         requestTimeoutMillis: Long,
     ): ResolvedArtifact {
-        val headers = LinkedHashMap(requestHeaders)
-        if (headers.keys.none { it.equals("Accept", ignoreCase = true) }) {
-            headers["Accept"] = "application/json"
-        }
+        val headers = LinkedHashMap(effectiveHeaders(requestHeaders))
+        if (!headers.containsKey("accept")) headers["accept"] = "application/json"
         val response =
             transport.get(
                 UpdateCheckRequest(
@@ -94,9 +92,9 @@ internal class ReleaseCatalogClient(
         requestHeaders: Map<String, String>,
     ): String {
         val headers = JSONArray()
-        requestHeaders.entries
-            .map { (name, value) -> name.lowercase(Locale.ROOT) to value }
-            .sortedWith(compareBy({ it.first }, { it.second }))
+        effectiveHeaders(requestHeaders)
+            .entries
+            .sortedBy { it.key }
             .forEach { (name, value) -> headers.put(JSONArray().put(name).put(value)) }
         return "native:" +
             JSONObject()
@@ -113,13 +111,11 @@ internal class ReleaseCatalogClient(
         etag: String?,
     ): UpdateCheckResponse {
         val headers = LinkedHashMap<String, String>()
-        requestHeaders.forEach { (name, value) ->
-            if (!name.equals("Accept", ignoreCase = true) && !name.equals("If-None-Match", ignoreCase = true)) {
-                headers[name] = value
-            }
+        effectiveHeaders(requestHeaders).forEach { (name, value) ->
+            if (name != "accept" && name != "if-none-match") headers[name] = value
         }
-        headers["Accept"] = "application/json"
-        if (etag != null) headers["If-None-Match"] = etag
+        headers["accept"] = "application/json"
+        if (etag != null) headers["if-none-match"] = etag
         return transport.get(UpdateCheckRequest(url, headers, requestTimeoutMillis))
     }
 
@@ -303,4 +299,15 @@ internal class ReleaseCatalogClient(
         }
         return value
     }
+}
+
+/**
+ * The headers a request sends: names are case-insensitive and lowercased, and
+ * the last value of a name wins, as OkHttp's `header` replaces it. Request
+ * identities use these, so two maps that send the same headers share one.
+ */
+internal fun effectiveHeaders(headers: Map<String, String>): Map<String, String> {
+    val effective = LinkedHashMap<String, String>()
+    headers.forEach { (name, value) -> effective[name.lowercase(Locale.ROOT)] = value }
+    return effective
 }

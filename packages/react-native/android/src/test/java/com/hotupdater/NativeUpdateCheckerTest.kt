@@ -276,8 +276,8 @@ class NativeUpdateCheckerTest {
 
             val request = transport.requests.first()
             assertEquals(CATALOG_URL, request.url)
-            assertEquals("application/json", request.headers["Accept"])
-            assertEquals("Bearer token", request.headers["Authorization"])
+            assertEquals("application/json", request.headers["accept"])
+            assertEquals("Bearer token", request.headers["authorization"])
             assertEquals(5_000L, request.timeoutMillis)
             // As checkForUpdate.ts, each check that finds nothing reports the bundle the app keeps.
             val events = state.events()
@@ -298,6 +298,16 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `headers that differ only in a name's case send and key the last value`() {
+        val first = linkedMapOf("Authorization" to "A", "authorization" to "B")
+        val second = linkedMapOf("authorization" to "B", "Authorization" to "A")
+
+        assertEquals(mapOf("authorization" to "B"), effectiveHeaders(first))
+        assertEquals(mapOf("authorization" to "A"), effectiveHeaders(second))
+        assertNotEquals(effectiveHeaders(first), effectiveHeaders(second))
+    }
+
+    @Test
     fun `a 304 uses the cached catalog`() =
         runBlocking {
             val state = FakeState()
@@ -312,8 +322,8 @@ class NativeUpdateCheckerTest {
             val update = checker.checkForUpdate(OPTIONS)
 
             assertEquals(RELEASE_B, update?.id)
-            assertEquals("\"v1\"", transport.requests.last().headers["If-None-Match"])
-            assertNull(transport.requests.first().headers["If-None-Match"])
+            assertEquals("\"v1\"", transport.requests.last().headers["if-none-match"])
+            assertNull(transport.requests.first().headers["if-none-match"])
         }
 
     @Test
