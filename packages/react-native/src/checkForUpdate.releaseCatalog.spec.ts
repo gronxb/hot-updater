@@ -324,7 +324,9 @@ describe("checkForUpdate Release catalog protocol", () => {
         requestTimeout: 60_000,
       }),
     );
-    expect(mocks.stageBundle.mock.calls[0]![0]).not.toHaveProperty("assets");
+    expect(
+      (mocks.stageBundle.mock.calls[0] as unknown[])[0],
+    ).not.toHaveProperty("assets");
   });
 
   it("asks artifact protocol v1 for native that installs v1 only", async () => {
