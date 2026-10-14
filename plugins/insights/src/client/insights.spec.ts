@@ -621,6 +621,27 @@ describe("insights() client plugin", () => {
       ]);
     });
 
+    it("dates a no-update check native code recorded on an earlier day", async () => {
+      const app = await launch();
+      const yesterday = MORNING - DAY_MS;
+
+      app.updateCheck({
+        status: "UNCHANGED",
+        channel: "production",
+        bundleId: "bundle-a",
+        releaseId: "release-a",
+        previousReleaseId: "release-a",
+        occurredAt: yesterday,
+      });
+      await flush();
+
+      const [event] = sentEvents();
+      expect(event?.type).toBe("UNCHANGED");
+      expect(parseInt(event!.eventId.replace(/-/g, "").slice(0, 12), 16)).toBe(
+        yesterday,
+      );
+    });
+
     it("gives a failure that was not delivered the same id when it happens again", async () => {
       responses = [500, 500, 500];
       vi.spyOn(console, "warn").mockImplementation(() => {});
