@@ -17,6 +17,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONException
 import org.json.JSONObject
 import java.io.IOException
+import java.io.InterruptedIOException
 import java.net.MalformedURLException
 import java.net.URL
 import java.util.concurrent.CopyOnWriteArrayList
@@ -548,6 +549,20 @@ internal class NativeUpdateChecker(
         val checked =
             try {
                 checkReleaseCatalog(input, deadline)
+            } catch (error: TimeoutCancellationException) {
+                // prepare's deadline ended the check, not its caller: reported as a
+                // request timeout, as iOS reports it.
+                val timeout = InterruptedIOException("Timed out checking for an update")
+                reportUpdateError(
+                    timeout,
+                    classifyUpdateError(timeout, UpdateFailureStage.CHECK, UpdateFailureResource.CATALOG),
+                    ErrorScope(
+                        bundleId = currentBundleId,
+                        channel = targetChannel,
+                        updateStrategy = options.updateStrategy,
+                    ),
+                )
+                throw error
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {

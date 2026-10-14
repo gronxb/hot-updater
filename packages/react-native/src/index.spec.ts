@@ -42,6 +42,7 @@ const mocks = vi.hoisted(() => {
     createLaunchReporter: vi.fn(),
     emit: vi.fn(),
     readLaunch: vi.fn(),
+    replayNativeUpdateEvents: vi.fn(),
     reportUpdateError: vi.fn(),
     isChannelSwitched: vi.fn(() => false),
     notifyAppReady: vi.fn(() => ({ status: "UNCHANGED" as const })),
@@ -69,6 +70,10 @@ vi.mock("./pluginHost", () => ({
 
 vi.mock("./appReady", () => ({
   createLaunchReporter: mocks.createLaunchReporter,
+}));
+
+vi.mock("./nativeUpdateEvents", () => ({
+  replayNativeUpdateEvents: mocks.replayNativeUpdateEvents,
 }));
 
 vi.mock("./native", () => ({
@@ -310,6 +315,22 @@ describe("HotUpdater client initialization", () => {
       onError,
       onNotifyAppReady: undefined,
     });
+  });
+
+  it("replays native update events before it reads the launch they precede", async () => {
+    const order: string[] = [];
+    mocks.replayNativeUpdateEvents.mockImplementationOnce((emit: unknown) => {
+      expect(emit).toBe(mocks.emit);
+      order.push("replay");
+    });
+    mocks.readLaunch.mockImplementationOnce(() => {
+      order.push("launch");
+    });
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.init({ baseURL: "https://updates.example.com" });
+
+    expect(order).toEqual(["replay", "launch"]);
   });
 
   it("reports a staged manual download to plugins after the launch", async () => {
