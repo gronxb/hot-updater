@@ -392,6 +392,13 @@ final class NativeUpdateStaging: @unchecked Sendable {
         self.update = update
     }
 
+    /// Whether the staging has a result.
+    var isFinished: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return result != nil
+    }
+
     /// Calls `observer` with the result, at once when it is already known.
     func onFinish(_ observer: @escaping (Result<Bool, Error>) -> Void) {
         lock.lock()
@@ -576,8 +583,9 @@ private final class StagingWaitRace: @unchecked Sendable {
 }
 
 /// Relays a staging's progress to its listeners on the main queue, at most
-/// every 1% or 100 ms. A listener gets the values reported while it is
-/// added, such as the 1 of the download its caller waited for.
+/// every 1% or 100 ms. A listener gets no value once removed; a caller that
+/// waited for a finished staging still gets the values reported before, such
+/// as the 1 of its download.
 final class NativeUpdateProgress: @unchecked Sendable {
     private let lock = NSLock()
     private var listeners: [Int: (Double) -> Void] = [:]
@@ -596,8 +604,14 @@ final class NativeUpdateProgress: @unchecked Sendable {
         return nextListener
     }
 
-    func remove(_ token: Int?) {
+    /// `afterPending` keeps the values already reported for the listener,
+    /// such as the 1 of a finished download; otherwise none arrives after this.
+    func remove(_ token: Int?, afterPending: Bool = false) {
         guard let token else { return }
+        if afterPending {
+            DispatchQueue.main.async { [self] in remove(token) }
+            return
+        }
         lock.lock()
         listeners[token] = nil
         lock.unlock()
@@ -615,11 +629,17 @@ final class NativeUpdateProgress: @unchecked Sendable {
         }
         lastValue = value
         lastTime = now
-        let listeners = self.listeners.sorted { $0.key < $1.key }.map(\.value)
+        let tokens = listeners.keys.sorted()
         lock.unlock()
-        guard !listeners.isEmpty else { return }
-        DispatchQueue.main.async {
-            listeners.forEach { $0(value) }
+        guard !tokens.isEmpty else { return }
+        DispatchQueue.main.async { [self] in
+            // A listener removed since, as prepare returns, gets no value.
+            for token in tokens {
+                lock.lock()
+                let listener = listeners[token]
+                lock.unlock()
+                listener?(value)
+            }
         }
     }
 }
@@ -945,7 +965,7 @@ final class NativeUpdateChecker {
             staging = startStaging(update, deadline: nil)
         }
         let listener = staging.progress.add(onProgress)
-        defer { staging.progress.remove(listener) }
+        defer { staging.progress.remove(listener, afterPending: staging.isFinished) }
         switch await wait(for: staging, until: nil) {
         case .finished(let result):
             let committed = try result.get()
@@ -1028,7 +1048,7 @@ final class NativeUpdateChecker {
     ) async -> HotUpdaterPrepareResult {
         // The listener ends with this call; the staging may go on.
         let listener = staging.progress.add(onProgress)
-        defer { staging.progress.remove(listener) }
+        defer { staging.progress.remove(listener, afterPending: staging.isFinished) }
         let update = staging.update
         // Recording the selection of the bundle this start already runs, such
         // as on the first start after an update, leaves nothing to apply.
