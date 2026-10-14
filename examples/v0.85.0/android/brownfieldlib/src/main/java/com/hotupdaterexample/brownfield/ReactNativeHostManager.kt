@@ -2,6 +2,7 @@ package com.hotupdaterexample.brownfield
 
 import android.app.Application
 import android.content.Context
+import com.callstack.reactnativebrownfield.OnJSBundleLoaded
 import com.callstack.reactnativebrownfield.ReactNativeBrownfield
 import com.facebook.react.PackageList
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
@@ -28,6 +29,8 @@ object ReactNativeHostManager {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private val onStarted = mutableListOf<() -> Unit>()
     private var started = false
+    private val onBundleLoaded = mutableListOf<() -> Unit>()
+    private var bundleLoaded = false
 
     fun start(application: Application) {
         scope.launch {
@@ -49,7 +52,15 @@ object ReactNativeHostManager {
                     )
                 request.report(result)
             }
-            ReactNativeBrownfield.initialize(application) {
+            val loaded =
+                OnJSBundleLoaded {
+                    scope.launch {
+                        bundleLoaded = true
+                        onBundleLoaded.toList().forEach { it() }
+                        onBundleLoaded.clear()
+                    }
+                }
+            ReactNativeBrownfield.initialize(application, loaded) {
                 getDefaultReactHost(
                     context = application,
                     packageList = PackageList(application).packages,
@@ -70,6 +81,15 @@ object ReactNativeHostManager {
     /** Runs [callback] on the main thread once React Native has started. */
     fun whenStarted(callback: () -> Unit) {
         if (started) callback() else onStarted.add(callback)
+    }
+
+    /**
+     * Runs [callback] on the main thread once the JavaScript bundle has loaded,
+     * when React Native can take a deep link: before that, its React host drops
+     * new intents.
+     */
+    fun whenBundleLoaded(callback: () -> Unit) {
+        if (bundleLoaded) callback() else onBundleLoaded.add(callback)
     }
 }
 

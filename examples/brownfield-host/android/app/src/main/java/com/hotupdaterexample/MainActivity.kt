@@ -49,7 +49,9 @@ class MainActivity : AppCompatActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        ReactNativeHostManager.whenStarted {
+        // React Native's host drops an intent that arrives before its bundle
+        // loads, so every link waits for it, in order.
+        ReactNativeHostManager.whenBundleLoaded {
             ReactNativeBrownfield.shared.reactHost.onNewIntent(intent)
         }
     }
