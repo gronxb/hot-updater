@@ -58,6 +58,8 @@ class HotUpdaterUpdate internal constructor(
     internal val runsCurrentBundle: Boolean,
     /** What staging this update produces; a staging already running for it is joined. */
     internal val targetKey: String,
+    /** The options the check ran with; `prepare` joins a staging only from an equal request. */
+    internal val requestKey: String,
     private val install: suspend (((Double) -> Unit)?) -> Boolean,
 ) {
     /**

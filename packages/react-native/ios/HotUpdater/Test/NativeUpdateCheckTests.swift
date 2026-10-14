@@ -21,7 +21,7 @@ struct NativeUpdateCheckTests {
     // MARK: checkForUpdate
 
     @Test
-    func noCatalogReturnsNilWithoutAnEvent() async throws {
+    func noCatalogReturnsNilReportedAsUnchanged() async throws {
         let host = FakeUpdateHost()
         let transport = FakeUpdateTransport { _, _ in
             NativeUpdateResponse(status: 404, headers: ["x-hot-updater-catalog": " None "], body: "")
@@ -35,9 +35,15 @@ struct NativeUpdateCheckTests {
         #expect(request.url.absoluteString == catalogURL)
         #expect(request.headers == ["accept": "application/json", "x-api-key": "secret"])
         #expect(request.timeout == 5)
-        #expect(host.events().isEmpty)
         #expect(await checker.prepare(options(), timeout: 1).status == .upToDate)
-        #expect(host.events().isEmpty)
+        // As checkForUpdate.ts, each check that finds nothing reports the bundle the app keeps.
+        let events = host.events()
+        #expect(events.map { $0["name"] as? String } == ["onUpdateCheck", "onUpdateCheck"])
+        let payload = try #require(events.first?["payload"] as? [String: Any])
+        #expect(payload["status"] as? String == "UNCHANGED")
+        #expect(payload["bundleId"] as? String == builtInBundleId)
+        #expect(payload["releaseId"] is NSNull)
+        #expect(payload["previousReleaseId"] is NSNull)
     }
 
     @Test
@@ -148,7 +154,7 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
-    func adoptReleaseCommitsWithoutDownloadOrUnchangedEvent() async throws {
+    func adoptReleaseCommitsWithoutDownloadAndReportsItUnchanged() async throws {
         let host = FakeUpdateHost()
         host.bundleIdValue = bundle2
         host.active = receipt(release2, bundle2, generation: 1)
@@ -167,9 +173,12 @@ struct NativeUpdateCheckTests {
         let committed = try #require(host.committedParams.first)
         #expect((committed["selection"] as? [String: Any])?["releaseId"] as? String == release3)
         #expect((committed["guard"] as? [String: Any])?["catalogId"] as? String == catalogId)
-        let events = host.events()
-        #expect(events.count == 1)
-        #expect((events[0]["payload"] as? [String: Any])?["status"] as? String == "UPDATE_AVAILABLE")
+        let payloads = host.events().compactMap { $0["payload"] as? [String: Any] }
+        #expect(payloads.map { $0["status"] as? String } == ["UPDATE_AVAILABLE", "UNCHANGED"])
+        // As checkForUpdate.ts, the running bundle is now selected as the newer Release.
+        #expect(payloads.last?["bundleId"] as? String == bundle2)
+        #expect(payloads.last?["releaseId"] as? String == release3)
+        #expect(payloads.last?["previousReleaseId"] as? String == release2)
     }
 
     @Test
@@ -465,6 +474,32 @@ struct NativeUpdateCheckTests {
             _ = try await check.value
         }
         #expect(host.events().isEmpty)
+    }
+
+    @Test
+    func prepareJoinsADownloadOnlyForTheSameRequest() async throws {
+        let host = FakeUpdateHost()
+        let download = Latch()
+        host.stage = { _, _ in
+            await download.wait()
+            return ["delivery": "archive", "patchFallback": false]
+        }
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2)])
+        )
+        let checker = makeChecker(host, transport)
+        let first = await checker.prepare(options(), timeout: 5)
+        #expect(first.status == .pending)
+        await host.stageStarted.wait()
+
+        let other = await checker.prepare(options(channel: "beta"), timeout: 0.2)
+        let same = await checker.prepare(options(), timeout: 0.2)
+
+        #expect(other.status == .failed)
+        #expect(same.status == .pending)
+        #expect(same.update === first.update)
+        download.open()
+        await host.stageFinished.wait()
     }
 
     @Test

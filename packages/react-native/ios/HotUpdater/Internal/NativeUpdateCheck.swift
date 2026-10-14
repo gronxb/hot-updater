@@ -97,6 +97,9 @@ import Foundation
     /// from one catalog and selection context. A staging already running
     /// joins only the same target.
     let targetKey: String
+    /// The options the check ran with; `prepare` joins a staging only from an
+    /// equal request.
+    let requestKey: String
     private let checker: NativeUpdateChecker
     private let stagedLock = NSLock()
     private var staged = false
@@ -113,6 +116,7 @@ import Foundation
         transitionKind: String,
         runsCurrentBundle: Bool,
         targetKey: String,
+        requestKey: String,
         checker: NativeUpdateChecker,
         install: @escaping (Date?, @escaping (Double) -> Void) async throws -> Bool
     ) {
@@ -125,6 +129,7 @@ import Foundation
         self.transitionKind = transitionKind
         self.runsCurrentBundle = runsCurrentBundle
         self.targetKey = targetKey
+        self.requestKey = requestKey
         self.checker = checker
         self.install = install
     }
@@ -724,7 +729,9 @@ final class NativeUpdateChecker {
         }
         let deadline = now().addingTimeInterval(timeout)
 
-        switch await gate.enter(timeout: remaining(until: deadline), joins: { _ in true }) {
+        // A staging from other options is waited for, then this request is checked.
+        let requestKey = Self.requestKey(options)
+        switch await gate.enter(timeout: remaining(until: deadline), joins: { $0.update.requestKey == requestKey }) {
         case .joined(let staging):
             return await finishPrepare(staging, deadline: deadline, onProgress: onProgress)
         case .stopped:
@@ -922,8 +929,9 @@ final class NativeUpdateChecker {
 
         let fingerprintHash = host.fingerprintHash()
 
+        let update: HotUpdaterUpdate?
         do {
-            return try await checkReleaseCatalog(
+            update = try await checkReleaseCatalog(
                 options: options,
                 baseURL: baseURL,
                 deadline: deadline,
@@ -951,6 +959,12 @@ final class NativeUpdateChecker {
             )
             throw error
         }
+        if update == nil {
+            // The app keeps its bundle, as checkForUpdate.ts reports it.
+            let releaseId = runningReleaseId(bundleId: currentBundleId, channel: currentChannel)
+            queueUnchanged(channel: currentChannel, bundleId: currentBundleId, releaseId: releaseId, previousReleaseId: releaseId)
+        }
+        return update
     }
 
     private func checkReleaseCatalog(
@@ -1120,10 +1134,20 @@ final class NativeUpdateChecker {
             }
 
             if transitionKind != "INSTALL" {
-                return try await host.commitReleaseSelection([
+                let committed = try await host.commitReleaseSelection([
                     "guard": guardParams,
                     "selection": receipt.dictionary,
                 ])
+                if committed, transitionKind == "ADOPT_RELEASE" {
+                    // The running bundle is now selected as a newer Release.
+                    queueUnchanged(
+                        channel: receipt.channel,
+                        bundleId: receipt.bundleId,
+                        releaseId: receipt.releaseId,
+                        previousReleaseId: active?.releaseId
+                    )
+                }
+                return committed
             }
 
             let artifact = try await resolveArtifact(
@@ -1201,12 +1225,30 @@ final class NativeUpdateChecker {
                 desired.kind.rawValue, desired.bundleId, desired.releaseId ?? "null", targetChannel,
                 catalogId, String(catalog.generation), catalog.catalogHash, selectionContextHash,
             ].joined(separator: ":"),
+            requestKey: Self.requestKey(options),
             checker: self,
             install: updateBundleForSelection
         )
     }
 
     // MARK: State
+
+    /// What a check reads: the server, the strategy, and the channel it asks for.
+    private static func requestKey(_ options: HotUpdaterCheckOptions) -> String {
+        var baseURL = options.baseURL
+        while baseURL.hasSuffix("/") { baseURL.removeLast() }
+        return [baseURL, options.updateStrategy.name, options.channel ?? ""].joined(separator: "\n")
+    }
+
+    private func queueUnchanged(channel: String, bundleId: String, releaseId: String?, previousReleaseId: String?) {
+        queueEvent("onUpdateCheck", [
+            "status": "UNCHANGED",
+            "channel": channel,
+            "bundleId": bundleId,
+            "releaseId": releaseId ?? NSNull(),
+            "previousReleaseId": previousReleaseId ?? NSNull(),
+        ])
+    }
 
     private func resolveBundleId(_ bundleId: String?) -> String {
         guard let bundleId, !bundleId.isEmpty, bundleId != Self.nilUUID else {
