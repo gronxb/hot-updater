@@ -1646,7 +1646,13 @@ class BundleFileStorageServiceTest {
                 manifestJson(
                     bundleId = "target",
                     assets = hashes,
-                    byteSizes = contents.mapValues { it.value.toByteArray().size.toLong() },
+                    byteSizes =
+                        contents.mapValues {
+                            it.value
+                                .toByteArray()
+                                .size
+                                .toLong()
+                        },
                     downloadByteSizes = contents.mapValues { 300L },
                     archive =
                         archiveJson(root, archiveBytes, tarByteSize = 64 * 1024)

@@ -85,7 +85,13 @@ internal class AndroidBuiltInAssetResolver(
 
     private fun readSourceHashes(): Map<String, String> =
         try {
-            val json = JSONObject(context.assets.open(SOURCE_HASHES_ASSET).bufferedReader().use { it.readText() })
+            val json =
+                JSONObject(
+                    context.assets
+                        .open(SOURCE_HASHES_ASSET)
+                        .bufferedReader()
+                        .use { it.readText() },
+                )
             if (json.optInt("schemaVersion") != SOURCE_HASHES_SCHEMA_VERSION) {
                 emptyMap()
             } else {
