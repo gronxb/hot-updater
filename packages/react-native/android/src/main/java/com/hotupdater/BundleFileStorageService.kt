@@ -1352,6 +1352,15 @@ class BundleFileStorageService(
                                 metadata.copy(
                                     stagingBundleId = selection.bundleId,
                                     stagingSelection = selection,
+                                    // The launch of the staged bundle reports this Release as applied.
+                                    pendingTransition =
+                                        metadata.pendingTransition?.let { transition ->
+                                            if (transition.toBundleId == selection.bundleId) {
+                                                transition.copy(toReleaseId = selection.releaseId)
+                                            } else {
+                                                transition
+                                            }
+                                        },
                                     updatedAt = System.currentTimeMillis(),
                                 )
                             }

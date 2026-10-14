@@ -390,17 +390,16 @@ struct NativeUpdateCheckTests {
             wallClock = wallClock.addingTimeInterval(-3600)
             return wallClock
         })
-        // Bounds the test if the deadline moved.
+        // Bounds the test if the deadline moved: the download then finishes
+        // first and prepare is ready.
         Task {
-            try? await Task.sleep(nanoseconds: 3_000_000_000)
+            try? await Task.sleep(nanoseconds: 5_000_000_000)
             download.open()
         }
-        let started = ProcessInfo.processInfo.systemUptime
 
         let result = await checker.prepare(options(), timeout: 0.2)
 
         #expect(result.status == .pending)
-        #expect(ProcessInfo.processInfo.systemUptime - started < 2)
         download.open()
         await host.stageFinished.wait()
     }

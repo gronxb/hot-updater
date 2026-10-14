@@ -1336,6 +1336,12 @@ struct BundleFileStorageServiceTests {
                     generation: 1,
                     catalogHash: "hash-1",
                     selectionContextHash: "context-1"
+                ),
+                pendingSelectionTransition: PendingSelectionTransition(
+                    fromReleaseId: "release-zero",
+                    fromBundleId: "bundle-zero",
+                    toReleaseId: "release-one",
+                    toBundleId: "bundle-one"
                 )
             )
         )
@@ -1362,6 +1368,9 @@ struct BundleFileStorageServiceTests {
         #expect(metadata.stagingSelection?.releaseId == "release-two")
         #expect(metadata.stagingSelection?.generation == 2)
         #expect(metadata.verificationPending == false)
+        // The launch reports the adopted Release as the one applied.
+        #expect(metadata.pendingSelectionTransition?.toReleaseId == "release-two")
+        #expect(metadata.pendingSelectionTransition?.fromReleaseId == "release-zero")
     }
 
     @Test
