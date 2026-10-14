@@ -24,13 +24,11 @@ export interface VercelBlobStorageConfig {
    * the `BLOB_READ_WRITE_TOKEN` Vercel adds to a project the store connects to.
    */
   token: string;
-  /** The store's access, which Vercel fixes when it creates the store. */
-  access: "public" | "private";
   /** Base path where bundles will be stored in the store. */
   basePath?: string;
   /**
-   * Lifetime of a private store's download URLs in seconds, at most seven
-   * days, Vercel's limit. @default 3600
+   * Lifetime of the download URLs in seconds, at most seven days, Vercel's
+   * limit. @default 3600
    */
   signedUrlExpiresIn?: number;
 }
@@ -118,16 +116,18 @@ const storeIdOf = (token: string) => {
   return `store_${id}`;
 };
 
+/** A private store's objects: only an API key holder's signed URL reaches them. */
+const access = "private";
+
 /**
- * Bundles in a Vercel Blob store. A public store's objects download from
- * their Blob URL; a private store's from a presigned URL that expires.
+ * Bundles in a private Vercel Blob store. Devices download from presigned URLs
+ * that expire, so the store's objects never sit at a public address.
  */
 export const vercelBlobStorage = (
   config: VercelBlobStorageConfig,
 ): StorageAdapterWith<VercelBlobStorageOperations> => {
-  const { token, access } = config;
+  const { token } = config;
   const storeId = storeIdOf(token);
-  const host = `${storeId.slice("store_".length).toLowerCase()}.${access}.blob.vercel-storage.com`;
   const normalizedBasePath = config.basePath?.replace(/^\/+|\/+$/g, "") ?? "";
   const getStorageKey = createStorageKeyBuilder(normalizedBasePath);
   const expiresIn = config.signedUrlExpiresIn ?? 3600;
@@ -234,11 +234,6 @@ export const vercelBlobStorage = (
     async getDownloadUrl({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       const pathname = toPathname(key);
-      if (access === "public") {
-        return {
-          url: `https://${host}/${pathname.split("/").map(encodeURIComponent).join("/")}`,
-        };
-      }
       const validUntil = Date.now() + expiresInMs;
       const { presignedUrl } = await presignUrl(
         await delegationUntil(validUntil),

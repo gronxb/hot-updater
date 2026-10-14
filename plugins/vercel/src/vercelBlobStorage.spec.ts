@@ -34,22 +34,21 @@ beforeEach(() => {
 
 describe("vercelBlobStorage", () => {
   it("rejects a token that is not a store's read-write token", () => {
-    expect(() =>
-      vercelBlobStorage({ access: "private", token: "vercel_blob_client_x" }),
-    ).toThrow("read-write token");
+    expect(() => vercelBlobStorage({ token: "vercel_blob_client_x" })).toThrow(
+      "read-write token",
+    );
   });
 
   it("rejects a download URL lifetime beyond Vercel's seven days", () => {
     for (const signedUrlExpiresIn of [0, 604_801, Number.NaN]) {
-      expect(() =>
-        vercelBlobStorage({ access: "private", signedUrlExpiresIn, token }),
-      ).toThrow("seven days");
+      expect(() => vercelBlobStorage({ signedUrlExpiresIn, token })).toThrow(
+        "seven days",
+      );
     }
   });
 
   it("keeps a delegation within seven days for week-long URLs", async () => {
     const storage = vercelBlobStorage({
-      access: "private",
       signedUrlExpiresIn: 604_800,
       token,
     });
@@ -67,7 +66,6 @@ describe("vercelBlobStorage", () => {
 
   it("keeps a key in the store the token belongs to", async () => {
     const storage = vercelBlobStorage({
-      access: "private",
       basePath: "ota",
       token,
     });
@@ -86,7 +84,6 @@ describe("vercelBlobStorage", () => {
       "ota/bundle/manifest.json",
       expect.any(ReadableStream),
       expect.objectContaining({
-        access: "private",
         addRandomSuffix: false,
         allowOverwrite: true,
         multipart: false,
@@ -97,7 +94,7 @@ describe("vercelBlobStorage", () => {
 
   it("refuses a dot-only segment before anything reaches Blob", async () => {
     // Blob would store the segment as it is but normalize it on reads.
-    const storage = vercelBlobStorage({ access: "private", token });
+    const storage = vercelBlobStorage({ token });
     for (const key of ["a/../b.txt", "./b.txt", "a/./b.txt"]) {
       await expect(
         storage.put({
@@ -108,15 +105,15 @@ describe("vercelBlobStorage", () => {
       ).rejects.toThrow(/must not be/);
     }
     for (const basePath of ["ota/..", "./ota"]) {
-      expect(() =>
-        vercelBlobStorage({ access: "private", basePath, token }),
-      ).toThrow(/must not be/);
+      expect(() => vercelBlobStorage({ basePath, token })).toThrow(
+        /must not be/,
+      );
     }
     expect(blob.put).not.toHaveBeenCalled();
   });
 
   it("uploads a body of unknown length in parts", async () => {
-    const storage = vercelBlobStorage({ access: "private", token });
+    const storage = vercelBlobStorage({ token });
 
     await storage.put({
       body: new Blob(["bundle"]).stream(),
@@ -132,7 +129,7 @@ describe("vercelBlobStorage", () => {
   });
 
   it("refuses a URI of another store", async () => {
-    const storage = vercelBlobStorage({ access: "private", token });
+    const storage = vercelBlobStorage({ token });
 
     await expect(
       storage.getDownloadUrl({ storageUri: "vercel-blob://store_other/a.txt" }),
@@ -140,7 +137,7 @@ describe("vercelBlobStorage", () => {
   });
 
   it("presigns private download URLs from one delegation", async () => {
-    const storage = vercelBlobStorage({ access: "private", token });
+    const storage = vercelBlobStorage({ token });
 
     const first = await storage.getDownloadUrl({
       storageUri: "vercel-blob://store_AbC123/a.txt",
@@ -159,7 +156,6 @@ describe("vercelBlobStorage", () => {
     expect(blob.presignUrl).toHaveBeenCalledWith(
       expect.objectContaining({ delegationToken: "delegation" }),
       expect.objectContaining({
-        access: "private",
         operation: "get",
         pathname: "a.txt",
       }),
@@ -169,7 +165,7 @@ describe("vercelBlobStorage", () => {
   it("issues a new delegation once the current one ends before a URL would", async () => {
     vi.useFakeTimers();
     try {
-      const storage = vercelBlobStorage({ access: "private", token });
+      const storage = vercelBlobStorage({ token });
       await storage.getDownloadUrl({
         storageUri: "vercel-blob://store_AbC123/a.txt",
       });
@@ -186,7 +182,7 @@ describe("vercelBlobStorage", () => {
 
   it("issues a delegation again after one fails", async () => {
     blob.issueSignedToken.mockRejectedValueOnce(new Error("unavailable"));
-    const storage = vercelBlobStorage({ access: "private", token });
+    const storage = vercelBlobStorage({ token });
 
     await expect(
       storage.getDownloadUrl({
@@ -200,19 +196,6 @@ describe("vercelBlobStorage", () => {
     expect(blob.issueSignedToken).toHaveBeenCalledTimes(2);
   });
 
-  it("downloads a public store's objects from their Blob URL", async () => {
-    const storage = vercelBlobStorage({ access: "public", token });
-
-    const { url } = await storage.getDownloadUrl({
-      storageUri: "vercel-blob://store_AbC123/with%20space/hash%231.txt",
-    });
-
-    expect(url).toBe(
-      "https://abc123.public.blob.vercel-storage.com/with%20space/hash!231.txt",
-    );
-    expect(blob.issueSignedToken).not.toHaveBeenCalled();
-  });
-
   it("lists only the pathnames it stores keys under", async () => {
     blob.list.mockResolvedValueOnce({
       blobs: [
@@ -223,7 +206,6 @@ describe("vercelBlobStorage", () => {
       hasMore: false,
     });
     const storage = vercelBlobStorage({
-      access: "private",
       basePath: "ota",
       token,
     });
@@ -244,7 +226,7 @@ describe("vercelBlobStorage", () => {
   });
 
   it("forwards the content length only of an unencoded download", async () => {
-    const storage = vercelBlobStorage({ access: "private", token });
+    const storage = vercelBlobStorage({ token });
     blob.get.mockResolvedValueOnce({
       statusCode: 200,
       stream: new Blob(["abc"]).stream(),

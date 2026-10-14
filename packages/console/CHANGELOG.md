@@ -1,5 +1,24 @@
 # @hot-updater/console
 
+## 1.0.5
+
+### Patch Changes
+
+- 1d3ac77: Build the console on TanStack Start 1.0, the first stable release. `@tanstack/react-start` now needs 1.169.1 or later and `@tanstack/react-router` 1.170.44 or later.
+- @hot-updater/bsdiff@1.0.5
+  - @hot-updater/protocol@1.0.5
+  - @hot-updater/server@1.0.5
+  - @hot-updater/plugin-core@1.0.5
+
+## 1.0.4
+
+### Patch Changes
+
+- @hot-updater/bsdiff@1.0.4
+  - @hot-updater/protocol@1.0.4
+  - @hot-updater/server@1.0.4
+  - @hot-updater/plugin-core@1.0.4
+
 ## 1.0.3
 
 ### Patch Changes

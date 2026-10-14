@@ -34,12 +34,13 @@ and deployment.
 
 - [ ] **vc.storage — Prepare the Blob store**
   - Requires: vc.project.
-  - Run: query the team's Blob stores and reuse the established one, or create
-    one (private unless the user chose public). Its access is fixed at creation;
-    record it. Connect the store to the project's production environment with a
-    read-write token (`HOT_UPDATER_VERCEL_BLOB` prefix), or reuse an existing
-    connection that has one. Preserve existing objects.
-  - Verify/record: blobStoreId and blobAccess; the project's production
+  - Run: query the team's Blob stores and reuse the established private one, or
+    create a private one. Never use a public store: devices download bundles
+    only through signed URLs that expire. Connect the store to the project's
+    production environment with a read-write token (`HOT_UPDATER_VERCEL_BLOB`
+    prefix), or reuse an existing connection that has one. Preserve existing
+    objects.
+  - Verify/record: blobStoreId; the store is private; the project's production
     environment has a `*_READ_WRITE_TOKEN` for this store. Save the token value
     privately as `HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN`, never in chat.
   - Retry: query the same team and store name before creating another store.
@@ -83,9 +84,9 @@ and deployment.
 - [ ] **vc.function — Deploy the Function**
   - Requires: vc.database-credential.
   - Run: set the project's production environment variables
-    `HOT_UPDATER_VERCEL_DATABASE_URL`, `HOT_UPDATER_VERCEL_BLOB_ACCESS` and,
-    unless the store connection already added it,
-    `HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN`, as encrypted values. Then
+    `HOT_UPDATER_VERCEL_DATABASE_URL` and, unless the store connection already
+    added it, `HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN`, as encrypted values.
+    Then
     deploy the prebuilt runtime in vercel/ (api/index.mjs and vercel.json)
     to production:
     `VERCEL_ORG_ID=<team-id> VERCEL_PROJECT_ID=<project-id> npx vercel deploy vercel --prod --yes`.
