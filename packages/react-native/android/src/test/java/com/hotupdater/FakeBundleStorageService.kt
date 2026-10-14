@@ -33,6 +33,7 @@ internal class FakeBundleStorageService(
         manifestFileHash: String,
         assets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String?,
+        selection: PersistedSelection?,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ) = UpdateBundleResult(BundleDelivery.MANIFEST, patchFallback = false)
 

@@ -131,9 +131,12 @@ interface BundleStorageService {
      * @param bundleId ID of the bundle to update
      * @param manifestUrl URL of the target bundle manifest
      * @param manifestFileHash Manifest hash or signature
+     * @param selection the Release selection this staging commits, checked
+     *   before the download and again when the staging commits
      * @param progressCallback Callback for download progress updates
      * @return how the staged bundle arrived
      * @throws HotUpdaterException if the update fails
+     * @throws StaleReleaseSelectionException if [selection] is no longer current
      */
     suspend fun updateBundle(
         bundleId: String,
@@ -141,10 +144,9 @@ interface BundleStorageService {
         manifestFileHash: String,
         assets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String? = null,
+        selection: PersistedSelection? = null,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult
-
-    fun stageReleaseSelection(selection: PersistedSelection): Boolean = false
 
     fun acceptReleaseCatalog(
         catalogId: String,
@@ -262,7 +264,6 @@ class BundleFileStorageService(
     }
 
     private val releaseStateLock = Any()
-    private val pendingInstallSelections = java.util.concurrent.ConcurrentHashMap<String, PersistedSelection>()
     private val updateMutex = Mutex()
     private val builtInAssetResolver =
         builtInAssetResolver ?: AndroidBuiltInAssetResolver(
@@ -1091,10 +1092,10 @@ class BundleFileStorageService(
     private fun prepareMetadataForNewStagingBundle(
         metadata: BundleMetadata,
         bundleId: String,
+        incomingSelection: PersistedSelection?,
     ): BundleMetadata {
         val currentVerifiedBundleId =
             getCurrentVerifiedBundleId(metadata)?.takeIf { it != bundleId }
-        val incomingSelection = pendingInstallSelections.remove(bundleId)
         if (incomingSelection != null && !isSelectionCurrent(incomingSelection)) {
             throw StaleReleaseSelectionException()
         }
@@ -1336,12 +1337,6 @@ class BundleFileStorageService(
             channel = selection.channel,
             selectionContextHash = selectionContextHash,
         )
-    }
-
-    override fun stageReleaseSelection(selection: PersistedSelection): Boolean {
-        if (!isSelectionCurrent(selection)) return false
-        pendingInstallSelections[selection.bundleId] = selection
-        return true
     }
 
     override suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean =
@@ -1661,15 +1656,22 @@ class BundleFileStorageService(
         manifestFileHash: String,
         assets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String?,
+        selection: PersistedSelection?,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult =
         updateMutex.withLock {
+            // The selection travels with this staging: another staging of the
+            // same bundle carries its own.
+            if (selection != null && !isSelectionCurrent(selection)) {
+                throw StaleReleaseSelectionException()
+            }
             updateBundleSerialized(
                 bundleId = bundleId,
                 manifestUrl = manifestUrl,
                 manifestFileHash = manifestFileHash,
                 changedAssets = assets,
                 archiveUrl = archiveUrl,
+                selection = selection,
                 progressCallback = progressCallback,
             )
         }
@@ -1680,6 +1682,7 @@ class BundleFileStorageService(
         manifestFileHash: String,
         changedAssets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String?,
+        selection: PersistedSelection?,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult {
         Log.d(
@@ -1711,6 +1714,7 @@ class BundleFileStorageService(
                 manifestFileHash = manifestFileHash,
                 changedAssets = changedAssets,
                 archiveUrl = archiveUrl,
+                selection = selection,
                 bundleStoreDir = bundleStoreDir,
                 finalBundleDir = finalBundleDir,
                 progressCallback = progressCallback,
@@ -2125,6 +2129,7 @@ class BundleFileStorageService(
         manifestFileHash: String,
         changedAssets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String?,
+        selection: PersistedSelection?,
         bundleStoreDir: File,
         finalBundleDir: File,
         progressCallback: (UpdateProgressPayload) -> Unit,
@@ -2361,7 +2366,7 @@ class BundleFileStorageService(
                             finalBundleDir.setLastModified(System.currentTimeMillis())
 
                             val currentMetadata = loadMetadataOrNull() ?: createInitialMetadata()
-                            val nextMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId)
+                            val nextMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId, selection)
                             if (!setBundleURL(finalIndexFile.absolutePath)) {
                                 throw HotUpdaterException.storageFailed("Failed to persist bundle URL")
                             }
@@ -2558,6 +2563,9 @@ class BundleFileStorageService(
                     pendingTransition = null,
                     verificationPending = false,
                     launchInProgress = false,
+                    // Selections made before the reset no longer stage; the
+                    // high-water marks stay, so an older catalog is still refused.
+                    currentSelectionContexts = emptyMap(),
                     updatedAt = System.currentTimeMillis(),
                 )
 

@@ -415,7 +415,7 @@ private func hotUpdaterGetMinBundleId() -> String {
                 )
             }
             let selection = (data["selection"] as? [String: Any]).flatMap(Self.parseSelection)
-            if let selection, !bundleStorage.stageReleaseSelection(selection) {
+            if let selection, !bundleStorage.isSelectionCurrent(selection) {
                 // Not an update failure, so the rejection carries no stage or reason.
                 let error = StaleReleaseSelectionError() as NSError
                 reject("UNKNOWN_ERROR", error.localizedDescription, error)
@@ -428,7 +428,7 @@ private func hotUpdaterGetMinBundleId() -> String {
             NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), manifestUrl: \(manifestUrl.absoluteString)")
 
             // Heavy work is delegated to bundle storage service with safe error handling
-            bundleStorage.updateBundle(bundleId: bundleId, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, archiveUrl: archiveUrl, assets: assets, progressHandler: { payload in
+            bundleStorage.updateBundle(bundleId: bundleId, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, archiveUrl: archiveUrl, assets: assets, selection: selection, progressHandler: { payload in
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(
                         name: .updateProgressDidChange,
