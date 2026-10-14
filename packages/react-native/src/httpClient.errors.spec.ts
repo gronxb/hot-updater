@@ -93,8 +93,7 @@ describe.each(["catalog", "artifact"] as const)(
               }),
             }
           : {
-              artifactProtocolVersion: 1,
-              assets: {},
+              artifactProtocolVersion: 2,
               manifestUrl: "https://updates.example.com/manifest.json",
               manifestFileHash: "hash",
             };
@@ -105,7 +104,12 @@ describe.each(["catalog", "artifact"] as const)(
         vi.fn().mockResolvedValue(new Response(body, { status: 200 })),
       );
       await expect(request(resource, onResponse)).resolves.toMatchObject(
-        payload,
+        resource === "catalog"
+          ? payload
+          : {
+              manifestUrl: "https://updates.example.com/manifest.json",
+              manifestFileHash: "hash",
+            },
       );
       const fetchMock = vi.mocked(fetch);
       expect(

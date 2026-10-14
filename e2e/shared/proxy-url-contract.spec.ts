@@ -43,23 +43,22 @@ describe("E2E remote asset proxy URLs", () => {
 
       if (url.startsWith("https://provider.example.com/hot-updater/")) {
         return new Response(
-          JSON.stringify({
-            archiveUrl: signedArchiveUrl,
-            artifactProtocolVersion: 1,
-            assets: {
-              "assets/example.bmp": {
-                file: { url: signedAssetUrl },
-                fileHash: "asset-hash",
-                patch: {
-                  algorithm: "bsdiff",
-                  baseBundleId: "019ea44a-0000-7000-8000-000000000000",
-                  patchUrl: signedPatchUrl,
+          JSON.stringify(
+            url.endsWith("/files")
+              ? { files: { "assets/example.bmp": { url: signedAssetUrl } } }
+              : {
+                  archiveUrl: signedArchiveUrl,
+                  artifactProtocolVersion: 2,
+                  manifestFileHash: "manifest-hash",
+                  manifestUrl: signedManifestUrl,
+                  patch: {
+                    algorithm: "bsdiff",
+                    assetPath: "assets/example.bmp",
+                    baseBundleId: "019ea44a-0000-7000-8000-000000000000",
+                    patchUrl: signedPatchUrl,
+                  },
                 },
-              },
-            },
-            manifestFileHash: "manifest-hash",
-            manifestUrl: signedManifestUrl,
-          }),
+          ),
           {
             headers: { "content-type": "application/json" },
             status: 200,
@@ -108,16 +107,26 @@ describe("E2E remote asset proxy URLs", () => {
       const controller = await import("./control-server/controller.ts");
       const updateResponse = await controller.handleProxyUpdateRequest(
         new Request(
-          "http://localhost:3107/hot-updater/artifacts/v1/target/from/current",
+          "http://localhost:3107/hot-updater/artifacts/v2/target/from/current",
         ),
       );
       const payload = (await updateResponse.json()) as {
         archiveUrl: string;
-        assets: Record<
-          string,
-          { file: { url: string }; patch: { patchUrl: string } }
-        >;
         manifestUrl: string;
+        patch: { patchUrl: string };
+      };
+      const filesResponse = await controller.handleProxyUpdateRequest(
+        new Request(
+          "http://localhost:3107/hot-updater/artifacts/v2/target/files",
+          {
+            body: JSON.stringify({ paths: ["assets/example.bmp"] }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          },
+        ),
+      );
+      const files = (await filesResponse.json()) as {
+        files: Record<string, { url: string }>;
       };
 
       expect(payload.manifestUrl).toMatch(
@@ -126,25 +135,26 @@ describe("E2E remote asset proxy URLs", () => {
       expect(payload.archiveUrl).toMatch(
         /^http:\/\/localhost:3107\/e2e\/proxy-url\/[-0-9a-f]+$/,
       );
-      const assetUrl = payload.assets["assets/example.bmp"]?.file.url;
+      const assetUrl = files.files["assets/example.bmp"]?.url;
       expect(assetUrl).toMatch(
         /^http:\/\/localhost:3107\/e2e\/proxy-url\/[-0-9a-f]+$/,
       );
-      const patchUrl = payload.assets["assets/example.bmp"]?.patch.patchUrl;
+      const patchUrl = payload.patch.patchUrl;
       expect(patchUrl).toMatch(
         /^http:\/\/localhost:3107\/e2e\/proxy-url\/[-0-9a-f]+$/,
       );
       expect(
         controller.handleAssertBundleArtifactSelection({
           currentBundleId: "current",
-          selection: "manifest-v1",
+          selection: "manifest-v2",
           targetBundleId: "target",
         }),
       ).toMatchObject({
-        artifactProtocolVersion: 1,
-        assetCount: 1,
-        assetsPresent: true,
+        artifactProtocolVersion: 2,
+        assetsPresent: false,
+        assets: [{ fileUrl: assetUrl, patchUrl, path: "assets/example.bmp" }],
         currentBundleId: "current",
+        filesRequests: 1,
         manifestUrlPresent: true,
         targetBundleId: "target",
       });
@@ -155,7 +165,7 @@ describe("E2E remote asset proxy URLs", () => {
         {
           body: JSON.stringify({
             currentBundleId: "current",
-            selection: "manifest-v1",
+            selection: "manifest-v2",
             targetBundleId: "target",
           }),
           headers: { "content-type": "application/json" },

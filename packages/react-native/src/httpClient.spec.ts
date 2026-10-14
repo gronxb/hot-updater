@@ -1,4 +1,8 @@
-import type { ArtifactInfo, ReleaseCatalog } from "@hot-updater/protocol";
+import type {
+  ArtifactInfo,
+  ArtifactInfoV2,
+  ReleaseCatalog,
+} from "@hot-updater/protocol";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { FetchJSONResponseError } from "./fetchJSON";
@@ -39,6 +43,35 @@ const artifact: ArtifactInfo = {
   archiveUrl: "https://cdn.example.com/bundle.tar.br",
 };
 
+const artifactV2: ArtifactInfoV2 = {
+  artifactProtocolVersion: 2,
+  manifestFileHash: "manifest-hash",
+  manifestUrl: "https://cdn.example.com/manifest.json",
+  archiveUrl: "https://cdn.example.com/bundle.tar.br",
+  patch: {
+    algorithm: "bsdiff",
+    assetPath: "index.ios.bundle",
+    baseBundleId: "current",
+    baseFileHash: "base-hash",
+    patchFileHash: "patch-hash",
+    patchUrl: "https://cdn.example.com/index.ios.bundle.bsdiff",
+  },
+};
+
+/** A server that answers artifact protocol v2, or only v1 when `v1Only`. */
+const serveArtifacts = ({
+  v1 = artifact as unknown,
+  v2 = artifactV2 as unknown,
+  v1Only = false,
+} = {}) =>
+  mocks.fetchJSON.mockImplementation(async ({ url }: { url: string }) => {
+    if (url.includes("/artifacts/v2/")) {
+      if (v1Only) throw new FetchJSONResponseError(404, "Not Found");
+      return v2;
+    }
+    return v1;
+  });
+
 const catalog: ReleaseCatalog = {
   catalogId: "server-owned-project",
   catalogHash: `sha256:${"a".repeat(64)}`,
@@ -54,7 +87,7 @@ describe("private HotUpdater HTTP client", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.fetchCatalog.mockResolvedValue(catalog);
-    mocks.fetchJSON.mockResolvedValue(artifact);
+    serveArtifacts();
   });
 
   it("fetches a catalog without putting its internal identity in the route", async () => {
@@ -105,28 +138,84 @@ describe("private HotUpdater HTTP client", () => {
         currentBundleId: "current",
         targetBundleId: "target",
       }),
-    ).resolves.toEqual(artifact);
+    ).resolves.toEqual({
+      archiveUrl: "https://cdn.example.com/bundle.tar.br",
+      assets: {
+        "index.ios.bundle": {
+          patch: {
+            algorithm: "bsdiff",
+            baseBundleId: "current",
+            baseFileHash: "base-hash",
+            patchFileHash: "patch-hash",
+            patchUrl: "https://cdn.example.com/index.ios.bundle.bsdiff",
+          },
+        },
+      },
+      filesUrl:
+        "https://first.example.com/hot-updater/artifacts/v2/target/files",
+      manifestFileHash: "manifest-hash",
+      manifestUrl: "https://cdn.example.com/manifest.json",
+    });
 
     expect(resolveBaseURL).toHaveBeenCalledOnce();
+    expect(mocks.fetchJSON).toHaveBeenCalledOnce();
     expect(mocks.fetchJSON).toHaveBeenCalledWith({
       requestHeaders: undefined,
       requestTimeout: undefined,
-      url: "https://first.example.com/hot-updater/artifacts/v1/target/from/current",
+      url: "https://first.example.com/hot-updater/artifacts/v2/target/from/current",
     });
 
     await client.createSession();
     expect(resolveBaseURL).toHaveBeenCalledTimes(2);
   });
 
+  it("falls back to artifact protocol v1 on a server without v2", async () => {
+    serveArtifacts({ v1Only: true });
+    const session = await createHttpClient(
+      "https://updates.example.com",
+    ).createSession();
+
+    await expect(
+      session.resolveArtifact({
+        currentBundleId: "current",
+        requestHeaders: { "x-api-key": "key" },
+        targetBundleId: "target",
+      }),
+    ).resolves.toEqual(artifact);
+    expect(mocks.fetchJSON.mock.calls.map(([input]) => input.url)).toEqual([
+      "https://updates.example.com/artifacts/v2/target/from/current",
+      "https://updates.example.com/artifacts/v1/target/from/current",
+    ]);
+  });
+
+  it("keeps any other v2 failure", async () => {
+    const unauthorized = new FetchJSONResponseError(401, "Unauthorized");
+    mocks.fetchJSON.mockRejectedValue(unauthorized);
+    const session = await createHttpClient(
+      "https://updates.example.com",
+    ).createSession();
+
+    await expect(
+      session.resolveArtifact({
+        currentBundleId: "current",
+        targetBundleId: "target",
+      }),
+    ).rejects.toBe(unauthorized);
+    expect(mocks.fetchJSON).toHaveBeenCalledOnce();
+  });
+
   it("rejects relative artifact URLs", async () => {
-    mocks.fetchJSON.mockResolvedValue({
-      ...artifact,
-      assets: {
-        "index.ios.bundle": {
-          file: { url: "/storage/index.bundle.br" },
-          fileHash: "bundle-hash",
+    serveArtifacts({
+      v1: {
+        ...artifact,
+        assets: {
+          "index.ios.bundle": {
+            file: { url: "/storage/index.bundle.br" },
+            fileHash: "bundle-hash",
+          },
         },
       },
+      v1Only: true,
     });
     const session = await createHttpClient(
       "https://updates.example.com",
@@ -138,10 +227,20 @@ describe("private HotUpdater HTTP client", () => {
         targetBundleId: "target",
       }),
     ).rejects.toThrow("Artifact URLs must be absolute HTTP(S) URLs.");
+
+    serveArtifacts({
+      v2: { ...artifactV2, archiveUrl: "/storage/bundle.tar.br" },
+    });
+    await expect(
+      session.resolveArtifact({
+        currentBundleId: "current",
+        targetBundleId: "target",
+      }),
+    ).rejects.toThrow("Artifact URLs must be absolute HTTP(S) URLs.");
   });
 
   it("rejects a response in another artifact protocol", async () => {
-    mocks.fetchJSON.mockResolvedValue({ artifactProtocolVersion: 2 });
+    serveArtifacts({ v2: { artifactProtocolVersion: 3 } });
     const session = await createHttpClient(
       "https://updates.example.com",
     ).createSession();
@@ -151,7 +250,7 @@ describe("private HotUpdater HTTP client", () => {
         currentBundleId: "current",
         targetBundleId: "target",
       }),
-    ).rejects.toThrow("does not support artifact protocol 1");
+    ).rejects.toThrow("does not support artifact protocol 2");
   });
 
   it("passes the server's 404 for a missing artifact through", async () => {
@@ -174,12 +273,12 @@ describe("private HotUpdater HTTP client", () => {
     {
       label: "an invalid absolute URL",
       response: {
-        ...artifact,
+        ...artifactV2,
         manifestUrl: "https://",
       },
     },
   ])("marks $label as an invalid update response", async ({ response }) => {
-    mocks.fetchJSON.mockResolvedValue(response);
+    serveArtifacts({ v2: response });
     const session = await createHttpClient(
       "https://updates.example.com",
     ).createSession();
