@@ -1,9 +1,9 @@
 import type { ScenarioDefinition } from "./types.ts";
 
 /**
- * Brownfield only: `HotUpdater.prepare` stages a required update before React
- * Native starts, so the first React Native screen runs it with no JavaScript
- * install or reload.
+ * Brownfield only: the host's native update check stages a required update
+ * before React Native starts, so the first React Native screen runs it with no
+ * JavaScript install or reload.
  */
 export const brownfieldNativeRequiredUpdateScenario: ScenarioDefinition = {
   name: "brownfield-native-required-update",
@@ -26,7 +26,7 @@ export const brownfieldNativeRequiredUpdateScenario: ScenarioDefinition = {
     );
     await app.control(
       "turn on the native update check",
-      "/e2e/jobs/set-native-prepare",
+      "/e2e/jobs/set-native-check",
       // A slow provider must not turn the required update pending: the
       // requests and the wait get room beyond the hosts' defaults, while the
       // wait stays within the launch's 60-second screen-state wait, since
@@ -34,15 +34,15 @@ export const brownfieldNativeRequiredUpdateScenario: ScenarioDefinition = {
       {
         strategy: "appVersion",
         requestTimeoutMs: 20_000,
-        prepareTimeoutMs: 45_000,
+        checkTimeoutMs: 45_000,
       },
-      { saveResultFieldsAs: { nonce: "nativePrepareNonce" } },
+      { saveResultFieldsAs: { nonce: "nativeCheckNonce" } },
     );
     await app.launch("launch with the native update check");
     await app.control(
-      "wait native prepare ready",
-      "/e2e/jobs/wait-for-native-prepare",
-      { nonce: "$nativePrepareNonce", status: "ready" },
+      "wait native check ready",
+      "/e2e/jobs/wait-for-native-check",
+      { nonce: "$nativeCheckNonce", status: "ready" },
     );
     await app.control(
       "wait required bundle verified",

@@ -68,7 +68,7 @@ scenario diagnostics and Console Insights evidence.
 `--track brownfield` runs the same scenarios against the example packaged as
 an XCFramework and an AAR inside the native apps in
 [`examples/brownfield-host`](../examples/brownfield-host), as the
-[brownfield guide](../docs/content/docs/(latest)/guides/brownfield.mdx)
+[brownfield guide](<../docs/content/docs/(latest)/guides/brownfield.mdx>)
 describes. The host apps reuse the example's bundle ID, package, display name,
 version, and deep-link scheme, and show React Native on every launch, so the
 scenarios, the control server, and the bot's device handling run unchanged.
@@ -82,8 +82,9 @@ The track runs the `brownfield` suite,
 [`brownfield-scenario-names.json`](brownfield-scenario-names.json): every
 default scenario except the three a native app shell cannot host, a headless
 launch and the two that reload from JavaScript, plus the two brownfield-only
-scenarios of `HotUpdater.prepare`, a required update staged before React Native
-starts and a minor one that applies at the next start. `e2e:build --track brownfield`
+scenarios of the native update check (`HotUpdaterInstance`), a required update
+staged before React Native starts and a minor one that applies at the next
+start. `e2e:build --track brownfield`
 packages the frameworks with `brownfield package:ios` and the AAR into
 `examples/v0.85.0/android/brownfieldlib/build/maven`, then builds the host
 apps.

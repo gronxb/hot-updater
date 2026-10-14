@@ -50,10 +50,10 @@ import {
   startResetRemoteBundlesJob,
   startSeedCrashedBundleFrontierJob,
   startWaitForAndroidRestartJob,
-  startSetNativePrepareJob,
+  startSetNativeCheckJob,
   startWaitForArchiveResumeJob,
   startWaitForMetadataJob,
-  startWaitForNativePrepareJob,
+  startWaitForNativeCheckJob,
 } from "./controller.ts";
 import { handlePatchE2eScreenState } from "./screen-state.ts";
 
@@ -492,11 +492,11 @@ app.post("/e2e/jobs/patch-release", async (c) => {
   });
 });
 
-app.post("/e2e/jobs/set-native-prepare", async (c) => {
+app.post("/e2e/jobs/set-native-check", async (c) => {
   const payload = (await c.req.json()) as {
     strategy?: string;
     requestTimeoutMs?: number;
-    prepareTimeoutMs?: number;
+    checkTimeoutMs?: number;
   };
   if (payload.strategy !== "appVersion" && payload.strategy !== "fingerprint") {
     return c.json({ error: "strategy must be appVersion or fingerprint" }, 400);
@@ -512,25 +512,22 @@ app.post("/e2e/jobs/set-native-prepare", async (c) => {
     );
   }
   if (
-    payload.prepareTimeoutMs !== undefined &&
-    (!Number.isSafeInteger(payload.prepareTimeoutMs) ||
-      payload.prepareTimeoutMs <= 0)
+    payload.checkTimeoutMs !== undefined &&
+    (!Number.isSafeInteger(payload.checkTimeoutMs) ||
+      payload.checkTimeoutMs <= 0)
   ) {
-    return c.json(
-      { error: "prepareTimeoutMs must be a positive integer" },
-      400,
-    );
+    return c.json({ error: "checkTimeoutMs must be a positive integer" }, 400);
   }
   return c.json({
-    jobId: startSetNativePrepareJob({
+    jobId: startSetNativeCheckJob({
       strategy: payload.strategy,
       requestTimeoutMs: payload.requestTimeoutMs,
-      prepareTimeoutMs: payload.prepareTimeoutMs,
+      checkTimeoutMs: payload.checkTimeoutMs,
     }),
   });
 });
 
-app.post("/e2e/jobs/wait-for-native-prepare", async (c) => {
+app.post("/e2e/jobs/wait-for-native-check", async (c) => {
   const payload = (await c.req.json()) as { nonce?: string; status?: string };
   const status = payload.status;
   if (
@@ -543,7 +540,7 @@ app.post("/e2e/jobs/wait-for-native-prepare", async (c) => {
     return c.json({ error: "nonce and a prepare status are required" }, 400);
   }
   return c.json({
-    jobId: startWaitForNativePrepareJob({ nonce: payload.nonce, status }),
+    jobId: startWaitForNativeCheckJob({ nonce: payload.nonce, status }),
   });
 });
 

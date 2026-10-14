@@ -1,9 +1,9 @@
 import type { ScenarioDefinition } from "./types.ts";
 
 /**
- * Brownfield only: `HotUpdater.prepare` returns `pending` for an update that
- * is not required and downloads it in the background; the next start runs it
- * and reports `upToDate`.
+ * Brownfield only: the host's native update check reports `pending` for an
+ * update that is not required and downloads it in the background; the next
+ * start runs it and reports `upToDate`.
  */
 export const brownfieldNativeMinorUpdateScenario: ScenarioDefinition = {
   name: "brownfield-native-minor-update",
@@ -25,10 +25,10 @@ export const brownfieldNativeMinorUpdateScenario: ScenarioDefinition = {
     );
     await app.control(
       "turn on the native update check",
-      "/e2e/jobs/set-native-prepare",
+      "/e2e/jobs/set-native-check",
       // Long enough for the held artifact request below.
       { strategy: "appVersion", requestTimeoutMs: 120_000 },
-      { saveResultFieldsAs: { nonce: "nativePrepareNonce" } },
+      { saveResultFieldsAs: { nonce: "nativeCheckNonce" } },
     );
     // Hold the artifact until React Native runs, so the first launch reads
     // the current bundle and the background download stages the update.
@@ -37,9 +37,9 @@ export const brownfieldNativeMinorUpdateScenario: ScenarioDefinition = {
     });
     await app.launch("launch with the native update check");
     await app.control(
-      "wait native prepare pending",
-      "/e2e/jobs/wait-for-native-prepare",
-      { nonce: "$nativePrepareNonce", status: "pending" },
+      "wait native check pending",
+      "/e2e/jobs/wait-for-native-check",
+      { nonce: "$nativeCheckNonce", status: "pending" },
     );
     await app.control("release the minor artifact", "/e2e/proxy-control", {
       holdArtifacts: false,
@@ -56,9 +56,9 @@ export const brownfieldNativeMinorUpdateScenario: ScenarioDefinition = {
     await app.terminate("close the app");
     await app.launch("launch the staged update");
     await app.control(
-      "wait native prepare up to date",
-      "/e2e/jobs/wait-for-native-prepare",
-      { nonce: "$nativePrepareNonce", status: "upToDate" },
+      "wait native check up to date",
+      "/e2e/jobs/wait-for-native-check",
+      { nonce: "$nativeCheckNonce", status: "upToDate" },
     );
     await app.control(
       "wait minor bundle verified",

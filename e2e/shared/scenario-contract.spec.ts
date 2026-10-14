@@ -302,7 +302,7 @@ describe("E2E scenario contract", () => {
     expect(listSuiteNames()).toEqual(["default", "brownfield"]);
     expect(resolveSuiteScenarioNames("brownfield")).toEqual([
       ...defaultScenarioNames.filter((name) => !needsGreenfieldApp.has(name)),
-      // Only a native app shell runs HotUpdater.prepare before React Native.
+      // Only a native app shell checks for updates natively before React Native.
       "brownfield-native-required-update",
       "brownfield-native-minor-update",
     ]);
@@ -319,9 +319,9 @@ describe("E2E scenario contract", () => {
       ),
     ).toEqual([
       "control /e2e/jobs/deploy-bundle",
-      "control /e2e/jobs/set-native-prepare",
+      "control /e2e/jobs/set-native-check",
       "launch",
-      "control /e2e/jobs/wait-for-native-prepare",
+      "control /e2e/jobs/wait-for-native-check",
       "control /e2e/jobs/wait-for-metadata",
       "assertText",
       "assertText",
@@ -329,7 +329,7 @@ describe("E2E scenario contract", () => {
     ]);
     expect(calls[0]).toMatchObject({ body: { forceUpdate: true } });
     expect(calls[3]).toMatchObject({
-      body: { nonce: "$nativePrepareNonce", status: "ready" },
+      body: { nonce: "$nativeCheckNonce", status: "ready" },
     });
   });
 
@@ -350,12 +350,12 @@ describe("E2E scenario contract", () => {
         .map((call) => [call.pathName, call.body?.status ?? null]),
     ).toEqual([
       ["/e2e/jobs/deploy-bundle", null],
-      ["/e2e/jobs/set-native-prepare", null],
+      ["/e2e/jobs/set-native-check", null],
       ["/e2e/proxy-control", null],
-      ["/e2e/jobs/wait-for-native-prepare", "pending"],
+      ["/e2e/jobs/wait-for-native-check", "pending"],
       ["/e2e/proxy-control", null],
       ["/e2e/jobs/wait-for-metadata", null],
-      ["/e2e/jobs/wait-for-native-prepare", "upToDate"],
+      ["/e2e/jobs/wait-for-native-check", "upToDate"],
       ["/e2e/jobs/wait-for-metadata", null],
     ]);
     // The artifact is held until React Native runs the current bundle, then
@@ -364,7 +364,10 @@ describe("E2E scenario contract", () => {
       (call): call is Extract<RecordedScenarioCall, { kind: "control" }> =>
         call.kind === "control" && call.pathName === "/e2e/proxy-control",
     );
-    expect(holds.map((call) => call.body?.holdArtifacts)).toEqual([true, false]);
+    expect(holds.map((call) => call.body?.holdArtifacts)).toEqual([
+      true,
+      false,
+    ]);
     expect(calls.filter((call) => call.kind === "launch")).toHaveLength(2);
     expect(calls.some((call) => call.kind === "tap")).toBe(false);
   });

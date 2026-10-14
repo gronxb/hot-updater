@@ -32,23 +32,23 @@ describe("E2E screen state control boundary", () => {
         updateActionResult: "idle",
         startupCheckEpoch: "",
         startupCheckSettledEpoch: "",
-        nativePrepareResult: "",
+        nativeCheckResult: "",
       },
     });
   });
 
-  it("keeps the brownfield host's native prepare report beside the app's fields", () => {
+  it("keeps the brownfield host's native check report beside the app's fields", () => {
     resetE2eScreenState();
     handlePatchE2eScreenState({ updateActionResult: "installed" });
-    handlePatchE2eScreenState({ nativePrepareResult: "nonce:ready" });
+    handlePatchE2eScreenState({ nativeCheckResult: "nonce:ready" });
 
     expect(readE2eScreenStateSnapshot()).toMatchObject({
-      nativePrepareResult: "nonce:ready",
+      nativeCheckResult: "nonce:ready",
       updateActionResult: "installed",
     });
-    expect(() =>
-      handlePatchE2eScreenState({ nativePrepareResult: 1 }),
-    ).toThrow("screen state field must be a string");
+    expect(() => handlePatchE2eScreenState({ nativeCheckResult: 1 })).toThrow(
+      "screen state field must be a string",
+    );
   });
 
   it("rejects malformed screen state patches", () => {
@@ -66,7 +66,7 @@ describe("E2E screen state control boundary", () => {
       updateActionResult: "idle",
       startupCheckEpoch: "",
       startupCheckSettledEpoch: "",
-      nativePrepareResult: "",
+      nativeCheckResult: "",
     });
   });
 

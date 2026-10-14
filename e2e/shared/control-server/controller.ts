@@ -241,10 +241,10 @@ const E2E_ANDROID_COHORT_PREFS_FILE = "HotUpdaterCohort.xml";
 const E2E_ANDROID_COHORT_PREFS_KEY = "custom_cohort";
 // Read by the brownfield host's framework and library before React Native
 // starts (examples/v0.85.0 HotUpdaterExampleBrownfield and brownfieldlib).
-const E2E_IOS_NATIVE_PREPARE_DEFAULTS_KEY = "HotUpdaterE2ENativePrepare";
-const E2E_ANDROID_NATIVE_PREPARE_PREFS_FILE = "HotUpdaterE2E.xml";
-const E2E_ANDROID_NATIVE_PREPARE_PREFS_KEY = "nativePrepare";
-const NATIVE_PREPARE_REPORT_TIMEOUT_MS = 90_000;
+const E2E_IOS_NATIVE_CHECK_DEFAULTS_KEY = "HotUpdaterE2ENativeCheck";
+const E2E_ANDROID_NATIVE_CHECK_PREFS_FILE = "HotUpdaterE2E.xml";
+const E2E_ANDROID_NATIVE_CHECK_PREFS_KEY = "nativeCheck";
+const NATIVE_CHECK_REPORT_TIMEOUT_MS = 90_000;
 const E2E_RUNTIME_CONFIG_URL_ENV_KEY = "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL";
 const DEPLOY_MAX_OLD_SPACE_SIZE_ENV_KEY =
   "HOT_UPDATER_E2E_DEPLOY_MAX_OLD_SPACE_SIZE_MB";
@@ -4294,18 +4294,18 @@ function writeAndroidE2ECohort(cohort: string) {
 }
 
 /**
- * Turns on `HotUpdater.prepare` in the brownfield host for the next launches
+ * Turns on the native update check in the brownfield host for the next launches
  * of this attempt: the host checks the control proxy for an update before
- * React Native starts and posts `<nonce>:<status>` as `nativePrepareResult`.
+ * React Native starts and posts `<nonce>:<status>` as `nativeCheckResult`.
  * Resetting the app removes it.
  */
-async function setNativePrepare(input: {
+async function setNativeCheck(input: {
   strategy: "appVersion" | "fingerprint";
   requestTimeoutMs?: number;
-  prepareTimeoutMs?: number;
+  checkTimeoutMs?: number;
 }): Promise<JobResult> {
   if (process.env.HOT_UPDATER_E2E_TRACK !== "brownfield") {
-    throw new Error("Native prepare runs only on the brownfield track");
+    throw new Error("Native check runs only on the brownfield track");
   }
   const nonce = randomUUID();
   const request = JSON.stringify({
@@ -4315,9 +4315,9 @@ async function setNativePrepare(input: {
     ...(input.requestTimeoutMs === undefined
       ? {}
       : { requestTimeoutMs: input.requestTimeoutMs }),
-    ...(input.prepareTimeoutMs === undefined
+    ...(input.checkTimeoutMs === undefined
       ? {}
-      : { prepareTimeoutMs: input.prepareTimeoutMs }),
+      : { checkTimeoutMs: input.checkTimeoutMs }),
   });
   if (fixtureSession.platform === "ios") {
     captureCommand("xcrun", [
@@ -4327,17 +4327,17 @@ async function setNativePrepare(input: {
       "defaults",
       "write",
       fixtureSession.appId,
-      E2E_IOS_NATIVE_PREPARE_DEFAULTS_KEY,
+      E2E_IOS_NATIVE_CHECK_DEFAULTS_KEY,
       "-string",
       request,
     ]);
   } else {
     const prefsDir = `/data/data/${fixtureSession.appId}/shared_prefs`;
-    const prefsPath = `${prefsDir}/${E2E_ANDROID_NATIVE_PREPARE_PREFS_FILE}`;
+    const prefsPath = `${prefsDir}/${E2E_ANDROID_NATIVE_CHECK_PREFS_FILE}`;
     const prefsXml = [
       "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>",
       "<map>",
-      `    <string name="${E2E_ANDROID_NATIVE_PREPARE_PREFS_KEY}">${encodeXmlText(request)}</string>`,
+      `    <string name="${E2E_ANDROID_NATIVE_CHECK_PREFS_KEY}">${encodeXmlText(request)}</string>`,
       "</map>",
       "",
     ].join("\n");
@@ -4357,7 +4357,7 @@ async function setNativePrepare(input: {
       ),
     ]);
   }
-  logE2eFixture("native prepare enabled", {
+  logE2eFixture("native check enabled", {
     nonce,
     platform: fixtureSession.platform,
     strategy: input.strategy,
@@ -4366,22 +4366,22 @@ async function setNativePrepare(input: {
 }
 
 /** Waits for the host to report `status` for the request with `nonce`. */
-async function waitForNativePrepare(
+async function waitForNativeCheck(
   input: { nonce: string; status: "upToDate" | "ready" | "pending" | "failed" },
   signal: AbortSignal,
 ): Promise<JobResult> {
   const expected = `${input.nonce}:${input.status}`;
-  const deadline = Date.now() + NATIVE_PREPARE_REPORT_TIMEOUT_MS;
+  const deadline = Date.now() + NATIVE_CHECK_REPORT_TIMEOUT_MS;
   while (Date.now() < deadline) {
     signal.throwIfAborted();
-    if (readE2eScreenStateSnapshot().nativePrepareResult === expected) {
-      return { nativePrepareResult: expected };
+    if (readE2eScreenStateSnapshot().nativeCheckResult === expected) {
+      return { nativeCheckResult: expected };
     }
     await sleep(250, undefined, { signal });
   }
   throw new Error(
-    `Native prepare did not report ${input.status}; last report: ${
-      readE2eScreenStateSnapshot().nativePrepareResult || "none"
+    `Native check did not report ${input.status}; last report: ${
+      readE2eScreenStateSnapshot().nativeCheckResult || "none"
     }`,
   );
 }
@@ -6687,19 +6687,19 @@ export function startResetRemoteBundlesJob() {
   return createJob(() => resetRemoteBundles());
 }
 
-export function startSetNativePrepareJob(input: {
+export function startSetNativeCheckJob(input: {
   strategy: "appVersion" | "fingerprint";
   requestTimeoutMs?: number;
-  prepareTimeoutMs?: number;
+  checkTimeoutMs?: number;
 }) {
-  return createJob(() => setNativePrepare(input));
+  return createJob(() => setNativeCheck(input));
 }
 
-export function startWaitForNativePrepareJob(input: {
+export function startWaitForNativeCheckJob(input: {
   nonce: string;
   status: "upToDate" | "ready" | "pending" | "failed";
 }) {
-  return createJob((context) => waitForNativePrepare(input, context.signal));
+  return createJob((context) => waitForNativeCheck(input, context.signal));
 }
 
 export function startWaitForMetadataJob(

@@ -8,21 +8,23 @@ import com.facebook.react.PackageList
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.hotupdater.HotUpdater
 import com.hotupdater.HotUpdaterCheckOptions
-import com.hotupdater.HotUpdaterPrepareResult
+import com.hotupdater.HotUpdaterOptions
 import com.hotupdater.HotUpdaterUpdateStrategy
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.net.HttpURLConnection
 import java.net.URL
 
 /**
  * Starts React Native for the brownfield E2E host, as the brownfield guide
- * does: when a scenario turns it on, `HotUpdater.prepare` checks for an update
- * first.
+ * does: when a scenario turns it on, a `HotUpdaterInstance` checks for an
+ * update first.
  */
 object ReactNativeHostManager {
     // Outlives every activity, so closing a screen never cancels the start.
@@ -34,23 +36,8 @@ object ReactNativeHostManager {
 
     fun start(application: Application) {
         scope.launch {
-            NativePrepareRequest.read(application)?.let { request ->
-                val result =
-                    HotUpdater.prepare(
-                        application,
-                        HotUpdaterCheckOptions(
-                            baseURL = request.baseURL,
-                            updateStrategy =
-                                if (request.updateStrategy == "fingerprint") {
-                                    HotUpdaterUpdateStrategy.FINGERPRINT
-                                } else {
-                                    HotUpdaterUpdateStrategy.APP_VERSION
-                                },
-                            requestTimeoutMillis = request.requestTimeoutMillis,
-                        ),
-                        timeoutMillis = request.prepareTimeoutMillis,
-                    )
-                request.report(result)
+            NativeUpdateCheckRequest.read(application)?.let { request ->
+                request.report(checkForUpdate(application, request))
             }
             val loaded =
                 OnJSBundleLoaded {
@@ -78,6 +65,49 @@ object ReactNativeHostManager {
         }
     }
 
+    /**
+     * The brownfield guide's update check: checks, and waits up to the
+     * request's timeout for a required update, which then runs in this start.
+     * The timeout ends the wait, not the download.
+     */
+    private suspend fun checkForUpdate(
+        application: Application,
+        request: NativeUpdateCheckRequest,
+    ): String =
+        withTimeoutOrNull(request.checkTimeoutMillis) {
+            try {
+                val hotUpdater =
+                    HotUpdater.init(
+                        application,
+                        HotUpdaterOptions(baseURL = request.baseURL, requestTimeoutMillis = request.requestTimeoutMillis),
+                    )
+                val strategy =
+                    if (request.updateStrategy == "fingerprint") {
+                        HotUpdaterUpdateStrategy.FINGERPRINT
+                    } else {
+                        HotUpdaterUpdateStrategy.APP_VERSION
+                    }
+                val update =
+                    hotUpdater.checkForUpdate(HotUpdaterCheckOptions(updateStrategy = strategy))
+                        ?: return@withTimeoutOrNull "upToDate"
+                when {
+                    // A newer Release of the bundle this start runs: nothing to download.
+                    update.transitionKind == "ADOPT_RELEASE" -> if (update.updateBundle()) "upToDate" else "failed"
+
+                    // Downloads in the background.
+                    !update.shouldForceUpdate -> "pending".also { scope.launch { runCatching { update.updateBundle() } } }
+
+                    update.updateBundle() -> "ready"
+
+                    else -> "failed"
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                "failed"
+            }
+        } ?: "pending"
+
     /** Runs [callback] on the main thread once React Native has started. */
     fun whenStarted(callback: () -> Unit) {
         if (started) callback() else onStarted.add(callback)
@@ -97,22 +127,15 @@ object ReactNativeHostManager {
  * The native update check a scenario turns on. The E2E control server writes
  * it to this app's shared preferences; resetting the app removes it.
  */
-private class NativePrepareRequest(
+private class NativeUpdateCheckRequest(
     val baseURL: String,
     val updateStrategy: String,
     val nonce: String,
     val requestTimeoutMillis: Long,
-    val prepareTimeoutMillis: Long,
+    val checkTimeoutMillis: Long,
 ) {
     /** Publishes `<nonce>:<status>` to the control server's screen state. */
-    suspend fun report(result: HotUpdaterPrepareResult) {
-        val status =
-            when (result) {
-                HotUpdaterPrepareResult.UpToDate -> "upToDate"
-                is HotUpdaterPrepareResult.Ready -> "ready"
-                is HotUpdaterPrepareResult.Pending -> "pending"
-                is HotUpdaterPrepareResult.Failed -> "failed"
-            }
+    suspend fun report(status: String) {
         withContext(Dispatchers.IO) {
             runCatching {
                 val base = URL(baseURL)
@@ -123,7 +146,7 @@ private class NativePrepareRequest(
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json")
                 connection.outputStream.use {
-                    it.write(JSONObject().put("nativePrepareResult", "$nonce:$status").toString().toByteArray())
+                    it.write(JSONObject().put("nativeCheckResult", "$nonce:$status").toString().toByteArray())
                 }
                 connection.responseCode
                 connection.disconnect()
@@ -132,19 +155,19 @@ private class NativePrepareRequest(
     }
 
     companion object {
-        fun read(context: Context): NativePrepareRequest? {
+        fun read(context: Context): NativeUpdateCheckRequest? {
             val value =
                 context
                     .getSharedPreferences("HotUpdaterE2E", Context.MODE_PRIVATE)
-                    .getString("nativePrepare", null) ?: return null
+                    .getString("nativeCheck", null) ?: return null
             return runCatching {
                 val json = JSONObject(value)
-                NativePrepareRequest(
+                NativeUpdateCheckRequest(
                     baseURL = json.getString("baseURL"),
                     updateStrategy = json.getString("updateStrategy"),
                     nonce = json.getString("nonce"),
                     requestTimeoutMillis = json.optLong("requestTimeoutMs", 5_000),
-                    prepareTimeoutMillis = json.optLong("prepareTimeoutMs", 10_000),
+                    checkTimeoutMillis = json.optLong("checkTimeoutMs", 10_000),
                 )
             }.getOrNull()
         }
