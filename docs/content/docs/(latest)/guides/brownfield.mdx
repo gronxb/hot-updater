@@ -87,7 +87,10 @@ export default defineConfig({
   updateStrategy: "fingerprint",
   fingerprint: {
     extraSources: {
-      ios: ["ios/BrownfieldLib/**/*.swift"],
+      ios: [
+        "ios/BrownfieldLib/**/*.swift",
+        "ios/BrownfieldRN.xcodeproj/project.pbxproj",
+      ],
       android: [
         "android/brownfieldlib/src/**/*.kt",
         "android/brownfieldlib/build.gradle.kts",
@@ -99,7 +102,8 @@ export default defineConfig({
 
 The fingerprint skips the `ios/` and `android/` trees by default.
 `extraSources` adds the framework and library module files you write in the
-steps below.
+steps below, and the Xcode project file that defines the framework target's
+build settings.
 
 ## Connect the iOS framework
 
