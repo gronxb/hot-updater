@@ -152,5 +152,12 @@ class HotUpdater {
             requireValidBaseURL(options.baseURL)
             return HotUpdaterInstance(context.applicationContext, options)
         }
+
+        /**
+         * Clears the runtime channel switch once other native update work
+         * finishes, as [HotUpdaterInstance.resetChannel] does.
+         */
+        suspend fun resetChannel(context: Context): Boolean =
+            NativeUpdateCheck.resetChannel(context.applicationContext) { getInstance(context) }
     }
 }
