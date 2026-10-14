@@ -529,17 +529,30 @@ private final class StagingWaitRace: @unchecked Sendable {
 }
 
 /// Relays a staging's progress to its listeners on the main queue, at most
-/// every 1% or 100 ms.
+/// every 1% or 100 ms. A listener gets the values reported while it is
+/// added, such as the 1 of the download its caller waited for.
 final class NativeUpdateProgress: @unchecked Sendable {
     private let lock = NSLock()
-    private var listeners: [(Double) -> Void] = []
+    private var listeners: [Int: (Double) -> Void] = [:]
+    private var nextListener = 0
     private var lastValue = -1.0
     private var lastTime: TimeInterval = 0
 
-    func add(_ listener: ((Double) -> Void)?) {
-        guard let listener else { return }
+    /// Returns the token that `remove` takes.
+    @discardableResult
+    func add(_ listener: ((Double) -> Void)?) -> Int? {
+        guard let listener else { return nil }
         lock.lock()
-        listeners.append(listener)
+        defer { lock.unlock() }
+        nextListener += 1
+        listeners[nextListener] = listener
+        return nextListener
+    }
+
+    func remove(_ token: Int?) {
+        guard let token else { return }
+        lock.lock()
+        listeners[token] = nil
         lock.unlock()
     }
 
@@ -555,7 +568,7 @@ final class NativeUpdateProgress: @unchecked Sendable {
         }
         lastValue = value
         lastTime = now
-        let listeners = self.listeners
+        let listeners = self.listeners.sorted { $0.key < $1.key }.map(\.value)
         lock.unlock()
         guard !listeners.isEmpty else { return }
         DispatchQueue.main.async {
@@ -762,7 +775,8 @@ final class NativeUpdateChecker {
             }
             staging = startStaging(update, deadline: nil)
         }
-        staging.progress.add(onProgress)
+        let listener = staging.progress.add(onProgress)
+        defer { staging.progress.remove(listener) }
         switch await wait(for: staging, until: nil) {
         case .finished(let result):
             return try result.get()
@@ -785,7 +799,9 @@ final class NativeUpdateChecker {
         deadline: Date,
         onProgress: ((Double) -> Void)?
     ) async -> HotUpdaterPrepareResult {
-        staging.progress.add(onProgress)
+        // The listener ends with this call; the staging may go on.
+        let listener = staging.progress.add(onProgress)
+        defer { staging.progress.remove(listener) }
         let update = staging.update
         // Recording the selection of the bundle this start already runs, such
         // as on the first start after an update, leaves nothing to apply.

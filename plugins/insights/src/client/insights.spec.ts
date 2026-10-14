@@ -597,6 +597,30 @@ describe("insights() client plugin", () => {
       expect(new Set(ids).size).toBe(3);
     });
 
+    it("dates a download and a failure native code recorded on an earlier day", async () => {
+      const app = await launch();
+      const yesterday = MORNING - DAY_MS;
+
+      app.downloaded({ ...download, occurredAt: yesterday });
+      app.updateError(downloadFailure({ occurredAt: yesterday }));
+      app.updateError(downloadFailure());
+      await flush();
+
+      const times = sentEvents().map(({ eventId }) =>
+        parseInt(eventId.replace(/-/g, "").slice(0, 12), 16),
+      );
+      expect(sentEvents().map(({ type }) => type)).toEqual([
+        "UPDATE_DOWNLOADED",
+        "UPDATE_FAILED",
+        "UPDATE_FAILED",
+      ]);
+      expect(times).toEqual([
+        yesterday,
+        Date.UTC(2026, 8, 29),
+        Date.UTC(2026, 8, 30),
+      ]);
+    });
+
     it("gives a failure that was not delivered the same id when it happens again", async () => {
       responses = [500, 500, 500];
       vi.spyOn(console, "warn").mockImplementation(() => {});
