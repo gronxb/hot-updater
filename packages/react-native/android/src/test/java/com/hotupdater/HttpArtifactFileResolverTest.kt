@@ -71,6 +71,23 @@ class HttpArtifactFileResolverTest {
     }
 
     @Test
+    fun `reads a files response as JSON parse reads it`() {
+        val bodies =
+            listOf(
+                """{"files":{"a.png":{"url":"https://cdn.example.com/a.png"}}} trailing""",
+                """{'files':{"a.png":{"url":"https://cdn.example.com/a.png"}}}""",
+                """{"files":{"a.png":{"url":"https://cdn.example.com/a.png",}}}""",
+                """{"files":{"a.png":{"url":1}}}""",
+            )
+        for (text in bodies) {
+            body = text
+            assertThrows(text, IllegalStateException::class.java) {
+                runBlocking { resolver { _, _ -> }.resolve(listOf("a.png")) }
+            }
+        }
+    }
+
+    @Test
     fun `reports a files response and resolves its URLs`() =
         runBlocking {
             body = """{"files":{"index.android.bundle":{"url":"https://cdn.example.com/b","compression":"br"}}}"""

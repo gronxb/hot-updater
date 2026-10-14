@@ -448,13 +448,6 @@ final class NativeUpdateStaging: @unchecked Sendable {
         self.update = update
     }
 
-    /// Whether the staging has a result.
-    var isFinished: Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        return result != nil
-    }
-
     /// Calls `observer` with the result, at once when it is already known.
     func onFinish(_ observer: @escaping (Result<Bool, Error>) -> Void) {
         lock.lock()
@@ -933,9 +926,14 @@ final class NativeUpdateChecker {
             }
             (staging, listener) = startStaging(update, onProgress: onProgress)
         }
-        defer { staging.progress.remove(listener, afterPending: staging.isFinished) }
+        // A caller that stopped waiting gets no value from then on, even when
+        // the staging finished meanwhile; one that saw it finish still gets
+        // the values reported before, such as the 1 of its download.
+        var sawFinish = false
+        defer { staging.progress.remove(listener, afterPending: sawFinish) }
         switch await wait(for: staging) {
         case .finished(let result):
+            sawFinish = true
             let committed = try result.get()
             // A joined staging of the same target staged this update too.
             if committed { update.markStaged() }
