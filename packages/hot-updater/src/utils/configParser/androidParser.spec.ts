@@ -2,7 +2,7 @@ import fs from "fs";
 import path from "path";
 
 import { getCwd } from "@hot-updater/cli-tools";
-import { XMLBuilder, XMLParser } from "fast-xml-parser";
+import { XMLParser } from "fast-xml-parser";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { AndroidConfigParser } from "./androidParser";
@@ -51,12 +51,10 @@ vi.mock("@hot-updater/cli-tools", () => ({
 
 vi.mock("fast-xml-parser", () => ({
   XMLParser: vi.fn(),
-  XMLBuilder: vi.fn(),
 }));
 
 describe("AndroidConfigParser", () => {
   let mockParser: { parse: ReturnType<typeof vi.fn> };
-  let mockBuilder: { build: ReturnType<typeof vi.fn> };
   const mockAndroidManifestPath =
     "/mock/project/android/app/src/main/AndroidManifest.xml";
 
@@ -64,13 +62,9 @@ describe("AndroidConfigParser", () => {
     vi.clearAllMocks();
 
     mockParser = { parse: vi.fn() };
-    mockBuilder = { build: vi.fn() };
 
     vi.mocked(XMLParser).mockImplementation(function XMLParser() {
       return mockParser;
-    });
-    vi.mocked(XMLBuilder).mockImplementation(function XMLBuilder() {
-      return mockBuilder;
     });
 
     vi.mocked(getCwd).mockReturnValue("/mock/project");
@@ -148,18 +142,16 @@ describe("AndroidConfigParser", () => {
     it("writes Hot Updater keys to AndroidManifest metadata", async () => {
       const parser = new AndroidConfigParser([mockAndroidManifestPath]);
       vi.mocked(fs.existsSync).mockReturnValue(true);
-      vi.mocked(fs.promises.readFile).mockResolvedValue("manifest content");
-      mockParser.parse.mockReturnValue({
-        manifest: {
-          application: {
-            "meta-data": {
-              "@_android:name": "existing_key",
-              "@_android:value": "existing_value",
-            },
-          },
-        },
-      });
-      mockBuilder.build.mockReturnValue("new xml content");
+      vi.mocked(fs.promises.readFile).mockResolvedValue(
+        [
+          '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
+          "    <application>",
+          '        <meta-data android:name="existing_key" android:value="existing_value" />',
+          "    </application>",
+          "</manifest>",
+          "",
+        ].join("\n"),
+      );
       vi.mocked(fs.promises.writeFile).mockResolvedValue(undefined);
 
       await expect(
@@ -167,22 +159,19 @@ describe("AndroidConfigParser", () => {
       ).resolves.toEqual({
         paths: ["android/app/src/main/AndroidManifest.xml"],
       });
-      expect(mockBuilder.build).toHaveBeenCalledWith({
-        manifest: {
-          application: {
-            "meta-data": [
-              {
-                "@_android:name": "existing_key",
-                "@_android:value": "existing_value",
-              },
-              {
-                "@_android:name": "com.hotupdater.CHANNEL",
-                "@_android:value": "production",
-              },
-            ],
-          },
-        },
-      });
+      expect(fs.promises.writeFile).toHaveBeenCalledWith(
+        mockAndroidManifestPath,
+        [
+          '<manifest xmlns:android="http://schemas.android.com/apk/res/android">',
+          "    <application>",
+          '        <meta-data android:name="existing_key" android:value="existing_value" />',
+          '        <meta-data android:name="com.hotupdater.CHANNEL" android:value="production" />',
+          "    </application>",
+          "</manifest>",
+          "",
+        ].join("\n"),
+        "utf-8",
+      );
     });
 
     it("does not write unmapped keys", async () => {

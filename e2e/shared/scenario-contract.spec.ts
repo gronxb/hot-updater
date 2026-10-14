@@ -112,6 +112,7 @@ const defaultScenarioNames = [
   "stale-catalog-after-newer-generation",
   "slow-old-artifact-after-newer-install",
   "failed-download-same-generation-retry",
+  "resumed-background-archive-download",
   "republished-crashed-bundle-skipped",
   "crash-then-next-safe-update",
   "runtime-channel-crash-restore",
@@ -154,6 +155,7 @@ type RecordedScenarioCall =
     }
   | {
       readonly kind:
+        | "background"
         | "reload"
         | "resetAppState"
         | "tap"
@@ -177,6 +179,10 @@ async function recordScenarioCalls(
       calls.push({ contains, kind: "assertText", options, stage, testID });
       return Promise.resolve();
     },
+    background: (stage) => {
+      calls.push({ kind: "background", stage });
+      return Promise.resolve();
+    },
     control: (stage, pathName, body, options) => {
       calls.push({ body, kind: "control", options, pathName, stage });
       return Promise.resolve();
@@ -185,6 +191,7 @@ async function recordScenarioCalls(
       calls.push({ kind: "launch", options, stage });
       return Promise.resolve();
     },
+    platform: "ios",
     reload: (stage) => {
       calls.push({ kind: "reload", stage });
       return Promise.resolve();
@@ -280,7 +287,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(31);
+    expect(new Set(listScenarioNames()).size).toBe(32);
   });
 
   it("runs every default scenario a native app shell can host in the brownfield suite", () => {

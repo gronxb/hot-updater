@@ -22,6 +22,7 @@ import { numericCohortRolloutScenario } from "./scenarios/numeric-cohort-rollout
 import { releaseOtaRecoveryScenario } from "./scenarios/release-ota-recovery.ts";
 import { remoteConfigFetchActivateScenario } from "./scenarios/remote-config-fetch-activate.ts";
 import { republishedCrashedBundleSkippedScenario } from "./scenarios/republished-crashed-bundle-skipped.ts";
+import { resumedBackgroundArchiveDownloadScenario } from "./scenarios/resumed-background-archive-download.ts";
 import { runtimeChannelCrashRestoreScenario } from "./scenarios/runtime-channel-crash-restore.ts";
 import { runtimeChannelSwitchResetScenario } from "./scenarios/runtime-channel-switch-reset.ts";
 import { sameBundleReleaseAdoptionScenario } from "./scenarios/same-bundle-release-adoption.ts";
@@ -68,6 +69,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   staleCatalogAfterNewerGenerationScenario,
   slowOldArtifactAfterNewerInstallScenario,
   failedDownloadSameGenerationRetryScenario,
+  resumedBackgroundArchiveDownloadScenario,
   republishedCrashedBundleSkippedScenario,
   crashThenNextSafeUpdateScenario,
   runtimeChannelCrashRestoreScenario,

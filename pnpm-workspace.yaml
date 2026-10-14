@@ -45,6 +45,11 @@ catalogs:
   aws:
     "@aws-sdk/client-s3": 3.1066.0
     "@aws-sdk/s3-request-presigner": 3.1066.0
+  azure:
+    "@azure/core-auth": 1.11.0
+    "@azure/cosmos": 4.10.1
+    "@azure/functions": 4.16.5
+    "@azure/storage-blob": 12.34.0
   db:
     "@electric-sql/pglite": 0.4.1
     "@libsql/client": 0.15.15
@@ -67,6 +72,11 @@ catalogs:
     "@clack/prompts": 1.7.0
     "execa": 9.5.2
     tsdown: 0.22.14
+  vercel:
+    "@vercel/blob": 2.8.1
+    "@vercel/cli-auth": 0.3.10
+    "@vercel/cli-config": 0.3.1
+    "@vercel/functions": 3.9.11
 
 onlyBuiltDependencies:
   - "@bugsnag/cli"

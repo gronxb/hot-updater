@@ -1,6 +1,8 @@
 export const actionScreenPaths = {
   ActivateRemoteConfigAction: "e2e/action/activate-remote-config",
   ApplyCapturedUpdateAction: "e2e/action/apply-captured-update",
+  ApplyCapturedUpdateInBackgroundAction:
+    "e2e/action/apply-captured-update-in-background",
   ApplyCohortInputAction: "e2e/action/apply-cohort-input",
   CaptureCurrentChannelUpdateAction:
     "e2e/action/capture-current-channel-update",
