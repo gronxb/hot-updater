@@ -292,10 +292,15 @@ internal class ReleaseCatalogClient(
         if (!HTTP_URL.matches(value)) {
             throw InvalidUpdateResponseException("Artifact URLs must be absolute HTTP(S) URLs.")
         }
-        try {
-            URL(value)
-        } catch (error: MalformedURLException) {
-            throw InvalidUpdateResponseException("Invalid artifact URL: $value", error)
+        val url =
+            try {
+                URL(value)
+            } catch (error: MalformedURLException) {
+                throw InvalidUpdateResponseException("Invalid artifact URL: $value", error)
+            }
+        // java.net.URL parses a hostless "https://"; a download needs a host.
+        if (url.host.isNullOrEmpty()) {
+            throw InvalidUpdateResponseException("Invalid artifact URL: $value")
         }
         return value
     }

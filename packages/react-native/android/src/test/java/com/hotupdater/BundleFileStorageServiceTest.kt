@@ -929,6 +929,28 @@ class BundleFileStorageServiceTest {
                 CatalogHighWater(generation = 2, catalogHash = "hash-2"),
                 metadata?.highestSeenCatalogs?.get("project-a|scope-production"),
             )
+            // A selection made before the reset no longer stages.
+            assertFalse(
+                service.isReleaseSelectionCurrent(
+                    catalogId = "project-a",
+                    scopeKey = "scope-production",
+                    generation = 2,
+                    catalogHash = "hash-2",
+                    channel = "production",
+                    selectionContextHash = "context-2",
+                ),
+            )
+            // The same catalog, checked again, selects again.
+            assertTrue(
+                service.acceptReleaseCatalog(
+                    catalogId = "project-a",
+                    scopeKey = "scope-production",
+                    generation = 2,
+                    catalogHash = "hash-2",
+                    channel = "production",
+                    selectionContextHash = "context-2",
+                ),
+            )
         }
 
     @Test
@@ -2235,7 +2257,6 @@ class BundleFileStorageServiceTest {
                 }
             service = createService(staleRoot, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
             assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 1, "hash-1", "production", "context-1"))
-            assertTrue(service.stageReleaseSelection(releaseSelection("release-one", "target", 1, "hash-1", "context-1")))
 
             val staleResult =
                 runCatching {
@@ -2244,11 +2265,62 @@ class BundleFileStorageServiceTest {
                         MANIFEST_URL,
                         sha256(staleRoot, manifest),
                         mapOf("index.android.bundle" to ChangedAssetDescriptor(BUNDLE_URL, hash)),
+                        selection = releaseSelection("release-one", "target", 1, "hash-1", "context-1"),
                     ) {}
                 }.exceptionOrNull()
 
             assertTrue("Expected a stale selection, got $staleResult", staleResult is StaleReleaseSelectionException)
             assertNull(loadMetadata(staleRoot)?.stagingBundleId)
+        }
+
+    @Test
+    fun `a selection stays with its own staging`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("selection-per-staging")
+            val hash = sha256(root, BUNDLE_CONTENT)
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to hash))
+            val served =
+                BinaryMappingDownloadService(
+                    mapOf(MANIFEST_URL to manifest.toByteArray(), BUNDLE_URL to BUNDLE_CONTENT.toByteArray()),
+                )
+            var failNext = true
+            val downloads =
+                object : DownloadService {
+                    override suspend fun downloadFile(
+                        fileUrl: URL,
+                        destination: File,
+                        fileSizeCallback: ((Long) -> Unit)?,
+                        progressCallback: (DownloadProgress) -> Unit,
+                    ): DownloadResult {
+                        if (failNext) {
+                            failNext = false
+                            return DownloadResult.Error(java.io.IOException("offline"))
+                        }
+                        return served.downloadFile(fileUrl, destination, fileSizeCallback, progressCallback)
+                    }
+                }
+            val service = createService(root, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 1, "hash-1", "production", "context-1"))
+            val assets = mapOf("index.android.bundle" to ChangedAssetDescriptor(BUNDLE_URL, hash))
+
+            val failed =
+                runCatching {
+                    service.updateBundle(
+                        "target",
+                        MANIFEST_URL,
+                        sha256(root, manifest),
+                        assets,
+                        selection = releaseSelection("release-one", "target", 1, "hash-1", "context-1"),
+                    ) {}
+                }
+            assertTrue(failed.isFailure)
+
+            // A later staging of the same bundle without a selection stages a
+            // bare bundle, not the failed staging's Release.
+            service.updateBundle("target", MANIFEST_URL, sha256(root, manifest), assets) {}
+            val staging = loadMetadata(root)?.stagingSelection
+            assertEquals("target", staging?.bundleId)
+            assertNull(staging?.releaseId)
         }
 
     /** Installs bundle "target" with one file, returning the failure, if any. */

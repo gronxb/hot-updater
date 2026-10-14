@@ -265,17 +265,15 @@ class HotUpdaterImpl {
         archiveUrl: String? = null,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult {
-        if (selection != null && !bundleStorage.stageReleaseSelection(selection)) {
-            throw StaleReleaseSelectionException()
-        }
         val result =
             bundleStorage.updateBundle(
-                bundleId,
-                manifestUrl,
-                manifestFileHash,
-                assets,
-                archiveUrl,
-                progressCallback,
+                bundleId = bundleId,
+                manifestUrl = manifestUrl,
+                manifestFileHash = manifestFileHash,
+                assets = assets,
+                archiveUrl = archiveUrl,
+                selection = selection,
+                progressCallback = progressCallback,
             )
 
         if (!channel.isNullOrEmpty()) {
