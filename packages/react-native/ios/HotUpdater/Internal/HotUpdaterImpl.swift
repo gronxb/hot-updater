@@ -780,16 +780,22 @@ private func hotUpdaterGetMinBundleId() -> String {
     @objc
     public func resetChannel(_ resolver: @escaping RCTPromiseResolveBlock,
                              rejecter reject: @escaping RCTPromiseRejectBlock) {
+        // Under the launch lock, so React Native never selects a bundle the
+        // reset is about to delete.
+        launchPreparationLock.lock()
         let result = bundleStorage.resetChannel()
-
-        switch result {
-        case .success(let success):
+        if case .success = result {
             do {
                 try preferences.setItem(nil, forKey: Self.CHANNEL_STORAGE_KEY)
             } catch {
                 NSLog("[HotUpdaterImpl] Failed to clear channel override: \(error)")
             }
             self.currentLaunchSelection = nil
+        }
+        launchPreparationLock.unlock()
+
+        switch result {
+        case .success(let success):
             resolver(success)
         case .failure(let error):
             let normalizedCode = HotUpdaterImpl.normalizeErrorCode(from: error)
