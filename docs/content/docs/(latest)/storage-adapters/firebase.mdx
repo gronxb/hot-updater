@@ -49,6 +49,11 @@ Follow the [Google Cloud signing setup](https://cloud.google.com/storage/docs/ac
 Using the actual server identity, call `getDownloadUrl` for an existing object
 and fetch its returned URL before serving updates.
 
+Keyless signing makes one `signBlob` request per URL, and an update check
+returns a URL for every file of its Bundle. The adapter reuses each object's
+signed URL until half of `signedUrlExpiresIn` has passed, so shared assets are
+signed once per server instance rather than on every check.
+
 ```bash title=".env.hotupdater"
 # Optional: a private credential file when existing ADC is unavailable
 # GOOGLE_APPLICATION_CREDENTIALS=/private/path/to/your-service-account-key.json

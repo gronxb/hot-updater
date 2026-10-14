@@ -18,6 +18,7 @@ import type {
   UpdateErrorStage,
 } from "./clientPlugin";
 import { HotUpdaterError, StaleReleaseCatalogError } from "./error";
+import { DEFAULT_REQUEST_TIMEOUT_MS } from "./fetchUpdateResponse";
 import type { HotUpdaterHttpClient } from "./httpClient";
 import {
   acceptReleaseCatalog,
@@ -392,6 +393,16 @@ async function checkForReleaseCatalogUpdate(input: {
       manifestFileHash: artifact.manifestFileHash,
       manifestUrl: artifact.manifestUrl,
       ...(artifact.archiveUrl ? { archiveUrl: artifact.archiveUrl } : {}),
+      ...(artifact.filesUrl
+        ? {
+            filesUrl: artifact.filesUrl,
+            ...(options.requestHeaders
+              ? { requestHeaders: options.requestHeaders }
+              : {}),
+            requestTimeout:
+              options.requestTimeout ?? DEFAULT_REQUEST_TIMEOUT_MS,
+          }
+        : {}),
       selection: receipt,
       shouldSkipCurrentBundleIdCheck: true,
       status: desired.status,

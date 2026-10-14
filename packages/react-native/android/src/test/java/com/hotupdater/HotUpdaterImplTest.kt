@@ -226,6 +226,7 @@ class HotUpdaterImplTest {
             manifestFileHash: String,
             assets: Map<String, ChangedAssetDescriptor>,
             archiveUrl: String?,
+            fileResolver: ArtifactFileResolver?,
             progressCallback: (UpdateProgressPayload) -> Unit,
         ) = UpdateBundleResult(BundleDelivery.MANIFEST, patchFallback = false)
 

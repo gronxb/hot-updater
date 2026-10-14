@@ -8,12 +8,15 @@ export interface UpdateRequest {
   readonly onResponse?: (response: UpdateHttpResponse) => void;
 }
 
+/** How long an update request may take when the app sets no `requestTimeout`. */
+export const DEFAULT_REQUEST_TIMEOUT_MS = 5000;
+
 /** Read once for parsing and diagnostics, under the same request timeout. */
 export const fetchUpdateResponse = async ({
   url,
   resource,
   requestHeaders,
-  requestTimeout = 5000,
+  requestTimeout = DEFAULT_REQUEST_TIMEOUT_MS,
   onResponse,
 }: UpdateRequest): Promise<{ response: Response; body: string | null }> => {
   const controller = new AbortController();

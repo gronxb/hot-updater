@@ -19,6 +19,7 @@ import type { HttpTestClient, HttpTestRequestInit } from "./httpTestClient";
 import {
   RELEASE_CATALOG_MANIFEST_URIS,
   releaseCatalogArtifact,
+  releaseCatalogArtifactFiles,
   releaseCatalogDownloadUrl as downloadUrl,
 } from "./releaseCatalogHttpFixtures";
 import { setupReleaseCatalogLifecycleTests } from "./releaseCatalogLifecycleTests";
@@ -329,6 +330,26 @@ export const setupReleaseCatalogTestSuite = (options: {
             (await request(`/artifacts/v1/${release.id}/from/${NIL_UUID}`))
               .status,
           ).toBe(404);
+
+          // Artifact protocol v2 signs no file until the device asks for it.
+          const v2 = await request(
+            `/artifacts/v2/${bundle.id}/from/${NIL_UUID}`,
+          );
+          expect(v2.status).toBe(200);
+          const { assets: _assets, ...v1Rest } = releaseCatalogArtifact(bundle);
+          expect(await v2.json()).toEqual({
+            ...v1Rest,
+            artifactProtocolVersion: 2,
+          });
+          const files = await request(`/artifacts/v2/${bundle.id}/files`, {
+            body: JSON.stringify({ paths: ["index.ios.bundle"] }),
+            headers: { "content-type": "application/json" },
+            method: "POST",
+          });
+          expect(files.status).toBe(200);
+          expect(await files.json()).toEqual(
+            releaseCatalogArtifactFiles(bundle),
+          );
         });
 
         it("isolates channels, platforms, and update strategies", async () => {

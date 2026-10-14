@@ -623,7 +623,7 @@ same engine, each through a declared index or key. Plugins never write core.
 | `latestReleaseId(scopeKey)` | A scope's newest Release id. |
 | `getReleaseCatalog(request)`, `getReleaseCatalogRow(scopeKey)`, `listReleaseCatalogs({ limit, order?, after? })` | Compiled Release Catalogs: the update check's answer for a platform, channel, and app version or fingerprint, or the stored rows. |
 | `listChannels()`, `findChannelByName(name)` | Channels. |
-| `getArtifactInfo(targetBundleId, currentBundleId, 1)`, `findBaseBundleIds(candidateKey, bundleId, limit)` | Artifact resolution and auto-patch bases. |
+| `getArtifactInfo(targetBundleId, currentBundleId, 2)`, `getArtifactFiles(bundleId, paths)`, `findBaseBundleIds(candidateKey, bundleId, limit)` | Artifact resolution, the URLs of the files a device downloads, and auto-patch bases. `getArtifactInfo(…, 1)` answers the legacy protocol 1, with a URL per file. |
 
 `after` is the last key of the previous page. Call `core` outside
 transactions.

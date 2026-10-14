@@ -23,7 +23,9 @@ import type {
 import {
   createReleaseCatalogScopeKey,
   encodeChannelKey,
+  type ArtifactFiles,
   type ArtifactInfo,
+  type ArtifactInfoV2,
   type Bundle,
   type ReleaseCatalog,
 } from "@hot-updater/protocol";
@@ -50,6 +52,15 @@ type ReadBudgetCore = HotUpdaterCoreApi & {
     currentBundleId: string,
     artifactProtocolVersion: 1,
   ): Promise<ArtifactInfo | null>;
+  getArtifactInfo(
+    targetBundleId: string,
+    currentBundleId: string,
+    artifactProtocolVersion: 2,
+  ): Promise<ArtifactInfoV2 | null>;
+  getArtifactFiles(
+    bundleId: string,
+    paths: readonly string[],
+  ): Promise<ArtifactFiles | null>;
   latestReleaseId(scopeKey: string): Promise<string | null>;
 };
 
@@ -463,6 +474,35 @@ const READ_BUDGETS: readonly ReadBudget[] = [
         artifactProtocolVersion: 1,
         manifestFileHash: createBundleFixture("106").manifestFileHash,
       }),
+  }),
+  budget({
+    api: "artifact resolution v2: the same reads as v1, and no URL per file",
+    read: ({ core }) =>
+      core.getArtifactInfo(
+        createBundleFixture("106").id,
+        createBundleFixture("105").id,
+        2,
+      ),
+    adapter: reads(1, 2, 1, 1),
+    engine: { calls: 2, rows: 3 },
+    check: (artifact) =>
+      expect(artifact).toEqual(
+        expect.objectContaining({
+          artifactProtocolVersion: 2,
+          manifestFileHash: createBundleFixture("106").manifestFileHash,
+        }),
+      ),
+  }),
+  budget({
+    api: "artifact files: 1 bundle point read",
+    read: ({ core }) =>
+      core.getArtifactFiles(createBundleFixture("106").id, [
+        "index.ios.bundle",
+      ]),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    check: (files) =>
+      expect(Object.keys(files?.files ?? {})).toEqual(["index.ios.bundle"]),
   }),
   budget({
     api: "bundle list page: limit rows and one byBundle query per returned bundle with patches",
