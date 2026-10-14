@@ -67,6 +67,7 @@ class ReactIntegrationManager(
             if (reactHost.lifecycleState != LifecycleState.RESUMED && activity != null) {
                 reactHost.onHostResume(activity)
             }
+            ContentAppearedLog.rearm(activity)
             reactHost.reload("Requested by HotUpdater")
         } catch (e: Exception) {
             Log.d("HotUpdater", "Failed to reload with ReactHost: ${e.message}")
