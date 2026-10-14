@@ -37,7 +37,7 @@ Native project before running init or an agent scaffold. Install the CLI, React
 Native SDK, and the build adapter that matches your app, then install this provider:
 
 ```package-install
-npm install @hot-updater/vercel @hot-updater/postgres --save-dev
+npm install @hot-updater/vercel --save-dev
 ```
 
 An agent can perform these steps after inspecting the app's package manager
@@ -193,8 +193,7 @@ config that a function returns, it leaves the file unchanged and prints the
 
 ```ts title="hot-updater.config.ts"
 import { bare } from "@hot-updater/bare";
-import { postgres } from "@hot-updater/postgres";
-import { vercelBlobStorage } from "@hot-updater/vercel";
+import { postgres, vercelBlobStorage } from "@hot-updater/vercel";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { defineConfig } from "hot-updater";
 import { existsSync } from "node:fs";

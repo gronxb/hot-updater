@@ -404,7 +404,6 @@ describe("deployment artifacts", () => {
         "@hot-updater/server",
         ...(provider === "aws" ? ["@aws-sdk/credential-providers"] : []),
         ...(provider === "firebase" ? ["firebase-admin"] : []),
-        ...(provider === "vercel" ? ["@hot-updater/postgres"] : []),
         ...(migrates(provider) ? ["@hot-updater/plugin-core"] : []),
       ]) {
         const target = path.join(cwd, "node_modules", name);

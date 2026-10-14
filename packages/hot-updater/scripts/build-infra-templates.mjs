@@ -518,10 +518,6 @@ export const migrate = async ({ database, plugins }: HotUpdaterAPI) => {
       { searchFrom: root },
     );
   if (provider === "vercel") {
-    // The config's database adapter.
-    appPackages["@hot-updater/postgres"] = (
-      await json(path.join(repoRoot, "plugins/postgres/package.json"))
-    ).version;
     // migrate.ts reads the tables the definition's plugins need.
     appPackages["@hot-updater/plugin-core"] = (
       await json(path.join(repoRoot, "plugins/plugin-core/package.json"))

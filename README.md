@@ -238,8 +238,7 @@ export default defineConfig({
 ```tsx
 import { existsSync } from "node:fs";
 import { bare } from "@hot-updater/bare";
-import { postgres } from "@hot-updater/postgres";
-import { vercelBlobStorage } from "@hot-updater/vercel";
+import { postgres, vercelBlobStorage } from "@hot-updater/vercel";
 import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 import { defineConfig } from "hot-updater";
 

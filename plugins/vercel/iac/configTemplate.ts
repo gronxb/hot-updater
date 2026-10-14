@@ -16,7 +16,7 @@ export const getConfigScaffold = (
   })`,
   };
   const databaseConfig: ProviderConfig = {
-    imports: [{ pkg: "@hot-updater/postgres", named: ["postgres"] }],
+    imports: [{ pkg: "@hot-updater/vercel", named: ["postgres"] }],
     configString: `postgres({
     connectionString: process.env.HOT_UPDATER_VERCEL_DATABASE_URL!,
   })`,

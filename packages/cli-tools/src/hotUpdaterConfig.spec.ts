@@ -1057,6 +1057,69 @@ export default defineConfig({`,
     },
   );
 
+  it("moves an adapter whose package now re-exports it to the scaffold's import", async () => {
+    const configPath = path.join(
+      await createTempDir(),
+      "hot-updater.config.ts",
+    );
+    await fs.writeFile(
+      configPath,
+      `import { bare } from "@hot-updater/bare";
+import { postgres } from "@hot-updater/postgres";
+import { vercelBlobStorage } from "@hot-updater/vercel";
+import { defineConfig } from "hot-updater";
+import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
+
+export default defineConfig({
+  build: bare({ enableHermes: true }),
+  storage: vercelBlobStorage({
+    token: process.env.HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN!,
+  }),
+  database: postgres({
+    connectionString: process.env.HOT_UPDATER_VERCEL_DATABASE_URL!,
+  }),
+  plugins: [apiKeys(), insights(), remoteConfig()],
+});
+`,
+    );
+    const scaffold = createHotUpdaterConfigScaffoldFromBuilder(
+      new ConfigBuilder()
+        .setBuildType("bare")
+        .setStorage({
+          imports: [
+            { pkg: "@hot-updater/vercel", named: ["vercelBlobStorage"] },
+          ],
+          configString: `vercelBlobStorage({
+    token: process.env.HOT_UPDATER_VERCEL_BLOB_READ_WRITE_TOKEN!,
+  })`,
+        })
+        .setDatabase({
+          imports: [{ pkg: "@hot-updater/vercel", named: ["postgres"] }],
+          configString: `postgres({
+    connectionString: process.env.HOT_UPDATER_VERCEL_DATABASE_URL!,
+  })`,
+        })
+        .setPlugins({
+          imports: [
+            {
+              pkg: "hot-updater/plugins",
+              named: ["apiKeys", "insights", "remoteConfig"],
+            },
+          ],
+          configString: "[apiKeys(), insights(), remoteConfig()]",
+        }),
+    );
+
+    const result = await writeHotUpdaterConfig(scaffold, configPath);
+    const updated = await fs.readFile(configPath, "utf-8");
+
+    expect(result.status).toBe("merged");
+    expect(updated).not.toContain("@hot-updater/postgres");
+    expect(updated).toContain(
+      'import { postgres, vercelBlobStorage } from "@hot-updater/vercel";',
+    );
+  });
+
   it("drops a managed package's import once the rebuilt config no longer uses it", async () => {
     const configPath = path.join(
       await createTempDir(),

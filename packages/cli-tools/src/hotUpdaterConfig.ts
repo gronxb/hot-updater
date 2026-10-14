@@ -1287,14 +1287,12 @@ const mergeHotUpdaterConfigText = (
         specifier.imported.type === "Identifier"
           ? specifier.imported.name
           : null;
+      // The same export from another managed package, such as `postgres`
+      // now that @hot-updater/vercel re-exports it, moves to the scaffold's.
       if (
         scaffoldImport !== undefined &&
         (scaffoldImport.imported !== imported ||
-          (scaffoldImport.pkg !== pkg &&
-            !(
-              scaffoldImport.pkg === "hot-updater/plugins" &&
-              pkg === "@hot-updater/server/plugins"
-            )))
+          (scaffoldImport.pkg !== pkg && !MANAGED_IMPORT_PACKAGES.has(pkg)))
       ) {
         return {
           reason: `The import of ${specifier.local.name} from "${pkg}" takes the name init imports from "${scaffoldImport.pkg}".`,
