@@ -1544,6 +1544,15 @@ class BundleFileStorageService: BundleStorageService {
                 || metadata.stagingBundleId == selection.bundleId {
                 metadata.stagingBundleId = selection.bundleId
                 metadata.stagingSelection = selection
+                // The launch of the staged bundle reports this Release as applied.
+                if let transition = metadata.pendingSelectionTransition, transition.toBundleId == selection.bundleId {
+                    metadata.pendingSelectionTransition = PendingSelectionTransition(
+                        fromReleaseId: transition.fromReleaseId,
+                        fromBundleId: transition.fromBundleId,
+                        toReleaseId: selection.releaseId,
+                        toBundleId: transition.toBundleId
+                    )
+                }
             } else if metadata.stableSelection?.bundleId == selection.bundleId
                 || metadata.stableBundleId == selection.bundleId {
                 metadata.stableBundleId = selection.bundleId
