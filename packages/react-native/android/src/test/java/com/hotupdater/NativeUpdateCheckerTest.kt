@@ -784,6 +784,16 @@ class NativeUpdateCheckerTest {
     }
 
     @Test
+    fun `a timeout too large for nanoseconds does not expire at once`() =
+        runBlocking {
+            val checker = NativeUpdateChecker(FakeState(), FakeTransport(routes(forcedCatalog())))
+
+            val result = checker.prepare(OPTIONS, Long.MAX_VALUE, null)
+
+            assertEquals(RELEASE_B, (result as HotUpdaterPrepareResult.Ready).update.id)
+        }
+
+    @Test
     fun `a hostless artifact URL is invalid`() =
         runBlocking {
             for (url in listOf("https://", "https:///manifest.json")) {
