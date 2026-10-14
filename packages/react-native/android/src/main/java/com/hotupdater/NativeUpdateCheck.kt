@@ -139,7 +139,7 @@ internal object NativeUpdateCheck {
     suspend fun resetChannel(
         context: Context,
         impl: () -> HotUpdaterImpl,
-    ): Boolean = checker(context, impl).whenIdle { impl().resetChannel() }
+    ): Boolean = checker(context, impl).resetChannel { impl().resetChannel() }
 
     suspend fun prepare(
         context: Context,
