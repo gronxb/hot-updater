@@ -197,6 +197,8 @@ internal class ReleaseCatalogClient(
 
     /** `requireArtifactProtocolV1` and `requireArtifactUrls` of httpClient.ts, then the TurboModule's asset parsing. */
     private fun parseArtifact(body: String): ResolvedArtifact {
+        // org.json also accepts what JSON.parse rejects, such as comments or trailing data.
+        if (!StrictJson.isValid(body)) throw InvalidUpdateResponseException("Received an invalid artifact response")
         val tokener = JSONTokener(body)
         val info =
             tokener.nextValue() as? JSONObject
