@@ -353,18 +353,18 @@ describe("E2E scenario contract", () => {
       ["/e2e/jobs/set-native-prepare", null],
       ["/e2e/proxy-control", null],
       ["/e2e/jobs/wait-for-native-prepare", "pending"],
-      ["/e2e/jobs/wait-for-metadata", null],
       ["/e2e/proxy-control", null],
+      ["/e2e/jobs/wait-for-metadata", null],
       ["/e2e/jobs/wait-for-native-prepare", "upToDate"],
       ["/e2e/jobs/wait-for-metadata", null],
     ]);
-    // The artifact is held until the update is staged, so React Native
-    // always reads the current bundle on the first launch.
+    // The artifact is held until React Native runs the current bundle, then
+    // released so the update stages for the next start.
     const holds = calls.filter(
       (call): call is Extract<RecordedScenarioCall, { kind: "control" }> =>
         call.kind === "control" && call.pathName === "/e2e/proxy-control",
     );
-    expect(holds.map((call) => call.body?.artifactDelayMs)).toEqual([5_000, 0]);
+    expect(holds.map((call) => call.body?.holdArtifacts)).toEqual([true, false]);
     expect(calls.filter((call) => call.kind === "launch")).toHaveLength(2);
     expect(calls.some((call) => call.kind === "tap")).toBe(false);
   });

@@ -26,13 +26,14 @@ export const brownfieldNativeMinorUpdateScenario: ScenarioDefinition = {
     await app.control(
       "turn on the native update check",
       "/e2e/jobs/set-native-prepare",
-      { strategy: "appVersion" },
+      // Long enough for the held artifact request below.
+      { strategy: "appVersion", requestTimeoutMs: 120_000 },
       { saveResultFieldsAs: { nonce: "nativePrepareNonce" } },
     );
-    // Hold the artifact so React Native reads the current bundle before the
-    // background download stages the update.
+    // Hold the artifact until React Native runs, so the first launch reads
+    // the current bundle and the background download stages the update.
     await app.control("hold the minor artifact", "/e2e/proxy-control", {
-      artifactDelayMs: 5_000,
+      holdArtifacts: true,
     });
     await app.launch("launch with the native update check");
     await app.control(
@@ -40,6 +41,9 @@ export const brownfieldNativeMinorUpdateScenario: ScenarioDefinition = {
       "/e2e/jobs/wait-for-native-prepare",
       { nonce: "$nativePrepareNonce", status: "pending" },
     );
+    await app.control("release the minor artifact", "/e2e/proxy-control", {
+      holdArtifacts: false,
+    });
     await app.control(
       "wait minor bundle staged",
       "/e2e/jobs/wait-for-metadata",
@@ -49,9 +53,6 @@ export const brownfieldNativeMinorUpdateScenario: ScenarioDefinition = {
         verificationPending: true,
       },
     );
-    await app.control("release the artifact hold", "/e2e/proxy-control", {
-      artifactDelayMs: 0,
-    });
     await app.terminate("close the app");
     await app.launch("launch the staged update");
     await app.control(

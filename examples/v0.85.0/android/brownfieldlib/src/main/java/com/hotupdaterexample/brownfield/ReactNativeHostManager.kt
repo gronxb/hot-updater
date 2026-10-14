@@ -43,6 +43,7 @@ object ReactNativeHostManager {
                                 } else {
                                     HotUpdaterUpdateStrategy.APP_VERSION
                                 },
+                            requestTimeoutMillis = request.requestTimeoutMillis,
                         ),
                         timeoutMillis = 10_000,
                     )
@@ -80,6 +81,7 @@ private class NativePrepareRequest(
     val baseURL: String,
     val updateStrategy: String,
     val nonce: String,
+    val requestTimeoutMillis: Long,
 ) {
     /** Publishes `<nonce>:<status>` to the control server's screen state. */
     suspend fun report(result: HotUpdaterPrepareResult) {
@@ -120,6 +122,7 @@ private class NativePrepareRequest(
                     baseURL = json.getString("baseURL"),
                     updateStrategy = json.getString("updateStrategy"),
                     nonce = json.getString("nonce"),
+                    requestTimeoutMillis = json.optLong("requestTimeoutMs", 5_000),
                 )
             }.getOrNull()
         }

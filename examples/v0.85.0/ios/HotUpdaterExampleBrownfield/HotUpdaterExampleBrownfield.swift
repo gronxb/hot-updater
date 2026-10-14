@@ -25,6 +25,7 @@ public func startReactNativeWithHotUpdater(
       HotUpdaterCheckOptions(
         baseURL: request.baseURL,
         updateStrategy: request.updateStrategy == "fingerprint" ? .fingerprint : .appVersion,
+        requestTimeout: (request.requestTimeoutMs ?? 5_000) / 1_000,
         bundle: ReactNativeBundle
       ),
       timeout: 10
@@ -60,6 +61,7 @@ private struct NativePrepareRequest: Decodable {
   let baseURL: String
   let updateStrategy: String
   let nonce: String
+  let requestTimeoutMs: Double?
 
   static func read() -> NativePrepareRequest? {
     guard let value = UserDefaults.standard.string(forKey: "HotUpdaterE2ENativePrepare") else {

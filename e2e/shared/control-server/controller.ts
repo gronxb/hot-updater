@@ -537,6 +537,32 @@ let catalogProxyMode: "freeze" | "live" | "replay" = "live";
 let replayCatalogGeneration: number | null = null;
 let catalogResponseDelayMs = 0;
 let artifactResponseDelayMs = 0;
+// A hold keeps artifact responses back until a scenario releases it, so it
+// can order a download after a launch; the limit keeps a forgotten hold from
+// hanging the run.
+const ARTIFACT_HOLD_LIMIT_MS = 120_000;
+let artifactHold: { promise: Promise<void>; release: () => void } | null =
+  null;
+
+function setArtifactHold(held: boolean) {
+  if (held) {
+    if (artifactHold) return;
+    let release = () => {};
+    const promise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    artifactHold = { promise, release };
+    return;
+  }
+  artifactHold?.release();
+  artifactHold = null;
+}
+
+async function waitForArtifactRelease() {
+  const hold = artifactHold;
+  if (!hold) return;
+  await Promise.race([hold.promise, sleep(ARTIFACT_HOLD_LIMIT_MS)]);
+}
 let bootstrapJobId: string | null = null;
 let androidLaunchLogMarker: string | null = null;
 
@@ -3418,6 +3444,7 @@ export function handleConfigureProxy(input: {
   artifactFailures?: number;
   catalogDelayMs?: number;
   catalogMode?: "freeze" | "live" | "replay";
+  holdArtifacts?: boolean;
   replayGeneration?: number | null;
   reset?: boolean;
 }) {
@@ -3444,6 +3471,9 @@ export function handleConfigureProxy(input: {
   }
   if (input.artifactDelayMs !== undefined) {
     artifactResponseDelayMs = input.artifactDelayMs;
+  }
+  if (input.reset || input.holdArtifacts !== undefined) {
+    setArtifactHold(input.holdArtifacts === true);
   }
   if (input.artifactFailures !== undefined) {
     artifactFailuresRemaining = input.artifactFailures;
@@ -3724,6 +3754,7 @@ export async function handleProxyUpdateRequest(request: Request) {
     method: request.method,
   });
 
+  if (requestKind === "artifact") await waitForArtifactRelease();
   if (requestKind === "artifact" && artifactResponseDelayMs > 0) {
     await sleep(artifactResponseDelayMs);
   }
@@ -4267,6 +4298,7 @@ function writeAndroidE2ECohort(cohort: string) {
  */
 async function setNativePrepare(input: {
   strategy: "appVersion" | "fingerprint";
+  requestTimeoutMs?: number;
 }): Promise<JobResult> {
   if (process.env.HOT_UPDATER_E2E_TRACK !== "brownfield") {
     throw new Error("Native prepare runs only on the brownfield track");
@@ -4276,6 +4308,9 @@ async function setNativePrepare(input: {
     baseURL: handleRuntimeConfig().baseURL,
     updateStrategy: input.strategy,
     nonce,
+    ...(input.requestTimeoutMs === undefined
+      ? {}
+      : { requestTimeoutMs: input.requestTimeoutMs }),
   });
   if (fixtureSession.platform === "ios") {
     captureCommand("xcrun", [
@@ -5197,6 +5232,7 @@ async function bootstrap() {
     artifactDelayMs: 0,
     catalogDelayMs: 0,
     catalogMode: "live",
+    holdArtifacts: false,
     replayGeneration: null,
     reset: true,
   });
@@ -6308,6 +6344,7 @@ async function resetRemoteBundles() {
     artifactDelayMs: 0,
     catalogDelayMs: 0,
     catalogMode: "live",
+    holdArtifacts: false,
     replayGeneration: null,
     reset: true,
   });
@@ -6645,6 +6682,7 @@ export function startResetRemoteBundlesJob() {
 
 export function startSetNativePrepareJob(input: {
   strategy: "appVersion" | "fingerprint";
+  requestTimeoutMs?: number;
 }) {
   return createJob(() => setNativePrepare(input));
 }

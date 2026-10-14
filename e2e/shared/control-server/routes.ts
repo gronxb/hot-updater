@@ -162,9 +162,16 @@ app.post("/e2e/proxy-control", async (c) => {
     artifactFailures?: number;
     catalogDelayMs?: number;
     catalogMode?: "freeze" | "live" | "replay";
+    holdArtifacts?: boolean;
     replayGeneration?: number | null;
     reset?: boolean;
   };
+  if (
+    payload.holdArtifacts !== undefined &&
+    typeof payload.holdArtifacts !== "boolean"
+  ) {
+    return c.json({ error: "holdArtifacts must be a boolean" }, 400);
+  }
   if (
     payload.archiveAvailable !== undefined &&
     typeof payload.archiveAvailable !== "boolean"
@@ -486,12 +493,28 @@ app.post("/e2e/jobs/patch-release", async (c) => {
 });
 
 app.post("/e2e/jobs/set-native-prepare", async (c) => {
-  const payload = (await c.req.json()) as { strategy?: string };
+  const payload = (await c.req.json()) as {
+    strategy?: string;
+    requestTimeoutMs?: number;
+  };
   if (payload.strategy !== "appVersion" && payload.strategy !== "fingerprint") {
     return c.json({ error: "strategy must be appVersion or fingerprint" }, 400);
   }
+  if (
+    payload.requestTimeoutMs !== undefined &&
+    (!Number.isSafeInteger(payload.requestTimeoutMs) ||
+      payload.requestTimeoutMs <= 0)
+  ) {
+    return c.json(
+      { error: "requestTimeoutMs must be a positive integer" },
+      400,
+    );
+  }
   return c.json({
-    jobId: startSetNativePrepareJob({ strategy: payload.strategy }),
+    jobId: startSetNativePrepareJob({
+      strategy: payload.strategy,
+      requestTimeoutMs: payload.requestTimeoutMs,
+    }),
   });
 });
 
