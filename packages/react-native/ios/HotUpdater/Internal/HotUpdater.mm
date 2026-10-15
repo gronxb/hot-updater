@@ -542,6 +542,7 @@ RCT_EXPORT_MODULE();
     if (params.selection()) {
         paramDict[@"selection"] = params.selection();
     }
+    // Legacy: what JavaScript from the first artifact protocol v2 SDK sends.
     if (params.filesUrl()) {
         paramDict[@"filesUrl"] = params.filesUrl();
     }
@@ -554,6 +555,46 @@ RCT_EXPORT_MODULE();
 
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     [impl updateBundle:paramDict resolver:resolve rejecter:reject];
+}
+
+- (void)installArtifact:(JS::NativeHotUpdater::InstallArtifactParams &)params
+                resolve:(RCTPromiseResolveBlock)resolve
+                 reject:(RCTPromiseRejectBlock)reject {
+    NSLog(@"[HotUpdater.mm] installArtifact called.");
+    NSMutableDictionary *paramDict = [NSMutableDictionary dictionary];
+    if (params.bundleId()) {
+        paramDict[@"bundleId"] = params.bundleId();
+    }
+    if (params.manifestUrl()) {
+        paramDict[@"manifestUrl"] = params.manifestUrl();
+    }
+    if (params.manifestFileHash()) {
+        paramDict[@"manifestFileHash"] = params.manifestFileHash();
+    }
+    if (params.archiveUrl()) {
+        paramDict[@"archiveUrl"] = params.archiveUrl();
+    }
+    if (params.patch()) {
+        paramDict[@"patch"] = params.patch();
+    }
+    if (params.filesUrl()) {
+        paramDict[@"filesUrl"] = params.filesUrl();
+    }
+    if (params.requestHeaders()) {
+        paramDict[@"requestHeaders"] = params.requestHeaders();
+    }
+    if (params.requestTimeout().has_value()) {
+        paramDict[@"requestTimeout"] = @(params.requestTimeout().value());
+    }
+    if (params.channel()) {
+        paramDict[@"channel"] = params.channel();
+    }
+    if (params.selection()) {
+        paramDict[@"selection"] = params.selection();
+    }
+
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl installArtifact:paramDict resolver:resolve rejecter:reject];
 }
 
 - (NSNumber *)acceptReleaseCatalog:(NSDictionary *)params {
@@ -724,6 +765,14 @@ RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
     NSLog(@"[HotUpdater.mm] updateBundle called. params: %@", params);
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     [impl updateBundle:params resolver:resolve rejecter:reject];
+}
+
+RCT_EXPORT_METHOD(installArtifact:(NSDictionary *)params
+                  resolve:(RCTPromiseResolveBlock)resolve
+                  reject:(RCTPromiseRejectBlock)reject) {
+    NSLog(@"[HotUpdater.mm] installArtifact called.");
+    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    [impl installArtifact:params resolver:resolve rejecter:reject];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(acceptReleaseCatalog:(NSDictionary *)params) {

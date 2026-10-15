@@ -1319,7 +1319,6 @@ final class NativeUpdateChecker {
                 throw NativeUpdateCheckError.staleReleaseCatalog
             }
             var params: [String: Any] = [
-                "assets": artifact.assets,
                 "bundleId": desired.bundleId,
                 "channel": targetChannel,
                 "manifestFileHash": artifact.manifestFileHash,
@@ -1330,11 +1329,16 @@ final class NativeUpdateChecker {
                 params["archiveUrl"] = archiveUrl
             }
             if let filesUrl = artifact.filesUrl {
-                // The files request repeats the check's headers and timeout, as
-                // checkForUpdate.ts passes them.
+                // installArtifact's parameters, as checkForUpdate.ts sends them:
+                // the files request repeats the check's headers and timeout.
                 params["filesUrl"] = filesUrl
                 params["requestHeaders"] = options.requestHeaders
                 params["requestTimeout"] = options.requestTimeout * 1000
+                if let patch = artifact.patch {
+                    params["patch"] = patch
+                }
+            } else {
+                params["assets"] = artifact.assets
             }
             // The files responses are reported like the other artifact requests.
             let onFilesResponse: ((Int, String?) -> Void)? = artifact.filesUrl.flatMap(URL.init(string:)).map { url in
@@ -1571,15 +1575,16 @@ final class NativeUpdateChecker {
     }
 
     /// How native downloads a Bundle, as httpClient.ts resolves it. In
-    /// artifact protocol v1, `assets` holds a URL for every file. In v2, it
-    /// holds only the Hermes patch, and the staging asks `filesUrl` for the
-    /// URLs of the files it downloads.
+    /// artifact protocol v1, `assets` holds a URL for every file. In v2,
+    /// `patch` is the Hermes patch with its `assetPath`, and the staging asks
+    /// `filesUrl` for the URLs of the files it downloads.
     private struct Artifact {
         let assets: [String: Any]
         let manifestUrl: String
         let manifestFileHash: String
         let archiveUrl: String?
         let filesUrl: String?
+        var patch: [String: Any]? = nil
     }
 
     private func resolveArtifact(
@@ -1613,17 +1618,13 @@ final class NativeUpdateChecker {
             throw NativeUpdateCheckError.invalidResponse("Received an invalid artifact response")
         }
         try Self.requireArtifactProtocolV2(info)
-        var assets: [String: Any] = [:]
-        if var patch = info["patch"] as? [String: Any],
-           let assetPath = patch.removeValue(forKey: "assetPath") as? String {
-            assets[assetPath] = ["patch": patch]
-        }
         return Artifact(
-            assets: assets,
+            assets: [:],
             manifestUrl: info["manifestUrl"] as! String,
             manifestFileHash: info["manifestFileHash"] as! String,
             archiveUrl: (info["archiveUrl"] as? String).flatMap { $0.isEmpty ? nil : $0 },
-            filesUrl: "\(baseURL)/artifacts/v2/\(target)/files"
+            filesUrl: "\(baseURL)/artifacts/v2/\(target)/files",
+            patch: info["patch"] as? [String: Any]
         )
     }
 

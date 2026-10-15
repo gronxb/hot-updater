@@ -7,10 +7,13 @@ import {
   stopRuntime,
 } from "@hot-updater/test-utils/node";
 
-// Pinned: the vnext-latest image of 2026-10-13 answers a read of a missing
-// database with 400 instead of Azure Cosmos DB's 404.
+/**
+ * A dated emulator release: `vnext-EN20261008` answers a query on a missing
+ * container with 400 instead of Azure Cosmos DB's 404, so a moving tag can
+ * break the suite without a code change.
+ */
 const COSMOS_IMAGE =
-  "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-latest@sha256:4535ddbd27bba762f3e068f7585feb0022a2559ceccc9394b23aa38d91d77c38";
+  "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-EN20260907";
 const AZURITE_IMAGE = "mcr.microsoft.com/azure-storage/azurite:3.37.0";
 
 /** The emulators' well-known account keys, public and accepted only by them. */

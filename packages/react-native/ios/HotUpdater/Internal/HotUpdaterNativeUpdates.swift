@@ -49,13 +49,25 @@ final class HotUpdaterImplUpdateHost: NativeUpdateHost {
         progress: @escaping (Double) -> Void
     ) async throws -> Any? {
         try await promise { resolve, reject in
-            self.impl.updateBundle(
-                params,
-                onProgress: progress,
-                onFilesResponse: onFilesResponse,
-                resolver: resolve,
-                rejecter: reject
-            )
+            // Artifact protocol v2 goes to installArtifact, as the update check
+            // in JavaScript sends it.
+            if params["filesUrl"] != nil {
+                self.impl.installArtifact(
+                    params,
+                    onProgress: progress,
+                    onFilesResponse: onFilesResponse,
+                    resolver: resolve,
+                    rejecter: reject
+                )
+            } else {
+                self.impl.updateBundle(
+                    params,
+                    onProgress: progress,
+                    onFilesResponse: onFilesResponse,
+                    resolver: resolve,
+                    rejecter: reject
+                )
+            }
         }
     }
 

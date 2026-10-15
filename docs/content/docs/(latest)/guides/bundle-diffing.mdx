@@ -70,9 +70,8 @@ bundle is the only file type that gets the extra `.bsdiff` patch optimization.
 
 ### How the server describes an update
 
-The artifact endpoint returns protocol v1 with the target manifest and one
-original-file descriptor for every target path. A Hermes descriptor can also
-include a patch for the current OTA bundle. When both sizes are known, the
+The artifact endpoint returns the target manifest and, for the Hermes bundle,
+can include a patch from the current OTA bundle. When both sizes are known, the
 server includes the patch only when it is strictly smaller than the original.
 
 `downloadByteSize` in a manifest describes the representation that the device

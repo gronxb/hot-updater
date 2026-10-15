@@ -140,16 +140,13 @@ describe("private HotUpdater HTTP client", () => {
       }),
     ).resolves.toEqual({
       archiveUrl: "https://cdn.example.com/bundle.tar.br",
-      assets: {
-        "index.ios.bundle": {
-          patch: {
-            algorithm: "bsdiff",
-            baseBundleId: "current",
-            baseFileHash: "base-hash",
-            patchFileHash: "patch-hash",
-            patchUrl: "https://cdn.example.com/index.ios.bundle.bsdiff",
-          },
-        },
+      patch: {
+        algorithm: "bsdiff",
+        assetPath: "index.ios.bundle",
+        baseBundleId: "current",
+        baseFileHash: "base-hash",
+        patchFileHash: "patch-hash",
+        patchUrl: "https://cdn.example.com/index.ios.bundle.bsdiff",
       },
       filesUrl:
         "https://first.example.com/hot-updater/artifacts/v2/target/files",
@@ -167,6 +164,23 @@ describe("private HotUpdater HTTP client", () => {
 
     await client.createSession();
     expect(resolveBaseURL).toHaveBeenCalledTimes(2);
+  });
+
+  it("asks only artifact protocol v1 when native installs v1 only", async () => {
+    const session = await createHttpClient(
+      "https://updates.example.com",
+    ).createSession();
+
+    await expect(
+      session.resolveArtifact({
+        artifactProtocol: 1,
+        currentBundleId: "current",
+        targetBundleId: "target",
+      }),
+    ).resolves.toEqual(artifact);
+    expect(mocks.fetchJSON.mock.calls.map(([input]) => input.url)).toEqual([
+      "https://updates.example.com/artifacts/v1/target/from/current",
+    ]);
   });
 
   it("falls back to artifact protocol v1 on a server without v2", async () => {
