@@ -12,13 +12,13 @@ import Foundation
 ///
 /// JavaScript compares strings by UTF-16 code units, but Swift strings
 /// compare canonically: `"scope\u{212A}ey"` (Kelvin sign) equals `"scopeKey"`,
-/// and a Swift string cannot hold an unpaired surrogate at all. So a string
-/// whose code units Swift would not keep apart is stored escaped: an object key
-/// that is not its own canonical decomposition, and any key or value with an
-/// unpaired surrogate. Escaped strings stay as distinct as `JSON.parse` keeps
-/// them. Lookups by plain names match only that exact key; `originalKey`
-/// recovers the text of an escaped key or value, an unpaired surrogate as
-/// U+FFFD.
+/// and a Swift string cannot hold an unpaired surrogate at all.
+/// - An object key that is not its own canonical decomposition, or that has
+///   an unpaired surrogate, is stored escaped. Lookups by plain names match
+///   only that exact key, and `originalKey` recovers the escaped one.
+/// - A string value with an unpaired surrogate is stored escaped too, so such
+///   values stay as distinct as `JSON.parse` keeps them; every other value is
+///   kept as is. `originalValue` recovers its text, the surrogate as U+FFFD.
 enum StrictJson {
     /// Starts every escaped key. A key that starts with it is escaped too.
     private static let escapedKeyPrefix = "\u{E000}"
@@ -37,15 +37,39 @@ enum StrictJson {
         return escaped(units)
     }
 
+    /// Starts a string value whose unpaired surrogates a Swift string would lose.
+    private static let escapedValuePrefix = "\u{E000}\u{E001}"
+
     /// The string value under which `units` is stored.
     private static func storedValue(_ units: [UInt16]) -> String {
-        needsEscape(units) ? escaped(units) : String(decoding: units, as: UTF16.self)
+        hasUnpairedSurrogate(units)
+            ? escapedValuePrefix + units.map { String(format: "%04x", $0) }.joined()
+            : String(decoding: units, as: UTF16.self)
+    }
+
+    /// The text of a string value read from a parsed value; an unpaired
+    /// surrogate becomes U+FFFD.
+    static func originalValue(_ value: String) -> String {
+        guard value.hasPrefix(escapedValuePrefix) else { return value }
+        let hex = Array(value.utf16.dropFirst(escapedValuePrefix.utf16.count))
+        guard hex.count % 4 == 0 else { return value }
+        var units: [UInt16] = []
+        for start in stride(from: 0, to: hex.count, by: 4) {
+            guard let unit = UInt16(String(decoding: hex[start..<(start + 4)], as: UTF16.self), radix: 16) else {
+                return value
+            }
+            units.append(unit)
+        }
+        return String(decoding: units, as: UTF16.self)
     }
 
     /// Whether a Swift string would lose `units`, or they could be mistaken
-    /// for an escaped string.
+    /// for an escaped key.
     private static func needsEscape(_ units: [UInt16]) -> Bool {
-        if units.first == 0xE000 { return true }
+        units.first == 0xE000 || hasUnpairedSurrogate(units)
+    }
+
+    private static func hasUnpairedSurrogate(_ units: [UInt16]) -> Bool {
         var index = 0
         while index < units.count {
             let unit = units[index]
@@ -67,8 +91,8 @@ enum StrictJson {
         escapedKeyPrefix + units.map { String(format: "%04x", $0) }.joined()
     }
 
-    /// The text the JSON spelled, for a key or string value read from a parsed
-    /// value; an unpaired surrogate becomes U+FFFD.
+    /// The key as the JSON text spelled it, for a key read from a parsed
+    /// object; an unpaired surrogate becomes U+FFFD.
     static func originalKey(_ storedKey: String) -> String {
         guard storedKey.hasPrefix(escapedKeyPrefix) else { return storedKey }
         let hex = Array(storedKey.dropFirst(escapedKeyPrefix.count))
