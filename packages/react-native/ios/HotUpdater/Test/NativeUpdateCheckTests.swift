@@ -346,6 +346,7 @@ struct NativeUpdateCheckTests {
                 == "Runtime channel is already switched to \"beta\". Call hotUpdater.resetChannel() before checking \"staging\".")
         }
         #expect(transport.requests.isEmpty)
+        // As checkForUpdate.ts: a refused call, not an update failure, queues no onUpdateError.
         #expect(host.events().isEmpty)
     }
 
