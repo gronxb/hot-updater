@@ -218,15 +218,32 @@ struct ReleaseSelectionConformanceTests {
     }
 
     @Test
-    func aValueNestedDeeperThanTheLimitIsRejectedWithoutBuildingIt() {
-        func nested(_ depth: Int) -> String {
-            String(repeating: "[", count: depth) + String(repeating: "]", count: depth)
+    func aValueNestedDeeperThanTheLimitIsCheckedButNotBuilt() throws {
+        func nested(_ depth: Int, _ inner: String = "1") -> String {
+            String(repeating: "[", count: depth) + inner + String(repeating: "]", count: depth)
         }
-        #expect(StrictJson.parse(nested(StrictJson.maxDepth)) != nil)
-        #expect(StrictJson.parse(nested(StrictJson.maxDepth + 1)) == nil)
-        // Releasing a value this deep would overflow the stack.
-        #expect(StrictJson.parse(nested(60_000)) == nil)
-        #expect(StrictJson.parse(String(repeating: "{\"a\":", count: 60_000) + "1" + String(repeating: "}", count: 60_000)) == nil)
+        // Built to the limit; deeper, a placeholder instead of the value.
+        var value: Any? = StrictJson.parse(nested(StrictJson.maxDepth))
+        for _ in 0..<StrictJson.maxDepth { value = (value as? [Any])?.first }
+        #expect((value as? NSNumber)?.intValue == 1)
+        value = StrictJson.parse(nested(StrictJson.maxDepth + 1))
+        for _ in 0..<StrictJson.maxDepth { value = (value as? [Any])?.first }
+        #expect(value is NSNull)
+        // Accepted as JSON.parse accepts it, and released without overflowing
+        // the stack.
+        #expect(StrictJson.parse(nested(60_000)) != nil)
+        #expect(StrictJson.parse(String(repeating: "{\"a\":", count: 60_000) + "1" + String(repeating: "}", count: 60_000)) != nil)
+        // Still checked: invalid JSON deep inside is rejected.
+        #expect(StrictJson.parse(nested(60_000, "1,")) == nil)
+    }
+
+    @Test
+    func aCatalogWithADeepUnknownFieldIsAccepted() throws {
+        let valid = try #require(cases("parseReleaseCatalog").first { $0["name"] as? String == "valid app-version catalog" })
+        let body = try #require(valid["body"] as? String)
+        let deep = String(repeating: "[", count: 500) + String(repeating: "]", count: 500)
+        let patched = "{\"unknown\":\(deep)," + body.dropFirst()
+        #expect(parseReleaseCatalog(patched, expectedScope: scopeInput(valid["expectedScope"] as! [String: Any])) != nil)
     }
 
     @Test
