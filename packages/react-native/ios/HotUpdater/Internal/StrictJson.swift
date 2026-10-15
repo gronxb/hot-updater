@@ -9,8 +9,9 @@ import Foundation
 ///
 /// Like `JSON.parse`, a duplicate key keeps its last value and an overflowing
 /// number is infinite. Parsing is iterative, but releasing nested Swift arrays
-/// and dictionaries recurses, so a value nested deeper than `maxDepth`, far
-/// deeper than any Hot Updater response, is rejected before it is built.
+/// and dictionaries recurses. So a value nested deeper than `maxDepth`, far
+/// deeper than any field Hot Updater reads, is checked but not built: it
+/// parses as `NSNull`, and the text is accepted as `JSON.parse` accepts it.
 ///
 /// JavaScript compares strings by UTF-16 code units, but Swift strings
 /// compare canonically: `"scope\u{212A}ey"` (Kelvin sign) equals `"scopeKey"`,
@@ -25,7 +26,7 @@ enum StrictJson {
     /// Starts every escaped key. A key that starts with it is escaped too.
     private static let escapedKeyPrefix = "\u{E000}"
 
-    /// The deepest nesting of arrays and objects a parsed value may have.
+    /// The deepest nesting of arrays and objects that is built.
     static let maxDepth = 128
 
     /// The object key under which `key` is stored.
@@ -110,19 +111,24 @@ enum StrictJson {
 
     private final class Container {
         let isObject: Bool
+        /// Past `maxDepth`: checked, but neither built nor kept.
+        let discards: Bool
         var object: [String: Any] = [:]
         var array: [Any] = []
         var key = ""
 
-        init(isObject: Bool) {
+        init(isObject: Bool, depth: Int) {
             self.isObject = isObject
+            discards = depth >= StrictJson.maxDepth
         }
 
         var value: Any {
-            isObject ? object : array
+            if discards { return NSNull() }
+            return isObject ? object : array
         }
 
         func add(_ value: Any) {
+            if discards { return }
             if isObject {
                 object[key] = value
             } else {
@@ -159,28 +165,26 @@ enum StrictJson {
                     let value: Any
                     switch peek() {
                     case UInt8(ascii: "{"):
-                        guard containers.count < StrictJson.maxDepth else { return nil }
                         index += 1
                         skipWhitespace()
                         if peek() == UInt8(ascii: "}") {
                             index += 1
                             value = [String: Any]()
                         } else {
-                            let container = Container(isObject: true)
+                            let container = Container(isObject: true, depth: containers.count)
                             guard let key = member() else { return nil }
                             container.key = key
                             containers.append(container)
                             continue
                         }
                     case UInt8(ascii: "["):
-                        guard containers.count < StrictJson.maxDepth else { return nil }
                         index += 1
                         skipWhitespace()
                         if peek() == UInt8(ascii: "]") {
                             index += 1
                             value = [Any]()
                         } else {
-                            containers.append(Container(isObject: false))
+                            containers.append(Container(isObject: false, depth: containers.count))
                             continue
                         }
                     case UInt8(ascii: "\""):
