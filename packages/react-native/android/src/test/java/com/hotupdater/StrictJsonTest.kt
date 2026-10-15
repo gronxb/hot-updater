@@ -12,8 +12,17 @@ import org.junit.Test
 
 class StrictJsonTest {
     @Test
-    fun `deep nesting parses as JSON parse accepts it`() {
-        fun nested(depth: Int) = "[".repeat(depth) + "]".repeat(depth)
+    fun `deep nesting parses as JSON parse accepts it, built only to the build depth`() {
+        fun nested(
+            depth: Int,
+            inner: String = "1",
+        ) = "[".repeat(depth) + inner + "]".repeat(depth)
+        var value: Any? = StrictJson.parse(nested(StrictJson.MAX_BUILD_DEPTH))
+        repeat(StrictJson.MAX_BUILD_DEPTH) { value = (value as JSONArray).get(0) }
+        assertEquals(1, (value as Number).toInt())
+        value = StrictJson.parse(nested(StrictJson.MAX_BUILD_DEPTH + 1))
+        repeat(StrictJson.MAX_BUILD_DEPTH) { value = (value as JSONArray).get(0) }
+        assertSame(JSONObject.NULL, value)
         assertNotNull(StrictJson.parse(nested(60_000)))
         assertNotNull(StrictJson.parse("{\"a\":".repeat(60_000) + "1" + "}".repeat(60_000)))
         assertNull(StrictJson.parse("[".repeat(60_000) + "1," + "]".repeat(60_000)))

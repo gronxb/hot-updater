@@ -9,9 +9,15 @@ import org.json.JSONObject
  * keys, trailing commas, and other non-JSON syntax, and Android's
  * `JSONObject` rejects a number that overflows to infinity, which `JSON.parse`
  * accepts, so update responses are parsed here instead. Iterative, so deep
- * nesting cannot overflow the stack.
+ * nesting cannot overflow the stack. A value nested deeper than
+ * [MAX_BUILD_DEPTH], far deeper than any field Hot Updater reads, is checked
+ * but not built, as on iOS: it parses as `JSONObject.NULL`, so a deep unknown
+ * field costs no memory beyond the text.
  */
 internal object StrictJson {
+    /** The deepest nesting of arrays and objects that is built. */
+    const val MAX_BUILD_DEPTH = 128
+
     /**
      * Stands for a number that overflows to infinity, which `JSONObject`
      * cannot hold. It is neither a number, a string, nor null, so a known
@@ -46,6 +52,12 @@ internal object StrictJson {
             }
         }
 
+        /** [create] within the build depth; past it, a placeholder that keeps nothing. */
+        private fun buildable(
+            depth: Int,
+            create: () -> Any,
+        ): Any = if (depth >= MAX_BUILD_DEPTH) JSONObject.NULL else create()
+
         fun build(): Any {
             val containers = ArrayDeque<Container>()
             var expectValue = true
@@ -61,7 +73,7 @@ internal object StrictJson {
                                     index++
                                     JSONObject()
                                 } else {
-                                    containers.addLast(Container(JSONObject()).apply { key = member() })
+                                    containers.addLast(Container(buildable(containers.size) { JSONObject() }).apply { key = member() })
                                     continue
                                 }
                             }
@@ -73,7 +85,7 @@ internal object StrictJson {
                                     index++
                                     JSONArray()
                                 } else {
-                                    containers.addLast(Container(JSONArray()))
+                                    containers.addLast(Container(buildable(containers.size) { JSONArray() }))
                                     continue
                                 }
                             }
