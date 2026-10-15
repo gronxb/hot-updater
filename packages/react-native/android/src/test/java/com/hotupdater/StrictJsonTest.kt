@@ -4,12 +4,22 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class StrictJsonTest {
+    @Test
+    fun `a value nested deeper than the limit is rejected`() {
+        fun nested(depth: Int) = "[".repeat(depth) + "]".repeat(depth)
+        assertNotNull(StrictJson.parse(nested(StrictJson.MAX_DEPTH)))
+        assertNull(StrictJson.parse(nested(StrictJson.MAX_DEPTH + 1)))
+        assertNull(StrictJson.parse(nested(60_000)))
+        assertNull(StrictJson.parse("{\"a\":".repeat(60_000) + "1" + "}".repeat(60_000)))
+    }
+
     @Test
     fun `accepts what JSON parse accepts`() {
         listOf(

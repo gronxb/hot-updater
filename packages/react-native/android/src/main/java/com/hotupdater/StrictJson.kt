@@ -8,10 +8,14 @@ import org.json.JSONObject
  * `org.json` values. `org.json` also accepts comments, single quotes, unquoted
  * keys, trailing commas, and other non-JSON syntax, and Android's
  * `JSONObject` rejects a number that overflows to infinity, which `JSON.parse`
- * accepts, so update responses are parsed here instead. Iterative, so deep
- * nesting cannot overflow the stack.
+ * accepts, so update responses are parsed here instead. Iterative, and a
+ * value nested deeper than [MAX_DEPTH], far deeper than any Hot Updater
+ * response, is rejected, as on iOS, where releasing a deep value recurses.
  */
 internal object StrictJson {
+    /** The deepest nesting of arrays and objects a parsed value may have. */
+    const val MAX_DEPTH = 128
+
     /**
      * Stands for a number that overflows to infinity, which `JSONObject`
      * cannot hold. It is neither a number, a string, nor null, so a known
@@ -215,6 +219,7 @@ internal object StrictJson {
                 if (expectValue) {
                     when (peek()) {
                         '{' -> {
+                            if (containers.size >= MAX_DEPTH) return false
                             index++
                             skipWhitespace()
                             if (peek() == '}') {
@@ -227,6 +232,7 @@ internal object StrictJson {
                         }
 
                         '[' -> {
+                            if (containers.size >= MAX_DEPTH) return false
                             index++
                             skipWhitespace()
                             if (peek() == ']') {
