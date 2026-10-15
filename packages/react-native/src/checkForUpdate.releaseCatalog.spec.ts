@@ -514,6 +514,48 @@ describe("checkForUpdate Release catalog protocol", () => {
     ]);
   });
 
+  it("does not report adopting a staged bundle's Release as UNCHANGED", async () => {
+    const staged: PersistedSelectionReceipt = {
+      catalogId: CATALOG_ID,
+      bundleId: TARGET_BUNDLE_ID,
+      catalogHash: `sha256:${"b".repeat(64)}`,
+      channel: CHANNEL,
+      generation: 1,
+      kind: "BUNDLE",
+      releaseId: MINIMUM_RELEASE_ID,
+      scopeKey: SCOPE_KEY,
+      selectionContextHash: "old-context",
+    };
+    // React Native still runs CURRENT_BUNDLE_ID; the target is only staged.
+    mocks.getBundleId.mockReturnValueOnce(CURRENT_BUNDLE_ID);
+    mocks.getActiveUpdateState.mockReturnValueOnce({
+      activeSelection: staged,
+      highestSeenCatalogs: {},
+      stableSelection: null,
+      verificationPending: true,
+    });
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const events = await recordPluginEvents();
+    const { client } = createClient();
+
+    const result = await checkForUpdate({
+      emit,
+      client,
+      updateStrategy: "appVersion",
+    });
+    expect(result?.transitionKind).toBe("ADOPT_RELEASE");
+    await expect(result?.updateBundle()).resolves.toBe(true);
+
+    expect(mocks.commitReleaseSelection).toHaveBeenCalled();
+    expect(
+      events.some(
+        ([name, payload]) =>
+          name === "onUpdateCheck" &&
+          (payload as { status?: string }).status === "UNCHANGED",
+      ),
+    ).toBe(false);
+  });
+
   it("selects a lower-id Release when explicitly switching scopes", async () => {
     const betaChannel = "beta";
     const betaScopeKey = createReleaseCatalogScopeKey({

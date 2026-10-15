@@ -8,30 +8,67 @@ import Foundation
 /// infinity, so update responses are parsed here instead.
 ///
 /// Like `JSON.parse`, a duplicate key keeps its last value and an overflowing
-/// number is infinite. A Swift string cannot hold an unpaired surrogate, so
-/// one becomes U+FFFD where `JSON.parse` keeps it. Iterative, so deep nesting
-/// cannot overflow the stack.
+/// number is infinite. Iterative, so deep nesting cannot overflow the stack.
 ///
-/// JavaScript compares object keys by UTF-16 code units, but Swift strings
-/// compare canonically: `"scope\u{212A}ey"` (Kelvin sign) equals `"scopeKey"`.
-/// So an object key that is not its own canonical decomposition, where two
-/// different keys could compare equal, is stored escaped. Lookups by plain
-/// names then match only that exact key; `originalKey` recovers the escaped
-/// one.
+/// JavaScript compares strings by UTF-16 code units, but Swift strings
+/// compare canonically: `"scope\u{212A}ey"` (Kelvin sign) equals `"scopeKey"`,
+/// and a Swift string cannot hold an unpaired surrogate at all. So a string
+/// whose code units Swift would not keep apart is stored escaped: an object key
+/// that is not its own canonical decomposition, and any key or value with an
+/// unpaired surrogate. Escaped strings stay as distinct as `JSON.parse` keeps
+/// them. Lookups by plain names match only that exact key; `originalKey`
+/// recovers the text of an escaped key or value, an unpaired surrogate as
+/// U+FFFD.
 enum StrictJson {
     /// Starts every escaped key. A key that starts with it is escaped too.
     private static let escapedKeyPrefix = "\u{E000}"
 
     /// The object key under which `key` is stored.
     static func storedKey(_ key: String) -> String {
-        if !key.hasPrefix(escapedKeyPrefix),
+        storedKey(Array(key.utf16))
+    }
+
+    private static func storedKey(_ units: [UInt16]) -> String {
+        let key = String(decoding: units, as: UTF16.self)
+        if !needsEscape(units),
            key.utf16.elementsEqual(key.decomposedStringWithCanonicalMapping.utf16) {
             return key
         }
-        return escapedKeyPrefix + key.utf16.map { String(format: "%04x", $0) }.joined()
+        return escaped(units)
     }
 
-    /// The key as the JSON text spelled it, for a key read from a parsed object.
+    /// The string value under which `units` is stored.
+    private static func storedValue(_ units: [UInt16]) -> String {
+        needsEscape(units) ? escaped(units) : String(decoding: units, as: UTF16.self)
+    }
+
+    /// Whether a Swift string would lose `units`, or they could be mistaken
+    /// for an escaped string.
+    private static func needsEscape(_ units: [UInt16]) -> Bool {
+        if units.first == 0xE000 { return true }
+        var index = 0
+        while index < units.count {
+            let unit = units[index]
+            if (0xD800...0xDBFF).contains(unit) {
+                guard index + 1 < units.count, (0xDC00...0xDFFF).contains(units[index + 1]) else {
+                    return true
+                }
+                index += 2
+            } else if (0xDC00...0xDFFF).contains(unit) {
+                return true
+            } else {
+                index += 1
+            }
+        }
+        return false
+    }
+
+    private static func escaped(_ units: [UInt16]) -> String {
+        escapedKeyPrefix + units.map { String(format: "%04x", $0) }.joined()
+    }
+
+    /// The text the JSON spelled, for a key or string value read from a parsed
+    /// value; an unpaired surrogate becomes U+FFFD.
     static func originalKey(_ storedKey: String) -> String {
         guard storedKey.hasPrefix(escapedKeyPrefix) else { return storedKey }
         let hex = Array(storedKey.dropFirst(escapedKeyPrefix.count))
@@ -70,7 +107,7 @@ enum StrictJson {
 
         func add(_ value: Any) {
             if isObject {
-                object[StrictJson.storedKey(key)] = value
+                object[key] = value
             } else {
                 array.append(value)
             }
@@ -128,8 +165,8 @@ enum StrictJson {
                             continue
                         }
                     case UInt8(ascii: "\""):
-                        guard let string = string() else { return nil }
-                        value = string
+                        guard let units = string() else { return nil }
+                        value = StrictJson.storedValue(units)
                     case UInt8(ascii: "t"):
                         guard literal("true") else { return nil }
                         value = NSNumber(value: true)
@@ -174,16 +211,17 @@ enum StrictJson {
             }
         }
 
-        /// An object member's key and colon; its value comes next.
+        /// An object member's stored key and colon; its value comes next.
         private mutating func member() -> String? {
             guard peek() == UInt8(ascii: "\""), let key = string() else { return nil }
             skipWhitespace()
             guard peek() == UInt8(ascii: ":") else { return nil }
             index += 1
-            return key
+            return StrictJson.storedKey(key)
         }
 
-        private mutating func string() -> String? {
+        /// A string's UTF-16 code units, as JSON.parse keeps them.
+        private mutating func string() -> [UInt16]? {
             index += 1
             var units: [UInt16] = []
             var runStart = index
@@ -198,7 +236,7 @@ enum StrictJson {
                 if byte == UInt8(ascii: "\"") {
                     flush(index)
                     index += 1
-                    return String(decoding: units, as: UTF16.self)
+                    return units
                 }
                 if byte < 0x20 { return nil }
                 if byte != UInt8(ascii: "\\") {

@@ -209,6 +209,26 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func adoptingAStagedBundlesReleaseDoesNotReportItUnchanged() async throws {
+        let host = FakeUpdateHost()
+        // React Native runs bundle 1; bundle 2 is staged for the next launch.
+        host.bundleIdValue = bundle1
+        host.active = receipt(release2, bundle2, generation: 1)
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(generation: 2, releases: [descriptor(release3, bundle2, force: true)])
+        )
+        let checker = makeChecker(host, transport)
+
+        let update = try #require(try await checker.checkForUpdate(options()))
+        #expect(update.transitionKind == "ADOPT_RELEASE")
+        #expect(try await update.updateBundle())
+
+        #expect(host.committedParams.count == 1)
+        let payloads = host.events().compactMap { $0["payload"] as? [String: Any] }
+        #expect(payloads.map { $0["status"] as? String } == ["UPDATE_AVAILABLE"])
+    }
+
+    @Test
     func rollbackToBuiltInCommits() async throws {
         let host = FakeUpdateHost()
         host.bundleIdValue = bundle1
@@ -1500,10 +1520,11 @@ struct HTTPArtifactFileResolverTests {
             #"{"files":{"a.png":{"url":"https://cdn.example.com/a.png",}}}"#,
             #"{"files":{"a.png":{"url":1}}}"#,
         ]
-        for body in bodies {
-            FilesBodyURLProtocol.body.value = body
+        for (index, body) in bodies.enumerated() {
+            let filesUrl = URL(string: "https://updates.example.com/artifacts/v2/strict-\(index)/files")!
+            FilesBodyURLProtocol.serve(body, at: filesUrl)
             let resolver = HTTPArtifactFileResolver(
-                filesUrl: URL(string: "https://updates.example.com/artifacts/v2/b/files")!,
+                filesUrl: filesUrl,
                 headers: [:],
                 protocolClasses: [FilesBodyURLProtocol.self]
             )
@@ -1515,9 +1536,13 @@ struct HTTPArtifactFileResolverTests {
     func aFilesResponseResolvesAPathThatIsNotItsOwnDecomposition() throws {
         // "한글.png" in NFC: Swift compares it canonically, JSON.parse by code units.
         let path = "assets/\u{D55C}\u{AE00}.png"
-        FilesBodyURLProtocol.body.value = #"{"files":{"\#(path)":{"url":"https://cdn.example.com/k.png","compression":"br"}}}"#
+        let filesUrl = URL(string: "https://updates.example.com/artifacts/v2/nfc/files")!
+        FilesBodyURLProtocol.serve(
+            #"{"files":{"\#(path)":{"url":"https://cdn.example.com/k.png","compression":"br"}}}"#,
+            at: filesUrl
+        )
         let resolver = HTTPArtifactFileResolver(
-            filesUrl: URL(string: "https://updates.example.com/artifacts/v2/b/files")!,
+            filesUrl: filesUrl,
             headers: [:],
             protocolClasses: [FilesBodyURLProtocol.self]
         )
@@ -1558,9 +1583,23 @@ struct HTTPArtifactFileResolverTests {
     }
 }
 
-/// Answers 200 with `body`.
+/// Answers 200 with the body served at the request's URL. Tests run in
+/// parallel, so each serves its own URL.
 private final class FilesBodyURLProtocol: URLProtocol {
-    static let body = LockedValue("")
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var bodies: [URL: String] = [:]
+
+    static func serve(_ body: String, at url: URL) {
+        lock.lock()
+        bodies[url] = body
+        lock.unlock()
+    }
+
+    private static func body(at url: URL?) -> String {
+        lock.lock()
+        defer { lock.unlock() }
+        return url.flatMap { bodies[$0] } ?? ""
+    }
 
     override class func canInit(with _: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -1568,7 +1607,7 @@ private final class FilesBodyURLProtocol: URLProtocol {
     override func startLoading() {
         let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: "HTTP/1.1", headerFields: [:])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: Data(Self.body.value.utf8))
+        client?.urlProtocol(self, didLoad: Data(Self.body(at: request.url).utf8))
         client?.urlProtocolDidFinishLoading(self)
     }
 

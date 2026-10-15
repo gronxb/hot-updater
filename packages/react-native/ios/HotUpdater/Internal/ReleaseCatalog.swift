@@ -522,7 +522,8 @@ private func parseReleaseDescriptor(_ value: Any) -> ReleaseCatalogDescriptor? {
         guard let text = jsonString(value) else {
             return nil
         }
-        message = text
+        // Shown to the user, so as the JSON spelled it.
+        message = StrictJson.originalKey(text)
     }
 
     return ReleaseCatalogDescriptor(

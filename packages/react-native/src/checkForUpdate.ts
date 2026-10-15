@@ -365,7 +365,13 @@ async function checkForReleaseCatalogUpdate(input: {
         guard,
         selection: receipt,
       });
-      if (committed && transitionKind === "ADOPT_RELEASE") {
+      // Only the running bundle is unchanged: adopting a staged bundle's
+      // newer Release leaves it to report itself when it launches.
+      if (
+        committed &&
+        transitionKind === "ADOPT_RELEASE" &&
+        desired.bundleId === input.currentBundleId
+      ) {
         options.emit("onUpdateCheck", () => ({
           status: "UNCHANGED",
           channel: receipt.channel,
