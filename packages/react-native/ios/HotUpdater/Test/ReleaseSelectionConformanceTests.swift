@@ -215,6 +215,18 @@ struct ReleaseSelectionConformanceTests {
     }
 
     @Test
+    func aValueNestedDeeperThanTheLimitIsRejectedWithoutBuildingIt() {
+        func nested(_ depth: Int) -> String {
+            String(repeating: "[", count: depth) + String(repeating: "]", count: depth)
+        }
+        #expect(StrictJson.parse(nested(StrictJson.maxDepth)) != nil)
+        #expect(StrictJson.parse(nested(StrictJson.maxDepth + 1)) == nil)
+        // Releasing a value this deep would overflow the stack.
+        #expect(StrictJson.parse(nested(60_000)) == nil)
+        #expect(StrictJson.parse(String(repeating: "{\"a\":", count: 60_000) + "1" + String(repeating: "}", count: 60_000)) == nil)
+    }
+
+    @Test
     func objectKeysCompareByCodeUnitsAsInJavaScript() throws {
         let text = "{\"scopeKey\":1,\"scope\\u212aey\":2,\"\\u00e9\":3,\"e\\u0301\":4}"
         let object = try #require(StrictJson.parse(text) as? [String: Any])

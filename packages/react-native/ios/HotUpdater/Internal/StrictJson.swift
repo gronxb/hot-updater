@@ -8,7 +8,9 @@ import Foundation
 /// infinity, so update responses are parsed here instead.
 ///
 /// Like `JSON.parse`, a duplicate key keeps its last value and an overflowing
-/// number is infinite. Iterative, so deep nesting cannot overflow the stack.
+/// number is infinite. Parsing is iterative, but releasing nested Swift arrays
+/// and dictionaries recurses, so a value nested deeper than `maxDepth`, far
+/// deeper than any Hot Updater response, is rejected before it is built.
 ///
 /// JavaScript compares strings by UTF-16 code units, but Swift strings
 /// compare canonically: `"scope\u{212A}ey"` (Kelvin sign) equals `"scopeKey"`,
@@ -22,6 +24,9 @@ import Foundation
 enum StrictJson {
     /// Starts every escaped key. A key that starts with it is escaped too.
     private static let escapedKeyPrefix = "\u{E000}"
+
+    /// The deepest nesting of arrays and objects a parsed value may have.
+    static let maxDepth = 128
 
     /// The object key under which `key` is stored.
     static func storedKey(_ key: String) -> String {
@@ -154,6 +159,7 @@ enum StrictJson {
                     let value: Any
                     switch peek() {
                     case UInt8(ascii: "{"):
+                        guard containers.count < StrictJson.maxDepth else { return nil }
                         index += 1
                         skipWhitespace()
                         if peek() == UInt8(ascii: "}") {
@@ -167,6 +173,7 @@ enum StrictJson {
                             continue
                         }
                     case UInt8(ascii: "["):
+                        guard containers.count < StrictJson.maxDepth else { return nil }
                         index += 1
                         skipWhitespace()
                         if peek() == UInt8(ascii: "]") {
