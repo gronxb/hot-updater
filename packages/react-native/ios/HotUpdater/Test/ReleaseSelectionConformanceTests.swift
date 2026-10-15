@@ -212,6 +212,9 @@ struct ReleaseSelectionConformanceTests {
         let catalog = try #require(parseReleaseCatalog(patched, expectedScope: scopeInput(valid["expectedScope"] as! [String: Any])))
         // targetCohorts holds their text; the distinct-cohort limit counts their code units.
         #expect(catalog.releases.first?.targetCohorts == ["\u{FFFD}", "\u{FFFD}"])
+        // Neither equals any Swift string, not even U+FFFD, as JSON.parse keeps them apart.
+        let release = try #require(catalog.releases.first)
+        #expect(!isReleaseEligibleForCohort(release, cohort: "\u{FFFD}"))
     }
 
     @Test
