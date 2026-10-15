@@ -15,21 +15,40 @@ export interface UpdateBundleParams {
   manifestFileHash: string;
   /** Optional tar.br URL; integrity and sizes come from the verified manifest. */
   archiveUrl?: string | null;
-  /**
-   * Target file descriptors: every file with its URL in artifact protocol v1,
-   * or only the Hermes patch in v2, where native asks `filesUrl`.
-   */
+  /** Every target file with its download URL and optional Hermes patch. */
   assets: UnsafeObject;
   /**
-   * Artifact protocol v2: where native POSTs the paths of the files it
-   * downloads one by one, after reusing local files and choosing the archive.
+   * Legacy: JavaScript from the first artifact protocol v2 SDK sends these
+   * here, with only the Hermes patch in `assets`, and apps may pass them to
+   * `updateBundle` as that release documented. Native keeps accepting them so
+   * such OTA Bundles still install. The update check sends them to
+   * `installArtifact`.
    */
   filesUrl?: string | null;
+  requestHeaders?: UnsafeObject | null;
+  requestTimeout?: number | null;
+  /** Full Release Catalog selection receipt committed with the staged Bundle. */
+  selection?: UnsafeObject | null;
+}
+
+/**
+ * Artifact protocol v2: no URL per file. Native reuses local files, chooses
+ * the archive or files, and POSTs the paths it downloads one by one to
+ * `filesUrl` for their URLs.
+ */
+export interface InstallArtifactParams {
+  bundleId: string;
+  channel?: string;
+  manifestUrl: string;
+  manifestFileHash: string;
+  archiveUrl?: string | null;
+  /** The Hermes bytecode patch from the running Bundle, with its `assetPath`. */
+  patch?: UnsafeObject | null;
+  filesUrl: string;
   /** Headers for the `filesUrl` request, as the update check sent them. */
   requestHeaders?: UnsafeObject | null;
   /** Milliseconds the `filesUrl` request may take, as the update check's. */
   requestTimeout?: number | null;
-  /** Full Release Catalog selection receipt committed with the staged Bundle. */
   selection?: UnsafeObject | null;
 }
 
@@ -89,6 +108,13 @@ export interface Spec extends TurboModule {
    *   "connection", "offline", or "cancelled".
    */
   updateBundle(params: UpdateBundleParams): Promise<UnsafeObject>;
+
+  /**
+   * Stages a Bundle over artifact protocol v2 and resolves like
+   * `updateBundle`. Native built from an SDK older than protocol v2 lacks
+   * it, so JS checks for it before asking the server for v2.
+   */
+  installArtifact(params: InstallArtifactParams): Promise<UnsafeObject>;
 
   /** Accepts and durably advances the catalog high-water for a scope. */
   acceptReleaseCatalog(params: UnsafeObject): boolean;

@@ -145,6 +145,17 @@ Run `pnpm -w build` before
 
 Ready to contribute your changes back? Follow this checklist before submitting your PR.
 
+### OTA compatibility between patches
+
+Patch releases of one minor (such as 1.0.x) may change native code, the server, and the database, but an OTA between any two of them must keep working. An OTA replaces only JavaScript, so with the `appVersion` strategy a patch's JavaScript runs on another patch's native code, older or newer, and both talk to a server from yet another patch.
+
+- App usage does not change in a patch: `HotUpdater.init`, `checkForUpdate`, `updateBundle`, `reload`, and their options keep their signatures and behavior.
+- The JavaScript↔native bridge only grows. A new contract is a new native method that JavaScript detects (`typeof HotUpdaterNative.method === "function"`) and falls back from. Never change what an existing method's parameters mean.
+- Native keeps accepting every parameter shape a released JavaScript sent, marked `Legacy:`. iOS new-architecture codegen drops fields missing from the TurboModule spec, so such fields stay optional in `packages/react-native/src/specs/NativeHotUpdater.ts` and are omitted from the public JavaScript types.
+- The server keeps every route and response shape a released SDK calls, such as `/artifacts/v1` beside v2. A new protocol is a new route the SDK falls back from on 404.
+- Database changes ship as migrations, after which the server still answers every released SDK.
+- Before merging a change to the bridge or the update protocol, check both directions: this JavaScript on the previous patch's native code, and the previous patch's JavaScript on this native code.
+
 ### PR Preparation Checklist
 
 1. **Format and Lint**
