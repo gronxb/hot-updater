@@ -35,6 +35,7 @@ import {
   isReleaseSelectionCurrent,
   isChannelSwitched,
   stageBundle,
+  supportsArtifactFiles,
 } from "./native";
 import { hotUpdaterStore } from "./store";
 import { classifyUpdateError, InvalidUpdateResponseError } from "./updateError";
@@ -378,6 +379,7 @@ async function checkForReleaseCatalogUpdate(input: {
     }
 
     const artifact = await session.resolveArtifact({
+      artifactProtocol: supportsArtifactFiles() ? 2 : 1,
       currentBundleId: input.currentBundleId,
       requestHeaders: options.requestHeaders,
       requestTimeout: options.requestTimeout,
@@ -386,27 +388,30 @@ async function checkForReleaseCatalogUpdate(input: {
     if (!isReleaseSelectionCurrent(guard)) {
       throw new StaleReleaseCatalogError();
     }
-    const delivery = await stageBundle({
-      assets: artifact.assets,
+    const staging = {
       bundleId: desired.bundleId,
       channel: input.targetChannel,
       manifestFileHash: artifact.manifestFileHash,
       manifestUrl: artifact.manifestUrl,
       ...(artifact.archiveUrl ? { archiveUrl: artifact.archiveUrl } : {}),
-      ...(artifact.filesUrl
+      selection: receipt,
+      shouldSkipCurrentBundleIdCheck: true,
+      status: desired.status,
+    };
+    const delivery = await stageBundle(
+      "filesUrl" in artifact
         ? {
+            ...staging,
             filesUrl: artifact.filesUrl,
+            ...(artifact.patch ? { patch: artifact.patch } : {}),
             ...(options.requestHeaders
               ? { requestHeaders: options.requestHeaders }
               : {}),
             requestTimeout:
               options.requestTimeout ?? DEFAULT_REQUEST_TIMEOUT_MS,
           }
-        : {}),
-      selection: receipt,
-      shouldSkipCurrentBundleIdCheck: true,
-      status: desired.status,
-    });
+        : { ...staging, assets: artifact.assets },
+    );
     if (delivery !== null && desired.bundleId !== input.currentBundleId) {
       options.emit("onBundleDownloaded", () => ({
         channel: input.targetChannel,
