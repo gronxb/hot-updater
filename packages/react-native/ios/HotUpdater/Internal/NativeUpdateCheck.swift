@@ -1059,14 +1059,15 @@ final class NativeUpdateChecker {
         let currentChannel = isSwitched ? nativeChannel : defaultChannel
         let explicitChannel = options.channel.flatMap { $0.isEmpty ? nil : $0 }
         let targetChannel = explicitChannel ?? currentChannel
+        // A check that cannot start, with an invalid cohort, no app version, or
+        // another channel while the runtime channel is switched, throws without
+        // onUpdateError: checkForUpdate.ts reports these only to onError.
         let cohort = try Self.normalizeAndValidateCohort(host.cohort())
 
         guard let currentAppVersion, !currentAppVersion.isEmpty else {
             throw NativeUpdateCheckError.hotUpdater("Failed to get app version")
         }
 
-        // A call the check refuses, not an update failure: it throws without
-        // onUpdateError, as checkForUpdate.ts does.
         if isSwitched, let explicitChannel, explicitChannel != currentChannel {
             throw NativeUpdateCheckError.hotUpdater(
                 "Runtime channel is already switched to \"\(currentChannel)\". Call hotUpdater.resetChannel() before checking \"\(explicitChannel)\"."

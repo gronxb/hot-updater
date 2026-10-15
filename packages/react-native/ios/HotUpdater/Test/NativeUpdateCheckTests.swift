@@ -332,6 +332,19 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func aCheckWithNoAppVersionThrowsWithoutReporting() async throws {
+        let host = FakeUpdateHost()
+        host.appVersion = nil
+        let transport = FakeUpdateTransport.serving(catalog: catalog(releases: []))
+        let checker = makeChecker(host, transport)
+
+        await #expect(throws: NativeUpdateCheckError.self) { _ = try await checker.checkForUpdate(options()) }
+        #expect(transport.requests.isEmpty)
+        // As checkForUpdate.ts, which passes it only to onError.
+        #expect(host.events().isEmpty)
+    }
+
+    @Test
     func explicitChannelWhileSwitchedThrows() async throws {
         let host = FakeUpdateHost()
         host.channelValue = "beta"

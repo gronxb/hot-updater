@@ -1148,6 +1148,20 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `a check with no app version throws without reporting`() =
+        runBlocking {
+            val state = FakeState().apply { appVersionName = null }
+            val transport = FakeTransport(routes(catalog(emptyList())))
+
+            val error = runCatching { NativeUpdateChecker(state, transport).checkForUpdate(OPTIONS) }.exceptionOrNull()
+
+            assertTrue(error is IllegalStateException)
+            assertTrue(transport.requests.isEmpty())
+            // As checkForUpdate.ts, which passes it only to onError.
+            assertTrue(state.events().isEmpty())
+        }
+
+    @Test
     fun `an explicit channel while the channel is switched is an error`() =
         runBlocking {
             val state = FakeState().apply { channelName = "beta" }

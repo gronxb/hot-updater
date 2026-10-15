@@ -396,14 +396,15 @@ internal class NativeUpdateChecker(
         val currentChannel = if (isSwitched) runtimeChannel else defaultChannel
         val explicitChannel = options.channel?.takeIf { it.isNotEmpty() }
         val targetChannel = explicitChannel ?: currentChannel
+        // A check that cannot start, with an invalid cohort, no app version, or
+        // another channel while the runtime channel is switched, throws without
+        // onUpdateError: checkForUpdate.ts reports these only to onError.
         val cohort = normalizeAndValidateCohort(state.getCohort())
 
         if (currentAppVersion.isNullOrEmpty()) {
             throw IllegalStateException("Failed to get app version")
         }
 
-        // A call the check refuses, not an update failure: it throws without
-        // onUpdateError, as checkForUpdate.ts does.
         if (isSwitched && explicitChannel != null && explicitChannel != currentChannel) {
             throw IllegalStateException(
                 "Runtime channel is already switched to \"$currentChannel\". " +
