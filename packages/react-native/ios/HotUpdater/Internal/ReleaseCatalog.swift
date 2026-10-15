@@ -50,9 +50,14 @@ struct ReleaseCatalogDescriptor {
     let kind: SelectionKind
     let bundleId: String?
     let rolloutCohortCount: Int
+    /// The target cohorts' text, an unpaired surrogate as U+FFFD.
     let targetCohorts: [String]
     let shouldForceUpdate: Bool
     let message: String?
+    /// The target cohorts a device cohort can equal, when not all of
+    /// `targetCohorts`: one with an unpaired surrogate equals no Swift
+    /// string, as `JSON.parse` keeps it apart from every valid cohort.
+    var matchableTargetCohorts: [String]? = nil
 }
 
 struct ReleaseCatalog {
@@ -502,11 +507,15 @@ private func parseReleaseDescriptor(_ value: Any) -> ReleaseCatalogDescriptor? {
         return nil
     }
     var targetCohorts = [String]()
+    var matchableTargetCohorts = [String]()
     for entry in cohortEntries {
         guard let cohort = jsonString(entry) else {
             return nil
         }
         targetCohorts.append(cohort)
+        if !(entry is StrictJson.UnpairedString) {
+            matchableTargetCohorts.append(cohort)
+        }
     }
     let message: String?
     switch descriptor["message"] {
@@ -526,7 +535,8 @@ private func parseReleaseDescriptor(_ value: Any) -> ReleaseCatalogDescriptor? {
         rolloutCohortCount: Int(rolloutCohortCount),
         targetCohorts: targetCohorts,
         shouldForceUpdate: shouldForceUpdate,
-        message: message
+        message: message,
+        matchableTargetCohorts: matchableTargetCohorts.count == targetCohorts.count ? nil : matchableTargetCohorts
     )
 }
 
