@@ -1,7 +1,5 @@
-// Writes src/hotUpdaterBuildConfig.js from the environment before Metro
-// resolves App.tsx, for every bundle this project produces.
-require('./hot-updater-build-config.cjs');
-
+const { createHash } = require('crypto');
+const { existsSync, readFileSync } = require('fs');
 const path = require('path');
 const { getDefaultConfig, mergeConfig } = require('@react-native/metro-config');
 
@@ -23,6 +21,14 @@ const monorepoRoot = path.resolve(__dirname, '../../..');
 const projectModules = ['react', 'react-native', '@babel/runtime'];
 const projectEntry = path.join(__dirname, 'index.js');
 
+// babel.config.js inlines values from .env.hotupdater into the bundle. Metro
+// caches transformed files by their own content, so key the cache on the env
+// file too, or a changed value would not reach the next bundle.
+const envFilePath = path.join(__dirname, '.env.hotupdater');
+const envFileHash = createHash('sha1')
+  .update(existsSync(envFilePath) ? readFileSync(envFilePath) : '')
+  .digest('hex');
+
 /**
  * Metro configuration
  * https://reactnative.dev/docs/metro
@@ -30,6 +36,7 @@ const projectEntry = path.join(__dirname, 'index.js');
  * @type {import('@react-native/metro-config').MetroConfig}
  */
 const config = {
+  cacheVersion: envFileHash,
   watchFolders: [monorepoRoot],
   resolver: {
     resolveRequest: (context, moduleName, platform) => {

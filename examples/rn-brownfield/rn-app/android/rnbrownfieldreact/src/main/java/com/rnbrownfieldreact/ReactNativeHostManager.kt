@@ -4,6 +4,8 @@ import android.app.Application
 import com.callstack.reactnativebrownfield.OnJSBundleLoaded
 import com.callstack.reactnativebrownfield.ReactNativeBrownfield
 import com.facebook.react.PackageList
+import com.facebook.react.ReactInstanceEventListener
+import com.facebook.react.bridge.ReactContext
 import com.hotupdater.HotUpdater
 
 /**
@@ -28,6 +30,26 @@ object ReactNativeHostManager {
 
         // The host is not a ReactApplication, so hand Hot Updater the brownfield
         // ReactHost: `hotUpdater.reload()` swaps the bundle on it and reloads.
-        HotUpdater.setReactHost(ReactNativeBrownfield.shared.reactHost)
+        val reactHost = ReactNativeBrownfield.shared.reactHost
+        HotUpdater.setReactHost(reactHost)
+
+        // That reload restarts the surface the host's activity already shows.
+        // React Native reports first content only for a surface it creates, and
+        // Hot Updater completes a launch on that report (until then `wrap` keeps
+        // its fallback up, and the next process start rolls the bundle back).
+        // Recreate the activity once the reloaded instance is ready, so its new
+        // view gets a new surface.
+        reactHost.addReactInstanceEventListener(object : ReactInstanceEventListener {
+            private var initialInstance = true
+
+            override fun onReactContextInitialized(context: ReactContext) {
+                if (initialInstance) {
+                    initialInstance = false
+                    return
+                }
+                val activity = context.currentActivity ?: return
+                activity.runOnUiThread { activity.recreate() }
+            }
+        })
     }
 }

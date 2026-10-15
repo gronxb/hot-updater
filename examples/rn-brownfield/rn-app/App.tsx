@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import {
   Modal,
   Pressable,
@@ -19,6 +19,17 @@ type Props = {
 };
 
 function App({ host }: Props) {
+  // `hotUpdater.wrap` applies a forced update itself. A non-forced one it only
+  // downloads in the background, so the visit that fetched it keeps running
+  // the current bundle, and the next visit to this screen applies it: the
+  // store that remembers the download outlives the screen, the reload resets
+  // it.
+  useEffect(() => {
+    if (hotUpdater.isUpdateDownloaded()) {
+      void hotUpdater.reload();
+    }
+  }, []);
+
   return (
     <SafeAreaView style={styles.screen}>
       <View style={styles.header}>
@@ -43,20 +54,20 @@ function App({ host }: Props) {
 // fallback until the check completes.
 export default hotUpdater.wrap({
   updateStrategy: 'fingerprint',
-  fallbackComponent: ({ progress, status }) => (
-    <Modal transparent visible={true}>
-      <View style={styles.fallback}>
-        <Text style={styles.fallbackLabel}>
-          {status === 'UPDATING' ? 'Updating...' : 'Checking for update...'}
-        </Text>
-        {progress > 0 ? (
-          <Text style={styles.fallbackLabel}>
-            {Math.round(progress * 100)}%
-          </Text>
-        ) : null}
-      </View>
-    </Modal>
-  ),
+  // fallbackComponent: ({ progress, status }) => (
+  //   <Modal transparent visible={true}>
+  //     <View style={styles.fallback}>
+  //       <Text style={styles.fallbackLabel}>
+  //         {status === 'UPDATING' ? 'Updating...' : 'Checking for update...'}
+  //       </Text>
+  //       {progress > 0 ? (
+  //         <Text style={styles.fallbackLabel}>
+  //           {Math.round(progress * 100)}%
+  //         </Text>
+  //       ) : null}
+  //     </View>
+  //   </Modal>
+  // ),
 })(App);
 
 const styles = StyleSheet.create({

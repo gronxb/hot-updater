@@ -52,7 +52,7 @@ export function HotUpdaterCard() {
       <Row label="Update" value={`${Math.round(progress * 100)}%`} />
       <Row
         label="Downloaded"
-        value={isUpdateDownloaded ? 'yes, reload to apply' : 'no'}
+        value={isUpdateDownloaded ? 'yes, applies on next open' : 'no'}
       />
       <Pressable
         accessibilityRole="button"

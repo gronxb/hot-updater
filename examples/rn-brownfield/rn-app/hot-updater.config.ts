@@ -1,13 +1,13 @@
 import { existsSync } from 'node:fs';
-
 import { rock } from '@hot-updater/rock';
 import { supabaseDatabase, supabaseStorage } from '@hot-updater/supabase';
 import { defineConfig } from 'hot-updater';
 import { apiKeys, insights, remoteConfig } from 'hot-updater/plugins';
 
 // Provider credentials for the CLI (deploy, fingerprint, channel, console).
-// `hot-updater init` writes them here; the file is gitignored and nothing in
-// it reaches the app bundle (see hot-updater-build-config.cjs for what does).
+// `hot-updater init` writes them here; the file is gitignored. Of its keys,
+// only the ones src/hotUpdater.ts imports from '@env' reach the app bundle
+// (see babel.config.js).
 if (existsSync('.env.hotupdater')) {
   process.loadEnvFile('.env.hotupdater');
 }

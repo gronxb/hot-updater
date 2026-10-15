@@ -11,10 +11,11 @@ See [`../README.md`](../README.md) for the end-to-end flow.
   `HotUpdaterCard` (bundle id, channel, fingerprint, update progress, and a
   Reload button). `App.tsx` wraps the screen with `hotUpdater.wrap()`, which
   checks for an update on mount.
-- `src/hotUpdater.ts` is the `HotUpdater.init()` instance. It reads the server
-  URL and client API key from `src/hotUpdaterBuildConfig.js`, which
-  `hot-updater-build-config.cjs` generates from the environment or
-  `.env.hotupdater` whenever Metro loads `metro.config.js`.
+- `src/hotUpdater.ts` is the `HotUpdater.init()` instance. It imports the
+  server URL and client API key from `@env`, which `react-native-dotenv`
+  (`babel.config.js`) inlines from `.env.hotupdater` at bundle time;
+  `metro.config.js` keys Metro's cache on that file so edits reach the next
+  bundle.
 - `android/rnbrownfieldreact/` is the library module the
   `com.callstack.react.brownfield` Gradle plugin turns into a fat AAR
   (`com.rnbrownfieldreact:rnbrownfield:0.0.1-local`). `ReactNativeHostManager`
@@ -44,10 +45,13 @@ and the database, with the `fingerprint` update strategy. Set it up once:
    that file; it is gitignored and never bundled.
 2. Run `pnpm fingerprint` after any native change (it also runs on deploy),
    and `pnpm channel <name>` to pick the channel the artifact embeds.
-3. Package the artifacts and rebuild the hosts (`pnpm demo:android` /
-   `pnpm demo:ios` in `..`).
-4. Change the app, then `pnpm deploy:android` / `pnpm deploy:ios`. The hosts
-   download the bundle on their next launch of the React Native screen.
+3. Package the artifacts and rebuild the hosts (`pnpm android` /
+   `pnpm ios` in `..`).
+4. Change the app, then `pnpm deploy:android` / `pnpm deploy:ios`, and open
+   the React Native screen in a host: `hotUpdater.wrap()` checks on every
+   mount. A forced update is downloaded and applied before the screen shows;
+   any other is downloaded in the background while the current bundle keeps
+   running, and `App.tsx` applies it the next time the screen is opened.
 
 ### What is brownfield-specific
 
@@ -61,10 +65,17 @@ Native code, so the artifacts do that themselves:
   `ios/RnBrownfieldReact/Info.plist`, the files that ship inside the AAR and
   the XCFramework, instead of the standalone app's files.
 - Android: the library manifest is merged into the host's manifest, where the
-  SDK reads the meta-data. `ReactNativeHostManager` passes
+  SDK reads the meta-data. The fat AAR bundles the SDK's classes but not its
+  manifest, so the library manifest also declares the SDK's recovery receiver
+  and restart activity. `ReactNativeHostManager` passes
   `HotUpdater.getJSBundleFile()` as the brownfield `bundleFilePath` and calls
-  `HotUpdater.setReactHost()`, so `hotUpdater.reload()` swaps the bundle on the
-  brownfield ReactHost. The host needs no change.
+  `HotUpdater.setReactHost()`, so `hotUpdater.reload()` swaps the bundle on
+  the brownfield ReactHost. That reload restarts the surface the host's
+  activity shows, and React Native reports first content, which Hot Updater
+  waits for before it completes a launch, only for a surface it creates. So
+  the manager recreates the host's activity once the reloaded instance is
+  ready, and the new bundle renders into a new surface. The host needs no
+  change.
 - iOS: the SDK reads `Bundle.main`, which is the host app, so
   `RnBrownfieldReact.swift` reads the framework's Info.plist and hands the
   values to `HotUpdater.configure(...)`. `makeHotUpdaterBundleURLOverride()`

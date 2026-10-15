@@ -50,6 +50,7 @@
     "hermes-compiler": "250829098.0.14",
     "hot-updater": "workspace:*",
     "prettier": "2.8.8",
+    "react-native-dotenv": "^5.0.0",
     "rock": "0.15.2",
     "typescript": "^5.8.3"
   },

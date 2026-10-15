@@ -3,6 +3,22 @@
          and `hot-updater channel set` write their meta-data here (see
          `platform.android` in ../../../hot-updater.config.ts). -->
     <application>
+        <!-- The fat AAR bundles the Hot Updater SDK's classes but not its
+             manifest, so the components the SDK declares are repeated here:
+             the receiver is the crash-recovery watchdog's alarm target, and
+             the activity is the trampoline `hotUpdater.reload()` uses under
+             the default `processRestart` behavior (this app uses `reload`). -->
+        <receiver
+            android:name="com.hotupdater.HotUpdaterRecoveryReceiver"
+            android:exported="false" />
+        <activity
+            android:name="com.hotupdater.HotUpdaterRestartActivity"
+            android:excludeFromRecents="true"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:noHistory="true"
+            android:process=":hotupdater_restart"
+            android:theme="@android:style/Theme.NoDisplay" />
         <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="9f02c6724e300477141163f29b7134e4bc98bca2" />
     </application>
 </manifest>
