@@ -1,6 +1,7 @@
 import {
   type ArtifactAsset,
   type CatalogHighWater,
+  type ChangedAssetPatch,
   INVALID_COHORT_ERROR_MESSAGE,
   isValidCohort,
   normalizeCohortValue,
@@ -11,6 +12,7 @@ import { NativeEventEmitter, Platform } from "react-native";
 
 import { HotUpdaterErrorCode, isHotUpdaterError } from "./error";
 import HotUpdaterNative, {
+  type InstallArtifactParams,
   type UpdateBundleParams,
 } from "./specs/NativeHotUpdater";
 
@@ -298,6 +300,25 @@ export type UpdateParams = UpdateBundleParams & {
   shouldSkipCurrentBundleIdCheck?: boolean;
 };
 
+/** How the update check stages a Bundle over artifact protocol v2. */
+export type InstallArtifactUpdateParams = Omit<
+  InstallArtifactParams,
+  "patch"
+> & {
+  patch?: (ChangedAssetPatch & { assetPath: string }) | null;
+  status: UpdateStatus;
+  shouldSkipCurrentBundleIdCheck?: boolean;
+};
+
+/**
+ * Whether native installs artifact protocol v2. Native built from an SDK
+ * older than protocol v2 has no `installArtifact`, and an OTA can bring this
+ * JavaScript to such native code, so the update check then asks for v1.
+ */
+export const supportsArtifactFiles = (): boolean =>
+  typeof (HotUpdaterNative as { installArtifact?: unknown }).installArtifact ===
+  "function";
+
 export interface ActiveUpdateState {
   readonly activeSelection: ActiveUpdateSelection | null;
   readonly stableSelection: ActiveUpdateSelection | null;
@@ -411,7 +432,7 @@ const readBundleDelivery = (value: unknown): BundleDelivery | null => {
  * @throws {Error} Rejects with error.code from HotUpdaterErrorCode enum and error.message
  */
 export async function stageBundle(
-  params: UpdateParams,
+  params: UpdateParams | InstallArtifactUpdateParams,
 ): Promise<BundleDelivery | null> {
   const updateBundleId = params.bundleId;
   const status = params.status;
@@ -447,29 +468,45 @@ export async function stageBundle(
   if (existing) return existing;
 
   const targetChannel = params.channel;
-  const targetManifestUrl = params.manifestUrl;
-  const targetManifestFileHash = params.manifestFileHash;
-  const targetAssets = params.assets;
 
   const promise = (async () => {
     try {
       const selection = params.selection;
-      const staged = await HotUpdaterNative.updateBundle({
+      const common = {
         bundleId: updateBundleId,
         channel: targetChannel,
-        assets: targetAssets as Record<string, ArtifactAsset>,
-        manifestFileHash: targetManifestFileHash,
-        manifestUrl: targetManifestUrl,
+        manifestFileHash: params.manifestFileHash,
+        manifestUrl: params.manifestUrl,
         ...(params.archiveUrl ? { archiveUrl: params.archiveUrl } : {}),
-        ...(params.filesUrl ? { filesUrl: params.filesUrl } : {}),
-        ...(params.filesUrl && params.requestHeaders
-          ? { requestHeaders: params.requestHeaders }
-          : {}),
-        ...(params.filesUrl && params.requestTimeout
-          ? { requestTimeout: params.requestTimeout }
-          : {}),
         ...(selection === undefined ? {} : { selection }),
-      });
+      };
+      const staged =
+        "assets" in params
+          ? // Legacy: artifact protocol v1, where every file comes with its
+            // URL, and the `filesUrl` form earlier releases documented, which
+            // native `updateBundle` keeps accepting.
+            await HotUpdaterNative.updateBundle({
+              ...common,
+              assets: params.assets as Record<string, ArtifactAsset>,
+              ...(params.filesUrl ? { filesUrl: params.filesUrl } : {}),
+              ...(params.filesUrl && params.requestHeaders
+                ? { requestHeaders: params.requestHeaders }
+                : {}),
+              ...(params.filesUrl && params.requestTimeout
+                ? { requestTimeout: params.requestTimeout }
+                : {}),
+            })
+          : await HotUpdaterNative.installArtifact({
+              ...common,
+              filesUrl: params.filesUrl,
+              ...(params.patch ? { patch: params.patch } : {}),
+              ...(params.requestHeaders
+                ? { requestHeaders: params.requestHeaders }
+                : {}),
+              ...(params.requestTimeout
+                ? { requestTimeout: params.requestTimeout }
+                : {}),
+            });
       sessionState.markBundleInstalled(updateBundleId, targetChannel);
       return readBundleDelivery(staged);
     } finally {

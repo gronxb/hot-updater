@@ -125,7 +125,7 @@ refreshes in the background as soon as the catalog expires.
 
 ## Artifact responses
 
-An artifact response for protocol 2 has the target manifest's URL and hash, an
+An `/artifacts/v2` response has the target manifest's URL and hash, an
 optional archive URL, and the Hermes bundle's patch from the current Bundle,
 which the server includes only if it is smaller than the original when both
 download sizes are known. It has no URL per file, so the server signs at most
@@ -145,9 +145,11 @@ A device can still download a file's original after a missing or corrupt base
 file or a failed patch. See [bundle diffing](/docs/guides/bundle-diffing) for
 patches and the manifest's download fields.
 
-`/artifacts/v1` is the protocol of SDKs older than protocol 2: its response
-signs the original of every file of the target. An SDK that gets a `404` from
-`/artifacts/v2`, from a server older than protocol 2, asks `/artifacts/v1`.
+`/artifacts/v1` serves SDKs that predate `/artifacts/v2`: its response signs the
+original of every file of the target. The SDK also asks `/artifacts/v1` when an
+older server answers `/artifacts/v2` with `404`, and when the app's native code
+predates `/artifacts/v2`, so a newer SDK's JavaScript delivered by OTA keeps
+installing updates.
 
 ## Self-hosted servers
 
