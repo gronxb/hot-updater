@@ -793,7 +793,13 @@ internal class NativeUpdateChecker(
                 // The built-in bundle replaced every staged one: their downloads are void.
                 events.remove("onBundleDownloaded")
             }
-            if (committed && selection.transitionKind == "ADOPT_RELEASE") {
+            // Only the running bundle is unchanged: adopting a staged bundle's
+            // newer Release leaves it to report itself when it launches.
+            if (
+                committed &&
+                selection.transitionKind == "ADOPT_RELEASE" &&
+                selection.desiredBundleId == selection.input.currentBundleId
+            ) {
                 // The running bundle is now selected as a newer Release.
                 queueUnchanged(
                     channel = selection.receipt.channel,

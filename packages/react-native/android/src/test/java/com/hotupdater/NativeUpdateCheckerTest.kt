@@ -633,6 +633,26 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `adopting a staged bundle's Release does not report it unchanged`() =
+        runBlocking {
+            val state =
+                FakeState().apply {
+                    // React Native runs A; B is staged for the next launch.
+                    launchedBundleId = BUNDLE_A
+                    activeSelection = PersistedSelection.bareBundle(BUNDLE_B)
+                    stableSelection = PersistedSelection.bareBundle(BUNDLE_A)
+                }
+            val checker = NativeUpdateChecker(state, FakeTransport(routes(forcedCatalog())))
+
+            val update = checker.checkForUpdate(OPTIONS)!!
+            assertEquals("ADOPT_RELEASE", update.transitionKind)
+            assertTrue(update.updateBundle())
+
+            assertEquals(BUNDLE_B, state.committed.single().bundleId)
+            assertEquals(listOf("UPDATE_AVAILABLE"), state.events().map { it.getJSONObject("payload").getString("status") })
+        }
+
+    @Test
     fun `a required rollback to the built-in bundle commits`() =
         runBlocking {
             val receipt =

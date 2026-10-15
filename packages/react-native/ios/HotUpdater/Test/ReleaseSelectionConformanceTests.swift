@@ -173,6 +173,33 @@ struct ReleaseSelectionConformanceTests {
     }
 
     @Test
+    func unpairedSurrogatesStayAsDistinctAsJSONParseKeepsThem() throws {
+        let text = "[\"\\ud800\",\"\\ud801\",\"\\ud800\",\"\\ue000d800\",\"\\ufffd\",\"plain\"]"
+        let values = try #require(StrictJson.parse(text) as? [String])
+        #expect(values.count == 6)
+        // Two different unpaired surrogates, as JSON.parse keeps them apart.
+        #expect(values[0] != values[1])
+        #expect(values[0] == values[2])
+        // Neither an escaped-looking value nor U+FFFD matches an unpaired surrogate.
+        #expect(values[3] != values[0])
+        #expect(values[4] != values[0])
+        #expect(values[4] == "\u{FFFD}")
+        #expect(values[5] == "plain")
+        #expect(StrictJson.originalKey(values[3]) == "\u{E000}d800")
+        #expect(StrictJson.originalKey(values[0]) == "\u{FFFD}")
+    }
+
+    @Test
+    func distinctUnpairedSurrogateCohortsCountAsDistinct() throws {
+        let valid = try #require(cases("parseReleaseCatalog").first { $0["name"] as? String == "valid app-version catalog" })
+        let body = try #require(valid["body"] as? String)
+        let range = try #require(body.range(of: "\"targetCohorts\":[]"))
+        let patched = body.replacingCharacters(in: range, with: "\"targetCohorts\":[\"\\ud800\",\"\\ud801\"]")
+        let catalog = try #require(parseReleaseCatalog(patched, expectedScope: scopeInput(valid["expectedScope"] as! [String: Any])))
+        #expect(Set(catalog.releases.flatMap(\.targetCohorts)).count == 2)
+    }
+
+    @Test
     func objectKeysCompareByCodeUnitsAsInJavaScript() throws {
         let text = "{\"scopeKey\":1,\"scope\\u212aey\":2,\"\\u00e9\":3,\"e\\u0301\":4}"
         let object = try #require(StrictJson.parse(text) as? [String: Any])

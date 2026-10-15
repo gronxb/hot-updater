@@ -1293,7 +1293,9 @@ final class NativeUpdateChecker {
                     // The built-in bundle replaced every staged one: their downloads are void.
                     NativeUpdateEvents.remove(name: "onBundleDownloaded", from: host)
                 }
-                if committed, transitionKind == "ADOPT_RELEASE" {
+                // Only the running bundle is unchanged: adopting a staged bundle's
+                // newer Release leaves it to report itself when it launches.
+                if committed, transitionKind == "ADOPT_RELEASE", desired.bundleId.jsEquals(currentBundleId) {
                     // The running bundle is now selected as a newer Release.
                     queueUnchanged(
                         channel: receipt.channel,
