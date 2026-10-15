@@ -686,6 +686,11 @@ the previous bundle, or to the one embedded in the artifact.
 
 ## Native API
 
+A native app updates one React Native bundle. Create its instance with the
+same server and headers as the bundle's `HotUpdater.init`: the first
+`HotUpdater.init` after the next launch reports the native checks to its
+plugins.
+
 | Platform | API | Use |
 | --- | --- | --- |
 | iOS | `HotUpdaterInstance(HotUpdaterOptions(baseURL:requestHeaders:requestTimeout:bundle:))` | The counterpart of JavaScript's `HotUpdater.init`; `bundle` holds the embedded `main.jsbundle` and the `HOT_UPDATER_*` keys |
