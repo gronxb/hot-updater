@@ -113,7 +113,10 @@ export default defineConfig({
   fingerprint: {
     debug: true,
     extraSources: {
-      ios: ["ios/HotUpdaterExampleBrownfield/**/*.swift"],
+      ios: [
+        "ios/HotUpdaterExampleBrownfield/**/*.swift",
+        "ios/HotUpdaterExample.xcodeproj/project.pbxproj",
+      ],
       android: ["android/brownfieldlib/src/**/*.kt", "android/brownfieldlib/build.gradle.kts"],
     },
   },
