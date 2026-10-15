@@ -458,13 +458,7 @@ func parseReleaseCatalog(_ body: String, expectedScope: ReleaseCatalogScope) -> 
         return nil
     }
 
-    var distinctTargetCohorts = Set<[UInt16]>()
-    for release in releases + rollbackReleases {
-        for cohort in release.targetCohorts {
-            distinctTargetCohorts.insert(Array(cohort.utf16))
-        }
-    }
-    guard distinctTargetCohorts.count <= ReleaseCatalogLimits.maxDistinctTargetCohortsPerScope else {
+    guard distinctTargetCohortCount(catalog) <= ReleaseCatalogLimits.maxDistinctTargetCohortsPerScope else {
         return nil
     }
 
@@ -522,8 +516,7 @@ private func parseReleaseDescriptor(_ value: Any) -> ReleaseCatalogDescriptor? {
         guard let text = jsonString(value) else {
             return nil
         }
-        // Shown to the user, so as the JSON spelled it.
-        message = StrictJson.originalValue(text)
+        message = text
     }
 
     return ReleaseCatalogDescriptor(
@@ -573,11 +566,40 @@ private func isJSONBoolean(_ number: NSNumber) -> Bool {
     CFGetTypeID(number) == CFBooleanGetTypeID()
 }
 
+/// The distinct target cohorts of a parsed catalog's releases and rollback
+/// releases, told apart by code units as JavaScript does, including cohorts
+/// with unpaired surrogates that `targetCohorts` keeps as U+FFFD.
+func distinctTargetCohortCount(_ catalog: [String: Any]) -> Int {
+    var distinct = Set<[UInt16]>()
+    for key in ["releases", "rollbackReleases"] {
+        for descriptor in catalog[key] as? [[String: Any]] ?? [] {
+            for cohort in descriptor["targetCohorts"] as? [Any] ?? [] {
+                if let units = jsonStringUnits(cohort) {
+                    distinct.insert(units)
+                }
+            }
+        }
+    }
+    return distinct.count
+}
+
+/// A string value's text; one with an unpaired surrogate has it as U+FFFD.
 private func jsonString(_ value: Any?) -> String? {
+    if let unpaired = value as? StrictJson.UnpairedString {
+        return unpaired.text
+    }
     guard let value, !(value is NSNumber) else {
         return nil
     }
     return value as? String
+}
+
+/// A string value's UTF-16 code units, as JavaScript compares strings.
+private func jsonStringUnits(_ value: Any?) -> [UInt16]? {
+    if let unpaired = value as? StrictJson.UnpairedString {
+        return unpaired.units
+    }
+    return jsonString(value).map { Array($0.utf16) }
 }
 
 private func jsonBoolean(_ value: Any?) -> Bool? {
