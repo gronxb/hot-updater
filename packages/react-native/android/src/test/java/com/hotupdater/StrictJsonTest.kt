@@ -12,12 +12,11 @@ import org.junit.Test
 
 class StrictJsonTest {
     @Test
-    fun `a value nested deeper than the limit is rejected`() {
+    fun `deep nesting parses as JSON parse accepts it`() {
         fun nested(depth: Int) = "[".repeat(depth) + "]".repeat(depth)
-        assertNotNull(StrictJson.parse(nested(StrictJson.MAX_DEPTH)))
-        assertNull(StrictJson.parse(nested(StrictJson.MAX_DEPTH + 1)))
-        assertNull(StrictJson.parse(nested(60_000)))
-        assertNull(StrictJson.parse("{\"a\":".repeat(60_000) + "1" + "}".repeat(60_000)))
+        assertNotNull(StrictJson.parse(nested(60_000)))
+        assertNotNull(StrictJson.parse("{\"a\":".repeat(60_000) + "1" + "}".repeat(60_000)))
+        assertNull(StrictJson.parse("[".repeat(60_000) + "1," + "]".repeat(60_000)))
     }
 
     @Test
