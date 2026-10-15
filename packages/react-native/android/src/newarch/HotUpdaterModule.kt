@@ -47,7 +47,14 @@ class HotUpdaterModule internal constructor(
      */
     private fun getInstance(): HotUpdaterImpl = HotUpdater.getInstance(mReactApplicationContext)
 
-    private fun parseAssets(params: ReadableMap): Map<String, ChangedAssetDescriptor>? {
+    /**
+     * Every changed file with its hash and URL or Hermes patch; with
+     * [requireFileHash] false, also entries that hold only the Hermes patch.
+     */
+    private fun parseAssets(
+        params: ReadableMap,
+        requireFileHash: Boolean,
+    ): Map<String, ChangedAssetDescriptor>? {
         if (!params.hasKey("assets") || params.isNull("assets")) {
             return null
         }
@@ -59,39 +66,10 @@ class HotUpdaterModule internal constructor(
         while (iterator.hasNextKey()) {
             val assetPath = iterator.nextKey()
             val assetMap = changedAssetsMap.getMap(assetPath) ?: continue
-            // In artifact protocol v2, an entry holds only the Hermes patch.
             val assetHash = if (assetMap.hasKey("fileHash")) assetMap.getString("fileHash") else null
+            if (assetHash == null && requireFileHash) continue
             val patchMap = assetMap.getMap("patch")
-            val patch =
-                if (patchMap != null) {
-                    val algorithm = patchMap.getString("algorithm")
-                    val baseBundleId = patchMap.getString("baseBundleId")
-                    val baseFileHash = patchMap.getString("baseFileHash")
-                    val patchFileHash = patchMap.getString("patchFileHash")
-                    val patchUrl = patchMap.getString("patchUrl")
-                    val byteSize = readSafeInteger(patchMap, "byteSize")
-
-                    if (
-                        algorithm != null &&
-                        baseBundleId != null &&
-                        baseFileHash != null &&
-                        patchFileHash != null &&
-                        patchUrl != null
-                    ) {
-                        BsdiffPatchDescriptor(
-                            algorithm = algorithm,
-                            baseBundleId = baseBundleId,
-                            baseFileHash = baseFileHash,
-                            patchFileHash = patchFileHash,
-                            patchUrl = patchUrl,
-                            byteSize = byteSize,
-                        )
-                    } else {
-                        null
-                    }
-                } else {
-                    null
-                }
+            val patch = parsePatch(patchMap)
             val fileMap =
                 if (assetMap.hasKey("file") && !assetMap.isNull("file")) {
                     assetMap.getMap("file")
@@ -136,6 +114,79 @@ class HotUpdaterModule internal constructor(
             }
         }
         return parsed
+    }
+
+    private fun parsePatch(patchMap: ReadableMap?): BsdiffPatchDescriptor? {
+        if (patchMap == null) return null
+        val algorithm = patchMap.getString("algorithm")
+        val baseBundleId = patchMap.getString("baseBundleId")
+        val baseFileHash = patchMap.getString("baseFileHash")
+        val patchFileHash = patchMap.getString("patchFileHash")
+        val patchUrl = patchMap.getString("patchUrl")
+        val byteSize = readSafeInteger(patchMap, "byteSize")
+
+        return if (
+            algorithm != null &&
+            baseBundleId != null &&
+            baseFileHash != null &&
+            patchFileHash != null &&
+            patchUrl != null
+        ) {
+            BsdiffPatchDescriptor(
+                algorithm = algorithm,
+                baseBundleId = baseBundleId,
+                baseFileHash = baseFileHash,
+                patchFileHash = patchFileHash,
+                patchUrl = patchUrl,
+                byteSize = byteSize,
+            )
+        } else {
+            null
+        }
+    }
+
+    /**
+     * The resolver that asks `filesUrl` for the files native downloads one by
+     * one; null when `filesUrl` is missing.
+     */
+    private fun parseFileResolver(params: ReadableMap): ArtifactFileResolver? {
+        val filesUrl =
+            if (params.hasKey("filesUrl") && !params.isNull("filesUrl")) {
+                params.getString("filesUrl")?.takeIf { it.isNotEmpty() }
+            } else {
+                null
+            } ?: return null
+        try {
+            java.net.URL(filesUrl)
+        } catch (e: java.net.MalformedURLException) {
+            throw HotUpdaterException.invalidFileUrl("filesUrl", filesUrl, UpdateFailureResource.FILE)
+        }
+        val requestTimeoutMs =
+            if (params.hasKey("requestTimeout") && !params.isNull("requestTimeout")) {
+                params.getDouble("requestTimeout").toLong().takeIf { it > 0 }
+            } else {
+                null
+            } ?: HttpArtifactFileResolver.DEFAULT_TIMEOUT_MS
+        return HttpArtifactFileResolver(filesUrl, parseRequestHeaders(params), requestTimeoutMs)
+    }
+
+    /**
+     * Artifact protocol v2: the Hermes patch as the only planned asset, and
+     * the resolver that asks `filesUrl` for the files native downloads one by
+     * one; null when `filesUrl` is missing.
+     */
+    private fun parseArtifactInstall(params: ReadableMap): Pair<Map<String, ChangedAssetDescriptor>, ArtifactFileResolver?>? {
+        val fileResolver = parseFileResolver(params) ?: return null
+        val patchMap = if (params.hasKey("patch") && !params.isNull("patch")) params.getMap("patch") else null
+        val assetPath = patchMap?.getString("assetPath")
+        val patch = parsePatch(patchMap)
+        val assets =
+            if (assetPath != null && patch != null) {
+                mapOf(assetPath to ChangedAssetDescriptor(fileUrl = null, fileHash = "", patch = patch))
+            } else {
+                emptyMap()
+            }
+        return assets to fileResolver
     }
 
     private fun parseSelection(params: ReadableMap): PersistedSelection? {
@@ -189,6 +240,28 @@ class HotUpdaterModule internal constructor(
         params: ReadableMap,
         promise: Promise,
     ) {
+        // Legacy: artifact protocol v1, where every file comes with its URL.
+        // JavaScript from the first protocol v2 SDK also sends `filesUrl`
+        // here, with only the Hermes patch in `assets`; its OTA Bundles must
+        // still install.
+        stage(params, promise) {
+            val fileResolver = parseFileResolver(params)
+            parseAssets(params, requireFileHash = fileResolver == null)?.let { it to fileResolver }
+        }
+    }
+
+    override fun installArtifact(
+        params: ReadableMap,
+        promise: Promise,
+    ) {
+        stage(params, promise) { parseArtifactInstall(params) }
+    }
+
+    private fun stage(
+        params: ReadableMap,
+        promise: Promise,
+        plan: () -> Pair<Map<String, ChangedAssetDescriptor>, ArtifactFileResolver?>?,
+    ) {
         moduleScope.launch {
             try {
                 val bundleId = params.getString("bundleId")
@@ -199,7 +272,8 @@ class HotUpdaterModule internal constructor(
 
                 val manifestUrl = params.getString("manifestUrl")
                 val manifestFileHash = params.getString("manifestFileHash")
-                val assets = parseAssets(params)
+                val planned = plan()
+                val assets = planned?.first
                 if (manifestUrl.isNullOrEmpty() || manifestFileHash.isNullOrEmpty() || assets == null) {
                     promise.rejectUpdateBundle(HotUpdaterException.invalidManifestParams())
                     return@launch
@@ -230,30 +304,7 @@ class HotUpdaterModule internal constructor(
                     }
                 }
                 val selection = parseSelection(params)
-                val filesUrl =
-                    if (params.hasKey("filesUrl") && !params.isNull("filesUrl")) {
-                        params.getString("filesUrl")
-                    } else {
-                        null
-                    }
-                if (filesUrl != null) {
-                    try {
-                        java.net.URL(filesUrl)
-                    } catch (e: java.net.MalformedURLException) {
-                        promise.rejectUpdateBundle(
-                            HotUpdaterException.invalidFileUrl("filesUrl", filesUrl, UpdateFailureResource.FILE),
-                        )
-                        return@launch
-                    }
-                }
-                val requestTimeoutMs =
-                    if (params.hasKey("requestTimeout") && !params.isNull("requestTimeout")) {
-                        params.getDouble("requestTimeout").toLong().takeIf { it > 0 }
-                    } else {
-                        null
-                    } ?: HttpArtifactFileResolver.DEFAULT_TIMEOUT_MS
-                val fileResolver =
-                    filesUrl?.let { HttpArtifactFileResolver(it, parseRequestHeaders(params), requestTimeoutMs) }
+                val fileResolver = planned.second
 
                 val impl = getInstance()
 
