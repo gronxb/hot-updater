@@ -174,19 +174,23 @@ struct ReleaseSelectionConformanceTests {
 
     @Test
     func unpairedSurrogatesStayAsDistinctAsJSONParseKeepsThem() throws {
-        let text = "[\"\\ud800\",\"\\ud801\",\"\\ud800\",\"\\ue000d800\",\"\\ufffd\",\"plain\"]"
+        let text = "[\"\\ud800\",\"\\ud801\",\"\\ud800\",\"\\ufffd\",\"\\ue000qa\",\"plain\"]"
         let values = try #require(StrictJson.parse(text) as? [String])
         #expect(values.count == 6)
         // Two different unpaired surrogates, as JSON.parse keeps them apart.
         #expect(values[0] != values[1])
         #expect(values[0] == values[2])
-        // Neither an escaped-looking value nor U+FFFD matches an unpaired surrogate.
+        // U+FFFD itself is a different string.
+        #expect(values[3] == "\u{FFFD}")
         #expect(values[3] != values[0])
-        #expect(values[4] != values[0])
-        #expect(values[4] == "\u{FFFD}")
+        // Every other value, even one that starts with a private-use
+        // character, is kept as is.
+        #expect(values[4] == "\u{E000}qa")
         #expect(values[5] == "plain")
-        #expect(StrictJson.originalKey(values[3]) == "\u{E000}d800")
-        #expect(StrictJson.originalKey(values[0]) == "\u{FFFD}")
+        #expect(StrictJson.originalValue(values[0]) == "\u{FFFD}")
+        #expect(StrictJson.originalValue(values[4]) == "\u{E000}qa")
+        // A value that only looks escaped is returned as is.
+        #expect(StrictJson.originalValue("\u{E000}\u{E001}\u{1F600}\u{1F600}") == "\u{E000}\u{E001}\u{1F600}\u{1F600}")
     }
 
     @Test

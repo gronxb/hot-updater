@@ -16,6 +16,7 @@ import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -597,6 +598,23 @@ class NativeUpdateCheckerTest {
                     .getJSONObject("payload")
                     .getString("fromBundleId"),
             )
+        }
+
+    @Test
+    fun `a request timeout OkHttp cannot take is rejected before any request`() =
+        runBlocking {
+            for (timeout in listOf(0L, Int.MAX_VALUE.toLong() + 1, Long.MAX_VALUE)) {
+                val transport = FakeTransport(routes(minorCatalog()))
+                val checker = NativeUpdateChecker(FakeState(), transport)
+                val options = NativeCheckRequest(OPTIONS.baseURL, OPTIONS.updateStrategy, requestTimeoutMillis = timeout)
+
+                val error = runCatching { checker.checkForUpdate(options) }.exceptionOrNull()
+
+                assertTrue("$timeout", error is IllegalArgumentException)
+                assertEquals(0, transport.requests.size)
+            }
+            val options = NativeCheckRequest(OPTIONS.baseURL, OPTIONS.updateStrategy, requestTimeoutMillis = Int.MAX_VALUE.toLong())
+            assertNotNull(NativeUpdateChecker(FakeState(), FakeTransport(routes(minorCatalog()))).checkForUpdate(options))
         }
 
     @Test

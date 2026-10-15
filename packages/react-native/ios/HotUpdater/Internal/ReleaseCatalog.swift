@@ -523,7 +523,7 @@ private func parseReleaseDescriptor(_ value: Any) -> ReleaseCatalogDescriptor? {
             return nil
         }
         // Shown to the user, so as the JSON spelled it.
-        message = StrictJson.originalKey(text)
+        message = StrictJson.originalValue(text)
     }
 
     return ReleaseCatalogDescriptor(
