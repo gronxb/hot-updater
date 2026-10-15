@@ -124,15 +124,15 @@ struct NativeUpdateCheckTests {
         #expect(transport.requests.last?.url.absoluteString
             == "https://updates.example.com/api/artifacts/v2/\(bundle2)/from/\(builtInBundleId)")
         let params = try #require(host.stagedParams.first)
+        // installArtifact's parameters, as checkForUpdate.ts sends them: no assets.
         #expect(Set(params.keys) == [
-            "assets", "bundleId", "channel", "filesUrl", "manifestFileHash", "manifestUrl",
+            "bundleId", "channel", "filesUrl", "manifestFileHash", "manifestUrl",
             "requestHeaders", "requestTimeout", "selection",
         ])
         #expect(params["bundleId"] as? String == bundle2)
         #expect(params["channel"] as? String == "production")
         #expect(params["manifestUrl"] as? String == "https://cdn.example.com/manifest.json")
         #expect(params["manifestFileHash"] as? String == "sha256:manifest")
-        #expect((params["assets"] as? [String: Any])?.isEmpty == true)
         // The staging asks for the URLs of the files it downloads, with the
         // check's headers and timeout, as checkForUpdate.ts passes them.
         #expect(params["filesUrl"] as? String == "https://updates.example.com/api/artifacts/v2/\(bundle2)/files")
@@ -427,7 +427,7 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
-    func anArtifactProtocolV2PatchStagesAsTheAssetsPatch() async throws {
+    func anArtifactProtocolV2PatchStagesWithItsAssetPath() async throws {
         let host = FakeUpdateHost()
         let body = """
         {"artifactProtocolVersion":2,"manifestUrl":"https://cdn.example.com/manifest.json",\
@@ -448,12 +448,11 @@ struct NativeUpdateCheckTests {
         let params = try #require(host.stagedParams.first)
         #expect(params["archiveUrl"] as? String == "https://cdn.example.com/bundle.zip")
         #expect(params["requestHeaders"] as? [String: String] == ["x-api-key": "key"])
-        let assets = try #require(params["assets"] as? [String: Any])
-        #expect(Array(assets.keys) == ["index.ios.bundle"])
-        let patch = try #require((assets["index.ios.bundle"] as? [String: Any])?["patch"] as? [String: Any])
+        #expect(params["assets"] == nil)
+        let patch = try #require(params["patch"] as? [String: Any])
+        #expect(patch["assetPath"] as? String == "index.ios.bundle")
         #expect(patch["patchUrl"] as? String == "https://cdn.example.com/index.patch")
         #expect(patch["patchFileHash"] as? String == "sha256:patch")
-        #expect(patch["assetPath"] == nil)
     }
 
     @Test
