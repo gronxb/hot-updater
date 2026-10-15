@@ -7,8 +7,12 @@ import {
   stopRuntime,
 } from "@hot-updater/test-utils/node";
 
+/**
+ * Pinned: vnext-EN20261008 answers a query on a missing container with 400,
+ * where Azure Cosmos DB and earlier emulators answer 404.
+ */
 const COSMOS_IMAGE =
-  "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-latest";
+  "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-EN20260907";
 const AZURITE_IMAGE = "mcr.microsoft.com/azure-storage/azurite:3.37.0";
 
 /** The emulators' well-known account keys, public and accepted only by them. */
