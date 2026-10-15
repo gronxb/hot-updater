@@ -179,7 +179,7 @@ func isReleaseEligibleForCohort(_ release: ReleaseCatalogDescriptor, cohort: Str
     isReleaseEligibleForCohort(
         releaseId: release.releaseId,
         rolloutCohortCount: Double(release.rolloutCohortCount),
-        targetCohorts: release.targetCohorts,
+        targetCohorts: release.matchableTargetCohorts ?? release.targetCohorts,
         cohort: cohort
     )
 }
