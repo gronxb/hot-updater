@@ -45,7 +45,9 @@ supplies them after resolving the artifact endpoint.
 | `manifestUrl` | `string` | Yes | Target manifest URL. |
 | `manifestFileHash` | `string` | Yes | SHA256 hash or `sig:<base64_signature>` for the manifest. |
 | `archiveUrl` | `string \| null` | No | Full `tar.br` archive URL; integrity and sizes come from the verified manifest. |
-| `assets` | `Record<string, ArtifactAsset>` | Yes | Original descriptor for every target file, with optional Hermes patches. |
+| `assets` | `Record<string, ArtifactAsset>` | Yes | Without `filesUrl`, the original descriptor for every target file, with optional Hermes patches. With `filesUrl`, only the Hermes patch, as `{ [path]: { patch } }`. |
+| `filesUrl` | `string \| null` | No | Where native `POST`s the paths of the files it downloads one by one, for their URLs. |
+| `requestHeaders` | `Record<string, string> \| null` | No | Headers for the `filesUrl` request, such as the client API key. |
 | `channel` | `string` | No | Channel committed with the staged selection. |
 | `selection` | `object \| null` | No | Release Catalog selection receipt. |
 

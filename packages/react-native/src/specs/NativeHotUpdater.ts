@@ -19,8 +19,9 @@ export interface UpdateBundleParams {
   assets: UnsafeObject;
   /**
    * Legacy: JavaScript from the first artifact protocol v2 SDK sends these
-   * here, with only the Hermes patch in `assets`, and native keeps accepting
-   * them so its OTA Bundles still install. Current JavaScript sends them to
+   * here, with only the Hermes patch in `assets`, and apps may pass them to
+   * `updateBundle` as that release documented. Native keeps accepting them so
+   * such OTA Bundles still install. The update check sends them to
    * `installArtifact`.
    */
   filesUrl?: string | null;

@@ -295,10 +295,7 @@ export const addListener = <T extends keyof HotUpdaterEvent>(
   };
 };
 
-export type UpdateParams = Omit<
-  UpdateBundleParams,
-  "filesUrl" | "requestHeaders" | "requestTimeout"
-> & {
+export type UpdateParams = UpdateBundleParams & {
   status: UpdateStatus;
   shouldSkipCurrentBundleIdCheck?: boolean;
 };
@@ -484,8 +481,22 @@ export async function stageBundle(
         ...(selection === undefined ? {} : { selection }),
       };
       const staged =
-        "filesUrl" in params
-          ? await HotUpdaterNative.installArtifact({
+        "assets" in params
+          ? // Legacy: artifact protocol v1, where every file comes with its
+            // URL, and the `filesUrl` form earlier releases documented, which
+            // native `updateBundle` keeps accepting.
+            await HotUpdaterNative.updateBundle({
+              ...common,
+              assets: params.assets as Record<string, ArtifactAsset>,
+              ...(params.filesUrl ? { filesUrl: params.filesUrl } : {}),
+              ...(params.filesUrl && params.requestHeaders
+                ? { requestHeaders: params.requestHeaders }
+                : {}),
+              ...(params.filesUrl && params.requestTimeout
+                ? { requestTimeout: params.requestTimeout }
+                : {}),
+            })
+          : await HotUpdaterNative.installArtifact({
               ...common,
               filesUrl: params.filesUrl,
               ...(params.patch ? { patch: params.patch } : {}),
@@ -495,11 +506,6 @@ export async function stageBundle(
               ...(params.requestTimeout
                 ? { requestTimeout: params.requestTimeout }
                 : {}),
-            })
-          : // Legacy: artifact protocol v1, where every file comes with its URL.
-            await HotUpdaterNative.updateBundle({
-              ...common,
-              assets: params.assets as Record<string, ArtifactAsset>,
             });
       sessionState.markBundleInstalled(updateBundleId, targetChannel);
       return readBundleDelivery(staged);
