@@ -1165,6 +1165,7 @@ class NativeUpdateCheckerTest {
                 )
             }
             assertTrue(transport.requests.isEmpty())
+            // As checkForUpdate.ts: a refused call, not an update failure, queues no onUpdateError.
             assertTrue(state.events().isEmpty())
         }
 

@@ -1065,6 +1065,8 @@ final class NativeUpdateChecker {
             throw NativeUpdateCheckError.hotUpdater("Failed to get app version")
         }
 
+        // A call the check refuses, not an update failure: it throws without
+        // onUpdateError, as checkForUpdate.ts does.
         if isSwitched, let explicitChannel, explicitChannel != currentChannel {
             throw NativeUpdateCheckError.hotUpdater(
                 "Runtime channel is already switched to \"\(currentChannel)\". Call hotUpdater.resetChannel() before checking \"\(explicitChannel)\"."
