@@ -380,7 +380,10 @@ internal class NativeUpdateChecker(
 
     private fun validateOptions(options: NativeCheckRequest) {
         requireValidBaseURL(options.baseURL)
-        require(options.requestTimeoutMillis > 0) { "requestTimeoutMillis must be positive" }
+        // OkHttp takes a call timeout of at most Int.MAX_VALUE milliseconds.
+        require(options.requestTimeoutMillis in 1..Int.MAX_VALUE.toLong()) {
+            "requestTimeoutMillis must be between 1 and ${Int.MAX_VALUE}"
+        }
     }
 
     private suspend fun check(options: NativeCheckRequest): CheckedUpdate? {
