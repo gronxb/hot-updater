@@ -264,7 +264,49 @@ private func hotUpdaterGetMinBundleId() -> String {
     public func updateBundle(_ params: [AnyHashable: Any]?,
                                          resolver resolve: @escaping RCTPromiseResolveBlock,
                                          rejecter reject: @escaping RCTPromiseRejectBlock) {
-        
+        // Legacy: artifact protocol v1, where every file comes with its URL.
+        // JavaScript from the first protocol v2 SDK also sends `filesUrl`
+        // here, with only the Hermes patch in `assets`; its OTA Bundles must
+        // still install.
+        stage(params, resolver: resolve, rejecter: reject) { data, reject in
+            switch Self.parseFileResolver(data, required: false) {
+            case .failure(let error):
+                reject("INVALID_FILE_URL", error.localizedDescription, error)
+                return nil
+            case .success(let fileResolver):
+                return Self.parseAssets(data, requireFileHash: fileResolver == nil, rejecter: reject)
+                    .map { ($0, fileResolver) }
+            }
+        }
+    }
+
+    /**
+     * Installs a Bundle over artifact protocol v2: native asks `filesUrl` for
+     * the files it downloads one by one, after reusing local files and
+     * choosing the archive.
+     * @param params Dictionary with bundleId, manifest, `filesUrl`, and the
+     *   optional Hermes `patch` with its `assetPath`
+     * @param resolve Promise resolve callback, called with the staged bundle's
+     *   `{ delivery, patchFallback }`
+     * @param reject Promise reject callback, as for `updateBundle`
+     */
+    public func installArtifact(_ params: [AnyHashable: Any]?,
+                                resolver resolve: @escaping RCTPromiseResolveBlock,
+                                rejecter reject: @escaping RCTPromiseRejectBlock) {
+        stage(params, resolver: resolve, rejecter: reject) { data, reject in
+            Self.parseArtifactInstall(data, rejecter: reject)
+        }
+    }
+
+    private typealias StagePlan = (assets: [String: ChangedAssetDescriptor], fileResolver: ArtifactFileResolver?)
+
+    /// Validates the common parameters, then stages the Bundle with the
+    /// assets and file resolver `plan` returns; `plan` rejects and returns nil
+    /// when its own parameters are invalid.
+    private func stage(_ params: [AnyHashable: Any]?,
+                       resolver resolve: @escaping RCTPromiseResolveBlock,
+                       rejecter reject: @escaping RCTPromiseRejectBlock,
+                       plan: ([AnyHashable: Any], RCTPromiseRejectBlock) -> StagePlan?) {
         do {
             // Validate parameters (this runs on calling thread - typically JS thread)
             guard let data = params else {
@@ -310,67 +352,8 @@ private func hotUpdaterGetMinBundleId() -> String {
             } else {
                 archiveUrl = nil
             }
-            guard let assetsPayload = data["assets"] as? [String: [String: Any]] else {
-                let error = UpdateFailure.invalidResponse.with(resource: .manifest)
-                    .error(description: "Missing manifest assets")
-                reject("INVALID_MANIFEST", error.localizedDescription, error)
+            guard let planned = plan(data, reject) else {
                 return
-            }
-            let assets = assetsPayload.reduce(into: [String: ChangedAssetDescriptor]()) { partialResult, entry in
-                // In artifact protocol v2, an entry holds only the Hermes patch.
-                let fileHash = entry.value["fileHash"] as? String ?? ""
-
-                let patchPayload = entry.value["patch"] as? [String: Any]
-                let patch = patchPayload.flatMap { payload -> BsdiffPatchDescriptor? in
-                    guard let algorithm = payload["algorithm"] as? String,
-                          let baseBundleId = payload["baseBundleId"] as? String,
-                          let baseFileHash = payload["baseFileHash"] as? String,
-                          let patchFileHash = payload["patchFileHash"] as? String,
-                          let patchUrlString = payload["patchUrl"] as? String,
-                          let patchUrl = URL(string: patchUrlString)
-                    else {
-                        return nil
-                    }
-
-                    return BsdiffPatchDescriptor(
-                        algorithm: algorithm,
-                        baseBundleId: baseBundleId,
-                        baseFileHash: baseFileHash,
-                        patchFileHash: patchFileHash,
-                        patchUrl: patchUrl,
-                        byteSize: Self.parseSafeByteSize(payload["byteSize"])
-                    )
-                }
-                let filePayload = entry.value["file"] as? [String: Any]
-                let fileUrl = (filePayload?["url"] as? String).flatMap { URL(string: $0) }
-                let fileCompression = filePayload?["compression"] as? String
-                guard fileUrl != nil || patch != nil,
-                      !fileHash.isEmpty || fileUrl == nil else {
-                    return
-                }
-
-                partialResult[entry.key] = ChangedAssetDescriptor(
-                    fileUrl: fileUrl,
-                    fileHash: fileHash,
-                    fileCompression: fileCompression,
-                    patch: patch
-                )
-            }
-            var fileResolver: ArtifactFileResolver?
-            if let filesUrlString = data["filesUrl"] as? String {
-                guard let filesUrl = URL(string: filesUrlString) else {
-                    let error = UpdateFailure.invalidResponse.with(resource: .file).error(
-                        description: "Invalid 'filesUrl' provided: \(filesUrlString)"
-                    )
-                    reject("INVALID_FILE_URL", error.localizedDescription, error)
-                    return
-                }
-                // The update check's headers, which the artifact files request repeats.
-                let headers = (data["requestHeaders"] as? [String: Any] ?? [:])
-                    .compactMapValues { $0 as? String }
-                let timeout = (data["requestTimeout"] as? NSNumber).map { $0.doubleValue / 1000 }
-                    .flatMap { $0 > 0 ? $0 : nil } ?? HTTPArtifactFileResolver.defaultTimeout
-                fileResolver = HTTPArtifactFileResolver(filesUrl: filesUrl, headers: headers, timeout: timeout)
             }
             let selection = (data["selection"] as? [String: Any]).flatMap(Self.parseSelection)
             if let selection, !bundleStorage.stageReleaseSelection(selection) {
@@ -386,7 +369,7 @@ private func hotUpdaterGetMinBundleId() -> String {
             NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), manifestUrl: \(manifestUrl.absoluteString)")
 
             // Heavy work is delegated to bundle storage service with safe error handling
-            bundleStorage.updateBundle(bundleId: bundleId, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, archiveUrl: archiveUrl, assets: assets, fileResolver: fileResolver, progressHandler: { payload in
+            bundleStorage.updateBundle(bundleId: bundleId, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, archiveUrl: archiveUrl, assets: planned.assets, fileResolver: planned.fileResolver, progressHandler: { payload in
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(
                         name: .updateProgressDidChange,
@@ -442,6 +425,111 @@ private func hotUpdaterGetMinBundleId() -> String {
 
             reject("UNKNOWN_ERROR", nsError.localizedDescription, nsError)
         }
+    }
+
+    /// Every changed file with its hash and URL or Hermes patch; without
+    /// `requireFileHash`, also entries that hold only the Hermes patch.
+    private static func parseAssets(_ data: [AnyHashable: Any],
+                                    requireFileHash: Bool,
+                                    rejecter reject: RCTPromiseRejectBlock) -> [String: ChangedAssetDescriptor]? {
+        guard let assetsPayload = data["assets"] as? [String: [String: Any]] else {
+            let error = UpdateFailure.invalidResponse.with(resource: .manifest)
+                .error(description: "Missing manifest assets")
+            reject("INVALID_MANIFEST", error.localizedDescription, error)
+            return nil
+        }
+        return assetsPayload.reduce(into: [String: ChangedAssetDescriptor]()) { partialResult, entry in
+            let fileHash = entry.value["fileHash"] as? String ?? ""
+            guard !fileHash.isEmpty || !requireFileHash else {
+                return
+            }
+
+            let patch = (entry.value["patch"] as? [String: Any]).flatMap(parsePatch)
+            let filePayload = entry.value["file"] as? [String: Any]
+            let fileUrl = (filePayload?["url"] as? String).flatMap { URL(string: $0) }
+            let fileCompression = filePayload?["compression"] as? String
+            guard fileUrl != nil || patch != nil,
+                  !fileHash.isEmpty || fileUrl == nil else {
+                return
+            }
+
+            partialResult[entry.key] = ChangedAssetDescriptor(
+                fileUrl: fileUrl,
+                fileHash: fileHash,
+                fileCompression: fileCompression,
+                patch: patch
+            )
+        }
+    }
+
+    /// The resolver that asks `filesUrl` for the files native downloads one
+    /// by one, with the update check's headers and timeout; nil when
+    /// `filesUrl` is missing and not `required`.
+    private static func parseFileResolver(_ data: [AnyHashable: Any],
+                                          required: Bool) -> Result<ArtifactFileResolver?, NSError> {
+        let filesUrlString = data["filesUrl"] as? String ?? ""
+        if filesUrlString.isEmpty && !required {
+            return .success(nil)
+        }
+        guard !filesUrlString.isEmpty, let filesUrl = URL(string: filesUrlString) else {
+            return .failure(UpdateFailure.invalidResponse.with(resource: .file).error(
+                description: "Invalid 'filesUrl' provided: \(filesUrlString)"
+            ))
+        }
+        // The update check's headers, which the artifact files request repeats.
+        let headers = (data["requestHeaders"] as? [String: Any] ?? [:])
+            .compactMapValues { $0 as? String }
+        let timeout = (data["requestTimeout"] as? NSNumber).map { $0.doubleValue / 1000 }
+            .flatMap { $0 > 0 ? $0 : nil } ?? HTTPArtifactFileResolver.defaultTimeout
+        return .success(HTTPArtifactFileResolver(filesUrl: filesUrl, headers: headers, timeout: timeout))
+    }
+
+    /// Artifact protocol v2: the Hermes patch as the only planned asset, and
+    /// the resolver that asks `filesUrl` for the files native downloads one
+    /// by one.
+    private static func parseArtifactInstall(_ data: [AnyHashable: Any],
+                                             rejecter reject: RCTPromiseRejectBlock) -> StagePlan? {
+        let fileResolver: ArtifactFileResolver?
+        switch parseFileResolver(data, required: true) {
+        case .failure(let error):
+            reject("INVALID_FILE_URL", error.localizedDescription, error)
+            return nil
+        case .success(let resolver):
+            fileResolver = resolver
+        }
+        var assets: [String: ChangedAssetDescriptor] = [:]
+        if let patchPayload = data["patch"] as? [String: Any],
+           let assetPath = patchPayload["assetPath"] as? String,
+           let patch = parsePatch(patchPayload) {
+            assets[assetPath] = ChangedAssetDescriptor(
+                fileUrl: nil,
+                fileHash: "",
+                fileCompression: nil,
+                patch: patch
+            )
+        }
+        return (assets, fileResolver)
+    }
+
+    private static func parsePatch(_ payload: [String: Any]) -> BsdiffPatchDescriptor? {
+        guard let algorithm = payload["algorithm"] as? String,
+              let baseBundleId = payload["baseBundleId"] as? String,
+              let baseFileHash = payload["baseFileHash"] as? String,
+              let patchFileHash = payload["patchFileHash"] as? String,
+              let patchUrlString = payload["patchUrl"] as? String,
+              let patchUrl = URL(string: patchUrlString)
+        else {
+            return nil
+        }
+
+        return BsdiffPatchDescriptor(
+            algorithm: algorithm,
+            baseBundleId: baseBundleId,
+            baseFileHash: baseFileHash,
+            patchFileHash: patchFileHash,
+            patchUrl: patchUrl,
+            byteSize: parseSafeByteSize(payload["byteSize"])
+        )
     }
 
     private static func parseSelection(_ data: [String: Any]) -> PersistedSelection? {

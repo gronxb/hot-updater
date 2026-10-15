@@ -13,6 +13,11 @@ abstract class HotUpdaterSpec internal constructor(
         promise: Promise,
     )
 
+    abstract fun installArtifact(
+        params: ReadableMap,
+        promise: Promise,
+    )
+
     abstract fun acceptReleaseCatalog(params: ReadableMap): Boolean
 
     abstract fun getActiveUpdateState(): String
