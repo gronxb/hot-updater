@@ -5,9 +5,9 @@
   "description": "Native Android host that embeds the rnbrownfieldreact AAR published by ../rn-app to the local Maven repository.",
   "scripts": {
     "build": "./gradlew :app:assembleRelease",
-    "uninstall": "adb uninstall com.hotupdater.brownfieldhost || true",
+    "uninstall:device": "adb -s \"$(sh scripts/adb-target.sh)\" uninstall com.hotupdater.brownfieldhost || true",
     "install:release": "./gradlew :app:installRelease",
-    "launch": "adb shell monkey -p com.hotupdater.brownfieldhost -c android.intent.category.LAUNCHER 1",
+    "launch": "adb -s \"$(sh scripts/adb-target.sh)\" shell monkey -p com.hotupdater.brownfieldhost -c android.intent.category.LAUNCHER 1",
     "android": "pnpm install:release && pnpm launch"
   }
 }
