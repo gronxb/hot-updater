@@ -8,8 +8,9 @@ import {
 } from "@hot-updater/test-utils/node";
 
 /**
- * Pinned: vnext-EN20261008 answers a query on a missing container with 400,
- * where Azure Cosmos DB and earlier emulators answer 404.
+ * A dated emulator release: `vnext-EN20261008` answers a query on a missing
+ * container with 400 instead of Azure Cosmos DB's 404, so a moving tag can
+ * break the suite without a code change.
  */
 const COSMOS_IMAGE =
   "mcr.microsoft.com/cosmosdb/linux/azure-cosmos-emulator:vnext-EN20260907";

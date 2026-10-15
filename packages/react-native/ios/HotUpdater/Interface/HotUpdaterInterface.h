@@ -21,6 +21,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)updateBundle:(nullable NSDictionary *)params
             resolver:(RCTPromiseResolveBlock)resolve
             rejecter:(RCTPromiseRejectBlock)reject;
+- (void)installArtifact:(nullable NSDictionary *)params
+               resolver:(RCTPromiseResolveBlock)resolve
+               rejecter:(RCTPromiseRejectBlock)reject;
 - (BOOL)acceptReleaseCatalog:(nullable NSDictionary *)params;
 - (NSDictionary<NSString *, id> *)getActiveUpdateState;
 - (void)getReleaseCatalogCache:(NSString *)partition
