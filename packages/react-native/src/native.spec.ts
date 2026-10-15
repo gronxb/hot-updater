@@ -734,6 +734,53 @@ describe("notifyAppReady", () => {
     }
   });
 
+  it("forwards the released direct updateBundle shape to native updateBundle", async () => {
+    nativeModuleMock.getBundleId.mockReturnValue("bundle-123");
+    const installArtifact = vi.fn();
+    Object.assign(nativeModuleMock, { installArtifact });
+    try {
+      const { stageBundle } = await import("./native");
+      const assets = {
+        "index.ios.bundle": {
+          patch: {
+            algorithm: "bsdiff",
+            baseBundleId: "bundle-123",
+            baseFileHash: "hash-prev",
+            patchFileHash: "hash-patch",
+            patchUrl: "https://example.com/files/index.ios.bundle.bsdiff",
+          },
+        },
+      };
+
+      // An app may call `updateBundle` directly with what earlier releases
+      // documented; native that predates installArtifact must still stage it.
+      await stageBundle({
+        assets,
+        bundleId: "bundle-789",
+        filesUrl: "https://example.com/artifacts/v2/bundle-789/files",
+        manifestFileHash: "sig:manifest",
+        manifestUrl: "https://example.com/manifest.json",
+        requestHeaders: { "x-api-key": "key" },
+        requestTimeout: 5000,
+        status: "UPDATE",
+      });
+
+      expect(nativeModuleMock.updateBundle).toHaveBeenCalledWith({
+        assets,
+        bundleId: "bundle-789",
+        channel: undefined,
+        filesUrl: "https://example.com/artifacts/v2/bundle-789/files",
+        manifestFileHash: "sig:manifest",
+        manifestUrl: "https://example.com/manifest.json",
+        requestHeaders: { "x-api-key": "key" },
+        requestTimeout: 5000,
+      });
+      expect(installArtifact).not.toHaveBeenCalled();
+    } finally {
+      Reflect.deleteProperty(nativeModuleMock, "installArtifact");
+    }
+  });
+
   it("knows artifact protocol v2 only from native that has installArtifact", async () => {
     const { supportsArtifactFiles } = await import("./native");
     // Native built from an SDK older than protocol v2 has no such method.
