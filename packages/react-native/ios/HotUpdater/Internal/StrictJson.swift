@@ -16,9 +16,9 @@ import Foundation
 /// - An object key that is not its own canonical decomposition, or that has
 ///   an unpaired surrogate, is stored escaped. Lookups by plain names match
 ///   only that exact key, and `originalKey` recovers the escaped one.
-/// - A string value with an unpaired surrogate is stored escaped too, so such
-///   values stay as distinct as `JSON.parse` keeps them; every other value is
-///   kept as is. `originalValue` recovers its text, the surrogate as U+FFFD.
+/// - A string value with an unpaired surrogate is an `UnpairedString`, its
+///   code units as `JSON.parse` keeps them; every other value is a `String`
+///   exactly as the JSON spells it.
 enum StrictJson {
     /// Starts every escaped key. A key that starts with it is escaped too.
     private static let escapedKeyPrefix = "\u{E000}"
@@ -37,30 +37,18 @@ enum StrictJson {
         return escaped(units)
     }
 
-    /// Starts a string value whose unpaired surrogates a Swift string would lose.
-    private static let escapedValuePrefix = "\u{E000}\u{E001}"
+    /// A string value with an unpaired surrogate, which a Swift `String`
+    /// cannot hold: its UTF-16 code units, as `JSON.parse` keeps them.
+    struct UnpairedString: Hashable {
+        let units: [UInt16]
 
-    /// The string value under which `units` is stored.
-    private static func storedValue(_ units: [UInt16]) -> String {
-        hasUnpairedSurrogate(units)
-            ? escapedValuePrefix + units.map { String(format: "%04x", $0) }.joined()
-            : String(decoding: units, as: UTF16.self)
+        /// The text, each unpaired surrogate as U+FFFD.
+        var text: String { String(decoding: units, as: UTF16.self) }
     }
 
-    /// The text of a string value read from a parsed value; an unpaired
-    /// surrogate becomes U+FFFD.
-    static func originalValue(_ value: String) -> String {
-        guard value.hasPrefix(escapedValuePrefix) else { return value }
-        let hex = Array(value.utf16.dropFirst(escapedValuePrefix.utf16.count))
-        guard hex.count % 4 == 0 else { return value }
-        var units: [UInt16] = []
-        for start in stride(from: 0, to: hex.count, by: 4) {
-            guard let unit = UInt16(String(decoding: hex[start..<(start + 4)], as: UTF16.self), radix: 16) else {
-                return value
-            }
-            units.append(unit)
-        }
-        return String(decoding: units, as: UTF16.self)
+    /// The parsed value of a string with `units`.
+    private static func storedValue(_ units: [UInt16]) -> Any {
+        hasUnpairedSurrogate(units) ? UnpairedString(units: units) : String(decoding: units, as: UTF16.self)
     }
 
     /// Whether a Swift string would lose `units`, or they could be mistaken

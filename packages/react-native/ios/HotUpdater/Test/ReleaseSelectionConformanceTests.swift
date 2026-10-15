@@ -174,23 +174,33 @@ struct ReleaseSelectionConformanceTests {
 
     @Test
     func unpairedSurrogatesStayAsDistinctAsJSONParseKeepsThem() throws {
-        let text = "[\"\\ud800\",\"\\ud801\",\"\\ud800\",\"\\ufffd\",\"\\ue000qa\",\"plain\"]"
-        let values = try #require(StrictJson.parse(text) as? [String])
-        #expect(values.count == 6)
+        let text = "[\"\\ud800\",\"\\ud801\",\"\\ud800\",\"\\ufffd\",\"\\ue000\\ue0010061\",\"plain\"]"
+        let values = try #require(StrictJson.parse(text) as? [Any])
+        let first = try #require(values[0] as? StrictJson.UnpairedString)
+        let second = try #require(values[1] as? StrictJson.UnpairedString)
         // Two different unpaired surrogates, as JSON.parse keeps them apart.
-        #expect(values[0] != values[1])
-        #expect(values[0] == values[2])
-        // U+FFFD itself is a different string.
-        #expect(values[3] == "\u{FFFD}")
-        #expect(values[3] != values[0])
-        // Every other value, even one that starts with a private-use
-        // character, is kept as is.
-        #expect(values[4] == "\u{E000}qa")
-        #expect(values[5] == "plain")
-        #expect(StrictJson.originalValue(values[0]) == "\u{FFFD}")
-        #expect(StrictJson.originalValue(values[4]) == "\u{E000}qa")
-        // A value that only looks escaped is returned as is.
-        #expect(StrictJson.originalValue("\u{E000}\u{E001}\u{1F600}\u{1F600}") == "\u{E000}\u{E001}\u{1F600}\u{1F600}")
+        #expect(first != second)
+        #expect(first == values[2] as? StrictJson.UnpairedString)
+        #expect(first.units == [0xD800])
+        #expect(first.text == "\u{FFFD}")
+        // Every other value is the string the JSON spells, even one that looks
+        // like an encoding.
+        #expect(values[3] as? String == "\u{FFFD}")
+        #expect(values[4] as? String == "\u{E000}\u{E001}0061")
+        #expect(values[5] as? String == "plain")
+    }
+
+    @Test
+    func distinctUnpairedSurrogateCohortsCountTowardTheLimit() throws {
+        // 600 different unpaired surrogates: JSON.parse keeps 600 cohorts,
+        // over the 512 limit, even though their text is all U+FFFD.
+        let cohorts = (0..<600).map { "\"\\u\(String(0xD800 + $0, radix: 16))\"" }
+        let releases = (0..<6).map { index in
+            "{\"targetCohorts\":[\(cohorts[(index * 100)..<(index * 100 + 100)].joined(separator: ","))]}"
+        }
+        let parsed = try #require(StrictJson.parse("{\"releases\":[\(releases.joined(separator: ","))]}") as? [String: Any])
+        #expect(distinctTargetCohortCount(parsed) == 600)
+        #expect(distinctTargetCohortCount(parsed) > ReleaseCatalogLimits.maxDistinctTargetCohortsPerScope)
     }
 
     @Test
@@ -200,7 +210,8 @@ struct ReleaseSelectionConformanceTests {
         let range = try #require(body.range(of: "\"targetCohorts\":[]"))
         let patched = body.replacingCharacters(in: range, with: "\"targetCohorts\":[\"\\ud800\",\"\\ud801\"]")
         let catalog = try #require(parseReleaseCatalog(patched, expectedScope: scopeInput(valid["expectedScope"] as! [String: Any])))
-        #expect(Set(catalog.releases.flatMap(\.targetCohorts)).count == 2)
+        // targetCohorts holds their text; the distinct-cohort limit counts their code units.
+        #expect(catalog.releases.first?.targetCohorts == ["\u{FFFD}", "\u{FFFD}"])
     }
 
     @Test
