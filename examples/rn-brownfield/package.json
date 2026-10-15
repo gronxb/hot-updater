@@ -4,7 +4,7 @@
   "private": true,
   "description": "React Native brownfield example: rn-app/ is packaged as an AAR and an XCFramework that the native android-app/ and ios-app/ host apps embed.",
   "scripts": {
-    "android": "pnpm --filter @examples/rn-brownfield-rn-app publish-local:aar && pnpm --filter @examples/rn-brownfield-android-app uninstall && pnpm android:previous",
+    "android": "pnpm --filter @examples/rn-brownfield-rn-app publish-local:aar && pnpm --filter @examples/rn-brownfield-android-app uninstall:device && pnpm android:previous",
     "android:previous": "pnpm --filter @examples/rn-brownfield-android-app android",
     "ios": "pnpm --filter @examples/rn-brownfield-rn-app package:ios && pnpm --filter @examples/rn-brownfield-ios-app uninstall:sim && pnpm ios:previous",
     "ios:previous": "pnpm --filter @examples/rn-brownfield-ios-app frameworks && pnpm --filter @examples/rn-brownfield-ios-app ios"

@@ -24,7 +24,9 @@ JS bundle, while Debug artifacts expect a Metro dev server.
 ## Prerequisites
 
 - The repository's `pnpm install`.
-- Android: an SDK with API 36 and a running emulator or device.
+- Android: an SDK with API 36 and a running emulator or device. With several
+  attached, the host scripts talk to `ANDROID_SERIAL` when it is set, else to
+  the first emulator, else to the first device (`android-app/scripts/adb-target.sh`).
 - iOS: Xcode, CocoaPods, and a booted simulator (`xcrun simctl boot "iPhone 17"`).
 
 ## Android
@@ -37,7 +39,7 @@ That runs, in order:
 
 1. `pnpm publish-local:aar` in `rn-app/`: builds the Release AAR with
    the embedded bundle and publishes every variant to `~/.m2/repository`.
-2. `pnpm uninstall` in `android-app/`: removes the host from the device, so
+2. `pnpm uninstall:device` in `android-app/`: removes the host from the device, so
    the new build starts from its embedded bundle (see below).
 3. `pnpm android` in `android-app/`: `./gradlew :app:installRelease`, which
    builds the release APK against the AAR from `mavenLocal()` and installs
@@ -96,3 +98,22 @@ a standalone app are in [`rn-app/README.md`](rn-app/README.md).
 Hot Updater reads the server URL and client API key from `.env.hotupdater` in
 `rn-app/` when the artifacts are packaged, so configure it before the
 demo scripts.
+
+## Optional updates
+
+This example deploys optional updates (`pnpm deploy:android` /
+`pnpm deploy:ios` in `rn-app/`, without forcing), so an update reaches the
+user in two visits to the React Native screen:
+
+1. The first time you open the screen after a deploy, `hotUpdater.wrap()`
+   finds the update and downloads it in the background. The screen keeps
+   running the bundle it opened with; the Hot Updater card shows the
+   download progress and then "Downloaded: yes, applies on next open".
+2. The second time you open the screen, `App.tsx` sees the downloaded update
+   and reloads into it before rendering. The card now shows the new bundle
+   id and build time.
+
+A forced update (`hot-updater deploy -f`) is applied on the first open
+instead: the screen shows the fallback while it downloads, then reloads.
+Both flows go through the hosts' release artifacts, since the SDK skips
+update checks in debug builds.
