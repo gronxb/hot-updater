@@ -1089,7 +1089,7 @@
         "reasons": [
           "rncoreAutolinking"
         ],
-        "hash": "2c287ec9a6536516538ae578aa0a7be151635426",
+        "hash": "9da20b7e8e73063a6a979eaaf8e865b1ca1d439c",
         "debugInfo": {
           "path": "node_modules/@hot-updater/react-native",
           "children": [
@@ -1714,7 +1714,7 @@
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/ReleaseCatalog.swift",
-                          "hash": "5cc4369e61cc71e0e20d438ff04a0dd12878b1fd"
+                          "hash": "b6f885cfc59965f7919b185e7ae27a48172fce2e"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/ReleaseCatalogCacheService.swift",
@@ -1722,7 +1722,7 @@
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/ReleaseSelection.swift",
-                          "hash": "a6f56b947f138351ee214005a39e8d7d8b42bbff"
+                          "hash": "b76381e4c158a9a69eb2249de0103945da805aa8"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/SignatureVerifier.swift",
@@ -1749,7 +1749,7 @@
                           "hash": "11ede903c1b4e7d8caff8df2785e770c2d0451bb"
                         }
                       ],
-                      "hash": "06d7fa8edc266cecd226745df3c1b17d496808ba"
+                      "hash": "a939016e9cedae6158bcb5d21888df3bdf5ac1f9"
                     },
                     {
                       "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Package.swift",
@@ -1830,17 +1830,17 @@
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Test/ReleaseSelectionConformanceTests.swift",
-                          "hash": "ea799599e6ec68deb8fa884c25c64974ca57af63"
+                          "hash": "1209811471f56ac9f2c6a8e0744b4c7895ff014a"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Test/UpdateFailureClassifierTests.swift",
                           "hash": "5f4fc31a698214b226662eab825f98d9c14db0e0"
                         }
                       ],
-                      "hash": "1fae21d1d0077ae17eaca8632571c78a043be1c3"
+                      "hash": "765afa68b6878c4571e05721ed9760280ff21e95"
                     }
                   ],
-                  "hash": "dbea8c790339697baf1d50e4e0312e4603fc604a"
+                  "hash": "521134899576b61b49a591349a1d913669c3c0d1"
                 },
                 {
                   "path": "node_modules/@hot-updater/react-native/ios/Plugins",
@@ -1859,14 +1859,14 @@
                   "hash": "3f21728d3336ab2038b1940690bb20bc71f5a2f3"
                 }
               ],
-              "hash": "f4ee514922ab9f5edad0ccf821083c1563bf0c2c"
+              "hash": "0ce5a9eacd35ab09ec21115f1b6230fa829b50eb"
             },
             {
               "path": "node_modules/@hot-updater/react-native/Package.swift",
               "hash": "6fa35536e787cedf7a20b0028f8429c44c353d86"
             }
           ],
-          "hash": "2c287ec9a6536516538ae578aa0a7be151635426"
+          "hash": "9da20b7e8e73063a6a979eaaf8e865b1ca1d439c"
         }
       },
       {
@@ -4808,7 +4808,7 @@
         }
       }
     ],
-    "hash": "3656ecf5a66cdb6852e4049a63f5ab538c4a7745"
+    "hash": "a6a68cf68a856ec194fa6885eed933f548d9f525"
   },
   "android": {
     "sources": [
@@ -5900,7 +5900,7 @@
         "reasons": [
           "rncoreAutolinking"
         ],
-        "hash": "2c287ec9a6536516538ae578aa0a7be151635426",
+        "hash": "9da20b7e8e73063a6a979eaaf8e865b1ca1d439c",
         "debugInfo": {
           "path": "node_modules/@hot-updater/react-native",
           "children": [
@@ -6525,7 +6525,7 @@
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/ReleaseCatalog.swift",
-                          "hash": "5cc4369e61cc71e0e20d438ff04a0dd12878b1fd"
+                          "hash": "b6f885cfc59965f7919b185e7ae27a48172fce2e"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/ReleaseCatalogCacheService.swift",
@@ -6533,7 +6533,7 @@
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/ReleaseSelection.swift",
-                          "hash": "a6f56b947f138351ee214005a39e8d7d8b42bbff"
+                          "hash": "b76381e4c158a9a69eb2249de0103945da805aa8"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Internal/SignatureVerifier.swift",
@@ -6560,7 +6560,7 @@
                           "hash": "11ede903c1b4e7d8caff8df2785e770c2d0451bb"
                         }
                       ],
-                      "hash": "06d7fa8edc266cecd226745df3c1b17d496808ba"
+                      "hash": "a939016e9cedae6158bcb5d21888df3bdf5ac1f9"
                     },
                     {
                       "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Package.swift",
@@ -6641,17 +6641,17 @@
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Test/ReleaseSelectionConformanceTests.swift",
-                          "hash": "ea799599e6ec68deb8fa884c25c64974ca57af63"
+                          "hash": "1209811471f56ac9f2c6a8e0744b4c7895ff014a"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/ios/HotUpdater/Test/UpdateFailureClassifierTests.swift",
                           "hash": "5f4fc31a698214b226662eab825f98d9c14db0e0"
                         }
                       ],
-                      "hash": "1fae21d1d0077ae17eaca8632571c78a043be1c3"
+                      "hash": "765afa68b6878c4571e05721ed9760280ff21e95"
                     }
                   ],
-                  "hash": "dbea8c790339697baf1d50e4e0312e4603fc604a"
+                  "hash": "521134899576b61b49a591349a1d913669c3c0d1"
                 },
                 {
                   "path": "node_modules/@hot-updater/react-native/ios/Plugins",
@@ -6670,14 +6670,14 @@
                   "hash": "3f21728d3336ab2038b1940690bb20bc71f5a2f3"
                 }
               ],
-              "hash": "f4ee514922ab9f5edad0ccf821083c1563bf0c2c"
+              "hash": "0ce5a9eacd35ab09ec21115f1b6230fa829b50eb"
             },
             {
               "path": "node_modules/@hot-updater/react-native/Package.swift",
               "hash": "6fa35536e787cedf7a20b0028f8429c44c353d86"
             }
           ],
-          "hash": "2c287ec9a6536516538ae578aa0a7be151635426"
+          "hash": "9da20b7e8e73063a6a979eaaf8e865b1ca1d439c"
         }
       },
       {
@@ -9619,6 +9619,6 @@
         }
       }
     ],
-    "hash": "5a527192d958436c7b67ed3e4aa34cd910bce8b7"
+    "hash": "7966ef22c5b91f5ee5eb50ddfe5dddcb12cda898"
   }
 }
