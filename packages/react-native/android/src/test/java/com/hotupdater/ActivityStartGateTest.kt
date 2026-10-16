@@ -226,6 +226,28 @@ class ActivityStartGateTest {
     }
 
     @Test
+    fun `views are looked at for held content before a waiting action runs`() {
+        // A root view attached after its first content appeared verifies its
+        // launch, which the action then finds already verified.
+        val application = RecordingApplication()
+        val steps = mutableListOf<String>()
+        showsReactView = false
+        val gate = createGate(application, beforeCheckingViews = { steps += "resolve" })
+
+        application.startActivity()
+        gate.runWhenActivityStarted { steps += "arm" }
+        steps.clear()
+
+        showsReactView = true
+        application.layout()
+        assertEquals(listOf("resolve", "arm"), steps)
+
+        steps.clear()
+        gate.runWhenActivityStarted { steps += "arm" }
+        assertEquals(listOf("resolve", "arm"), steps)
+    }
+
+    @Test
     fun `runs at once without an application to observe`() {
         var runs = 0
 
@@ -317,6 +339,7 @@ class ActivityStartGateTest {
         startedBefore: Boolean = false,
         activitiesStartedBefore: (() -> Collection<Activity>)? = null,
         mainThread: HotUpdaterMainThread = FakeMainThread(),
+        beforeCheckingViews: () -> Unit = {},
     ) = ActivityStartGate(
         application,
         processHasStartedActivity = { startedBefore },
@@ -328,6 +351,7 @@ class ActivityStartGateTest {
         activitiesStartedBefore = activitiesStartedBefore,
         isStarted = { startedNow },
         mainThread = mainThread,
+        beforeCheckingViews = beforeCheckingViews,
     )
 
     private var startedNow = true

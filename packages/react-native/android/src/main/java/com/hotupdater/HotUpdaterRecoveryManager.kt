@@ -289,11 +289,8 @@ internal class HotUpdaterRecoveryManager(
 
     private fun currentGeneration(): Long = synchronized(lock) { generation }
 
-    /** A launch waiting for its first content whose runtime hasn't registered: its view may not be found yet. */
-    private fun awaitsUnregisteredRuntime(): Boolean =
-        synchronized(lock) {
-            launchState.snapshot() != null && !launchState.hasContentAppeared() && registeredRuntimeIds.isEmpty()
-        }
+    /** A launch waiting for its first content, whose root view may not be found yet. */
+    private fun awaitsFirstContent(): Boolean = synchronized(lock) { launchState.snapshot() != null && !launchState.hasContentAppeared() }
 
     private fun writeCrashMarker(launch: HotUpdaterRecoveryState.Launch) {
         val atomicFile = AtomicFile(crashMarkerFile)
@@ -568,9 +565,10 @@ internal class HotUpdaterRecoveryManager(
         // React Native names the view by its root tag. A view no known activity
         // shows is credited to main, as every view always was.
         //
-        // A view no known activity shows yet may be a named runtime's that
-        // rendered before its module registered; while such a launch waits,
-        // the content is held (HotUpdaterHeldContent) instead.
+        // A view no known activity shows yet may be a named runtime's: one that
+        // rendered before its module registered, or before its root view was
+        // attached to an activity. While a named launch waits for its first
+        // content, the content is held (HotUpdaterHeldContent) instead.
         internal fun handleContentAppeared(rootTag: Int) {
             if (liveManagers.keys.all { it == HotUpdaterInstanceEnvironment.MAIN_NAME }) {
                 contentAppeared(HotUpdaterInstanceEnvironment.MAIN_NAME)
@@ -580,12 +578,21 @@ internal class HotUpdaterRecoveryManager(
                 contentAppeared(it)
                 return
             }
-            val waitingNamedLaunch = liveManagers.values.any { !it.isMain && it.awaitsUnregisteredRuntime() }
+            val waitingNamedLaunch = liveManagers.values.any { !it.isMain && it.awaitsFirstContent() }
             if (!waitingNamedLaunch) {
                 contentAppeared(HotUpdaterInstanceEnvironment.MAIN_NAME)
                 return
             }
             heldContent.hold(rootTag, liveManagers.values.associate { it.name to it.currentGeneration() })
+        }
+
+        /**
+         * Main thread: verifies the launches whose held content's views can
+         * be found now, as when a root view was attached to an activity after
+         * its first content appeared.
+         */
+        internal fun resolveHeldContent() {
+            heldContent.resolveHeld()
         }
 
         private val heldContent =

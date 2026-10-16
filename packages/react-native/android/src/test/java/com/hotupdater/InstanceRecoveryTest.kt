@@ -516,7 +516,9 @@ class InstanceRecoveryTest {
     }
 
     @Test
-    fun `content no view can be found for verifies main when no named runtime is missing`() {
+    fun `content no view can be found for waits while a registered named launch waits too`() {
+        // The widget's module registered, but its root view rendered before it
+        // was attached to an activity.
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, main, "main-bundle")
         stagePending(context, widget, "widget-bundle")
@@ -526,8 +528,22 @@ class InstanceRecoveryTest {
 
         HotUpdaterRecoveryManager.handleContentAppeared(rootTag = 41)
 
-        assertFalse(metadata(context, main).verificationPending)
+        assertTrue(metadata(context, main).verificationPending)
         assertTrue(metadata(context, widget).verificationPending)
+    }
+
+    @Test
+    fun `content no view can be found for verifies main once no named launch waits`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+        HotUpdaterRecoveryManager.contentAppeared(widget.name)
+
+        HotUpdaterRecoveryManager.handleContentAppeared(rootTag = 41)
+
+        assertFalse(metadata(context, main).verificationPending)
     }
 
     @Test

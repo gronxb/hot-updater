@@ -166,6 +166,7 @@ class HotUpdaterImpl {
                 context as? Application,
                 showsReactView = { activity -> attribution.showsViewOf(activity, environment.name) },
                 activitiesStartedBefore = activitiesStartedBefore(environment, attribution),
+                beforeCheckingViews = HotUpdaterRecoveryManager::resolveHeldContent,
             )
         }
 

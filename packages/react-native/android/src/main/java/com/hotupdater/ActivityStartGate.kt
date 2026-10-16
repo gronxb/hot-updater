@@ -37,6 +37,13 @@ internal class ActivityStartGate(
     private val activitiesStartedBefore: (() -> Collection<Activity>)? = null,
     private val isStarted: (Activity) -> Boolean = { isActivityStarted(it) },
     private val mainThread: HotUpdaterMainThread = HotUpdaterMainThread.android,
+    /**
+     * Runs on the main thread whenever this gate is about to look at an
+     * activity's views, before its action may run: a view now found there
+     * may be one whose first content appeared before it could be found, which
+     * verifies its launch instead of arming it.
+     */
+    private val beforeCheckingViews: () -> Unit = {},
 ) : Application.ActivityLifecycleCallbacks {
     private val startedActivities = mutableSetOf<Activity>()
     private val layoutWatches = mutableMapOf<Activity, () -> Unit>()
@@ -69,6 +76,7 @@ internal class ActivityStartGate(
         request: Long,
         action: (() -> Unit)?,
     ) {
+        beforeCheckingViews()
         val runNow =
             synchronized(this) {
                 if (request != requests) return
@@ -91,14 +99,15 @@ internal class ActivityStartGate(
     /**
      * Counts [activity], which this gate may never have seen start, as
      * started when it is, and while an action waits, checks it for a React
-     * Native view and watches its layout for one. A named instance's runtime hands over its activity when its
-     * module is created.
+     * Native view and watches its layout for one. A named instance's runtime
+     * hands over its activity when its module is created.
      */
     fun watchActivity(activity: Activity) {
         if (!mainThread.isCurrent()) {
             mainThread.post { watchActivity(activity) }
             return
         }
+        beforeCheckingViews()
         val action =
             synchronized(this) {
                 // A runtime keeps its activity after it stops, as when the app
@@ -118,6 +127,7 @@ internal class ActivityStartGate(
     }
 
     override fun onActivityStarted(activity: Activity) {
+        beforeCheckingViews()
         val action =
             synchronized(this) {
                 startedActivities += activity
@@ -145,6 +155,7 @@ internal class ActivityStartGate(
     }
 
     private fun onLayout(activity: Activity) {
+        beforeCheckingViews()
         val action =
             synchronized(this) {
                 if (pendingAction == null ||

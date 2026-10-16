@@ -2,12 +2,14 @@ package com.hotupdater
 
 /**
  * First content no instance could be told for yet. A named runtime may render
- * before its HotUpdater module exists, in an activity nothing followed, so
- * its view can't be found until the module hands over its activity. Crediting
+ * before its HotUpdater module exists, in an activity nothing followed, or
+ * before its root view is attached to an activity, so its view can't be found
+ * until the module hands over its activity or the view is attached. Crediting
  * that content to main would leave the named launch unfinished, and its next
  * process would roll a working bundle back.
  *
- * Held content is resolved again whenever a named runtime registers. After
+ * Held content is resolved again whenever a named runtime registers and
+ * whenever a launch gate looks at an activity's views. After
  * [HOLD_MS] still-unresolved content verifies main, as unattributed content
  * always has, once; it stays held, so a named runtime that registers later
  * still verifies its own launch with it.
@@ -53,6 +55,7 @@ internal class HotUpdaterHeldContent(
     /** Main thread: verifies the launches whose views can be told now. */
     fun resolveHeld() {
         val candidates = synchronized(this) { held.toList() }
+        if (candidates.isEmpty()) return
         candidates.forEach { content ->
             val instanceName = resolve(content.rootTag) ?: return@forEach
             val generation = content.generations[instanceName]
