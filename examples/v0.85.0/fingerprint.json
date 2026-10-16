@@ -1089,7 +1089,7 @@
         "reasons": [
           "rncoreAutolinking"
         ],
-        "hash": "7c87b1877d2d39084241652ae1d0697bec68eaf1",
+        "hash": "8a8baeb4c3da99e2a876f3e90be1c9db1982ebfe",
         "debugInfo": {
           "path": "node_modules/@hot-updater/react-native",
           "children": [
@@ -1223,7 +1223,7 @@
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/HotUpdaterInstanceEnvironment.kt",
-                                      "hash": "8f9a76315d058ad3fe180497091dd1be4cb43b78"
+                                      "hash": "7ad2b8149513d581aa8388c282ba9de017958d27"
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/HotUpdaterProcess.kt",
@@ -1412,16 +1412,16 @@
                                       "hash": "b708a56f8beddfab6c71f14a04a42fe677dae26b"
                                     }
                                   ],
-                                  "hash": "b03719c7d406155049e2ced76e608d4e815985d7"
+                                  "hash": "394d7fdf30355fd3d3945538b7902b511d7e7197"
                                 }
                               ],
-                              "hash": "c4987b5aad2f73b9f1888709c490df400e3c93b6"
+                              "hash": "0f3414efa8b110ab7806bbfefa65576d3e231852"
                             }
                           ],
-                          "hash": "a2483c14d6b54846424e8c303ef2dd2b651d32b5"
+                          "hash": "72497c28ecc0565407cc97b82dfa9e5ee896cc84"
                         }
                       ],
-                      "hash": "2e41a4787e2a69ac0b88ac7a6f3661c21af43835"
+                      "hash": "d1720bf2c5737dca48415100973af37f185faf64"
                     },
                     {
                       "path": "node_modules/@hot-updater/react-native/android/src/newarch",
@@ -1541,7 +1541,7 @@
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/test/java/com/hotupdater/HotUpdaterRuntimeInstanceTest.kt",
-                                      "hash": "8259a796c0bc5bfef7760d35c1d2a10607dff24d"
+                                      "hash": "092d587bc298efaa8d554ed5d3585a1cf73b7d26"
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/test/java/com/hotupdater/HttpArtifactFileResolverTest.kt",
@@ -1604,22 +1604,22 @@
                                       "hash": "f52878e2629a8557eb69d2cd91893c00ac168ff7"
                                     }
                                   ],
-                                  "hash": "c9e605dc9e78be65c5dddf8ef2bb7e57673ba975"
+                                  "hash": "c48a9c86e69edf7fa91936aad9a537ca36833550"
                                 }
                               ],
-                              "hash": "c5fabb020713c5d1450ffd859266348a3ce9c7d2"
+                              "hash": "2fac2e399d9d0c57cfb9502ec7e76a576fb32b07"
                             }
                           ],
-                          "hash": "1aba8d39ce384f89afafd450d7aa36e7973299ef"
+                          "hash": "efc699a3f883c9f764b867c83dbcd1810999a3f7"
                         }
                       ],
-                      "hash": "a7c57b9418cfa9a23561f36e680d4597dc6de2b8"
+                      "hash": "93bf780c497ebd0b2838d9a0a969566656d1e28a"
                     }
                   ],
-                  "hash": "b20799e56a6ca40743fd845ccf3dcffeb7e6a186"
+                  "hash": "95e51b4af22575d57e9ad196bf47246c30884dd9"
                 }
               ],
-              "hash": "37c4dbdd13b1dd3a1479c18d6c650243267ce5ac"
+              "hash": "cfcf11193995c2a28e1f6ec4bc01f2b9a2b909ff"
             },
             {
               "path": "node_modules/@hot-updater/react-native/HotUpdater.podspec",
@@ -1906,7 +1906,7 @@
               "hash": "6fa35536e787cedf7a20b0028f8429c44c353d86"
             }
           ],
-          "hash": "7c87b1877d2d39084241652ae1d0697bec68eaf1"
+          "hash": "8a8baeb4c3da99e2a876f3e90be1c9db1982ebfe"
         }
       },
       {
@@ -4836,7 +4836,7 @@
         }
       }
     ],
-    "hash": "f7e7e2541a4bf2dc2956c388e5737900271eaad3"
+    "hash": "2629027c44dae307cd476468368f269f21481953"
   },
   "android": {
     "sources": [
@@ -5928,7 +5928,7 @@
         "reasons": [
           "rncoreAutolinking"
         ],
-        "hash": "7c87b1877d2d39084241652ae1d0697bec68eaf1",
+        "hash": "8a8baeb4c3da99e2a876f3e90be1c9db1982ebfe",
         "debugInfo": {
           "path": "node_modules/@hot-updater/react-native",
           "children": [
@@ -6062,7 +6062,7 @@
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/HotUpdaterInstanceEnvironment.kt",
-                                      "hash": "8f9a76315d058ad3fe180497091dd1be4cb43b78"
+                                      "hash": "7ad2b8149513d581aa8388c282ba9de017958d27"
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/HotUpdaterProcess.kt",
@@ -6251,16 +6251,16 @@
                                       "hash": "b708a56f8beddfab6c71f14a04a42fe677dae26b"
                                     }
                                   ],
-                                  "hash": "b03719c7d406155049e2ced76e608d4e815985d7"
+                                  "hash": "394d7fdf30355fd3d3945538b7902b511d7e7197"
                                 }
                               ],
-                              "hash": "c4987b5aad2f73b9f1888709c490df400e3c93b6"
+                              "hash": "0f3414efa8b110ab7806bbfefa65576d3e231852"
                             }
                           ],
-                          "hash": "a2483c14d6b54846424e8c303ef2dd2b651d32b5"
+                          "hash": "72497c28ecc0565407cc97b82dfa9e5ee896cc84"
                         }
                       ],
-                      "hash": "2e41a4787e2a69ac0b88ac7a6f3661c21af43835"
+                      "hash": "d1720bf2c5737dca48415100973af37f185faf64"
                     },
                     {
                       "path": "node_modules/@hot-updater/react-native/android/src/newarch",
@@ -6380,7 +6380,7 @@
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/test/java/com/hotupdater/HotUpdaterRuntimeInstanceTest.kt",
-                                      "hash": "8259a796c0bc5bfef7760d35c1d2a10607dff24d"
+                                      "hash": "092d587bc298efaa8d554ed5d3585a1cf73b7d26"
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/test/java/com/hotupdater/HttpArtifactFileResolverTest.kt",
@@ -6443,22 +6443,22 @@
                                       "hash": "f52878e2629a8557eb69d2cd91893c00ac168ff7"
                                     }
                                   ],
-                                  "hash": "c9e605dc9e78be65c5dddf8ef2bb7e57673ba975"
+                                  "hash": "c48a9c86e69edf7fa91936aad9a537ca36833550"
                                 }
                               ],
-                              "hash": "c5fabb020713c5d1450ffd859266348a3ce9c7d2"
+                              "hash": "2fac2e399d9d0c57cfb9502ec7e76a576fb32b07"
                             }
                           ],
-                          "hash": "1aba8d39ce384f89afafd450d7aa36e7973299ef"
+                          "hash": "efc699a3f883c9f764b867c83dbcd1810999a3f7"
                         }
                       ],
-                      "hash": "a7c57b9418cfa9a23561f36e680d4597dc6de2b8"
+                      "hash": "93bf780c497ebd0b2838d9a0a969566656d1e28a"
                     }
                   ],
-                  "hash": "b20799e56a6ca40743fd845ccf3dcffeb7e6a186"
+                  "hash": "95e51b4af22575d57e9ad196bf47246c30884dd9"
                 }
               ],
-              "hash": "37c4dbdd13b1dd3a1479c18d6c650243267ce5ac"
+              "hash": "cfcf11193995c2a28e1f6ec4bc01f2b9a2b909ff"
             },
             {
               "path": "node_modules/@hot-updater/react-native/HotUpdater.podspec",
@@ -6745,7 +6745,7 @@
               "hash": "6fa35536e787cedf7a20b0028f8429c44c353d86"
             }
           ],
-          "hash": "7c87b1877d2d39084241652ae1d0697bec68eaf1"
+          "hash": "8a8baeb4c3da99e2a876f3e90be1c9db1982ebfe"
         }
       },
       {
@@ -9675,6 +9675,6 @@
         }
       }
     ],
-    "hash": "c112ecd316edc814dd5e2dc0d2d5c2c1707c24ec"
+    "hash": "c12ad5548cf4735c541f84d0b8855546b7308017"
   }
 }
