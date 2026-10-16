@@ -13,6 +13,8 @@
 #endif
 
 #include <atomic>
+#include <cstdint>
+#include <cstring>
 #include <fcntl.h>
 #include <limits.h>
 #include <signal.h>
@@ -73,15 +75,23 @@ constexpr int kHotUpdaterCrashSlotCount = 8;
 // Every slot whose launch is unverified writes its marker.
 constexpr sig_atomic_t kHotUpdaterUnattributedCrash = -1;
 
-struct HotUpdaterCrashSlot {
-  // 0 while the slot is being rewritten: the signal handler skips it rather
-  // than read a path or bundle id halfway through a copy.
-  volatile sig_atomic_t inUse;
+struct HotUpdaterCrashSlotData {
+  // Empty while the slot is free.
   char markerPath[PATH_MAX];
   char bundleId[kHotUpdaterMaxBundleIdLength];
   // The launch started and its first content hasn't appeared.
-  volatile sig_atomic_t shouldRollback;
+  int shouldRollback;
 };
+
+// A sequence lock: a crash on any thread may read a slot while another thread
+// rewrites it. The writer makes the sequence odd while it copies, and the
+// handler keeps a copy only when the sequence was even and unchanged across
+// it.
+struct HotUpdaterCrashSlot {
+  std::atomic<uint32_t> sequence;
+  HotUpdaterCrashSlotData data;
+};
+static_assert(std::atomic<uint32_t>::is_always_lock_free, "the handler needs a lock-free sequence");
 
 
 HotUpdaterCrashSlot gHotUpdaterCrashSlots[kHotUpdaterCrashSlotCount] = {};
@@ -147,29 +157,50 @@ void HotUpdaterSafeCopy(char *destination, size_t destinationSize, const char *s
   destination[index] = '\0';
 }
 
-// Rewrites a slot's fields between clearing and setting `inUse`; a null
-// path or bundle id keeps the current one. The signal fences keep the
-// compiler from moving the plain string writes across the flag, so a crash
-// signal on this thread mid-rewrite skips the slot, as on Android.
+// Rewrites a slot; a null path or bundle id keeps the current one. The new
+// fields are prepared first, so the window a crash skips stays one copy long.
+// Swift serializes the writers, as on Android.
 void HotUpdaterRewriteCrashSlot(HotUpdaterCrashSlot &slot,
                                 const char *markerPath,
                                 const char *bundleId,
                                 bool shouldRollback)
 {
-  slot.inUse = 0;
-  std::atomic_signal_fence(std::memory_order_seq_cst);
+  HotUpdaterCrashSlotData next;
+  std::memcpy(&next, &slot.data, sizeof(next));
   if (markerPath) {
-    HotUpdaterSafeCopy(slot.markerPath, sizeof(slot.markerPath), markerPath);
+    HotUpdaterSafeCopy(next.markerPath, sizeof(next.markerPath), markerPath);
   }
   if (bundleId) {
-    HotUpdaterSafeCopy(slot.bundleId, sizeof(slot.bundleId), bundleId);
+    HotUpdaterSafeCopy(next.bundleId, sizeof(next.bundleId), bundleId);
   }
-  slot.shouldRollback = shouldRollback ? 1 : 0;
-  std::atomic_signal_fence(std::memory_order_seq_cst);
-  slot.inUse = 1;
+  next.shouldRollback = shouldRollback ? 1 : 0;
+
+  const uint32_t sequence = slot.sequence.load(std::memory_order_relaxed);
+  slot.sequence.store(sequence + 1, std::memory_order_relaxed);
+  std::atomic_thread_fence(std::memory_order_release);
+  std::memcpy(&slot.data, &next, sizeof(next));
+  slot.sequence.store(sequence + 2, std::memory_order_release);
 }
 
-void HotUpdaterWriteCrashMarker(const HotUpdaterCrashSlot &slot)
+// Copies a consistent snapshot of the slot, or returns false while it is
+// being rewritten.
+bool HotUpdaterReadCrashSlot(const HotUpdaterCrashSlot &slot, HotUpdaterCrashSlotData &snapshot)
+{
+  for (int attempt = 0; attempt < 4; ++attempt) {
+    const uint32_t before = slot.sequence.load(std::memory_order_acquire);
+    if ((before & 1U) != 0) {
+      continue;
+    }
+    std::memcpy(&snapshot, &slot.data, sizeof(snapshot));
+    std::atomic_thread_fence(std::memory_order_acquire);
+    if (slot.sequence.load(std::memory_order_relaxed) == before) {
+      return true;
+    }
+  }
+  return false;
+}
+
+void HotUpdaterWriteCrashMarker(const HotUpdaterCrashSlotData &slot)
 {
   if (slot.markerPath[0] == '\0') {
     return;
@@ -212,11 +243,10 @@ void HotUpdaterWriteCrashMarkers()
     if (attributedSlot != kHotUpdaterUnattributedCrash && attributedSlot != index) {
       continue;
     }
-    const HotUpdaterCrashSlot &slot = gHotUpdaterCrashSlots[index];
-    if (slot.inUse == 0) {
+    HotUpdaterCrashSlotData slot;
+    if (!HotUpdaterReadCrashSlot(gHotUpdaterCrashSlots[index], slot) || slot.markerPath[0] == '\0') {
       continue;
     }
-    std::atomic_signal_fence(std::memory_order_seq_cst);
     if (index == 0 || slot.shouldRollback != 0) {
       HotUpdaterWriteCrashMarker(slot);
     }
@@ -303,7 +333,7 @@ extern "C" void HotUpdaterAttributeCrashToSlot(NSInteger index)
 extern "C" void HotUpdaterInstallSignalHandlers(NSString *crashMarkerPath)
 {
   HotUpdaterCrashSlot &slot = gHotUpdaterCrashSlots[0];
-  HotUpdaterRewriteCrashSlot(slot, crashMarkerPath.UTF8String ?: "", nullptr, slot.shouldRollback != 0);
+  HotUpdaterRewriteCrashSlot(slot, crashMarkerPath.UTF8String ?: "", nullptr, slot.data.shouldRollback != 0);
   HotUpdaterInstallCrashSignalHandlers();
 }
 
