@@ -695,9 +695,9 @@ internal class HotUpdaterRecoveryManager(
          * one named launch's ([HotUpdaterRecoverySlots.inferJavaScriptErrorOwner]).
          */
         internal fun chargeUncaughtException(throwable: Throwable): Boolean {
-            val owner =
-                if (slots.attributedName() == null && isJavaScriptError(throwable)) javaScriptErrorOwner(throwable) else null
-            return if (owner != null) claimJavaScriptError(null, owner) else handleUncaughtCrash()
+            val claim = activeClaim()
+            val owner = if (claim == null && isJavaScriptError(throwable)) javaScriptErrorOwner(throwable) else null
+            return if (owner != null) claimJavaScriptError(null, owner) else handleUncaughtCrash(claim = claim)
         }
 
         /**
@@ -742,14 +742,14 @@ internal class HotUpdaterRecoveryManager(
          */
         private fun handleUncaughtCrash(
             exception: Exception? = null,
-            attributedName: String? = slots.attributedName(),
+            claim: Pair<String, Long?>? = activeClaim(),
         ): Boolean {
             // A claim belongs to the launch that threw, not to a newer launch
             // of its instance that started while the claim was active.
-            val ownerGeneration = synchronized(claimLock) { claimOwner?.takeIf { it.first == attributedName }?.second }
+            val attributedName = claim?.first
             val targets =
                 HotUpdaterRecoverySlots.markerTargets(liveLaunches(), attributedName).filter { target ->
-                    target.name != attributedName || liveManagers[target.name]?.currentGeneration() == ownerGeneration
+                    target.name != attributedName || liveManagers[target.name]?.currentGeneration() == claim?.second
                 }
             // Named instances first: main's recovery restart ends the process.
             targets.filterNot { it.isMain }.forEach { liveManagers[it.name]?.chargeCrash(exception) }
@@ -805,7 +805,7 @@ internal class HotUpdaterRecoveryManager(
             // one: it is the one named launch whose runtime never reached
             // HotUpdater, or it charges every launch it can be blamed on.
             if (instanceName == null) {
-                val owner = javaScriptErrorOwner(exception) ?: return handleUncaughtCrash(exception, attributedName = null)
+                val owner = javaScriptErrorOwner(exception) ?: return handleUncaughtCrash(exception, claim = null)
                 return claimJavaScriptError(exception, owner)
             }
             return claimJavaScriptError(exception, instanceName)
@@ -815,19 +815,27 @@ internal class HotUpdaterRecoveryManager(
             exception: Exception?,
             instanceName: String,
         ): Boolean {
-            slots.attribute(instanceName)
+            // Read before the claim's lock: a launch starting takes its own
+            // lock, then the claim's.
             val ownerGeneration = liveManagers[instanceName]?.currentGeneration()
-            synchronized(claimLock) {
-                claimOwner = instanceName to ownerGeneration
-                claimedOwners += instanceName to ownerGeneration
-            }
-            if (signalHandlerInstalled) {
-                try {
-                    HotUpdaterRecoveryNative.nativeAttributeCrash(slots.assignedSlot(instanceName) ?: -1)
-                } catch (e: UnsatisfiedLinkError) {
-                    Log.w(TAG, "Failed to attribute the crash natively", e)
+            // The claim's generation, its attribution in both clocks, and its
+            // owner change together, so a release of an earlier claim never
+            // clears this one.
+            val generation =
+                synchronized(claimLock) {
+                    claimGeneration += 1
+                    slots.attribute(instanceName)
+                    claimOwner = instanceName to ownerGeneration
+                    claimedOwners += instanceName to ownerGeneration
+                    if (signalHandlerInstalled) {
+                        try {
+                            HotUpdaterRecoveryNative.nativeAttributeCrash(slots.assignedSlot(instanceName) ?: -1)
+                        } catch (e: UnsatisfiedLinkError) {
+                            Log.w(TAG, "Failed to attribute the crash natively", e)
+                        }
+                    }
+                    claimGeneration
                 }
-            }
             val disarmed =
                 liveManagers.values
                     .filter { it.name != instanceName }
@@ -835,12 +843,7 @@ internal class HotUpdaterRecoveryManager(
             // Claims overlap when errors return: every launch any of them
             // left alone waits for the last one, including that claim's own
             // instance, which an earlier claim may have left alone.
-            val (generation, _) =
-                synchronized(claimLock) {
-                    claimGeneration += 1
-                    disarmed.forEach { (manager, launch) -> disarmedByClaim[manager] = launch }
-                    claimGeneration to disarmedByClaim.isNotEmpty()
-                }
+            synchronized(claimLock) { disarmed.forEach { (manager, launch) -> disarmedByClaim[manager] = launch } }
             // A development build shows the error, and an app's handler may
             // swallow it: once the claim expires, the process lived on.
             scheduleClaimRelease(generation)
@@ -863,7 +866,7 @@ internal class HotUpdaterRecoveryManager(
                     // Every launch that starts during a claim joins it, a newer
                     // launch of the claim's own instance too: only the launch
                     // that threw is the claim's.
-                    slots.attributedName() ?: return false
+                    activeClaimLocked() ?: return false
                     disarmedByClaim[manager] = generation
                     claimGeneration
                 }
@@ -906,6 +909,14 @@ internal class HotUpdaterRecoveryManager(
                 }
             }
             disarmed.forEach { (manager, launch) -> manager.resumeAfterAnotherInstanceSurvived(launch) }
+        }
+
+        /** The active claim: its instance and the generation of the launch that threw. */
+        private fun activeClaim(): Pair<String, Long?>? = synchronized(claimLock) { activeClaimLocked() }
+
+        private fun activeClaimLocked(): Pair<String, Long?>? {
+            val name = slots.attributedName() ?: return null
+            return name to claimOwner?.takeIf { it.first == name }?.second
         }
 
         /**

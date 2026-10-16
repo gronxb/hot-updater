@@ -584,6 +584,28 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `an earlier claim's release leaves a newer claim active`() {
+        val releases = mutableListOf<Runnable>()
+        HotUpdaterRecoveryManager.claimReleaseScheduler = { _, task -> releases += task }
+        val context = InstanceTestContext(temporaryFolder.root)
+        val chat = namedEnvironment("chat")
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        stagePending(context, chat, "chat-bundle")
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        HotUpdaterImpl(context, chat).getJSBundleFile()
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("chat failed"), chat.name)
+
+        // The widget claim's release fires while the chat claim is active.
+        releases.first().run()
+
+        // A launch that starts now still joins the active claim.
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        assertFalse(metadata(context, main).launchInProgress)
+    }
+
+    @Test
     fun `launches left alone by overlapping claims all count again when the last claim is released`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val chat = namedEnvironment("chat")
