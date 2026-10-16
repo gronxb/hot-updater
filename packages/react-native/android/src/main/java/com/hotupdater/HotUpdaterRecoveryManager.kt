@@ -1298,7 +1298,17 @@ internal class HotUpdaterRecoveryManager(
                 return
             }
 
-            if (System.currentTimeMillis() >= state.deadlineAt) {
+            val now = System.currentTimeMillis()
+            if (now >= state.deadlineAt) {
+                // A claimed error's handler in this process may run long, then
+                // end it: the watchdog stays until the claim ends, which drops
+                // its relaunch intent (or the process does).
+                if (state.relaunching.isNotEmpty() && state.pid == Process.myPid()) {
+                    watchdogDeadlineAt = now + MONITORING_GRACE_PERIOD_MS
+                    watchdogStateFile.writeText(state.copy(deadlineAt = watchdogDeadlineAt).serialize())
+                    scheduleRecoveryWatchdogTick(appContext, WATCHDOG_TICK_INTERVAL_MS)
+                    return
+                }
                 watchdogStateFile.delete()
                 cancelRecoveryWatchdogAlarm(appContext)
                 return

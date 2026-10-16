@@ -786,6 +786,37 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(coordinator.takeDeferredLoadFailure(for: .none))
     }
 
+    /// An unclaimed load failure's fatal is forwarded while the widget,
+    /// whose runtime is known, is armed: a native crash or exception it
+    /// causes writes only the possible owners' markers, never the widget's.
+    @Test
+    func anUnclaimedLoadFailureChargesOnlyItsPossibleOwnersWhileForwarded() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let checkoutMarker = scene.documents.appendingPathComponent("checkout-marker.json")
+        coordinator.register(name: "checkout", markerURL: checkoutMarker, storage: NoStorage())
+        coordinator.startMonitoring(name: "checkout", bundleId: "checkout-next", shouldRollback: true)
+        _ = coordinator.contentAppeared(owner: nil)
+        coordinator.runtimeResolved(name: Self.widget)
+        #expect(coordinator.arm(name: Self.widget))
+        let widgetSlot = try #require(coordinator.launch(named: Self.widget)?.slot)
+
+        let claim = coordinator.chargeUnclaimedLoadFailure()
+        let checkoutSlot = try #require(coordinator.launch(named: "checkout")?.slot)
+        #expect(markers(coordinator) == [HotUpdaterRecoveryCoordinator.mainSlot: false, checkoutSlot: true])
+        #expect(scene.metadata(Self.widget)?.launchInProgress == false)
+        coordinator.chargeUncaughtException()
+        #expect(!FileManager.default.fileExists(atPath: scene.markerURL(Self.widget).path))
+        #expect(HotUpdaterCrashMarker.consume(at: checkoutMarker)?.shouldRollback == true)
+
+        coordinator.clearAttribution(claim: claim)
+        #expect(scene.metadata(Self.widget)?.launchInProgress == true)
+        #expect(coordinator.launch(named: Self.widget)?.isArmed == true)
+        #expect(markers(coordinator)[widgetSlot] == true)
+    }
+
     @Test
     func aLoadFailureIsMainsOnceEveryNamedRuntimeIsKnown() throws {
         let scene = try Scene()

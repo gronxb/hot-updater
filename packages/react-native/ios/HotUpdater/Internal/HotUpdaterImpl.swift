@@ -1433,8 +1433,9 @@ final class HotUpdaterRecoveryHub: NSObject {
             }
         }
         if owner == nil, afterLoadFailure {
-            coordinator.chargeUnclaimedLoadFailure()
+            let claim = coordinator.chargeUnclaimedLoadFailure()
             forward()
+            coordinator.clearAttribution(claim: claim)
             return
         }
         // A named instance never reloads in-process: it applies updates and

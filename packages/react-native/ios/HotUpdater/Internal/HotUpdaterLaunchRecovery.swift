@@ -356,7 +356,7 @@ final class HotUpdaterRecoveryCoordinator {
     /// released, if the process lives on.
     private func markStarted(_ launch: Launch) -> Bool {
         let isClaimOwner = attributedName == launch.name && attributedGeneration == launch.generation
-        let claimHeld = isEarlierRuntimeClaim || (attributedName != nil && !isClaimOwner)
+        let claimHeld = !activeClaims.isEmpty && !isClaimOwner
         if claimHeld, let bundleId = launch.bundleId {
             disarmed.append((launch.name, launch.generation, bundleId, true, true))
             return false
@@ -500,11 +500,30 @@ final class HotUpdaterRecoveryCoordinator {
     /// process: every launch whose runtime may be the one that failed is
     /// charged, a named one whose view hasn't shown yet included, so the
     /// failing bundle rolls back at its next start whoever it was.
-    func chargeUnclaimedLoadFailure() {
+    ///
+    /// Returns the claim to release once the forwarded fatal's handler
+    /// returns: while it holds, every launch that can't have failed is
+    /// stopped, so a native crash or uncaught exception the fatal causes
+    /// writes only the possible owners' markers.
+    @discardableResult
+    func chargeUnclaimedLoadFailure() -> Int {
         charging {
-            for launch in possibleFatalOwners where launch.isMonitoring {
+            let owners = possibleFatalOwners
+            for launch in owners where launch.isMonitoring {
                 charge(launch)
             }
+            claimGeneration += 1
+            activeClaims.append(Claim(
+                id: claimGeneration,
+                name: nil,
+                generation: nil,
+                slot: Self.unattributed,
+                isEarlierRuntime: false
+            ))
+            publishLatestClaim()
+            let ownerNames = Set(owners.map(\.name))
+            disarm(launches.values.filter { !ownerNames.contains($0.name) })
+            return claimGeneration
         }
     }
 
@@ -788,8 +807,10 @@ final class HotUpdaterRecoveryCoordinator {
                 continue
             }
             let wasStarted = launch.storage.clearLaunchStarted(bundleId: bundleId)
-            disarmed.append((launch.name, launch.generation, bundleId, wasStarted, launch.isArmed))
+            // A launch charged earlier counts as started too.
+            disarmed.append((launch.name, launch.generation, bundleId, wasStarted, launch.isArmed || launch.isCharged))
             launch.isArmed = false
+            launch.isCharged = false
             mirror(launch)
         }
     }

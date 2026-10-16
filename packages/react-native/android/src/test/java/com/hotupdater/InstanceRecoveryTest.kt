@@ -1172,6 +1172,27 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `the watchdog outlasts its deadline while a claimed error is in flight in its process`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val watchdogState = File(bundleStore(context, main), "recovery-watchdog-state.txt").apply { parentFile?.mkdirs() }
+        // The claimed error's handler runs past the deadline in the process
+        // that armed the watchdog (this one's pid, as unit tests read it).
+        val pid = android.os.Process.myPid()
+        watchdogState.writeText(HotUpdaterRecoveryManager.WatchdogState(1_000L, emptyList(), pid, listOf(widget.name)).serialize())
+
+        HotUpdaterRecoveryManager.handleRecoveryWatchdog(context)
+
+        val extended = HotUpdaterRecoveryManager.WatchdogState.parse(watchdogState.readText())!!
+        assertTrue(extended.deadlineAt > System.currentTimeMillis())
+        assertEquals(listOf(widget.name), extended.relaunching)
+
+        // Without a claim in flight, the deadline ends it as always.
+        watchdogState.writeText(HotUpdaterRecoveryManager.WatchdogState(1_000L, listOf(widget.name), pid).serialize())
+        HotUpdaterRecoveryManager.handleRecoveryWatchdog(context)
+        assertFalse(watchdogState.exists())
+    }
+
+    @Test
     fun `main's watchdog state keeps its format`() {
         val state = HotUpdaterRecoveryManager.WatchdogState(1_234L, listOf(HotUpdaterInstanceEnvironment.MAIN_NAME))
 
