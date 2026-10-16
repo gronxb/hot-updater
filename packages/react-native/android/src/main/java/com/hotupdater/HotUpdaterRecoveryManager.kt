@@ -333,7 +333,7 @@ internal class HotUpdaterRecoveryManager(
                 watchdogOwners += name
                 watchdogDeadlineAt = System.currentTimeMillis() + MONITORING_GRACE_PERIOD_MS
                 watchdogStateFile.parentFile?.mkdirs()
-                watchdogStateFile.writeText(WatchdogState(watchdogDeadlineAt, watchdogOwners.toList()).serialize())
+                watchdogStateFile.writeText(WatchdogState(watchdogDeadlineAt, watchdogOwners.toList(), Process.myPid()).serialize())
                 scheduleRecoveryWatchdogTick(appContext, WATCHDOG_TICK_INTERVAL_MS)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to schedule recovery watchdog", e)
@@ -349,7 +349,7 @@ internal class HotUpdaterRecoveryManager(
                 // The instances still waiting keep the watchdog, and a marker
                 // of this one no longer relaunches the app.
                 try {
-                    watchdogStateFile.writeText(WatchdogState(watchdogDeadlineAt, watchdogOwners.toList()).serialize())
+                    watchdogStateFile.writeText(WatchdogState(watchdogDeadlineAt, watchdogOwners.toList(), Process.myPid()).serialize())
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to update recovery watchdog", e)
                 }
@@ -493,6 +493,8 @@ internal class HotUpdaterRecoveryManager(
     internal data class WatchdogState(
         val deadlineAt: Long,
         val instances: List<String>,
+        /** The process that armed the watchdog, recorded beside named owners. */
+        val pid: Int? = null,
     ) {
         // Main alone writes only its deadline, as it always has. Any other set
         // of owners is listed on an `owners:` line, which may leave main out:
@@ -500,11 +502,28 @@ internal class HotUpdaterRecoveryManager(
         fun serialize(): String {
             val owners = instances.distinct()
             if (owners == listOf(HotUpdaterInstanceEnvironment.MAIN_NAME)) return deadlineAt.toString()
-            return "$deadlineAt\n$OWNERS_PREFIX${owners.joinToString(",")}"
+            val pidLine = pid?.let { "\n$PID_PREFIX$it" }.orEmpty()
+            return "$deadlineAt\n$OWNERS_PREFIX${owners.joinToString(",")}$pidLine"
         }
+
+        /**
+         * Whether the watchdog, ticking in process [currentPid], relaunches the
+         * app for a marker that asks to roll back. It relaunches after the
+         * process that armed it died. A named instance's marker is written
+         * before its error is forwarded, and the error's handler may return:
+         * a development build shows it, and an app's handler may swallow it.
+         * Then the process that armed the watchdog lives on and is not
+         * restarted. Main's own file has no process, and relaunches as it
+         * always has.
+         */
+        fun relaunchesFor(
+            markerRequestsRollback: Boolean,
+            currentPid: Int,
+        ): Boolean = markerRequestsRollback && pid != currentPid
 
         companion object {
             private const val OWNERS_PREFIX = "owners:"
+            private const val PID_PREFIX = "pid:"
 
             fun parse(text: String?): WatchdogState? {
                 val lines = text?.lines()?.map(String::trim)?.filter(String::isNotEmpty) ?: return null
@@ -516,8 +535,9 @@ internal class HotUpdaterRecoveryManager(
                         ?.split(',')
                         ?.map(String::trim)
                         ?.filter(String::isNotEmpty)
+                val pid = lines.firstOrNull { it.startsWith(PID_PREFIX) }?.removePrefix(PID_PREFIX)?.toIntOrNull()
                 // A file with only a deadline is main's.
-                return WatchdogState(deadlineAt, owners ?: listOf(HotUpdaterInstanceEnvironment.MAIN_NAME))
+                return WatchdogState(deadlineAt, owners ?: listOf(HotUpdaterInstanceEnvironment.MAIN_NAME), pid)
             }
         }
     }
@@ -963,7 +983,7 @@ internal class HotUpdaterRecoveryManager(
                 return
             }
 
-            if (crashMarkerRequestsRollback(appContext.filesDir, state.instances)) {
+            if (state.relaunchesFor(crashMarkerRequestsRollback(appContext.filesDir, state.instances), Process.myPid())) {
                 Log.i(TAG, "Recovery watchdog detected crash marker, relaunching app")
                 watchdogStateFile.delete()
                 cancelRecoveryWatchdogAlarm(appContext)

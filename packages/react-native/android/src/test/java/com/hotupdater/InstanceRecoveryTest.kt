@@ -704,6 +704,25 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `the watchdog relaunches only after the process that armed it died`() {
+        val named = HotUpdaterRecoveryManager.WatchdogState(1_000L, listOf(widget.name), pid = 4321)
+        val parsed = HotUpdaterRecoveryManager.WatchdogState.parse(named.serialize())!!
+        assertEquals(named, parsed)
+
+        // A named instance's error was handled and the process lives on.
+        assertFalse(parsed.relaunchesFor(markerRequestsRollback = true, currentPid = 4321))
+        // The alarm fires in a new process after the crash.
+        assertTrue(parsed.relaunchesFor(markerRequestsRollback = true, currentPid = 5678))
+        assertFalse(parsed.relaunchesFor(markerRequestsRollback = false, currentPid = 5678))
+
+        // Main's own file names no process and relaunches as it always has.
+        val main = HotUpdaterRecoveryManager.WatchdogState.parse("1234")!!
+        assertNull(main.pid)
+        assertTrue(main.relaunchesFor(markerRequestsRollback = true, currentPid = 4321))
+        assertEquals("1234", HotUpdaterRecoveryManager.WatchdogState(1_234L, listOf(main.instances.single()), pid = 4321).serialize())
+    }
+
+    @Test
     fun `main's watchdog state keeps its format`() {
         val state = HotUpdaterRecoveryManager.WatchdogState(1_234L, listOf(HotUpdaterInstanceEnvironment.MAIN_NAME))
 
