@@ -38,8 +38,8 @@ class HotUpdaterModule internal constructor(
 
     override fun initialize() {
         super.initialize()
-        // Each runtime has its own module, so this reaches the runtime of every
-        // instance, including a named one's, whose host the app doesn't expose.
+        // Each runtime has its own module, so this reaches a named instance's
+        // runtime, whose host the app doesn't expose. Main's is left alone.
         HotUpdaterRecoveryManager.registerRuntime(mReactApplicationContext)
     }
 

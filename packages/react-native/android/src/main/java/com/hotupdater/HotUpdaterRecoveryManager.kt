@@ -483,11 +483,15 @@ internal class HotUpdaterRecoveryManager(
         }
 
         /**
-         * Hooks the JavaScript errors of a runtime whose HotUpdater module was
-         * created, so a named instance's runtime is reached too, and follows
-         * its activity for its views.
+         * Hooks the JavaScript errors of a named instance's runtime when its
+         * HotUpdater module is created, since the app exposes only main's
+         * host, and follows its activity for its views. Main's runtime is
+         * left alone: main hooks its host only while it monitors a launch, as
+         * it always has.
          */
         internal fun registerRuntime(reactContext: ReactContext) {
+            val instanceName = attribution.instanceOf(runCatching { reactContext.sourceURL }.getOrNull())
+            if (!registersRuntime(instanceName)) return
             attribution.registerRuntime(reactContext)
             try {
                 JavaScriptExceptionHooks.installForRuntime(reactContext)
@@ -495,6 +499,14 @@ internal class HotUpdaterRecoveryManager(
                 Log.w(TAG, "Failed to hook the runtime's JavaScript errors", e)
             }
         }
+
+        /**
+         * Whether a runtime of [instanceName] is hooked when its module is
+         * created: only a named instance's. A runtime whose bundle isn't known
+         * yet is main's, as every runtime is in an app with only main.
+         */
+        internal fun registersRuntime(instanceName: String?): Boolean =
+            instanceName != null && instanceName != HotUpdaterInstanceEnvironment.MAIN_NAME
 
         internal fun patchReactContextExceptionHandler(reactContext: ReactContext) {
             val contextIdentity = System.identityHashCode(reactContext)

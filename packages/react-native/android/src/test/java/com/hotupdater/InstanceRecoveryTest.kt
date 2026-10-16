@@ -130,6 +130,14 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `only a named instance's runtime is hooked when its module is created`() {
+        // Main hooks its host only while it monitors a launch, as it always has.
+        assertFalse(HotUpdaterRecoveryManager.registersRuntime(HotUpdaterInstanceEnvironment.MAIN_NAME))
+        assertFalse(HotUpdaterRecoveryManager.registersRuntime(null))
+        assertTrue(HotUpdaterRecoveryManager.registersRuntime(widget.name))
+    }
+
+    @Test
     fun `first content of one instance never verifies another's launch`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, main, "main-bundle")
