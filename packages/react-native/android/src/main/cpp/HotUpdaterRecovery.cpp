@@ -40,7 +40,9 @@ struct Slot {
   std::atomic<uint32_t> sequence;
   SlotData data;
 };
-static_assert(std::atomic<uint32_t>::is_always_lock_free, "the handler needs a lock-free sequence");
+// C++11, as old React Native builds compile it: the handler needs a
+// lock-free sequence.
+static_assert(ATOMIC_INT_LOCK_FREE == 2 && sizeof(uint32_t) == sizeof(int), "the crash handler needs a lock-free sequence");
 
 Slot gSlots[kSlotCount] = {};
 // The sequence lock takes one writer at a time; launch preparation and the
