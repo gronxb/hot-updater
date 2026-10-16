@@ -807,6 +807,52 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a repeated report of an error main is recovering from is not forwarded`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        val error = RuntimeException("main failed")
+
+        // The first report starts main's recovery restart (the test context starts it at once).
+        assertTrue(HotUpdaterRecoveryManager.handleJavaScriptException(error, HotUpdaterInstanceEnvironment.MAIN_NAME))
+
+        // The same error through the other hook, wrapped: no default handler while the restart is under way.
+        assertTrue(HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException(error), HotUpdaterInstanceEnvironment.MAIN_NAME))
+    }
+
+    @Test
+    fun `a named launch's native slot is published when it starts and only flips when charged`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        val updates = mutableListOf<Pair<Int, Boolean>>()
+        HotUpdaterRecoveryManager.nativeRecovery =
+            object : HotUpdaterNativeRecovery {
+                override fun updateSlot(
+                    slot: Int,
+                    crashMarkerPath: String,
+                    bundleId: String?,
+                    shouldRollback: Boolean,
+                    writesWhenVerified: Boolean,
+                ) {
+                    if (crashMarkerPath == crashMarker(context, widget).absolutePath) updates += slot to shouldRollback
+                }
+
+                override fun attributeCrash(slot: Int) = Unit
+
+                override fun clearCrashAttribution() = Unit
+            }
+
+        // Unarmed: its slot is already taken and published, not asking for rollback.
+        HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+        val (slot, rollback) = updates.single()
+        assertFalse(rollback)
+
+        // The charge republishes that same slot asking for rollback.
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+        assertEquals(slot to true, updates.drop(1).first())
+    }
+
+    @Test
     fun `launches left alone by overlapping claims all count again when the last claim is released`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val chat = namedEnvironment("chat")

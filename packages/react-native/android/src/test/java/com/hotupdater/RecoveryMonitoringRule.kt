@@ -62,6 +62,7 @@ class RecoveryMonitoringRule : ExternalResource() {
             (field(manager, "activeClaims").get(null) as MutableMap<*, *>).clear()
             (field(manager, "claimErrors").get(null) as MutableMap<*, *>).clear()
             (field(manager, "claimHolders").get(null) as MutableMap<*, *>).clear()
+            (field(manager, "claimRecovering").get(null) as MutableMap<*, *>).clear()
         }
 
         // A JavaScript error a test claimed must not claim another test's crash.

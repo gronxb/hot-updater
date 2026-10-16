@@ -673,6 +673,11 @@ internal class HotUpdaterRecoveryManager(
         // returns in its own time. The claim ends when the last returns.
         private val claimHolders = HashMap<Int, Int>()
 
+        // Whether each claim's charge started main's recovery restart. A
+        // repeated report of its error gets the same answer, so its hook
+        // doesn't forward the error while that restart is under way.
+        private val claimRecovering = HashMap<Int, Boolean>()
+
         // Every owner of the claims still active, which overlap when errors
         // return: each one's watchdog is left when the latest claim ends.
         private val claimedOwners = LinkedHashSet<Pair<String, Long?>>()
@@ -1071,7 +1076,7 @@ internal class HotUpdaterRecoveryManager(
             synchronized(recoveryLock) {
                 exception?.let(::activeClaimOf)?.let { claimed ->
                     claimHolders[claimed] = (claimHolders[claimed] ?: 0) + 1
-                    return@synchronized JavaScriptErrorOutcome(false, claimed)
+                    return@synchronized JavaScriptErrorOutcome(claimRecovering[claimed] == true, claimed)
                 }
                 // The claim's generation, its attribution in both claims, its
                 // owner, and the launches it leaves alone change at once: no
@@ -1120,6 +1125,7 @@ internal class HotUpdaterRecoveryManager(
                 liveManagers.values
                     .filter { it.name != instanceName }
                     .forEach { manager -> manager.handleCrashOfAnotherInstance()?.let { disarmedByClaim[manager] = it } }
+                claimRecovering[generation] = recovering
                 JavaScriptErrorOutcome(recovering, generation)
             }
 
@@ -1157,11 +1163,13 @@ internal class HotUpdaterRecoveryManager(
                     activeClaims.clear()
                     claimErrors.clear()
                     claimHolders.clear()
+                    claimRecovering.clear()
                 } else if (activeClaims.remove(generation) == null) {
                     return
                 } else {
                     claimErrors.remove(generation)
                     claimHolders.remove(generation)
+                    claimRecovering.remove(generation)
                 }
                 // Another fatal error is still in flight: the claim stays,
                 // now its, with its marker and slot already in place.

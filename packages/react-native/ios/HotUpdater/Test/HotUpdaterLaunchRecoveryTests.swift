@@ -166,8 +166,10 @@ struct HotUpdaterLaunchRecoveryTests {
         defer { scene.cleanUp() }
         let process = scene.launch()
 
-        // Its launch never started: no slot, and a crash leaves it no marker.
-        #expect(process.coordinator.launch(named: Self.widget)?.slot == nil)
+        // Its launch never started: its slot, published at the launch, asks
+        // for nothing, and a crash leaves it no marker.
+        let widgetSlot = try #require(process.coordinator.launch(named: Self.widget)?.slot)
+        #expect(process.sink.flags[widgetSlot] == false)
         #expect(markers(process.coordinator) == [HotUpdaterRecoveryCoordinator.mainSlot: true])
         process.coordinator.chargeUncaughtException()
         #expect(FileManager.default.fileExists(atPath: scene.markerURL(Self.main).path))
@@ -1361,7 +1363,10 @@ struct HotUpdaterLaunchRecoveryTests {
             let scene = try Scene()
             defer { scene.cleanUp() }
             let process = scene.launch()
-            #expect(process.coordinator.launch(named: Self.widget)?.slot == nil)
+            // Published at the launch, not asking yet: the charge only flips it.
+            let seededSlot = try #require(process.coordinator.launch(named: Self.widget)?.slot)
+            #expect(process.sink.flags[seededSlot] == false)
+            #expect(process.sink.paths[seededSlot] == scene.markerURL(Self.widget).path)
             var markerWhenSlotAsked: Bool?
             process.sink.onUpdate = { slot, shouldRollback in
                 guard shouldRollback, slot != HotUpdaterRecoveryCoordinator.mainSlot, markerWhenSlotAsked == nil else { return }
@@ -1376,9 +1381,10 @@ struct HotUpdaterLaunchRecoveryTests {
         }
     }
 
-    /// Every charge publishes the slots first: a charged launch's slot asks
-    /// for rollback before its marker's directory is created, and a launch
-    /// a claim stops no longer asks before its storage is written.
+    /// Every charge publishes the slots first: a charged launch's slot,
+    /// published with its marker directory when it launched, asks for
+    /// rollback before its marker is written, and a launch a claim stops no
+    /// longer asks before its storage is written.
     @Test
     func aChargePublishesItsSlotsBeforeAnyFileSystemWrite() throws {
         let directory = try makeTemporaryDirectory()
@@ -1397,20 +1403,39 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(coordinator.arm(name: Self.widget))
         let widgetSlot = try #require(coordinator.launch(named: Self.widget)?.slot)
 
-        var directoryWhenSlotAsked: Bool?
+        // Seeded at the launch, with the directory the signal handler writes into.
+        let checkoutSlot = try #require(coordinator.launch(named: "checkout")?.slot)
+        #expect(sink.paths[checkoutSlot] == checkoutMarker.path)
+        #expect(FileManager.default.fileExists(atPath: checkoutMarker.deletingLastPathComponent().path))
+        var markerWhenSlotAsked: Bool?
         sink.onUpdate = { slot, shouldRollback in
-            guard shouldRollback, slot != widgetSlot, directoryWhenSlotAsked == nil else { return }
-            directoryWhenSlotAsked = FileManager.default.fileExists(
-                atPath: checkoutMarker.deletingLastPathComponent().path
-            )
+            guard shouldRollback, slot == checkoutSlot, markerWhenSlotAsked == nil else { return }
+            markerWhenSlotAsked = FileManager.default.fileExists(atPath: checkoutMarker.path)
         }
         var widgetSlotWhenCleared: Bool?
         widgetStorage.onClearLaunchStarted = { widgetSlotWhenCleared = sink.flags[widgetSlot] }
 
         coordinator.chargeFatal(owner: "checkout")
-        #expect(directoryWhenSlotAsked == false)
+        #expect(markerWhenSlotAsked == false)
         #expect(FileManager.default.fileExists(atPath: checkoutMarker.path))
         #expect(widgetSlotWhenCleared == false)
+    }
+
+    /// Every launch publishes its slot when it starts being watched, so a
+    /// slot is never first published by a crash.
+    @Test
+    func everyLaunchPublishesItsSlotWhenWatched() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let widgetSlot = try #require(process.coordinator.launch(named: Self.widget)?.slot)
+        #expect(widgetSlot != HotUpdaterRecoveryCoordinator.mainSlot)
+        #expect(process.sink.paths[widgetSlot] == scene.markerURL(Self.widget).path)
+        #expect(process.sink.bundleIds[widgetSlot] == "widget-next")
+        #expect(process.sink.flags[widgetSlot] == false)
+        #expect(process.coordinator.arm(name: Self.widget))
+        #expect(process.coordinator.launch(named: Self.widget)?.slot == widgetSlot)
+        #expect(process.sink.flags[widgetSlot] == true)
     }
 
     @Test

@@ -311,9 +311,10 @@ final class HotUpdaterRecoveryCoordinator {
             launch.hasResolvedRuntime = false
             launch.hasShownContent = false
             launch.isCharged = false
-            if launch.isMain {
-                assignSlot(to: launch)
-            }
+            // Every launch publishes its slot now (a named one not asking
+            // for rollback yet), so starting or charging it later only flips
+            // the flag in place, which a signal always reads whole.
+            assignSlot(to: launch)
             mirror(launch)
             return launch.generation
         }
