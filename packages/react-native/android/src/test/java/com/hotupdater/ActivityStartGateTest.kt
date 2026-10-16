@@ -209,6 +209,23 @@ class ActivityStartGateTest {
     }
 
     @Test
+    fun `a request made off the main thread does not replace a newer one`() {
+        val application = RecordingApplication()
+        val mainThread = FakeMainThread(current = false)
+        val gate = createGate(application, mainThread = mainThread)
+        val runs = mutableListOf<String>()
+
+        // A launch prepared on a background thread, then one on the main thread.
+        gate.runWhenActivityStarted { runs += "older" }
+        mainThread.current = true
+        gate.runWhenActivityStarted { runs += "newer" }
+        mainThread.runAll()
+        application.startActivity()
+
+        assertEquals(listOf("newer"), runs)
+    }
+
+    @Test
     fun `runs at once without an application to observe`() {
         var runs = 0
 
@@ -299,6 +316,7 @@ class ActivityStartGateTest {
         application: Application?,
         startedBefore: Boolean = false,
         activitiesStartedBefore: (() -> Collection<Activity>)? = null,
+        mainThread: HotUpdaterMainThread = FakeMainThread(),
     ) = ActivityStartGate(
         application,
         processHasStartedActivity = { startedBefore },
@@ -309,6 +327,7 @@ class ActivityStartGateTest {
         },
         activitiesStartedBefore = activitiesStartedBefore,
         isStarted = { startedNow },
+        mainThread = mainThread,
     )
 
     private var startedNow = true

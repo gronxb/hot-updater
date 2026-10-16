@@ -163,6 +163,9 @@ final class HotUpdaterRecoveryCoordinator {
     private struct HeldContent {
         weak var view: AnyObject?
         let heldAt: TimeInterval
+        /// Each instance's launch when the content appeared: content of an
+        /// earlier launch never verifies a later one.
+        let generations: [String: Int]
         /// Main was verified by it after the bound; kept so a named runtime
         /// that resolves later still finds its own content.
         var creditedToMain = false
@@ -238,10 +241,13 @@ final class HotUpdaterRecoveryCoordinator {
     /// launch has started. From now on an unfinished launch rolls back at the
     /// next start, and a native crash counts against it. Main's launch starts
     /// when it is selected, so main is never armed here.
+    /// `generation`, when given, is the launch the view started in: a view of
+    /// an earlier launch never starts a later one.
     @discardableResult
-    func arm(name: String) -> Bool {
+    func arm(name: String, generation: Int? = nil) -> Bool {
         withLock {
             guard let launch = launches[name],
+                  generation == nil || launch.generation == generation,
                   !launch.isMain,
                   launch.isMonitoring,
                   launch.isAwaitingContent,
@@ -260,9 +266,11 @@ final class HotUpdaterRecoveryCoordinator {
     /// First content of `owner`'s runtime, which verifies only that instance's
     /// launch. Returns the verified launch and its generation, whose
     /// monitoring ends after a grace period.
-    func contentAppeared(owner: String?) -> (launch: Launch, generation: Int)? {
+    /// `generation`, when given, is the launch the content appeared in.
+    func contentAppeared(owner: String?, generation: Int? = nil) -> (launch: Launch, generation: Int)? {
         withLock {
             guard let launch = self.owner(owner),
+                  generation == nil || launch.generation == generation,
                   launch.isMonitoring,
                   launch.isAwaitingContent,
                   !launch.recoveryRequested else {
@@ -287,7 +295,7 @@ final class HotUpdaterRecoveryCoordinator {
     func holdUnclaimedContent(_ view: AnyObject) -> Bool {
         withLock {
             guard hasUnresolvedNamedLaunch else { return false }
-            heldContent.append(HeldContent(view: view, heldAt: now()))
+            heldContent.append(HeldContent(view: view, heldAt: now(), generations: currentGenerations))
             return true
         }
     }
@@ -306,11 +314,14 @@ final class HotUpdaterRecoveryCoordinator {
             guard !heldContent.isEmpty else { return [] }
             var verified: [(launch: Launch, generation: Int)] = []
             var kept: [HeldContent] = []
-            var creditMain = false
+            // Main's launches the content credited to main appeared in.
+            var mainGenerations: Set<Int> = []
+            let mainName = HotUpdaterInstanceEnvironment.mainName
             let currentTime = self.now()
             for var held in heldContent {
                 if let view = held.view, let name = owner(view) {
-                    if let launch = contentAppeared(owner: name) {
+                    if let generation = held.generations[name],
+                       let launch = contentAppeared(owner: name, generation: generation) {
                         verified.append(launch)
                     }
                     continue
@@ -321,21 +332,36 @@ final class HotUpdaterRecoveryCoordinator {
                 }
                 if !held.creditedToMain, currentTime - held.heldAt >= Self.heldContentBound {
                     held.creditedToMain = true
-                    creditMain = true
+                    held.generations[mainName].map { _ = mainGenerations.insert($0) }
                 }
                 kept.append(held)
             }
             if !hasUnresolvedNamedLaunch {
                 // Nothing left that could claim it.
-                creditMain = creditMain || kept.contains { !$0.creditedToMain }
+                for held in kept where !held.creditedToMain {
+                    held.generations[mainName].map { _ = mainGenerations.insert($0) }
+                }
                 kept = []
             }
             heldContent = kept
-            if creditMain, let launch = contentAppeared(owner: nil) {
+            if let generation = launches[mainName]?.generation,
+               mainGenerations.contains(generation),
+               let launch = contentAppeared(owner: nil, generation: generation) {
                 verified.append(launch)
             }
             return verified
         }
+    }
+
+    /// The current launch generation of every instance. Callers on other
+    /// threads keep it with what they schedule, so a later callback acts
+    /// only on the launch it was meant for.
+    func generations() -> [String: Int] {
+        withLock { currentGenerations }
+    }
+
+    private var currentGenerations: [String: Int] {
+        launches.mapValues(\.generation)
     }
 
     /// A named launch of this process still waiting for content whose
@@ -362,9 +388,21 @@ final class HotUpdaterRecoveryCoordinator {
 
     /// A JavaScript load failure that recovery didn't take: the launch's later
     /// content no longer verifies it.
-    func stopAwaitingContent(name: String) {
+    /// `generation`, when given, is the launch whose load failed; a later
+    /// launch keeps waiting for its own content.
+    func stopAwaitingContent(name: String, generation: Int? = nil) {
         withLock {
-            launches[name]?.isAwaitingContent = false
+            guard let launch = launches[name], generation == nil || launch.generation == generation else { return }
+            launch.isAwaitingContent = false
+        }
+    }
+
+    /// The generation of `name`'s launch if it still waits for its first
+    /// content, read under the lock every transition takes.
+    func awaitingContentGeneration(name: String) -> Int? {
+        withLock {
+            guard let launch = launches[name], launch.isMonitoring, launch.isAwaitingContent else { return nil }
+            return launch.generation
         }
     }
 
@@ -390,9 +428,12 @@ final class HotUpdaterRecoveryCoordinator {
         }
     }
 
-    func recoveryReloadFailed(name: String) {
+    /// The recovery reload of `generation` didn't start; a later launch's
+    /// own request is left alone.
+    func recoveryReloadFailed(name: String, generation: Int) {
         withLock {
-            launches[name]?.recoveryRequested = false
+            guard let launch = launches[name], launch.generation == generation else { return }
+            launch.recoveryRequested = false
         }
     }
 
@@ -620,30 +661,35 @@ final class HotUpdaterPendingSurfaceStarts {
     private struct Entry {
         weak var surface: AnyObject?
         let inForeground: Bool
+        /// Each instance's launch when the surface started.
+        let generations: [String: Int]
     }
 
     private let lock = NSLock()
     private var entries: [Entry] = []
 
-    func add(_ surface: AnyObject, inForeground: Bool) {
+    /// `generations` is `HotUpdaterRecoveryCoordinator.generations()` when
+    /// the surface started.
+    func add(_ surface: AnyObject, inForeground: Bool, generations: [String: Int] = [:]) {
         lock.lock()
-        entries.append(Entry(surface: surface, inForeground: inForeground))
+        entries.append(Entry(surface: surface, inForeground: inForeground, generations: generations))
         lock.unlock()
     }
 
     /// The surfaces `owner` attributes now, with whether each started in the
-    /// foreground; they and the surfaces already gone are forgotten.
-    func resolve(_ owner: (AnyObject) -> String?) -> [(name: String, surface: AnyObject, inForeground: Bool)] {
+    /// foreground and the owner's launch it started in (nil when the owner
+    /// had none then); they and the surfaces already gone are forgotten.
+    func resolve(_ owner: (AnyObject) -> String?) -> [(name: String, surface: AnyObject, inForeground: Bool, generation: Int?)] {
         lock.lock()
         let current = entries
         lock.unlock()
 
-        var resolved: [(name: String, surface: AnyObject, inForeground: Bool)] = []
+        var resolved: [(name: String, surface: AnyObject, inForeground: Bool, generation: Int?)] = []
         var settled: [ObjectIdentifier] = []
         for entry in current {
             guard let surface = entry.surface else { continue }
             if let name = owner(surface) {
-                resolved.append((name, surface, entry.inForeground))
+                resolved.append((name, surface, entry.inForeground, entry.generations[name]))
                 settled.append(ObjectIdentifier(surface))
             }
         }

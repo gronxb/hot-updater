@@ -1019,6 +1019,8 @@ final class HotUpdaterRecoveryManager: NSObject {
     // Main thread only: a named launch whose view started in the background
     // starts once the app comes to the foreground.
     private var armObservers: [NSObjectProtocol] = []
+    // The launch the observers start.
+    private var armGeneration: Int?
     private let backgroundViewStarts = HotUpdaterBackgroundViewStarts()
 
     init(environment: HotUpdaterInstanceEnvironment, bundleStorage: BundleStorageService) {
@@ -1049,11 +1051,17 @@ final class HotUpdaterRecoveryManager: NSObject {
         objc_sync_enter(self)
         defer { objc_sync_exit(self) }
 
-        hub.coordinator.startMonitoring(name: name, bundleId: bundleId, shouldRollback: shouldRollback)
+        // Under this manager's lock, as are the content and grace callbacks
+        // that check the generation, so none acts on a launch it wasn't for.
+        let generation = hub.coordinator.startMonitoring(
+            name: name,
+            bundleId: bundleId,
+            shouldRollback: shouldRollback
+        )
         stopMonitoringWorkItem?.cancel()
         stopMonitoringWorkItem = nil
         if !isMain {
-            DispatchQueue.main.async { [weak self] in self?.removeArmObservers() }
+            DispatchQueue.main.async { [weak self] in self?.removeArmObservers(before: generation) }
         }
 
         hub.installIfNeeded()
@@ -1063,6 +1071,8 @@ final class HotUpdaterRecoveryManager: NSObject {
     func contentAppeared(generation: Int) {
         objc_sync_enter(self)
         defer { objc_sync_exit(self) }
+        // A launch started since then has its own grace period.
+        guard hub.coordinator.isCurrent(name: name, generation: generation) else { return }
 
         stopMonitoringWorkItem?.cancel()
         let workItem = DispatchWorkItem { [weak self] in
@@ -1071,7 +1081,7 @@ final class HotUpdaterRecoveryManager: NSObject {
         stopMonitoringWorkItem = workItem
         DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(10), execute: workItem)
         if !isMain {
-            DispatchQueue.main.async { [weak self] in self?.removeArmObservers() }
+            DispatchQueue.main.async { [weak self] in self?.removeArmObservers(before: generation + 1) }
         }
     }
 
@@ -1086,17 +1096,23 @@ final class HotUpdaterRecoveryManager: NSObject {
 
     /// A view of this named instance's runtime started. Only a launch in the
     /// foreground may leave an unfinished launch for the next process to roll
-    /// back, as for main. Main thread only.
-    func viewStarted(_ view: AnyObject, inForeground: Bool) {
+    /// back, as for main. `generation` is the launch the view started in.
+    /// Main thread only.
+    func viewStarted(_ view: AnyObject, inForeground: Bool, generation: Int) {
         guard !isMain else { return }
         if inForeground {
-            removeArmObservers()
-            hub.coordinator.arm(name: name)
+            removeArmObservers(before: generation + 1)
+            hub.coordinator.arm(name: name, generation: generation)
             return
+        }
+        // Views of an earlier launch never start this one.
+        if let armGeneration, armGeneration != generation {
+            removeArmObservers(before: armGeneration + 1)
         }
         // Only if the view is still shown when the app comes back.
         backgroundViewStarts.add(view)
         guard armObservers.isEmpty else { return }
+        armGeneration = generation
         armObservers = [
             UIApplication.willEnterForegroundNotification,
             UIApplication.didBecomeActiveNotification,
@@ -1104,17 +1120,21 @@ final class HotUpdaterRecoveryManager: NSObject {
             NotificationCenter.default.addObserver(forName: notificationName, object: nil, queue: .main) { [weak self] _ in
                 guard let self else { return }
                 let isShown = self.backgroundViewStarts.takeAnyShown { hotUpdaterIsViewShown($0) }
-                self.removeArmObservers()
+                self.removeArmObservers(before: generation + 1)
                 if isShown {
-                    self.hub.coordinator.arm(name: self.name)
+                    self.hub.coordinator.arm(name: self.name, generation: generation)
                 }
             }
         }
     }
 
-    private func removeArmObservers() {
+    /// Drops the foreground observers if they were for a launch before
+    /// `generation`. Main thread only.
+    private func removeArmObservers(before generation: Int) {
+        guard let armGeneration, armGeneration < generation else { return }
         armObservers.forEach { NotificationCenter.default.removeObserver($0) }
         armObservers = []
+        self.armGeneration = nil
         backgroundViewStarts.removeAll()
     }
 
@@ -1141,7 +1161,7 @@ final class HotUpdaterRecoveryManager: NSObject {
 
             let started = hotUpdaterPerformRecoveryReload()
             if !started {
-                self.hub.coordinator.recoveryReloadFailed(name: self.name)
+                self.hub.coordinator.recoveryReloadFailed(name: self.name, generation: generation)
                 NSLog("[HotUpdaterRecovery] Failed to trigger recovery reload")
                 onFailure()
             } else {
@@ -1375,17 +1395,17 @@ final class HotUpdaterRecoveryHub: NSObject {
             ?? self.owner(of: notification.userInfo?["bridge"] as AnyObject?)
 
         if let owner, owner != mainName {
-            guard coordinator.launch(named: owner)?.isAwaitingContent == true else { return }
+            guard let generation = coordinator.awaitingContentGeneration(name: owner) else { return }
             // React Native's fatal follows and crashes the process: charge
             // this instance alone, so that fatal is attributed to it too.
             coordinator.chargeFatal(owner: owner)
-            coordinator.stopAwaitingContent(name: owner)
+            coordinator.stopAwaitingContent(name: owner, generation: generation)
             releaseHeldContent()
             return
         }
 
         guard let main = manager(named: mainName),
-              coordinator.launch(named: mainName)?.isAwaitingContent == true else {
+              let generation = coordinator.awaitingContentGeneration(name: mainName) else {
             return
         }
         if main.requestRecoveryReloadIfNeeded(onFailure: { [weak self] in
@@ -1393,7 +1413,7 @@ final class HotUpdaterRecoveryHub: NSObject {
         }) {
             return
         }
-        coordinator.stopAwaitingContent(name: mainName)
+        coordinator.stopAwaitingContent(name: mainName, generation: generation)
     }
 
     @objc private func handleContentDidAppear(_ notification: Notification) {
@@ -1435,12 +1455,14 @@ final class HotUpdaterRecoveryHub: NSObject {
         let handle = { [weak self] in
             guard let self else { return }
             let inForeground = UIApplication.shared.applicationState != .background
+            // The launches the view started in, for a later attribution.
+            let generations = self.coordinator.generations()
             if let owner = self.owner(of: surface) {
-                self.viewStarted(owner: owner, view: surface, inForeground: inForeground)
+                self.viewStarted(owner: owner, view: surface, inForeground: inForeground, generation: generations[owner])
             } else {
                 // The surface starts before its bundle runs, so before the
                 // runtime's module that tells whose it is.
-                self.pendingSurfaceStarts.add(surface, inForeground: inForeground)
+                self.pendingSurfaceStarts.add(surface, inForeground: inForeground, generations: generations)
             }
         }
         // UIApplication is read on the main thread.
@@ -1462,14 +1484,20 @@ final class HotUpdaterRecoveryHub: NSObject {
             // verified, and a surface start then no longer starts it.
             self.releaseHeldContent()
             for started in self.pendingSurfaceStarts.resolve({ self.owner(of: $0) }) {
-                self.viewStarted(owner: started.name, view: started.surface, inForeground: started.inForeground)
+                self.viewStarted(
+                    owner: started.name,
+                    view: started.surface,
+                    inForeground: started.inForeground,
+                    generation: started.generation
+                )
             }
         }
     }
 
-    private func viewStarted(owner: String, view: AnyObject, inForeground: Bool) {
-        // Main's launch starts when it is selected, as it always has.
-        guard owner != mainName else { return }
-        manager(named: owner)?.viewStarted(view, inForeground: inForeground)
+    private func viewStarted(owner: String, view: AnyObject, inForeground: Bool, generation: Int?) {
+        // Main's launch starts when it is selected, as it always has; a view
+        // that started before its instance launched starts nothing.
+        guard owner != mainName, let generation else { return }
+        manager(named: owner)?.viewStarted(view, inForeground: inForeground, generation: generation)
     }
 }

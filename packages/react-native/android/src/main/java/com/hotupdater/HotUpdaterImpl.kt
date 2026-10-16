@@ -562,25 +562,27 @@ class HotUpdaterImpl {
 
         val pendingRecovery = recoveryManager.consumePendingCrashRecovery()
         val selection = bundleStorage.prepareLaunch(pendingRecovery)
-        recoveryManager.startMonitoring(
-            bundleId = selection.launchedBundleId,
-            shouldRollback = selection.shouldRollbackOnCrash,
-            onContentAppeared = { launchedBundleId ->
-                bundleStorage.markLaunchCompleted(launchedBundleId)
-            },
-            onCrashOfAnotherInstance = { launchedBundleId ->
-                bundleStorage.clearLaunchStarted(launchedBundleId)
-            },
-            // Restarting the app restarts main's host. A named instance's
-            // crash leaves its marker for its next launch to roll back.
-            onRecoveryRestartRequested =
-                if (environment.isMain) {
-                    { restartApplication(context) }
-                } else {
-                    null
+        val launch =
+            recoveryManager.startMonitoring(
+                bundleId = selection.launchedBundleId,
+                shouldRollback = selection.shouldRollbackOnCrash,
+                onContentAppeared = { launchedBundleId ->
+                    bundleStorage.markLaunchCompleted(launchedBundleId)
                 },
-            onRuntimeActivity = activityStartGate::watchActivity,
-        )
+                onCrashOfAnotherInstance = { launchedBundleId ->
+                    bundleStorage.clearLaunchStarted(launchedBundleId)
+                },
+                // Restarting the app restarts main's host. A named instance's
+                // crash leaves its marker for its next launch to roll back.
+                onRecoveryRestartRequested =
+                    if (environment.isMain) {
+                        { restartApplication(context) }
+                    } else {
+                        null
+                    },
+                onRuntimeActivity = activityStartGate::watchActivity,
+                launchURL = selection.bundleUrl,
+            )
         // A headless JS task, such as a background push, loads the bundle without
         // an activity and never renders. Only a launch with an activity may leave
         // an unfinished launch for the next process to roll back. A named
@@ -589,7 +591,7 @@ class HotUpdaterImpl {
         activityStartGate.runWhenActivityStarted(
             if (selection.shouldRollbackOnCrash) {
                 {
-                    recoveryManager.armLaunch { bundleStorage.markLaunchStarted(selection.launchedBundleId) }
+                    recoveryManager.armLaunch(launch) { bundleStorage.markLaunchStarted(selection.launchedBundleId) }
                 }
             } else {
                 null

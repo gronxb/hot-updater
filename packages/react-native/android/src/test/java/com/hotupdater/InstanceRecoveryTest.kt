@@ -11,6 +11,7 @@ import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -274,11 +275,11 @@ class InstanceRecoveryTest {
         stagePending(context, widget, "widget-bundle")
         var showsWidgetView = false
         val gate = handOverGate(showsReactView = { showsWidgetView }, isStarted = { true })
-        HotUpdaterImpl(context, widget, gate).getJSBundleFile()
+        val launchURL = HotUpdaterImpl(context, widget, gate).getJSBundleFile()
         assertFalse(metadata(context, widget).launchInProgress)
 
         showsWidgetView = true
-        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, activity = Activity())
+        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, sourceURL = launchURL, activity = Activity())
 
         assertTrue(metadata(context, widget).launchInProgress)
     }
@@ -290,9 +291,9 @@ class InstanceRecoveryTest {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, widget, "widget-bundle")
         val gate = handOverGate(showsReactView = { true }, isStarted = { false })
-        HotUpdaterImpl(context, widget, gate).getJSBundleFile()
+        val launchURL = HotUpdaterImpl(context, widget, gate).getJSBundleFile()
 
-        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, activity = Activity())
+        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, sourceURL = launchURL, activity = Activity())
 
         assertFalse(metadata(context, widget).launchInProgress)
     }
@@ -333,8 +334,8 @@ class InstanceRecoveryTest {
     fun `a torn-down runtime no longer hooks its instance's errors`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, widget, "widget-bundle")
-        HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
-        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, activity = null)
+        val launchURL = HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, sourceURL = launchURL, activity = null)
 
         // Its module hooks its errors, so an unclaimed one is not its.
         HotUpdaterRecoveryManager.chargeUncaughtException(JavascriptException("unknown runtime"))
@@ -350,13 +351,31 @@ class InstanceRecoveryTest {
     fun `a new launch runs in a runtime that has not reached HotUpdater yet`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, widget, "widget-bundle")
-        HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
-        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, activity = null)
+        val launchURL = HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, sourceURL = launchURL, activity = null)
 
         HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
         HotUpdaterRecoveryManager.chargeUncaughtException(JavascriptException("widget failed"))
 
         assertEquals(PendingCrashRecovery("widget-bundle", true), PendingCrashRecovery.loadFromFile(crashMarker(context, widget)))
+    }
+
+    @Test
+    fun `a runtime of an earlier launch whose module is created late does not count for the next launch`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "first-bundle")
+        val firstURL = HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+        // The next launch selects another bundle.
+        stagePending(context, widget, "second-bundle")
+        val secondURL = HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+        assertNotEquals(firstURL, secondURL)
+
+        // The earlier runtime's module is created only now.
+        assertFalse(HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, sourceURL = firstURL, activity = null))
+        HotUpdaterRecoveryManager.chargeUncaughtException(JavascriptException("widget failed"))
+
+        // The next launch's runtime never reached HotUpdater, so the error is its.
+        assertEquals(PendingCrashRecovery("second-bundle", true), PendingCrashRecovery.loadFromFile(crashMarker(context, widget)))
     }
 
     @Test

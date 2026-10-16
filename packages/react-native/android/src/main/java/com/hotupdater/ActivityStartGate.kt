@@ -3,8 +3,6 @@ package com.hotupdater
 import android.app.Activity
 import android.app.Application
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
@@ -38,10 +36,15 @@ internal class ActivityStartGate(
     private val watchLayout: (Activity, () -> Unit) -> () -> Unit = ::watchGlobalLayout,
     private val activitiesStartedBefore: (() -> Collection<Activity>)? = null,
     private val isStarted: (Activity) -> Boolean = { isActivityStarted(it) },
+    private val mainThread: HotUpdaterMainThread = HotUpdaterMainThread.android,
 ) : Application.ActivityLifecycleCallbacks {
     private val startedActivities = mutableSetOf<Activity>()
     private val layoutWatches = mutableMapOf<Activity, () -> Unit>()
     private var pendingAction: (() -> Unit)? = null
+
+    // Counts the requests in the order they were made. A request made off the
+    // main thread runs later, and must not replace a newer one made there.
+    private var requests = 0L
 
     init {
         application?.registerActivityLifecycleCallbacks(this)
@@ -53,13 +56,22 @@ internal class ActivityStartGate(
      * cancels it. Without an application to observe, it runs [action] now.
      */
     fun runWhenActivityStarted(action: (() -> Unit)?) {
+        val request = synchronized(this) { ++requests }
         // Views and their layout listeners belong to the main thread.
-        if (Looper.myLooper() != Looper.getMainLooper()) {
-            Handler(Looper.getMainLooper()).post { runWhenActivityStarted(action) }
+        if (!mainThread.isCurrent()) {
+            mainThread.post { runWhenActivityStarted(request, action) }
             return
         }
+        runWhenActivityStarted(request, action)
+    }
+
+    private fun runWhenActivityStarted(
+        request: Long,
+        action: (() -> Unit)?,
+    ) {
         val runNow =
             synchronized(this) {
+                if (request != requests) return
                 stopWatching()
                 pendingAction = null
                 if (application != null) activitiesStartedBefore?.let { startedActivities += it() }
@@ -83,8 +95,8 @@ internal class ActivityStartGate(
      * module is created.
      */
     fun watchActivity(activity: Activity) {
-        if (Looper.myLooper() != Looper.getMainLooper()) {
-            Handler(Looper.getMainLooper()).post { watchActivity(activity) }
+        if (!mainThread.isCurrent()) {
+            mainThread.post { watchActivity(activity) }
             return
         }
         val action =

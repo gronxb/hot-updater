@@ -28,10 +28,13 @@ class RecoveryMonitoringRule : ExternalResource() {
         @Suppress("UNCHECKED_CAST")
         val liveManagers = field(manager, "liveManagers").get(null) as MutableMap<String, Any>
         liveManagers.values.toList().forEach { live ->
-            (field(live.javaClass, "stopMonitoringRunnable").get(live) as Runnable).run()
+            val generation = field(live.javaClass, "generation").getLong(live)
+            live.javaClass
+                .getDeclaredMethod("stopMonitoring", Long::class.javaPrimitiveType)
+                .apply { isAccessible = true }
+                .invoke(live, generation)
         }
         liveManagers.clear()
-        (field(manager, "registeredRuntimes").get(null) as MutableMap<*, *>).clear()
 
         // Activities a test handed over must not show another test's gate a view.
         val attribution = HotUpdaterRecoveryAttribution.shared

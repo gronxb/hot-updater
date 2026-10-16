@@ -542,6 +542,83 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(scene.metadata(Self.widget)?.launchInProgress == false)
     }
 
+    /// Callbacks posted to the main queue, scheduled checks, and launches on
+    /// other threads interleave: whatever was scheduled for one launch never
+    /// acts on a later one.
+    @Test
+    func callbacksOfAnEarlierLaunchNeverActOnALaterOne() throws {
+        let coordinator = HotUpdaterRecoveryCoordinator(sink: RecordingSlotSink())
+        for name in [Self.main, Self.widget] {
+            coordinator.register(name: name, markerURL: URL(fileURLWithPath: "/tmp/\(name).json"), storage: NoStorage())
+        }
+        let mainFirst = coordinator.startMonitoring(name: Self.main, bundleId: "m", shouldRollback: true)
+        let widgetFirst = coordinator.startMonitoring(name: Self.widget, bundleId: "w", shouldRollback: true)
+        #expect(coordinator.generations() == [Self.main: mainFirst, Self.widget: widgetFirst])
+
+        // Main's recovery reload of its first launch is requested, then a
+        // second launch starts and requests its own.
+        #expect(coordinator.requestRecovery(name: Self.main) != .notNeeded)
+        let mainSecond = coordinator.startMonitoring(name: Self.main, bundleId: "m", shouldRollback: true)
+        #expect(coordinator.requestRecovery(name: Self.main) == .requested(generation: mainSecond, bundleId: "m"))
+        // The first reload's failure arrives late: the second's request stays.
+        coordinator.recoveryReloadFailed(name: Self.main, generation: mainFirst)
+        #expect(coordinator.requestRecovery(name: Self.main) == .alreadyRequested)
+        // Its own failure lets it request again.
+        coordinator.recoveryReloadFailed(name: Self.main, generation: mainSecond)
+        #expect(coordinator.requestRecovery(name: Self.main) == .requested(generation: mainSecond, bundleId: "m"))
+
+        // The widget launches again on another thread.
+        let widgetSecond = coordinator.startMonitoring(name: Self.widget, bundleId: "w", shouldRollback: true)
+        // A view of its first launch, a load failure of it, and its content
+        // reach the main queue late.
+        #expect(!coordinator.arm(name: Self.widget, generation: widgetFirst))
+        coordinator.stopAwaitingContent(name: Self.widget, generation: widgetFirst)
+        #expect(coordinator.awaitingContentGeneration(name: Self.widget) == widgetSecond)
+        #expect(coordinator.contentAppeared(owner: Self.widget, generation: widgetFirst) == nil)
+        // The grace period of the first launch ends: the second is still watched.
+        coordinator.finishMonitoring(name: Self.widget, generation: widgetFirst)
+        #expect(coordinator.awaitingContentGeneration(name: Self.widget) == widgetSecond)
+
+        #expect(coordinator.arm(name: Self.widget, generation: widgetSecond))
+        #expect(coordinator.contentAppeared(owner: Self.widget, generation: widgetSecond)?.generation == widgetSecond)
+    }
+
+    @Test
+    func heldContentNeverVerifiesALaterLaunch() throws {
+        var clock: TimeInterval = 0
+        let coordinator = HotUpdaterRecoveryCoordinator(sink: RecordingSlotSink(), now: { clock })
+        for name in [Self.main, Self.widget, "checkout"] {
+            coordinator.register(name: name, markerURL: URL(fileURLWithPath: "/tmp/\(name).json"), storage: NoStorage())
+            coordinator.startMonitoring(name: name, bundleId: nil, shouldRollback: true)
+        }
+        let mainView = NSObject()
+        let widgetView = NSObject()
+        #expect(coordinator.holdUnclaimedContent(mainView))
+        #expect(coordinator.holdUnclaimedContent(widgetView))
+
+        // Both launch again before the content is credited.
+        let mainSecond = coordinator.startMonitoring(name: Self.main, bundleId: nil, shouldRollback: true)
+        let widgetSecond = coordinator.startMonitoring(name: Self.widget, bundleId: nil, shouldRollback: true)
+        clock += HotUpdaterRecoveryCoordinator.heldContentBound
+        coordinator.runtimeResolved(name: Self.widget)
+        let verified = coordinator.releaseHeldContent(owner: { $0 === widgetView ? Self.widget : nil })
+        #expect(verified.isEmpty)
+        #expect(coordinator.awaitingContentGeneration(name: Self.main) == mainSecond)
+        #expect(coordinator.awaitingContentGeneration(name: Self.widget) == widgetSecond)
+    }
+
+    @Test
+    func aSurfaceKeepsTheLaunchItStartedIn() {
+        let pending = HotUpdaterPendingSurfaceStarts()
+        let surface = NSObject()
+        pending.add(surface, inForeground: true, generations: [Self.main: 1, Self.widget: 3])
+        let resolved = pending.resolve { _ in Self.widget }
+        #expect(resolved.map(\.generation) == [3])
+        let other = NSObject()
+        pending.add(other, inForeground: true, generations: [Self.main: 1])
+        #expect(pending.resolve { _ in Self.widget }.map(\.generation) == [nil])
+    }
+
     @Test
     func mainOnlyContentIsMainsAtOnce() throws {
         let sink = RecordingSlotSink()

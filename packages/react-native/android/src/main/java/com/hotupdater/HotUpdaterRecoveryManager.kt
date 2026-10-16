@@ -5,8 +5,6 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.os.Handler
-import android.os.Looper
 import android.os.Process
 import android.os.SystemClock
 import android.util.Log
@@ -33,9 +31,9 @@ import kotlin.system.exitProcess
 internal class HotUpdaterRecoveryManager(
     context: Context,
     environment: HotUpdaterInstanceEnvironment = HotUpdaterInstanceEnvironment.main,
+    private val mainThread: HotUpdaterMainThread = HotUpdaterMainThread.android,
 ) {
     private val appContext = context.applicationContext
-    private val mainHandler = Handler(Looper.getMainLooper())
     private val name = environment.name
     private val isMain = environment.isMain
     private val crashMarkerFile = getCrashMarkerFile(appContext, environment)
@@ -43,15 +41,20 @@ internal class HotUpdaterRecoveryManager(
 
     private val launchState = HotUpdaterRecoveryState()
 
+    // Launches start on whichever thread prepares them, while first content,
+    // views, delayed callbacks, and JavaScript errors arrive on others. Every
+    // change to this launch's state happens under this lock, and work posted
+    // for a launch carries its generation, so it never acts on a newer one.
+    private val lock = Any()
+    private var generation = 0L
+
     // Main's launch counts from the start, as it always has. A named launch
     // counts once one of its views is shown ([armLaunch]): a runtime pre-warmed
     // without UI must not be charged for a crash elsewhere in the process.
-    @Volatile
     private var armed = isMain
 
     // Another instance's fatal error is ending the process, so this launch
     // must not be armed in the moments left.
-    @Volatile
     private var endedByAnotherInstance = false
 
     // What arms this launch for the next process, kept so a launch another
@@ -62,31 +65,15 @@ internal class HotUpdaterRecoveryManager(
     private var crashOfAnotherInstanceCallback: ((String?) -> Unit)? = null
     private var recoveryRestartCallback: (() -> Boolean)? = null
     private var runtimeActivityCallback: ((Activity) -> Unit)? = null
+    private var stopTask: Runnable? = null
+    private var hookTask: Runnable? = null
 
-    private val stopMonitoringRunnable =
-        Runnable {
-            releaseRecoveryWatchdog()
-            Log.d(TAG, "Stopping crash monitoring for current launch of $name")
-            launchState.stop()
-            contentAppearedCallback = null
-            crashOfAnotherInstanceCallback = null
-            recoveryRestartCallback = null
-            runtimeActivityCallback = null
-            liveManagers.remove(name, this)
-            updateNativeLaunchState()
-        }
-
-    private val installJsExceptionHooksRunnable =
-        object : Runnable {
-            override fun run() {
-                if (launchState.snapshot() == null) {
-                    return
-                }
-
-                installJavaScriptExceptionHooks()
-                mainHandler.postDelayed(this, JS_EXCEPTION_HOOK_RETRY_DELAY_MS)
-            }
-        }
+    // The bundle this launch handed to React Native, and the runtimes running
+    // it whose HotUpdater module hooks their errors. A runtime of an earlier
+    // launch whose module is created late runs another bundle, so it never
+    // counts for this launch.
+    private var launchURL: String? = null
+    private val registeredRuntimeIds = mutableSetOf<Int>()
 
     init {
         attribution.track(appContext)
@@ -121,6 +108,9 @@ internal class HotUpdaterRecoveryManager(
      * @param onRuntimeActivity called with the activity of this instance's
      * runtime once its HotUpdater module is created, which may show its view
      * in an activity that started before anything followed activities
+     * @param launchURL the bundle this launch hands to React Native, which
+     * the runtimes of this launch load; null accepts any runtime
+     * @return the launch's generation, which [armLaunch] takes
      */
     fun startMonitoring(
         bundleId: String?,
@@ -129,76 +119,161 @@ internal class HotUpdaterRecoveryManager(
         onCrashOfAnotherInstance: (String?) -> Unit,
         onRecoveryRestartRequested: (() -> Boolean)?,
         onRuntimeActivity: ((Activity) -> Unit)? = null,
-    ) {
+        launchURL: String? = null,
+    ): Long {
         crashMarkerFile.parentFile?.mkdirs()
-        contentAppearedCallback = onContentAppeared
-        crashOfAnotherInstanceCallback = onCrashOfAnotherInstance
-        recoveryRestartCallback = onRecoveryRestartRequested
-        runtimeActivityCallback = onRuntimeActivity
-        // A new launch runs in a new runtime, which registers again when its
-        // module is created; until then its errors are not hooked.
-        if (!isMain) synchronized(registeredRuntimes) { registeredRuntimes.remove(name) }
-        launchState.start(bundleId, shouldRollback)
-        armed = isMain
-        synchronized(this) {
-            endedByAnotherInstance = false
-            launchStartedAction = null
-        }
-        liveManagers[name] = this
-
         ensureExceptionHandlerInstalled()
         ensureNativeSignalHandlerInstalled()
         ensureContentAppearedListenerInstalled()
 
-        if (isMain) mainHandler.removeCallbacks(installJsExceptionHooksRunnable)
-        mainHandler.removeCallbacks(stopMonitoringRunnable)
-        updateNativeLaunchState()
-        if (shouldRollback && armed) {
-            startRecoveryWatchdog()
-        } else {
-            releaseRecoveryWatchdog()
-        }
-        // A named instance's runtime hooks its errors when its module is
-        // created (registerRuntime); main's host is reachable from the app.
-        if (isMain) mainHandler.post(installJsExceptionHooksRunnable)
+        val generation =
+            synchronized(lock) {
+                generation += 1
+                cancelScheduledLocked()
+                contentAppearedCallback = onContentAppeared
+                crashOfAnotherInstanceCallback = onCrashOfAnotherInstance
+                recoveryRestartCallback = onRecoveryRestartRequested
+                runtimeActivityCallback = onRuntimeActivity
+                // A new launch runs in a new runtime, which registers when its
+                // module is created; until then its errors are not hooked.
+                this.launchURL = launchURL
+                registeredRuntimeIds.clear()
+                launchState.start(bundleId, shouldRollback)
+                armed = isMain
+                endedByAnotherInstance = false
+                launchStartedAction = null
+                liveManagers[name] = this
+                updateNativeLaunchStateLocked()
+                if (shouldRollback && armed) {
+                    startRecoveryWatchdog()
+                } else {
+                    releaseRecoveryWatchdog()
+                }
+                // A named instance's runtime hooks its errors when its module
+                // is created (registerRuntime); main's host is reachable from the app.
+                if (isMain) installJavaScriptExceptionHooksLocked(generation)
+                generation
+            }
 
         Log.d(TAG, "Started crash monitoring of $name bundleId=$bundleId shouldRollback=$shouldRollback")
+        return generation
     }
 
     /**
      * One of this instance's views is shown, so a crash from now on may be
-     * its launch's. [markLaunchStarted] records the launch for the next
-     * process unless another instance's crash is already ending this one.
+     * its launch's, when [generation] is still the current launch: a gate's
+     * action may run after a newer launch started. [markLaunchStarted]
+     * records the launch for the next process unless another instance's
+     * crash is already ending this one.
      */
-    fun armLaunch(markLaunchStarted: () -> Unit) {
-        synchronized(this) {
+    fun armLaunch(
+        generation: Long,
+        markLaunchStarted: () -> Unit,
+    ) {
+        synchronized(lock) {
+            if (generation != this.generation) return
             launchStartedAction = markLaunchStarted
             if (endedByAnotherInstance) return
             markLaunchStarted()
-        }
-        if (armed) return
-        armed = true
-        updateNativeLaunchState()
-        if (launchState.snapshot()?.shouldRollback == true) {
-            startRecoveryWatchdog()
+            if (armed) return
+            armed = true
+            updateNativeLaunchStateLocked()
+            if (launchState.snapshot()?.shouldRollback == true) {
+                startRecoveryWatchdog()
+            }
         }
     }
 
     private fun currentLaunch(): HotUpdaterRecoverySlots.Launch? =
-        launchState.snapshot()?.let {
-            HotUpdaterRecoverySlots.Launch(name, it.bundleId, it.shouldRollback, armed, launchState.hasContentAppeared())
+        synchronized(lock) {
+            launchState.snapshot()?.let {
+                HotUpdaterRecoverySlots.Launch(name, it.bundleId, it.shouldRollback, armed, launchState.hasContentAppeared())
+            }
         }
 
     private fun handleContentAppeared() {
-        val launch = launchState.completeLaunch() ?: return
-        Log.d(TAG, "First content appeared for $name bundleId=${launch.bundleId}")
-        if (isMain) mainHandler.removeCallbacks(installJsExceptionHooksRunnable)
-        mainHandler.removeCallbacks(stopMonitoringRunnable)
-        contentAppearedCallback?.invoke(launch.bundleId)
-        updateNativeLaunchState()
-        releaseRecoveryWatchdog()
-        mainHandler.postDelayed(stopMonitoringRunnable, MONITORING_GRACE_PERIOD_MS)
+        synchronized(lock) {
+            val launch = launchState.completeLaunch() ?: return
+            Log.d(TAG, "First content appeared for $name bundleId=${launch.bundleId}")
+            cancelScheduledLocked()
+            contentAppearedCallback?.invoke(launch.bundleId)
+            updateNativeLaunchStateLocked()
+            releaseRecoveryWatchdog()
+            val generation = generation
+            stopTask = Runnable { stopMonitoring(generation) }.also { mainThread.postDelayed(it, MONITORING_GRACE_PERIOD_MS) }
+        }
     }
+
+    /** Ends the grace period of the launch of [generation], unless a newer launch started. */
+    private fun stopMonitoring(generation: Long) {
+        synchronized(lock) {
+            if (generation != this.generation) return
+            stopTask = null
+            releaseRecoveryWatchdog()
+            Log.d(TAG, "Stopping crash monitoring for current launch of $name")
+            launchState.stop()
+            contentAppearedCallback = null
+            crashOfAnotherInstanceCallback = null
+            recoveryRestartCallback = null
+            runtimeActivityCallback = null
+            liveManagers.remove(name, this)
+            updateNativeLaunchStateLocked()
+        }
+    }
+
+    private fun cancelScheduledLocked() {
+        stopTask?.let(mainThread::remove)
+        hookTask?.let(mainThread::remove)
+        stopTask = null
+        hookTask = null
+    }
+
+    // Keeps hooking main's host until the launch of [generation] ends: the
+    // host creates its React instance later.
+    private fun installJavaScriptExceptionHooksLocked(generation: Long) {
+        hookTask =
+            object : Runnable {
+                override fun run() {
+                    synchronized(lock) {
+                        if (generation != this@HotUpdaterRecoveryManager.generation || launchState.snapshot() == null) return
+                    }
+                    installJavaScriptExceptionHooks()
+                    synchronized(lock) {
+                        if (generation == this@HotUpdaterRecoveryManager.generation && hookTask === this) {
+                            mainThread.postDelayed(this, JS_EXCEPTION_HOOK_RETRY_DELAY_MS)
+                        }
+                    }
+                }
+            }.also(mainThread::post)
+    }
+
+    /**
+     * Records runtime [runtimeId], which loaded [sourceURL], as one of this
+     * launch's, and shows the launch gate its [activity]; false for a runtime
+     * of an earlier launch, which runs another bundle.
+     */
+    private fun registerRuntime(
+        runtimeId: Int,
+        sourceURL: String?,
+        activity: Activity?,
+    ): Boolean {
+        val callback =
+            synchronized(lock) {
+                val launchURL = launchURL
+                if (launchState.snapshot() == null) return false
+                if (launchURL != null && !isSameBundle(sourceURL, launchURL)) return false
+                registeredRuntimeIds += runtimeId
+                runtimeActivityCallback
+            }
+        if (activity != null) callback?.invoke(activity)
+        return true
+    }
+
+    private fun unregisterRuntime(runtimeId: Int) {
+        synchronized(lock) { registeredRuntimeIds -= runtimeId }
+    }
+
+    private fun hasRegisteredRuntime(): Boolean = synchronized(lock) { registeredRuntimeIds.isNotEmpty() }
 
     private fun writeCrashMarker(launch: HotUpdaterRecoveryState.Launch) {
         val atomicFile = AtomicFile(crashMarkerFile)
@@ -259,7 +334,7 @@ internal class HotUpdaterRecoveryManager(
      * Main's recovery: a launch waiting for its first content restarts the
      * app once and leaves its marker for the restarted process.
      */
-    private fun requestAutomaticRecovery(exception: Exception? = null): Boolean {
+    private fun requestAutomaticRecoveryLocked(exception: Exception? = null): Boolean {
         val request = launchState.requestRecovery()
         if (exception != null) {
             Log.e(TAG, "Caught React startup exception for bundleId=${launchState.snapshot()?.bundleId}", exception)
@@ -285,39 +360,45 @@ internal class HotUpdaterRecoveryManager(
      * instance never restarts the app: restarting reaches main's host, so its
      * next launch rolls the bundle back instead.
      */
-    private fun chargeCrash(exception: Exception? = null): Boolean {
-        if (isMain) return requestAutomaticRecovery(exception)
-        val launch = launchState.snapshot()?.takeIf { it.shouldRollback } ?: return false
-        if (exception != null) {
-            Log.e(TAG, "Caught React startup exception of $name for bundleId=${launch.bundleId}", exception)
+    private fun chargeCrash(exception: Exception? = null): Boolean =
+        synchronized(lock) {
+            if (isMain) return@synchronized requestAutomaticRecoveryLocked(exception)
+            val launch = launchState.snapshot()?.takeIf { it.shouldRollback } ?: return@synchronized false
+            if (exception != null) {
+                Log.e(TAG, "Caught React startup exception of $name for bundleId=${launch.bundleId}", exception)
+            }
+            writeCrashMarker(launch)
+            // A launch none of whose views was shown has no watchdog yet; it
+            // relaunches the app after this crash, as for an armed launch.
+            startRecoveryWatchdog()
+            false
         }
-        writeCrashMarker(launch)
-        // A launch none of whose views was shown has no watchdog yet; it
-        // relaunches the app after this crash, as for an armed launch.
-        startRecoveryWatchdog()
-        return false
-    }
 
-    /** True when this launch was waiting for its content and is now left alone. */
-    private fun handleCrashOfAnotherInstance(): Boolean {
-        val launch = launchState.snapshot()?.takeIf { it.shouldRollback } ?: return false
-        synchronized(this) {
+    /**
+     * Leaves this launch alone for another instance's crash: the generation
+     * of the launch it left, or null when the launch wasn't waiting for its
+     * content.
+     */
+    private fun handleCrashOfAnotherInstance(): Long? =
+        synchronized(lock) {
+            val launch = launchState.snapshot()?.takeIf { it.shouldRollback } ?: return@synchronized null
             endedByAnotherInstance = true
             crashOfAnotherInstanceCallback?.invoke(launch.bundleId)
+            generation
         }
-        return true
-    }
 
-    /** Another instance's claimed error did not end the process: this launch counts again. */
-    private fun resumeAfterAnotherInstanceSurvived() {
-        val action =
-            synchronized(this) {
-                if (!endedByAnotherInstance) return
-                endedByAnotherInstance = false
-                launchStartedAction
-            }
-        if (launchState.snapshot()?.shouldRollback != true) return
-        action?.let(::armLaunch)
+    /**
+     * Another instance's claimed error did not end the process: the launch of
+     * [generation] counts again, unless a newer launch started since.
+     */
+    private fun resumeAfterAnotherInstanceSurvived(generation: Long) {
+        synchronized(lock) {
+            if (generation != this.generation || !endedByAnotherInstance) return
+            endedByAnotherInstance = false
+            val action = launchStartedAction ?: return
+            if (launchState.snapshot()?.shouldRollback != true) return
+            armLaunch(generation, action)
+        }
     }
 
     // Two instances may prepare their launches at once. Installing twice
@@ -337,7 +418,9 @@ internal class HotUpdaterRecoveryManager(
         }
     }
 
-    private fun updateNativeLaunchState() {
+    // Under the manager's lock, so the native slot follows this launch's
+    // transitions in order.
+    private fun updateNativeLaunchStateLocked() {
         if (!signalHandlerInstalled) {
             return
         }
@@ -434,11 +517,6 @@ internal class HotUpdaterRecoveryManager(
         /** The manager of each instance whose launch is monitored. */
         private val liveManagers = ConcurrentHashMap<String, HotUpdaterRecoveryManager>()
 
-        // Named instances whose runtime created its HotUpdater module, which
-        // hooks that runtime's errors.
-        // Named instances whose current runtime created its HotUpdater module,
-        // which hooks that runtime's errors, by the runtimes' identities.
-        private val registeredRuntimes = HashMap<String, MutableSet<Int>>()
         private val signalHandlerLock = Any()
         private const val MAX_CAUSE_DEPTH = 8
 
@@ -446,8 +524,7 @@ internal class HotUpdaterRecoveryManager(
         // process outlives the claim.
         private val claimLock = Any()
         private var claimGeneration = 0
-        private val disarmedByClaim = mutableListOf<HotUpdaterRecoveryManager>()
-        private val claimHandler by lazy { Handler(Looper.getMainLooper()) }
+        private val disarmedByClaim = LinkedHashMap<HotUpdaterRecoveryManager, Long>()
         private val watchdogOwners = linkedSetOf<String>()
         private var watchdogDeadlineAt = 0L
 
@@ -548,7 +625,10 @@ internal class HotUpdaterRecoveryManager(
         private fun inferJavaScriptErrorOwner(): String? =
             HotUpdaterRecoverySlots.inferJavaScriptErrorOwner(
                 liveLaunches(),
-                synchronized(registeredRuntimes) { registeredRuntimes.filterValues { it.isNotEmpty() }.keys.toSet() },
+                liveManagers.values
+                    .filter { it.hasRegisteredRuntime() }
+                    .map { it.name }
+                    .toSet(),
             )
 
         private fun liveLaunches(): List<HotUpdaterRecoverySlots.Launch> = liveManagers.values.mapNotNull { it.currentLaunch() }
@@ -610,20 +690,23 @@ internal class HotUpdaterRecoveryManager(
                     Log.w(TAG, "Failed to attribute the crash natively", e)
                 }
             }
-            val disarmed = liveManagers.values.filter { it.name != instanceName && it.handleCrashOfAnotherInstance() }
+            val disarmed =
+                liveManagers.values
+                    .filter { it.name != instanceName }
+                    .mapNotNull { manager -> manager.handleCrashOfAnotherInstance()?.let { manager to it } }
             // Claims overlap when errors return: every launch any of them
             // left alone waits for the last one, including that claim's own
             // instance, which an earlier claim may have left alone.
             val (generation, waiting) =
                 synchronized(claimLock) {
                     claimGeneration += 1
-                    disarmed.forEach { if (it !in disarmedByClaim) disarmedByClaim += it }
+                    disarmed.forEach { (manager, launch) -> disarmedByClaim[manager] = launch }
                     claimGeneration to disarmedByClaim.isNotEmpty()
                 }
             // A development build shows the error, and an app's handler may
             // swallow it: once the claim expires, the process lived on.
             if (waiting) {
-                claimHandler.postDelayed({ releaseClaim(generation) }, HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS)
+                HotUpdaterMainThread.android.postDelayed({ releaseClaim(generation) }, HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS)
             }
             return liveManagers[instanceName]?.chargeCrash(exception) == true
         }
@@ -639,7 +722,7 @@ internal class HotUpdaterRecoveryManager(
                     if (generation != null && generation != claimGeneration) return
                     disarmedByClaim.toList().also { disarmedByClaim.clear() }
                 }
-            disarmed.filter { liveManagers[it.name] === it }.forEach { it.resumeAfterAnotherInstanceSurvived() }
+            disarmed.forEach { (manager, launch) -> manager.resumeAfterAnotherInstanceSurvived(launch) }
         }
 
         /**
@@ -658,32 +741,52 @@ internal class HotUpdaterRecoveryManager(
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to hook the runtime's JavaScript errors", e)
             }
-            registerRuntime(instanceName, System.identityHashCode(reactContext), reactContext.currentActivity)
+            registerRuntime(
+                instanceName,
+                System.identityHashCode(reactContext),
+                runCatching { reactContext.sourceURL }.getOrNull(),
+                reactContext.currentActivity,
+            )
             return instanceName
         }
 
         /**
-         * Records that [instanceName]'s runtime [runtimeId] hooks its errors,
-         * and shows its launch gate the runtime's [activity]: the module is
-         * created while the bundle loads, before its first content, and the
-         * activity may have started before anything followed activities.
+         * Records that [instanceName]'s runtime [runtimeId], which loaded
+         * [sourceURL], hooks its errors, and shows its launch gate the
+         * runtime's [activity]: the module is created while the bundle loads,
+         * before its first content, and the activity may have started before
+         * anything followed activities. A runtime of an earlier launch, whose
+         * module may be created after the next launch started, counts for
+         * nothing.
          */
         internal fun registerRuntime(
             instanceName: String,
             runtimeId: Int,
+            sourceURL: String?,
             activity: Activity?,
-        ) {
-            synchronized(registeredRuntimes) { registeredRuntimes.getOrPut(instanceName) { mutableSetOf() } += runtimeId }
-            activity ?: return
-            liveManagers[instanceName]?.runtimeActivityCallback?.invoke(activity)
-        }
+        ): Boolean = liveManagers[instanceName]?.registerRuntime(runtimeId, sourceURL, activity) == true
 
         /** [instanceName]'s runtime [runtimeId] was torn down, as in a reload. */
         internal fun unregisterRuntime(
             instanceName: String,
             runtimeId: Int,
         ) {
-            synchronized(registeredRuntimes) { registeredRuntimes[instanceName]?.remove(runtimeId) }
+            liveManagers[instanceName]?.unregisterRuntime(runtimeId)
+        }
+
+        // React Native may hold `/data/data/...` where the launch handed out
+        // `/data/user/0/...`, a symlink to the same file.
+        private fun isSameBundle(
+            sourceURL: String?,
+            launchURL: String,
+        ): Boolean {
+            val source = sourceURL?.takeIf { it.isNotEmpty() } ?: return false
+            return source == launchURL || canonicalBundlePath(source) == canonicalBundlePath(launchURL)
+        }
+
+        private fun canonicalBundlePath(url: String): String {
+            val path = url.removePrefix("file://")
+            return if (path.startsWith("/")) runCatching { File(path).canonicalPath }.getOrDefault(path) else url
         }
 
         /**
@@ -725,8 +828,14 @@ internal class HotUpdaterRecoveryManager(
             return null
         }
 
+        // The receiver runs on the main thread of a live process too, beside
+        // launches that change the watchdog on other threads.
         @JvmStatic
         fun handleRecoveryWatchdog(context: Context) {
+            synchronized(watchdogOwners) { handleRecoveryWatchdogLocked(context) }
+        }
+
+        private fun handleRecoveryWatchdogLocked(context: Context) {
             val appContext = context.applicationContext
             val watchdogStateFile = File(getBundleStoreDir(appContext), WATCHDOG_STATE_FILENAME)
             val state = WatchdogState.parse(watchdogStateFile.takeIf(File::exists)?.readText())
