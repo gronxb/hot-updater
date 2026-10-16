@@ -415,8 +415,11 @@ class BundleFileStorageService: BundleStorageService {
     private let updateStrategyProvider: () -> UpdateStrategy
     private let releaseStateLock = NSRecursiveLock()
 
-    private let installIdentityLock = NSLock()
-    private var currentInstallIdentity: InstallIdentity?
+    /// App-wide: every instance's storage reads the same install identity
+    /// file, so one lock and cache per file keep two instances that start at
+    /// once from creating different ids.
+    private static let installIdentityLock = NSLock()
+    private static var installIdentities: [String: InstallIdentity] = [:]
 
     private let protectedBundleStoreEntries: Set<String> = [
         BundleMetadata.metadataFilename,
@@ -880,21 +883,21 @@ class BundleFileStorageService: BundleStorageService {
     /// Loads the install identity, creating it once when its file is missing.
     @discardableResult
     private func loadOrCreateInstallIdentity() -> InstallIdentity {
-        installIdentityLock.lock()
-        defer { installIdentityLock.unlock() }
+        Self.installIdentityLock.lock()
+        defer { Self.installIdentityLock.unlock() }
 
-        if let currentInstallIdentity {
-            return currentInstallIdentity
-        }
         let file = installIdentityFileURL()
+        if let identity = Self.installIdentities[file.path] {
+            return identity
+        }
         if let identity = InstallIdentity.load(from: file) {
-            currentInstallIdentity = identity
+            Self.installIdentities[file.path] = identity
             return identity
         }
 
         let identity = InstallIdentity()
         // Keep the new id for this process even when it cannot be saved.
-        currentInstallIdentity = identity
+        Self.installIdentities[file.path] = identity
         _ = identity.save(to: file)
         return identity
     }

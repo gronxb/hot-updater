@@ -1927,6 +1927,23 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func everyInstanceOfTheAppSharesOneInstallIdentity() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let main = makeStorageService(documentsDirectory: root)
+        let named = makeStorageService(documentsDirectory: root)
+
+        let installId = main.getInstallId()
+        // Two instances that start at once share the id the first created,
+        // even before (or without) it reaching the file.
+        let file = NoBackupStorage.directory(in: TestFileSystemService(documentsDirectory: root))
+            .appendingPathComponent(InstallIdentity.installIdentityFilename)
+        try? FileManager.default.removeItem(at: file)
+
+        #expect(named.getInstallId() == installId)
+    }
+
+    @Test
     func artifactProtocolV2AsksForNoFileWhenItTakesTheArchive() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
