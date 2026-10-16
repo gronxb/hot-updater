@@ -7,6 +7,7 @@
 #include <limits.h>
 #include <atomic>
 #include <cstdint>
+#include <mutex>
 
 namespace {
 constexpr size_t kMaxBundleIdLength = 128;
@@ -42,6 +43,9 @@ struct Slot {
 static_assert(std::atomic<uint32_t>::is_always_lock_free, "the handler needs a lock-free sequence");
 
 Slot gSlots[kSlotCount] = {};
+// The sequence lock takes one writer at a time; launch preparation and the
+// main thread can update one slot at once. Never taken by the handler.
+std::mutex gSlotWriters[kSlotCount];
 volatile sig_atomic_t gAttributedSlot = kNotAttributed;
 volatile sig_atomic_t gAttributedAtSeconds = 0;
 struct sigaction gPreviousActions[NSIG];
@@ -239,13 +243,14 @@ Java_com_hotupdater_HotUpdaterRecoveryNative_nativeUpdateSlot(
   }
 
   // Copied before the sequence turns odd, so the window a crash skips stays
-  // a few plain stores long. Kotlin serializes the writers.
+  // one copy long.
   SlotData next {};
   safeCopyJString(env, crashMarkerPath, next.crashMarkerPath, sizeof(next.crashMarkerPath));
   safeCopyJString(env, bundleId, next.bundleId, sizeof(next.bundleId));
   next.shouldRollback = shouldRollback ? 1 : 0;
   next.writesWhenVerified = writesWhenVerified ? 1 : 0;
 
+  std::lock_guard<std::mutex> writer(gSlotWriters[index]);
   Slot &slot = gSlots[index];
   const uint32_t sequence = slot.sequence.load(std::memory_order_relaxed);
   slot.sequence.store(sequence + 1, std::memory_order_relaxed);

@@ -15,6 +15,7 @@
 #include <atomic>
 #include <cstdint>
 #include <cstring>
+#include <mutex>
 #include <fcntl.h>
 #include <limits.h>
 #include <signal.h>
@@ -95,6 +96,9 @@ static_assert(std::atomic<uint32_t>::is_always_lock_free, "the handler needs a l
 
 
 HotUpdaterCrashSlot gHotUpdaterCrashSlots[kHotUpdaterCrashSlotCount] = {};
+// The sequence lock takes one writer at a time; every rewrite of a slot holds
+// this lock. Never taken by the signal handler.
+std::mutex gHotUpdaterCrashSlotWriters;
 // A JavaScript fatal about to crash the process is one instance's: only its
 // slot writes (none when it has no slot). Otherwise kHotUpdaterUnattributedCrash.
 volatile sig_atomic_t gHotUpdaterAttributedSlot = kHotUpdaterUnattributedCrash;
@@ -157,14 +161,17 @@ void HotUpdaterSafeCopy(char *destination, size_t destinationSize, const char *s
   destination[index] = '\0';
 }
 
-// Rewrites a slot; a null path or bundle id keeps the current one. The new
-// fields are prepared first, so the window a crash skips stays one copy long.
-// Swift serializes the writers, as on Android.
+constexpr int kHotUpdaterKeepShouldRollback = -1;
+
+// Rewrites a slot; a null path or bundle id, or kHotUpdaterKeepShouldRollback,
+// keeps the current value. The new fields are prepared first, so the window a
+// crash skips stays one copy long.
 void HotUpdaterRewriteCrashSlot(HotUpdaterCrashSlot &slot,
                                 const char *markerPath,
                                 const char *bundleId,
-                                bool shouldRollback)
+                                int shouldRollback)
 {
+  std::lock_guard<std::mutex> writer(gHotUpdaterCrashSlotWriters);
   HotUpdaterCrashSlotData next;
   std::memcpy(&next, &slot.data, sizeof(next));
   if (markerPath) {
@@ -173,7 +180,9 @@ void HotUpdaterRewriteCrashSlot(HotUpdaterCrashSlot &slot,
   if (bundleId) {
     HotUpdaterSafeCopy(next.bundleId, sizeof(next.bundleId), bundleId);
   }
-  next.shouldRollback = shouldRollback ? 1 : 0;
+  if (shouldRollback != kHotUpdaterKeepShouldRollback) {
+    next.shouldRollback = shouldRollback != 0 ? 1 : 0;
+  }
 
   const uint32_t sequence = slot.sequence.load(std::memory_order_relaxed);
   slot.sequence.store(sequence + 1, std::memory_order_relaxed);
@@ -319,7 +328,7 @@ extern "C" void HotUpdaterUpdateCrashSlot(NSInteger index,
   HotUpdaterRewriteCrashSlot(gHotUpdaterCrashSlots[index],
                              crashMarkerPath.UTF8String ?: "",
                              bundleId.UTF8String ?: "",
-                             shouldRollback);
+                             shouldRollback ? 1 : 0);
 }
 
 // kHotUpdaterUnattributedCrash, a slot index, or any other negative value for
@@ -332,14 +341,16 @@ extern "C" void HotUpdaterAttributeCrashToSlot(NSInteger index)
 // Legacy entry points of the single main slot.
 extern "C" void HotUpdaterInstallSignalHandlers(NSString *crashMarkerPath)
 {
-  HotUpdaterCrashSlot &slot = gHotUpdaterCrashSlots[0];
-  HotUpdaterRewriteCrashSlot(slot, crashMarkerPath.UTF8String ?: "", nullptr, slot.data.shouldRollback != 0);
+  HotUpdaterRewriteCrashSlot(gHotUpdaterCrashSlots[0],
+                             crashMarkerPath.UTF8String ?: "",
+                             nullptr,
+                             kHotUpdaterKeepShouldRollback);
   HotUpdaterInstallCrashSignalHandlers();
 }
 
 extern "C" void HotUpdaterUpdateSignalLaunchState(NSString * _Nullable bundleId, BOOL shouldRollback)
 {
-  HotUpdaterRewriteCrashSlot(gHotUpdaterCrashSlots[0], nullptr, bundleId.UTF8String ?: "", shouldRollback);
+  HotUpdaterRewriteCrashSlot(gHotUpdaterCrashSlots[0], nullptr, bundleId.UTF8String ?: "", shouldRollback ? 1 : 0);
 }
 
 extern "C" BOOL HotUpdaterPerformRecoveryReload(void)
