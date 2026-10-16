@@ -163,6 +163,12 @@ final class HotUpdaterRecoveryCoordinator {
     /// runtimes can fail close together, and each fatal that no runtime
     /// claims takes one.
     private var deferredLoadFailures = 0
+    /// Called with a named instance whose own fatal or load failure marked
+    /// its launch for rollback, outside the lock. If the process lives on (a
+    /// development build, or a fatal handler that returns) and the host
+    /// starts the instance again, its next launch must be prepared anew, so
+    /// it consumes the marker and rolls back. Set once, before any launch.
+    var onRollbackCharged: ((String) -> Void)?
     /// The current claim is of a runtime no current launch runs.
     private var isEarlierRuntimeClaim = false
     /// First content no runtime claims yet, held while a named launch's
@@ -565,7 +571,8 @@ final class HotUpdaterRecoveryCoordinator {
     /// after a later launch started, runs another bundle: its error charges
     /// no launch at all (see `attributeToEarlierRuntime`).
     func chargeFatal(owner: String?, runtimeBundleURL: URL? = nil) -> Int? {
-        withLock {
+        var rolledBack: String?
+        let claim: Int? = withLock {
             guard let owner, let launch = launches[owner] else {
                 chargeUnattributedCrash()
                 return nil
@@ -580,9 +587,16 @@ final class HotUpdaterRecoveryCoordinator {
             }
             if launch.isMonitoring {
                 writeMarker(launch)
+                if !launch.isMain, launch.shouldRollback {
+                    rolledBack = owner
+                }
             }
             return attribute(to: owner)
         }
+        if let rolledBack {
+            onRollbackCharged?(rolledBack)
+        }
+        return claim
     }
 
     /// Whether a runtime that runs `runtimeBundleURL` is `name`'s current

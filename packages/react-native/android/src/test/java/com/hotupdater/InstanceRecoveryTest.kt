@@ -763,6 +763,21 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a named runtime started again after its error's handler returned rolls the bundle back`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val widgetBundle = stagePending(context, widget, "widget-bundle")
+        val impl = HotUpdaterImpl(context, widget)
+        assertEquals(widgetBundle.absolutePath, impl.getJSBundleFile())
+
+        // The fatal error's handler returned, and the host starts the runtime again.
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+
+        assertEquals("assets://widget.android.bundle", impl.getJSBundleFile())
+        assertEquals(listOf("widget-bundle"), impl.getCrashHistory())
+        assertFalse(crashMarker(context, widget).exists())
+    }
+
+    @Test
     fun `first content of one instance never verifies another's launch`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, main, "main-bundle")

@@ -920,6 +920,53 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(coordinator.contentAppeared(owner: nil)?.launch.name == Self.main)
     }
 
+    /// The widget's fatal returns (a development build) and its host starts
+    /// it again in the same process: its launch is prepared anew, consumes
+    /// its marker, and rolls back.
+    @Test
+    func aNamedFatalTheProcessSurvivesRollsBackItsNextLaunchInProcess() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        var invalidated: [String] = []
+        coordinator.onRollbackCharged = { invalidated.append($0) }
+
+        let claim = try #require(coordinator.chargeFatal(owner: Self.widget))
+        #expect(invalidated == [Self.widget])
+        coordinator.clearAttribution(claim: claim)
+
+        // The same storage the widget's impl keeps prepares its next launch.
+        let widget = try #require(process.storages[Self.widget])
+        let relaunch = widget.prepareLaunch(
+            bundle: namedTestBundle,
+            pendingRecovery: HotUpdaterCrashMarker.consume(at: scene.markerURL(Self.widget))
+        )
+        #expect(relaunch.launchedBundleId == "widget-stable")
+        #expect(widget.getCrashHistory().contains("widget-next"))
+    }
+
+    @Test
+    func onlyANamedLaunchThatWouldRollBackIsPreparedAgain() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        var invalidated: [String] = []
+        coordinator.onRollbackCharged = { invalidated.append($0) }
+
+        // Main recovers in its own way; an earlier runtime's error charges no launch.
+        coordinator.chargeFatal(owner: Self.main)
+        coordinator.chargeFatal(
+            owner: Self.widget,
+            runtimeBundleURL: scene.launchURL(Self.widget, bundleId: "widget-stable")
+        )
+        // A verified launch has nothing to roll back.
+        _ = coordinator.contentAppeared(owner: Self.widget)
+        coordinator.chargeFatal(owner: Self.widget)
+        #expect(invalidated.isEmpty)
+    }
+
     @Test
     func anErrorOfTheCurrentRuntimeStillChargesItsLaunch() throws {
         let scene = try Scene()

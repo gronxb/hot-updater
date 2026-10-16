@@ -230,6 +230,9 @@ private func hotUpdaterGetMinBundleId() -> String {
         self.releaseCatalogCache = releaseCatalogCache
         self.keyValueStorage = keyValueStorage
         super.init()
+        recoveryManager.onRollbackCharged = { [weak self] in
+            self?.invalidateLaunchPreparation()
+        }
 
         // Configure preferences with isolation key
         let isolationKey = environment.isolationKey(appVersion: Self.appVersion)
@@ -904,6 +907,17 @@ private func hotUpdaterGetMinBundleId() -> String {
         runningLaunchSelection = nil
     }
 
+    /// This named instance's own fatal marked its launch for rollback, and
+    /// the process may live on: the host's next `bundleURL()` prepares the
+    /// launch again, consuming the marker, instead of returning the bundle
+    /// that failed. The running bundle stays what React Native runs, as
+    /// after a channel reset.
+    func invalidateLaunchPreparation() {
+        launchPreparationLock.lock()
+        currentLaunchSelection = nil
+        launchPreparationLock.unlock()
+    }
+
     // MARK: - Native Update Check
 
     /**
@@ -1041,6 +1055,8 @@ final class HotUpdaterRecoveryManager: NSObject {
     let name: String
     private let crashMarkerURL: URL
     private let hub: HotUpdaterRecoveryHub
+    /// Set by the impl: invalidates its launch preparation.
+    var onRollbackCharged: (() -> Void)?
     private var stopMonitoringWorkItem: DispatchWorkItem?
     // Main thread only: a named launch whose view started in the background
     // starts once the app comes to the foreground.
@@ -1233,6 +1249,13 @@ final class HotUpdaterRecoveryHub: NSObject {
     static let shared = HotUpdaterRecoveryHub()
 
     let coordinator = HotUpdaterRecoveryCoordinator(sink: HotUpdaterSignalCrashSlots())
+
+    override init() {
+        super.init()
+        coordinator.onRollbackCharged = { [weak self] name in
+            self?.manager(named: name)?.onRollbackCharged?()
+        }
+    }
     private let pendingSurfaceStarts = HotUpdaterPendingSurfaceStarts()
     private let managersLock = NSLock()
     private var managers: [String: HotUpdaterRecoveryManager] = [:]

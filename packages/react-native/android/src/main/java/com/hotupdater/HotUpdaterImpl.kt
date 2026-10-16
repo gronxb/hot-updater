@@ -583,6 +583,9 @@ class HotUpdaterImpl {
                     },
                 onRuntimeActivity = activityStartGate::watchActivity,
                 launchURL = selection.bundleUrl,
+                // Not under the launch lock: crash recovery holds its own lock
+                // here, which launch preparation takes after the launch lock.
+                onCharged = { currentLaunchSelection = null },
             )
         // A headless JS task, such as a background push, loads the bundle without
         // an activity and never renders. Only a launch with an activity may leave

@@ -68,6 +68,7 @@ internal class HotUpdaterRecoveryManager(
     private var crashOfAnotherInstanceCallback: ((String?) -> Unit)? = null
     private var recoveryRestartCallback: (() -> Boolean)? = null
     private var runtimeActivityCallback: ((Activity) -> Unit)? = null
+    private var chargedCallback: (() -> Unit)? = null
     private var stopTask: Runnable? = null
     private var hookTask: Runnable? = null
 
@@ -114,6 +115,8 @@ internal class HotUpdaterRecoveryManager(
      * in an activity that started before anything followed activities
      * @param launchURL the bundle this launch hands to React Native, which
      * the runtimes of this launch load; null accepts any runtime
+     * @param onCharged called when a named launch is charged with a crash
+     * marker, so the instance's next start prepares a launch that reads it
      * @return the launch's generation, which [armLaunch] takes
      */
     fun startMonitoring(
@@ -123,6 +126,7 @@ internal class HotUpdaterRecoveryManager(
         onCrashOfAnotherInstance: (String?) -> Unit,
         onRecoveryRestartRequested: (() -> Boolean)?,
         onRuntimeActivity: ((Activity) -> Unit)? = null,
+        onCharged: (() -> Unit)? = null,
         launchURL: String? = null,
     ): Long {
         crashMarkerFile.parentFile?.mkdirs()
@@ -139,6 +143,7 @@ internal class HotUpdaterRecoveryManager(
                 crashOfAnotherInstanceCallback = onCrashOfAnotherInstance
                 recoveryRestartCallback = onRecoveryRestartRequested
                 runtimeActivityCallback = onRuntimeActivity
+                chargedCallback = onCharged
                 // A new launch runs in a new runtime, which registers when its
                 // module is created; until then its errors are not hooked.
                 this.launchURL = launchURL
@@ -237,6 +242,7 @@ internal class HotUpdaterRecoveryManager(
             crashOfAnotherInstanceCallback = null
             recoveryRestartCallback = null
             runtimeActivityCallback = null
+            chargedCallback = null
             liveManagers.remove(name, this)
             updateNativeLaunchStateLocked()
         }
@@ -412,6 +418,10 @@ internal class HotUpdaterRecoveryManager(
             // A launch none of whose views was shown has no watchdog yet; it
             // relaunches the app after this crash, as for an armed launch.
             startRecoveryWatchdog()
+            // A handler may return and the host start this instance's runtime
+            // again in this process: that start prepares a new launch, which
+            // reads this marker and rolls the bundle back.
+            chargedCallback?.invoke()
             false
         }
 
