@@ -1354,19 +1354,19 @@ final class HotUpdaterRecoveryHub: NSObject {
         runtimeBundleURL: URL?,
         attribution: HotUpdaterRecoveryCoordinator.FatalAttribution
     )? {
-        if let owner = hotUpdaterRuntimeImpl()?.environment.name {
-            return (owner, hotUpdaterRuntimeBundleURL(), .runtimeModule)
-        }
-        if let owner = coordinator.attributedOwner {
-            return (owner, nil, .claim)
-        }
-        if let owner = HotUpdaterJSStackOwner.owner(of: stack, resolve: {
+        let module = hotUpdaterRuntimeImpl().map { ($0.environment.name, hotUpdaterRuntimeBundleURL()) }
+        let stackOwner = HotUpdaterJSStackOwner.owner(of: stack, resolve: {
             HotUpdaterNativeUpdateBridge.impl(forBundleURL: $0).environment.name
-        }) {
-            return (owner, HotUpdaterJSStackOwner.bundleURLs(in: stack).first, .stack)
-        }
-        guard Thread.current.name == Self.runtimeThreadName else { return nil }
-        return coordinator.inferredFatalOwner().map { ($0, nil, .inference) }
+        }).map { ($0, HotUpdaterJSStackOwner.bundleURLs(in: stack).first) }
+        return HotUpdaterRecoveryCoordinator.fatalOwner(
+            module: module,
+            stack: stackOwner,
+            claim: coordinator.attributedOwner,
+            inference: {
+                guard Thread.current.name == Self.runtimeThreadName else { return nil }
+                return self.coordinator.inferredFatalOwner()
+            }
+        )
     }
 
     // MARK: - Fatal errors

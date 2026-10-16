@@ -506,6 +506,49 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(coordinator.activeClaimCount == 0)
     }
 
+    /// The widget's load failure is waiting for its fatal when main's fatal
+    /// claims a crash: the widget's fatal still takes over its own claim.
+    @Test
+    func aLoadFailuresFatalFindsItsClaimBehindAnotherOne() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let loadFailure = try #require(coordinator.chargeLoadFailure(owner: Self.widget))
+        let mainFatal = try #require(coordinator.chargeFatal(owner: Self.main))
+        #expect(coordinator.chargeFatal(owner: Self.widget) == loadFailure)
+        #expect(coordinator.activeClaimCount == 2)
+        coordinator.clearAttribution(claim: loadFailure)
+        coordinator.clearAttribution(claim: mainFatal)
+        #expect(coordinator.activeClaimCount == 0)
+    }
+
+    /// A module-less runtime's fatal with a stack of its own is its own,
+    /// even while another runtime's fatal holds a claim; the claim decides
+    /// only for a follow-up fatal with nothing of its own to tell.
+    @Test
+    func aFatalsOwnerComesFromItsModuleThenStackThenClaim() {
+        typealias Coordinator = HotUpdaterRecoveryCoordinator
+        let stack = Coordinator.fatalOwner(
+            module: nil,
+            stack: (Self.widget, nil),
+            claim: Self.main,
+            inference: { "checkout" }
+        )
+        #expect(stack?.name == Self.widget)
+        #expect(stack?.attribution == .stack)
+        let module = Coordinator.fatalOwner(
+            module: ("checkout", nil),
+            stack: (Self.widget, nil),
+            claim: Self.main,
+            inference: { nil }
+        )
+        #expect(module?.attribution == .runtimeModule)
+        #expect(Coordinator.fatalOwner(module: nil, stack: nil, claim: Self.main, inference: { Self.widget })?.attribution == .claim)
+        #expect(Coordinator.fatalOwner(module: nil, stack: nil, claim: nil, inference: { Self.widget })?.attribution == .inference)
+        #expect(Coordinator.fatalOwner(module: nil, stack: nil, claim: nil, inference: { nil }) == nil)
+    }
+
     @Test
     func overlappingClaimsReleaseTogetherWithTheLatest() throws {
         let scene = try Scene()

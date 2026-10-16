@@ -731,6 +731,55 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a JavaScript error of another runtime during a claim is its own runtime's`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val other = namedEnvironment("other-runtime")
+        stagePending(context, widget, "widget-bundle")
+        val otherBundle = stagePending(context, other, "other-bundle")
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        val registry = HotUpdaterInstanceRegistry.shared
+        try {
+            registry.impl(context, other).getJSBundleFile()
+            HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+            assertTrue(crashMarker(context, widget).delete())
+
+            // Another runtime, which never reached HotUpdater, throws while the
+            // widget's claim is active; its stack names its bundle.
+            val error =
+                JavascriptException("Error: other failed, stack:\nanonymous@1:20480\n").apply {
+                    extraDataAsJson =
+                        JSONObject()
+                            .put("rawStack", "Error: other failed\n    at anonymous (address at ${otherBundle.absolutePath}:1:20480)")
+                            .toString()
+                }
+            HotUpdaterRecoveryManager.chargeUncaughtException(error)
+
+            assertEquals(PendingCrashRecovery("other-bundle", true), PendingCrashRecovery.loadFromFile(crashMarker(context, other)))
+            assertFalse(crashMarker(context, widget).exists())
+        } finally {
+            forget(registry, other.name)
+        }
+    }
+
+    @Test
+    fun `the crash a claimed error ends in stays that claim's`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        val error = JavascriptException("Error: widget failed")
+        HotUpdaterRecoveryManager.handleJavaScriptException(error, widget.name)
+        assertTrue(crashMarker(context, widget).delete())
+
+        // The forwarded handler rethrows it wrapped, and the process ends.
+        HotUpdaterRecoveryManager.chargeUncaughtException(RuntimeException(error))
+
+        assertTrue(crashMarker(context, widget).exists())
+        assertFalse(crashMarker(context, main).exists())
+    }
+
+    @Test
     fun `launches left alone by overlapping claims all count again when the last claim is released`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val chat = namedEnvironment("chat")

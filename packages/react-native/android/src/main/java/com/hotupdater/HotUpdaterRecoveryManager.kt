@@ -850,14 +850,31 @@ internal class HotUpdaterRecoveryManager(
         /**
          * Writes the crash markers of an uncaught exception that ends the
          * process; true when main's recovery restart takes over the process.
-         * A JavaScript error that reaches it unclaimed may be inferred to be
-         * one named launch's ([HotUpdaterRecoverySlots.inferJavaScriptErrorOwner]).
+         * The crash a claimed error ends in is that claim's, by the error
+         * itself. A JavaScript error is otherwise its own runtime's, by its
+         * stack, even while another runtime's claim is active; only then does
+         * the active claim take it. With no claim, an unclaimed one may be
+         * inferred to be one named launch's
+         * ([HotUpdaterRecoverySlots.inferJavaScriptErrorOwner]).
          */
         internal fun chargeUncaughtException(throwable: Throwable): Boolean =
             synchronized(recoveryLock) {
+                activeClaimOf(throwable)?.let { claimed ->
+                    return@synchronized handleUncaughtCrash(claim = activeClaims[claimed])
+                }
                 val claim = activeClaimLocked()
-                val owner = if (claim == null && isJavaScriptError(throwable)) javaScriptErrorOwner(throwable) else null
-                if (owner != null) claimJavaScriptError(null, owner).recovered else handleUncaughtCrash(claim = claim)
+                val isJavaScript = isJavaScriptError(throwable)
+                val owner =
+                    when {
+                        !isJavaScript -> null
+                        claim == null -> javaScriptErrorOwner(throwable)
+                        else -> attribution.namedInstanceOfStack(javaScriptStacks(throwable))
+                    }
+                if (owner != null) {
+                    claimJavaScriptError(throwable as? Exception, owner).recovered
+                } else {
+                    handleUncaughtCrash(claim = claim)
+                }
             }
 
         /**

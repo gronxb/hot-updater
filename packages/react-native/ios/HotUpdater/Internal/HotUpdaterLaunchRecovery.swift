@@ -568,6 +568,29 @@ final class HotUpdaterRecoveryCoordinator {
         }
     }
 
+    /// A fatal's owner, by the first that names one: the runtime's own
+    /// module, the bundles in its JavaScript stack, the claim of a crash
+    /// already going on (a follow-up fatal with nothing of its own to tell),
+    /// then inference. A module-less runtime's fatal with a stack of its own
+    /// is its own, even while another runtime's fatal holds a claim.
+    static func fatalOwner(
+        module: (name: String, runtimeBundleURL: URL?)?,
+        stack: (name: String, runtimeBundleURL: URL?)?,
+        claim: String?,
+        inference: () -> String?
+    ) -> (name: String, runtimeBundleURL: URL?, attribution: FatalAttribution)? {
+        if let module {
+            return (module.name, module.runtimeBundleURL, .runtimeModule)
+        }
+        if let stack {
+            return (stack.name, stack.runtimeBundleURL, .stack)
+        }
+        if let claim {
+            return (claim, nil, .claim)
+        }
+        return inference().map { ($0, nil, .inference) }
+    }
+
     /// How a fatal's owner was found.
     enum FatalAttribution {
         /// The runtime's own module: a runtime that has one never deferred
@@ -711,10 +734,10 @@ final class HotUpdaterRecoveryCoordinator {
             }
             // The fatal of this launch's load failure: the same crash, so
             // the load failure's claim is its claim.
-            if let index = activeClaims.indices.last,
-               activeClaims[index].awaitingFatalSince != nil,
-               activeClaims[index].name == owner,
-               activeClaims[index].generation == launch.generation {
+            // Another runtime's claim may have come in between.
+            if let index = activeClaims.firstIndex(where: {
+                $0.awaitingFatalSince != nil && $0.name == owner && $0.generation == launch.generation
+            }) {
                 activeClaims[index].awaitingFatalSince = nil
                 return activeClaims[index].id
             }
