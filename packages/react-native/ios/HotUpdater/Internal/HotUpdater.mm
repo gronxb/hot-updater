@@ -103,7 +103,9 @@ HotUpdaterCrashSlot gHotUpdaterCrashSlots[kHotUpdaterCrashSlotCount] = {};
 std::mutex gHotUpdaterCrashSlotWriters;
 // A JavaScript fatal about to crash the process is one instance's: only its
 // slot writes (none when it has no slot). Otherwise kHotUpdaterUnattributedCrash.
-volatile sig_atomic_t gHotUpdaterAttributedSlot = kHotUpdaterUnattributedCrash;
+// Lock-free (the static_assert above), so the handler on any thread reads a
+// whole value published by another.
+std::atomic<int> gHotUpdaterAttributedSlot(kHotUpdaterUnattributedCrash);
 struct sigaction gHotUpdaterPreviousActions[NSIG];
 __weak RCTBridge *gHotUpdaterBridge = nil;
 
@@ -249,7 +251,7 @@ void HotUpdaterWriteCrashMarker(const HotUpdaterCrashSlotData &slot)
 // writes.
 void HotUpdaterWriteCrashMarkers()
 {
-  const sig_atomic_t attributedSlot = gHotUpdaterAttributedSlot;
+  const int attributedSlot = gHotUpdaterAttributedSlot.load(std::memory_order_acquire);
   for (int index = 0; index < kHotUpdaterCrashSlotCount; ++index) {
     if (attributedSlot != kHotUpdaterUnattributedCrash && attributedSlot != index) {
       continue;
@@ -337,7 +339,7 @@ extern "C" void HotUpdaterUpdateCrashSlot(NSInteger index,
 // an instance without a slot (then a native crash writes no marker).
 extern "C" void HotUpdaterAttributeCrashToSlot(NSInteger index)
 {
-  gHotUpdaterAttributedSlot = static_cast<sig_atomic_t>(index);
+  gHotUpdaterAttributedSlot.store(static_cast<int>(index), std::memory_order_release);
 }
 
 // Legacy entry points of the single main slot.
