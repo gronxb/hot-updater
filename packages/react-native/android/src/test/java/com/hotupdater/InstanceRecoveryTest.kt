@@ -132,6 +132,50 @@ class InstanceRecoveryTest {
 
         assertFalse(metadata(context, widget).launchInProgress)
         assertTrue(metadata(context, widget).verificationPending)
+
+        // The error did not end the process after all: once the claim is
+        // released, the shown view arms the widget's launch.
+        HotUpdaterRecoveryManager.releaseClaim()
+        assertTrue(metadata(context, widget).launchInProgress)
+    }
+
+    @Test
+    fun `a launch left alone by a claimed error that did not end the process counts again`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+        assertFalse(metadata(context, main).launchInProgress)
+
+        // A development build showed the error, and the process lived on.
+        HotUpdaterRecoveryManager.releaseClaim()
+        assertTrue(metadata(context, main).launchInProgress)
+        assertTrue(metadata(context, main).verificationPending)
+    }
+
+    @Test
+    fun `a claimed error of a launch no view armed yet schedules the recovery watchdog`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        val gate =
+            ActivityStartGate(
+                RecordingApplication(),
+                processHasStartedActivity = { false },
+                showsReactView = { false },
+                watchLayout = { _, _ -> {} },
+            )
+        HotUpdaterImpl(context, widget, gate).getJSBundleFile()
+        val watchdogState = File(bundleStore(context, main), "recovery-watchdog-state.txt")
+        assertFalse(watchdogState.exists())
+
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+
+        val state = HotUpdaterRecoveryManager.WatchdogState.parse(watchdogState.readText())!!
+        assertEquals(listOf(widget.name), state.instances)
+        assertTrue(HotUpdaterRecoveryManager.crashMarkerRequestsRollback(context.filesDir, state.instances))
     }
 
     @Test

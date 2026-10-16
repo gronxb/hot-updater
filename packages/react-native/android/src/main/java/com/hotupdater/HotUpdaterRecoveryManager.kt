@@ -51,6 +51,11 @@ internal class HotUpdaterRecoveryManager(
     // must not be armed in the moments left.
     @Volatile
     private var endedByAnotherInstance = false
+
+    // What arms this launch for the next process, kept so a launch another
+    // instance's claimed error disarmed is armed again when that error turns
+    // out not to end the process.
+    private var launchStartedAction: (() -> Unit)? = null
     private var contentAppearedCallback: ((String?) -> Unit)? = null
     private var crashOfAnotherInstanceCallback: ((String?) -> Unit)? = null
     private var recoveryRestartCallback: (() -> Boolean)? = null
@@ -123,7 +128,10 @@ internal class HotUpdaterRecoveryManager(
         recoveryRestartCallback = onRecoveryRestartRequested
         launchState.start(bundleId, shouldRollback)
         armed = isMain
-        endedByAnotherInstance = false
+        synchronized(this) {
+            endedByAnotherInstance = false
+            launchStartedAction = null
+        }
         liveManagers[name] = this
 
         ensureExceptionHandlerInstalled()
@@ -152,6 +160,7 @@ internal class HotUpdaterRecoveryManager(
      */
     fun armLaunch(markLaunchStarted: () -> Unit) {
         synchronized(this) {
+            launchStartedAction = markLaunchStarted
             if (endedByAnotherInstance) return
             markLaunchStarted()
         }
@@ -262,15 +271,32 @@ internal class HotUpdaterRecoveryManager(
             Log.e(TAG, "Caught React startup exception of $name for bundleId=${launch.bundleId}", exception)
         }
         writeCrashMarker(launch)
+        // A launch none of whose views was shown has no watchdog yet; it
+        // relaunches the app after this crash, as for an armed launch.
+        startRecoveryWatchdog()
         return false
     }
 
-    private fun handleCrashOfAnotherInstance() {
-        val launch = launchState.snapshot()?.takeIf { it.shouldRollback } ?: return
+    /** True when this launch was waiting for its content and is now left alone. */
+    private fun handleCrashOfAnotherInstance(): Boolean {
+        val launch = launchState.snapshot()?.takeIf { it.shouldRollback } ?: return false
         synchronized(this) {
             endedByAnotherInstance = true
             crashOfAnotherInstanceCallback?.invoke(launch.bundleId)
         }
+        return true
+    }
+
+    /** Another instance's claimed error did not end the process: this launch counts again. */
+    private fun resumeAfterAnotherInstanceSurvived() {
+        val action =
+            synchronized(this) {
+                if (!endedByAnotherInstance) return
+                endedByAnotherInstance = false
+                launchStartedAction
+            }
+        if (launchState.snapshot()?.shouldRollback != true) return
+        action?.let(::armLaunch)
     }
 
     private fun ensureNativeSignalHandlerInstalled() {
@@ -382,6 +408,13 @@ internal class HotUpdaterRecoveryManager(
 
         /** The manager of each instance whose launch is monitored. */
         private val liveManagers = ConcurrentHashMap<String, HotUpdaterRecoveryManager>()
+
+        // The launches the current claim left alone, armed again if the
+        // process outlives the claim.
+        private val claimLock = Any()
+        private var claimGeneration = 0
+        private val disarmedByClaim = mutableListOf<HotUpdaterRecoveryManager>()
+        private val claimHandler by lazy { Handler(Looper.getMainLooper()) }
         private val watchdogOwners = mutableSetOf<String>()
 
         private val patchedReactContextIds = mutableSetOf<Int>()
@@ -491,8 +524,34 @@ internal class HotUpdaterRecoveryManager(
                     Log.w(TAG, "Failed to attribute the crash natively", e)
                 }
             }
-            liveManagers.values.filter { it.name != instanceName }.forEach { it.handleCrashOfAnotherInstance() }
+            val disarmed = liveManagers.values.filter { it.name != instanceName && it.handleCrashOfAnotherInstance() }
+            val generation =
+                synchronized(claimLock) {
+                    claimGeneration += 1
+                    disarmedByClaim.clear()
+                    disarmedByClaim += disarmed
+                    claimGeneration
+                }
+            // A development build shows the error, and an app's handler may
+            // swallow it: once the claim expires, the process lived on.
+            if (disarmed.isNotEmpty()) {
+                claimHandler.postDelayed({ releaseClaim(generation) }, HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS)
+            }
             return liveManagers[instanceName]?.chargeCrash(exception) == true
+        }
+
+        /**
+         * Arms again the launches the claim of [generation] (the latest by
+         * default) left alone, when they still wait for their first content:
+         * the claimed error did not end the process.
+         */
+        internal fun releaseClaim(generation: Int? = null) {
+            val disarmed =
+                synchronized(claimLock) {
+                    if (generation != null && generation != claimGeneration) return
+                    disarmedByClaim.toList().also { disarmedByClaim.clear() }
+                }
+            disarmed.filter { liveManagers[it.name] === it }.forEach { it.resumeAfterAnotherInstanceSurvived() }
         }
 
         /**
