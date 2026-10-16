@@ -555,9 +555,11 @@ internal class HotUpdaterRecoveryManager(
         private val sourceURL: () -> String?,
     ) : JSExceptionHandler {
         override fun handleException(e: Exception) {
-            if (!handleJavaScriptExceptionForRecovery(e, runCatching(sourceURL).getOrNull())) {
-                previousHandler?.handleException(e) ?: throw e
-            }
+            val outcome = handleJavaScriptError(e, runCatching(sourceURL).getOrNull())
+            if (outcome.recovered) return
+            previousHandler?.handleException(e) ?: throw e
+            // The handler returned, however long it took: the error did not end the process.
+            handlerReturned(outcome)
         }
     }
 
@@ -827,7 +829,7 @@ internal class HotUpdaterRecoveryManager(
             synchronized(recoveryLock) {
                 val claim = activeClaimLocked()
                 val owner = if (claim == null && isJavaScriptError(throwable)) javaScriptErrorOwner(throwable) else null
-                if (owner != null) claimJavaScriptError(null, owner) else handleUncaughtCrash(claim = claim)
+                if (owner != null) claimJavaScriptError(null, owner).recovered else handleUncaughtCrash(claim = claim)
             }
 
         /**
@@ -895,7 +897,17 @@ internal class HotUpdaterRecoveryManager(
         internal fun handleJavaScriptExceptionForRecovery(
             exception: Exception,
             sourceURL: String?,
-        ): Boolean {
+        ): Boolean = handleJavaScriptError(exception, sourceURL).recovered
+
+        /**
+         * [handleJavaScriptExceptionForRecovery], with the claim it made.
+         * A hook that forwards the error and sees its handler return calls
+         * [handlerReturned] with it.
+         */
+        internal fun handleJavaScriptError(
+            exception: Exception,
+            sourceURL: String?,
+        ): JavaScriptErrorOutcome {
             // The launches when the error was thrown: one that starts while
             // the runtime's instance is resolved is not the one that threw.
             val generations = launchGenerations()
@@ -908,7 +920,7 @@ internal class HotUpdaterRecoveryManager(
             instanceName: String?,
             sourceURL: String?,
             generations: Map<String, Long>,
-        ): Boolean {
+        ): JavaScriptErrorOutcome {
             val manager = instanceName?.let { liveManagers[it] }
             if (instanceName != null &&
                 instanceName != HotUpdaterInstanceEnvironment.MAIN_NAME &&
@@ -946,20 +958,32 @@ internal class HotUpdaterRecoveryManager(
         internal fun handleJavaScriptException(
             exception: Exception,
             instanceName: String?,
-        ): Boolean = synchronized(recoveryLock) { handleClaimableJavaScriptException(exception, instanceName) }
+        ): Boolean = synchronized(recoveryLock) { handleClaimableJavaScriptException(exception, instanceName).recovered }
 
         private fun handleClaimableJavaScriptException(
             exception: Exception,
             instanceName: String?,
-        ): Boolean {
+        ): JavaScriptErrorOutcome {
             // An error no runtime claims is not the continuation of a claimed
             // one: it is the one named launch whose runtime never reached
             // HotUpdater, or it charges every launch it can be blamed on.
             if (instanceName == null) {
-                val owner = javaScriptErrorOwner(exception) ?: return handleUncaughtCrash(exception, claim = null)
+                val owner =
+                    javaScriptErrorOwner(exception)
+                        ?: return JavaScriptErrorOutcome(handleUncaughtCrash(exception, claim = null))
                 return claimJavaScriptError(exception, owner)
             }
             return claimJavaScriptError(exception, instanceName)
+        }
+
+        /**
+         * The handler a hook forwarded a JavaScript error to returned: the
+         * error did not end the process, so its claim ends now. Only the
+         * handler's return ends it; a handler that takes long, then ends the
+         * process, keeps it for that crash.
+         */
+        internal fun handlerReturned(outcome: JavaScriptErrorOutcome) {
+            outcome.claim?.let(::releaseClaim)
         }
 
         /**
@@ -971,7 +995,7 @@ internal class HotUpdaterRecoveryManager(
             exception: Exception?,
             instanceName: String,
             eventGeneration: Long? = liveManagers[instanceName]?.currentGeneration(),
-        ): Boolean =
+        ): JavaScriptErrorOutcome =
             synchronized(recoveryLock) {
                 // The claim's generation, its attribution in both claims, its
                 // owner, and the launches it leaves alone change at once: no
@@ -1005,7 +1029,7 @@ internal class HotUpdaterRecoveryManager(
                 liveManagers.values
                     .filter { it.name != instanceName }
                     .forEach { manager -> manager.handleCrashOfAnotherInstance()?.let { disarmedByClaim[manager] = it } }
-                recovering
+                JavaScriptErrorOutcome(recovering, generation)
             }
 
         /**
@@ -1077,7 +1101,7 @@ internal class HotUpdaterRecoveryManager(
          * handler may swallow it, and then the process lived on.
          */
         private fun scheduleClaimRelease(generation: Int) {
-            claimReleaseScheduler(HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS, Runnable { releaseClaim(generation) })
+            claimReleaseScheduler(HotUpdaterRecoverySlots.CLAIM_FAIL_SAFE_MS, Runnable { releaseClaim(generation) })
         }
 
         private val claimReleaseExecutor by lazy {
@@ -1305,6 +1329,16 @@ internal class HotUpdaterRecoveryManager(
         }
     }
 }
+
+/**
+ * What crash recovery did with a JavaScript error: whether main's recovery
+ * restart took over, and the claim it made, which ends when the error's
+ * handler returns.
+ */
+internal data class JavaScriptErrorOutcome(
+    val recovered: Boolean,
+    val claim: Int? = null,
+)
 
 /** What crash recovery tells the native signal handler (HotUpdaterRecovery.cpp). */
 internal interface HotUpdaterNativeRecovery {

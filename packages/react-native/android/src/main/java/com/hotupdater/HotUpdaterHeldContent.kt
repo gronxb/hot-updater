@@ -39,11 +39,18 @@ internal class HotUpdaterHeldContent(
         rootTag: Int,
         generations: Map<String, Long>,
     ) {
-        synchronized(this) {
-            held += Held(rootTag, clock(), generations)
-            // Each held view is a root view that rendered; a few cover any app.
-            while (held.size > MAX_HELD) held.removeAt(0)
-        }
+        val evicted =
+            synchronized(this) {
+                // A root view's first content counts once.
+                if (held.any { it.rootTag == rootTag }) return
+                held += Held(rootTag, clock(), generations)
+                // Root tags are small and each is a root view that rendered,
+                // so every one is kept while a named launch may own it. Only
+                // past this bound does the oldest leave, and only after it
+                // verified main, as content no instance claims does.
+                if (held.size > MAX_HELD) held.removeAt(0).takeUnless { it.creditedToMain } else null
+            }
+        evicted?.generations?.get(HotUpdaterInstanceEnvironment.MAIN_NAME)?.let { credit(HotUpdaterInstanceEnvironment.MAIN_NAME, it) }
         mainThread.postDelayed({ creditExpiredToMain() }, HOLD_MS)
     }
 
@@ -79,6 +86,6 @@ internal class HotUpdaterHeldContent(
 
     companion object {
         const val HOLD_MS = 10_000L
-        private const val MAX_HELD = 16
+        private const val MAX_HELD = 1024
     }
 }

@@ -64,6 +64,19 @@ class HotUpdaterHeldContentTest {
     }
 
     @Test
+    fun `many roots held at once all wait for their runtimes and each counts once`() {
+        // Twenty other roots render before the widget's runtime registers.
+        held.hold(ROOT_TAG, mapOf(MAIN to 1L, WIDGET to 3L))
+        held.hold(ROOT_TAG, mapOf(MAIN to 1L, WIDGET to 3L))
+        (1..20).forEach { held.hold(1_000 + it * 10, mapOf(MAIN to 1L, WIDGET to 3L)) }
+
+        views[ROOT_TAG] = WIDGET
+        held.runtimeRegistered()
+
+        assertEquals(listOf(WIDGET to 3L), credits)
+    }
+
+    @Test
     fun `a registration off the main thread resolves on it`() {
         held.hold(ROOT_TAG, mapOf(WIDGET to 3L))
         views[ROOT_TAG] = WIDGET

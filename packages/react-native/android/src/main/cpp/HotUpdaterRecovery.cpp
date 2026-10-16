@@ -20,11 +20,11 @@ constexpr int kSlotCount = 8;
 constexpr int kNotAttributed = -1;
 // A crash claimed by an instance that has no slot: no slot writes a marker.
 constexpr int kAttributedWithoutSlot = -2;
-// Kotlin clears the claim when it releases it, 5 seconds after the claimed
-// error (HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS). The claim also
-// expires on its own, much later, only so a release that never runs can't
-// leave it claiming crashes forever.
-constexpr uint32_t kNativeClaimFallbackMilliseconds = 30000;
+// Kotlin clears the claim when it releases it: when the claimed error's
+// handler returns, or after HotUpdaterRecoverySlots.CLAIM_FAIL_SAFE_MS. The
+// claim also expires on its own after that same fail-safe, only so a release
+// that never runs can't leave it claiming crashes forever.
+constexpr uint32_t kNativeClaimFallbackMilliseconds = 60000;
 
 struct SlotData {
   // Empty while the slot is free.

@@ -15,6 +15,7 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
+import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -524,7 +525,7 @@ class InstanceRecoveryTest {
     fun `a claim is released on time while the main thread is blocked`() {
         val releases = mutableListOf<Runnable>()
         HotUpdaterRecoveryManager.claimReleaseScheduler = { delayMs, task ->
-            assertEquals(5_000L, delayMs)
+            assertEquals(HotUpdaterRecoverySlots.CLAIM_FAIL_SAFE_MS, delayMs)
             releases += task
         }
         val context = InstanceTestContext(temporaryFolder.root)
@@ -625,6 +626,56 @@ class InstanceRecoveryTest {
 
         assertEquals(listOf(true), mainArmedWhenScheduled)
         assertFalse(metadata(context, main).launchInProgress)
+    }
+
+    @Test
+    fun `a claim ends when its error's handler returns, however long it took`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val returning = namedEnvironment("returning-widget")
+        stagePending(context, main, "main-bundle")
+        stagePending(context, returning, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        val registry = HotUpdaterInstanceRegistry.shared
+        try {
+            val widgetURL = registry.impl(context, returning).getJSBundleFile()
+            val mainArmedWhileHandling = mutableListOf<Boolean>()
+            // An app's handler that takes its time, then returns.
+            val handler =
+                HotUpdaterRecoveryManager.RecoveryJSExceptionHandler(
+                    { mainArmedWhileHandling += metadata(context, main).launchInProgress },
+                    { widgetURL },
+                )
+
+            handler.handleException(RuntimeException("widget failed"))
+
+            assertEquals(listOf(false), mainArmedWhileHandling)
+            assertTrue(metadata(context, main).launchInProgress)
+        } finally {
+            forget(registry, returning.name)
+        }
+    }
+
+    @Test
+    fun `a claim whose handler ends the process is kept for that crash`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val throwing = namedEnvironment("throwing-widget")
+        stagePending(context, main, "main-bundle")
+        stagePending(context, throwing, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        val registry = HotUpdaterInstanceRegistry.shared
+        try {
+            val widgetURL = registry.impl(context, throwing).getJSBundleFile()
+            val handler = HotUpdaterRecoveryManager.RecoveryJSExceptionHandler(null) { widgetURL }
+
+            assertThrows(RuntimeException::class.java) { handler.handleException(RuntimeException("widget failed")) }
+
+            // The crash it ends in is the widget's: main stays left alone.
+            assertFalse(metadata(context, main).launchInProgress)
+            HotUpdaterRecoveryManager.chargeUncaughtException(RuntimeException("widget failed"))
+            assertFalse(crashMarker(context, main).exists())
+        } finally {
+            forget(registry, throwing.name)
+        }
     }
 
     @Test

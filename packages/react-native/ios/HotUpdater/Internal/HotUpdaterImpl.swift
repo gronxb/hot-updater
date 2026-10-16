@@ -1398,8 +1398,9 @@ final class HotUpdaterRecoveryHub: NSObject {
         // main doesn't recover in-process, and the crash counts against
         // every unverified launch.
         if owner == mainName || (owner == nil && !afterLoadFailure), let main = manager(named: mainName) {
-            // Main's fatal, or one no runtime claims: main recovers in-process
-            // as it always has.
+            // Main's fatal, or one no runtime claims: with only main, main
+            // recovers in-process as it always has (never beside a named
+            // instance, see HotUpdaterRecoveryCoordinator.requestRecovery).
             if main.requestRecoveryReloadIfNeeded(onFailure: { [weak self] in
                 let claim = owner.flatMap { self?.coordinator.attribute(to: $0) }
                 forward()
@@ -1420,10 +1421,11 @@ final class HotUpdaterRecoveryHub: NSObject {
             forward()
             return
         }
-        // A named instance never reloads in-process: per-host reload isn't
-        // there yet, and main's host must not reload for another instance's
-        // fatal. React Native's default crashes the process, and the crash is
-        // this instance's alone.
+        // A named instance never reloads in-process: it applies updates and
+        // rollbacks at its next start, and main's host must not reload for
+        // another instance's fatal. React Native's default crashes the
+        // process, and the crash is this instance's alone. The claim is
+        // released only once the forwarded handler returns.
         let claim = coordinator.chargeFatal(owner: owner, runtimeBundleURL: attributed?.runtimeBundleURL)
         forward()
         if let claim {

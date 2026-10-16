@@ -85,12 +85,11 @@ internal class HotUpdaterRecoverySlots(
         const val MAIN_SLOT = 0
 
         /**
-         * How long a claimed error has to end the process before its claim is
-         * released. The native claim falls back to expiring later
-         * (kNativeClaimFallbackMilliseconds in HotUpdaterRecovery.cpp), only
-         * for a release that never runs.
+         * A claim ends when its error's handler returns. This only releases a
+         * claim whose handler never returned nor ended the process. Kept
+         * equal to kNativeClaimFallbackMilliseconds in HotUpdaterRecovery.cpp.
          */
-        const val ATTRIBUTION_WINDOW_MS = 5_000L
+        const val CLAIM_FAIL_SAFE_MS = 60_000L
 
         /**
          * The instance a JavaScript error no runtime claimed most likely came
