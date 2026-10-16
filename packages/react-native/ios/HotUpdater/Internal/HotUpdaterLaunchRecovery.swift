@@ -191,9 +191,12 @@ final class HotUpdaterRecoveryCoordinator {
     /// one into a load failure.
     private var deferredLoadFailures: [DeferredLoadFailure] = []
 
-    private struct DeferredLoadFailure {
+    /// A load failure no runtime claimed, waiting for its fatal.
+    struct DeferredLoadFailure {
         let deferredAt: TimeInterval
-        /// The unresolved named launches that may have failed, by generation.
+        /// The launches that may have failed when it was reported, by
+        /// generation: the unresolved named ones, and main until its first
+        /// content. Only these can be its owner, or be charged for it.
         let possibleOwners: [String: Int]
     }
     /// Called with a named instance whose own fatal or load failure marked
@@ -501,7 +504,7 @@ final class HotUpdaterRecoveryCoordinator {
     func deferUnclaimedLoadFailure() -> Bool {
         withLock {
             guard hasUnresolvedNamedLaunch else { return false }
-            let possibleOwners = launches.values.filter(isUnresolvedNamedLaunch)
+            let possibleOwners = possibleFatalOwners
             deferredLoadFailures.append(DeferredLoadFailure(
                 deferredAt: now(),
                 possibleOwners: Dictionary(uniqueKeysWithValues: possibleOwners.map { ($0.name, $0.generation) })
@@ -519,10 +522,17 @@ final class HotUpdaterRecoveryCoordinator {
     /// returns: while it holds, every launch that can't have failed is
     /// stopped, so a native crash or uncaught exception the fatal causes
     /// writes only the possible owners' markers.
+    ///
+    /// `deferred`, the load failure the fatal follows, limits the charge to
+    /// the launches that could have failed when it was reported: a runtime
+    /// started since then is not charged.
     @discardableResult
-    func chargeUnclaimedLoadFailure() -> Int {
+    func chargeUnclaimedLoadFailure(_ deferred: DeferredLoadFailure? = nil) -> Int {
         charging {
-            let owners = possibleFatalOwners
+            var owners = possibleFatalOwners
+            if let deferred {
+                owners = owners.filter { deferred.possibleOwners[$0.name] == $0.generation }
+            }
             for launch in owners where launch.isMonitoring {
                 charge(launch)
             }
@@ -551,21 +561,23 @@ final class HotUpdaterRecoveryCoordinator {
     }
 
     /// Whether the fatal now reported follows a deferred load failure; the
-    /// next one doesn't.
+    /// next one doesn't. (`takeDeferredLoadFailure(for:owner:)` with no owner.)
     func takeDeferredLoadFailure() -> Bool {
-        withLock {
-            let currentTime = now()
-            deferredLoadFailures.removeAll { deferred in
-                currentTime - deferred.deferredAt >= Self.loadFailureClaimBound
-                    || !deferred.possibleOwners.contains { name, generation in
-                        guard let launch = launches[name] else { return false }
-                        return launch.generation == generation && isUnresolvedNamedLaunch(launch)
-                    }
-            }
-            guard !deferredLoadFailures.isEmpty else { return false }
-            deferredLoadFailures.removeFirst()
-            return true
+        takeDeferredLoadFailure(for: .none) != nil
+    }
+
+    /// Takes the oldest live deferred load failure `matches` accepts.
+    private func takeLiveDeferredLoadFailure(where matches: (DeferredLoadFailure) -> Bool) -> DeferredLoadFailure? {
+        let currentTime = now()
+        deferredLoadFailures.removeAll { deferred in
+            currentTime - deferred.deferredAt >= Self.loadFailureClaimBound
+                || !deferred.possibleOwners.contains { name, generation in
+                    guard let launch = launches[name] else { return false }
+                    return launch.generation == generation && isUnresolvedNamedLaunch(launch)
+                }
         }
+        guard let index = deferredLoadFailures.firstIndex(where: matches) else { return nil }
+        return deferredLoadFailures.remove(at: index)
     }
 
     /// A fatal's owner, by the first that names one: the runtime's own
@@ -608,19 +620,25 @@ final class HotUpdaterRecoveryCoordinator {
         case none
     }
 
-    /// Whether the fatal now reported, attributed through `attribution`, is
-    /// the one that follows a deferred load failure; takes it if so. A
-    /// module-less attribution takes one too, so it isn't left for a later
-    /// unrelated fatal.
-    func takeDeferredLoadFailure(for attribution: FatalAttribution) -> Bool {
+    /// The deferred load failure the fatal now reported follows, taken so
+    /// no later fatal takes it, or nil. A fatal attributed by its stack or by
+    /// inference to `owner` takes one only if `owner`'s current launch could
+    /// have failed when it was reported; an unattributed fatal takes the
+    /// oldest live one. A runtime with a module, or a claimed crash, never
+    /// deferred one.
+    @discardableResult
+    func takeDeferredLoadFailure(for attribution: FatalAttribution, owner: String? = nil) -> DeferredLoadFailure? {
         withLock {
             switch attribution {
             case .runtimeModule, .claim:
-                return false
+                return nil
             case .none where isEarlierRuntimeClaim:
-                return false
-            case .stack, .inference, .none:
-                return takeDeferredLoadFailure()
+                return nil
+            case .stack, .inference:
+                guard let owner, let generation = launches[owner]?.generation else { return nil }
+                return takeLiveDeferredLoadFailure { $0.possibleOwners[owner] == generation }
+            case .none:
+                return takeLiveDeferredLoadFailure { _ in true }
             }
         }
     }

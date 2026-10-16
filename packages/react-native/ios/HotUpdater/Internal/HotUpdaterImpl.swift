@@ -1396,9 +1396,12 @@ final class HotUpdaterRecoveryHub: NSObject {
         // A fatal of a module-less runtime (by stack, inference, or none)
         // takes a deferred load failure; one of a runtime with a module, or
         // of a claimed crash, leaves it to the runtime that failed.
-        let tookLoadFailure = coordinator.takeDeferredLoadFailure(for: attributed?.attribution ?? .none)
+        let loadFailure = coordinator.takeDeferredLoadFailure(
+            for: attributed?.attribution ?? .none,
+            owner: attributed?.name
+        )
         var afterLoadFailure = false
-        if attributed == nil, tookLoadFailure {
+        if attributed == nil, loadFailure != nil {
             afterLoadFailure = true
             // RCTInstance reports a load failure's fatal on the main thread.
             attributed = coordinator.inferredFatalOwner().map { ($0, nil, .inference) }
@@ -1433,7 +1436,7 @@ final class HotUpdaterRecoveryHub: NSObject {
             }
         }
         if owner == nil, afterLoadFailure {
-            let claim = coordinator.chargeUnclaimedLoadFailure()
+            let claim = coordinator.chargeUnclaimedLoadFailure(loadFailure)
             forward()
             coordinator.clearAttribution(claim: claim)
             return

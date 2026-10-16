@@ -810,23 +810,50 @@ struct HotUpdaterLaunchRecoveryTests {
         let coordinator = process.coordinator
 
         #expect(coordinator.deferUnclaimedLoadFailure())
-        #expect(!coordinator.takeDeferredLoadFailure(for: .runtimeModule))
-        #expect(!coordinator.takeDeferredLoadFailure(for: .claim))
-        #expect(coordinator.takeDeferredLoadFailure(for: .stack))
+        #expect(coordinator.takeDeferredLoadFailure(for: .runtimeModule, owner: Self.widget) == nil)
+        #expect(coordinator.takeDeferredLoadFailure(for: .claim, owner: Self.widget) == nil)
+        #expect(coordinator.takeDeferredLoadFailure(for: .stack, owner: Self.widget) != nil)
         // Taken: the next unattributed fatal is an ordinary one.
-        #expect(!coordinator.takeDeferredLoadFailure(for: .none))
+        #expect(coordinator.takeDeferredLoadFailure(for: .none) == nil)
 
         #expect(coordinator.deferUnclaimedLoadFailure())
-        #expect(coordinator.takeDeferredLoadFailure(for: .inference))
+        #expect(coordinator.takeDeferredLoadFailure(for: .inference, owner: Self.widget) != nil)
         #expect(coordinator.deferUnclaimedLoadFailure())
         // While an earlier runtime's claim accounts for an unattributed fatal.
         let claim = try #require(coordinator.chargeFatal(
             owner: Self.widget,
             runtimeBundleURL: scene.launchURL(Self.widget, bundleId: "widget-stable")
         ))
-        #expect(!coordinator.takeDeferredLoadFailure(for: .none))
+        #expect(coordinator.takeDeferredLoadFailure(for: .none) == nil)
         coordinator.clearAttribution(claim: claim)
-        #expect(coordinator.takeDeferredLoadFailure(for: .none))
+        #expect(coordinator.takeDeferredLoadFailure(for: .none) != nil)
+    }
+
+    /// A deferred load failure belongs to the launches that could have
+    /// failed when it was reported: a runtime started since then neither
+    /// takes it with its own fatal nor is charged for it.
+    @Test
+    func aDeferredLoadFailureKeepsTheLaunchesItWasReportedFor() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        _ = coordinator.contentAppeared(owner: nil)
+        #expect(coordinator.deferUnclaimedLoadFailure())
+
+        // Checkout starts after the load failure and throws, by its stack.
+        let checkoutMarker = scene.documents.appendingPathComponent("checkout-marker.json")
+        coordinator.register(name: "checkout", markerURL: checkoutMarker, storage: NoStorage())
+        coordinator.startMonitoring(name: "checkout", bundleId: "checkout-next", shouldRollback: true)
+        #expect(coordinator.takeDeferredLoadFailure(for: .stack, owner: "checkout") == nil)
+
+        // The widget's fatal, unattributed, takes it and charges only the widget.
+        let deferred = try #require(coordinator.takeDeferredLoadFailure(for: .none))
+        #expect(deferred.possibleOwners.keys.sorted() == [Self.widget])
+        let claim = coordinator.chargeUnclaimedLoadFailure(deferred)
+        #expect(!FileManager.default.fileExists(atPath: checkoutMarker.path))
+        #expect(HotUpdaterCrashMarker.consume(at: scene.markerURL(Self.widget))?.shouldRollback == true)
+        coordinator.clearAttribution(claim: claim)
     }
 
     /// An unclaimed load failure's fatal is forwarded while the widget,
