@@ -651,21 +651,24 @@ internal class HotUpdaterRecoveryManager(
                 contentAppeared(HotUpdaterInstanceEnvironment.MAIN_NAME)
                 return
             }
+            // The launches when the content appeared: a launch that starts
+            // while the view is looked up is not the one that showed it.
+            val generations = launchGenerations()
             // A named runtime may outlive its launch's monitoring and render
             // again: its content is its own, never main's, monitored or not.
             // Finding the view walks views and UI managers: outside the lock.
             val viewInstance = rootTagOwner(rootTag)
             synchronized(recoveryLock) {
                 if (viewInstance != null) {
-                    contentAppeared(viewInstance)
+                    contentAppeared(viewInstance, generations)
                     return
                 }
                 val waitingNamedLaunch = liveManagers.values.any { !it.isMain && it.awaitsFirstContent() }
                 if (!waitingNamedLaunch) {
-                    contentAppeared(HotUpdaterInstanceEnvironment.MAIN_NAME)
+                    contentAppeared(HotUpdaterInstanceEnvironment.MAIN_NAME, generations)
                     return
                 }
-                heldContent.hold(rootTag, liveManagers.values.associate { it.name to it.currentGeneration() })
+                heldContent.hold(rootTag, generations)
             }
         }
 
@@ -690,6 +693,19 @@ internal class HotUpdaterRecoveryManager(
         internal fun contentAppeared(instanceName: String) {
             liveManagers[instanceName]?.handleContentAppeared()
         }
+
+        /** Content of [instanceName] verifies only its launch in [generations], when the content appeared. */
+        private fun contentAppeared(
+            instanceName: String,
+            generations: Map<String, Long>,
+        ) {
+            val generation = generations[instanceName] ?: return
+            liveManagers[instanceName]?.handleContentAppeared(generation)
+        }
+
+        /** Each live instance's launch generation now. */
+        private fun launchGenerations(): Map<String, Long> =
+            synchronized(recoveryLock) { liveManagers.values.associate { it.name to it.currentGeneration() } }
 
         private fun ensureExceptionHandlerInstalled() {
             synchronized(this) {
@@ -794,18 +810,24 @@ internal class HotUpdaterRecoveryManager(
             exception: Exception,
             sourceURL: String?,
         ): Boolean {
+            // The launches when the error was thrown: one that starts while
+            // the runtime's instance is resolved is not the one that threw.
+            val generations = launchGenerations()
             val instanceName = attribution.instanceOf(sourceURL)
-            return synchronized(recoveryLock) { handleJavaScriptExceptionLocked(exception, instanceName, sourceURL) }
+            return synchronized(recoveryLock) { handleJavaScriptExceptionLocked(exception, instanceName, sourceURL, generations) }
         }
 
         private fun handleJavaScriptExceptionLocked(
             exception: Exception,
             instanceName: String?,
             sourceURL: String?,
+            generations: Map<String, Long>,
         ): Boolean {
+            val manager = instanceName?.let { liveManagers[it] }
             if (instanceName != null &&
                 instanceName != HotUpdaterInstanceEnvironment.MAIN_NAME &&
-                liveManagers[instanceName]?.runsLaunchOf(sourceURL) == false
+                manager != null &&
+                (manager.currentGeneration() != generations[instanceName] || !manager.runsLaunchOf(sourceURL))
             ) {
                 // A runtime of an earlier launch of the instance, whose context
                 // still reports errors: the crash it may end in is its own, so
@@ -813,7 +835,8 @@ internal class HotUpdaterRecoveryManager(
                 Log.w(TAG, "JavaScript error of an earlier launch's runtime of $instanceName", exception)
                 return claimJavaScriptError(exception, "$instanceName$EARLIER_LAUNCH_SUFFIX")
             }
-            return handleClaimableJavaScriptException(exception, instanceName)
+            if (instanceName == null) return handleClaimableJavaScriptException(exception, null)
+            return claimJavaScriptError(exception, instanceName, generations[instanceName])
         }
 
         // Instance names have no "@", so no launch is ever this claim's.
@@ -853,16 +876,23 @@ internal class HotUpdaterRecoveryManager(
             return claimJavaScriptError(exception, instanceName)
         }
 
+        /**
+         * @param eventGeneration the generation of [instanceName]'s launch
+         * when the error was thrown; its current one when the error is handled
+         * where it was thrown
+         */
         private fun claimJavaScriptError(
             exception: Exception?,
             instanceName: String,
+            eventGeneration: Long? = liveManagers[instanceName]?.currentGeneration(),
         ): Boolean =
             synchronized(recoveryLock) {
                 // The claim's generation, its attribution in both clocks, its
                 // owner, and the launches it leaves alone change at once: no
-                // launch starts, and no release runs, in between.
-                val owner = liveManagers[instanceName]
-                val ownerGeneration = owner?.currentGeneration()
+                // launch starts, and no release runs, in between. Only the
+                // launch that threw is the owner.
+                val owner = liveManagers[instanceName]?.takeIf { it.currentGeneration() == eventGeneration }
+                val ownerGeneration = eventGeneration
                 claimGeneration += 1
                 val generation = claimGeneration
                 slots.attribute(instanceName)

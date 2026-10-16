@@ -728,6 +728,23 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `content that appeared before a replacement launch started does not verify it`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+
+        // The view is looked up after the content appeared; meanwhile the host
+        // starts a replacement launch of the same bundle.
+        HotUpdaterRecoveryManager.rootTagOwner = { rootTag ->
+            HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+            widget.name.takeIf { rootTag == 61 }
+        }
+        HotUpdaterRecoveryManager.handleContentAppeared(rootTag = 61)
+
+        assertTrue(metadata(context, widget).verificationPending)
+    }
+
+    @Test
     fun `first content of one instance never verifies another's launch`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, main, "main-bundle")

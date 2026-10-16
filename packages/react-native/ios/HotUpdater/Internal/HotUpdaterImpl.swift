@@ -1537,11 +1537,13 @@ final class HotUpdaterRecoveryHub: NSObject {
     /// RCTRootView moves into a window.
     @objc private func handleSurfaceWillStart(_ notification: Notification) {
         guard let surface = notification.object as AnyObject? else { return }
+        // The launches the view started in, read now on the thread that
+        // starts it: by the time the main queue runs `handle`, its host may
+        // have started a replacement launch with the same bundle.
+        let generations = coordinator.generations()
         let handle = { [weak self] in
             guard let self else { return }
             let inForeground = UIApplication.shared.applicationState != .background
-            // The launches the view started in, for a later attribution.
-            let generations = self.coordinator.generations()
             if let owner = self.owner(of: surface) {
                 self.viewStarted(owner: owner, view: surface, inForeground: inForeground, generation: generations[owner])
             } else {
