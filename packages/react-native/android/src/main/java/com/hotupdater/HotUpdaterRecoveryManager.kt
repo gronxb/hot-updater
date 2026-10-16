@@ -401,15 +401,21 @@ internal class HotUpdaterRecoveryManager(
      * JavaScript error, or an uncaught exception. A named instance never
      * restarts the app: restarting reaches main's host, so its next launch
      * rolls the bundle back instead.
+     *
+     * @param beforeMarker runs once this launch's slot asks for rollback,
+     * before its marker file is written: a claim publishes itself there
      */
-    private fun chargeCrash(exception: Exception? = null): Boolean =
+    private fun chargeCrash(
+        exception: Exception? = null,
+        beforeMarker: (() -> Unit)? = null,
+    ): Boolean =
         synchronized(lock) {
             if (isMain) return@synchronized requestAutomaticRecoveryLocked(exception)
             val launch = launchState.snapshot()?.takeIf { it.shouldRollback } ?: return@synchronized false
             if (exception != null) {
                 Log.e(TAG, "Caught React startup exception of $name for bundleId=${launch.bundleId}", exception)
             }
-            writeRollbackMarkerLocked(launch)
+            writeRollbackMarkerLocked(launch, beforeMarker)
             false
         }
 
@@ -419,7 +425,10 @@ internal class HotUpdaterRecoveryManager(
      * this instance's runtime again, so everything that start needs to roll
      * the bundle back happens here too.
      */
-    private fun writeRollbackMarkerLocked(launch: HotUpdaterRecoveryState.Launch) {
+    private fun writeRollbackMarkerLocked(
+        launch: HotUpdaterRecoveryState.Launch,
+        beforeMarker: (() -> Unit)? = null,
+    ) {
         // The watchdog is armed first: a launch none of whose views was shown
         // has none yet, and a signal anywhere from here on leaves a marker it
         // must relaunch the app for.
@@ -429,6 +438,7 @@ internal class HotUpdaterRecoveryManager(
         // partial one.
         charged = true
         updateNativeLaunchStateLocked()
+        beforeMarker?.invoke()
         writeCrashMarker(launch)
         // The next start prepares a new launch, which reads this marker.
         chargedCallback?.invoke()
@@ -1085,14 +1095,22 @@ internal class HotUpdaterRecoveryManager(
                 activeClaims[generation] = instanceName to ownerGeneration
                 exception?.let { claimErrors[generation] = WeakReference(it) }
                 claimHolders[generation] = 1
-                // The owner's marker, and its native slot asking for rollback,
-                // come before the native claim: a signal in between finds the
-                // crash unclaimed, or claimed with the owner's rollback in place.
-                val recovering = owner?.chargeCrash(exception) == true
-                // A claim no launch owns, such as an earlier launch's runtime's,
-                // leaves the native handler unclaimed: a signal then writes
-                // every marker that may still be needed.
-                if (owner != null) nativeRecovery.attributeCrash(slots.assignedSlot(instanceName) ?: -1)
+                // The owner's watchdog alarm, then its native slot asking for
+                // rollback, then the native claim, then its marker file: a
+                // signal at any point finds the crash unclaimed with no slot
+                // yet asking, or claimed with the owner's slot asking, which
+                // writes the marker natively, never others' markers. A claim no
+                // launch owns, such as an earlier launch's runtime's, leaves
+                // the native handler unclaimed: a signal then writes every
+                // marker that may still be needed.
+                var published = false
+                val publishClaim = {
+                    if (!published && owner != null) nativeRecovery.attributeCrash(slots.assignedSlot(instanceName) ?: -1)
+                    published = true
+                }
+                val recovering = owner?.chargeCrash(exception, beforeMarker = publishClaim) == true
+                // Main's own recovery, or an owner with no launch to charge.
+                publishClaim()
                 // Claims overlap when errors return: every launch any of them
                 // left alone waits for the last one, including that claim's own
                 // instance, which an earlier claim may have left alone.

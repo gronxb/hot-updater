@@ -533,8 +533,10 @@ final class HotUpdaterRecoveryCoordinator {
             if let deferred {
                 owners = owners.filter { deferred.possibleOwners[$0.name] == $0.generation }
             }
+            // As for an attributed fatal: their slots ask for rollback, the
+            // others stop, then the marker files are written.
             for launch in owners where launch.isMonitoring {
-                charge(launch)
+                prepareCharge(launch)
             }
             claimGeneration += 1
             activeClaims.append(Claim(
@@ -547,6 +549,9 @@ final class HotUpdaterRecoveryCoordinator {
             publishLatestClaim()
             let ownerNames = Set(owners.map(\.name))
             disarm(launches.values.filter { !ownerNames.contains($0.name) })
+            for launch in owners where launch.isMonitoring {
+                writeMarker(launch)
+            }
             return claimGeneration
         }
     }
@@ -764,10 +769,17 @@ final class HotUpdaterRecoveryCoordinator {
                 activeClaims[index].awaitingFatalSince = nil
                 return activeClaims[index].id
             }
+            // Its slot asks for rollback, then the crash is published as its,
+            // then the marker file is written: a signal at any point writes
+            // its slot alone (unless every slot is taken).
             if launch.isMonitoring {
-                charge(launch)
+                prepareCharge(launch)
             }
-            return attribute(to: owner)
+            let claim = attribute(to: owner)
+            if launch.isMonitoring {
+                writeMarker(launch)
+            }
+            return claim
         }
     }
 
@@ -805,17 +817,17 @@ final class HotUpdaterRecoveryCoordinator {
         withLock { activeClaims.count }
     }
 
-    /// Charges `launch` with the crash under way: first its native slot asks
-    /// for rollback (a named launch takes a free slot if it has none), then
-    /// the marker file is written. A signal while the file is written still
-    /// leaves a marker, through the slot; the attribution is published after.
-    private func charge(_ launch: Launch) {
+    /// The first step of charging `launch` with the crash under way: its
+    /// native slot asks for rollback (a named launch takes a free slot if it
+    /// has none), so a signal before or while its marker file is written
+    /// still leaves a marker. The caller publishes the attribution, then
+    /// writes the marker.
+    private func prepareCharge(_ launch: Launch) {
         if !launch.isMain, launch.shouldRollback {
             launch.isCharged = true
             assignSlot(to: launch)
             mirror(launch)
         }
-        writeMarker(launch)
     }
 
     /// Whether a runtime that runs `runtimeBundleURL` is `name`'s current

@@ -1319,12 +1319,12 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(invalidated.isEmpty)
     }
 
-    /// A native crash that arrives between the attribution and the marker
-    /// would write no slot but the attributed one: by the time the
-    /// attribution is published, the owner's marker asks for rollback and
-    /// its slot, if any, does too.
+    /// A native crash while the owner's marker file is written must charge
+    /// the owner alone: by the time the file is written, its slot asks for
+    /// rollback and the crash is already published as its, so no other
+    /// armed slot writes.
     @Test
-    func anAttributedFatalWritesItsMarkerBeforePublishingTheAttribution() throws {
+    func anAttributedFatalPublishesItsSlotAndAttributionBeforeItsMarker() throws {
         for armed in [false, true] {
             let scene = try Scene()
             defer { scene.cleanUp() }
@@ -1333,20 +1333,18 @@ struct HotUpdaterLaunchRecoveryTests {
             if armed {
                 #expect(coordinator.arm(name: Self.widget))
             }
-            var markerAtAttribution: PendingCrashRecovery?
+            var markerAtAttribution: Bool?
             var slotAtAttribution: Bool?
             process.sink.onAttribute = { slot in
-                markerAtAttribution = HotUpdaterCrashMarker.consume(at: scene.markerURL(Self.widget))
-                if markerAtAttribution != nil {
-                    HotUpdaterCrashMarker.write(bundleId: "widget-next", shouldRollback: true, to: scene.markerURL(Self.widget))
-                }
+                markerAtAttribution = FileManager.default.fileExists(atPath: scene.markerURL(Self.widget).path)
                 slotAtAttribution = slot >= 0 ? process.sink.flags[slot] : nil
             }
             coordinator.chargeFatal(owner: Self.widget)
-            #expect(markerAtAttribution?.launchedBundleId == "widget-next")
-            #expect(markerAtAttribution?.shouldRollback == true)
-            // Armed or not, its slot already asks for rollback.
+            // Armed or not, its slot asks for rollback when the attribution
+            // is published, and the marker file comes after.
             #expect(slotAtAttribution == true)
+            #expect(markerAtAttribution == false)
+            #expect(HotUpdaterCrashMarker.consume(at: scene.markerURL(Self.widget))?.shouldRollback == true)
         }
     }
 

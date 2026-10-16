@@ -1036,7 +1036,7 @@ class InstanceRecoveryTest {
     }
 
     @Test
-    fun `a claimed error's rollback slot comes before its marker and both before the native claim`() {
+    fun `a claimed error's rollback slot and native claim both come before its marker`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, widget, "widget-bundle")
         // Not armed: no view of the widget was shown.
@@ -1067,10 +1067,11 @@ class InstanceRecoveryTest {
 
         HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
 
-        // A signal at any point finds the crash unclaimed with the widget's
-        // slot already asking for rollback, even while its marker is written,
-        // or claimed with the marker in place.
-        assertEquals(listOf("slot rollback marker=false", "claim marker=true"), events)
+        // The slot asks for rollback, then the claim is published, both before
+        // the marker file is written: a signal during the write is claimed,
+        // and writes the widget's marker natively, never other launches'.
+        assertEquals(listOf("slot rollback marker=false", "claim marker=false"), events)
+        assertTrue(crashMarker(context, widget).exists())
     }
 
     @Test
