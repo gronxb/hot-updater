@@ -274,7 +274,7 @@ private func hotUpdaterGetMinBundleId() -> String {
      */
     public func bundleURL(bundle: Bundle = Bundle.main) -> URL? {
         if environment.isMain {
-            HotUpdaterConfig.shared.bundle = bundle
+            HotUpdaterMainBundle.shared.note(bundle)
         }
         return prepareLaunchIfNeeded(bundle: bundle).bundleURL
     }

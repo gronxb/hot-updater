@@ -27,6 +27,37 @@ struct HotUpdaterInstanceEnvironmentTests {
     }
 
     @Test
+    func mainKeepsTheFirstBundleItIsGiven() throws {
+        let framework = try makeBundle(info: [:])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+        let config = HotUpdaterConfig()
+        let main = HotUpdaterMainBundle(config: config)
+
+        try main.claim(framework)
+        try main.claim(framework)
+        #expect(config.bundle == framework)
+        // Main's state was keyed by the framework's Info.plist.
+        #expect(throws: NativeUpdateCheckError.self) { try main.claim(.main) }
+        #expect(config.bundle == framework)
+    }
+
+    @Test
+    func aLaunchRecordsMainsBundleForLaterInstances() throws {
+        let framework = try makeBundle(info: [:])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+        let config = HotUpdaterConfig()
+        let main = HotUpdaterMainBundle(config: config)
+
+        main.note(framework)
+        #expect(throws: NativeUpdateCheckError.self) { try main.claim(.main) }
+        try main.claim(framework)
+
+        // The static launch API records whatever it is given, as it always has.
+        main.note(.main)
+        #expect(config.bundle == .main)
+    }
+
+    @Test
     func mainIsMainWhateverBundleItIsGiven() throws {
         let framework = try makeBundle(info: [:])
         defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
