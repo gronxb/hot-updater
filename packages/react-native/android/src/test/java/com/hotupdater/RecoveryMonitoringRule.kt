@@ -31,8 +31,15 @@ class RecoveryMonitoringRule : ExternalResource() {
             (field(live.javaClass, "stopMonitoringRunnable").get(live) as Runnable).run()
         }
         liveManagers.clear()
-        @Suppress("UNCHECKED_CAST")
-        (field(manager, "registeredRuntimeNames").get(null) as MutableSet<String>).clear()
+        (field(manager, "registeredRuntimes").get(null) as MutableMap<*, *>).clear()
+
+        // Activities a test handed over must not show another test's gate a view.
+        val attribution = HotUpdaterRecoveryAttribution.shared
+        listOf("activities", "startedActivities").forEach { name ->
+            val activities = field(attribution.javaClass, name).get(attribution) as MutableSet<*>
+            synchronized(field(attribution.javaClass, "activities").get(attribution)!!) { activities.clear() }
+        }
+        (field(attribution.javaClass, "runtimes").get(attribution) as MutableList<*>).clear()
 
         // A JavaScript error a test claimed must not claim another test's crash.
         val slots = field(manager, "slots").get(null)

@@ -63,6 +63,9 @@ class HotUpdaterImpl {
         activityStartGate: ActivityStartGate? = null,
     ) {
         this.context = context.applicationContext
+        // An activity started before this process followed activities is
+        // known only from the context the app hands over.
+        (context as? Activity)?.let(HotUpdaterRecoveryAttribution.shared::noteStartedActivity)
         this.environment = environment
         this.bundleStorage = bundleStorage
         this.preferences = preferences
@@ -576,6 +579,7 @@ class HotUpdaterImpl {
                 } else {
                     null
                 },
+            onRuntimeActivity = activityStartGate::watchActivity,
         )
         // A headless JS task, such as a background push, loads the bundle without
         // an activity and never renders. Only a launch with an activity may leave

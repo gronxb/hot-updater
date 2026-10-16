@@ -98,6 +98,17 @@ internal class HotUpdaterRecoveryAttribution(
     }
 
     /**
+     * Remembers [activity], which the app handed over as a context: it may
+     * have started before [track] registered for lifecycle callbacks.
+     */
+    fun noteStartedActivity(activity: Activity) {
+        synchronized(activities) {
+            activities += activity
+            startedActivities += activity
+        }
+    }
+
+    /**
      * Remembers a runtime whose HotUpdater module was created. Its current
      * activity is searched for its views even when that activity started
      * before [track], as when a brownfield app adds React Native to a screen

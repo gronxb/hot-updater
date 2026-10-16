@@ -134,6 +134,41 @@ class ActivityStartGateTest {
     }
 
     @Test
+    fun `an activity handed to a waiting gate is checked and watched for its view`() {
+        // The tracker started after the activity, so only the runtime knows it.
+        val application = RecordingApplication()
+        var runs = 0
+        showsReactView = false
+        val gate = createGate(application, startedBefore = true, activitiesStartedBefore = { emptyList() })
+        gate.runWhenActivityStarted { runs += 1 }
+        assertEquals(0, layoutWatches)
+
+        gate.watchActivity(activity)
+        assertEquals(0, runs)
+        assertEquals(1, layoutWatches)
+
+        showsReactView = true
+        application.layout()
+        assertEquals(1, runs)
+        assertEquals(0, layoutWatches)
+    }
+
+    @Test
+    fun `an activity handed over while it shows the view runs at once and only while an action waits`() {
+        val application = RecordingApplication()
+        var runs = 0
+        val gate = createGate(application, startedBefore = true, activitiesStartedBefore = { emptyList() })
+
+        gate.watchActivity(activity)
+        gate.runWhenActivityStarted { runs += 1 }
+        // The handed-over activity counts as started from then on.
+        assertEquals(1, runs)
+
+        gate.watchActivity(activity)
+        assertEquals(1, runs)
+    }
+
+    @Test
     fun `runs at once without an application to observe`() {
         var runs = 0
 

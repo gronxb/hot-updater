@@ -1,5 +1,6 @@
 package com.hotupdater
 
+import android.app.Activity
 import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
@@ -60,6 +61,7 @@ internal class HotUpdaterRecoveryManager(
     private var contentAppearedCallback: ((String?) -> Unit)? = null
     private var crashOfAnotherInstanceCallback: ((String?) -> Unit)? = null
     private var recoveryRestartCallback: (() -> Boolean)? = null
+    private var runtimeActivityCallback: ((Activity) -> Unit)? = null
 
     private val stopMonitoringRunnable =
         Runnable {
@@ -69,6 +71,7 @@ internal class HotUpdaterRecoveryManager(
             contentAppearedCallback = null
             crashOfAnotherInstanceCallback = null
             recoveryRestartCallback = null
+            runtimeActivityCallback = null
             liveManagers.remove(name, this)
             updateNativeLaunchState()
         }
@@ -115,6 +118,9 @@ internal class HotUpdaterRecoveryManager(
      * fail, so it must not count as unfinished at the next start
      * @param onRecoveryRestartRequested restarts the app to recover; null
      * leaves recovery to the next launch
+     * @param onRuntimeActivity called with the activity of this instance's
+     * runtime once its HotUpdater module is created, which may show its view
+     * in an activity that started before anything followed activities
      */
     fun startMonitoring(
         bundleId: String?,
@@ -122,11 +128,16 @@ internal class HotUpdaterRecoveryManager(
         onContentAppeared: (String?) -> Unit,
         onCrashOfAnotherInstance: (String?) -> Unit,
         onRecoveryRestartRequested: (() -> Boolean)?,
+        onRuntimeActivity: ((Activity) -> Unit)? = null,
     ) {
         crashMarkerFile.parentFile?.mkdirs()
         contentAppearedCallback = onContentAppeared
         crashOfAnotherInstanceCallback = onCrashOfAnotherInstance
         recoveryRestartCallback = onRecoveryRestartRequested
+        runtimeActivityCallback = onRuntimeActivity
+        // A new launch runs in a new runtime, which registers again when its
+        // module is created; until then its errors are not hooked.
+        if (!isMain) synchronized(registeredRuntimes) { registeredRuntimes.remove(name) }
         launchState.start(bundleId, shouldRollback)
         armed = isMain
         synchronized(this) {
@@ -206,33 +217,40 @@ internal class HotUpdaterRecoveryManager(
         }
     }
 
+    // The owners, the state file, and the alarm change together, so two
+    // instances never write the file in reverse order or delete it after
+    // another one joined.
     private fun startRecoveryWatchdog() {
-        try {
-            val owners =
-                synchronized(watchdogOwners) {
-                    watchdogOwners += name
-                    watchdogOwners.toList()
-                }
-            watchdogStateFile.parentFile?.mkdirs()
-            watchdogStateFile.writeText(
-                WatchdogState(System.currentTimeMillis() + MONITORING_GRACE_PERIOD_MS, owners).serialize(),
-            )
-            scheduleRecoveryWatchdogTick(appContext, WATCHDOG_TICK_INTERVAL_MS)
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to schedule recovery watchdog", e)
+        synchronized(watchdogOwners) {
+            try {
+                watchdogOwners += name
+                watchdogDeadlineAt = System.currentTimeMillis() + MONITORING_GRACE_PERIOD_MS
+                watchdogStateFile.parentFile?.mkdirs()
+                watchdogStateFile.writeText(WatchdogState(watchdogDeadlineAt, watchdogOwners.toList()).serialize())
+                scheduleRecoveryWatchdogTick(appContext, WATCHDOG_TICK_INTERVAL_MS)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to schedule recovery watchdog", e)
+            }
         }
     }
 
     // One alarm serves the process: it stops once no instance waits for content.
     private fun releaseRecoveryWatchdog() {
-        val idle =
-            synchronized(watchdogOwners) {
-                watchdogOwners -= name
-                watchdogOwners.isEmpty()
+        synchronized(watchdogOwners) {
+            if (!watchdogOwners.remove(name) && watchdogOwners.isNotEmpty()) return
+            if (watchdogOwners.isNotEmpty()) {
+                // The instances still waiting keep the watchdog, and a marker
+                // of this one no longer relaunches the app.
+                try {
+                    watchdogStateFile.writeText(WatchdogState(watchdogDeadlineAt, watchdogOwners.toList()).serialize())
+                } catch (e: Exception) {
+                    Log.e(TAG, "Failed to update recovery watchdog", e)
+                }
+                return
             }
-        if (!idle) return
-        watchdogStateFile.delete()
-        cancelRecoveryWatchdogAlarm(appContext)
+            watchdogStateFile.delete()
+            cancelRecoveryWatchdogAlarm(appContext)
+        }
     }
 
     /**
@@ -416,7 +434,9 @@ internal class HotUpdaterRecoveryManager(
 
         // Named instances whose runtime created its HotUpdater module, which
         // hooks that runtime's errors.
-        private val registeredRuntimeNames = mutableSetOf<String>()
+        // Named instances whose current runtime created its HotUpdater module,
+        // which hooks that runtime's errors, by the runtimes' identities.
+        private val registeredRuntimes = HashMap<String, MutableSet<Int>>()
         private val signalHandlerLock = Any()
         private const val MAX_CAUSE_DEPTH = 8
 
@@ -426,7 +446,8 @@ internal class HotUpdaterRecoveryManager(
         private var claimGeneration = 0
         private val disarmedByClaim = mutableListOf<HotUpdaterRecoveryManager>()
         private val claimHandler by lazy { Handler(Looper.getMainLooper()) }
-        private val watchdogOwners = mutableSetOf<String>()
+        private val watchdogOwners = linkedSetOf<String>()
+        private var watchdogDeadlineAt = 0L
 
         private val patchedReactContextIds = mutableSetOf<Int>()
 
@@ -504,7 +525,7 @@ internal class HotUpdaterRecoveryManager(
         private fun inferJavaScriptErrorOwner(): String? =
             HotUpdaterRecoverySlots.inferJavaScriptErrorOwner(
                 liveLaunches(),
-                synchronized(registeredRuntimeNames) { registeredRuntimeNames.toSet() },
+                synchronized(registeredRuntimes) { registeredRuntimes.filterValues { it.isNotEmpty() }.keys.toSet() },
             )
 
         private fun liveLaunches(): List<HotUpdaterRecoverySlots.Launch> = liveManagers.values.mapNotNull { it.currentLaunch() }
@@ -603,16 +624,41 @@ internal class HotUpdaterRecoveryManager(
          * left alone: main hooks its host only while it monitors a launch, as
          * it always has.
          */
-        internal fun registerRuntime(reactContext: ReactContext) {
+        internal fun registerRuntime(reactContext: ReactContext): String? {
             val instanceName = attribution.instanceOf(runCatching { reactContext.sourceURL }.getOrNull())
-            if (instanceName == null || !registersRuntime(instanceName)) return
-            synchronized(registeredRuntimeNames) { registeredRuntimeNames += instanceName }
+            if (instanceName == null || !registersRuntime(instanceName)) return null
             attribution.registerRuntime(reactContext)
             try {
                 JavaScriptExceptionHooks.installForRuntime(reactContext)
             } catch (e: Exception) {
                 Log.w(TAG, "Failed to hook the runtime's JavaScript errors", e)
             }
+            registerRuntime(instanceName, System.identityHashCode(reactContext), reactContext.currentActivity)
+            return instanceName
+        }
+
+        /**
+         * Records that [instanceName]'s runtime [runtimeId] hooks its errors,
+         * and shows its launch gate the runtime's [activity]: the module is
+         * created while the bundle loads, before its first content, and the
+         * activity may have started before anything followed activities.
+         */
+        internal fun registerRuntime(
+            instanceName: String,
+            runtimeId: Int,
+            activity: Activity?,
+        ) {
+            synchronized(registeredRuntimes) { registeredRuntimes.getOrPut(instanceName) { mutableSetOf() } += runtimeId }
+            activity ?: return
+            liveManagers[instanceName]?.runtimeActivityCallback?.invoke(activity)
+        }
+
+        /** [instanceName]'s runtime [runtimeId] was torn down, as in a reload. */
+        internal fun unregisterRuntime(
+            instanceName: String,
+            runtimeId: Int,
+        ) {
+            synchronized(registeredRuntimes) { registeredRuntimes[instanceName]?.remove(runtimeId) }
         }
 
         /**

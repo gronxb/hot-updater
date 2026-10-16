@@ -40,11 +40,21 @@ class HotUpdaterModule internal constructor(
         super.initialize()
         // Each runtime has its own module, so this reaches a named instance's
         // runtime, whose host the app doesn't expose. Main's is left alone.
-        HotUpdaterRecoveryManager.registerRuntime(mReactApplicationContext)
+        registeredInstanceName = HotUpdaterRecoveryManager.registerRuntime(mReactApplicationContext)
+    }
+
+    // The named instance whose runtime this module registered, unregistered
+    // when the runtime is torn down.
+    private var registeredInstanceName: String? = null
+
+    private fun unregisterRuntime() {
+        registeredInstanceName?.let { HotUpdaterRecoveryManager.unregisterRuntime(it, System.identityHashCode(mReactApplicationContext)) }
+        registeredInstanceName = null
     }
 
     override fun onCatalystInstanceDestroy() {
         super.onCatalystInstanceDestroy()
+        unregisterRuntime()
         // Cancel all ongoing coroutines when module is destroyed
         moduleScope.cancel()
     }

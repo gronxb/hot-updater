@@ -266,6 +266,95 @@ class InstanceRecoveryTest {
         )
 
     @Test
+    fun `a named runtime hands its activity to its launch gate when its module is created`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        var showsWidgetView = false
+        val gate =
+            ActivityStartGate(
+                RecordingApplication(),
+                processHasStartedActivity = { true },
+                showsReactView = { showsWidgetView },
+                watchLayout = { _, _ -> {} },
+                activitiesStartedBefore = { emptyList() },
+            )
+        HotUpdaterImpl(context, widget, gate).getJSBundleFile()
+        assertFalse(metadata(context, widget).launchInProgress)
+
+        showsWidgetView = true
+        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, activity = Activity())
+
+        assertTrue(metadata(context, widget).launchInProgress)
+    }
+
+    @Test
+    fun `an activity handed over as a context is followed`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val implActivity = ContextActivity(context)
+        val initActivity = ContextActivity(context)
+
+        HotUpdaterImpl(implActivity, widget)
+        HotUpdater.init(initActivity, HotUpdaterOptions(BASE_URL, name = "seeded", bundleAssetName = "seeded.android.bundle"))
+
+        val started = HotUpdaterRecoveryAttribution.shared.startedActivities()
+        assertTrue(implActivity in started)
+        assertTrue(initActivity in started)
+    }
+
+    @Test
+    fun `a torn-down runtime no longer hooks its instance's errors`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, activity = null)
+
+        // Its module hooks its errors, so an unclaimed one is not its.
+        HotUpdaterRecoveryManager.chargeUncaughtException(JavascriptException("unknown runtime"))
+        assertFalse(crashMarker(context, widget).exists())
+
+        // Torn down, as in a reload: the next runtime's error may be its.
+        HotUpdaterRecoveryManager.unregisterRuntime(widget.name, runtimeId = 1)
+        HotUpdaterRecoveryManager.chargeUncaughtException(JavascriptException("widget failed"))
+        assertEquals(PendingCrashRecovery("widget-bundle", true), PendingCrashRecovery.loadFromFile(crashMarker(context, widget)))
+    }
+
+    @Test
+    fun `a new launch runs in a runtime that has not reached HotUpdater yet`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, activity = null)
+
+        HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+        HotUpdaterRecoveryManager.chargeUncaughtException(JavascriptException("widget failed"))
+
+        assertEquals(PendingCrashRecovery("widget-bundle", true), PendingCrashRecovery.loadFromFile(crashMarker(context, widget)))
+    }
+
+    @Test
+    fun `the watchdog lists only the launches still waiting for their content`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        val watchdogState = File(bundleStore(context, main), "recovery-watchdog-state.txt")
+        assertEquals(
+            listOf(HotUpdaterInstanceEnvironment.MAIN_NAME, widget.name),
+            HotUpdaterRecoveryManager.WatchdogState.parse(watchdogState.readText())!!.instances,
+        )
+
+        HotUpdaterRecoveryManager.contentAppeared(widget.name)
+
+        // Main alone writes only its deadline, as it always has.
+        assertEquals(1, watchdogState.readText().lines().size)
+        assertEquals(
+            listOf(HotUpdaterInstanceEnvironment.MAIN_NAME),
+            HotUpdaterRecoveryManager.WatchdogState.parse(watchdogState.readText())!!.instances,
+        )
+    }
+
+    @Test
     fun `first content of one instance never verifies another's launch`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, main, "main-bundle")
@@ -470,6 +559,13 @@ class InstanceRecoveryTest {
                 .saveToFile(File(store, BundleMetadata.METADATA_FILENAME)),
         )
         return bundleFile
+    }
+
+    /** An activity the app hands over as a context. */
+    private class ContextActivity(
+        private val application: android.content.Context,
+    ) : Activity() {
+        override fun getApplicationContext(): android.content.Context = application
     }
 
     private class RecordingApplication : Application() {

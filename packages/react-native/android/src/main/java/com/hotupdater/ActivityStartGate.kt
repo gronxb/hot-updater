@@ -74,6 +74,32 @@ internal class ActivityStartGate(
         runNow?.invoke()
     }
 
+    /**
+     * Counts [activity], which this gate may never have seen start, as
+     * started, and while an action waits, checks it for a React Native view
+     * and watches its layout for one. A named instance's runtime hands over its activity when its
+     * module is created.
+     */
+    fun watchActivity(activity: Activity) {
+        if (Looper.myLooper() != Looper.getMainLooper()) {
+            Handler(Looper.getMainLooper()).post { watchActivity(activity) }
+            return
+        }
+        val action =
+            synchronized(this) {
+                if (application == null) return
+                // Counted until it stops, as one this gate saw start.
+                startedActivities += activity
+                if (pendingAction == null) return
+                if (!showsReactView(activity)) {
+                    watch(activity)
+                    return
+                }
+                takePendingAction()
+            }
+        action?.invoke()
+    }
+
     override fun onActivityStarted(activity: Activity) {
         val action =
             synchronized(this) {
