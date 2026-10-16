@@ -1186,6 +1186,84 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a launch's slot asks for rollback before storage records it and stops before storage forgets it`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        val application = RecordingApplication()
+        var showsWidgetView = false
+        val gate =
+            ActivityStartGate(
+                application,
+                processHasStartedActivity = { false },
+                showsReactView = { showsWidgetView },
+                watchLayout = { _, _ -> {} },
+            )
+        HotUpdaterImpl(context, widget, gate).getJSBundleFile()
+        val events = mutableListOf<String>()
+        HotUpdaterRecoveryManager.nativeRecovery =
+            object : HotUpdaterNativeRecovery {
+                override fun updateSlot(
+                    slot: Int,
+                    crashMarkerPath: String,
+                    bundleId: String?,
+                    shouldRollback: Boolean,
+                    writesWhenVerified: Boolean,
+                ) {
+                    if (crashMarkerPath == crashMarker(context, widget).absolutePath) {
+                        events += "slot rollback=$shouldRollback stored=${metadata(context, widget).launchInProgress}"
+                    }
+                }
+
+                override fun attributeCrash(slot: Int) = Unit
+
+                override fun clearCrashAttribution() = Unit
+            }
+
+        // The widget's view is shown: armed.
+        showsWidgetView = true
+        application.startActivity()
+        assertTrue(metadata(context, widget).launchInProgress)
+        // Main's error leaves the widget alone: disarmed.
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("main failed"), HotUpdaterInstanceEnvironment.MAIN_NAME)
+        assertFalse(metadata(context, widget).launchInProgress)
+
+        assertEquals(listOf("slot rollback=true stored=false", "slot rollback=false stored=true"), events)
+    }
+
+    @Test
+    fun `a verified launch's slot stops asking before storage records the verification`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        val events = mutableListOf<String>()
+        HotUpdaterRecoveryManager.nativeRecovery =
+            object : HotUpdaterNativeRecovery {
+                override fun updateSlot(
+                    slot: Int,
+                    crashMarkerPath: String,
+                    bundleId: String?,
+                    shouldRollback: Boolean,
+                    writesWhenVerified: Boolean,
+                ) {
+                    if (crashMarkerPath == crashMarker(context, widget).absolutePath) {
+                        events += "slot rollback=$shouldRollback pending=${metadata(context, widget).verificationPending}"
+                    }
+                }
+
+                override fun attributeCrash(slot: Int) = Unit
+
+                override fun clearCrashAttribution() = Unit
+            }
+
+        HotUpdaterRecoveryManager.contentAppeared(widget.name)
+
+        assertEquals(listOf("slot rollback=false pending=true"), events)
+        assertFalse(metadata(context, widget).verificationPending)
+    }
+
+    @Test
     fun `an earlier launch's runtime's error leaves the native handler unclaimed`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val staleWidget = namedEnvironment("stale-native")

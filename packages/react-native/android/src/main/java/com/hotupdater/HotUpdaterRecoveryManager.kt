@@ -197,13 +197,17 @@ internal class HotUpdaterRecoveryManager(
             if (launchState.hasContentAppeared()) return
             launchStartedAction = markLaunchStarted
             if (endedByAnotherInstance) return
-            markLaunchStarted()
-            if (armed) return
-            armed = true
-            updateNativeLaunchStateLocked()
-            if (launchState.snapshot()?.shouldRollback == true) {
-                startRecoveryWatchdog()
+            // The native slot asks for rollback before any file is written,
+            // then the watchdog, then the launch is recorded in storage: a
+            // signal during either write still rolls the launch back.
+            if (!armed) {
+                armed = true
+                updateNativeLaunchStateLocked()
+                if (launchState.snapshot()?.shouldRollback == true) {
+                    startRecoveryWatchdog()
+                }
             }
+            markLaunchStarted()
         }
     }
 
@@ -229,8 +233,9 @@ internal class HotUpdaterRecoveryManager(
             val launch = launchState.completeLaunch() ?: return
             Log.d(TAG, "First content appeared for $name bundleId=${launch.bundleId}")
             cancelScheduledLocked()
-            contentAppearedCallback?.invoke(launch.bundleId)
+            // The slot stops asking before storage records the verification.
             updateNativeLaunchStateLocked()
+            contentAppearedCallback?.invoke(launch.bundleId)
             releaseRecoveryWatchdog()
             val generation = generation
             stopTask = Runnable { stopMonitoring(generation) }.also { mainThread.postDelayed(it, MONITORING_GRACE_PERIOD_MS) }
@@ -468,8 +473,9 @@ internal class HotUpdaterRecoveryManager(
         synchronized(lock) {
             val launch = launchState.snapshot()?.takeIf { it.shouldRollback } ?: return@synchronized null
             endedByAnotherInstance = true
-            crashOfAnotherInstanceCallback?.invoke(launch.bundleId)
+            // The slot stops asking before storage forgets the launch.
             updateNativeLaunchStateLocked()
+            crashOfAnotherInstanceCallback?.invoke(launch.bundleId)
             generation
         }
 
