@@ -517,6 +517,48 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a claim is released on time while the main thread is blocked`() {
+        val releases = mutableListOf<Runnable>()
+        HotUpdaterRecoveryManager.claimReleaseScheduler = { delayMs, task ->
+            assertEquals(5_000L, delayMs)
+            releases += task
+        }
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+        assertFalse(metadata(context, main).launchInProgress)
+
+        // The main looper never runs; the claim's own timer does.
+        releases.forEach(Runnable::run)
+
+        assertTrue(metadata(context, main).launchInProgress)
+    }
+
+    @Test
+    fun `an instance whose error was survived leaves the watchdog and keeps its marker`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+        val watchdogState = File(bundleStore(context, main), "recovery-watchdog-state.txt")
+        assertTrue(widget.name in HotUpdaterRecoveryManager.WatchdogState.parse(watchdogState.readText())!!.instances)
+
+        HotUpdaterRecoveryManager.releaseClaim()
+
+        // A later exit for another reason relaunches nothing for the widget's marker.
+        assertEquals(
+            listOf(HotUpdaterInstanceEnvironment.MAIN_NAME),
+            HotUpdaterRecoveryManager.WatchdogState.parse(watchdogState.readText())!!.instances,
+        )
+        assertEquals(PendingCrashRecovery("widget-bundle", true), PendingCrashRecovery.loadFromFile(crashMarker(context, widget)))
+    }
+
+    @Test
     fun `launches left alone by overlapping claims all count again when the last claim is released`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val chat = namedEnvironment("chat")

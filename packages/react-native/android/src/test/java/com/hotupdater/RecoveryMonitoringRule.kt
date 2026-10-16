@@ -15,6 +15,9 @@ class RecoveryMonitoringRule : ExternalResource() {
 
     public override fun before() {
         previousHandler = Thread.getDefaultUncaughtExceptionHandler()
+        // A claim's release would run on a real timer, during a later test;
+        // a test that needs one runs it by hand (HotUpdaterRecoveryManager.releaseClaim).
+        HotUpdaterRecoveryManager.claimReleaseScheduler = { _, _ -> }
     }
 
     public override fun after() {
@@ -47,6 +50,8 @@ class RecoveryMonitoringRule : ExternalResource() {
         // Content a test held must not verify another test's launch.
         val heldContent = field(manager, "heldContent").get(null)
         synchronized(heldContent) { (field(heldContent.javaClass, "held").get(heldContent) as MutableList<*>).clear() }
+
+        HotUpdaterRecoveryManager.claimReleaseScheduler = { _, _ -> }
 
         // A JavaScript error a test claimed must not claim another test's crash.
         val slots = field(manager, "slots").get(null)

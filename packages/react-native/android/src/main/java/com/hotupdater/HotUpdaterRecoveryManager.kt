@@ -19,6 +19,8 @@ import java.io.File
 import java.io.FileOutputStream
 import java.lang.reflect.Field
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.system.exitProcess
 
@@ -338,6 +340,14 @@ internal class HotUpdaterRecoveryManager(
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to schedule recovery watchdog", e)
             }
+        }
+    }
+
+    /** This instance's claimed error of the launch of [ownerGeneration] did not end the process. */
+    private fun leaveWatchdogAfterSurvivedError(ownerGeneration: Long?) {
+        synchronized(lock) {
+            if (ownerGeneration != generation) return
+            releaseRecoveryWatchdog()
         }
     }
 
@@ -826,7 +836,7 @@ internal class HotUpdaterRecoveryManager(
                 }
             // A development build shows the error, and an app's handler may
             // swallow it: once the claim expires, the process lived on.
-            HotUpdaterMainThread.android.postDelayed({ releaseClaim(generation) }, HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS)
+            scheduleClaimRelease(generation)
             return liveManagers[instanceName]?.chargeCrash(exception) == true
         }
 
@@ -850,7 +860,7 @@ internal class HotUpdaterRecoveryManager(
                     disarmedByClaim[manager] = generation
                     claimGeneration
                 }
-            HotUpdaterMainThread.android.postDelayed({ releaseClaim(claim) }, HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS)
+            scheduleClaimRelease(claim)
             return true
         }
 
@@ -860,9 +870,11 @@ internal class HotUpdaterRecoveryManager(
          * the claimed error did not end the process.
          */
         internal fun releaseClaim(generation: Int? = null) {
+            var survivedOwner: Pair<String, Long?>? = null
             val disarmed =
                 synchronized(claimLock) {
                     if (generation != null && generation != claimGeneration) return
+                    survivedOwner = claimOwner
                     // The claim ends here, not a moment later in either clock:
                     // a crash from now on charges the launches it can be blamed on.
                     slots.clearAttribution()
@@ -876,8 +888,38 @@ internal class HotUpdaterRecoveryManager(
                     }
                     disarmedByClaim.toList().also { disarmedByClaim.clear() }
                 }
+            // The instance whose error was survived keeps its marker for its
+            // next launch, but the process lives on: if it ends for another
+            // reason, the watchdog must not relaunch the app for that marker.
+            survivedOwner?.let { (name, ownerGeneration) ->
+                if (name != HotUpdaterInstanceEnvironment.MAIN_NAME) {
+                    liveManagers[name]?.leaveWatchdogAfterSurvivedError(ownerGeneration)
+                }
+            }
             disarmed.forEach { (manager, launch) -> manager.resumeAfterAnotherInstanceSurvived(launch) }
         }
+
+        /**
+         * Runs [releaseClaim] for the claim of [generation] once its window
+         * ends, on a thread of its own: the claim's clocks expire then even
+         * while the main thread is blocked, and the launches it left alone
+         * must count again with them.
+         */
+        private fun scheduleClaimRelease(generation: Int) {
+            claimReleaseScheduler(HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS, Runnable { releaseClaim(generation) })
+        }
+
+        private val claimReleaseExecutor by lazy {
+            Executors.newSingleThreadScheduledExecutor { task -> Thread(task, "HotUpdaterRecoveryClaims").apply { isDaemon = true } }
+        }
+
+        /** Schedules a claim's release after a delay; tests run it by hand. */
+        internal val defaultClaimReleaseScheduler: (Long, Runnable) -> Unit = { delayMs, task ->
+            claimReleaseExecutor.schedule(task, delayMs, TimeUnit.MILLISECONDS)
+        }
+
+        @Volatile
+        internal var claimReleaseScheduler: (Long, Runnable) -> Unit = defaultClaimReleaseScheduler
 
         /**
          * Hooks the JavaScript errors of a named instance's runtime when its
