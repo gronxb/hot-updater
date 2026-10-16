@@ -70,6 +70,44 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(scene.crashHistory(Self.widget).contains("widget-next"))
     }
 
+    /// In a debug build React Native's fatal handler can return: the
+    /// launches the attributed fatal stopped start again.
+    @Test
+    func launchesAnAttributedFatalStoppedStartAgainWhenTheProcessLivesOn() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        process.storages[Self.main]?.markLaunchStarted(bundleId: "main-next")
+        #expect(coordinator.arm(name: Self.widget))
+        let widgetSlot = try #require(coordinator.launch(named: Self.widget)?.slot)
+
+        coordinator.chargeFatal(owner: Self.main)
+        #expect(scene.metadata(Self.widget)?.launchInProgress == false)
+        #expect(markers(coordinator) == [HotUpdaterRecoveryCoordinator.mainSlot: true])
+
+        coordinator.clearAttribution()
+        #expect(scene.metadata(Self.widget)?.launchInProgress == true)
+        #expect(coordinator.launch(named: Self.widget)?.isArmed == true)
+        #expect(process.sink.flags[widgetSlot] == true)
+        #expect(markers(coordinator) == [HotUpdaterRecoveryCoordinator.mainSlot: true, widgetSlot: true])
+        // Main's own launch was the attributed one, so it was never stopped.
+        #expect(scene.metadata(Self.main)?.launchInProgress == true)
+
+        // The other way round: main stopped by the widget's fatal starts again.
+        coordinator.chargeFatal(owner: Self.widget)
+        #expect(scene.metadata(Self.main)?.launchInProgress == false)
+        coordinator.clearAttribution()
+        #expect(scene.metadata(Self.main)?.launchInProgress == true)
+
+        // A launch that was never started stays unstarted.
+        _ = coordinator.contentAppeared(owner: Self.widget)
+        coordinator.startMonitoring(name: Self.widget, bundleId: "widget-next", shouldRollback: true)
+        coordinator.chargeFatal(owner: Self.main)
+        coordinator.clearAttribution()
+        #expect(coordinator.launch(named: Self.widget)?.isArmed == false)
+    }
+
     // MARK: - Native crash slots
 
     @Test

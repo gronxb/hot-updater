@@ -311,7 +311,9 @@ public protocol BundleStorageService {
     /// Forgets that the launch of `bundleId` started, leaving it pending: the
     /// next start launches it again instead of counting an unfinished launch.
     /// For a launch whose process another instance's crash takes down.
-    func clearLaunchStarted(bundleId: String?)
+    /// Returns whether the launch had started.
+    @discardableResult
+    func clearLaunchStarted(bundleId: String?) -> Bool
     func markLaunchCompleted(bundleId: String?)
     func notifyAppReady() -> [String: Any]
     func getCrashHistory() -> CrashedHistory
@@ -346,7 +348,8 @@ public protocol BundleStorageService {
 
 public extension BundleStorageService {
     func settlePreviousLaunch(pendingRecovery _: () -> PendingCrashRecovery?) {}
-    func clearLaunchStarted(bundleId _: String?) {}
+    @discardableResult
+    func clearLaunchStarted(bundleId _: String?) -> Bool { false }
     func peekLaunchBundleId() -> String? { nil }
     func isSelectionCurrent(_: PersistedSelection) -> Bool { false }
     func acceptReleaseCatalog(catalogId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Bool { false }
@@ -2998,7 +3001,8 @@ class BundleFileStorageService: BundleStorageService {
         _ = saveMetadata(metadata)
     }
 
-    func clearLaunchStarted(bundleId: String?) {
+    @discardableResult
+    func clearLaunchStarted(bundleId: String?) -> Bool {
         releaseStateLock.lock()
         defer { releaseStateLock.unlock() }
         guard let bundleId,
@@ -3006,10 +3010,10 @@ class BundleFileStorageService: BundleStorageService {
               metadata.verificationPending,
               metadata.launchInProgress,
               metadata.stagingBundleId == bundleId else {
-            return
+            return false
         }
         metadata.launchInProgress = false
-        _ = saveMetadata(metadata)
+        return saveMetadata(metadata)
     }
 
     func markLaunchCompleted(bundleId: String?) {

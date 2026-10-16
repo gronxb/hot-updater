@@ -146,6 +146,9 @@ final class HotUpdaterRecoveryCoordinator {
     private var slotFlags: [Bool] = Array(repeating: false, count: HotUpdaterRecoveryCoordinator.slotCount)
     private var attributedSlot = HotUpdaterRecoveryCoordinator.unattributed
     private var attributedName: String?
+    /// The launches `attribute(to:)` stopped, to restart if the process
+    /// survives the fatal.
+    private var disarmed: [(name: String, generation: Int, bundleId: String, wasStarted: Bool, wasArmed: Bool)] = []
 
     init(sink: HotUpdaterCrashSlotSink) {
         self.sink = sink
@@ -330,7 +333,8 @@ final class HotUpdaterRecoveryCoordinator {
                 guard launch.isMonitoring, launch.isAwaitingContent, let bundleId = launch.bundleId else {
                     continue
                 }
-                launch.storage.clearLaunchStarted(bundleId: bundleId)
+                let wasStarted = launch.storage.clearLaunchStarted(bundleId: bundleId)
+                disarmed.append((launch.name, launch.generation, bundleId, wasStarted, launch.isArmed))
                 launch.isArmed = false
                 mirror(launch)
             }
@@ -338,12 +342,31 @@ final class HotUpdaterRecoveryCoordinator {
     }
 
     /// React Native's default fatal handler can return in a debug build, and
-    /// the process lives on.
+    /// the process lives on: the launches the attribution stopped that are
+    /// still unverified start again, so a later crash still counts against
+    /// them.
     func clearAttribution() {
         withLock {
             attributedName = nil
             attributedSlot = Self.unattributed
             sink.attributeCrash(toSlot: attributedSlot)
+            for entry in disarmed {
+                guard let launch = launches[entry.name],
+                      launch.generation == entry.generation,
+                      launch.isMonitoring,
+                      launch.isAwaitingContent,
+                      launch.bundleId == entry.bundleId else {
+                    continue
+                }
+                if entry.wasStarted {
+                    launch.storage.markLaunchStarted(bundleId: entry.bundleId)
+                }
+                if entry.wasArmed {
+                    launch.isArmed = true
+                }
+                mirror(launch)
+            }
+            disarmed = []
         }
     }
 
