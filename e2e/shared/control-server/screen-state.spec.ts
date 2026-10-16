@@ -34,7 +34,7 @@ describe("E2E screen state control boundary", () => {
         startupCheckSettledEpoch: "",
         nativeCheckResult: "",
         widgetState: "",
-        widgetUpdateResult: "idle",
+        widgetNativeCheckResult: "",
       },
     });
   });
@@ -53,35 +53,35 @@ describe("E2E screen state control boundary", () => {
     );
   });
 
-  it("keeps the widget runtime's fields apart and clears them for a new process", () => {
+  it("keeps the widget's fields apart from main's and clears them for a new process", () => {
     resetE2eScreenState();
     handlePatchE2eScreenState({
-      updateActionResult: "current-channel -> no-update",
+      nativeCheckResult: "nonce:ready",
     });
     handlePatchE2eScreenState({
       widgetState: "widget-bundle marker",
-      widgetUpdateResult: "widget -> installed ID release-1",
+      widgetNativeCheckResult: "nonce:pending",
     });
 
     expect(readE2eScreenStateSnapshot()).toMatchObject({
-      updateActionResult: "current-channel -> no-update",
+      nativeCheckResult: "nonce:ready",
       widgetState: "widget-bundle marker",
-      widgetUpdateResult: "widget -> installed ID release-1",
+      widgetNativeCheckResult: "nonce:pending",
     });
-    expect(() => handlePatchE2eScreenState({ widgetUpdateResult: 1 })).toThrow(
-      "screen state field must be a string",
-    );
+    expect(() =>
+      handlePatchE2eScreenState({ widgetNativeCheckResult: 1 }),
+    ).toThrow("screen state field must be a string");
 
     // A focused Android runtime keeps running, and so keeps its values.
     prepareE2eStartupCheck(true);
-    expect(readE2eScreenStateSnapshot().widgetUpdateResult).toBe(
-      "widget -> installed ID release-1",
+    expect(readE2eScreenStateSnapshot().widgetNativeCheckResult).toBe(
+      "nonce:pending",
     );
     prepareE2eStartupCheck();
     expect(readE2eScreenStateSnapshot()).toMatchObject({
-      updateActionResult: "current-channel -> no-update",
+      nativeCheckResult: "nonce:ready",
       widgetState: "",
-      widgetUpdateResult: "idle",
+      widgetNativeCheckResult: "",
     });
   });
 
@@ -102,7 +102,7 @@ describe("E2E screen state control boundary", () => {
       startupCheckSettledEpoch: "",
       nativeCheckResult: "",
       widgetState: "",
-      widgetUpdateResult: "idle",
+      widgetNativeCheckResult: "",
     });
   });
 

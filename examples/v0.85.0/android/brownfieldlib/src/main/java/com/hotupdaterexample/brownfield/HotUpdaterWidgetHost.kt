@@ -16,8 +16,12 @@ import com.facebook.react.interfaces.fabric.ReactSurface
 import com.facebook.react.runtime.ReactHostImpl
 import com.facebook.react.runtime.hermes.HermesInstance
 import com.hotupdater.HotUpdater
+import com.hotupdater.HotUpdaterInstance
 import com.hotupdater.HotUpdaterOptions
-import org.json.JSONObject
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
 
 /**
  * The E2E host's second Hot Updater instance, `widget`: a React Native runtime
@@ -25,33 +29,53 @@ import org.json.JSONObject
  * (`widget.android.bundle`, from `index.widget.js`) on its own channel. Its
  * bundles, crash history, and recovery stay apart from the example's.
  *
- * React Native Brownfield runs one React host, and `getDefaultReactHost` keeps
- * one per process, so this one builds its host itself. A scenario turns it on;
- * every other scenario runs the example alone.
+ * Like the example's start, it checks for its update natively before its
+ * runtime starts and reports the status as `widgetNativeCheckResult`; its
+ * JavaScript only calls `HotUpdater.init`. React Native Brownfield runs one
+ * React host, and `getDefaultReactHost` keeps one per process, so this one
+ * builds its host itself. A scenario turns it on; every other scenario runs
+ * the example alone.
  */
 object HotUpdaterWidgetHost {
     private const val MODULE_NAME = "HotUpdaterWidget"
     private const val BUNDLE_ASSET_NAME = "widget.android.bundle"
 
+    // Outlives every activity, so closing a screen never cancels the check.
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var reactHost: ReactHost? = null
     private var surface: ReactSurface? = null
 
     /** Whether a scenario turned the widget on, so the host leaves room for it. */
-    fun isEnabled(context: Context): Boolean = WidgetRequest.read(context) != null
+    fun isEnabled(context: Context): Boolean = readRequest(context) != null
 
     /**
-     * The widget's React Native root for [activity], or null when it is off.
-     * Create it once the example's bundle has loaded, as the iOS host does.
+     * Hands [onView] the widget's React Native root for [activity] on the main
+     * thread, or null when it is off. Call it once the example's bundle has
+     * loaded, as the iOS host does.
      */
-    fun createView(activity: Activity): View? {
-        surface?.let { return it.view }
-        val request = WidgetRequest.read(activity) ?: return null
-        val host = reactHost ?: createReactHost(activity.application, request).also { reactHost = it }
-        host.onHostResume(activity)
-        val created = host.createSurface(activity, MODULE_NAME, null)
-        created.start()
-        surface = created
-        return created.view
+    fun createView(
+        activity: Activity,
+        onView: (View?) -> Unit,
+    ) {
+        surface?.let { return onView(it.view) }
+        val request = readRequest(activity) ?: return onView(null)
+        val application = activity.application
+        scope.launch {
+            val host =
+                reactHost ?: run {
+                    val widget = createInstance(application, request) ?: return@launch onView(null)
+                    request.report(ReactNativeHostManager.checkForUpdate(widget, request), field = "widgetNativeCheckResult")
+                    // Another call may have created it while this one checked.
+                    reactHost ?: createReactHost(application, widget).also { reactHost = it }
+                }
+            if (activity.isFinishing || activity.isDestroyed) return@launch onView(null)
+            surface?.let { return@launch onView(it.view) }
+            host.onHostResume(activity)
+            val created = host.createSurface(activity, MODULE_NAME, null)
+            created.start()
+            surface = created
+            onView(created.view)
+        }
     }
 
     fun onResume(activity: Activity) {
@@ -71,23 +95,35 @@ object HotUpdaterWidgetHost {
         reactHost?.onHostDestroy(activity)
     }
 
-    @OptIn(UnstableReactNativeAPI::class)
-    private fun createReactHost(
+    private fun readRequest(context: Context) = NativeUpdateCheckRequest.read(context, NativeUpdateCheckRequest.WIDGET_KEY)
+
+    /**
+     * Its own name keeps its state apart; channel and embedded bundle are the
+     * widget's, while the fingerprint and signing key are the app's.
+     */
+    private fun createInstance(
         application: Application,
-        request: WidgetRequest,
-    ): ReactHost {
-        // Its own name keeps its state apart; channel and embedded bundle are
-        // the widget's, while the fingerprint and signing key are the app's.
-        val widget =
+        request: NativeUpdateCheckRequest,
+    ): HotUpdaterInstance? =
+        runCatching {
             HotUpdater.init(
                 application,
                 HotUpdaterOptions(
                     baseURL = request.baseURL,
+                    requestTimeoutMillis = request.requestTimeoutMillis,
                     name = "widget",
                     channel = "widget",
                     bundleAssetName = BUNDLE_ASSET_NAME,
                 ),
             )
+        }.getOrNull()
+
+    /** Starts with the bundle the widget's instance picks, after its check. */
+    @OptIn(UnstableReactNativeAPI::class)
+    private fun createReactHost(
+        application: Application,
+        widget: HotUpdaterInstance,
+    ): ReactHost {
         val bundleFile = widget.getJSBundleFile()
         val bundleLoader =
             if (bundleFile.startsWith("assets://")) {
@@ -106,23 +142,5 @@ object HotUpdaterWidgetHost {
         val componentFactory = ComponentFactory()
         DefaultComponentsRegistry.register(componentFactory)
         return ReactHostImpl(application, delegate, componentFactory, false, false)
-    }
-}
-
-/**
- * The widget a scenario turns on. The E2E control server writes it to this
- * app's shared preferences; resetting the app removes it.
- */
-private class WidgetRequest(
-    val baseURL: String,
-) {
-    companion object {
-        fun read(context: Context): WidgetRequest? {
-            val value =
-                context
-                    .getSharedPreferences("HotUpdaterE2E", Context.MODE_PRIVATE)
-                    .getString("widget", null) ?: return null
-            return runCatching { WidgetRequest(baseURL = JSONObject(value).getString("baseURL")) }.getOrNull()
-        }
     }
 }

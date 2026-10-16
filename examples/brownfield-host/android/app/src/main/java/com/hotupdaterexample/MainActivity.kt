@@ -43,11 +43,14 @@ class MainActivity : AppCompatActivity() {
             reactNativeStarted = true
             showReactNative()
         }
-        // The widget's runtime starts after the example's bundle has loaded.
+        // The widget's runtime starts after the example's bundle has loaded,
+        // once its own native update check is done.
         widgetContainer?.let { container ->
             ReactNativeHostManager.whenBundleLoaded {
                 if (isFinishing || isDestroyed || container.childCount > 0) return@whenBundleLoaded
-                HotUpdaterWidgetHost.createView(this)?.let { container.addView(it) }
+                HotUpdaterWidgetHost.createView(this) { view ->
+                    if (view != null && view.parent == null && container.childCount == 0) container.addView(view)
+                }
             }
         }
     }

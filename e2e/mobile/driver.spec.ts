@@ -501,26 +501,6 @@ describe("MobileAppDriver", () => {
     );
   });
 
-  it("waits for the widget runtime's own result field before an exact match", async () => {
-    const f = fixture();
-    f.locator.text = "widget -> selected BUILTIN";
-    await f.app.assertText(
-      "widget result",
-      "widget-update-result",
-      "widget -> selected BUILTIN",
-      { exactText: true },
-    );
-    expect(f.client.waitForScreenStateField).toHaveBeenCalledWith(
-      "widget result: wait widgetUpdateResult exact",
-      "widgetUpdateResult",
-      {
-        expectedValue: "widget -> selected BUILTIN",
-        rejectValues: ["idle"],
-        rejectSubstrings: [" -> checking"],
-      },
-    );
-  });
-
   it("does not mask ambiguous native test IDs", async () => {
     const f = fixture();
     f.locator.matchers.toBeVisible.mockRejectedValue(

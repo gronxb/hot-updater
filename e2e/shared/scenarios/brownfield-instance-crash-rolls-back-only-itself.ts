@@ -1,8 +1,9 @@
 import type { ScenarioDefinition } from "./types.ts";
 
 /**
- * Brownfield only: a launch runs main's new OTA and a widget OTA that throws
- * before its first content. The widget's fatal ends the process; at the next
+ * Brownfield only: the widget's native check stages a widget OTA in the
+ * background, and the next launch runs main's new OTA and that widget OTA,
+ * which throws before its first content. The widget's fatal ends the process; at the next
  * start only the widget rolls back to its built-in bundle and records the
  * crash, while main keeps its new OTA with no crash history.
  */
@@ -34,6 +35,9 @@ export const brownfieldInstanceCrashRollsBackOnlyItselfScenario: ScenarioDefinit
       await app.control(
         "turn on the widget instance",
         "/e2e/jobs/enable-widget",
+        // Long enough for the held artifact request below.
+        { requestTimeoutMs: 120_000 },
+        { saveResultFieldsAs: { nonce: "widgetCheckNonce" } },
       );
       await app.launch("launch main stable");
       await app.tap(
@@ -89,7 +93,30 @@ export const brownfieldInstanceCrashRollsBackOnlyItselfScenario: ScenarioDefinit
           saveResultFieldsAs: { releaseId: "widgetCrashReleaseId" },
         },
       );
+      // Hold artifacts until the widget runs its built-in bundle, so its
+      // background download stages the crash bundle for the next start
+      // instead of running it in this one.
+      await app.control("hold the widget artifact", "/e2e/proxy-control", {
+        holdArtifacts: true,
+      });
       await app.launch("launch to stage both updates");
+      await app.control(
+        "wait widget native check pending",
+        "/e2e/jobs/wait-for-native-check",
+        { instance: "widget", nonce: "$widgetCheckNonce", status: "pending" },
+      );
+      await app.control("release the widget artifact", "/e2e/proxy-control", {
+        holdArtifacts: false,
+      });
+      await app.control(
+        "wait widget crash pending",
+        "/e2e/jobs/wait-for-metadata",
+        {
+          bundleId: "$widgetCrashBundleId",
+          instance: "widget",
+          verificationPending: true,
+        },
+      );
       await app.tap(
         "install main next",
         "action-install-current-channel-update",
@@ -104,21 +131,6 @@ export const brownfieldInstanceCrashRollsBackOnlyItselfScenario: ScenarioDefinit
         "wait main next pending",
         "/e2e/jobs/wait-for-metadata",
         { bundleId: "$mainNextBundleId", verificationPending: true },
-      );
-      await app.assertText(
-        "assert widget crash install result",
-        "widget-update-result",
-        "widget -> installed ID $widgetCrashReleaseId",
-        { exactText: true },
-      );
-      await app.control(
-        "wait widget crash pending",
-        "/e2e/jobs/wait-for-metadata",
-        {
-          bundleId: "$widgetCrashBundleId",
-          instance: "widget",
-          verificationPending: true,
-        },
       );
       // Main runs its pending next bundle while the widget's bundle throws.
       await app.launch("launch the widget crash bundle", { expectCrash: true });

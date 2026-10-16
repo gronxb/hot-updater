@@ -24,8 +24,20 @@ public func startReactNativeWithHotUpdater(
   launchOptions: () -> [UIApplication.LaunchOptionsKey: Any]?,
   onBundleLoaded: (() -> Void)? = nil
 ) async {
-  if let request = NativeUpdateCheckRequest.read() {
-    await request.report(status: await checkForUpdate(request))
+  if let request = NativeUpdateCheckRequest.read(key: NativeUpdateCheckRequest.mainKey) {
+    let status: String
+    if let hotUpdater = try? HotUpdaterInstance(
+      HotUpdaterOptions(
+        baseURL: request.baseURL,
+        requestTimeout: request.requestTimeout,
+        bundle: ReactNativeBundle
+      )
+    ) {
+      status = await checkForUpdate(hotUpdater, request)
+    } else {
+      status = "failed"
+    }
+    await request.report(status: status, field: "nativeCheckResult")
   }
   ReactNativeBrownfield.shared.bundle = ReactNativeBundle
   ReactNativeBrownfield.shared.bundleURLOverride = {
@@ -40,19 +52,15 @@ public func startReactNativeWithHotUpdater(
   )
 }
 
-/// The brownfield guide's update check: checks, and waits up to the request's
-/// timeout for a required update, which then runs in this start. The timeout
-/// ends the wait, not the download.
-private func checkForUpdate(_ request: NativeUpdateCheckRequest) async -> String {
-  guard let hotUpdater = try? HotUpdaterInstance(
-    HotUpdaterOptions(
-      baseURL: request.baseURL,
-      requestTimeout: (request.requestTimeoutMs ?? 5_000) / 1_000,
-      bundle: ReactNativeBundle
-    )
-  ) else {
-    return "failed"
-  }
+/// The brownfield guide's update check for `hotUpdater`, run before the
+/// React Native runtime that uses it starts: checks, and waits up to the
+/// request's timeout for a required update, which then runs in this start.
+/// Any other update downloads in the background and runs at the next start.
+/// The timeout ends the wait, not the download.
+private func checkForUpdate(
+  _ hotUpdater: HotUpdaterInstance,
+  _ request: NativeUpdateCheckRequest
+) async -> String {
   let options = HotUpdaterCheckOptions(
     updateStrategy: request.updateStrategy == "fingerprint" ? .fingerprint : .appVersion
   )
@@ -91,7 +99,7 @@ private func checkForUpdate(_ request: NativeUpdateCheckRequest) async -> String
 /// Whether a scenario turned on the second Hot Updater instance, `widget`.
 /// The host then leaves room for it under the example.
 public var isHotUpdaterWidgetEnabled: Bool {
-  WidgetRequest.read() != nil
+  NativeUpdateCheckRequest.read(key: NativeUpdateCheckRequest.widgetKey) != nil
 }
 
 /// The widget's React Native root, or nil when no scenario turned it on.
@@ -100,21 +108,37 @@ public var isHotUpdaterWidgetEnabled: Bool {
 /// `HotUpdaterWidget.bundle` (its `main.jsbundle` and `HOT_UPDATER_*` keys,
 /// channel `widget`), and its own Hot Updater instance, named `widget`: its
 /// bundles, crash history, and recovery stay apart from the example's.
+/// Like the example's start, it checks for its update natively before its
+/// runtime starts, and reports the status as `widgetNativeCheckResult`; its
+/// JavaScript only calls `HotUpdater.init`.
 /// React Native Brownfield runs one runtime, so this one has its own factory.
 /// Create it once the example's bundle has loaded: React Native Brownfield
 /// takes the first bundle load in the process for the example's.
 @MainActor
-public func makeHotUpdaterWidgetView() -> UIView? {
+public func makeHotUpdaterWidgetView() async -> UIView? {
   if let widgetRuntime {
     return widgetRuntime.view()
   }
-  guard let request = WidgetRequest.read(),
+  guard let request = NativeUpdateCheckRequest.read(key: NativeUpdateCheckRequest.widgetKey),
         let bundleURL = ReactNativeBundle.url(forResource: "HotUpdaterWidget", withExtension: "bundle"),
         let bundle = Bundle(url: bundleURL),
         let instance = try? HotUpdaterInstance(
-          HotUpdaterOptions(baseURL: request.baseURL, bundle: bundle, name: "widget")
+          HotUpdaterOptions(
+            baseURL: request.baseURL,
+            requestTimeout: request.requestTimeout,
+            bundle: bundle,
+            name: "widget"
+          )
         ) else {
     return nil
+  }
+  await request.report(
+    status: await checkForUpdate(instance, request),
+    field: "widgetNativeCheckResult"
+  )
+  // Another call may have created it while this one checked.
+  if let widgetRuntime {
+    return widgetRuntime.view()
   }
   let runtime = WidgetRuntime(instance: instance)
   widgetRuntime = runtime
@@ -163,19 +187,6 @@ private final class WidgetReactNativeDelegate: RCTDefaultReactNativeFactoryDeleg
   }
 }
 
-/// The widget a scenario turns on. The E2E control server writes it to this
-/// app's user defaults; resetting the app removes it.
-private struct WidgetRequest: Decodable {
-  let baseURL: String
-
-  static func read() -> WidgetRequest? {
-    guard let value = UserDefaults.standard.string(forKey: "HotUpdaterE2EWidget") else {
-      return nil
-    }
-    return try? JSONDecoder().decode(WidgetRequest.self, from: Data(value.utf8))
-  }
-}
-
 /// Hands a deep link to React Native's `Linking`.
 @MainActor
 public func openReactNativeURL(
@@ -186,24 +197,31 @@ public func openReactNativeURL(
   RCTLinkingManager.application(application, open: url, options: options)
 }
 
-/// The native update check a scenario turns on. The E2E control server
-/// writes it to this app's user defaults; resetting the app removes it.
+/// A native update check a scenario turns on: the example's (`mainKey`), or
+/// the widget's, which also turns the widget on (`widgetKey`). The E2E control
+/// server writes it to this app's user defaults; resetting the app removes it.
 private struct NativeUpdateCheckRequest: Decodable {
+  static let mainKey = "HotUpdaterE2ENativeCheck"
+  static let widgetKey = "HotUpdaterE2EWidget"
+
   let baseURL: String
   let updateStrategy: String
   let nonce: String
   let requestTimeoutMs: Double?
   let checkTimeoutMs: Double?
 
-  static func read() -> NativeUpdateCheckRequest? {
-    guard let value = UserDefaults.standard.string(forKey: "HotUpdaterE2ENativeCheck") else {
+  var requestTimeout: TimeInterval { (requestTimeoutMs ?? 5_000) / 1_000 }
+
+  static func read(key: String) -> NativeUpdateCheckRequest? {
+    guard let value = UserDefaults.standard.string(forKey: key) else {
       return nil
     }
     return try? JSONDecoder().decode(NativeUpdateCheckRequest.self, from: Data(value.utf8))
   }
 
-  /// Publishes `<nonce>:<status>` to the control server's screen state.
-  func report(status name: String) async {
+  /// Publishes `<nonce>:<status>` as `field` of the control server's screen
+  /// state.
+  func report(status name: String, field: String) async {
     guard var components = URLComponents(string: baseURL) else { return }
     components.path = "/e2e/screen-state"
     guard let url = components.url else { return }
@@ -211,7 +229,7 @@ private struct NativeUpdateCheckRequest: Decodable {
     request.httpMethod = "POST"
     request.setValue("application/json", forHTTPHeaderField: "Content-Type")
     request.httpBody = try? JSONSerialization.data(
-      withJSONObject: ["nativeCheckResult": "\(nonce):\(name)"]
+      withJSONObject: [field: "\(nonce):\(name)"]
     )
     _ = try? await URLSession.shared.data(for: request)
   }

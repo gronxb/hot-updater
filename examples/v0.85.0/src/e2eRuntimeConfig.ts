@@ -19,8 +19,6 @@ export type E2eScreenState = {
   readonly startupCheckSettledEpoch: string;
   /** The brownfield widget runtime's own keys: `<bundleId> <marker>`. */
   readonly widgetState: string;
-  /** What the widget runtime's update check did, as `widget -> ...`. */
-  readonly widgetUpdateResult: string;
 };
 
 type E2ELaunchArguments = {
@@ -37,7 +35,6 @@ const defaultE2eScreenState = {
   startupCheckEpoch: "",
   startupCheckSettledEpoch: "",
   widgetState: "",
-  widgetUpdateResult: "idle",
 } as const satisfies E2eScreenState;
 
 // modules/e2e-launch-arguments: the runner's launch arguments, as strings.
@@ -121,11 +118,6 @@ const parseScreenState = (payload: unknown): E2eScreenState => {
       "",
     ),
     widgetState: stringField(payload, "widgetState", ""),
-    widgetUpdateResult: stringField(
-      payload,
-      "widgetUpdateResult",
-      defaultE2eScreenState.widgetUpdateResult,
-    ),
   };
 };
 

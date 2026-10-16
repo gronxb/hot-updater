@@ -352,6 +352,48 @@ describe("E2E scenario contract", () => {
           (call) => call.kind === "tap" && call.testID === "action-reload-app",
         ),
       ).toBe(false);
+      // The widget's update is checked natively before its runtime starts
+      // and staged in the background for the next start: the artifact is
+      // held until the check reports pending, then the widget's store
+      // stages it. JavaScript never checks or installs for the widget.
+      const pendingIndex = calls.findIndex(
+        (call) =>
+          call.kind === "control" &&
+          call.pathName === "/e2e/jobs/wait-for-native-check" &&
+          call.body?.instance === "widget" &&
+          call.body?.status === "pending",
+      );
+      expect(pendingIndex).toBeGreaterThan(0);
+      expect(calls[pendingIndex]).toMatchObject({
+        body: { nonce: "$widgetCheckNonce" },
+      });
+      const holdIndex = calls.findLastIndex(
+        (call, index) =>
+          index < pendingIndex &&
+          call.kind === "control" &&
+          call.pathName === "/e2e/proxy-control",
+      );
+      expect(calls[holdIndex]).toMatchObject({ body: { holdArtifacts: true } });
+      expect(calls[pendingIndex + 1]).toMatchObject({
+        body: { holdArtifacts: false },
+        pathName: "/e2e/proxy-control",
+      });
+      expect(calls[pendingIndex + 2]).toMatchObject({
+        body: { instance: "widget", verificationPending: true },
+        pathName: "/e2e/jobs/wait-for-metadata",
+      });
+      expect(
+        calls.filter((call) => call.kind === "tap").map((call) => call.testID),
+      ).toEqual(
+        expect.arrayContaining(["action-install-current-channel-update"]),
+      );
+      expect(
+        calls.some(
+          (call) =>
+            (call.kind === "assertText" || call.kind === "tap") &&
+            call.testID === "widget-update-result",
+        ),
+      ).toBe(false);
       // Each widget wait reads the widget's store.
       expect(
         calls.some(

@@ -4693,26 +4693,42 @@ function writeBrownfieldHostSetting(
  * Turns on the brownfield host's second Hot Updater instance, `widget`, for
  * the next launches of this attempt: the host shows the widget's own React
  * Native runtime under the example, with its own embedded bundle and the
- * `widget` channel. Resetting the app removes it, so every other scenario
- * runs one instance.
+ * `widget` channel. As the brownfield guide's start does, each launch first
+ * checks for the widget's update natively and posts `<nonce>:<status>` as
+ * `widgetNativeCheckResult`: a required update runs in this start, any other
+ * one downloads in the background for the next. Resetting the app removes it,
+ * so every other scenario runs one instance.
  */
-async function enableWidget(): Promise<JobResult> {
+async function enableWidget(input: {
+  requestTimeoutMs?: number;
+  checkTimeoutMs?: number;
+}): Promise<JobResult> {
   if (process.env.HOT_UPDATER_E2E_TRACK !== "brownfield") {
     throw new Error("The widget instance runs only on the brownfield track");
   }
-  // The native instance needs a valid server URL; the widget's JavaScript
-  // reads its own from the runtime config, as the example does.
+  const nonce = randomUUID();
   const baseURL = handleRuntimeConfig().baseURL;
   writeBrownfieldHostSetting(
     E2E_IOS_WIDGET_DEFAULTS_KEY,
     E2E_ANDROID_WIDGET_PREFS_KEY,
-    JSON.stringify({ baseURL }),
+    JSON.stringify({
+      baseURL,
+      updateStrategy: "appVersion",
+      nonce,
+      ...(input.requestTimeoutMs === undefined
+        ? {}
+        : { requestTimeoutMs: input.requestTimeoutMs }),
+      ...(input.checkTimeoutMs === undefined
+        ? {}
+        : { checkTimeoutMs: input.checkTimeoutMs }),
+    }),
   );
   logE2eFixture("widget instance enabled", {
     baseURL,
+    nonce,
     platform: fixtureSession.platform,
   });
-  return { widgetChannel: WIDGET_CHANNEL };
+  return { nonce, widgetChannel: WIDGET_CHANNEL };
 }
 
 /**
@@ -4754,23 +4770,34 @@ async function setNativeCheck(input: {
   return { nonce };
 }
 
-/** Waits for the host to report `status` for the request with `nonce`. */
+/**
+ * Waits for the host to report `status` for the request with `nonce`: main's
+ * check, or the widget instance's.
+ */
 async function waitForNativeCheck(
-  input: { nonce: string; status: "upToDate" | "ready" | "pending" | "failed" },
+  input: {
+    instance?: AppInstance;
+    nonce: string;
+    status: "upToDate" | "ready" | "pending" | "failed";
+  },
   signal: AbortSignal,
 ): Promise<JobResult> {
+  const field =
+    (input.instance ?? "main") === "main"
+      ? "nativeCheckResult"
+      : "widgetNativeCheckResult";
   const expected = `${input.nonce}:${input.status}`;
   const deadline = Date.now() + NATIVE_CHECK_REPORT_TIMEOUT_MS;
   while (Date.now() < deadline) {
     signal.throwIfAborted();
-    if (readE2eScreenStateSnapshot().nativeCheckResult === expected) {
-      return { nativeCheckResult: expected };
+    if (readE2eScreenStateSnapshot()[field] === expected) {
+      return { [field]: expected };
     }
     await sleep(250, undefined, { signal });
   }
   throw new Error(
-    `Native check did not report ${input.status}; last report: ${
-      readE2eScreenStateSnapshot().nativeCheckResult || "none"
+    `${field} did not report ${input.status}; last report: ${
+      readE2eScreenStateSnapshot()[field] || "none"
     }`,
   );
 }
@@ -7289,11 +7316,14 @@ export function startSetNativeCheckJob(input: {
   return createJob(() => setNativeCheck(input));
 }
 
-export function startEnableWidgetJob() {
-  return createJob(() => enableWidget());
+export function startEnableWidgetJob(
+  input: { requestTimeoutMs?: number; checkTimeoutMs?: number } = {},
+) {
+  return createJob(() => enableWidget(input));
 }
 
 export function startWaitForNativeCheckJob(input: {
+  instance?: AppInstance;
   nonce: string;
   status: "upToDate" | "ready" | "pending" | "failed";
 }) {

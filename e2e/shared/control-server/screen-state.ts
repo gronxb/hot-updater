@@ -12,8 +12,11 @@ export type E2eScreenState = {
   readonly nativeCheckResult: string;
   /** `<bundleId> <marker>` the brownfield widget runtime posts when it mounts. */
   readonly widgetState: string;
-  /** What the widget runtime's update check did, as `widget -> ...`. */
-  readonly widgetUpdateResult: string;
+  /**
+   * `<nonce>:<status>` the brownfield host posts after the widget instance's
+   * native update check, before the widget's runtime starts.
+   */
+  readonly widgetNativeCheckResult: string;
 };
 
 type E2eScreenStatePatch = Partial<E2eScreenState>;
@@ -28,7 +31,7 @@ const defaultE2eScreenState = {
   startupCheckSettledEpoch: "",
   nativeCheckResult: "",
   widgetState: "",
-  widgetUpdateResult: "idle",
+  widgetNativeCheckResult: "",
 } as const satisfies E2eScreenState;
 
 let e2eScreenState: E2eScreenState = defaultE2eScreenState;
@@ -88,7 +91,10 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
   );
   const nativeCheckResult = parseOptionalString(payload, "nativeCheckResult");
   const widgetState = parseOptionalString(payload, "widgetState");
-  const widgetUpdateResult = parseOptionalString(payload, "widgetUpdateResult");
+  const widgetNativeCheckResult = parseOptionalString(
+    payload,
+    "widgetNativeCheckResult",
+  );
 
   return {
     ...(channelActionResult === undefined ? {} : { channelActionResult }),
@@ -98,7 +104,9 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     ...(updateActionResult === undefined ? {} : { updateActionResult }),
     ...(nativeCheckResult === undefined ? {} : { nativeCheckResult }),
     ...(widgetState === undefined ? {} : { widgetState }),
-    ...(widgetUpdateResult === undefined ? {} : { widgetUpdateResult }),
+    ...(widgetNativeCheckResult === undefined
+      ? {}
+      : { widgetNativeCheckResult }),
     ...(startupCheckSettledEpoch &&
     startupCheckSettledEpoch === e2eScreenState.startupCheckEpoch
       ? { startupCheckSettledEpoch }
@@ -117,7 +125,7 @@ export const prepareE2eStartupCheck = (alreadyFocused = false) => {
       startupCheckEpoch: randomUUID(),
       startupCheckSettledEpoch: "",
       widgetState: defaultE2eScreenState.widgetState,
-      widgetUpdateResult: defaultE2eScreenState.widgetUpdateResult,
+      widgetNativeCheckResult: defaultE2eScreenState.widgetNativeCheckResult,
     };
   }
   return { startupCheckEpoch: e2eScreenState.startupCheckEpoch };

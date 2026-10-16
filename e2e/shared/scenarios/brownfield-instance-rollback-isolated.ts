@@ -45,8 +45,36 @@ export const brownfieldInstanceRollbackIsolatedScenario: ScenarioDefinition = {
         saveResultFieldsAs: { releaseId: "widgetReleaseId" },
       },
     );
-    await app.control("turn on the widget instance", "/e2e/jobs/enable-widget");
+    await app.control(
+      "turn on the widget instance",
+      "/e2e/jobs/enable-widget",
+      // Long enough for the held artifact request below.
+      { requestTimeoutMs: 120_000 },
+      { saveResultFieldsAs: { nonce: "widgetCheckNonce" } },
+    );
+    // Hold artifacts until the widget runs its current bundle, so its
+    // background download stages the update for the next start.
+    await app.control("hold the widget artifact", "/e2e/proxy-control", {
+      holdArtifacts: true,
+    });
     await app.launch("launch both instances");
+    await app.control(
+      "wait widget native check pending",
+      "/e2e/jobs/wait-for-native-check",
+      { instance: "widget", nonce: "$widgetCheckNonce", status: "pending" },
+    );
+    await app.control("release the widget artifact", "/e2e/proxy-control", {
+      holdArtifacts: false,
+    });
+    await app.control(
+      "wait widget bundle pending",
+      "/e2e/jobs/wait-for-metadata",
+      {
+        bundleId: "$widgetBundleId",
+        instance: "widget",
+        verificationPending: true,
+      },
+    );
     await app.tap(
       "install main bundle",
       "action-install-current-channel-update",
@@ -62,21 +90,6 @@ export const brownfieldInstanceRollbackIsolatedScenario: ScenarioDefinition = {
       "/e2e/jobs/wait-for-metadata",
       {
         bundleId: "$mainBundleId",
-        verificationPending: true,
-      },
-    );
-    await app.assertText(
-      "assert widget install result",
-      "widget-update-result",
-      "widget -> installed ID $widgetReleaseId",
-      { exactText: true },
-    );
-    await app.control(
-      "wait widget bundle pending",
-      "/e2e/jobs/wait-for-metadata",
-      {
-        bundleId: "$widgetBundleId",
-        instance: "widget",
         verificationPending: true,
       },
     );
@@ -99,19 +112,19 @@ export const brownfieldInstanceRollbackIsolatedScenario: ScenarioDefinition = {
       enabled: false,
       releaseId: "$widgetReleaseId",
     });
+    // A rollback to the built-in bundle is required: the widget's native
+    // check applies it before its runtime starts, in this same start.
     await app.reload("relaunch after the widget release is disabled");
-    await app.assertText(
-      "assert widget selects its built-in bundle",
-      "widget-update-result",
-      "widget -> selected BUILTIN",
-      { exactText: true },
+    await app.control(
+      "wait widget native check applies its built-in bundle",
+      "/e2e/jobs/wait-for-native-check",
+      { instance: "widget", nonce: "$widgetCheckNonce", status: "ready" },
     );
     await app.control(
       "assert widget metadata reset",
       "/e2e/assert-metadata-reset",
       { instance: "widget" },
     );
-    await app.reload("relaunch the widget on its built-in bundle");
     await app.assertText(
       "assert widget built-in bundle",
       "widget-bundle-id",
@@ -121,13 +134,6 @@ export const brownfieldInstanceRollbackIsolatedScenario: ScenarioDefinition = {
       "assert widget built-in marker",
       "widget-scenario-marker",
       "$initialMarker",
-    );
-    // The disabled Release stays out of the widget's next check.
-    await app.assertText(
-      "assert widget stays on its built-in bundle",
-      "widget-update-result",
-      "widget -> no-update",
-      { exactText: true },
     );
     await app.assertText(
       "assert main bundle kept",
@@ -145,6 +151,18 @@ export const brownfieldInstanceRollbackIsolatedScenario: ScenarioDefinition = {
       {
         bundleId: "$mainBundleId",
       },
+    );
+    // The disabled Release stays out of the widget's next check.
+    await app.reload("relaunch the widget on its built-in bundle");
+    await app.control(
+      "wait widget native check up to date",
+      "/e2e/jobs/wait-for-native-check",
+      { instance: "widget", nonce: "$widgetCheckNonce", status: "upToDate" },
+    );
+    await app.assertText(
+      "assert widget stays on its built-in bundle",
+      "widget-bundle-id",
+      "$builtInBundleId",
     );
   },
 };

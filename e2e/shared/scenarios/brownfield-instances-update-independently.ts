@@ -3,8 +3,9 @@ import type { ScenarioDefinition } from "./types.ts";
 /**
  * Brownfield only: two Hot Updater instances in one host, `main` (the
  * example) and `widget` (a second React Native runtime with its own embedded
- * bundle and channel). Each stages and runs its own update; neither store
- * holds the other's bundle.
+ * bundle and channel). The widget's native check stages its update in the
+ * background for the next start, main installs its own from JavaScript, and
+ * each runs its own update; neither store holds the other's bundle.
  */
 export const brownfieldInstancesUpdateIndependentlyScenario: ScenarioDefinition =
   {
@@ -44,8 +45,34 @@ export const brownfieldInstancesUpdateIndependentlyScenario: ScenarioDefinition 
       await app.control(
         "turn on the widget instance",
         "/e2e/jobs/enable-widget",
+        // Long enough for the held artifact request below.
+        { requestTimeoutMs: 120_000 },
+        { saveResultFieldsAs: { nonce: "widgetCheckNonce" } },
       );
+      // Hold artifacts until the widget runs its current bundle, so its
+      // background download stages the update for the next start.
+      await app.control("hold the widget artifact", "/e2e/proxy-control", {
+        holdArtifacts: true,
+      });
       await app.launch("launch both instances");
+      await app.control(
+        "wait widget native check pending",
+        "/e2e/jobs/wait-for-native-check",
+        { instance: "widget", nonce: "$widgetCheckNonce", status: "pending" },
+      );
+      await app.control("release the widget artifact", "/e2e/proxy-control", {
+        holdArtifacts: false,
+      });
+      await app.control(
+        "wait widget bundle pending",
+        "/e2e/jobs/wait-for-metadata",
+        {
+          bundleId: "$widgetBundleId",
+          instance: "widget",
+          verificationPending: true,
+        },
+      );
+      // Main installs its update from JavaScript, as in every other scenario.
       await app.tap(
         "install main bundle",
         "action-install-current-channel-update",
@@ -61,23 +88,12 @@ export const brownfieldInstancesUpdateIndependentlyScenario: ScenarioDefinition 
         "/e2e/jobs/wait-for-metadata",
         { bundleId: "$mainBundleId", verificationPending: true },
       );
-      // The widget checks and stages on its own when it mounts.
-      await app.assertText(
-        "assert widget install result",
-        "widget-update-result",
-        "widget -> installed ID $widgetReleaseId",
-        { exactText: true },
-      );
-      await app.control(
-        "wait widget bundle pending",
-        "/e2e/jobs/wait-for-metadata",
-        {
-          bundleId: "$widgetBundleId",
-          instance: "widget",
-          verificationPending: true,
-        },
-      );
       await app.reload("relaunch both instances");
+      await app.control(
+        "wait widget native check up to date",
+        "/e2e/jobs/wait-for-native-check",
+        { instance: "widget", nonce: "$widgetCheckNonce", status: "upToDate" },
+      );
       await app.control(
         "wait main bundle verified",
         "/e2e/jobs/wait-for-metadata",

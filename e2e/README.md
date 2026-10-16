@@ -87,8 +87,12 @@ staged before React Native starts and a minor one that applies at the next
 start, and three that run a second instance. `/e2e/jobs/enable-widget` turns
 on `widget`, a second React Native runtime under the example with its own
 embedded bundle (`examples/v0.85.0/index.widget.js`) on its own channel,
-`widget`: the instances update independently, the widget's rollback leaves
-main on its OTA, and the widget's crash rolls back only the widget. A deploy,
+`widget`. As the guide's start does, the host checks for the widget's update
+natively before its runtime starts (`/e2e/jobs/wait-for-native-check` with
+`instance: "widget"` waits on the reported status); the widget's JavaScript
+only calls `HotUpdater.init`. The instances update independently, the
+widget's rollback leaves main on its OTA, and the widget's crash rolls back
+only the widget. A deploy,
 store wait, or store assertion with `instance: "widget"` works on the
 widget's bundle and its store under `hot-updater-instances/widget`.
 `e2e:build --track brownfield`

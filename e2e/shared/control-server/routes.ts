@@ -554,12 +554,31 @@ app.post("/e2e/jobs/set-native-check", async (c) => {
   });
 });
 
-app.post("/e2e/jobs/enable-widget", (c) => {
-  return c.json({ jobId: startEnableWidgetJob() });
+app.post("/e2e/jobs/enable-widget", async (c) => {
+  // The body is optional: the timeouts default to the host's.
+  const payload = ((await c.req.json().catch(() => ({}))) ?? {}) as {
+    requestTimeoutMs?: number;
+    checkTimeoutMs?: number;
+  };
+  for (const value of [payload.requestTimeoutMs, payload.checkTimeoutMs]) {
+    if (value !== undefined && (!Number.isSafeInteger(value) || value <= 0)) {
+      return c.json({ error: "timeouts must be positive integers" }, 400);
+    }
+  }
+  return c.json({
+    jobId: startEnableWidgetJob({
+      requestTimeoutMs: payload.requestTimeoutMs,
+      checkTimeoutMs: payload.checkTimeoutMs,
+    }),
+  });
 });
 
 app.post("/e2e/jobs/wait-for-native-check", async (c) => {
-  const payload = (await c.req.json()) as { nonce?: string; status?: string };
+  const payload = (await c.req.json()) as {
+    instance?: unknown;
+    nonce?: string;
+    status?: string;
+  };
   const status = payload.status;
   if (
     !payload.nonce ||
@@ -570,8 +589,16 @@ app.post("/e2e/jobs/wait-for-native-check", async (c) => {
   ) {
     return c.json({ error: "nonce and a prepare status are required" }, 400);
   }
+  const instance = parseInstance(payload.instance);
+  if (!instance) {
+    return c.json({ error: INSTANCE_ERROR }, 400);
+  }
   return c.json({
-    jobId: startWaitForNativeCheckJob({ nonce: payload.nonce, status }),
+    jobId: startWaitForNativeCheckJob({
+      instance,
+      nonce: payload.nonce,
+      status,
+    }),
   });
 });
 

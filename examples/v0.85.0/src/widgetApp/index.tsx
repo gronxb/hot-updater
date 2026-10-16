@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect } from "react";
 import { StyleSheet, Text, View } from "react-native";
 
 import { patchE2eScreenState } from "../e2eRuntimeConfig";
@@ -7,71 +7,27 @@ import { hotUpdater } from "./runtime";
 
 loadE2EDeployBundleAssets();
 
-const LABEL = "widget";
-
 // The control server's screen state is shared by both runtimes, so the widget
-// writes only its own keys.
-const publish = async (patch: {
-  widgetState?: string;
-  widgetUpdateResult?: string;
-}) => {
+// writes only its own key.
+const publish = async (widgetState: string) => {
   try {
-    await patchE2eScreenState(patch);
+    await patchE2eScreenState({ widgetState });
   } catch (error) {
     console.warn(error instanceof Error ? error.message : String(error));
   }
 };
 
-// Stages the widget's update for its next start. A named runtime never
-// reloads: `reload` rejects there, and the host decides when it restarts.
-const stageUpdate = async (): Promise<string> => {
-  try {
-    const updateInfo = await hotUpdater.checkForUpdate({
-      updateStrategy: "appVersion",
-    });
-    if (!updateInfo) return `${LABEL} -> no-update`;
-    if (!(await updateInfo.updateBundle())) return `${LABEL} -> skipped`;
-    if (updateInfo.transitionKind === "USE_BUILTIN") {
-      return `${LABEL} -> selected BUILTIN`;
-    }
-    if (updateInfo.transitionKind === "ADOPT_RELEASE") {
-      return `${LABEL} -> adopted ID ${updateInfo.id}`;
-    }
-    return `${LABEL} -> installed ID ${updateInfo.id}`;
-  } catch (error) {
-    const message =
-      error instanceof Error ? error.message : "Failed to install update";
-    return `${LABEL} -> error ${message}`;
-  }
-};
-
 /**
- * One always-visible panel: what this runtime runs, and what its update check
- * did. Every value has a `widget-` testID so it never matches the example's.
+ * One always-visible panel: what this runtime runs. The host checks for the
+ * widget's update natively before this runtime starts, so JavaScript only
+ * calls `HotUpdater.init`. Every value has a `widget-` testID so it never
+ * matches the example's.
  */
 export const WidgetApp = () => {
   const bundleId = hotUpdater.getManifest().bundleId;
-  const [updateResult, setUpdateResult] = useState(`${LABEL} -> checking`);
-  const [crashHistoryCount, setCrashHistoryCount] = useState(
-    () => hotUpdater.getCrashHistory().length,
-  );
 
   useEffect(() => {
-    let active = true;
-    void (async () => {
-      await publish({
-        widgetState: `${bundleId} ${E2E_SCENARIO_MARKER}`,
-        widgetUpdateResult: `${LABEL} -> checking`,
-      });
-      const result = await stageUpdate();
-      if (!active) return;
-      setUpdateResult(result);
-      setCrashHistoryCount(hotUpdater.getCrashHistory().length);
-      await publish({ widgetUpdateResult: result });
-    })();
-    return () => {
-      active = false;
-    };
+    void publish(`${bundleId} ${E2E_SCENARIO_MARKER}`);
   }, [bundleId]);
 
   return (
@@ -87,10 +43,7 @@ export const WidgetApp = () => {
         {hotUpdater.getChannel()}
       </Text>
       <Text selectable style={styles.value} testID="widget-crash-history-count">
-        {String(crashHistoryCount)}
-      </Text>
-      <Text selectable style={styles.value} testID="widget-update-result">
-        {updateResult}
+        {String(hotUpdater.getCrashHistory().length)}
       </Text>
     </View>
   );

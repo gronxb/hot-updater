@@ -42,8 +42,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         for url in laterURLs {
           _ = openReactNativeURL(application, url: url, options: [:])
         }
-        // The widget's runtime starts after the example's bundle has loaded.
-        widgetHost?.showWidget(makeHotUpdaterWidgetView())
+        // The widget's runtime starts after the example's bundle has loaded,
+        // once its own native update check is done.
+        if let widgetHost {
+          Task { @MainActor in
+            widgetHost.showWidget(await makeHotUpdaterWidgetView())
+          }
+        }
       })
       self.window?.rootViewController = widgetHost ?? example
     }
