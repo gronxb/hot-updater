@@ -470,6 +470,7 @@ static NSHashTable<HotUpdater *> *HotUpdaterRuntimeModules(void)
 
 @interface HotUpdater () <RCTInitializing>
 - (HotUpdaterImpl *)resolvedInstanceImpl;
+- (NSURL *)runtimeBundleURL;
 - (BOOL)isRuntimeOfSurfacePresenter:(id)surfacePresenter rootTag:(NSNumber *)rootTag;
 @end
 
@@ -682,12 +683,17 @@ RCT_EXPORT_MODULE();
             return _instanceImpl;
         }
     }
+    return [self runtimeBundleURL] ? [self instanceImpl] : nil;
+}
+
+// The bundle this module's runtime runs, which tells an error of an earlier
+// launch's runtime from one of the instance's current launch.
+- (NSURL *)runtimeBundleURL {
 #ifdef RCT_NEW_ARCH_ENABLED
-    NSURL *bundleURL = self.bundleManager.bundleURL;
+    return self.bundleManager.bundleURL;
 #else
-    NSURL *bundleURL = self.bridge.bundleURL;
+    return self.bridge.bundleURL;
 #endif
-    return bundleURL ? [self instanceImpl] : nil;
 }
 
 // RCTInstance hands each module it creates its runtime's surface presenter.
@@ -1305,7 +1311,8 @@ static NSURL *HotUpdaterBundleURLOfRuntime(id object)
 // The impl whose runtime `object` belongs to: a Fabric surface or root view,
 // an RCTInstance or RCTHost (by its surface presenter), an old-architecture
 // root view or bridge (by its bundle URL). Nil when no runtime claims it.
-static HotUpdaterImpl *HotUpdaterImplForRootObject(id object)
+// `runtimeBundleURL`, when given, receives the bundle the runtime runs.
+static HotUpdaterImpl *HotUpdaterImplForRootObject(id object, NSURL **runtimeBundleURL)
 {
   if (!object) {
     return nil;
@@ -1333,6 +1340,9 @@ static HotUpdaterImpl *HotUpdaterImplForRootObject(id object)
       if ([module isRuntimeOfSurfacePresenter:surfacePresenter rootTag:rootTag]) {
         HotUpdaterImpl *impl = [module resolvedInstanceImpl];
         if (impl) {
+          if (runtimeBundleURL) {
+            *runtimeBundleURL = [module runtimeBundleURL];
+          }
           return impl;
         }
       }
@@ -1343,7 +1353,13 @@ static HotUpdaterImpl *HotUpdaterImplForRootObject(id object)
     // An RCTInstance or RCTHost whose bundle failed to load before its
     // runtime created a module: its bundle URL tells whose it is.
     NSURL *bundleURL = HotUpdaterBundleURLOfRuntime(object);
-    return bundleURL ? [HotUpdaterNativeUpdates() implForBundleURL:bundleURL] : nil;
+    if (!bundleURL) {
+      return nil;
+    }
+    if (runtimeBundleURL) {
+      *runtimeBundleURL = bundleURL;
+    }
+    return [HotUpdaterNativeUpdates() implForBundleURL:bundleURL];
   }
 #endif
 
@@ -1358,13 +1374,24 @@ static HotUpdaterImpl *HotUpdaterImplForRootObject(id object)
   if (!bundleURL) {
     return nil;
   }
+  if (runtimeBundleURL) {
+    *runtimeBundleURL = bundleURL;
+  }
   return [HotUpdaterNativeUpdates() implForBundleURL:bundleURL];
 }
 
 extern "C" void *HotUpdaterCopyImplForRootObject(id object)
 {
-  HotUpdaterImpl *impl = HotUpdaterImplForRootObject(object);
+  HotUpdaterImpl *impl = HotUpdaterImplForRootObject(object, nullptr);
   return impl ? (__bridge_retained void *)impl : NULL;
+}
+
+// The bundle the runtime `object` belongs to runs, or NULL.
+extern "C" void *HotUpdaterCopyBundleURLForRootObject(id object)
+{
+  NSURL *bundleURL = nil;
+  HotUpdaterImplForRootObject(object, &bundleURL);
+  return bundleURL ? (__bridge_retained void *)bundleURL : NULL;
 }
 
 // The impl of the runtime whose JavaScript thread, or old-architecture
@@ -1380,6 +1407,21 @@ extern "C" void *HotUpdaterCopyRuntimeImpl(void)
 #endif
   HotUpdaterImpl *impl = [reference.module resolvedInstanceImpl];
   return impl ? (__bridge_retained void *)impl : NULL;
+}
+
+// The bundle the runtime whose JavaScript thread, or old-architecture
+// ExceptionsManager queue, calls this runs, or NULL.
+extern "C" void *HotUpdaterCopyRuntimeBundleURL(void)
+{
+  HotUpdaterRuntimeModuleReference *reference =
+      [NSThread currentThread].threadDictionary[HotUpdaterRuntimeModuleKey];
+#ifndef RCT_NEW_ARCH_ENABLED
+  if (!reference) {
+    reference = (__bridge HotUpdaterRuntimeModuleReference *)dispatch_get_specific(&kHotUpdaterRuntimeQueueKey);
+  }
+#endif
+  NSURL *bundleURL = [reference.module runtimeBundleURL];
+  return bundleURL ? (__bridge_retained void *)bundleURL : NULL;
 }
 
 // Whether a started view is shown: an old-architecture root view in a window,

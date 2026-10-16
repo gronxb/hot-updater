@@ -280,6 +280,13 @@ internal class HotUpdaterRecoveryManager(
 
     private fun hasRegisteredRuntime(): Boolean = synchronized(lock) { registeredRuntimeIds.isNotEmpty() }
 
+    /** Whether a runtime that loaded [sourceURL] runs this launch's bundle. */
+    private fun runsLaunchOf(sourceURL: String?): Boolean =
+        synchronized(lock) {
+            val launchURL = launchURL ?: return@synchronized true
+            isSameBundle(sourceURL, launchURL)
+        }
+
     private fun currentGeneration(): Long = synchronized(lock) { generation }
 
     /** A launch waiting for its first content whose runtime hasn't registered: its view may not be found yet. */
@@ -688,7 +695,23 @@ internal class HotUpdaterRecoveryManager(
         internal fun handleJavaScriptExceptionForRecovery(
             exception: Exception,
             sourceURL: String?,
-        ): Boolean = handleJavaScriptException(exception, attribution.instanceOf(sourceURL))
+        ): Boolean {
+            val instanceName = attribution.instanceOf(sourceURL)
+            if (instanceName != null &&
+                instanceName != HotUpdaterInstanceEnvironment.MAIN_NAME &&
+                liveManagers[instanceName]?.runsLaunchOf(sourceURL) == false
+            ) {
+                // A runtime of an earlier launch of the instance, whose context
+                // still reports errors: the crash it may end in is its own, so
+                // it charges no launch of this process.
+                Log.w(TAG, "JavaScript error of an earlier launch's runtime of $instanceName", exception)
+                return claimJavaScriptError(exception, "$instanceName$EARLIER_LAUNCH_SUFFIX")
+            }
+            return handleJavaScriptException(exception, instanceName)
+        }
+
+        // Instance names have no "@", so no launch is ever this claim's.
+        private const val EARLIER_LAUNCH_SUFFIX = "@earlier-launch"
 
         /**
          * A JavaScript error of [instanceName]'s runtime, or of an unknown one

@@ -48,8 +48,17 @@ Slot gSlots[kSlotCount] = {};
 // The sequence lock takes one writer at a time; launch preparation and the
 // main thread can update one slot at once. Never taken by the handler.
 std::mutex gSlotWriters[kSlotCount];
-volatile sig_atomic_t gAttributedSlot = kNotAttributed;
-volatile sig_atomic_t gAttributedAtSeconds = 0;
+// The claimed slot and when it was claimed, in one word, so a crash during
+// a new claim reads either the old claim or the new one, never a mix:
+// bits 4..31 hold the claim's monotonic seconds (modulo 2^28), bits 0..3 the
+// slot offset by kClaimSlotOffset. Zero is no claim.
+constexpr uint32_t kClaimSlotBits = 4;
+constexpr uint32_t kClaimSlotMask = (1u << kClaimSlotBits) - 1;
+constexpr uint32_t kClaimSecondsMask = 0xFFFFFFFFu >> kClaimSlotBits;
+constexpr int kClaimSlotOffset = 3;
+static_assert(kSlotCount + kClaimSlotOffset <= static_cast<int>(kClaimSlotMask), "a claimed slot fits its bits");
+static_assert(kAttributedWithoutSlot + kClaimSlotOffset > 0, "a claim is never zero");
+std::atomic<uint32_t> gClaim(0);
 struct sigaction gPreviousActions[NSIG];
 
 void signalHandler(int signum, siginfo_t *info, void *context);
@@ -100,15 +109,22 @@ long monotonicSeconds() {
   return static_cast<long>(now.tv_sec);
 }
 
+uint32_t claimSeconds(long seconds) {
+  return static_cast<uint32_t>(seconds) & kClaimSecondsMask;
+}
+
 int attributedSlot() {
-  const int slot = gAttributedSlot;
-  if (slot == kNotAttributed) {
+  const uint32_t claim = gClaim.load(std::memory_order_acquire);
+  const uint32_t slotCode = claim & kClaimSlotMask;
+  if (slotCode == 0) {
     return kNotAttributed;
   }
-  if (monotonicSeconds() - gAttributedAtSeconds > kAttributionWindowSeconds) {
+  const uint32_t claimedAt = claim >> kClaimSlotBits;
+  const uint32_t elapsed = (claimSeconds(monotonicSeconds()) - claimedAt) & kClaimSecondsMask;
+  if (elapsed > static_cast<uint32_t>(kAttributionWindowSeconds)) {
     return kNotAttributed;
   }
-  return slot;
+  return static_cast<int>(slotCode) - kClaimSlotOffset;
 }
 
 // Copies a consistent snapshot of the slot, or returns false while it is
@@ -266,6 +282,7 @@ Java_com_hotupdater_HotUpdaterRecoveryNative_nativeAttributeCrash(
     JNIEnv * /* env */,
     jclass /* clazz */,
     jint index) {
-  gAttributedAtSeconds = static_cast<sig_atomic_t>(monotonicSeconds());
-  gAttributedSlot = (index >= 0 && index < kSlotCount) ? index : kAttributedWithoutSlot;
+  const int slot = (index >= 0 && index < kSlotCount) ? index : kAttributedWithoutSlot;
+  const uint32_t slotCode = static_cast<uint32_t>(slot + kClaimSlotOffset);
+  gClaim.store((claimSeconds(monotonicSeconds()) << kClaimSlotBits) | slotCode, std::memory_order_release);
 }

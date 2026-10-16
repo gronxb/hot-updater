@@ -433,6 +433,32 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a late error of an earlier launch's runtime charges no launch of the instance`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val staleWidget = namedEnvironment("stale-widget")
+        stagePending(context, staleWidget, "first-bundle")
+        val registry = HotUpdaterInstanceRegistry.shared
+        try {
+            val firstURL = registry.impl(context, staleWidget).getJSBundleFile()
+            // The next launch selects another bundle.
+            stagePending(context, staleWidget, "second-bundle")
+            HotUpdaterImpl(context, staleWidget).getJSBundleFile()
+            assertTrue(metadata(context, staleWidget).launchInProgress)
+
+            // The earlier runtime's context still reports its errors.
+            HotUpdaterRecoveryManager.handleJavaScriptExceptionForRecovery(RuntimeException("first failed"), firstURL)
+            HotUpdaterRecoveryManager.chargeUncaughtException(RuntimeException("first failed"))
+
+            assertFalse(crashMarker(context, staleWidget).exists())
+            // Nor does the crash it ends in count the new launch as unfinished.
+            assertFalse(metadata(context, staleWidget).launchInProgress)
+            assertEquals("second-bundle", metadata(context, staleWidget).stagingBundleId)
+        } finally {
+            forget(registry, staleWidget.name)
+        }
+    }
+
+    @Test
     fun `launches left alone by overlapping claims all count again when the last claim is released`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val chat = namedEnvironment("chat")

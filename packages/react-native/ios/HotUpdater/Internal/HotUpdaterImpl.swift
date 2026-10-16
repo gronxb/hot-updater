@@ -26,6 +26,26 @@ private func hotUpdaterCopyImplForRootObjectSymbol(_ object: AnyObject) -> Unsaf
 @_silgen_name("HotUpdaterCopyRuntimeImpl")
 private func hotUpdaterCopyRuntimeImplSymbol() -> UnsafeMutableRawPointer?
 
+@_silgen_name("HotUpdaterCopyBundleURLForRootObject")
+private func hotUpdaterCopyBundleURLForRootObjectSymbol(_ object: AnyObject) -> UnsafeMutableRawPointer?
+
+@_silgen_name("HotUpdaterCopyRuntimeBundleURL")
+private func hotUpdaterCopyRuntimeBundleURLSymbol() -> UnsafeMutableRawPointer?
+
+/// The bundle the runtime `object` belongs to runs.
+private func hotUpdaterBundleURL(forRootObject object: AnyObject) -> URL? {
+    hotUpdaterCopyBundleURLForRootObjectSymbol(object).flatMap {
+        Unmanaged<AnyObject>.fromOpaque($0).takeRetainedValue() as? URL
+    }
+}
+
+/// The bundle the runtime whose JavaScript thread this is runs.
+private func hotUpdaterRuntimeBundleURL() -> URL? {
+    hotUpdaterCopyRuntimeBundleURLSymbol().flatMap {
+        Unmanaged<AnyObject>.fromOpaque($0).takeRetainedValue() as? URL
+    }
+}
+
 @_silgen_name("HotUpdaterIsViewShown")
 private func hotUpdaterIsViewShownSymbol(_ object: AnyObject) -> ObjCBool
 
@@ -961,7 +981,8 @@ private func hotUpdaterGetMinBundleId() -> String {
         // only its own first content verifies it.
         recoveryManager.startMonitoring(
             bundleId: selection.launchedBundleId,
-            shouldRollback: selection.shouldRollbackOnCrash
+            shouldRollback: selection.shouldRollbackOnCrash,
+            launchURL: selection.bundleURL
         )
         runningLaunchSelection = selection
         currentLaunchSelection = selection
@@ -1047,7 +1068,7 @@ final class HotUpdaterRecoveryManager: NSObject {
         HotUpdaterCrashMarker.consume(at: crashMarkerURL)
     }
 
-    func startMonitoring(bundleId: String?, shouldRollback: Bool) {
+    func startMonitoring(bundleId: String?, shouldRollback: Bool, launchURL: URL?) {
         objc_sync_enter(self)
         defer { objc_sync_exit(self) }
 
@@ -1056,7 +1077,8 @@ final class HotUpdaterRecoveryManager: NSObject {
         let generation = hub.coordinator.startMonitoring(
             name: name,
             bundleId: bundleId,
-            shouldRollback: shouldRollback
+            shouldRollback: shouldRollback,
+            launchURL: launchURL
         )
         stopMonitoringWorkItem?.cancel()
         stopMonitoringWorkItem = nil
@@ -1260,18 +1282,23 @@ final class HotUpdaterRecoveryHub: NSObject {
     /// the instance whose bundle every frame of its JavaScript stack is in.
     /// Else, on a JavaScript thread whose runtime has no module yet, the one
     /// launch that can have thrown it, if there is exactly one.
-    private func fatalOwner(stack: Any?, afterLoadFailure: Bool) -> String? {
-        if let owner = hotUpdaterRuntimeImpl()?.environment.name ?? coordinator.attributedOwner {
-            return owner
+    /// With the owner, the bundle its failing runtime runs when known, which
+    /// tells a runtime of an earlier launch from the current one.
+    private func fatalOwner(stack: Any?, afterLoadFailure: Bool) -> (name: String, runtimeBundleURL: URL?)? {
+        if let owner = hotUpdaterRuntimeImpl()?.environment.name {
+            return (owner, hotUpdaterRuntimeBundleURL())
+        }
+        if let owner = coordinator.attributedOwner {
+            return (owner, nil)
         }
         if let owner = HotUpdaterJSStackOwner.owner(of: stack, resolve: {
             HotUpdaterNativeUpdateBridge.impl(forBundleURL: $0).environment.name
         }) {
-            return owner
+            return (owner, HotUpdaterJSStackOwner.bundleURLs(in: stack).first)
         }
         // RCTInstance reports a load failure's fatal on the main thread.
         guard afterLoadFailure || Thread.current.name == Self.runtimeThreadName else { return nil }
-        return coordinator.inferredFatalOwner()
+        return coordinator.inferredFatalOwner().map { ($0, nil) }
     }
 
     // MARK: - Fatal errors
@@ -1298,7 +1325,14 @@ final class HotUpdaterRecoveryHub: NSObject {
 
     private func handleFatal(stack: Any?, forward: @escaping () -> Void) {
         let afterLoadFailure = coordinator.takeDeferredLoadFailure()
-        let owner = fatalOwner(stack: stack, afterLoadFailure: afterLoadFailure)
+        let attributed = fatalOwner(stack: stack, afterLoadFailure: afterLoadFailure)
+        let owner = attributed?.name
+        if owner == nil, let claim = coordinator.earlierRuntimeClaim {
+            // The fatal of a runtime of an earlier launch: no launch is charged.
+            forward()
+            coordinator.clearAttribution(claim: claim)
+            return
+        }
         // A load failure no runtime claimed may be a named runtime's: then
         // main doesn't recover in-process, and the crash counts against
         // every unverified launch.
@@ -1329,7 +1363,7 @@ final class HotUpdaterRecoveryHub: NSObject {
         // there yet, and main's host must not reload for another instance's
         // fatal. React Native's default crashes the process, and the crash is
         // this instance's alone.
-        let claim = coordinator.chargeFatal(owner: owner)
+        let claim = coordinator.chargeFatal(owner: owner, runtimeBundleURL: attributed?.runtimeBundleURL)
         forward()
         if let claim {
             coordinator.clearAttribution(claim: claim)
@@ -1411,10 +1445,18 @@ final class HotUpdaterRecoveryHub: NSObject {
         }
 
         if let owner, owner != mainName {
+            let runtimeBundleURL = (notification.object as AnyObject?).flatMap(hotUpdaterBundleURL(forRootObject:))
+                ?? (notification.userInfo?["bridge"] as AnyObject?).flatMap(hotUpdaterBundleURL(forRootObject:))
+            // A runtime of an earlier launch fails, not the current one: the
+            // fatal that follows charges no launch.
+            guard coordinator.isCurrentRuntime(name: owner, runtimeBundleURL: runtimeBundleURL) else {
+                coordinator.chargeFatal(owner: owner, runtimeBundleURL: runtimeBundleURL)
+                return
+            }
             guard let generation = coordinator.awaitingContentGeneration(name: owner) else { return }
             // React Native's fatal follows and crashes the process: charge
             // this instance alone, so that fatal is attributed to it too.
-            coordinator.chargeFatal(owner: owner)
+            coordinator.chargeFatal(owner: owner, runtimeBundleURL: runtimeBundleURL)
             coordinator.stopAwaitingContent(name: owner, generation: generation)
             releaseHeldContent()
             return

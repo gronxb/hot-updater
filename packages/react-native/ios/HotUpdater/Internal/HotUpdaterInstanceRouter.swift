@@ -73,7 +73,7 @@ final class HotUpdaterInstanceRouter {
 
     /// File URLs compare by their resolved path, since React Native may hold
     /// `/private/var/...` where Hot Updater handed out `/var/...`.
-    private static func comparableKey(_ url: URL) -> String {
+    static func comparableKey(_ url: URL) -> String {
         url.isFileURL ? "file://" + comparablePath(url) : url.absoluteString
     }
 

@@ -661,6 +661,65 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(!second.coordinator.deferUnclaimedLoadFailure())
     }
 
+    /// A runtime of an earlier launch of the widget, still being torn down
+    /// after a later launch started, reports an error: it is no current
+    /// launch's, and none is charged.
+    @Test
+    func anErrorOfAnEarlierRuntimeChargesNoCurrentLaunch() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        process.storages[Self.main]?.markLaunchStarted(bundleId: "main-next")
+        #expect(coordinator.arm(name: Self.widget))
+        let current = try #require(scene.launchURL(Self.widget, bundleId: "widget-next"))
+        let earlier = try #require(scene.launchURL(Self.widget, bundleId: "widget-stable"))
+
+        #expect(coordinator.isCurrentRuntime(name: Self.widget, runtimeBundleURL: current))
+        // Compared as the router does: the same file through /private.
+        #expect(coordinator.isCurrentRuntime(
+            name: Self.widget,
+            runtimeBundleURL: URL(fileURLWithPath: current.resolvingSymlinksInPath().path)
+        ))
+        #expect(!coordinator.isCurrentRuntime(name: Self.widget, runtimeBundleURL: earlier))
+        #expect(coordinator.isCurrentRuntime(name: Self.widget, runtimeBundleURL: nil))
+        #expect(coordinator.isCurrentRuntime(name: Self.main, runtimeBundleURL: earlier))
+
+        let claim = try #require(coordinator.chargeFatal(owner: Self.widget, runtimeBundleURL: earlier))
+        #expect(coordinator.earlierRuntimeClaim == claim)
+        #expect(coordinator.attributedOwner == nil)
+        #expect(process.sink.attribution == HotUpdaterRecoveryCoordinator.attributedWithoutSlot)
+        #expect(markers(coordinator).isEmpty)
+        // The exception the forwarded fatal raises charges nobody either.
+        coordinator.chargeUncaughtException()
+        #expect(!FileManager.default.fileExists(atPath: scene.markerURL(Self.widget).path))
+        #expect(!FileManager.default.fileExists(atPath: scene.markerURL(Self.main).path))
+        // Neither started launch is left for the unfinished-launch rule.
+        #expect(scene.metadata(Self.widget)?.launchInProgress == false)
+        #expect(scene.metadata(Self.main)?.launchInProgress == false)
+
+        let next = scene.nextLaunch()
+        #expect(next[Self.widget]?.launchedBundleId == "widget-next")
+        #expect(next[Self.main]?.launchedBundleId == "main-next")
+        #expect(scene.crashHistory(Self.widget).bundles.isEmpty)
+        #expect(scene.crashHistory(Self.widget).interruptedLaunch == nil)
+
+        // If the process lives on, both start again.
+        coordinator.clearAttribution(claim: claim)
+        #expect(coordinator.earlierRuntimeClaim == nil)
+        #expect(coordinator.launch(named: Self.widget)?.isArmed == true)
+    }
+
+    @Test
+    func anErrorOfTheCurrentRuntimeStillChargesItsLaunch() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let current = try #require(scene.launchURL(Self.widget, bundleId: "widget-next"))
+        process.coordinator.chargeFatal(owner: Self.widget, runtimeBundleURL: current)
+        #expect(scene.nextLaunch()[Self.widget]?.launchedBundleId == "widget-stable")
+    }
+
     @Test
     func mainOnlyContentIsMainsAtOnce() throws {
         let sink = RecordingSlotSink()
@@ -809,6 +868,13 @@ private final class Scene {
         try? FileManager.default.removeItem(at: documents)
     }
 
+    /// The bundle file `name` launches for `bundleId`.
+    func launchURL(_ name: String, bundleId: String) -> URL? {
+        storeURL(environments[name]!)
+            .appendingPathComponent(bundleId, isDirectory: true)
+            .appendingPathComponent("index.ios.bundle")
+    }
+
     func markerURL(_ name: String) -> URL {
         HotUpdaterCrashMarker.url(for: environments[name]!, documentsPath: documents.path)
     }
@@ -839,7 +905,8 @@ private final class Scene {
             coordinator.startMonitoring(
                 name: name,
                 bundleId: selection.launchedBundleId,
-                shouldRollback: selection.shouldRollbackOnCrash
+                shouldRollback: selection.shouldRollbackOnCrash,
+                launchURL: selection.bundleURL
             )
             storages[name] = storage
         }

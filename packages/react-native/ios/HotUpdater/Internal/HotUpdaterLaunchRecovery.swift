@@ -121,6 +121,8 @@ final class HotUpdaterRecoveryCoordinator {
         fileprivate(set) var hasResolvedRuntime = false
         /// This launch's first content appeared: its runtime finished loading.
         fileprivate(set) var hasShownContent = false
+        /// The bundle URL this launch handed out to React Native.
+        fileprivate(set) var launchURL: URL?
 
         init(name: String, markerURL: URL, storage: BundleStorageService) {
             self.name = name
@@ -155,6 +157,8 @@ final class HotUpdaterRecoveryCoordinator {
     /// earlier one's handler returns, and only the latest releases them all.
     private var claimGeneration = 0
     private var deferredLoadFailure = false
+    /// The current claim is of a runtime no current launch runs.
+    private var isEarlierRuntimeClaim = false
     /// First content no runtime claims yet, held while a named launch's
     /// runtime may still turn out to be its own.
     private var heldContent: [HeldContent] = []
@@ -218,10 +222,11 @@ final class HotUpdaterRecoveryCoordinator {
 
     /// Starts watching a launch of `name`; returns its generation.
     @discardableResult
-    func startMonitoring(name: String, bundleId: String?, shouldRollback: Bool) -> Int {
+    func startMonitoring(name: String, bundleId: String?, shouldRollback: Bool, launchURL: URL? = nil) -> Int {
         withLock {
             guard let launch = launches[name] else { return 0 }
             launch.generation += 1
+            launch.launchURL = launchURL
             launch.bundleId = bundleId
             launch.shouldRollback = shouldRollback
             launch.isArmed = false
@@ -488,16 +493,75 @@ final class HotUpdaterRecoveryCoordinator {
     /// slot (see `attribute(to:)`). Unattributed: every unverified launch's.
     /// Returns the claim to release if the process lives on.
     @discardableResult
-    func chargeFatal(owner: String?) -> Int? {
+    ///
+    /// `runtimeBundleURL` is the bundle the failing runtime runs, when known.
+    /// A named instance's runtime of an earlier launch, still being torn down
+    /// after a later launch started, runs another bundle: its error charges
+    /// no launch at all (see `attributeToEarlierRuntime`).
+    func chargeFatal(owner: String?, runtimeBundleURL: URL? = nil) -> Int? {
         withLock {
             guard let owner, let launch = launches[owner] else {
                 chargeUnattributedCrash()
                 return nil
             }
+            guard isCurrentRuntime(of: launch, runtimeBundleURL: runtimeBundleURL) else {
+                return attributeToEarlierRuntime()
+            }
             if launch.isMonitoring {
                 writeMarker(launch)
             }
             return attribute(to: owner)
+        }
+    }
+
+    /// Whether a runtime that runs `runtimeBundleURL` is `name`'s current
+    /// launch: false only for a named instance whose launch handed out
+    /// another bundle. Main, and an unknown URL, count as current.
+    func isCurrentRuntime(name: String, runtimeBundleURL: URL?) -> Bool {
+        withLock {
+            guard let launch = launches[name] else { return true }
+            return isCurrentRuntime(of: launch, runtimeBundleURL: runtimeBundleURL)
+        }
+    }
+
+    private func isCurrentRuntime(of launch: Launch, runtimeBundleURL: URL?) -> Bool {
+        guard !launch.isMain, let runtimeBundleURL, let launchURL = launch.launchURL else {
+            return true
+        }
+        return HotUpdaterInstanceRouter.comparableKey(runtimeBundleURL)
+            == HotUpdaterInstanceRouter.comparableKey(launchURL)
+    }
+
+    /// The crash about to happen comes from a runtime no current launch runs:
+    /// no marker, no native slot, and every launch that started forgets it,
+    /// so no current launch is rolled back for it. Returns the claim, as
+    /// `attribute(to:)` does.
+    private func attributeToEarlierRuntime() -> Int {
+        claimGeneration += 1
+        attributedName = nil
+        isEarlierRuntimeClaim = true
+        attributedSlot = Self.attributedWithoutSlot
+        sink.attributeCrash(toSlot: attributedSlot)
+        disarm(launches.values)
+        return claimGeneration
+    }
+
+    /// The claim of an earlier runtime's crash in progress, if any: a fatal
+    /// that follows it unattributed, such as RCTInstance's after a load
+    /// failure, belongs to that runtime too.
+    var earlierRuntimeClaim: Int? {
+        withLock { isEarlierRuntimeClaim ? claimGeneration : nil }
+    }
+
+    private func disarm<Launches: Sequence>(_ launches: Launches) where Launches.Element == Launch {
+        for launch in launches {
+            guard launch.isMonitoring, launch.isAwaitingContent, let bundleId = launch.bundleId else {
+                continue
+            }
+            let wasStarted = launch.storage.clearLaunchStarted(bundleId: bundleId)
+            disarmed.append((launch.name, launch.generation, bundleId, wasStarted, launch.isArmed))
+            launch.isArmed = false
+            mirror(launch)
         }
     }
 
@@ -514,17 +578,10 @@ final class HotUpdaterRecoveryCoordinator {
             guard launches[owner] != nil else { return nil }
             claimGeneration += 1
             attributedName = owner
+            isEarlierRuntimeClaim = false
             attributedSlot = launches[owner]?.slot ?? Self.attributedWithoutSlot
             sink.attributeCrash(toSlot: attributedSlot)
-            for launch in launches.values where launch.name != owner {
-                guard launch.isMonitoring, launch.isAwaitingContent, let bundleId = launch.bundleId else {
-                    continue
-                }
-                let wasStarted = launch.storage.clearLaunchStarted(bundleId: bundleId)
-                disarmed.append((launch.name, launch.generation, bundleId, wasStarted, launch.isArmed))
-                launch.isArmed = false
-                mirror(launch)
-            }
+            disarm(launches.values.filter { $0.name != owner })
             return claimGeneration
         }
     }
@@ -538,6 +595,7 @@ final class HotUpdaterRecoveryCoordinator {
         withLock {
             guard claim == claimGeneration else { return }
             attributedName = nil
+            isEarlierRuntimeClaim = false
             attributedSlot = Self.unattributed
             sink.attributeCrash(toSlot: attributedSlot)
             for entry in disarmed {
@@ -585,6 +643,10 @@ final class HotUpdaterRecoveryCoordinator {
                 if launch.isMonitoring {
                     writeMarker(launch)
                 }
+                return
+            }
+            // The exception the forwarded fatal of an earlier runtime raises.
+            if isEarlierRuntimeClaim {
                 return
             }
             chargeUnattributedCrash()
