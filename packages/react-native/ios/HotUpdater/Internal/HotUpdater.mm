@@ -88,16 +88,27 @@ struct HotUpdaterCrashSlotData {
 // rewrites it. The writer makes the sequence odd while it copies, and the
 // handler keeps a copy only when the sequence was even and unchanged across
 // it.
+// The published copy of HotUpdaterCrashSlotData. Every field is atomic,
+// copied with relaxed loads and stores, so a reader racing a writer reads
+// defined (if mixed) values, which the sequence then rejects.
+struct HotUpdaterAtomicCrashSlotData {
+  std::atomic<char> markerPath[PATH_MAX];
+  std::atomic<char> bundleId[kHotUpdaterMaxBundleIdLength];
+  std::atomic<int> shouldRollback;
+};
+
 struct HotUpdaterCrashSlot {
   std::atomic<uint32_t> sequence;
-  HotUpdaterCrashSlotData data;
+  HotUpdaterAtomicCrashSlotData data;
 };
 // C++11, as old React Native builds compile it: the handler needs a
 // lock-free sequence.
 static_assert(ATOMIC_INT_LOCK_FREE == 2 && sizeof(uint32_t) == sizeof(int), "the crash handler needs a lock-free sequence");
+static_assert(ATOMIC_CHAR_LOCK_FREE == 2, "the crash handler needs lock-free slot bytes");
 
 
-HotUpdaterCrashSlot gHotUpdaterCrashSlots[kHotUpdaterCrashSlotCount] = {};
+// Zero-initialized: static storage. Every slot starts free.
+HotUpdaterCrashSlot gHotUpdaterCrashSlots[kHotUpdaterCrashSlotCount];
 // The sequence lock takes one writer at a time; every rewrite of a slot holds
 // this lock. Never taken by the signal handler.
 std::mutex gHotUpdaterCrashSlotWriters;
@@ -165,6 +176,38 @@ void HotUpdaterSafeCopy(char *destination, size_t destinationSize, const char *s
   destination[index] = '\0';
 }
 
+void HotUpdaterStoreBytes(std::atomic<char> *destination, const char *source, size_t size)
+{
+  for (size_t index = 0; index < size; ++index) {
+    destination[index].store(source[index], std::memory_order_relaxed);
+  }
+}
+
+void HotUpdaterLoadBytes(const std::atomic<char> *source, char *destination, size_t size)
+{
+  for (size_t index = 0; index < size; ++index) {
+    destination[index] = source[index].load(std::memory_order_relaxed);
+  }
+}
+
+void HotUpdaterStoreCrashSlotData(HotUpdaterAtomicCrashSlotData &destination, const HotUpdaterCrashSlotData &source)
+{
+  HotUpdaterStoreBytes(destination.markerPath, source.markerPath, sizeof(source.markerPath));
+  HotUpdaterStoreBytes(destination.bundleId, source.bundleId, sizeof(source.bundleId));
+  destination.shouldRollback.store(source.shouldRollback, std::memory_order_relaxed);
+}
+
+void HotUpdaterLoadCrashSlotData(const HotUpdaterAtomicCrashSlotData &source, HotUpdaterCrashSlotData &destination)
+{
+  HotUpdaterLoadBytes(source.markerPath, destination.markerPath, sizeof(destination.markerPath));
+  HotUpdaterLoadBytes(source.bundleId, destination.bundleId, sizeof(destination.bundleId));
+  destination.shouldRollback = source.shouldRollback.load(std::memory_order_relaxed);
+  // A copy taken mid-rewrite is rejected by the sequence, but the strings must
+  // still end inside their buffers.
+  destination.markerPath[sizeof(destination.markerPath) - 1] = '\0';
+  destination.bundleId[sizeof(destination.bundleId) - 1] = '\0';
+}
+
 constexpr int kHotUpdaterKeepShouldRollback = -1;
 
 // Rewrites a slot; a null path or bundle id, or kHotUpdaterKeepShouldRollback,
@@ -177,7 +220,7 @@ void HotUpdaterRewriteCrashSlot(HotUpdaterCrashSlot &slot,
 {
   std::lock_guard<std::mutex> writer(gHotUpdaterCrashSlotWriters);
   HotUpdaterCrashSlotData next;
-  std::memcpy(&next, &slot.data, sizeof(next));
+  HotUpdaterLoadCrashSlotData(slot.data, next);
   if (markerPath) {
     HotUpdaterSafeCopy(next.markerPath, sizeof(next.markerPath), markerPath);
   }
@@ -191,7 +234,7 @@ void HotUpdaterRewriteCrashSlot(HotUpdaterCrashSlot &slot,
   const uint32_t sequence = slot.sequence.load(std::memory_order_relaxed);
   slot.sequence.store(sequence + 1, std::memory_order_relaxed);
   std::atomic_thread_fence(std::memory_order_release);
-  std::memcpy(&slot.data, &next, sizeof(next));
+  HotUpdaterStoreCrashSlotData(slot.data, next);
   slot.sequence.store(sequence + 2, std::memory_order_release);
 }
 
@@ -204,7 +247,7 @@ bool HotUpdaterReadCrashSlot(const HotUpdaterCrashSlot &slot, HotUpdaterCrashSlo
     if ((before & 1U) != 0) {
       continue;
     }
-    std::memcpy(&snapshot, &slot.data, sizeof(snapshot));
+    HotUpdaterLoadCrashSlotData(slot.data, snapshot);
     std::atomic_thread_fence(std::memory_order_acquire);
     if (slot.sequence.load(std::memory_order_relaxed) == before) {
       return true;

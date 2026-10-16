@@ -33,18 +33,30 @@ struct SlotData {
   int writesWhenVerified;
 };
 
+// The published copy of SlotData. Every field is atomic, copied with relaxed
+// loads and stores, so a reader racing a writer reads defined (if mixed)
+// values, which the sequence then rejects.
+struct AtomicSlotData {
+  std::atomic<char> crashMarkerPath[PATH_MAX];
+  std::atomic<char> bundleId[kMaxBundleIdLength];
+  std::atomic<int> shouldRollback;
+  std::atomic<int> writesWhenVerified;
+};
+
 // A sequence lock: a crash on any thread may read a slot while another thread
 // rewrites it. The writer makes the sequence odd while it copies, and a
 // reader keeps a copy only when the sequence was even and unchanged across it.
 struct Slot {
   std::atomic<uint32_t> sequence;
-  SlotData data;
+  AtomicSlotData data;
 };
 // C++11, as old React Native builds compile it: the handler needs a
 // lock-free sequence.
 static_assert(ATOMIC_INT_LOCK_FREE == 2 && sizeof(uint32_t) == sizeof(int), "the crash handler needs a lock-free sequence");
+static_assert(ATOMIC_CHAR_LOCK_FREE == 2, "the crash handler needs lock-free slot bytes");
 
-Slot gSlots[kSlotCount] = {};
+// Zero-initialized: static storage. Every slot starts free.
+Slot gSlots[kSlotCount];
 // The sequence lock takes one writer at a time; launch preparation and the
 // main thread can update one slot at once. Never taken by the handler.
 std::mutex gSlotWriters[kSlotCount];
@@ -129,13 +141,43 @@ int attributedSlot() {
 
 // Copies a consistent snapshot of the slot, or returns false while it is
 // being rewritten.
+void storeBytes(std::atomic<char> *destination, const char *source, size_t size) {
+  for (size_t index = 0; index < size; ++index) {
+    destination[index].store(source[index], std::memory_order_relaxed);
+  }
+}
+
+void loadBytes(const std::atomic<char> *source, char *destination, size_t size) {
+  for (size_t index = 0; index < size; ++index) {
+    destination[index] = source[index].load(std::memory_order_relaxed);
+  }
+}
+
+void storeSlotData(AtomicSlotData &destination, const SlotData &source) {
+  storeBytes(destination.crashMarkerPath, source.crashMarkerPath, sizeof(source.crashMarkerPath));
+  storeBytes(destination.bundleId, source.bundleId, sizeof(source.bundleId));
+  destination.shouldRollback.store(source.shouldRollback, std::memory_order_relaxed);
+  destination.writesWhenVerified.store(source.writesWhenVerified, std::memory_order_relaxed);
+}
+
+void loadSlotData(const AtomicSlotData &source, SlotData &destination) {
+  loadBytes(source.crashMarkerPath, destination.crashMarkerPath, sizeof(destination.crashMarkerPath));
+  loadBytes(source.bundleId, destination.bundleId, sizeof(destination.bundleId));
+  destination.shouldRollback = source.shouldRollback.load(std::memory_order_relaxed);
+  destination.writesWhenVerified = source.writesWhenVerified.load(std::memory_order_relaxed);
+  // A copy taken mid-rewrite is rejected by the sequence, but the strings must
+  // still end inside their buffers.
+  destination.crashMarkerPath[sizeof(destination.crashMarkerPath) - 1] = '\0';
+  destination.bundleId[sizeof(destination.bundleId) - 1] = '\0';
+}
+
 bool readSlot(const Slot &slot, SlotData &snapshot) {
   for (int attempt = 0; attempt < 4; ++attempt) {
     const uint32_t before = slot.sequence.load(std::memory_order_acquire);
     if ((before & 1U) != 0) {
       continue;
     }
-    std::memcpy(&snapshot, &slot.data, sizeof(SlotData));
+    loadSlotData(slot.data, snapshot);
     std::atomic_thread_fence(std::memory_order_acquire);
     if (slot.sequence.load(std::memory_order_relaxed) == before) {
       return true;
@@ -273,7 +315,7 @@ Java_com_hotupdater_HotUpdaterRecoveryNative_nativeUpdateSlot(
   const uint32_t sequence = slot.sequence.load(std::memory_order_relaxed);
   slot.sequence.store(sequence + 1, std::memory_order_relaxed);
   std::atomic_thread_fence(std::memory_order_release);
-  std::memcpy(&slot.data, &next, sizeof(SlotData));
+  storeSlotData(slot.data, next);
   slot.sequence.store(sequence + 2, std::memory_order_release);
 }
 
