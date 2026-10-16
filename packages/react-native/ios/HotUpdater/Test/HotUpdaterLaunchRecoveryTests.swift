@@ -546,6 +546,15 @@ struct HotUpdaterLaunchRecoveryTests {
             inference: { nil }
         )
         #expect(module?.attribution == .runtimeModule)
+        // A stack in main's bundle is main's, even during the widget's claim.
+        let mainStack = Coordinator.fatalOwner(
+            module: nil,
+            stack: (Self.main, nil),
+            claim: Self.widget,
+            inference: { nil }
+        )
+        #expect(mainStack?.name == Self.main)
+        #expect(mainStack?.attribution == .stack)
         #expect(Coordinator.fatalOwner(module: nil, stack: nil, claim: Self.main, inference: { Self.widget })?.attribution == .claim)
         #expect(Coordinator.fatalOwner(module: nil, stack: nil, claim: nil, inference: { Self.widget })?.attribution == .inference)
         #expect(Coordinator.fatalOwner(module: nil, stack: nil, claim: nil, inference: { nil }) == nil)

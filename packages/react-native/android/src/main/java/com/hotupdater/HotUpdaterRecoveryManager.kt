@@ -891,8 +891,12 @@ internal class HotUpdaterRecoveryManager(
                 val owner =
                     when {
                         !isJavaScript -> null
+
                         claim == null -> javaScriptErrorOwner(throwable)
-                        else -> attribution.namedInstanceOfStack(javaScriptStacks(throwable))
+
+                        // During another claim, a stack of main's own bundle is
+                        // main's distinct error, not the claim's.
+                        else -> attribution.instanceOfStack(javaScriptStacks(throwable))
                     }
                 if (owner != null) {
                     claimJavaScriptError(throwable as? Exception, owner).recovered

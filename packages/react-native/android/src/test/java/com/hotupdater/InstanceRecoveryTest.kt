@@ -762,6 +762,30 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `main's own JavaScript error during a named claim is main's`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val mainBundle = stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+        assertTrue(crashMarker(context, widget).delete())
+
+        // A distinct error of main's runtime, whose stack runs from main's bundle.
+        val error =
+            JavascriptException("Error: main failed, stack:\nanonymous@1:20480\n").apply {
+                extraDataAsJson =
+                    JSONObject()
+                        .put("rawStack", "Error: main failed\n    at anonymous (address at ${mainBundle.absolutePath}:1:20480)")
+                        .toString()
+            }
+        HotUpdaterRecoveryManager.chargeUncaughtException(error)
+
+        assertEquals(PendingCrashRecovery("main-bundle", true), PendingCrashRecovery.loadFromFile(crashMarker(context, main)))
+        assertFalse(crashMarker(context, widget).exists())
+    }
+
+    @Test
     fun `the crash a claimed error ends in stays that claim's`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, main, "main-bundle")

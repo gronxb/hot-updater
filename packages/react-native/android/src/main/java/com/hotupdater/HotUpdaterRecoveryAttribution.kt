@@ -71,14 +71,21 @@ internal class HotUpdaterRecoveryAttribution(
         fun namedInstanceOfStack(
             stacks: List<String>,
             resolve: (String) -> String,
+        ): String? = instanceOfStack(stacks, resolve)?.takeIf { it != HotUpdaterInstanceEnvironment.MAIN_NAME }
+
+        /**
+         * The instance, main included, whose bundle every located frame of
+         * [stacks] runs from; null when no frame is located or they name more
+         * than one instance. Main's frames are main's own bundle or any the
+         * named instances don't know, as [HotUpdaterInstanceRegistry.resolveName] has it.
+         */
+        fun instanceOfStack(
+            stacks: List<String>,
+            resolve: (String) -> String,
         ): String? {
             val sources = stacks.flatMap(::frameSources).distinct()
             if (sources.isEmpty()) return null
-            return sources
-                .map(resolve)
-                .toSet()
-                .singleOrNull()
-                ?.takeIf { it != HotUpdaterInstanceEnvironment.MAIN_NAME }
+            return sources.map(resolve).toSet().singleOrNull()
         }
 
         /**
@@ -194,6 +201,12 @@ internal class HotUpdaterRecoveryAttribution(
     fun namedInstanceOfStack(stacks: List<String>): String? {
         val context = context ?: return null
         return namedInstanceOfStack(stacks) { resolveName(context, it) }
+    }
+
+    /** [instanceOfStack] with this process's instances. */
+    fun instanceOfStack(stacks: List<String>): String? {
+        val context = context ?: return null
+        return instanceOfStack(stacks) { resolveName(context, it) }
     }
 
     /** The instance whose bundle runs from [sourceURL], or null when it isn't known. */
