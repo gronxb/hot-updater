@@ -793,6 +793,33 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(markers(coordinator)[widgetSlot] == true)
     }
 
+    /// A named launch that begins after main's fatal claimed the crash, but
+    /// before the process ends, starts disarmed and joins what the claim
+    /// stopped.
+    @Test
+    func aLaunchThatBeginsDuringAnotherInstancesClaimStartsOnlyOnRelease() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let claim = try #require(coordinator.chargeFatal(owner: Self.main))
+
+        let generation = coordinator.startMonitoring(
+            name: Self.widget,
+            bundleId: "widget-next",
+            shouldRollback: true,
+            launchURL: scene.launchURL(Self.widget, bundleId: "widget-next")
+        )
+        #expect(!coordinator.arm(name: Self.widget, generation: generation))
+        #expect(scene.metadata(Self.widget)?.launchInProgress == false)
+        #expect(markers(coordinator) == [HotUpdaterRecoveryCoordinator.mainSlot: true])
+        #expect(scene.nextLaunch()[Self.widget]?.launchedBundleId == "widget-next")
+
+        coordinator.clearAttribution(claim: claim)
+        #expect(scene.metadata(Self.widget)?.launchInProgress == true)
+        #expect(coordinator.launch(named: Self.widget)?.isArmed == true)
+    }
+
     @Test
     func anErrorOfTheCurrentRuntimeStillChargesItsLaunch() throws {
         let scene = try Scene()

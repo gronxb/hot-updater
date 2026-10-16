@@ -140,8 +140,11 @@ internal class HotUpdaterRecoveryManager(
                 registeredRuntimeIds.clear()
                 launchState.start(bundleId, shouldRollback)
                 armed = isMain
-                endedByAnotherInstance = false
                 launchStartedAction = null
+                // A launch that starts while another instance's claimed error
+                // may still end the process joins that claim: it is armed only
+                // once the claim is released and the process lived on.
+                endedByAnotherInstance = joinActiveClaim(this, generation)
                 liveManagers[name] = this
                 updateNativeLaunchStateLocked()
                 if (shouldRollback && armed) {
@@ -771,6 +774,28 @@ internal class HotUpdaterRecoveryManager(
                 HotUpdaterMainThread.android.postDelayed({ releaseClaim(generation) }, HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS)
             }
             return liveManagers[instanceName]?.chargeCrash(exception) == true
+        }
+
+        /**
+         * Adds the launch of [generation] of [manager] to the claim still
+         * active, unless the claim is its own instance's; true when it joined.
+         * Checked under the claim's lock, which the claim takes after it set
+         * itself, so a launch that started after the claim left the live
+         * launches alone joins it here.
+         */
+        private fun joinActiveClaim(
+            manager: HotUpdaterRecoveryManager,
+            generation: Long,
+        ): Boolean {
+            val claim =
+                synchronized(claimLock) {
+                    val owner = slots.attributedName() ?: return false
+                    if (owner == manager.name) return false
+                    disarmedByClaim[manager] = generation
+                    claimGeneration
+                }
+            HotUpdaterMainThread.android.postDelayed({ releaseClaim(claim) }, HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS)
+            return true
         }
 
         /**

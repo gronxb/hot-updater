@@ -459,6 +459,24 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a launch that starts during another instance's claimed error joins the claim`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+
+        // Main starts after the claim left the live launches alone, before the
+        // error ends the process; its view is already shown.
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        assertFalse(metadata(context, main).launchInProgress)
+
+        // The error did not end the process after all.
+        HotUpdaterRecoveryManager.releaseClaim()
+        assertTrue(metadata(context, main).launchInProgress)
+    }
+
+    @Test
     fun `launches left alone by overlapping claims all count again when the last claim is released`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val chat = namedEnvironment("chat")
