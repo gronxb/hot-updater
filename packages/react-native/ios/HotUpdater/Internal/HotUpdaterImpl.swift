@@ -1534,7 +1534,10 @@ final class HotUpdaterRecoveryHub: NSObject {
     /// Posted by HotUpdater.mm when a runtime's module knows its instance.
     @objc private func handleRuntimeDidResolve(_ notification: Notification) {
         if let impl = notification.userInfo?["impl"] as? HotUpdaterImpl {
-            coordinator.runtimeResolved(name: impl.environment.name)
+            coordinator.runtimeResolved(
+                name: impl.environment.name,
+                runtimeBundleURL: notification.userInfo?["bundleURL"] as? URL
+            )
         }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }

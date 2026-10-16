@@ -671,9 +671,18 @@ final class HotUpdaterRecoveryCoordinator {
 
     /// The runtime of `name`'s launch now has a module, which attributes its
     /// fatals from here on.
-    func runtimeResolved(name: String) {
+    ///
+    /// `runtimeBundleURL` is the bundle the resolving runtime runs: a module
+    /// of a runtime of an earlier launch, resolving late, doesn't resolve the
+    /// current launch, whose own runtime may still render or fail before it
+    /// has a module.
+    func runtimeResolved(name: String, runtimeBundleURL: URL? = nil) {
         withLock {
-            launches[name]?.hasResolvedRuntime = true
+            guard let launch = launches[name],
+                  isCurrentRuntime(of: launch, runtimeBundleURL: runtimeBundleURL) else {
+                return
+            }
+            launch.hasResolvedRuntime = true
         }
     }
 

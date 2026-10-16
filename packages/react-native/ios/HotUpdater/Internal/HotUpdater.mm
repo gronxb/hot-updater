@@ -672,7 +672,7 @@ RCT_EXPORT_MODULE();
     if (resolvedNow) {
         [[NSNotificationCenter defaultCenter] postNotificationName:HotUpdaterRuntimeDidResolveNotification
                                                             object:self
-                                                          userInfo:@{@"impl" : impl}];
+                                                          userInfo:@{@"impl" : impl, @"bundleURL" : bundleURL}];
     }
     return impl;
 }

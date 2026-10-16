@@ -710,6 +710,28 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(coordinator.launch(named: Self.widget)?.isArmed == true)
     }
 
+    /// A module of an earlier runtime of the widget resolves late: the
+    /// current launch's runtime is still unknown, so content nothing claims
+    /// is still held for it and an unclaimed load failure still deferred.
+    @Test
+    func aModuleOfAnEarlierRuntimeDoesNotResolveTheCurrentLaunch() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let current = try #require(scene.launchURL(Self.widget, bundleId: "widget-next"))
+        let earlier = try #require(scene.launchURL(Self.widget, bundleId: "widget-stable"))
+
+        coordinator.runtimeResolved(name: Self.widget, runtimeBundleURL: earlier)
+        #expect(coordinator.holdUnclaimedContent(NSObject()))
+        #expect(coordinator.deferUnclaimedLoadFailure())
+        _ = coordinator.takeDeferredLoadFailure()
+
+        coordinator.runtimeResolved(name: Self.widget, runtimeBundleURL: current)
+        #expect(!coordinator.holdUnclaimedContent(NSObject()))
+        #expect(!coordinator.deferUnclaimedLoadFailure())
+    }
+
     @Test
     func anErrorOfTheCurrentRuntimeStillChargesItsLaunch() throws {
         let scene = try Scene()
