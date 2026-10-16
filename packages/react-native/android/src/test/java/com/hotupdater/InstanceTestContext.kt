@@ -1,5 +1,6 @@
 package com.hotupdater
 
+import android.content.ContentResolver
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.SharedPreferences
@@ -26,6 +27,9 @@ internal class InstanceTestContext(
     override fun getApplicationContext(): Context = this
 
     override fun getPackageName(): String = "com.example.app"
+
+    /** No `ANDROID_ID`: settings read as unset, as on a device without one. */
+    override fun getContentResolver(): ContentResolver? = null
 
     override fun getFilesDir(): File = filesDirectory
 
