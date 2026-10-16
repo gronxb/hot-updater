@@ -856,6 +856,43 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(coordinator.launch(named: Self.widget)?.isArmed == true)
     }
 
+    /// While the widget's host is torn down and recreated, a surface of the
+    /// earlier runtime starts or shows content after the replacement launch
+    /// began: it neither starts nor verifies the replacement, nor main.
+    @Test
+    func viewsOfAnEarlierRuntimeNeitherStartNorVerifyTheCurrentLaunch() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        var clock: TimeInterval = 0
+        let process = scene.launch(now: { clock })
+        let coordinator = process.coordinator
+        let current = try #require(scene.launchURL(Self.widget, bundleId: "widget-next"))
+        let earlier = try #require(scene.launchURL(Self.widget, bundleId: "widget-stable"))
+        let generation = try #require(coordinator.generations()[Self.widget])
+
+        #expect(!coordinator.arm(name: Self.widget, generation: generation, runtimeBundleURL: earlier))
+        #expect(scene.metadata(Self.widget)?.launchInProgress == false)
+        #expect(coordinator.contentAppeared(owner: Self.widget, runtimeBundleURL: earlier) == nil)
+        #expect(scene.metadata(Self.widget)?.verificationPending == true)
+        #expect(scene.metadata(Self.main)?.verificationPending == true)
+
+        // Held content that turns out to be the earlier runtime's is dropped.
+        let earlierView = NSObject()
+        #expect(coordinator.holdUnclaimedContent(earlierView))
+        coordinator.runtimeResolved(name: Self.widget, runtimeBundleURL: current)
+        clock += HotUpdaterRecoveryCoordinator.heldContentBound
+        #expect(coordinator.releaseHeldContent(
+            owner: { $0 === earlierView ? Self.widget : nil },
+            runtimeBundleURL: { _ in earlier }
+        ).isEmpty)
+        #expect(scene.metadata(Self.widget)?.verificationPending == true)
+
+        // The current runtime's views do.
+        #expect(coordinator.arm(name: Self.widget, generation: generation, runtimeBundleURL: current))
+        #expect(coordinator.contentAppeared(owner: Self.widget, runtimeBundleURL: current) != nil)
+        #expect(scene.metadata(Self.widget)?.verificationPending == false)
+    }
+
     @Test
     func anErrorOfTheCurrentRuntimeStillChargesItsLaunch() throws {
         let scene = try Scene()

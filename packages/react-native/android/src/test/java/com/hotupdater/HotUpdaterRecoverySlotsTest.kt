@@ -112,6 +112,16 @@ class HotUpdaterRecoverySlotsTest {
         assertNull(slots.attributedName())
     }
 
+    @Test
+    fun `a released claim claims nothing`() {
+        val slots = HotUpdaterRecoverySlots(clock = { 1_000L })
+        slots.attribute(WIDGET)
+
+        slots.clearAttribution()
+
+        assertNull(slots.attributedName())
+    }
+
     private fun launch(
         name: String,
         shouldRollback: Boolean,

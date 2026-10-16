@@ -499,6 +499,24 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a crash after a released claim charges the launches it can be blamed on`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+        assertTrue(crashMarker(context, widget).delete())
+
+        // The error did not end the process; then something else crashes it.
+        HotUpdaterRecoveryManager.releaseClaim()
+        HotUpdaterRecoveryManager.chargeUncaughtException(IllegalStateException("native failure"))
+
+        assertEquals(PendingCrashRecovery("main-bundle", true), PendingCrashRecovery.loadFromFile(crashMarker(context, main)))
+        assertEquals(PendingCrashRecovery("widget-bundle", true), PendingCrashRecovery.loadFromFile(crashMarker(context, widget)))
+    }
+
+    @Test
     fun `launches left alone by overlapping claims all count again when the last claim is released`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val chat = namedEnvironment("chat")

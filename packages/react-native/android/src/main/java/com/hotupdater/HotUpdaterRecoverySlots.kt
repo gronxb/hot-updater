@@ -66,6 +66,12 @@ internal class HotUpdaterRecoverySlots(
         attributedAt = clock()
     }
 
+    /** Ends the claim: the claimed error did not end the process. */
+    @Synchronized
+    fun clearAttribution() {
+        attributedName = null
+    }
+
     /**
      * The instance the current crash belongs to, or null when nobody claimed
      * it. A claim expires: a fatal error that didn't end the process, such as

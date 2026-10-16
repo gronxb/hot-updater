@@ -26,6 +26,14 @@ internal class HotUpdaterRecoveryAttribution(
     private val resolveName: (Context, String) -> String = HotUpdaterInstanceRegistry.shared::resolveName,
     private val isStarted: (Activity) -> Boolean = { isActivityStarted(it) },
     runtimeRoots: HotUpdaterRuntimeRoots? = null,
+    /**
+     * Whether a runtime that loaded the URL runs the instance's current
+     * launch. A lambda, not a reference: the manager's companion reads
+     * [shared], so creating [shared] must not initialize the manager.
+     */
+    private val runsCurrentLaunch: (instanceName: String, sourceURL: String?) -> Boolean = { name, url ->
+        HotUpdaterRecoveryManager.runsCurrentLaunch(name, url)
+    },
 ) {
     /**
      * Root views of the registered runtimes, found through their UI
@@ -36,6 +44,9 @@ internal class HotUpdaterRecoveryAttribution(
 
     companion object {
         val shared = HotUpdaterRecoveryAttribution()
+
+        // Instance names have no "@", so this names no launch.
+        private const val EARLIER_LAUNCH_SUFFIX = "@earlier-launch"
 
         // A JavaScript stack frame's source: an absolute path or a URL, such
         // as Hermes' "at f (address at /data/.../index.android.bundle:1:2345)",
@@ -193,7 +204,20 @@ internal class HotUpdaterRecoveryAttribution(
     }
 
     /** The instance of [rootView]'s runtime, or null before the view joins one. */
-    fun instanceOf(rootView: ReactRootView): String? = instanceOf(runCatching { rootView.currentReactContext?.sourceURL }.getOrNull())
+    fun instanceOf(rootView: ReactRootView): String? = launchInstanceOf(runCatching { rootView.currentReactContext?.sourceURL }.getOrNull())
+
+    /**
+     * The instance whose current launch a view of a runtime that loaded
+     * [sourceURL] belongs to. A named host may still show a view of its
+     * previous runtime while its next launch starts: that view belongs to an
+     * earlier launch, which neither arms nor verifies the current one. Main
+     * takes any view, as it always has.
+     */
+    fun launchInstanceOf(sourceURL: String?): String? {
+        val instanceName = instanceOf(sourceURL) ?: return null
+        if (instanceName == HotUpdaterInstanceEnvironment.MAIN_NAME || runsCurrentLaunch(instanceName, sourceURL)) return instanceName
+        return "$instanceName$EARLIER_LAUNCH_SUFFIX"
+    }
 
     /** Whether [activity] shows a React Native view that counts for [instanceName]. */
     fun showsViewOf(
@@ -203,7 +227,8 @@ internal class HotUpdaterRecoveryAttribution(
         val decorView = activity.window?.peekDecorView()
         if (decorView != null && findRootView(decorView) { owns(instanceName, instanceOf(it)) } != null) return true
         // Main takes the views no named instance claims, which a decor view shows.
-        return instanceName != HotUpdaterInstanceEnvironment.MAIN_NAME && runtimeRoots.showsRootOf(activity, instanceName)
+        if (instanceName == HotUpdaterInstanceEnvironment.MAIN_NAME) return false
+        return runtimeRoots.runtimeURLsShownIn(activity).any { launchInstanceOf(it) == instanceName }
     }
 
     /**
@@ -212,7 +237,7 @@ internal class HotUpdaterRecoveryAttribution(
      * its runtime isn't known yet.
      */
     fun instanceOfRootTag(rootTag: Int): String? {
-        runtimeRoots.instanceOfRootTag(rootTag)?.let { return it }
+        runtimeRoots.runtimeOfRootTag(rootTag)?.let { return launchInstanceOf(it.sourceURL) }
         val candidates =
             synchronized(activities) { activities.toList() } +
                 synchronized(runtimes) { runtimes.mapNotNull { it.get()?.currentActivity } }
@@ -228,26 +253,24 @@ internal class HotUpdaterRecoveryAttribution(
 
     /** Root views through the registered runtimes' UI managers. Main thread, as UI managers require. */
     private inner class UIManagerRuntimeRoots : HotUpdaterRuntimeRoots {
-        override fun instanceOfRootTag(rootTag: Int): String? {
+        override fun runtimeOfRootTag(rootTag: Int): HotUpdaterRuntimeRoots.Runtime? {
             registeredRuntimes().forEach { runtime ->
                 if (RootViews.rootViewOf(RootViews.uiManagersOf(runtime), rootTag) != null) {
-                    return instanceOf(runCatching { runtime.sourceURL }.getOrNull())
+                    return HotUpdaterRuntimeRoots.Runtime(runCatching { runtime.sourceURL }.getOrNull())
                 }
             }
             return null
         }
 
-        override fun showsRootOf(
-            activity: Activity,
-            instanceName: String,
-        ): Boolean {
-            val runtimes = registeredRuntimes().filter { instanceOf(runCatching { it.sourceURL }.getOrNull()) == instanceName }
-            if (runtimes.isEmpty()) return false
-            val rootTags = RootViews.candidateRootTags(RootViews.nextRootViewTag() ?: return false)
-            return runtimes.any { runtime ->
-                val uiManagers = RootViews.uiManagersOf(runtime)
-                rootTags.any { rootTag -> RootViews.rootViewOf(uiManagers, rootTag)?.let { isShownIn(it, activity) } == true }
-            }
+        override fun runtimeURLsShownIn(activity: Activity): List<String?> {
+            val runtimes = registeredRuntimes()
+            if (runtimes.isEmpty()) return emptyList()
+            val rootTags = RootViews.candidateRootTags(RootViews.nextRootViewTag() ?: return emptyList())
+            return runtimes
+                .filter { runtime ->
+                    val uiManagers = RootViews.uiManagersOf(runtime)
+                    rootTags.any { rootTag -> RootViews.rootViewOf(uiManagers, rootTag)?.let { isShownIn(it, activity) } == true }
+                }.map { runCatching { it.sourceURL }.getOrNull() }
         }
 
         private fun isShownIn(
@@ -322,14 +345,16 @@ internal class HotUpdaterRecoveryAttribution(
 
 /** Root views React Native's UI managers know, in any window. Main thread. */
 internal interface HotUpdaterRuntimeRoots {
-    /** The instance whose registered runtime holds root view [rootTag], or null. */
-    fun instanceOfRootTag(rootTag: Int): String?
+    /** A registered runtime, by the URL it loaded its bundle from. */
+    data class Runtime(
+        val sourceURL: String?,
+    )
 
-    /** Whether a started [activity] shows a root view of [instanceName]'s runtime in any of its windows. */
-    fun showsRootOf(
-        activity: Activity,
-        instanceName: String,
-    ): Boolean
+    /** The registered runtime holding root view [rootTag], or null. */
+    fun runtimeOfRootTag(rootTag: Int): Runtime?
+
+    /** The source URLs of the registered runtimes whose root view a started [activity] shows in any of its windows. */
+    fun runtimeURLsShownIn(activity: Activity): List<String?>
 }
 
 internal fun findRootView(

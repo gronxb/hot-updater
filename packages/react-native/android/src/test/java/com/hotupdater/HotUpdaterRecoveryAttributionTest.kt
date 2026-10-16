@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.ContextWrapper
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -66,22 +67,52 @@ class HotUpdaterRecoveryAttributionTest {
     fun `a root view in a window of its own is found through its runtime`() {
         // A dialog's root view: no activity's decor view contains it.
         val activity = Activity()
-        val dialogRoots =
-            object : HotUpdaterRuntimeRoots {
-                override fun instanceOfRootTag(rootTag: Int): String? = WIDGET.takeIf { rootTag == 21 }
-
-                override fun showsRootOf(
-                    activity: Activity,
-                    instanceName: String,
-                ): Boolean = true
-            }
-        val attribution = HotUpdaterRecoveryAttribution(resolveName = { _, _ -> MAIN }, runtimeRoots = dialogRoots)
+        val attribution = attribution(roots(mapOf(21 to CURRENT_URL), shown = listOf(CURRENT_URL)))
 
         assertEquals(WIDGET, attribution.instanceOfRootTag(21))
         assertNull(attribution.instanceOfRootTag(31))
         assertTrue(attribution.showsViewOf(activity, WIDGET))
         // Main takes the views no named instance claims, as it always has.
         assertFalse(attribution.showsViewOf(activity, MAIN))
+    }
+
+    @Test
+    fun `a root view of an earlier launch's runtime neither arms nor verifies the current launch`() {
+        // The host started its next launch while its previous runtime's view is still shown.
+        val activity = Activity()
+        val attribution = attribution(roots(mapOf(21 to EARLIER_URL, 31 to CURRENT_URL), shown = listOf(EARLIER_URL)))
+
+        val earlier = attribution.instanceOfRootTag(21)
+        assertNotEquals(WIDGET, earlier)
+        assertNotEquals(MAIN, earlier)
+        assertEquals(WIDGET, attribution.instanceOfRootTag(31))
+        assertFalse(attribution.showsViewOf(activity, WIDGET))
+        assertFalse(attribution.showsViewOf(activity, MAIN))
+    }
+
+    private fun attribution(runtimeRoots: HotUpdaterRuntimeRoots) =
+        HotUpdaterRecoveryAttribution(
+            resolveName = { _, url -> if (url.contains("/hot-updater-instances/widget/")) WIDGET else MAIN },
+            runtimeRoots = runtimeRoots,
+            runsCurrentLaunch = { _, url -> url == CURRENT_URL },
+        ).apply {
+            track(
+                InstanceTestContext(
+                    kotlin.io.path
+                        .createTempDirectory()
+                        .toFile(),
+                ),
+            )
+        }
+
+    private fun roots(
+        rootURLs: Map<Int, String>,
+        shown: List<String>,
+    ) = object : HotUpdaterRuntimeRoots {
+        override fun runtimeOfRootTag(rootTag: Int): HotUpdaterRuntimeRoots.Runtime? =
+            rootURLs[rootTag]?.let { HotUpdaterRuntimeRoots.Runtime(it) }
+
+        override fun runtimeURLsShownIn(activity: Activity): List<String?> = shown
     }
 
     @Test
@@ -122,6 +153,8 @@ class HotUpdaterRecoveryAttributionTest {
         private const val WIDGET = "widget"
         private const val MAIN = HotUpdaterInstanceEnvironment.MAIN_NAME
         private const val FILES = "/data/user/0/com.example.app/files"
+        private const val EARLIER_URL = "$FILES/hot-updater-instances/widget/bundle-store/earlier/index.android.bundle"
+        private const val CURRENT_URL = "$FILES/hot-updater-instances/widget/bundle-store/current/index.android.bundle"
         private const val WIDGET_BUNDLE = "$FILES/hot-updater-instances/widget/bundle-store/0199e5c2-widget/index.android.bundle"
         private const val CHAT_BUNDLE = "$FILES/hot-updater-instances/chat/bundle-store/0199e5c2-chat/index.android.bundle"
         private const val MAIN_BUNDLE = "$FILES/bundle-store/0199e5c2-main/index.android.bundle"

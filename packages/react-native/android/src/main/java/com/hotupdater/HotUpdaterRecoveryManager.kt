@@ -564,7 +564,10 @@ internal class HotUpdaterRecoveryManager(
         private var previousExceptionHandler: Thread.UncaughtExceptionHandler? = null
 
         private val slots = HotUpdaterRecoverySlots()
-        private val attribution = HotUpdaterRecoveryAttribution.shared
+
+        // Read on use, so neither class's initialization waits on the other's.
+        private val attribution: HotUpdaterRecoveryAttribution
+            get() = HotUpdaterRecoveryAttribution.shared
 
         /** The manager of each instance whose launch is monitored. */
         private val liveManagers = ConcurrentHashMap<String, HotUpdaterRecoveryManager>()
@@ -766,6 +769,15 @@ internal class HotUpdaterRecoveryManager(
         private const val EARLIER_LAUNCH_SUFFIX = "@earlier-launch"
 
         /**
+         * Whether a runtime that loaded [sourceURL] runs [instanceName]'s
+         * current launch; true while no launch of it is monitored.
+         */
+        internal fun runsCurrentLaunch(
+            instanceName: String,
+            sourceURL: String?,
+        ): Boolean = liveManagers[instanceName]?.runsLaunchOf(sourceURL) ?: true
+
+        /**
          * A JavaScript error of [instanceName]'s runtime, or of an unknown one
          * when null, which counts as a native crash does. A claimed error
          * charges only its instance, and the crash it may end in charges no
@@ -806,7 +818,7 @@ internal class HotUpdaterRecoveryManager(
             // Claims overlap when errors return: every launch any of them
             // left alone waits for the last one, including that claim's own
             // instance, which an earlier claim may have left alone.
-            val (generation, waiting) =
+            val (generation, _) =
                 synchronized(claimLock) {
                     claimGeneration += 1
                     disarmed.forEach { (manager, launch) -> disarmedByClaim[manager] = launch }
@@ -814,9 +826,7 @@ internal class HotUpdaterRecoveryManager(
                 }
             // A development build shows the error, and an app's handler may
             // swallow it: once the claim expires, the process lived on.
-            if (waiting) {
-                HotUpdaterMainThread.android.postDelayed({ releaseClaim(generation) }, HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS)
-            }
+            HotUpdaterMainThread.android.postDelayed({ releaseClaim(generation) }, HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS)
             return liveManagers[instanceName]?.chargeCrash(exception) == true
         }
 
@@ -853,6 +863,17 @@ internal class HotUpdaterRecoveryManager(
             val disarmed =
                 synchronized(claimLock) {
                     if (generation != null && generation != claimGeneration) return
+                    // The claim ends here, not a moment later in either clock:
+                    // a crash from now on charges the launches it can be blamed on.
+                    slots.clearAttribution()
+                    claimOwner = null
+                    if (signalHandlerInstalled) {
+                        try {
+                            HotUpdaterRecoveryNative.nativeClearCrashAttribution()
+                        } catch (e: UnsatisfiedLinkError) {
+                            Log.w(TAG, "Failed to clear the native crash attribution", e)
+                        }
+                    }
                     disarmedByClaim.toList().also { disarmedByClaim.clear() }
                 }
             disarmed.forEach { (manager, launch) -> manager.resumeAfterAnotherInstanceSurvived(launch) }
@@ -1116,4 +1137,8 @@ internal object HotUpdaterRecoveryNative {
     /** [slot] is -1 for an instance that has none. */
     @JvmStatic
     external fun nativeAttributeCrash(slot: Int)
+
+    /** Ends the claim [nativeAttributeCrash] made. */
+    @JvmStatic
+    external fun nativeClearCrashAttribution()
 }

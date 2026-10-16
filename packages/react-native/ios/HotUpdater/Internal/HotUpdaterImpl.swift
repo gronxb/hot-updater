@@ -1132,11 +1132,14 @@ final class HotUpdaterRecoveryManager: NSObject {
     /// foreground may leave an unfinished launch for the next process to roll
     /// back, as for main. `generation` is the launch the view started in.
     /// Main thread only.
-    func viewStarted(_ view: AnyObject, inForeground: Bool, generation: Int) {
+    func viewStarted(_ view: AnyObject, inForeground: Bool, generation: Int, runtimeBundleURL: URL?) {
         guard !isMain else { return }
+        // A view of a runtime of an earlier launch, such as one torn down
+        // while its host is recreated, starts nothing.
+        guard hub.coordinator.isCurrentRuntime(name: name, runtimeBundleURL: runtimeBundleURL) else { return }
         if inForeground {
             removeArmObservers(before: generation + 1)
-            hub.coordinator.arm(name: name, generation: generation)
+            hub.coordinator.arm(name: name, generation: generation, runtimeBundleURL: runtimeBundleURL)
             return
         }
         // Views of an earlier launch never start this one.
@@ -1156,7 +1159,7 @@ final class HotUpdaterRecoveryManager: NSObject {
                 let isShown = self.backgroundViewStarts.takeAnyShown { hotUpdaterIsViewShown($0) }
                 self.removeArmObservers(before: generation + 1)
                 if isShown {
-                    self.hub.coordinator.arm(name: self.name, generation: generation)
+                    self.hub.coordinator.arm(name: self.name, generation: generation, runtimeBundleURL: runtimeBundleURL)
                 }
             }
         }
@@ -1500,7 +1503,10 @@ final class HotUpdaterRecoveryHub: NSObject {
             }
             return
         }
-        guard let verified = coordinator.contentAppeared(owner: owner) else {
+        // Content of a runtime of an earlier launch verifies nothing, and
+        // is not main's either.
+        let runtimeBundleURL = owner == nil ? nil : view.flatMap(hotUpdaterBundleURL(forRootObject:))
+        guard let verified = coordinator.contentAppeared(owner: owner, runtimeBundleURL: runtimeBundleURL) else {
             return
         }
         manager(named: verified.launch.name)?.contentAppeared(generation: verified.generation)
@@ -1512,7 +1518,10 @@ final class HotUpdaterRecoveryHub: NSObject {
     /// Credits the content held for runtimes that had no module yet. Main
     /// thread only.
     private func releaseHeldContent() {
-        for verified in coordinator.releaseHeldContent(owner: { self.owner(of: $0) }) {
+        for verified in coordinator.releaseHeldContent(
+            owner: { self.owner(of: $0) },
+            runtimeBundleURL: { hotUpdaterBundleURL(forRootObject: $0) }
+        ) {
             manager(named: verified.launch.name)?.contentAppeared(generation: verified.generation)
         }
     }
@@ -1571,6 +1580,11 @@ final class HotUpdaterRecoveryHub: NSObject {
         // Main's launch starts when it is selected, as it always has; a view
         // that started before its instance launched starts nothing.
         guard owner != mainName, let generation else { return }
-        manager(named: owner)?.viewStarted(view, inForeground: inForeground, generation: generation)
+        manager(named: owner)?.viewStarted(
+            view,
+            inForeground: inForeground,
+            generation: generation,
+            runtimeBundleURL: hotUpdaterBundleURL(forRootObject: view)
+        )
     }
 }

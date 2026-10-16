@@ -21,8 +21,9 @@ constexpr int kNotAttributed = -1;
 // A crash claimed by an instance that has no slot: no slot writes a marker.
 constexpr int kAttributedWithoutSlot = -2;
 // HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS. A fatal JavaScript error that
-// did not end the process must not claim a later crash.
-constexpr long kAttributionWindowSeconds = 5;
+// did not end the process must not claim a later crash; Kotlin also clears the
+// claim when it ends.
+constexpr uint32_t kAttributionWindowMilliseconds = 5000;
 
 struct SlotData {
   // Empty while the slot is free.
@@ -62,11 +63,13 @@ Slot gSlots[kSlotCount];
 std::mutex gSlotWriters[kSlotCount];
 // The claimed slot and when it was claimed, in one word, so a crash during
 // a new claim reads either the old claim or the new one, never a mix:
-// bits 4..31 hold the claim's monotonic seconds (modulo 2^28), bits 0..3 the
-// slot offset by kClaimSlotOffset. Zero is no claim.
+// bits 4..31 hold the claim's monotonic milliseconds (modulo 2^28, about 74
+// hours, compared with wraparound), bits 0..3 the slot offset by
+// kClaimSlotOffset. Zero is no claim.
 constexpr uint32_t kClaimSlotBits = 4;
 constexpr uint32_t kClaimSlotMask = (1u << kClaimSlotBits) - 1;
-constexpr uint32_t kClaimSecondsMask = 0xFFFFFFFFu >> kClaimSlotBits;
+constexpr uint32_t kClaimTimeMask = 0xFFFFFFFFu >> kClaimSlotBits;
+static_assert(kAttributionWindowMilliseconds < kClaimTimeMask / 2, "a claim's window fits its time bits");
 constexpr int kClaimSlotOffset = 3;
 static_assert(kSlotCount + kClaimSlotOffset <= static_cast<int>(kClaimSlotMask), "a claimed slot fits its bits");
 static_assert(kAttributedWithoutSlot + kClaimSlotOffset > 0, "a claim is never zero");
@@ -112,17 +115,16 @@ void safeCopyJString(JNIEnv *env, jstring source, char *destination, size_t dest
   env->ReleaseStringUTFChars(source, utfChars);
 }
 
-// clock_gettime is async-signal-safe.
-long monotonicSeconds() {
+// clock_gettime is async-signal-safe. Milliseconds of the monotonic clock,
+// modulo the claim's time bits.
+uint32_t claimTime() {
   struct timespec now {};
   if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
     return 0;
   }
-  return static_cast<long>(now.tv_sec);
-}
-
-uint32_t claimSeconds(long seconds) {
-  return static_cast<uint32_t>(seconds) & kClaimSecondsMask;
+  const uint64_t milliseconds =
+      static_cast<uint64_t>(now.tv_sec) * 1000u + static_cast<uint64_t>(now.tv_nsec) / 1000000u;
+  return static_cast<uint32_t>(milliseconds) & kClaimTimeMask;
 }
 
 int attributedSlot() {
@@ -132,8 +134,8 @@ int attributedSlot() {
     return kNotAttributed;
   }
   const uint32_t claimedAt = claim >> kClaimSlotBits;
-  const uint32_t elapsed = (claimSeconds(monotonicSeconds()) - claimedAt) & kClaimSecondsMask;
-  if (elapsed > static_cast<uint32_t>(kAttributionWindowSeconds)) {
+  const uint32_t elapsed = (claimTime() - claimedAt) & kClaimTimeMask;
+  if (elapsed > kAttributionWindowMilliseconds) {
     return kNotAttributed;
   }
   return static_cast<int>(slotCode) - kClaimSlotOffset;
@@ -326,5 +328,12 @@ Java_com_hotupdater_HotUpdaterRecoveryNative_nativeAttributeCrash(
     jint index) {
   const int slot = (index >= 0 && index < kSlotCount) ? index : kAttributedWithoutSlot;
   const uint32_t slotCode = static_cast<uint32_t>(slot + kClaimSlotOffset);
-  gClaim.store((claimSeconds(monotonicSeconds()) << kClaimSlotBits) | slotCode, std::memory_order_release);
+  gClaim.store((claimTime() << kClaimSlotBits) | slotCode, std::memory_order_release);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_hotupdater_HotUpdaterRecoveryNative_nativeClearCrashAttribution(
+    JNIEnv * /* env */,
+    jclass /* clazz */) {
+  gClaim.store(0, std::memory_order_release);
 }

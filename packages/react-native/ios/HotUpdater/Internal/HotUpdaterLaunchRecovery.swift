@@ -260,10 +260,15 @@ final class HotUpdaterRecoveryCoordinator {
     /// `generation`, when given, is the launch the view started in: a view of
     /// an earlier launch never starts a later one.
     @discardableResult
-    func arm(name: String, generation: Int? = nil) -> Bool {
+    ///
+    /// `runtimeBundleURL` is the bundle the view's runtime runs, when known:
+    /// a view of a runtime of an earlier launch, such as one still torn down
+    /// while its host is recreated, never starts the current launch.
+    func arm(name: String, generation: Int? = nil, runtimeBundleURL: URL? = nil) -> Bool {
         withLock {
             guard let launch = launches[name],
                   generation == nil || launch.generation == generation,
+                  isCurrentRuntime(of: launch, runtimeBundleURL: runtimeBundleURL),
                   !launch.isMain,
                   launch.isMonitoring,
                   launch.isAwaitingContent,
@@ -316,10 +321,17 @@ final class HotUpdaterRecoveryCoordinator {
     /// launch. Returns the verified launch and its generation, whose
     /// monitoring ends after a grace period.
     /// `generation`, when given, is the launch the content appeared in.
-    func contentAppeared(owner: String?, generation: Int? = nil) -> (launch: Launch, generation: Int)? {
+    /// `runtimeBundleURL` is the bundle the view's runtime runs, when known:
+    /// content of a runtime of an earlier launch verifies no launch.
+    func contentAppeared(
+        owner: String?,
+        generation: Int? = nil,
+        runtimeBundleURL: URL? = nil
+    ) -> (launch: Launch, generation: Int)? {
         withLock {
             guard let launch = self.owner(owner),
                   generation == nil || launch.generation == generation,
+                  isCurrentRuntime(of: launch, runtimeBundleURL: runtimeBundleURL),
                   launch.isMonitoring,
                   launch.isAwaitingContent,
                   !launch.recoveryRequested else {
@@ -358,7 +370,10 @@ final class HotUpdaterRecoveryCoordinator {
     /// it, rather than starting a launch whose content already appeared.
     /// Call when a runtime resolves, a named launch stops waiting for
     /// content, or the bound passes. Returns the launches it verified.
-    func releaseHeldContent(owner: (AnyObject) -> String?) -> [(launch: Launch, generation: Int)] {
+    func releaseHeldContent(
+        owner: (AnyObject) -> String?,
+        runtimeBundleURL: (AnyObject) -> URL? = { _ in nil }
+    ) -> [(launch: Launch, generation: Int)] {
         withLock {
             guard !heldContent.isEmpty else { return [] }
             var verified: [(launch: Launch, generation: Int)] = []
@@ -370,7 +385,11 @@ final class HotUpdaterRecoveryCoordinator {
             for var held in heldContent {
                 if let view = held.view, let name = owner(view) {
                     if let generation = held.generations[name],
-                       let launch = contentAppeared(owner: name, generation: generation) {
+                       let launch = contentAppeared(
+                           owner: name,
+                           generation: generation,
+                           runtimeBundleURL: runtimeBundleURL(view)
+                       ) {
                         verified.append(launch)
                     }
                     continue
