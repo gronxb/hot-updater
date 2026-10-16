@@ -201,7 +201,7 @@ final class ReleaseCatalogCacheService {
         }
     }
 
-    private static func defaultRootDirectory() -> URL {
+    static func defaultRootDirectory() -> URL {
         let base = FileManager.default.urls(
             for: .applicationSupportDirectory,
             in: .userDomainMask

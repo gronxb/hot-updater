@@ -3219,9 +3219,207 @@ struct BundleFileStorageServiceTests {
         #expect(!FileManager.default.fileExists(atPath: stable.path))
         #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
     }
+
+    // MARK: - Instance names
+
+    @Test
+    func mainKeepsTodaysDirectories() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let service = makeStorageService(documentsDirectory: root)
+
+        #expect(try service.bundleStoreDir().get() == root.appendingPathComponent("bundle-store").path)
+        #expect(try service.tempDir().get() == root.appendingPathComponent("bundle-temp").path)
+        #expect(!FileManager.default.fileExists(
+            atPath: root.appendingPathComponent(HotUpdaterInstanceEnvironment.instancesDirectoryName).path
+        ))
+    }
+
+    @Test
+    func namedInstancesStageAndLaunchTheirOwnBundles() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: .main)
+        let mainBytes = Data("main hermes".utf8)
+        let widgetBytes = Data("widget hermes".utf8)
+        let mainManifest = try makeManifestData(bundleId: "main-bundle",
+            assets: ["index.ios.bundle": try #require(sha256(mainBytes, in: root))])
+        let widgetManifest = try makeManifestData(bundleId: "widget-bundle",
+            assets: ["index.ios.bundle": try #require(sha256(widgetBytes, in: root))])
+        let downloads = MappingDownloadService(contents: [
+            URL(string: "https://example.com/main/manifest.json")!: mainManifest,
+            URL(string: "https://example.com/main/index.ios.bundle")!: mainBytes,
+            URL(string: "https://example.com/widget/manifest.json")!: widgetManifest,
+            URL(string: "https://example.com/widget/index.ios.bundle")!: widgetBytes,
+        ])
+        let resolver = MappingBuiltInAssetResolver(contents: [:])
+        let main = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: resolver)
+        let widgetService = makeInstanceStorageService(documentsDirectory: root, instance: widget,
+            isolationKey: widgetIsolationKey, downloadService: downloads, builtInAssetResolver: resolver)
+
+        for (service, name, bytes, manifest) in [
+            (main, "main", mainBytes, mainManifest),
+            (widgetService, "widget", widgetBytes, widgetManifest),
+        ] {
+            let result = updateBundle(service, bundleId: "\(name)-bundle",
+                manifestURL: URL(string: "https://example.com/\(name)/manifest.json")!,
+                manifestHash: try #require(sha256(manifest, in: root)),
+                assets: ["index.ios.bundle": ChangedAssetDescriptor(
+                    fileUrl: URL(string: "https://example.com/\(name)/index.ios.bundle")!,
+                    fileHash: try #require(sha256(bytes, in: root)))])
+            #expect(result.failureError == nil)
+        }
+
+        let widgetStore = instanceStoreDirectory(documentsDirectory: root, instance: widget)
+        #expect(FileManager.default.fileExists(atPath: root.appendingPathComponent("bundle-store/main-bundle").path))
+        #expect(!FileManager.default.fileExists(atPath: root.appendingPathComponent("bundle-store/widget-bundle").path))
+        #expect(FileManager.default.fileExists(atPath: widgetStore.appendingPathComponent("widget-bundle").path))
+        #expect(!FileManager.default.fileExists(atPath: widgetStore.appendingPathComponent("main-bundle").path))
+
+        let mainLaunch = makeStorageService(documentsDirectory: root)
+            .prepareLaunch(bundle: .main, pendingRecovery: nil)
+        let widgetLaunch = makeInstanceStorageService(documentsDirectory: root, instance: widget,
+            isolationKey: widgetIsolationKey).prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(mainLaunch.launchedBundleId == "main-bundle")
+        #expect(widgetLaunch.launchedBundleId == "widget-bundle")
+        #expect(try Data(contentsOf: try #require(widgetLaunch.bundleURL)) == widgetBytes)
+    }
+
+    @Test(arguments: [true, false])
+    func anIsolationKeyChangeLeavesTheOtherInstancesBundles(changeMain: Bool) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: .main)
+        let (mainBundle, widgetBundle) = try stageMainAndWidget(documentsDirectory: root, widget: widget)
+
+        if changeMain {
+            _ = makeInstanceStorageService(documentsDirectory: root, instance: .main, isolationKey: "main-key-2")
+        } else {
+            _ = makeInstanceStorageService(documentsDirectory: root, instance: widget, isolationKey: "widget-key-2")
+        }
+
+        #expect(FileManager.default.fileExists(atPath: mainBundle.path) != changeMain)
+        #expect(FileManager.default.fileExists(atPath: widgetBundle.path) == changeMain)
+        if changeMain {
+            #expect(makeInstanceStorageService(documentsDirectory: root, instance: widget,
+                isolationKey: widgetIsolationKey).peekLaunchBundleId() == "widget-bundle")
+        } else {
+            #expect(makeStorageService(documentsDirectory: root).peekLaunchBundleId() == "main-bundle")
+        }
+    }
+
+    @Test(arguments: [true, false])
+    func aChannelResetLeavesTheOtherInstancesBundles(resetMain: Bool) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: .main)
+        let (mainBundle, widgetBundle) = try stageMainAndWidget(documentsDirectory: root, widget: widget)
+        let main = makeStorageService(documentsDirectory: root)
+        let widgetService = makeInstanceStorageService(documentsDirectory: root, instance: widget,
+            isolationKey: widgetIsolationKey)
+
+        #expect(try (resetMain ? main : widgetService).resetChannel().get())
+
+        #expect(FileManager.default.fileExists(atPath: mainBundle.path) != resetMain)
+        #expect(FileManager.default.fileExists(atPath: widgetBundle.path) == resetMain)
+        #expect(main.peekLaunchBundleId() == (resetMain ? nil : "main-bundle"))
+        #expect(widgetService.peekLaunchBundleId() == (resetMain ? "widget-bundle" : nil))
+    }
+
+    @Test(arguments: [true, false])
+    func cleaningOldBundlesLeavesTheOtherInstancesBundles(cleanMain: Bool) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: .main)
+        let (mainBundle, widgetBundle) = try stageMainAndWidget(documentsDirectory: root, widget: widget)
+        let service = cleanMain
+            ? makeStorageService(documentsDirectory: root)
+            : makeInstanceStorageService(documentsDirectory: root, instance: widget, isolationKey: widgetIsolationKey)
+
+        #expect(throws: Never.self) { try service.cleanupOldBundles(currentBundleId: nil, bundleId: nil).get() }
+
+        #expect(FileManager.default.fileExists(atPath: mainBundle.path) != cleanMain)
+        #expect(FileManager.default.fileExists(atPath: widgetBundle.path) == cleanMain)
+    }
+
+    @Test(arguments: [true, false])
+    func committingTheBuiltInBundleLeavesTheOtherInstancesBundles(commitMain: Bool) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: .main)
+        let (mainBundle, widgetBundle) = try stageMainAndWidget(documentsDirectory: root, widget: widget)
+        let service = commitMain
+            ? makeStorageService(documentsDirectory: root)
+            : makeInstanceStorageService(documentsDirectory: root, instance: widget, isolationKey: widgetIsolationKey)
+        #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-production",
+            generation: 1, catalogHash: "hash-1", channel: "production", selectionContextHash: "context-1"))
+
+        #expect(service.commitReleaseSelection(PersistedSelection(
+            kind: SelectionKind.builtin.rawValue,
+            releaseId: "release-builtin",
+            bundleId: "builtin-bundle",
+            catalogId: "project-a",
+            scopeKey: "scope-production",
+            generation: 1,
+            catalogHash: "hash-1",
+            channel: "production",
+            selectionContextHash: "context-1"
+        )))
+
+        #expect(FileManager.default.fileExists(atPath: mainBundle.path) != commitMain)
+        #expect(FileManager.default.fileExists(atPath: widgetBundle.path) == commitMain)
+    }
 }
 
 private let testIsolationKey = "test-isolation-key"
+private let widgetIsolationKey = "widget-isolation-key"
+
+private func makeInstanceStorageService(
+    documentsDirectory: URL,
+    instance: HotUpdaterInstanceEnvironment,
+    isolationKey: String,
+    downloadService: DownloadService = UnusedDownloadService(),
+    builtInAssetResolver: BuiltInAssetResolver? = nil
+) -> BundleFileStorageService {
+    BundleFileStorageService(
+        fileSystem: TestFileSystemService(documentsDirectory: documentsDirectory),
+        downloadService: downloadService,
+        preferences: InMemoryPreferencesService(),
+        isolationKey: isolationKey,
+        instance: instance,
+        builtInBundleIdProvider: { "builtin-bundle" },
+        builtInAssetResolver: builtInAssetResolver,
+        downloadRetryDelay: 0
+    )
+}
+
+private func instanceStoreDirectory(documentsDirectory: URL, instance: HotUpdaterInstanceEnvironment) -> URL {
+    URL(fileURLWithPath: instance.bundleStorePath(documentsPath: documentsDirectory.path), isDirectory: true)
+}
+
+/// A launchable bundle in main's store and in `widget`'s, each with its own
+/// metadata; returns their directories.
+private func stageMainAndWidget(
+    documentsDirectory: URL,
+    widget: HotUpdaterInstanceEnvironment
+) throws -> (main: URL, widget: URL) {
+    let stores: [(URL, String, String)] = [
+        (documentsDirectory.appendingPathComponent("bundle-store", isDirectory: true), "main-bundle", testIsolationKey),
+        (instanceStoreDirectory(documentsDirectory: documentsDirectory, instance: widget), "widget-bundle", widgetIsolationKey),
+    ]
+    var directories: [URL] = []
+    for (store, bundleId, isolationKey) in stores {
+        let directory = store.appendingPathComponent(bundleId, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: directory, bundleId: bundleId)
+        #expect(BundleMetadata(isolationKey: isolationKey, stableBundleId: bundleId)
+            .save(to: store.appendingPathComponent(BundleMetadata.metadataFilename)))
+        directories.append(directory)
+    }
+    return (directories[0], directories[1])
+}
 private let bsdiffPatchFixtureBase64 =
     "RU5EU0xFWS9CU0RJRkY0Mx8AAAAAAAAAQlpoOTFBWSZTWb12MIEAAAB5gEQYAADQYQAIPsXOACAAIo0A0NAaNCgAGgZMgHAtYscVxxRtTt4nmaj70g4gQSF5+T4u5IpwoSF67GEC"
 

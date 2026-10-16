@@ -9,20 +9,23 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
-import java.io.File
 
 /**
  * Core implementation class for HotUpdater functionality
  */
 class HotUpdaterImpl {
     private val context: Context
+    private val environment: HotUpdaterInstanceEnvironment
     private val bundleStorage: BundleStorageService
     private val preferences: PreferencesService
-    private val recoveryManager: HotUpdaterRecoveryManager
+
+    // Crash recovery and the launch gate watch the process's one React Native
+    // host, so only main has them; named instances get their own later.
+    private val recoveryManager: HotUpdaterRecoveryManager?
+    private val activityStartGate: ActivityStartGate?
     private val releaseCatalogCache: ReleaseCatalogCacheService
     private val installIdentity: InstallIdentityService
     private val keyValueStorage: KeyValueStorageService
-    private val activityStartGate: ActivityStartGate
 
     // Read by native update checks on other threads while React Native sets it.
     @Volatile
@@ -45,27 +48,42 @@ class HotUpdaterImpl {
         context: Context,
         bundleStorage: BundleStorageService,
         preferences: PreferencesService,
+    ) : this(context, bundleStorage, preferences, HotUpdaterInstanceEnvironment.main)
+
+    internal constructor(
+        context: Context,
+        bundleStorage: BundleStorageService,
+        preferences: PreferencesService,
+        environment: HotUpdaterInstanceEnvironment,
     ) {
         this.context = context.applicationContext
+        this.environment = environment
         this.bundleStorage = bundleStorage
         this.preferences = preferences
-        this.activityStartGate = ActivityStartGate(this.context as? Application)
-        this.recoveryManager = HotUpdaterRecoveryManager(this.context)
+        if (environment.isMain) {
+            this.activityStartGate = ActivityStartGate(this.context as? Application)
+            this.recoveryManager = HotUpdaterRecoveryManager(this.context)
+        } else {
+            this.activityStartGate = null
+            this.recoveryManager = null
+        }
         this.releaseCatalogCache =
-            ReleaseCatalogCacheService(
-                File(this.context.noBackupFilesDir, "hot-updater-release-catalog-cache"),
-            )
+            ReleaseCatalogCacheService(environment.releaseCatalogCacheDirectory(this.context))
         this.installIdentity = InstallIdentityService.create(this.context)
-        this.keyValueStorage = KeyValueStorageService.create(this.context)
+        this.keyValueStorage = KeyValueStorageService(environment.keyValueStorageFile(this.context))
     }
 
     /**
      * Convenience constructor for simple usage
      */
-    constructor(context: Context) : this(
+    constructor(context: Context) : this(context, HotUpdaterInstanceEnvironment.main)
+
+    /** The impl of a named instance, or of main, with its own storage and configuration. */
+    internal constructor(context: Context, environment: HotUpdaterInstanceEnvironment) : this(
         context = context,
-        bundleStorage = createBundleStorage(context),
-        preferences = createPreferences(context),
+        bundleStorage = createBundleStorage(context, environment),
+        preferences = createPreferences(context, environment),
+        environment = environment,
     )
 
     /**
@@ -99,12 +117,15 @@ class HotUpdaterImpl {
         /**
          * Create BundleStorageService with all dependencies
          */
-        private fun createBundleStorage(context: Context): BundleStorageService {
+        private fun createBundleStorage(
+            context: Context,
+            environment: HotUpdaterInstanceEnvironment,
+        ): BundleStorageService {
             val appContext = context.applicationContext
-            val fileSystem = FileManagerService(appContext)
-            val preferences = createPreferences(appContext)
+            val fileSystem = FileManagerService(appContext, environment.filesRoot(appContext))
+            val preferences = createPreferences(appContext, environment)
             val downloadService = OkHttpDownloadService()
-            val isolationKey = getIsolationKey(appContext)
+            val isolationKey = environment.isolationKey(appContext)
 
             return BundleFileStorageService(
                 appContext,
@@ -112,43 +133,23 @@ class HotUpdaterImpl {
                 downloadService,
                 preferences,
                 isolationKey,
+                defaultChannelProvider = { environment.defaultChannel(appContext) },
+                fingerprintHashProvider = { environment.fingerprintHash(appContext) },
+                publicKeyProvider = { environment.publicKey(appContext) },
+                fallbackBundleURL = environment.fallbackBundleURL,
             )
         }
 
         /**
          * Create PreferencesService with isolation key
          */
-        private fun createPreferences(context: Context): PreferencesService {
+        private fun createPreferences(
+            context: Context,
+            environment: HotUpdaterInstanceEnvironment,
+        ): PreferencesService {
             val appContext = context.applicationContext
-            val isolationKey = getIsolationKey(appContext)
-            return VersionedPreferencesService(appContext, isolationKey)
-        }
-
-        /**
-         * Gets the complete isolation key for preferences storage
-         * @param context Application context
-         * @return The isolation key in format: HotUpdaterPrefs_{fingerprintOrVersion}_{channel}
-         */
-        private fun getIsolationKey(context: Context): String {
-            // Programmatic override (brownfield/AAR). When set, it is used verbatim
-            // so the OTA cache can stay stable across host app version bumps.
-            HotUpdaterConfig.isolationKey?.takeIf { it.isNotEmpty() }?.let { return it }
-
-            val fingerprintHash = getFingerprintHash(context)
-
-            // Get app version and channel
-            val appVersion = getAppVersion(context) ?: "unknown"
-            val appChannel = getChannel(context)
-
-            // Include both fingerprint hash and app version for complete isolation
-            val baseKey =
-                if (!fingerprintHash.isNullOrEmpty()) {
-                    "${fingerprintHash}_$appVersion"
-                } else {
-                    appVersion
-                }
-
-            return "HotUpdaterPrefs_${baseKey}_$appChannel"
+            val isolationKey = environment.isolationKey(appContext)
+            return VersionedPreferencesService(appContext, isolationKey, environment.preferencesPrefix)
         }
 
         fun getAppVersion(context: Context): String? =
@@ -202,11 +203,7 @@ class HotUpdaterImpl {
      * Gets the current fingerprint hash
      * @return The fingerprint hash or null if not set
      */
-    fun getFingerprintHash(): String? =
-        NativeConfigUtils.getString(
-            context,
-            NativeConfigUtils.FINGERPRINT_HASH_META_DATA_KEY,
-        )
+    fun getFingerprintHash(): String? = environment.fingerprintHash(context)
 
     /**
      * Gets the current update channel
@@ -223,13 +220,10 @@ class HotUpdaterImpl {
             return overriddenChannel
         }
 
-        return NativeConfigUtils.getString(
-            context,
-            NativeConfigUtils.CHANNEL_META_DATA_KEY,
-        ) ?: DEFAULT_CHANNEL
+        return environment.defaultChannel(context)
     }
 
-    fun getDefaultChannel(): String = getChannel(context)
+    fun getDefaultChannel(): String = environment.defaultChannel(context)
 
     /**
      * Gets the path to the bundle file
@@ -488,7 +482,7 @@ class HotUpdaterImpl {
                 return@synchronized launchSelection.launchedBundleId
             }
 
-            bundleStorage.settlePreviousLaunch(recoveryManager::consumePendingCrashRecovery)
+            bundleStorage.settlePreviousLaunch { recoveryManager?.consumePendingCrashRecovery() }
             bundleStorage.peekLaunchBundleId()
         }
 
@@ -527,8 +521,22 @@ class HotUpdaterImpl {
     private fun prepareLaunchLocked(): LaunchSelection {
         currentLaunchSelection?.let { return it }
 
-        val pendingRecovery = recoveryManager.consumePendingCrashRecovery()
+        val recoveryManager = recoveryManager
+        val activityStartGate = activityStartGate
+        val pendingRecovery = recoveryManager?.consumePendingCrashRecovery()
         val selection = bundleStorage.prepareLaunch(pendingRecovery)
+        if (recoveryManager == null || activityStartGate == null) {
+            // Until named instances get their own crash recovery, nothing reports
+            // a named launch's first content. A launch left pending would roll
+            // back at the next start, so a named launch counts as verified once
+            // it is selected.
+            if (selection.shouldRollbackOnCrash) {
+                bundleStorage.markLaunchCompleted(selection.launchedBundleId)
+            }
+            runningLaunchSelection = selection
+            currentLaunchSelection = selection
+            return selection
+        }
         // A headless JS task, such as a background push, loads the bundle without
         // an activity and never renders. Only a launch with an activity may leave
         // an unfinished launch for the next process to roll back.

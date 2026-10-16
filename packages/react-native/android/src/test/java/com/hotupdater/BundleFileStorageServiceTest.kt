@@ -2774,6 +2774,133 @@ class BundleFileStorageServiceTest {
             assertFalse(service.isReleaseSelectionCurrent("project-a", "scope-production", 1, "hash-1", "production", "context-1"))
         }
 
+    @Test
+    fun `an isolation key change of one instance leaves the other's bundles`() {
+        val (mainRoot, widgetRoot) = stageMainAndWidget()
+        createService(widgetRoot, isolationKey = "changed-isolation-key")
+        assertFalse(File(bundleStoreDir(widgetRoot), "widget-bundle").exists())
+        assertMainAndWidget(mainRoot, widgetRoot, widget = false)
+
+        val (nextMainRoot, nextWidgetRoot) = stageMainAndWidget()
+        createService(nextMainRoot, isolationKey = "changed-isolation-key")
+        assertFalse(File(bundleStoreDir(nextMainRoot), "main-bundle").exists())
+        assertMainAndWidget(nextMainRoot, nextWidgetRoot, main = false)
+    }
+
+    @Test
+    fun `a channel reset of one instance leaves the other's bundles`() =
+        runBlocking {
+            val (mainRoot, widgetRoot) = stageMainAndWidget()
+            assertTrue(createService(widgetRoot).resetChannel())
+            assertFalse(File(bundleStoreDir(widgetRoot), "widget-bundle").exists())
+            assertMainAndWidget(mainRoot, widgetRoot, widget = false)
+
+            val (nextMainRoot, nextWidgetRoot) = stageMainAndWidget()
+            assertTrue(createService(nextMainRoot).resetChannel())
+            assertFalse(File(bundleStoreDir(nextMainRoot), "main-bundle").exists())
+            assertMainAndWidget(nextMainRoot, nextWidgetRoot, main = false)
+        }
+
+    @Test
+    fun `an install of one instance cleans only its own old bundles and scratch`() =
+        runBlocking {
+            val (mainRoot, widgetRoot) = stageMainAndWidget()
+            val mainScratch = File(mainRoot, "bundle-manifest-temp/in-use").apply { parentFile!!.mkdirs() }
+            mainScratch.writeText("main download")
+            assertNull(runOneFileUpdate(widgetRoot))
+            assertTrue(File(bundleStoreDir(widgetRoot), "target").isDirectory)
+            assertFalse(File(bundleStoreDir(widgetRoot), "widget-bundle-old").exists())
+            assertTrue(mainScratch.isFile)
+            assertMainAndWidget(mainRoot, widgetRoot, widget = false)
+
+            val (nextMainRoot, nextWidgetRoot) = stageMainAndWidget()
+            assertNull(runOneFileUpdate(nextMainRoot))
+            assertFalse(File(bundleStoreDir(nextMainRoot), "main-bundle-old").exists())
+            assertMainAndWidget(nextMainRoot, nextWidgetRoot, main = false)
+        }
+
+    @Test
+    fun `a named instance reads its cached bundle URL from its own root`() {
+        val (_, widgetRoot) = stageMainAndWidget()
+        val bundleFile = File(bundleStoreDir(widgetRoot), "widget-bundle/index.android.bundle")
+        val preferences = InMemoryPreferencesService()
+        preferences.setItem("HotUpdaterBundleURL", bundleFile.absolutePath)
+
+        assertEquals(bundleFile.absolutePath, createService(widgetRoot, preferences).getCachedBundleURL())
+    }
+
+    @Test
+    fun `a named instance launches its own embedded bundle and verifies with its own key`() =
+        runBlocking {
+            val widgetRoot = temporaryFolder.newFolder("embedded")
+            val widget =
+                createService(
+                    widgetRoot,
+                    fallbackBundleURL = "assets://widget.android.bundle",
+                    publicKey = "-----BEGIN PUBLIC KEY-----\nwidget\n-----END PUBLIC KEY-----",
+                    downloadService = UnusedDownloadService,
+                )
+            assertEquals("assets://widget.android.bundle", widget.prepareLaunch(null).bundleUrl)
+
+            // An unsigned manifest is refused when the instance's key turns signing on.
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to sha256(widgetRoot, BUNDLE_CONTENT)))
+            val signed =
+                createService(
+                    widgetRoot,
+                    publicKey = "-----BEGIN PUBLIC KEY-----\nwidget\n-----END PUBLIC KEY-----",
+                    downloadService = BinaryMappingDownloadService(mapOf(MANIFEST_URL to manifest.toByteArray())),
+                )
+            val error =
+                runCatching {
+                    signed.updateBundle(
+                        "target",
+                        MANIFEST_URL,
+                        sha256(widgetRoot, manifest),
+                        mapOf("index.android.bundle" to ChangedAssetDescriptor(BUNDLE_URL, sha256(widgetRoot, BUNDLE_CONTENT))),
+                    ) {}
+                }.exceptionOrNull()
+            assertTrue(error?.cause is SignatureVerificationException.UnsignedNotAllowed)
+        }
+
+    /**
+     * Main's files directory and the named instance "widget"'s root beside it,
+     * each with its stable bundle, an older bundle an install cleans up, its
+     * metadata, and its crash history.
+     */
+    private fun stageMainAndWidget(): Pair<File, File> {
+        val context = InstanceTestContext(temporaryFolder.newFolder())
+        val mainRoot = HotUpdaterInstanceEnvironment.main.filesRoot(context)!!
+        val widgetRoot =
+            HotUpdaterInstanceEnvironment
+                .of(HotUpdaterOptions("https://updates.example.com", name = "widget"))
+                .filesRoot(context)!!
+        listOf(mainRoot to "main-bundle", widgetRoot to "widget-bundle").forEach { (root, bundleId) ->
+            createCompleteBundle(root, bundleId, bundleId)
+            createCompleteBundle(root, "$bundleId-old", "$bundleId-old")
+            writeMetadata(root, BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stableBundleId = bundleId))
+            assertTrue(CrashedHistory().apply { addEntry("$bundleId-crashed") }.saveToFile(crashedHistoryFile(root)))
+        }
+        return mainRoot to widgetRoot
+    }
+
+    private fun assertMainAndWidget(
+        mainRoot: File,
+        widgetRoot: File,
+        main: Boolean = true,
+        widget: Boolean = true,
+    ) {
+        listOf(Triple(mainRoot, "main-bundle", main), Triple(widgetRoot, "widget-bundle", widget))
+            .filter { it.third }
+            .forEach { (root, bundleId) ->
+                assertTrue(bundleId, File(bundleStoreDir(root), "$bundleId/index.android.bundle").isFile)
+                assertTrue(bundleId, File(bundleStoreDir(root), "$bundleId-old/index.android.bundle").isFile)
+                assertEquals(bundleId, loadMetadata(root)?.stableBundleId)
+                assertTrue(bundleId, loadCrashedHistory(root).contains("$bundleId-crashed"))
+            }
+    }
+
+    private fun crashedHistoryFile(rootDir: File): File = File(bundleStoreDir(rootDir), CrashedHistory.CRASHED_HISTORY_FILENAME)
+
     /** Installs bundle "target" with one file, returning the failure, if any. */
     private suspend fun runOneFileUpdate(
         root: File,
@@ -2819,14 +2946,19 @@ class BundleFileStorageServiceTest {
         builtInAssetResolver: BuiltInAssetResolver? = null,
         metadataWriter: (BundleMetadata, File) -> Boolean = { metadata, file -> metadata.saveToFile(file) },
         directoryRenamer: (File, File) -> Boolean = { source, destination -> source.renameTo(destination) },
+        isolationKey: String = TEST_ISOLATION_KEY,
+        publicKey: String? = null,
+        fallbackBundleURL: String = "assets://index.android.bundle",
     ): BundleFileStorageService =
         BundleFileStorageService(
             context = ContextWrapper(null),
             fileSystem = TestFileSystemService(rootDir),
             downloadService = downloadService,
             preferences = preferences,
-            isolationKey = TEST_ISOLATION_KEY,
+            isolationKey = isolationKey,
             defaultChannelProvider = { "production" },
+            publicKeyProvider = { publicKey ?: SignatureVerifier.getPublicKeyFromConfig(ContextWrapper(null)) },
+            fallbackBundleURL = fallbackBundleURL,
             builtInAssetResolver = builtInAssetResolver,
             metadataWriter = metadataWriter,
             directoryRenamer = directoryRenamer,
