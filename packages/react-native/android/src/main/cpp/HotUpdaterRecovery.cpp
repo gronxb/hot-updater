@@ -20,10 +20,11 @@ constexpr int kSlotCount = 8;
 constexpr int kNotAttributed = -1;
 // A crash claimed by an instance that has no slot: no slot writes a marker.
 constexpr int kAttributedWithoutSlot = -2;
-// HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS. A fatal JavaScript error that
-// did not end the process must not claim a later crash; Kotlin also clears the
-// claim when it ends.
-constexpr uint32_t kAttributionWindowMilliseconds = 5000;
+// Kotlin clears the claim when it releases it, 5 seconds after the claimed
+// error (HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS). The claim also
+// expires on its own, much later, only so a release that never runs can't
+// leave it claiming crashes forever.
+constexpr uint32_t kNativeClaimFallbackMilliseconds = 30000;
 
 struct SlotData {
   // Empty while the slot is free.
@@ -77,7 +78,7 @@ std::mutex gSlotWriters[kSlotCount];
 constexpr uint32_t kClaimSlotBits = 4;
 constexpr uint32_t kClaimSlotMask = (1u << kClaimSlotBits) - 1;
 constexpr uint32_t kClaimTimeMask = 0xFFFFFFFFu >> kClaimSlotBits;
-static_assert(kAttributionWindowMilliseconds < kClaimTimeMask / 2, "a claim's window fits its time bits");
+static_assert(kNativeClaimFallbackMilliseconds < kClaimTimeMask / 2, "a claim's window fits its time bits");
 constexpr int kClaimSlotOffset = 3;
 static_assert(kSlotCount + kClaimSlotOffset <= static_cast<int>(kClaimSlotMask), "a claimed slot fits its bits");
 static_assert(kAttributedWithoutSlot + kClaimSlotOffset > 0, "a claim is never zero");
@@ -143,7 +144,7 @@ int attributedSlot() {
   }
   const uint32_t claimedAt = claim >> kClaimSlotBits;
   const uint32_t elapsed = (claimTime() - claimedAt) & kClaimTimeMask;
-  if (elapsed > kAttributionWindowMilliseconds) {
+  if (elapsed > kNativeClaimFallbackMilliseconds) {
     return kNotAttributed;
   }
   return static_cast<int>(slotCode) - kClaimSlotOffset;

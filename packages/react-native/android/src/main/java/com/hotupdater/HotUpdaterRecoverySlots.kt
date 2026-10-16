@@ -14,7 +14,6 @@ package com.hotupdater
  */
 internal class HotUpdaterRecoverySlots(
     private val capacity: Int = SLOT_COUNT,
-    private val clock: () -> Long = { System.nanoTime() / 1_000_000 },
 ) {
     /** What one instance's crash monitoring knows about its current launch. */
     data class Launch(
@@ -37,7 +36,6 @@ internal class HotUpdaterRecoverySlots(
 
     private val slots = HashMap<String, Int>()
     private var attributedName: String? = null
-    private var attributedAt = 0L
 
     /** The slot of [name], taken on first use, or null when every slot is taken. */
     @Synchronized
@@ -63,7 +61,6 @@ internal class HotUpdaterRecoverySlots(
     @Synchronized
     fun attribute(name: String) {
         attributedName = name
-        attributedAt = clock()
     }
 
     /** Ends the claim: the claimed error did not end the process. */
@@ -74,18 +71,25 @@ internal class HotUpdaterRecoverySlots(
 
     /**
      * The instance the current crash belongs to, or null when nobody claimed
-     * it. A claim expires: a fatal error that didn't end the process, such as
-     * one a development build shows on screen, must not claim a later crash.
+     * it. A claim holds until its release ([clearAttribution]): a fatal error
+     * that didn't end the process, such as one a development build shows on
+     * screen, must not claim a later crash, and the launches it left alone
+     * count again only with that release.
      */
     @Synchronized
-    fun attributedName(): String? = attributedName?.takeIf { clock() - attributedAt <= ATTRIBUTION_WINDOW_MS }
+    fun attributedName(): String? = attributedName
 
     companion object {
         /** Kept equal to kSlotCount in HotUpdaterRecovery.cpp. */
         const val SLOT_COUNT = 8
         const val MAIN_SLOT = 0
 
-        /** Kept equal to kAttributionWindowSeconds in HotUpdaterRecovery.cpp. */
+        /**
+         * How long a claimed error has to end the process before its claim is
+         * released. The native claim falls back to expiring later
+         * (kNativeClaimFallbackMilliseconds in HotUpdaterRecovery.cpp), only
+         * for a release that never runs.
+         */
         const val ATTRIBUTION_WINDOW_MS = 5_000L
 
         /**

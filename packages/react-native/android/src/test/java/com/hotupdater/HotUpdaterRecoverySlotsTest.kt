@@ -97,24 +97,25 @@ class HotUpdaterRecoverySlotsTest {
     ) = HotUpdaterRecoverySlots.inferJavaScriptErrorOwner(launches, registeredRuntimes)
 
     @Test
-    fun `a claim lasts only as long as the crash it announces`() {
-        var now = 1_000L
-        val slots = HotUpdaterRecoverySlots(clock = { now })
+    fun `a claim holds until it is released`() {
+        val slots = HotUpdaterRecoverySlots()
         assertNull(slots.attributedName())
 
+        // However long releasing it takes, the launches it left alone stay
+        // left alone, and a crash meanwhile is still the claimed error's.
         slots.attribute(WIDGET)
-        now += HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS
+        Thread.sleep(1)
         assertEquals(WIDGET, slots.attributedName())
 
         // A fatal error that didn't end the process, such as one a development
         // build shows, must not claim a later crash.
-        now += 1
+        slots.clearAttribution()
         assertNull(slots.attributedName())
     }
 
     @Test
     fun `a released claim claims nothing`() {
-        val slots = HotUpdaterRecoverySlots(clock = { 1_000L })
+        val slots = HotUpdaterRecoverySlots()
         slots.attribute(WIDGET)
 
         slots.clearAttribution()

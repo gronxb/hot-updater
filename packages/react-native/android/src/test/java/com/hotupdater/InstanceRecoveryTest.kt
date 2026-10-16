@@ -606,6 +606,24 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a claim's release is scheduled before it leaves the other launches alone`() {
+        // Leaving launches alone writes their metadata, which may be slow:
+        // the release's window starts with the claim, not after those writes.
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        val mainArmedWhenScheduled = mutableListOf<Boolean>()
+        HotUpdaterRecoveryManager.claimReleaseScheduler = { _, _ -> mainArmedWhenScheduled += metadata(context, main).launchInProgress }
+
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+
+        assertEquals(listOf(true), mainArmedWhenScheduled)
+        assertFalse(metadata(context, main).launchInProgress)
+    }
+
+    @Test
     fun `launches left alone by overlapping claims all count again when the last claim is released`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val chat = namedEnvironment("chat")

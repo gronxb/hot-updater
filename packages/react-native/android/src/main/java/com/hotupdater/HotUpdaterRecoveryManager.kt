@@ -887,7 +887,7 @@ internal class HotUpdaterRecoveryManager(
             eventGeneration: Long? = liveManagers[instanceName]?.currentGeneration(),
         ): Boolean =
             synchronized(recoveryLock) {
-                // The claim's generation, its attribution in both clocks, its
+                // The claim's generation, its attribution in both claims, its
                 // owner, and the launches it leaves alone change at once: no
                 // launch starts, and no release runs, in between. Only the
                 // launch that threw is the owner.
@@ -895,6 +895,10 @@ internal class HotUpdaterRecoveryManager(
                 val ownerGeneration = eventGeneration
                 claimGeneration += 1
                 val generation = claimGeneration
+                // The claim holds until this release runs. It takes the
+                // recovery lock, so it never runs before this section ends,
+                // and its window starts with the claim.
+                scheduleClaimRelease(generation)
                 slots.attribute(instanceName)
                 claimOwner = instanceName to ownerGeneration
                 claimedOwners += instanceName to ownerGeneration
@@ -911,9 +915,6 @@ internal class HotUpdaterRecoveryManager(
                 liveManagers.values
                     .filter { it.name != instanceName }
                     .forEach { manager -> manager.handleCrashOfAnotherInstance()?.let { disarmedByClaim[manager] = it } }
-                // A development build shows the error, and an app's handler may
-                // swallow it: once the claim expires, the process lived on.
-                scheduleClaimRelease(generation)
                 owner?.chargeCrash(exception) == true
             }
 
@@ -951,7 +952,7 @@ internal class HotUpdaterRecoveryManager(
                 if (generation != null && generation != claimGeneration) return
                 val survivedOwners = claimedOwners.toList()
                 claimedOwners.clear()
-                // The claim ends here, not a moment later in either clock: a
+                // The claim ends here, in Kotlin and natively at once: a
                 // crash from now on charges the launches it can be blamed on.
                 slots.clearAttribution()
                 claimOwner = null
@@ -987,9 +988,9 @@ internal class HotUpdaterRecoveryManager(
 
         /**
          * Runs [releaseClaim] for the claim of [generation] once its window
-         * ends, on a thread of its own: the claim's clocks expire then even
-         * while the main thread is blocked, and the launches it left alone
-         * must count again with them.
+         * ends, on a thread of its own, so it runs even while the main thread
+         * is blocked: a development build shows the error, and an app's
+         * handler may swallow it, and then the process lived on.
          */
         private fun scheduleClaimRelease(generation: Int) {
             claimReleaseScheduler(HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS, Runnable { releaseClaim(generation) })
