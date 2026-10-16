@@ -328,17 +328,30 @@ internal class HotUpdaterRecoveryManager(
         val deadlineAt: Long,
         val instances: List<String>,
     ) {
-        // Main's file holds only its deadline, as it always has; named
-        // instances follow on their own lines.
-        fun serialize(): String =
-            (listOf(deadlineAt.toString()) + instances.filter { it != HotUpdaterInstanceEnvironment.MAIN_NAME })
-                .joinToString("\n")
+        // Main alone writes only its deadline, as it always has. Any other set
+        // of owners is listed on an `owners:` line, which may leave main out:
+        // a marker main left in an earlier process is not this launch's.
+        fun serialize(): String {
+            val owners = instances.distinct()
+            if (owners == listOf(HotUpdaterInstanceEnvironment.MAIN_NAME)) return deadlineAt.toString()
+            return "$deadlineAt\n$OWNERS_PREFIX${owners.joinToString(",")}"
+        }
 
         companion object {
+            private const val OWNERS_PREFIX = "owners:"
+
             fun parse(text: String?): WatchdogState? {
                 val lines = text?.lines()?.map(String::trim)?.filter(String::isNotEmpty) ?: return null
                 val deadlineAt = lines.firstOrNull()?.toLongOrNull() ?: return null
-                return WatchdogState(deadlineAt, listOf(HotUpdaterInstanceEnvironment.MAIN_NAME) + lines.drop(1))
+                val owners =
+                    lines
+                        .firstOrNull { it.startsWith(OWNERS_PREFIX) }
+                        ?.removePrefix(OWNERS_PREFIX)
+                        ?.split(',')
+                        ?.map(String::trim)
+                        ?.filter(String::isNotEmpty)
+                // A file with only a deadline is main's.
+                return WatchdogState(deadlineAt, owners ?: listOf(HotUpdaterInstanceEnvironment.MAIN_NAME))
             }
         }
     }

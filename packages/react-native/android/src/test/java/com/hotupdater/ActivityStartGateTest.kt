@@ -91,6 +91,49 @@ class ActivityStartGateTest {
     }
 
     @Test
+    fun `a gate that knows the activities started before it waits for its view there`() {
+        // A named instance prepared while the app already shows a native
+        // screen: the started activity is not its view.
+        val application = RecordingApplication()
+        var runs = 0
+        showsReactView = false
+        val gate = createGate(application, startedBefore = true, activitiesStartedBefore = { listOf(activity) })
+
+        gate.runWhenActivityStarted { runs += 1 }
+        assertEquals(0, runs)
+        assertEquals(1, layoutWatches)
+
+        showsReactView = true
+        application.layout()
+        assertEquals(1, runs)
+        assertEquals(0, layoutWatches)
+    }
+
+    @Test
+    fun `a gate that knows the activities started before it runs at once when one shows its view`() {
+        val application = RecordingApplication()
+        var runs = 0
+
+        createGate(application, startedBefore = true, activitiesStartedBefore = { listOf(activity) })
+            .runWhenActivityStarted { runs += 1 }
+
+        assertEquals(1, runs)
+    }
+
+    @Test
+    fun `a gate that knows no activity started before it waits for the next start`() {
+        val application = RecordingApplication()
+        var runs = 0
+        val gate = createGate(application, startedBefore = true, activitiesStartedBefore = { emptyList() })
+
+        gate.runWhenActivityStarted { runs += 1 }
+        assertEquals(0, runs)
+
+        application.startActivity()
+        assertEquals(1, runs)
+    }
+
+    @Test
     fun `runs at once without an application to observe`() {
         var runs = 0
 
@@ -180,6 +223,7 @@ class ActivityStartGateTest {
     private fun createGate(
         application: Application?,
         startedBefore: Boolean = false,
+        activitiesStartedBefore: (() -> Collection<Activity>)? = null,
     ) = ActivityStartGate(
         application,
         processHasStartedActivity = { startedBefore },
@@ -188,6 +232,7 @@ class ActivityStartGateTest {
             layoutListeners += onLayout
             { layoutListeners -= onLayout }
         },
+        activitiesStartedBefore = activitiesStartedBefore,
     )
 
     private inner class RecordingApplication : Application() {

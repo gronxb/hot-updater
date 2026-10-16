@@ -46,6 +46,7 @@ internal class HotUpdaterRecoveryAttribution(
 
     // Activities that may hold a React Native view whose first content appears.
     private val activities = Collections.newSetFromMap(WeakHashMap<Activity, Boolean>())
+    private val startedActivities = Collections.newSetFromMap(WeakHashMap<Activity, Boolean>())
     private val runtimes = mutableListOf<WeakReference<ReactContext>>()
 
     private val activityCallbacks =
@@ -58,18 +59,26 @@ internal class HotUpdaterRecoveryAttribution(
             }
 
             override fun onActivityStarted(activity: Activity) {
-                synchronized(activities) { activities += activity }
+                synchronized(activities) {
+                    activities += activity
+                    startedActivities += activity
+                }
             }
 
             override fun onActivityDestroyed(activity: Activity) {
-                synchronized(activities) { activities -= activity }
+                synchronized(activities) {
+                    activities -= activity
+                    startedActivities -= activity
+                }
             }
 
             override fun onActivityResumed(activity: Activity) {}
 
             override fun onActivityPaused(activity: Activity) {}
 
-            override fun onActivityStopped(activity: Activity) {}
+            override fun onActivityStopped(activity: Activity) {
+                synchronized(activities) { startedActivities -= activity }
+            }
 
             override fun onActivitySaveInstanceState(
                 activity: Activity,
@@ -101,6 +110,17 @@ internal class HotUpdaterRecoveryAttribution(
             if (runtimes.none { it.get() === reactContext }) runtimes += WeakReference(reactContext)
         }
     }
+
+    /**
+     * The activities started now, as far as this process has seen: the ones
+     * started since [track], and the current activity of each registered
+     * runtime. A gate created after they started reads them here.
+     */
+    fun startedActivities(): List<Activity> =
+        (
+            synchronized(activities) { startedActivities.toList() } +
+                synchronized(runtimes) { runtimes.mapNotNull { it.get()?.currentActivity } }
+        ).distinct()
 
     /** The instance whose bundle runs from [sourceURL], or null when it isn't known. */
     fun instanceOf(sourceURL: String?): String? {

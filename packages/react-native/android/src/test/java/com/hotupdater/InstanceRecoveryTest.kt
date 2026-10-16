@@ -238,6 +238,23 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a watchdog only a named instance armed ignores a marker main left earlier`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val filesDir = context.filesDir
+        writeCrashMarker(context, main, "main-bundle")
+
+        val parsed =
+            HotUpdaterRecoveryManager.WatchdogState.parse(
+                HotUpdaterRecoveryManager.WatchdogState(1_000L, listOf(widget.name)).serialize(),
+            )!!
+
+        assertEquals(listOf(widget.name), parsed.instances)
+        assertFalse(HotUpdaterRecoveryManager.crashMarkerRequestsRollback(filesDir, parsed.instances))
+        writeCrashMarker(context, widget, "widget-bundle")
+        assertTrue(HotUpdaterRecoveryManager.crashMarkerRequestsRollback(filesDir, parsed.instances))
+    }
+
+    @Test
     fun `main's watchdog state keeps its format`() {
         val state = HotUpdaterRecoveryManager.WatchdogState(1_234L, listOf(HotUpdaterInstanceEnvironment.MAIN_NAME))
 

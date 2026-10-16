@@ -148,16 +148,22 @@ class HotUpdaterImpl {
         /**
          * A launch counts once a started activity shows one of the instance's
          * views. Main takes every view no named instance claims, so an app
-         * with only main waits for any React Native view, as it always has.
+         * with only main waits for any React Native view, as it always has,
+         * and counts an activity started before the gate at once. A named
+         * instance is often prepared while the app already shows other
+         * screens, so it checks the activities already started for its view.
          */
         private fun createActivityStartGate(
             context: Context,
             environment: HotUpdaterInstanceEnvironment,
-        ): ActivityStartGate =
-            ActivityStartGate(
+        ): ActivityStartGate {
+            val attribution = HotUpdaterRecoveryAttribution.shared
+            return ActivityStartGate(
                 context as? Application,
-                showsReactView = { activity -> HotUpdaterRecoveryAttribution.shared.showsViewOf(activity, environment.name) },
+                showsReactView = { activity -> attribution.showsViewOf(activity, environment.name) },
+                activitiesStartedBefore = if (environment.isMain) null else attribution::startedActivities,
             )
+        }
 
         /**
          * Create PreferencesService with isolation key

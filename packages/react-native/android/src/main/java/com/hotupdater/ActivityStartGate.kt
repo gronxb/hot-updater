@@ -25,13 +25,17 @@ import com.facebook.react.ReactRootView
  * Android does not replay lifecycle callbacks to a late registration. An
  * activity that started before this gate existed, as when a brownfield app adds
  * React Native to an activity already on screen, is read from
- * [processHasStartedActivity] instead, and counts at once.
+ * [processHasStartedActivity] instead, and counts at once. A gate that knows
+ * those activities ([activitiesStartedBefore]) checks them for a React Native
+ * view instead, as a named instance's gate must: a started activity says
+ * nothing about whether that instance's view is shown.
  */
 internal class ActivityStartGate(
     private val application: Application?,
     private val processHasStartedActivity: () -> Boolean = ::hasStartedActivity,
     private val showsReactView: (Activity) -> Boolean = ::hasReactRootView,
     private val watchLayout: (Activity, () -> Unit) -> () -> Unit = ::watchGlobalLayout,
+    private val activitiesStartedBefore: (() -> Collection<Activity>)? = null,
 ) : Application.ActivityLifecycleCallbacks {
     private val startedActivities = mutableSetOf<Activity>()
     private val layoutWatches = mutableMapOf<Activity, () -> Unit>()
@@ -56,10 +60,11 @@ internal class ActivityStartGate(
             synchronized(this) {
                 stopWatching()
                 pendingAction = null
+                if (application != null) activitiesStartedBefore?.let { startedActivities += it() }
                 val waits =
                     application != null &&
                         startedActivities.none(showsReactView) &&
-                        (startedActivities.isNotEmpty() || !processHasStartedActivity())
+                        (startedActivities.isNotEmpty() || activitiesStartedBefore != null || !processHasStartedActivity())
                 if (waits && action != null) {
                     pendingAction = action
                     startedActivities.forEach(::watch)
