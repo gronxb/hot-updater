@@ -10,6 +10,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.nio.file.Files
 
 class HotUpdaterRuntimeInstanceTest {
     @get:Rule
@@ -73,6 +74,20 @@ class HotUpdaterRuntimeInstanceTest {
         assertEquals("app", registry.resolveName(context, "file://$appBundle"))
         assertEquals("app-2", registry.resolveName(context, appBundle.replace("/app/", "/app/../app-2/")))
         assertEquals(MAIN, registry.resolveName(context, app.filesRoot(context)!!.path + "-old/bundle-store/index.android.bundle"))
+    }
+
+    @Test
+    fun `a path through a symlink matches its target`() {
+        val widget = environment("widget")
+        registry.impl(context, widget)
+        val bundle = File(widget.filesRoot(context), "bundle-store/bundle/index.android.bundle")
+        bundle.parentFile!!.mkdirs()
+        bundle.writeText("bundle")
+        val linkedFiles = File(temporaryFolder.root, "linked-files")
+        Files.createSymbolicLink(linkedFiles.toPath(), context.filesDir.toPath())
+
+        val linkedBundle = File(linkedFiles, bundle.relativeTo(context.filesDir).path)
+        assertEquals("widget", registry.resolveName(context, linkedBundle.path))
     }
 
     @Test

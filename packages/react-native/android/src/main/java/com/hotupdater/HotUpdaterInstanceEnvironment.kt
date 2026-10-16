@@ -236,17 +236,22 @@ internal class HotUpdaterInstanceRegistry(
             .singleOrNull()
             ?.let { return it }
 
-        val sourceSegments = pathSegments(sourceURL.removePrefix("file://"))
+        val sourceSegments = pathSegments(canonicalPath(sourceURL.removePrefix("file://")))
         impls.keys
             .firstOrNull { name ->
                 val root = environments[name]?.filesRoot(context) ?: return@firstOrNull false
-                val rootSegments = pathSegments(root.path)
+                val rootSegments = pathSegments(canonicalPath(root.path))
                 // Whole segments, so "app" never claims "app-2"'s files.
                 sourceSegments.size > rootSegments.size && sourceSegments.subList(0, rootSegments.size) == rootSegments
             }?.let { return it }
 
         return HotUpdaterInstanceEnvironment.MAIN_NAME
     }
+
+    // React Native may hold `/data/data/...` where `filesDir` is
+    // `/data/user/0/...`, a symlink to the same directory.
+    private fun canonicalPath(path: String): String =
+        if (path.startsWith("/")) runCatching { File(path).canonicalPath }.getOrDefault(path) else path
 
     private fun pathSegments(path: String): List<String> {
         if (!path.startsWith("/")) return emptyList()
