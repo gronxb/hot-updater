@@ -913,7 +913,14 @@ private func hotUpdaterGetMinBundleId() -> String {
     /// that failed. The running bundle stays what React Native runs, as
     /// after a channel reset.
     func invalidateLaunchPreparation() {
-        launchPreparationLock.lock()
+        // A crash can reach here on a thread that holds the launch lock
+        // already; never wait for it there.
+        guard launchPreparationLock.try() else {
+            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+                self?.invalidateLaunchPreparation()
+            }
+            return
+        }
         currentLaunchSelection = nil
         launchPreparationLock.unlock()
     }

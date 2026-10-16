@@ -169,6 +169,8 @@ final class HotUpdaterRecoveryCoordinator {
     /// starts the instance again, its next launch must be prepared anew, so
     /// it consumes the marker and rolls back. Set once, before any launch.
     var onRollbackCharged: ((String) -> Void)?
+    /// Named instances a charge in progress marked for rollback.
+    private var rolledBackNames: [String] = []
     /// The current claim is of a runtime no current launch runs.
     private var isEarlierRuntimeClaim = false
     /// First content no runtime claims yet, held while a named launch's
@@ -459,7 +461,7 @@ final class HotUpdaterRecoveryCoordinator {
     /// charged, a named one whose view hasn't shown yet included, so the
     /// failing bundle rolls back at its next start whoever it was.
     func chargeUnclaimedLoadFailure() {
-        withLock {
+        charging {
             for launch in possibleFatalOwners where launch.isMonitoring {
                 writeMarker(launch)
             }
@@ -536,7 +538,7 @@ final class HotUpdaterRecoveryCoordinator {
     /// Main's fatal before first content reloads it in-process: writes its
     /// marker once, so the reloaded launch rolls back.
     func requestRecovery(name: String) -> RecoveryRequest {
-        withLock {
+        charging {
             guard let launch = launches[name], launch.isMonitoring, launch.shouldRollback else {
                 return .notNeeded
             }
@@ -571,8 +573,7 @@ final class HotUpdaterRecoveryCoordinator {
     /// after a later launch started, runs another bundle: its error charges
     /// no launch at all (see `attributeToEarlierRuntime`).
     func chargeFatal(owner: String?, runtimeBundleURL: URL? = nil) -> Int? {
-        var rolledBack: String?
-        let claim: Int? = withLock {
+        charging {
             guard let owner, let launch = launches[owner] else {
                 chargeUnattributedCrash()
                 return nil
@@ -587,16 +588,9 @@ final class HotUpdaterRecoveryCoordinator {
             }
             if launch.isMonitoring {
                 writeMarker(launch)
-                if !launch.isMain, launch.shouldRollback {
-                    rolledBack = owner
-                }
             }
             return attribute(to: owner)
         }
-        if let rolledBack {
-            onRollbackCharged?(rolledBack)
-        }
-        return claim
     }
 
     /// Whether a runtime that runs `runtimeBundleURL` is `name`'s current
@@ -717,7 +711,7 @@ final class HotUpdaterRecoveryCoordinator {
     /// leaves unverified rolls back at its next start. A launch verified
     /// later in this process ignores its marker.
     func chargeUnverifiedNamedLaunches() {
-        withLock {
+        charging {
             for launch in launches.values where !launch.isMain && launch.crashCountsAgainstLaunch {
                 writeMarker(launch)
             }
@@ -727,7 +721,7 @@ final class HotUpdaterRecoveryCoordinator {
     /// An uncaught native exception: the attributed instance's marker, or
     /// every unverified launch's.
     func chargeUncaughtException() {
-        withLock {
+        charging {
             if let attributedName, let launch = launches[attributedName] {
                 // Not a later launch of the claimed instance.
                 if launch.isMonitoring, launch.generation == attributedGeneration {
@@ -810,12 +804,33 @@ final class HotUpdaterRecoveryCoordinator {
         }
     }
 
+    /// Every marker goes through here: one that rolls back a named
+    /// instance's current launch is also reported through
+    /// `onRollbackCharged` once the charge finishes (`charging`).
     private func writeMarker(_ launch: Launch) {
         HotUpdaterCrashMarker.write(
             bundleId: launch.bundleId,
             shouldRollback: launch.shouldRollback,
             to: launch.markerURL
         )
+        if !launch.isMain, launch.shouldRollback, !rolledBackNames.contains(launch.name) {
+            rolledBackNames.append(launch.name)
+        }
+    }
+
+    /// Runs a charge under the lock, then reports outside it each named
+    /// instance whose launch it marked for rollback.
+    private func charging<T>(_ body: () -> T) -> T {
+        let result: T
+        let rolledBack: [String]
+        lock.lock()
+        result = body()
+        rolledBack = rolledBackNames
+        rolledBackNames = []
+        let notify = onRollbackCharged
+        lock.unlock()
+        rolledBack.forEach { notify?($0) }
+        return result
     }
 
     /// Main always has slot 0; a named instance takes the next free slot when

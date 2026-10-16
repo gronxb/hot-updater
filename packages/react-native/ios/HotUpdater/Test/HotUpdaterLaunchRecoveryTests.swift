@@ -946,6 +946,43 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(widget.getCrashHistory().contains("widget-next"))
     }
 
+    /// Main recovers in-process from a fatal no runtime claims, and the
+    /// charge leaves the unverified widget a marker: the widget's next
+    /// launch in this process is prepared anew too, and every other path
+    /// that marks a named launch reports it the same way.
+    @Test
+    func everyNamedRollbackMarkerPreparesItsLaunchAgain() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        var invalidated: [String] = []
+        coordinator.onRollbackCharged = { invalidated.append($0) }
+        #expect(coordinator.arm(name: Self.widget))
+
+        coordinator.chargeUnverifiedNamedLaunches()
+        #expect(invalidated == [Self.widget])
+        let widget = try #require(process.storages[Self.widget])
+        #expect(widget.prepareLaunch(
+            bundle: namedTestBundle,
+            pendingRecovery: HotUpdaterCrashMarker.consume(at: scene.markerURL(Self.widget))
+        ).launchedBundleId == "widget-stable")
+
+        // The other charges: an unattributed fatal, an uncaught exception, an
+        // unclaimed load failure.
+        for charge in [
+            { coordinator.chargeFatal(owner: nil) as Int? },
+            { coordinator.chargeUncaughtException(); return nil },
+            { coordinator.chargeUnclaimedLoadFailure(); return nil },
+        ] as [() -> Int?] {
+            invalidated = []
+            coordinator.startMonitoring(name: Self.widget, bundleId: "widget-next", shouldRollback: true)
+            #expect(coordinator.arm(name: Self.widget))
+            _ = charge()
+            #expect(invalidated == [Self.widget])
+        }
+    }
+
     @Test
     func onlyANamedLaunchThatWouldRollBackIsPreparedAgain() throws {
         let scene = try Scene()

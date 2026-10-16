@@ -778,6 +778,23 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a named launch charged by a crash nobody claimed rolls back when its runtime starts again`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        val widgetBundle = stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        val impl = HotUpdaterImpl(context, widget)
+        assertEquals(widgetBundle.absolutePath, impl.getJSBundleFile())
+
+        // No runtime claims the error, so every pending armed launch is
+        // charged; its handler returns, and the host starts the widget again.
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("unknown runtime"), null)
+
+        assertEquals("assets://widget.android.bundle", impl.getJSBundleFile())
+        assertEquals(listOf("widget-bundle"), impl.getCrashHistory())
+    }
+
+    @Test
     fun `first content of one instance never verifies another's launch`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, main, "main-bundle")

@@ -403,9 +403,11 @@ internal class HotUpdaterRecoveryManager(
     }
 
     /**
-     * Charges this instance for the crash that ends the process. A named
-     * instance never restarts the app: restarting reaches main's host, so its
-     * next launch rolls the bundle back instead.
+     * Charges this instance for the crash that ends the process, whichever
+     * path decided it: its own claimed error, an inferred or unclaimed
+     * JavaScript error, or an uncaught exception. A named instance never
+     * restarts the app: restarting reaches main's host, so its next launch
+     * rolls the bundle back instead.
      */
     private fun chargeCrash(exception: Exception? = null): Boolean =
         synchronized(lock) {
@@ -414,16 +416,24 @@ internal class HotUpdaterRecoveryManager(
             if (exception != null) {
                 Log.e(TAG, "Caught React startup exception of $name for bundleId=${launch.bundleId}", exception)
             }
-            writeCrashMarker(launch)
-            // A launch none of whose views was shown has no watchdog yet; it
-            // relaunches the app after this crash, as for an armed launch.
-            startRecoveryWatchdog()
-            // A handler may return and the host start this instance's runtime
-            // again in this process: that start prepares a new launch, which
-            // reads this marker and rolls the bundle back.
-            chargedCallback?.invoke()
+            writeRollbackMarkerLocked(launch)
             false
         }
+
+    /**
+     * The one place a named launch's rollback marker is written. The process
+     * may outlive it: a fatal error's handler may return, and the host start
+     * this instance's runtime again, so everything that start needs to roll
+     * the bundle back happens here too.
+     */
+    private fun writeRollbackMarkerLocked(launch: HotUpdaterRecoveryState.Launch) {
+        writeCrashMarker(launch)
+        // A launch none of whose views was shown has no watchdog yet; it
+        // relaunches the app after this crash, as for an armed launch.
+        startRecoveryWatchdog()
+        // The next start prepares a new launch, which reads this marker.
+        chargedCallback?.invoke()
+    }
 
     /**
      * Leaves this launch alone for another instance's crash: the generation
