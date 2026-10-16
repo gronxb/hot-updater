@@ -2,7 +2,12 @@ package com.hotupdater
 
 import android.app.Activity
 import android.app.Application
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ActivityStartGateTest {
@@ -186,6 +191,24 @@ class ActivityStartGateTest {
     }
 
     @Test
+    fun `an activity that reports no lifecycle is started while its window is shown`() {
+        // A brownfield app may host a ReactRootView in a plain Activity.
+        assertTrue(isActivityStarted(PlainActivity(), windowShown = { true }))
+        // The framework hides a stopped activity's window.
+        assertFalse(isActivityStarted(PlainActivity(), windowShown = { false }))
+        assertFalse(isActivityStarted(PlainActivity(finishing = true), windowShown = { true }))
+    }
+
+    @Test
+    fun `an activity that reports its lifecycle is started only by it`() {
+        val activity = LifecycleActivity()
+        assertFalse(isActivityStarted(activity, windowShown = { true }))
+
+        activity.lifecycleState = Lifecycle.State.STARTED
+        assertTrue(isActivityStarted(activity, windowShown = { false }))
+    }
+
+    @Test
     fun `runs at once without an application to observe`() {
         var runs = 0
 
@@ -289,6 +312,27 @@ class ActivityStartGateTest {
     )
 
     private var startedNow = true
+
+    private class PlainActivity(
+        private val finishing: Boolean = false,
+    ) : Activity() {
+        override fun isFinishing(): Boolean = finishing
+    }
+
+    private class LifecycleActivity :
+        Activity(),
+        LifecycleOwner {
+        private val registry = LifecycleRegistry.createUnsafe(this).apply { currentState = Lifecycle.State.CREATED }
+
+        var lifecycleState: Lifecycle.State
+            get() = registry.currentState
+            set(value) {
+                registry.currentState = value
+            }
+
+        override val lifecycle: Lifecycle
+            get() = registry
+    }
 
     private inner class RecordingApplication : Application() {
         private val callbacks = mutableListOf<ActivityLifecycleCallbacks>()

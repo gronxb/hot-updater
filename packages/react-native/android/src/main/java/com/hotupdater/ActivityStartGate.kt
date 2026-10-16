@@ -37,7 +37,7 @@ internal class ActivityStartGate(
     private val showsReactView: (Activity) -> Boolean = ::hasReactRootView,
     private val watchLayout: (Activity, () -> Unit) -> () -> Unit = ::watchGlobalLayout,
     private val activitiesStartedBefore: (() -> Collection<Activity>)? = null,
-    private val isStarted: (Activity) -> Boolean = ::isActivityStarted,
+    private val isStarted: (Activity) -> Boolean = { isActivityStarted(it) },
 ) : Application.ActivityLifecycleCallbacks {
     private val startedActivities = mutableSetOf<Activity>()
     private val layoutWatches = mutableMapOf<Activity, () -> Unit>()
@@ -186,14 +186,24 @@ private fun hasStartedActivity(): Boolean =
     }.getOrDefault(false)
 
 /**
- * Whether [activity] is started now. Only an activity that reports its
- * lifecycle (ComponentActivity, which ReactActivity and AppCompatActivity
- * are) can say so; any other counts once a gate sees it start.
+ * Whether [activity] is started now. An activity that reports its lifecycle
+ * (ComponentActivity, which ReactActivity and AppCompatActivity are) says so.
+ * Any other, such as a plain Activity hosting a ReactRootView itself, is
+ * started while its window is shown: the framework hides a stopped
+ * activity's window.
  */
-internal fun isActivityStarted(activity: Activity): Boolean {
+internal fun isActivityStarted(
+    activity: Activity,
+    windowShown: (Activity) -> Boolean = ::isWindowShown,
+): Boolean {
     if (activity.isFinishing || activity.isDestroyed) return false
-    val owner = activity as? LifecycleOwner ?: return false
+    val owner = activity as? LifecycleOwner ?: return windowShown(activity)
     return runCatching { owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) }.getOrDefault(false)
+}
+
+private fun isWindowShown(activity: Activity): Boolean {
+    val decorView = activity.window?.peekDecorView() ?: return false
+    return decorView.isAttachedToWindow && decorView.windowVisibility == View.VISIBLE
 }
 
 private fun hasReactRootView(activity: Activity): Boolean = activity.window?.peekDecorView()?.let(::containsReactRootView) ?: false

@@ -20,7 +20,7 @@ import java.util.WeakHashMap
  */
 internal class HotUpdaterRecoveryAttribution(
     private val resolveName: (Context, String) -> String = HotUpdaterInstanceRegistry.shared::resolveName,
-    private val isStarted: (Activity) -> Boolean = ::isActivityStarted,
+    private val isStarted: (Activity) -> Boolean = { isActivityStarted(it) },
 ) {
     companion object {
         val shared = HotUpdaterRecoveryAttribution()
