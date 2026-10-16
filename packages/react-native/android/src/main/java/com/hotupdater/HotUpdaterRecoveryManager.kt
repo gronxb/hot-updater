@@ -82,7 +82,7 @@ internal class HotUpdaterRecoveryManager(
     // launch whose module is created late runs another bundle, so it never
     // counts for this launch.
     private var launchURL: String? = null
-    private val registeredRuntimeIds = mutableSetOf<Int>()
+    private val registeredRuntimes = WeakIdentitySet<Any>()
 
     init {
         attribution.track(appContext)
@@ -152,7 +152,7 @@ internal class HotUpdaterRecoveryManager(
                 // A new launch runs in a new runtime, which registers when its
                 // module is created; until then its errors are not hooked.
                 this.launchURL = launchURL
-                registeredRuntimeIds.clear()
+                registeredRuntimes.clear()
                 launchState.start(bundleId, shouldRollback)
                 armed = isMain
                 launchStartedAction = null
@@ -281,12 +281,12 @@ internal class HotUpdaterRecoveryManager(
     }
 
     /**
-     * Records runtime [runtimeId], which loaded [sourceURL], as one of this
+     * Records [runtime], which loaded [sourceURL], as one of this
      * launch's, and shows the launch gate its [activity]; false for a runtime
      * of an earlier launch, which runs another bundle.
      */
     private fun registerRuntime(
-        runtimeId: Int,
+        runtime: Any,
         sourceURL: String?,
         activity: Activity?,
     ): Boolean {
@@ -295,18 +295,18 @@ internal class HotUpdaterRecoveryManager(
                 val launchURL = launchURL
                 if (launchState.snapshot() == null) return false
                 if (launchURL != null && !isSameBundle(sourceURL, launchURL)) return false
-                registeredRuntimeIds += runtimeId
+                registeredRuntimes.add(runtime)
                 runtimeActivityCallback
             }
         if (activity != null) callback?.invoke(activity)
         return true
     }
 
-    private fun unregisterRuntime(runtimeId: Int) {
-        synchronized(lock) { registeredRuntimeIds -= runtimeId }
+    private fun unregisterRuntime(runtime: Any) {
+        synchronized(lock) { registeredRuntimes.remove(runtime) }
     }
 
-    private fun hasRegisteredRuntime(): Boolean = synchronized(lock) { registeredRuntimeIds.isNotEmpty() }
+    private fun hasRegisteredRuntime(): Boolean = synchronized(lock) { !registeredRuntimes.isEmpty() }
 
     /** Whether a runtime that loaded [sourceURL] runs this launch's bundle. */
     private fun runsLaunchOf(sourceURL: String?): Boolean =
@@ -701,7 +701,7 @@ internal class HotUpdaterRecoveryManager(
         private val relaunchIntents = linkedSetOf<String>()
         private var watchdogDeadlineAt = 0L
 
-        private val patchedReactContextIds = mutableSetOf<Int>()
+        private val patchedReactContexts = WeakIdentitySet<ReactContext>()
 
         private val contentAppearedListener =
             ReactMarker.MarkerListener { marker, _, rootTag ->
@@ -1104,7 +1104,7 @@ internal class HotUpdaterRecoveryManager(
             }
             registerRuntime(
                 instanceName,
-                System.identityHashCode(reactContext),
+                reactContext,
                 runCatching { reactContext.sourceURL }.getOrNull(),
                 reactContext.currentActivity,
             )
@@ -1112,7 +1112,7 @@ internal class HotUpdaterRecoveryManager(
         }
 
         /**
-         * Records that [instanceName]'s runtime [runtimeId], which loaded
+         * Records that [instanceName]'s [runtime], which loaded
          * [sourceURL], hooks its errors, and shows its launch gate the
          * runtime's [activity]: the module is created while the bundle loads,
          * before its first content, and the activity may have started before
@@ -1122,22 +1122,22 @@ internal class HotUpdaterRecoveryManager(
          */
         internal fun registerRuntime(
             instanceName: String,
-            runtimeId: Int,
+            runtime: Any,
             sourceURL: String?,
             activity: Activity?,
         ): Boolean {
-            val registered = liveManagers[instanceName]?.registerRuntime(runtimeId, sourceURL, activity) == true
+            val registered = liveManagers[instanceName]?.registerRuntime(runtime, sourceURL, activity) == true
             // Content its runtime showed before can be told now.
             if (registered) heldContent.runtimeRegistered()
             return registered
         }
 
-        /** [instanceName]'s runtime [runtimeId] was torn down, as in a reload. */
+        /** [instanceName]'s [runtime] was torn down, as in a reload. */
         internal fun unregisterRuntime(
             instanceName: String,
-            runtimeId: Int,
+            runtime: Any,
         ) {
-            liveManagers[instanceName]?.unregisterRuntime(runtimeId)
+            liveManagers[instanceName]?.unregisterRuntime(runtime)
         }
 
         // React Native may hold `/data/data/...` where the launch handed out
@@ -1164,12 +1164,7 @@ internal class HotUpdaterRecoveryManager(
             instanceName != null && instanceName != HotUpdaterInstanceEnvironment.MAIN_NAME
 
         internal fun patchReactContextExceptionHandler(reactContext: ReactContext) {
-            val contextIdentity = System.identityHashCode(reactContext)
-            synchronized(patchedReactContextIds) {
-                if (!patchedReactContextIds.add(contextIdentity)) {
-                    return
-                }
-            }
+            if (!patchedReactContexts.add(reactContext)) return
 
             val previousHandler = reactContext.jsExceptionHandler
             if (previousHandler is RecoveryJSExceptionHandler) {

@@ -48,7 +48,7 @@ class HotUpdaterModule internal constructor(
     private var registeredInstanceName: String? = null
 
     private fun unregisterRuntime() {
-        registeredInstanceName?.let { HotUpdaterRecoveryManager.unregisterRuntime(it, System.identityHashCode(mReactApplicationContext)) }
+        registeredInstanceName?.let { HotUpdaterRecoveryManager.unregisterRuntime(it, mReactApplicationContext) }
         registeredInstanceName = null
     }
 

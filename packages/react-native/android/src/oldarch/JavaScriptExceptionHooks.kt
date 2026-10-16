@@ -13,18 +13,17 @@ import com.facebook.react.bridge.ReactContext
  * bundle the runtime runs.
  */
 internal object JavaScriptExceptionHooks {
-    private val patchedInstanceManagerIds = mutableSetOf<Int>()
-    private val patchedCatalystInstanceIds = mutableSetOf<Int>()
+    private val patchedInstanceManagers = WeakIdentitySet<Any>()
+    private val patchedCatalystInstances = WeakIdentitySet<Any>()
 
     fun install(appContext: Context) {
         val application = appContext as? ReactApplication ?: return
         val instanceManager = application.reactNativeHost.reactInstanceManager
-        val managerIdentity = System.identityHashCode(instanceManager)
-        if (synchronized(this) { patchedInstanceManagerIds.add(managerIdentity) }) {
+        if (patchedInstanceManagers.add(instanceManager)) {
             val exceptionHandlerField =
                 HotUpdaterRecoveryManager.findField(instanceManager.javaClass, "mJSExceptionHandler")
             if (exceptionHandlerField == null) {
-                synchronized(this) { patchedInstanceManagerIds.remove(managerIdentity) }
+                patchedInstanceManagers.remove(instanceManager)
                 return
             }
 
@@ -55,15 +54,14 @@ internal object JavaScriptExceptionHooks {
                 null
             } ?: return
 
-        val catalystIdentity = System.identityHashCode(catalystInstance)
-        if (!synchronized(this) { patchedCatalystInstanceIds.add(catalystIdentity) }) {
+        if (!patchedCatalystInstances.add(catalystInstance)) {
             return
         }
 
         val exceptionHandlerField =
             HotUpdaterRecoveryManager.findField(catalystInstance.javaClass, "mJSExceptionHandler")
         if (exceptionHandlerField == null) {
-            synchronized(this) { patchedCatalystInstanceIds.remove(catalystIdentity) }
+            patchedCatalystInstances.remove(catalystInstance)
             return
         }
 

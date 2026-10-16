@@ -13,7 +13,7 @@ import com.facebook.react.bridge.ReactContext
  * to the instance whose bundle the host's runtime runs.
  */
 internal object JavaScriptExceptionHooks {
-    private val patchedReactHostDelegateIds = mutableSetOf<Int>()
+    private val patchedReactHostDelegates = WeakIdentitySet<Any>()
 
     fun install(appContext: Context) {
         val reactHost =
@@ -53,13 +53,12 @@ internal object JavaScriptExceptionHooks {
                 }
                 ?: return
 
-        val delegateIdentity = System.identityHashCode(reactHostDelegate)
-        val patches = synchronized(this) { patchedReactHostDelegateIds.add(delegateIdentity) }
+        val patches = patchedReactHostDelegates.add(reactHostDelegate)
         if (patches) {
             val exceptionHandlerField =
                 HotUpdaterRecoveryManager.findField(reactHostDelegate.javaClass, "exceptionHandler")
             if (exceptionHandlerField == null) {
-                synchronized(this) { patchedReactHostDelegateIds.remove(delegateIdentity) }
+                patchedReactHostDelegates.remove(reactHostDelegate)
                 return
             }
 

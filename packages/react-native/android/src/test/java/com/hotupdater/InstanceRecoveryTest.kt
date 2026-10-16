@@ -30,6 +30,10 @@ class InstanceRecoveryTest {
     val recoveryMonitoring = RecoveryMonitoringRule()
 
     private val main = HotUpdaterInstanceEnvironment.main
+
+    // React Native runtimes, which the tests stand in for by identity.
+    private val firstRuntime = Any()
+    private val secondRuntime = Any()
     private val widget =
         HotUpdaterInstanceEnvironment.of(HotUpdaterOptions(BASE_URL, name = "widget", bundleAssetName = "widget.android.bundle"))
 
@@ -279,7 +283,7 @@ class InstanceRecoveryTest {
         assertFalse(metadata(context, widget).launchInProgress)
 
         showsWidgetView = true
-        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, sourceURL = launchURL, activity = Activity())
+        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtime = firstRuntime, sourceURL = launchURL, activity = Activity())
 
         assertTrue(metadata(context, widget).launchInProgress)
     }
@@ -293,7 +297,7 @@ class InstanceRecoveryTest {
         val gate = handOverGate(showsReactView = { true }, isStarted = { false })
         val launchURL = HotUpdaterImpl(context, widget, gate).getJSBundleFile()
 
-        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, sourceURL = launchURL, activity = Activity())
+        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtime = firstRuntime, sourceURL = launchURL, activity = Activity())
 
         assertFalse(metadata(context, widget).launchInProgress)
     }
@@ -335,14 +339,14 @@ class InstanceRecoveryTest {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, widget, "widget-bundle")
         val launchURL = HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
-        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, sourceURL = launchURL, activity = null)
+        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtime = firstRuntime, sourceURL = launchURL, activity = null)
 
         // Its module hooks its errors, so an unclaimed one is not its.
         HotUpdaterRecoveryManager.chargeUncaughtException(JavascriptException("unknown runtime"))
         assertFalse(crashMarker(context, widget).exists())
 
         // Torn down, as in a reload: the next runtime's error may be its.
-        HotUpdaterRecoveryManager.unregisterRuntime(widget.name, runtimeId = 1)
+        HotUpdaterRecoveryManager.unregisterRuntime(widget.name, runtime = firstRuntime)
         HotUpdaterRecoveryManager.chargeUncaughtException(JavascriptException("widget failed"))
         assertEquals(PendingCrashRecovery("widget-bundle", true), PendingCrashRecovery.loadFromFile(crashMarker(context, widget)))
     }
@@ -352,7 +356,7 @@ class InstanceRecoveryTest {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, widget, "widget-bundle")
         val launchURL = HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
-        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, sourceURL = launchURL, activity = null)
+        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtime = firstRuntime, sourceURL = launchURL, activity = null)
 
         HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
         HotUpdaterRecoveryManager.chargeUncaughtException(JavascriptException("widget failed"))
@@ -371,7 +375,7 @@ class InstanceRecoveryTest {
         assertNotEquals(firstURL, secondURL)
 
         // The earlier runtime's module is created only now.
-        assertFalse(HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, sourceURL = firstURL, activity = null))
+        assertFalse(HotUpdaterRecoveryManager.registerRuntime(widget.name, runtime = firstRuntime, sourceURL = firstURL, activity = null))
         HotUpdaterRecoveryManager.chargeUncaughtException(JavascriptException("widget failed"))
 
         // The next launch's runtime never reached HotUpdater, so the error is its.
@@ -689,7 +693,7 @@ class InstanceRecoveryTest {
         stagePending(context, widget, "widget-bundle")
         HotUpdaterImpl(context, main).getJSBundleFile()
         val widgetURL = HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
-        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, sourceURL = widgetURL, activity = null)
+        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtime = firstRuntime, sourceURL = widgetURL, activity = null)
 
         HotUpdaterRecoveryManager.handleContentAppeared(rootTag = 41)
 
