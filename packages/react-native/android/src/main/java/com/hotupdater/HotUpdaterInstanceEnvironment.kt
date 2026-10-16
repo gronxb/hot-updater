@@ -50,6 +50,11 @@ internal class HotUpdaterInstanceEnvironment private constructor(
                 "HotUpdater instance name must be 1 to 32 lowercase letters, digits, or hyphens: \"${options.name}\""
             }
             if (options.name == MAIN_NAME) return main
+            // Main's runtime is told apart by the bundle it runs, so a named
+            // instance embeds a bundle of its own.
+            require(options.bundleAssetName != DEFAULT_BUNDLE_ASSET_NAME) {
+                "A named HotUpdater instance needs its own bundleAssetName, not $DEFAULT_BUNDLE_ASSET_NAME: \"${options.name}\""
+            }
             return HotUpdaterInstanceEnvironment(
                 name = options.name,
                 channel = options.channel?.takeIf { it.isNotEmpty() },

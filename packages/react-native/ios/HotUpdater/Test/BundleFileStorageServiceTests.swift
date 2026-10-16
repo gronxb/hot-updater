@@ -1927,6 +1927,23 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func everyInstanceOfTheAppSharesOneInstallIdentity() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let main = makeStorageService(documentsDirectory: root)
+        let named = makeStorageService(documentsDirectory: root)
+
+        let installId = main.getInstallId()
+        // Two instances that start at once share the id the first created,
+        // even before (or without) it reaching the file.
+        let file = NoBackupStorage.directory(in: TestFileSystemService(documentsDirectory: root))
+            .appendingPathComponent(InstallIdentity.installIdentityFilename)
+        try? FileManager.default.removeItem(at: file)
+
+        #expect(named.getInstallId() == installId)
+    }
+
+    @Test
     func artifactProtocolV2AsksForNoFileWhenItTakesTheArchive() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
@@ -3239,7 +3256,7 @@ struct BundleFileStorageServiceTests {
     func namedInstancesStageAndLaunchTheirOwnBundles() throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
-        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: .main)
+        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: namedTestBundle)
         let mainBytes = Data("main hermes".utf8)
         let widgetBytes = Data("widget hermes".utf8)
         let mainManifest = try makeManifestData(bundleId: "main-bundle",
@@ -3290,7 +3307,7 @@ struct BundleFileStorageServiceTests {
     func anIsolationKeyChangeLeavesTheOtherInstancesBundles(changeMain: Bool) throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
-        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: .main)
+        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: namedTestBundle)
         let (mainBundle, widgetBundle) = try stageMainAndWidget(documentsDirectory: root, widget: widget)
 
         if changeMain {
@@ -3313,7 +3330,7 @@ struct BundleFileStorageServiceTests {
     func aChannelResetLeavesTheOtherInstancesBundles(resetMain: Bool) throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
-        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: .main)
+        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: namedTestBundle)
         let (mainBundle, widgetBundle) = try stageMainAndWidget(documentsDirectory: root, widget: widget)
         let main = makeStorageService(documentsDirectory: root)
         let widgetService = makeInstanceStorageService(documentsDirectory: root, instance: widget,
@@ -3331,7 +3348,7 @@ struct BundleFileStorageServiceTests {
     func cleaningOldBundlesLeavesTheOtherInstancesBundles(cleanMain: Bool) throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
-        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: .main)
+        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: namedTestBundle)
         let (mainBundle, widgetBundle) = try stageMainAndWidget(documentsDirectory: root, widget: widget)
         let service = cleanMain
             ? makeStorageService(documentsDirectory: root)
@@ -3347,7 +3364,7 @@ struct BundleFileStorageServiceTests {
     func committingTheBuiltInBundleLeavesTheOtherInstancesBundles(commitMain: Bool) throws {
         let root = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(root) }
-        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: .main)
+        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: namedTestBundle)
         let (mainBundle, widgetBundle) = try stageMainAndWidget(documentsDirectory: root, widget: widget)
         let service = commitMain
             ? makeStorageService(documentsDirectory: root)

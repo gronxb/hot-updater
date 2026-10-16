@@ -7,13 +7,22 @@ import Testing
 struct HotUpdaterInstanceEnvironmentTests {
     @Test(arguments: ["main", "widget", "a", "checkout-2", String(repeating: "a", count: 32)])
     func acceptsAName(name: String) throws {
-        #expect(try HotUpdaterInstanceEnvironment(name: name, bundle: .main).name == name)
+        #expect(try HotUpdaterInstanceEnvironment(name: name, bundle: namedTestBundle).name == name)
+    }
+
+    @Test
+    func aNamedInstanceNeedsABundleOtherThanMains() {
+        // Main's runtime is told apart by the bundle it runs.
+        #expect(throws: NativeUpdateCheckError.self) {
+            try HotUpdaterInstanceEnvironment(name: "widget", bundle: .main)
+        }
+        #expect(throws: Never.self) { try HotUpdaterInstanceEnvironment(name: "main", bundle: .main) }
     }
 
     @Test(arguments: ["", "Widget", "WIDGET", String(repeating: "a", count: 33), "a/b", "../main", "a_b", "a b", "위젯"])
     func refusesAName(name: String) {
         #expect(throws: NativeUpdateCheckError.self) {
-            try HotUpdaterInstanceEnvironment(name: name, bundle: .main)
+            try HotUpdaterInstanceEnvironment(name: name, bundle: namedTestBundle)
         }
     }
 
@@ -29,7 +38,7 @@ struct HotUpdaterInstanceEnvironmentTests {
         #expect(main.isMain)
         // Main reads the bundle HotUpdaterConfig recorded, as before.
         #expect(main.bundle == framework)
-        #expect(try !HotUpdaterInstanceEnvironment(name: "widget", bundle: .main).isMain)
+        #expect(try !HotUpdaterInstanceEnvironment(name: "widget", bundle: namedTestBundle).isMain)
     }
 
     @Test
@@ -63,7 +72,7 @@ struct HotUpdaterInstanceEnvironmentTests {
             documents: documents,
             applicationSupport: "/app/Library/Application Support"
         )
-        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: .main)
+        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: namedTestBundle)
 
         #expect(widget.bundleStorePath(documentsPath: documents)
             == "/app/Documents/hot-updater-instances/widget/bundle-store")
@@ -152,7 +161,7 @@ struct HotUpdaterInstanceEnvironmentTests {
         main.configure(isolationKey: try HotUpdaterInstanceEnvironment(name: "main", bundle: .main, config: config)
             .isolationKey(appVersion: "1.0"))
         let widget = VersionedPreferencesService(userDefaults: defaults)
-        widget.configure(isolationKey: try HotUpdaterInstanceEnvironment(name: "widget", bundle: .main, config: config)
+        widget.configure(isolationKey: try HotUpdaterInstanceEnvironment(name: "widget", bundle: namedTestBundle, config: config)
             .isolationKey(appVersion: "1.0"))
 
         try main.setItem("beta", forKey: "HotUpdaterChannel")
@@ -175,7 +184,7 @@ struct HotUpdaterInstanceEnvironmentTests {
         let main = KeyValueStorageService(
             directory: HotUpdaterInstanceEnvironment.main.keyValueStorageDirectory(in: fileSystem)
         )
-        let widgetDirectory = try HotUpdaterInstanceEnvironment(name: "widget", bundle: .main)
+        let widgetDirectory = try HotUpdaterInstanceEnvironment(name: "widget", bundle: namedTestBundle)
             .keyValueStorageDirectory(in: fileSystem)
 
         #expect(KeyValueStorageService(directory: widgetDirectory).setItem("queue", value: "[\"widget\"]"))
@@ -234,3 +243,12 @@ private final class PathsFileSystemService: FileSystemService {
     func applicationSupportPath() -> String { applicationSupport }
 }
 #endif
+
+/// A bundle other than `Bundle.main`, which a named instance needs.
+let namedTestBundle: Bundle = {
+    let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("hot-updater-named-instance-\(UUID().uuidString).bundle", isDirectory: true)
+    try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return Bundle(path: url.path)!
+}()
+

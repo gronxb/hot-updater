@@ -48,6 +48,13 @@ struct HotUpdaterInstanceEnvironment {
                 "Invalid name: \(name). Use 1 to \(Self.maxNameLength) of a-z, 0-9, and -."
             )
         }
+        // Main's runtime is told apart by the bundle it runs, so a named
+        // instance embeds a bundle of its own.
+        if name != Self.mainName, bundle == Bundle.main {
+            throw NativeUpdateCheckError.hotUpdater(
+                "A named HotUpdater instance needs its own bundle, not Bundle.main: \(name)"
+            )
+        }
         self.init(name: name, namedBundle: name == Self.mainName ? nil : bundle, config: config)
     }
 

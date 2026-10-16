@@ -27,6 +27,15 @@ class HotUpdaterInstanceEnvironmentTest {
     }
 
     @Test
+    fun `a named instance needs a bundle asset other than main's`() {
+        // Main's runtime is told apart by the bundle it runs.
+        assertThrows(IllegalArgumentException::class.java) {
+            HotUpdaterInstanceEnvironment.of(HotUpdaterOptions(BASE_URL, name = "widget"))
+        }
+        assertSame(HotUpdaterInstanceEnvironment.main, HotUpdaterInstanceEnvironment.of(HotUpdaterOptions(BASE_URL)))
+    }
+
+    @Test
     fun `instance names are 1 to 32 lowercase letters digits or hyphens`() {
         listOf("main", "a", "chat-widget-2", "0", "a".repeat(32)).forEach { name ->
             assertEquals(name, environment(name).name)
@@ -44,12 +53,28 @@ class HotUpdaterInstanceEnvironmentTest {
             HotUpdater.init(context, HotUpdaterOptions(BASE_URL, name = "Init-Widget"))
         }
 
-        val first = HotUpdater.init(context, HotUpdaterOptions(BASE_URL, name = "init-widget", channel = "beta"))
+        val first =
+            HotUpdater.init(
+                context,
+                HotUpdaterOptions(BASE_URL, name = "init-widget", channel = "beta", bundleAssetName = "init-widget.android.bundle"),
+            )
         assertEquals("init-widget", first.options.name)
         // Same configuration, other request defaults: the same state.
-        HotUpdater.init(context, HotUpdaterOptions(BASE_URL, requestTimeoutMillis = 1_000, name = "init-widget", channel = "beta"))
+        HotUpdater.init(
+            context,
+            HotUpdaterOptions(
+                BASE_URL,
+                requestTimeoutMillis = 1_000,
+                name = "init-widget",
+                channel = "beta",
+                bundleAssetName = "init-widget.android.bundle",
+            ),
+        )
         assertThrows(IllegalArgumentException::class.java) {
-            HotUpdater.init(context, HotUpdaterOptions(BASE_URL, name = "init-widget", channel = "production"))
+            HotUpdater.init(
+                context,
+                HotUpdaterOptions(BASE_URL, name = "init-widget", channel = "production", bundleAssetName = "init-widget.android.bundle"),
+            )
         }
         // main reads the manifest, so its options' configuration never conflicts.
         HotUpdater.init(context, HotUpdaterOptions(BASE_URL, channel = "beta"))
@@ -125,7 +150,7 @@ class HotUpdaterInstanceEnvironmentTest {
         assertEquals("staging", plain.defaultChannel(context))
         assertEquals("app-fp", plain.fingerprintHash(context))
         assertEquals("APP KEY", plain.publicKey(context))
-        assertEquals("assets://index.android.bundle", plain.fallbackBundleURL)
+        assertEquals("assets://plain.android.bundle", plain.fallbackBundleURL)
     }
 
     @Test
@@ -278,7 +303,14 @@ class HotUpdaterInstanceEnvironmentTest {
         name: String,
         channel: String? = null,
         publicKey: String? = null,
-        bundleAssetName: String = HotUpdaterInstanceEnvironment.DEFAULT_BUNDLE_ASSET_NAME,
+        bundleAssetName: String =
+            if (name ==
+                HotUpdaterInstanceEnvironment.MAIN_NAME
+            ) {
+                HotUpdaterInstanceEnvironment.DEFAULT_BUNDLE_ASSET_NAME
+            } else {
+                "$name.android.bundle"
+            },
     ): HotUpdaterInstanceEnvironment =
         HotUpdaterInstanceEnvironment.of(
             HotUpdaterOptions(BASE_URL, name = name, channel = channel, publicKey = publicKey, bundleAssetName = bundleAssetName),

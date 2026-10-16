@@ -2872,7 +2872,7 @@ class BundleFileStorageServiceTest {
         val mainRoot = HotUpdaterInstanceEnvironment.main.filesRoot(context)!!
         val widgetRoot =
             HotUpdaterInstanceEnvironment
-                .of(HotUpdaterOptions("https://updates.example.com", name = "widget"))
+                .of(HotUpdaterOptions("https://updates.example.com", name = "widget", bundleAssetName = "widget.android.bundle"))
                 .filesRoot(context)!!
         listOf(mainRoot to "main-bundle", widgetRoot to "widget-bundle").forEach { (root, bundleId) ->
             createCompleteBundle(root, bundleId, bundleId)
