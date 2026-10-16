@@ -1317,6 +1317,73 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `the first launch's watchdog alarm is set before its state is written`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        val watchdogState = File(bundleStore(context, main), "recovery-watchdog-state.txt")
+        val stateWhenAlarmSet = mutableListOf<Boolean>()
+        HotUpdaterRecoveryManager.watchdogAlarm = { _, _ -> stateWhenAlarmSet += watchdogState.exists() }
+
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+
+        // A process that dies while the state is written leaves an alarm.
+        assertEquals(false, stateWhenAlarmSet.firstOrNull())
+        assertEquals(listOf(widget.name), HotUpdaterRecoveryManager.WatchdogState.parse(watchdogState.readText())!!.instances)
+    }
+
+    @Test
+    fun `a receiver in a process that never armed the watchdog relaunches for any marker without its state`() {
+        // The process that set the alarm died before writing the state file:
+        // this one, started for the alarm, never armed the watchdog.
+        val context = InstanceTestContext(temporaryFolder.root)
+        val watchdogState = File(bundleStore(context, main), "recovery-watchdog-state.txt")
+
+        // No marker asks to roll back: the alarm just ends.
+        HotUpdaterRecoveryManager.handleRecoveryWatchdog(context)
+        assertTrue(context.startedActivities.isEmpty())
+
+        writeCrashMarker(context, widget, "widget-bundle")
+        HotUpdaterRecoveryManager.handleRecoveryWatchdog(context)
+
+        assertEquals(1, context.startedActivities.size)
+        assertFalse(watchdogState.exists())
+    }
+
+    @Test
+    fun `a receiver in a process that never armed the watchdog relaunches for a marker its state file lags behind`() {
+        // The arming process wrote main's state, then a named launch armed
+        // and its process died before the file listed it.
+        val context = InstanceTestContext(temporaryFolder.root)
+        val watchdogState =
+            File(bundleStore(context, main), "recovery-watchdog-state.txt").apply {
+                parentFile?.mkdirs()
+                writeText((System.currentTimeMillis() + 60_000L).toString())
+            }
+        writeCrashMarker(context, widget, "widget-bundle")
+
+        HotUpdaterRecoveryManager.handleRecoveryWatchdog(context)
+
+        assertEquals(1, context.startedActivities.size)
+        assertFalse(watchdogState.exists())
+    }
+
+    @Test
+    fun `a receiver in the process that armed the watchdog does not relaunch without its state`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        val watchdogState = File(bundleStore(context, main), "recovery-watchdog-state.txt")
+        assertTrue(watchdogState.exists())
+        // This process lives on: its state is gone, and a marker asks to roll back.
+        watchdogState.delete()
+        writeCrashMarker(context, widget, "widget-bundle")
+
+        HotUpdaterRecoveryManager.handleRecoveryWatchdog(context)
+
+        assertTrue(context.startedActivities.isEmpty())
+    }
+
+    @Test
     fun `a launch charged by a crash nobody claimed has its alarm set before its marker`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, widget, "widget-bundle")

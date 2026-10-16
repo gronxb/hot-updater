@@ -17,6 +17,7 @@ import com.facebook.react.common.JavascriptException
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.io.IOException
 import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 import java.util.concurrent.ConcurrentHashMap
@@ -712,6 +713,11 @@ internal class HotUpdaterRecoveryManager(
         @Volatile
         private var watchdogContext: Context? = null
 
+        // Whether this process ever set the watchdog's alarm. A receiver in a
+        // process that never did runs after the process that set it ended,
+        // which may have died before its state file was written.
+        private var watchdogArmedInProcess = false
+
         // The watchdog's state lives in this process (owners, intents), in
         // its file, and in its alarm. Every change goes through these, under
         // the recovery lock, so the three never disagree, whichever launch,
@@ -724,9 +730,10 @@ internal class HotUpdaterRecoveryManager(
             try {
                 watchdogOwners += name
                 watchdogDeadlineAt = System.currentTimeMillis() + MONITORING_GRACE_PERIOD_MS
-                watchdogFile(context).parentFile?.mkdirs()
+                // The alarm before the file: a process that dies in between
+                // leaves an alarm whose receiver reads the crash markers.
+                setWatchdogAlarmLocked(context)
                 persistWatchdogLocked(context)
-                scheduleRecoveryWatchdogTick(context, WATCHDOG_TICK_INTERVAL_MS)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to schedule recovery watchdog", e)
             }
@@ -748,8 +755,12 @@ internal class HotUpdaterRecoveryManager(
             relaunchIntents += name
             // An intent is only kept with an alarm that acts on it.
             watchdogDeadlineAt = maxOf(watchdogDeadlineAt, System.currentTimeMillis() + MONITORING_GRACE_PERIOD_MS)
-            watchdogFile(context).parentFile?.mkdirs()
+            setWatchdogAlarmLocked(context)
             persistWatchdogLocked(context)
+        }
+
+        private fun setWatchdogAlarmLocked(context: Context) {
+            watchdogArmedInProcess = true
             scheduleRecoveryWatchdogTick(context, WATCHDOG_TICK_INTERVAL_MS)
         }
 
@@ -770,8 +781,9 @@ internal class HotUpdaterRecoveryManager(
                 return
             }
             try {
-                file.writeText(
-                    WatchdogState(watchdogDeadlineAt, watchdogOwners.toList(), Process.myPid(), relaunchIntents.toList()).serialize(),
+                writeWatchdogState(
+                    file,
+                    WatchdogState(watchdogDeadlineAt, watchdogOwners.toList(), Process.myPid(), relaunchIntents.toList()),
                 )
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to update recovery watchdog", e)
@@ -779,6 +791,21 @@ internal class HotUpdaterRecoveryManager(
         }
 
         private fun watchdogFile(context: Context): File = File(getBundleStoreDir(context), WATCHDOG_STATE_FILENAME)
+
+        // Whole or not at all: a process that dies while writing leaves the
+        // previous state, or none, never a part that reads as main's alone.
+        private fun writeWatchdogState(
+            file: File,
+            state: WatchdogState,
+        ) {
+            file.parentFile?.mkdirs()
+            val partial = File(file.parentFile, "${file.name}.tmp")
+            partial.writeText(state.serialize())
+            if (!partial.renameTo(file)) {
+                partial.delete()
+                throw IOException("Failed to replace ${file.name}")
+            }
+        }
 
         private val patchedReactContexts = WeakIdentitySet<ReactContext>()
 
@@ -1395,13 +1422,27 @@ internal class HotUpdaterRecoveryManager(
             val appContext = context.applicationContext
             val watchdogStateFile = File(getBundleStoreDir(appContext), WATCHDOG_STATE_FILENAME)
             val state = WatchdogState.parse(watchdogStateFile.takeIf(File::exists)?.readText())
+            // A process that never set the alarm runs after the process that
+            // set it ended, which may have died before writing its state or
+            // before rewriting it for a new owner: the file's owners may lag.
+            // Any marker asking to roll back is then that process's, as one
+            // left earlier was consumed or relaunched for then. A marker,
+            // never a launch merely pending, so a relaunched process that
+            // dies again relaunches no further.
+            val relaunchesAfterArmingProcess = !watchdogArmedInProcess && anyCrashMarkerRequestsRollback(appContext.filesDir)
             if (state == null) {
                 cancelRecoveryWatchdogAlarm(appContext)
                 watchdogStateFile.delete()
+                if (relaunchesAfterArmingProcess) {
+                    Log.i(TAG, "Recovery watchdog detected crash marker without its state, relaunching app")
+                    launchRecoveryRestart(appContext)
+                }
                 return
             }
 
-            if (state.relaunchesFor(crashMarkerRequestsRollback(appContext.filesDir, state.instances), Process.myPid())) {
+            if (relaunchesAfterArmingProcess ||
+                state.relaunchesFor(crashMarkerRequestsRollback(appContext.filesDir, state.instances), Process.myPid())
+            ) {
                 Log.i(TAG, "Recovery watchdog detected crash marker, relaunching app")
                 watchdogStateFile.delete()
                 cancelRecoveryWatchdogAlarm(appContext)
@@ -1416,8 +1457,8 @@ internal class HotUpdaterRecoveryManager(
                 // its relaunch intent (or the process does).
                 if (state.relaunching.isNotEmpty() && state.pid == Process.myPid()) {
                     watchdogDeadlineAt = now + MONITORING_GRACE_PERIOD_MS
-                    watchdogStateFile.writeText(state.copy(deadlineAt = watchdogDeadlineAt).serialize())
                     scheduleRecoveryWatchdogTick(appContext, WATCHDOG_TICK_INTERVAL_MS)
+                    writeWatchdogState(watchdogStateFile, state.copy(deadlineAt = watchdogDeadlineAt))
                     return
                 }
                 // The watchdog ends here, in this process's state too: a
@@ -1452,6 +1493,17 @@ internal class HotUpdaterRecoveryManager(
                 val recovery = PendingCrashRecovery.loadFromFile(File(File(root, BUNDLE_STORE_DIRECTORY), CRASH_MARKER_FILENAME))
                 recovery?.shouldRollback == true && recovery.launchedBundleId != null
             }
+
+        /** Whether the crash marker of main or of any named instance on disk asks to roll a launch back. */
+        internal fun anyCrashMarkerRequestsRollback(filesDir: File?): Boolean {
+            val named =
+                filesDir
+                    ?.let { File(it, HotUpdaterInstanceEnvironment.INSTANCES_DIRECTORY).listFiles() }
+                    ?.filter(File::isDirectory)
+                    ?.map(File::getName)
+                    .orEmpty()
+            return crashMarkerRequestsRollback(filesDir, listOf(HotUpdaterInstanceEnvironment.MAIN_NAME) + named)
+        }
 
         private const val BUNDLE_STORE_DIRECTORY = "bundle-store"
 
