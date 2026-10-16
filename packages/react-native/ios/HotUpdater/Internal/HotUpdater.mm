@@ -8,6 +8,7 @@
 #import <React/RCTSurfacePresenter.h>
 #endif
 
+#include <atomic>
 #include <fcntl.h>
 #include <limits.h>
 #include <signal.h>
@@ -69,11 +70,15 @@ constexpr int kHotUpdaterCrashSlotCount = 8;
 constexpr sig_atomic_t kHotUpdaterUnattributedCrash = -1;
 
 struct HotUpdaterCrashSlot {
+  // 0 while the slot is being rewritten: the signal handler skips it rather
+  // than read a path or bundle id halfway through a copy.
+  volatile sig_atomic_t inUse;
   char markerPath[PATH_MAX];
   char bundleId[kHotUpdaterMaxBundleIdLength];
   // The launch started and its first content hasn't appeared.
   volatile sig_atomic_t shouldRollback;
 };
+
 
 HotUpdaterCrashSlot gHotUpdaterCrashSlots[kHotUpdaterCrashSlotCount] = {};
 // A JavaScript fatal about to crash the process is one instance's: only its
@@ -139,6 +144,28 @@ void HotUpdaterSafeCopy(char *destination, size_t destinationSize, const char *s
   destination[index] = '\0';
 }
 
+// Rewrites a slot's fields between clearing and setting `inUse`; a null
+// path or bundle id keeps the current one. The signal fences keep the
+// compiler from moving the plain string writes across the flag, so a crash
+// signal on this thread mid-rewrite skips the slot, as on Android.
+void HotUpdaterRewriteCrashSlot(HotUpdaterCrashSlot &slot,
+                                const char *markerPath,
+                                const char *bundleId,
+                                bool shouldRollback)
+{
+  slot.inUse = 0;
+  std::atomic_signal_fence(std::memory_order_seq_cst);
+  if (markerPath) {
+    HotUpdaterSafeCopy(slot.markerPath, sizeof(slot.markerPath), markerPath);
+  }
+  if (bundleId) {
+    HotUpdaterSafeCopy(slot.bundleId, sizeof(slot.bundleId), bundleId);
+  }
+  slot.shouldRollback = shouldRollback ? 1 : 0;
+  std::atomic_signal_fence(std::memory_order_seq_cst);
+  slot.inUse = 1;
+}
+
 void HotUpdaterWriteCrashMarker(const HotUpdaterCrashSlot &slot)
 {
   if (slot.markerPath[0] == '\0') {
@@ -183,6 +210,10 @@ void HotUpdaterWriteCrashMarkers()
       continue;
     }
     const HotUpdaterCrashSlot &slot = gHotUpdaterCrashSlots[index];
+    if (slot.inUse == 0) {
+      continue;
+    }
+    std::atomic_signal_fence(std::memory_order_seq_cst);
     if (index == 0 || slot.shouldRollback != 0) {
       HotUpdaterWriteCrashMarker(slot);
     }
@@ -251,12 +282,10 @@ extern "C" void HotUpdaterUpdateCrashSlot(NSInteger index,
   if (index < 0 || index >= kHotUpdaterCrashSlotCount) {
     return;
   }
-  HotUpdaterCrashSlot &slot = gHotUpdaterCrashSlots[index];
-  // A crash while the slot changes must not write half of it.
-  slot.shouldRollback = 0;
-  HotUpdaterSafeCopy(slot.markerPath, sizeof(slot.markerPath), crashMarkerPath.UTF8String ?: "");
-  HotUpdaterSafeCopy(slot.bundleId, sizeof(slot.bundleId), bundleId.UTF8String ?: "");
-  slot.shouldRollback = shouldRollback ? 1 : 0;
+  HotUpdaterRewriteCrashSlot(gHotUpdaterCrashSlots[index],
+                             crashMarkerPath.UTF8String ?: "",
+                             bundleId.UTF8String ?: "",
+                             shouldRollback);
 }
 
 // kHotUpdaterUnattributedCrash, a slot index, or any other negative value for
@@ -269,18 +298,14 @@ extern "C" void HotUpdaterAttributeCrashToSlot(NSInteger index)
 // Legacy entry points of the single main slot.
 extern "C" void HotUpdaterInstallSignalHandlers(NSString *crashMarkerPath)
 {
-  HotUpdaterSafeCopy(gHotUpdaterCrashSlots[0].markerPath,
-                     sizeof(gHotUpdaterCrashSlots[0].markerPath),
-                     crashMarkerPath.UTF8String ?: "");
+  HotUpdaterCrashSlot &slot = gHotUpdaterCrashSlots[0];
+  HotUpdaterRewriteCrashSlot(slot, crashMarkerPath.UTF8String ?: "", nullptr, slot.shouldRollback != 0);
   HotUpdaterInstallCrashSignalHandlers();
 }
 
 extern "C" void HotUpdaterUpdateSignalLaunchState(NSString * _Nullable bundleId, BOOL shouldRollback)
 {
-  HotUpdaterCrashSlot &slot = gHotUpdaterCrashSlots[0];
-  slot.shouldRollback = 0;
-  HotUpdaterSafeCopy(slot.bundleId, sizeof(slot.bundleId), bundleId.UTF8String ?: "");
-  slot.shouldRollback = shouldRollback ? 1 : 0;
+  HotUpdaterRewriteCrashSlot(gHotUpdaterCrashSlots[0], nullptr, bundleId.UTF8String ?: "", shouldRollback);
 }
 
 extern "C" BOOL HotUpdaterPerformRecoveryReload(void)
@@ -1160,6 +1185,7 @@ RCT_EXPORT_METHOD(resetChannel:(RCTPromiseResolveBlock)resolve
 
 #pragma mark - Runtime Attribution (C)
 
+#ifdef RCT_NEW_ARCH_ENABLED
 // The bundle URL an RCTHost or RCTInstance runs, which neither exposes:
 // read through KVC from what RN 0.85 keeps (RCTHost's `_bundleURL` and
 // `_bundleManager`, RCTInstance's `_bridgeModuleDecorator.bundleManager`).
@@ -1178,6 +1204,7 @@ static NSURL *HotUpdaterBundleURLOfRuntime(id object)
   }
   return nil;
 }
+#endif
 
 // The impl whose runtime `object` belongs to: a Fabric surface or root view,
 // an RCTInstance or RCTHost (by its surface presenter), an old-architecture
