@@ -194,7 +194,8 @@ internal class HotUpdaterRecoveryAttribution(
 
     /**
      * The instance of the root view whose first content appeared, which React
-     * Native names by its root tag; null when no known activity shows it.
+     * Native names by its root tag; null when no known activity shows it or
+     * its runtime isn't known yet.
      */
     fun instanceOfRootTag(rootTag: Int): String? {
         val candidates =
@@ -202,7 +203,8 @@ internal class HotUpdaterRecoveryAttribution(
                 synchronized(runtimes) { runtimes.mapNotNull { it.get()?.currentActivity } }
         candidates.distinct().forEach { activity ->
             val decorView = activity.window?.peekDecorView() ?: return@forEach
-            findRootView(decorView) { it.rootViewTag == rootTag }?.let { return instanceOf(it) ?: HotUpdaterInstanceEnvironment.MAIN_NAME }
+            // A view whose runtime isn't known yet tells nothing either.
+            findRootView(decorView) { it.rootViewTag == rootTag }?.let { return instanceOf(it) }
         }
         return null
     }

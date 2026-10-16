@@ -172,6 +172,9 @@ internal class HotUpdaterRecoveryManager(
     ) {
         synchronized(lock) {
             if (generation != this.generation) return
+            // Content already verified the launch, as when its runtime
+            // rendered before its view could be found.
+            if (launchState.hasContentAppeared()) return
             launchStartedAction = markLaunchStarted
             if (endedByAnotherInstance) return
             markLaunchStarted()
@@ -191,8 +194,10 @@ internal class HotUpdaterRecoveryManager(
             }
         }
 
-    private fun handleContentAppeared() {
+    /** First content of this instance's runtime; [expectedGeneration] limits it to that launch. */
+    private fun handleContentAppeared(expectedGeneration: Long? = null) {
         synchronized(lock) {
+            if (expectedGeneration != null && expectedGeneration != generation) return
             val launch = launchState.completeLaunch() ?: return
             Log.d(TAG, "First content appeared for $name bundleId=${launch.bundleId}")
             cancelScheduledLocked()
@@ -274,6 +279,14 @@ internal class HotUpdaterRecoveryManager(
     }
 
     private fun hasRegisteredRuntime(): Boolean = synchronized(lock) { registeredRuntimeIds.isNotEmpty() }
+
+    private fun currentGeneration(): Long = synchronized(lock) { generation }
+
+    /** A launch waiting for its first content whose runtime hasn't registered: its view may not be found yet. */
+    private fun awaitsUnregisteredRuntime(): Boolean =
+        synchronized(lock) {
+            launchState.snapshot() != null && !launchState.hasContentAppeared() && registeredRuntimeIds.isEmpty()
+        }
 
     private fun writeCrashMarker(launch: HotUpdaterRecoveryState.Launch) {
         val atomicFile = AtomicFile(crashMarkerFile)
@@ -547,15 +560,34 @@ internal class HotUpdaterRecoveryManager(
 
         // React Native names the view by its root tag. A view no known activity
         // shows is credited to main, as every view always was.
-        private fun handleContentAppeared(rootTag: Int) {
-            val name =
-                if (liveManagers.keys.all { it == HotUpdaterInstanceEnvironment.MAIN_NAME }) {
-                    HotUpdaterInstanceEnvironment.MAIN_NAME
-                } else {
-                    attribution.instanceOfRootTag(rootTag) ?: HotUpdaterInstanceEnvironment.MAIN_NAME
-                }
-            contentAppeared(name)
+        //
+        // A view no known activity shows yet may be a named runtime's that
+        // rendered before its module registered; while such a launch waits,
+        // the content is held (HotUpdaterHeldContent) instead.
+        internal fun handleContentAppeared(rootTag: Int) {
+            if (liveManagers.keys.all { it == HotUpdaterInstanceEnvironment.MAIN_NAME }) {
+                contentAppeared(HotUpdaterInstanceEnvironment.MAIN_NAME)
+                return
+            }
+            attribution.instanceOfRootTag(rootTag)?.let {
+                contentAppeared(it)
+                return
+            }
+            val waitingNamedLaunch = liveManagers.values.any { !it.isMain && it.awaitsUnregisteredRuntime() }
+            if (!waitingNamedLaunch) {
+                contentAppeared(HotUpdaterInstanceEnvironment.MAIN_NAME)
+                return
+            }
+            heldContent.hold(rootTag, liveManagers.values.associate { it.name to it.currentGeneration() })
         }
+
+        private val heldContent =
+            HotUpdaterHeldContent(
+                mainThread = HotUpdaterMainThread.android,
+                clock = { SystemClock.uptimeMillis() },
+                resolve = { rootTag -> attribution.instanceOfRootTag(rootTag) },
+                credit = { instanceName, generation -> liveManagers[instanceName]?.handleContentAppeared(generation) },
+            )
 
         /** First content of [instanceName]'s runtime appeared: it verifies only that instance's launch. */
         internal fun contentAppeared(instanceName: String) {
@@ -764,7 +796,12 @@ internal class HotUpdaterRecoveryManager(
             runtimeId: Int,
             sourceURL: String?,
             activity: Activity?,
-        ): Boolean = liveManagers[instanceName]?.registerRuntime(runtimeId, sourceURL, activity) == true
+        ): Boolean {
+            val registered = liveManagers[instanceName]?.registerRuntime(runtimeId, sourceURL, activity) == true
+            // Content its runtime showed before can be told now.
+            if (registered) heldContent.runtimeRegistered()
+            return registered
+        }
 
         /** [instanceName]'s runtime [runtimeId] was torn down, as in a reload. */
         internal fun unregisterRuntime(

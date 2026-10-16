@@ -474,6 +474,37 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `content no view can be found for waits while a named runtime hasn't registered`() {
+        // The widget rendered before its module handed over its activity.
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+
+        HotUpdaterRecoveryManager.handleContentAppeared(rootTag = 41)
+
+        // Neither launch is verified by content that may be the widget's.
+        assertTrue(metadata(context, main).verificationPending)
+        assertTrue(metadata(context, widget).verificationPending)
+    }
+
+    @Test
+    fun `content no view can be found for verifies main when no named runtime is missing`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        val widgetURL = HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, sourceURL = widgetURL, activity = null)
+
+        HotUpdaterRecoveryManager.handleContentAppeared(rootTag = 41)
+
+        assertFalse(metadata(context, main).verificationPending)
+        assertTrue(metadata(context, widget).verificationPending)
+    }
+
+    @Test
     fun `first content of one instance never verifies another's launch`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, main, "main-bundle")

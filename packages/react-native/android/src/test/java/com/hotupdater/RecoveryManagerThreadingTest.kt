@@ -52,6 +52,19 @@ class RecoveryManagerThreadingTest {
     }
 
     @Test
+    fun `a launch whose content was already seen is not armed afterwards`() {
+        // The runtime rendered before its view could be found, then its gate fired.
+        val manager = HotUpdaterRecoveryManager(InstanceTestContext(temporaryFolder.root), widget, FakeMainThread())
+        val launch = manager.start("first")
+        HotUpdaterRecoveryManager.contentAppeared(widget.name)
+        var marked = false
+
+        manager.armLaunch(launch) { marked = true }
+
+        assertFalse(marked)
+    }
+
+    @Test
     fun `main's error hooks for an earlier launch stop once a newer launch starts`() {
         val mainThread = FakeMainThread()
         val manager =

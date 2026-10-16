@@ -154,6 +154,7 @@ final class HotUpdaterRecoveryCoordinator {
     /// The latest claim: a fatal of another instance can arrive before an
     /// earlier one's handler returns, and only the latest releases them all.
     private var claimGeneration = 0
+    private var deferredLoadFailure = false
     /// First content no runtime claims yet, held while a named launch's
     /// runtime may still turn out to be its own.
     private var heldContent: [HeldContent] = []
@@ -362,6 +363,49 @@ final class HotUpdaterRecoveryCoordinator {
 
     private var currentGenerations: [String: Int] {
         launches.mapValues(\.generation)
+    }
+
+    /// A JavaScript load failure nothing attributes, while a named launch's
+    /// runtime may still be the one that failed: main must not recover
+    /// in-process for it. Returns true, and the fatal React Native reports
+    /// next (`takeDeferredLoadFailure`) decides whose it is. With only main,
+    /// or every named runtime known, false: it is main's, as it always was.
+    func deferUnclaimedLoadFailure() -> Bool {
+        withLock {
+            guard hasUnresolvedNamedLaunch else { return false }
+            deferredLoadFailure = true
+            return true
+        }
+    }
+
+    /// The fatal of a load failure no runtime claimed, which crashes the
+    /// process: every launch whose runtime may be the one that failed is
+    /// charged, a named one whose view hasn't shown yet included, so the
+    /// failing bundle rolls back at its next start whoever it was.
+    func chargeUnclaimedLoadFailure() {
+        withLock {
+            for launch in possibleFatalOwners where launch.isMonitoring {
+                writeMarker(launch)
+            }
+        }
+    }
+
+    /// The launches of this process whose runtime hasn't shown it finished
+    /// loading: no first content yet and, for a named one, no module.
+    private var possibleFatalOwners: [Launch] {
+        launches.values.filter { launch in
+            guard launch.generation > 0, !launch.hasShownContent else { return false }
+            return launch.isMain || !launch.hasResolvedRuntime
+        }
+    }
+
+    /// Whether the fatal now reported follows a deferred load failure; the
+    /// next one doesn't.
+    func takeDeferredLoadFailure() -> Bool {
+        withLock {
+            defer { deferredLoadFailure = false }
+            return deferredLoadFailure
+        }
     }
 
     /// A named launch of this process still waiting for content whose
@@ -582,10 +626,7 @@ final class HotUpdaterRecoveryCoordinator {
     /// otherwise nil, and the fatal is unattributed.
     func inferredFatalOwner() -> String? {
         withLock {
-            let possibleOwners = launches.values.filter { launch in
-                guard launch.generation > 0, !launch.hasShownContent else { return false }
-                return launch.isMain || !launch.hasResolvedRuntime
-            }
+            let possibleOwners = possibleFatalOwners
             guard possibleOwners.count == 1,
                   let owner = possibleOwners.first,
                   !owner.isMain,

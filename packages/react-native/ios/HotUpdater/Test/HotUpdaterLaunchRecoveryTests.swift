@@ -619,6 +619,48 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(pending.resolve { _ in Self.widget }.map(\.generation) == [nil])
     }
 
+    /// A load failure no runtime claims, while a named runtime that has no
+    /// module may be the one that failed, starts no recovery of main: the
+    /// fatal that follows charges every launch that may have failed.
+    @Test
+    func anUnclaimedLoadFailureIsLeftToItsFatalWhileANamedRuntimeIsUnknown() throws {
+        let mainOnly = HotUpdaterRecoveryCoordinator(sink: RecordingSlotSink())
+        mainOnly.register(name: Self.main, markerURL: URL(fileURLWithPath: "/tmp/m.json"), storage: NoStorage())
+        mainOnly.startMonitoring(name: Self.main, bundleId: nil, shouldRollback: true)
+        #expect(!mainOnly.deferUnclaimedLoadFailure())
+        #expect(!mainOnly.takeDeferredLoadFailure())
+
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        #expect(coordinator.deferUnclaimedLoadFailure())
+        #expect(coordinator.takeDeferredLoadFailure())
+        #expect(!coordinator.takeDeferredLoadFailure())
+
+        // The widget's view hasn't shown, yet its bundle may be the one.
+        #expect(coordinator.launch(named: Self.widget)?.isArmed == false)
+        coordinator.chargeUnclaimedLoadFailure()
+        let next = scene.nextLaunch()
+        #expect(next[Self.widget]?.launchedBundleId == "widget-stable")
+        #expect(next[Self.main]?.launchedBundleId == "main-stable")
+    }
+
+    @Test
+    func aLoadFailureIsMainsOnceEveryNamedRuntimeIsKnown() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        process.coordinator.runtimeResolved(name: Self.widget)
+        #expect(!process.coordinator.deferUnclaimedLoadFailure())
+        // A named launch that showed content is known too.
+        let other = try Scene()
+        defer { other.cleanUp() }
+        let second = other.launch()
+        _ = second.coordinator.contentAppeared(owner: Self.widget)
+        #expect(!second.coordinator.deferUnclaimedLoadFailure())
+    }
+
     @Test
     func mainOnlyContentIsMainsAtOnce() throws {
         let sink = RecordingSlotSink()

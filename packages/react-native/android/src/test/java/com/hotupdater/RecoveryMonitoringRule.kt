@@ -44,6 +44,10 @@ class RecoveryMonitoringRule : ExternalResource() {
         }
         (field(attribution.javaClass, "runtimes").get(attribution) as MutableList<*>).clear()
 
+        // Content a test held must not verify another test's launch.
+        val heldContent = field(manager, "heldContent").get(null)
+        synchronized(heldContent) { (field(heldContent.javaClass, "held").get(heldContent) as MutableList<*>).clear() }
+
         // A JavaScript error a test claimed must not claim another test's crash.
         val slots = field(manager, "slots").get(null)
         field(slots.javaClass, "attributedName").set(slots, null)

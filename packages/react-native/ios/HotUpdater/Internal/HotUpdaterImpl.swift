@@ -1260,7 +1260,7 @@ final class HotUpdaterRecoveryHub: NSObject {
     /// the instance whose bundle every frame of its JavaScript stack is in.
     /// Else, on a JavaScript thread whose runtime has no module yet, the one
     /// launch that can have thrown it, if there is exactly one.
-    private func fatalOwner(stack: Any?) -> String? {
+    private func fatalOwner(stack: Any?, afterLoadFailure: Bool) -> String? {
         if let owner = hotUpdaterRuntimeImpl()?.environment.name ?? coordinator.attributedOwner {
             return owner
         }
@@ -1269,7 +1269,8 @@ final class HotUpdaterRecoveryHub: NSObject {
         }) {
             return owner
         }
-        guard Thread.current.name == Self.runtimeThreadName else { return nil }
+        // RCTInstance reports a load failure's fatal on the main thread.
+        guard afterLoadFailure || Thread.current.name == Self.runtimeThreadName else { return nil }
         return coordinator.inferredFatalOwner()
     }
 
@@ -1296,8 +1297,12 @@ final class HotUpdaterRecoveryHub: NSObject {
     }
 
     private func handleFatal(stack: Any?, forward: @escaping () -> Void) {
-        let owner = fatalOwner(stack: stack)
-        if owner == nil || owner == mainName, let main = manager(named: mainName) {
+        let afterLoadFailure = coordinator.takeDeferredLoadFailure()
+        let owner = fatalOwner(stack: stack, afterLoadFailure: afterLoadFailure)
+        // A load failure no runtime claimed may be a named runtime's: then
+        // main doesn't recover in-process, and the crash counts against
+        // every unverified launch.
+        if owner == mainName || (owner == nil && !afterLoadFailure), let main = manager(named: mainName) {
             // Main's fatal, or one no runtime claims: main recovers in-process
             // as it always has.
             if main.requestRecoveryReloadIfNeeded(onFailure: { [weak self] in
@@ -1314,6 +1319,11 @@ final class HotUpdaterRecoveryHub: NSObject {
                 }
                 return
             }
+        }
+        if owner == nil, afterLoadFailure {
+            coordinator.chargeUnclaimedLoadFailure()
+            forward()
+            return
         }
         // A named instance never reloads in-process: per-host reload isn't
         // there yet, and main's host must not reload for another instance's
@@ -1393,6 +1403,12 @@ final class HotUpdaterRecoveryHub: NSObject {
         // bundle didn't load, so it is unattributed and main's, as before.
         let owner = self.owner(of: notification.object as AnyObject?)
             ?? self.owner(of: notification.userInfo?["bridge"] as AnyObject?)
+
+        // A named runtime that has no module yet may have failed: leave it to
+        // the fatal RCTInstance reports next, which also reads its stack.
+        if owner == nil, coordinator.deferUnclaimedLoadFailure() {
+            return
+        }
 
         if let owner, owner != mainName {
             guard let generation = coordinator.awaitingContentGeneration(name: owner) else { return }
