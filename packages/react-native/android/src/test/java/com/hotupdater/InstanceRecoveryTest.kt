@@ -679,6 +679,37 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `an older fatal error still in flight keeps its claim when a newer one's handler returns first`() {
+        val releases = mutableListOf<Runnable>()
+        HotUpdaterRecoveryManager.claimReleaseScheduler = { _, task -> releases += task }
+        val context = InstanceTestContext(temporaryFolder.root)
+        val chat = namedEnvironment("chat")
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        stagePending(context, chat, "chat-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        HotUpdaterImpl(context, chat).getJSBundleFile()
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("chat failed"), chat.name)
+        val (widgetRelease, chatRelease) = releases
+
+        // The chat's handler returns first; the widget's error is still forwarded.
+        chatRelease.run()
+        assertFalse(metadata(context, main).launchInProgress)
+
+        // Its handler then ends the process: the crash is the widget's alone.
+        assertTrue(crashMarker(context, widget).delete())
+        HotUpdaterRecoveryManager.chargeUncaughtException(IllegalStateException("widget handler aborted"))
+        assertTrue(crashMarker(context, widget).exists())
+        assertFalse(crashMarker(context, main).exists())
+
+        // Or it returns too: every launch left alone counts again.
+        widgetRelease.run()
+        assertTrue(metadata(context, main).launchInProgress)
+    }
+
+    @Test
     fun `launches left alone by overlapping claims all count again when the last claim is released`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val chat = namedEnvironment("chat")

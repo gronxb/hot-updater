@@ -58,6 +58,7 @@ class RecoveryMonitoringRule : ExternalResource() {
             (field(manager, "claimedOwners").get(null) as MutableSet<*>).clear()
             (field(manager, "disarmedByClaim").get(null) as MutableMap<*, *>).clear()
             (field(manager, "relaunchIntents").get(null) as MutableSet<*>).clear()
+            (field(manager, "activeClaims").get(null) as MutableMap<*, *>).clear()
         }
 
         // A JavaScript error a test claimed must not claim another test's crash.

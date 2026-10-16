@@ -698,6 +698,11 @@ internal class HotUpdaterRecoveryManager(
         // The instance and the launch generation of the latest claim.
         private var claimOwner: Pair<String, Long?>? = null
 
+        // Every claim whose handler hasn't returned yet, by generation, with
+        // its owner. Fatal errors of several runtimes may be in flight at
+        // once: the claim stays published until the last of them ends.
+        private val activeClaims = LinkedHashMap<Int, Pair<String, Long?>>()
+
         // Every owner of the claims still active, which overlap when errors
         // return: each one's watchdog is left when the latest claim ends.
         private val claimedOwners = LinkedHashSet<Pair<String, Long?>>()
@@ -1015,6 +1020,7 @@ internal class HotUpdaterRecoveryManager(
                 }
                 claimOwner = instanceName to ownerGeneration
                 claimedOwners += instanceName to ownerGeneration
+                activeClaims[generation] = instanceName to ownerGeneration
                 // The owner's marker, and its native slot asking for rollback,
                 // come before the native claim: a signal in between finds the
                 // crash unclaimed, or claimed with the owner's rollback in place.
@@ -1043,27 +1049,43 @@ internal class HotUpdaterRecoveryManager(
             manager: HotUpdaterRecoveryManager,
             generation: Long,
         ): Boolean {
-            val claim =
-                synchronized(recoveryLock) {
-                    // Every launch that starts during a claim joins it, a newer
-                    // launch of the claim's own instance too: only the launch
-                    // that threw is the claim's.
-                    activeClaimLocked() ?: return false
-                    disarmedByClaim[manager] = generation
-                    claimGeneration
-                }
-            scheduleClaimRelease(claim)
-            return true
+            synchronized(recoveryLock) {
+                // Every launch that starts during a claim joins it, a newer
+                // launch of the claim's own instance too: only the launch
+                // that threw is the claim's. It counts again when the last
+                // active claim ends.
+                activeClaimLocked() ?: return false
+                disarmedByClaim[manager] = generation
+                return true
+            }
         }
 
         /**
-         * Arms again the launches the claim of [generation] (the latest by
-         * default) left alone, when they still wait for their first content:
-         * the claimed error did not end the process.
+         * Ends the claim of [generation] (every active claim when null): its
+         * error did not end the process. While another claim is active, that
+         * one is published instead. When the last ends, the launches left
+         * alone count again if they still wait for their first content.
          */
         internal fun releaseClaim(generation: Int? = null) {
             synchronized(recoveryLock) {
-                if (generation != null && generation != claimGeneration) return
+                if (generation == null) {
+                    activeClaims.clear()
+                } else if (activeClaims.remove(generation) == null) {
+                    return
+                }
+                // Another fatal error is still in flight: the claim stays,
+                // now its, with its marker and slot already in place.
+                activeClaims.values.lastOrNull()?.let { (name, ownerGeneration) ->
+                    slots.attribute(name)
+                    claimOwner = name to ownerGeneration
+                    val owner = liveManagers[name]?.takeIf { it.currentGeneration() == ownerGeneration }
+                    if (owner != null) {
+                        nativeRecovery.attributeCrash(slots.assignedSlot(name) ?: -1)
+                    } else {
+                        nativeRecovery.clearCrashAttribution()
+                    }
+                    return
+                }
                 val survivedOwners = claimedOwners.toList()
                 claimedOwners.clear()
                 // The claim ends here, in Kotlin and natively at once: a

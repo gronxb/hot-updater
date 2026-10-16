@@ -423,6 +423,37 @@ struct HotUpdaterLaunchRecoveryTests {
     /// handler returns. Releasing the earlier claim leaves the later one in
     /// place; releasing the later one starts again every launch either
     /// stopped, the later owner's included.
+    /// The later fatal's handler returns first while the earlier fatal is
+    /// still forwarded: the earlier one's claim stays published and nothing
+    /// starts again until it returns too.
+    @Test
+    func aLaterClaimReturningFirstLeavesTheEarlierOneInPlace() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        process.storages[Self.main]?.markLaunchStarted(bundleId: "main-next")
+        #expect(coordinator.arm(name: Self.widget))
+        let widgetSlot = try #require(coordinator.launch(named: Self.widget)?.slot)
+
+        let first = try #require(coordinator.chargeFatal(owner: Self.main))
+        let second = try #require(coordinator.chargeFatal(owner: Self.widget))
+        #expect(process.sink.attribution == widgetSlot)
+
+        coordinator.clearAttribution(claim: second)
+        #expect(process.sink.attribution == HotUpdaterRecoveryCoordinator.mainSlot)
+        #expect(coordinator.attributedOwner == Self.main)
+        #expect(scene.metadata(Self.widget)?.launchInProgress == false)
+        #expect(scene.metadata(Self.main)?.launchInProgress == false)
+        #expect(markers(coordinator) == [HotUpdaterRecoveryCoordinator.mainSlot: true])
+
+        coordinator.clearAttribution(claim: first)
+        #expect(process.sink.attribution == HotUpdaterRecoveryCoordinator.unattributed)
+        #expect(coordinator.attributedOwner == nil)
+        #expect(scene.metadata(Self.widget)?.launchInProgress == true)
+        #expect(scene.metadata(Self.main)?.launchInProgress == true)
+    }
+
     @Test
     func overlappingClaimsReleaseTogetherWithTheLatest() throws {
         let scene = try Scene()

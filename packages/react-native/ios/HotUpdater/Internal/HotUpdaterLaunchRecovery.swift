@@ -162,6 +162,17 @@ final class HotUpdaterRecoveryCoordinator {
     /// The latest claim: a fatal of another instance can arrive before an
     /// earlier one's handler returns, and only the latest releases them all.
     private var claimGeneration = 0
+    /// Every claim whose fatal handler hasn't returned, oldest first. The
+    /// latest is the one published: a crash now is that fatal's.
+    private var activeClaims: [Claim] = []
+
+    private struct Claim {
+        let id: Int
+        let name: String?
+        let generation: Int?
+        var slot: Int
+        let isEarlierRuntime: Bool
+    }
     /// Load failures no runtime claimed whose fatal hasn't come yet: several
     /// runtimes can fail close together, and each fatal that no runtime
     /// claims takes one.
@@ -252,12 +263,14 @@ final class HotUpdaterRecoveryCoordinator {
         withLock {
             guard let launch = launches[name] else { return 0 }
             launch.generation += 1
-            if attributedName == name {
-                // The claimed crash is the previous launch's: its marker is
+            if activeClaims.contains(where: { $0.name == name }) {
+                // A claimed crash is the previous launch's: its marker is
                 // written, and the native crash it causes writes no slot,
                 // so this launch's state never stands in for it.
-                attributedSlot = Self.attributedWithoutSlot
-                sink.attributeCrash(toSlot: attributedSlot)
+                for index in activeClaims.indices where activeClaims[index].name == name {
+                    activeClaims[index].slot = Self.attributedWithoutSlot
+                }
+                publishLatestClaim()
             }
             launch.launchURL = launchURL
             launch.bundleId = bundleId
@@ -683,20 +696,33 @@ final class HotUpdaterRecoveryCoordinator {
     /// `attribute(to:)` does.
     private func attributeToEarlierRuntime() -> Int {
         claimGeneration += 1
-        attributedName = nil
-        attributedGeneration = nil
-        isEarlierRuntimeClaim = true
-        attributedSlot = Self.attributedWithoutSlot
-        sink.attributeCrash(toSlot: attributedSlot)
+        activeClaims.append(Claim(
+            id: claimGeneration,
+            name: nil,
+            generation: nil,
+            slot: Self.attributedWithoutSlot,
+            isEarlierRuntime: true
+        ))
+        publishLatestClaim()
         disarm(launches.values)
         return claimGeneration
+    }
+
+    /// Publishes the latest active claim, or no attribution without one.
+    private func publishLatestClaim() {
+        let latest = activeClaims.last
+        attributedName = latest?.name
+        attributedGeneration = latest?.generation
+        isEarlierRuntimeClaim = latest?.isEarlierRuntime ?? false
+        attributedSlot = latest?.slot ?? Self.unattributed
+        sink.attributeCrash(toSlot: attributedSlot)
     }
 
     /// The claim of an earlier runtime's crash in progress, if any: a fatal
     /// that follows it unattributed, such as RCTInstance's after a load
     /// failure, belongs to that runtime too.
     var earlierRuntimeClaim: Int? {
-        withLock { isEarlierRuntimeClaim ? claimGeneration : nil }
+        withLock { activeClaims.last.flatMap { $0.isEarlierRuntime ? $0.id : nil } }
     }
 
     private func disarm<Launches: Sequence>(_ launches: Launches) where Launches.Element == Launch {
@@ -721,13 +747,16 @@ final class HotUpdaterRecoveryCoordinator {
     @discardableResult
     func attribute(to owner: String) -> Int? {
         withLock {
-            guard launches[owner] != nil else { return nil }
+            guard let launch = launches[owner] else { return nil }
             claimGeneration += 1
-            attributedName = owner
-            attributedGeneration = launches[owner]?.generation
-            isEarlierRuntimeClaim = false
-            attributedSlot = launches[owner]?.slot ?? Self.attributedWithoutSlot
-            sink.attributeCrash(toSlot: attributedSlot)
+            activeClaims.append(Claim(
+                id: claimGeneration,
+                name: owner,
+                generation: launch.generation,
+                slot: launch.slot ?? Self.attributedWithoutSlot,
+                isEarlierRuntime: false
+            ))
+            publishLatestClaim()
             disarm(launches.values.filter { $0.name != owner })
             return claimGeneration
         }
@@ -736,16 +765,15 @@ final class HotUpdaterRecoveryCoordinator {
     /// React Native's default fatal handler can return in a debug build, and
     /// the process lives on: the launches the attribution stopped that are
     /// still unverified start again, so a later crash still counts against
-    /// them. Only the latest claim releases: an earlier one's handler that
-    /// returns while a later fatal is on its way leaves that one in place.
+    /// them. Fatals overlap: a handler that returns removes only its own
+    /// claim, and the latest one still active is published again; only the
+    /// last one's return releases the launches every claim stopped.
     func clearAttribution(claim: Int) {
         withLock {
-            guard claim == claimGeneration else { return }
-            attributedName = nil
-            attributedGeneration = nil
-            isEarlierRuntimeClaim = false
-            attributedSlot = Self.unattributed
-            sink.attributeCrash(toSlot: attributedSlot)
+            guard let index = activeClaims.firstIndex(where: { $0.id == claim }) else { return }
+            activeClaims.remove(at: index)
+            publishLatestClaim()
+            guard activeClaims.isEmpty else { return }
             for entry in disarmed {
                 guard let launch = launches[entry.name],
                       launch.generation == entry.generation,
