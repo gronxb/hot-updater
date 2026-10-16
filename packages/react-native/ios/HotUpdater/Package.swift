@@ -13,6 +13,7 @@ let coreSources = [
     "HashUtils.swift",
     "HotUpdaterConfig.swift",
     "HotUpdaterInstanceEnvironment.swift",
+    "HotUpdaterInstanceRouter.swift",
     "KeyValueStorageService.swift",
     "NativeUpdateCheck.swift",
     "NotificationExtension.swift",

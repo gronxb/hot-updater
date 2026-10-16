@@ -55,7 +55,12 @@ class HotUpdaterInstance internal constructor(
      * The bundle React Native starts with: the staged update, or the bundle
      * embedded in the app. Reading it fixes this launch's bundle.
      */
-    fun getJSBundleFile(): String = impl.getJSBundleFile()
+    fun getJSBundleFile(): String =
+        if (environment.isMain) {
+            impl.getJSBundleFile()
+        } else {
+            HotUpdaterInstanceRegistry.shared.launchURL(context, environment)
+        }
 
     /**
      * Clears the runtime channel switch and returns to the default channel's

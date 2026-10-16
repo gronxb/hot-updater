@@ -145,8 +145,9 @@ internal class HotUpdaterInstanceEnvironment private constructor(
 
 /**
  * The one [HotUpdaterImpl] of each named instance, so instances with the same
- * name share state. Main's is `HotUpdater.getInstance`, which every static
- * entry point and the TurboModule already use.
+ * name share state, and the launch URLs they handed out, which tell each
+ * React Native runtime's TurboModule which instance it serves. Main's impl is
+ * `HotUpdater.getInstance`, which every static entry point uses.
  */
 internal class HotUpdaterInstanceRegistry(
     private val create: (Context, HotUpdaterInstanceEnvironment) -> HotUpdaterImpl,
@@ -157,6 +158,12 @@ internal class HotUpdaterInstanceRegistry(
 
     private val environments = HashMap<String, HotUpdaterInstanceEnvironment>()
     private val impls = HashMap<String, HotUpdaterImpl>()
+
+    // The last launch URL each name handed out, which the runtime that loads
+    // it reports back as its source URL.
+
+    /** Every launch URL each name handed out: a runtime may still run an earlier one. */
+    private val launchURLs = HashMap<String, MutableSet<String>>()
 
     /**
      * Records the configuration of [environment]'s name. A name reads one
@@ -180,5 +187,72 @@ internal class HotUpdaterInstanceRegistry(
     ): HotUpdaterImpl {
         register(environment)
         return impls.getOrPut(environment.name) { create(context, environment) }
+    }
+
+    /** The impl of [name], or null when no named instance of it has one yet. */
+    @Synchronized
+    fun impl(name: String): HotUpdaterImpl? = impls[name]
+
+    /**
+     * The bundle a React Native host of [environment] starts with, recorded
+     * so the TurboModule of the runtime that loads it finds this instance.
+     */
+    fun launchURL(
+        context: Context,
+        environment: HotUpdaterInstanceEnvironment,
+    ): String {
+        // Reading it prepares the launch, which reads storage, so it runs
+        // outside the registry's lock.
+        val url = impl(context, environment).getJSBundleFile()
+        synchronized(this) { launchURLs.getOrPut(environment.name) { mutableSetOf() }.add(url) }
+        return url
+    }
+
+    /**
+     * The name of the instance whose bundle a React Native runtime runs, from
+     * the URL the runtime loaded it from: the launch URL a named instance
+     * handed out, then a file inside a named instance's storage (a bundle it
+     * staged, loaded after a reload), then main, which covers main's own
+     * bundles, the development server, and URLs no instance knows. Only
+     * names with an impl are candidates.
+     */
+    @Synchronized
+    fun resolveName(
+        context: Context,
+        sourceURL: String?,
+    ): String {
+        if (sourceURL.isNullOrEmpty()) return HotUpdaterInstanceEnvironment.MAIN_NAME
+
+        // Two names that hand out the same URL, such as the same embedded
+        // bundle, can't be told apart by it.
+        launchURLs
+            .filter { (name, urls) -> sourceURL in urls && name in impls }
+            .keys
+            .singleOrNull()
+            ?.let { return it }
+
+        val sourceSegments = pathSegments(sourceURL.removePrefix("file://"))
+        impls.keys
+            .firstOrNull { name ->
+                val root = environments[name]?.filesRoot(context) ?: return@firstOrNull false
+                val rootSegments = pathSegments(root.path)
+                // Whole segments, so "app" never claims "app-2"'s files.
+                sourceSegments.size > rootSegments.size && sourceSegments.subList(0, rootSegments.size) == rootSegments
+            }?.let { return it }
+
+        return HotUpdaterInstanceEnvironment.MAIN_NAME
+    }
+
+    private fun pathSegments(path: String): List<String> {
+        if (!path.startsWith("/")) return emptyList()
+        val segments = ArrayList<String>()
+        path.split('/').forEach { segment ->
+            when (segment) {
+                "", "." -> Unit
+                ".." -> if (segments.isNotEmpty()) segments.removeAt(segments.size - 1)
+                else -> segments += segment
+            }
+        }
+        return segments
     }
 }

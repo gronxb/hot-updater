@@ -42,10 +42,15 @@ class HotUpdaterModule internal constructor(
         moduleScope.cancel()
     }
 
+    // The instance whose bundle this module's runtime runs, read from the
+    // URL React Native loaded it from.
+    private val runtimeInstance = HotUpdaterRuntimeInstance(mReactApplicationContext, { mReactApplicationContext.sourceURL })
+
     /**
-     * Gets the singleton HotUpdaterImpl instance
+     * The impl of this runtime's instance: main's, or a named instance's
+     * when the runtime runs its bundle
      */
-    private fun getInstance(): HotUpdaterImpl = HotUpdater.getInstance(mReactApplicationContext)
+    private fun getInstance(): HotUpdaterImpl = runtimeInstance.impl
 
     /**
      * Every changed file with its hash and URL or Hermes patch; with
@@ -211,6 +216,10 @@ class HotUpdaterModule internal constructor(
     }
 
     override fun reload(promise: Promise) {
+        runtimeInstance.reloadUnsupportedReason()?.let { reason ->
+            promise.reject(RELOAD_UNSUPPORTED_CODE, reason)
+            return
+        }
         moduleScope.launch {
             try {
                 val impl = getInstance()
@@ -224,6 +233,10 @@ class HotUpdaterModule internal constructor(
     }
 
     override fun reloadProcess(promise: Promise) {
+        runtimeInstance.reloadUnsupportedReason()?.let { reason ->
+            promise.reject(RELOAD_UNSUPPORTED_CODE, reason)
+            return
+        }
         moduleScope.launch {
             try {
                 val impl = getInstance()
@@ -466,7 +479,7 @@ class HotUpdaterModule internal constructor(
         constants["APP_VERSION"] = HotUpdater.getAppVersion(mReactApplicationContext)
         constants["CHANNEL"] = getInstance().getChannel()
         constants["DEFAULT_CHANNEL"] = getInstance().getDefaultChannel()
-        constants["FINGERPRINT_HASH"] = HotUpdater.getFingerprintHash(mReactApplicationContext)
+        constants["FINGERPRINT_HASH"] = getInstance().getFingerprintHash()
         return constants
     }
 
@@ -527,7 +540,8 @@ class HotUpdaterModule internal constructor(
             try {
                 // Waits for a native check or download, which would save its
                 // channel again after the reset.
-                val success = NativeUpdateCheck.resetChannel(mReactApplicationContext, ::getInstance)
+                val name = runtimeInstance.name
+                val success = NativeUpdateCheck.resetChannel(mReactApplicationContext, name) { runtimeInstance.impl(name) }
                 promise.resolve(success)
             } catch (e: HotUpdaterException) {
                 promise.reject(e.code, e.message)

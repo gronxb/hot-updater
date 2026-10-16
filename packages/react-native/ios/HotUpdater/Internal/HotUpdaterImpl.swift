@@ -276,7 +276,12 @@ private func hotUpdaterGetMinBundleId() -> String {
         if environment.isMain {
             HotUpdaterConfig.shared.bundle = bundle
         }
-        return prepareLaunchIfNeeded(bundle: bundle).bundleURL
+        let bundleURL = prepareLaunchIfNeeded(bundle: bundle).bundleURL
+        if !environment.isMain, let bundleURL {
+            // The runtime started with this URL finds this impl by it.
+            HotUpdaterNativeUpdateBridge.router.record(launchURL: bundleURL, name: environment.name)
+        }
+        return bundleURL
     }
     
     // MARK: - Bundle Update
