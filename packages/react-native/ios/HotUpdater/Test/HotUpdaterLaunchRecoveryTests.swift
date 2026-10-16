@@ -318,6 +318,56 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(coordinator.inferredFatalOwner() == nil)
     }
 
+    /// A launch that wouldn't roll back, such as a built-in or retried one,
+    /// may still be the runtime that threw before it finished loading.
+    @Test
+    func aFatalIsNotInferredWhileALaunchWithoutRollbackMayHaveThrownIt() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        func coordinator(_ launches: [(name: String, shouldRollback: Bool)]) -> HotUpdaterRecoveryCoordinator {
+            let coordinator = HotUpdaterRecoveryCoordinator(sink: RecordingSlotSink())
+            for launch in launches {
+                coordinator.register(
+                    name: launch.name,
+                    markerURL: directory.appendingPathComponent("\(launch.name).json"),
+                    storage: NoStorage()
+                )
+                coordinator.startMonitoring(name: launch.name, bundleId: nil, shouldRollback: launch.shouldRollback)
+            }
+            return coordinator
+        }
+
+        // Main runs its built-in bundle, which failed to load: no content.
+        let mainBuiltIn = coordinator([(Self.main, false), (Self.widget, true)])
+        mainBuiltIn.stopAwaitingContent(name: Self.main)
+        #expect(mainBuiltIn.inferredFatalOwner() == nil)
+        _ = mainBuiltIn.contentAppeared(owner: nil)
+        #expect(mainBuiltIn.inferredFatalOwner() == nil)
+        mainBuiltIn.startMonitoring(name: Self.main, bundleId: nil, shouldRollback: false)
+        _ = mainBuiltIn.contentAppeared(owner: nil)
+        #expect(mainBuiltIn.inferredFatalOwner() == Self.widget)
+
+        // Another named instance on its built-in bundle, without a module and
+        // without content (its bundle failed to load), beside a pending one.
+        let namedBuiltIn = coordinator([(Self.main, false), (Self.widget, true), ("checkout", false)])
+        _ = namedBuiltIn.contentAppeared(owner: nil)
+        namedBuiltIn.stopAwaitingContent(name: "checkout")
+        #expect(namedBuiltIn.inferredFatalOwner() == nil)
+        namedBuiltIn.runtimeResolved(name: "checkout")
+        #expect(namedBuiltIn.inferredFatalOwner() == Self.widget)
+
+        // The only launch that may have thrown it wouldn't roll back.
+        let onlyBuiltIn = coordinator([(Self.main, false), (Self.widget, false)])
+        _ = onlyBuiltIn.contentAppeared(owner: nil)
+        #expect(onlyBuiltIn.inferredFatalOwner() == nil)
+
+        // A named instance that never launched in this process can't have.
+        let unlaunched = coordinator([(Self.main, false), (Self.widget, true)])
+        unlaunched.register(name: "checkout", markerURL: directory.appendingPathComponent("idle.json"), storage: NoStorage())
+        _ = unlaunched.contentAppeared(owner: nil)
+        #expect(unlaunched.inferredFatalOwner() == Self.widget)
+    }
+
     @Test
     func aFatalNothingAttributesChargesEveryUnverifiedLaunch() throws {
         let scene = try Scene()

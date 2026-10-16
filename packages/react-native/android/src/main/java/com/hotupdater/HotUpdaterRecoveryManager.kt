@@ -185,7 +185,9 @@ internal class HotUpdaterRecoveryManager(
     }
 
     private fun currentLaunch(): HotUpdaterRecoverySlots.Launch? =
-        launchState.snapshot()?.let { HotUpdaterRecoverySlots.Launch(name, it.bundleId, it.shouldRollback, armed) }
+        launchState.snapshot()?.let {
+            HotUpdaterRecoverySlots.Launch(name, it.bundleId, it.shouldRollback, armed, launchState.hasContentAppeared())
+        }
 
     private fun handleContentAppeared() {
         val launch = launchState.completeLaunch() ?: return

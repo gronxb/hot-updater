@@ -119,6 +119,8 @@ final class HotUpdaterRecoveryCoordinator {
         /// This launch's runtime has a module that tells its JavaScript
         /// thread apart, so its fatals are attributed directly.
         fileprivate(set) var hasResolvedRuntime = false
+        /// This launch's first content appeared: its runtime finished loading.
+        fileprivate(set) var hasShownContent = false
 
         init(name: String, markerURL: URL, storage: BundleStorageService) {
             self.name = name
@@ -200,6 +202,7 @@ final class HotUpdaterRecoveryCoordinator {
             launch.isMonitoring = true
             launch.isAwaitingContent = true
             launch.hasResolvedRuntime = false
+            launch.hasShownContent = false
             if launch.isMain {
                 assignSlot(to: launch)
             }
@@ -243,6 +246,7 @@ final class HotUpdaterRecoveryCoordinator {
                 return nil
             }
             launch.isAwaitingContent = false
+            launch.hasShownContent = true
             launch.storage.markLaunchCompleted(bundleId: launch.bundleId)
             launch.shouldRollback = false
             launch.isArmed = false
@@ -426,19 +430,27 @@ final class HotUpdaterRecoveryCoordinator {
     }
 
     /// The owner of a fatal on a JavaScript thread no module claims yet, when
-    /// only one launch can have thrown it: main's launch is verified, and
-    /// exactly one named launch is unverified and its runtime has no module
-    /// yet. Otherwise nil, and the fatal is unattributed.
+    /// only one launch can have thrown it. Any launch of this process whose
+    /// runtime hasn't shown it finished loading may have: it hasn't shown its
+    /// first content and, for a named one, its runtime has no module yet.
+    /// Main counts until its first content. Whether a launch would roll back
+    /// says nothing about whether it finished loading, so a built-in or
+    /// retried launch counts too. Only when exactly one may have thrown it,
+    /// and that one is a named launch that would roll back, is it that one's;
+    /// otherwise nil, and the fatal is unattributed.
     func inferredFatalOwner() -> String? {
         withLock {
-            if let main = launches[HotUpdaterInstanceEnvironment.mainName],
-               main.isMonitoring, main.isAwaitingContent {
+            let possibleOwners = launches.values.filter { launch in
+                guard launch.generation > 0, !launch.hasShownContent else { return false }
+                return launch.isMain || !launch.hasResolvedRuntime
+            }
+            guard possibleOwners.count == 1,
+                  let owner = possibleOwners.first,
+                  !owner.isMain,
+                  owner.shouldRollback else {
                 return nil
             }
-            let candidates = launches.values.filter { launch in
-                !launch.isMain && launch.isMonitoring && launch.isAwaitingContent && !launch.hasResolvedRuntime
-            }
-            return candidates.count == 1 ? candidates[0].name : nil
+            return owner.name
         }
     }
 

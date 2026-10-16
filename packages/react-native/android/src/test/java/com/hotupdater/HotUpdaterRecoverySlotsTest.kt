@@ -60,8 +60,9 @@ class HotUpdaterRecoverySlotsTest {
     @Test
     fun `an unclaimed JavaScript error is the one named launch whose runtime never reached HotUpdater`() {
         val widgetPending = launch(WIDGET, shouldRollback = true, armed = false)
+        val mainShown = launch(MAIN, shouldRollback = false, contentAppeared = true)
 
-        assertEquals(WIDGET, infer(listOf(launch(MAIN, shouldRollback = false), widgetPending)))
+        assertEquals(WIDGET, infer(listOf(mainShown, widgetPending)))
         assertEquals(WIDGET, infer(listOf(widgetPending)))
         // Main's own launch may have thrown.
         assertNull(infer(listOf(launch(MAIN, shouldRollback = true), widgetPending)))
@@ -69,8 +70,26 @@ class HotUpdaterRecoverySlotsTest {
         assertNull(infer(listOf(widgetPending, launch("chat", shouldRollback = true, armed = false))))
         // A runtime with its module has its errors hooked, so this one isn't its.
         assertNull(infer(listOf(widgetPending), registeredRuntimes = setOf(WIDGET)))
-        assertNull(infer(listOf(launch(MAIN, shouldRollback = false), launch(WIDGET, shouldRollback = false))))
+        assertEquals(CHAT, infer(listOf(mainShown, widgetPending, launch(CHAT, true)), registeredRuntimes = setOf(WIDGET)))
+        // A launch that may not roll back is never charged.
+        assertNull(infer(listOf(mainShown, launch(WIDGET, shouldRollback = false))))
     }
+
+    @Test
+    fun `a launch that may not roll back still may have thrown while its bundle loaded`() {
+        val widgetPending = launch(WIDGET, shouldRollback = true, armed = false)
+
+        // Main runs its built-in bundle, or a bundle it already verified, and
+        // has shown nothing yet.
+        assertNull(infer(listOf(launch(MAIN, shouldRollback = false), widgetPending)))
+        // So does another named instance whose runtime hasn't reached HotUpdater.
+        assertNull(infer(listOf(mainShownLaunch(), widgetPending, launch(CHAT, shouldRollback = false))))
+        // Once its module or its first content shows it loaded, it is not.
+        assertEquals(WIDGET, infer(listOf(mainShownLaunch(), widgetPending, launch(CHAT, false)), registeredRuntimes = setOf(CHAT)))
+        assertEquals(WIDGET, infer(listOf(mainShownLaunch(), widgetPending, launch(CHAT, false, contentAppeared = true))))
+    }
+
+    private fun mainShownLaunch() = launch(MAIN, shouldRollback = false, contentAppeared = true)
 
     private fun infer(
         launches: List<HotUpdaterRecoverySlots.Launch>,
@@ -97,7 +116,8 @@ class HotUpdaterRecoverySlotsTest {
         name: String,
         shouldRollback: Boolean,
         armed: Boolean = true,
-    ) = HotUpdaterRecoverySlots.Launch(name, "$name-bundle", shouldRollback, armed)
+        contentAppeared: Boolean = false,
+    ) = HotUpdaterRecoverySlots.Launch(name, "$name-bundle", shouldRollback, armed, contentAppeared)
 
     private fun written(
         launches: List<HotUpdaterRecoverySlots.Launch>,
@@ -112,5 +132,6 @@ class HotUpdaterRecoverySlotsTest {
     companion object {
         private const val MAIN = HotUpdaterInstanceEnvironment.MAIN_NAME
         private const val WIDGET = "widget"
+        private const val CHAT = "chat"
     }
 }

@@ -24,6 +24,8 @@ internal class HotUpdaterRecoverySlots(
         val shouldRollback: Boolean,
         /** One of its views was shown. Main counts from the start, as it always has. */
         val armed: Boolean,
+        /** Its first content appeared, so its runtime finished loading its bundle. */
+        val contentAppeared: Boolean = false,
     ) {
         val isMain: Boolean
             get() = name == HotUpdaterInstanceEnvironment.MAIN_NAME
@@ -84,19 +86,25 @@ internal class HotUpdaterRecoverySlots(
          * The instance a JavaScript error no runtime claimed most likely came
          * from, or null to leave it unclaimed. A runtime whose bundle throws
          * while it loads, before JavaScript reaches HotUpdater, never has its
-         * module, so nothing hooks its errors. When main's launch is verified
-         * or absent and exactly one named launch still waits for its first
-         * content without a module, the error is that launch's: charging every
-         * armed launch instead would miss it until one of its views is shown,
-         * and the next start would select the same failing bundle.
+         * module, so nothing hooks its errors. Any launch of this process
+         * whose runtime hasn't shown it finished loading may have thrown: one
+         * without first content and, for a named instance, without its module
+         * (main's runtime never registers one). Whether it may roll back says
+         * nothing about that: a built-in bundle throws as well. Only when the
+         * one such launch is a named launch waiting for its first content is
+         * the error its: charging every armed launch instead would miss it
+         * until one of its views is shown, and the next start would select
+         * the same failing bundle.
          */
         fun inferJavaScriptErrorOwner(
             launches: Collection<Launch>,
             registeredRuntimes: Set<String>,
         ): String? {
-            if (launches.any { it.isMain && it.shouldRollback }) return null
-            val pending = launches.filter { !it.isMain && it.shouldRollback }.singleOrNull() ?: return null
-            return pending.name.takeIf { it !in registeredRuntimes }
+            val possibleOwner =
+                launches
+                    .filter { !it.contentAppeared && (it.isMain || it.name !in registeredRuntimes) }
+                    .singleOrNull() ?: return null
+            return possibleOwner.name.takeIf { !possibleOwner.isMain && possibleOwner.shouldRollback }
         }
 
         /**
