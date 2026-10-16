@@ -479,6 +479,34 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(coordinator.chargeFatal(owner: Self.widget) != loadFailure)
     }
 
+    /// A torn-down runtime of the widget fails to load after its
+    /// replacement started, then reports its fatal: one claim, which the
+    /// fatal's return releases.
+    @Test
+    func anEarlierRuntimesLoadFailureFatalTakesOverItsClaim() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        process.storages[Self.main]?.markLaunchStarted(bundleId: "main-next")
+        let earlier = try #require(scene.launchURL(Self.widget, bundleId: "widget-stable"))
+
+        let loadFailure = try #require(coordinator.chargeLoadFailure(owner: Self.widget, runtimeBundleURL: earlier))
+        #expect(coordinator.earlierRuntimeClaim == loadFailure)
+        #expect(scene.metadata(Self.main)?.launchInProgress == false)
+        let fatal = try #require(coordinator.chargeFatal(owner: Self.widget, runtimeBundleURL: earlier))
+        #expect(fatal == loadFailure)
+        #expect(coordinator.activeClaimCount == 1)
+
+        coordinator.clearAttribution(claim: fatal)
+        #expect(coordinator.activeClaimCount == 0)
+        #expect(scene.metadata(Self.main)?.launchInProgress == true)
+        // Another earlier bundle of the widget is another runtime.
+        let other = try #require(coordinator.chargeLoadFailure(owner: Self.widget, runtimeBundleURL: earlier))
+        let elsewhere = URL(fileURLWithPath: "/tmp/other-widget-bundle/index.ios.bundle")
+        #expect(coordinator.chargeFatal(owner: Self.widget, runtimeBundleURL: elsewhere) != other)
+    }
+
     /// A load failure whose fatal never comes doesn't keep other launches
     /// stopped: its claim ends after the bound, or when the instance
     /// launches again.

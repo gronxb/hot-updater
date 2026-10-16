@@ -179,6 +179,10 @@ final class HotUpdaterRecoveryCoordinator {
         var awaitingFatalSince: TimeInterval?
         /// When the claim was made, for the fail-safe.
         var startedAt: TimeInterval = 0
+        /// An earlier runtime's claim: the instance it belonged to and the
+        /// bundle it ran, which tell its follow-up fatal apart.
+        var earlierRuntimeOwner: String?
+        var earlierRuntimeURLKey: String?
     }
 
     /// How long a claim may stay active. A fatal handler that blocks without
@@ -770,22 +774,32 @@ final class HotUpdaterRecoveryCoordinator {
                 chargeUnattributedCrash()
                 return nil
             }
-            guard isCurrentRuntime(of: launch, runtimeBundleURL: runtimeBundleURL) else {
-                return attributeToEarlierRuntime()
+            let isCurrent = isCurrentRuntime(of: launch, runtimeBundleURL: runtimeBundleURL)
+            // The fatal of a load failure: the same crash, so the load
+            // failure's claim is its claim, found among every claim (another
+            // runtime's may have come in between). For this launch, by its
+            // generation; for an earlier runtime of this instance, by the
+            // bundle it ran when both are known.
+            let urlKey = runtimeBundleURL.map(HotUpdaterInstanceRouter.comparableKey)
+            if let index = activeClaims.firstIndex(where: { claim in
+                guard claim.awaitingFatalSince != nil else { return false }
+                if claim.isEarlierRuntime {
+                    return !isCurrent
+                        && claim.earlierRuntimeOwner == owner
+                        && (urlKey == nil || claim.earlierRuntimeURLKey == nil || claim.earlierRuntimeURLKey == urlKey)
+                }
+                return isCurrent && claim.name == owner && claim.generation == launch.generation
+            }) {
+                activeClaims[index].awaitingFatalSince = nil
+                return activeClaims[index].id
+            }
+            guard isCurrent else {
+                return attributeToEarlierRuntime(owner: owner, urlKey: urlKey)
             }
             // The claimed crash going on, after its instance started a later
             // launch: still the earlier launch's.
             if runtimeBundleURL == nil, attributedName == owner, attributedGeneration != launch.generation {
-                return attributeToEarlierRuntime()
-            }
-            // The fatal of this launch's load failure: the same crash, so
-            // the load failure's claim is its claim.
-            // Another runtime's claim may have come in between.
-            if let index = activeClaims.firstIndex(where: {
-                $0.awaitingFatalSince != nil && $0.name == owner && $0.generation == launch.generation
-            }) {
-                activeClaims[index].awaitingFatalSince = nil
-                return activeClaims[index].id
+                return attributeToEarlierRuntime(owner: owner, urlKey: nil)
             }
             // Its slot asks for rollback, then the crash is published as its,
             // then the marker file is written: a signal at any point writes
@@ -870,14 +884,16 @@ final class HotUpdaterRecoveryCoordinator {
     /// no marker, no native slot, and every launch that started forgets it,
     /// so no current launch is rolled back for it. Returns the claim, as
     /// `attribute(to:)` does.
-    private func attributeToEarlierRuntime() -> Int {
+    private func attributeToEarlierRuntime(owner: String, urlKey: String?) -> Int {
         claimGeneration += 1
         appendClaim(Claim(
             id: claimGeneration,
             name: nil,
             generation: nil,
             slot: Self.attributedWithoutSlot,
-            isEarlierRuntime: true
+            isEarlierRuntime: true,
+            earlierRuntimeOwner: owner,
+            earlierRuntimeURLKey: urlKey
         ))
         publishLatestClaim()
         disarm(launches.values)
