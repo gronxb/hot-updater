@@ -1282,6 +1282,14 @@ final class HotUpdaterRecoveryHub: NSObject {
         coordinator.onRollbackCharged = { [weak self] name in
             self?.manager(named: name)?.onRollbackCharged?()
         }
+        // Off the main queue, which a blocked fatal handler may hold.
+        coordinator.onClaimStarted = { [weak self] in
+            DispatchQueue.global(qos: .utility).asyncAfter(
+                deadline: .now() + HotUpdaterRecoveryCoordinator.claimFailSafe + 0.1
+            ) {
+                self?.coordinator.releaseStaleClaims()
+            }
+        }
     }
     private let pendingSurfaceStarts = HotUpdaterPendingSurfaceStarts()
     private let managersLock = NSLock()

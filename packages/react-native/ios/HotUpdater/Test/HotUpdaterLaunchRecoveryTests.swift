@@ -560,6 +560,44 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(Coordinator.fatalOwner(module: nil, stack: nil, claim: nil, inference: { nil }) == nil)
     }
 
+    /// A fatal handler that blocks without ending the process: its claim is
+    /// released after the fail-safe, the way a returning handler would.
+    @Test
+    func aClaimWhoseHandlerNeverReturnsIsReleasedByTheFailSafe() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        var clock: TimeInterval = 0
+        let process = scene.launch(now: { clock })
+        let coordinator = process.coordinator
+        var scheduled = 0
+        coordinator.onClaimStarted = { scheduled += 1 }
+        process.storages[Self.main]?.markLaunchStarted(bundleId: "main-next")
+        #expect(coordinator.arm(name: Self.widget))
+        let widgetSlot = try #require(coordinator.launch(named: Self.widget)?.slot)
+
+        coordinator.chargeFatal(owner: Self.main)
+        clock += 30
+        coordinator.chargeFatal(owner: Self.widget)
+        #expect(scheduled == 2)
+
+        clock += HotUpdaterRecoveryCoordinator.claimFailSafe - 31
+        coordinator.releaseStaleClaims()
+        #expect(coordinator.activeClaimCount == 2)
+        clock += 1
+        // Main's is stale: the widget's stays published, nothing starts again.
+        coordinator.releaseStaleClaims()
+        #expect(coordinator.activeClaimCount == 1)
+        #expect(process.sink.attribution == widgetSlot)
+        #expect(scene.metadata(Self.main)?.launchInProgress == false)
+
+        clock += 30
+        coordinator.releaseStaleClaims()
+        #expect(coordinator.activeClaimCount == 0)
+        #expect(process.sink.attribution == HotUpdaterRecoveryCoordinator.unattributed)
+        #expect(scene.metadata(Self.main)?.launchInProgress == true)
+        #expect(scene.metadata(Self.widget)?.launchInProgress == true)
+    }
+
     @Test
     func overlappingClaimsReleaseTogetherWithTheLatest() throws {
         let scene = try Scene()

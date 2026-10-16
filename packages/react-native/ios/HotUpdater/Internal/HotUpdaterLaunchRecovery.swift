@@ -177,7 +177,18 @@ final class HotUpdaterRecoveryCoordinator {
         /// A load failure's claim, waiting since then for the fatal React
         /// Native reports next, which takes it over.
         var awaitingFatalSince: TimeInterval?
+        /// When the claim was made, for the fail-safe.
+        var startedAt: TimeInterval = 0
     }
+
+    /// How long a claim may stay active. A fatal handler that blocks without
+    /// ending the process (a custom one) would otherwise keep every other
+    /// launch stopped and every later crash attributed to it.
+    static let claimFailSafe: TimeInterval = 60
+    /// Called when a claim is made, so the host schedules
+    /// `releaseStaleClaims()` after `claimFailSafe`; called under the lock,
+    /// so it must only schedule. Set once, before any launch.
+    var onClaimStarted: (() -> Void)?
 
     /// How long a load failure's claim waits for its fatal. React Native
     /// reports it right after the load failure; if none comes (a
@@ -546,7 +557,7 @@ final class HotUpdaterRecoveryCoordinator {
                 prepareCharge(launch)
             }
             claimGeneration += 1
-            activeClaims.append(Claim(
+            appendClaim(Claim(
                 id: claimGeneration,
                 name: nil,
                 generation: nil,
@@ -861,7 +872,7 @@ final class HotUpdaterRecoveryCoordinator {
     /// `attribute(to:)` does.
     private func attributeToEarlierRuntime() -> Int {
         claimGeneration += 1
-        activeClaims.append(Claim(
+        appendClaim(Claim(
             id: claimGeneration,
             name: nil,
             generation: nil,
@@ -871,6 +882,24 @@ final class HotUpdaterRecoveryCoordinator {
         publishLatestClaim()
         disarm(launches.values)
         return claimGeneration
+    }
+
+    private func appendClaim(_ claim: Claim) {
+        var claim = claim
+        claim.startedAt = now()
+        activeClaims.append(claim)
+        onClaimStarted?()
+    }
+
+    /// Releases every claim older than `claimFailSafe`, the way a returning
+    /// fatal handler would.
+    func releaseStaleClaims() {
+        withLock {
+            let currentTime = now()
+            for claim in activeClaims where currentTime - claim.startedAt >= Self.claimFailSafe {
+                releaseClaim(claim.id)
+            }
+        }
     }
 
     /// Publishes the latest active claim, or no attribution without one.
@@ -919,7 +948,7 @@ final class HotUpdaterRecoveryCoordinator {
         withLock {
             guard let launch = launches[owner] else { return nil }
             claimGeneration += 1
-            activeClaims.append(Claim(
+            appendClaim(Claim(
                 id: claimGeneration,
                 name: owner,
                 generation: launch.generation,
