@@ -1199,7 +1199,11 @@ final class HotUpdaterRecoveryManager: NSObject {
         ].map { notificationName in
             NotificationCenter.default.addObserver(forName: notificationName, object: nil, queue: .main) { [weak self] _ in
                 guard let self else { return }
-                let isShown = self.backgroundViewStarts.takeAnyShown { hotUpdaterIsViewShown($0) }
+                // willEnterForeground may come before the view is in its
+                // window; didBecomeActive decides.
+                let final = notificationName == UIApplication.didBecomeActiveNotification
+                let isShown = self.backgroundViewStarts.takeAnyShown({ hotUpdaterIsViewShown($0) }, final: final)
+                guard isShown || final else { return }
                 self.removeArmObservers(before: generation + 1)
                 if isShown {
                     self.hub.coordinator.arm(name: self.name, generation: generation, runtimeBundleURL: runtimeBundleURL)
@@ -1661,11 +1665,19 @@ final class HotUpdaterRecoveryHub: NSObject {
             // Content first: a launch whose content already appeared is
             // verified, and a surface start then no longer starts it.
             self.releaseHeldContent()
+            // The app may have come to the foreground since the surface
+            // started: a surface that started in the background counts as
+            // started in the foreground only if it is shown now.
+            let inForegroundNow = UIApplication.shared.applicationState != .background
             for started in self.pendingSurfaceStarts.resolve({ self.owner(of: $0) }) {
                 self.viewStarted(
                     owner: started.name,
                     view: started.surface,
-                    inForeground: started.inForeground,
+                    inForeground: HotUpdaterBackgroundViewStarts.startsInForeground(
+                        startedInForeground: started.inForeground,
+                        inForegroundNow: inForegroundNow,
+                        isShown: { hotUpdaterIsViewShown(started.surface) }
+                    ),
                     generation: started.generation
                 )
             }

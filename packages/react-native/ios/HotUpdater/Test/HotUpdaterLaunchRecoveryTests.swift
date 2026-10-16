@@ -1716,6 +1716,43 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(!starts.takeAnyShown(isShown))
     }
 
+    /// A surface not yet in its window at willEnterForeground may be by
+    /// didBecomeActive: the views are kept until a view is shown or that
+    /// final check has run.
+    @Test
+    func backgroundViewsAreKeptUntilTheFinalForegroundCheck() {
+        let starts = HotUpdaterBackgroundViewStarts()
+        let view = NSObject()
+        var shown = false
+        starts.add(view)
+        // willEnterForeground: not in its window yet.
+        let early = starts.takeAnyShown({ _ in shown }, final: false)
+        #expect(!early)
+        #expect(!starts.isEmpty)
+        // didBecomeActive: it is now.
+        shown = true
+        let active = starts.takeAnyShown({ _ in shown }, final: true)
+        #expect(active)
+        #expect(starts.isEmpty)
+        // Not shown by the final check: forgotten.
+        starts.add(view)
+        shown = false
+        let never = starts.takeAnyShown({ _ in shown }, final: true)
+        #expect(!never)
+        #expect(starts.isEmpty)
+    }
+
+    /// A surface told apart after the app came to the foreground starts its
+    /// launch now if it is shown, not at the next foreground transition.
+    @Test
+    func aSurfaceResolvedInTheForegroundStartsItsLaunchIfShown() {
+        typealias Starts = HotUpdaterBackgroundViewStarts
+        #expect(Starts.startsInForeground(startedInForeground: true, inForegroundNow: false, isShown: { false }))
+        #expect(Starts.startsInForeground(startedInForeground: false, inForegroundNow: true, isShown: { true }))
+        #expect(!Starts.startsInForeground(startedInForeground: false, inForegroundNow: true, isShown: { false }))
+        #expect(!Starts.startsInForeground(startedInForeground: false, inForegroundNow: false, isShown: { true }))
+    }
+
     // MARK: - Sweeps
 
     @Test(arguments: ["main", "widget"])

@@ -1275,14 +1275,31 @@ final class HotUpdaterBackgroundViewStarts {
         lock.unlock()
     }
 
-    /// Whether a view that started in the background is still shown, by
-    /// `isShown`; forgets them all either way.
-    func takeAnyShown(_ isShown: (AnyObject) -> Bool) -> Bool {
+    /// Whether a view that started in the background is shown now, by
+    /// `isShown`. They are forgotten once one is shown, or after the `final`
+    /// check of a foreground transition (didBecomeActive): a surface not yet
+    /// in its window at willEnterForeground may be by then.
+    func takeAnyShown(_ isShown: (AnyObject) -> Bool, final: Bool = true) -> Bool {
         lock.lock()
         let views = entries.compactMap(\.view)
-        entries = []
         lock.unlock()
-        return views.contains { isShown($0) }
+        let shown = views.contains { isShown($0) }
+        if shown || final {
+            removeAll()
+        }
+        return shown
+    }
+
+    /// Whether a surface whose runtime was told apart only after it started
+    /// starts its launch as one in the foreground: it started there, or the
+    /// app is in the foreground now and the surface is shown. Otherwise it
+    /// waits for the next foreground transition.
+    static func startsInForeground(
+        startedInForeground: Bool,
+        inForegroundNow: Bool,
+        isShown: () -> Bool
+    ) -> Bool {
+        startedInForeground || (inForegroundNow && isShown())
     }
 
     func removeAll() {
