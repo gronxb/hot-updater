@@ -1236,11 +1236,17 @@ final class HotUpdaterRecoveryHub: NSObject {
     }
 
     /// The instance whose JavaScript thread is failing; a fatal right after a
-    /// load failure already attributed belongs to the same instance. On a
-    /// JavaScript thread whose runtime has no module yet, the one launch that
-    /// can have thrown it, if there is exactly one.
-    private func fatalOwner() -> String? {
+    /// load failure already attributed belongs to the same instance. Else
+    /// the instance whose bundle every frame of its JavaScript stack is in.
+    /// Else, on a JavaScript thread whose runtime has no module yet, the one
+    /// launch that can have thrown it, if there is exactly one.
+    private func fatalOwner(stack: Any?) -> String? {
         if let owner = hotUpdaterRuntimeImpl()?.environment.name ?? coordinator.attributedOwner {
+            return owner
+        }
+        if let owner = HotUpdaterJSStackOwner.owner(of: stack, resolve: {
+            HotUpdaterNativeUpdateBridge.impl(forBundleURL: $0).environment.name
+        }) {
             return owner
         }
         guard Thread.current.name == Self.runtimeThreadName else { return nil }
@@ -1256,28 +1262,30 @@ final class HotUpdaterRecoveryHub: NSObject {
 
         RCTSetFatalHandler { [weak self] error in
             guard !hotUpdaterIsFailedRuntime().boolValue else { return }
-            self?.handleFatal { self?.forwardFatalError(error) }
+            let stack = (error as NSError?)?.userInfo[RCTJSStackTraceKey]
+            self?.handleFatal(stack: stack) { self?.forwardFatalError(error) }
         }
 
         RCTSetFatalExceptionHandler { [weak self] exception in
             guard !hotUpdaterIsFailedRuntime().boolValue else { return }
-            self?.handleFatal { self?.forwardFatalException(exception) }
+            let stack = exception?.userInfo?[RCTJSStackTraceKey]
+            self?.handleFatal(stack: stack) { self?.forwardFatalException(exception) }
         }
 
         NSSetUncaughtExceptionHandler(hotUpdaterUncaughtExceptionHandler)
     }
 
-    private func handleFatal(forward: @escaping () -> Void) {
-        let owner = fatalOwner()
+    private func handleFatal(stack: Any?, forward: @escaping () -> Void) {
+        let owner = fatalOwner(stack: stack)
         if owner == nil || owner == mainName, let main = manager(named: mainName) {
             // Main's fatal, or one no runtime claims: main recovers in-process
             // as it always has.
             if main.requestRecoveryReloadIfNeeded(onFailure: { [weak self] in
-                if let owner {
-                    self?.coordinator.attribute(to: owner)
-                }
+                let claim = owner.flatMap { self?.coordinator.attribute(to: $0) }
                 forward()
-                self?.coordinator.clearAttribution()
+                if let claim {
+                    self?.coordinator.clearAttribution(claim: claim)
+                }
             }) {
                 if owner == nil {
                     // Main lives on, but the fatal may have been a named
@@ -1291,9 +1299,11 @@ final class HotUpdaterRecoveryHub: NSObject {
         // there yet, and main's host must not reload for another instance's
         // fatal. React Native's default crashes the process, and the crash is
         // this instance's alone.
-        coordinator.chargeFatal(owner: owner)
+        let claim = coordinator.chargeFatal(owner: owner)
         forward()
-        coordinator.clearAttribution()
+        if let claim {
+            coordinator.clearAttribution(claim: claim)
+        }
     }
 
     private func forwardFatalError(_ error: Error?) {

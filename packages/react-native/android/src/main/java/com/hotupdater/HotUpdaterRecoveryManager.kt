@@ -516,10 +516,31 @@ internal class HotUpdaterRecoveryManager(
          * one named launch's ([HotUpdaterRecoverySlots.inferJavaScriptErrorOwner]).
          */
         internal fun chargeUncaughtException(throwable: Throwable): Boolean {
-            val inferredOwner =
-                if (slots.attributedName() == null && isJavaScriptError(throwable)) inferJavaScriptErrorOwner() else null
-            return if (inferredOwner != null) claimJavaScriptError(null, inferredOwner) else handleUncaughtCrash()
+            val owner =
+                if (slots.attributedName() == null && isJavaScriptError(throwable)) javaScriptErrorOwner(throwable) else null
+            return if (owner != null) claimJavaScriptError(null, owner) else handleUncaughtCrash()
         }
+
+        /**
+         * The instance an unclaimed JavaScript error belongs to: the one its
+         * stack runs from, or the one inferred from the launches that haven't
+         * finished loading; null when neither tells.
+         */
+        private fun javaScriptErrorOwner(throwable: Throwable): String? =
+            attribution.namedInstanceOfStack(javaScriptStacks(throwable)) ?: inferJavaScriptErrorOwner()
+
+        // React Native formats a fatal error's frames without their files,
+        // but keeps the engine's own stack, with each frame's bundle, in its
+        // extra data.
+        private fun javaScriptStacks(throwable: Throwable): List<String> =
+            generateSequence(throwable) { it.cause }
+                .take(MAX_CAUSE_DEPTH)
+                .filterIsInstance<JavascriptException>()
+                .flatMap { error -> listOfNotNull(error.message, error.extraDataAsJson?.let(::rawStackOf)) }
+                .toList()
+
+        private fun rawStackOf(extraDataAsJson: String): String =
+            runCatching { JSONObject(extraDataAsJson).optString("rawStack") }.getOrNull()?.takeIf { it.isNotEmpty() } ?: extraDataAsJson
 
         private fun isJavaScriptError(throwable: Throwable): Boolean =
             generateSequence(throwable) { it.cause }.take(MAX_CAUSE_DEPTH).any { it is JavascriptException }
@@ -571,8 +592,8 @@ internal class HotUpdaterRecoveryManager(
             // one: it is the one named launch whose runtime never reached
             // HotUpdater, or it charges every launch it can be blamed on.
             if (instanceName == null) {
-                val inferredOwner = inferJavaScriptErrorOwner() ?: return handleUncaughtCrash(exception, attributedName = null)
-                return claimJavaScriptError(exception, inferredOwner)
+                val owner = javaScriptErrorOwner(exception) ?: return handleUncaughtCrash(exception, attributedName = null)
+                return claimJavaScriptError(exception, owner)
             }
             return claimJavaScriptError(exception, instanceName)
         }
@@ -590,16 +611,18 @@ internal class HotUpdaterRecoveryManager(
                 }
             }
             val disarmed = liveManagers.values.filter { it.name != instanceName && it.handleCrashOfAnotherInstance() }
-            val generation =
+            // Claims overlap when errors return: every launch any of them
+            // left alone waits for the last one, including that claim's own
+            // instance, which an earlier claim may have left alone.
+            val (generation, waiting) =
                 synchronized(claimLock) {
                     claimGeneration += 1
-                    disarmedByClaim.clear()
-                    disarmedByClaim += disarmed
-                    claimGeneration
+                    disarmed.forEach { if (it !in disarmedByClaim) disarmedByClaim += it }
+                    claimGeneration to disarmedByClaim.isNotEmpty()
                 }
             // A development build shows the error, and an app's handler may
             // swallow it: once the claim expires, the process lived on.
-            if (disarmed.isNotEmpty()) {
+            if (waiting) {
                 claimHandler.postDelayed({ releaseClaim(generation) }, HotUpdaterRecoverySlots.ATTRIBUTION_WINDOW_MS)
             }
             return liveManagers[instanceName]?.chargeCrash(exception) == true

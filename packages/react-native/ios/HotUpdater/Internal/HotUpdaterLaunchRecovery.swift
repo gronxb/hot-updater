@@ -151,6 +151,9 @@ final class HotUpdaterRecoveryCoordinator {
     /// The launches `attribute(to:)` stopped, to restart if the process
     /// survives the fatal.
     private var disarmed: [(name: String, generation: Int, bundleId: String, wasStarted: Bool, wasArmed: Bool)] = []
+    /// The latest claim: a fatal of another instance can arrive before an
+    /// earlier one's handler returns, and only the latest releases them all.
+    private var claimGeneration = 0
 
     init(sink: HotUpdaterCrashSlotSink) {
         self.sink = sink
@@ -310,16 +313,18 @@ final class HotUpdaterRecoveryCoordinator {
     /// A JavaScript fatal that will crash the process. Attributed to `owner`:
     /// only `owner`'s marker, and the native crash it causes writes no other
     /// slot (see `attribute(to:)`). Unattributed: every unverified launch's.
-    func chargeFatal(owner: String?) {
+    /// Returns the claim to release if the process lives on.
+    @discardableResult
+    func chargeFatal(owner: String?) -> Int? {
         withLock {
             guard let owner, let launch = launches[owner] else {
                 chargeUnattributedCrash()
-                return
+                return nil
             }
             if launch.isMonitoring {
                 writeMarker(launch)
             }
-            attribute(to: owner)
+            return attribute(to: owner)
         }
     }
 
@@ -327,9 +332,14 @@ final class HotUpdaterRecoveryCoordinator {
     /// writes no other slot, and the other launches that already started
     /// forget it, so the unfinished-launch rule doesn't roll them back at the
     /// next start either; they stay pending and launch the same bundle again.
-    func attribute(to owner: String) {
+    /// Returns the claim to release if the process lives on. A claim made
+    /// while an earlier one holds takes over: the launches the earlier one
+    /// stopped, this owner's included, stay listed to start again.
+    @discardableResult
+    func attribute(to owner: String) -> Int? {
         withLock {
-            guard launches[owner] != nil else { return }
+            guard launches[owner] != nil else { return nil }
+            claimGeneration += 1
             attributedName = owner
             attributedSlot = launches[owner]?.slot ?? Self.attributedWithoutSlot
             sink.attributeCrash(toSlot: attributedSlot)
@@ -342,15 +352,18 @@ final class HotUpdaterRecoveryCoordinator {
                 launch.isArmed = false
                 mirror(launch)
             }
+            return claimGeneration
         }
     }
 
     /// React Native's default fatal handler can return in a debug build, and
     /// the process lives on: the launches the attribution stopped that are
     /// still unverified start again, so a later crash still counts against
-    /// them.
-    func clearAttribution() {
+    /// them. Only the latest claim releases: an earlier one's handler that
+    /// returns while a later fatal is on its way leaves that one in place.
+    func clearAttribution(claim: Int) {
         withLock {
+            guard claim == claimGeneration else { return }
             attributedName = nil
             attributedSlot = Self.unattributed
             sink.attributeCrash(toSlot: attributedSlot)
@@ -603,3 +616,48 @@ final class HotUpdaterBackgroundViewStarts {
         lock.unlock()
     }
 }
+
+/// The instance whose bundle a JavaScript error was thrown in, read from its
+/// stack: `RCTJSStackTraceKey`'s frames, `{"file", "methodName",
+/// "lineNumber", "column"}`, whose `file` is the source URL the runtime
+/// evaluated (a `file://` URL or path of a staged bundle, the `main.jsbundle`
+/// embedded in a framework, or a development server URL). This attributes a
+/// fatal that no runtime module claims, such as one thrown while two
+/// instances' bundles both still evaluate.
+enum HotUpdaterJSStackOwner {
+    /// The bundle locations of the frames; frames without one, such as
+    /// `unknown` or native ones, are skipped.
+    static func bundleURLs(in stack: Any?) -> [URL] {
+        guard let frames = stack as? [Any] else { return [] }
+        return frames.compactMap { frame in
+            ((frame as? [String: Any])?["file"] as? String).flatMap(bundleURL)
+        }
+    }
+
+    static func bundleURL(_ file: String) -> URL? {
+        var location = file.trimmingCharacters(in: .whitespaces)
+        // Hermes prints bytecode locations as "address at <url>".
+        let bytecodePrefix = "address at "
+        if location.hasPrefix(bytecodePrefix) {
+            location.removeFirst(bytecodePrefix.count)
+        }
+        if location.hasPrefix("/") {
+            return URL(fileURLWithPath: location)
+        }
+        guard let url = URL(string: location),
+              let scheme = url.scheme?.lowercased(),
+              ["file", "http", "https"].contains(scheme) else {
+            return nil
+        }
+        return url
+    }
+
+    /// The one instance every frame with a bundle location belongs to, by
+    /// `resolve` (the C2 router); nil when no frame has one or they name
+    /// more than one instance.
+    static func owner(of stack: Any?, resolve: (URL) -> String) -> String? {
+        let names = Set(bundleURLs(in: stack).map(resolve))
+        return names.count == 1 ? names.first : nil
+    }
+}
+

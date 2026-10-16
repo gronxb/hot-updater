@@ -25,6 +25,39 @@ internal class HotUpdaterRecoveryAttribution(
     companion object {
         val shared = HotUpdaterRecoveryAttribution()
 
+        // A JavaScript stack frame's source: an absolute path or a URL, such
+        // as Hermes' "at f (address at /data/.../index.android.bundle:1:2345)",
+        // "f@/data/.../index.android.bundle:1:2345", or "assets://widget.android.bundle:1:9".
+        private val FRAME_SOURCE = Regex("""((?:[A-Za-z][A-Za-z0-9+.-]*://|/)[^\s()]*?)(?::\d+){1,2}(?=[)\s,]|$)""")
+
+        /** The bundle locations the frames of [stack] run from. */
+        fun frameSources(stack: String): List<String> =
+            FRAME_SOURCE
+                .findAll(stack)
+                .map { it.groupValues[1] }
+                .distinct()
+                .toList()
+
+        /**
+         * The named instance whose bundle every located frame of [stacks]
+         * runs from, or null when no frame is located or they name main, an
+         * unknown bundle, or more than one instance. A runtime runs one
+         * bundle, so its error's frames name its instance even before its
+         * HotUpdater module exists.
+         */
+        fun namedInstanceOfStack(
+            stacks: List<String>,
+            resolve: (String) -> String,
+        ): String? {
+            val sources = stacks.flatMap(::frameSources).distinct()
+            if (sources.isEmpty()) return null
+            return sources
+                .map(resolve)
+                .toSet()
+                .singleOrNull()
+                ?.takeIf { it != HotUpdaterInstanceEnvironment.MAIN_NAME }
+        }
+
         /**
          * Whether a view of [viewInstance] counts for [instanceName]. Main
          * takes every view no named instance claims, so a view whose runtime
@@ -132,6 +165,12 @@ internal class HotUpdaterRecoveryAttribution(
         val (seenStarted, known) = synchronized(activities) { startedActivities.toList() to activities.toList() }
         val runtimeActivities = synchronized(runtimes) { runtimes.mapNotNull { it.get()?.currentActivity } }
         return (seenStarted + (known + runtimeActivities).filter(isStarted)).distinct()
+    }
+
+    /** [namedInstanceOfStack] with this process's instances. */
+    fun namedInstanceOfStack(stacks: List<String>): String? {
+        val context = context ?: return null
+        return namedInstanceOfStack(stacks) { resolveName(context, it) }
     }
 
     /** The instance whose bundle runs from [sourceURL], or null when it isn't known. */

@@ -383,6 +383,78 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `an unclaimed JavaScript error belongs to the named instance its stack runs from`() {
+        // Two named runtimes load at once; one throws before either reaches HotUpdater.
+        val context = InstanceTestContext(temporaryFolder.root)
+        val stackWidget = namedEnvironment("stack-widget")
+        val stackChat = namedEnvironment("stack-chat")
+        val widgetBundle = stagePending(context, stackWidget, "widget-bundle")
+        stagePending(context, stackChat, "chat-bundle")
+        val registry = HotUpdaterInstanceRegistry.shared
+        try {
+            registry.impl(context, stackWidget).getJSBundleFile()
+            registry.impl(context, stackChat).getJSBundleFile()
+            val error =
+                JavascriptException("Error: widget failed, stack:\nanonymous@1:20480\n").apply {
+                    extraDataAsJson =
+                        JSONObject()
+                            .put("rawStack", "Error: widget failed\n    at anonymous (address at ${widgetBundle.absolutePath}:1:20480)")
+                            .put("jsEngine", "hermes")
+                            .toString()
+                }
+
+            HotUpdaterRecoveryManager.chargeUncaughtException(error)
+
+            assertEquals(PendingCrashRecovery("widget-bundle", true), PendingCrashRecovery.loadFromFile(crashMarker(context, stackWidget)))
+            assertFalse(crashMarker(context, stackChat).exists())
+            assertFalse(metadata(context, stackChat).launchInProgress)
+        } finally {
+            forget(registry, stackWidget.name, stackChat.name)
+        }
+    }
+
+    @Test
+    fun `launches left alone by overlapping claims all count again when the last claim is released`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val chat = namedEnvironment("chat")
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        stagePending(context, chat, "chat-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        HotUpdaterImpl(context, chat).getJSBundleFile()
+
+        // Both errors returned instead of ending the process.
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("chat failed"), chat.name)
+        HotUpdaterRecoveryManager.releaseClaim()
+
+        assertTrue(metadata(context, main).launchInProgress)
+        assertTrue(metadata(context, widget).launchInProgress)
+        // The second error's instance, which the first claim left alone.
+        assertTrue(metadata(context, chat).launchInProgress)
+    }
+
+    private fun namedEnvironment(name: String) =
+        HotUpdaterInstanceEnvironment.of(HotUpdaterOptions(BASE_URL, name = name, bundleAssetName = "$name.android.bundle"))
+
+    // The shared registry outlives the test.
+    private fun forget(
+        registry: HotUpdaterInstanceRegistry,
+        vararg names: String,
+    ) {
+        listOf("environments", "impls", "launchURLs").forEach { field ->
+            val map =
+                HotUpdaterInstanceRegistry::class.java
+                    .getDeclaredField(
+                        field,
+                    ).apply { isAccessible = true }
+                    .get(registry) as MutableMap<*, *>
+            synchronized(registry) { names.forEach { map.remove(it) } }
+        }
+    }
+
+    @Test
     fun `first content of one instance never verifies another's launch`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, main, "main-bundle")

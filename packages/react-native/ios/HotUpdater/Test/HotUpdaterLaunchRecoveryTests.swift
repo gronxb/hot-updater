@@ -82,11 +82,11 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(coordinator.arm(name: Self.widget))
         let widgetSlot = try #require(coordinator.launch(named: Self.widget)?.slot)
 
-        coordinator.chargeFatal(owner: Self.main)
+        let mainClaim = try #require(coordinator.chargeFatal(owner: Self.main))
         #expect(scene.metadata(Self.widget)?.launchInProgress == false)
         #expect(markers(coordinator) == [HotUpdaterRecoveryCoordinator.mainSlot: true])
 
-        coordinator.clearAttribution()
+        coordinator.clearAttribution(claim: mainClaim)
         #expect(scene.metadata(Self.widget)?.launchInProgress == true)
         #expect(coordinator.launch(named: Self.widget)?.isArmed == true)
         #expect(process.sink.flags[widgetSlot] == true)
@@ -95,16 +95,16 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(scene.metadata(Self.main)?.launchInProgress == true)
 
         // The other way round: main stopped by the widget's fatal starts again.
-        coordinator.chargeFatal(owner: Self.widget)
+        let widgetClaim = try #require(coordinator.chargeFatal(owner: Self.widget))
         #expect(scene.metadata(Self.main)?.launchInProgress == false)
-        coordinator.clearAttribution()
+        coordinator.clearAttribution(claim: widgetClaim)
         #expect(scene.metadata(Self.main)?.launchInProgress == true)
 
         // A launch that was never started stays unstarted.
         _ = coordinator.contentAppeared(owner: Self.widget)
         coordinator.startMonitoring(name: Self.widget, bundleId: "widget-next", shouldRollback: true)
-        coordinator.chargeFatal(owner: Self.main)
-        coordinator.clearAttribution()
+        let lastClaim = try #require(coordinator.chargeFatal(owner: Self.main))
+        coordinator.clearAttribution(claim: lastClaim)
         #expect(coordinator.launch(named: Self.widget)?.isArmed == false)
     }
 
@@ -147,7 +147,7 @@ struct HotUpdaterLaunchRecoveryTests {
             let widgetSlot = try #require(process.coordinator.launch(named: Self.widget)?.slot)
             #expect(markers(process.coordinator) == [HotUpdaterRecoveryCoordinator.mainSlot: true, widgetSlot: true])
 
-            process.coordinator.chargeFatal(owner: Self.widget)
+            let claim = try #require(process.coordinator.chargeFatal(owner: Self.widget))
             #expect(process.sink.attribution == widgetSlot)
             #expect(markers(process.coordinator) == [widgetSlot: true])
             // The uncaught exception the forwarded fatal raises charges it alone.
@@ -155,7 +155,7 @@ struct HotUpdaterLaunchRecoveryTests {
             #expect(!FileManager.default.fileExists(atPath: scene.markerURL(Self.main).path))
             #expect(FileManager.default.fileExists(atPath: scene.markerURL(Self.widget).path))
 
-            process.coordinator.clearAttribution()
+            process.coordinator.clearAttribution(claim: claim)
             #expect(process.sink.attribution == HotUpdaterRecoveryCoordinator.unattributed)
         }
     }
@@ -366,6 +366,89 @@ struct HotUpdaterLaunchRecoveryTests {
         unlaunched.register(name: "checkout", markerURL: directory.appendingPathComponent("idle.json"), storage: NoStorage())
         _ = unlaunched.contentAppeared(owner: nil)
         #expect(unlaunched.inferredFatalOwner() == Self.widget)
+    }
+
+    /// Two named runtimes still evaluate their bundles, so neither has a
+    /// module: the fatal's JavaScript stack names the one that threw.
+    @Test
+    func aFatalIsAttributedByTheBundlesInItsJavaScriptStack() throws {
+        let documents = "/var/mobile/Containers/Data/Application/APP/Documents"
+        let router = HotUpdaterInstanceRouter()
+        let framework = URL(fileURLWithPath: "/private/var/containers/Bundle/Application/APP/Host.app/Frameworks/Checkout.framework/main.jsbundle")
+        router.record(launchURL: framework, name: "checkout")
+        let resolve: (URL) -> String = {
+            router.resolve(bundleURL: $0, candidates: [Self.widget, "checkout"], documentsPath: documents)
+        }
+        let widgetBundle = "file://\(documents)/hot-updater-instances/widget/bundle-store/0199-widget/index.ios.bundle"
+        // As RCTExceptionsManager reports them (RCTJSStackTraceKey): Hermes
+        // bytecode frames carry the evaluated source URL, others none.
+        func frame(_ file: String?, _ method: String) -> [String: Any] {
+            var frame: [String: Any] = ["methodName": method, "lineNumber": 1, "column": 48213]
+            if let file { frame["file"] = file }
+            return frame
+        }
+
+        let widgetThrew: [[String: Any]] = [
+            frame(widgetBundle, "render"),
+            frame("unknown", "global"),
+            frame(nil, "anonymous"),
+            frame(widgetBundle, "loadModuleImplementation"),
+        ]
+        #expect(HotUpdaterJSStackOwner.owner(of: widgetThrew, resolve: resolve) == Self.widget)
+        // A path without a scheme, and Hermes' "address at" form.
+        #expect(HotUpdaterJSStackOwner.owner(
+            of: [frame("address at \(documents)/hot-updater-instances/widget/bundle-store/0199-widget/index.ios.bundle", "f")],
+            resolve: resolve
+        ) == Self.widget)
+        // The framework's embedded bundle the checkout instance handed out.
+        #expect(HotUpdaterJSStackOwner.owner(of: [frame(framework.absoluteString, "f")], resolve: resolve) == "checkout")
+        // Main's own bundle, or a development server, is main's.
+        #expect(HotUpdaterJSStackOwner.owner(
+            of: [frame("file://\(documents)/bundle-store/0199-main/index.ios.bundle", "f")],
+            resolve: resolve
+        ) == Self.main)
+        // Frames of two instances, or none with a bundle: nobody's.
+        #expect(HotUpdaterJSStackOwner.owner(
+            of: [frame(widgetBundle, "f"), frame(framework.absoluteString, "g")],
+            resolve: resolve
+        ) == nil)
+        #expect(HotUpdaterJSStackOwner.owner(of: [frame("unknown", "global"), frame("[native code]", "h")], resolve: resolve) == nil)
+        #expect(HotUpdaterJSStackOwner.owner(of: nil, resolve: resolve) == nil)
+        #expect(HotUpdaterJSStackOwner.owner(of: NSNull(), resolve: resolve) == nil)
+    }
+
+    /// A fatal of another instance can arrive before an earlier fatal's
+    /// handler returns. Releasing the earlier claim leaves the later one in
+    /// place; releasing the later one starts again every launch either
+    /// stopped, the later owner's included.
+    @Test
+    func overlappingClaimsReleaseTogetherWithTheLatest() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        process.storages[Self.main]?.markLaunchStarted(bundleId: "main-next")
+        #expect(coordinator.arm(name: Self.widget))
+        let widgetSlot = try #require(coordinator.launch(named: Self.widget)?.slot)
+
+        let first = try #require(coordinator.chargeFatal(owner: Self.main))
+        // Main's fatal stopped the widget's launch; then the widget throws.
+        #expect(scene.metadata(Self.widget)?.launchInProgress == false)
+        let second = try #require(coordinator.chargeFatal(owner: Self.widget))
+        #expect(scene.metadata(Self.main)?.launchInProgress == false)
+
+        // Main's handler returns first: the widget's crash is still its own.
+        coordinator.clearAttribution(claim: first)
+        #expect(process.sink.attribution == widgetSlot)
+        #expect(coordinator.attributedOwner == Self.widget)
+        #expect(scene.metadata(Self.main)?.launchInProgress == false)
+
+        coordinator.clearAttribution(claim: second)
+        #expect(process.sink.attribution == HotUpdaterRecoveryCoordinator.unattributed)
+        #expect(scene.metadata(Self.main)?.launchInProgress == true)
+        #expect(scene.metadata(Self.widget)?.launchInProgress == true)
+        #expect(coordinator.launch(named: Self.widget)?.isArmed == true)
+        #expect(markers(coordinator) == [HotUpdaterRecoveryCoordinator.mainSlot: true, widgetSlot: true])
     }
 
     @Test
