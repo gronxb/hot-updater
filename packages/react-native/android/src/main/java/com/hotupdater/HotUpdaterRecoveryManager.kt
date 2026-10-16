@@ -41,7 +41,6 @@ internal class HotUpdaterRecoveryManager(
     private val name = environment.name
     private val isMain = environment.isMain
     private val crashMarkerFile = getCrashMarkerFile(appContext, environment)
-    private val watchdogStateFile = File(getBundleStoreDir(appContext), WATCHDOG_STATE_FILENAME)
 
     private val launchState = HotUpdaterRecoveryState()
 
@@ -87,6 +86,7 @@ internal class HotUpdaterRecoveryManager(
 
     init {
         attribution.track(appContext)
+        watchdogContext = appContext
         if (!isMain) namedInstanceCreated = true
     }
 
@@ -340,27 +340,10 @@ internal class HotUpdaterRecoveryManager(
         }
     }
 
-    // The owners, the state file, and the alarm change together, so two
-    // instances never write the file in reverse order or delete it after
-    // another one joined.
+    // The owners, the intents, the state file, and the alarm change together
+    // (see the companion's watchdog operations).
     private fun startRecoveryWatchdog() {
-        synchronized(recoveryLock) {
-            try {
-                watchdogOwners += name
-                watchdogDeadlineAt = System.currentTimeMillis() + MONITORING_GRACE_PERIOD_MS
-                watchdogStateFile.parentFile?.mkdirs()
-                writeWatchdogStateLocked()
-                scheduleRecoveryWatchdogTick(appContext, WATCHDOG_TICK_INTERVAL_MS)
-            } catch (e: Exception) {
-                Log.e(TAG, "Failed to schedule recovery watchdog", e)
-            }
-        }
-    }
-
-    private fun writeWatchdogStateLocked() {
-        watchdogStateFile.writeText(
-            WatchdogState(watchdogDeadlineAt, watchdogOwners.toList(), Process.myPid(), relaunchIntents.toList()).serialize(),
-        )
+        synchronized(recoveryLock) { startWatchdogLocked(appContext, name) }
     }
 
     /**
@@ -370,33 +353,13 @@ internal class HotUpdaterRecoveryManager(
      * leaves no other trace a later process could relaunch for.
      */
     private fun keepRelaunchIntentLocked() {
-        relaunchIntents += name
-        try {
-            writeWatchdogStateLocked()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to update recovery watchdog", e)
-        }
-    }
-
-    /** This instance's claimed error did not end the process: nothing to relaunch for. */
-    private fun dropRelaunchIntentLocked() {
-        if (!relaunchIntents.remove(name)) return
-        if (watchdogOwners.isEmpty() && relaunchIntents.isEmpty()) {
-            watchdogStateFile.delete()
-            cancelRecoveryWatchdogAlarm(appContext)
-            return
-        }
-        try {
-            writeWatchdogStateLocked()
-        } catch (e: Exception) {
-            Log.e(TAG, "Failed to update recovery watchdog", e)
-        }
+        addRelaunchIntentLocked(appContext, name)
     }
 
     /** This instance's claimed error of the launch of [ownerGeneration] did not end the process. */
     private fun leaveWatchdogAfterSurvivedError(ownerGeneration: Long?) {
         synchronized(lock) {
-            dropRelaunchIntentLocked()
+            removeRelaunchIntentLocked(appContext, name)
             if (ownerGeneration != generation) return
             releaseRecoveryWatchdog()
         }
@@ -404,22 +367,7 @@ internal class HotUpdaterRecoveryManager(
 
     // One alarm serves the process: it stops once no instance waits for content.
     private fun releaseRecoveryWatchdog() {
-        synchronized(recoveryLock) {
-            if (!watchdogOwners.remove(name) && watchdogOwners.isNotEmpty()) return
-            if (watchdogOwners.isNotEmpty() || relaunchIntents.isNotEmpty()) {
-                // The instances still waiting keep the watchdog, and a marker
-                // of this one no longer relaunches the app; a claimed error
-                // still in flight does (keepRelaunchIntentLocked).
-                try {
-                    writeWatchdogStateLocked()
-                } catch (e: Exception) {
-                    Log.e(TAG, "Failed to update recovery watchdog", e)
-                }
-                return
-            }
-            watchdogStateFile.delete()
-            cancelRecoveryWatchdogAlarm(appContext)
-        }
+        synchronized(recoveryLock) { removeWatchdogOwnerLocked(appContext, name) }
     }
 
     /**
@@ -717,6 +665,74 @@ internal class HotUpdaterRecoveryManager(
         private val watchdogOwners = linkedSetOf<String>()
         private val relaunchIntents = linkedSetOf<String>()
         private var watchdogDeadlineAt = 0L
+
+        // The application, for watchdog changes no live launch makes.
+        @Volatile
+        private var watchdogContext: Context? = null
+
+        // The watchdog's state lives in this process (owners, intents), in
+        // its file, and in its alarm. Every change goes through these, under
+        // the recovery lock, so the three never disagree, whichever launch,
+        // claim, or fail-safe makes it, and whether its launch is still live.
+
+        private fun startWatchdogLocked(
+            context: Context,
+            name: String,
+        ) {
+            try {
+                watchdogOwners += name
+                watchdogDeadlineAt = System.currentTimeMillis() + MONITORING_GRACE_PERIOD_MS
+                watchdogFile(context).parentFile?.mkdirs()
+                persistWatchdogLocked(context)
+                scheduleRecoveryWatchdogTick(context, WATCHDOG_TICK_INTERVAL_MS)
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to schedule recovery watchdog", e)
+            }
+        }
+
+        private fun removeWatchdogOwnerLocked(
+            context: Context,
+            name: String,
+        ) {
+            // Another owner's watchdog is not this one's to change.
+            if (!watchdogOwners.remove(name) && watchdogOwners.isNotEmpty()) return
+            persistWatchdogLocked(context)
+        }
+
+        private fun addRelaunchIntentLocked(
+            context: Context,
+            name: String,
+        ) {
+            relaunchIntents += name
+            persistWatchdogLocked(context)
+        }
+
+        private fun removeRelaunchIntentLocked(
+            context: Context,
+            name: String,
+        ) {
+            if (!relaunchIntents.remove(name)) return
+            persistWatchdogLocked(context)
+        }
+
+        // Writes the state, or ends the watchdog once nothing is left for it.
+        private fun persistWatchdogLocked(context: Context) {
+            val file = watchdogFile(context)
+            if (watchdogOwners.isEmpty() && relaunchIntents.isEmpty()) {
+                file.delete()
+                cancelRecoveryWatchdogAlarm(context)
+                return
+            }
+            try {
+                file.writeText(
+                    WatchdogState(watchdogDeadlineAt, watchdogOwners.toList(), Process.myPid(), relaunchIntents.toList()).serialize(),
+                )
+            } catch (e: Exception) {
+                Log.e(TAG, "Failed to update recovery watchdog", e)
+            }
+        }
+
+        private fun watchdogFile(context: Context): File = File(getBundleStoreDir(context), WATCHDOG_STATE_FILENAME)
 
         private val patchedReactContexts = WeakIdentitySet<ReactContext>()
 
@@ -1113,7 +1129,12 @@ internal class HotUpdaterRecoveryManager(
                 // A launch whose generation moved on is no longer the one that threw.
                 survivedOwners.forEach { (name, ownerGeneration) ->
                     if (name != HotUpdaterInstanceEnvironment.MAIN_NAME) {
-                        liveManagers[name]?.leaveWatchdogAfterSurvivedError(ownerGeneration) ?: relaunchIntents.remove(name)
+                        val manager = liveManagers[name]
+                        if (manager != null) {
+                            manager.leaveWatchdogAfterSurvivedError(ownerGeneration)
+                        } else {
+                            watchdogContext?.let { removeRelaunchIntentLocked(it, name) }
+                        }
                     }
                 }
                 disarmed.forEach { (manager, launch) -> manager.resumeAfterAnotherInstanceSurvived(launch) }
@@ -1309,6 +1330,10 @@ internal class HotUpdaterRecoveryManager(
                     scheduleRecoveryWatchdogTick(appContext, WATCHDOG_TICK_INTERVAL_MS)
                     return
                 }
+                // The watchdog ends here, in this process's state too: a
+                // later owner starts a new one rather than reviving these.
+                watchdogOwners.clear()
+                relaunchIntents.clear()
                 watchdogStateFile.delete()
                 cancelRecoveryWatchdogAlarm(appContext)
                 return

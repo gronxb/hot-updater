@@ -1193,6 +1193,24 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a claim released after its launch's monitoring ended leaves no relaunch behind`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+        val watchdogState = File(bundleStore(context, main), "recovery-watchdog-state.txt")
+        assertEquals(listOf(widget.name), HotUpdaterRecoveryManager.WatchdogState.parse(watchdogState.readText())!!.relaunching)
+
+        // The handler stayed long enough for the widget's monitoring to end.
+        stopMonitoring(widget.name)
+        assertTrue(watchdogState.exists())
+
+        // Then it returns: nothing is left to relaunch for, in the file either.
+        HotUpdaterRecoveryManager.releaseClaim()
+        assertFalse(watchdogState.exists())
+    }
+
+    @Test
     fun `main's watchdog state keeps its format`() {
         val state = HotUpdaterRecoveryManager.WatchdogState(1_234L, listOf(HotUpdaterInstanceEnvironment.MAIN_NAME))
 
