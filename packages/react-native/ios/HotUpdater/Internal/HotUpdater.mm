@@ -6,6 +6,9 @@
 
 #ifdef RCT_NEW_ARCH_ENABLED
 #import <React/RCTSurfacePresenter.h>
+#else
+#import <React/RCTBridge+Private.h>
+#import <React/RCTModuleData.h>
 #endif
 
 #include <atomic>
@@ -373,7 +376,19 @@ static NSString *const HotUpdaterRuntimeModuleKey = @"HotUpdater.runtimeModule";
 // JavaScript fatal errors.
 static NSString *const HotUpdaterRuntimeThreadName = @"com.facebook.react.runtime.JavaScript";
 
-// What a JavaScript thread's dictionary holds: its runtime's module, weakly.
+#ifndef RCT_NEW_ARCH_ENABLED
+// Old architecture: the context of the ExceptionsManager's method queue, where
+// RCTFatal reports that bridge's JavaScript fatals.
+static char kHotUpdaterRuntimeQueueKey;
+
+static void HotUpdaterReleaseRuntimeQueueReference(void *reference)
+{
+  CFRelease(reference);
+}
+#endif
+
+// What a JavaScript thread's dictionary, or an old-architecture runtime's
+// ExceptionsManager queue, holds: its runtime's module, weakly.
 @interface HotUpdaterRuntimeModuleReference : NSObject
 @property (nonatomic, weak) HotUpdater *module;
 @end
@@ -482,7 +497,44 @@ static NSHashTable<HotUpdater *> *HotUpdaterRuntimeModules(void)
 
     id exceptionsManager = [bridge moduleForClass:[RCTExceptionsManager class]];
     [self applyExceptionsManagerReloadLimit:exceptionsManager];
+#ifndef RCT_NEW_ARCH_ENABLED
+    [self noteRuntimeQueuesOfBridge:bridge];
+#endif
 }
+
+#ifndef RCT_NEW_ARCH_ENABLED
+// Old architecture: RCTFatal reports a JavaScript fatal on the
+// ExceptionsManager's method queue, and an error of the bridge itself on its
+// JavaScript thread. Both belong to this module's bridge, so both remember
+// this module, which tells crash recovery whose fatal it is.
+- (void)noteRuntimeQueuesOfBridge:(RCTBridge *)bridge
+{
+    HotUpdaterRuntimeModuleReference *reference = [HotUpdaterRuntimeModuleReference new];
+    reference.module = self;
+
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    // Modules get the batched bridge, which keeps the module data.
+    RCTBridge *batchedBridge = [bridge respondsToSelector:@selector(moduleDataForName:)] ? bridge : bridge.batchedBridge;
+    RCTModuleData *exceptionsManager = [batchedBridge respondsToSelector:@selector(moduleDataForName:)]
+        ? [batchedBridge moduleDataForName:@"ExceptionsManager"]
+        : nil;
+    dispatch_queue_t queue = exceptionsManager.methodQueue;
+#pragma clang diagnostic pop
+    // Only a queue of this bridge alone.
+    if (queue && queue != dispatch_get_main_queue() && queue != RCTJSThread) {
+        dispatch_queue_set_specific(queue,
+                                    &kHotUpdaterRuntimeQueueKey,
+                                    (__bridge_retained void *)reference,
+                                    HotUpdaterReleaseRuntimeQueueReference);
+    }
+    if ([batchedBridge respondsToSelector:@selector(dispatchBlock:queue:)]) {
+        [batchedBridge dispatchBlock:^{
+            [NSThread currentThread].threadDictionary[HotUpdaterRuntimeModuleKey] = reference;
+        } queue:RCTJSThread];
+    }
+}
+#endif
 
 - (void)configureExceptionsManagerWithModuleRegistry:(id)moduleRegistry
 {
@@ -1271,11 +1323,17 @@ extern "C" void *HotUpdaterCopyImplForRootObject(id object)
   return impl ? (__bridge_retained void *)impl : NULL;
 }
 
-// The impl of the runtime whose JavaScript thread calls this, or NULL.
+// The impl of the runtime whose JavaScript thread, or old-architecture
+// ExceptionsManager queue, calls this, or NULL.
 extern "C" void *HotUpdaterCopyRuntimeImpl(void)
 {
   HotUpdaterRuntimeModuleReference *reference =
       [NSThread currentThread].threadDictionary[HotUpdaterRuntimeModuleKey];
+#ifndef RCT_NEW_ARCH_ENABLED
+  if (!reference) {
+    reference = (__bridge HotUpdaterRuntimeModuleReference *)dispatch_get_specific(&kHotUpdaterRuntimeQueueKey);
+  }
+#endif
   HotUpdaterImpl *impl = [reference.module resolvedInstanceImpl];
   return impl ? (__bridge_retained void *)impl : NULL;
 }

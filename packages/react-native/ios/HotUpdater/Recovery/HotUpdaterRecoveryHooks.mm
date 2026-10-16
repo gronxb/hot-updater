@@ -4,6 +4,8 @@
 #ifdef RCT_NEW_ARCH_ENABLED
 #import <React/RCTFabricSurface.h>
 #import <React/RCTSurfacePresenter.h>
+#else
+#import <React/RCTRootView.h>
 #endif
 
 void HotUpdaterInstallRecoveryHooks(void)
@@ -47,6 +49,39 @@ void HotUpdaterInstallRecoveryHooks(void)
         ((void (*)(id, SEL))originalStart)(surface, startSelector);
       }
     }));
+  });
+#else
+  // Old architecture: a root view in a window shows its bridge's runtime,
+  // which starts the launch of the instance the bridge runs (attributed by
+  // its bundle URL). Repeats are harmless: a launch starts once.
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+    Class rootViewClass = RCTRootView.class;
+#pragma clang diagnostic pop
+    SEL selector = @selector(didMoveToWindow);
+    Class superclass = class_getSuperclass(rootViewClass);
+    Method inherited = class_getInstanceMethod(rootViewClass, selector);
+    if (!inherited || !superclass) {
+      return;
+    }
+    // RCTRootView doesn't override didMoveToWindow today: add an override
+    // that calls UIView's, never exchanging UIView's own implementation.
+    IMP current = class_getMethodImplementation(rootViewClass, selector);
+    IMP own = current != class_getMethodImplementation(superclass, selector) ? current : NULL;
+    IMP replacement = imp_implementationWithBlock(^(UIView *view) {
+      IMP next = own ?: class_getMethodImplementation(superclass, selector);
+      ((void (*)(id, SEL))next)(view, selector);
+      if (view.window) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"HotUpdaterSurfaceWillStart" object:view];
+      }
+    });
+    if (own) {
+      method_setImplementation(inherited, replacement);
+    } else {
+      class_addMethod(rootViewClass, selector, replacement, method_getTypeEncoding(inherited));
+    }
   });
 #endif
 }

@@ -1378,8 +1378,9 @@ final class HotUpdaterRecoveryHub: NSObject {
         manager(named: verified.launch.name)?.contentAppeared(generation: verified.generation)
     }
 
-    /// Posted by the Fabric surface start hook (HotUpdaterRecoveryHooks.mm)
-    /// before the surface starts, on the thread that starts it.
+    /// Posted by HotUpdaterRecoveryHooks.mm on the thread that shows a view:
+    /// before a Fabric surface starts, or, in the old architecture, when an
+    /// RCTRootView moves into a window.
     @objc private func handleSurfaceWillStart(_ notification: Notification) {
         guard let surface = notification.object as AnyObject? else { return }
         let handle = { [weak self] in
