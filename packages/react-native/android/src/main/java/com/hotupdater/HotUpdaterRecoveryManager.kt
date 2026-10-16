@@ -80,6 +80,7 @@ internal class HotUpdaterRecoveryManager(
 
     init {
         attribution.track(appContext)
+        if (!isMain) namedInstanceCreated = true
     }
 
     fun consumePendingCrashRecovery(): PendingCrashRecovery? {
@@ -563,6 +564,16 @@ internal class HotUpdaterRecoveryManager(
          */
         internal val recoveryLock = Any()
 
+        // Whether this process ever had a named instance; until then every
+        // view is main's.
+        @Volatile
+        private var namedInstanceCreated = false
+
+        /** The instance whose runtime shows the root view of a root tag; main thread. Tests stand in for the views. */
+        @Volatile
+        internal var rootTagOwner: (Int) -> String? = { rootTag -> attribution.instanceOfRootTag(rootTag) }
+        internal val defaultRootTagOwner = rootTagOwner
+
         private const val TAG = "HotUpdaterRecovery"
         private const val CRASH_MARKER_FILENAME = "recovery-crash-marker.json"
         private const val WATCHDOG_STATE_FILENAME = "recovery-watchdog-state.txt"
@@ -635,12 +646,15 @@ internal class HotUpdaterRecoveryManager(
         // attached to an activity. While a named launch waits for its first
         // content, the content is held (HotUpdaterHeldContent) instead.
         internal fun handleContentAppeared(rootTag: Int) {
-            if (liveManagers.keys.all { it == HotUpdaterInstanceEnvironment.MAIN_NAME }) {
+            // An app with only main: every view is main's, as it always was.
+            if (!namedInstanceCreated) {
                 contentAppeared(HotUpdaterInstanceEnvironment.MAIN_NAME)
                 return
             }
+            // A named runtime may outlive its launch's monitoring and render
+            // again: its content is its own, never main's, monitored or not.
             // Finding the view walks views and UI managers: outside the lock.
-            val viewInstance = attribution.instanceOfRootTag(rootTag)
+            val viewInstance = rootTagOwner(rootTag)
             synchronized(recoveryLock) {
                 if (viewInstance != null) {
                     contentAppeared(viewInstance)
@@ -668,7 +682,7 @@ internal class HotUpdaterRecoveryManager(
             HotUpdaterHeldContent(
                 mainThread = HotUpdaterMainThread.android,
                 clock = { SystemClock.uptimeMillis() },
-                resolve = { rootTag -> attribution.instanceOfRootTag(rootTag) },
+                resolve = { rootTag -> rootTagOwner(rootTag) },
                 credit = { instanceName, generation -> liveManagers[instanceName]?.handleContentAppeared(generation) },
             )
 

@@ -899,6 +899,27 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(scene.metadata(Self.widget)?.verificationPending == false)
     }
 
+    /// Once the widget's launch is no longer watched, its runtime's later
+    /// content, or an earlier runtime's, is still the widget's: it never
+    /// verifies main.
+    @Test
+    func contentOfANamedRuntimeNeverVerifiesMainAfterItsMonitoringEnded() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let verified = try #require(coordinator.contentAppeared(owner: Self.widget))
+        coordinator.finishMonitoring(name: Self.widget, generation: verified.generation)
+
+        #expect(coordinator.contentAppeared(owner: Self.widget) == nil)
+        let earlier = try #require(scene.launchURL(Self.widget, bundleId: "widget-stable"))
+        #expect(coordinator.contentAppeared(owner: Self.widget, runtimeBundleURL: earlier) == nil)
+        #expect(scene.metadata(Self.main)?.verificationPending == true)
+        // Unclaimed content, with every named runtime known, is main's.
+        #expect(!coordinator.holdUnclaimedContent(NSObject()))
+        #expect(coordinator.contentAppeared(owner: nil)?.launch.name == Self.main)
+    }
+
     @Test
     func anErrorOfTheCurrentRuntimeStillChargesItsLaunch() throws {
         let scene = try Scene()

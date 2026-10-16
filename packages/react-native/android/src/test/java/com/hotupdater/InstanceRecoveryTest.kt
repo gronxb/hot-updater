@@ -694,6 +694,40 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `content of a named runtime whose monitoring ended never verifies main`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        val widgetImpl = HotUpdaterImpl(context, widget)
+        widgetImpl.getJSBundleFile()
+        HotUpdaterRecoveryManager.contentAppeared(widget.name)
+        // The widget's grace period ended; its runtime lives on.
+        stopMonitoring(widget.name)
+        stagePending(context, main, "main-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+
+        // The widget renders another root before main shows anything.
+        HotUpdaterRecoveryManager.rootTagOwner = { rootTag -> widget.name.takeIf { rootTag == 51 } }
+        HotUpdaterRecoveryManager.handleContentAppeared(rootTag = 51)
+
+        assertTrue(metadata(context, main).verificationPending)
+    }
+
+    private fun stopMonitoring(instanceName: String) {
+        val manager = HotUpdaterRecoveryManager::class.java
+        val live =
+            (manager.getDeclaredField("liveManagers").apply { isAccessible = true }.get(null) as Map<*, *>)[instanceName]!!
+        val generation =
+            live.javaClass
+                .getDeclaredField("generation")
+                .apply { isAccessible = true }
+                .getLong(live)
+        live.javaClass
+            .getDeclaredMethod("stopMonitoring", Long::class.javaPrimitiveType)
+            .apply { isAccessible = true }
+            .invoke(live, generation)
+    }
+
+    @Test
     fun `first content of one instance never verifies another's launch`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, main, "main-bundle")
