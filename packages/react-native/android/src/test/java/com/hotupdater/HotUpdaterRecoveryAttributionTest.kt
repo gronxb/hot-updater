@@ -90,20 +90,49 @@ class HotUpdaterRecoveryAttributionTest {
         assertFalse(attribution.showsViewOf(activity, MAIN))
     }
 
-    private fun attribution(runtimeRoots: HotUpdaterRuntimeRoots) =
-        HotUpdaterRecoveryAttribution(
-            resolveName = { _, url -> if (url.contains("/hot-updater-instances/widget/")) WIDGET else MAIN },
-            runtimeRoots = runtimeRoots,
-            runsCurrentLaunch = { _, url -> url == CURRENT_URL },
-        ).apply {
-            track(
-                InstanceTestContext(
-                    kotlin.io.path
-                        .createTempDirectory()
-                        .toFile(),
-                ),
-            )
-        }
+    @Test
+    fun `a decor view's root view of an earlier launch's runtime neither arms nor verifies the current launch`() {
+        // No registered runtime holds the views: they are found in the activity's decor view.
+        val activity = Activity()
+        val decorViews = mutableListOf(HotUpdaterDecorRoots.Root(21, EARLIER_URL))
+        val attribution = attribution(roots(emptyMap(), shown = emptyList()), decorRoots = { decorViews.toList() })
+        attribution.noteActivity(activity)
+
+        val earlier = attribution.instanceOfRootTag(21)
+        assertNotEquals(WIDGET, earlier)
+        assertNotEquals(MAIN, earlier)
+        assertFalse(attribution.showsViewOf(activity, WIDGET))
+        assertFalse(attribution.showsViewOf(activity, MAIN))
+
+        // The replacement launch's view counts once it is shown.
+        decorViews += HotUpdaterDecorRoots.Root(31, CURRENT_URL)
+        assertEquals(WIDGET, attribution.instanceOfRootTag(31))
+        assertTrue(attribution.showsViewOf(activity, WIDGET))
+        // A view whose runtime isn't known yet is main's, as it always was.
+        decorViews.clear()
+        decorViews += HotUpdaterDecorRoots.Root(41, null)
+        assertNull(attribution.instanceOfRootTag(41))
+        assertTrue(attribution.showsViewOf(activity, MAIN))
+        assertFalse(attribution.showsViewOf(activity, WIDGET))
+    }
+
+    private fun attribution(
+        runtimeRoots: HotUpdaterRuntimeRoots,
+        decorRoots: HotUpdaterDecorRoots = HotUpdaterDecorRoots { emptyList() },
+    ) = HotUpdaterRecoveryAttribution(
+        resolveName = { _, url -> if (url.contains("/hot-updater-instances/widget/")) WIDGET else MAIN },
+        runtimeRoots = runtimeRoots,
+        decorRoots = decorRoots,
+        runsCurrentLaunch = { _, url -> url == CURRENT_URL },
+    ).apply {
+        track(
+            InstanceTestContext(
+                kotlin.io.path
+                    .createTempDirectory()
+                    .toFile(),
+            ),
+        )
+    }
 
     private fun roots(
         rootURLs: Map<Int, String>,

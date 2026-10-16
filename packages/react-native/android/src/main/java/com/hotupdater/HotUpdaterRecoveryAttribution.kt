@@ -26,6 +26,7 @@ internal class HotUpdaterRecoveryAttribution(
     private val resolveName: (Context, String) -> String = HotUpdaterInstanceRegistry.shared::resolveName,
     private val isStarted: (Activity) -> Boolean = { isActivityStarted(it) },
     runtimeRoots: HotUpdaterRuntimeRoots? = null,
+    decorRoots: HotUpdaterDecorRoots? = null,
     /**
      * Whether a runtime that loaded the URL runs the instance's current
      * launch. A lambda, not a reference: the manager's companion reads
@@ -41,6 +42,19 @@ internal class HotUpdaterRecoveryAttribution(
      * has its own window, which no activity's decor view contains.
      */
     private val runtimeRoots: HotUpdaterRuntimeRoots = runtimeRoots ?: UIManagerRuntimeRoots()
+
+    /** Root views in activities' decor views, for a runtime not registered yet. */
+    private val decorRoots: HotUpdaterDecorRoots =
+        decorRoots ?: HotUpdaterDecorRoots { activity ->
+            val decorView = activity.window?.peekDecorView()
+            if (decorView == null) {
+                emptyList()
+            } else {
+                rootViewsIn(decorView).map { rootView ->
+                    HotUpdaterDecorRoots.Root(rootView.rootViewTag, runCatching { rootView.currentReactContext?.sourceURL }.getOrNull())
+                }
+            }
+        }
 
     companion object {
         val shared = HotUpdaterRecoveryAttribution()
@@ -216,15 +230,13 @@ internal class HotUpdaterRecoveryAttribution(
         return resolveName(context, url)
     }
 
-    /** The instance of [rootView]'s runtime, or null before the view joins one. */
-    fun instanceOf(rootView: ReactRootView): String? = launchInstanceOf(runCatching { rootView.currentReactContext?.sourceURL }.getOrNull())
-
     /**
      * The instance whose current launch a view of a runtime that loaded
      * [sourceURL] belongs to. A named host may still show a view of its
      * previous runtime while its next launch starts: that view belongs to an
      * earlier launch, which neither arms nor verifies the current one. Main
-     * takes any view, as it always has.
+     * takes any view, as it always has. Every view that arms or verifies a
+     * launch is attributed here, null before the view joins a runtime.
      */
     fun launchInstanceOf(sourceURL: String?): String? {
         val instanceName = instanceOf(sourceURL) ?: return null
@@ -237,8 +249,7 @@ internal class HotUpdaterRecoveryAttribution(
         activity: Activity,
         instanceName: String,
     ): Boolean {
-        val decorView = activity.window?.peekDecorView()
-        if (decorView != null && findRootView(decorView) { owns(instanceName, instanceOf(it)) } != null) return true
+        if (decorRoots.rootsIn(activity).any { owns(instanceName, launchInstanceOf(it.sourceURL)) }) return true
         // Main takes the views no named instance claims, which a decor view shows.
         if (instanceName == HotUpdaterInstanceEnvironment.MAIN_NAME) return false
         return runtimeRoots.runtimeURLsShownIn(activity).any { launchInstanceOf(it) == instanceName }
@@ -255,9 +266,8 @@ internal class HotUpdaterRecoveryAttribution(
             synchronized(activities) { activities.toList() } +
                 synchronized(runtimes) { runtimes.mapNotNull { it.get()?.currentActivity } }
         candidates.distinct().forEach { activity ->
-            val decorView = activity.window?.peekDecorView() ?: return@forEach
             // A view whose runtime isn't known yet tells nothing either.
-            findRootView(decorView) { it.rootViewTag == rootTag }?.let { return instanceOf(it) }
+            decorRoots.rootsIn(activity).firstOrNull { it.rootTag == rootTag }?.let { return launchInstanceOf(it.sourceURL) }
         }
         return null
     }
@@ -370,15 +380,19 @@ internal interface HotUpdaterRuntimeRoots {
     fun runtimeURLsShownIn(activity: Activity): List<String?>
 }
 
-internal fun findRootView(
-    view: View,
-    matches: (ReactRootView) -> Boolean,
-): ReactRootView? {
-    if (view is ReactRootView && matches(view)) return view
-    if (view is ViewGroup) {
-        for (index in 0 until view.childCount) {
-            findRootView(view.getChildAt(index), matches)?.let { return it }
-        }
-    }
-    return null
+/** React Native root views an activity's decor view contains. Main thread. */
+internal fun interface HotUpdaterDecorRoots {
+    /** A root view, by its root tag and the URL its runtime loaded, null before it joins one. */
+    data class Root(
+        val rootTag: Int,
+        val sourceURL: String?,
+    )
+
+    fun rootsIn(activity: Activity): List<Root>
+}
+
+internal fun rootViewsIn(view: View): List<ReactRootView> {
+    if (view is ReactRootView) return listOf(view)
+    if (view !is ViewGroup) return emptyList()
+    return (0 until view.childCount).flatMap { rootViewsIn(view.getChildAt(it)) }
 }
