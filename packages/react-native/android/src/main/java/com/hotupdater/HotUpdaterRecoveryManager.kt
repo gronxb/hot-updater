@@ -471,9 +471,12 @@ internal class HotUpdaterRecoveryManager(
      * the bundle back happens here too.
      */
     private fun writeRollbackMarkerLocked(launch: HotUpdaterRecoveryState.Launch) {
-        writeCrashMarker(launch)
+        // The native slot asks for rollback first: a signal while the file is
+        // being written writes the marker natively instead of leaving a
+        // partial one.
         charged = true
         updateNativeLaunchStateLocked()
+        writeCrashMarker(launch)
         // A launch none of whose views was shown has no watchdog yet; it
         // relaunches the app after this crash, as for an armed launch.
         startRecoveryWatchdog()

@@ -133,8 +133,11 @@ final class HotUpdaterRecoveryCoordinator {
         /// What a native crash counts against: for main, any launch it
         /// selected as pending; for a named one, only once a view started it.
         fileprivate var crashCountsAgainstLaunch: Bool {
-            shouldRollback && (isMain || isArmed)
+            shouldRollback && (isMain || isArmed || isCharged)
         }
+        /// Named only: a crash of its own was charged to this launch, so its
+        /// native slot asks for rollback even if no view of it showed.
+        fileprivate(set) var isCharged = false
     }
 
     enum RecoveryRequest: Equatable {
@@ -256,6 +259,7 @@ final class HotUpdaterRecoveryCoordinator {
             launch.isAwaitingContent = true
             launch.hasResolvedRuntime = false
             launch.hasShownContent = false
+            launch.isCharged = false
             if launch.isMain {
                 assignSlot(to: launch)
             }
@@ -463,7 +467,7 @@ final class HotUpdaterRecoveryCoordinator {
     func chargeUnclaimedLoadFailure() {
         charging {
             for launch in possibleFatalOwners where launch.isMonitoring {
-                writeMarker(launch)
+                charge(launch)
             }
         }
     }
@@ -621,10 +625,23 @@ final class HotUpdaterRecoveryCoordinator {
                 return attributeToEarlierRuntime()
             }
             if launch.isMonitoring {
-                writeMarker(launch)
+                charge(launch)
             }
             return attribute(to: owner)
         }
+    }
+
+    /// Charges `launch` with the crash under way: first its native slot asks
+    /// for rollback (a named launch takes a free slot if it has none), then
+    /// the marker file is written. A signal while the file is written still
+    /// leaves a marker, through the slot; the attribution is published after.
+    private func charge(_ launch: Launch) {
+        if !launch.isMain, launch.shouldRollback {
+            launch.isCharged = true
+            assignSlot(to: launch)
+            mirror(launch)
+        }
+        writeMarker(launch)
     }
 
     /// Whether a runtime that runs `runtimeBundleURL` is `name`'s current

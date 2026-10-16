@@ -279,9 +279,11 @@ struct HotUpdaterLaunchRecoveryTests {
 
         process.coordinator.chargeFatal(owner: Self.widget)
 
-        // No slot yet, so the native crash that follows writes nothing else.
-        #expect(process.sink.attribution == HotUpdaterRecoveryCoordinator.attributedWithoutSlot)
-        #expect(markers(process.coordinator).isEmpty)
+        // It takes a slot that asks for rollback, and the native crash that
+        // follows writes only that one.
+        let widgetSlot = try #require(process.coordinator.launch(named: Self.widget)?.slot)
+        #expect(process.sink.attribution == widgetSlot)
+        #expect(markers(process.coordinator) == [widgetSlot: true])
         #expect(!FileManager.default.fileExists(atPath: scene.markerURL(Self.main).path))
         let next = scene.nextLaunch()
         #expect(next[Self.widget]?.launchedBundleId == "widget-stable")
@@ -1080,11 +1082,36 @@ struct HotUpdaterLaunchRecoveryTests {
             coordinator.chargeFatal(owner: Self.widget)
             #expect(markerAtAttribution?.launchedBundleId == "widget-next")
             #expect(markerAtAttribution?.shouldRollback == true)
-            if armed {
-                #expect(slotAtAttribution == true)
-            } else {
-                #expect(process.sink.attribution == HotUpdaterRecoveryCoordinator.attributedWithoutSlot)
+            // Armed or not, its slot already asks for rollback.
+            #expect(slotAtAttribution == true)
+        }
+    }
+
+    /// A signal while the marker file of a charged launch is written must
+    /// still leave a marker: its native slot asks for rollback first, even
+    /// for a named launch no view of which showed.
+    @Test
+    func aChargedLaunchsSlotAsksForRollbackBeforeItsMarkerIsWritten() throws {
+        let charges: [(String, (HotUpdaterRecoveryCoordinator) -> Void)] = [
+            ("attributed fatal", { _ = $0.chargeFatal(owner: Self.widget) }),
+            ("unclaimed load failure", { $0.chargeUnclaimedLoadFailure() }),
+        ]
+        for (_, charge) in charges {
+            let scene = try Scene()
+            defer { scene.cleanUp() }
+            let process = scene.launch()
+            #expect(process.coordinator.launch(named: Self.widget)?.slot == nil)
+            var markerWhenSlotAsked: Bool?
+            process.sink.onUpdate = { slot, shouldRollback in
+                guard shouldRollback, slot != HotUpdaterRecoveryCoordinator.mainSlot, markerWhenSlotAsked == nil else { return }
+                markerWhenSlotAsked = FileManager.default.fileExists(atPath: scene.markerURL(Self.widget).path)
             }
+            charge(process.coordinator)
+            #expect(markerWhenSlotAsked == false)
+            let widgetSlot = try #require(process.coordinator.launch(named: Self.widget)?.slot)
+            #expect(process.sink.flags[widgetSlot] == true)
+            #expect(process.sink.paths[widgetSlot] == scene.markerURL(Self.widget).path)
+            #expect(FileManager.default.fileExists(atPath: scene.markerURL(Self.widget).path))
         }
     }
 
@@ -1331,7 +1358,11 @@ private final class RecordingSlotSink: HotUpdaterCrashSlotSink {
     var flags: [Int: Bool] = [:]
     var attribution = HotUpdaterRecoveryCoordinator.unattributed
 
+    /// Called as a slot is updated, before it takes effect.
+    var onUpdate: ((Int, Bool) -> Void)?
+
     func updateSlot(_ slot: Int, markerPath: String, bundleId: String?, shouldRollback: Bool) {
+        onUpdate?(slot, shouldRollback)
         paths[slot] = markerPath
         bundleIds[slot] = bundleId
         flags[slot] = shouldRollback
