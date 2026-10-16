@@ -16,6 +16,9 @@ class HotUpdaterRuntimeInstanceTest {
     @get:Rule
     val temporaryFolder = TemporaryFolder()
 
+    @get:Rule
+    val recoveryMonitoring = RecoveryMonitoringRule()
+
     private val context by lazy { InstanceTestContext(temporaryFolder.root) }
     private val registry = HotUpdaterInstanceRegistry { context, environment -> HotUpdaterImpl(context, environment) }
 

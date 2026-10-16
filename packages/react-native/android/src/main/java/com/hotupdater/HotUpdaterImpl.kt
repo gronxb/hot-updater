@@ -1,5 +1,6 @@
 package com.hotupdater
 
+import android.app.Activity
 import android.app.ActivityOptions
 import android.app.Application
 import android.content.Context
@@ -161,9 +162,19 @@ class HotUpdaterImpl {
             return ActivityStartGate(
                 context as? Application,
                 showsReactView = { activity -> attribution.showsViewOf(activity, environment.name) },
-                activitiesStartedBefore = if (environment.isMain) null else attribution::startedActivities,
+                activitiesStartedBefore = activitiesStartedBefore(environment, attribution),
             )
         }
+
+        /**
+         * The activities already started that a gate created now checks for
+         * the instance's view: a named instance's, while main counts any
+         * started activity at once, as it always has (null).
+         */
+        internal fun activitiesStartedBefore(
+            environment: HotUpdaterInstanceEnvironment,
+            attribution: HotUpdaterRecoveryAttribution = HotUpdaterRecoveryAttribution.shared,
+        ): (() -> Collection<Activity>)? = if (environment.isMain) null else attribution::startedActivities
 
         /**
          * Create PreferencesService with isolation key

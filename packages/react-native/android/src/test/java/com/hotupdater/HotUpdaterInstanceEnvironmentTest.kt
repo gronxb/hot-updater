@@ -21,6 +21,9 @@ class HotUpdaterInstanceEnvironmentTest {
     @get:Rule
     val temporaryFolder = TemporaryFolder()
 
+    @get:Rule
+    val recoveryMonitoring = RecoveryMonitoringRule()
+
     @After
     fun clearConfig() {
         HotUpdaterConfig.clear()

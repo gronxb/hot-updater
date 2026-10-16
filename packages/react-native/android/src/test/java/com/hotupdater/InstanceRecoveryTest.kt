@@ -7,7 +7,9 @@ import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -18,6 +20,9 @@ import java.io.File
 class InstanceRecoveryTest {
     @get:Rule
     val temporaryFolder = TemporaryFolder()
+
+    @get:Rule
+    val recoveryMonitoring = RecoveryMonitoringRule()
 
     private val main = HotUpdaterInstanceEnvironment.main
     private val widget =
@@ -135,6 +140,32 @@ class InstanceRecoveryTest {
         assertFalse(HotUpdaterRecoveryManager.registersRuntime(HotUpdaterInstanceEnvironment.MAIN_NAME))
         assertFalse(HotUpdaterRecoveryManager.registersRuntime(null))
         assertTrue(HotUpdaterRecoveryManager.registersRuntime(widget.name))
+    }
+
+    @Test
+    fun `only a named instance's gate checks the activities already started for its view`() {
+        // Main counts any started activity at once, as it always has.
+        assertNull(HotUpdaterImpl.activitiesStartedBefore(main))
+        val attribution = HotUpdaterRecoveryAttribution { _, _ -> HotUpdaterInstanceEnvironment.MAIN_NAME }
+        assertEquals(emptyList<Activity>(), HotUpdaterImpl.activitiesStartedBefore(widget, attribution)?.invoke())
+    }
+
+    @Test
+    fun `a monitored launch leaves no process-wide crash handling behind`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        val rule = RecoveryMonitoringRule()
+        val handler = Thread.getDefaultUncaughtExceptionHandler()
+        rule.before()
+
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        assertNotSame(handler, Thread.getDefaultUncaughtExceptionHandler())
+        rule.after()
+
+        assertSame(handler, Thread.getDefaultUncaughtExceptionHandler())
+        // Nothing monitors the launch any more, so its first content changes nothing.
+        HotUpdaterRecoveryManager.contentAppeared(widget.name)
+        assertTrue(metadata(context, widget).verificationPending)
     }
 
     @Test
