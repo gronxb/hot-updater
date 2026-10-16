@@ -2,6 +2,7 @@ package com.hotupdater
 
 import android.app.Activity
 import android.app.Application
+import com.facebook.react.common.JavascriptException
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
 import org.junit.After
@@ -211,6 +212,58 @@ class InstanceRecoveryTest {
         HotUpdaterRecoveryManager.contentAppeared(widget.name)
         assertTrue(metadata(context, widget).verificationPending)
     }
+
+    @Test
+    fun `a JavaScript error of a named runtime that never reached HotUpdater is charged to it`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+        HotUpdaterRecoveryManager.contentAppeared(HotUpdaterInstanceEnvironment.MAIN_NAME)
+
+        // Its bundle threw while loading, so no module hooked the error.
+        assertFalse(HotUpdaterRecoveryManager.chargeUncaughtException(JavascriptException("widget failed")))
+
+        assertEquals(PendingCrashRecovery("widget-bundle", true), PendingCrashRecovery.loadFromFile(crashMarker(context, widget)))
+        assertFalse(crashMarker(context, main).exists())
+        val state =
+            HotUpdaterRecoveryManager.WatchdogState.parse(
+                File(bundleStore(context, main), "recovery-watchdog-state.txt").readText(),
+            )!!
+        assertEquals(listOf(widget.name), state.instances)
+    }
+
+    @Test
+    fun `a native error is not inferred to be a named launch's`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+
+        HotUpdaterRecoveryManager.chargeUncaughtException(IllegalStateException("native failure"))
+
+        // A crash elsewhere in the process is not the pre-warmed launch's.
+        assertFalse(crashMarker(context, widget).exists())
+    }
+
+    @Test
+    fun `an unclaimed JavaScript fatal error is inferred the same way`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("unknown runtime"), null)
+
+        assertEquals(PendingCrashRecovery("widget-bundle", true), PendingCrashRecovery.loadFromFile(crashMarker(context, widget)))
+    }
+
+    private fun unshownGate() =
+        ActivityStartGate(
+            RecordingApplication(),
+            processHasStartedActivity = { false },
+            showsReactView = { false },
+            watchLayout = { _, _ -> {} },
+        )
 
     @Test
     fun `first content of one instance never verifies another's launch`() {

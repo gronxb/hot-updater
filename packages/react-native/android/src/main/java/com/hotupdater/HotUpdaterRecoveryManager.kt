@@ -14,6 +14,7 @@ import com.facebook.react.bridge.JSExceptionHandler
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.bridge.ReactMarker
 import com.facebook.react.bridge.ReactMarkerConstants
+import com.facebook.react.common.JavascriptException
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
@@ -299,16 +300,20 @@ internal class HotUpdaterRecoveryManager(
         action?.let(::armLaunch)
     }
 
+    // Two instances may prepare their launches at once. Installing twice
+    // would record Hot Updater's own handler as the one to forward to.
     private fun ensureNativeSignalHandlerInstalled() {
-        if (signalHandlerInstalled || !HotUpdaterRecoveryNative.load()) {
-            return
-        }
+        synchronized(signalHandlerLock) {
+            if (signalHandlerInstalled || !HotUpdaterRecoveryNative.load()) {
+                return
+            }
 
-        try {
-            HotUpdaterRecoveryNative.nativeInstallSignalHandler()
-            signalHandlerInstalled = true
-        } catch (e: UnsatisfiedLinkError) {
-            Log.w(TAG, "Signal handler not available", e)
+            try {
+                HotUpdaterRecoveryNative.nativeInstallSignalHandler()
+                signalHandlerInstalled = true
+            } catch (e: UnsatisfiedLinkError) {
+                Log.w(TAG, "Signal handler not available", e)
+            }
         }
     }
 
@@ -409,6 +414,12 @@ internal class HotUpdaterRecoveryManager(
         /** The manager of each instance whose launch is monitored. */
         private val liveManagers = ConcurrentHashMap<String, HotUpdaterRecoveryManager>()
 
+        // Named instances whose runtime created its HotUpdater module, which
+        // hooks that runtime's errors.
+        private val registeredRuntimeNames = mutableSetOf<String>()
+        private val signalHandlerLock = Any()
+        private const val MAX_CAUSE_DEPTH = 8
+
         // The launches the current claim left alone, armed again if the
         // process outlives the claim.
         private val claimLock = Any()
@@ -459,21 +470,42 @@ internal class HotUpdaterRecoveryManager(
 
                 previousExceptionHandler = Thread.getDefaultUncaughtExceptionHandler()
                 exceptionHandlerInstalled = true
-            }
-            Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-                if (handleUncaughtCrash()) {
-                    // The separate restart activity kills this process after it starts.
-                    // A second fatal error must not kill it while that request is in flight.
-                    return@setDefaultUncaughtExceptionHandler
-                }
-
-                previousExceptionHandler?.uncaughtException(thread, throwable)
-                    ?: run {
-                        Process.killProcess(Process.myPid())
-                        exitProcess(10)
+                Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+                    if (chargeUncaughtException(throwable)) {
+                        // The separate restart activity kills this process after it starts.
+                        // A second fatal error must not kill it while that request is in flight.
+                        return@setDefaultUncaughtExceptionHandler
                     }
+
+                    previousExceptionHandler?.uncaughtException(thread, throwable)
+                        ?: run {
+                            Process.killProcess(Process.myPid())
+                            exitProcess(10)
+                        }
+                }
             }
         }
+
+        /**
+         * Writes the crash markers of an uncaught exception that ends the
+         * process; true when main's recovery restart takes over the process.
+         * A JavaScript error that reaches it unclaimed may be inferred to be
+         * one named launch's ([HotUpdaterRecoverySlots.inferJavaScriptErrorOwner]).
+         */
+        internal fun chargeUncaughtException(throwable: Throwable): Boolean {
+            val inferredOwner =
+                if (slots.attributedName() == null && isJavaScriptError(throwable)) inferJavaScriptErrorOwner() else null
+            return if (inferredOwner != null) claimJavaScriptError(null, inferredOwner) else handleUncaughtCrash()
+        }
+
+        private fun isJavaScriptError(throwable: Throwable): Boolean =
+            generateSequence(throwable) { it.cause }.take(MAX_CAUSE_DEPTH).any { it is JavascriptException }
+
+        private fun inferJavaScriptErrorOwner(): String? =
+            HotUpdaterRecoverySlots.inferJavaScriptErrorOwner(
+                liveLaunches(),
+                synchronized(registeredRuntimeNames) { registeredRuntimeNames.toSet() },
+            )
 
         private fun liveLaunches(): List<HotUpdaterRecoverySlots.Launch> = liveManagers.values.mapNotNull { it.currentLaunch() }
 
@@ -513,9 +545,19 @@ internal class HotUpdaterRecoveryManager(
             instanceName: String?,
         ): Boolean {
             // An error no runtime claims is not the continuation of a claimed
-            // one: it charges every launch it can be blamed on.
-            if (instanceName == null) return handleUncaughtCrash(exception, attributedName = null)
+            // one: it is the one named launch whose runtime never reached
+            // HotUpdater, or it charges every launch it can be blamed on.
+            if (instanceName == null) {
+                val inferredOwner = inferJavaScriptErrorOwner() ?: return handleUncaughtCrash(exception, attributedName = null)
+                return claimJavaScriptError(exception, inferredOwner)
+            }
+            return claimJavaScriptError(exception, instanceName)
+        }
 
+        private fun claimJavaScriptError(
+            exception: Exception?,
+            instanceName: String,
+        ): Boolean {
             slots.attribute(instanceName)
             if (signalHandlerInstalled) {
                 try {
@@ -563,7 +605,8 @@ internal class HotUpdaterRecoveryManager(
          */
         internal fun registerRuntime(reactContext: ReactContext) {
             val instanceName = attribution.instanceOf(runCatching { reactContext.sourceURL }.getOrNull())
-            if (!registersRuntime(instanceName)) return
+            if (instanceName == null || !registersRuntime(instanceName)) return
+            synchronized(registeredRuntimeNames) { registeredRuntimeNames += instanceName }
             attribution.registerRuntime(reactContext)
             try {
                 JavaScriptExceptionHooks.installForRuntime(reactContext)

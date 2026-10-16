@@ -58,6 +58,26 @@ class HotUpdaterRecoverySlotsTest {
     }
 
     @Test
+    fun `an unclaimed JavaScript error is the one named launch whose runtime never reached HotUpdater`() {
+        val widgetPending = launch(WIDGET, shouldRollback = true, armed = false)
+
+        assertEquals(WIDGET, infer(listOf(launch(MAIN, shouldRollback = false), widgetPending)))
+        assertEquals(WIDGET, infer(listOf(widgetPending)))
+        // Main's own launch may have thrown.
+        assertNull(infer(listOf(launch(MAIN, shouldRollback = true), widgetPending)))
+        // Two candidates can't be told apart.
+        assertNull(infer(listOf(widgetPending, launch("chat", shouldRollback = true, armed = false))))
+        // A runtime with its module has its errors hooked, so this one isn't its.
+        assertNull(infer(listOf(widgetPending), registeredRuntimes = setOf(WIDGET)))
+        assertNull(infer(listOf(launch(MAIN, shouldRollback = false), launch(WIDGET, shouldRollback = false))))
+    }
+
+    private fun infer(
+        launches: List<HotUpdaterRecoverySlots.Launch>,
+        registeredRuntimes: Set<String> = emptySet(),
+    ) = HotUpdaterRecoverySlots.inferJavaScriptErrorOwner(launches, registeredRuntimes)
+
+    @Test
     fun `a claim lasts only as long as the crash it announces`() {
         var now = 1_000L
         val slots = HotUpdaterRecoverySlots(clock = { now })

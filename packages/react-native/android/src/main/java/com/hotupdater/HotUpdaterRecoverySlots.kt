@@ -81,6 +81,25 @@ internal class HotUpdaterRecoverySlots(
         const val ATTRIBUTION_WINDOW_MS = 5_000L
 
         /**
+         * The instance a JavaScript error no runtime claimed most likely came
+         * from, or null to leave it unclaimed. A runtime whose bundle throws
+         * while it loads, before JavaScript reaches HotUpdater, never has its
+         * module, so nothing hooks its errors. When main's launch is verified
+         * or absent and exactly one named launch still waits for its first
+         * content without a module, the error is that launch's: charging every
+         * armed launch instead would miss it until one of its views is shown,
+         * and the next start would select the same failing bundle.
+         */
+        fun inferJavaScriptErrorOwner(
+            launches: Collection<Launch>,
+            registeredRuntimes: Set<String>,
+        ): String? {
+            if (launches.any { it.isMain && it.shouldRollback }) return null
+            val pending = launches.filter { !it.isMain && it.shouldRollback }.singleOrNull() ?: return null
+            return pending.name.takeIf { it !in registeredRuntimes }
+        }
+
+        /**
          * The launches whose crash markers a crash writes. A crash claimed by
          * an instance writes only that instance's marker, for any launch still
          * waiting for its first content: its runtime threw, shown or not.

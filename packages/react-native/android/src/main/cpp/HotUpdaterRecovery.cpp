@@ -187,6 +187,13 @@ Java_com_hotupdater_HotUpdaterRecoveryNative_nativeInstallSignalHandler(
   sigemptyset(&action.sa_mask);
 
   for (const int signum : kSignals) {
+    // Installed once per process: recording this handler as the previous one
+    // would make forwarding call itself.
+    struct sigaction current {};
+    if (sigaction(signum, nullptr, &current) == 0 && (current.sa_flags & SA_SIGINFO) != 0 &&
+        current.sa_sigaction == signalHandler) {
+      continue;
+    }
     sigaction(signum, &action, &gPreviousActions[signum]);
   }
 }

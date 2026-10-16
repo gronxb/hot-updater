@@ -31,6 +31,8 @@ class RecoveryMonitoringRule : ExternalResource() {
             (field(live.javaClass, "stopMonitoringRunnable").get(live) as Runnable).run()
         }
         liveManagers.clear()
+        @Suppress("UNCHECKED_CAST")
+        (field(manager, "registeredRuntimeNames").get(null) as MutableSet<String>).clear()
 
         // A JavaScript error a test claimed must not claim another test's crash.
         val slots = field(manager, "slots").get(null)
