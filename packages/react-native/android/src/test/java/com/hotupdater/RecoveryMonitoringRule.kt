@@ -52,7 +52,7 @@ class RecoveryMonitoringRule : ExternalResource() {
         synchronized(heldContent) { (field(heldContent.javaClass, "held").get(heldContent) as MutableList<*>).clear() }
 
         HotUpdaterRecoveryManager.claimReleaseScheduler = { _, _ -> }
-        synchronized(field(manager, "claimLock").get(null)!!) {
+        synchronized(HotUpdaterRecoveryManager.recoveryLock) {
             (field(manager, "claimedOwners").get(null) as MutableSet<*>).clear()
             (field(manager, "disarmedByClaim").get(null) as MutableMap<*, *>).clear()
         }
