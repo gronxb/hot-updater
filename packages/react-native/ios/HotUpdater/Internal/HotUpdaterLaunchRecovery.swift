@@ -487,6 +487,40 @@ final class HotUpdaterRecoveryCoordinator {
         }
     }
 
+    /// How a fatal's owner was found.
+    enum FatalAttribution {
+        /// The runtime's own module: a runtime that has one never deferred
+        /// a load failure.
+        case runtimeModule
+        /// The claim of a crash already going on.
+        case claim
+        /// The bundles in its JavaScript stack, or the only launch that may
+        /// have thrown it: how a module-less runtime's fatal, the kind that
+        /// follows a deferred load failure, is told apart.
+        case stack
+        case inference
+        /// Nothing: only the deferred path decides, unless an earlier
+        /// runtime's claim already accounts for it.
+        case none
+    }
+
+    /// Whether the fatal now reported, attributed through `attribution`, is
+    /// the one that follows a deferred load failure; takes it if so. A
+    /// module-less attribution takes one too, so it isn't left for a later
+    /// unrelated fatal.
+    func takeDeferredLoadFailure(for attribution: FatalAttribution) -> Bool {
+        withLock {
+            switch attribution {
+            case .runtimeModule, .claim:
+                return false
+            case .none where isEarlierRuntimeClaim:
+                return false
+            case .stack, .inference, .none:
+                return takeDeferredLoadFailure()
+            }
+        }
+    }
+
     /// A named launch of this process still waiting for content whose
     /// runtime has no module yet.
     private var hasUnresolvedNamedLaunch: Bool {

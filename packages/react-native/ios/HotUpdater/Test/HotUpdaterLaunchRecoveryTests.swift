@@ -652,6 +652,36 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(next[Self.main]?.launchedBundleId == "main-stable")
     }
 
+    /// The fatal after a deferred load failure may be attributed by its
+    /// stack: it takes the deferral, so a later unrelated fatal doesn't.
+    /// A fatal of a runtime with a module, or of a claimed crash, never does.
+    @Test
+    func onlyAFatalOfAModulelessRuntimeTakesADeferredLoadFailure() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+
+        #expect(coordinator.deferUnclaimedLoadFailure())
+        #expect(!coordinator.takeDeferredLoadFailure(for: .runtimeModule))
+        #expect(!coordinator.takeDeferredLoadFailure(for: .claim))
+        #expect(coordinator.takeDeferredLoadFailure(for: .stack))
+        // Taken: the next unattributed fatal is an ordinary one.
+        #expect(!coordinator.takeDeferredLoadFailure(for: .none))
+
+        #expect(coordinator.deferUnclaimedLoadFailure())
+        #expect(coordinator.takeDeferredLoadFailure(for: .inference))
+        #expect(coordinator.deferUnclaimedLoadFailure())
+        // While an earlier runtime's claim accounts for an unattributed fatal.
+        let claim = try #require(coordinator.chargeFatal(
+            owner: Self.widget,
+            runtimeBundleURL: scene.launchURL(Self.widget, bundleId: "widget-stable")
+        ))
+        #expect(!coordinator.takeDeferredLoadFailure(for: .none))
+        coordinator.clearAttribution(claim: claim)
+        #expect(coordinator.takeDeferredLoadFailure(for: .none))
+    }
+
     @Test
     func aLoadFailureIsMainsOnceEveryNamedRuntimeIsKnown() throws {
         let scene = try Scene()

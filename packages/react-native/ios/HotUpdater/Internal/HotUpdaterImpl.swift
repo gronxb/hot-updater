@@ -1333,20 +1333,24 @@ final class HotUpdaterRecoveryHub: NSObject {
     /// launch that can have thrown it, if there is exactly one.
     /// With the owner, the bundle its failing runtime runs when known, which
     /// tells a runtime of an earlier launch from the current one.
-    private func fatalOwner(stack: Any?) -> (name: String, runtimeBundleURL: URL?)? {
+    private func fatalOwner(stack: Any?) -> (
+        name: String,
+        runtimeBundleURL: URL?,
+        attribution: HotUpdaterRecoveryCoordinator.FatalAttribution
+    )? {
         if let owner = hotUpdaterRuntimeImpl()?.environment.name {
-            return (owner, hotUpdaterRuntimeBundleURL())
+            return (owner, hotUpdaterRuntimeBundleURL(), .runtimeModule)
         }
         if let owner = coordinator.attributedOwner {
-            return (owner, nil)
+            return (owner, nil, .claim)
         }
         if let owner = HotUpdaterJSStackOwner.owner(of: stack, resolve: {
             HotUpdaterNativeUpdateBridge.impl(forBundleURL: $0).environment.name
         }) {
-            return (owner, HotUpdaterJSStackOwner.bundleURLs(in: stack).first)
+            return (owner, HotUpdaterJSStackOwner.bundleURLs(in: stack).first, .stack)
         }
         guard Thread.current.name == Self.runtimeThreadName else { return nil }
-        return coordinator.inferredFatalOwner().map { ($0, nil) }
+        return coordinator.inferredFatalOwner().map { ($0, nil, .inference) }
     }
 
     // MARK: - Fatal errors
@@ -1373,13 +1377,15 @@ final class HotUpdaterRecoveryHub: NSObject {
 
     private func handleFatal(stack: Any?, forward: @escaping () -> Void) {
         var attributed = fatalOwner(stack: stack)
-        // A fatal no runtime claims takes a deferred load failure; one of a
-        // known runtime leaves it to the fatal of the runtime that failed.
+        // A fatal of a module-less runtime (by stack, inference, or none)
+        // takes a deferred load failure; one of a runtime with a module, or
+        // of a claimed crash, leaves it to the runtime that failed.
+        let tookLoadFailure = coordinator.takeDeferredLoadFailure(for: attributed?.attribution ?? .none)
         var afterLoadFailure = false
-        if attributed == nil, coordinator.earlierRuntimeClaim == nil, coordinator.takeDeferredLoadFailure() {
+        if attributed == nil, tookLoadFailure {
             afterLoadFailure = true
             // RCTInstance reports a load failure's fatal on the main thread.
-            attributed = coordinator.inferredFatalOwner().map { ($0, nil) }
+            attributed = coordinator.inferredFatalOwner().map { ($0, nil, .inference) }
         }
         let owner = attributed?.name
         if owner == nil, let claim = coordinator.earlierRuntimeClaim {
