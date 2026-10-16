@@ -20,6 +20,7 @@ import java.util.WeakHashMap
  */
 internal class HotUpdaterRecoveryAttribution(
     private val resolveName: (Context, String) -> String = HotUpdaterInstanceRegistry.shared::resolveName,
+    private val isStarted: (Activity) -> Boolean = ::isActivityStarted,
 ) {
     companion object {
         val shared = HotUpdaterRecoveryAttribution()
@@ -99,13 +100,11 @@ internal class HotUpdaterRecoveryAttribution(
 
     /**
      * Remembers [activity], which the app handed over as a context: it may
-     * have started before [track] registered for lifecycle callbacks.
+     * start, or have started, before [track] registered for lifecycle
+     * callbacks. It counts as started only while it is.
      */
-    fun noteStartedActivity(activity: Activity) {
-        synchronized(activities) {
-            activities += activity
-            startedActivities += activity
-        }
+    fun noteActivity(activity: Activity) {
+        synchronized(activities) { activities += activity }
     }
 
     /**
@@ -124,14 +123,16 @@ internal class HotUpdaterRecoveryAttribution(
 
     /**
      * The activities started now, as far as this process has seen: the ones
-     * started since [track], and the current activity of each registered
-     * runtime. A gate created after they started reads them here.
+     * seen starting since [track], and any other known activity, such as a
+     * registered runtime's current one, that reports it is started now. A
+     * runtime keeps its activity after it stops. A gate created after they
+     * started reads them here.
      */
-    fun startedActivities(): List<Activity> =
-        (
-            synchronized(activities) { startedActivities.toList() } +
-                synchronized(runtimes) { runtimes.mapNotNull { it.get()?.currentActivity } }
-        ).distinct()
+    fun startedActivities(): List<Activity> {
+        val (seenStarted, known) = synchronized(activities) { startedActivities.toList() to activities.toList() }
+        val runtimeActivities = synchronized(runtimes) { runtimes.mapNotNull { it.get()?.currentActivity } }
+        return (seenStarted + (known + runtimeActivities).filter(isStarted)).distinct()
+    }
 
     /** The instance whose bundle runs from [sourceURL], or null when it isn't known. */
     fun instanceOf(sourceURL: String?): String? {

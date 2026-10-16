@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.facebook.react.ReactRootView
 
@@ -36,6 +37,7 @@ internal class ActivityStartGate(
     private val showsReactView: (Activity) -> Boolean = ::hasReactRootView,
     private val watchLayout: (Activity, () -> Unit) -> () -> Unit = ::watchGlobalLayout,
     private val activitiesStartedBefore: (() -> Collection<Activity>)? = null,
+    private val isStarted: (Activity) -> Boolean = ::isActivityStarted,
 ) : Application.ActivityLifecycleCallbacks {
     private val startedActivities = mutableSetOf<Activity>()
     private val layoutWatches = mutableMapOf<Activity, () -> Unit>()
@@ -76,8 +78,8 @@ internal class ActivityStartGate(
 
     /**
      * Counts [activity], which this gate may never have seen start, as
-     * started, and while an action waits, checks it for a React Native view
-     * and watches its layout for one. A named instance's runtime hands over its activity when its
+     * started when it is, and while an action waits, checks it for a React
+     * Native view and watches its layout for one. A named instance's runtime hands over its activity when its
      * module is created.
      */
     fun watchActivity(activity: Activity) {
@@ -87,7 +89,10 @@ internal class ActivityStartGate(
         }
         val action =
             synchronized(this) {
-                if (application == null) return
+                // A runtime keeps its activity after it stops, as when the app
+                // goes to the background while the bundle loads. One that
+                // isn't started now counts when this gate sees it start.
+                if (application == null || !isStarted(activity)) return
                 // Counted until it stops, as one this gate saw start.
                 startedActivities += activity
                 if (pendingAction == null) return
@@ -179,6 +184,17 @@ private fun hasStartedActivity(): Boolean =
             .lifecycle.currentState
             .isAtLeast(Lifecycle.State.STARTED)
     }.getOrDefault(false)
+
+/**
+ * Whether [activity] is started now. Only an activity that reports its
+ * lifecycle (ComponentActivity, which ReactActivity and AppCompatActivity
+ * are) can say so; any other counts once a gate sees it start.
+ */
+internal fun isActivityStarted(activity: Activity): Boolean {
+    if (activity.isFinishing || activity.isDestroyed) return false
+    val owner = activity as? LifecycleOwner ?: return false
+    return runCatching { owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) }.getOrDefault(false)
+}
 
 private fun hasReactRootView(activity: Activity): Boolean = activity.window?.peekDecorView()?.let(::containsReactRootView) ?: false
 

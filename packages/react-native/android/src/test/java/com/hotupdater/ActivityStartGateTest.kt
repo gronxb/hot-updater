@@ -169,6 +169,23 @@ class ActivityStartGateTest {
     }
 
     @Test
+    fun `a handed-over activity that is not started now counts only once it starts`() {
+        // The app went to the background while the bundle loaded.
+        val application = RecordingApplication()
+        var runs = 0
+        startedNow = false
+        val gate = createGate(application, startedBefore = true, activitiesStartedBefore = { emptyList() })
+        gate.runWhenActivityStarted { runs += 1 }
+
+        gate.watchActivity(activity)
+        assertEquals(0, runs)
+        assertEquals(0, layoutWatches)
+
+        application.startActivity()
+        assertEquals(1, runs)
+    }
+
+    @Test
     fun `runs at once without an application to observe`() {
         var runs = 0
 
@@ -268,7 +285,10 @@ class ActivityStartGateTest {
             { layoutListeners -= onLayout }
         },
         activitiesStartedBefore = activitiesStartedBefore,
+        isStarted = { startedNow },
     )
+
+    private var startedNow = true
 
     private inner class RecordingApplication : Application() {
         private val callbacks = mutableListOf<ActivityLifecycleCallbacks>()

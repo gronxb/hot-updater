@@ -2,6 +2,9 @@ package com.hotupdater
 
 import android.app.Activity
 import android.app.Application
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import com.facebook.react.common.JavascriptException
 import kotlinx.coroutines.runBlocking
 import org.json.JSONObject
@@ -191,7 +194,7 @@ class InstanceRecoveryTest {
     fun `only a named instance's gate checks the activities already started for its view`() {
         // Main counts any started activity at once, as it always has.
         assertNull(HotUpdaterImpl.activitiesStartedBefore(main))
-        val attribution = HotUpdaterRecoveryAttribution { _, _ -> HotUpdaterInstanceEnvironment.MAIN_NAME }
+        val attribution = HotUpdaterRecoveryAttribution(resolveName = { _, _ -> HotUpdaterInstanceEnvironment.MAIN_NAME })
         assertEquals(emptyList<Activity>(), HotUpdaterImpl.activitiesStartedBefore(widget, attribution)?.invoke())
     }
 
@@ -270,14 +273,7 @@ class InstanceRecoveryTest {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, widget, "widget-bundle")
         var showsWidgetView = false
-        val gate =
-            ActivityStartGate(
-                RecordingApplication(),
-                processHasStartedActivity = { true },
-                showsReactView = { showsWidgetView },
-                watchLayout = { _, _ -> {} },
-                activitiesStartedBefore = { emptyList() },
-            )
+        val gate = handOverGate(showsReactView = { showsWidgetView }, isStarted = { true })
         HotUpdaterImpl(context, widget, gate).getJSBundleFile()
         assertFalse(metadata(context, widget).launchInProgress)
 
@@ -288,18 +284,50 @@ class InstanceRecoveryTest {
     }
 
     @Test
-    fun `an activity handed over as a context is followed`() {
+    fun `a runtime's activity that stopped while its bundle loaded does not arm its launch`() {
+        // The app went to the background; the runtime still holds the activity
+        // and its view.
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        val gate = handOverGate(showsReactView = { true }, isStarted = { false })
+        HotUpdaterImpl(context, widget, gate).getJSBundleFile()
+
+        HotUpdaterRecoveryManager.registerRuntime(widget.name, runtimeId = 1, activity = Activity())
+
+        assertFalse(metadata(context, widget).launchInProgress)
+    }
+
+    @Test
+    fun `an activity handed over as a context counts while it is started`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val implActivity = ContextActivity(context)
         val initActivity = ContextActivity(context)
 
+        // Handed over from onCreate, before either started.
         HotUpdaterImpl(implActivity, widget)
         HotUpdater.init(initActivity, HotUpdaterOptions(BASE_URL, name = "seeded", bundleAssetName = "seeded.android.bundle"))
+        assertTrue(HotUpdaterRecoveryAttribution.shared.startedActivities().isEmpty())
 
-        val started = HotUpdaterRecoveryAttribution.shared.startedActivities()
-        assertTrue(implActivity in started)
-        assertTrue(initActivity in started)
+        implActivity.lifecycleState = Lifecycle.State.STARTED
+        initActivity.lifecycleState = Lifecycle.State.RESUMED
+        assertEquals(setOf(implActivity, initActivity), HotUpdaterRecoveryAttribution.shared.startedActivities().toSet())
+
+        // Stopped, as when the app goes to the background.
+        implActivity.lifecycleState = Lifecycle.State.CREATED
+        assertEquals(listOf(initActivity), HotUpdaterRecoveryAttribution.shared.startedActivities())
     }
+
+    private fun handOverGate(
+        showsReactView: (Activity) -> Boolean,
+        isStarted: (Activity) -> Boolean,
+    ) = ActivityStartGate(
+        RecordingApplication(),
+        processHasStartedActivity = { true },
+        showsReactView = showsReactView,
+        watchLayout = { _, _ -> {} },
+        activitiesStartedBefore = { emptyList() },
+        isStarted = isStarted,
+    )
 
     @Test
     fun `a torn-down runtime no longer hooks its instance's errors`() {
@@ -561,10 +589,26 @@ class InstanceRecoveryTest {
         return bundleFile
     }
 
-    /** An activity the app hands over as a context. */
+    /** An activity the app hands over as a context, which reports its lifecycle as ComponentActivity does. */
     private class ContextActivity(
         private val application: android.content.Context,
-    ) : Activity() {
+    ) : Activity(),
+        LifecycleOwner {
+        private val registry = LifecycleRegistry.createUnsafe(this)
+
+        var lifecycleState: Lifecycle.State
+            get() = registry.currentState
+            set(value) {
+                registry.currentState = value
+            }
+
+        init {
+            registry.currentState = Lifecycle.State.CREATED
+        }
+
+        override val lifecycle: Lifecycle
+            get() = registry
+
         override fun getApplicationContext(): android.content.Context = application
     }
 

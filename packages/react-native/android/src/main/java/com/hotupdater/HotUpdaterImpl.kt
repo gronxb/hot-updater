@@ -65,7 +65,7 @@ class HotUpdaterImpl {
         this.context = context.applicationContext
         // An activity started before this process followed activities is
         // known only from the context the app hands over.
-        (context as? Activity)?.let(HotUpdaterRecoveryAttribution.shared::noteStartedActivity)
+        (context as? Activity)?.let(HotUpdaterRecoveryAttribution.shared::noteActivity)
         this.environment = environment
         this.bundleStorage = bundleStorage
         this.preferences = preferences

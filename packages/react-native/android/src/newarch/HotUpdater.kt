@@ -158,7 +158,7 @@ class HotUpdater {
             requireValidBaseURL(options.baseURL)
             // An activity started before this process followed activities is
             // known only from the context the app hands over.
-            (context as? Activity)?.let(HotUpdaterRecoveryAttribution.shared::noteStartedActivity)
+            (context as? Activity)?.let(HotUpdaterRecoveryAttribution.shared::noteActivity)
             return HotUpdaterInstance.create(context.applicationContext, options)
         }
 
