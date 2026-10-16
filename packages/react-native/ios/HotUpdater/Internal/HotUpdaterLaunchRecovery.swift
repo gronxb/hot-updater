@@ -261,12 +261,44 @@ final class HotUpdaterRecoveryCoordinator {
                   !launch.isArmed else {
                 return false
             }
-            launch.isArmed = true
-            launch.storage.markLaunchStarted(bundleId: launch.bundleId)
-            assignSlot(to: launch)
-            mirror(launch)
-            return true
+            return markStarted(launch)
         }
+    }
+
+    /// Main's launch of `generation` is in the foreground, so it started:
+    /// an unfinished launch rolls back at the next start, as it always did.
+    /// Refused for a later launch or once its content appeared. Called after
+    /// `startMonitoring` registered the launch, so a claim of another
+    /// instance's fatal sees it.
+    @discardableResult
+    func markMainLaunchStarted(generation: Int) -> Bool {
+        withLock {
+            guard let launch = launches[HotUpdaterInstanceEnvironment.mainName],
+                  launch.generation == generation,
+                  launch.isMonitoring,
+                  !launch.hasShownContent,
+                  launch.shouldRollback,
+                  !launch.isArmed else {
+                return false
+            }
+            return markStarted(launch)
+        }
+    }
+
+    /// Marks `launch` started, unless another instance's fatal holds a claim
+    /// that stopped every other launch: then it starts when that claim is
+    /// released, if the process lives on.
+    private func markStarted(_ launch: Launch) -> Bool {
+        let claimHeld = isEarlierRuntimeClaim || (attributedName != nil && attributedName != launch.name)
+        if claimHeld, let bundleId = launch.bundleId {
+            disarmed.append((launch.name, launch.generation, bundleId, true, true))
+            return false
+        }
+        launch.isArmed = true
+        launch.storage.markLaunchStarted(bundleId: launch.bundleId)
+        assignSlot(to: launch)
+        mirror(launch)
+        return true
     }
 
     /// First content of `owner`'s runtime, which verifies only that instance's
@@ -602,7 +634,7 @@ final class HotUpdaterRecoveryCoordinator {
                 guard let launch = launches[entry.name],
                       launch.generation == entry.generation,
                       launch.isMonitoring,
-                      launch.isAwaitingContent,
+                      !launch.hasShownContent,
                       launch.bundleId == entry.bundleId else {
                     continue
                 }
@@ -611,6 +643,7 @@ final class HotUpdaterRecoveryCoordinator {
                 }
                 if entry.wasArmed {
                     launch.isArmed = true
+                    assignSlot(to: launch)
                 }
                 mirror(launch)
             }

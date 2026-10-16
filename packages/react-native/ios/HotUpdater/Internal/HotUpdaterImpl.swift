@@ -973,17 +973,19 @@ private func hotUpdaterGetMinBundleId() -> String {
 
         let pendingRecovery = recoveryManager.consumePendingCrashRecovery()
         let selection = bundleStorage.prepareLaunch(bundle: bundle, pendingRecovery: pendingRecovery)
-        if environment.isMain {
-            markLaunchStartedInForeground(selection)
-        }
-        // A named runtime may be warmed up without UI, so its launch starts
-        // only once one of its views is shown (HotUpdaterRecoveryHub), and
-        // only its own first content verifies it.
-        recoveryManager.startMonitoring(
+        // Registered first, so another instance's fatal that stops every
+        // started launch also sees this one before it is marked started.
+        let generation = recoveryManager.startMonitoring(
             bundleId: selection.launchedBundleId,
             shouldRollback: selection.shouldRollbackOnCrash,
             launchURL: selection.bundleURL
         )
+        // A named runtime may be warmed up without UI, so its launch starts
+        // only once one of its views is shown (HotUpdaterRecoveryHub), and
+        // only its own first content verifies it.
+        if environment.isMain {
+            markLaunchStartedInForeground(selection, generation: generation)
+        }
         runningLaunchSelection = selection
         currentLaunchSelection = selection
         return selection
@@ -992,14 +994,17 @@ private func hotUpdaterGetMinBundleId() -> String {
     // A background launch, such as a silent push, may never render. Only a
     // launch in the foreground may leave an unfinished launch for the next
     // process to roll back.
-    private func markLaunchStartedInForeground(_ selection: LaunchSelection) {
+    // Through crash recovery, which refuses a later launch's, one whose
+    // content appeared, and holds it while another instance's fatal is on
+    // its way.
+    private func markLaunchStartedInForeground(_ selection: LaunchSelection, generation: Int) {
         let bundleId = selection.shouldRollbackOnCrash ? selection.launchedBundleId : nil
         let mark = { [weak self] in
             guard let self else { return }
             self.removeLaunchStartObservers()
-            guard let bundleId else { return }
+            guard bundleId != nil else { return }
             guard UIApplication.shared.applicationState == .background else {
-                self.bundleStorage.markLaunchStarted(bundleId: bundleId)
+                self.recoveryManager.markMainLaunchStarted(generation: generation)
                 return
             }
             self.launchStartObservers = [
@@ -1008,7 +1013,7 @@ private func hotUpdaterGetMinBundleId() -> String {
             ].map { name in
                 NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
                     self?.removeLaunchStartObservers()
-                    self?.bundleStorage.markLaunchStarted(bundleId: bundleId)
+                    self?.recoveryManager.markMainLaunchStarted(generation: generation)
                 }
             }
         }
@@ -1068,7 +1073,8 @@ final class HotUpdaterRecoveryManager: NSObject {
         HotUpdaterCrashMarker.consume(at: crashMarkerURL)
     }
 
-    func startMonitoring(bundleId: String?, shouldRollback: Bool, launchURL: URL?) {
+    @discardableResult
+    func startMonitoring(bundleId: String?, shouldRollback: Bool, launchURL: URL?) -> Int {
         objc_sync_enter(self)
         defer { objc_sync_exit(self) }
 
@@ -1087,6 +1093,12 @@ final class HotUpdaterRecoveryManager: NSObject {
         }
 
         hub.installIfNeeded()
+        return generation
+    }
+
+    /// Main only: its launch of `generation` is in the foreground.
+    func markMainLaunchStarted(generation: Int) {
+        hub.coordinator.markMainLaunchStarted(generation: generation)
     }
 
     /// This instance's first content: its monitoring ends after a grace period.

@@ -732,6 +732,67 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(!coordinator.deferUnclaimedLoadFailure())
     }
 
+    /// Main's foreground mark goes through crash recovery once its launch is
+    /// registered: a named fatal's claim holds it, and its release starts it.
+    @Test
+    func mainsForegroundMarkWaitsForAnotherInstancesClaim() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let generation = try #require(coordinator.generations()[Self.main])
+
+        let claim = try #require(coordinator.chargeFatal(owner: Self.widget))
+        // The foreground mark queued before the widget's fatal runs now.
+        #expect(!coordinator.markMainLaunchStarted(generation: generation))
+        #expect(scene.metadata(Self.main)?.launchInProgress == false)
+        // The process ends: main's healthy launch is selected again.
+        #expect(scene.nextLaunch()[Self.main]?.launchedBundleId == "main-next")
+        #expect(scene.crashHistory(Self.main).interruptedLaunch == nil)
+
+        // In a process that lives on, it starts when the claim is released.
+        coordinator.clearAttribution(claim: claim)
+        #expect(scene.metadata(Self.main)?.launchInProgress == true)
+    }
+
+    @Test
+    func mainsForegroundMarkStartsOnlyItsOwnUnverifiedLaunch() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let first = try #require(coordinator.generations()[Self.main])
+
+        // As before in an app with only main: marked once it is in the foreground.
+        #expect(coordinator.markMainLaunchStarted(generation: first))
+        #expect(scene.metadata(Self.main)?.launchInProgress == true)
+        #expect(!coordinator.markMainLaunchStarted(generation: first))
+
+        // A mark of an earlier launch, or after first content, does nothing.
+        let second = coordinator.startMonitoring(name: Self.main, bundleId: "main-next", shouldRollback: true)
+        process.storages[Self.main]?.clearLaunchStarted(bundleId: "main-next")
+        #expect(!coordinator.markMainLaunchStarted(generation: first))
+        _ = coordinator.contentAppeared(owner: nil)
+        #expect(!coordinator.markMainLaunchStarted(generation: second))
+    }
+
+    /// A view of the widget shown while main's fatal is on its way starts
+    /// its launch only once that claim is released.
+    @Test
+    func aViewShownDuringAnotherInstancesClaimStartsItsLaunchOnRelease() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let claim = try #require(coordinator.chargeFatal(owner: Self.main))
+        #expect(!coordinator.arm(name: Self.widget))
+        #expect(scene.metadata(Self.widget)?.launchInProgress == false)
+        coordinator.clearAttribution(claim: claim)
+        #expect(scene.metadata(Self.widget)?.launchInProgress == true)
+        let widgetSlot = try #require(coordinator.launch(named: Self.widget)?.slot)
+        #expect(markers(coordinator)[widgetSlot] == true)
+    }
+
     @Test
     func anErrorOfTheCurrentRuntimeStillChargesItsLaunch() throws {
         let scene = try Scene()
