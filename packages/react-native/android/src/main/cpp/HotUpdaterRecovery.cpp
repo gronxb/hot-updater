@@ -5,6 +5,7 @@
 #include <time.h>
 #include <cstring>
 #include <limits.h>
+#include <atomic>
 
 namespace {
 constexpr size_t kMaxBundleIdLength = 128;
@@ -135,6 +136,7 @@ void writeCrashMarkers() {
     if (slot.inUse == 0) {
       continue;
     }
+    std::atomic_signal_fence(std::memory_order_seq_cst);
     if (attributed != kNotAttributed && attributed != index) {
       continue;
     }
@@ -213,10 +215,14 @@ Java_com_hotupdater_HotUpdaterRecoveryNative_nativeUpdateSlot(
 
   Slot &slot = gSlots[index];
   slot.inUse = 0;
+  // The fences keep the compiler from moving the plain copies across the
+  // flag, so the signal handler never reads a slot that is half rewritten.
+  std::atomic_signal_fence(std::memory_order_seq_cst);
   safeCopyJString(env, crashMarkerPath, slot.crashMarkerPath, sizeof(slot.crashMarkerPath));
   safeCopyJString(env, bundleId, slot.bundleId, sizeof(slot.bundleId));
   slot.shouldRollback = shouldRollback ? 1 : 0;
   slot.writesWhenVerified = writesWhenVerified ? 1 : 0;
+  std::atomic_signal_fence(std::memory_order_seq_cst);
   slot.inUse = 1;
 }
 
