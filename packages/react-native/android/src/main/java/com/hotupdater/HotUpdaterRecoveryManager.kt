@@ -64,6 +64,11 @@ internal class HotUpdaterRecoveryManager(
     // instance's claimed error disarmed is armed again when that error turns
     // out not to end the process.
     private var launchStartedAction: (() -> Unit)? = null
+
+    // A rollback marker was written for this launch: its native slot asks
+    // for rollback too, armed or not, so a signal before the process ends
+    // writes it again rather than leaving it out.
+    private var charged = false
     private var contentAppearedCallback: ((String?) -> Unit)? = null
     private var crashOfAnotherInstanceCallback: ((String?) -> Unit)? = null
     private var recoveryRestartCallback: (() -> Boolean)? = null
@@ -151,6 +156,7 @@ internal class HotUpdaterRecoveryManager(
                 launchState.start(bundleId, shouldRollback)
                 armed = isMain
                 launchStartedAction = null
+                charged = false
                 // A launch that starts while another instance's claimed error
                 // may still end the process joins that claim: it is armed only
                 // once the claim is released and the process lived on.
@@ -466,6 +472,8 @@ internal class HotUpdaterRecoveryManager(
      */
     private fun writeRollbackMarkerLocked(launch: HotUpdaterRecoveryState.Launch) {
         writeCrashMarker(launch)
+        charged = true
+        updateNativeLaunchStateLocked()
         // A launch none of whose views was shown has no watchdog yet; it
         // relaunches the app after this crash, as for an armed launch.
         startRecoveryWatchdog()
@@ -522,23 +530,15 @@ internal class HotUpdaterRecoveryManager(
     // Under the manager's lock, so the native slot follows this launch's
     // transitions in order.
     private fun updateNativeLaunchStateLocked() {
-        if (!signalHandlerInstalled) {
-            return
-        }
         val slot = slots.slotOf(name) ?: return
         val launch = currentLaunch()
-
-        try {
-            HotUpdaterRecoveryNative.nativeUpdateSlot(
-                slot,
-                crashMarkerFile.absolutePath,
-                launch?.bundleId,
-                launch?.unverified == true,
-                isMain,
-            )
-        } catch (e: UnsatisfiedLinkError) {
-            Log.w(TAG, "Failed to update native launch state", e)
-        }
+        nativeRecovery.updateSlot(
+            slot,
+            crashMarkerFile.absolutePath,
+            launch?.bundleId,
+            launch?.unverified == true || (charged && launch?.shouldRollback == true),
+            isMain,
+        )
     }
 
     // Each architecture's source set reaches its own React instance, so the old
@@ -657,6 +657,12 @@ internal class HotUpdaterRecoveryManager(
 
         @Volatile
         private var signalHandlerInstalled = false
+
+        internal fun isSignalHandlerInstalled(): Boolean = signalHandlerInstalled
+
+        /** The native signal handler's slots and claim; tests stand in for it. */
+        @Volatile
+        internal var nativeRecovery: HotUpdaterNativeRecovery = HotUpdaterNativeRecovery.jni
 
         @Volatile
         private var exceptionHandlerInstalled = false
@@ -979,20 +985,21 @@ internal class HotUpdaterRecoveryManager(
                 }
                 claimOwner = instanceName to ownerGeneration
                 claimedOwners += instanceName to ownerGeneration
-                if (signalHandlerInstalled) {
-                    try {
-                        HotUpdaterRecoveryNative.nativeAttributeCrash(slots.assignedSlot(instanceName) ?: -1)
-                    } catch (e: UnsatisfiedLinkError) {
-                        Log.w(TAG, "Failed to attribute the crash natively", e)
-                    }
-                }
+                // The owner's marker, and its native slot asking for rollback,
+                // come before the native claim: a signal in between finds the
+                // crash unclaimed, or claimed with the owner's rollback in place.
+                val recovering = owner?.chargeCrash(exception) == true
+                // A claim no launch owns, such as an earlier launch's runtime's,
+                // leaves the native handler unclaimed: a signal then writes
+                // every marker that may still be needed.
+                if (owner != null) nativeRecovery.attributeCrash(slots.assignedSlot(instanceName) ?: -1)
                 // Claims overlap when errors return: every launch any of them
                 // left alone waits for the last one, including that claim's own
                 // instance, which an earlier claim may have left alone.
                 liveManagers.values
                     .filter { it.name != instanceName }
                     .forEach { manager -> manager.handleCrashOfAnotherInstance()?.let { disarmedByClaim[manager] = it } }
-                owner?.chargeCrash(exception) == true
+                recovering
             }
 
         /**
@@ -1033,13 +1040,7 @@ internal class HotUpdaterRecoveryManager(
                 // crash from now on charges the launches it can be blamed on.
                 slots.clearAttribution()
                 claimOwner = null
-                if (signalHandlerInstalled) {
-                    try {
-                        HotUpdaterRecoveryNative.nativeClearCrashAttribution()
-                    } catch (e: UnsatisfiedLinkError) {
-                        Log.w(TAG, "Failed to clear the native crash attribution", e)
-                    }
-                }
+                nativeRecovery.clearCrashAttribution()
                 val disarmed = disarmedByClaim.toList()
                 disarmedByClaim.clear()
                 // Each instance whose error was survived keeps its marker for its
@@ -1301,6 +1302,49 @@ internal class HotUpdaterRecoveryManager(
                 Log.e(TAG, "Failed to launch recovery restart", e)
             }
         }
+    }
+}
+
+/** What crash recovery tells the native signal handler (HotUpdaterRecovery.cpp). */
+internal interface HotUpdaterNativeRecovery {
+    fun updateSlot(
+        slot: Int,
+        crashMarkerPath: String,
+        bundleId: String?,
+        shouldRollback: Boolean,
+        writesWhenVerified: Boolean,
+    )
+
+    /** [slot] is -1 for an instance that has none. */
+    fun attributeCrash(slot: Int)
+
+    fun clearCrashAttribution()
+
+    companion object {
+        /** The signal handler, once installed. */
+        val jni: HotUpdaterNativeRecovery =
+            object : HotUpdaterNativeRecovery {
+                override fun updateSlot(
+                    slot: Int,
+                    crashMarkerPath: String,
+                    bundleId: String?,
+                    shouldRollback: Boolean,
+                    writesWhenVerified: Boolean,
+                ) = call { HotUpdaterRecoveryNative.nativeUpdateSlot(slot, crashMarkerPath, bundleId, shouldRollback, writesWhenVerified) }
+
+                override fun attributeCrash(slot: Int) = call { HotUpdaterRecoveryNative.nativeAttributeCrash(slot) }
+
+                override fun clearCrashAttribution() = call { HotUpdaterRecoveryNative.nativeClearCrashAttribution() }
+
+                private fun call(native: () -> Unit) {
+                    if (!HotUpdaterRecoveryManager.isSignalHandlerInstalled()) return
+                    try {
+                        native()
+                    } catch (e: UnsatisfiedLinkError) {
+                        Log.w("HotUpdaterRecovery", "Native crash recovery is not available", e)
+                    }
+                }
+            }
     }
 }
 

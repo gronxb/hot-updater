@@ -853,6 +853,78 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a claimed error's marker and rollback slot come before the native claim`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        // Not armed: no view of the widget was shown.
+        HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+        val events = mutableListOf<String>()
+        HotUpdaterRecoveryManager.nativeRecovery =
+            object : HotUpdaterNativeRecovery {
+                override fun updateSlot(
+                    slot: Int,
+                    crashMarkerPath: String,
+                    bundleId: String?,
+                    shouldRollback: Boolean,
+                    writesWhenVerified: Boolean,
+                ) {
+                    if (crashMarkerPath == crashMarker(context, widget).absolutePath) events += "slot rollback=$shouldRollback"
+                }
+
+                override fun attributeCrash(slot: Int) {
+                    events += "claim marker=${crashMarker(context, widget).exists()}"
+                }
+
+                override fun clearCrashAttribution() {
+                    events += "clear"
+                }
+            }
+
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+
+        // A signal at any point finds the crash unclaimed, or the widget's rollback in place.
+        assertEquals(listOf("slot rollback=true", "claim marker=true"), events.filter { it != "slot rollback=false" })
+        assertTrue(events.indexOf("slot rollback=true") < events.indexOf("claim marker=true"))
+    }
+
+    @Test
+    fun `an earlier launch's runtime's error leaves the native handler unclaimed`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val staleWidget = namedEnvironment("stale-native")
+        stagePending(context, staleWidget, "first-bundle")
+        val registry = HotUpdaterInstanceRegistry.shared
+        var claims = 0
+        HotUpdaterRecoveryManager.nativeRecovery =
+            object : HotUpdaterNativeRecovery {
+                override fun updateSlot(
+                    slot: Int,
+                    crashMarkerPath: String,
+                    bundleId: String?,
+                    shouldRollback: Boolean,
+                    writesWhenVerified: Boolean,
+                ) = Unit
+
+                override fun attributeCrash(slot: Int) {
+                    claims += 1
+                }
+
+                override fun clearCrashAttribution() = Unit
+            }
+        try {
+            val firstURL = registry.impl(context, staleWidget).getJSBundleFile()
+            stagePending(context, staleWidget, "second-bundle")
+            HotUpdaterImpl(context, staleWidget).getJSBundleFile()
+
+            HotUpdaterRecoveryManager.handleJavaScriptExceptionForRecovery(RuntimeException("first failed"), firstURL)
+
+            // A signal now writes the markers the current launches may still need.
+            assertEquals(0, claims)
+        } finally {
+            forget(registry, staleWidget.name)
+        }
+    }
+
+    @Test
     fun `first content of one instance never verifies another's launch`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, main, "main-bundle")

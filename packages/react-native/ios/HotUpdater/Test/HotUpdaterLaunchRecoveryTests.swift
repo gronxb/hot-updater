@@ -1024,6 +1024,40 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(invalidated.isEmpty)
     }
 
+    /// A native crash that arrives between the attribution and the marker
+    /// would write no slot but the attributed one: by the time the
+    /// attribution is published, the owner's marker asks for rollback and
+    /// its slot, if any, does too.
+    @Test
+    func anAttributedFatalWritesItsMarkerBeforePublishingTheAttribution() throws {
+        for armed in [false, true] {
+            let scene = try Scene()
+            defer { scene.cleanUp() }
+            let process = scene.launch()
+            let coordinator = process.coordinator
+            if armed {
+                #expect(coordinator.arm(name: Self.widget))
+            }
+            var markerAtAttribution: PendingCrashRecovery?
+            var slotAtAttribution: Bool?
+            process.sink.onAttribute = { slot in
+                markerAtAttribution = HotUpdaterCrashMarker.consume(at: scene.markerURL(Self.widget))
+                if markerAtAttribution != nil {
+                    HotUpdaterCrashMarker.write(bundleId: "widget-next", shouldRollback: true, to: scene.markerURL(Self.widget))
+                }
+                slotAtAttribution = slot >= 0 ? process.sink.flags[slot] : nil
+            }
+            coordinator.chargeFatal(owner: Self.widget)
+            #expect(markerAtAttribution?.launchedBundleId == "widget-next")
+            #expect(markerAtAttribution?.shouldRollback == true)
+            if armed {
+                #expect(slotAtAttribution == true)
+            } else {
+                #expect(process.sink.attribution == HotUpdaterRecoveryCoordinator.attributedWithoutSlot)
+            }
+        }
+    }
+
     @Test
     func anErrorOfTheCurrentRuntimeStillChargesItsLaunch() throws {
         let scene = try Scene()
@@ -1273,7 +1307,11 @@ private final class RecordingSlotSink: HotUpdaterCrashSlotSink {
         flags[slot] = shouldRollback
     }
 
+    /// Called as an attribution is published, before it takes effect.
+    var onAttribute: ((Int) -> Void)?
+
     func attributeCrash(toSlot slot: Int) {
+        onAttribute?(slot)
         attribution = slot
     }
 }

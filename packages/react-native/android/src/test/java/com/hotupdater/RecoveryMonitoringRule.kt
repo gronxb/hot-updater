@@ -53,6 +53,7 @@ class RecoveryMonitoringRule : ExternalResource() {
 
         HotUpdaterRecoveryManager.claimReleaseScheduler = { _, _ -> }
         HotUpdaterRecoveryManager.rootTagOwner = HotUpdaterRecoveryManager.defaultRootTagOwner
+        HotUpdaterRecoveryManager.nativeRecovery = HotUpdaterNativeRecovery.jni
         synchronized(HotUpdaterRecoveryManager.recoveryLock) {
             (field(manager, "claimedOwners").get(null) as MutableSet<*>).clear()
             (field(manager, "disarmedByClaim").get(null) as MutableMap<*, *>).clear()
