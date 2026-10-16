@@ -49,6 +49,7 @@ import {
   BARE_BUILD_INLINE_PATTERN,
   setBareEntryFile,
 } from "./bare-build-config.ts";
+import { exclusiveCheckoutLockKey, withCheckoutLock } from "./checkout-lock.ts";
 import { createControlJobs, type JobExecutionContext } from "./control-jobs.ts";
 import {
   createCrashRecoveryArtifactNames,
@@ -58,6 +59,7 @@ import {
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
+import { createDeployInputsKey } from "./deploy-inputs-key.ts";
 import {
   acquireFairFileLock,
   DEPLOY_LOCK_CAPACITY,
@@ -810,6 +812,54 @@ function deployProcessLockRoot() {
   return path.join(os.tmpdir(), "hot-updater-e2e-deploy-lock", worktreeHash);
 }
 
+/**
+ * Runs `task` holding the shared checkout's deploy lock under `key`: the
+ * rendered inputs' key for a deploy, so equal deploys build at once, or an
+ * exclusive key for bootstrap and cleanup, which run alone.
+ */
+async function withDeployProcessLock<T>(
+  purpose: string,
+  key: string,
+  signal: AbortSignal | undefined,
+  task: (lock: FairFileLock) => Promise<T>,
+): Promise<T> {
+  return withCheckoutLock(
+    {
+      capacity: DEPLOY_LOCK_CAPACITY,
+      key,
+      lockRoot: deployProcessLockRoot(),
+      onAbandoned: ({ ageMs, lockPath, owner, reason }) => {
+        logE2eFixture(
+          reason === "owner-exited"
+            ? "deploy process lock owner exited; removing"
+            : "deploy process lock stale; removing",
+          { ageMs, lockPath, owner },
+        );
+      },
+      onWait: ({ owner, position }) => {
+        logE2eFixture("deploy process lock waiting", {
+          lockPath: deployProcessLockRoot(),
+          owner,
+          platform: fixtureSession.platform,
+          position,
+          purpose,
+        });
+      },
+      ownerLabel: fixtureSession.platform,
+      signal,
+    },
+    async (lock) => {
+      logE2eFixture("deploy process lock acquired", {
+        key,
+        lockPath: lock.lockPath,
+        platform: fixtureSession.platform,
+        purpose,
+      });
+      return task(lock);
+    },
+  );
+}
+
 async function exportNativePublicKeyFromSigningKey() {
   const privateKeyPath = path.join(
     fixtureSession.exampleDir,
@@ -1066,20 +1116,23 @@ function resolveBundleProfile(value: BundleProfile | undefined): BundleProfile {
   return value ?? "default";
 }
 
-async function applyAppScenario({
-  bundleProfile,
-  marker,
-  mode,
-  safeBundleIds,
-  sourceFile = fixtureSession.appSourceFile,
-}: {
+type AppScenarioInput = {
   bundleProfile: BundleProfile;
   marker: string;
   mode: DeployMode;
   safeBundleIds: string[];
   /** The example's patch surface, or the widget runtime's. */
   sourceFile?: string;
-}) {
+};
+
+/** The patch surface a scenario's bundle builds from, without writing it. */
+async function renderAppScenario({
+  bundleProfile,
+  marker,
+  mode,
+  safeBundleIds,
+  sourceFile = fixtureSession.appSourceFile,
+}: AppScenarioInput) {
   const source = await fsPromises.readFile(sourceFile, "utf8");
 
   if (!MARKER_PATTERN.test(source)) {
@@ -1167,28 +1220,66 @@ async function applyAppScenario({
     .replace(CRASH_GUARD_PATTERN, crashGuardSource)
     .replace(DEPLOY_ASSET_GUARD_PATTERN, deployAssetSource);
 
+  return nextSource;
+}
+
+async function writeAppScenario(input: AppScenarioInput, nextSource: string) {
+  const sourceFile = input.sourceFile ?? fixtureSession.appSourceFile;
   await fsPromises.writeFile(sourceFile, nextSource);
   logE2eFixture("app scenario applied", {
-    bundleProfile,
-    marker,
-    mode,
-    safeBundleIds,
+    bundleProfile: input.bundleProfile,
+    marker: input.marker,
+    mode: input.mode,
+    safeBundleIds: input.safeBundleIds,
     sourceFile: path.relative(REPO_DIR, sourceFile),
   });
 }
 
-async function applyDeployConfig({
-  entryFile,
-  patchEnabled,
-  patchMaxBaseBundles,
-  strategy,
-}: {
+async function applyAppScenario(input: AppScenarioInput) {
+  await writeAppScenario(input, await renderAppScenario(input));
+}
+
+type DeployConfigInput = {
   /** The bundle's entry; null builds the example's default entry. */
   entryFile: string | null;
   patchEnabled: boolean;
   patchMaxBaseBundles?: number;
   strategy: "appVersion" | "fingerprint";
-}) {
+};
+
+/**
+ * The config and patch surface a deploy writes, and their key: deploys whose
+ * keys match write the same bytes, so they may share the checkout.
+ */
+async function renderDeployInputs(
+  deployConfig: DeployConfigInput,
+  appScenario: AppScenarioInput,
+) {
+  const configSource = await renderDeployConfig(deployConfig);
+  const appSource = await renderAppScenario(appScenario);
+  return {
+    appSource,
+    configSource,
+    key: createDeployInputsKey({
+      appSource,
+      appSourceFile: path.relative(
+        REPO_DIR,
+        appScenario.sourceFile ?? fixtureSession.appSourceFile,
+      ),
+      bundleProfile: appScenario.bundleProfile,
+      configSource,
+      marker: appScenario.marker,
+    }),
+  };
+}
+
+/** The hot-updater.config.ts a deploy builds with, without writing it. */
+async function renderDeployConfig({
+  entryFile,
+  patchEnabled,
+  patchMaxBaseBundles,
+  strategy,
+}: DeployConfigInput) {
   const source = await fsPromises.readFile(
     fixtureSession.configSourceFile,
     "utf8",
@@ -1245,18 +1336,22 @@ async function applyDeployConfig({
       `${prefix}${JSON.stringify(`${deployBaseUrl}/admin`)}`,
   );
 
-  await fsPromises.writeFile(
-    fixtureSession.configSourceFile,
-    sourceWithDeployBaseUrl.replace(AUTO_PATCH_CONFIG_PATTERN, autoPatchSource),
+  return sourceWithDeployBaseUrl.replace(
+    AUTO_PATCH_CONFIG_PATTERN,
+    autoPatchSource,
   );
+}
+
+async function writeDeployConfig(input: DeployConfigInput, nextSource: string) {
+  await fsPromises.writeFile(fixtureSession.configSourceFile, nextSource);
   logE2eFixture("deploy config applied", {
-    deployBaseUrl,
-    entryFile,
-    patchEnabled,
-    patchMaxBaseBundles: patchMaxBaseBundles ?? null,
+    deployBaseUrl: getControllerReachableAppBaseUrl(),
+    entryFile: input.entryFile,
+    patchEnabled: input.patchEnabled,
+    patchMaxBaseBundles: input.patchMaxBaseBundles ?? null,
     resetMetroCache: false,
     sourceFile: path.relative(REPO_DIR, fixtureSession.configSourceFile),
-    strategy,
+    strategy: input.strategy,
   });
 }
 
@@ -5833,14 +5928,12 @@ async function prepareAppLaunch() {
   return { alreadyFocused, ...prepareE2eStartupCheck(alreadyFocused) };
 }
 
-async function bootstrap() {
-  if (fixtureSession.bootstrapResult) {
-    logE2eFixture("bootstrap result reused", {
-      platform: fixtureSession.platform,
-    });
-    return fixtureSession.bootstrapResult;
-  }
-
+/**
+ * Backs up the inputs deploys write in the shared checkout and resets them to
+ * the example's: the config, the env file, both patch surfaces, the fixture
+ * assets, and the native public key.
+ */
+async function resetCheckoutInputs() {
   if (!fixtureSession.appBackupPath) {
     fixtureSession.appBackupPath = await backupFile(
       fixtureSession.appSourceFile,
@@ -5868,21 +5961,6 @@ async function bootstrap() {
     fixtureSession.sizeAwareLargeAssetBackupCaptured = true;
   }
 
-  fixtureSession.builtInBundleId = null;
-  fixtureSession.deployedBundles = [];
-  fixtureSession.observedInsightsEvents = [];
-  fixtureSession.storePath = null;
-  handleConfigureProxy({
-    artifactDelayMs: 0,
-    catalogDelayMs: 0,
-    catalogMode: "live",
-    holdArtifacts: false,
-    replayGeneration: null,
-    reset: true,
-  });
-
-  await waitForLocalProviderReady();
-  await clearProviderReleasesAfterReadiness();
   await restoreFile(
     fixtureSession.sizeAwareLargeAssetBackupPath,
     fixtureSession.sizeAwareLargeAssetPath,
@@ -5909,6 +5987,41 @@ async function bootstrap() {
     safeBundleIds: [],
     sourceFile: fixtureSession.widgetAppSourceFile,
   });
+}
+
+async function bootstrap(signal?: AbortSignal) {
+  if (fixtureSession.bootstrapResult) {
+    logE2eFixture("bootstrap result reused", {
+      platform: fixtureSession.platform,
+    });
+    return fixtureSession.bootstrapResult;
+  }
+
+  fixtureSession.builtInBundleId = null;
+  fixtureSession.deployedBundles = [];
+  fixtureSession.observedInsightsEvents = [];
+  fixtureSession.storePath = null;
+  handleConfigureProxy({
+    artifactDelayMs: 0,
+    catalogDelayMs: 0,
+    catalogMode: "live",
+    holdArtifacts: false,
+    replayGeneration: null,
+    reset: true,
+  });
+
+  await waitForLocalProviderReady();
+  await clearProviderReleasesAfterReadiness();
+  // Other shards build from this checkout: its inputs are backed up and
+  // reset only while no deploy holds the lock, so a backup is never another
+  // shard's deploy input and no build reads them half reset. Nothing here
+  // runs inside a deploy, and nothing inside takes the lock again.
+  await withDeployProcessLock(
+    "bootstrap",
+    exclusiveCheckoutLockKey(),
+    signal,
+    resetCheckoutInputs,
+  );
 
   fixtureSession.bootstrapResult = {
     emptyCrashHistoryText: "No crashed bundles recorded\\.",
@@ -5947,27 +6060,13 @@ async function deployFixtureBundle(
     request.diffBaseBundleId !== undefined ||
     request.patchMaxBaseBundles !== undefined;
 
-  if (bundleProfile === "multiAssetReplacement") {
-    throwIfAborted(signal);
-    await ensureMultiAssetFixtures(request.marker);
-  }
-  if (bundleProfile === "sizeAwareLargeDiff") {
-    throwIfAborted(signal);
-    await ensureSizeAwareLargeAsset(request.marker);
-  }
-  if (bundleProfile === "assetHeavy") {
-    throwIfAborted(signal);
-    await ensureAssetHeavyFixtures(request.marker);
-  }
-
-  throwIfAborted(signal);
-  await applyDeployConfig({
+  const deployConfig: DeployConfigInput = {
     entryFile: instance === "widget" ? WIDGET_ENTRY_FILE : null,
     patchEnabled,
     patchMaxBaseBundles: request.patchMaxBaseBundles,
     strategy: request.strategy ?? "appVersion",
-  });
-  await applyAppScenario({
+  };
+  const appScenario: AppScenarioInput = {
     bundleProfile,
     marker: request.marker,
     mode: request.mode,
@@ -5976,7 +6075,13 @@ async function deployFixtureBundle(
       instance === "widget"
         ? fixtureSession.widgetAppSourceFile
         : fixtureSession.appSourceFile,
-  });
+  };
+  // Every shard deploys from this one checkout. The rendered inputs are the
+  // lock's key, so shards building the same bundle share it while a deploy
+  // with other inputs (a widget beside a main deploy, another marker) waits
+  // until they have built.
+  throwIfAborted(signal);
+  const deployInputs = await renderDeployInputs(deployConfig, appScenario);
 
   const deployOutputPath = await fsPromises.mkdtemp(
     path.join(os.tmpdir(), "hu-e2e-deploy-"),
@@ -6027,35 +6132,35 @@ async function deployFixtureBundle(
     remoteChannel,
     targetAppVersion: request.targetAppVersion,
   });
-  const deployProcessLock = await acquireFairFileLock({
-    capacity: DEPLOY_LOCK_CAPACITY,
-    lockRoot: deployProcessLockRoot(),
-    onAbandoned: ({ ageMs, lockPath, owner, reason }) => {
-      logE2eFixture(
-        reason === "owner-exited"
-          ? "deploy process lock owner exited; removing"
-          : "deploy process lock stale; removing",
-        { ageMs, lockPath, owner },
-      );
-    },
-    onWait: ({ owner, position }) => {
-      logE2eFixture("deploy process lock waiting", {
-        lockPath: deployProcessLockRoot(),
-        owner,
-        platform: fixtureSession.platform,
-        position,
-      });
-    },
-    ownerLabel: fixtureSession.platform,
-    signal,
-  });
-  logE2eFixture("deploy process lock acquired", {
-    lockPath: deployProcessLock.lockPath,
-    platform: fixtureSession.platform,
-  });
   let deployDurationMs = 0;
-  const deployOutput = await (async () => {
-    try {
+  const deployOutput = await withDeployProcessLock(
+    "deploy",
+    deployInputs.key,
+    signal,
+    async () => {
+      // The inputs are written only while the lock is held, and stay until
+      // the build has read them.
+      if (bundleProfile === "multiAssetReplacement") {
+        throwIfAborted(signal);
+        await ensureMultiAssetFixtures(request.marker);
+      }
+      if (bundleProfile === "sizeAwareLargeDiff") {
+        throwIfAborted(signal);
+        await ensureSizeAwareLargeAsset(request.marker);
+      }
+      if (bundleProfile === "assetHeavy") {
+        throwIfAborted(signal);
+        await ensureAssetHeavyFixtures(request.marker);
+      }
+      throwIfAborted(signal);
+      const rendered = await renderDeployInputs(deployConfig, appScenario);
+      if (rendered.key !== deployInputs.key) {
+        throw new Error(
+          "The deploy inputs changed while waiting for the deploy lock",
+        );
+      }
+      await writeDeployConfig(deployConfig, rendered.configSource);
+      await writeAppScenario(appScenario, rendered.appSource);
       const deployStartedAt = Date.now();
       const output = await runLoggedCommand("node", args, {
         cwd: fixtureSession.exampleDir,
@@ -6066,10 +6171,8 @@ async function deployFixtureBundle(
       });
       deployDurationMs = Date.now() - deployStartedAt;
       return output;
-    } finally {
-      await deployProcessLock.release();
-    }
-  })();
+    },
+  );
   const releaseId = extractDeployReleaseId(deployOutput);
   if (!releaseId) {
     throw new Error(
@@ -7324,36 +7427,44 @@ async function cleanup() {
     return {};
   }
 
-  if (fixtureSession.appBackupPath) {
-    await restoreFile(
-      fixtureSession.appBackupPath,
-      fixtureSession.appSourceFile,
-    );
-  }
-  if (fixtureSession.widgetAppBackupPath) {
-    await restoreFile(
-      fixtureSession.widgetAppBackupPath,
-      fixtureSession.widgetAppSourceFile,
-    );
-  }
-  if (fixtureSession.configBackupPath) {
-    await restoreFile(
-      fixtureSession.configBackupPath,
-      fixtureSession.configSourceFile,
-    );
-  }
-  if (fixtureSession.envBackupPath) {
-    await restoreFile(
-      fixtureSession.envBackupPath,
-      fixtureSession.envSourceFile,
-    );
-  }
-  await restoreFile(
-    fixtureSession.sizeAwareLargeAssetBackupPath,
-    fixtureSession.sizeAwareLargeAssetPath,
+  // Restores the checkout alone, as bootstrap resets it.
+  await withDeployProcessLock(
+    "cleanup",
+    exclusiveCheckoutLockKey(),
+    undefined,
+    async () => {
+      if (fixtureSession.appBackupPath) {
+        await restoreFile(
+          fixtureSession.appBackupPath,
+          fixtureSession.appSourceFile,
+        );
+      }
+      if (fixtureSession.widgetAppBackupPath) {
+        await restoreFile(
+          fixtureSession.widgetAppBackupPath,
+          fixtureSession.widgetAppSourceFile,
+        );
+      }
+      if (fixtureSession.configBackupPath) {
+        await restoreFile(
+          fixtureSession.configBackupPath,
+          fixtureSession.configSourceFile,
+        );
+      }
+      if (fixtureSession.envBackupPath) {
+        await restoreFile(
+          fixtureSession.envBackupPath,
+          fixtureSession.envSourceFile,
+        );
+      }
+      await restoreFile(
+        fixtureSession.sizeAwareLargeAssetBackupPath,
+        fixtureSession.sizeAwareLargeAssetPath,
+      );
+      await restoreMultiAssetFixtures();
+      await removeAssetHeavyFixtures();
+    },
   );
-  await restoreMultiAssetFixtures();
-  await removeAssetHeavyFixtures();
 
   fixtureSession.appBackupPath = null;
   fixtureSession.widgetAppBackupPath = null;
@@ -7380,7 +7491,7 @@ export function startBootstrapJob(input: { deviceId?: string } = {}) {
     }
   }
 
-  bootstrapJobId = createJob(() => bootstrap());
+  bootstrapJobId = createJob((context) => bootstrap(context.signal));
   return bootstrapJobId;
 }
 
