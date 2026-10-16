@@ -710,12 +710,15 @@ internal class HotUpdaterRecoveryManager(
                 }
             }
 
+        // The flag is set only once the listener is registered, under one lock,
+        // so no launch can go on to render before the listener can hear it.
         private fun ensureContentAppearedListenerInstalled() {
+            if (contentAppearedListenerInstalled) return
             synchronized(this) {
                 if (contentAppearedListenerInstalled) return
+                ReactMarker.addListener(contentAppearedListener)
                 contentAppearedListenerInstalled = true
             }
-            ReactMarker.addListener(contentAppearedListener)
         }
 
         // React Native names the view by its root tag. A view no known activity
