@@ -364,6 +364,20 @@ describe("E2E scenario contract", () => {
           call.body?.status === "pending",
       );
       expect(pendingIndex).toBeGreaterThan(0);
+      // The check runs once per process: the launch it reports for is the
+      // attempt's first (a fresh process after the reset) or a reload.
+      const stagingLaunch = calls.findLast(
+        (call, index) =>
+          index < pendingIndex &&
+          (call.kind === "launch" || call.kind === "reload"),
+      );
+      const firstLaunchIndex = calls.findIndex(
+        (call) => call.kind === "launch" || call.kind === "reload",
+      );
+      expect(
+        stagingLaunch?.kind === "reload" ||
+          calls.indexOf(stagingLaunch!) === firstLaunchIndex,
+      ).toBe(true);
       expect(calls[pendingIndex]).toMatchObject({
         body: { nonce: "$widgetCheckNonce" },
       });
@@ -502,22 +516,37 @@ describe("E2E scenario contract", () => {
     ).toEqual(["reset", "reset"]);
 
     // The crash launch is verified by the widget's own recovery, to its
-    // built-in bundle, before any UI step.
+    // built-in bundle, before any UI step. The fatal need not end the
+    // process (iOS keeps main running), so the widget's marker is awaited
+    // and the control server starts the app again for its rollback.
     const crashLaunchIndex = calls.findIndex(
       (call) => call.kind === "launch" && call.options?.expectCrash === true,
     );
     expect(crashLaunchIndex).toBeGreaterThan(0);
     expect(calls[crashLaunchIndex + 1]).toMatchObject({
+      body: { bundleId: "$widgetCrashBundleId", instance: "widget" },
+      kind: "control",
+      pathName: "/e2e/jobs/wait-for-crash-marker",
+    });
+    expect(calls[crashLaunchIndex + 2]).toMatchObject({
       body: {
         crashedBundleId: "$widgetCrashBundleId",
         instance: "widget",
+        restartApp: true,
         stableBundleId: "$builtInBundleId",
       },
       kind: "control",
       pathName: "/e2e/wait-for-crash-recovery",
     });
-    const afterRecovery = calls.slice(crashLaunchIndex + 2);
-    expect(afterRecovery.some((call) => call.kind === "launch")).toBe(false);
+    const afterRecovery = calls.slice(crashLaunchIndex + 3);
+    expect(
+      afterRecovery.some(
+        (call) =>
+          call.kind === "launch" ||
+          call.kind === "reload" ||
+          call.kind === "terminate",
+      ),
+    ).toBe(false);
     expect(afterRecovery).toEqual(
       expect.arrayContaining([
         expect.objectContaining({

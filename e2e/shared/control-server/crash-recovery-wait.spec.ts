@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createCrashRecoveryArtifactNames,
   getLaunchReportState,
+  isCrashMarkerAskingRollback,
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type {
@@ -292,6 +293,29 @@ describe("crash recovery wait", () => {
       ),
     ).resolves.toEqual({});
     expect(order).toEqual(["beforePoll", "read", "beforePoll", "read"]);
+  });
+
+  it("reads a crash marker as charging only its own bundle's rollback", () => {
+    expect(
+      isCrashMarkerAskingRollback(
+        { bundleId: "crashed-1", shouldRollback: true },
+        "crashed-1",
+      ),
+    ).toBe(true);
+    // A verified launch's marker, another bundle's, or none charges nothing.
+    expect(
+      isCrashMarkerAskingRollback(
+        { bundleId: "crashed-1", shouldRollback: false },
+        "crashed-1",
+      ),
+    ).toBe(false);
+    expect(
+      isCrashMarkerAskingRollback(
+        { bundleId: "other", shouldRollback: true },
+        "crashed-1",
+      ),
+    ).toBe(false);
+    expect(isCrashMarkerAskingRollback(null, "crashed-1")).toBe(false);
   });
 
   it("uses per-request diagnostic artifact names for recovery snapshots", () => {

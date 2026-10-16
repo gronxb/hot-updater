@@ -3,9 +3,10 @@ import type { ScenarioDefinition } from "./types.ts";
 /**
  * Brownfield only: the widget's native check stages a widget OTA in the
  * background, and the next launch runs main's new OTA and that widget OTA,
- * which throws before its first content. The widget's fatal ends the process; at the next
- * start only the widget rolls back to its built-in bundle and records the
- * crash, while main keeps its new OTA with no crash history.
+ * which throws before its first content. The fatal charges only the widget;
+ * the process may die, or, on iOS, keep running main. At the next start only
+ * the widget rolls back to its built-in bundle and records the crash, while
+ * main keeps its new OTA with no crash history.
  */
 export const brownfieldInstanceCrashRollsBackOnlyItselfScenario: ScenarioDefinition =
   {
@@ -99,7 +100,9 @@ export const brownfieldInstanceCrashRollsBackOnlyItselfScenario: ScenarioDefinit
       await app.control("hold the widget artifact", "/e2e/proxy-control", {
         holdArtifacts: true,
       });
-      await app.launch("launch to stage both updates");
+      // A new process, so the widget's native check runs again now that its
+      // crash bundle is deployed.
+      await app.reload("relaunch to stage both updates");
       await app.control(
         "wait widget native check pending",
         "/e2e/jobs/wait-for-native-check",
@@ -134,12 +137,21 @@ export const brownfieldInstanceCrashRollsBackOnlyItselfScenario: ScenarioDefinit
       );
       // Main runs its pending next bundle while the widget's bundle throws.
       await app.launch("launch the widget crash bundle", { expectCrash: true });
+      // The fatal charges the widget. It need not end the process: on iOS
+      // the widget's runtime stops while the app and main keep running.
+      await app.control(
+        "wait widget crash marker",
+        "/e2e/jobs/wait-for-crash-marker",
+        { bundleId: "$widgetCrashBundleId", instance: "widget" },
+      );
+      // The widget rolls back at its next start, so the app starts again.
       await app.control(
         "wait widget recovery to its built-in bundle",
         "/e2e/wait-for-crash-recovery",
         {
           crashedBundleId: "$widgetCrashBundleId",
           instance: "widget",
+          restartApp: true,
           stableBundleId: "$builtInBundleId",
         },
       );

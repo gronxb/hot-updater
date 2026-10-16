@@ -7,4 +7,4 @@ Each native instance recovers from its own crashes. A named instance's launch is
 - A JavaScript fatal error or a failed bundle load is charged to the instance whose runtime threw it. Its bundle rolls back at that instance's next start and enters that instance's crash history. Instances whose launch was in progress at that moment are not charged; their pending bundle is selected again.
 - A native crash is charged to every instance whose launch is in progress and not yet verified. Instances that already showed content are unaffected.
 - Each instance keeps its own crash marker beside its bundles. `main` keeps its paths and behaves as before, including its in-process recovery reload on iOS and its recovery restart on Android.
-- A named instance's JavaScript fatal error is not recovered in-process: React Native's default handling ends the app, and the instance rolls back at the next start.
+- A named instance's JavaScript fatal error is not recovered in-process: that runtime stops, React Native's default handling decides whether the app ends (on iOS, the app keeps running), and the instance rolls back at its next start.

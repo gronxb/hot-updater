@@ -130,7 +130,20 @@ function throwIfAborted(signal?: AbortSignal) {
   }
 }
 
-function isRecovered(args: {
+/**
+ * Whether an instance's `recovery-crash-marker.json` charges `bundleId`: the
+ * native crash path wrote it for that launch and asks for its rollback at the
+ * instance's next start.
+ */
+export function isCrashMarkerAskingRollback(
+  marker: Record<string, unknown> | null,
+  bundleId: string,
+) {
+  return marker?.bundleId === bundleId && marker.shouldRollback === true;
+}
+
+/** Whether the instance's next start already rolled back `crashedBundleId`. */
+export function isCrashRecovered(args: {
   readonly crashedBundleId: string;
   readonly launchReportState: LaunchReportState;
   readonly metadataState: MetadataState;
@@ -167,7 +180,7 @@ export async function waitForCrashRecoveryState(
     );
 
     if (
-      isRecovered({
+      isCrashRecovered({
         crashedBundleId: options.crashedBundleId,
         launchReportState,
         metadataState,

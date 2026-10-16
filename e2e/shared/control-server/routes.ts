@@ -47,6 +47,7 @@ import {
   startCreateRepublishedReleaseJob,
   startDeployBundleJob,
   startEnableWidgetJob,
+  startWaitForCrashMarkerJob,
   startPatchReleaseJob,
   startResetRemoteBundlesJob,
   startSeedCrashedBundleFrontierJob,
@@ -602,6 +603,23 @@ app.post("/e2e/jobs/wait-for-native-check", async (c) => {
   });
 });
 
+app.post("/e2e/jobs/wait-for-crash-marker", async (c) => {
+  const payload = (await c.req.json()) as {
+    bundleId?: string;
+    instance?: unknown;
+  };
+  if (!payload.bundleId) {
+    return c.json({ error: "bundleId is required" }, 400);
+  }
+  const instance = parseInstance(payload.instance);
+  if (!instance) {
+    return c.json({ error: INSTANCE_ERROR }, 400);
+  }
+  return c.json({
+    jobId: startWaitForCrashMarkerJob({ bundleId: payload.bundleId, instance }),
+  });
+});
+
 app.post("/e2e/jobs/wait-for-archive-resume", (c) => {
   return c.json({ jobId: startWaitForArchiveResumeJob() });
 });
@@ -984,6 +1002,7 @@ app.post("/e2e/wait-for-crash-recovery", async (c) => {
   const payload = (await c.req.json()) as {
     crashedBundleId?: string;
     instance?: unknown;
+    restartApp?: unknown;
     stableBundleId?: string;
   };
   if (!payload.stableBundleId || !payload.crashedBundleId) {
@@ -1001,7 +1020,11 @@ app.post("/e2e/wait-for-crash-recovery", async (c) => {
     await handleWaitForCrashRecovery(
       payload.stableBundleId,
       payload.crashedBundleId,
-      { instance, signal: c.req.raw.signal },
+      {
+        instance,
+        restartApp: payload.restartApp === true,
+        signal: c.req.raw.signal,
+      },
     ),
   );
 });

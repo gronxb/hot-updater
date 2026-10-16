@@ -53,6 +53,8 @@ import { createControlJobs, type JobExecutionContext } from "./control-jobs.ts";
 import {
   createCrashRecoveryArtifactNames,
   getLaunchReportState,
+  isCrashMarkerAskingRollback,
+  isCrashRecovered,
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
@@ -5556,6 +5558,26 @@ function isFixtureAppRunning() {
 }
 
 /**
+ * An uncaught fatal, unlike main's handled ones, may leave the system's "app
+ * has stopped" dialog over the relaunched app.
+ */
+function closeAndroidSystemDialogs() {
+  captureCommand(
+    "adb",
+    [
+      "-s",
+      deviceId as string,
+      "shell",
+      "am",
+      "broadcast",
+      "-a",
+      "android.intent.action.CLOSE_SYSTEM_DIALOGS",
+    ],
+    { allowFailure: true },
+  );
+}
+
+/**
  * Starts the app again once it has stayed stopped: nothing restarts a process
  * that a named instance's fatal ended (iOS never restarts an app, and
  * Android restarts only for main), yet the instance rolls back only at its
@@ -5591,25 +5613,88 @@ function createRelaunchWhenStopped(signal?: AbortSignal) {
       launchIosApp();
       await abortableSleep(E2E_IOS_LAUNCH_SETTLE_MS, signal);
     } else {
-      // An uncaught fatal, unlike main's handled ones, may leave the system's
-      // "app has stopped" dialog over the relaunched app.
-      captureCommand(
-        "adb",
-        [
-          "-s",
-          deviceId as string,
-          "shell",
-          "am",
-          "broadcast",
-          "-a",
-          "android.intent.action.CLOSE_SYSTEM_DIALOGS",
-        ],
-        { allowFailure: true },
-      );
+      closeAndroidSystemDialogs();
       launchAndroidApp({ forceStop: false });
       await abortableSleep(E2E_ANDROID_LAUNCH_SETTLE_MS, signal);
     }
   };
+}
+
+function readCrashRecoveryDiagnostics(
+  instance: AppInstance,
+  artifactNames: CrashRecoveryArtifactNames,
+) {
+  return fixtureSession.platform === "ios"
+    ? readIosRecoveryDiagnostics(instance)
+    : readAndroidRecoveryDiagnostics(artifactNames, instance);
+}
+
+const CRASH_MARKER_WAIT_ATTEMPTS = 240;
+
+/**
+ * Waits until `instance`'s crash marker charges `bundleId`, or until its next
+ * start already consumed the marker into a RECOVERED report (a process that
+ * died and restarted on its own). A named instance's JavaScript fatal writes
+ * the marker but need not end the process: iOS's bridgeless runtime stops
+ * that runtime and keeps the app, and main, running.
+ */
+async function waitForCrashMarker(
+  input: { bundleId: string; instance: AppInstance },
+  signal?: AbortSignal,
+) {
+  const artifactNames = createCrashRecoveryArtifactNames({
+    crashedBundleId: input.bundleId,
+    stableBundleId: "marker-wait",
+  });
+  for (let index = 0; index < CRASH_MARKER_WAIT_ATTEMPTS; index += 1) {
+    throwIfAborted(signal);
+    const diagnostics = readCrashRecoveryDiagnostics(
+      input.instance,
+      artifactNames,
+    );
+    if (
+      isCrashMarkerAskingRollback(diagnostics.crashMarker.value, input.bundleId)
+    ) {
+      return { crashMarker: diagnostics.crashMarker.value };
+    }
+    const report = getLaunchReportState(diagnostics.launchReport.value);
+    if (
+      report.status === "RECOVERED" &&
+      report.fromBundleId === input.bundleId
+    ) {
+      return { crashMarkerConsumed: true };
+    }
+    await abortableSleep(E2E_POLL_INTERVAL_MS, signal);
+  }
+  throw createEndpointError(
+    `The ${input.instance} crash marker never charged bundle ${input.bundleId}`,
+    {
+      ...readCrashRecoveryDiagnostics(input.instance, artifactNames),
+      attempts: CRASH_MARKER_WAIT_ATTEMPTS,
+      instance: input.instance,
+    },
+  );
+}
+
+/**
+ * Ends the app if it still runs and starts it again: the instance whose
+ * marker asks for a rollback rolls back only at its next start.
+ */
+async function restartFixtureApp(signal?: AbortSignal) {
+  logE2eFixture("restart app for crash recovery", {
+    appId: fixtureSession.appId,
+    platform: fixtureSession.platform,
+  });
+  terminateFixtureApp();
+  await abortableSleep(E2E_POLL_INTERVAL_MS, signal);
+  if (fixtureSession.platform === "ios") {
+    launchIosApp();
+    await abortableSleep(E2E_IOS_LAUNCH_SETTLE_MS, signal);
+  } else {
+    closeAndroidSystemDialogs();
+    launchAndroidApp({ forceStop: false });
+    await abortableSleep(E2E_ANDROID_LAUNCH_SETTLE_MS, signal);
+  }
 }
 
 async function waitForCrashRecovery(
@@ -5618,10 +5703,30 @@ async function waitForCrashRecovery(
   options: {
     attempts?: number;
     instance?: AppInstance;
+    /** Start the app again first, unless it already recovered. */
+    restartApp?: boolean;
     signal?: AbortSignal;
   } = {},
 ) {
   const instance = options.instance ?? "main";
+  // Built-in bundle IDs, unlike OTA IDs, end with the fixed suffix.
+  const stableIsBuiltIn = stableBundleId.endsWith(
+    BUILT_IN_MIN_BUNDLE_ID_SUFFIX,
+  );
+  if (options.restartApp) {
+    const diagnostics = readCrashRecoveryDiagnostics(
+      instance,
+      createCrashRecoveryArtifactNames({ crashedBundleId, stableBundleId }),
+    );
+    const recovered = isCrashRecovered({
+      crashedBundleId,
+      launchReportState: getLaunchReportState(diagnostics.launchReport.value),
+      metadataState: getMetadataState(diagnostics.metadata.value),
+      stableBundleId,
+      stableIsBuiltIn,
+    });
+    if (!recovered) await restartFixtureApp(options.signal);
+  }
   const launchLogMarker = androidLaunchLogMarker;
   if (fixtureSession.platform === "android" && !launchLogMarker) {
     throw new Error("Missing Android launch log marker");
@@ -5660,14 +5765,11 @@ async function waitForCrashRecovery(
     platform: fixtureSession.platform,
     pollIntervalMs: E2E_POLL_INTERVAL_MS,
     readDiagnostics: (artifactNames) =>
-      fixtureSession.platform === "ios"
-        ? readIosRecoveryDiagnostics(instance)
-        : readAndroidRecoveryDiagnostics(artifactNames, instance),
+      readCrashRecoveryDiagnostics(instance, artifactNames),
     signal: options.signal,
     sleepMs: abortableSleep,
     stableBundleId,
-    // Built-in bundle IDs, unlike OTA IDs, end with the fixed suffix.
-    stableIsBuiltIn: stableBundleId.endsWith(BUILT_IN_MIN_BUNDLE_ID_SUFFIX),
+    stableIsBuiltIn,
   });
 }
 
@@ -7508,10 +7610,21 @@ export function handleSeedCrashHistory(bundleIds: readonly string[]) {
   return seedDeviceCrashHistory(bundleIds);
 }
 
+export function startWaitForCrashMarkerJob(input: {
+  bundleId: string;
+  instance: AppInstance;
+}) {
+  return createJob((context) => waitForCrashMarker(input, context.signal));
+}
+
 export async function handleWaitForCrashRecovery(
   stableBundleId: string,
   crashedBundleId: string,
-  options: { instance?: AppInstance; signal?: AbortSignal } = {},
+  options: {
+    instance?: AppInstance;
+    restartApp?: boolean;
+    signal?: AbortSignal;
+  } = {},
 ) {
   return waitForCrashRecovery(stableBundleId, crashedBundleId, options);
 }
