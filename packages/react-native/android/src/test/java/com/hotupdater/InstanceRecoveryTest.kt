@@ -559,6 +559,31 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `every instance whose overlapping error was survived leaves the watchdog`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val chat = namedEnvironment("chat")
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        stagePending(context, chat, "chat-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        HotUpdaterImpl(context, chat).getJSBundleFile()
+
+        // Both errors returned; the first claim's release is stale once the second claims.
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("chat failed"), chat.name)
+        HotUpdaterRecoveryManager.releaseClaim()
+
+        val watchdogState = File(bundleStore(context, main), "recovery-watchdog-state.txt")
+        assertEquals(
+            listOf(HotUpdaterInstanceEnvironment.MAIN_NAME),
+            HotUpdaterRecoveryManager.WatchdogState.parse(watchdogState.readText())!!.instances,
+        )
+        assertTrue(crashMarker(context, widget).exists())
+        assertTrue(crashMarker(context, chat).exists())
+    }
+
+    @Test
     fun `launches left alone by overlapping claims all count again when the last claim is released`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val chat = namedEnvironment("chat")

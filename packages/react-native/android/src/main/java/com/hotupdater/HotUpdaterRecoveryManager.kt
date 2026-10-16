@@ -593,6 +593,10 @@ internal class HotUpdaterRecoveryManager(
 
         // The instance and the launch generation of the latest claim.
         private var claimOwner: Pair<String, Long?>? = null
+
+        // Every owner of the claims still active, which overlap when errors
+        // return: each one's watchdog is left when the latest claim ends.
+        private val claimedOwners = LinkedHashSet<Pair<String, Long?>>()
         private val disarmedByClaim = LinkedHashMap<HotUpdaterRecoveryManager, Long>()
         private val watchdogOwners = linkedSetOf<String>()
         private var watchdogDeadlineAt = 0L
@@ -813,7 +817,10 @@ internal class HotUpdaterRecoveryManager(
         ): Boolean {
             slots.attribute(instanceName)
             val ownerGeneration = liveManagers[instanceName]?.currentGeneration()
-            synchronized(claimLock) { claimOwner = instanceName to ownerGeneration }
+            synchronized(claimLock) {
+                claimOwner = instanceName to ownerGeneration
+                claimedOwners += instanceName to ownerGeneration
+            }
             if (signalHandlerInstalled) {
                 try {
                     HotUpdaterRecoveryNative.nativeAttributeCrash(slots.assignedSlot(instanceName) ?: -1)
@@ -870,11 +877,12 @@ internal class HotUpdaterRecoveryManager(
          * the claimed error did not end the process.
          */
         internal fun releaseClaim(generation: Int? = null) {
-            var survivedOwner: Pair<String, Long?>? = null
+            var survivedOwners: List<Pair<String, Long?>> = emptyList()
             val disarmed =
                 synchronized(claimLock) {
                     if (generation != null && generation != claimGeneration) return
-                    survivedOwner = claimOwner
+                    survivedOwners = claimedOwners.toList()
+                    claimedOwners.clear()
                     // The claim ends here, not a moment later in either clock:
                     // a crash from now on charges the launches it can be blamed on.
                     slots.clearAttribution()
@@ -888,10 +896,11 @@ internal class HotUpdaterRecoveryManager(
                     }
                     disarmedByClaim.toList().also { disarmedByClaim.clear() }
                 }
-            // The instance whose error was survived keeps its marker for its
+            // Each instance whose error was survived keeps its marker for its
             // next launch, but the process lives on: if it ends for another
             // reason, the watchdog must not relaunch the app for that marker.
-            survivedOwner?.let { (name, ownerGeneration) ->
+            // A launch whose generation moved on is no longer the one that threw.
+            survivedOwners.forEach { (name, ownerGeneration) ->
                 if (name != HotUpdaterInstanceEnvironment.MAIN_NAME) {
                     liveManagers[name]?.leaveWatchdogAfterSurvivedError(ownerGeneration)
                 }

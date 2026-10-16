@@ -52,6 +52,10 @@ class RecoveryMonitoringRule : ExternalResource() {
         synchronized(heldContent) { (field(heldContent.javaClass, "held").get(heldContent) as MutableList<*>).clear() }
 
         HotUpdaterRecoveryManager.claimReleaseScheduler = { _, _ -> }
+        synchronized(field(manager, "claimLock").get(null)!!) {
+            (field(manager, "claimedOwners").get(null) as MutableSet<*>).clear()
+            (field(manager, "disarmedByClaim").get(null) as MutableMap<*, *>).clear()
+        }
 
         // A JavaScript error a test claimed must not claim another test's crash.
         val slots = field(manager, "slots").get(null)
