@@ -3,11 +3,15 @@ package com.hotupdater
 import android.app.Activity
 import android.app.Application
 import android.content.Context
+import android.content.ContextWrapper
 import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import com.facebook.react.ReactRootView
 import com.facebook.react.bridge.ReactContext
+import com.facebook.react.bridge.UIManager
+import com.facebook.react.uimanager.UIManagerHelper
+import com.facebook.react.uimanager.common.UIManagerType
 import java.lang.ref.WeakReference
 import java.util.Collections
 import java.util.WeakHashMap
@@ -21,7 +25,15 @@ import java.util.WeakHashMap
 internal class HotUpdaterRecoveryAttribution(
     private val resolveName: (Context, String) -> String = HotUpdaterInstanceRegistry.shared::resolveName,
     private val isStarted: (Activity) -> Boolean = { isActivityStarted(it) },
+    runtimeRoots: HotUpdaterRuntimeRoots? = null,
 ) {
+    /**
+     * Root views of the registered runtimes, found through their UI
+     * managers in whichever window shows them: a dialog or a presentation
+     * has its own window, which no activity's decor view contains.
+     */
+    private val runtimeRoots: HotUpdaterRuntimeRoots = runtimeRoots ?: UIManagerRuntimeRoots()
+
     companion object {
         val shared = HotUpdaterRecoveryAttribution()
 
@@ -188,8 +200,10 @@ internal class HotUpdaterRecoveryAttribution(
         activity: Activity,
         instanceName: String,
     ): Boolean {
-        val decorView = activity.window?.peekDecorView() ?: return false
-        return findRootView(decorView) { owns(instanceName, instanceOf(it)) } != null
+        val decorView = activity.window?.peekDecorView()
+        if (decorView != null && findRootView(decorView) { owns(instanceName, instanceOf(it)) } != null) return true
+        // Main takes the views no named instance claims, which a decor view shows.
+        return instanceName != HotUpdaterInstanceEnvironment.MAIN_NAME && runtimeRoots.showsRootOf(activity, instanceName)
     }
 
     /**
@@ -198,6 +212,7 @@ internal class HotUpdaterRecoveryAttribution(
      * its runtime isn't known yet.
      */
     fun instanceOfRootTag(rootTag: Int): String? {
+        runtimeRoots.instanceOfRootTag(rootTag)?.let { return it }
         val candidates =
             synchronized(activities) { activities.toList() } +
                 synchronized(runtimes) { runtimes.mapNotNull { it.get()?.currentActivity } }
@@ -208,6 +223,113 @@ internal class HotUpdaterRecoveryAttribution(
         }
         return null
     }
+
+    private fun registeredRuntimes(): List<ReactContext> = synchronized(runtimes) { runtimes.mapNotNull { it.get() } }
+
+    /** Root views through the registered runtimes' UI managers. Main thread, as UI managers require. */
+    private inner class UIManagerRuntimeRoots : HotUpdaterRuntimeRoots {
+        override fun instanceOfRootTag(rootTag: Int): String? {
+            registeredRuntimes().forEach { runtime ->
+                if (RootViews.rootViewOf(RootViews.uiManagersOf(runtime), rootTag) != null) {
+                    return instanceOf(runCatching { runtime.sourceURL }.getOrNull())
+                }
+            }
+            return null
+        }
+
+        override fun showsRootOf(
+            activity: Activity,
+            instanceName: String,
+        ): Boolean {
+            val runtimes = registeredRuntimes().filter { instanceOf(runCatching { it.sourceURL }.getOrNull()) == instanceName }
+            if (runtimes.isEmpty()) return false
+            val rootTags = RootViews.candidateRootTags(RootViews.nextRootViewTag() ?: return false)
+            return runtimes.any { runtime ->
+                val uiManagers = RootViews.uiManagersOf(runtime)
+                rootTags.any { rootTag -> RootViews.rootViewOf(uiManagers, rootTag)?.let { isShownIn(it, activity) } == true }
+            }
+        }
+
+        private fun isShownIn(
+            view: View,
+            activity: Activity,
+        ): Boolean =
+            view.isAttachedToWindow &&
+                view.isShown &&
+                view.windowVisibility == View.VISIBLE &&
+                RootViews.ownerActivity(view.context) === activity &&
+                isStarted(activity)
+    }
+
+    internal object RootViews {
+        // UIManagerType.LEGACY, named DEFAULT before React Native 0.80.
+        private const val LEGACY_UI_MANAGER = 1
+
+        /** [runtime]'s UI managers: Fabric's, and the legacy one of a runtime on the bridge. */
+        fun uiManagersOf(runtime: ReactContext): List<UIManager> =
+            listOf(UIManagerType.FABRIC, LEGACY_UI_MANAGER)
+                .mapNotNull { type -> runCatching { UIManagerHelper.getUIManager(runtime, type) }.getOrNull() }
+                .distinct()
+
+        /**
+         * The view of [rootTag] one of [uiManagers] holds: Fabric's surfaces
+         * hold their root view under the surface id, which is the root tag,
+         * and the legacy UI manager its root views under theirs.
+         */
+        fun rootViewOf(
+            uiManagers: List<UIManager>,
+            rootTag: Int,
+        ): View? = uiManagers.firstNotNullOfOrNull { runCatching { it.resolveView(rootTag) }.getOrNull() }
+
+        /**
+         * Every root tag React Native handed out so far: one counter serves
+         * every runtime and both renderers, from 1 in steps of 10. Null when
+         * the counter can't be read.
+         */
+        fun nextRootViewTag(): Int? =
+            runCatching {
+                val generator = Class.forName("com.facebook.react.uimanager.ReactRootViewTagGenerator")
+                // A Kotlin object's field from React Native 0.80, a Java static before.
+                listOf("nextRootViewTag", "sNextRootViewTag")
+                    .firstNotNullOfOrNull { name -> runCatching { generator.getDeclaredField(name) }.getOrNull() }
+                    ?.apply { isAccessible = true }
+                    ?.getInt(null)
+            }.getOrNull()
+
+        fun candidateRootTags(nextRootViewTag: Int): List<Int> =
+            (ROOT_TAG_FIRST until nextRootViewTag step ROOT_TAG_STEP).toList().takeLast(MAX_ROOT_TAGS)
+
+        /** The activity a view's context belongs to, through wrappers such as a dialog's theme. */
+        fun ownerActivity(context: Context?): Activity? {
+            var current = context
+            repeat(MAX_CONTEXT_DEPTH) {
+                when (current) {
+                    is Activity -> return current as Activity
+                    is ReactContext -> return (current as ReactContext).currentActivity
+                    is ContextWrapper -> current = (current as ContextWrapper).baseContext
+                    else -> return null
+                }
+            }
+            return null
+        }
+
+        private const val ROOT_TAG_FIRST = 1
+        private const val ROOT_TAG_STEP = 10
+        private const val MAX_ROOT_TAGS = 64
+        private const val MAX_CONTEXT_DEPTH = 16
+    }
+}
+
+/** Root views React Native's UI managers know, in any window. Main thread. */
+internal interface HotUpdaterRuntimeRoots {
+    /** The instance whose registered runtime holds root view [rootTag], or null. */
+    fun instanceOfRootTag(rootTag: Int): String?
+
+    /** Whether a started [activity] shows a root view of [instanceName]'s runtime in any of its windows. */
+    fun showsRootOf(
+        activity: Activity,
+        instanceName: String,
+    ): Boolean
 }
 
 internal fun findRootView(

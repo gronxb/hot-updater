@@ -237,12 +237,19 @@ private fun containsReactRootView(view: View): Boolean =
 
 // A React Native screen added later, such as a fragment of a native activity,
 // changes the activity's layout.
+// A dialog or presentation shows its views in a window of its own, whose
+// layout this activity's never sees; the activity's window loses focus to it.
 private fun watchGlobalLayout(
     activity: Activity,
     onLayout: () -> Unit,
 ): () -> Unit {
     val decorView = activity.window?.decorView ?: return {}
     val listener = ViewTreeObserver.OnGlobalLayoutListener(onLayout)
+    val focusListener = ViewTreeObserver.OnWindowFocusChangeListener { onLayout() }
     decorView.viewTreeObserver.addOnGlobalLayoutListener(listener)
-    return { runCatching { decorView.viewTreeObserver.removeOnGlobalLayoutListener(listener) } }
+    decorView.viewTreeObserver.addOnWindowFocusChangeListener(focusListener)
+    return {
+        runCatching { decorView.viewTreeObserver.removeOnGlobalLayoutListener(listener) }
+        runCatching { decorView.viewTreeObserver.removeOnWindowFocusChangeListener(focusListener) }
+    }
 }

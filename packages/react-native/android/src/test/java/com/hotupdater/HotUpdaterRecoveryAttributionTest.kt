@@ -1,7 +1,14 @@
 package com.hotupdater
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class HotUpdaterRecoveryAttributionTest {
@@ -55,6 +62,53 @@ class HotUpdaterRecoveryAttributionTest {
         assertNull(owner("Error: widget failed, stack:\nanonymous@1:20480\n"))
     }
 
+    @Test
+    fun `a root view in a window of its own is found through its runtime`() {
+        // A dialog's root view: no activity's decor view contains it.
+        val activity = Activity()
+        val dialogRoots =
+            object : HotUpdaterRuntimeRoots {
+                override fun instanceOfRootTag(rootTag: Int): String? = WIDGET.takeIf { rootTag == 21 }
+
+                override fun showsRootOf(
+                    activity: Activity,
+                    instanceName: String,
+                ): Boolean = true
+            }
+        val attribution = HotUpdaterRecoveryAttribution(resolveName = { _, _ -> MAIN }, runtimeRoots = dialogRoots)
+
+        assertEquals(WIDGET, attribution.instanceOfRootTag(21))
+        assertNull(attribution.instanceOfRootTag(31))
+        assertTrue(attribution.showsViewOf(activity, WIDGET))
+        // Main takes the views no named instance claims, as it always has.
+        assertFalse(attribution.showsViewOf(activity, MAIN))
+    }
+
+    @Test
+    fun `root tags are every tag React Native handed out`() {
+        val roots = HotUpdaterRecoveryAttribution.RootViews
+
+        assertEquals(emptyList<Int>(), roots.candidateRootTags(1))
+        assertEquals(listOf(1, 11, 21), roots.candidateRootTags(31))
+        // The counter React Native keeps for every runtime can be read.
+        assertNotNull(roots.nextRootViewTag())
+    }
+
+    @Test
+    fun `a root view belongs to the activity its context wraps`() {
+        val roots = HotUpdaterRecoveryAttribution.RootViews
+        val activity = Activity()
+        // A dialog's themed context wraps its activity.
+        val themed =
+            object : ContextWrapper(null) {
+                override fun getBaseContext(): Context = activity
+            }
+
+        assertSame(activity, roots.ownerActivity(activity))
+        assertSame(activity, roots.ownerActivity(themed))
+        assertNull(roots.ownerActivity(null))
+    }
+
     private fun owner(vararg stacks: String): String? =
         HotUpdaterRecoveryAttribution.namedInstanceOfStack(stacks.toList()) { source ->
             when {
@@ -66,6 +120,7 @@ class HotUpdaterRecoveryAttributionTest {
 
     companion object {
         private const val WIDGET = "widget"
+        private const val MAIN = HotUpdaterInstanceEnvironment.MAIN_NAME
         private const val FILES = "/data/user/0/com.example.app/files"
         private const val WIDGET_BUNDLE = "$FILES/hot-updater-instances/widget/bundle-store/0199e5c2-widget/index.android.bundle"
         private const val CHAT_BUNDLE = "$FILES/hot-updater-instances/chat/bundle-store/0199e5c2-chat/index.android.bundle"
