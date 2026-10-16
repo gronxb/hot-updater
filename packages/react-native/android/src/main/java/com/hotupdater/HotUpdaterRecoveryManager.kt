@@ -19,6 +19,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.lang.reflect.Field
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.system.exitProcess
 
 /**
@@ -128,7 +129,8 @@ internal class HotUpdaterRecoveryManager(
 
         val generation =
             synchronized(lock) {
-                generation += 1
+                // Unique in the process, so a claim names one launch of one manager.
+                generation = launchGenerations.incrementAndGet()
                 cancelScheduledLocked()
                 contentAppearedCallback = onContentAppeared
                 crashOfAnotherInstanceCallback = onCrashOfAnotherInstance
@@ -193,7 +195,15 @@ internal class HotUpdaterRecoveryManager(
     private fun currentLaunch(): HotUpdaterRecoverySlots.Launch? =
         synchronized(lock) {
             launchState.snapshot()?.let {
-                HotUpdaterRecoverySlots.Launch(name, it.bundleId, it.shouldRollback, armed, launchState.hasContentAppeared())
+                // A launch another instance's claim left alone is not armed
+                // for the crash that claim may end in.
+                HotUpdaterRecoverySlots.Launch(
+                    name,
+                    it.bundleId,
+                    it.shouldRollback,
+                    armed && !endedByAnotherInstance,
+                    launchState.hasContentAppeared(),
+                )
             }
         }
 
@@ -404,6 +414,7 @@ internal class HotUpdaterRecoveryManager(
             val launch = launchState.snapshot()?.takeIf { it.shouldRollback } ?: return@synchronized null
             endedByAnotherInstance = true
             crashOfAnotherInstanceCallback?.invoke(launch.bundleId)
+            updateNativeLaunchStateLocked()
             generation
         }
 
@@ -415,6 +426,7 @@ internal class HotUpdaterRecoveryManager(
         synchronized(lock) {
             if (generation != this.generation || !endedByAnotherInstance) return
             endedByAnotherInstance = false
+            updateNativeLaunchStateLocked()
             val action = launchStartedAction ?: return
             if (launchState.snapshot()?.shouldRollback != true) return
             armLaunch(generation, action)
@@ -544,6 +556,10 @@ internal class HotUpdaterRecoveryManager(
         // process outlives the claim.
         private val claimLock = Any()
         private var claimGeneration = 0
+        private val launchGenerations = AtomicLong()
+
+        // The instance and the launch generation of the latest claim.
+        private var claimOwner: Pair<String, Long?>? = null
         private val disarmedByClaim = LinkedHashMap<HotUpdaterRecoveryManager, Long>()
         private val watchdogOwners = linkedSetOf<String>()
         private var watchdogDeadlineAt = 0L
@@ -691,7 +707,13 @@ internal class HotUpdaterRecoveryManager(
             exception: Exception? = null,
             attributedName: String? = slots.attributedName(),
         ): Boolean {
-            val targets = HotUpdaterRecoverySlots.markerTargets(liveLaunches(), attributedName)
+            // A claim belongs to the launch that threw, not to a newer launch
+            // of its instance that started while the claim was active.
+            val ownerGeneration = synchronized(claimLock) { claimOwner?.takeIf { it.first == attributedName }?.second }
+            val targets =
+                HotUpdaterRecoverySlots.markerTargets(liveLaunches(), attributedName).filter { target ->
+                    target.name != attributedName || liveManagers[target.name]?.currentGeneration() == ownerGeneration
+                }
             // Named instances first: main's recovery restart ends the process.
             targets.filterNot { it.isMain }.forEach { liveManagers[it.name]?.chargeCrash(exception) }
             if (targets.none { it.isMain }) return false
@@ -748,6 +770,8 @@ internal class HotUpdaterRecoveryManager(
             instanceName: String,
         ): Boolean {
             slots.attribute(instanceName)
+            val ownerGeneration = liveManagers[instanceName]?.currentGeneration()
+            synchronized(claimLock) { claimOwner = instanceName to ownerGeneration }
             if (signalHandlerInstalled) {
                 try {
                     HotUpdaterRecoveryNative.nativeAttributeCrash(slots.assignedSlot(instanceName) ?: -1)
@@ -778,7 +802,7 @@ internal class HotUpdaterRecoveryManager(
 
         /**
          * Adds the launch of [generation] of [manager] to the claim still
-         * active, unless the claim is its own instance's; true when it joined.
+         * active; true when it joined.
          * Checked under the claim's lock, which the claim takes after it set
          * itself, so a launch that started after the claim left the live
          * launches alone joins it here.
@@ -789,8 +813,10 @@ internal class HotUpdaterRecoveryManager(
         ): Boolean {
             val claim =
                 synchronized(claimLock) {
-                    val owner = slots.attributedName() ?: return false
-                    if (owner == manager.name) return false
+                    // Every launch that starts during a claim joins it, a newer
+                    // launch of the claim's own instance too: only the launch
+                    // that threw is the claim's.
+                    slots.attributedName() ?: return false
                     disarmedByClaim[manager] = generation
                     claimGeneration
                 }

@@ -477,6 +477,28 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a newer launch of the instance whose error is claimed joins the claim and is not charged`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "first-bundle")
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("first failed"), widget.name)
+
+        // The host starts a replacement launch before the error ends the process.
+        stagePending(context, widget, "second-bundle")
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        assertFalse(metadata(context, widget).launchInProgress)
+
+        // The crash the claimed error ends in is the earlier launch's.
+        HotUpdaterRecoveryManager.chargeUncaughtException(RuntimeException("first failed"))
+        assertFalse(crashMarker(context, widget).exists())
+        assertEquals("second-bundle", metadata(context, widget).stagingBundleId)
+
+        // The error did not end the process after all.
+        HotUpdaterRecoveryManager.releaseClaim()
+        assertTrue(metadata(context, widget).launchInProgress)
+    }
+
+    @Test
     fun `launches left alone by overlapping claims all count again when the last claim is released`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val chat = namedEnvironment("chat")

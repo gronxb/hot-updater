@@ -820,6 +820,42 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(coordinator.launch(named: Self.widget)?.isArmed == true)
     }
 
+    /// The widget's fatal claimed the crash, and its host starts a new
+    /// launch before the process ends: that launch is not the claim's, so it
+    /// is held like any other and never stands in for the crashed one.
+    @Test
+    func aLaterLaunchOfTheClaimedInstanceIsHeldUntilRelease() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        #expect(coordinator.arm(name: Self.widget))
+        let widgetSlot = try #require(coordinator.launch(named: Self.widget)?.slot)
+        let claim = try #require(coordinator.chargeFatal(owner: Self.widget))
+        #expect(process.sink.attribution == widgetSlot)
+        try FileManager.default.removeItem(at: scene.markerURL(Self.widget))
+
+        let replacement = coordinator.startMonitoring(
+            name: Self.widget,
+            bundleId: "widget-next",
+            shouldRollback: true,
+            launchURL: scene.launchURL(Self.widget, bundleId: "widget-next")
+        )
+        // The native crash the claimed fatal causes writes no slot now.
+        #expect(process.sink.attribution == HotUpdaterRecoveryCoordinator.attributedWithoutSlot)
+        #expect(!coordinator.arm(name: Self.widget, generation: replacement))
+        #expect(coordinator.launch(named: Self.widget)?.isArmed == false)
+        // Its exception, or the fatal going on, doesn't charge the new launch.
+        coordinator.chargeUncaughtException()
+        coordinator.chargeFatal(owner: Self.widget)
+        #expect(!FileManager.default.fileExists(atPath: scene.markerURL(Self.widget).path))
+
+        coordinator.clearAttribution(claim: claim)
+        #expect(coordinator.earlierRuntimeClaim != nil)
+        coordinator.clearAttribution(claim: try #require(coordinator.earlierRuntimeClaim))
+        #expect(coordinator.launch(named: Self.widget)?.isArmed == true)
+    }
+
     @Test
     func anErrorOfTheCurrentRuntimeStillChargesItsLaunch() throws {
         let scene = try Scene()

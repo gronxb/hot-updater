@@ -150,6 +150,9 @@ final class HotUpdaterRecoveryCoordinator {
     private var slotFlags: [Bool] = Array(repeating: false, count: HotUpdaterRecoveryCoordinator.slotCount)
     private var attributedSlot = HotUpdaterRecoveryCoordinator.unattributed
     private var attributedName: String?
+    /// The launch of `attributedName` the claim belongs to: a later launch
+    /// of the same instance, started before the process ends, is not it.
+    private var attributedGeneration: Int?
     /// The launches `attribute(to:)` stopped, to restart if the process
     /// survives the fatal.
     private var disarmed: [(name: String, generation: Int, bundleId: String, wasStarted: Bool, wasArmed: Bool)] = []
@@ -226,6 +229,13 @@ final class HotUpdaterRecoveryCoordinator {
         withLock {
             guard let launch = launches[name] else { return 0 }
             launch.generation += 1
+            if attributedName == name {
+                // The claimed crash is the previous launch's: its marker is
+                // written, and the native crash it causes writes no slot,
+                // so this launch's state never stands in for it.
+                attributedSlot = Self.attributedWithoutSlot
+                sink.attributeCrash(toSlot: attributedSlot)
+            }
             launch.launchURL = launchURL
             launch.bundleId = bundleId
             launch.shouldRollback = shouldRollback
@@ -289,7 +299,8 @@ final class HotUpdaterRecoveryCoordinator {
     /// that stopped every other launch: then it starts when that claim is
     /// released, if the process lives on.
     private func markStarted(_ launch: Launch) -> Bool {
-        let claimHeld = isEarlierRuntimeClaim || (attributedName != nil && attributedName != launch.name)
+        let isClaimOwner = attributedName == launch.name && attributedGeneration == launch.generation
+        let claimHeld = isEarlierRuntimeClaim || (attributedName != nil && !isClaimOwner)
         if claimHeld, let bundleId = launch.bundleId {
             disarmed.append((launch.name, launch.generation, bundleId, true, true))
             return false
@@ -539,6 +550,11 @@ final class HotUpdaterRecoveryCoordinator {
             guard isCurrentRuntime(of: launch, runtimeBundleURL: runtimeBundleURL) else {
                 return attributeToEarlierRuntime()
             }
+            // The claimed crash going on, after its instance started a later
+            // launch: still the earlier launch's.
+            if runtimeBundleURL == nil, attributedName == owner, attributedGeneration != launch.generation {
+                return attributeToEarlierRuntime()
+            }
             if launch.isMonitoring {
                 writeMarker(launch)
             }
@@ -571,6 +587,7 @@ final class HotUpdaterRecoveryCoordinator {
     private func attributeToEarlierRuntime() -> Int {
         claimGeneration += 1
         attributedName = nil
+        attributedGeneration = nil
         isEarlierRuntimeClaim = true
         attributedSlot = Self.attributedWithoutSlot
         sink.attributeCrash(toSlot: attributedSlot)
@@ -610,6 +627,7 @@ final class HotUpdaterRecoveryCoordinator {
             guard launches[owner] != nil else { return nil }
             claimGeneration += 1
             attributedName = owner
+            attributedGeneration = launches[owner]?.generation
             isEarlierRuntimeClaim = false
             attributedSlot = launches[owner]?.slot ?? Self.attributedWithoutSlot
             sink.attributeCrash(toSlot: attributedSlot)
@@ -627,6 +645,7 @@ final class HotUpdaterRecoveryCoordinator {
         withLock {
             guard claim == claimGeneration else { return }
             attributedName = nil
+            attributedGeneration = nil
             isEarlierRuntimeClaim = false
             attributedSlot = Self.unattributed
             sink.attributeCrash(toSlot: attributedSlot)
@@ -673,7 +692,8 @@ final class HotUpdaterRecoveryCoordinator {
     func chargeUncaughtException() {
         withLock {
             if let attributedName, let launch = launches[attributedName] {
-                if launch.isMonitoring {
+                // Not a later launch of the claimed instance.
+                if launch.isMonitoring, launch.generation == attributedGeneration {
                     writeMarker(launch)
                 }
                 return
