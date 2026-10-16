@@ -420,15 +420,16 @@ internal class HotUpdaterRecoveryManager(
      * the bundle back happens here too.
      */
     private fun writeRollbackMarkerLocked(launch: HotUpdaterRecoveryState.Launch) {
-        // The native slot asks for rollback first: a signal while the file is
+        // The watchdog is armed first: a launch none of whose views was shown
+        // has none yet, and a signal anywhere from here on leaves a marker it
+        // must relaunch the app for.
+        startRecoveryWatchdog()
+        // Then the native slot asks for rollback: a signal while the file is
         // being written writes the marker natively instead of leaving a
         // partial one.
         charged = true
         updateNativeLaunchStateLocked()
         writeCrashMarker(launch)
-        // A launch none of whose views was shown has no watchdog yet; it
-        // relaunches the app after this crash, as for an armed launch.
-        startRecoveryWatchdog()
         // The next start prepares a new launch, which reads this marker.
         chargedCallback?.invoke()
     }
@@ -709,7 +710,11 @@ internal class HotUpdaterRecoveryManager(
             name: String,
         ) {
             relaunchIntents += name
+            // An intent is only kept with an alarm that acts on it.
+            watchdogDeadlineAt = maxOf(watchdogDeadlineAt, System.currentTimeMillis() + MONITORING_GRACE_PERIOD_MS)
+            watchdogFile(context).parentFile?.mkdirs()
             persistWatchdogLocked(context)
+            scheduleRecoveryWatchdogTick(context, WATCHDOG_TICK_INTERVAL_MS)
         }
 
         private fun removeRelaunchIntentLocked(
@@ -1421,6 +1426,16 @@ internal class HotUpdaterRecoveryManager(
             )
 
         private fun scheduleRecoveryWatchdogTick(
+            context: Context,
+            delayMs: Long,
+        ) = watchdogAlarm(context, delayMs)
+
+        /** Sets the watchdog's alarm; tests stand in for AlarmManager. */
+        @Volatile
+        internal var watchdogAlarm: (Context, Long) -> Unit = ::setRecoveryWatchdogAlarm
+        internal val defaultWatchdogAlarm = watchdogAlarm
+
+        private fun setRecoveryWatchdogAlarm(
             context: Context,
             delayMs: Long,
         ) {

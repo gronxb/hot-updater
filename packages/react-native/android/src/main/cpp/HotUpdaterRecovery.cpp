@@ -347,7 +347,22 @@ Java_com_hotupdater_HotUpdaterRecoveryNative_nativeUpdateSlot(
 
   std::lock_guard<std::mutex> writer(gSlotWriters[index]);
   Slot &slot = gSlots[index];
-  const uint32_t target = (slot.published.load(std::memory_order_relaxed) & kPublishedIndexMask) ^ 1U;
+  const uint32_t state = slot.published.load(std::memory_order_relaxed);
+  if ((state & kPublishedOnceFlag) != 0) {
+    // Same marker and bundle, only the flags change (a launch charged or
+    // verified): flip them in the published buffer with single atomic stores,
+    // so no crash ever falls inside a copy and reads the old flags.
+    SlotBuffer &current = slot.buffers[state & kPublishedIndexMask];
+    SlotData published;
+    loadSlotData(current.data, published);
+    if (std::strcmp(published.crashMarkerPath, next.crashMarkerPath) == 0 &&
+        std::strcmp(published.bundleId, next.bundleId) == 0) {
+      current.data.shouldRollback.store(next.shouldRollback, std::memory_order_release);
+      current.data.writesWhenVerified.store(next.writesWhenVerified, std::memory_order_release);
+      return;
+    }
+  }
+  const uint32_t target = (state & kPublishedIndexMask) ^ 1U;
   SlotBuffer &buffer = slot.buffers[target];
   const uint32_t sequence = buffer.sequence.load(std::memory_order_relaxed);
   buffer.sequence.store(sequence + 1, std::memory_order_relaxed);

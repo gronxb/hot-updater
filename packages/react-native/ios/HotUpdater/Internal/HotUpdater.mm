@@ -232,10 +232,12 @@ void HotUpdaterRewriteCrashSlot(HotUpdaterCrashSlot &slot,
                                 int shouldRollback)
 {
   std::lock_guard<std::mutex> writer(gHotUpdaterCrashSlotWriters);
-  const uint32_t current = slot.published.load(std::memory_order_relaxed) & kPublishedIndexMask;
-  HotUpdaterCrashSlotData next;
+  const uint32_t state = slot.published.load(std::memory_order_relaxed);
+  const uint32_t current = state & kPublishedIndexMask;
+  HotUpdaterCrashSlotData published;
   // The writers are serialized, so the published buffer is stable here.
-  HotUpdaterLoadCrashSlotData(slot.buffers[current].data, next);
+  HotUpdaterLoadCrashSlotData(slot.buffers[current].data, published);
+  HotUpdaterCrashSlotData next = published;
   if (markerPath) {
     HotUpdaterSafeCopy(next.markerPath, sizeof(next.markerPath), markerPath);
   }
@@ -244,6 +246,15 @@ void HotUpdaterRewriteCrashSlot(HotUpdaterCrashSlot &slot,
   }
   if (shouldRollback != kHotUpdaterKeepShouldRollback) {
     next.shouldRollback = shouldRollback != 0 ? 1 : 0;
+  }
+
+  if ((state & kPublishedOnceFlag) != 0 && std::strcmp(published.markerPath, next.markerPath) == 0 &&
+      std::strcmp(published.bundleId, next.bundleId) == 0) {
+    // Same marker and bundle, only the flag changes (a launch charged or
+    // verified): flip it in the published buffer with one atomic store, so
+    // no crash ever falls inside a copy and reads the old flag.
+    slot.buffers[current].data.shouldRollback.store(next.shouldRollback, std::memory_order_release);
+    return;
   }
 
   HotUpdaterCrashSlotBuffer &buffer = slot.buffers[current ^ 1U];

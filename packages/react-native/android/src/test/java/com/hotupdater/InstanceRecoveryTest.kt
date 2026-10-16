@@ -1111,6 +1111,36 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a charged launch's watchdog alarm is set before its marker is written`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        // Not armed, and no other launch owns the watchdog.
+        HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+        val markerWhenAlarmSet = mutableListOf<Boolean>()
+        HotUpdaterRecoveryManager.watchdogAlarm = { _, _ -> markerWhenAlarmSet += crashMarker(context, widget).exists() }
+
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+
+        // A signal while the marker is written finds an alarm to relaunch the app.
+        assertEquals(false, markerWhenAlarmSet.firstOrNull())
+        assertTrue(crashMarker(context, widget).exists())
+    }
+
+    @Test
+    fun `a launch charged by a crash nobody claimed has its alarm set before its marker`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        val markerWhenAlarmSet = mutableListOf<Boolean>()
+        HotUpdaterRecoveryManager.watchdogAlarm = { _, _ -> markerWhenAlarmSet += crashMarker(context, widget).exists() }
+
+        HotUpdaterRecoveryManager.chargeUncaughtException(IllegalStateException("native failure"))
+
+        assertEquals(false, markerWhenAlarmSet.firstOrNull())
+        assertTrue(crashMarker(context, widget).exists())
+    }
+
+    @Test
     fun `first content of one instance never verifies another's launch`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, main, "main-bundle")
