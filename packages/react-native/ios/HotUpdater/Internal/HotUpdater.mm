@@ -97,9 +97,17 @@ struct HotUpdaterAtomicCrashSlotData {
   std::atomic<int> shouldRollback;
 };
 
-struct HotUpdaterCrashSlot {
+struct HotUpdaterCrashSlotBuffer {
   std::atomic<uint32_t> sequence;
   HotUpdaterAtomicCrashSlotData data;
+};
+
+// Two buffers per slot: the writer fills the one not published, then
+// publishes it. A crash during a rewrite, even on the writer's own thread,
+// still reads the previous whole copy.
+struct HotUpdaterCrashSlot {
+  std::atomic<uint32_t> published;
+  HotUpdaterCrashSlotBuffer buffers[2];
 };
 // C++11, as old React Native builds compile it: the handler needs a
 // lock-free sequence.
@@ -219,8 +227,10 @@ void HotUpdaterRewriteCrashSlot(HotUpdaterCrashSlot &slot,
                                 int shouldRollback)
 {
   std::lock_guard<std::mutex> writer(gHotUpdaterCrashSlotWriters);
+  const uint32_t current = slot.published.load(std::memory_order_relaxed) & 1U;
   HotUpdaterCrashSlotData next;
-  HotUpdaterLoadCrashSlotData(slot.data, next);
+  // The writers are serialized, so the published buffer is stable here.
+  HotUpdaterLoadCrashSlotData(slot.buffers[current].data, next);
   if (markerPath) {
     HotUpdaterSafeCopy(next.markerPath, sizeof(next.markerPath), markerPath);
   }
@@ -231,11 +241,13 @@ void HotUpdaterRewriteCrashSlot(HotUpdaterCrashSlot &slot,
     next.shouldRollback = shouldRollback != 0 ? 1 : 0;
   }
 
-  const uint32_t sequence = slot.sequence.load(std::memory_order_relaxed);
-  slot.sequence.store(sequence + 1, std::memory_order_relaxed);
+  HotUpdaterCrashSlotBuffer &buffer = slot.buffers[current ^ 1U];
+  const uint32_t sequence = buffer.sequence.load(std::memory_order_relaxed);
+  buffer.sequence.store(sequence + 1, std::memory_order_relaxed);
   std::atomic_thread_fence(std::memory_order_release);
-  HotUpdaterStoreCrashSlotData(slot.data, next);
-  slot.sequence.store(sequence + 2, std::memory_order_release);
+  HotUpdaterStoreCrashSlotData(buffer.data, next);
+  buffer.sequence.store(sequence + 2, std::memory_order_release);
+  slot.published.store(current ^ 1U, std::memory_order_release);
 }
 
 // Copies a consistent snapshot of the slot, or returns false while it is
@@ -243,13 +255,16 @@ void HotUpdaterRewriteCrashSlot(HotUpdaterCrashSlot &slot,
 bool HotUpdaterReadCrashSlot(const HotUpdaterCrashSlot &slot, HotUpdaterCrashSlotData &snapshot)
 {
   for (int attempt = 0; attempt < 4; ++attempt) {
-    const uint32_t before = slot.sequence.load(std::memory_order_acquire);
+    const HotUpdaterCrashSlotBuffer &buffer = slot.buffers[slot.published.load(std::memory_order_acquire) & 1U];
+    const uint32_t before = buffer.sequence.load(std::memory_order_acquire);
     if ((before & 1U) != 0) {
+      // Only a buffer published before the latest flip is ever rewritten;
+      // read the slot again.
       continue;
     }
-    HotUpdaterLoadCrashSlotData(slot.data, snapshot);
+    HotUpdaterLoadCrashSlotData(buffer.data, snapshot);
     std::atomic_thread_fence(std::memory_order_acquire);
-    if (slot.sequence.load(std::memory_order_relaxed) == before) {
+    if (buffer.sequence.load(std::memory_order_relaxed) == before) {
       return true;
     }
   }

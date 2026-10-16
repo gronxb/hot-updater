@@ -47,9 +47,17 @@ struct AtomicSlotData {
 // A sequence lock: a crash on any thread may read a slot while another thread
 // rewrites it. The writer makes the sequence odd while it copies, and a
 // reader keeps a copy only when the sequence was even and unchanged across it.
-struct Slot {
+struct SlotBuffer {
   std::atomic<uint32_t> sequence;
   AtomicSlotData data;
+};
+
+// Two buffers per slot: the writer fills the one not published, then
+// publishes it. A crash during a rewrite, even on the writer's own thread,
+// still reads the previous whole copy.
+struct Slot {
+  std::atomic<uint32_t> published;
+  SlotBuffer buffers[2];
 };
 // C++11, as old React Native builds compile it: the handler needs a
 // lock-free sequence.
@@ -175,13 +183,16 @@ void loadSlotData(const AtomicSlotData &source, SlotData &destination) {
 
 bool readSlot(const Slot &slot, SlotData &snapshot) {
   for (int attempt = 0; attempt < 4; ++attempt) {
-    const uint32_t before = slot.sequence.load(std::memory_order_acquire);
+    const SlotBuffer &buffer = slot.buffers[slot.published.load(std::memory_order_acquire) & 1U];
+    const uint32_t before = buffer.sequence.load(std::memory_order_acquire);
     if ((before & 1U) != 0) {
+      // Only a buffer published before the latest flip is ever rewritten;
+      // read the slot again.
       continue;
     }
-    loadSlotData(slot.data, snapshot);
+    loadSlotData(buffer.data, snapshot);
     std::atomic_thread_fence(std::memory_order_acquire);
-    if (slot.sequence.load(std::memory_order_relaxed) == before) {
+    if (buffer.sequence.load(std::memory_order_relaxed) == before) {
       return true;
     }
   }
@@ -314,11 +325,14 @@ Java_com_hotupdater_HotUpdaterRecoveryNative_nativeUpdateSlot(
 
   std::lock_guard<std::mutex> writer(gSlotWriters[index]);
   Slot &slot = gSlots[index];
-  const uint32_t sequence = slot.sequence.load(std::memory_order_relaxed);
-  slot.sequence.store(sequence + 1, std::memory_order_relaxed);
+  const uint32_t target = (slot.published.load(std::memory_order_relaxed) & 1U) ^ 1U;
+  SlotBuffer &buffer = slot.buffers[target];
+  const uint32_t sequence = buffer.sequence.load(std::memory_order_relaxed);
+  buffer.sequence.store(sequence + 1, std::memory_order_relaxed);
   std::atomic_thread_fence(std::memory_order_release);
-  storeSlotData(slot.data, next);
-  slot.sequence.store(sequence + 2, std::memory_order_release);
+  storeSlotData(buffer.data, next);
+  buffer.sequence.store(sequence + 2, std::memory_order_release);
+  slot.published.store(target, std::memory_order_release);
 }
 
 extern "C" JNIEXPORT void JNICALL

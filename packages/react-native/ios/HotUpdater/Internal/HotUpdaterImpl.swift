@@ -1299,7 +1299,7 @@ final class HotUpdaterRecoveryHub: NSObject {
     /// launch that can have thrown it, if there is exactly one.
     /// With the owner, the bundle its failing runtime runs when known, which
     /// tells a runtime of an earlier launch from the current one.
-    private func fatalOwner(stack: Any?, afterLoadFailure: Bool) -> (name: String, runtimeBundleURL: URL?)? {
+    private func fatalOwner(stack: Any?) -> (name: String, runtimeBundleURL: URL?)? {
         if let owner = hotUpdaterRuntimeImpl()?.environment.name {
             return (owner, hotUpdaterRuntimeBundleURL())
         }
@@ -1311,8 +1311,7 @@ final class HotUpdaterRecoveryHub: NSObject {
         }) {
             return (owner, HotUpdaterJSStackOwner.bundleURLs(in: stack).first)
         }
-        // RCTInstance reports a load failure's fatal on the main thread.
-        guard afterLoadFailure || Thread.current.name == Self.runtimeThreadName else { return nil }
+        guard Thread.current.name == Self.runtimeThreadName else { return nil }
         return coordinator.inferredFatalOwner().map { ($0, nil) }
     }
 
@@ -1339,8 +1338,15 @@ final class HotUpdaterRecoveryHub: NSObject {
     }
 
     private func handleFatal(stack: Any?, forward: @escaping () -> Void) {
-        let afterLoadFailure = coordinator.takeDeferredLoadFailure()
-        let attributed = fatalOwner(stack: stack, afterLoadFailure: afterLoadFailure)
+        var attributed = fatalOwner(stack: stack)
+        // A fatal no runtime claims takes a deferred load failure; one of a
+        // known runtime leaves it to the fatal of the runtime that failed.
+        var afterLoadFailure = false
+        if attributed == nil, coordinator.earlierRuntimeClaim == nil, coordinator.takeDeferredLoadFailure() {
+            afterLoadFailure = true
+            // RCTInstance reports a load failure's fatal on the main thread.
+            attributed = coordinator.inferredFatalOwner().map { ($0, nil) }
+        }
         let owner = attributed?.name
         if owner == nil, let claim = coordinator.earlierRuntimeClaim {
             // The fatal of a runtime of an earlier launch: no launch is charged.

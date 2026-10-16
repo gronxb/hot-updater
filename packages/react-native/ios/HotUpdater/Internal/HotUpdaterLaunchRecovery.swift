@@ -159,7 +159,10 @@ final class HotUpdaterRecoveryCoordinator {
     /// The latest claim: a fatal of another instance can arrive before an
     /// earlier one's handler returns, and only the latest releases them all.
     private var claimGeneration = 0
-    private var deferredLoadFailure = false
+    /// Load failures no runtime claimed whose fatal hasn't come yet: several
+    /// runtimes can fail close together, and each fatal that no runtime
+    /// claims takes one.
+    private var deferredLoadFailures = 0
     /// The current claim is of a runtime no current launch runs.
     private var isEarlierRuntimeClaim = false
     /// First content no runtime claims yet, held while a named launch's
@@ -440,7 +443,7 @@ final class HotUpdaterRecoveryCoordinator {
     func deferUnclaimedLoadFailure() -> Bool {
         withLock {
             guard hasUnresolvedNamedLaunch else { return false }
-            deferredLoadFailure = true
+            deferredLoadFailures += 1
             return true
         }
     }
@@ -470,8 +473,9 @@ final class HotUpdaterRecoveryCoordinator {
     /// next one doesn't.
     func takeDeferredLoadFailure() -> Bool {
         withLock {
-            defer { deferredLoadFailure = false }
-            return deferredLoadFailure
+            guard deferredLoadFailures > 0 else { return false }
+            deferredLoadFailures -= 1
+            return true
         }
     }
 

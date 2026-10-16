@@ -637,6 +637,12 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(coordinator.deferUnclaimedLoadFailure())
         #expect(coordinator.takeDeferredLoadFailure())
         #expect(!coordinator.takeDeferredLoadFailure())
+        // Two runtimes fail close together: each unclaimed fatal takes one.
+        #expect(coordinator.deferUnclaimedLoadFailure())
+        #expect(coordinator.deferUnclaimedLoadFailure())
+        #expect(coordinator.takeDeferredLoadFailure())
+        #expect(coordinator.takeDeferredLoadFailure())
+        #expect(!coordinator.takeDeferredLoadFailure())
 
         // The widget's view hasn't shown, yet its bundle may be the one.
         #expect(coordinator.launch(named: Self.widget)?.isArmed == false)
