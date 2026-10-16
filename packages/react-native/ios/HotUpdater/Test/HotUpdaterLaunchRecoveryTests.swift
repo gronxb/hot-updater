@@ -507,6 +507,25 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(coordinator.chargeFatal(owner: Self.widget, runtimeBundleURL: elsewhere) != other)
     }
 
+    /// An earlier runtime's load failure whose fatal never comes ends when
+    /// its instance launches again, like the current launch's would.
+    @Test
+    func anEarlierRuntimesLoadFailureEndsWhenItsInstanceLaunchesAgain() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        process.storages[Self.main]?.markLaunchStarted(bundleId: "main-next")
+        let earlier = try #require(scene.launchURL(Self.widget, bundleId: "widget-stable"))
+
+        coordinator.chargeLoadFailure(owner: Self.widget, runtimeBundleURL: earlier)
+        #expect(coordinator.activeClaimCount == 1)
+        coordinator.startMonitoring(name: Self.widget, bundleId: "widget-next", shouldRollback: true)
+        #expect(coordinator.activeClaimCount == 0)
+        #expect(coordinator.earlierRuntimeClaim == nil)
+        #expect(scene.metadata(Self.main)?.launchInProgress == true)
+    }
+
     /// A load failure whose fatal never comes doesn't keep other launches
     /// stopped: its claim ends after the bound, or when the instance
     /// launches again.

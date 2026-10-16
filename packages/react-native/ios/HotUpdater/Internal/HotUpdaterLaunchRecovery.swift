@@ -304,7 +304,9 @@ final class HotUpdaterRecoveryCoordinator {
             launch.generation += 1
             // A load failure of this instance whose fatal never came: the
             // instance starts again, so that crash is over.
-            for claim in activeClaims where claim.name == name && claim.awaitingFatalSince != nil {
+            // An earlier runtime's claim keeps its instance in earlierRuntimeOwner.
+            for claim in activeClaims
+            where (claim.name ?? claim.earlierRuntimeOwner) == name && claim.awaitingFatalSince != nil {
                 releaseClaim(claim.id)
             }
             if activeClaims.contains(where: { $0.name == name }) {
