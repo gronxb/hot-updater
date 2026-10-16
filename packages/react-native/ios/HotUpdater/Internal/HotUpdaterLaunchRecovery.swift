@@ -172,7 +172,16 @@ final class HotUpdaterRecoveryCoordinator {
         let generation: Int?
         var slot: Int
         let isEarlierRuntime: Bool
+        /// A load failure's claim, waiting since then for the fatal React
+        /// Native reports next, which takes it over.
+        var awaitingFatalSince: TimeInterval?
     }
+
+    /// How long a load failure's claim waits for its fatal. React Native
+    /// reports it right after the load failure; if none comes (a
+    /// development build that shows the error instead), the claim must not
+    /// keep the other launches stopped for the rest of the process.
+    static let loadFailureClaimBound: TimeInterval = 10
     /// Load failures no runtime claimed whose fatal hasn't come yet: several
     /// runtimes can fail close together, and each fatal that no runtime
     /// claims takes one.
@@ -263,6 +272,11 @@ final class HotUpdaterRecoveryCoordinator {
         withLock {
             guard let launch = launches[name] else { return 0 }
             launch.generation += 1
+            // A load failure of this instance whose fatal never came: the
+            // instance starts again, so that crash is over.
+            for claim in activeClaims where claim.name == name && claim.awaitingFatalSince != nil {
+                releaseClaim(claim.id)
+            }
             if activeClaims.contains(where: { $0.name == name }) {
                 // A claimed crash is the previous launch's: its marker is
                 // written, and the native crash it causes writes no slot,
@@ -652,11 +666,54 @@ final class HotUpdaterRecoveryCoordinator {
             if runtimeBundleURL == nil, attributedName == owner, attributedGeneration != launch.generation {
                 return attributeToEarlierRuntime()
             }
+            // The fatal of this launch's load failure: the same crash, so
+            // the load failure's claim is its claim.
+            if let index = activeClaims.indices.last,
+               activeClaims[index].awaitingFatalSince != nil,
+               activeClaims[index].name == owner,
+               activeClaims[index].generation == launch.generation {
+                activeClaims[index].awaitingFatalSince = nil
+                return activeClaims[index].id
+            }
             if launch.isMonitoring {
                 charge(launch)
             }
             return attribute(to: owner)
         }
+    }
+
+    /// A load failure of `owner`'s runtime, which React Native follows with
+    /// a fatal: charged as `chargeFatal` does, and its claim kept for that
+    /// fatal, which takes it over and releases it when its handler returns.
+    /// Without a fatal it is released when the instance launches again or
+    /// after `loadFailureClaimBound` (`releaseExpiredLoadFailureClaims`).
+    @discardableResult
+    func chargeLoadFailure(owner: String, runtimeBundleURL: URL? = nil) -> Int? {
+        let claim = chargeFatal(owner: owner, runtimeBundleURL: runtimeBundleURL)
+        withLock {
+            if let claim, let index = activeClaims.firstIndex(where: { $0.id == claim }) {
+                activeClaims[index].awaitingFatalSince = now()
+            }
+        }
+        return claim
+    }
+
+    /// Releases the load failures' claims whose fatal hasn't come within
+    /// `loadFailureClaimBound`.
+    func releaseExpiredLoadFailureClaims() {
+        withLock {
+            let currentTime = now()
+            for claim in activeClaims {
+                if let since = claim.awaitingFatalSince, currentTime - since >= Self.loadFailureClaimBound {
+                    releaseClaim(claim.id)
+                }
+            }
+        }
+    }
+
+    /// The number of claims still active, for tests.
+    var activeClaimCount: Int {
+        withLock { activeClaims.count }
     }
 
     /// Charges `launch` with the crash under way: first its native slot asks
@@ -770,29 +827,33 @@ final class HotUpdaterRecoveryCoordinator {
     /// last one's return releases the launches every claim stopped.
     func clearAttribution(claim: Int) {
         withLock {
-            guard let index = activeClaims.firstIndex(where: { $0.id == claim }) else { return }
-            activeClaims.remove(at: index)
-            publishLatestClaim()
-            guard activeClaims.isEmpty else { return }
-            for entry in disarmed {
-                guard let launch = launches[entry.name],
-                      launch.generation == entry.generation,
-                      launch.isMonitoring,
-                      !launch.hasShownContent,
-                      launch.bundleId == entry.bundleId else {
-                    continue
-                }
-                if entry.wasStarted {
-                    launch.storage.markLaunchStarted(bundleId: entry.bundleId)
-                }
-                if entry.wasArmed {
-                    launch.isArmed = true
-                    assignSlot(to: launch)
-                }
-                mirror(launch)
-            }
-            disarmed = []
+            releaseClaim(claim)
         }
+    }
+
+    private func releaseClaim(_ claim: Int) {
+        guard let index = activeClaims.firstIndex(where: { $0.id == claim }) else { return }
+        activeClaims.remove(at: index)
+        publishLatestClaim()
+        guard activeClaims.isEmpty else { return }
+        for entry in disarmed {
+            guard let launch = launches[entry.name],
+                  launch.generation == entry.generation,
+                  launch.isMonitoring,
+                  !launch.hasShownContent,
+                  launch.bundleId == entry.bundleId else {
+                continue
+            }
+            if entry.wasStarted {
+                launch.storage.markLaunchStarted(bundleId: entry.bundleId)
+            }
+            if entry.wasArmed {
+                launch.isArmed = true
+                assignSlot(to: launch)
+            }
+            mirror(launch)
+        }
+        disarmed = []
     }
 
     /// The instance a crash in progress was attributed to, if any.

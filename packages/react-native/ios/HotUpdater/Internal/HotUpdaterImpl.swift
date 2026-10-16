@@ -1529,13 +1529,13 @@ final class HotUpdaterRecoveryHub: NSObject {
             // A runtime of an earlier launch fails, not the current one: the
             // fatal that follows charges no launch.
             guard coordinator.isCurrentRuntime(name: owner, runtimeBundleURL: runtimeBundleURL) else {
-                coordinator.chargeFatal(owner: owner, runtimeBundleURL: runtimeBundleURL)
+                chargeLoadFailure(owner: owner, runtimeBundleURL: runtimeBundleURL)
                 return
             }
             guard let generation = coordinator.awaitingContentGeneration(name: owner) else { return }
             // React Native's fatal follows and crashes the process: charge
             // this instance alone, so that fatal is attributed to it too.
-            coordinator.chargeFatal(owner: owner, runtimeBundleURL: runtimeBundleURL)
+            chargeLoadFailure(owner: owner, runtimeBundleURL: runtimeBundleURL)
             coordinator.stopAwaitingContent(name: owner, generation: generation)
             releaseHeldContent()
             return
@@ -1554,9 +1554,21 @@ final class HotUpdaterRecoveryHub: NSObject {
             // No in-process reload beside named instances: the fatal React
             // Native reports next is main's, and main rolls back at its next
             // start.
-            coordinator.chargeFatal(owner: mainName)
+            chargeLoadFailure(owner: mainName, runtimeBundleURL: nil)
         }
         coordinator.stopAwaitingContent(name: mainName, generation: generation)
+    }
+
+    /// Charges a load failure; its claim is the one the fatal React Native
+    /// reports next takes over and releases. Without that fatal, the claim
+    /// ends when the instance launches again or once the bound passes.
+    private func chargeLoadFailure(owner: String, runtimeBundleURL: URL?) {
+        coordinator.chargeLoadFailure(owner: owner, runtimeBundleURL: runtimeBundleURL)
+        DispatchQueue.main.asyncAfter(
+            deadline: .now() + HotUpdaterRecoveryCoordinator.loadFailureClaimBound + 0.1
+        ) { [weak self] in
+            self?.coordinator.releaseExpiredLoadFailureClaims()
+        }
     }
 
     @objc private func handleContentDidAppear(_ notification: Notification) {

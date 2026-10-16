@@ -710,6 +710,27 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `one error reported twice makes one claim`() {
+        val releases = mutableListOf<Runnable>()
+        HotUpdaterRecoveryManager.claimReleaseScheduler = { _, task -> releases += task }
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        val error = RuntimeException("widget failed")
+
+        // Through the runtime's context, then wrapped on its way to the host.
+        HotUpdaterRecoveryManager.handleJavaScriptException(error, widget.name)
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException(error), widget.name)
+        assertEquals(1, releases.size)
+
+        // Its one release ends it: nothing stays left alone.
+        releases.single().run()
+        assertTrue(metadata(context, main).launchInProgress)
+    }
+
+    @Test
     fun `launches left alone by overlapping claims all count again when the last claim is released`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val chat = namedEnvironment("chat")

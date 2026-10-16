@@ -454,6 +454,58 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(scene.metadata(Self.main)?.launchInProgress == true)
     }
 
+    /// A load failure, then the fatal React Native reports for it: one
+    /// crash, one claim, released when the fatal's handler returns.
+    @Test
+    func aLoadFailuresFatalTakesOverItsClaim() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        process.storages[Self.main]?.markLaunchStarted(bundleId: "main-next")
+
+        let loadFailure = try #require(coordinator.chargeLoadFailure(owner: Self.widget))
+        #expect(coordinator.attributedOwner == Self.widget)
+        let fatal = try #require(coordinator.chargeFatal(owner: Self.widget))
+        #expect(fatal == loadFailure)
+        #expect(coordinator.activeClaimCount == 1)
+        coordinator.clearAttribution(claim: fatal)
+        #expect(coordinator.activeClaimCount == 0)
+        #expect(coordinator.attributedOwner == nil)
+        #expect(scene.metadata(Self.main)?.launchInProgress == true)
+        // Taken over: the bound no longer applies to it.
+        #expect(coordinator.chargeFatal(owner: Self.widget) != loadFailure)
+    }
+
+    /// A load failure whose fatal never comes doesn't keep other launches
+    /// stopped: its claim ends after the bound, or when the instance
+    /// launches again.
+    @Test
+    func aLoadFailureWithoutItsFatalIsReleased() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        var clock: TimeInterval = 0
+        let process = scene.launch(now: { clock })
+        let coordinator = process.coordinator
+        process.storages[Self.main]?.markLaunchStarted(bundleId: "main-next")
+
+        coordinator.chargeLoadFailure(owner: Self.widget)
+        clock += HotUpdaterRecoveryCoordinator.loadFailureClaimBound - 1
+        coordinator.releaseExpiredLoadFailureClaims()
+        #expect(coordinator.activeClaimCount == 1)
+        #expect(scene.metadata(Self.main)?.launchInProgress == false)
+        clock += 1
+        coordinator.releaseExpiredLoadFailureClaims()
+        #expect(coordinator.activeClaimCount == 0)
+        #expect(coordinator.attributedOwner == nil)
+        #expect(scene.metadata(Self.main)?.launchInProgress == true)
+
+        coordinator.chargeLoadFailure(owner: Self.widget)
+        #expect(coordinator.activeClaimCount == 1)
+        coordinator.startMonitoring(name: Self.widget, bundleId: "widget-next", shouldRollback: true)
+        #expect(coordinator.activeClaimCount == 0)
+    }
+
     @Test
     func overlappingClaimsReleaseTogetherWithTheLatest() throws {
         let scene = try Scene()

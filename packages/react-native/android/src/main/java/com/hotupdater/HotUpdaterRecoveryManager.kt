@@ -17,6 +17,7 @@ import com.facebook.react.common.JavascriptException
 import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
+import java.lang.ref.WeakReference
 import java.lang.reflect.Field
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
@@ -703,6 +704,12 @@ internal class HotUpdaterRecoveryManager(
         // once: the claim stays published until the last of them ends.
         private val activeClaims = LinkedHashMap<Int, Pair<String, Long?>>()
 
+        // The error each active claim was made for. React Native may report
+        // one error twice, through a runtime's context and its host, or wrap
+        // it on the way: a report of an error already claimed reuses its
+        // claim, which its handler's return or its fail-safe ends.
+        private val claimErrors = HashMap<Int, WeakReference<Throwable>>()
+
         // Every owner of the claims still active, which overlap when errors
         // return: each one's watchdog is left when the latest claim ends.
         private val claimedOwners = LinkedHashSet<Pair<String, Long?>>()
@@ -1002,6 +1009,7 @@ internal class HotUpdaterRecoveryManager(
             eventGeneration: Long? = liveManagers[instanceName]?.currentGeneration(),
         ): JavaScriptErrorOutcome =
             synchronized(recoveryLock) {
+                exception?.let(::activeClaimOf)?.let { return@synchronized JavaScriptErrorOutcome(false, it) }
                 // The claim's generation, its attribution in both claims, its
                 // owner, and the launches it leaves alone change at once: no
                 // launch starts, and no release runs, in between. Only the
@@ -1021,6 +1029,7 @@ internal class HotUpdaterRecoveryManager(
                 claimOwner = instanceName to ownerGeneration
                 claimedOwners += instanceName to ownerGeneration
                 activeClaims[generation] = instanceName to ownerGeneration
+                exception?.let { claimErrors[generation] = WeakReference(it) }
                 // The owner's marker, and its native slot asking for rollback,
                 // come before the native claim: a signal in between finds the
                 // crash unclaimed, or claimed with the owner's rollback in place.
@@ -1070,8 +1079,11 @@ internal class HotUpdaterRecoveryManager(
             synchronized(recoveryLock) {
                 if (generation == null) {
                     activeClaims.clear()
+                    claimErrors.clear()
                 } else if (activeClaims.remove(generation) == null) {
                     return
+                } else {
+                    claimErrors.remove(generation)
                 }
                 // Another fatal error is still in flight: the claim stays,
                 // now its, with its marker and slot already in place.
@@ -1106,6 +1118,26 @@ internal class HotUpdaterRecoveryManager(
                 }
                 disarmed.forEach { (manager, launch) -> manager.resumeAfterAnotherInstanceSurvived(launch) }
             }
+        }
+
+        /** The active claim made for [error], or for an error it wraps or that wraps it. */
+        private fun activeClaimOf(error: Throwable): Int? {
+            val chain = causes(error)
+            return claimErrors.entries
+                .firstOrNull { (generation, claimed) ->
+                    generation in activeClaims &&
+                        claimed.get()?.let { claimedError -> causes(claimedError).any { cause -> chain.any { it === cause } } } == true
+                }?.key
+        }
+
+        private fun causes(error: Throwable): List<Throwable> {
+            val chain = ArrayList<Throwable>()
+            var current: Throwable? = error
+            while (current != null && chain.size < MAX_CAUSE_DEPTH && chain.none { it === current }) {
+                chain += current
+                current = current.cause
+            }
+            return chain
         }
 
         /** The active claim: its instance and the generation of the launch that threw. */
