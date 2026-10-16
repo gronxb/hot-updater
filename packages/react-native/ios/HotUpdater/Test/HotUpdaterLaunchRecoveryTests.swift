@@ -1376,6 +1376,43 @@ struct HotUpdaterLaunchRecoveryTests {
         }
     }
 
+    /// Every charge publishes the slots first: a charged launch's slot asks
+    /// for rollback before its marker's directory is created, and a launch
+    /// a claim stops no longer asks before its storage is written.
+    @Test
+    func aChargePublishesItsSlotsBeforeAnyFileSystemWrite() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let sink = RecordingSlotSink()
+        let coordinator = HotUpdaterRecoveryCoordinator(sink: sink)
+        let checkoutMarker = directory.appendingPathComponent("checkout/bundle-store/marker.json")
+        let widgetStorage = ProbeStorage()
+        coordinator.register(name: Self.main, markerURL: directory.appendingPathComponent("main.json"), storage: NoStorage())
+        coordinator.register(name: Self.widget, markerURL: directory.appendingPathComponent("widget.json"), storage: widgetStorage)
+        coordinator.register(name: "checkout", markerURL: checkoutMarker, storage: NoStorage())
+        for name in [Self.main, Self.widget, "checkout"] {
+            coordinator.startMonitoring(name: name, bundleId: "\(name)-next", shouldRollback: true)
+        }
+        _ = coordinator.contentAppeared(owner: nil)
+        #expect(coordinator.arm(name: Self.widget))
+        let widgetSlot = try #require(coordinator.launch(named: Self.widget)?.slot)
+
+        var directoryWhenSlotAsked: Bool?
+        sink.onUpdate = { slot, shouldRollback in
+            guard shouldRollback, slot != widgetSlot, directoryWhenSlotAsked == nil else { return }
+            directoryWhenSlotAsked = FileManager.default.fileExists(
+                atPath: checkoutMarker.deletingLastPathComponent().path
+            )
+        }
+        var widgetSlotWhenCleared: Bool?
+        widgetStorage.onClearLaunchStarted = { widgetSlotWhenCleared = sink.flags[widgetSlot] }
+
+        coordinator.chargeFatal(owner: "checkout")
+        #expect(directoryWhenSlotAsked == false)
+        #expect(FileManager.default.fileExists(atPath: checkoutMarker.path))
+        #expect(widgetSlotWhenCleared == false)
+    }
+
     @Test
     func anErrorOfTheCurrentRuntimeStillChargesItsLaunch() throws {
         let scene = try Scene()
@@ -1714,7 +1751,7 @@ private final class NoDownloads: DownloadService {
 }
 
 /// Storage of a launch these tests only count slots for.
-private final class NoStorage: BundleStorageService {
+private class NoStorage: BundleStorageService {
     func setBundleURL(localPath _: String?) -> Result<Void, Error> { .success(()) }
     func getCachedBundleURL() -> URL? { nil }
     func getFallbackBundleURL(bundle _: Bundle) -> URL? { nil }
@@ -1733,6 +1770,7 @@ private final class NoStorage: BundleStorageService {
         completion _: @escaping (Result<UpdateDelivery, Error>) -> Void
     ) {}
     func markLaunchStarted(bundleId _: String?) {}
+    func clearLaunchStarted(bundleId _: String?) -> Bool { false }
     func markLaunchCompleted(bundleId _: String?) {}
     func notifyAppReady() -> [String: Any] { [:] }
     func getCrashHistory() -> CrashedHistory { CrashedHistory() }
@@ -1744,6 +1782,16 @@ private final class NoStorage: BundleStorageService {
     func getManifest() -> ManifestAssets { [:] }
     func getManifest(forBundleId _: String?) -> ManifestAssets { [:] }
     func resetChannel() -> Result<Bool, Error> { .success(true) }
+}
+
+/// Storage that reports when a launch's start is cleared.
+private final class ProbeStorage: NoStorage {
+    var onClearLaunchStarted: (() -> Void)?
+
+    override func clearLaunchStarted(bundleId _: String?) -> Bool {
+        onClearLaunchStarted?()
+        return true
+    }
 }
 
 private func makeTemporaryDirectory() throws -> URL {

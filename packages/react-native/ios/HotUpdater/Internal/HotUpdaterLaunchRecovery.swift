@@ -138,6 +138,8 @@ final class HotUpdaterRecoveryCoordinator {
         /// Named only: a crash of its own was charged to this launch, so its
         /// native slot asks for rollback even if no view of it showed.
         fileprivate(set) var isCharged = false
+        /// The directory of `markerURL` was created.
+        fileprivate var hasMarkerDirectory = false
     }
 
     enum RecoveryRequest: Equatable {
@@ -374,10 +376,11 @@ final class HotUpdaterRecoveryCoordinator {
             disarmed.append((launch.name, launch.generation, bundleId, true, true))
             return false
         }
+        // The slot first, then storage.
         launch.isArmed = true
-        launch.storage.markLaunchStarted(bundleId: launch.bundleId)
         assignSlot(to: launch)
         mirror(launch)
+        launch.storage.markLaunchStarted(bundleId: launch.bundleId)
         return true
     }
 
@@ -888,12 +891,15 @@ final class HotUpdaterRecoveryCoordinator {
             guard launch.isMonitoring, launch.isAwaitingContent, let bundleId = launch.bundleId else {
                 continue
             }
-            let wasStarted = launch.storage.clearLaunchStarted(bundleId: bundleId)
             // A launch charged earlier counts as started too.
-            disarmed.append((launch.name, launch.generation, bundleId, wasStarted, launch.isArmed || launch.isCharged))
+            let wasArmed = launch.isArmed || launch.isCharged
             launch.isArmed = false
             launch.isCharged = false
+            // Its slot stops asking for rollback before its storage is
+            // written.
             mirror(launch)
+            let wasStarted = launch.storage.clearLaunchStarted(bundleId: bundleId)
+            disarmed.append((launch.name, launch.generation, bundleId, wasStarted, wasArmed))
         }
     }
 
@@ -947,14 +953,14 @@ final class HotUpdaterRecoveryCoordinator {
                   launch.bundleId == entry.bundleId else {
                 continue
             }
-            if entry.wasStarted {
-                launch.storage.markLaunchStarted(bundleId: entry.bundleId)
-            }
             if entry.wasArmed {
                 launch.isArmed = true
                 assignSlot(to: launch)
             }
             mirror(launch)
+            if entry.wasStarted {
+                launch.storage.markLaunchStarted(bundleId: entry.bundleId)
+            }
         }
         disarmed = []
     }
@@ -1110,18 +1116,24 @@ final class HotUpdaterRecoveryCoordinator {
         }
         slotNames[slot] = launch.name
         launch.slot = slot
-        try? FileManager.default.createDirectory(
-            at: launch.markerURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
     }
 
+    /// Publishes `launch`'s state to its native slot, before anything else
+    /// touches the file system: the directory the signal handler writes the
+    /// marker into is created after, once per launch.
     private func mirror(_ launch: Launch) {
         guard let slot = launch.slot else { return }
         let flag = launch.crashCountsAgainstLaunch
         slotFlags[slot] = flag
         sink.updateSlot(slot, markerPath: launch.markerURL.path, bundleId: launch.bundleId, shouldRollback: flag)
+        if !launch.hasMarkerDirectory {
+            try? FileManager.default.createDirectory(
+                at: launch.markerURL.deletingLastPathComponent(),
+                withIntermediateDirectories: true,
+                attributes: nil
+            )
+            launch.hasMarkerDirectory = true
+        }
     }
 
     private func withLock<T>(_ body: () -> T) -> T {

@@ -429,16 +429,15 @@ internal class HotUpdaterRecoveryManager(
         launch: HotUpdaterRecoveryState.Launch,
         beforeMarker: (() -> Unit)? = null,
     ) {
-        // The watchdog is armed first: a launch none of whose views was shown
-        // has none yet, and a signal anywhere from here on leaves a marker it
-        // must relaunch the app for.
-        startRecoveryWatchdog()
-        // Then the native slot asks for rollback: a signal while the file is
-        // being written writes the marker natively instead of leaving a
-        // partial one.
+        // The native slot asks for rollback first, with no file written: a
+        // signal from here on writes the marker natively.
         charged = true
         updateNativeLaunchStateLocked()
+        // Then the watchdog, file and alarm: a launch none of whose views was
+        // shown has none yet, and the marker must relaunch the app.
+        startRecoveryWatchdog()
         beforeMarker?.invoke()
+        // The marker file last, with its alarm already set.
         writeCrashMarker(launch)
         // The next start prepares a new launch, which reads this marker.
         chargedCallback?.invoke()
@@ -1087,28 +1086,32 @@ internal class HotUpdaterRecoveryManager(
                 // and its window starts with the claim.
                 scheduleClaimRelease(generation)
                 slots.attribute(instanceName)
-                if (owner != null && !owner.isMain && owner.launchState.snapshot()?.shouldRollback == true) {
-                    owner.keepRelaunchIntentLocked()
-                }
                 claimOwner = instanceName to ownerGeneration
                 claimedOwners += instanceName to ownerGeneration
                 activeClaims[generation] = instanceName to ownerGeneration
                 exception?.let { claimErrors[generation] = WeakReference(it) }
                 claimHolders[generation] = 1
-                // The owner's watchdog alarm, then its native slot asking for
-                // rollback, then the native claim, then its marker file: a
-                // signal at any point finds the crash unclaimed with no slot
-                // yet asking, or claimed with the owner's slot asking, which
-                // writes the marker natively, never others' markers. A claim no
-                // launch owns, such as an earlier launch's runtime's, leaves
-                // the native handler unclaimed: a signal then writes every
-                // marker that may still be needed.
+                // The owner's native slot asks for rollback, then its watchdog
+                // and relaunch intent (file and alarm), then the native claim,
+                // then its marker file: a signal at any point finds the crash
+                // unclaimed with no slot yet asking, or the owner's slot asking,
+                // which writes the marker natively, unclaimed only until the
+                // claim, never others' markers once claimed. A claim no launch
+                // owns, such as an earlier launch's runtime's, leaves the native
+                // handler unclaimed: a signal then writes every marker that may
+                // still be needed.
                 var published = false
                 val publishClaim = {
                     if (!published && owner != null) nativeRecovery.attributeCrash(slots.assignedSlot(instanceName) ?: -1)
                     published = true
                 }
-                val recovering = owner?.chargeCrash(exception, beforeMarker = publishClaim) == true
+                val recovering =
+                    owner?.chargeCrash(exception) {
+                        // Charged: a replacement launch may read its marker
+                        // before the error ends the process.
+                        owner.keepRelaunchIntentLocked()
+                        publishClaim()
+                    } == true
                 // Main's own recovery, or an owner with no launch to charge.
                 publishClaim()
                 // Claims overlap when errors return: every launch any of them
