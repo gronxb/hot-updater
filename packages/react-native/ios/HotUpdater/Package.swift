@@ -14,6 +14,7 @@ let coreSources = [
     "HotUpdaterConfig.swift",
     "HotUpdaterInstanceEnvironment.swift",
     "HotUpdaterInstanceRouter.swift",
+    "HotUpdaterLaunchRecovery.swift",
     "KeyValueStorageService.swift",
     "NativeUpdateCheck.swift",
     "NotificationExtension.swift",

@@ -18,30 +18,53 @@ import org.json.JSONObject
 import java.io.File
 import java.io.FileOutputStream
 import java.lang.reflect.Field
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.system.exitProcess
 
+/**
+ * Watches one instance's launch until its first content appears: its crash
+ * marker lives in its own bundle store, and a crash charges it only when the
+ * crash is its own (see [HotUpdaterRecoverySlots]). Main restarts the app to
+ * recover, as it always has; a named instance leaves its marker for its next
+ * launch to roll back.
+ */
 internal class HotUpdaterRecoveryManager(
     context: Context,
+    environment: HotUpdaterInstanceEnvironment = HotUpdaterInstanceEnvironment.main,
 ) {
     private val appContext = context.applicationContext
     private val mainHandler = Handler(Looper.getMainLooper())
-    private val bundleStoreDir = getBundleStoreDir(appContext)
-    private val crashMarkerFile = File(bundleStoreDir, CRASH_MARKER_FILENAME)
-    private val watchdogStateFile = File(bundleStoreDir, WATCHDOG_STATE_FILENAME)
+    private val name = environment.name
+    private val isMain = environment.isMain
+    private val crashMarkerFile = getCrashMarkerFile(appContext, environment)
+    private val watchdogStateFile = File(getBundleStoreDir(appContext), WATCHDOG_STATE_FILENAME)
 
     private val launchState = HotUpdaterRecoveryState()
+
+    // Main's launch counts from the start, as it always has. A named launch
+    // counts once one of its views is shown ([armLaunch]): a runtime pre-warmed
+    // without UI must not be charged for a crash elsewhere in the process.
+    @Volatile
+    private var armed = isMain
+
+    // Another instance's fatal error is ending the process, so this launch
+    // must not be armed in the moments left.
+    @Volatile
+    private var endedByAnotherInstance = false
     private var contentAppearedCallback: ((String?) -> Unit)? = null
+    private var crashOfAnotherInstanceCallback: ((String?) -> Unit)? = null
     private var recoveryRestartCallback: (() -> Boolean)? = null
 
     private val stopMonitoringRunnable =
         Runnable {
-            cancelRecoveryWatchdog()
-            Log.d(TAG, "Stopping crash monitoring for current launch")
+            releaseRecoveryWatchdog()
+            Log.d(TAG, "Stopping crash monitoring for current launch of $name")
             launchState.stop()
             contentAppearedCallback = null
+            crashOfAnotherInstanceCallback = null
             recoveryRestartCallback = null
-            activeManager = null
-            updateNativeLaunchState(null, false)
+            liveManagers.remove(name, this)
+            updateNativeLaunchState()
         }
 
     private val installJsExceptionHooksRunnable =
@@ -56,12 +79,9 @@ internal class HotUpdaterRecoveryManager(
             }
         }
 
-    private val contentAppearedListener =
-        ReactMarker.MarkerListener { name, _, _ ->
-            if (name == ReactMarkerConstants.CONTENT_APPEARED) {
-                handleContentAppeared()
-            }
-        }
+    init {
+        attribution.track(appContext)
+    }
 
     fun consumePendingCrashRecovery(): PendingCrashRecovery? {
         if (!crashMarkerFile.exists()) {
@@ -72,7 +92,7 @@ internal class HotUpdaterRecoveryManager(
             val recovery = PendingCrashRecovery.loadFromFile(crashMarkerFile) ?: return null
             Log.d(
                 TAG,
-                "Consumed pending crash marker bundleId=${recovery.launchedBundleId} shouldRollback=${recovery.shouldRollback}",
+                "Consumed pending crash marker of $name bundleId=${recovery.launchedBundleId} shouldRollback=${recovery.shouldRollback}",
             )
             recovery
         } catch (e: Exception) {
@@ -83,69 +103,78 @@ internal class HotUpdaterRecoveryManager(
         }
     }
 
+    /**
+     * @param onCrashOfAnotherInstance called when another instance's
+     * JavaScript fatal error is about to end the process: this launch did not
+     * fail, so it must not count as unfinished at the next start
+     * @param onRecoveryRestartRequested restarts the app to recover; null
+     * leaves recovery to the next launch
+     */
     fun startMonitoring(
         bundleId: String?,
         shouldRollback: Boolean,
         onContentAppeared: (String?) -> Unit,
-        onRecoveryRestartRequested: () -> Boolean,
+        onCrashOfAnotherInstance: (String?) -> Unit,
+        onRecoveryRestartRequested: (() -> Boolean)?,
     ) {
         crashMarkerFile.parentFile?.mkdirs()
         contentAppearedCallback = onContentAppeared
+        crashOfAnotherInstanceCallback = onCrashOfAnotherInstance
         recoveryRestartCallback = onRecoveryRestartRequested
         launchState.start(bundleId, shouldRollback)
-        activeManager = this
+        armed = isMain
+        endedByAnotherInstance = false
+        liveManagers[name] = this
 
         ensureExceptionHandlerInstalled()
         ensureNativeSignalHandlerInstalled()
+        ensureContentAppearedListenerInstalled()
 
-        mainHandler.removeCallbacks(installJsExceptionHooksRunnable)
+        if (isMain) mainHandler.removeCallbacks(installJsExceptionHooksRunnable)
         mainHandler.removeCallbacks(stopMonitoringRunnable)
-        ReactMarker.removeListener(contentAppearedListener)
-        ReactMarker.addListener(contentAppearedListener)
-        updateNativeLaunchState(bundleId, shouldRollback)
-        if (shouldRollback) {
+        updateNativeLaunchState()
+        if (shouldRollback && armed) {
             startRecoveryWatchdog()
         } else {
-            cancelRecoveryWatchdog()
+            releaseRecoveryWatchdog()
         }
-        mainHandler.post(installJsExceptionHooksRunnable)
+        // A named instance's runtime hooks its errors when its module is
+        // created (registerRuntime); main's host is reachable from the app.
+        if (isMain) mainHandler.post(installJsExceptionHooksRunnable)
 
-        Log.d(TAG, "Started crash monitoring bundleId=$bundleId shouldRollback=$shouldRollback")
+        Log.d(TAG, "Started crash monitoring of $name bundleId=$bundleId shouldRollback=$shouldRollback")
     }
+
+    /**
+     * One of this instance's views is shown, so a crash from now on may be
+     * its launch's. [markLaunchStarted] records the launch for the next
+     * process unless another instance's crash is already ending this one.
+     */
+    fun armLaunch(markLaunchStarted: () -> Unit) {
+        synchronized(this) {
+            if (endedByAnotherInstance) return
+            markLaunchStarted()
+        }
+        if (armed) return
+        armed = true
+        updateNativeLaunchState()
+        if (launchState.snapshot()?.shouldRollback == true) {
+            startRecoveryWatchdog()
+        }
+    }
+
+    private fun currentLaunch(): HotUpdaterRecoverySlots.Launch? =
+        launchState.snapshot()?.let { HotUpdaterRecoverySlots.Launch(name, it.bundleId, it.shouldRollback, armed) }
 
     private fun handleContentAppeared() {
         val launch = launchState.completeLaunch() ?: return
-        Log.d(TAG, "First content appeared for bundleId=${launch.bundleId}")
-        ReactMarker.removeListener(contentAppearedListener)
-        mainHandler.removeCallbacks(installJsExceptionHooksRunnable)
+        Log.d(TAG, "First content appeared for $name bundleId=${launch.bundleId}")
+        if (isMain) mainHandler.removeCallbacks(installJsExceptionHooksRunnable)
         mainHandler.removeCallbacks(stopMonitoringRunnable)
         contentAppearedCallback?.invoke(launch.bundleId)
-        updateNativeLaunchState(launch.bundleId, false)
-        cancelRecoveryWatchdog()
+        updateNativeLaunchState()
+        releaseRecoveryWatchdog()
         mainHandler.postDelayed(stopMonitoringRunnable, MONITORING_GRACE_PERIOD_MS)
-    }
-
-    private fun ensureExceptionHandlerInstalled() {
-        if (exceptionHandlerInstalled) {
-            return
-        }
-
-        previousExceptionHandler = Thread.getDefaultUncaughtExceptionHandler()
-        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
-            val manager = activeManager
-            if (manager?.requestAutomaticRecovery() == true) {
-                // The separate restart activity kills this process after it starts.
-                // A second fatal error must not kill it while that request is in flight.
-                return@setDefaultUncaughtExceptionHandler
-            }
-
-            previousExceptionHandler?.uncaughtException(thread, throwable)
-                ?: run {
-                    Process.killProcess(Process.myPid())
-                    exitProcess(10)
-                }
-        }
-        exceptionHandlerInstalled = true
     }
 
     private fun writeCrashMarker(launch: HotUpdaterRecoveryState.Launch) {
@@ -169,19 +198,37 @@ internal class HotUpdaterRecoveryManager(
 
     private fun startRecoveryWatchdog() {
         try {
+            val owners =
+                synchronized(watchdogOwners) {
+                    watchdogOwners += name
+                    watchdogOwners.toList()
+                }
             watchdogStateFile.parentFile?.mkdirs()
-            watchdogStateFile.writeText((System.currentTimeMillis() + MONITORING_GRACE_PERIOD_MS).toString())
+            watchdogStateFile.writeText(
+                WatchdogState(System.currentTimeMillis() + MONITORING_GRACE_PERIOD_MS, owners).serialize(),
+            )
             scheduleRecoveryWatchdogTick(appContext, WATCHDOG_TICK_INTERVAL_MS)
         } catch (e: Exception) {
             Log.e(TAG, "Failed to schedule recovery watchdog", e)
         }
     }
 
-    private fun cancelRecoveryWatchdog() {
+    // One alarm serves the process: it stops once no instance waits for content.
+    private fun releaseRecoveryWatchdog() {
+        val idle =
+            synchronized(watchdogOwners) {
+                watchdogOwners -= name
+                watchdogOwners.isEmpty()
+            }
+        if (!idle) return
         watchdogStateFile.delete()
         cancelRecoveryWatchdogAlarm(appContext)
     }
 
+    /**
+     * Main's recovery: a launch waiting for its first content restarts the
+     * app once and leaves its marker for the restarted process.
+     */
     private fun requestAutomaticRecovery(exception: Exception? = null): Boolean {
         val request = launchState.requestRecovery()
         if (exception != null) {
@@ -203,31 +250,57 @@ internal class HotUpdaterRecoveryManager(
         return started
     }
 
-    private fun handleJavaScriptException(exception: Exception): Boolean = requestAutomaticRecovery(exception)
+    /**
+     * Charges this instance for the crash that ends the process. A named
+     * instance never restarts the app: restarting reaches main's host, so its
+     * next launch rolls the bundle back instead.
+     */
+    private fun chargeCrash(exception: Exception? = null): Boolean {
+        if (isMain) return requestAutomaticRecovery(exception)
+        val launch = launchState.snapshot()?.takeIf { it.shouldRollback } ?: return false
+        if (exception != null) {
+            Log.e(TAG, "Caught React startup exception of $name for bundleId=${launch.bundleId}", exception)
+        }
+        writeCrashMarker(launch)
+        return false
+    }
+
+    private fun handleCrashOfAnotherInstance() {
+        val launch = launchState.snapshot()?.takeIf { it.shouldRollback } ?: return
+        synchronized(this) {
+            endedByAnotherInstance = true
+            crashOfAnotherInstanceCallback?.invoke(launch.bundleId)
+        }
+    }
 
     private fun ensureNativeSignalHandlerInstalled() {
-        if (signalHandlerInstalled || !loadNativeLibrary()) {
+        if (signalHandlerInstalled || !HotUpdaterRecoveryNative.load()) {
             return
         }
 
         try {
-            nativeInstallSignalHandler(crashMarkerFile.absolutePath)
+            HotUpdaterRecoveryNative.nativeInstallSignalHandler()
             signalHandlerInstalled = true
         } catch (e: UnsatisfiedLinkError) {
             Log.w(TAG, "Signal handler not available", e)
         }
     }
 
-    private fun updateNativeLaunchState(
-        bundleId: String?,
-        shouldRollback: Boolean,
-    ) {
-        if (!signalHandlerInstalled || !nativeLibraryLoaded) {
+    private fun updateNativeLaunchState() {
+        if (!signalHandlerInstalled) {
             return
         }
+        val slot = slots.slotOf(name) ?: return
+        val launch = currentLaunch()
 
         try {
-            nativeUpdateLaunchState(bundleId, shouldRollback)
+            HotUpdaterRecoveryNative.nativeUpdateSlot(
+                slot,
+                crashMarkerFile.absolutePath,
+                launch?.bundleId,
+                launch?.unverified == true,
+                isMain,
+            )
         } catch (e: UnsatisfiedLinkError) {
             Log.w(TAG, "Failed to update native launch state", e)
         }
@@ -239,36 +312,33 @@ internal class HotUpdaterRecoveryManager(
         JavaScriptExceptionHooks.install(appContext)
     }
 
-    private fun loadNativeLibrary(): Boolean {
-        if (nativeLibraryLoadAttempted) {
-            return nativeLibraryLoaded
-        }
-
-        nativeLibraryLoadAttempted = true
-        nativeLibraryLoaded =
-            try {
-                System.loadLibrary("hotupdater_recovery")
-                true
-            } catch (e: UnsatisfiedLinkError) {
-                Log.w(TAG, "Failed to load recovery native library", e)
-                false
-            }
-        return nativeLibraryLoaded
-    }
-
-    private external fun nativeInstallSignalHandler(crashMarkerPath: String)
-
-    private external fun nativeUpdateLaunchState(
-        bundleId: String?,
-        shouldRollback: Boolean,
-    )
-
     internal class RecoveryJSExceptionHandler(
         private val previousHandler: JSExceptionHandler?,
+        private val sourceURL: () -> String?,
     ) : JSExceptionHandler {
         override fun handleException(e: Exception) {
-            if (!handleJavaScriptExceptionForRecovery(e)) {
+            if (!handleJavaScriptExceptionForRecovery(e, runCatching(sourceURL).getOrNull())) {
                 previousHandler?.handleException(e) ?: throw e
+            }
+        }
+    }
+
+    /** The deadline of the recovery watchdog, and the instances that armed it. */
+    internal data class WatchdogState(
+        val deadlineAt: Long,
+        val instances: List<String>,
+    ) {
+        // Main's file holds only its deadline, as it always has; named
+        // instances follow on their own lines.
+        fun serialize(): String =
+            (listOf(deadlineAt.toString()) + instances.filter { it != HotUpdaterInstanceEnvironment.MAIN_NAME })
+                .joinToString("\n")
+
+        companion object {
+            fun parse(text: String?): WatchdogState? {
+                val lines = text?.lines()?.map(String::trim)?.filter(String::isNotEmpty) ?: return null
+                val deadlineAt = lines.firstOrNull()?.toLongOrNull() ?: return null
+                return WatchdogState(deadlineAt, listOf(HotUpdaterInstanceEnvironment.MAIN_NAME) + lines.drop(1))
             }
         }
     }
@@ -283,33 +353,155 @@ internal class HotUpdaterRecoveryManager(
         private const val JS_EXCEPTION_HOOK_RETRY_DELAY_MS = 50L
 
         @Volatile
-        private var nativeLibraryLoadAttempted = false
-
-        @Volatile
-        private var nativeLibraryLoaded = false
-
-        @Volatile
         private var signalHandlerInstalled = false
 
         @Volatile
         private var exceptionHandlerInstalled = false
 
         @Volatile
-        private var previousExceptionHandler: Thread.UncaughtExceptionHandler? = null
+        private var contentAppearedListenerInstalled = false
 
         @Volatile
-        private var activeManager: HotUpdaterRecoveryManager? = null
+        private var previousExceptionHandler: Thread.UncaughtExceptionHandler? = null
+
+        private val slots = HotUpdaterRecoverySlots()
+        private val attribution = HotUpdaterRecoveryAttribution.shared
+
+        /** The manager of each instance whose launch is monitored. */
+        private val liveManagers = ConcurrentHashMap<String, HotUpdaterRecoveryManager>()
+        private val watchdogOwners = mutableSetOf<String>()
 
         private val patchedReactContextIds = mutableSetOf<Int>()
 
-        /** Hands a JavaScript error to the monitored launch; false when it does not recover it. */
-        internal fun handleJavaScriptExceptionForRecovery(exception: Exception): Boolean =
-            activeManager?.handleJavaScriptException(exception) == true
+        private val contentAppearedListener =
+            ReactMarker.MarkerListener { marker, _, rootTag ->
+                if (marker == ReactMarkerConstants.CONTENT_APPEARED) {
+                    handleContentAppeared(rootTag)
+                }
+            }
+
+        private fun ensureContentAppearedListenerInstalled() {
+            synchronized(this) {
+                if (contentAppearedListenerInstalled) return
+                contentAppearedListenerInstalled = true
+            }
+            ReactMarker.addListener(contentAppearedListener)
+        }
+
+        // React Native names the view by its root tag. A view no known activity
+        // shows is credited to main, as every view always was.
+        private fun handleContentAppeared(rootTag: Int) {
+            val name =
+                if (liveManagers.keys.all { it == HotUpdaterInstanceEnvironment.MAIN_NAME }) {
+                    HotUpdaterInstanceEnvironment.MAIN_NAME
+                } else {
+                    attribution.instanceOfRootTag(rootTag) ?: HotUpdaterInstanceEnvironment.MAIN_NAME
+                }
+            contentAppeared(name)
+        }
+
+        /** First content of [instanceName]'s runtime appeared: it verifies only that instance's launch. */
+        internal fun contentAppeared(instanceName: String) {
+            liveManagers[instanceName]?.handleContentAppeared()
+        }
+
+        private fun ensureExceptionHandlerInstalled() {
+            synchronized(this) {
+                if (exceptionHandlerInstalled) {
+                    return
+                }
+
+                previousExceptionHandler = Thread.getDefaultUncaughtExceptionHandler()
+                exceptionHandlerInstalled = true
+            }
+            Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+                if (handleUncaughtCrash()) {
+                    // The separate restart activity kills this process after it starts.
+                    // A second fatal error must not kill it while that request is in flight.
+                    return@setDefaultUncaughtExceptionHandler
+                }
+
+                previousExceptionHandler?.uncaughtException(thread, throwable)
+                    ?: run {
+                        Process.killProcess(Process.myPid())
+                        exitProcess(10)
+                    }
+            }
+        }
+
+        private fun liveLaunches(): List<HotUpdaterRecoverySlots.Launch> = liveManagers.values.mapNotNull { it.currentLaunch() }
+
+        /**
+         * Writes the crash markers of the crash that ends the process: the
+         * claimed instance's, or every launch it can be blamed on. True when
+         * main's recovery restart takes over the process.
+         */
+        private fun handleUncaughtCrash(
+            exception: Exception? = null,
+            attributedName: String? = slots.attributedName(),
+        ): Boolean {
+            val targets = HotUpdaterRecoverySlots.markerTargets(liveLaunches(), attributedName)
+            // Named instances first: main's recovery restart ends the process.
+            targets.filterNot { it.isMain }.forEach { liveManagers[it.name]?.chargeCrash(exception) }
+            if (targets.none { it.isMain }) return false
+            return liveManagers[HotUpdaterInstanceEnvironment.MAIN_NAME]?.chargeCrash(exception) == true
+        }
+
+        /**
+         * Hands a JavaScript error of the runtime that loaded [sourceURL] to
+         * crash recovery; false when it does not recover it.
+         */
+        internal fun handleJavaScriptExceptionForRecovery(
+            exception: Exception,
+            sourceURL: String?,
+        ): Boolean = handleJavaScriptException(exception, attribution.instanceOf(sourceURL))
+
+        /**
+         * A JavaScript error of [instanceName]'s runtime, or of an unknown one
+         * when null, which counts as a native crash does. A claimed error
+         * charges only its instance, and the crash it may end in charges no
+         * other instance: their launches did not fail.
+         */
+        internal fun handleJavaScriptException(
+            exception: Exception,
+            instanceName: String?,
+        ): Boolean {
+            // An error no runtime claims is not the continuation of a claimed
+            // one: it charges every launch it can be blamed on.
+            if (instanceName == null) return handleUncaughtCrash(exception, attributedName = null)
+
+            slots.attribute(instanceName)
+            if (signalHandlerInstalled) {
+                try {
+                    HotUpdaterRecoveryNative.nativeAttributeCrash(slots.assignedSlot(instanceName) ?: -1)
+                } catch (e: UnsatisfiedLinkError) {
+                    Log.w(TAG, "Failed to attribute the crash natively", e)
+                }
+            }
+            liveManagers.values.filter { it.name != instanceName }.forEach { it.handleCrashOfAnotherInstance() }
+            return liveManagers[instanceName]?.chargeCrash(exception) == true
+        }
+
+        /**
+         * Hooks the JavaScript errors of a runtime whose HotUpdater module was
+         * created, so a named instance's runtime is reached too, and follows
+         * its activity for its views.
+         */
+        internal fun registerRuntime(reactContext: ReactContext) {
+            attribution.registerRuntime(reactContext)
+            try {
+                JavaScriptExceptionHooks.installForRuntime(reactContext)
+            } catch (e: Exception) {
+                Log.w(TAG, "Failed to hook the runtime's JavaScript errors", e)
+            }
+        }
 
         internal fun patchReactContextExceptionHandler(reactContext: ReactContext) {
             val contextIdentity = System.identityHashCode(reactContext)
-            if (!patchedReactContextIds.add(contextIdentity)) {
-                return
+            synchronized(patchedReactContextIds) {
+                if (!patchedReactContextIds.add(contextIdentity)) {
+                    return
+                }
             }
 
             val previousHandler = reactContext.jsExceptionHandler
@@ -317,7 +509,7 @@ internal class HotUpdaterRecoveryManager(
                 return
             }
 
-            reactContext.setJSExceptionHandler(RecoveryJSExceptionHandler(previousHandler))
+            reactContext.setJSExceptionHandler(RecoveryJSExceptionHandler(previousHandler) { reactContext.sourceURL })
         }
 
         internal fun findField(
@@ -339,16 +531,14 @@ internal class HotUpdaterRecoveryManager(
         fun handleRecoveryWatchdog(context: Context) {
             val appContext = context.applicationContext
             val watchdogStateFile = File(getBundleStoreDir(appContext), WATCHDOG_STATE_FILENAME)
-            val deadlineAt = watchdogStateFile.takeIf(File::exists)?.readText()?.toLongOrNull()
-            if (deadlineAt == null) {
+            val state = WatchdogState.parse(watchdogStateFile.takeIf(File::exists)?.readText())
+            if (state == null) {
                 cancelRecoveryWatchdogAlarm(appContext)
                 watchdogStateFile.delete()
                 return
             }
 
-            val crashMarkerFile = File(getBundleStoreDir(appContext), CRASH_MARKER_FILENAME)
-            val recovery = PendingCrashRecovery.loadFromFile(crashMarkerFile)
-            if (recovery?.shouldRollback == true && recovery.launchedBundleId != null) {
+            if (crashMarkerRequestsRollback(appContext.filesDir, state.instances)) {
                 Log.i(TAG, "Recovery watchdog detected crash marker, relaunching app")
                 watchdogStateFile.delete()
                 cancelRecoveryWatchdogAlarm(appContext)
@@ -356,7 +546,7 @@ internal class HotUpdaterRecoveryManager(
                 return
             }
 
-            if (System.currentTimeMillis() >= deadlineAt) {
+            if (System.currentTimeMillis() >= state.deadlineAt) {
                 watchdogStateFile.delete()
                 cancelRecoveryWatchdogAlarm(appContext)
                 return
@@ -365,7 +555,36 @@ internal class HotUpdaterRecoveryManager(
             scheduleRecoveryWatchdogTick(appContext, WATCHDOG_TICK_INTERVAL_MS)
         }
 
-        private fun getBundleStoreDir(context: Context): File = File(context.filesDir, "bundle-store")
+        /**
+         * Whether a crash marker of [instances], the ones that armed the
+         * watchdog, asks to roll a launch back. Only those: a marker another
+         * instance left in an earlier process waits for that instance's next
+         * launch, and must not relaunch this one.
+         */
+        internal fun crashMarkerRequestsRollback(
+            filesDir: File?,
+            instances: List<String>,
+        ): Boolean =
+            instances.distinct().any { name ->
+                val root =
+                    if (name == HotUpdaterInstanceEnvironment.MAIN_NAME) {
+                        filesDir
+                    } else {
+                        filesDir?.let { File(File(it, HotUpdaterInstanceEnvironment.INSTANCES_DIRECTORY), name) }
+                    }
+                val recovery = PendingCrashRecovery.loadFromFile(File(File(root, BUNDLE_STORE_DIRECTORY), CRASH_MARKER_FILENAME))
+                recovery?.shouldRollback == true && recovery.launchedBundleId != null
+            }
+
+        private const val BUNDLE_STORE_DIRECTORY = "bundle-store"
+
+        private fun getBundleStoreDir(context: Context): File = File(context.filesDir, BUNDLE_STORE_DIRECTORY)
+
+        // Main's path is the one it always had: filesRoot is the files directory.
+        private fun getCrashMarkerFile(
+            context: Context,
+            environment: HotUpdaterInstanceEnvironment,
+        ): File = File(File(environment.filesRoot(context), BUNDLE_STORE_DIRECTORY), CRASH_MARKER_FILENAME)
 
         private fun getRecoveryWatchdogIntent(context: Context): Intent =
             Intent(context, HotUpdaterRecoveryReceiver::class.java).setAction(WATCHDOG_ACTION)
@@ -411,4 +630,45 @@ internal class HotUpdaterRecoveryManager(
             }
         }
     }
+}
+
+/** The signal handler of HotUpdaterRecovery.cpp, which writes each slot's crash marker. */
+internal object HotUpdaterRecoveryNative {
+    @Volatile
+    private var loadAttempted = false
+
+    @Volatile
+    private var loaded = false
+
+    fun load(): Boolean {
+        synchronized(this) {
+            if (loadAttempted) return loaded
+            loadAttempted = true
+            loaded =
+                try {
+                    System.loadLibrary("hotupdater_recovery")
+                    true
+                } catch (e: UnsatisfiedLinkError) {
+                    Log.w("HotUpdaterRecovery", "Failed to load recovery native library", e)
+                    false
+                }
+            return loaded
+        }
+    }
+
+    @JvmStatic
+    external fun nativeInstallSignalHandler()
+
+    @JvmStatic
+    external fun nativeUpdateSlot(
+        slot: Int,
+        crashMarkerPath: String,
+        bundleId: String?,
+        shouldRollback: Boolean,
+        writesWhenVerified: Boolean,
+    )
+
+    /** [slot] is -1 for an instance that has none. */
+    @JvmStatic
+    external fun nativeAttributeCrash(slot: Int)
 }

@@ -308,6 +308,10 @@ public protocol BundleStorageService {
 
     // Rollback support
     func markLaunchStarted(bundleId: String?)
+    /// Forgets that the launch of `bundleId` started, leaving it pending: the
+    /// next start launches it again instead of counting an unfinished launch.
+    /// For a launch whose process another instance's crash takes down.
+    func clearLaunchStarted(bundleId: String?)
     func markLaunchCompleted(bundleId: String?)
     func notifyAppReady() -> [String: Any]
     func getCrashHistory() -> CrashedHistory
@@ -342,6 +346,7 @@ public protocol BundleStorageService {
 
 public extension BundleStorageService {
     func settlePreviousLaunch(pendingRecovery _: () -> PendingCrashRecovery?) {}
+    func clearLaunchStarted(bundleId _: String?) {}
     func peekLaunchBundleId() -> String? { nil }
     func isSelectionCurrent(_: PersistedSelection) -> Bool { false }
     func acceptReleaseCatalog(catalogId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Bool { false }
@@ -426,6 +431,8 @@ class BundleFileStorageService: BundleStorageService {
         CrashedHistory.crashedHistoryFilename,
         LaunchReport.launchReportFilename,
         "builtin-index-v1.json",
+        // Written when a launch crashes, read at the next start.
+        HotUpdaterCrashMarker.filename,
     ]
 
     private func createDiffProgressFiles(
@@ -2988,6 +2995,20 @@ class BundleFileStorageService: BundleStorageService {
             return
         }
         metadata.launchInProgress = true
+        _ = saveMetadata(metadata)
+    }
+
+    func clearLaunchStarted(bundleId: String?) {
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
+        guard let bundleId,
+              var metadata = loadMetadataOrNull(),
+              metadata.verificationPending,
+              metadata.launchInProgress,
+              metadata.stagingBundleId == bundleId else {
+            return
+        }
+        metadata.launchInProgress = false
         _ = saveMetadata(metadata)
     }
 

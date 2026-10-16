@@ -4,6 +4,10 @@
 #import <React/RCTReloadCommand.h>
 #import <React/RCTLog.h>
 
+#ifdef RCT_NEW_ARCH_ENABLED
+#import <React/RCTSurfacePresenter.h>
+#endif
+
 #include <fcntl.h>
 #include <limits.h>
 #include <signal.h>
@@ -55,9 +59,27 @@ namespace {
 constexpr size_t kHotUpdaterMaxBundleIdLength = 128;
 const int kHotUpdaterSignals[] = {SIGABRT, SIGBUS, SIGFPE, SIGILL, SIGSEGV, SIGTRAP};
 
-char gHotUpdaterCrashMarkerPath[PATH_MAX] = {0};
-char gHotUpdaterBundleId[kHotUpdaterMaxBundleIdLength] = {0};
-volatile sig_atomic_t gHotUpdaterShouldRollback = 0;
+// One slot per instance whose launch a native crash may count against, slot 0
+// being main's (HotUpdaterRecoveryCoordinator in Swift assigns them and keeps
+// the rule below in step). A slot's marker path is set once and never moves.
+// An instance beyond the last slot gets no marker from a native crash; its
+// unfinished launch still rolls back through launchInProgress.
+constexpr int kHotUpdaterCrashSlotCount = 8;
+// Every slot whose launch is unverified writes its marker.
+constexpr sig_atomic_t kHotUpdaterUnattributedCrash = -1;
+
+struct HotUpdaterCrashSlot {
+  char markerPath[PATH_MAX];
+  char bundleId[kHotUpdaterMaxBundleIdLength];
+  // The launch started and its first content hasn't appeared.
+  volatile sig_atomic_t shouldRollback;
+};
+
+HotUpdaterCrashSlot gHotUpdaterCrashSlots[kHotUpdaterCrashSlotCount] = {};
+// A JavaScript fatal about to crash the process is one instance's: only its
+// slot writes (none when it has no slot). Otherwise kHotUpdaterUnattributedCrash.
+volatile sig_atomic_t gHotUpdaterAttributedSlot = kHotUpdaterUnattributedCrash;
+bool gHotUpdaterSignalHandlersInstalled = false;
 struct sigaction gHotUpdaterPreviousActions[NSIG];
 __weak RCTBridge *gHotUpdaterBridge = nil;
 
@@ -117,13 +139,13 @@ void HotUpdaterSafeCopy(char *destination, size_t destinationSize, const char *s
   destination[index] = '\0';
 }
 
-void HotUpdaterWriteCrashMarker()
+void HotUpdaterWriteCrashMarker(const HotUpdaterCrashSlot &slot)
 {
-  if (gHotUpdaterCrashMarkerPath[0] == '\0') {
+  if (slot.markerPath[0] == '\0') {
     return;
   }
 
-  int fd = open(gHotUpdaterCrashMarkerPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  int fd = open(slot.markerPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
   if (fd < 0) {
     return;
   }
@@ -135,17 +157,36 @@ void HotUpdaterWriteCrashMarker()
   constexpr char suffix[] = "}\n";
 
   write(fd, prefix, sizeof(prefix) - 1);
-  if (gHotUpdaterBundleId[0] != '\0') {
-    write(fd, gHotUpdaterBundleId, HotUpdaterSafeStringLength(gHotUpdaterBundleId, kHotUpdaterMaxBundleIdLength));
+  if (slot.bundleId[0] != '\0') {
+    write(fd, slot.bundleId, HotUpdaterSafeStringLength(slot.bundleId, kHotUpdaterMaxBundleIdLength));
   }
   write(fd, middle, sizeof(middle) - 1);
-  if (gHotUpdaterShouldRollback != 0) {
+  if (slot.shouldRollback != 0) {
     write(fd, trueLiteral, sizeof(trueLiteral) - 1);
   } else {
     write(fd, falseLiteral, sizeof(falseLiteral) - 1);
   }
   write(fd, suffix, sizeof(suffix) - 1);
   close(fd);
+}
+
+// Main's slot (0) writes once main launched, as it always has, with
+// `shouldRollback: false` after its first content. A named slot writes only
+// while its launch is unverified (started, first content not yet shown). While
+// a JavaScript fatal of one instance takes the process down, only its slot
+// writes.
+void HotUpdaterWriteCrashMarkers()
+{
+  const sig_atomic_t attributedSlot = gHotUpdaterAttributedSlot;
+  for (int index = 0; index < kHotUpdaterCrashSlotCount; ++index) {
+    if (attributedSlot != kHotUpdaterUnattributedCrash && attributedSlot != index) {
+      continue;
+    }
+    const HotUpdaterCrashSlot &slot = gHotUpdaterCrashSlots[index];
+    if (index == 0 || slot.shouldRollback != 0) {
+      HotUpdaterWriteCrashMarker(slot);
+    }
+  }
 }
 
 void HotUpdaterSignalHandler(int signum, siginfo_t *info, void *context);
@@ -179,14 +220,18 @@ void HotUpdaterForwardToPreviousHandler(int signum, siginfo_t *info, void *conte
 
 void HotUpdaterSignalHandler(int signum, siginfo_t *info, void *context)
 {
-  HotUpdaterWriteCrashMarker();
+  HotUpdaterWriteCrashMarkers();
   HotUpdaterForwardToPreviousHandler(signum, info, context);
 }
 } // namespace
 
-extern "C" void HotUpdaterInstallSignalHandlers(NSString *crashMarkerPath)
+// Once per process. Called on the main thread.
+extern "C" void HotUpdaterInstallCrashSignalHandlers(void)
 {
-  HotUpdaterSafeCopy(gHotUpdaterCrashMarkerPath, sizeof(gHotUpdaterCrashMarkerPath), crashMarkerPath.UTF8String ?: "");
+  if (gHotUpdaterSignalHandlersInstalled) {
+    return;
+  }
+  gHotUpdaterSignalHandlersInstalled = true;
 
   struct sigaction action {};
   action.sa_sigaction = HotUpdaterSignalHandler;
@@ -198,10 +243,44 @@ extern "C" void HotUpdaterInstallSignalHandlers(NSString *crashMarkerPath)
   }
 }
 
+extern "C" void HotUpdaterUpdateCrashSlot(NSInteger index,
+                                          NSString *crashMarkerPath,
+                                          NSString * _Nullable bundleId,
+                                          BOOL shouldRollback)
+{
+  if (index < 0 || index >= kHotUpdaterCrashSlotCount) {
+    return;
+  }
+  HotUpdaterCrashSlot &slot = gHotUpdaterCrashSlots[index];
+  // A crash while the slot changes must not write half of it.
+  slot.shouldRollback = 0;
+  HotUpdaterSafeCopy(slot.markerPath, sizeof(slot.markerPath), crashMarkerPath.UTF8String ?: "");
+  HotUpdaterSafeCopy(slot.bundleId, sizeof(slot.bundleId), bundleId.UTF8String ?: "");
+  slot.shouldRollback = shouldRollback ? 1 : 0;
+}
+
+// kHotUpdaterUnattributedCrash, a slot index, or any other negative value for
+// an instance without a slot (then a native crash writes no marker).
+extern "C" void HotUpdaterAttributeCrashToSlot(NSInteger index)
+{
+  gHotUpdaterAttributedSlot = static_cast<sig_atomic_t>(index);
+}
+
+// Legacy entry points of the single main slot.
+extern "C" void HotUpdaterInstallSignalHandlers(NSString *crashMarkerPath)
+{
+  HotUpdaterSafeCopy(gHotUpdaterCrashSlots[0].markerPath,
+                     sizeof(gHotUpdaterCrashSlots[0].markerPath),
+                     crashMarkerPath.UTF8String ?: "");
+  HotUpdaterInstallCrashSignalHandlers();
+}
+
 extern "C" void HotUpdaterUpdateSignalLaunchState(NSString * _Nullable bundleId, BOOL shouldRollback)
 {
-  HotUpdaterSafeCopy(gHotUpdaterBundleId, sizeof(gHotUpdaterBundleId), bundleId.UTF8String ?: "");
-  gHotUpdaterShouldRollback = shouldRollback ? 1 : 0;
+  HotUpdaterCrashSlot &slot = gHotUpdaterCrashSlots[0];
+  slot.shouldRollback = 0;
+  HotUpdaterSafeCopy(slot.bundleId, sizeof(slot.bundleId), bundleId.UTF8String ?: "");
+  slot.shouldRollback = shouldRollback ? 1 : 0;
 }
 
 extern "C" BOOL HotUpdaterPerformRecoveryReload(void)
@@ -254,6 +333,40 @@ extern "C" void *HotUpdaterCopyMinBundleId(void)
 // Define Notification names used for observing Swift Core
 NSNotificationName const HotUpdaterUpdateProgressDidChangeNotification = @"HotUpdaterUpdateProgressDidChange";
 
+#pragma mark - Runtime Attribution
+
+// Crash recovery (HotUpdaterRecoveryHub in Swift) asks which instance a view,
+// a surface, or a failing JavaScript thread belongs to. Each React Native
+// runtime has its own module, which knows its instance once its bundle URL is
+// known, and its runtime's surface presenter.
+
+// Posted once a runtime's module knows its instance, so surfaces that started
+// before it existed can be attributed.
+static NSString *const HotUpdaterRuntimeDidResolveNotification = @"HotUpdaterRuntimeDidResolve";
+static NSString *const HotUpdaterRuntimeModuleKey = @"HotUpdater.runtimeModule";
+// The bridgeless runtime's JavaScript thread, where RCTFatal reports its
+// JavaScript fatal errors.
+static NSString *const HotUpdaterRuntimeThreadName = @"com.facebook.react.runtime.JavaScript";
+
+// What a JavaScript thread's dictionary holds: its runtime's module, weakly.
+@interface HotUpdaterRuntimeModuleReference : NSObject
+@property (nonatomic, weak) HotUpdater *module;
+@end
+
+@implementation HotUpdaterRuntimeModuleReference
+@end
+
+// Every module that joined a runtime, weakly.
+static NSHashTable<HotUpdater *> *HotUpdaterRuntimeModules(void)
+{
+  static NSHashTable<HotUpdater *> *modules;
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
+    modules = [NSHashTable weakObjectsHashTable];
+  });
+  return modules;
+}
+
 @interface HotUpdaterRecoverySignalBridge : NSObject
 @end
 
@@ -272,12 +385,17 @@ NSNotificationName const HotUpdaterUpdateProgressDidChangeNotification = @"HotUp
 @end
 
 @interface HotUpdater () <RCTInitializing>
+- (HotUpdaterImpl *)resolvedInstanceImpl;
+- (BOOL)isRuntimeOfSurfacePresenter:(id)surfacePresenter rootTag:(NSNumber *)rootTag;
 @end
 
 @implementation HotUpdater {
     bool hasListeners;
     // The impl of this module's React Native runtime, once its bundle URL is known.
     HotUpdaterImpl *_instanceImpl;
+    // Bridgeless: this runtime's surface presenter, which knows every surface
+    // of this runtime by its root tag.
+    __weak id _surfacePresenter;
 }
 
 @synthesize bridge = _bridge;
@@ -419,12 +537,83 @@ RCT_EXPORT_MODULE();
     }
 
     HotUpdaterImpl *impl = [HotUpdaterNativeUpdates() implForBundleURL:bundleURL];
+    BOOL resolvedNow = NO;
     @synchronized (self) {
         if (!_instanceImpl) {
             _instanceImpl = impl;
+            resolvedNow = YES;
         }
-        return _instanceImpl;
+        impl = _instanceImpl;
     }
+    if (resolvedNow) {
+        [[NSNotificationCenter defaultCenter] postNotificationName:HotUpdaterRuntimeDidResolveNotification
+                                                            object:self
+                                                          userInfo:@{@"impl" : impl}];
+    }
+    return impl;
+}
+
+// The impl once this runtime's bundle URL is known, else nil: attribution
+// must not take instanceImpl's fallback to main for a runtime it can't tell.
+- (HotUpdaterImpl *)resolvedInstanceImpl {
+    @synchronized (self) {
+        if (_instanceImpl) {
+            return _instanceImpl;
+        }
+    }
+#ifdef RCT_NEW_ARCH_ENABLED
+    NSURL *bundleURL = self.bundleManager.bundleURL;
+#else
+    NSURL *bundleURL = self.bridge.bundleURL;
+#endif
+    return bundleURL ? [self instanceImpl] : nil;
+}
+
+// RCTInstance hands each module it creates its runtime's surface presenter.
+- (void)setSurfacePresenter:(id)surfacePresenter {
+    @synchronized (self) {
+        _surfacePresenter = surfacePresenter;
+    }
+    NSHashTable<HotUpdater *> *modules = HotUpdaterRuntimeModules();
+    @synchronized (modules) {
+        [modules addObject:self];
+    }
+}
+
+// Whether `surfacePresenter` is this runtime's, or, without one, whether
+// this runtime's presenter has the surface of `rootTag`. Root tags are unique
+// in the process, so no other runtime's presenter has it.
+- (BOOL)isRuntimeOfSurfacePresenter:(id)surfacePresenter rootTag:(NSNumber *)rootTag {
+#ifdef RCT_NEW_ARCH_ENABLED
+    RCTSurfacePresenter *presenter = nil;
+    @synchronized (self) {
+        presenter = _surfacePresenter;
+    }
+    if (!presenter) {
+        return NO;
+    }
+    if (surfacePresenter) {
+        return presenter == surfacePresenter;
+    }
+    return rootTag && [presenter surfaceForRootTag:rootTag.integerValue] != nil;
+#else
+    return NO;
+#endif
+}
+
+// React Native asks for the module's JSI object on the runtime's JavaScript
+// thread, which is where RCTFatal reports that runtime's JavaScript fatals.
+- (void)noteRuntimeThread {
+    NSThread *thread = [NSThread currentThread];
+    if (![thread.name isEqualToString:HotUpdaterRuntimeThreadName]) {
+        return;
+    }
+    HotUpdaterRuntimeModuleReference *reference = [HotUpdaterRuntimeModuleReference new];
+    reference.module = self;
+    thread.threadDictionary[HotUpdaterRuntimeModuleKey] = reference;
+    // Resolves now, while the bundle URL is known, for the surfaces that
+    // started before this module existed.
+    [self resolvedInstanceImpl];
 }
 
 // Reloading reloads main's React host or the whole app, so a runtime of a
@@ -961,9 +1150,105 @@ RCT_EXPORT_METHOD(resetChannel:(RCTPromiseResolveBlock)resolve
 
 #ifdef RCT_NEW_ARCH_ENABLED
 - (std::shared_ptr<facebook::react::TurboModule>)getTurboModule:(const facebook::react::ObjCTurboModule::InitParams &)params {
+    [self noteRuntimeThread];
     return std::make_shared<facebook::react::NativeHotUpdaterSpecJSI>(params);
 }
 #endif
 
 
 @end
+
+#pragma mark - Runtime Attribution (C)
+
+// The bundle URL an RCTHost or RCTInstance runs, which neither exposes:
+// read through KVC from what RN 0.85 keeps (RCTHost's `_bundleURL` and
+// `_bundleManager`, RCTInstance's `_bridgeModuleDecorator.bundleManager`).
+// Nil when another React Native version keeps it elsewhere.
+static NSURL *HotUpdaterBundleURLOfRuntime(id object)
+{
+  for (NSString *keyPath in @[ @"bundleURL", @"bundleManager.bundleURL", @"bridgeModuleDecorator.bundleManager.bundleURL" ]) {
+    @try {
+      id value = [object valueForKeyPath:keyPath];
+      if ([value isKindOfClass:[NSURL class]]) {
+        return value;
+      }
+    } @catch (NSException *exception) {
+      // Not a key of this object.
+    }
+  }
+  return nil;
+}
+
+// The impl whose runtime `object` belongs to: a Fabric surface or root view,
+// an RCTInstance or RCTHost (by its surface presenter), an old-architecture
+// root view or bridge (by its bundle URL). Nil when no runtime claims it.
+static HotUpdaterImpl *HotUpdaterImplForRootObject(id object)
+{
+  if (!object) {
+    return nil;
+  }
+
+#ifdef RCT_NEW_ARCH_ENABLED
+  id surfacePresenter = nil;
+  NSNumber *rootTag = nil;
+  if ([object respondsToSelector:@selector(surfacePresenter)]) {
+    surfacePresenter = [object valueForKey:@"surfacePresenter"];
+  } else if ([object respondsToSelector:NSSelectorFromString(@"rootViewTag")]) {
+    id tag = [object valueForKey:@"rootViewTag"];
+    rootTag = [tag isKindOfClass:[NSNumber class]] ? tag : nil;
+  } else if ([object isKindOfClass:[UIView class]] &&
+             [object isKindOfClass:NSClassFromString(@"RCTRootComponentView")]) {
+    rootTag = @(((UIView *)object).tag);
+  }
+  if (surfacePresenter || rootTag) {
+    NSHashTable<HotUpdater *> *table = HotUpdaterRuntimeModules();
+    NSArray<HotUpdater *> *modules;
+    @synchronized (table) {
+      modules = table.allObjects;
+    }
+    for (HotUpdater *module in modules) {
+      if ([module isRuntimeOfSurfacePresenter:surfacePresenter rootTag:rootTag]) {
+        HotUpdaterImpl *impl = [module resolvedInstanceImpl];
+        if (impl) {
+          return impl;
+        }
+      }
+    }
+    if (!surfacePresenter) {
+      return nil;
+    }
+    // An RCTInstance or RCTHost whose bundle failed to load before its
+    // runtime created a module: its bundle URL tells whose it is.
+    NSURL *bundleURL = HotUpdaterBundleURLOfRuntime(object);
+    return bundleURL ? [HotUpdaterNativeUpdates() implForBundleURL:bundleURL] : nil;
+  }
+#endif
+
+  RCTBridge *bridge = nil;
+  if ([object isKindOfClass:[RCTBridge class]]) {
+    bridge = object;
+  } else if ([object respondsToSelector:@selector(bridge)]) {
+    id candidate = [object valueForKey:@"bridge"];
+    bridge = [candidate isKindOfClass:[RCTBridge class]] ? candidate : nil;
+  }
+  NSURL *bundleURL = bridge.bundleURL;
+  if (!bundleURL) {
+    return nil;
+  }
+  return [HotUpdaterNativeUpdates() implForBundleURL:bundleURL];
+}
+
+extern "C" void *HotUpdaterCopyImplForRootObject(id object)
+{
+  HotUpdaterImpl *impl = HotUpdaterImplForRootObject(object);
+  return impl ? (__bridge_retained void *)impl : NULL;
+}
+
+// The impl of the runtime whose JavaScript thread calls this, or NULL.
+extern "C" void *HotUpdaterCopyRuntimeImpl(void)
+{
+  HotUpdaterRuntimeModuleReference *reference =
+      [NSThread currentThread].threadDictionary[HotUpdaterRuntimeModuleKey];
+  HotUpdaterImpl *impl = [reference.module resolvedInstanceImpl];
+  return impl ? (__bridge_retained void *)impl : NULL;
+}

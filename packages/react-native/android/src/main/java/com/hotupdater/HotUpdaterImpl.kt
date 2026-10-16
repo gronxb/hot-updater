@@ -19,10 +19,10 @@ class HotUpdaterImpl {
     private val bundleStorage: BundleStorageService
     private val preferences: PreferencesService
 
-    // Crash recovery and the launch gate watch the process's one React Native
-    // host, so only main has them; named instances get their own later.
-    private val recoveryManager: HotUpdaterRecoveryManager?
-    private val activityStartGate: ActivityStartGate?
+    // Each instance watches its own launch: its crash marker, and the launch
+    // gate that waits for one of its own views.
+    private val recoveryManager: HotUpdaterRecoveryManager
+    private val activityStartGate: ActivityStartGate
     private val releaseCatalogCache: ReleaseCatalogCacheService
     private val installIdentity: InstallIdentityService
     private val keyValueStorage: KeyValueStorageService
@@ -50,23 +50,23 @@ class HotUpdaterImpl {
         preferences: PreferencesService,
     ) : this(context, bundleStorage, preferences, HotUpdaterInstanceEnvironment.main)
 
+    /**
+     * @param activityStartGate the gate that arms this instance's launch;
+     * by default one that waits for a started activity showing one of its views
+     */
     internal constructor(
         context: Context,
         bundleStorage: BundleStorageService,
         preferences: PreferencesService,
         environment: HotUpdaterInstanceEnvironment,
+        activityStartGate: ActivityStartGate? = null,
     ) {
         this.context = context.applicationContext
         this.environment = environment
         this.bundleStorage = bundleStorage
         this.preferences = preferences
-        if (environment.isMain) {
-            this.activityStartGate = ActivityStartGate(this.context as? Application)
-            this.recoveryManager = HotUpdaterRecoveryManager(this.context)
-        } else {
-            this.activityStartGate = null
-            this.recoveryManager = null
-        }
+        this.recoveryManager = HotUpdaterRecoveryManager(this.context, environment)
+        this.activityStartGate = activityStartGate ?: createActivityStartGate(this.context, environment)
         this.releaseCatalogCache =
             ReleaseCatalogCacheService(environment.releaseCatalogCacheDirectory(this.context))
         this.installIdentity = InstallIdentityService.create(this.context)
@@ -79,11 +79,16 @@ class HotUpdaterImpl {
     constructor(context: Context) : this(context, HotUpdaterInstanceEnvironment.main)
 
     /** The impl of a named instance, or of main, with its own storage and configuration. */
-    internal constructor(context: Context, environment: HotUpdaterInstanceEnvironment) : this(
+    internal constructor(
+        context: Context,
+        environment: HotUpdaterInstanceEnvironment,
+        activityStartGate: ActivityStartGate? = null,
+    ) : this(
         context = context,
         bundleStorage = createBundleStorage(context, environment),
         preferences = createPreferences(context, environment),
         environment = environment,
+        activityStartGate = activityStartGate,
     )
 
     /**
@@ -139,6 +144,20 @@ class HotUpdaterImpl {
                 fallbackBundleURL = environment.fallbackBundleURL,
             )
         }
+
+        /**
+         * A launch counts once a started activity shows one of the instance's
+         * views. Main takes every view no named instance claims, so an app
+         * with only main waits for any React Native view, as it always has.
+         */
+        private fun createActivityStartGate(
+            context: Context,
+            environment: HotUpdaterInstanceEnvironment,
+        ): ActivityStartGate =
+            ActivityStartGate(
+                context as? Application,
+                showsReactView = { activity -> HotUpdaterRecoveryAttribution.shared.showsViewOf(activity, environment.name) },
+            )
 
         /**
          * Create PreferencesService with isolation key
@@ -482,7 +501,7 @@ class HotUpdaterImpl {
                 return@synchronized launchSelection.launchedBundleId
             }
 
-            bundleStorage.settlePreviousLaunch { recoveryManager?.consumePendingCrashRecovery() }
+            bundleStorage.settlePreviousLaunch { recoveryManager.consumePendingCrashRecovery() }
             bundleStorage.peekLaunchBundleId()
         }
 
@@ -521,40 +540,38 @@ class HotUpdaterImpl {
     private fun prepareLaunchLocked(): LaunchSelection {
         currentLaunchSelection?.let { return it }
 
-        val recoveryManager = recoveryManager
-        val activityStartGate = activityStartGate
-        val pendingRecovery = recoveryManager?.consumePendingCrashRecovery()
+        val pendingRecovery = recoveryManager.consumePendingCrashRecovery()
         val selection = bundleStorage.prepareLaunch(pendingRecovery)
-        if (recoveryManager == null || activityStartGate == null) {
-            // Until named instances get their own crash recovery, nothing reports
-            // a named launch's first content. A launch left pending would roll
-            // back at the next start, so a named launch counts as verified once
-            // it is selected.
-            if (selection.shouldRollbackOnCrash) {
-                bundleStorage.markLaunchCompleted(selection.launchedBundleId)
-            }
-            runningLaunchSelection = selection
-            currentLaunchSelection = selection
-            return selection
-        }
-        // A headless JS task, such as a background push, loads the bundle without
-        // an activity and never renders. Only a launch with an activity may leave
-        // an unfinished launch for the next process to roll back.
-        activityStartGate.runWhenActivityStarted(
-            if (selection.shouldRollbackOnCrash) {
-                { bundleStorage.markLaunchStarted(selection.launchedBundleId) }
-            } else {
-                null
-            },
-        )
         recoveryManager.startMonitoring(
             bundleId = selection.launchedBundleId,
             shouldRollback = selection.shouldRollbackOnCrash,
             onContentAppeared = { launchedBundleId ->
                 bundleStorage.markLaunchCompleted(launchedBundleId)
             },
-            onRecoveryRestartRequested = {
-                restartApplication(context)
+            onCrashOfAnotherInstance = { launchedBundleId ->
+                bundleStorage.clearLaunchStarted(launchedBundleId)
+            },
+            // Restarting the app restarts main's host. A named instance's
+            // crash leaves its marker for its next launch to roll back.
+            onRecoveryRestartRequested =
+                if (environment.isMain) {
+                    { restartApplication(context) }
+                } else {
+                    null
+                },
+        )
+        // A headless JS task, such as a background push, loads the bundle without
+        // an activity and never renders. Only a launch with an activity may leave
+        // an unfinished launch for the next process to roll back. A named
+        // runtime may also be pre-warmed while the app shows other screens, so
+        // its launch waits for one of its own views.
+        activityStartGate.runWhenActivityStarted(
+            if (selection.shouldRollbackOnCrash) {
+                {
+                    recoveryManager.armLaunch { bundleStorage.markLaunchStarted(selection.launchedBundleId) }
+                }
+            } else {
+                null
             },
         )
         runningLaunchSelection = selection

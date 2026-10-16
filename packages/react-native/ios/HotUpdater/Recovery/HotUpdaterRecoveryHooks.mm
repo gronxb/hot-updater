@@ -39,6 +39,9 @@ void HotUpdaterInstallRecoveryHooks(void)
         return;
       }
       if (HotUpdaterBeginSurfaceStart(&handler)) {
+        // A view of this surface's runtime is about to show: crash recovery
+        // starts the launch of the instance the runtime belongs to.
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"HotUpdaterSurfaceWillStart" object:surface];
         // No coordination lock crosses the original call: older RN versions
         // invoke the completion synchronously on this same thread.
         ((void (*)(id, SEL))originalStart)(surface, startSelector);

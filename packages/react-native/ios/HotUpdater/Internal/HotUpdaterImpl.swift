@@ -3,17 +3,28 @@ import React
 import UIKit
 
 private func hotUpdaterUncaughtExceptionHandler(_ exception: NSException) {
-    HotUpdaterRecoveryManager.shared.handleUncaughtException(exception)
+    HotUpdaterRecoveryHub.shared.handleUncaughtException(exception)
 }
 
-@_silgen_name("HotUpdaterInstallSignalHandlers")
-private func hotUpdaterInstallSignalHandlersSymbol(_ crashMarkerPath: NSString)
+@_silgen_name("HotUpdaterInstallCrashSignalHandlers")
+private func hotUpdaterInstallCrashSignalHandlers()
 
-@_silgen_name("HotUpdaterUpdateSignalLaunchState")
-private func hotUpdaterUpdateSignalLaunchStateSymbol(
+@_silgen_name("HotUpdaterUpdateCrashSlot")
+private func hotUpdaterUpdateCrashSlotSymbol(
+    _ slot: Int,
+    _ crashMarkerPath: NSString,
     _ bundleId: NSString?,
     _ shouldRollback: ObjCBool
 )
+
+@_silgen_name("HotUpdaterAttributeCrashToSlot")
+private func hotUpdaterAttributeCrashToSlot(_ slot: Int)
+
+@_silgen_name("HotUpdaterCopyImplForRootObject")
+private func hotUpdaterCopyImplForRootObjectSymbol(_ object: AnyObject) -> UnsafeMutableRawPointer?
+
+@_silgen_name("HotUpdaterCopyRuntimeImpl")
+private func hotUpdaterCopyRuntimeImplSymbol() -> UnsafeMutableRawPointer?
 
 @_silgen_name("HotUpdaterPerformRecoveryReload")
 private func hotUpdaterPerformRecoveryReloadSymbol() -> ObjCBool
@@ -33,12 +44,20 @@ private func hotUpdaterAfterSurfaceStarts(_ action: @convention(block) @escaping
 @_silgen_name("HotUpdaterCopyMinBundleId")
 private func hotUpdaterCopyMinBundleIdSymbol() -> UnsafeMutableRawPointer
 
-private func hotUpdaterInstallSignalHandlers(_ crashMarkerPath: String) {
-    hotUpdaterInstallSignalHandlersSymbol(crashMarkerPath as NSString)
+/// The impl whose runtime `object` belongs to: a Fabric surface or root
+/// view, an RCTInstance or RCTHost, an old-architecture root view or bridge.
+/// Nil when no runtime claims it yet.
+private func hotUpdaterImpl(forRootObject object: AnyObject) -> HotUpdaterImpl? {
+    hotUpdaterCopyImplForRootObjectSymbol(object).flatMap {
+        Unmanaged<AnyObject>.fromOpaque($0).takeRetainedValue() as? HotUpdaterImpl
+    }
 }
 
-private func hotUpdaterUpdateSignalLaunchState(_ bundleId: String?, shouldRollback: Bool) {
-    hotUpdaterUpdateSignalLaunchStateSymbol(bundleId as NSString?, ObjCBool(shouldRollback))
+/// The impl of the React Native runtime whose JavaScript thread this is.
+private func hotUpdaterRuntimeImpl() -> HotUpdaterImpl? {
+    hotUpdaterCopyRuntimeImplSymbol().flatMap {
+        Unmanaged<AnyObject>.fromOpaque($0).takeRetainedValue() as? HotUpdaterImpl
+    }
 }
 
 private func hotUpdaterPerformRecoveryReload() -> Bool {
@@ -57,10 +76,9 @@ private func hotUpdaterGetMinBundleId() -> String {
     private let cohortService: CohortService
     /// Whose state this impl keeps; see `HotUpdaterInstanceEnvironment`.
     let environment: HotUpdaterInstanceEnvironment
-    /// Main's only. Crash recovery watches the one React Native runtime the
-    /// process-wide handlers know, so a named impl has none until each
-    /// instance gets its own.
-    private let recoveryManager: HotUpdaterRecoveryManager?
+    /// This instance's crash recovery: its marker, its launch's watch, and
+    /// its rollback, apart from every other instance's.
+    private let recoveryManager: HotUpdaterRecoveryManager
     private let releaseCatalogCache: ReleaseCatalogCacheService
     private let keyValueStorage: KeyValueStorageService
     // Read by native update checks on other threads while React Native sets it.
@@ -149,7 +167,7 @@ private func hotUpdaterGetMinBundleId() -> String {
             bundleStorage: bundleStorage,
             preferences: preferences,
             environment: environment,
-            recoveryManager: environment.isMain ? HotUpdaterRecoveryManager.shared : nil,
+            recoveryManager: HotUpdaterRecoveryManager(environment: environment, bundleStorage: bundleStorage),
             releaseCatalogCache: ReleaseCatalogCacheService(
                 rootDirectory: environment.releaseCatalogCacheDirectory(in: fileSystem)
             ),
@@ -169,7 +187,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         bundleStorage: BundleStorageService,
         preferences: PreferencesService,
         environment: HotUpdaterInstanceEnvironment = .main,
-        recoveryManager: HotUpdaterRecoveryManager?,
+        recoveryManager: HotUpdaterRecoveryManager,
         releaseCatalogCache: ReleaseCatalogCacheService = ReleaseCatalogCacheService(),
         keyValueStorage: KeyValueStorageService = KeyValueStorageService(
             directory: NoBackupStorage.directory(in: FileManagerService())
@@ -873,8 +891,8 @@ private func hotUpdaterGetMinBundleId() -> String {
         }
         // Settles what the previous process left first, so the check reads the
         // selection, launch state, and crash history this launch will use.
-        // The crash marker is main's: a named impl must not consume it.
-        bundleStorage.settlePreviousLaunch(pendingRecovery: { self.recoveryManager?.consumePendingCrashRecovery() })
+        // Each instance consumes only its own crash marker.
+        bundleStorage.settlePreviousLaunch(pendingRecovery: { self.recoveryManager.consumePendingCrashRecovery() })
         return bundleStorage.peekLaunchBundleId()
     }
 
@@ -924,23 +942,18 @@ private func hotUpdaterGetMinBundleId() -> String {
             return currentLaunchSelection
         }
 
-        guard let recoveryManager else {
-            // C1 only: nothing reports a named instance's first content yet,
-            // so its launch counts as verified once selected. Left in
-            // progress, the next start would roll it back.
-            let selection = bundleStorage.prepareLaunch(bundle: bundle, pendingRecovery: nil)
-            bundleStorage.markLaunchCompleted(bundleId: selection.launchedBundleId)
-            runningLaunchSelection = selection
-            currentLaunchSelection = selection
-            return selection
-        }
-
         let pendingRecovery = recoveryManager.consumePendingCrashRecovery()
         let selection = bundleStorage.prepareLaunch(bundle: bundle, pendingRecovery: pendingRecovery)
-        markLaunchStartedInForeground(selection)
-        recoveryManager.startMonitoring(bundleId: selection.launchedBundleId, shouldRollback: selection.shouldRollbackOnCrash) { [weak self] launchedBundleId in
-            self?.bundleStorage.markLaunchCompleted(bundleId: launchedBundleId)
+        if environment.isMain {
+            markLaunchStartedInForeground(selection)
         }
+        // A named runtime may be warmed up without UI, so its launch starts
+        // only once one of its views is shown (HotUpdaterRecoveryHub), and
+        // only its own first content verifies it.
+        recoveryManager.startMonitoring(
+            bundleId: selection.launchedBundleId,
+            shouldRollback: selection.shouldRollbackOnCrash
+        )
         runningLaunchSelection = selection
         currentLaunchSelection = selection
         return selection
@@ -983,115 +996,288 @@ private func hotUpdaterGetMinBundleId() -> String {
     }
 }
 
+/// One instance's crash recovery: consumes its marker at launch, watches its
+/// launch until 10 seconds after its first content, and for main, reloads
+/// in-process when its JavaScript fails before first content. The state lives
+/// in `HotUpdaterRecoveryHub.shared.coordinator`; the process-wide handlers in
+/// the hub dispatch to the instance a crash or content belongs to.
 @objcMembers
 final class HotUpdaterRecoveryManager: NSObject {
-    static let shared = HotUpdaterRecoveryManager()
-
+    let name: String
     private let crashMarkerURL: URL
-    private var previousFatalHandler: RCTFatalHandler?
-    private var previousFatalExceptionHandler: RCTFatalExceptionHandler?
-    private var previousUncaughtExceptionHandler: (@convention(c) (NSException) -> Void)?
-
-    private var signalHandlersInstalled = false
-    private var handlersInstalled = false
-    private var isMonitoring = false
-    private var recoveryRequested = false
-    private var monitoringGeneration = 0
-    private var currentBundleId: String?
-    private var shouldRollbackOnCrash = false
-    private var contentAppearedCallback: ((String?) -> Void)?
+    private let hub: HotUpdaterRecoveryHub
     private var stopMonitoringWorkItem: DispatchWorkItem?
+    // Main thread only: a named launch whose view started in the background
+    // starts once the app comes to the foreground.
+    private var armObservers: [NSObjectProtocol] = []
 
-    private override init() {
-        let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
-        self.crashMarkerURL = documentsPath
-            .appendingPathComponent("bundle-store", isDirectory: true)
-            .appendingPathComponent("recovery-crash-marker.json")
+    init(environment: HotUpdaterInstanceEnvironment, bundleStorage: BundleStorageService) {
+        name = environment.name
+        if environment.isMain {
+            // Main's path as it always was: Documents/bundle-store.
+            let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
+            crashMarkerURL = HotUpdaterCrashMarker.url(for: environment, documentsPath: documentsPath.path)
+        } else {
+            crashMarkerURL = HotUpdaterCrashMarker.url(
+                for: environment,
+                documentsPath: FileManagerService().documentsPath()
+            )
+        }
+        hub = .shared
         super.init()
+        hub.coordinator.register(name: name, markerURL: crashMarkerURL, storage: bundleStorage)
+        hub.register(self)
     }
+
+    private var isMain: Bool { name == HotUpdaterInstanceEnvironment.mainName }
 
     func consumePendingCrashRecovery() -> PendingCrashRecovery? {
-        guard FileManager.default.fileExists(atPath: crashMarkerURL.path) else {
-            return nil
-        }
-
-        defer {
-            try? FileManager.default.removeItem(at: crashMarkerURL)
-        }
-
-        do {
-            let data = try Data(contentsOf: crashMarkerURL)
-            let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] ?? [:]
-            return PendingCrashRecovery.from(json: json)
-        } catch {
-            NSLog("[HotUpdaterRecovery] Failed to read crash marker: \(error)")
-            return nil
-        }
+        HotUpdaterCrashMarker.consume(at: crashMarkerURL)
     }
 
-    func startMonitoring(
-        bundleId: String?,
-        shouldRollback: Bool,
-        onContentAppeared: @escaping (String?) -> Void
-    ) {
+    func startMonitoring(bundleId: String?, shouldRollback: Bool) {
         objc_sync_enter(self)
         defer { objc_sync_exit(self) }
 
-        monitoringGeneration += 1
-        currentBundleId = bundleId
-        shouldRollbackOnCrash = shouldRollback
-        recoveryRequested = false
-        contentAppearedCallback = onContentAppeared
-        isMonitoring = true
-
+        hub.coordinator.startMonitoring(name: name, bundleId: bundleId, shouldRollback: shouldRollback)
         stopMonitoringWorkItem?.cancel()
         stopMonitoringWorkItem = nil
+        if !isMain {
+            DispatchQueue.main.async { [weak self] in self?.removeArmObservers() }
+        }
 
-        installHandlersIfNeeded()
+        hub.installIfNeeded()
+    }
+
+    /// This instance's first content: its monitoring ends after a grace period.
+    func contentAppeared(generation: Int) {
+        objc_sync_enter(self)
+        defer { objc_sync_exit(self) }
+
+        stopMonitoringWorkItem?.cancel()
+        let workItem = DispatchWorkItem { [weak self] in
+            self?.finishMonitoring(generation: generation)
+        }
+        stopMonitoringWorkItem = workItem
+        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(10), execute: workItem)
+        if !isMain {
+            DispatchQueue.main.async { [weak self] in self?.removeArmObservers() }
+        }
+    }
+
+    private func finishMonitoring(generation: Int) {
+        objc_sync_enter(self)
+        defer { objc_sync_exit(self) }
+        guard hub.coordinator.isCurrent(name: name, generation: generation) else { return }
+
+        stopMonitoringWorkItem = nil
+        hub.coordinator.finishMonitoring(name: name, generation: generation)
+    }
+
+    /// A view of this named instance's runtime started. Only a launch in the
+    /// foreground may leave an unfinished launch for the next process to roll
+    /// back, as for main. Main thread only.
+    func viewStarted(inForeground: Bool) {
+        guard !isMain else { return }
+        if inForeground {
+            removeArmObservers()
+            hub.coordinator.arm(name: name)
+            return
+        }
+        guard armObservers.isEmpty else { return }
+        armObservers = [
+            UIApplication.willEnterForegroundNotification,
+            UIApplication.didBecomeActiveNotification,
+        ].map { notificationName in
+            NotificationCenter.default.addObserver(forName: notificationName, object: nil, queue: .main) { [weak self] _ in
+                guard let self else { return }
+                self.removeArmObservers()
+                self.hub.coordinator.arm(name: self.name)
+            }
+        }
+    }
+
+    private func removeArmObservers() {
+        armObservers.forEach { NotificationCenter.default.removeObserver($0) }
+        armObservers = []
+    }
+
+    /// Main only: its fatal before first content reloads it in-process with
+    /// the bundle its marker rolls back to.
+    func requestRecoveryReloadIfNeeded(onFailure: @escaping () -> Void) -> Bool {
+        guard isMain else { return false }
+        let request = hub.coordinator.requestRecovery(name: name)
+        if request == .notNeeded {
+            return false
+        }
+
+        hotUpdaterMarkFailedRuntime()
+        guard case .requested(let generation, let bundleId) = request else {
+            return true
+        }
+
+        hotUpdaterAfterSurfaceStarts { [weak self] in
+            guard let self else {
+                return
+            }
+
+            guard self.hub.coordinator.isCurrent(name: self.name, generation: generation) else { return }
+
+            let started = hotUpdaterPerformRecoveryReload()
+            if !started {
+                self.hub.coordinator.recoveryReloadFailed(name: self.name)
+                NSLog("[HotUpdaterRecovery] Failed to trigger recovery reload")
+                onFailure()
+            } else {
+                NSLog("[HotUpdaterRecovery] Triggered recovery reload for bundleId=\(bundleId ?? "nil")")
+            }
+        }
+
+        return true
+    }
+}
+
+/// HotUpdater.mm's signal-safe crash slots.
+private final class HotUpdaterSignalCrashSlots: HotUpdaterCrashSlotSink {
+    func updateSlot(_ slot: Int, markerPath: String, bundleId: String?, shouldRollback: Bool) {
+        hotUpdaterUpdateCrashSlotSymbol(slot, markerPath as NSString, bundleId as NSString?, ObjCBool(shouldRollback))
+    }
+
+    func attributeCrash(toSlot slot: Int) {
+        hotUpdaterAttributeCrashToSlot(slot)
+    }
+}
+
+/// The process-wide side of crash recovery. React Native's fatal handlers,
+/// the uncaught exception handler, the signal handler, and the content and
+/// load-failure observers exist once per process; each event goes to the
+/// instance whose runtime it comes from, found through the runtime's
+/// TurboModule (see HotUpdater.mm). An event no runtime claims is main's, as
+/// it always was, except that a crash then also counts against every named
+/// launch that is unverified.
+@objcMembers
+final class HotUpdaterRecoveryHub: NSObject {
+    static let shared = HotUpdaterRecoveryHub()
+
+    let coordinator = HotUpdaterRecoveryCoordinator(sink: HotUpdaterSignalCrashSlots())
+    private let pendingSurfaceStarts = HotUpdaterPendingSurfaceStarts()
+    private let managersLock = NSLock()
+    private var managers: [String: HotUpdaterRecoveryManager] = [:]
+
+    private var previousFatalHandler: RCTFatalHandler?
+    private var previousFatalExceptionHandler: RCTFatalExceptionHandler?
+    private var previousUncaughtExceptionHandler: (@convention(c) (NSException) -> Void)?
+    private var isInstalled = false
+
+    private static let surfaceWillStartNotification = Notification.Name("HotUpdaterSurfaceWillStart")
+    private static let runtimeDidResolveNotification = Notification.Name("HotUpdaterRuntimeDidResolve")
+    /// The bridgeless runtime's JavaScript thread, where RCTFatal reports its
+    /// JavaScript fatals.
+    private static let runtimeThreadName = "com.facebook.react.runtime.JavaScript"
+
+    func register(_ manager: HotUpdaterRecoveryManager) {
+        managersLock.lock()
+        managers[manager.name] = manager
+        managersLock.unlock()
+    }
+
+    private func manager(named name: String) -> HotUpdaterRecoveryManager? {
+        managersLock.lock()
+        defer { managersLock.unlock() }
+        return managers[name]
+    }
+
+    private var mainName: String { HotUpdaterInstanceEnvironment.mainName }
+
+    /// Once per process, at the first launch of any instance: a process that
+    /// runs only named instances never launches main.
+    func installIfNeeded() {
+        objc_sync_enter(self)
+        defer { objc_sync_exit(self) }
+        guard !isInstalled else {
+            return
+        }
+        isInstalled = true
+
+        installFatalHandlers()
         hotUpdaterInstallRecoveryHooks()
         registerObservers()
-        installSignalHandlersIfNeeded()
-        hotUpdaterUpdateSignalLaunchState(bundleId, shouldRollback: shouldRollback)
+        hotUpdaterInstallCrashSignalHandlers()
     }
 
     func handleUncaughtException(_ exception: NSException) {
-        writeCrashMarker()
+        coordinator.chargeUncaughtException()
         // An uncaught native exception cannot safely continue in this process.
         // Preserve the marker so the next launch can select the safe bundle.
         previousUncaughtExceptionHandler?(exception)
     }
 
-    private func installHandlersIfNeeded() {
-        guard !handlersInstalled else {
-            return
-        }
+    // MARK: - Attribution
 
+    private func owner(of object: AnyObject?) -> String? {
+        guard let object else { return nil }
+        return hotUpdaterImpl(forRootObject: object)?.environment.name
+    }
+
+    /// The instance whose JavaScript thread is failing; a fatal right after a
+    /// load failure already attributed belongs to the same instance. On a
+    /// JavaScript thread whose runtime has no module yet, the one launch that
+    /// can have thrown it, if there is exactly one.
+    private func fatalOwner() -> String? {
+        if let owner = hotUpdaterRuntimeImpl()?.environment.name ?? coordinator.attributedOwner {
+            return owner
+        }
+        guard Thread.current.name == Self.runtimeThreadName else { return nil }
+        return coordinator.inferredFatalOwner()
+    }
+
+    // MARK: - Fatal errors
+
+    private func installFatalHandlers() {
         previousFatalHandler = RCTGetFatalHandler()
         previousFatalExceptionHandler = RCTGetFatalExceptionHandler()
         previousUncaughtExceptionHandler = NSGetUncaughtExceptionHandler()
 
         RCTSetFatalHandler { [weak self] error in
             guard !hotUpdaterIsFailedRuntime().boolValue else { return }
-            if self?.requestRecoveryReloadIfNeeded(onFailure: {
-                self?.forwardFatalError(error)
-            }) != true {
-                self?.writeCrashMarker()
-                self?.forwardFatalError(error)
-            }
+            self?.handleFatal { self?.forwardFatalError(error) }
         }
 
         RCTSetFatalExceptionHandler { [weak self] exception in
             guard !hotUpdaterIsFailedRuntime().boolValue else { return }
-            if self?.requestRecoveryReloadIfNeeded(onFailure: {
-                self?.forwardFatalException(exception)
-            }) != true {
-                self?.writeCrashMarker()
-                self?.forwardFatalException(exception)
-            }
+            self?.handleFatal { self?.forwardFatalException(exception) }
         }
 
         NSSetUncaughtExceptionHandler(hotUpdaterUncaughtExceptionHandler)
-        handlersInstalled = true
+    }
+
+    private func handleFatal(forward: @escaping () -> Void) {
+        let owner = fatalOwner()
+        if owner == nil || owner == mainName, let main = manager(named: mainName) {
+            // Main's fatal, or one no runtime claims: main recovers in-process
+            // as it always has.
+            if main.requestRecoveryReloadIfNeeded(onFailure: { [weak self] in
+                if let owner {
+                    self?.coordinator.attribute(to: owner)
+                }
+                forward()
+                self?.coordinator.clearAttribution()
+            }) {
+                if owner == nil {
+                    // Main lives on, but the fatal may have been a named
+                    // runtime's: a named launch it leaves unverified rolls back.
+                    coordinator.chargeUnverifiedNamedLaunches()
+                }
+                return
+            }
+        }
+        // A named instance never reloads in-process: per-host reload isn't
+        // there yet, and main's host must not reload for another instance's
+        // fatal. React Native's default crashes the process, and the crash is
+        // this instance's alone.
+        coordinator.chargeFatal(owner: owner)
+        forward()
+        coordinator.clearAttribution()
     }
 
     private func forwardFatalError(_ error: Error?) {
@@ -1121,22 +1307,9 @@ final class HotUpdaterRecoveryManager: NSObject {
         }
     }
 
-    private func installSignalHandlersIfNeeded() {
-        guard !signalHandlersInstalled else {
-            return
-        }
-
-        try? FileManager.default.createDirectory(
-            at: crashMarkerURL.deletingLastPathComponent(),
-            withIntermediateDirectories: true,
-            attributes: nil
-        )
-        hotUpdaterInstallSignalHandlers(crashMarkerURL.path)
-        signalHandlersInstalled = true
-    }
+    // MARK: - Observers
 
     private func registerObservers() {
-        unregisterObservers()
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleJavaScriptDidFailToLoad(_:)),
@@ -1145,21 +1318,20 @@ final class HotUpdaterRecoveryManager: NSObject {
         )
         NotificationCenter.default.addObserver(
             self,
-            selector: #selector(handleContentDidAppear),
+            selector: #selector(handleContentDidAppear(_:)),
             name: NSNotification.Name.RCTContentDidAppear,
             object: nil
         )
-    }
-
-    private func unregisterObservers() {
-        NotificationCenter.default.removeObserver(
+        NotificationCenter.default.addObserver(
             self,
-            name: NSNotification.Name.RCTJavaScriptDidFailToLoad,
+            selector: #selector(handleSurfaceWillStart(_:)),
+            name: Self.surfaceWillStartNotification,
             object: nil
         )
-        NotificationCenter.default.removeObserver(
+        NotificationCenter.default.addObserver(
             self,
-            name: NSNotification.Name.RCTContentDidAppear,
+            selector: #selector(handleRuntimeDidResolve(_:)),
+            name: Self.runtimeDidResolveNotification,
             object: nil
         )
     }
@@ -1170,115 +1342,81 @@ final class HotUpdaterRecoveryManager: NSObject {
             code: 1,
             userInfo: [NSLocalizedDescriptionKey: "JavaScript bundle failed to load"]
         )
-        if requestRecoveryReloadIfNeeded(onFailure: { [weak self] in
+        // Old architecture: the bridge, whose bundle URL names the instance.
+        // Bridgeless: the RCTInstance, whose runtime has no module when its
+        // bundle didn't load, so it is unattributed and main's, as before.
+        let owner = self.owner(of: notification.object as AnyObject?)
+            ?? self.owner(of: notification.userInfo?["bridge"] as AnyObject?)
+
+        if let owner, owner != mainName {
+            guard coordinator.launch(named: owner)?.isAwaitingContent == true else { return }
+            // React Native's fatal follows and crashes the process: charge
+            // this instance alone, so that fatal is attributed to it too.
+            coordinator.chargeFatal(owner: owner)
+            coordinator.stopAwaitingContent(name: owner)
+            return
+        }
+
+        guard let main = manager(named: mainName),
+              coordinator.launch(named: mainName)?.isAwaitingContent == true else {
+            return
+        }
+        if main.requestRecoveryReloadIfNeeded(onFailure: { [weak self] in
             self?.forwardFatalError(error)
         }) {
             return
         }
-        unregisterObservers()
+        coordinator.stopAwaitingContent(name: mainName)
     }
 
-    @objc private func handleContentDidAppear() {
-        objc_sync_enter(self)
-        defer { objc_sync_exit(self) }
-
-        guard isMonitoring, !recoveryRequested else {
+    @objc private func handleContentDidAppear(_ notification: Notification) {
+        // A view no runtime claims is main's, as it always was.
+        let owner = owner(of: notification.object as AnyObject?)
+        guard let verified = coordinator.contentAppeared(owner: owner) else {
             return
         }
-
-        unregisterObservers()
-        contentAppearedCallback?(currentBundleId)
-        shouldRollbackOnCrash = false
-        hotUpdaterUpdateSignalLaunchState(currentBundleId, shouldRollback: false)
-
-        stopMonitoringWorkItem?.cancel()
-        let generation = monitoringGeneration
-        let workItem = DispatchWorkItem { [weak self] in
-            self?.finishMonitoring(generation: generation)
-        }
-        stopMonitoringWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + .seconds(10), execute: workItem)
+        manager(named: verified.launch.name)?.contentAppeared(generation: verified.generation)
     }
 
-    private func finishMonitoring(generation: Int) {
-        objc_sync_enter(self)
-        defer { objc_sync_exit(self) }
-        guard monitoringGeneration == generation else { return }
-
-        isMonitoring = false
-        recoveryRequested = false
-        stopMonitoringWorkItem = nil
-        currentBundleId = nil
-        shouldRollbackOnCrash = false
-        contentAppearedCallback = nil
-        hotUpdaterUpdateSignalLaunchState(nil, shouldRollback: false)
-    }
-
-    private func requestRecoveryReloadIfNeeded(onFailure: @escaping () -> Void) -> Bool {
-        objc_sync_enter(self)
-        defer { objc_sync_exit(self) }
-
-        guard isMonitoring, shouldRollbackOnCrash else {
-            return false
-        }
-
-        hotUpdaterMarkFailedRuntime()
-        if recoveryRequested {
-            return true
-        }
-        recoveryRequested = true
-        writeCrashMarker()
-
-        let bundleId = currentBundleId
-        let generation = monitoringGeneration
-        hotUpdaterAfterSurfaceStarts { [weak self] in
-            guard let self else {
-                return
-            }
-
-            objc_sync_enter(self)
-            let isCurrentLaunch = self.monitoringGeneration == generation
-            objc_sync_exit(self)
-            guard isCurrentLaunch else { return }
-
-            let started = hotUpdaterPerformRecoveryReload()
-            if !started {
-                objc_sync_enter(self)
-                self.recoveryRequested = false
-                objc_sync_exit(self)
-                NSLog("[HotUpdaterRecovery] Failed to trigger recovery reload")
-                onFailure()
+    /// Posted by the Fabric surface start hook (HotUpdaterRecoveryHooks.mm)
+    /// before the surface starts, on the thread that starts it.
+    @objc private func handleSurfaceWillStart(_ notification: Notification) {
+        guard let surface = notification.object as AnyObject? else { return }
+        let handle = { [weak self] in
+            guard let self else { return }
+            let inForeground = UIApplication.shared.applicationState != .background
+            if let owner = self.owner(of: surface) {
+                self.viewStarted(owner: owner, inForeground: inForeground)
             } else {
-                NSLog("[HotUpdaterRecovery] Triggered recovery reload for bundleId=\(bundleId ?? "nil")")
+                // The surface starts before its bundle runs, so before the
+                // runtime's module that tells whose it is.
+                self.pendingSurfaceStarts.add(surface, inForeground: inForeground)
             }
         }
-
-        return true
+        // UIApplication is read on the main thread.
+        if Thread.isMainThread {
+            handle()
+        } else {
+            DispatchQueue.main.async(execute: handle)
+        }
     }
 
-    private func writeCrashMarker() {
-        objc_sync_enter(self)
-        defer { objc_sync_exit(self) }
-
-        guard isMonitoring else {
-            return
+    /// Posted by HotUpdater.mm when a runtime's module knows its instance.
+    @objc private func handleRuntimeDidResolve(_ notification: Notification) {
+        if let impl = notification.userInfo?["impl"] as? HotUpdaterImpl {
+            coordinator.runtimeResolved(name: impl.environment.name)
         }
-
-        do {
-            try FileManager.default.createDirectory(
-                at: crashMarkerURL.deletingLastPathComponent(),
-                withIntermediateDirectories: true,
-                attributes: nil
-            )
-
-            let payload: [String: Any] = [
-                "bundleId": currentBundleId ?? NSNull(),
-                "shouldRollback": shouldRollbackOnCrash,
-            ]
-            let data = try JSONSerialization.data(withJSONObject: payload)
-            try data.write(to: crashMarkerURL, options: .atomic)
-        } catch {
-            NSLog("[HotUpdaterRecovery] Failed to write crash marker: \(error)")
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            for started in self.pendingSurfaceStarts.resolve({ self.owner(of: $0) }) {
+                self.viewStarted(owner: started.name, inForeground: started.inForeground)
+            }
         }
+    }
+
+    private func viewStarted(owner: String, inForeground: Bool) {
+        // Main's launch starts when it is selected, as it always has.
+        guard owner != mainName else { return }
+        manager(named: owner)?.viewStarted(inForeground: inForeground)
     }
 }
