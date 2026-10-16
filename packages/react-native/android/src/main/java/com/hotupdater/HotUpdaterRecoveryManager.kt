@@ -342,7 +342,7 @@ internal class HotUpdaterRecoveryManager(
                 watchdogOwners += name
                 watchdogDeadlineAt = System.currentTimeMillis() + MONITORING_GRACE_PERIOD_MS
                 watchdogStateFile.parentFile?.mkdirs()
-                watchdogStateFile.writeText(WatchdogState(watchdogDeadlineAt, watchdogOwners.toList(), Process.myPid()).serialize())
+                writeWatchdogStateLocked()
                 scheduleRecoveryWatchdogTick(appContext, WATCHDOG_TICK_INTERVAL_MS)
             } catch (e: Exception) {
                 Log.e(TAG, "Failed to schedule recovery watchdog", e)
@@ -350,9 +350,46 @@ internal class HotUpdaterRecoveryManager(
         }
     }
 
+    private fun writeWatchdogStateLocked() {
+        watchdogStateFile.writeText(
+            WatchdogState(watchdogDeadlineAt, watchdogOwners.toList(), Process.myPid(), relaunchIntents.toList()).serialize(),
+        )
+    }
+
+    /**
+     * Keeps the watchdog relaunching the app for this instance's claimed
+     * error while its claim is active: the host may prepare a replacement
+     * launch before the error ends the process, which reads the marker and
+     * leaves no other trace a later process could relaunch for.
+     */
+    private fun keepRelaunchIntentLocked() {
+        relaunchIntents += name
+        try {
+            writeWatchdogStateLocked()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to update recovery watchdog", e)
+        }
+    }
+
+    /** This instance's claimed error did not end the process: nothing to relaunch for. */
+    private fun dropRelaunchIntentLocked() {
+        if (!relaunchIntents.remove(name)) return
+        if (watchdogOwners.isEmpty() && relaunchIntents.isEmpty()) {
+            watchdogStateFile.delete()
+            cancelRecoveryWatchdogAlarm(appContext)
+            return
+        }
+        try {
+            writeWatchdogStateLocked()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to update recovery watchdog", e)
+        }
+    }
+
     /** This instance's claimed error of the launch of [ownerGeneration] did not end the process. */
     private fun leaveWatchdogAfterSurvivedError(ownerGeneration: Long?) {
         synchronized(lock) {
+            dropRelaunchIntentLocked()
             if (ownerGeneration != generation) return
             releaseRecoveryWatchdog()
         }
@@ -362,11 +399,12 @@ internal class HotUpdaterRecoveryManager(
     private fun releaseRecoveryWatchdog() {
         synchronized(recoveryLock) {
             if (!watchdogOwners.remove(name) && watchdogOwners.isNotEmpty()) return
-            if (watchdogOwners.isNotEmpty()) {
+            if (watchdogOwners.isNotEmpty() || relaunchIntents.isNotEmpty()) {
                 // The instances still waiting keep the watchdog, and a marker
-                // of this one no longer relaunches the app.
+                // of this one no longer relaunches the app; a claimed error
+                // still in flight does (keepRelaunchIntentLocked).
                 try {
-                    watchdogStateFile.writeText(WatchdogState(watchdogDeadlineAt, watchdogOwners.toList(), Process.myPid()).serialize())
+                    writeWatchdogStateLocked()
                 } catch (e: Exception) {
                     Log.e(TAG, "Failed to update recovery watchdog", e)
                 }
@@ -526,15 +564,19 @@ internal class HotUpdaterRecoveryManager(
         val instances: List<String>,
         /** The process that armed the watchdog, recorded beside named owners. */
         val pid: Int? = null,
+        /** Named instances whose claimed error is in flight: they relaunch without a marker. */
+        val relaunching: List<String> = emptyList(),
     ) {
         // Main alone writes only its deadline, as it always has. Any other set
         // of owners is listed on an `owners:` line, which may leave main out:
         // a marker main left in an earlier process is not this launch's.
         fun serialize(): String {
             val owners = instances.distinct()
-            if (owners == listOf(HotUpdaterInstanceEnvironment.MAIN_NAME)) return deadlineAt.toString()
+            val relaunch = relaunching.distinct()
+            if (owners == listOf(HotUpdaterInstanceEnvironment.MAIN_NAME) && relaunch.isEmpty()) return deadlineAt.toString()
             val pidLine = pid?.let { "\n$PID_PREFIX$it" }.orEmpty()
-            return "$deadlineAt\n$OWNERS_PREFIX${owners.joinToString(",")}$pidLine"
+            val relaunchLine = if (relaunch.isEmpty()) "" else "\n$RELAUNCH_PREFIX${relaunch.joinToString(",")}"
+            return "$deadlineAt\n$OWNERS_PREFIX${owners.joinToString(",")}$pidLine$relaunchLine"
         }
 
         /**
@@ -550,25 +592,36 @@ internal class HotUpdaterRecoveryManager(
         fun relaunchesFor(
             markerRequestsRollback: Boolean,
             currentPid: Int,
-        ): Boolean = markerRequestsRollback && pid != currentPid
+        ): Boolean = (markerRequestsRollback || relaunching.isNotEmpty()) && pid != currentPid
 
         companion object {
             private const val OWNERS_PREFIX = "owners:"
             private const val PID_PREFIX = "pid:"
+            private const val RELAUNCH_PREFIX = "relaunch:"
+
+            private fun names(
+                lines: List<String>,
+                prefix: String,
+            ): List<String>? =
+                lines
+                    .firstOrNull { it.startsWith(prefix) }
+                    ?.removePrefix(prefix)
+                    ?.split(',')
+                    ?.map(String::trim)
+                    ?.filter(String::isNotEmpty)
 
             fun parse(text: String?): WatchdogState? {
                 val lines = text?.lines()?.map(String::trim)?.filter(String::isNotEmpty) ?: return null
                 val deadlineAt = lines.firstOrNull()?.toLongOrNull() ?: return null
-                val owners =
-                    lines
-                        .firstOrNull { it.startsWith(OWNERS_PREFIX) }
-                        ?.removePrefix(OWNERS_PREFIX)
-                        ?.split(',')
-                        ?.map(String::trim)
-                        ?.filter(String::isNotEmpty)
+                val owners = names(lines, OWNERS_PREFIX)
                 val pid = lines.firstOrNull { it.startsWith(PID_PREFIX) }?.removePrefix(PID_PREFIX)?.toIntOrNull()
                 // A file with only a deadline is main's.
-                return WatchdogState(deadlineAt, owners ?: listOf(HotUpdaterInstanceEnvironment.MAIN_NAME), pid)
+                return WatchdogState(
+                    deadlineAt,
+                    owners ?: listOf(HotUpdaterInstanceEnvironment.MAIN_NAME),
+                    pid,
+                    names(lines, RELAUNCH_PREFIX).orEmpty(),
+                )
             }
         }
     }
@@ -639,6 +692,7 @@ internal class HotUpdaterRecoveryManager(
         private val claimedOwners = LinkedHashSet<Pair<String, Long?>>()
         private val disarmedByClaim = LinkedHashMap<HotUpdaterRecoveryManager, Long>()
         private val watchdogOwners = linkedSetOf<String>()
+        private val relaunchIntents = linkedSetOf<String>()
         private var watchdogDeadlineAt = 0L
 
         private val patchedReactContextIds = mutableSetOf<Int>()
@@ -920,6 +974,9 @@ internal class HotUpdaterRecoveryManager(
                 // and its window starts with the claim.
                 scheduleClaimRelease(generation)
                 slots.attribute(instanceName)
+                if (owner != null && !owner.isMain && owner.launchState.snapshot()?.shouldRollback == true) {
+                    owner.keepRelaunchIntentLocked()
+                }
                 claimOwner = instanceName to ownerGeneration
                 claimedOwners += instanceName to ownerGeneration
                 if (signalHandlerInstalled) {
@@ -991,7 +1048,7 @@ internal class HotUpdaterRecoveryManager(
                 // A launch whose generation moved on is no longer the one that threw.
                 survivedOwners.forEach { (name, ownerGeneration) ->
                     if (name != HotUpdaterInstanceEnvironment.MAIN_NAME) {
-                        liveManagers[name]?.leaveWatchdogAfterSurvivedError(ownerGeneration)
+                        liveManagers[name]?.leaveWatchdogAfterSurvivedError(ownerGeneration) ?: relaunchIntents.remove(name)
                     }
                 }
                 disarmed.forEach { (manager, launch) -> manager.resumeAfterAnotherInstanceSurvived(launch) }

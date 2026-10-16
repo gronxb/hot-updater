@@ -823,6 +823,36 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a claimed error keeps the app relaunching after a replacement launch read its marker`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+
+        // The host prepares a replacement launch before the error ends the
+        // process: it reads the marker, rolls back, and waits for its view.
+        assertEquals("assets://widget.android.bundle", HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile())
+        assertFalse(crashMarker(context, widget).exists())
+
+        // The error then ends the process: the next process relaunches the app.
+        val watchdogState = File(bundleStore(context, main), "recovery-watchdog-state.txt")
+        val state = HotUpdaterRecoveryManager.WatchdogState.parse(watchdogState.readText())!!
+        assertEquals(listOf(widget.name), state.relaunching)
+        val markers = HotUpdaterRecoveryManager.crashMarkerRequestsRollback(context.filesDir, state.instances)
+        assertTrue(state.relaunchesFor(markers, currentPid = (state.pid ?: 0) + 1))
+
+        // The error did not end the process after all: nothing to relaunch for.
+        HotUpdaterRecoveryManager.releaseClaim()
+        assertTrue(
+            HotUpdaterRecoveryManager.WatchdogState
+                .parse(watchdogState.takeIf { it.exists() }?.readText())
+                ?.relaunching
+                .orEmpty()
+                .isEmpty(),
+        )
+    }
+
+    @Test
     fun `first content of one instance never verifies another's launch`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, main, "main-bundle")
@@ -954,6 +984,7 @@ class InstanceRecoveryTest {
         // Main's own file names no process and relaunches as it always has.
         val main = HotUpdaterRecoveryManager.WatchdogState.parse("1234")!!
         assertNull(main.pid)
+        assertTrue(main.relaunching.isEmpty())
         assertTrue(main.relaunchesFor(markerRequestsRollback = true, currentPid = 4321))
         assertEquals("1234", HotUpdaterRecoveryManager.WatchdogState(1_234L, listOf(main.instances.single()), pid = 4321).serialize())
     }
