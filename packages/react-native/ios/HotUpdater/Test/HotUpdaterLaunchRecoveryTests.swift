@@ -817,6 +817,41 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(markers(coordinator)[widgetSlot] == true)
     }
 
+    /// A deferred load failure whose fatal never comes (a development
+    /// build shows the error instead) doesn't turn a later, unrelated fatal
+    /// into a load failure.
+    @Test
+    func aDeferredLoadFailureExpires() throws {
+        // After the bound.
+        do {
+            let scene = try Scene()
+            defer { scene.cleanUp() }
+            var clock: TimeInterval = 0
+            let process = scene.launch(now: { clock })
+            #expect(process.coordinator.deferUnclaimedLoadFailure())
+            clock += HotUpdaterRecoveryCoordinator.loadFailureClaimBound - 1
+            #expect(process.coordinator.takeDeferredLoadFailure())
+            #expect(process.coordinator.deferUnclaimedLoadFailure())
+            clock += HotUpdaterRecoveryCoordinator.loadFailureClaimBound
+            #expect(!process.coordinator.takeDeferredLoadFailure())
+        }
+        // Once the launch it was deferred for is known not to have failed.
+        for settle in [
+            { (coordinator: HotUpdaterRecoveryCoordinator) in coordinator.runtimeResolved(name: Self.widget) },
+            { (coordinator: HotUpdaterRecoveryCoordinator) in _ = coordinator.contentAppeared(owner: Self.widget) },
+            { (coordinator: HotUpdaterRecoveryCoordinator) in
+                coordinator.startMonitoring(name: Self.widget, bundleId: "widget-next", shouldRollback: true)
+            },
+        ] {
+            let scene = try Scene()
+            defer { scene.cleanUp() }
+            let process = scene.launch()
+            #expect(process.coordinator.deferUnclaimedLoadFailure())
+            settle(process.coordinator)
+            #expect(!process.coordinator.takeDeferredLoadFailure())
+        }
+    }
+
     @Test
     func aLoadFailureIsMainsOnceEveryNamedRuntimeIsKnown() throws {
         let scene = try Scene()

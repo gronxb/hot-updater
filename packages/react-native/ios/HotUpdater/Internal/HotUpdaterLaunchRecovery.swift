@@ -184,8 +184,18 @@ final class HotUpdaterRecoveryCoordinator {
     static let loadFailureClaimBound: TimeInterval = 10
     /// Load failures no runtime claimed whose fatal hasn't come yet: several
     /// runtimes can fail close together, and each fatal that no runtime
-    /// claims takes one.
-    private var deferredLoadFailures = 0
+    /// claims takes one. Each lives until `loadFailureClaimBound` passes, or
+    /// until every named launch it was deferred for is known not to have
+    /// failed (it launched again, its runtime resolved, or it showed
+    /// content): a fatal that never came must not turn a later, unrelated
+    /// one into a load failure.
+    private var deferredLoadFailures: [DeferredLoadFailure] = []
+
+    private struct DeferredLoadFailure {
+        let deferredAt: TimeInterval
+        /// The unresolved named launches that may have failed, by generation.
+        let possibleOwners: [String: Int]
+    }
     /// Called with a named instance whose own fatal or load failure marked
     /// its launch for rollback, outside the lock. If the process lives on (a
     /// development build, or a fatal handler that returns) and the host
@@ -491,7 +501,11 @@ final class HotUpdaterRecoveryCoordinator {
     func deferUnclaimedLoadFailure() -> Bool {
         withLock {
             guard hasUnresolvedNamedLaunch else { return false }
-            deferredLoadFailures += 1
+            let possibleOwners = launches.values.filter(isUnresolvedNamedLaunch)
+            deferredLoadFailures.append(DeferredLoadFailure(
+                deferredAt: now(),
+                possibleOwners: Dictionary(uniqueKeysWithValues: possibleOwners.map { ($0.name, $0.generation) })
+            ))
             return true
         }
     }
@@ -540,8 +554,16 @@ final class HotUpdaterRecoveryCoordinator {
     /// next one doesn't.
     func takeDeferredLoadFailure() -> Bool {
         withLock {
-            guard deferredLoadFailures > 0 else { return false }
-            deferredLoadFailures -= 1
+            let currentTime = now()
+            deferredLoadFailures.removeAll { deferred in
+                currentTime - deferred.deferredAt >= Self.loadFailureClaimBound
+                    || !deferred.possibleOwners.contains { name, generation in
+                        guard let launch = launches[name] else { return false }
+                        return launch.generation == generation && isUnresolvedNamedLaunch(launch)
+                    }
+            }
+            guard !deferredLoadFailures.isEmpty else { return false }
+            deferredLoadFailures.removeFirst()
             return true
         }
     }
@@ -583,9 +605,11 @@ final class HotUpdaterRecoveryCoordinator {
     /// A named launch of this process still waiting for content whose
     /// runtime has no module yet.
     private var hasUnresolvedNamedLaunch: Bool {
-        launches.values.contains { launch in
-            !launch.isMain && launch.isMonitoring && launch.isAwaitingContent && !launch.hasResolvedRuntime
-        }
+        launches.values.contains(where: isUnresolvedNamedLaunch)
+    }
+
+    private func isUnresolvedNamedLaunch(_ launch: Launch) -> Bool {
+        !launch.isMain && launch.isMonitoring && launch.isAwaitingContent && !launch.hasResolvedRuntime
     }
 
     /// Ends the grace period after first content.
