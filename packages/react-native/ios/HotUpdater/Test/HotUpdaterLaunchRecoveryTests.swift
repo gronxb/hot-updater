@@ -348,12 +348,42 @@ struct HotUpdaterLaunchRecoveryTests {
         let first = pending.resolve { $0 === widgetSurface ? Self.widget : nil }
         #expect(first.map(\.name) == [Self.widget])
         #expect(first.map(\.inForeground) == [true])
+        #expect(first.first?.surface === widgetSurface)
         #expect(pending.count == 1)
 
         let second = pending.resolve { $0 === mainSurface ? Self.main : nil }
         #expect(second.map(\.name) == [Self.main])
         #expect(second.map(\.inForeground) == [false])
         #expect(pending.count == 0)
+    }
+
+    /// A view that started in the background starts its launch on the next
+    /// foreground only if it is still shown then.
+    @Test
+    func aViewStartedInTheBackgroundStartsItsLaunchOnlyIfStillShown() {
+        let starts = HotUpdaterBackgroundViewStarts()
+        let shown = NSObject()
+        var discarded: NSObject? = NSObject()
+        let detached = NSObject()
+        let isShown: (AnyObject) -> Bool = { $0 === shown }
+
+        // Discarded, or stopped and out of its window: nothing to start.
+        starts.add(discarded!)
+        starts.add(detached)
+        discarded = nil
+        #expect(!starts.takeAnyShown(isShown))
+        #expect(starts.isEmpty)
+
+        // One of its views is still shown.
+        starts.add(detached)
+        starts.add(shown)
+        #expect(starts.takeAnyShown(isShown))
+        // Taken: the next foreground needs a view that starts again.
+        #expect(!starts.takeAnyShown(isShown))
+
+        starts.add(shown)
+        starts.removeAll()
+        #expect(!starts.takeAnyShown(isShown))
     }
 
     // MARK: - Sweeps

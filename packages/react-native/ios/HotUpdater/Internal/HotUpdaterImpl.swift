@@ -26,6 +26,15 @@ private func hotUpdaterCopyImplForRootObjectSymbol(_ object: AnyObject) -> Unsaf
 @_silgen_name("HotUpdaterCopyRuntimeImpl")
 private func hotUpdaterCopyRuntimeImplSymbol() -> UnsafeMutableRawPointer?
 
+@_silgen_name("HotUpdaterIsViewShown")
+private func hotUpdaterIsViewShownSymbol(_ object: AnyObject) -> ObjCBool
+
+/// Whether a started Fabric surface, or an old-architecture root view, is in
+/// a window. Main thread only.
+private func hotUpdaterIsViewShown(_ object: AnyObject) -> Bool {
+    hotUpdaterIsViewShownSymbol(object).boolValue
+}
+
 @_silgen_name("HotUpdaterPerformRecoveryReload")
 private func hotUpdaterPerformRecoveryReloadSymbol() -> ObjCBool
 
@@ -1010,6 +1019,7 @@ final class HotUpdaterRecoveryManager: NSObject {
     // Main thread only: a named launch whose view started in the background
     // starts once the app comes to the foreground.
     private var armObservers: [NSObjectProtocol] = []
+    private let backgroundViewStarts = HotUpdaterBackgroundViewStarts()
 
     init(environment: HotUpdaterInstanceEnvironment, bundleStorage: BundleStorageService) {
         name = environment.name
@@ -1077,13 +1087,15 @@ final class HotUpdaterRecoveryManager: NSObject {
     /// A view of this named instance's runtime started. Only a launch in the
     /// foreground may leave an unfinished launch for the next process to roll
     /// back, as for main. Main thread only.
-    func viewStarted(inForeground: Bool) {
+    func viewStarted(_ view: AnyObject, inForeground: Bool) {
         guard !isMain else { return }
         if inForeground {
             removeArmObservers()
             hub.coordinator.arm(name: name)
             return
         }
+        // Only if the view is still shown when the app comes back.
+        backgroundViewStarts.add(view)
         guard armObservers.isEmpty else { return }
         armObservers = [
             UIApplication.willEnterForegroundNotification,
@@ -1091,8 +1103,11 @@ final class HotUpdaterRecoveryManager: NSObject {
         ].map { notificationName in
             NotificationCenter.default.addObserver(forName: notificationName, object: nil, queue: .main) { [weak self] _ in
                 guard let self else { return }
+                let isShown = self.backgroundViewStarts.takeAnyShown { hotUpdaterIsViewShown($0) }
                 self.removeArmObservers()
-                self.hub.coordinator.arm(name: self.name)
+                if isShown {
+                    self.hub.coordinator.arm(name: self.name)
+                }
             }
         }
     }
@@ -1100,6 +1115,7 @@ final class HotUpdaterRecoveryManager: NSObject {
     private func removeArmObservers() {
         armObservers.forEach { NotificationCenter.default.removeObserver($0) }
         armObservers = []
+        backgroundViewStarts.removeAll()
     }
 
     /// Main only: its fatal before first content reloads it in-process with
@@ -1387,7 +1403,7 @@ final class HotUpdaterRecoveryHub: NSObject {
             guard let self else { return }
             let inForeground = UIApplication.shared.applicationState != .background
             if let owner = self.owner(of: surface) {
-                self.viewStarted(owner: owner, inForeground: inForeground)
+                self.viewStarted(owner: owner, view: surface, inForeground: inForeground)
             } else {
                 // The surface starts before its bundle runs, so before the
                 // runtime's module that tells whose it is.
@@ -1410,14 +1426,14 @@ final class HotUpdaterRecoveryHub: NSObject {
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
             for started in self.pendingSurfaceStarts.resolve({ self.owner(of: $0) }) {
-                self.viewStarted(owner: started.name, inForeground: started.inForeground)
+                self.viewStarted(owner: started.name, view: started.surface, inForeground: started.inForeground)
             }
         }
     }
 
-    private func viewStarted(owner: String, inForeground: Bool) {
+    private func viewStarted(owner: String, view: AnyObject, inForeground: Bool) {
         // Main's launch starts when it is selected, as it always has.
         guard owner != mainName else { return }
-        manager(named: owner)?.viewStarted(inForeground: inForeground)
+        manager(named: owner)?.viewStarted(view, inForeground: inForeground)
     }
 }

@@ -5,6 +5,7 @@
 #import <React/RCTLog.h>
 
 #ifdef RCT_NEW_ARCH_ENABLED
+#import <React/RCTFabricSurface.h>
 #import <React/RCTSurfacePresenter.h>
 #else
 #import <React/RCTBridge+Private.h>
@@ -1336,4 +1337,30 @@ extern "C" void *HotUpdaterCopyRuntimeImpl(void)
 #endif
   HotUpdaterImpl *impl = [reference.module resolvedInstanceImpl];
   return impl ? (__bridge_retained void *)impl : NULL;
+}
+
+// Whether a started view is shown: an old-architecture root view in a window,
+// or a running Fabric surface whose view is in a window. A surface's `view`
+// getter would create its view, so this reads the one it already has.
+extern "C" BOOL HotUpdaterIsViewShown(id object)
+{
+  if ([object isKindOfClass:[UIView class]]) {
+    return ((UIView *)object).window != nil;
+  }
+#ifdef RCT_NEW_ARCH_ENABLED
+  if ([object isKindOfClass:[RCTFabricSurface class]]) {
+    RCTFabricSurface *surface = object;
+    if (surface.stage != RCTSurfaceStageRunning) {
+      return NO;
+    }
+    id view = nil;
+    @try {
+      view = [surface valueForKey:@"_view"];
+    } @catch (NSException *exception) {
+      return NO;
+    }
+    return [view isKindOfClass:[UIView class]] && ((UIView *)view).window != nil;
+  }
+#endif
+  return NO;
 }

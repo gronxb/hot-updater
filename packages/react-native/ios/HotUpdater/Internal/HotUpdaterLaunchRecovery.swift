@@ -520,17 +520,17 @@ final class HotUpdaterPendingSurfaceStarts {
 
     /// The surfaces `owner` attributes now, with whether each started in the
     /// foreground; they and the surfaces already gone are forgotten.
-    func resolve(_ owner: (AnyObject) -> String?) -> [(name: String, inForeground: Bool)] {
+    func resolve(_ owner: (AnyObject) -> String?) -> [(name: String, surface: AnyObject, inForeground: Bool)] {
         lock.lock()
         let current = entries
         lock.unlock()
 
-        var resolved: [(name: String, inForeground: Bool)] = []
+        var resolved: [(name: String, surface: AnyObject, inForeground: Bool)] = []
         var settled: [ObjectIdentifier] = []
         for entry in current {
             guard let surface = entry.surface else { continue }
             if let name = owner(surface) {
-                resolved.append((name, entry.inForeground))
+                resolved.append((name, surface, entry.inForeground))
                 settled.append(ObjectIdentifier(surface))
             }
         }
@@ -548,5 +548,46 @@ final class HotUpdaterPendingSurfaceStarts {
         lock.lock()
         defer { lock.unlock() }
         return entries.filter { $0.surface != nil }.count
+    }
+}
+
+/// The views of one named instance that started while the app was in the
+/// background. Its launch starts when the app comes to the foreground, but
+/// only if one of them is still shown then: a view stopped or discarded in
+/// the meantime leaves the launch unstarted, until a view starts again.
+final class HotUpdaterBackgroundViewStarts {
+    private struct Entry {
+        weak var view: AnyObject?
+    }
+
+    private let lock = NSLock()
+    private var entries: [Entry] = []
+
+    var isEmpty: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return entries.isEmpty
+    }
+
+    func add(_ view: AnyObject) {
+        lock.lock()
+        entries.append(Entry(view: view))
+        lock.unlock()
+    }
+
+    /// Whether a view that started in the background is still shown, by
+    /// `isShown`; forgets them all either way.
+    func takeAnyShown(_ isShown: (AnyObject) -> Bool) -> Bool {
+        lock.lock()
+        let views = entries.compactMap(\.view)
+        entries = []
+        lock.unlock()
+        return views.contains { isShown($0) }
+    }
+
+    func removeAll() {
+        lock.lock()
+        entries = []
+        lock.unlock()
     }
 }
