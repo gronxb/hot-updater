@@ -916,10 +916,35 @@ struct HotUpdaterLaunchRecoveryTests {
             let scene = try Scene()
             defer { scene.cleanUp() }
             let process = scene.launch()
+            // Main has shown content: only the widget could have failed.
+            _ = process.coordinator.contentAppeared(owner: nil)
             #expect(process.coordinator.deferUnclaimedLoadFailure())
             settle(process.coordinator)
             #expect(!process.coordinator.takeDeferredLoadFailure())
         }
+    }
+
+    /// Deferred for main and the widget, whose runtime then resolves: main
+    /// may still be the one that failed, so the record stays, and its fatal
+    /// charges main alone.
+    @Test
+    func aDeferredLoadFailureBecomesMainsWhenTheNamedRuntimesSettle() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        #expect(coordinator.arm(name: Self.widget))
+        #expect(coordinator.deferUnclaimedLoadFailure())
+        coordinator.runtimeResolved(name: Self.widget)
+
+        let deferred = try #require(coordinator.takeDeferredLoadFailure(for: .none))
+        let claim = coordinator.chargeUnclaimedLoadFailure(deferred)
+        #expect(HotUpdaterCrashMarker.consume(at: scene.markerURL(Self.main))?.shouldRollback == true)
+        #expect(!FileManager.default.fileExists(atPath: scene.markerURL(Self.widget).path))
+        // The widget's armed launch is held while the fatal is forwarded.
+        #expect(scene.metadata(Self.widget)?.launchInProgress == false)
+        coordinator.clearAttribution(claim: claim)
+        #expect(scene.metadata(Self.widget)?.launchInProgress == true)
     }
 
     @Test

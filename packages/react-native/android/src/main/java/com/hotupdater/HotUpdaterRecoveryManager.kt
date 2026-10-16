@@ -658,6 +658,11 @@ internal class HotUpdaterRecoveryManager(
         // claim, which its handler's return or its fail-safe ends.
         private val claimErrors = HashMap<Int, WeakReference<Throwable>>()
 
+        // The hooks still forwarding each claim's error: one report may reach
+        // a runtime's context and its host at once, each with a handler that
+        // returns in its own time. The claim ends when the last returns.
+        private val claimHolders = HashMap<Int, Int>()
+
         // Every owner of the claims still active, which overlap when errors
         // return: each one's watchdog is left when the latest claim ends.
         private val claimedOwners = LinkedHashSet<Pair<String, Long?>>()
@@ -1028,7 +1033,15 @@ internal class HotUpdaterRecoveryManager(
          * process, keeps it for that crash.
          */
         internal fun handlerReturned(outcome: JavaScriptErrorOutcome) {
-            outcome.claim?.let(::releaseClaim)
+            val claim = outcome.claim ?: return
+            synchronized(recoveryLock) {
+                val holders = (claimHolders[claim] ?: return) - 1
+                if (holders > 0) {
+                    claimHolders[claim] = holders
+                    return
+                }
+                releaseClaim(claim)
+            }
         }
 
         /**
@@ -1042,7 +1055,10 @@ internal class HotUpdaterRecoveryManager(
             eventGeneration: Long? = liveManagers[instanceName]?.currentGeneration(),
         ): JavaScriptErrorOutcome =
             synchronized(recoveryLock) {
-                exception?.let(::activeClaimOf)?.let { return@synchronized JavaScriptErrorOutcome(false, it) }
+                exception?.let(::activeClaimOf)?.let { claimed ->
+                    claimHolders[claimed] = (claimHolders[claimed] ?: 0) + 1
+                    return@synchronized JavaScriptErrorOutcome(false, claimed)
+                }
                 // The claim's generation, its attribution in both claims, its
                 // owner, and the launches it leaves alone change at once: no
                 // launch starts, and no release runs, in between. Only the
@@ -1063,6 +1079,7 @@ internal class HotUpdaterRecoveryManager(
                 claimedOwners += instanceName to ownerGeneration
                 activeClaims[generation] = instanceName to ownerGeneration
                 exception?.let { claimErrors[generation] = WeakReference(it) }
+                claimHolders[generation] = 1
                 // The owner's marker, and its native slot asking for rollback,
                 // come before the native claim: a signal in between finds the
                 // crash unclaimed, or claimed with the owner's rollback in place.
@@ -1113,10 +1130,12 @@ internal class HotUpdaterRecoveryManager(
                 if (generation == null) {
                     activeClaims.clear()
                     claimErrors.clear()
+                    claimHolders.clear()
                 } else if (activeClaims.remove(generation) == null) {
                     return
                 } else {
                     claimErrors.remove(generation)
+                    claimHolders.remove(generation)
                 }
                 // Another fatal error is still in flight: the claim stays,
                 // now its, with its marker and slot already in place.

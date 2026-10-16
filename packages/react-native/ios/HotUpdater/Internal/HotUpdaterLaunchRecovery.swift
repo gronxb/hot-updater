@@ -569,11 +569,16 @@ final class HotUpdaterRecoveryCoordinator {
     /// Takes the oldest live deferred load failure `matches` accepts.
     private func takeLiveDeferredLoadFailure(where matches: (DeferredLoadFailure) -> Bool) -> DeferredLoadFailure? {
         let currentTime = now()
+        // Live while one of its launches could still have failed: main
+        // until that launch's first content, a named one while its runtime
+        // is unresolved. With only main left, it is main's failure.
         deferredLoadFailures.removeAll { deferred in
             currentTime - deferred.deferredAt >= Self.loadFailureClaimBound
                 || !deferred.possibleOwners.contains { name, generation in
-                    guard let launch = launches[name] else { return false }
-                    return launch.generation == generation && isUnresolvedNamedLaunch(launch)
+                    guard let launch = launches[name], launch.generation == generation else { return false }
+                    return launch.isMain
+                        ? launch.isMonitoring && !launch.hasShownContent
+                        : isUnresolvedNamedLaunch(launch)
                 }
         }
         guard let index = deferredLoadFailures.firstIndex(where: matches) else { return nil }

@@ -780,6 +780,33 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a claim two hooks forward ends when both of their handlers returned`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val forwarded = namedEnvironment("forwarded-widget")
+        stagePending(context, main, "main-bundle")
+        stagePending(context, forwarded, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        val registry = HotUpdaterInstanceRegistry.shared
+        try {
+            val widgetURL = registry.impl(context, forwarded).getJSBundleFile()
+            val error = RuntimeException("widget failed")
+            // Through the runtime's context, and wrapped through its host.
+            val fromContext = HotUpdaterRecoveryManager.handleJavaScriptError(error, widgetURL)
+            val fromHost = HotUpdaterRecoveryManager.handleJavaScriptError(RuntimeException(error), widgetURL)
+            assertEquals(fromContext.claim, fromHost.claim)
+
+            // One handler returns; the other is still running and may end the process.
+            HotUpdaterRecoveryManager.handlerReturned(fromContext)
+            assertFalse(metadata(context, main).launchInProgress)
+
+            HotUpdaterRecoveryManager.handlerReturned(fromHost)
+            assertTrue(metadata(context, main).launchInProgress)
+        } finally {
+            forget(registry, forwarded.name)
+        }
+    }
+
+    @Test
     fun `launches left alone by overlapping claims all count again when the last claim is released`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val chat = namedEnvironment("chat")
