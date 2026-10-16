@@ -13,7 +13,8 @@ import Foundation
 /// 3. Anything else, such as main's bundles or a Metro URL, is main's.
 ///
 /// Only names with an impl are candidates, so a URL recorded for a name
-/// nothing created in this process never routes there.
+/// nothing created in this process never routes there. A URL two names
+/// handed out belongs to neither.
 final class HotUpdaterInstanceRouter {
     private let lock = NSLock()
     // Every URL each name handed out in this process, not only the latest:
@@ -42,10 +43,15 @@ final class HotUpdaterInstanceRouter {
         let key = Self.comparableKey(bundleURL)
 
         lock.lock()
-        let handedOut = names.first { launchURLs[$0]?.contains(key) == true }
+        let handedOut = names.filter { launchURLs[$0]?.contains(key) == true }
         lock.unlock()
-        if let handedOut {
-            return handedOut
+        // Two names that hand out the same URL, such as one bundle shared by
+        // both, can't be told apart by it.
+        if handedOut.count == 1 {
+            return handedOut[0]
+        }
+        if handedOut.count > 1 {
+            return mainName
         }
 
         guard bundleURL.isFileURL else {

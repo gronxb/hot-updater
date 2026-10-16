@@ -42,6 +42,18 @@ struct HotUpdaterInstanceRouterTests {
     }
 
     @Test
+    func twoNamesThatHandOutTheSameURLCantClaimIt() {
+        let router = HotUpdaterInstanceRouter()
+        let shared = file("/app/Frameworks/Shared.framework/main.jsbundle")
+        router.record(launchURL: shared, name: "widget")
+        router.record(launchURL: shared, name: "checkout")
+
+        #expect(router.resolve(bundleURL: shared, candidates: ["main", "widget", "checkout"], documentsPath: documents) == "main")
+        // Only one of them is created in this process: the URL is its.
+        #expect(router.resolve(bundleURL: shared, candidates: ["main", "widget"], documentsPath: documents) == "widget")
+    }
+
+    @Test
     func aFileInsideANamedStorageRootIsThatName() {
         let router = HotUpdaterInstanceRouter()
         let staged = file("/app/Documents/hot-updater-instances/widget/bundle-store/0195/index.ios.bundle")
