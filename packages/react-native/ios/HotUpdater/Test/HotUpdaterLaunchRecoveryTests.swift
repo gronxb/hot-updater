@@ -1473,6 +1473,34 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(process.sink.flags[widgetSlot] == true)
     }
 
+    /// First content: the slot stops asking for rollback before the
+    /// verification is written, for a named launch and for main.
+    @Test
+    func firstContentStopsTheSlotBeforeWritingTheVerification() throws {
+        let sink = RecordingSlotSink()
+        let coordinator = HotUpdaterRecoveryCoordinator(sink: sink)
+        let mainStorage = ProbeStorage()
+        let widgetStorage = ProbeStorage()
+        coordinator.register(name: Self.main, markerURL: URL(fileURLWithPath: "/tmp/m.json"), storage: mainStorage)
+        coordinator.register(name: Self.widget, markerURL: URL(fileURLWithPath: "/tmp/w.json"), storage: widgetStorage)
+        coordinator.startMonitoring(name: Self.main, bundleId: "main-next", shouldRollback: true)
+        coordinator.startMonitoring(name: Self.widget, bundleId: "widget-next", shouldRollback: true)
+        #expect(coordinator.arm(name: Self.widget))
+        let widgetSlot = try #require(coordinator.launch(named: Self.widget)?.slot)
+        #expect(sink.flags[widgetSlot] == true)
+        #expect(sink.flags[HotUpdaterRecoveryCoordinator.mainSlot] == true)
+
+        var widgetSlotWhenWritten: Bool?
+        widgetStorage.onMarkLaunchCompleted = { widgetSlotWhenWritten = sink.flags[widgetSlot] }
+        var mainSlotWhenWritten: Bool?
+        mainStorage.onMarkLaunchCompleted = { mainSlotWhenWritten = sink.flags[HotUpdaterRecoveryCoordinator.mainSlot] }
+
+        _ = coordinator.contentAppeared(owner: Self.widget)
+        _ = coordinator.contentAppeared(owner: nil)
+        #expect(widgetSlotWhenWritten == false)
+        #expect(mainSlotWhenWritten == false)
+    }
+
     @Test
     func anErrorOfTheCurrentRuntimeStillChargesItsLaunch() throws {
         let scene = try Scene()
@@ -1847,6 +1875,11 @@ private class NoStorage: BundleStorageService {
 /// Storage that reports when a launch's start is cleared.
 private final class ProbeStorage: NoStorage {
     var onClearLaunchStarted: (() -> Void)?
+    var onMarkLaunchCompleted: (() -> Void)?
+
+    override func markLaunchCompleted(bundleId _: String?) {
+        onMarkLaunchCompleted?()
+    }
 
     override func clearLaunchStarted(bundleId _: String?) -> Bool {
         onClearLaunchStarted?()

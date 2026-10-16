@@ -407,10 +407,13 @@ final class HotUpdaterRecoveryCoordinator {
             }
             launch.isAwaitingContent = false
             launch.hasShownContent = true
-            launch.storage.markLaunchCompleted(bundleId: launch.bundleId)
+            // The slot stops asking for rollback before the verification is
+            // written: a signal while it is written leaves no rollback marker
+            // for a launch that rendered.
             launch.shouldRollback = false
             launch.isArmed = false
             mirror(launch)
+            launch.storage.markLaunchCompleted(bundleId: launch.bundleId)
             return (launch, launch.generation)
         }
     }
