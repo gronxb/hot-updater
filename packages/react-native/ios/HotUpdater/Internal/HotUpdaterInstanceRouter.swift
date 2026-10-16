@@ -53,11 +53,11 @@ final class HotUpdaterInstanceRouter {
         }
         let path = Self.comparablePath(bundleURL)
         return names.first { name in
-            guard let environment = try? HotUpdaterInstanceEnvironment(name: name, bundle: .main) else {
-                return false
-            }
             let root = Self.comparablePath(URL(
-                fileURLWithPath: environment.storageRootPath(documentsPath: documentsPath),
+                fileURLWithPath: HotUpdaterInstanceEnvironment.storageRootPath(
+                    name: name,
+                    documentsPath: documentsPath
+                ),
                 isDirectory: true
             ))
             // With the trailing slash, `app` never claims `app-2`'s files.

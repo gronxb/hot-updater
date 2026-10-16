@@ -79,11 +79,17 @@ struct HotUpdaterInstanceEnvironment {
     /// The directory holding `bundle-store` and `bundle-temp`: Documents for
     /// main, `Documents/hot-updater-instances/<name>` otherwise.
     func storageRootPath(documentsPath: String) -> String {
-        guard !isMain else {
+        Self.storageRootPath(name: name, documentsPath: documentsPath)
+    }
+
+    /// The storage root of `name`, which the router needs without the
+    /// instance's bundle.
+    static func storageRootPath(name: String, documentsPath: String) -> String {
+        guard name != mainName else {
             return documentsPath
         }
         return ((documentsPath as NSString)
-            .appendingPathComponent(Self.instancesDirectoryName) as NSString)
+            .appendingPathComponent(instancesDirectoryName) as NSString)
             .appendingPathComponent(name)
     }
 

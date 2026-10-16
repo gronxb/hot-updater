@@ -20,7 +20,7 @@ class HotUpdaterRuntimeInstanceTest {
 
     @Test
     fun `a runtime that loaded a named instance's launch URL resolves to that name`() {
-        val widget = environment("widget", bundleAssetName = "widget.android.bundle")
+        val widget = environment("widget")
         registry.impl(context, widget)
 
         // Its impl alone doesn't claim the URL; handing it out does.
@@ -89,7 +89,7 @@ class HotUpdaterRuntimeInstanceTest {
 
     @Test
     fun `main's bundles, the development server, and unknown URLs resolve to main`() {
-        registry.launchURL(context, environment("widget", bundleAssetName = "widget.android.bundle"))
+        registry.launchURL(context, environment("widget"))
 
         listOf(
             null,
@@ -104,15 +104,15 @@ class HotUpdaterRuntimeInstanceTest {
 
     @Test
     fun `two names that hand out the same launch URL can't claim it`() {
-        registry.launchURL(context, environment("widget"))
-        registry.launchURL(context, environment("widget-2"))
+        registry.launchURL(context, environment("widget", bundleAssetName = "shared.android.bundle"))
+        registry.launchURL(context, environment("widget-2", bundleAssetName = "shared.android.bundle"))
 
-        assertEquals(MAIN, registry.resolveName(context, "assets://index.android.bundle"))
+        assertEquals(MAIN, registry.resolveName(context, "assets://shared.android.bundle"))
     }
 
     @Test
     fun `a module resolves its runtime's instance once the runtime has a source URL`() {
-        val widget = environment("widget", bundleAssetName = "widget.android.bundle")
+        val widget = environment("widget")
         val widgetURL = registry.launchURL(context, widget)
         val mainImpl = allocateImpl()
         var sourceURL: String? = null
@@ -137,7 +137,7 @@ class HotUpdaterRuntimeInstanceTest {
 
     @Test
     fun `a module of main's runtime keeps serving main`() {
-        registry.launchURL(context, environment("widget", bundleAssetName = "widget.android.bundle"))
+        registry.launchURL(context, environment("widget"))
         val mainImpl = allocateImpl()
         val runtime = HotUpdaterRuntimeInstance(context, { "assets://index.android.bundle" }, registry) { mainImpl }
 
@@ -148,7 +148,7 @@ class HotUpdaterRuntimeInstanceTest {
 
     private fun environment(
         name: String,
-        bundleAssetName: String = HotUpdaterInstanceEnvironment.DEFAULT_BUNDLE_ASSET_NAME,
+        bundleAssetName: String = "$name.android.bundle",
     ): HotUpdaterInstanceEnvironment =
         HotUpdaterInstanceEnvironment.of(
             HotUpdaterOptions("https://updates.example.com", name = name, bundleAssetName = bundleAssetName),
