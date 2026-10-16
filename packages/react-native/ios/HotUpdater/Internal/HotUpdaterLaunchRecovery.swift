@@ -1107,3 +1107,18 @@ final class HotUpdaterLaunchEpoch {
         current == epoch
     }
 }
+
+/// The newest launch generation main-queue work was scheduled for. Work
+/// queued for an older launch can run after a newer launch's: it then does
+/// nothing, so it never removes or resets what the newer launch set up.
+struct HotUpdaterLatestGeneration {
+    private(set) var latest = 0
+
+    /// Whether work for `generation` is still the newest seen; records it.
+    mutating func admit(_ generation: Int) -> Bool {
+        guard generation >= latest else { return false }
+        latest = generation
+        return true
+    }
+}
+

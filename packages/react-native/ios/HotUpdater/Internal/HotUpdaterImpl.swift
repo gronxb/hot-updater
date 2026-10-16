@@ -150,6 +150,10 @@ private func hotUpdaterGetMinBundleId() -> String {
     // Guarded by launchPreparationLock.
     private var currentLaunchSelectionEpoch = 0
     private var launchStartObservers: [NSObjectProtocol] = []
+    // Main thread only: the launch the observers mark started, and the
+    // newest launch whose mark ran.
+    private var launchStartObserversGeneration: Int?
+    private var launchStartGenerations = HotUpdaterLatestGeneration()
 
     private static let CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
 
@@ -1026,18 +1030,22 @@ private func hotUpdaterGetMinBundleId() -> String {
         let bundleId = selection.shouldRollbackOnCrash ? selection.launchedBundleId : nil
         let mark = { [weak self] in
             guard let self else { return }
-            self.removeLaunchStartObservers()
+            // Queued for an older launch, behind a newer launch's mark: the
+            // newer launch's observers stay.
+            guard self.launchStartGenerations.admit(generation) else { return }
+            self.removeLaunchStartObservers(before: generation + 1)
             guard bundleId != nil else { return }
             guard UIApplication.shared.applicationState == .background else {
                 self.recoveryManager.markMainLaunchStarted(generation: generation)
                 return
             }
+            self.launchStartObserversGeneration = generation
             self.launchStartObservers = [
                 UIApplication.willEnterForegroundNotification,
                 UIApplication.didBecomeActiveNotification,
             ].map { name in
                 NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                    self?.removeLaunchStartObservers()
+                    self?.removeLaunchStartObservers(before: generation + 1)
                     self?.recoveryManager.markMainLaunchStarted(generation: generation)
                 }
             }
@@ -1050,9 +1058,13 @@ private func hotUpdaterGetMinBundleId() -> String {
         }
     }
 
-    private func removeLaunchStartObservers() {
+    /// Removes the observers if a launch before `generation` installed
+    /// them. Main thread only.
+    private func removeLaunchStartObservers(before generation: Int) {
+        guard let installed = launchStartObserversGeneration, installed < generation else { return }
         launchStartObservers.forEach { NotificationCenter.default.removeObserver($0) }
         launchStartObservers = []
+        launchStartObserversGeneration = nil
     }
 }
 
@@ -1169,9 +1181,13 @@ final class HotUpdaterRecoveryManager: NSObject {
             hub.coordinator.arm(name: name, generation: generation, runtimeBundleURL: runtimeBundleURL)
             return
         }
-        // Views of an earlier launch never start this one.
-        if let armGeneration, armGeneration != generation {
-            removeArmObservers(before: armGeneration + 1)
+        // Views of an earlier launch never start this one, nor remove what
+        // a later launch installed.
+        if let armGeneration {
+            if generation < armGeneration {
+                return
+            }
+            removeArmObservers(before: generation)
         }
         // Only if the view is still shown when the app comes back.
         backgroundViewStarts.add(view)

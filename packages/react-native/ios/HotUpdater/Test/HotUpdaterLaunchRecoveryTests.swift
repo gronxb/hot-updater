@@ -588,6 +588,22 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(coordinator.contentAppeared(owner: Self.widget, generation: widgetSecond)?.generation == widgetSecond)
     }
 
+    /// Main-queue work queued for launch N runs after launch N+1's: it does
+    /// nothing, so N+1's foreground observers stay.
+    @Test
+    func workQueuedForAnEarlierLaunchRunsAfterALaterOnesAsNothing() {
+        var latest = HotUpdaterLatestGeneration()
+        let newer = latest.admit(2)
+        let stale = latest.admit(1)
+        let again = latest.admit(2)
+        let next = latest.admit(3)
+        #expect(newer)
+        #expect(!stale)
+        #expect(again)
+        #expect(next)
+        #expect(latest.latest == 3)
+    }
+
     @Test
     func heldContentNeverVerifiesALaterLaunch() throws {
         var clock: TimeInterval = 0
