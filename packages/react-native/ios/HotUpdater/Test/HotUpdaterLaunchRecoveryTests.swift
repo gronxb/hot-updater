@@ -983,6 +983,26 @@ struct HotUpdaterLaunchRecoveryTests {
         }
     }
 
+    /// A rollback marked while a launch is being prepared, or after, makes
+    /// the prepared selection stale, whatever the order.
+    @Test
+    func aRollbackMarkedDuringOrAfterPreparationPreparesTheLaunchAgain() {
+        let epoch = HotUpdaterLaunchEpoch()
+        // Prepared, then a rollback is marked.
+        let prepared = epoch.current
+        #expect(epoch.isCurrent(prepared))
+        epoch.invalidate()
+        #expect(!epoch.isCurrent(prepared))
+        // A preparation that started before the rollback and publishes after.
+        let started = epoch.current
+        epoch.invalidate()
+        let published = started
+        #expect(!epoch.isCurrent(published))
+        // Prepared again after it: current.
+        let again = epoch.current
+        #expect(epoch.isCurrent(again))
+    }
+
     @Test
     func onlyANamedLaunchThatWouldRollBackIsPreparedAgain() throws {
         let scene = try Scene()

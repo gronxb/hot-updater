@@ -10,6 +10,7 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Core implementation class for HotUpdater functionality
@@ -37,6 +38,16 @@ class HotUpdaterImpl {
     // channel's bundle, but the running bundle stays until a reload.
     @Volatile
     private var runningLaunchSelection: LaunchSelection? = null
+
+    // Counts the crash markers written for this instance's launches. A
+    // prepared launch keeps the count it started from: one written since,
+    // even while it was being prepared, makes the next start prepare again,
+    // which reads the marker. Crash recovery bumps it under its own lock, so
+    // it never waits for the launch lock.
+    private val launchInvalidations = AtomicLong()
+
+    @Volatile
+    private var currentLaunchInvalidations = 0L
 
     // Serializes the launch's bundle selection with the update check's read
     // of it, so a check never reads metadata the launch is still selecting from.
@@ -559,7 +570,8 @@ class HotUpdaterImpl {
         }
 
     private fun prepareLaunchLocked(): LaunchSelection {
-        currentLaunchSelection?.let { return it }
+        val invalidations = launchInvalidations.get()
+        currentLaunchSelection?.takeIf { currentLaunchInvalidations == invalidations }?.let { return it }
 
         val pendingRecovery = recoveryManager.consumePendingCrashRecovery()
         val selection = bundleStorage.prepareLaunch(pendingRecovery)
@@ -583,9 +595,7 @@ class HotUpdaterImpl {
                     },
                 onRuntimeActivity = activityStartGate::watchActivity,
                 launchURL = selection.bundleUrl,
-                // Not under the launch lock: crash recovery holds its own lock
-                // here, which launch preparation takes after the launch lock.
-                onCharged = { currentLaunchSelection = null },
+                onCharged = { launchInvalidations.incrementAndGet() },
             )
         // A headless JS task, such as a background push, loads the bundle without
         // an activity and never renders. Only a launch with an activity may leave
@@ -602,6 +612,7 @@ class HotUpdaterImpl {
             },
         )
         runningLaunchSelection = selection
+        currentLaunchInvalidations = invalidations
         currentLaunchSelection = selection
         return selection
     }

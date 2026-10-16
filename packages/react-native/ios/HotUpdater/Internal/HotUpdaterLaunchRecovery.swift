@@ -1012,3 +1012,29 @@ enum HotUpdaterJSStackOwner {
     }
 }
 
+/// The invalidation count of one instance's prepared launch. Marking a
+/// rollback only advances it, without the launch lock (a crash may be
+/// reported on a thread that holds it); a launch prepared at an older count
+/// is prepared again, so a preparation running concurrently can't publish a
+/// selection that outlives the rollback.
+final class HotUpdaterLaunchEpoch {
+    private let lock = NSLock()
+    private var value = 0
+
+    var current: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return value
+    }
+
+    func invalidate() {
+        lock.lock()
+        value += 1
+        lock.unlock()
+    }
+
+    /// Whether a selection prepared at `epoch` is still current.
+    func isCurrent(_ epoch: Int) -> Bool {
+        current == epoch
+    }
+}

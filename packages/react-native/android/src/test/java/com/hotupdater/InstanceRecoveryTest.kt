@@ -795,6 +795,34 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a named launch charged while it is being prepared rolls back at its next start`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val widgetBundle = stagePending(context, widget, "widget-bundle")
+        var fatalDuringPreparation = true
+        // The gate runs during preparation, after the launch is monitored and
+        // before its selection is published: a fatal error of the launch lands there.
+        val gate =
+            ActivityStartGate(
+                RecordingApplication(),
+                processHasStartedActivity = { false },
+                showsReactView = { false },
+                watchLayout = { _, _ -> {} },
+                beforeCheckingViews = {
+                    if (fatalDuringPreparation) {
+                        fatalDuringPreparation = false
+                        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+                    }
+                },
+            )
+        val impl = HotUpdaterImpl(context, widget, gate)
+        assertEquals(widgetBundle.absolutePath, impl.getJSBundleFile())
+
+        // The error's handler returned; the host starts the widget again.
+        assertEquals("assets://widget.android.bundle", impl.getJSBundleFile())
+        assertEquals(listOf("widget-bundle"), impl.getCrashHistory())
+    }
+
+    @Test
     fun `first content of one instance never verifies another's launch`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, main, "main-bundle")

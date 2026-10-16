@@ -144,6 +144,11 @@ private func hotUpdaterGetMinBundleId() -> String {
     // Serializes the launch's bundle selection with the update check's read
     // of it, so a check never reads metadata the launch is still selecting from.
     private let launchPreparationLock = NSLock()
+    /// Advanced when this instance's own fatal marks its launch for
+    /// rollback; a selection prepared at an older epoch is prepared again.
+    private let launchEpoch = HotUpdaterLaunchEpoch()
+    // Guarded by launchPreparationLock.
+    private var currentLaunchSelectionEpoch = 0
     private var launchStartObservers: [NSObjectProtocol] = []
 
     private static let CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
@@ -912,17 +917,12 @@ private func hotUpdaterGetMinBundleId() -> String {
     /// launch again, consuming the marker, instead of returning the bundle
     /// that failed. The running bundle stays what React Native runs, as
     /// after a channel reset.
+    ///
+    /// Takes no lock: a crash can reach here on a thread that holds the
+    /// launch lock. A preparation already running keeps the epoch it started
+    /// with, so its selection is prepared again at the next `bundleURL()`.
     func invalidateLaunchPreparation() {
-        // A crash can reach here on a thread that holds the launch lock
-        // already; never wait for it there.
-        guard launchPreparationLock.try() else {
-            DispatchQueue.global(qos: .userInitiated).async { [weak self] in
-                self?.invalidateLaunchPreparation()
-            }
-            return
-        }
-        currentLaunchSelection = nil
-        launchPreparationLock.unlock()
+        launchEpoch.invalidate()
     }
 
     // MARK: - Native Update Check
@@ -988,10 +988,13 @@ private func hotUpdaterGetMinBundleId() -> String {
     private func prepareLaunchIfNeeded(bundle: Bundle) -> LaunchSelection {
         launchPreparationLock.lock()
         defer { launchPreparationLock.unlock() }
-        if let currentLaunchSelection {
+        if let currentLaunchSelection, launchEpoch.isCurrent(currentLaunchSelectionEpoch) {
             return currentLaunchSelection
         }
 
+        // Read before the marker is consumed: a rollback marked from here on
+        // invalidates this selection.
+        let epoch = launchEpoch.current
         let pendingRecovery = recoveryManager.consumePendingCrashRecovery()
         let selection = bundleStorage.prepareLaunch(bundle: bundle, pendingRecovery: pendingRecovery)
         // Registered first, so another instance's fatal that stops every
@@ -1009,6 +1012,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         }
         runningLaunchSelection = selection
         currentLaunchSelection = selection
+        currentLaunchSelectionEpoch = epoch
         return selection
     }
 
