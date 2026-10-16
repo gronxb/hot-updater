@@ -105,6 +105,11 @@ struct HotUpdaterCrashSlotBuffer {
 // Two buffers per slot: the writer fills the one not published, then
 // publishes it. A crash during a rewrite, even on the writer's own thread,
 // still reads the previous whole copy.
+// `published`: bit 0 is the published buffer, bit 1 says anything was
+// published at all (a freshly started slot has neither).
+constexpr uint32_t kPublishedIndexMask = 1U;
+constexpr uint32_t kPublishedOnceFlag = 2U;
+
 struct HotUpdaterCrashSlot {
   std::atomic<uint32_t> published;
   HotUpdaterCrashSlotBuffer buffers[2];
@@ -227,7 +232,7 @@ void HotUpdaterRewriteCrashSlot(HotUpdaterCrashSlot &slot,
                                 int shouldRollback)
 {
   std::lock_guard<std::mutex> writer(gHotUpdaterCrashSlotWriters);
-  const uint32_t current = slot.published.load(std::memory_order_relaxed) & 1U;
+  const uint32_t current = slot.published.load(std::memory_order_relaxed) & kPublishedIndexMask;
   HotUpdaterCrashSlotData next;
   // The writers are serialized, so the published buffer is stable here.
   HotUpdaterLoadCrashSlotData(slot.buffers[current].data, next);
@@ -247,26 +252,43 @@ void HotUpdaterRewriteCrashSlot(HotUpdaterCrashSlot &slot,
   std::atomic_thread_fence(std::memory_order_release);
   HotUpdaterStoreCrashSlotData(buffer.data, next);
   buffer.sequence.store(sequence + 2, std::memory_order_release);
-  slot.published.store(current ^ 1U, std::memory_order_release);
+  slot.published.store((current ^ 1U) | kPublishedOnceFlag, std::memory_order_release);
 }
 
 // Copies a consistent snapshot of the slot, or returns false while it is
 // being rewritten.
+bool HotUpdaterReadCrashSlotBuffer(const HotUpdaterCrashSlotBuffer &buffer, HotUpdaterCrashSlotData &snapshot)
+{
+  const uint32_t before = buffer.sequence.load(std::memory_order_acquire);
+  if ((before & 1U) != 0) {
+    return false;
+  }
+  HotUpdaterLoadCrashSlotData(buffer.data, snapshot);
+  std::atomic_thread_fence(std::memory_order_acquire);
+  return buffer.sequence.load(std::memory_order_relaxed) == before;
+}
+
 bool HotUpdaterReadCrashSlot(const HotUpdaterCrashSlot &slot, HotUpdaterCrashSlotData &snapshot)
 {
   for (int attempt = 0; attempt < 4; ++attempt) {
-    const HotUpdaterCrashSlotBuffer &buffer = slot.buffers[slot.published.load(std::memory_order_acquire) & 1U];
-    const uint32_t before = buffer.sequence.load(std::memory_order_acquire);
-    if ((before & 1U) != 0) {
+    const uint32_t state = slot.published.load(std::memory_order_acquire);
+    const uint32_t published = state & kPublishedIndexMask;
+    if (!HotUpdaterReadCrashSlotBuffer(slot.buffers[published], snapshot)) {
       // Only a buffer published before the latest flip is ever rewritten;
       // read the slot again.
       continue;
     }
-    HotUpdaterLoadCrashSlotData(buffer.data, snapshot);
-    std::atomic_thread_fence(std::memory_order_acquire);
-    if (buffer.sequence.load(std::memory_order_relaxed) == before) {
-      return true;
+    if ((state & kPublishedOnceFlag) == 0) {
+      // Nothing published yet: a first write that finished before its flip
+      // (a crash between the copy and the flip, even on the writer's own
+      // thread) is already whole in the other buffer. Once anything was
+      // published, an empty slot is a cleared one and stays empty.
+      HotUpdaterCrashSlotData pending;
+      if (HotUpdaterReadCrashSlotBuffer(slot.buffers[published ^ 1U], pending)) {
+        snapshot = pending;
+      }
     }
+    return true;
   }
   return false;
 }

@@ -56,6 +56,11 @@ struct SlotBuffer {
 // Two buffers per slot: the writer fills the one not published, then
 // publishes it. A crash during a rewrite, even on the writer's own thread,
 // still reads the previous whole copy.
+// `published`: bit 0 is the published buffer, bit 1 says anything was
+// published at all (a freshly started slot has neither).
+constexpr uint32_t kPublishedIndexMask = 1U;
+constexpr uint32_t kPublishedOnceFlag = 2U;
+
 struct Slot {
   std::atomic<uint32_t> published;
   SlotBuffer buffers[2];
@@ -182,20 +187,36 @@ void loadSlotData(const AtomicSlotData &source, SlotData &destination) {
   destination.bundleId[sizeof(destination.bundleId) - 1] = '\0';
 }
 
+bool readBuffer(const SlotBuffer &buffer, SlotData &snapshot) {
+  const uint32_t before = buffer.sequence.load(std::memory_order_acquire);
+  if ((before & 1U) != 0) {
+    return false;
+  }
+  loadSlotData(buffer.data, snapshot);
+  std::atomic_thread_fence(std::memory_order_acquire);
+  return buffer.sequence.load(std::memory_order_relaxed) == before;
+}
+
 bool readSlot(const Slot &slot, SlotData &snapshot) {
   for (int attempt = 0; attempt < 4; ++attempt) {
-    const SlotBuffer &buffer = slot.buffers[slot.published.load(std::memory_order_acquire) & 1U];
-    const uint32_t before = buffer.sequence.load(std::memory_order_acquire);
-    if ((before & 1U) != 0) {
+    const uint32_t state = slot.published.load(std::memory_order_acquire);
+    const uint32_t published = state & kPublishedIndexMask;
+    if (!readBuffer(slot.buffers[published], snapshot)) {
       // Only a buffer published before the latest flip is ever rewritten;
       // read the slot again.
       continue;
     }
-    loadSlotData(buffer.data, snapshot);
-    std::atomic_thread_fence(std::memory_order_acquire);
-    if (buffer.sequence.load(std::memory_order_relaxed) == before) {
-      return true;
+    if ((state & kPublishedOnceFlag) == 0) {
+      // Nothing published yet: a first write that finished before its flip
+      // (a crash between the copy and the flip, even on the writer's own
+      // thread) is already whole in the other buffer. Once anything was
+      // published, an empty slot is a cleared one and stays empty.
+      SlotData pending;
+      if (readBuffer(slot.buffers[published ^ 1U], pending)) {
+        snapshot = pending;
+      }
     }
+    return true;
   }
   return false;
 }
@@ -326,14 +347,14 @@ Java_com_hotupdater_HotUpdaterRecoveryNative_nativeUpdateSlot(
 
   std::lock_guard<std::mutex> writer(gSlotWriters[index]);
   Slot &slot = gSlots[index];
-  const uint32_t target = (slot.published.load(std::memory_order_relaxed) & 1U) ^ 1U;
+  const uint32_t target = (slot.published.load(std::memory_order_relaxed) & kPublishedIndexMask) ^ 1U;
   SlotBuffer &buffer = slot.buffers[target];
   const uint32_t sequence = buffer.sequence.load(std::memory_order_relaxed);
   buffer.sequence.store(sequence + 1, std::memory_order_relaxed);
   std::atomic_thread_fence(std::memory_order_release);
   storeSlotData(buffer.data, next);
   buffer.sequence.store(sequence + 2, std::memory_order_release);
-  slot.published.store(target, std::memory_order_release);
+  slot.published.store(target | kPublishedOnceFlag, std::memory_order_release);
 }
 
 extern "C" JNIEXPORT void JNICALL
