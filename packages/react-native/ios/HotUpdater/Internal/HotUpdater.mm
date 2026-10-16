@@ -87,7 +87,6 @@ HotUpdaterCrashSlot gHotUpdaterCrashSlots[kHotUpdaterCrashSlotCount] = {};
 // A JavaScript fatal about to crash the process is one instance's: only its
 // slot writes (none when it has no slot). Otherwise kHotUpdaterUnattributedCrash.
 volatile sig_atomic_t gHotUpdaterAttributedSlot = kHotUpdaterUnattributedCrash;
-bool gHotUpdaterSignalHandlersInstalled = false;
 struct sigaction gHotUpdaterPreviousActions[NSIG];
 __weak RCTBridge *gHotUpdaterBridge = nil;
 
@@ -262,19 +261,20 @@ void HotUpdaterSignalHandler(int signum, siginfo_t *info, void *context)
 // Once per process. Called on the main thread.
 extern "C" void HotUpdaterInstallCrashSignalHandlers(void)
 {
-  if (gHotUpdaterSignalHandlersInstalled) {
-    return;
-  }
-  gHotUpdaterSignalHandlersInstalled = true;
+  // Once per process, whichever instance asks first: a second sigaction
+  // would record this handler as its own previous action and recurse.
+  static dispatch_once_t onceToken;
+  dispatch_once(&onceToken, ^{
 
-  struct sigaction action {};
-  action.sa_sigaction = HotUpdaterSignalHandler;
-  action.sa_flags = SA_SIGINFO | SA_ONSTACK;
-  sigemptyset(&action.sa_mask);
+    struct sigaction action {};
+    action.sa_sigaction = HotUpdaterSignalHandler;
+    action.sa_flags = SA_SIGINFO | SA_ONSTACK;
+    sigemptyset(&action.sa_mask);
 
-  for (int signum : kHotUpdaterSignals) {
-    sigaction(signum, &action, &gHotUpdaterPreviousActions[signum]);
-  }
+    for (int signum : kHotUpdaterSignals) {
+      sigaction(signum, &action, &gHotUpdaterPreviousActions[signum]);
+    }
+  });
 }
 
 extern "C" void HotUpdaterUpdateCrashSlot(NSInteger index,
