@@ -213,3 +213,45 @@ struct HotUpdaterInstanceEnvironment {
         return value
     }
 }
+
+/// The bundle main works with. Main is one service like any name: its
+/// storage and isolation key come from the first bundle it is given, so a
+/// main `HotUpdaterInstance` with another bundle would read that bundle's
+/// fingerprint, channel, and public key over state keyed by the first.
+final class HotUpdaterMainBundle {
+    static let shared = HotUpdaterMainBundle()
+
+    private let lock = NSLock()
+    private var bundle: Bundle?
+    private let config: HotUpdaterConfig
+
+    init(config: HotUpdaterConfig = .shared) {
+        self.config = config
+    }
+
+    /// Makes `bundle` main's for a `HotUpdaterInstance`.
+    /// Throws when main already works with another bundle.
+    func claim(_ bundle: Bundle) throws {
+        lock.lock()
+        defer { lock.unlock() }
+        if let claimed = self.bundle, claimed != bundle {
+            throw NativeUpdateCheckError.hotUpdater(
+                "HotUpdater instance \"\(HotUpdaterInstanceEnvironment.mainName)\" was already created with another bundle"
+            )
+        }
+        self.bundle = bundle
+        config.bundle = bundle
+    }
+
+    /// Records the bundle `HotUpdater.bundleURL(bundle:)` launches main with,
+    /// so a later instance with another bundle throws. That static API keeps
+    /// recording each bundle it is given, as it always has.
+    func note(_ bundle: Bundle) {
+        lock.lock()
+        defer { lock.unlock() }
+        if self.bundle == nil {
+            self.bundle = bundle
+        }
+        config.bundle = bundle
+    }
+}

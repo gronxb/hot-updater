@@ -244,8 +244,8 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
 
     /// Throws when `baseURL` is not an absolute HTTP(S) URL, as
     /// `HotUpdater.init` does, when `name` is not 1 to 32 of `a-z`, `0-9`,
-    /// and `-`, or when an instance of the same `name` was created with
-    /// another bundle.
+    /// and `-`, or when an instance of the same `name`, `main` included, was
+    /// created or launched with another bundle.
     @objc public init(_ options: HotUpdaterOptions) throws {
         _ = try NativeUpdateChecker.validatedBaseURL(options.baseURL)
         let environment = try HotUpdaterInstanceEnvironment(name: options.name, bundle: options.bundle)
@@ -253,7 +253,7 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
         if environment.isMain {
             // Before the impl exists: creating it reads this bundle's Info.plist.
             // A named instance reads its own bundle and leaves main's alone.
-            HotUpdaterConfig.shared.bundle = options.bundle
+            try HotUpdaterMainBundle.shared.claim(options.bundle)
         }
         impl = try HotUpdaterNativeUpdateBridge.impl(for: environment)
         super.init()
