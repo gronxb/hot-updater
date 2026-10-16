@@ -572,7 +572,12 @@ static NSHashTable<HotUpdater *> *HotUpdaterRuntimeModules(void)
 - (void)setBridge:(RCTBridge *)bridge
 {
     [super setBridge:bridge];
-    gHotUpdaterBridge = bridge;
+    // Main's recovery reload reloads this bridge: only main's runtime sets
+    // it, never a named runtime's that started after main's. With main
+    // only, every bridge is main's, as before.
+    if (!bridge || [HotUpdaterNativeUpdates() implForBundleURL:bridge.bundleURL] == [HotUpdater sharedImpl]) {
+        gHotUpdaterBridge = bridge;
+    }
     [self configureExceptionsManagerWithBridge:bridge];
 }
 

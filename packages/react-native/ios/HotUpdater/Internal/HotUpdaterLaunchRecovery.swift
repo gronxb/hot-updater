@@ -220,6 +220,15 @@ final class HotUpdaterRecoveryCoordinator {
         }
     }
 
+    /// Whether this process has created a named instance.
+    var hasNamedInstance: Bool {
+        withLock { hasNamedInstanceUnlocked }
+    }
+
+    private var hasNamedInstanceUnlocked: Bool {
+        launches.values.contains { !$0.isMain }
+    }
+
     func launch(named name: String) -> Launch? {
         withLock { launches[name] }
     }
@@ -575,9 +584,15 @@ final class HotUpdaterRecoveryCoordinator {
 
     /// Main's fatal before first content reloads it in-process: writes its
     /// marker once, so the reloaded launch rolls back.
+    ///
+    /// Not with a named instance in the process: React Native reloads every
+    /// host at once, and named instances apply rollbacks at their next start
+    /// only. Main's fatal then takes its course, charged to main, which rolls
+    /// back at its next start or next same-process launch.
     func requestRecovery(name: String) -> RecoveryRequest {
         charging {
-            guard let launch = launches[name], launch.isMonitoring, launch.shouldRollback else {
+            guard let launch = launches[name], launch.isMonitoring, launch.shouldRollback,
+                  !(launch.isMain && hasNamedInstanceUnlocked) else {
                 return .notNeeded
             }
             if launch.recoveryRequested {
@@ -864,7 +879,10 @@ final class HotUpdaterRecoveryCoordinator {
             shouldRollback: launch.shouldRollback,
             to: launch.markerURL
         )
-        if !launch.isMain, launch.shouldRollback, !rolledBackNames.contains(launch.name) {
+        // Main too once named instances exist: its in-process reload is off
+        // then, so its next same-process launch must roll back instead.
+        if launch.shouldRollback, !launch.isMain || hasNamedInstanceUnlocked,
+           !rolledBackNames.contains(launch.name) {
             rolledBackNames.append(launch.name)
         }
     }

@@ -557,17 +557,20 @@ struct HotUpdaterLaunchRecoveryTests {
         let widgetFirst = coordinator.startMonitoring(name: Self.widget, bundleId: "w", shouldRollback: true)
         #expect(coordinator.generations() == [Self.main: mainFirst, Self.widget: widgetFirst])
 
-        // Main's recovery reload of its first launch is requested, then a
-        // second launch starts and requests its own.
-        #expect(coordinator.requestRecovery(name: Self.main) != .notNeeded)
-        let mainSecond = coordinator.startMonitoring(name: Self.main, bundleId: "m", shouldRollback: true)
-        #expect(coordinator.requestRecovery(name: Self.main) == .requested(generation: mainSecond, bundleId: "m"))
+        // Main's recovery reload, in a process with only main: the reload of
+        // its first launch is requested, then a second launch requests its own.
+        let mainOnly = HotUpdaterRecoveryCoordinator(sink: RecordingSlotSink())
+        mainOnly.register(name: Self.main, markerURL: URL(fileURLWithPath: "/tmp/main-only.json"), storage: NoStorage())
+        let reloadFirst = mainOnly.startMonitoring(name: Self.main, bundleId: "m", shouldRollback: true)
+        #expect(mainOnly.requestRecovery(name: Self.main) != .notNeeded)
+        let reloadSecond = mainOnly.startMonitoring(name: Self.main, bundleId: "m", shouldRollback: true)
+        #expect(mainOnly.requestRecovery(name: Self.main) == .requested(generation: reloadSecond, bundleId: "m"))
         // The first reload's failure arrives late: the second's request stays.
-        coordinator.recoveryReloadFailed(name: Self.main, generation: mainFirst)
-        #expect(coordinator.requestRecovery(name: Self.main) == .alreadyRequested)
+        mainOnly.recoveryReloadFailed(name: Self.main, generation: reloadFirst)
+        #expect(mainOnly.requestRecovery(name: Self.main) == .alreadyRequested)
         // Its own failure lets it request again.
-        coordinator.recoveryReloadFailed(name: Self.main, generation: mainSecond)
-        #expect(coordinator.requestRecovery(name: Self.main) == .requested(generation: mainSecond, bundleId: "m"))
+        mainOnly.recoveryReloadFailed(name: Self.main, generation: reloadSecond)
+        #expect(mainOnly.requestRecovery(name: Self.main) == .requested(generation: reloadSecond, bundleId: "m"))
 
         // The widget launches again on another thread.
         let widgetSecond = coordinator.startMonitoring(name: Self.widget, bundleId: "w", shouldRollback: true)
@@ -1011,7 +1014,8 @@ struct HotUpdaterLaunchRecoveryTests {
             coordinator.startMonitoring(name: Self.widget, bundleId: "widget-next", shouldRollback: true)
             #expect(coordinator.arm(name: Self.widget))
             _ = charge()
-            #expect(invalidated == [Self.widget])
+            // Main's pending launch is charged too, beside a named instance.
+            #expect(Set(invalidated) == [Self.main, Self.widget])
         }
     }
 
@@ -1044,8 +1048,7 @@ struct HotUpdaterLaunchRecoveryTests {
         var invalidated: [String] = []
         coordinator.onRollbackCharged = { invalidated.append($0) }
 
-        // Main recovers in its own way; an earlier runtime's error charges no launch.
-        coordinator.chargeFatal(owner: Self.main)
+        // An earlier runtime's error charges no launch.
         coordinator.chargeFatal(
             owner: Self.widget,
             runtimeBundleURL: scene.launchURL(Self.widget, bundleId: "widget-stable")
@@ -1123,6 +1126,46 @@ struct HotUpdaterLaunchRecoveryTests {
         let current = try #require(scene.launchURL(Self.widget, bundleId: "widget-next"))
         process.coordinator.chargeFatal(owner: Self.widget, runtimeBundleURL: current)
         #expect(scene.nextLaunch()[Self.widget]?.launchedBundleId == "widget-stable")
+    }
+
+    /// Main's in-process reload without main's own bridge falls back to
+    /// reloading whatever bridge is known only when there is no named one.
+    /// Beside a named instance, main never reloads in-process (React
+    /// Native would reload every host): its fatal is charged to main, whose
+    /// next same-process launch is prepared again to roll back.
+    @Test
+    func mainRecoversInProcessOnlyWithoutNamedInstances() throws {
+        let mainOnly = HotUpdaterRecoveryCoordinator(sink: RecordingSlotSink())
+        var mainOnlyInvalidated: [String] = []
+        mainOnly.onRollbackCharged = { mainOnlyInvalidated.append($0) }
+        mainOnly.register(name: Self.main, markerURL: URL(fileURLWithPath: "/tmp/only-main.json"), storage: NoStorage())
+        let generation = mainOnly.startMonitoring(name: Self.main, bundleId: "m", shouldRollback: true)
+        #expect(mainOnly.requestRecovery(name: Self.main) == .requested(generation: generation, bundleId: "m"))
+        // As before: its in-process reload prepares the launch again itself.
+        #expect(mainOnlyInvalidated.isEmpty)
+
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        var invalidated: [String] = []
+        process.coordinator.onRollbackCharged = { invalidated.append($0) }
+        #expect(process.coordinator.requestRecovery(name: Self.main) == .notNeeded)
+        process.coordinator.chargeFatal(owner: Self.main)
+        #expect(invalidated == [Self.main])
+        let main = try #require(process.storages[Self.main])
+        #expect(main.prepareLaunch(
+            bundle: .main,
+            pendingRecovery: HotUpdaterCrashMarker.consume(at: scene.markerURL(Self.main))
+        ).launchedBundleId == "main-stable")
+    }
+
+    @Test
+    func aNamedInstanceIsKnownOnceCreated() {
+        let coordinator = HotUpdaterRecoveryCoordinator(sink: RecordingSlotSink())
+        coordinator.register(name: Self.main, markerURL: URL(fileURLWithPath: "/tmp/m.json"), storage: NoStorage())
+        #expect(!coordinator.hasNamedInstance)
+        coordinator.register(name: Self.widget, markerURL: URL(fileURLWithPath: "/tmp/w.json"), storage: NoStorage())
+        #expect(coordinator.hasNamedInstance)
     }
 
     @Test

@@ -1532,6 +1532,12 @@ final class HotUpdaterRecoveryHub: NSObject {
         }) {
             return
         }
+        if coordinator.hasNamedInstance {
+            // No in-process reload beside named instances: the fatal React
+            // Native reports next is main's, and main rolls back at its next
+            // start.
+            coordinator.chargeFatal(owner: mainName)
+        }
         coordinator.stopAwaitingContent(name: mainName, generation: generation)
     }
 
