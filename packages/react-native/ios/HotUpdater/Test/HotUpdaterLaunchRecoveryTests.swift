@@ -1359,6 +1359,32 @@ struct HotUpdaterLaunchRecoveryTests {
         }
     }
 
+    /// Main's own fatal beside an armed named launch (main doesn't reload
+    /// in-process then): main's slot asks for rollback and the crash is
+    /// published as main's before main's marker is written, so a signal in
+    /// between never writes the widget's armed slot.
+    @Test
+    func mainsFatalPublishesItsAttributionBeforeItsMarker() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        #expect(coordinator.arm(name: Self.widget))
+        #expect(coordinator.requestRecovery(name: Self.main) == .notNeeded)
+        var markerAtAttribution: Bool?
+        var mainSlotAtAttribution: Bool?
+        process.sink.onAttribute = { slot in
+            markerAtAttribution = FileManager.default.fileExists(atPath: scene.markerURL(Self.main).path)
+            mainSlotAtAttribution = process.sink.flags[HotUpdaterRecoveryCoordinator.mainSlot]
+        }
+        coordinator.chargeFatal(owner: Self.main)
+        #expect(process.sink.attribution == HotUpdaterRecoveryCoordinator.mainSlot)
+        #expect(mainSlotAtAttribution == true)
+        #expect(markerAtAttribution == false)
+        #expect(markers(coordinator) == [HotUpdaterRecoveryCoordinator.mainSlot: true])
+        #expect(HotUpdaterCrashMarker.consume(at: scene.markerURL(Self.main))?.shouldRollback == true)
+    }
+
     /// A signal while the marker file of a charged launch is written must
     /// still leave a marker: its native slot asks for rollback first, even
     /// for a named launch no view of which showed.

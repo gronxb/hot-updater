@@ -374,11 +374,20 @@ internal class HotUpdaterRecoveryManager(
      * Main's recovery: a launch waiting for its first content restarts the
      * app once and leaves its marker for the restarted process.
      */
-    private fun requestAutomaticRecoveryLocked(exception: Exception? = null): Boolean {
+    private fun requestAutomaticRecoveryLocked(
+        exception: Exception? = null,
+        onSlotAsking: (() -> Unit)? = null,
+    ): Boolean {
         val request = launchState.requestRecovery()
         if (exception != null) {
             Log.e(TAG, "Caught React startup exception for bundleId=${launchState.snapshot()?.bundleId}", exception)
         }
+        // The same order as a named launch's charge: the slot asks for
+        // rollback (even one another claim left alone), then the claim, then
+        // the marker and the restart.
+        charged = true
+        updateNativeLaunchStateLocked()
+        onSlotAsking?.invoke()
         if (request == null) {
             launchState.snapshot()?.let(::writeCrashMarker)
             return false
@@ -402,20 +411,23 @@ internal class HotUpdaterRecoveryManager(
      * restarts the app: restarting reaches main's host, so its next launch
      * rolls the bundle back instead.
      *
-     * @param beforeMarker runs once this launch's slot asks for rollback,
-     * before its marker file is written: a claim publishes itself there
+     * @param onSlotAsking runs once this launch's slot asks for rollback,
+     * before any file is written: a claim publishes itself there
+     * @param keepRelaunchIntent keeps the watchdog relaunching for a claimed
+     * error, whose marker a replacement launch may read first
      */
     private fun chargeCrash(
         exception: Exception? = null,
-        beforeMarker: (() -> Unit)? = null,
+        onSlotAsking: (() -> Unit)? = null,
+        keepRelaunchIntent: Boolean = false,
     ): Boolean =
         synchronized(lock) {
-            if (isMain) return@synchronized requestAutomaticRecoveryLocked(exception)
+            if (isMain) return@synchronized requestAutomaticRecoveryLocked(exception, onSlotAsking)
             val launch = launchState.snapshot()?.takeIf { it.shouldRollback } ?: return@synchronized false
             if (exception != null) {
                 Log.e(TAG, "Caught React startup exception of $name for bundleId=${launch.bundleId}", exception)
             }
-            writeRollbackMarkerLocked(launch, beforeMarker)
+            writeRollbackMarkerLocked(launch, onSlotAsking, keepRelaunchIntent)
             false
         }
 
@@ -427,16 +439,20 @@ internal class HotUpdaterRecoveryManager(
      */
     private fun writeRollbackMarkerLocked(
         launch: HotUpdaterRecoveryState.Launch,
-        beforeMarker: (() -> Unit)? = null,
+        onSlotAsking: (() -> Unit)? = null,
+        keepRelaunchIntent: Boolean = false,
     ) {
         // The native slot asks for rollback first, with no file written: a
         // signal from here on writes the marker natively.
         charged = true
         updateNativeLaunchStateLocked()
+        // Then a claim publishes itself, still with no file written: a signal
+        // from here on writes only this launch's marker.
+        onSlotAsking?.invoke()
         // Then the watchdog, file and alarm: a launch none of whose views was
         // shown has none yet, and the marker must relaunch the app.
         startRecoveryWatchdog()
-        beforeMarker?.invoke()
+        if (keepRelaunchIntent) keepRelaunchIntentLocked()
         // The marker file last, with its alarm already set.
         writeCrashMarker(launch)
         // The next start prepares a new launch, which reads this marker.
@@ -1100,27 +1116,21 @@ internal class HotUpdaterRecoveryManager(
                 activeClaims[generation] = instanceName to ownerGeneration
                 exception?.let { claimErrors[generation] = WeakReference(it) }
                 claimHolders[generation] = 1
-                // The owner's native slot asks for rollback, then its watchdog
-                // and relaunch intent (file and alarm), then the native claim,
-                // then its marker file: a signal at any point finds the crash
-                // unclaimed with no slot yet asking, or the owner's slot asking,
-                // which writes the marker natively, unclaimed only until the
-                // claim, never others' markers once claimed. A claim no launch
-                // owns, such as an earlier launch's runtime's, leaves the native
-                // handler unclaimed: a signal then writes every marker that may
-                // still be needed.
+                // For main and named owners alike: the owner's native slot asks
+                // for rollback, then the native claim, both with no file
+                // written; then the watchdog and relaunch intent (file and
+                // alarm), the marker file, and main's recovery restart. A
+                // signal before the claim finds no slot of the owner's charge
+                // yet changed but its own, and after it writes only the
+                // owner's marker. A claim no launch owns, such as an earlier
+                // launch's runtime's, leaves the native handler unclaimed: a
+                // signal then writes every marker that may still be needed.
                 var published = false
                 val publishClaim = {
                     if (!published && owner != null) nativeRecovery.attributeCrash(slots.assignedSlot(instanceName) ?: -1)
                     published = true
                 }
-                val recovering =
-                    owner?.chargeCrash(exception) {
-                        // Charged: a replacement launch may read its marker
-                        // before the error ends the process.
-                        owner.keepRelaunchIntentLocked()
-                        publishClaim()
-                    } == true
+                val recovering = owner?.chargeCrash(exception, onSlotAsking = publishClaim, keepRelaunchIntent = true) == true
                 // Main's own recovery, or an owner with no launch to charge.
                 publishClaim()
                 // Claims overlap when errors return: every launch any of them

@@ -1106,7 +1106,7 @@ class InstanceRecoveryTest {
     }
 
     @Test
-    fun `a claimed error's rollback slot, watchdog, and native claim come before its marker, in that order`() {
+    fun `a claimed error's rollback slot, native claim, and watchdog come before its marker, in that order`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, widget, "widget-bundle")
         // Not armed: no view of the widget was shown.
@@ -1141,12 +1141,48 @@ class InstanceRecoveryTest {
 
         HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
 
-        // The slot asks for rollback with no file written, then the watchdog
-        // (with its relaunch intent) sets its alarm, then the claim is
-        // published, all before the marker file: a signal anywhere writes the
-        // widget's marker natively and finds an alarm, never other launches'.
-        assertEquals(listOf("slot rollback marker=false", "alarm marker=false", "claim marker=false"), events)
+        // The slot asks for rollback and the claim is published with no file
+        // written, then the watchdog (with its relaunch intent) sets its
+        // alarm, all before the marker file: a signal anywhere writes only the
+        // widget's marker natively, and once written finds an alarm.
+        assertEquals(listOf("slot rollback marker=false", "claim marker=false", "alarm marker=false"), events)
         assertTrue(crashMarker(context, widget).exists())
+    }
+
+    @Test
+    fun `main's claimed error publishes its claim before its marker and restart`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        // A named launch is armed too: an unclaimed signal would write its marker.
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+        val events = mutableListOf<String>()
+        HotUpdaterRecoveryManager.nativeRecovery =
+            object : HotUpdaterNativeRecovery {
+                override fun updateSlot(
+                    slot: Int,
+                    crashMarkerPath: String,
+                    bundleId: String?,
+                    shouldRollback: Boolean,
+                    writesWhenVerified: Boolean,
+                ) {
+                    if (crashMarkerPath == crashMarker(context, main).absolutePath && shouldRollback) {
+                        events += "slot rollback marker=${crashMarker(context, main).exists()}"
+                    }
+                }
+
+                override fun attributeCrash(slot: Int) {
+                    events += "claim marker=${crashMarker(context, main).exists()}"
+                }
+
+                override fun clearCrashAttribution() = Unit
+            }
+
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("main failed"), HotUpdaterInstanceEnvironment.MAIN_NAME)
+
+        assertEquals(listOf("slot rollback marker=false", "claim marker=false"), events)
+        assertTrue(crashMarker(context, main).exists())
     }
 
     @Test
