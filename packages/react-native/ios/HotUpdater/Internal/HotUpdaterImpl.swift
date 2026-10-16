@@ -1380,6 +1380,7 @@ final class HotUpdaterRecoveryHub: NSObject {
             // this instance alone, so that fatal is attributed to it too.
             coordinator.chargeFatal(owner: owner)
             coordinator.stopAwaitingContent(name: owner)
+            releaseHeldContent()
             return
         }
 
@@ -1396,12 +1397,34 @@ final class HotUpdaterRecoveryHub: NSObject {
     }
 
     @objc private func handleContentDidAppear(_ notification: Notification) {
-        // A view no runtime claims is main's, as it always was.
-        let owner = owner(of: notification.object as AnyObject?)
+        let view = notification.object as AnyObject?
+        let owner = owner(of: view)
+        // A view no runtime claims is main's, as it always was, unless a
+        // named runtime that has no module yet may have shown it.
+        if owner == nil, let view, coordinator.holdUnclaimedContent(view) {
+            // Main's at the latest once the bound passes.
+            DispatchQueue.main.asyncAfter(
+                deadline: .now() + HotUpdaterRecoveryCoordinator.heldContentBound + 0.1
+            ) { [weak self] in
+                self?.releaseHeldContent()
+            }
+            return
+        }
         guard let verified = coordinator.contentAppeared(owner: owner) else {
             return
         }
         manager(named: verified.launch.name)?.contentAppeared(generation: verified.generation)
+        if verified.launch.name != mainName {
+            releaseHeldContent()
+        }
+    }
+
+    /// Credits the content held for runtimes that had no module yet. Main
+    /// thread only.
+    private func releaseHeldContent() {
+        for verified in coordinator.releaseHeldContent(owner: { self.owner(of: $0) }) {
+            manager(named: verified.launch.name)?.contentAppeared(generation: verified.generation)
+        }
     }
 
     /// Posted by HotUpdaterRecoveryHooks.mm on the thread that shows a view:
@@ -1435,6 +1458,9 @@ final class HotUpdaterRecoveryHub: NSObject {
         }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }
+            // Content first: a launch whose content already appeared is
+            // verified, and a surface start then no longer starts it.
+            self.releaseHeldContent()
             for started in self.pendingSurfaceStarts.resolve({ self.owner(of: $0) }) {
                 self.viewStarted(owner: started.name, view: started.surface, inForeground: started.inForeground)
             }

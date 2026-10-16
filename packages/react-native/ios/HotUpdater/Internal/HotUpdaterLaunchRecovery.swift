@@ -154,9 +154,29 @@ final class HotUpdaterRecoveryCoordinator {
     /// The latest claim: a fatal of another instance can arrive before an
     /// earlier one's handler returns, and only the latest releases them all.
     private var claimGeneration = 0
+    /// First content no runtime claims yet, held while a named launch's
+    /// runtime may still turn out to be its own.
+    private var heldContent: [HeldContent] = []
+    /// Seconds, monotonic.
+    private let now: () -> TimeInterval
 
-    init(sink: HotUpdaterCrashSlotSink) {
+    private struct HeldContent {
+        weak var view: AnyObject?
+        let heldAt: TimeInterval
+        /// Main was verified by it after the bound; kept so a named runtime
+        /// that resolves later still finds its own content.
+        var creditedToMain = false
+    }
+
+    /// How long content no runtime claims waits for a named runtime's module
+    /// before it is main's. A named runtime whose JavaScript never loads Hot
+    /// Updater never resolves; without a bound, main's launch would never be
+    /// verified and the next start would roll it back.
+    static let heldContentBound: TimeInterval = 10
+
+    init(sink: HotUpdaterCrashSlotSink, now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
         self.sink = sink
+        self.now = now
     }
 
     // MARK: - Instances
@@ -255,6 +275,74 @@ final class HotUpdaterRecoveryCoordinator {
             launch.isArmed = false
             mirror(launch)
             return (launch, launch.generation)
+        }
+    }
+
+    /// First content whose view no runtime claims yet. In a process where
+    /// every named launch's runtime already has a module, it is main's, as it
+    /// always was (returns false). Otherwise a named runtime that renders
+    /// before its module exists may have shown it, so it is held (returns
+    /// true) until `releaseHeldContent` can tell whose it is, for at most
+    /// `heldContentBound` seconds; check again then.
+    func holdUnclaimedContent(_ view: AnyObject) -> Bool {
+        withLock {
+            guard hasUnresolvedNamedLaunch else { return false }
+            heldContent.append(HeldContent(view: view, heldAt: now()))
+            return true
+        }
+    }
+
+    /// Credits held content: each view `owner` now attributes verifies that
+    /// instance. Content still unclaimed `heldContentBound` seconds after it
+    /// appeared is main's (main may be verified a little early, never left
+    /// unverified), and so is all of it once no named launch's runtime is
+    /// left unresolved. Content credited to main after the bound stays
+    /// known: a named runtime that resolves later verifies its launch with
+    /// it, rather than starting a launch whose content already appeared.
+    /// Call when a runtime resolves, a named launch stops waiting for
+    /// content, or the bound passes. Returns the launches it verified.
+    func releaseHeldContent(owner: (AnyObject) -> String?) -> [(launch: Launch, generation: Int)] {
+        withLock {
+            guard !heldContent.isEmpty else { return [] }
+            var verified: [(launch: Launch, generation: Int)] = []
+            var kept: [HeldContent] = []
+            var creditMain = false
+            let currentTime = self.now()
+            for var held in heldContent {
+                if let view = held.view, let name = owner(view) {
+                    if let launch = contentAppeared(owner: name) {
+                        verified.append(launch)
+                    }
+                    continue
+                }
+                // A view already gone can't be attributed any more.
+                if held.view == nil, held.creditedToMain {
+                    continue
+                }
+                if !held.creditedToMain, currentTime - held.heldAt >= Self.heldContentBound {
+                    held.creditedToMain = true
+                    creditMain = true
+                }
+                kept.append(held)
+            }
+            if !hasUnresolvedNamedLaunch {
+                // Nothing left that could claim it.
+                creditMain = creditMain || kept.contains { !$0.creditedToMain }
+                kept = []
+            }
+            heldContent = kept
+            if creditMain, let launch = contentAppeared(owner: nil) {
+                verified.append(launch)
+            }
+            return verified
+        }
+    }
+
+    /// A named launch of this process still waiting for content whose
+    /// runtime has no module yet.
+    private var hasUnresolvedNamedLaunch: Bool {
+        launches.values.contains { launch in
+            !launch.isMain && launch.isMonitoring && launch.isAwaitingContent && !launch.hasResolvedRuntime
         }
     }
 

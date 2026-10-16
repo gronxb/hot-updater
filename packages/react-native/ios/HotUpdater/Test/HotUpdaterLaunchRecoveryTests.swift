@@ -451,6 +451,109 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(markers(coordinator) == [HotUpdaterRecoveryCoordinator.mainSlot: true, widgetSlot: true])
     }
 
+    /// A named runtime can render before its module exists, so content
+    /// nothing claims is held while a named launch's runtime is unresolved,
+    /// instead of verifying main.
+    @Test
+    func contentNoRuntimeClaimsWaitsForTheNamedRuntimes() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let mainView = NSObject()
+        let widgetView = NSObject()
+        var owners: [ObjectIdentifier: String] = [:]
+        let owner: (AnyObject) -> String? = { owners[ObjectIdentifier($0)] }
+
+        // The widget renders before its module exists, then main does.
+        #expect(coordinator.holdUnclaimedContent(widgetView))
+        #expect(coordinator.holdUnclaimedContent(mainView))
+        #expect(scene.metadata(Self.main)?.verificationPending == true)
+        #expect(scene.metadata(Self.widget)?.verificationPending == true)
+
+        // The widget's module appears: its content verifies it, and the rest
+        // is main's once no named runtime is left unresolved.
+        coordinator.runtimeResolved(name: Self.widget)
+        owners[ObjectIdentifier(widgetView)] = Self.widget
+        let verified = coordinator.releaseHeldContent(owner: owner)
+        #expect(Set(verified.map(\.launch.name)) == [Self.main, Self.widget])
+        #expect(scene.metadata(Self.widget)?.verificationPending == false)
+        #expect(scene.metadata(Self.main)?.verificationPending == false)
+        // Its surface start, resolved after, no longer starts the launch.
+        #expect(!coordinator.arm(name: Self.widget))
+        #expect(scene.metadata(Self.widget)?.launchInProgress == false)
+        #expect(coordinator.releaseHeldContent(owner: owner).isEmpty)
+    }
+
+    @Test
+    func heldContentFallsToMainWhenTheNamedLaunchStopsWaiting() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let view = NSObject()
+
+        #expect(coordinator.holdUnclaimedContent(view))
+        // Nothing resolved yet: still held.
+        #expect(coordinator.releaseHeldContent(owner: { _ in nil }).isEmpty)
+        #expect(scene.metadata(Self.main)?.verificationPending == true)
+
+        // The widget's bundle failed to load: it waits for no content.
+        coordinator.stopAwaitingContent(name: Self.widget)
+        #expect(coordinator.releaseHeldContent(owner: { _ in nil }).map(\.launch.name) == [Self.main])
+        #expect(scene.metadata(Self.main)?.verificationPending == false)
+        // Now nothing waits for a runtime: content nobody claims is main's at once.
+        #expect(!coordinator.holdUnclaimedContent(NSObject()))
+    }
+
+    /// A named runtime whose JavaScript never loads Hot Updater never
+    /// resolves: main's content waits for it only so long.
+    @Test
+    func heldContentIsMainsAfterTheBoundAndStillVerifiesALateNamedRuntime() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        var clock: TimeInterval = 100
+        let process = scene.launch(now: { clock })
+        let coordinator = process.coordinator
+        let mainView = NSObject()
+        let widgetView = NSObject()
+        var owners: [ObjectIdentifier: String] = [:]
+        let owner: (AnyObject) -> String? = { owners[ObjectIdentifier($0)] }
+
+        #expect(coordinator.holdUnclaimedContent(widgetView))
+        clock += 2
+        #expect(coordinator.holdUnclaimedContent(mainView))
+        clock += HotUpdaterRecoveryCoordinator.heldContentBound - 1
+        // The widget's content has waited the bound, main's not yet: main is
+        // verified once, by the first.
+        #expect(coordinator.releaseHeldContent(owner: owner).map(\.launch.name) == [Self.main])
+        #expect(scene.metadata(Self.main)?.verificationPending == false)
+        #expect(scene.metadata(Self.widget)?.verificationPending == true)
+        clock += 2
+        #expect(coordinator.releaseHeldContent(owner: owner).isEmpty)
+
+        // The widget's module appears late: the content it showed verifies it,
+        // and its surface start then doesn't start the launch.
+        coordinator.runtimeResolved(name: Self.widget)
+        owners[ObjectIdentifier(widgetView)] = Self.widget
+        #expect(coordinator.releaseHeldContent(owner: owner).map(\.launch.name) == [Self.widget])
+        #expect(scene.metadata(Self.widget)?.verificationPending == false)
+        #expect(!coordinator.arm(name: Self.widget))
+        #expect(scene.metadata(Self.widget)?.launchInProgress == false)
+    }
+
+    @Test
+    func mainOnlyContentIsMainsAtOnce() throws {
+        let sink = RecordingSlotSink()
+        let coordinator = HotUpdaterRecoveryCoordinator(sink: sink)
+        coordinator.register(name: Self.main, markerURL: URL(fileURLWithPath: "/tmp/m.json"), storage: NoStorage())
+        coordinator.startMonitoring(name: Self.main, bundleId: nil, shouldRollback: false)
+        #expect(!coordinator.holdUnclaimedContent(NSObject()))
+        // A named instance that never launched in this process holds nothing.
+        coordinator.register(name: Self.widget, markerURL: URL(fileURLWithPath: "/tmp/w.json"), storage: NoStorage())
+        #expect(!coordinator.holdUnclaimedContent(NSObject()))
+    }
+
     @Test
     func aFatalNothingAttributesChargesEveryUnverifiedLaunch() throws {
         let scene = try Scene()
@@ -605,9 +708,9 @@ private final class Scene {
 
     /// One process that selected both pending bundles and watches both
     /// launches, as HotUpdaterImpl's launch does.
-    func launch() -> Process {
+    func launch(now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) -> Process {
         let sink = RecordingSlotSink()
-        let coordinator = HotUpdaterRecoveryCoordinator(sink: sink)
+        let coordinator = HotUpdaterRecoveryCoordinator(sink: sink, now: now)
         var storages: [String: BundleFileStorageService] = [:]
         for name in ["main", "widget"] {
             let storage = makeStorage(name)
