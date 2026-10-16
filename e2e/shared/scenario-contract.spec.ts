@@ -167,7 +167,10 @@ type RecordedScenarioCall =
     }
   | {
       readonly kind: "launch";
-      readonly options?: { readonly allowDisconnect?: boolean };
+      readonly options?: {
+        readonly allowDisconnect?: boolean;
+        readonly expectCrash?: boolean;
+      };
       readonly stage: string;
     };
 
@@ -306,7 +309,198 @@ describe("E2E scenario contract", () => {
       // Only a native app shell checks for updates natively before React Native.
       "brownfield-native-required-update",
       "brownfield-native-minor-update",
+      // Only a native app shell hosts a second instance with its own runtime.
+      "brownfield-instances-update-independently",
+      "brownfield-instance-rollback-isolated",
+      "brownfield-instance-crash-rolls-back-only-itself",
     ]);
+  });
+
+  it("drives the widget instance through its own channel, store, and screen values", async () => {
+    const scenarioNames = [
+      "brownfield-instances-update-independently",
+      "brownfield-instance-rollback-isolated",
+      "brownfield-instance-crash-rolls-back-only-itself",
+    ];
+    for (const scenarioName of scenarioNames) {
+      const calls = await recordScenarioCalls(scenarioName);
+      const enableIndex = calls.findIndex(
+        (call) =>
+          call.kind === "control" &&
+          call.pathName === "/e2e/jobs/enable-widget",
+      );
+      // The widget runs from the first launch of the attempt.
+      expect(enableIndex).toBeGreaterThanOrEqual(0);
+      expect(calls.findIndex((call) => call.kind === "launch")).toBeGreaterThan(
+        enableIndex,
+      );
+      for (const call of calls) {
+        if (call.kind !== "control") continue;
+        // A widget deploy names the widget's channel, and only it does.
+        if (call.pathName === "/e2e/jobs/deploy-bundle") {
+          expect(call.body?.instance === "widget").toBe(
+            call.body?.channel === "widget",
+          );
+        }
+        if (call.body?.instance !== undefined) {
+          expect(call.body.instance).toBe("widget");
+        }
+      }
+      // The widget never reloads from JavaScript: only the host restarts it.
+      expect(
+        calls.some(
+          (call) => call.kind === "tap" && call.testID === "action-reload-app",
+        ),
+      ).toBe(false);
+      // Each widget wait reads the widget's store.
+      expect(
+        calls.some(
+          (call) =>
+            call.kind === "control" &&
+            call.pathName === "/e2e/jobs/wait-for-metadata" &&
+            call.body?.instance === "widget",
+        ),
+      ).toBe(true);
+    }
+  });
+
+  it("stages and runs each instance's own bundle", async () => {
+    const calls = await recordScenarioCalls(
+      "brownfield-instances-update-independently",
+    );
+    const controls = calls.filter(
+      (call): call is Extract<RecordedScenarioCall, { kind: "control" }> =>
+        call.kind === "control",
+    );
+
+    expect(
+      controls
+        .filter((call) => call.pathName === "/e2e/assert-metadata-active")
+        .map((call) => call.body),
+    ).toEqual([
+      { absentBundleIds: ["$widgetBundleId"], bundleId: "$mainBundleId" },
+      {
+        absentBundleIds: ["$mainBundleId"],
+        bundleId: "$widgetBundleId",
+        instance: "widget",
+      },
+    ]);
+    expect(
+      calls
+        .filter((call) => call.kind === "assertText")
+        .map((call) => [call.testID, call.contains]),
+    ).toEqual(
+      expect.arrayContaining([
+        ["runtime-bundle-id", "$mainBundleId"],
+        ["runtime-scenario-marker", "instances-main-detox"],
+        ["widget-bundle-id", "$widgetBundleId"],
+        ["widget-scenario-marker", "instances-widget-detox"],
+      ]),
+    );
+  });
+
+  it("rolls back only the widget when its Release is disabled", async () => {
+    const calls = await recordScenarioCalls(
+      "brownfield-instance-rollback-isolated",
+    );
+    const disableIndex = calls.findIndex(
+      (call) =>
+        call.kind === "control" && call.pathName === "/e2e/jobs/patch-release",
+    );
+
+    expect(calls[disableIndex]).toMatchObject({
+      body: { enabled: false, releaseId: "$widgetReleaseId" },
+    });
+    const afterDisable = calls.slice(disableIndex + 1);
+    expect(afterDisable).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          body: { instance: "widget" },
+          pathName: "/e2e/assert-metadata-reset",
+        }),
+        expect.objectContaining({
+          contains: "$builtInBundleId",
+          testID: "widget-bundle-id",
+        }),
+        expect.objectContaining({
+          contains: "$mainBundleId",
+          testID: "runtime-bundle-id",
+        }),
+        expect.objectContaining({
+          body: { bundleId: "$mainBundleId" },
+          pathName: "/e2e/assert-metadata-active",
+        }),
+      ]),
+    );
+  });
+
+  it("charges a widget fatal to the widget alone", async () => {
+    const calls = await recordScenarioCalls(
+      "brownfield-instance-crash-rolls-back-only-itself",
+    );
+    const crashDeploy = calls.find(
+      (call) =>
+        call.kind === "control" &&
+        call.pathName === "/e2e/jobs/deploy-bundle" &&
+        call.body?.instance === "widget",
+    );
+    expect(crashDeploy).toMatchObject({
+      body: { channel: "widget", mode: "crash", safeBundleIds: [] },
+    });
+    // No main bundle crashes: its deploys all reset.
+    expect(
+      calls
+        .filter(
+          (call) =>
+            call.kind === "control" &&
+            call.pathName === "/e2e/jobs/deploy-bundle" &&
+            call.body?.instance === undefined,
+        )
+        .map((call) => (call.kind === "control" ? call.body?.mode : null)),
+    ).toEqual(["reset", "reset"]);
+
+    // The crash launch is verified by the widget's own recovery, to its
+    // built-in bundle, before any UI step.
+    const crashLaunchIndex = calls.findIndex(
+      (call) => call.kind === "launch" && call.options?.expectCrash === true,
+    );
+    expect(crashLaunchIndex).toBeGreaterThan(0);
+    expect(calls[crashLaunchIndex + 1]).toMatchObject({
+      body: {
+        crashedBundleId: "$widgetCrashBundleId",
+        instance: "widget",
+        stableBundleId: "$builtInBundleId",
+      },
+      kind: "control",
+      pathName: "/e2e/wait-for-crash-recovery",
+    });
+    const afterRecovery = calls.slice(crashLaunchIndex + 2);
+    expect(afterRecovery.some((call) => call.kind === "launch")).toBe(false);
+    expect(afterRecovery).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          body: { bundleId: "$widgetCrashBundleId", instance: "widget" },
+          pathName: "/e2e/assert-crash-history",
+        }),
+        expect.objectContaining({
+          body: { bundleId: "$mainNextBundleId", verificationPending: false },
+          pathName: "/e2e/jobs/wait-for-metadata",
+        }),
+        expect.objectContaining({
+          contains: "0",
+          testID: "crash-history-count",
+        }),
+      ]),
+    );
+    // Main's crash history is never asserted to hold the widget's bundle.
+    expect(
+      afterRecovery.some(
+        (call) =>
+          call.kind === "control" &&
+          call.pathName === "/e2e/assert-crash-history" &&
+          call.body?.instance === undefined,
+      ),
+    ).toBe(false);
   });
 
   it("applies a required update natively before the first React Native screen", async () => {

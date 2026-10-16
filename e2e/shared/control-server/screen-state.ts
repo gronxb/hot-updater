@@ -10,6 +10,10 @@ export type E2eScreenState = {
   readonly startupCheckSettledEpoch: string;
   /** `<nonce>:<status>` the brownfield host posts after its native update check. */
   readonly nativeCheckResult: string;
+  /** `<bundleId> <marker>` the brownfield widget runtime posts when it mounts. */
+  readonly widgetState: string;
+  /** What the widget runtime's update check did, as `widget -> ...`. */
+  readonly widgetUpdateResult: string;
 };
 
 type E2eScreenStatePatch = Partial<E2eScreenState>;
@@ -23,6 +27,8 @@ const defaultE2eScreenState = {
   startupCheckEpoch: "",
   startupCheckSettledEpoch: "",
   nativeCheckResult: "",
+  widgetState: "",
+  widgetUpdateResult: "idle",
 } as const satisfies E2eScreenState;
 
 let e2eScreenState: E2eScreenState = defaultE2eScreenState;
@@ -81,6 +87,8 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     "startupCheckSettledEpoch",
   );
   const nativeCheckResult = parseOptionalString(payload, "nativeCheckResult");
+  const widgetState = parseOptionalString(payload, "widgetState");
+  const widgetUpdateResult = parseOptionalString(payload, "widgetUpdateResult");
 
   return {
     ...(channelActionResult === undefined ? {} : { channelActionResult }),
@@ -89,6 +97,8 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     ...(runtimeChannelInput === undefined ? {} : { runtimeChannelInput }),
     ...(updateActionResult === undefined ? {} : { updateActionResult }),
     ...(nativeCheckResult === undefined ? {} : { nativeCheckResult }),
+    ...(widgetState === undefined ? {} : { widgetState }),
+    ...(widgetUpdateResult === undefined ? {} : { widgetUpdateResult }),
     ...(startupCheckSettledEpoch &&
     startupCheckSettledEpoch === e2eScreenState.startupCheckEpoch
       ? { startupCheckSettledEpoch }
@@ -100,10 +110,14 @@ export const readE2eScreenStateSnapshot = () => e2eScreenState;
 
 export const prepareE2eStartupCheck = (alreadyFocused = false) => {
   if (!alreadyFocused) {
+    // A new process posts its own widget values; the last process's must not
+    // satisfy a wait for this launch's.
     e2eScreenState = {
       ...e2eScreenState,
       startupCheckEpoch: randomUUID(),
       startupCheckSettledEpoch: "",
+      widgetState: defaultE2eScreenState.widgetState,
+      widgetUpdateResult: defaultE2eScreenState.widgetUpdateResult,
     };
   }
   return { startupCheckEpoch: e2eScreenState.startupCheckEpoch };

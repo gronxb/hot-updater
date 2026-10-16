@@ -6,6 +6,8 @@ import UIKit
 @_exported import ReactBrownfield
 internal import HotUpdater
 internal import React
+internal import React_RCTAppDelegate
+internal import ReactAppDependencyProvider
 
 /// The framework's bundle: its `main.jsbundle` and `HOT_UPDATER_*` keys.
 public let ReactNativeBundle = Bundle(for: InternalClassForBundle.self)
@@ -83,6 +85,94 @@ private func checkForUpdate(_ request: NativeUpdateCheckRequest) async -> String
     let status = await group.next() ?? "failed"
     group.cancelAll()
     return status
+  }
+}
+
+/// Whether a scenario turned on the second Hot Updater instance, `widget`.
+/// The host then leaves room for it under the example.
+public var isHotUpdaterWidgetEnabled: Bool {
+  WidgetRequest.read() != nil
+}
+
+/// The widget's React Native root, or nil when no scenario turned it on.
+///
+/// The widget is a second React Native runtime with its own embedded bundle,
+/// `HotUpdaterWidget.bundle` (its `main.jsbundle` and `HOT_UPDATER_*` keys,
+/// channel `widget`), and its own Hot Updater instance, named `widget`: its
+/// bundles, crash history, and recovery stay apart from the example's.
+/// React Native Brownfield runs one runtime, so this one has its own factory.
+/// Create it once the example's bundle has loaded: React Native Brownfield
+/// takes the first bundle load in the process for the example's.
+@MainActor
+public func makeHotUpdaterWidgetView() -> UIView? {
+  if let widgetRuntime {
+    return widgetRuntime.view()
+  }
+  guard let request = WidgetRequest.read(),
+        let bundleURL = ReactNativeBundle.url(forResource: "HotUpdaterWidget", withExtension: "bundle"),
+        let bundle = Bundle(url: bundleURL),
+        let instance = try? HotUpdaterInstance(
+          HotUpdaterOptions(baseURL: request.baseURL, bundle: bundle, name: "widget")
+        ) else {
+    return nil
+  }
+  let runtime = WidgetRuntime(instance: instance)
+  widgetRuntime = runtime
+  return runtime.view()
+}
+
+@MainActor private var widgetRuntime: WidgetRuntime?
+
+/// Keeps the widget's factory, and with it its React host, for the process.
+@MainActor
+private final class WidgetRuntime {
+  private let delegate: WidgetReactNativeDelegate
+  private let factory: RCTReactNativeFactory
+
+  init(instance: HotUpdaterInstance) {
+    delegate = WidgetReactNativeDelegate(instance: instance)
+    delegate.dependencyProvider = RCTAppDependencyProvider()
+    factory = RCTReactNativeFactory(delegate: delegate)
+  }
+
+  func view() -> UIView {
+    factory.rootViewFactory.view(
+      withModuleName: "HotUpdaterWidget",
+      initialProperties: nil,
+      launchOptions: nil
+    )
+  }
+}
+
+/// Starts the widget runtime with the bundle its Hot Updater instance picks:
+/// its staged update, or its embedded `main.jsbundle`.
+private final class WidgetReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {
+  private let instance: HotUpdaterInstance
+
+  init(instance: HotUpdaterInstance) {
+    self.instance = instance
+    super.init()
+  }
+
+  override func sourceURL(for bridge: RCTBridge) -> URL? {
+    bundleURL()
+  }
+
+  override func bundleURL() -> URL? {
+    instance.bundleURL()
+  }
+}
+
+/// The widget a scenario turns on. The E2E control server writes it to this
+/// app's user defaults; resetting the app removes it.
+private struct WidgetRequest: Decodable {
+  let baseURL: String
+
+  static func read() -> WidgetRequest? {
+    guard let value = UserDefaults.standard.string(forKey: "HotUpdaterE2EWidget") else {
+      return nil
+    }
+    return try? JSONDecoder().decode(WidgetRequest.self, from: Data(value.utf8))
   }
 }
 

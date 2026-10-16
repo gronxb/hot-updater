@@ -38,6 +38,58 @@ react {
     autolinkLibrariesWithApp()
 }
 
+// E2E: the embedded bundle of the host's second Hot Updater instance,
+// `widget`, from index.widget.js. Assets of every library merge into the
+// app's, so it is `widget.android.bundle` beside the example's
+// index.android.bundle. Built like React Native's own bundle task, for the
+// same (non-debuggable) variants.
+androidComponents {
+    onVariants { variant ->
+        val reactConfig = project.extensions.getByType(com.facebook.react.ReactExtension::class.java)
+        if (reactConfig.debuggableVariants.get().any { it.equals(variant.name, ignoreCase = true) }) {
+            return@onVariants
+        }
+        val targetName = variant.name.replaceFirstChar { it.uppercase() }
+        val buildDir = layout.buildDirectory.get().asFile
+        val useHermes = (findProperty("hermesEnabled")?.toString() ?: "true").toBoolean()
+        val widgetBundle =
+            tasks.register("createWidgetBundle${targetName}JsAndAssets", com.facebook.react.tasks.BundleHermesCTask::class.java) {
+                root.set(reactConfig.root)
+                nodeExecutableAndArgs.set(reactConfig.nodeExecutableAndArgs)
+                cliFile.set(reactConfig.cliFile)
+                bundleCommand.set(reactConfig.bundleCommand)
+                entryFile.set(reactConfig.root.file("index.widget.js"))
+                extraPackagerArgs.set(reactConfig.extraPackagerArgs)
+                bundleAssetName.set("widget.android.bundle")
+                jsBundleDir.set(File(buildDir, "generated/assets/widget/${variant.name}"))
+                resourcesDir.set(File(buildDir, "generated/res/widget/${variant.name}"))
+                hermesEnabled.set(useHermes)
+                minifyEnabled.set(!useHermes)
+                devEnabled.set(false)
+                jsIntermediateSourceMapsDir.set(File(buildDir, "intermediates/sourcemaps/widget/${variant.name}"))
+                jsSourceMapsDir.set(File(buildDir, "generated/sourcemaps/widget/${variant.name}"))
+                hermesCommand.set(reactConfig.hermesCommand)
+                hermesFlags.set(reactConfig.hermesFlags)
+                reactNativeDir.set(reactConfig.reactNativeDir)
+                // The example's bundle comes from :app, as React Native
+                // Brownfield packages it. Both bundlers write the example's
+                // generated build config (src/e2eBuildConfig.js), so they never
+                // run at once, even in a parallel build.
+                rootProject.findProject(":app")?.let { app ->
+                    mustRunAfter(app.tasks.matching { it.name == "createBundle${targetName}JsAndAssets" })
+                }
+            }
+        variant.sources.assets?.addGeneratedSourceDirectory(
+            widgetBundle,
+            com.facebook.react.tasks.BundleHermesCTask::jsBundleDir,
+        )
+        variant.sources.res?.addGeneratedSourceDirectory(
+            widgetBundle,
+            com.facebook.react.tasks.BundleHermesCTask::resourcesDir,
+        )
+    }
+}
+
 android {
     namespace = "com.hotupdaterexample.brownfield"
     compileSdk = rootInt("compileSdkVersion")

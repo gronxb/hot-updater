@@ -38,6 +38,8 @@ const resultFields: Record<string, string> = {
   "channel-action-result": "channelActionResult",
   "cohort-action-result": "cohortActionResult",
   "update-action-result": "updateActionResult",
+  // The brownfield widget runtime's own result, beside the example's.
+  "widget-update-result": "widgetUpdateResult",
 };
 
 // An action route has started once its result leaves idle; the control

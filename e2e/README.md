@@ -84,7 +84,14 @@ default scenario except the three a native app shell cannot host, a headless
 launch and the two that reload from JavaScript, plus the two brownfield-only
 scenarios of the native update check (`HotUpdaterInstance`), a required update
 staged before React Native starts and a minor one that applies at the next
-start. `e2e:build --track brownfield`
+start, and three that run a second instance. `/e2e/jobs/enable-widget` turns
+on `widget`, a second React Native runtime under the example with its own
+embedded bundle (`examples/v0.85.0/index.widget.js`) on its own channel,
+`widget`: the instances update independently, the widget's rollback leaves
+main on its OTA, and the widget's crash rolls back only the widget. A deploy,
+store wait, or store assertion with `instance: "widget"` works on the
+widget's bundle and its store under `hot-updater-instances/widget`.
+`e2e:build --track brownfield`
 packages the frameworks with `brownfield package:ios` and the AAR into
 `examples/v0.85.0/android/brownfieldlib/build/maven`, then builds the host
 apps.

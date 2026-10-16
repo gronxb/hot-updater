@@ -45,6 +45,10 @@ import {
   resumeArchive,
   type ArchiveInterruption,
 } from "./archive-interruption.ts";
+import {
+  BARE_BUILD_INLINE_PATTERN,
+  setBareEntryFile,
+} from "./bare-build-config.ts";
 import { createControlJobs, type JobExecutionContext } from "./control-jobs.ts";
 import {
   createCrashRecoveryArtifactNames,
@@ -103,6 +107,11 @@ const { createInsightsModel, createInsightsProvider } = await importPublished<
 >("@hot-updater/server/plugins");
 
 type Platform = "ios" | "android";
+/**
+ * A native Hot Updater instance of the brownfield host: `main` runs the
+ * example, `widget` the second React Native runtime a scenario turns on.
+ */
+export type AppInstance = "main" | "widget";
 type BundleProfile =
   | "assetHeavy"
   | "default"
@@ -121,6 +130,7 @@ type DeployedBundleRecord = {
   bundleId: string;
   bundleProfile: BundleProfile;
   channel: string;
+  instance: AppInstance;
   diffBaseBundleId: string | null;
   diffPatchAssetPath: string | null;
   enabled: boolean;
@@ -156,6 +166,8 @@ type SessionState = {
   sizeAwareLargeAssetBackupPath: string | null;
   sizeAwareLargeAssetPath: string;
   storePath: string | null;
+  widgetAppBackupPath: string | null;
+  widgetAppSourceFile: string;
 };
 
 type DeployBundleRequest = {
@@ -164,6 +176,8 @@ type DeployBundleRequest = {
   disabled?: boolean;
   diffBaseBundleId?: string;
   forceUpdate?: boolean;
+  /** The instance whose bundle this deploy builds; `main` by default. */
+  instance?: AppInstance;
   marker: string;
   message?: string;
   mode: DeployMode;
@@ -186,6 +200,7 @@ type PatchReleaseRequest = {
 type LaunchReportAssertion = {
   fromBundleId?: string;
   fromReleaseId?: string;
+  instance?: AppInstance;
   optional: boolean;
   status: string;
   toBundleId?: string;
@@ -209,6 +224,14 @@ const E2E_PATCH_SOURCE_FILE = path.join(
   EXAMPLE_DIR,
   "src/e2eApp/patchSurface.ts",
 );
+// The brownfield widget runtime: its own entry, patch surface, and channel
+// (examples/v0.85.0/index.widget.js and src/widgetApp).
+const E2E_WIDGET_PATCH_SOURCE_FILE = path.join(
+  EXAMPLE_DIR,
+  "src/widgetApp/patchSurface.ts",
+);
+const WIDGET_ENTRY_FILE = "index.widget.js";
+const WIDGET_CHANNEL = "widget";
 const HOT_UPDATER_ENV_FILE = path.join(EXAMPLE_DIR, ".env.hotupdater");
 const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
 const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
@@ -229,8 +252,6 @@ const AUTO_PATCH_CONFIG_GUARD_START = "/* E2E_AUTO_PATCH_CONFIG_START */";
 const AUTO_PATCH_CONFIG_GUARD_END = "/* E2E_AUTO_PATCH_CONFIG_END */";
 const AUTO_PATCH_CONFIG_PATTERN =
   /\/\* E2E_AUTO_PATCH_CONFIG_START \*\/[\s\S]*?\/\* E2E_AUTO_PATCH_CONFIG_END \*\//;
-const BARE_BUILD_INLINE_PATTERN =
-  /(build:\s*bare\(\{\s*)([^}\n]*?)(\s*\}\s*\))/;
 const STANDALONE_REPOSITORY_BASE_URL_PATTERN =
   /(standaloneRepository\(\{\s*baseUrl:\s*)["'][^"']+["']/;
 const UPDATE_STRATEGY_CONFIG_PATTERN =
@@ -248,6 +269,9 @@ const E2E_ANDROID_COHORT_PREFS_KEY = "custom_cohort";
 const E2E_IOS_NATIVE_CHECK_DEFAULTS_KEY = "HotUpdaterE2ENativeCheck";
 const E2E_ANDROID_NATIVE_CHECK_PREFS_FILE = "HotUpdaterE2E.xml";
 const E2E_ANDROID_NATIVE_CHECK_PREFS_KEY = "nativeCheck";
+// Read by the same host code to show the second instance, `widget`.
+const E2E_IOS_WIDGET_DEFAULTS_KEY = "HotUpdaterE2EWidget";
+const E2E_ANDROID_WIDGET_PREFS_KEY = "widget";
 const NATIVE_CHECK_REPORT_TIMEOUT_MS = 90_000;
 const E2E_RUNTIME_CONFIG_URL_ENV_KEY = "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL";
 const DEPLOY_MAX_OLD_SPACE_SIZE_ENV_KEY =
@@ -369,6 +393,11 @@ const E2E_ANDROID_METADATA_WAIT_ATTEMPTS_PER_LAUNCH = Number(
 const E2E_METADATA_WAIT_RELAUNCH_LIMIT = Number(
   process.env.HOT_UPDATER_E2E_METADATA_WAIT_RELAUNCH_LIMIT || 2,
 );
+// Probes a stopped app is left alone first, so a crash still in progress or a
+// restart already under way is not raced.
+const E2E_POLLS_PER_PROCESS_PROBE = 4;
+const E2E_STOPPED_OBSERVATIONS_BEFORE_RELAUNCH = 3;
+const E2E_NAMED_CRASH_RELAUNCH_LIMIT = 3;
 const LOG_PREFIX = "[e2e]";
 
 function truncateForLog(value: string, maxLength = 400) {
@@ -476,6 +505,8 @@ const fixtureSession: SessionState = {
     SIZE_AWARE_LARGE_ASSET_RELATIVE_PATH,
   ),
   storePath: null,
+  widgetAppBackupPath: null,
+  widgetAppSourceFile: E2E_WIDGET_PATCH_SOURCE_FILE,
 };
 
 const channelNamespace =
@@ -1038,22 +1069,22 @@ async function applyAppScenario({
   marker,
   mode,
   safeBundleIds,
+  sourceFile = fixtureSession.appSourceFile,
 }: {
   bundleProfile: BundleProfile;
   marker: string;
   mode: DeployMode;
   safeBundleIds: string[];
+  /** The example's patch surface, or the widget runtime's. */
+  sourceFile?: string;
 }) {
-  const source = await fsPromises.readFile(
-    fixtureSession.appSourceFile,
-    "utf8",
-  );
+  const source = await fsPromises.readFile(sourceFile, "utf8");
 
   if (!MARKER_PATTERN.test(source)) {
     throw createEndpointError(
       "Failed to locate E2E scenario marker in patchSurface.ts",
       {
-        sourceFile: path.relative(REPO_DIR, fixtureSession.appSourceFile),
+        sourceFile: path.relative(REPO_DIR, sourceFile),
         sourceSnippet: sourceSnippet(source, "E2E_SCENARIO_MARKER"),
       },
     );
@@ -1134,21 +1165,24 @@ async function applyAppScenario({
     .replace(CRASH_GUARD_PATTERN, crashGuardSource)
     .replace(DEPLOY_ASSET_GUARD_PATTERN, deployAssetSource);
 
-  await fsPromises.writeFile(fixtureSession.appSourceFile, nextSource);
+  await fsPromises.writeFile(sourceFile, nextSource);
   logE2eFixture("app scenario applied", {
     bundleProfile,
     marker,
     mode,
     safeBundleIds,
-    sourceFile: path.relative(REPO_DIR, fixtureSession.appSourceFile),
+    sourceFile: path.relative(REPO_DIR, sourceFile),
   });
 }
 
 async function applyDeployConfig({
+  entryFile,
   patchEnabled,
   patchMaxBaseBundles,
   strategy,
 }: {
+  /** The bundle's entry; null builds the example's default entry. */
+  entryFile: string | null;
   patchEnabled: boolean;
   patchMaxBaseBundles?: number;
   strategy: "appVersion" | "fingerprint";
@@ -1198,8 +1232,12 @@ async function applyDeployConfig({
       return `${prefix}${nextOptions}${suffix}`;
     },
   );
+  const sourceWithEntryFile = setBareEntryFile(
+    sourceWithWarmMetroCache,
+    entryFile,
+  );
   const deployBaseUrl = getControllerReachableAppBaseUrl();
-  const sourceWithDeployBaseUrl = sourceWithWarmMetroCache.replace(
+  const sourceWithDeployBaseUrl = sourceWithEntryFile.replace(
     STANDALONE_REPOSITORY_BASE_URL_PATTERN,
     (_match, prefix: string) =>
       `${prefix}${JSON.stringify(`${deployBaseUrl}/admin`)}`,
@@ -1211,6 +1249,7 @@ async function applyDeployConfig({
   );
   logE2eFixture("deploy config applied", {
     deployBaseUrl,
+    entryFile,
     patchEnabled,
     patchMaxBaseBundles: patchMaxBaseBundles ?? null,
     resetMetroCache: false,
@@ -1571,7 +1610,28 @@ function updateTrackedReleaseRecord(
   }
 }
 
-function ensureStorePath() {
+/**
+ * The bundle store of `instance`. A named instance keeps its store beside
+ * main's, in `hot-updater-instances/<name>/bundle-store` of the same
+ * directory (Documents on iOS, files on Android).
+ */
+function ensureStorePath(instance: AppInstance = "main") {
+  const mainStorePath = ensureMainStorePath();
+  if (instance === "main") return mainStorePath;
+  return path.join(
+    path.dirname(mainStorePath),
+    "hot-updater-instances",
+    instance,
+    "bundle-store",
+  );
+}
+
+/** Diagnostics copied from the device keep each instance's files apart. */
+function instanceFileName(instance: AppInstance, fileName: string) {
+  return instance === "main" ? fileName : `${instance}-${fileName}`;
+}
+
+function ensureMainStorePath() {
   if (fixtureSession.storePath) {
     return fixtureSession.storePath;
   }
@@ -1632,6 +1692,12 @@ async function clearIosLocalBundleState() {
     force: true,
     recursive: true,
   });
+  // Named instances' bundles; their key-value stores live in the
+  // Application Support `instances` directory cleared below.
+  await fsPromises.rm(path.join(documentsDir, "hot-updater-instances"), {
+    force: true,
+    recursive: true,
+  });
   await fsPromises.rm(path.join(appDataDir, "Library/Preferences"), {
     force: true,
     recursive: true,
@@ -1660,6 +1726,8 @@ async function clearIosLocalBundleState() {
     path.join(documentsDir, "bundle-store"),
     path.join(documentsDir, "bundle-temp"),
     path.join(documentsDir, "bundle-manifest-temp"),
+    path.join(documentsDir, "hot-updater-instances"),
+    path.join(noBackupDir, "instances"),
     path.join(noBackupDir, "storage.json"),
     path.join(noBackupDir, "install-identity.json"),
   ];
@@ -1696,7 +1764,9 @@ function clearAndroidLocalAppState() {
         `rm -rf ${ensureAndroidFilesDir()}/bundle-store`,
         `${ensureAndroidFilesDir()}/bundle-temp`,
         `${ensureAndroidFilesDir()}/bundle-manifest-temp`,
+        `${ensureAndroidFilesDir()}/hot-updater-instances`,
         `/data/data/${fixtureSession.appId}/shared_prefs/HotUpdaterPrefs_*.xml`,
+        `/data/data/${fixtureSession.appId}/shared_prefs/HotUpdaterInstancePrefs_*.xml`,
       ].join(" "),
     ],
     { allowFailure: true },
@@ -2434,8 +2504,8 @@ function createWaitForMetadataResetTimeoutError(args: {
   });
 }
 
-function readIosWaitForMetadataDiagnostics() {
-  const storePath = ensureStorePath();
+function readIosWaitForMetadataDiagnostics(instance: AppInstance = "main") {
+  const storePath = ensureStorePath(instance);
   return {
     crashHistory: readOptionalJsonSnapshot(
       path.join(storePath, "crashed-history.json"),
@@ -2447,19 +2517,23 @@ function readIosWaitForMetadataDiagnostics() {
   };
 }
 
-function readIosMetadataSnapshot() {
+function readIosMetadataSnapshot(instance: AppInstance = "main") {
   return readOptionalJsonSnapshot(
-    path.join(ensureStorePath(), "metadata.json"),
+    path.join(ensureStorePath(instance), "metadata.json"),
   );
 }
 
 function readAndroidStoreSnapshot(
   remoteFileName: string,
   localFileName: string,
+  instance: AppInstance = "main",
 ) {
-  const storePath = ensureStorePath();
+  const storePath = ensureStorePath(instance);
   const remotePath = `${storePath}/${remoteFileName}`;
-  const localPath = path.join(fixtureSession.resultsDir, localFileName);
+  const localPath = path.join(
+    fixtureSession.resultsDir,
+    instanceFileName(instance, localFileName),
+  );
 
   if (!copyAndroidFileIfExists(remotePath, localPath)) {
     return {
@@ -2494,28 +2568,36 @@ function androidRecoveryLaunchReportPath(
   return path.join(fixtureSession.resultsDir, "recovery-launch-report.json");
 }
 
-function readAndroidMetadataSnapshot(localFileName: string) {
-  return readAndroidStoreSnapshot("metadata.json", localFileName);
+function readAndroidMetadataSnapshot(
+  localFileName: string,
+  instance: AppInstance = "main",
+) {
+  return readAndroidStoreSnapshot("metadata.json", localFileName, instance);
 }
 
-function readAndroidWaitForMetadataDiagnostics() {
+function readAndroidWaitForMetadataDiagnostics(instance: AppInstance = "main") {
   return {
     crashHistory: readAndroidStoreSnapshot(
       "crashed-history.json",
       "wait-for-metadata-crashed-history.json",
+      instance,
     ),
     launchReport: readAndroidStoreSnapshot(
       "launch-report.json",
       "wait-for-metadata-launch-report.json",
+      instance,
     ),
-    metadata: readAndroidMetadataSnapshot("wait-for-metadata-metadata.json"),
+    metadata: readAndroidMetadataSnapshot(
+      "wait-for-metadata-metadata.json",
+      instance,
+    ),
   };
 }
 
-function readWaitForMetadataDiagnostics() {
+function readWaitForMetadataDiagnostics(instance: AppInstance = "main") {
   return fixtureSession.platform === "ios"
-    ? readIosWaitForMetadataDiagnostics()
-    : readAndroidWaitForMetadataDiagnostics();
+    ? readIosWaitForMetadataDiagnostics(instance)
+    : readAndroidWaitForMetadataDiagnostics(instance);
 }
 
 function readBundleFileSnapshot(bundleId: string) {
@@ -4527,6 +4609,112 @@ function writeAndroidE2ECohort(cohort: string) {
   ]);
 }
 
+function readAndroidStringPreferences(xml: string) {
+  const preferences = new Map<string, string>();
+  for (const match of xml.matchAll(
+    /<string\s+name="([^"]*)">([^<]*)<\/string>/g,
+  )) {
+    preferences.set(decodeXmlText(match[1]!), decodeXmlText(match[2]!));
+  }
+  return preferences;
+}
+
+/**
+ * Stores one setting the brownfield host reads at launch: an iOS user default,
+ * or a string in Android's HotUpdaterE2E shared preferences. The Android file
+ * holds every such setting, so the others are kept. Resetting the app
+ * removes them.
+ */
+function writeBrownfieldHostSetting(
+  iosDefaultsKey: string,
+  androidPreferenceKey: string,
+  value: string,
+) {
+  if (fixtureSession.platform === "ios") {
+    captureCommand("xcrun", [
+      "simctl",
+      "spawn",
+      deviceId as string,
+      "defaults",
+      "write",
+      fixtureSession.appId,
+      iosDefaultsKey,
+      "-string",
+      value,
+    ]);
+    return;
+  }
+  const prefsDir = `/data/data/${fixtureSession.appId}/shared_prefs`;
+  const prefsPath = `${prefsDir}/${E2E_ANDROID_NATIVE_CHECK_PREFS_FILE}`;
+  const preferences = readAndroidStringPreferences(
+    captureCommand(
+      "adb",
+      [
+        "-s",
+        deviceId as string,
+        "shell",
+        "run-as",
+        fixtureSession.appId,
+        "cat",
+        prefsPath,
+      ],
+      { allowFailure: true },
+    ),
+  );
+  preferences.set(androidPreferenceKey, value);
+  const prefsXml = [
+    "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>",
+    "<map>",
+    ...[...preferences].map(
+      ([key, entry]) =>
+        `    <string name="${encodeXmlText(key)}">${encodeXmlText(entry)}</string>`,
+    ),
+    "</map>",
+    "",
+  ].join("\n");
+  captureCommand("adb", [
+    "-s",
+    deviceId as string,
+    "shell",
+    "run-as",
+    fixtureSession.appId,
+    "sh",
+    "-c",
+    shellSingleQuote(
+      [
+        `mkdir -p ${shellSingleQuote(prefsDir)}`,
+        `printf %s ${shellSingleQuote(prefsXml)} > ${shellSingleQuote(prefsPath)}`,
+      ].join(" && "),
+    ),
+  ]);
+}
+
+/**
+ * Turns on the brownfield host's second Hot Updater instance, `widget`, for
+ * the next launches of this attempt: the host shows the widget's own React
+ * Native runtime under the example, with its own embedded bundle and the
+ * `widget` channel. Resetting the app removes it, so every other scenario
+ * runs one instance.
+ */
+async function enableWidget(): Promise<JobResult> {
+  if (process.env.HOT_UPDATER_E2E_TRACK !== "brownfield") {
+    throw new Error("The widget instance runs only on the brownfield track");
+  }
+  // The native instance needs a valid server URL; the widget's JavaScript
+  // reads its own from the runtime config, as the example does.
+  const baseURL = handleRuntimeConfig().baseURL;
+  writeBrownfieldHostSetting(
+    E2E_IOS_WIDGET_DEFAULTS_KEY,
+    E2E_ANDROID_WIDGET_PREFS_KEY,
+    JSON.stringify({ baseURL }),
+  );
+  logE2eFixture("widget instance enabled", {
+    baseURL,
+    platform: fixtureSession.platform,
+  });
+  return { widgetChannel: WIDGET_CHANNEL };
+}
+
 /**
  * Turns on the native update check in the brownfield host for the next launches
  * of this attempt: the host checks the control proxy for an update before
@@ -4553,44 +4741,11 @@ async function setNativeCheck(input: {
       ? {}
       : { checkTimeoutMs: input.checkTimeoutMs }),
   });
-  if (fixtureSession.platform === "ios") {
-    captureCommand("xcrun", [
-      "simctl",
-      "spawn",
-      deviceId as string,
-      "defaults",
-      "write",
-      fixtureSession.appId,
-      E2E_IOS_NATIVE_CHECK_DEFAULTS_KEY,
-      "-string",
-      request,
-    ]);
-  } else {
-    const prefsDir = `/data/data/${fixtureSession.appId}/shared_prefs`;
-    const prefsPath = `${prefsDir}/${E2E_ANDROID_NATIVE_CHECK_PREFS_FILE}`;
-    const prefsXml = [
-      "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>",
-      "<map>",
-      `    <string name="${E2E_ANDROID_NATIVE_CHECK_PREFS_KEY}">${encodeXmlText(request)}</string>`,
-      "</map>",
-      "",
-    ].join("\n");
-    captureCommand("adb", [
-      "-s",
-      deviceId as string,
-      "shell",
-      "run-as",
-      fixtureSession.appId,
-      "sh",
-      "-c",
-      shellSingleQuote(
-        [
-          `mkdir -p ${shellSingleQuote(prefsDir)}`,
-          `printf %s ${shellSingleQuote(prefsXml)} > ${shellSingleQuote(prefsPath)}`,
-        ].join(" && "),
-      ),
-    ]);
-  }
+  writeBrownfieldHostSetting(
+    E2E_IOS_NATIVE_CHECK_DEFAULTS_KEY,
+    E2E_ANDROID_NATIVE_CHECK_PREFS_KEY,
+    request,
+  );
   logE2eFixture("native check enabled", {
     nonce,
     platform: fixtureSession.platform,
@@ -4788,8 +4943,8 @@ function createWaitForRecoveryTimeoutError(args: {
   });
 }
 
-function readIosRecoveryDiagnostics() {
-  const storePath = ensureStorePath();
+function readIosRecoveryDiagnostics(instance: AppInstance = "main") {
+  const storePath = ensureStorePath(instance);
   return {
     crashHistory: readOptionalJsonSnapshot(
       path.join(storePath, "crashed-history.json"),
@@ -4806,21 +4961,29 @@ function readIosRecoveryDiagnostics() {
 
 function readAndroidRecoveryDiagnostics(
   artifactNames: CrashRecoveryArtifactNames,
+  instance: AppInstance = "main",
 ) {
   return {
     crashHistory: readAndroidStoreSnapshot(
       "crashed-history.json",
       artifactNames.crashHistory,
+      instance,
     ),
     crashMarker: readAndroidStoreSnapshot(
       "recovery-crash-marker.json",
       artifactNames.crashMarker,
+      instance,
     ),
     launchReport: readAndroidStoreSnapshot(
       "launch-report.json",
       artifactNames.launchReport,
+      instance,
     ),
-    metadata: readAndroidStoreSnapshot("metadata.json", artifactNames.metadata),
+    metadata: readAndroidStoreSnapshot(
+      "metadata.json",
+      artifactNames.metadata,
+      instance,
+    ),
   };
 }
 
@@ -5141,6 +5304,7 @@ async function dismissAndroidAnrWindow(reason: string) {
 
 type WaitForMetadataOptions = {
   attempts?: number;
+  instance?: AppInstance;
   releaseId?: string;
   recoveredStableBundleId?: string;
   relaunchLimit?: number;
@@ -5169,6 +5333,7 @@ async function waitForIosMetadataState(
     E2E_METADATA_WAIT_RELAUNCH_LIMIT,
   );
   const recoveredStableBundleId = options.recoveredStableBundleId;
+  const instance = options.instance ?? "main";
 
   for (
     let relaunchIndex = 0;
@@ -5179,7 +5344,7 @@ async function waitForIosMetadataState(
       throwIfAborted(options.signal);
       totalAttempts += 1;
 
-      const metadata = readIosMetadataSnapshot();
+      const metadata = readIosMetadataSnapshot(instance);
       if (metadata.value) {
         const metadataState = getMetadataState(metadata.value);
 
@@ -5196,7 +5361,7 @@ async function waitForIosMetadataState(
 
         if (verificationPending && recoveredStableBundleId) {
           const launchReport = readOptionalJsonSnapshot(
-            path.join(ensureStorePath(), "launch-report.json"),
+            path.join(ensureStorePath(instance), "launch-report.json"),
           );
           if (
             isExpectedCrashRecoveryReached(
@@ -5213,7 +5378,7 @@ async function waitForIosMetadataState(
       await abortableSleep(E2E_POLL_INTERVAL_MS, options.signal);
     }
 
-    const metadata = readIosMetadataSnapshot();
+    const metadata = readIosMetadataSnapshot(instance);
     const metadataState = getMetadataState(metadata.value);
     if (
       relaunchIndex === relaunchLimit ||
@@ -5224,6 +5389,7 @@ async function waitForIosMetadataState(
 
     logE2eFixture("ios metadata wait retry", {
       expectedBundleId: bundleId,
+      instance,
       expectedVerificationPending: verificationPending,
       observed: metadataState,
       relaunchAttempt: relaunchIndex + 1,
@@ -5237,7 +5403,7 @@ async function waitForIosMetadataState(
   throw createWaitForMetadataTimeoutError({
     attempts: totalAttempts,
     bundleId,
-    ...readIosWaitForMetadataDiagnostics(),
+    ...readIosWaitForMetadataDiagnostics(instance),
     verificationPending,
   });
 }
@@ -5257,6 +5423,7 @@ async function waitForAndroidMetadataState(
     E2E_METADATA_WAIT_RELAUNCH_LIMIT,
   );
   const recoveredStableBundleId = options.recoveredStableBundleId;
+  const instance = options.instance ?? "main";
 
   for (
     let relaunchIndex = 0;
@@ -5269,6 +5436,7 @@ async function waitForAndroidMetadataState(
 
       const metadata = readAndroidMetadataSnapshot(
         "wait-for-metadata-metadata.json",
+        instance,
       );
       if (metadata.value) {
         const metadataState = getMetadataState(metadata.value);
@@ -5287,6 +5455,7 @@ async function waitForAndroidMetadataState(
           const launchReport = readAndroidStoreSnapshot(
             "launch-report.json",
             "wait-for-metadata-launch-report.json",
+            instance,
           );
           if (
             isExpectedCrashRecoveryReached(
@@ -5305,6 +5474,7 @@ async function waitForAndroidMetadataState(
 
     const metadata = readAndroidMetadataSnapshot(
       "wait-for-metadata-metadata.json",
+      instance,
     );
     const metadataState = getMetadataState(metadata.value);
     if (
@@ -5316,6 +5486,7 @@ async function waitForAndroidMetadataState(
 
     logE2eFixture("android metadata wait relaunch", {
       expectedBundleId: bundleId,
+      instance,
       expectedVerificationPending: verificationPending,
       observed: metadataState,
       relaunchAttempt: relaunchIndex + 1,
@@ -5329,23 +5500,115 @@ async function waitForAndroidMetadataState(
   throw createWaitForMetadataTimeoutError({
     attempts: totalAttempts,
     bundleId,
-    ...readAndroidWaitForMetadataDiagnostics(),
+    ...readAndroidWaitForMetadataDiagnostics(instance),
     verificationPending,
   });
+}
+
+function isIosAppRunning() {
+  const jobs = captureCommand(
+    "xcrun",
+    ["simctl", "spawn", deviceId as string, "launchctl", "list"],
+    { allowFailure: true },
+  );
+  // `<pid>\t<status>\tUIKitApplication:<bundle ID>[...]`; a stopped app has
+  // no pid, or no job at all.
+  return jobs
+    .split("\n")
+    .some(
+      (line) =>
+        line.includes(`\tUIKitApplication:${fixtureSession.appId}[`) &&
+        /^\d+\t/.test(line),
+    );
+}
+
+function isFixtureAppRunning() {
+  return fixtureSession.platform === "ios"
+    ? isIosAppRunning()
+    : getAndroidProcessId().trim().length > 0;
+}
+
+/**
+ * Starts the app again once it has stayed stopped: nothing restarts a process
+ * that a named instance's fatal ended (iOS never restarts an app, and
+ * Android restarts only for main), yet the instance rolls back only at its
+ * next start.
+ */
+function createRelaunchWhenStopped(signal?: AbortSignal) {
+  let polls = 0;
+  let stoppedObservations = 0;
+  let relaunches = 0;
+  return async () => {
+    // A process probe costs more than a store read, so it runs once a second.
+    polls += 1;
+    if (polls % E2E_POLLS_PER_PROCESS_PROBE !== 0) return;
+    if (isFixtureAppRunning()) {
+      stoppedObservations = 0;
+      return;
+    }
+    stoppedObservations += 1;
+    if (
+      stoppedObservations < E2E_STOPPED_OBSERVATIONS_BEFORE_RELAUNCH ||
+      relaunches >= E2E_NAMED_CRASH_RELAUNCH_LIMIT
+    ) {
+      return;
+    }
+    stoppedObservations = 0;
+    relaunches += 1;
+    logE2eFixture("named instance crash relaunch", {
+      appId: fixtureSession.appId,
+      platform: fixtureSession.platform,
+      relaunches,
+    });
+    if (fixtureSession.platform === "ios") {
+      launchIosApp();
+      await abortableSleep(E2E_IOS_LAUNCH_SETTLE_MS, signal);
+    } else {
+      // An uncaught fatal, unlike main's handled ones, may leave the system's
+      // "app has stopped" dialog over the relaunched app.
+      captureCommand(
+        "adb",
+        [
+          "-s",
+          deviceId as string,
+          "shell",
+          "am",
+          "broadcast",
+          "-a",
+          "android.intent.action.CLOSE_SYSTEM_DIALOGS",
+        ],
+        { allowFailure: true },
+      );
+      launchAndroidApp({ forceStop: false });
+      await abortableSleep(E2E_ANDROID_LAUNCH_SETTLE_MS, signal);
+    }
+  };
 }
 
 async function waitForCrashRecovery(
   stableBundleId: string,
   crashedBundleId: string,
-  options: { attempts?: number; signal?: AbortSignal } = {},
+  options: {
+    attempts?: number;
+    instance?: AppInstance;
+    signal?: AbortSignal;
+  } = {},
 ) {
+  const instance = options.instance ?? "main";
   const launchLogMarker = androidLaunchLogMarker;
   if (fixtureSession.platform === "android" && !launchLogMarker) {
     throw new Error("Missing Android launch log marker");
   }
   let readyObservations = 0;
   return waitForCrashRecoveryState({
-    attempts: options.attempts ?? 360,
+    // A named instance's wait also probes the process, so it polls less to
+    // fail with its own diagnostics inside the client's request timeout.
+    attempts: options.attempts ?? (instance === "main" ? 360 : 240),
+    // A named instance's fatal ends the process with no restart of its own.
+    beforePoll:
+      instance === "main"
+        ? undefined
+        : createRelaunchWhenStopped(options.signal),
     crashedBundleId,
     createTimeoutError: createWaitForRecoveryTimeoutError,
     getLaunchReportState,
@@ -5354,10 +5617,14 @@ async function waitForCrashRecovery(
       const ready = isAndroidRecoveryProcessReady({
         appId: fixtureSession.appId,
         focusedPackage: getAndroidFocusedPackage(),
-        hasNativeRestartEvidence: hasNativeRestartEvidenceAfterMarker(
-          readAndroidAutomaticRestartLogs(),
-          launchLogMarker as string,
-        ),
+        // Main's recovery restarts the app natively; the wait above starts
+        // it for a named instance.
+        hasNativeRestartEvidence:
+          instance !== "main" ||
+          hasNativeRestartEvidenceAfterMarker(
+            readAndroidAutomaticRestartLogs(),
+            launchLogMarker as string,
+          ),
         processId: getAndroidProcessId(),
       });
       readyObservations = ready ? readyObservations + 1 : 0;
@@ -5367,11 +5634,13 @@ async function waitForCrashRecovery(
     pollIntervalMs: E2E_POLL_INTERVAL_MS,
     readDiagnostics: (artifactNames) =>
       fixtureSession.platform === "ios"
-        ? readIosRecoveryDiagnostics()
-        : readAndroidRecoveryDiagnostics(artifactNames),
+        ? readIosRecoveryDiagnostics(instance)
+        : readAndroidRecoveryDiagnostics(artifactNames, instance),
     signal: options.signal,
     sleepMs: abortableSleep,
     stableBundleId,
+    // Built-in bundle IDs, unlike OTA IDs, end with the fixed suffix.
+    stableIsBuiltIn: stableBundleId.endsWith(BUILT_IN_MIN_BUNDLE_ID_SUFFIX),
   });
 }
 
@@ -5448,6 +5717,11 @@ async function bootstrap() {
       fixtureSession.appSourceFile,
     );
   }
+  if (!fixtureSession.widgetAppBackupPath) {
+    fixtureSession.widgetAppBackupPath = await backupFile(
+      fixtureSession.widgetAppSourceFile,
+    );
+  }
   if (!fixtureSession.configBackupPath) {
     fixtureSession.configBackupPath = await backupFile(
       fixtureSession.configSourceFile,
@@ -5498,6 +5772,14 @@ async function bootstrap() {
     mode: "reset",
     safeBundleIds: [],
   });
+  // The widget's embedded bundle shows the same marker as the example's.
+  await applyAppScenario({
+    bundleProfile: "default",
+    marker: fixtureSession.initialMarker,
+    mode: "reset",
+    safeBundleIds: [],
+    sourceFile: fixtureSession.widgetAppSourceFile,
+  });
 
   fixtureSession.bootstrapResult = {
     emptyCrashHistoryText: "No crashed bundles recorded\\.",
@@ -5520,6 +5802,17 @@ async function deployFixtureBundle(
 ) {
   const signal = context?.signal;
   const bundleProfile = resolveBundleProfile(request.bundleProfile);
+  const instance = request.instance ?? "main";
+  // The widget's channel comes from its own Info.plist and manifest options,
+  // so a widget bundle on any other channel would never reach it.
+  if ((instance === "widget") !== (request.channel === WIDGET_CHANNEL)) {
+    throw new Error(
+      `The ${WIDGET_CHANNEL} channel carries only widget bundles, and widget bundles only that channel`,
+    );
+  }
+  if (instance === "widget" && bundleProfile !== "default") {
+    throw new Error("A widget deploy builds the default bundle profile only");
+  }
   const remoteChannel = getFixtureChannel(request.channel);
   const patchEnabled =
     request.diffBaseBundleId !== undefined ||
@@ -5540,6 +5833,7 @@ async function deployFixtureBundle(
 
   throwIfAborted(signal);
   await applyDeployConfig({
+    entryFile: instance === "widget" ? WIDGET_ENTRY_FILE : null,
     patchEnabled,
     patchMaxBaseBundles: request.patchMaxBaseBundles,
     strategy: request.strategy ?? "appVersion",
@@ -5549,6 +5843,10 @@ async function deployFixtureBundle(
     marker: request.marker,
     mode: request.mode,
     safeBundleIds: request.safeBundleIds,
+    sourceFile:
+      instance === "widget"
+        ? fixtureSession.widgetAppSourceFile
+        : fixtureSession.appSourceFile,
   });
 
   const deployOutputPath = await fsPromises.mkdtemp(
@@ -5592,6 +5890,7 @@ async function deployFixtureBundle(
     channel: request.channel,
     channelNamespace,
     command: `node ${args.join(" ")}`,
+    instance,
     logPath: path.relative(REPO_DIR, deployLogPath),
     marker: request.marker,
     mode: request.mode,
@@ -5705,6 +6004,7 @@ async function deployFixtureBundle(
     bundleId,
     bundleProfile,
     channel: remoteChannel,
+    instance,
     diffBaseBundleId: diff?.baseBundleId ?? null,
     diffPatchAssetPath: diff?.patchAssetPath ?? null,
     enabled: deployed.release.enabled,
@@ -5727,6 +6027,7 @@ async function deployFixtureBundle(
     diffPatchAssetPath: diff?.patchAssetPath,
     enabled: deployed.release.enabled,
     generation: deployed.catalog.generation,
+    instance,
     marker: request.marker,
     multiAssetPaths:
       bundleProfile === "multiAssetReplacement"
@@ -6708,16 +7009,23 @@ async function assertBundlePatchBases(args: {
   };
 }
 
-async function assertMetadataActive(bundleId: string) {
+async function assertMetadataActive(
+  bundleId: string,
+  {
+    absentBundleIds = [],
+    instance = "main",
+  }: { absentBundleIds?: readonly string[]; instance?: AppInstance } = {},
+) {
+  const storePath = ensureStorePath(instance);
   const metadata =
     fixtureSession.platform === "ios"
-      ? readJson(path.join(ensureStorePath(), "metadata.json"))
+      ? readJson(path.join(storePath, "metadata.json"))
       : (() => {
           const probePath = path.join(
             fixtureSession.resultsDir,
-            "metadata-assert.json",
+            instanceFileName(instance, "metadata-assert.json"),
           );
-          copyAndroidFile(`${ensureStorePath()}/metadata.json`, probePath);
+          copyAndroidFile(`${storePath}/metadata.json`, probePath);
           return readJson(probePath);
         })();
 
@@ -6725,17 +7033,26 @@ async function assertMetadataActive(bundleId: string) {
     (record) => record.bundleId === bundleId,
   )?.releaseId;
   assertMetadataState(metadata, bundleId, releaseId);
+  // Bundles another instance staged never land in this one's store.
+  const present = absentBundleIds.filter((absentBundleId) =>
+    fixtureSession.platform === "ios"
+      ? fs.existsSync(path.join(storePath, absentBundleId))
+      : androidPathExists(`${storePath}/${absentBundleId}`),
+  );
+  if (present.length > 0) {
+    throw createEndpointError(
+      `The ${instance} bundle store holds bundles it never staged: ${present.join(", ")}`,
+      { instance, present, storePath },
+    );
+  }
   return {};
 }
 
-async function assertMetadataResetState() {
+async function assertMetadataResetState(instance: AppInstance = "main") {
   const attempts = 120;
 
   for (let index = 0; index < attempts; index += 1) {
-    const diagnostics =
-      fixtureSession.platform === "ios"
-        ? readIosWaitForMetadataDiagnostics()
-        : readAndroidWaitForMetadataDiagnostics();
+    const diagnostics = readWaitForMetadataDiagnostics(instance);
 
     if (!diagnostics.metadata.exists) {
       return {};
@@ -6755,10 +7072,7 @@ async function assertMetadataResetState() {
     await sleep(E2E_POLL_INTERVAL_MS);
   }
 
-  const diagnostics =
-    fixtureSession.platform === "ios"
-      ? readIosWaitForMetadataDiagnostics()
-      : readAndroidWaitForMetadataDiagnostics();
+  const diagnostics = readWaitForMetadataDiagnostics(instance);
   throw createWaitForMetadataResetTimeoutError({
     attempts,
     ...diagnostics,
@@ -6768,6 +7082,7 @@ async function assertMetadataResetState() {
 async function assertLaunchReportState({
   fromBundleId,
   fromReleaseId,
+  instance = "main",
   optional,
   status,
   toBundleId,
@@ -6775,18 +7090,24 @@ async function assertLaunchReportState({
 }: LaunchReportAssertion) {
   let launchReportPath =
     fixtureSession.platform === "ios"
-      ? path.join(ensureStorePath(), "launch-report.json")
-      : path.join(fixtureSession.resultsDir, "launch-report-assert.json");
+      ? path.join(ensureStorePath(instance), "launch-report.json")
+      : path.join(
+          fixtureSession.resultsDir,
+          instanceFileName(instance, "launch-report-assert.json"),
+        );
 
   if (fixtureSession.platform === "android") {
     if (
       !copyAndroidFileIfExists(
-        `${ensureStorePath()}/launch-report.json`,
+        `${ensureStorePath(instance)}/launch-report.json`,
         launchReportPath,
       )
     ) {
       if (optional) {
         return {};
+      }
+      if (instance !== "main") {
+        throw new Error(`The ${instance} launch-report.json is missing`);
       }
       const recoveryLaunchReportPath = androidRecoveryLaunchReportPath({
         crashedBundleId: fromBundleId,
@@ -6814,15 +7135,22 @@ async function assertLaunchReportState({
   return {};
 }
 
-async function assertCrashHistory(bundleId: string, awaitingRetry: boolean) {
+async function assertCrashHistory(
+  bundleId: string,
+  awaitingRetry: boolean,
+  instance: AppInstance = "main",
+) {
   const crashHistoryPath =
     fixtureSession.platform === "ios"
-      ? path.join(ensureStorePath(), "crashed-history.json")
-      : path.join(fixtureSession.resultsDir, "crash-history-assert.json");
+      ? path.join(ensureStorePath(instance), "crashed-history.json")
+      : path.join(
+          fixtureSession.resultsDir,
+          instanceFileName(instance, "crash-history-assert.json"),
+        );
 
   if (fixtureSession.platform === "android") {
     copyAndroidFile(
-      `${ensureStorePath()}/crashed-history.json`,
+      `${ensureStorePath(instance)}/crashed-history.json`,
       crashHistoryPath,
     );
   }
@@ -6873,6 +7201,12 @@ async function cleanup() {
       fixtureSession.appSourceFile,
     );
   }
+  if (fixtureSession.widgetAppBackupPath) {
+    await restoreFile(
+      fixtureSession.widgetAppBackupPath,
+      fixtureSession.widgetAppSourceFile,
+    );
+  }
   if (fixtureSession.configBackupPath) {
     await restoreFile(
       fixtureSession.configBackupPath,
@@ -6893,6 +7227,7 @@ async function cleanup() {
   await removeAssetHeavyFixtures();
 
   fixtureSession.appBackupPath = null;
+  fixtureSession.widgetAppBackupPath = null;
   fixtureSession.configBackupPath = null;
   fixtureSession.envBackupPath = null;
   fixtureSession.multiAssetBackupPaths = {};
@@ -6952,6 +7287,10 @@ export function startSetNativeCheckJob(input: {
   checkTimeoutMs?: number;
 }) {
   return createJob(() => setNativeCheck(input));
+}
+
+export function startEnableWidgetJob() {
+  return createJob(() => enableWidget());
 }
 
 export function startWaitForNativeCheckJob(input: {
@@ -7108,12 +7447,17 @@ export async function handleAssertMultipleAssetsReplaced(args: {
   return assertMultipleAssetsReplaced(args);
 }
 
-export async function handleAssertMetadataActive(bundleId: string) {
-  return assertMetadataActive(bundleId);
+export async function handleAssertMetadataActive(
+  bundleId: string,
+  options: { absentBundleIds?: readonly string[]; instance?: AppInstance } = {},
+) {
+  return assertMetadataActive(bundleId, options);
 }
 
-export async function handleAssertMetadataReset() {
-  return assertMetadataResetState();
+export async function handleAssertMetadataReset(
+  instance: AppInstance = "main",
+) {
+  return assertMetadataResetState(instance);
 }
 
 export async function handleAssertLaunchReport(
@@ -7125,8 +7469,9 @@ export async function handleAssertLaunchReport(
 export async function handleAssertCrashHistory(
   bundleId: string,
   awaitingRetry = false,
+  instance: AppInstance = "main",
 ) {
-  return assertCrashHistory(bundleId, awaitingRetry);
+  return assertCrashHistory(bundleId, awaitingRetry, instance);
 }
 
 export function handleSeedCrashHistory(bundleIds: readonly string[]) {
@@ -7136,7 +7481,7 @@ export function handleSeedCrashHistory(bundleIds: readonly string[]) {
 export async function handleWaitForCrashRecovery(
   stableBundleId: string,
   crashedBundleId: string,
-  options: { signal?: AbortSignal } = {},
+  options: { instance?: AppInstance; signal?: AbortSignal } = {},
 ) {
   return waitForCrashRecovery(stableBundleId, crashedBundleId, options);
 }
