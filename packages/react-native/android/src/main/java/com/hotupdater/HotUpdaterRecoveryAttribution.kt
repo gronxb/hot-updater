@@ -278,6 +278,9 @@ internal class HotUpdaterRecoveryAttribution(
     private inner class UIManagerRuntimeRoots : HotUpdaterRuntimeRoots {
         private val liveRootTags = HotUpdaterLiveRootTags()
 
+        // The runtimes the root tags were looked at with.
+        private val scannedRuntimes = WeakIdentitySet<ReactContext>()
+
         override fun runtimeOfRootTag(rootTag: Int): HotUpdaterRuntimeRoots.Runtime? {
             registeredRuntimes().forEach { runtime ->
                 if (RootViews.rootViewOf(RootViews.uiManagersOf(runtime), rootTag) != null) {
@@ -292,6 +295,8 @@ internal class HotUpdaterRecoveryAttribution(
             if (runtimes.isEmpty()) return emptyList()
             val nextRootViewTag = RootViews.nextRootViewTag() ?: return emptyList()
             val uiManagers = runtimes.associateWith { RootViews.uiManagersOf(it) }
+            // A runtime registered since: its roots may be older than the recent tags.
+            if (runtimes.map(scannedRuntimes::add).any { it }) liveRootTags.rescanAll()
             val rootTags =
                 liveRootTags.liveTags(nextRootViewTag) { rootTag ->
                     uiManagers.values.any { RootViews.rootViewOf(it, rootTag) != null }
@@ -376,8 +381,10 @@ internal class HotUpdaterRecoveryAttribution(
  * and lists no live roots: each tag handed out is looked at once it is, and
  * the ones a runtime holds are kept until their root goes, which no age
  * bounds. Tags no runtime held yet, such as main's (whose runtime isn't
- * registered) or a runtime's that registers later, are looked at again only
- * while they are among the latest [maxUnheld]: a dead tag is never live again.
+ * registered), are looked at again only while they are among the latest
+ * [maxUnheld]: a dead tag is never live again. A runtime that registers may
+ * hold an older one, shown before its HotUpdater module was created, so
+ * [rescanAll] has every tag handed out looked at once more.
  */
 internal class HotUpdaterLiveRootTags(
     private val maxUnheld: Int = 64,
@@ -386,6 +393,13 @@ internal class HotUpdaterLiveRootTags(
     private val live = linkedSetOf<Int>()
     private val unheld = ArrayDeque<Int>()
 
+    /** Looks at every tag handed out again on the next [liveTags], as after a runtime registered. Rare. */
+    @Synchronized
+    fun rescanAll() {
+        nextUnseen = ROOT_TAG_FIRST
+        unheld.clear()
+    }
+
     /** The live root tags, with [nextRootViewTag] React Native's counter; [isHeld] whether a runtime holds a tag's root. */
     @Synchronized
     fun liveTags(
@@ -393,7 +407,7 @@ internal class HotUpdaterLiveRootTags(
         isHeld: (Int) -> Boolean,
     ): List<Int> {
         while (nextUnseen < nextRootViewTag) {
-            unheld.addLast(nextUnseen)
+            if (nextUnseen !in live) unheld.addLast(nextUnseen)
             nextUnseen += ROOT_TAG_STEP
         }
         live.retainAll(isHeld)

@@ -171,6 +171,24 @@ class HotUpdaterRecoveryAttributionTest {
     }
 
     @Test
+    fun `a root shown before its runtime registered is found however many tags came after`() {
+        val tags = HotUpdaterLiveRootTags()
+        val held = mutableSetOf<Int>()
+        // A named root in a dialog, looked at before its runtime registered.
+        assertEquals(emptyList<Int>(), tags.liveTags(11) { it in held })
+        // 70 newer roots of main's, which no registered runtime holds.
+        assertEquals(emptyList<Int>(), tags.liveTags(711) { it in held })
+
+        // Its runtime registers: every tag handed out is looked at once more.
+        held += 1
+        tags.rescanAll()
+        assertEquals(listOf(1), tags.liveTags(711) { it in held })
+        // A live tag isn't looked at twice, and stays live.
+        tags.rescanAll()
+        assertEquals(listOf(1), tags.liveTags(711) { it in held })
+    }
+
+    @Test
     fun `root tags no runtime holds are looked at again only while recent`() {
         val tags = HotUpdaterLiveRootTags(maxUnheld = 2)
         val looked = mutableListOf<Int>()
