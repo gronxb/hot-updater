@@ -46,6 +46,8 @@ import {
   startBootstrapJob,
   startCreateRepublishedReleaseJob,
   startDeployBundleJob,
+  startEnableWidgetJob,
+  startWaitForCrashMarkerJob,
   startPatchReleaseJob,
   startResetRemoteBundlesJob,
   startSeedCrashedBundleFrontierJob,
@@ -55,9 +57,18 @@ import {
   startWaitForMetadataJob,
   startWaitForNativeCheckJob,
 } from "./controller.ts";
+import type { AppInstance } from "./controller.ts";
 import { handlePatchE2eScreenState } from "./screen-state.ts";
 
 const app = new Hono();
+
+const INSTANCE_ERROR = "instance must be main or widget";
+
+/** The instance a store request reads: `main` unless the body names one. */
+function parseInstance(value: unknown): AppInstance | null {
+  if (value === undefined) return "main";
+  return value === "main" || value === "widget" ? value : null;
+}
 
 app.onError((error, c) => {
   console.error(error);
@@ -338,6 +349,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
     disabled?: boolean;
     diffBaseBundleId?: string;
     forceUpdate?: boolean;
+    instance?: unknown;
     marker?: string;
     message?: string;
     mode?: "crash" | "hang" | "reset" | "slow-start";
@@ -351,6 +363,10 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
 
   if (!payload.channel) {
     return c.json({ error: "channel is required" }, 400);
+  }
+  const deployInstance = parseInstance(payload.instance);
+  if (!deployInstance) {
+    return c.json({ error: INSTANCE_ERROR }, 400);
   }
   if (!payload.marker) {
     return c.json({ error: "marker is required" }, 400);
@@ -403,6 +419,7 @@ app.post("/e2e/jobs/deploy-bundle", async (c) => {
       disabled: payload.disabled,
       diffBaseBundleId: payload.diffBaseBundleId,
       forceUpdate: payload.forceUpdate,
+      instance: deployInstance,
       marker: payload.marker,
       message: payload.message,
       mode: payload.mode,
@@ -538,8 +555,31 @@ app.post("/e2e/jobs/set-native-check", async (c) => {
   });
 });
 
+app.post("/e2e/jobs/enable-widget", async (c) => {
+  // The body is optional: the timeouts default to the host's.
+  const payload = ((await c.req.json().catch(() => ({}))) ?? {}) as {
+    requestTimeoutMs?: number;
+    checkTimeoutMs?: number;
+  };
+  for (const value of [payload.requestTimeoutMs, payload.checkTimeoutMs]) {
+    if (value !== undefined && (!Number.isSafeInteger(value) || value <= 0)) {
+      return c.json({ error: "timeouts must be positive integers" }, 400);
+    }
+  }
+  return c.json({
+    jobId: startEnableWidgetJob({
+      requestTimeoutMs: payload.requestTimeoutMs,
+      checkTimeoutMs: payload.checkTimeoutMs,
+    }),
+  });
+});
+
 app.post("/e2e/jobs/wait-for-native-check", async (c) => {
-  const payload = (await c.req.json()) as { nonce?: string; status?: string };
+  const payload = (await c.req.json()) as {
+    instance?: unknown;
+    nonce?: string;
+    status?: string;
+  };
   const status = payload.status;
   if (
     !payload.nonce ||
@@ -550,8 +590,33 @@ app.post("/e2e/jobs/wait-for-native-check", async (c) => {
   ) {
     return c.json({ error: "nonce and a prepare status are required" }, 400);
   }
+  const instance = parseInstance(payload.instance);
+  if (!instance) {
+    return c.json({ error: INSTANCE_ERROR }, 400);
+  }
   return c.json({
-    jobId: startWaitForNativeCheckJob({ nonce: payload.nonce, status }),
+    jobId: startWaitForNativeCheckJob({
+      instance,
+      nonce: payload.nonce,
+      status,
+    }),
+  });
+});
+
+app.post("/e2e/jobs/wait-for-crash-marker", async (c) => {
+  const payload = (await c.req.json()) as {
+    bundleId?: string;
+    instance?: unknown;
+  };
+  if (!payload.bundleId) {
+    return c.json({ error: "bundleId is required" }, 400);
+  }
+  const instance = parseInstance(payload.instance);
+  if (!instance) {
+    return c.json({ error: INSTANCE_ERROR }, 400);
+  }
+  return c.json({
+    jobId: startWaitForCrashMarkerJob({ bundleId: payload.bundleId, instance }),
   });
 });
 
@@ -563,6 +628,7 @@ app.post("/e2e/jobs/wait-for-metadata", async (c) => {
   const payload = (await c.req.json()) as {
     attempts?: number;
     bundleId?: string;
+    instance?: unknown;
     releaseId?: string;
     recoveredStableBundleId?: string;
     relaunchLimit?: number;
@@ -574,6 +640,10 @@ app.post("/e2e/jobs/wait-for-metadata", async (c) => {
       400,
     );
   }
+  const instance = parseInstance(payload.instance);
+  if (!instance) {
+    return c.json({ error: INSTANCE_ERROR }, 400);
+  }
 
   return c.json({
     jobId: startWaitForMetadataJob(
@@ -581,6 +651,7 @@ app.post("/e2e/jobs/wait-for-metadata", async (c) => {
       payload.verificationPending,
       {
         attempts: payload.attempts,
+        instance,
         releaseId: payload.releaseId,
         recoveredStableBundleId: payload.recoveredStableBundleId,
         relaunchLimit: payload.relaunchLimit,
@@ -809,22 +880,51 @@ app.post("/e2e/assert-multiple-assets-replaced", async (c) => {
 });
 
 app.post("/e2e/assert-metadata-active", async (c) => {
-  const payload = (await c.req.json()) as { bundleId?: string };
+  const payload = (await c.req.json()) as {
+    absentBundleIds?: unknown;
+    bundleId?: string;
+    instance?: unknown;
+  };
   if (!payload.bundleId) {
     return c.json({ error: "bundleId is required" }, 400);
   }
+  const instance = parseInstance(payload.instance);
+  if (!instance) {
+    return c.json({ error: INSTANCE_ERROR }, 400);
+  }
+  const absentBundleIds = payload.absentBundleIds ?? [];
+  if (
+    !Array.isArray(absentBundleIds) ||
+    !absentBundleIds.every((value) => typeof value === "string" && value)
+  ) {
+    return c.json({ error: "absentBundleIds must be bundle IDs" }, 400);
+  }
 
-  return c.json(await handleAssertMetadataActive(payload.bundleId));
+  return c.json(
+    await handleAssertMetadataActive(payload.bundleId, {
+      absentBundleIds,
+      instance,
+    }),
+  );
 });
 
 app.post("/e2e/assert-metadata-reset", async (c) => {
-  return c.json(await handleAssertMetadataReset());
+  // Older callers post no body.
+  const payload = ((await c.req.json().catch(() => ({}))) ?? {}) as {
+    instance?: unknown;
+  };
+  const instance = parseInstance(payload.instance);
+  if (!instance) {
+    return c.json({ error: INSTANCE_ERROR }, 400);
+  }
+  return c.json(await handleAssertMetadataReset(instance));
 });
 
 app.post("/e2e/assert-launch-report", async (c) => {
   const payload = (await c.req.json()) as {
     fromBundleId?: string;
     fromReleaseId?: string;
+    instance?: unknown;
     optional?: boolean;
     status?: string;
     toBundleId?: string;
@@ -833,11 +933,16 @@ app.post("/e2e/assert-launch-report", async (c) => {
   if (!payload.status) {
     return c.json({ error: "status is required" }, 400);
   }
+  const instance = parseInstance(payload.instance);
+  if (!instance) {
+    return c.json({ error: INSTANCE_ERROR }, 400);
+  }
 
   return c.json(
     await handleAssertLaunchReport({
       fromBundleId: payload.fromBundleId,
       fromReleaseId: payload.fromReleaseId,
+      instance,
       optional: payload.optional ?? false,
       status: payload.status,
       toBundleId: payload.toBundleId,
@@ -850,15 +955,21 @@ app.post("/e2e/assert-crash-history", async (c) => {
   const payload = (await c.req.json()) as {
     awaitingRetry?: boolean;
     bundleId?: string;
+    instance?: unknown;
   };
   if (!payload.bundleId) {
     return c.json({ error: "bundleId is required" }, 400);
+  }
+  const instance = parseInstance(payload.instance);
+  if (!instance) {
+    return c.json({ error: INSTANCE_ERROR }, 400);
   }
 
   return c.json(
     await handleAssertCrashHistory(
       payload.bundleId,
       payload.awaitingRetry === true,
+      instance,
     ),
   );
 });
@@ -890,6 +1001,8 @@ app.post("/e2e/launch-uninstrumented-app", async (c) => {
 app.post("/e2e/wait-for-crash-recovery", async (c) => {
   const payload = (await c.req.json()) as {
     crashedBundleId?: string;
+    instance?: unknown;
+    restartApp?: unknown;
     stableBundleId?: string;
   };
   if (!payload.stableBundleId || !payload.crashedBundleId) {
@@ -898,12 +1011,20 @@ app.post("/e2e/wait-for-crash-recovery", async (c) => {
       400,
     );
   }
+  const instance = parseInstance(payload.instance);
+  if (!instance) {
+    return c.json({ error: INSTANCE_ERROR }, 400);
+  }
 
   return c.json(
     await handleWaitForCrashRecovery(
       payload.stableBundleId,
       payload.crashedBundleId,
-      { signal: c.req.raw.signal },
+      {
+        instance,
+        restartApp: payload.restartApp === true,
+        signal: c.req.raw.signal,
+      },
     ),
   );
 });

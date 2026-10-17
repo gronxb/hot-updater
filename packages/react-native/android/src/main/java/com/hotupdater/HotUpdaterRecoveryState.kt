@@ -30,6 +30,10 @@ internal class HotUpdaterRecoveryState {
     @Synchronized
     fun snapshot(): Launch? = launch
 
+    /** Whether the current launch's first content appeared. */
+    @Synchronized
+    fun hasContentAppeared(): Boolean = launch != null && contentAppeared
+
     @Synchronized
     fun stop() {
         launch = null

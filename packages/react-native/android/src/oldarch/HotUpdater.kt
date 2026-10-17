@@ -1,5 +1,6 @@
 package com.hotupdater
 
+import android.app.Activity
 import android.content.Context
 
 /**
@@ -145,6 +146,9 @@ class HotUpdater {
             options: HotUpdaterOptions,
         ): HotUpdaterInstance {
             requireValidBaseURL(options.baseURL)
+            // An activity started before this process followed activities is
+            // known only from the context the app hands over.
+            (context as? Activity)?.let(HotUpdaterRecoveryAttribution.shared::noteActivity)
             return HotUpdaterInstance.create(context.applicationContext, options)
         }
 

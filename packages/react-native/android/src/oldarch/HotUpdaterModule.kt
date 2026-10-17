@@ -36,8 +36,26 @@ class HotUpdaterModule internal constructor(
         return value.toLong().takeIf { it in 0..9_007_199_254_740_991L }
     }
 
+    override fun initialize() {
+        super.initialize()
+        // Each runtime has its own module, so this reaches a named instance's
+        // runtime, whose host the app doesn't expose, and main's, whose root
+        // views are looked for too; main's errors are left alone.
+        registeredInstanceName = HotUpdaterRecoveryManager.registerRuntime(mReactApplicationContext)
+    }
+
+    // The named instance whose runtime this module registered; the runtime,
+    // whichever instance's, is unregistered when it is torn down.
+    private var registeredInstanceName: String? = null
+
+    private fun unregisterRuntime() {
+        HotUpdaterRecoveryManager.unregisterRuntime(mReactApplicationContext, registeredInstanceName)
+        registeredInstanceName = null
+    }
+
     override fun onCatalystInstanceDestroy() {
         super.onCatalystInstanceDestroy()
+        unregisterRuntime()
         // Cancel all ongoing coroutines when module is destroyed
         moduleScope.cancel()
     }

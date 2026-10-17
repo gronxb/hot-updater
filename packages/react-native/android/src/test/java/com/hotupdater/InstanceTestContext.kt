@@ -3,6 +3,7 @@ package com.hotupdater
 import android.content.ContentResolver
 import android.content.Context
 import android.content.ContextWrapper
+import android.content.Intent
 import android.content.SharedPreferences
 import android.content.pm.ApplicationInfo
 import java.io.File
@@ -25,6 +26,13 @@ internal class InstanceTestContext(
     val sharedPrefsDir: File = File(dataDirectory, "shared_prefs").apply { mkdirs() }
 
     override fun getApplicationContext(): Context = this
+
+    /** The activities started through this context, such as the watchdog's relaunch. */
+    val startedActivities = mutableListOf<Intent>()
+
+    override fun startActivity(intent: Intent) {
+        startedActivities += intent
+    }
 
     override fun getPackageName(): String = "com.example.app"
 

@@ -77,6 +77,17 @@ export type CrashRecoveryWaitOptions = {
   readonly signal?: AbortSignal;
   readonly sleepMs: (durationMs: number, signal?: AbortSignal) => Promise<void>;
   readonly stableBundleId: string;
+  /**
+   * The crash rolls back to the built-in bundle: metadata then stages no
+   * bundle, and the launch report names the built-in bundle, whose ID ends
+   * with `stableBundleId`.
+   */
+  readonly stableIsBuiltIn?: boolean;
+  /**
+   * Runs before each poll. Nothing restarts a process that a named
+   * instance's fatal ended, so its wait starts the app again here.
+   */
+  readonly beforePoll?: () => Promise<void> | void;
 };
 
 function sanitizeArtifactSegment(value: string): string {
@@ -119,18 +130,36 @@ function throwIfAborted(signal?: AbortSignal) {
   }
 }
 
-function isRecovered(args: {
+/**
+ * Whether an instance's `recovery-crash-marker.json` charges `bundleId`: the
+ * native crash path wrote it for that launch and asks for its rollback at the
+ * instance's next start.
+ */
+export function isCrashMarkerAskingRollback(
+  marker: Record<string, unknown> | null,
+  bundleId: string,
+) {
+  return marker?.bundleId === bundleId && marker.shouldRollback === true;
+}
+
+/** Whether the instance's next start already rolled back `crashedBundleId`. */
+export function isCrashRecovered(args: {
   readonly crashedBundleId: string;
   readonly launchReportState: LaunchReportState;
   readonly metadataState: MetadataState;
   readonly stableBundleId: string;
+  readonly stableIsBuiltIn: boolean;
 }) {
+  const recoveredBundle = args.stableIsBuiltIn
+    ? args.metadataState.stagingBundleId === null &&
+      args.launchReportState.toBundleId?.endsWith(args.stableBundleId) === true
+    : args.metadataState.stagingBundleId === args.stableBundleId &&
+      args.launchReportState.toBundleId === args.stableBundleId;
   return (
-    args.metadataState.stagingBundleId === args.stableBundleId &&
+    recoveredBundle &&
     args.metadataState.verificationPending === false &&
     args.launchReportState.status === "RECOVERED" &&
-    args.launchReportState.fromBundleId === args.crashedBundleId &&
-    args.launchReportState.toBundleId === args.stableBundleId
+    args.launchReportState.fromBundleId === args.crashedBundleId
   );
 }
 
@@ -143,6 +172,7 @@ export async function waitForCrashRecoveryState(
   });
   for (let index = 0; index < options.attempts; index += 1) {
     throwIfAborted(options.signal);
+    await options.beforePoll?.();
     const diagnostics = options.readDiagnostics(artifactNames);
     const metadataState = options.getMetadataState(diagnostics.metadata.value);
     const launchReportState = options.getLaunchReportState(
@@ -150,11 +180,12 @@ export async function waitForCrashRecoveryState(
     );
 
     if (
-      isRecovered({
+      isCrashRecovered({
         crashedBundleId: options.crashedBundleId,
         launchReportState,
         metadataState,
         stableBundleId: options.stableBundleId,
+        stableIsBuiltIn: options.stableIsBuiltIn === true,
       }) &&
       (options.platform !== "android" || options.isAndroidRecoveryReady())
     ) {

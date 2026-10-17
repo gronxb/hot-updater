@@ -62,10 +62,11 @@ describe("E2E fixture Release reset", () => {
       "production",
     );
     const ownBeta = await deploy(artifact(3), `${namespace}-beta`, false);
+    const ownWidget = await deploy(artifact(7), `${namespace}-widget`);
     await deploy(artifact(4), "e2e-other-job-ios-s1-production");
     await deploy(artifact(5, "android"), `${namespace}-production`);
 
-    const ownIds = [ownProduction.id, ownBeta.id];
+    const ownIds = [ownProduction.id, ownBeta.id, ownWidget.id];
     const retainedReleases = (await harness.releases()).filter(
       (release) => !ownIds.includes(release.id),
     );
@@ -75,9 +76,11 @@ describe("E2E fixture Release reset", () => {
       await core.listReleaseCatalogs({ limit: 100 })
     ).filter(
       (catalog) =>
-        ![ownProduction.scope_key, ownBeta.scope_key].includes(
-          catalog.scope_key,
-        ),
+        ![
+          ownProduction.scope_key,
+          ownBeta.scope_key,
+          ownWidget.scope_key,
+        ].includes(catalog.scope_key),
     );
     const patchesOf = async (ids: readonly string[]) =>
       (await Promise.all(ids.map((id) => core.getBundle(id)))).flatMap(
@@ -94,9 +97,12 @@ describe("E2E fixture Release reset", () => {
 
     expect(result.clearedReleaseIds.sort()).toEqual(ownIds.sort());
     expect(await harness.releases()).toEqual(retainedReleases);
-    // artifact(3) goes with ownBeta, the last release on it.
+    // artifact(3) and artifact(7) go with ownBeta and ownWidget, the last
+    // releases on them.
     expect(await harness.bundles()).toEqual(
-      artifactsBefore.filter(({ id }) => id !== artifact(3).id),
+      artifactsBefore.filter(
+        ({ id }) => id !== artifact(3).id && id !== artifact(7).id,
+      ),
     );
     expect(await core.listChannels()).toEqual(channelsBefore);
     expect(await patchesOf(artifactsBefore.map(({ id }) => id))).toEqual(
@@ -107,7 +113,11 @@ describe("E2E fixture Release reset", () => {
         catalog,
       );
     }
-    for (const scopeKey of [ownProduction.scope_key, ownBeta.scope_key]) {
+    for (const scopeKey of [
+      ownProduction.scope_key,
+      ownBeta.scope_key,
+      ownWidget.scope_key,
+    ]) {
       expect(await core.getReleaseCatalogRow(scopeKey)).toMatchObject({
         is_tombstone: true,
       });
