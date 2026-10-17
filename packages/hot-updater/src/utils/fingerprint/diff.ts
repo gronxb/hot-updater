@@ -72,7 +72,7 @@ const readableContents = (source: FingerprintSource): string | null =>
  * source's id when its contents are long.
  */
 function getSourcePath(source: FingerprintSource): string {
-  if (source.type === "file" || source.type === "dir") {
+  if (!("id" in source)) {
     return source.filePath;
   }
   const contents = readableContents(source);
@@ -94,7 +94,7 @@ function describeChange(
 ): string {
   const from = readableContents(before);
   const to = readableContents(after);
-  if (from === null || to === null || before.type !== "contents") {
+  if (from === null || to === null || !("id" in before)) {
     return getSourcePath(before);
   }
   const at = from.lastIndexOf("@");

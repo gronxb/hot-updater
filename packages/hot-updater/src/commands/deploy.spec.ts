@@ -202,6 +202,11 @@ vi.mock("@/utils/fingerprint/diff", () => ({
   showFingerprintDiff: vi.fn(),
 }));
 
+vi.mock("@/utils/fingerprint/reach", () => ({
+  describeFingerprintReach: vi.fn(() => null),
+  findOtherServedFingerprints: vi.fn(async () => []),
+}));
+
 vi.mock("@/utils/getBundleZipTargets", () => ({
   getBundleZipTargets: vi.fn(),
 }));

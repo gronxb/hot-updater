@@ -142,6 +142,9 @@ npx hot-updater deploy -p android
 ```
 
 Hot Updater limits delivery to native builds with the same embedded fingerprint.
+When the channel's recent releases target other fingerprints, deploy lists
+them: builds on those fingerprints won't receive this update until users
+install a build with the new one.
 Use the [deployment sequence](/docs/guides/deploy#deploy-both-platforms) to stop
 the second platform when the first deployment fails.
 
