@@ -208,8 +208,11 @@ private func hotUpdaterGetMinBundleId() -> String {
      * config. Main's is `HotUpdaterNativeUpdateBridge.sharedImpl`.
      */
     convenience init(environment: HotUpdaterInstanceEnvironment) {
+        // Main is built from one snapshot of its values, which a later main
+        // instance must match; nothing below reads HotUpdaterConfig again.
+        let environment = environment.isMain ? HotUpdaterMainBundle.shared.implEnvironment() : environment
         let fileSystem = FileManagerService()
-        let isolationKey = environment.isolationKey(appVersion: Self.appVersion)
+        let isolationKey = environment.isolationKey(appVersion: Self.appVersion, minBundleId: Self.minBundleId())
         let preferences = VersionedPreferencesService()
         let downloadService = URLSessionDownloadService(
             backgroundSessionIdentifier: environment.backgroundSessionIdentifier
@@ -266,7 +269,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         }
 
         // Configure preferences with isolation key
-        let isolationKey = environment.isolationKey(appVersion: Self.appVersion)
+        let isolationKey = environment.isolationKey(appVersion: Self.appVersion, minBundleId: Self.minBundleId())
         (preferences as? VersionedPreferencesService)?.configure(isolationKey: isolationKey)
     }
     
@@ -292,12 +295,12 @@ private func hotUpdaterGetMinBundleId() -> String {
     
     /**
      * Gets the complete isolation key for preferences storage.
-     * @return The isolation key in format: hotupdater_{fingerprintOrVersion}_{channel}_
+     * @return The isolation key in format: hotupdater_{fingerprint}_{minBundleId}_{channel}_
+     *   (fingerprint strategy) or hotupdater_{appVersion}_{channel}_
      */
     public static func getIsolationKey() -> String {
-        // A programmatic override (brownfield/XCFramework) is used verbatim
-        // so the OTA cache can stay stable across host app version bumps.
-        return HotUpdaterInstanceEnvironment.main.isolationKey(appVersion: appVersion)
+        // The deprecated programmatic override is used verbatim.
+        return HotUpdaterInstanceEnvironment.main.isolationKey(appVersion: appVersion, minBundleId: minBundleId())
     }
 
     // MARK: - Channel Management
@@ -312,8 +315,9 @@ private func hotUpdaterGetMinBundleId() -> String {
            !channel.isEmpty {
             return channel
         }
-        // A runtime channel switch outranks the default channel, which a
-        // programmatic `configure(channel:)` only replaces, as on Android.
+        // A runtime channel switch outranks the default channel, which
+        // `HotUpdaterOptions.channel` (or the deprecated
+        // `configure(channel:)`) only replaces, as on Android.
         if let savedChannel = try? preferences.getItem(forKey: Self.CHANNEL_STORAGE_KEY),
            !savedChannel.isEmpty {
             return savedChannel

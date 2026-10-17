@@ -107,7 +107,7 @@ public class SignatureVerifier {
      * @return Public key PEM string or nil if not configured
      */
     static func getPublicKeyFromConfig(_ config: HotUpdaterConfig = .shared) -> String? {
-        if let override = config.publicKey, !override.isEmpty {
+        if let override = config.overrides.publicKey, !override.isEmpty {
             return override
         }
         guard let publicKeyPEM = config.infoValue(forKey: "HOT_UPDATER_PUBLIC_KEY") else {

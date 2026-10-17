@@ -8,10 +8,12 @@ import java.io.File
  * chosen by [HotUpdaterOptions.name].
  *
  * `main` is the state React Native's `HotUpdater`, the TurboModule, and the
- * static entry points use: every path, key, and configuration read is the one
- * Hot Updater has always used. Any other name keeps its state beside main's,
- * never inside `bundle-store`, whose sweeps delete entries they don't know,
- * and reads its configuration from [HotUpdaterOptions] before the manifest.
+ * static entry points use: every path Hot Updater has always used, and the
+ * configuration its [HotUpdaterOptions] and the deprecated
+ * `HotUpdater.configure` record in [HotUpdaterConfig] before the manifest. Any
+ * other name keeps its state beside main's, never inside `bundle-store`, whose
+ * sweeps delete entries they don't know, and reads its configuration from its
+ * [HotUpdaterOptions] and then the manifest, never from [HotUpdaterConfig].
  * The install id and the cohort belong to the device and stay shared.
  */
 internal class HotUpdaterInstanceEnvironment private constructor(
@@ -20,6 +22,10 @@ internal class HotUpdaterInstanceEnvironment private constructor(
     private val fingerprintHash: String?,
     private val publicKey: String?,
     private val bundleAssetName: String,
+    // Main's impl: the values it was created with, which it reads instead of
+    // HotUpdaterConfig. Null for main's static entry points, which read
+    // HotUpdaterConfig, and for named instances.
+    private val mainValues: MainImplValues? = null,
 ) {
     companion object {
         const val MAIN_NAME = "main"
@@ -41,17 +47,27 @@ internal class HotUpdaterInstanceEnvironment private constructor(
 
         val main = HotUpdaterInstanceEnvironment(MAIN_NAME, null, null, null, DEFAULT_BUNDLE_ASSET_NAME)
 
+        /** Main, fixed to [values]: what main's impl reads, so a later write to HotUpdaterConfig never reaches it. */
+        fun main(values: MainImplValues) = HotUpdaterInstanceEnvironment(MAIN_NAME, null, null, null, DEFAULT_BUNDLE_ASSET_NAME, values)
+
         /**
-         * The environment of [options]. `main` ignores the options' configuration
-         * and reads the manifest and `HotUpdater.configure`, as it always has.
+         * The environment of [options]. `main`'s configuration lives in
+         * [HotUpdaterConfig], where `HotUpdater.init` records its options.
          * @throws IllegalArgumentException when the name is not 1 to 32
-         * lowercase letters, digits, or hyphens
+         * lowercase letters, digits, or hyphens, or when `main` names a
+         * bundle asset other than its own
          */
         fun of(options: HotUpdaterOptions): HotUpdaterInstanceEnvironment {
             require(NAME_PATTERN.matches(options.name)) {
                 "HotUpdater instance name must be 1 to 32 lowercase letters, digits, or hyphens: \"${options.name}\""
             }
-            if (options.name == MAIN_NAME) return main
+            if (options.name == MAIN_NAME) {
+                // React Native's own HotUpdater starts main from this asset.
+                require(options.bundleAssetName == DEFAULT_BUNDLE_ASSET_NAME) {
+                    "HotUpdater instance \"main\" launches $DEFAULT_BUNDLE_ASSET_NAME, not \"${options.bundleAssetName}\""
+                }
+                return main
+            }
             // Main's runtime is told apart by the bundle it runs, so a named
             // instance embeds a bundle of its own.
             require(options.bundleAssetName != DEFAULT_BUNDLE_ASSET_NAME) {
@@ -101,50 +117,80 @@ internal class HotUpdaterInstanceEnvironment private constructor(
     /**
      * The key that names this instance's preferences and stamps its bundle
      * metadata; a new key discards the stored bundles.
+     *
+     * With a fingerprint, the key is the fingerprint, the build's
+     * [minBundleId], and the channel: a host release that ships the same
+     * artifact keeps its downloads, while a new build, whose embedded bundle
+     * is newer, starts from it. Without one, the app version takes the
+     * fingerprint's and the build's place, as the appVersion strategy's
+     * releases are keyed by it.
      */
-    fun isolationKey(context: Context): String {
+    fun isolationKey(
+        context: Context,
+        minBundleId: String = HotUpdaterImpl.getMinBundleId(),
+    ): String {
         if (isMain) {
-            // Programmatic override (brownfield/AAR). When set, it is used verbatim
-            // so the OTA cache can stay stable across host app version bumps.
-            // It is main's own key, so a named instance never uses it.
-            HotUpdaterConfig.isolationKey?.takeIf { it.isNotEmpty() }?.let { return it }
+            // The deprecated HotUpdater.configure(isolationKey:) override is
+            // used verbatim. It is main's own key, so a named instance never
+            // uses it.
+            val override = if (mainValues != null) mainValues.isolationKey else HotUpdaterConfig.isolationKey
+            override?.takeIf { it.isNotEmpty() }?.let { return it }
         }
 
         val fingerprintHash = fingerprintHash(context)
-
-        // Get app version and channel
-        val appVersion = HotUpdaterImpl.getAppVersion(context) ?: "unknown"
         val appChannel = defaultChannel(context)
-
-        // Include both fingerprint hash and app version for complete isolation
         val baseKey =
             if (!fingerprintHash.isNullOrEmpty()) {
-                "${fingerprintHash}_$appVersion"
+                "${fingerprintHash}_$minBundleId"
             } else {
-                appVersion
+                HotUpdaterImpl.getAppVersion(context) ?: "unknown"
             }
 
         return "$preferencesPrefix${baseKey}_$appChannel"
     }
 
     /** The channel the instance's build ships with, before any runtime switch. */
-    fun defaultChannel(context: Context): String = channel ?: HotUpdaterImpl.getChannel(context)
+    fun defaultChannel(context: Context): String =
+        if (isMain) {
+            mainValues?.channel ?: HotUpdaterImpl.getChannel(context)
+        } else {
+            channel
+                ?: NativeConfigUtils.getManifestString(context, NativeConfigUtils.CHANNEL_META_DATA_KEY)
+                ?: HotUpdaterImpl.DEFAULT_CHANNEL
+        }
 
-    fun fingerprintHash(context: Context): String? = fingerprintHash ?: HotUpdaterImpl.getFingerprintHash(context)
+    fun fingerprintHash(context: Context): String? =
+        if (isMain) {
+            if (mainValues != null) mainValues.fingerprintHash else HotUpdaterImpl.getFingerprintHash(context)
+        } else {
+            fingerprintHash ?: NativeConfigUtils.getManifestString(context, NativeConfigUtils.FINGERPRINT_HASH_META_DATA_KEY)
+        }
 
     /** The PEM key bundles must be signed with, or null when signing is off. */
-    fun publicKey(context: Context): String? = publicKey ?: SignatureVerifier.getPublicKeyFromConfig(context)
+    fun publicKey(context: Context): String? =
+        if (isMain) {
+            if (mainValues != null) mainValues.publicKey else SignatureVerifier.getPublicKeyFromConfig(context)
+        } else {
+            publicKey ?: NativeConfigUtils.getManifestString(context, NativeConfigUtils.PUBLIC_KEY_META_DATA_KEY)
+        }
 
     /** The JavaScript bundle embedded in the app that the instance launches without an update. */
     val fallbackBundleURL: String
         get() = "assets://$bundleAssetName"
 
-    /** Whether [other] reads the same configuration, so both can share this name's state. */
-    fun hasSameConfiguration(other: HotUpdaterInstanceEnvironment): Boolean =
+    /**
+     * Whether [other] resolves to the same configuration, so both can share
+     * this name's state: an option left out and one that names the value the
+     * manifest or the default gives are the same.
+     */
+    fun hasSameConfiguration(
+        other: HotUpdaterInstanceEnvironment,
+        context: Context,
+    ): Boolean =
         name == other.name &&
-            channel == other.channel &&
-            fingerprintHash == other.fingerprintHash &&
-            publicKey == other.publicKey &&
+            defaultChannel(context) == other.defaultChannel(context) &&
+            fingerprintHash(context) == other.fingerprintHash(context) &&
+            publicKey(context) == other.publicKey(context) &&
             bundleAssetName == other.bundleAssetName
 
     private fun noBackupRoot(context: Context): File = File(NoBackupStorage.file(context, INSTANCES_NO_BACKUP_DIRECTORY), name)
@@ -178,10 +224,13 @@ internal class HotUpdaterInstanceRegistry(
      * @throws IllegalArgumentException when the name was registered with another
      */
     @Synchronized
-    fun register(environment: HotUpdaterInstanceEnvironment) {
+    fun register(
+        context: Context,
+        environment: HotUpdaterInstanceEnvironment,
+    ) {
         require(!environment.isMain) { "main's state belongs to HotUpdater.getInstance" }
         val registered = environments.getOrPut(environment.name) { environment }
-        require(registered.hasSameConfiguration(environment)) {
+        require(registered.hasSameConfiguration(environment, context)) {
             "HotUpdater instance \"${environment.name}\" was already created with another channel, " +
                 "fingerprintHash, publicKey, or bundleAssetName"
         }
@@ -192,7 +241,7 @@ internal class HotUpdaterInstanceRegistry(
         context: Context,
         environment: HotUpdaterInstanceEnvironment,
     ): HotUpdaterImpl {
-        register(environment)
+        register(context, environment)
         return impls.getOrPut(environment.name) { create(context, environment) }
     }
 

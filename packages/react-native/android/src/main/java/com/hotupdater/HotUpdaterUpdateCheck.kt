@@ -18,6 +18,9 @@ enum class HotUpdaterUpdateStatus {
 /**
  * The values JavaScript passes to `HotUpdater.init`: the server and the
  * request defaults of a [HotUpdaterInstance], plus the native state it uses.
+ * `main` records [channel], [fingerprintHash], and [publicKey] before its
+ * native state is first read; a value left null keeps one the deprecated
+ * `HotUpdater.configure` set.
  */
 class HotUpdaterOptions
     @JvmOverloads
@@ -37,18 +40,31 @@ class HotUpdaterOptions
          */
         val name: String = HotUpdaterInstanceEnvironment.MAIN_NAME,
         /**
-         * A named instance's default channel; null reads the manifest, as `main`
-         * does. `main` always reads the manifest and `HotUpdater.configure`.
+         * The default channel the instance's build ships with, before any
+         * runtime switch; null reads the manifest's `com.hotupdater.CHANNEL`,
+         * then `production`. It is part of the storage key, so it must not
+         * change after the first launch: switch channels at runtime with
+         * [HotUpdaterCheckOptions.channel] and [HotUpdaterInstance.resetChannel].
+         * An instance of a name refuses a channel other than the one the name
+         * already uses.
          */
         val channel: String? = null,
-        /** A named instance's fingerprint hash; null reads the manifest, as `main` does. */
+        /**
+         * The fingerprint hash of the fingerprint strategy; null reads the
+         * manifest's `com.hotupdater.FINGERPRINT_HASH`, and without one the
+         * instance uses the appVersion strategy's storage key.
+         */
         val fingerprintHash: String? = null,
-        /** A named instance's bundle signing public key (PEM); null reads the manifest, as `main` does. */
+        /**
+         * The PEM public key bundles must be signed with; null reads the
+         * manifest's `com.hotupdater.PUBLIC_KEY`, and without one signing is off.
+         */
         val publicKey: String? = null,
         /**
          * The JavaScript bundle embedded in the app's assets that a named instance
          * launches when it has no update. Assets of every library merge into the
          * app's, so each named instance embeds its bundle under its own name.
+         * `main` launches `index.android.bundle` and refuses any other name.
          */
         val bundleAssetName: String = HotUpdaterInstanceEnvironment.DEFAULT_BUNDLE_ASSET_NAME,
     )

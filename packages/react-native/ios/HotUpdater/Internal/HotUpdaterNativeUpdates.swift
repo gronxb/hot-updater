@@ -128,13 +128,15 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
     static let router = HotUpdaterInstanceRouter()
 
     /// Main's impl, which HotUpdater.mm's `sharedImpl` returns too.
-    /// Record the bundle in `HotUpdaterConfig` first: creating it reads that
-    /// bundle's Info.plist.
+    /// Record the bundle and main's options in `HotUpdaterConfig` first:
+    /// creating it fixes main's isolation key from them and that bundle's
+    /// Info.plist.
     @objc public static let sharedImpl = HotUpdaterImpl()
 
     /// The impl of `environment`'s name: `sharedImpl` for main, otherwise
     /// one per name, created on first use. A name is one service, so an
-    /// instance of an existing name with another bundle throws, as on Android.
+    /// instance of an existing name with another bundle, channel,
+    /// fingerprint hash, or public key throws, as on Android.
     static func impl(for environment: HotUpdaterInstanceEnvironment) throws -> HotUpdaterImpl {
         guard !environment.isMain else {
             return sharedImpl
@@ -142,9 +144,9 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
         lock.lock()
         defer { lock.unlock() }
         if let impl = namedImpls[environment.name] {
-            guard impl.environment.bundle == environment.bundle else {
+            guard impl.environment.hasSameConfiguration(environment) else {
                 throw NativeUpdateCheckError.hotUpdater(
-                    "HotUpdater instance \"\(environment.name)\" was already created with another bundle"
+                    "HotUpdater instance \"\(environment.name)\" was already created with another bundle, channel, fingerprintHash, or publicKey"
                 )
             }
             return impl
@@ -245,15 +247,19 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
     /// Throws when `baseURL` is not an absolute HTTP(S) URL, as
     /// `HotUpdater.init` does, when `name` is not 1 to 32 of `a-z`, `0-9`,
     /// and `-`, or when an instance of the same `name`, `main` included, was
-    /// created or launched with another bundle.
+    /// created or launched with another bundle, channel, fingerprint hash,
+    /// or public key. For main, that includes values from the deprecated
+    /// `HotUpdater.configure`, and the values main's impl was created with.
     @objc public init(_ options: HotUpdaterOptions) throws {
         _ = try NativeUpdateChecker.validatedBaseURL(options.baseURL)
-        let environment = try HotUpdaterInstanceEnvironment(name: options.name, bundle: options.bundle)
+        let environment = try HotUpdaterInstanceEnvironment(options: options)
         self.options = options
         if environment.isMain {
-            // Before the impl exists: creating it reads this bundle's Info.plist.
-            // A named instance reads its own bundle and leaves main's alone.
-            try HotUpdaterMainBundle.shared.claim(options.bundle)
+            // Before the impl exists: creating it fixes main's isolation key
+            // from these values and this bundle's Info.plist. A named
+            // instance reads its own options and bundle and leaves main's
+            // alone.
+            try HotUpdaterMainBundle.shared.claim(options)
         }
         impl = try HotUpdaterNativeUpdateBridge.impl(for: environment)
         super.init()

@@ -38,20 +38,30 @@
 - (NSURL *)bundleURLWithBundle:(NSBundle *)bundle NS_SWIFT_NAME(bundleURL(bundle:));
 
 /**
+ * Deprecated: pass `channel`, `fingerprintHash`, and `publicKey` to the
+ * `HotUpdaterOptions` of the `main` `HotUpdaterInstance` instead. Still
+ * honored for main; named instances never read it.
+ *
  * Programmatic configuration for brownfield / XCFramework setups where
  * Info.plist (host) or string resources (Android) are not desirable.
- * A nil argument means no override.
+ * A nil argument means no override. Each call replaces all four values.
  *
  * `channel` is the app's fixed default channel, not a runtime switch: keep it
  * the same from the first launch on. It is part of the storage isolation
  * key, so changing it deletes the downloaded bundles. To check another
  * channel at runtime, pass `channel` to `HotUpdaterInstance.checkForUpdate`,
  * and undo that with its `resetChannel`.
+ *
+ * `isolationKey`, when set, replaces main's storage isolation key verbatim.
+ * It is no longer needed: under the fingerprint strategy the default key is
+ * the fingerprint, the build's MIN_BUNDLE_ID, and the channel, so a native
+ * release that ships the same artifact keeps its downloads.
  */
 + (void)configureWithFingerprintHash:(nullable NSString *)fingerprintHash
                            publicKey:(nullable NSString *)publicKey
                              channel:(nullable NSString *)channel
-                        isolationKey:(nullable NSString *)isolationKey;
+                        isolationKey:(nullable NSString *)isolationKey
+    DEPRECATED_MSG_ATTRIBUTE("Pass channel, fingerprintHash, and publicKey to HotUpdaterOptions. Fingerprint downloads now survive native releases that ship the same artifact.");
 
 /**
  * 다운로드 진행 상황 업데이트 시간을 추적하는 속성
