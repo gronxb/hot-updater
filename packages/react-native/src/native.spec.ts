@@ -1040,3 +1040,28 @@ describe("reload", () => {
     expect(nativeModuleMock.reloadProcess).not.toHaveBeenCalled();
   });
 });
+
+describe("takeNativeUpdateEvents", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(nativeModuleMock, "takeNativeUpdateEvents");
+  });
+
+  it("returns the events native took", async () => {
+    const takeNativeUpdateEvents = vi.fn(() => '[{"type":"x"}]');
+    Object.assign(nativeModuleMock, { takeNativeUpdateEvents });
+    const native = await import("./native");
+
+    expect(native.takeNativeUpdateEvents()).toBe('[{"type":"x"}]');
+    expect(takeNativeUpdateEvents).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null on native built from an earlier SDK", async () => {
+    const native = await import("./native");
+
+    expect(native.takeNativeUpdateEvents()).toBeNull();
+  });
+});
