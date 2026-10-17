@@ -46,7 +46,8 @@ const generationFailed = (error: unknown): NativeCheckIssue => {
 /**
  * Compares fingerprint.json with the project's fingerprint as
  * `fingerprint create` computes it: FINGERPRINT_JSON_STALE for each
- * platform whose hash changed, with the sources that changed.
+ * platform whose hash changed, with the sources that changed, or
+ * FINGERPRINT_ENGINE_CHANGED when the engine that computes it changed.
  * `fingerprints` gives that fingerprint; a doctor run computes it once.
  */
 export const checkFingerprintJson = async (
@@ -75,7 +76,7 @@ export const checkFingerprintJson = async (
       issues.push({
         type: "error",
         platform,
-        code: "FINGERPRINT_JSON_STALE",
+        code: "FINGERPRINT_ENGINE_CHANGED",
         ...describeFingerprintEngineChange(engineChange, label),
         fixability: "command",
         commands: [FINGERPRINT_CREATE],

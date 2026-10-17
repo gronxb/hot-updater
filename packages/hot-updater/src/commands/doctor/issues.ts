@@ -17,6 +17,7 @@ export interface NativeCheckIssue {
     | "MISSING_FINGERPRINT_HASH"
     | "FINGERPRINT_HASH_MISMATCH"
     | "FINGERPRINT_JSON_STALE"
+    | "FINGERPRINT_ENGINE_CHANGED"
     | "FINGERPRINT_GENERATION_FAILED"
     | "MISSING_CLIENT_PLUGIN"
     | "CLIENT_PLUGINS_UNCHECKED"
@@ -96,6 +97,7 @@ export type DoctorIssueCode =
 export interface DoctorFix {
   readonly repair:
     | "fingerprint"
+    | "fingerprint-engine"
     | "public-key"
     | "orphan-public-key"
     | "release-catalogs"

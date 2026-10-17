@@ -64,6 +64,7 @@ const REPAIRS: readonly {
   readonly run?: (
     issues: readonly RepairedIssue[],
     context: DoctorContext,
+    all: readonly RepairedIssue[],
   ) => Promise<RepairResult>;
   /** Why --fix leaves these issues to the user: they have more than one remedy. */
   readonly reportOnly?: string;
@@ -80,7 +81,13 @@ const REPAIRS: readonly {
       "FINGERPRINT_JSON_STALE",
     ],
     writesNativeFiles: true,
-    run: async (_issues, context) => {
+    run: async (_issues, context, all) => {
+      // It rewrites both platforms, so it would record a changed engine too.
+      if (all.some(({ code }) => code === "FINGERPRINT_ENGINE_CHANGED")) {
+        return {
+          skip: "The fingerprint engine changed, and recreating fingerprint.json would record its hashes. Resolve FINGERPRINT_ENGINE_CHANGED first.",
+        };
+      }
       const { fingerprintJson, iosPaths, androidPaths } =
         await syncFingerprintFiles(await context.fingerprints());
       return {
@@ -92,6 +99,15 @@ const REPAIRS: readonly {
         native: iosPaths.length + androidPaths.length > 0,
       };
     },
+  },
+  {
+    // Two remedies: go back to the engine that computed fingerprint.json, or
+    // rebuild every app with the new one.
+    repair: "fingerprint-engine",
+    codes: ["FINGERPRINT_ENGINE_CHANGED"],
+    writesNativeFiles: false,
+    reportOnly:
+      "doctor --fix never rewrites fingerprint.json for a changed fingerprint engine. The issue has two remedies, and recording the new engine's hash stops updates to every app already built with the previous one. Go back to the engine fingerprint.json records, or run `npx hot-updater fingerprint create` and rebuild the apps.",
   },
   {
     // What `keys export-public --yes` writes.
@@ -206,7 +222,7 @@ export const applyDoctorFixes = async (
       continue;
     }
     try {
-      const result = await repair.run(matched, context);
+      const result = await repair.run(matched, context, issues);
       if ("skip" in result) {
         fixes.push(skipped(result.skip));
         continue;
