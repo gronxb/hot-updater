@@ -247,6 +247,27 @@ describe("createInterfaceFingerprint", () => {
     expect(await hashOf()).not.toBe(before);
   });
 
+  it("reads a Yarn patch: dependency", async () => {
+    const before = await hashOf();
+    await write(path.join(app, ".yarn/patches/screens.patch"), "a");
+    await write(
+      path.join(app, "package.json"),
+      manifest({
+        name: "app",
+        codegenConfig: { jsSrcsDir: "src" },
+        dependencies: {
+          "react-native-screens":
+            "patch:react-native-screens@npm%3A4.25.2#./.yarn/patches/screens.patch::locator=app%40workspace%3A.",
+        },
+      }),
+    );
+    const patched = await hashOf();
+    expect(patched).not.toBe(before);
+
+    await write(path.join(app, ".yarn/patches/screens.patch"), "b");
+    expect(await hashOf()).not.toBe(patched);
+  });
+
   it("hashes a dependency declared by name and version", async () => {
     const native = (version: string): NativeInterface => ({
       runtime: "lynx@4.0.3",

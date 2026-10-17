@@ -74,14 +74,17 @@ export const checkFingerprintJson = async (
     const before = local[platform];
     const label = PLATFORM_LABELS[platform];
     if (before?.hash === current[platform].hash) {
-      // Without it, a later engine upgrade would read as changed sources.
+      // Without the current engine recorded, a later native change would read
+      // as an engine change, or an engine upgrade as changed sources.
       const engine = current[platform].engine;
-      if (!before.engine && engine) {
+      if (engine && before.engine !== engine) {
         issues.push({
           type: "warning",
           platform,
           code: "FINGERPRINT_ENGINE_UNRECORDED",
-          message: `fingerprint.json doesn't record the engine behind the ${label} fingerprint, which ${engine} computes unchanged.`,
+          message: before.engine
+            ? `fingerprint.json records ${before.engine} for the ${label} fingerprint, which ${engine} now computes unchanged.`
+            : `fingerprint.json doesn't record the engine behind the ${label} fingerprint, which ${engine} computes unchanged.`,
           resolution: `Run \`${FINGERPRINT_CREATE}\` to record it, so doctor and deploy can tell an engine upgrade from a native change. The fingerprint stays the same.`,
           fixability: "command",
           commands: [FINGERPRINT_CREATE],
