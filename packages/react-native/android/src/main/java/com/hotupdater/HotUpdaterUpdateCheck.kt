@@ -17,16 +17,41 @@ enum class HotUpdaterUpdateStatus {
 
 /**
  * The values JavaScript passes to `HotUpdater.init`: the server and the
- * request defaults of a [HotUpdaterInstance].
+ * request defaults of a [HotUpdaterInstance], plus the native state it uses.
  */
-class HotUpdaterOptions(
-    /** The update server's absolute HTTP(S) URL. */
-    val baseURL: String,
-    /** Sent with every request; a check's own headers override them. */
-    val requestHeaders: Map<String, String> = emptyMap(),
-    /** Each request's timeout, unless a check sets its own. */
-    val requestTimeoutMillis: Long = 5_000,
-)
+class HotUpdaterOptions
+    @JvmOverloads
+    constructor(
+        /** The update server's absolute HTTP(S) URL. */
+        val baseURL: String,
+        /** Sent with every request; a check's own headers override them. */
+        val requestHeaders: Map<String, String> = emptyMap(),
+        /** Each request's timeout, unless a check sets its own. */
+        val requestTimeoutMillis: Long = 5_000,
+        /**
+         * Which native state the instance uses, like a Firebase app name: `main`,
+         * the default, is the state React Native's own `HotUpdater` uses. Any other
+         * name keeps its bundles, settings, and stored values apart from every
+         * other name's; instances with the same name share them. 1 to 32
+         * lowercase letters, digits, or hyphens.
+         */
+        val name: String = HotUpdaterInstanceEnvironment.MAIN_NAME,
+        /**
+         * A named instance's default channel; null reads the manifest, as `main`
+         * does. `main` always reads the manifest and `HotUpdater.configure`.
+         */
+        val channel: String? = null,
+        /** A named instance's fingerprint hash; null reads the manifest, as `main` does. */
+        val fingerprintHash: String? = null,
+        /** A named instance's bundle signing public key (PEM); null reads the manifest, as `main` does. */
+        val publicKey: String? = null,
+        /**
+         * The JavaScript bundle embedded in the app's assets that a named instance
+         * launches when it has no update. Assets of every library merge into the
+         * app's, so each named instance embeds its bundle under its own name.
+         */
+        val bundleAssetName: String = HotUpdaterInstanceEnvironment.DEFAULT_BUNDLE_ASSET_NAME,
+    )
 
 /** The values JavaScript passes to `checkForUpdate`. */
 class HotUpdaterCheckOptions(

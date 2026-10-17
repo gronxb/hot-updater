@@ -11,14 +11,36 @@ import android.content.Context
  *
  * An update staged before [getJSBundleFile] is read applies at this launch;
  * one staged after it applies at the next launch. Create one with
- * `HotUpdater.init`.
+ * `HotUpdater.init`. Instances with the same [HotUpdaterOptions.name] share
+ * one native state; `main` is the one React Native's `HotUpdater` uses.
  */
 class HotUpdaterInstance internal constructor(
     private val context: Context,
     val options: HotUpdaterOptions,
+    private val environment: HotUpdaterInstanceEnvironment,
 ) {
+    internal companion object {
+        /**
+         * @throws IllegalArgumentException when the name is invalid, or was
+         * already created with another configuration
+         */
+        fun create(
+            context: Context,
+            options: HotUpdaterOptions,
+        ): HotUpdaterInstance {
+            val environment = HotUpdaterInstanceEnvironment.of(options)
+            if (!environment.isMain) HotUpdaterInstanceRegistry.shared.register(environment)
+            return HotUpdaterInstance(context, options, environment)
+        }
+    }
+
     private val impl: HotUpdaterImpl
-        get() = HotUpdater.getInstance(context)
+        get() =
+            if (environment.isMain) {
+                HotUpdater.getInstance(context)
+            } else {
+                HotUpdaterInstanceRegistry.shared.impl(context, environment)
+            }
 
     /**
      * The update the app should apply, or null when there is none. Unlike
@@ -27,19 +49,24 @@ class HotUpdaterInstance internal constructor(
      * other native update work; cancelling the caller ends the wait.
      */
     suspend fun checkForUpdate(options: HotUpdaterCheckOptions): HotUpdaterUpdate? =
-        NativeUpdateCheck.checkForUpdate(context, { impl }, NativeCheckRequest(this.options, options))
+        NativeUpdateCheck.checkForUpdate(context, environment.name, { impl }, NativeCheckRequest(this.options, options))
 
     /**
      * The bundle React Native starts with: the staged update, or the bundle
      * embedded in the app. Reading it fixes this launch's bundle.
      */
-    fun getJSBundleFile(): String = impl.getJSBundleFile()
+    fun getJSBundleFile(): String =
+        if (environment.isMain) {
+            impl.getJSBundleFile()
+        } else {
+            HotUpdaterInstanceRegistry.shared.launchURL(context, environment)
+        }
 
     /**
      * Clears the runtime channel switch and returns to the default channel's
      * bundle at the next launch, once other native update work finishes.
      */
-    suspend fun resetChannel(): Boolean = NativeUpdateCheck.resetChannel(context) { impl }
+    suspend fun resetChannel(): Boolean = NativeUpdateCheck.resetChannel(context, environment.name) { impl }
 
     fun getAppVersion(): String? = HotUpdaterImpl.getAppVersion(context)
 
@@ -52,5 +79,5 @@ class HotUpdaterInstance internal constructor(
 
     fun getDefaultChannel(): String = impl.getDefaultChannel()
 
-    fun getFingerprintHash(): String? = HotUpdaterImpl.getFingerprintHash(context)
+    fun getFingerprintHash(): String? = impl.getFingerprintHash()
 }

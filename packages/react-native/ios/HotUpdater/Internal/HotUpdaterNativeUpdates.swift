@@ -113,27 +113,74 @@ final class HotUpdaterImplUpdateHost: NativeUpdateHost {
     }
 }
 
-/// The process's impl and native update checker, shared by
-/// `HotUpdaterInstance` and the TurboModule.
+/// The impl and native update checker of each instance name, shared by the
+/// `HotUpdaterInstance`s of that name and by the TurboModule of each React
+/// Native runtime that runs its bundle.
 @objc(HotUpdaterNativeUpdateBridge)
 public final class HotUpdaterNativeUpdateBridge: NSObject {
     private static let lock = NSLock()
-    private static var sharedChecker: NativeUpdateChecker?
+    // Keyed by impl identity: a checker holds its impl, so the impl and its
+    // identifier live as long as the process.
+    private static var checkers: [ObjectIdentifier: NativeUpdateChecker] = [:]
+    private static var namedImpls: [String: HotUpdaterImpl] = [:]
+    /// The launch URLs named impls handed out, which tell the TurboModule of
+    /// each React Native runtime whose bundle it runs.
+    static let router = HotUpdaterInstanceRouter()
 
-    /// The process's impl, which HotUpdater.mm's `sharedImpl` returns too.
+    /// Main's impl, which HotUpdater.mm's `sharedImpl` returns too.
     /// Record the bundle in `HotUpdaterConfig` first: creating it reads that
     /// bundle's Info.plist.
     @objc public static let sharedImpl = HotUpdaterImpl()
 
-    /// One checker per process, so its gate serializes every native check.
+    /// The impl of `environment`'s name: `sharedImpl` for main, otherwise
+    /// one per name, created on first use. A name is one service, so an
+    /// instance of an existing name with another bundle throws, as on Android.
+    static func impl(for environment: HotUpdaterInstanceEnvironment) throws -> HotUpdaterImpl {
+        guard !environment.isMain else {
+            return sharedImpl
+        }
+        lock.lock()
+        defer { lock.unlock() }
+        if let impl = namedImpls[environment.name] {
+            guard impl.environment.bundle == environment.bundle else {
+                throw NativeUpdateCheckError.hotUpdater(
+                    "HotUpdater instance \"\(environment.name)\" was already created with another bundle"
+                )
+            }
+            return impl
+        }
+        let impl = HotUpdaterImpl(environment: environment)
+        namedImpls[environment.name] = impl
+        return impl
+    }
+
+    /// The impl of the React Native runtime that runs `bundleURL`: the named
+    /// impl that handed it out or keeps it in its storage, otherwise main's.
+    /// Each runtime's TurboModule asks with its own bundle URL, since
+    /// JavaScript never names its instance.
+    @objc(implForBundleURL:)
+    public static func impl(forBundleURL bundleURL: URL?) -> HotUpdaterImpl {
+        lock.lock()
+        let impls = namedImpls
+        lock.unlock()
+        let name = router.resolve(
+            bundleURL: bundleURL,
+            candidates: Array(impls.keys),
+            documentsPath: FileManagerService().documentsPath()
+        )
+        return impls[name] ?? sharedImpl
+    }
+
+    /// One checker per impl, so its gate serializes every native check of
+    /// that instance name.
     static func checker(impl: HotUpdaterImpl) -> NativeUpdateChecker {
         lock.lock()
         defer { lock.unlock() }
-        if let sharedChecker {
-            return sharedChecker
+        if let checker = checkers[ObjectIdentifier(impl)] {
+            return checker
         }
         let checker = NativeUpdateChecker(host: HotUpdaterImplUpdateHost(impl: impl))
-        sharedChecker = checker
+        checkers[ObjectIdentifier(impl)] = checker
         return checker
     }
 
@@ -188,18 +235,27 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
 ///
 /// An update staged before `bundleURL()` is read applies at this launch;
 /// one staged after it applies at the next launch.
+///
+/// `options.name` picks the state the instance works on; see
+/// `HotUpdaterOptions.name`.
 @objc public final class HotUpdaterInstance: NSObject, @unchecked Sendable {
     @objc public let options: HotUpdaterOptions
     private let impl: HotUpdaterImpl
 
     /// Throws when `baseURL` is not an absolute HTTP(S) URL, as
-    /// `HotUpdater.init` does.
+    /// `HotUpdater.init` does, when `name` is not 1 to 32 of `a-z`, `0-9`,
+    /// and `-`, or when an instance of the same `name`, `main` included, was
+    /// created or launched with another bundle.
     @objc public init(_ options: HotUpdaterOptions) throws {
         _ = try NativeUpdateChecker.validatedBaseURL(options.baseURL)
+        let environment = try HotUpdaterInstanceEnvironment(name: options.name, bundle: options.bundle)
         self.options = options
-        // Before the impl exists: creating it reads this bundle's Info.plist.
-        HotUpdaterConfig.shared.bundle = options.bundle
-        impl = HotUpdaterNativeUpdateBridge.sharedImpl
+        if environment.isMain {
+            // Before the impl exists: creating it reads this bundle's Info.plist.
+            // A named instance reads its own bundle and leaves main's alone.
+            try HotUpdaterMainBundle.shared.claim(options.bundle)
+        }
+        impl = try HotUpdaterNativeUpdateBridge.impl(for: environment)
         super.init()
     }
 
@@ -239,7 +295,7 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
     /// `main.jsbundle` embedded in `options.bundle`. Reading it fixes this
     /// launch's bundle.
     @objc public func bundleURL() -> URL? {
-        HotUpdaterConfig.shared.bundle = options.bundle
+        // Main's impl records the bundle in HotUpdaterConfig for reloads.
         return impl.bundleURL(bundle: options.bundle)
     }
 

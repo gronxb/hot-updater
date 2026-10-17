@@ -21,7 +21,7 @@ internal class HotUpdaterImplUpdateCheckState(
 
     override fun getCohort(): String = cohortService.getCohort()
 
-    override fun getFingerprintHash(): String? = HotUpdaterImpl.getFingerprintHash(context)
+    override fun getFingerprintHash(): String? = impl.getFingerprintHash()
 
     override fun getCrashHistory(): List<String> = impl.getCrashHistory()
 
@@ -111,20 +111,26 @@ internal class HotUpdaterImplUpdateCheckState(
     }
 }
 
-/** The process's one native update checker, behind [HotUpdaterInstance] and the TurboModule's `resetChannel`. */
+/**
+ * One native update checker per instance name, behind [HotUpdaterInstance]
+ * and the TurboModule's `resetChannel`, which uses the checker of its
+ * runtime's instance. Each checker serializes the work of its own name's state.
+ */
 internal object NativeUpdateCheck {
-    @Volatile
-    private var checker: NativeUpdateChecker? = null
+    private val checkers = HashMap<String, NativeUpdateChecker>()
 
-    private fun checker(
+    internal fun checker(
         context: Context,
+        name: String,
         impl: () -> HotUpdaterImpl,
     ): NativeUpdateChecker =
-        checker ?: synchronized(this) {
-            checker ?: NativeUpdateChecker(
-                HotUpdaterImplUpdateCheckState(context.applicationContext, impl()),
-                OkHttpUpdateCheckTransport(),
-            ).also { checker = it }
+        synchronized(checkers) {
+            checkers.getOrPut(name) {
+                NativeUpdateChecker(
+                    HotUpdaterImplUpdateCheckState(context.applicationContext, impl()),
+                    OkHttpUpdateCheckTransport(),
+                )
+            }
         }
 
     /**
@@ -143,16 +149,24 @@ internal object NativeUpdateCheck {
 
     suspend fun checkForUpdate(
         context: Context,
+        name: String,
         impl: () -> HotUpdaterImpl,
         request: NativeCheckRequest,
     ): HotUpdaterUpdate? {
         requireAppProcess(context, "HotUpdaterInstance.checkForUpdate")
-        return checker(context, impl).checkForUpdate(request)
+        return checker(context, name, impl).checkForUpdate(request)
     }
 
-    /** Clears the runtime channel once a check or staging running in this process finishes. */
+    /** Clears main's runtime channel once a check or staging running in this process finishes. */
     suspend fun resetChannel(
         context: Context,
         impl: () -> HotUpdaterImpl,
-    ): Boolean = checker(context, impl).resetChannel { impl().resetChannel() }
+    ): Boolean = resetChannel(context, HotUpdaterInstanceEnvironment.MAIN_NAME, impl)
+
+    /** Clears [name]'s runtime channel once a check or staging of that name finishes. */
+    suspend fun resetChannel(
+        context: Context,
+        name: String,
+        impl: () -> HotUpdaterImpl,
+    ): Boolean = checker(context, name, impl).resetChannel { impl().resetChannel() }
 }

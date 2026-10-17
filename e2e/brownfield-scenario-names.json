@@ -30,5 +30,8 @@
   "ten-crash-history-safe-bundle",
   "remote-config-fetch-activate",
   "brownfield-native-required-update",
-  "brownfield-native-minor-update"
+  "brownfield-native-minor-update",
+  "brownfield-instances-update-independently",
+  "brownfield-instance-rollback-isolated",
+  "brownfield-instance-crash-rolls-back-only-itself"
 ]

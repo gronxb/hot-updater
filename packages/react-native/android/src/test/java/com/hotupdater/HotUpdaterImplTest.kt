@@ -19,6 +19,9 @@ class HotUpdaterImplTest {
     @get:Rule
     val temporaryFolder = TemporaryFolder()
 
+    @get:Rule
+    val recoveryMonitoring = RecoveryMonitoringRule()
+
     @Test
     fun `getBundleId returns built in while native launch selection is missing`() {
         val impl =

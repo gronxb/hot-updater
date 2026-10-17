@@ -8,21 +8,22 @@ import com.facebook.react.bridge.ReactContext
 /**
  * Routes JavaScript errors of the running React instance to crash recovery.
  * The old architecture reaches the instance through ReactNativeHost, which only
- * an old architecture build compiles.
+ * an old architecture build compiles, or through the context of a runtime
+ * whose HotUpdater module was created. An error belongs to the instance whose
+ * bundle the runtime runs.
  */
 internal object JavaScriptExceptionHooks {
-    private val patchedInstanceManagerIds = mutableSetOf<Int>()
-    private val patchedCatalystInstanceIds = mutableSetOf<Int>()
+    private val patchedInstanceManagers = WeakIdentitySet<Any>()
+    private val patchedCatalystInstances = WeakIdentitySet<Any>()
 
     fun install(appContext: Context) {
         val application = appContext as? ReactApplication ?: return
         val instanceManager = application.reactNativeHost.reactInstanceManager
-        val managerIdentity = System.identityHashCode(instanceManager)
-        if (patchedInstanceManagerIds.add(managerIdentity)) {
+        if (patchedInstanceManagers.add(instanceManager)) {
             val exceptionHandlerField =
                 HotUpdaterRecoveryManager.findField(instanceManager.javaClass, "mJSExceptionHandler")
             if (exceptionHandlerField == null) {
-                patchedInstanceManagerIds.remove(managerIdentity)
+                patchedInstanceManagers.remove(instanceManager)
                 return
             }
 
@@ -30,14 +31,21 @@ internal object JavaScriptExceptionHooks {
             val previousHandler = exceptionHandlerField.get(instanceManager) as? JSExceptionHandler
             exceptionHandlerField.set(
                 instanceManager,
-                HotUpdaterRecoveryManager.RecoveryJSExceptionHandler(previousHandler),
+                HotUpdaterRecoveryManager.RecoveryJSExceptionHandler(
+                    previousHandler,
+                    { instanceManager.currentReactContext?.sourceURL },
+                    { instanceManager.currentReactContext },
+                ),
             )
         }
 
-        instanceManager.currentReactContext?.let { reactContext ->
-            HotUpdaterRecoveryManager.patchReactContextExceptionHandler(reactContext)
-            patchCatalystInstanceExceptionHandler(reactContext)
-        }
+        instanceManager.currentReactContext?.let(::installForRuntime)
+    }
+
+    /** Hooks the catalyst instance of [reactContext]'s runtime, which a named instance's runtime is reached through. */
+    fun installForRuntime(reactContext: ReactContext) {
+        HotUpdaterRecoveryManager.patchReactContextExceptionHandler(reactContext)
+        patchCatalystInstanceExceptionHandler(reactContext)
     }
 
     private fun patchCatalystInstanceExceptionHandler(reactContext: ReactContext) {
@@ -48,15 +56,14 @@ internal object JavaScriptExceptionHooks {
                 null
             } ?: return
 
-        val catalystIdentity = System.identityHashCode(catalystInstance)
-        if (!patchedCatalystInstanceIds.add(catalystIdentity)) {
+        if (!patchedCatalystInstances.add(catalystInstance)) {
             return
         }
 
         val exceptionHandlerField =
             HotUpdaterRecoveryManager.findField(catalystInstance.javaClass, "mJSExceptionHandler")
         if (exceptionHandlerField == null) {
-            patchedCatalystInstanceIds.remove(catalystIdentity)
+            patchedCatalystInstances.remove(catalystInstance)
             return
         }
 
@@ -67,7 +74,7 @@ internal object JavaScriptExceptionHooks {
         }
         exceptionHandlerField.set(
             catalystInstance,
-            HotUpdaterRecoveryManager.RecoveryJSExceptionHandler(previousHandler),
+            HotUpdaterRecoveryManager.RecoveryJSExceptionHandler(previousHandler, { catalystInstance.sourceURL }, { reactContext }),
         )
     }
 }

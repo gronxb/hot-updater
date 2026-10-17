@@ -14,6 +14,12 @@ class CohortService(
     companion object {
         private const val COHORT_KEY = "custom_cohort"
         private const val FALLBACK_IDENTIFIER_KEY = "fallback_identifier"
+
+        /**
+         * App-wide: every instance's service reads and creates the same stored
+         * cohort, so instances that check at once never pick different ones.
+         */
+        private val lock = Any()
     }
 
     private fun hashString(value: String): Int {
@@ -46,10 +52,12 @@ class CohortService(
             return
         }
         // Cohort changes can be followed immediately by a process restart during OTA flows.
-        prefs.edit().putString(COHORT_KEY, cohort).commit()
+        synchronized(lock) { prefs.edit().putString(COHORT_KEY, cohort).commit() }
     }
 
-    fun getCohort(): String {
+    fun getCohort(): String = synchronized(lock) { readOrCreateCohort() }
+
+    private fun readOrCreateCohort(): String {
         val cohort = prefs.getString(COHORT_KEY, null)
         if (!cohort.isNullOrEmpty()) {
             return cohort
