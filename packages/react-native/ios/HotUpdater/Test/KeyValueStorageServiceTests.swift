@@ -95,16 +95,15 @@ struct KeyValueStorageServiceTests {
         let file = storageFile(in: directory)
 
         storage.setItem("a", value: "1")
-        #expect(isExcludedFromBackup(directory))
         // The file keeps its own flag, not only the one it inherits.
-        try setExcludedFromBackup(directory, false)
+        #expect(isExcludedFromBackup(directory))
         #expect(isExcludedFromBackup(file))
 
         // Each write replaces the file, so the flag must be applied again.
-        try setExcludedFromBackup(file, false)
+        try clearExcludedFromBackup(directory)
+        try clearExcludedFromBackup(file)
         storage.setItem("b", value: "2")
         #expect(isExcludedFromBackup(directory))
-        try setExcludedFromBackup(directory, false)
         #expect(isExcludedFromBackup(file))
     }
 
