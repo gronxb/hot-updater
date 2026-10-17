@@ -109,59 +109,6 @@ The fingerprint skips the `ios/` and `android/` trees by default.
 steps below, and the Xcode project file that defines the framework target's
 build settings.
 
-### Keep downloads across native app releases
-
-Hot Updater stores downloaded updates under a key made of the fingerprint, the
-native app's version, and the channel. With Fingerprint, a native app release
-that ships the same artifact therefore starts from the bundle embedded in the
-artifact and downloads the update again. To keep the downloads, set
-`isolationKey` from the embedded fingerprint and channel in the start code of
-the steps below, before the artifact first uses its `HotUpdaterInstance`:
-
-<Tabs items={["iOS", "Android"]}>
-  <Tab value="iOS">
-
-```swift title="ios/BrownfieldLib/BrownfieldLib.swift (excerpt)"
-public func startReactNativeWithHotUpdater(
-  checkForUpdates: Bool,
-  timeout: TimeInterval = 3
-) async -> ReactNativeUpdateStatus {
-  let fingerprint = ReactNativeBundle.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String ?? "" // [!code ++:8]
-  let channel = ReactNativeBundle.object(forInfoDictionaryKey: "HOT_UPDATER_CHANNEL") as? String ?? "production"
-  HotUpdater.configure(
-    withFingerprintHash: nil,
-    publicKey: nil,
-    channel: nil,
-    isolationKey: "hotupdater_\(fingerprint)_\(channel)_"
-  )
-  let status = checkForUpdates ? await checkForUpdate(timeout: timeout) : .skipped
-  // ...
-}
-```
-
-  </Tab>
-  <Tab value="Android">
-
-```kotlin title="android/brownfieldlib/src/main/java/com/brownfieldrn/ReactNativeHostManager.kt (excerpt)"
-        val fingerprint = HotUpdater.getFingerprintHash(application).orEmpty() // [!code ++:4]
-        HotUpdater.configure(
-            isolationKey = "HotUpdaterPrefs_${fingerprint}_${HotUpdater.getChannel(application)}",
-        )
-        // The counterpart of `HotUpdater.init` in your JavaScript.
-        val hotUpdater =
-            HotUpdater.init(
-```
-
-  </Tab>
-</Tabs>
-
-Use it only with Fingerprint, and keep the fingerprint in the key: Hot Updater
-uses the key as given, so without it an update downloaded for an earlier
-artifact would run on new native code.
-Each `configure` call replaces all of its values, so pass any other value you
-set at runtime in the same call. The first launch with a new key discards the
-downloads made under the old one.
-
 ## Connect the iOS framework
 
 <Steps>
@@ -621,8 +568,7 @@ HotUpdater.configure(channel = "beta")
 
 Call it before `startReactNativeWithHotUpdater()` on iOS and before
 `HotUpdater.init` on Android. `isolationKey` replaces the storage key that
-separates downloaded updates by fingerprint, app version, and channel; see
-[Keep downloads across native app releases](#keep-downloads-across-native-app-releases).
+separates downloaded updates by fingerprint, app version, and channel.
 
 </Accordion>
 </Accordions>
@@ -724,13 +670,6 @@ Package the artifact before you deploy, and do not package again until you
 have tested the update. Each package embeds a bundle with a new ID from the
 time it was built, and the update check skips updates deployed before that
 time. Rebuilding only the native app is fine.
-
-Reinstalling the native app keeps its data, including the updates it
-downloaded. When you package again with the same fingerprint, uninstall the
-native app before you install the new build, or it keeps running its
-downloaded update instead of the new embedded bundle. Raising the native app's
-version has the same effect, unless you set
-[`isolationKey`](#keep-downloads-across-native-app-releases).
 
 1. Show the native values in a React Native screen:
 
