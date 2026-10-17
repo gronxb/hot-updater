@@ -1539,6 +1539,32 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `an unclaimed JavaScript error whose stack runs from main's bundle charges no named launch`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val mainBundle = stagePending(context, main, "main-bundle")
+        stagePending(context, widget, "widget-bundle")
+        HotUpdaterImpl(context, main).getJSBundleFile()
+        // One named launch hasn't loaded, so inference would pick it.
+        HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+        HotUpdaterRecoveryManager.contentAppeared(HotUpdaterInstanceEnvironment.MAIN_NAME)
+        val error =
+            JavascriptException("Error: main failed, stack:\nanonymous@1:20480\n").apply {
+                extraDataAsJson =
+                    JSONObject()
+                        .put("rawStack", "Error: main failed\n    at anonymous (address at ${mainBundle.absolutePath}:1:20480)")
+                        .put("jsEngine", "hermes")
+                        .toString()
+            }
+
+        HotUpdaterRecoveryManager.chargeUncaughtException(error)
+
+        // Main's error, after main rendered: no launch rolls back.
+        assertFalse(crashMarker(context, widget).exists())
+        assertTrue(metadata(context, widget).verificationPending)
+        assertFalse(metadata(context, main).verificationPending)
+    }
+
+    @Test
     fun `a verified launch's slot stops asking before storage records the verification`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, widget, "widget-bundle")

@@ -1012,11 +1012,26 @@ internal class HotUpdaterRecoveryManager(
 
         /**
          * The instance an unclaimed JavaScript error belongs to: the one its
-         * stack runs from, or the one inferred from the launches that haven't
-         * finished loading; null when neither tells.
+         * stack runs from, main included, or only when the stack tells
+         * nothing, the one inferred from the launches that haven't finished
+         * loading; null when neither tells. A stack of main's bundle is
+         * main's, charging no named launch however few have loaded. With only
+         * main, every error is main's and is charged as it always was.
          */
-        private fun javaScriptErrorOwner(throwable: Throwable): String? =
-            attribution.namedInstanceOfStack(javaScriptStacks(throwable)) ?: inferJavaScriptErrorOwner()
+        private fun javaScriptErrorOwner(throwable: Throwable): String? {
+            when (val stackOwner = attribution.instanceOfStack(javaScriptStacks(throwable))) {
+                null -> {}
+
+                HotUpdaterInstanceEnvironment.MAIN_NAME -> {
+                    return stackOwner.takeIf { namedInstanceCreated }
+                }
+
+                else -> {
+                    return stackOwner
+                }
+            }
+            return inferJavaScriptErrorOwner()
+        }
 
         // React Native formats a fatal error's frames without their files,
         // but keeps the engine's own stack, with each frame's bundle, in its
