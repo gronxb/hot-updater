@@ -1,4 +1,4 @@
-import { LaunchArguments } from "react-native-launch-arguments";
+import { NativeModules } from "react-native";
 
 import {
   HOT_UPDATER_APP_BASE_URL,
@@ -34,7 +34,13 @@ const defaultE2eScreenState = {
   startupCheckSettledEpoch: "",
 } as const satisfies E2eScreenState;
 
-const e2eLaunchArguments = LaunchArguments.value<E2ELaunchArguments>();
+// modules/e2e-launch-arguments: the runner's launch arguments, as strings.
+const e2eLaunchArguments: E2ELaunchArguments =
+  (NativeModules.E2ELaunchArguments?.getConstants?.().value as
+    | E2ELaunchArguments
+    | undefined) ??
+  (NativeModules.E2ELaunchArguments?.value as E2ELaunchArguments | undefined) ??
+  {};
 
 const detoxLaunchArgumentString = (value: unknown) =>
   typeof value === "string" && value.trim() ? value.trim() : null;

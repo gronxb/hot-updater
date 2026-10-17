@@ -219,7 +219,7 @@ describe("mobile wrapper resource lifecycle", () => {
       env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH = derivedDataPath;
       const root = path.resolve(import.meta.dirname, "../..");
       const xcode = createNativeBuildPlan(
-        { platform: "ios", dryRun: true },
+        { platform: "ios", track: "greenfield", dryRun: true },
         root,
         env,
       ).find((command) => command.command === "xcodebuild")!;

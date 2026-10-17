@@ -10,6 +10,7 @@ import { PAX_LONG_ASSET_MANIFEST_PATH } from "./pax-long-path-fixture.ts";
 import {
   getScenarioDefinition,
   listScenarioNames,
+  listSuiteNames,
   resolveSuiteScenarioNames,
 } from "./scenarios.ts";
 import type { ControlOptions, ScenarioAppDriver } from "./scenarios.ts";
@@ -288,6 +289,88 @@ describe("E2E scenario contract", () => {
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
     expect(new Set(listScenarioNames()).size).toBe(33);
+  });
+
+  it("runs every default scenario a native app shell can host in the brownfield suite", () => {
+    // A brownfield host shows React Native on every launch, has no headless
+    // entry, and never reloads from JavaScript.
+    const needsGreenfieldApp = new Set([
+      "headless-launch-keeps-staged-bundle",
+      "force-update-auto-reload",
+      "skipped-force-update-propagates",
+    ]);
+
+    expect(listSuiteNames()).toEqual(["default", "brownfield"]);
+    expect(resolveSuiteScenarioNames("brownfield")).toEqual([
+      ...defaultScenarioNames.filter((name) => !needsGreenfieldApp.has(name)),
+      // Only a native app shell checks for updates natively before React Native.
+      "brownfield-native-required-update",
+      "brownfield-native-minor-update",
+    ]);
+  });
+
+  it("applies a required update natively before the first React Native screen", async () => {
+    const calls = await recordScenarioCalls(
+      "brownfield-native-required-update",
+    );
+
+    expect(
+      calls.map((call) =>
+        call.kind === "control" ? `${call.kind} ${call.pathName}` : call.kind,
+      ),
+    ).toEqual([
+      "control /e2e/jobs/deploy-bundle",
+      "control /e2e/jobs/set-native-check",
+      "launch",
+      "control /e2e/jobs/wait-for-native-check",
+      "control /e2e/jobs/wait-for-metadata",
+      "assertText",
+      "assertText",
+      "assertText",
+    ]);
+    expect(calls[0]).toMatchObject({ body: { forceUpdate: true } });
+    expect(calls[3]).toMatchObject({
+      body: { nonce: "$nativeCheckNonce", status: "ready" },
+    });
+  });
+
+  it("stages a minor update natively for the next start", async () => {
+    const calls = await recordScenarioCalls("brownfield-native-minor-update");
+
+    expect(calls[0]).toMatchObject({
+      kind: "control",
+      pathName: "/e2e/jobs/deploy-bundle",
+    });
+    expect(calls[0]).not.toMatchObject({ body: { forceUpdate: true } });
+    expect(
+      calls
+        .filter(
+          (call): call is Extract<RecordedScenarioCall, { kind: "control" }> =>
+            call.kind === "control",
+        )
+        .map((call) => [call.pathName, call.body?.status ?? null]),
+    ).toEqual([
+      ["/e2e/jobs/deploy-bundle", null],
+      ["/e2e/jobs/set-native-check", null],
+      ["/e2e/proxy-control", null],
+      ["/e2e/jobs/wait-for-native-check", "pending"],
+      ["/e2e/proxy-control", null],
+      ["/e2e/jobs/wait-for-metadata", null],
+      ["/e2e/jobs/wait-for-native-check", "upToDate"],
+      ["/e2e/jobs/wait-for-metadata", null],
+    ]);
+    // The artifact is held until React Native runs the current bundle, then
+    // released so the update stages for the next start.
+    const holds = calls.filter(
+      (call): call is Extract<RecordedScenarioCall, { kind: "control" }> =>
+        call.kind === "control" && call.pathName === "/e2e/proxy-control",
+    );
+    expect(holds.map((call) => call.body?.holdArtifacts)).toEqual([
+      true,
+      false,
+    ]);
+    expect(calls.filter((call) => call.kind === "launch")).toHaveLength(2);
+    expect(calls.some((call) => call.kind === "tap")).toBe(false);
   });
 
   it("keeps repeated catalog checks as no-ops while already built-in", async () => {
@@ -818,7 +901,7 @@ describe("E2E scenario contract", () => {
     // Then: App.tsx imports a runtime helper and the helper gives E2E launch
     // arguments precedence over the public build settings.
     const launchArgumentsIndex = runtimeConfigSource.indexOf(
-      "LaunchArguments.value",
+      "NativeModules.E2ELaunchArguments",
     );
     const runtimeConfigIndex = runtimeConfigSource.indexOf(
       "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL || DEFAULT_E2E_RUNTIME_CONFIG_URL",
@@ -847,9 +930,9 @@ describe("E2E scenario contract", () => {
     // HotUpdater has only init; the app calls the instance it returns.
     expect(e2eRuntimeSource).not.toMatch(/HotUpdater\.(?!init\b)/);
     expect(e2eRuntimeSource).not.toContain("username");
-    expect(exampleAppSource).not.toContain("react-native-launch-arguments");
+    expect(exampleAppSource).not.toContain("E2ELaunchArguments");
     expect(exampleAppSource).not.toContain('from "@env"');
-    expect(runtimeConfigSource).toContain("react-native-launch-arguments");
+    expect(runtimeConfigSource).toContain("NativeModules.E2ELaunchArguments");
     expect(launchArgumentsIndex).toBeGreaterThan(-1);
     expect(runtimeConfigIndex).toBe(-1);
     expect(runtimeConfigSource).toContain("detoxLaunchArgumentString");

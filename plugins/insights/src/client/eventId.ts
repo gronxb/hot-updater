@@ -21,13 +21,15 @@ const formatUUIDv7 = (bytes: Uint8Array, timestamp: number): string => {
 
 /**
  * Creates an RFC 9562 UUIDv7: a 48-bit millisecond timestamp, then random bits.
+ * `timestamp` is when the event happened, now unless native code recorded it
+ * earlier.
  *
  * `createUUIDv7` from `@hot-updater/plugin-core` calls `crypto.getRandomValues`
  * unconditionally, but React Native has no Web Crypto unless the app installs a
  * polyfill. An Insights event ID only has to tell one event from another so a
  * retried POST is counted once, so `Math.random` is enough without one.
  */
-export const createUUIDv7 = (): string => {
+export const createUUIDv7 = (timestamp = Date.now()): string => {
   const bytes = new Uint8Array(16);
   const { crypto } = globalThis as { crypto?: RandomValuesSource };
   if (typeof crypto?.getRandomValues === "function") {
@@ -37,7 +39,7 @@ export const createUUIDv7 = (): string => {
       bytes[index] = Math.floor(Math.random() * 256);
     }
   }
-  return formatUUIDv7(bytes, Date.now());
+  return formatUUIDv7(bytes, timestamp);
 };
 
 const SHA256_K = [

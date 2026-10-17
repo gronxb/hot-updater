@@ -19,7 +19,9 @@
  /**
  * Returns the currently active bundle URL with specific bundle from the default (static) instance.
  * Callable from Objective-C (e.g., AppDelegate).
- * This is implemented in HotUpdater.mm and calls the Swift static method.
+ * The bundle holds the embedded main.jsbundle, such as a brownfield XCFramework's
+ * bundle. Hot Updater reuses it for reloads and reads its HOT_UPDATER_* Info.plist
+ * keys before the main bundle's.
  */
 + (NSURL *)bundleURLWithBundle:(NSBundle *)bundle NS_SWIFT_NAME(bundleURL(bundle:));
 
@@ -38,6 +40,13 @@
 /**
  * Programmatic configuration for brownfield / XCFramework setups where
  * Info.plist (host) or string resources (Android) are not desirable.
+ * A nil argument means no override.
+ *
+ * `channel` is the app's fixed default channel, not a runtime switch: keep it
+ * the same from the first launch on. It is part of the storage isolation
+ * key, so changing it deletes the downloaded bundles. To check another
+ * channel at runtime, pass `channel` to `HotUpdaterInstance.checkForUpdate`,
+ * and undo that with its `resetChannel`.
  */
 + (void)configureWithFingerprintHash:(nullable NSString *)fingerprintHash
                            publicKey:(nullable NSString *)publicKey

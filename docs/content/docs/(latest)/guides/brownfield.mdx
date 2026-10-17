@@ -1,0 +1,725 @@
+---
+title: "Brownfield Apps"
+description: "Ship OTA updates to React Native packaged as an XCFramework or AAR inside an existing native iOS or Android app."
+icon: Boxes
+---
+
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
+import { Callout } from "fumadocs-ui/components/callout";
+import { Step, Steps } from "fumadocs-ui/components/steps";
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+
+## Overview
+
+A brownfield app is an existing native iOS or Android app that shows some
+screens with React Native. The React Native code lives in its own project and
+ships to the native app as a prebuilt artifact: an **XCFramework** on iOS and
+an **AAR** on Android. The native app never runs Metro, Node.js, or the Hot
+Updater CLI.
+
+Hot Updater works inside that artifact:
+
+- The React Native project keeps the usual setup: `@hot-updater/react-native`,
+  `hot-updater.config.ts`, `HotUpdater.init`, and `hot-updater deploy`.
+- Before React Native starts, the artifact checks for an update in native
+  code, with the same `checkForUpdate` and `updateBundle` as JavaScript. A
+  required update downloads before the first React Native screen; any other
+  update downloads in the background.
+- The artifact asks Hot Updater for the JavaScript bundle when React Native
+  starts. Hot Updater returns the downloaded update, or the bundle embedded in
+  the artifact.
+- The CLI writes the channel, fingerprint, and signing public key into the
+  artifact's own `Info.plist` and `AndroidManifest.xml`, so they travel with
+  it.
+- The native app calls one function of the artifact and never imports Hot
+  Updater.
+
+```text
+React Native project (BrownfieldRN)
+├─ ios/BrownfieldLib       ── package ──▶ BrownfieldLib.xcframework ──▶ native iOS app
+├─ android/brownfieldlib   ── package ──▶ brownfieldlib AAR         ──▶ native Android app
+└─ hot-updater deploy      ──────────────▶ update server ──▶ downloaded by the artifact
+```
+
+This guide uses [React Native Brownfield](https://oss.callstack.com/react-native-brownfield/)
+to package the artifacts, through its `brownfield` CLI or the Rock brownfield
+plugins. Both produce the same artifacts with the same runtime library, so
+the Hot Updater steps are the same.
+
+## Before you start
+
+- Package and run React Native in your native app without Hot Updater first.
+  Follow the React Native Brownfield
+  [iOS](https://oss.callstack.com/react-native-brownfield/docs/getting-started/ios)
+  and [Android](https://oss.callstack.com/react-native-brownfield/docs/getting-started/android)
+  guides, or the [Rock brownfield guide](https://www.rockjs.dev/docs/brownfield/intro).
+  For a React Native CLI project,
+  `npm create @callstack/react-native-brownfield@latest` creates the framework
+  target and library module.
+- Use the New Architecture, which React Native Brownfield requires.
+- Install Hot Updater in the React Native project and connect it to an update
+  server, as in [Install packages](/docs/get-started/installation) and
+  [Connect your app](/docs/get-started/app-setup#configure-the-update-client).
+  Skip that page's [native code setup](/docs/get-started/app-setup#native-code-setup):
+  this guide replaces it.
+
+The examples use these names. Replace them with yours:
+
+| Name | Meaning |
+| --- | --- |
+| `BrownfieldRN` | The React Native project, and the component it registers with `AppRegistry` |
+| `BrownfieldLib` | The iOS framework target and its XCFramework |
+| `brownfieldlib` | The Android library module and its AAR |
+| `com.brownfieldrn` | The Android library module's package |
+
+## Choose an update strategy
+
+[Fingerprint](/docs/guides/update-strategies/fingerprint) suits brownfield apps
+best. Its hash comes from the React Native project, which builds every native
+part the JavaScript bundle depends on, so it changes only when you ship a new
+artifact.
+
+[App Version](/docs/guides/update-strategies/app-version) compares the
+**native app's** version: `CFBundleShortVersionString` of the app on iOS and
+`versionName` of the app on Android. The artifact has no version of its own at
+runtime. With App Version, deploy each update with `--target-app-version` set
+to the native app versions that contain the matching artifact.
+
+```ts title="hot-updater.config.ts"
+export default defineConfig({
+  // ... build, storage, database, and plugins
+  updateStrategy: "fingerprint",
+  fingerprint: {
+    extraSources: {
+      ios: [
+        "ios/BrownfieldLib/**/*.swift",
+        "ios/BrownfieldRN.xcodeproj/project.pbxproj",
+      ],
+      android: [
+        "android/brownfieldlib/src/**/*.kt",
+        "android/brownfieldlib/build.gradle.kts",
+      ],
+    },
+  },
+});
+```
+
+The fingerprint skips the `ios/` and `android/` trees by default.
+`extraSources` adds the framework and library module files you write in the
+steps below, and the Xcode project file that defines the framework target's
+build settings.
+
+## Connect the iOS framework
+
+<Steps>
+<Step>
+
+### Choose the bundle in the framework
+
+The framework's public interface file, which re-exports `ReactBrownfield`,
+starts React Native. Before it starts, a `HotUpdaterInstance` checks for an
+update, and React Native Brownfield's `bundleURLOverride` asks it for the
+bundle:
+
+```swift title="ios/BrownfieldLib/BrownfieldLib.swift"
+import Foundation
+
+@_exported import ReactBrownfield
+internal import HotUpdater // [!code ++]
+
+public let ReactNativeBundle = Bundle(for: InternalClassForBundle.self)
+
+class InternalClassForBundle {}
+
+// The counterpart of `HotUpdater.init` in your JavaScript. // [!code ++:69]
+private let hotUpdater = try! HotUpdaterInstance( // A valid baseURL never throws.
+  HotUpdaterOptions(
+    baseURL: "https://updates.example.com/hot-updater",
+    requestHeaders: [:],
+    bundle: ReactNativeBundle
+  )
+)
+
+/// What `startReactNativeWithHotUpdater` found before React Native started.
+public enum ReactNativeUpdateStatus: String {
+  case upToDate, ready, pending, failed, skipped
+}
+
+/// Checks for an update, then starts React Native with Hot Updater choosing
+/// the JavaScript bundle. A required update that downloads within `timeout`
+/// runs in this start.
+@MainActor
+public func startReactNativeWithHotUpdater(
+  checkForUpdates: Bool,
+  timeout: TimeInterval = 3
+) async -> ReactNativeUpdateStatus {
+  let status = checkForUpdates ? await checkForUpdate(timeout: timeout) : .skipped
+  ReactNativeBrownfield.shared.bundle = ReactNativeBundle
+  ReactNativeBrownfield.shared.bundleURLOverride = {
+    #if DEBUG
+    return nil // Metro
+    #else
+    return hotUpdater.bundleURL()
+    #endif
+  }
+  ReactNativeBrownfield.shared.startReactNative()
+  return status
+}
+
+/// Checks for an update and waits up to `timeout` seconds for a required one.
+/// The timeout ends the wait, not the download.
+private func checkForUpdate(timeout: TimeInterval) async -> ReactNativeUpdateStatus {
+  await withTaskGroup(of: ReactNativeUpdateStatus.self) { group in
+    group.addTask {
+      do {
+        let options = HotUpdaterCheckOptions(updateStrategy: .fingerprint)
+        guard let update = try await hotUpdater.checkForUpdate(options) else {
+          return .upToDate
+        }
+        // A newer Release of the bundle this start runs: nothing to download.
+        if update.transitionKind == "ADOPT_RELEASE" {
+          return try await update.updateBundle() ? .upToDate : .failed
+        }
+        guard update.shouldForceUpdate else {
+          Task { _ = try? await update.updateBundle() } // Downloads in the background.
+          return .pending
+        }
+        return try await update.updateBundle() ? .ready : .failed
+      } catch is CancellationError {
+        return .pending
+      } catch {
+        return .failed
+      }
+    }
+    group.addTask {
+      try? await Task.sleep(nanoseconds: UInt64(timeout * 1_000_000_000))
+      return .pending
+    }
+    let status = await group.next() ?? .failed
+    group.cancelAll()
+    return status
+  }
+}
+```
+
+- `HotUpdaterInstance` mirrors the instance `HotUpdater.init` returns in your
+  JavaScript. `HotUpdaterOptions` takes the update server URL and request
+  headers, such as a client API key header, and `HotUpdaterCheckOptions` takes
+  the update strategy, as `checkForUpdate` does. `bundle: ReactNativeBundle`
+  makes Hot Updater read its `HOT_UPDATER_*` keys and embedded files from the
+  framework, not the native app.
+- Unlike JavaScript, which returns `null`, `checkForUpdate` throws when the
+  check fails. The failure still reaches your plugins as `onUpdateError`.
+- A required update runs in this start only if `updateBundle()` finishes
+  before React Native reads the bundle. The task group stops waiting at
+  `timeout`; the download goes on and applies at the next start.
+  [How updates apply](#how-updates-apply) explains each status.
+- `hotUpdater.bundleURL()` returns the downloaded update, or `main.jsbundle`
+  embedded in the framework. Hot Updater reuses the bundle when it rolls back.
+- `checkForUpdates` comes from the native app: the framework is built
+  separately, so its own `DEBUG` says nothing about the app's build.
+
+Keep React Native Brownfield's default of loading the bundle with the first
+React Native screen. With `preloadBundle: true`, a new update loads while the
+app starts, and closing the app before any React Native screen appears counts
+as an [unfinished launch](/docs/concepts/automatic-rollback), which rolls the
+update back.
+
+<Callout type="info">
+  `internal import` keeps `HotUpdater` out of the framework's public Swift
+  interface, so the native app needs no `HotUpdater` module to build. A plain
+  `import HotUpdater` makes the native app fail with "no such module
+  'HotUpdater'". For the same reason the function returns the framework's own
+  `ReactNativeUpdateStatus`, not a Hot Updater type.
+</Callout>
+
+</Step>
+<Step>
+
+### Start React Native from the iOS app
+
+Call the framework's function instead of
+`ReactNativeBrownfield.shared.startReactNative`, and show React Native screens
+once it returns. It sets every option React Native Brownfield reads, so set
+nothing on `ReactNativeBrownfield.shared` after the call.
+
+<Tabs items={["SwiftUI", "UIKit"]}>
+  <Tab value="SwiftUI">
+
+```swift title="NativeApp/NativeApp.swift"
+import SwiftUI
+import BrownfieldLib
+
+@main
+struct NativeApp: App {
+  @State private var started = false
+
+  var body: some Scene {
+    WindowGroup {
+      NavigationStack {
+        NavigationLink("Open React Native") {
+          ReactNativeView(moduleName: "BrownfieldRN")
+        }
+        .disabled(!started)
+      }
+      .task {
+        #if DEBUG
+        let checkForUpdates = false
+        #else
+        let checkForUpdates = true
+        #endif
+        _ = await startReactNativeWithHotUpdater(checkForUpdates: checkForUpdates)
+        started = true
+      }
+    }
+  }
+}
+```
+
+  </Tab>
+  <Tab value="UIKit">
+
+```swift title="NativeApp/AppDelegate.swift"
+import UIKit
+import BrownfieldLib
+
+@main
+class AppDelegate: UIResponder, UIApplicationDelegate {
+  var window: UIWindow?
+
+  func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+  ) -> Bool {
+    window = UIWindow(frame: UIScreen.main.bounds)
+    window?.rootViewController = LaunchViewController() // your launch screen
+    window?.makeKeyAndVisible()
+
+    #if DEBUG
+    let checkForUpdates = false
+    #else
+    let checkForUpdates = true
+    #endif
+    Task { @MainActor in
+      _ = await startReactNativeWithHotUpdater(checkForUpdates: checkForUpdates)
+      self.window?.rootViewController = ReactNativeViewController(moduleName: "BrownfieldRN")
+    }
+    return true
+  }
+}
+```
+
+  </Tab>
+</Tabs>
+
+</Step>
+</Steps>
+
+## Connect the Android library
+
+<Steps>
+<Step>
+
+### Choose the bundle in the host manager
+
+The library module's `ReactNativeHostManager` creates the React host. Before
+it does, a `HotUpdaterInstance` checks for an update. Pass its bundle path as
+`jsBundleFilePath`, then hand the host to Hot Updater:
+
+```kotlin title="android/brownfieldlib/src/main/java/com/brownfieldrn/ReactNativeHostManager.kt"
+package com.brownfieldrn
+
+import android.app.Application
+import com.callstack.reactnativebrownfield.ReactNativeBrownfield
+import com.facebook.react.PackageList
+import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+import com.hotupdater.HotUpdater // [!code ++:11]
+import com.hotupdater.HotUpdaterCheckOptions
+import com.hotupdater.HotUpdaterInstance
+import com.hotupdater.HotUpdaterOptions
+import com.hotupdater.HotUpdaterUpdateStrategy
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+
+object ReactNativeHostManager {
+    // Outlives every activity, so closing a screen never cancels the start. // [!code ++:2]
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+
+    /**
+     * Checks for an update, then starts React Native. A required update that
+     * downloads within [timeoutMillis] runs in this start. [onReady] runs on
+     * the main thread with what was found.
+     */
+    fun start(
+        application: Application,
+        checkForUpdates: Boolean,
+        timeoutMillis: Long = 3_000,
+        onReady: (String) -> Unit = {},
+    ) {
+        // The counterpart of `HotUpdater.init` in your JavaScript. // [!code ++:9]
+        val hotUpdater =
+            HotUpdater.init(
+                application,
+                HotUpdaterOptions(
+                    baseURL = "https://updates.example.com/hot-updater",
+                    requestHeaders = emptyMap(),
+                ),
+            )
+        scope.launch {
+            val status = if (checkForUpdates) checkForUpdate(hotUpdater, timeoutMillis) else "skipped" // [!code ++]
+            ReactNativeBrownfield.initialize(application) {
+                getDefaultReactHost(
+                    context = application,
+                    packageList = PackageList(application).packages,
+                    jsMainModulePath = "index",
+                    jsBundleAssetPath = "index.android.bundle",
+                    jsBundleFilePath = if (BuildConfig.DEBUG) null else hotUpdater.getJSBundleFile(), // [!code ++]
+                    useDevSupport = BuildConfig.DEBUG,
+                    jsRuntimeFactory = null,
+                )
+            }
+            HotUpdater.setReactHost(ReactNativeBrownfield.shared.reactHost) // [!code ++]
+            onReady(status)
+        }
+    }
+
+    /** // [!code ++:26]
+     * Checks for an update and waits up to [timeoutMillis] for a required
+     * one. The timeout ends the wait, not the download.
+     */
+    private suspend fun checkForUpdate(
+        hotUpdater: HotUpdaterInstance,
+        timeoutMillis: Long,
+    ): String =
+        withTimeoutOrNull(timeoutMillis) {
+            try {
+                val options = HotUpdaterCheckOptions(updateStrategy = HotUpdaterUpdateStrategy.FINGERPRINT)
+                val update = hotUpdater.checkForUpdate(options) ?: return@withTimeoutOrNull "upToDate"
+                when {
+                    // A newer Release of the bundle this start runs: nothing to download.
+                    update.transitionKind == "ADOPT_RELEASE" -> if (update.updateBundle()) "upToDate" else "failed"
+                    // Downloads in the background.
+                    !update.shouldForceUpdate -> "pending".also { scope.launch { runCatching { update.updateBundle() } } }
+                    update.updateBundle() -> "ready"
+                    else -> "failed"
+                }
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                "failed"
+            }
+        } ?: "pending"
+}
+```
+
+The native update check uses coroutines in the library module:
+
+```kotlin title="android/brownfieldlib/build.gradle.kts"
+dependencies {
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.7.3") // [!code ++]
+}
+```
+
+- `HotUpdater.init` returns a `HotUpdaterInstance`, which mirrors the instance
+  `HotUpdater.init` returns in your JavaScript. `HotUpdaterOptions` takes the
+  update server URL and request headers, and `HotUpdaterCheckOptions` takes the
+  update strategy, as `checkForUpdate` does.
+- Unlike JavaScript, which returns `null`, `checkForUpdate` throws when the
+  check fails. The failure still reaches your plugins as `onUpdateError`.
+- A required update runs in this start only if `updateBundle()` finishes
+  before React Native reads the bundle. `withTimeoutOrNull` stops waiting at
+  `timeoutMillis`; the download goes on and applies at the next start.
+  [How updates apply](#how-updates-apply) explains each status.
+- The start runs in the module's own scope, not an activity's
+  `lifecycleScope`: React Native must start even if the first screen closes.
+  `ReactNativeBrownfield.initialize` evaluates the bundle at once, so it runs
+  after the check.
+- `hotUpdater.getJSBundleFile()` returns the downloaded update, or
+  `assets://index.android.bundle` embedded in the AAR. A native app has no
+  `ReactApplication`, so `HotUpdater.setReactHost` gives Hot Updater the host
+  it runs.
+- `checkForUpdates` comes from the native app: the AAR is built separately, so
+  its own `BuildConfig.DEBUG` says nothing about the app's build.
+
+<Callout type="warn">
+  `ReactNativeBrownfield.initialize` loads React Native's native libraries.
+  Do not call `loadReactNative(application)` before it: a second load
+  crashes with "Feature flags cannot be overridden more than once".
+</Callout>
+
+</Step>
+<Step>
+
+### Give the library manifest an application element
+
+The CLI writes Hot Updater's values as `<meta-data>` of an `<application>`
+element. Android merges the library's manifest into the native app, so add one
+to the library:
+
+```xml title="android/brownfieldlib/src/main/AndroidManifest.xml"
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application /> <!-- [!code ++] -->
+</manifest>
+```
+
+</Step>
+<Step>
+
+### Start React Native from the Android app
+
+```kotlin title="app/src/main/java/com/example/nativeapp/NativeApplication.kt"
+import android.app.Application
+import android.os.Build
+import com.brownfieldrn.ReactNativeHostManager
+import java.io.File
+
+class NativeApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        // Android also runs onCreate in Hot Updater's restart process. // [!code ++:2]
+        if (currentProcessName() != applicationInfo.processName) return
+        ReactNativeHostManager.start(this, checkForUpdates = !BuildConfig.DEBUG) { status ->
+            // React Native is ready: enable the entries that open its screens.
+        }
+    }
+
+    private fun currentProcessName(): String = // [!code ++:5]
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            getProcessName()
+        } else {
+            File("/proc/self/cmdline").readText().trimEnd('\u0000')
+        }
+}
+```
+
+Hot Updater restarts the app from a process of its own to apply a required
+update or roll back a crashed one, and Android runs `Application.onCreate` in
+every process of the app. Start React Native only in the main process, named
+`applicationInfo.processName`: the package name unless the manifest's
+`<application>` sets `android:process`.
+
+Show the screens with `ReactNativeFragment.createReactNativeFragment("BrownfieldRN")`
+or `ReactNativeBrownfield.shared.createView(...)`, as in the React Native
+Brownfield guide, after `onReady` runs.
+
+</Step>
+</Steps>
+
+## Embed the native values
+
+Run the native configuration commands in the React Native project, before you
+package. By default they update every `Info.plist` under `ios/` and every
+`AndroidManifest.xml` under `android/`, which includes the framework target and
+the library module:
+
+```bash
+npx hot-updater channel set production
+npx hot-updater fingerprint create
+```
+
+If you use [bundle signing](/docs/guides/bundle-signing), export the public key
+the same way:
+
+```bash
+npx hot-updater keys export-public
+```
+
+Check that `ios/BrownfieldLib/Info.plist` has `HOT_UPDATER_CHANNEL` and
+`HOT_UPDATER_FINGERPRINT_HASH`, and that the library manifest has
+`com.hotupdater.CHANNEL` and `com.hotupdater.FINGERPRINT_HASH`. To limit the
+commands to the artifacts, list the files in your config:
+
+```ts title="hot-updater.config.ts"
+export default defineConfig({
+  // ...
+  platform: {
+    ios: { infoPlistPaths: ["ios/BrownfieldLib/Info.plist"] },
+    android: {
+      androidManifestPaths: ["android/brownfieldlib/src/main/AndroidManifest.xml"],
+    },
+  },
+});
+```
+
+<Accordions>
+<Accordion title="Set the values from the native app instead">
+
+When the native app decides a value at runtime, such as a channel per
+customer, set it before React Native starts. These values replace the embedded
+ones:
+
+```swift title="iOS, inside the framework"
+HotUpdater.configure(
+  withFingerprintHash: nil,
+  publicKey: nil,
+  channel: "beta",
+  isolationKey: nil
+)
+```
+
+```kotlin title="Android, inside the library module"
+HotUpdater.configure(channel = "beta")
+```
+
+Call it before `startReactNativeWithHotUpdater()` on iOS and before
+`HotUpdater.getJSBundleFile` on Android. `isolationKey` replaces the storage
+key that separates downloaded updates by fingerprint, app version, and channel.
+
+</Accordion>
+</Accordions>
+
+## Package and ship the artifacts
+
+Package after the native values are embedded. Run the commands from the React
+Native project:
+
+<Tabs items={["Brownfield CLI", "Rock"]}>
+  <Tab value="Brownfield CLI">
+
+```bash
+npx brownfield package:ios
+npx brownfield package:android
+npx brownfield publish:android
+```
+
+  </Tab>
+  <Tab value="Rock">
+
+```bash
+npx rock package:ios --scheme BrownfieldLib --configuration Release
+npx rock package:aar --variant Release --module-name brownfieldlib
+npx rock publish-local:aar --module-name brownfieldlib
+```
+
+  </Tab>
+</Tabs>
+
+Add the XCFrameworks and the AAR to the native app as the React Native
+Brownfield guide describes, then build the native app in **Release**. Debug
+builds load the bundle from Metro and never apply updates.
+
+Repeat `fingerprint create` and packaging whenever the React Native project's
+native code or dependencies change. A new artifact needs a new native app
+release.
+
+## Deploy an update
+
+Deploy from the React Native project as usual. Pass the channel you embedded:
+
+```bash
+npx hot-updater deploy -p ios -c production
+npx hot-updater deploy -p android -c production
+```
+
+See [Deploy](/docs/guides/deploy).
+
+## How updates apply
+
+The start code above checks the update server before React Native starts,
+with the same `checkForUpdate` and `updateBundle` as JavaScript, and returns
+one of these statuses:
+
+| Status | Meaning |
+| --- | --- |
+| `upToDate` | The bundle this start runs is the latest. It may have been downloaded by an earlier start. |
+| `ready` | A required update downloaded before React Native read the bundle, so this start runs it. |
+| `pending` | An update downloads in the background, or a required one did not finish within the timeout. It runs at the first start after it downloads. |
+| `failed` | The check or the required download failed. React Native starts with the current bundle. |
+
+- **Required updates** (`shouldForceUpdate`) are waited for up to the timeout.
+  If the download takes longer, the download goes on, and calling
+  `updateBundle` again on the same update joins it. To block React Native
+  until a required update is in, check again a bounded number of times while
+  the status is `pending`, and show the user what is happening.
+- **Other updates** download in the background. They run at the next start,
+  or at this one if they finish before React Native reads the bundle.
+- **Rollbacks** deployed from the console apply the same way as updates.
+- An update applies at this start only when `updateBundle` finishes before
+  `bundleURL()` or `getJSBundleFile()` is read. One that finishes later
+  applies at the next start.
+
+React Native runs for the life of the native app's process. Do not call
+`hotUpdater.reload()` in a native app: on Android it restarts the whole native
+app, which opens again at its first native screen.
+
+Keep `HotUpdater.init` in your JavaScript for its plugins, such as
+[Insights](/docs/guides/insights), but do not call `checkForUpdate` or `wrap`'s update
+check there: the native code already checked. The next `HotUpdater.init`
+reports the native update checks, downloads, and errors to its plugins, each
+with the time it happened as `occurredAt`.
+
+The channel comes from the framework's `Info.plist` or the library's
+manifest. Do not change it with `HotUpdater.configure(channel:)` at runtime:
+changing it deletes the downloaded bundles. To move a device to another
+channel, pass `channel` in `HotUpdaterCheckOptions`; the switch is saved once
+that channel's update downloads, and `hotUpdater.resetChannel()` switches
+back.
+
+[Automatic rollback](/docs/concepts/automatic-rollback) works as in any app: a
+bundle that crashes before its first React Native screen appears rolls back to
+the previous bundle, or to the one embedded in the artifact.
+
+## Verify
+
+1. Show the native values in a React Native screen:
+
+   ```tsx
+   <Text>Channel: {hotUpdater.getChannel()}</Text>
+   <Text>Fingerprint: {String(hotUpdater.getFingerprintHash())}</Text>
+   <Text>Bundle ID: {hotUpdater.getBundleId()}</Text>
+   ```
+
+   Show the status the framework or library returned in a native screen.
+
+2. Build the native app in Release and open it. The status is `upToDate`, and
+   the React Native screen shows the channel and fingerprint you embedded.
+3. Change a screen and deploy it as required with `--force-update`. Close and
+   reopen the native app: the status is `ready`, and the first React Native
+   screen shows your change.
+4. Change the screen again and deploy without `--force-update`. Close and
+   reopen the native app: the status is `pending`. Close and reopen it again:
+   the status is `upToDate`, and the React Native screen shows the change.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| The channel is `production` and the fingerprint is `null` | The artifact has no Hot Updater values. Run `channel set` and `fingerprint create`, check the framework's `Info.plist` and the library manifest, and package again. On Android, check that the library manifest has an `<application>` element. |
+| The native app fails with "no such module 'HotUpdater'" | The framework imports `HotUpdater` publicly. Use `internal import HotUpdater`. |
+| The status is always `skipped` | The native app passes `checkForUpdates: false`, as its Debug build does. Build it in Release. |
+| The status is `failed` | Check `baseURL` and the request headers in `HotUpdaterOptions`, and that the device reaches the update server. |
+| A required update is `pending` instead of `ready` | It did not download within the timeout. Raise the timeout, or check again while it is `pending`. |
+| The update downloads but the screen does not change | The native app runs a Debug build, which loads Metro. Build it in Release. |
+| The native app restarts at its first screen on Android | Something calls `hotUpdater.reload()`. Remove it; the update applies at the next launch. |
+| Downloaded updates disappear | Something calls `HotUpdater.configure(channel:)` with a different channel, which deletes the downloaded bundles. Embed the channel instead. |
+| "Feature flags cannot be overridden more than once" on Android | `loadReactNative` ran before `ReactNativeBrownfield.initialize`. Remove it, and pass the React host as a factory, `ReactNativeBrownfield.initialize(application) { getDefaultReactHost(...) }`, as the host manager above does. A host built before `initialize` fails with "SoLoader.init() not yet called". |
+| The AAR keeps showing JavaScript from an earlier package | The library module reused an earlier bundle. Delete `android/brownfieldlib/build` and package again. |
+| Packaging the AAR fails with "No namespace found in .../build.gradle" | React Native Brownfield reads each native module's `namespace` from the module's `build.gradle`. A module that declares its package only in `AndroidManifest.xml` cannot be packaged; ask its maintainer to add a `namespace`, or replace the module. |
+| The native app fails with "resource attr/... not found" from a library | When several native modules ship `res/values` resources, React Native Brownfield keeps only one module's in the AAR, so attributes and styles another module references go missing. Remove that library from the React Native project, or declare the missing resources in the native app. |
+| Deploy reports a fingerprint mismatch | The native code changed after `fingerprint create`. Create the fingerprint again, package, and ship a new native app release. |
+
+## Native API
+
+A native app updates one React Native bundle. Create its instance with the
+same server and headers as the bundle's `HotUpdater.init`: the first
+`HotUpdater.init` after the next launch reports the native checks to its
+plugins.
+
+| Platform | API | Use |
+| --- | --- | --- |
+| iOS | `HotUpdaterInstance(HotUpdaterOptions(baseURL:requestHeaders:requestTimeout:bundle:))` | The counterpart of JavaScript's `HotUpdater.init`; `bundle` holds the embedded `main.jsbundle` and the `HOT_UPDATER_*` keys |
+| iOS | `hotUpdater.checkForUpdate(HotUpdaterCheckOptions(updateStrategy:channel:requestHeaders:requestTimeout:))`, `update.updateBundle(onProgress:)` | Checks and downloads, as JavaScript's `checkForUpdate` and `updateBundle` do |
+| iOS | `hotUpdater.bundleURL()` | Returns the bundle React Native starts with |
+| iOS | `hotUpdater.resetChannel()`, `getChannel()`, `getBundleId()`, `getFingerprintHash()` | As JavaScript's methods of the same names |
+| iOS | `HotUpdater.configure(withFingerprintHash:publicKey:channel:isolationKey:)` | Replaces embedded values at runtime |
+| Android | `HotUpdater.init(context, HotUpdaterOptions(baseURL, requestHeaders, requestTimeoutMillis))` | The counterpart of JavaScript's `HotUpdater.init`; returns a `HotUpdaterInstance` |
+| Android | `hotUpdater.checkForUpdate(HotUpdaterCheckOptions(updateStrategy, channel, requestHeaders, requestTimeoutMillis))`, `update.updateBundle(onProgress)` | Checks and downloads, as JavaScript's `checkForUpdate` and `updateBundle` do |
+| Android | `hotUpdater.getJSBundleFile()` | Returns the bundle path React Native starts with |
+| Android | `hotUpdater.resetChannel()`, `getChannel()`, `getBundleId()`, `getFingerprintHash()` | As JavaScript's methods of the same names |
+| Android | `HotUpdater.setReactHost(reactHost)` | Gives Hot Updater a host that no `ReactApplication` owns |
+| Android | `HotUpdater.configure(...)` | Replaces embedded values at runtime |

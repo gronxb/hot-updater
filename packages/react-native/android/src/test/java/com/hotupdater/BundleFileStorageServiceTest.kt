@@ -50,6 +50,73 @@ class BundleFileStorageServiceTest {
     }
 
     @Test
+    fun `settling before the launch rolls back an unfinished launch and keeps its RECOVERED report`() {
+        val rootDir = temporaryFolder.newFolder()
+        val preferences = InMemoryPreferencesService()
+        listOf("stable-bundle", "hung-bundle").forEach { bundleId ->
+            val directory = createBundleDir(rootDir, bundleId)
+            writeFile(directory, "index.android.bundle")
+            writeManifest(directory, listOf("index.android.bundle"))
+        }
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = "stable-bundle",
+                stagingBundleId = "hung-bundle",
+                verificationPending = true,
+            ),
+        )
+        val firstProcess = createService(rootDir, preferences)
+        firstProcess.prepareLaunch(null)
+        firstProcess.markLaunchStarted("hung-bundle")
+
+        // A native update check reads the selection before React Native starts.
+        val nextProcess = createService(rootDir, preferences)
+        var consumed = 0
+        nextProcess.settlePreviousLaunch {
+            consumed++
+            null
+        }
+        nextProcess.settlePreviousLaunch {
+            consumed++
+            null
+        }
+
+        assertEquals(1, consumed)
+        assertEquals("stable-bundle", nextProcess.peekLaunchBundleId())
+        assertFalse(loadMetadata(rootDir)!!.launchInProgress)
+        assertTrue(nextProcess.getCrashHistory().contains("hung-bundle"))
+        assertEquals("stable-bundle", nextProcess.prepareLaunch(null).launchedBundleId)
+        assertEquals("RECOVERED", nextProcess.notifyAppReady()["status"])
+    }
+
+    @Test
+    fun `settling rolls back a pending bundle whose file is gone`() {
+        val rootDir = temporaryFolder.newFolder()
+        val stableDir = createBundleDir(rootDir, "stable-bundle")
+        writeFile(stableDir, "index.android.bundle")
+        writeManifest(stableDir, listOf("index.android.bundle"))
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = "stable-bundle",
+                stagingBundleId = "missing-bundle",
+                verificationPending = true,
+            ),
+        )
+        val service = createService(rootDir, InMemoryPreferencesService())
+
+        service.settlePreviousLaunch { null }
+
+        // The selection no longer names the missing bundle, so a check reads what the launch runs.
+        assertEquals("stable-bundle", loadMetadata(rootDir)!!.stagingBundleId)
+        assertEquals("stable-bundle", service.peekLaunchBundleId())
+        assertTrue(service.getCrashHistory().contains("missing-bundle"))
+    }
+
+    @Test
     fun `metadata in another schema is not loaded`() {
         val rootDir = temporaryFolder.newFolder()
         val stableDir = createBundleDir(rootDir, "stable-bundle")
@@ -151,6 +218,73 @@ class BundleFileStorageServiceTest {
         assertTrue(nextLaunch.shouldRollbackOnCrash)
         assertFalse(nextProcess.getCrashHistory().contains("staged-bundle"))
         assertEquals("PENDING", nextProcess.notifyAppReady()["status"])
+    }
+
+    @Test
+    fun `peekLaunchBundleId reads the next launch without preparing it`() {
+        val rootDir = temporaryFolder.newFolder()
+        val preferences = InMemoryPreferencesService()
+        assertNull(createService(rootDir, preferences).peekLaunchBundleId())
+        listOf("stable-bundle", "staged-bundle").forEach { bundleId ->
+            val directory = createBundleDir(rootDir, bundleId)
+            writeFile(directory, "index.android.bundle")
+            writeManifest(directory, listOf("index.android.bundle"))
+        }
+        val metadata =
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = "stable-bundle",
+                stagingBundleId = "staged-bundle",
+                verificationPending = true,
+            )
+        writeMetadata(rootDir, metadata)
+        val service = createService(rootDir, preferences)
+        val saved = loadMetadata(rootDir)
+
+        assertEquals("staged-bundle", service.peekLaunchBundleId())
+        assertEquals("staged-bundle", service.peekLaunchBundleId())
+        assertEquals(saved, loadMetadata(rootDir))
+        val launch = service.prepareLaunch(null)
+        assertEquals("staged-bundle", launch.launchedBundleId)
+        assertTrue(launch.shouldRollbackOnCrash)
+    }
+
+    @Test
+    fun `peekLaunchBundleId skips a staged bundle the launch would not load`() {
+        val rootDir = temporaryFolder.newFolder()
+        val preferences = InMemoryPreferencesService()
+        val stableDirectory = createBundleDir(rootDir, "stable-bundle")
+        writeFile(stableDirectory, "index.android.bundle")
+        writeManifest(stableDirectory, listOf("index.android.bundle"))
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = "stable-bundle",
+                stagingBundleId = "missing-bundle",
+                verificationPending = true,
+            ),
+        )
+        assertEquals("stable-bundle", createService(rootDir, preferences).peekLaunchBundleId())
+
+        val stagedDirectory = createBundleDir(rootDir, "staged-bundle")
+        writeFile(stagedDirectory, "index.android.bundle")
+        writeManifest(stagedDirectory, listOf("index.android.bundle"))
+        writeMetadata(
+            rootDir,
+            BundleMetadata(
+                isolationKey = TEST_ISOLATION_KEY,
+                stableBundleId = "stable-bundle",
+                stagingBundleId = "staged-bundle",
+                verificationPending = true,
+                launchInProgress = true,
+            ),
+        )
+        // Settling rolls back a pending bundle whose launch never finished.
+        val nextProcess = createService(rootDir, preferences)
+        nextProcess.settlePreviousLaunch { null }
+        assertEquals("stable-bundle", nextProcess.peekLaunchBundleId())
+        assertFalse(loadMetadata(rootDir)!!.launchInProgress)
     }
 
     @Test
@@ -854,6 +988,28 @@ class BundleFileStorageServiceTest {
                 CatalogHighWater(generation = 2, catalogHash = "hash-2"),
                 metadata?.highestSeenCatalogs?.get("project-a|scope-production"),
             )
+            // A selection made before the reset no longer stages.
+            assertFalse(
+                service.isReleaseSelectionCurrent(
+                    catalogId = "project-a",
+                    scopeKey = "scope-production",
+                    generation = 2,
+                    catalogHash = "hash-2",
+                    channel = "production",
+                    selectionContextHash = "context-2",
+                ),
+            )
+            // The same catalog, checked again, selects again.
+            assertTrue(
+                service.acceptReleaseCatalog(
+                    catalogId = "project-a",
+                    scopeKey = "scope-production",
+                    generation = 2,
+                    catalogHash = "hash-2",
+                    channel = "production",
+                    selectionContextHash = "context-2",
+                ),
+            )
         }
 
     @Test
@@ -878,6 +1034,13 @@ class BundleFileStorageServiceTest {
                     isolationKey = TEST_ISOLATION_KEY,
                     stagingBundleId = bundleDir.name,
                     stagingSelection = oldSelection,
+                    pendingTransition =
+                        PendingSelectionTransition(
+                            fromReleaseId = "release-zero",
+                            fromBundleId = "bundle-zero",
+                            toReleaseId = "release-one",
+                            toBundleId = bundleDir.name,
+                        ),
                 ),
             )
             assertTrue(
@@ -904,6 +1067,45 @@ class BundleFileStorageServiceTest {
             assertTrue(bundleDir.isDirectory)
             assertEquals(newSelection, loadMetadata(rootDir)?.stagingSelection)
             assertFalse(loadMetadata(rootDir)?.verificationPending ?: true)
+            // The launch reports the adopted Release as the one applied.
+            assertEquals(
+                PendingSelectionTransition("release-zero", "bundle-zero", "release-two", bundleDir.name),
+                loadMetadata(rootDir)?.pendingTransition,
+            )
+        }
+
+    @Test
+    fun `a committed selection makes another scope's selection stale`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder("selection-across-scopes")
+            val service = createService(rootDir)
+            val bundleDir = createBundleDir(rootDir, "bundle-one")
+            writeFile(bundleDir, "index.android.bundle")
+            writeManifest(bundleDir, listOf("index.android.bundle"))
+            writeMetadata(
+                rootDir,
+                BundleMetadata(isolationKey = TEST_ISOLATION_KEY, stagingBundleId = bundleDir.name),
+            )
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 1, "hash-1", "production", "context-1"))
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-beta", 1, "hash-beta", "beta", "context-beta"))
+            val beta =
+                PersistedSelection(
+                    kind = "BUNDLE",
+                    releaseId = "release-beta",
+                    bundleId = bundleDir.name,
+                    catalogId = "project-a",
+                    scopeKey = "scope-beta",
+                    generation = 1,
+                    catalogHash = "hash-beta",
+                    channel = "beta",
+                    selectionContextHash = "context-beta",
+                )
+
+            assertTrue(service.commitReleaseSelection(beta))
+
+            // A production check kept from before the beta commit no longer stages.
+            assertFalse(service.isReleaseSelectionCurrent("project-a", "scope-production", 1, "hash-1", "production", "context-1"))
+            assertTrue(service.isReleaseSelectionCurrent("project-a", "scope-beta", 1, "hash-beta", "beta", "context-beta"))
         }
 
     @Test
@@ -1726,6 +1928,73 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    fun `artifact protocol v2 rejects a file URL that is not absolute HTTP(S)`() =
+        runBlocking {
+            for (fileUrl in listOf("https://", "file:///tmp/payload", "ftp://cdn.example.com/index.android.bundle")) {
+                val root = temporaryFolder.newFolder()
+                val hashes = mapOf("index.android.bundle" to sha256(root, "bundle"))
+                val manifest = manifestJson(bundleId = "target", assets = hashes)
+                val downloads = BinaryMappingDownloadService(mapOf(MANIFEST_URL to manifest.toByteArray()))
+
+                val error =
+                    runCatching {
+                        createService(
+                            root,
+                            downloadService = downloads,
+                            builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+                        ).updateBundle(
+                            bundleId = "target",
+                            manifestUrl = MANIFEST_URL,
+                            manifestFileHash = sha256(root, manifest),
+                            assets = emptyMap(),
+                            fileResolver = RecordingArtifactFileResolver { fileUrl },
+                            progressCallback = {},
+                        )
+                    }.exceptionOrNull()
+
+                assertUpdateFailure(
+                    error,
+                    "INVALID_FILE_URL",
+                    UpdateFailure.download(UpdateFailureReason.INVALID_RESPONSE).copy(resource = UpdateFailureResource.FILE),
+                )
+                assertEquals(listOf(MANIFEST_URL), downloads.calls)
+            }
+        }
+
+    @Test
+    fun `artifact protocol v2 reports a malformed files response as an invalid response`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder()
+            val manifest = manifestJson(bundleId = "target", assets = mapOf("index.android.bundle" to sha256(root, "bundle")))
+            val resolver =
+                object : ArtifactFileResolver {
+                    override suspend fun resolve(paths: List<String>): Map<String, ResolvedArtifactFile> =
+                        throw InvalidUpdateResponseException("Artifact files response has no files")
+                }
+
+            val error =
+                runCatching {
+                    createService(
+                        root,
+                        downloadService = BinaryMappingDownloadService(mapOf(MANIFEST_URL to manifest.toByteArray())),
+                        builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+                    ).updateBundle(
+                        bundleId = "target",
+                        manifestUrl = MANIFEST_URL,
+                        manifestFileHash = sha256(root, manifest),
+                        assets = emptyMap(),
+                        fileResolver = resolver,
+                        progressCallback = {},
+                    )
+                }.exceptionOrNull()
+
+            assertEquals(
+                UpdateFailure.download(UpdateFailureReason.INVALID_RESPONSE).copy(resource = UpdateFailureResource.FILE),
+                (error as HotUpdaterException).failure,
+            )
+        }
+
+    @Test
     fun `artifact protocol v2 asks for no file when it takes the archive`() =
         runBlocking {
             val root = temporaryFolder.newFolder("artifact-files-archive")
@@ -2437,7 +2706,6 @@ class BundleFileStorageServiceTest {
                 }
             service = createService(staleRoot, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
             assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 1, "hash-1", "production", "context-1"))
-            assertTrue(service.stageReleaseSelection(releaseSelection("release-one", "target", 1, "hash-1", "context-1")))
 
             val staleResult =
                 runCatching {
@@ -2446,11 +2714,64 @@ class BundleFileStorageServiceTest {
                         MANIFEST_URL,
                         sha256(staleRoot, manifest),
                         mapOf("index.android.bundle" to ChangedAssetDescriptor(BUNDLE_URL, hash)),
+                        selection = releaseSelection("release-one", "target", 1, "hash-1", "context-1"),
                     ) {}
                 }.exceptionOrNull()
 
             assertTrue("Expected a stale selection, got $staleResult", staleResult is StaleReleaseSelectionException)
             assertNull(loadMetadata(staleRoot)?.stagingBundleId)
+        }
+
+    @Test
+    fun `a selection stays with its own staging`() =
+        runBlocking {
+            val root = temporaryFolder.newFolder("selection-per-staging")
+            val hash = sha256(root, BUNDLE_CONTENT)
+            val manifest = manifestJson("target", mapOf("index.android.bundle" to hash))
+            val served =
+                BinaryMappingDownloadService(
+                    mapOf(MANIFEST_URL to manifest.toByteArray(), BUNDLE_URL to BUNDLE_CONTENT.toByteArray()),
+                )
+            var failNext = true
+            val downloads =
+                object : DownloadService {
+                    override suspend fun downloadFile(
+                        fileUrl: URL,
+                        destination: File,
+                        fileSizeCallback: ((Long) -> Unit)?,
+                        progressCallback: (DownloadProgress) -> Unit,
+                    ): DownloadResult {
+                        if (failNext) {
+                            failNext = false
+                            return DownloadResult.Error(java.io.IOException("offline"))
+                        }
+                        return served.downloadFile(fileUrl, destination, fileSizeCallback, progressCallback)
+                    }
+                }
+            val service = createService(root, downloadService = downloads, builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()))
+            assertTrue(service.acceptReleaseCatalog("project-a", "scope-production", 1, "hash-1", "production", "context-1"))
+            val assets = mapOf("index.android.bundle" to ChangedAssetDescriptor(BUNDLE_URL, hash))
+
+            val failed =
+                runCatching {
+                    service.updateBundle(
+                        "target",
+                        MANIFEST_URL,
+                        sha256(root, manifest),
+                        assets,
+                        selection = releaseSelection("release-one", "target", 1, "hash-1", "context-1"),
+                    ) {}
+                }
+            assertTrue(failed.isFailure)
+
+            // A later staging of the same bundle without a selection stages a
+            // bare bundle, not the failed staging's Release.
+            service.updateBundle("target", MANIFEST_URL, sha256(root, manifest), assets) {}
+            val staging = loadMetadata(root)?.stagingSelection
+            assertEquals("target", staging?.bundleId)
+            assertNull(staging?.releaseId)
+            // A check from before that staging no longer stages over it.
+            assertFalse(service.isReleaseSelectionCurrent("project-a", "scope-production", 1, "hash-1", "production", "context-1"))
         }
 
     /** Installs bundle "target" with one file, returning the failure, if any. */

@@ -58,7 +58,41 @@ private func hotUpdaterGetMinBundleId() -> String {
     private let recoveryManager: HotUpdaterRecoveryManager
     private let releaseCatalogCache: ReleaseCatalogCacheService
     private let keyValueStorage: KeyValueStorageService
-    private var currentLaunchSelection: LaunchSelection?
+    // Read by native update checks on other threads while React Native sets it.
+    private let launchSelectionLock = NSLock()
+    private var launchSelectionValue: LaunchSelection?
+    private var currentLaunchSelection: LaunchSelection? {
+        get {
+            launchSelectionLock.lock()
+            defer { launchSelectionLock.unlock() }
+            return launchSelectionValue
+        }
+        set {
+            launchSelectionLock.lock()
+            launchSelectionValue = newValue
+            launchSelectionLock.unlock()
+        }
+    }
+    // The selection React Native runs in this process. A channel reset clears
+    // currentLaunchSelection, so React Native's next read picks the default
+    // channel's bundle, but the running bundle stays until a reload.
+    private var runningLaunchSelectionValue: LaunchSelection?
+    private var runningLaunchSelection: LaunchSelection? {
+        get {
+            launchSelectionLock.lock()
+            defer { launchSelectionLock.unlock() }
+            return runningLaunchSelectionValue
+        }
+        set {
+            launchSelectionLock.lock()
+            runningLaunchSelectionValue = newValue
+            launchSelectionLock.unlock()
+        }
+    }
+    // Serializes the launch's bundle selection with the update check's read
+    // of it, and with a channel reset or built-in commit, which delete
+    // downloaded bundles.
+    private let launchPreparationLock = LaunchPreparationLock()
     private var launchStartObservers: [NSObjectProtocol] = []
 
     private static let DEFAULT_CHANNEL = "production"
@@ -153,7 +187,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         if let override = HotUpdaterConfig.shared.channel, !override.isEmpty {
             return override
         }
-        return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_CHANNEL") as? String ?? Self.DEFAULT_CHANNEL
+        return HotUpdaterConfig.shared.infoValue(forKey: "HOT_UPDATER_CHANNEL") ?? Self.DEFAULT_CHANNEL
     }
 
     public static func minBundleId() -> String {
@@ -173,7 +207,7 @@ private func hotUpdaterGetMinBundleId() -> String {
 
         // Get fingerprint hash from programmatic override or Info.plist
         let fingerprintHash = HotUpdaterConfig.shared.fingerprintHash
-            ?? Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
+            ?? HotUpdaterConfig.shared.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
 
         // Get app version and channel
         let appVersion = self.appVersion ?? "unknown"
@@ -202,9 +236,8 @@ private func hotUpdaterGetMinBundleId() -> String {
            !channel.isEmpty {
             return channel
         }
-        if let override = HotUpdaterConfig.shared.channel, !override.isEmpty {
-            return override
-        }
+        // A runtime channel switch outranks the default channel, which a
+        // programmatic `configure(channel:)` only replaces, as on Android.
         if let savedChannel = try? preferences.getItem(forKey: Self.CHANNEL_STORAGE_KEY),
            !savedChannel.isEmpty {
             return savedChannel
@@ -225,7 +258,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         if let override = HotUpdaterConfig.shared.fingerprintHash, !override.isEmpty {
             return override
         }
-        return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
+        return HotUpdaterConfig.shared.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
     }
 
     // MARK: - Cohort Management
@@ -243,9 +276,11 @@ private func hotUpdaterGetMinBundleId() -> String {
     /**
      * Gets the URL to the bundle file.
      * @param bundle instance to lookup the JavaScript bundle resource. Defaults to Bundle.main.
+     *   It is recorded in `HotUpdaterConfig.shared.bundle` for reloads and Info.plist keys.
      * @return URL to the bundle or nil
      */
     public func bundleURL(bundle: Bundle = Bundle.main) -> URL? {
+        HotUpdaterConfig.shared.bundle = bundle
         return prepareLaunchIfNeeded(bundle: bundle).bundleURL
     }
     
@@ -263,12 +298,24 @@ private func hotUpdaterGetMinBundleId() -> String {
     public func updateBundle(_ params: [AnyHashable: Any]?,
                                          resolver resolve: @escaping RCTPromiseResolveBlock,
                                          rejecter reject: @escaping RCTPromiseRejectBlock) {
+        updateBundle(params, onProgress: nil, onFilesResponse: nil, resolver: resolve, rejecter: reject)
+    }
+
+    /**
+     * `updateBundle`, also reporting progress (0 to 1) to `onProgress` on the
+     * main thread, and each artifact files response to `onFilesResponse`.
+     */
+    func updateBundle(_ params: [AnyHashable: Any]?,
+                      onProgress: ((Double) -> Void)?,
+                      onFilesResponse: ((Int, String?) -> Void)?,
+                      resolver resolve: @escaping RCTPromiseResolveBlock,
+                      rejecter reject: @escaping RCTPromiseRejectBlock) {
         // Legacy: artifact protocol v1, where every file comes with its URL.
         // JavaScript from the first protocol v2 SDK also sends `filesUrl`
         // here, with only the Hermes patch in `assets`; its OTA Bundles must
         // still install.
-        stage(params, resolver: resolve, rejecter: reject) { data, reject in
-            switch Self.parseFileResolver(data, required: false) {
+        stage(params, onProgress: onProgress, resolver: resolve, rejecter: reject) { data, reject in
+            switch Self.parseFileResolver(data, required: false, onResponse: onFilesResponse) {
             case .failure(let error):
                 reject("INVALID_FILE_URL", error.localizedDescription, error)
                 return nil
@@ -292,8 +339,20 @@ private func hotUpdaterGetMinBundleId() -> String {
     public func installArtifact(_ params: [AnyHashable: Any]?,
                                 resolver resolve: @escaping RCTPromiseResolveBlock,
                                 rejecter reject: @escaping RCTPromiseRejectBlock) {
-        stage(params, resolver: resolve, rejecter: reject) { data, reject in
-            Self.parseArtifactInstall(data, rejecter: reject)
+        installArtifact(params, onProgress: nil, onFilesResponse: nil, resolver: resolve, rejecter: reject)
+    }
+
+    /**
+     * `installArtifact`, also reporting progress (0 to 1) to `onProgress` on
+     * the main thread, and each artifact files response to `onFilesResponse`.
+     */
+    func installArtifact(_ params: [AnyHashable: Any]?,
+                         onProgress: ((Double) -> Void)?,
+                         onFilesResponse: ((Int, String?) -> Void)?,
+                         resolver resolve: @escaping RCTPromiseResolveBlock,
+                         rejecter reject: @escaping RCTPromiseRejectBlock) {
+        stage(params, onProgress: onProgress, resolver: resolve, rejecter: reject) { data, reject in
+            Self.parseArtifactInstall(data, onFilesResponse: onFilesResponse, rejecter: reject)
         }
     }
 
@@ -303,6 +362,7 @@ private func hotUpdaterGetMinBundleId() -> String {
     /// assets and file resolver `plan` returns; `plan` rejects and returns nil
     /// when its own parameters are invalid.
     private func stage(_ params: [AnyHashable: Any]?,
+                       onProgress: ((Double) -> Void)?,
                        resolver resolve: @escaping RCTPromiseResolveBlock,
                        rejecter reject: @escaping RCTPromiseRejectBlock,
                        plan: ([AnyHashable: Any], RCTPromiseRejectBlock) -> StagePlan?) {
@@ -355,7 +415,7 @@ private func hotUpdaterGetMinBundleId() -> String {
                 return
             }
             let selection = (data["selection"] as? [String: Any]).flatMap(Self.parseSelection)
-            if let selection, !bundleStorage.stageReleaseSelection(selection) {
+            if let selection, !bundleStorage.isSelectionCurrent(selection) {
                 // Not an update failure, so the rejection carries no stage or reason.
                 let error = StaleReleaseSelectionError() as NSError
                 reject("UNKNOWN_ERROR", error.localizedDescription, error)
@@ -368,7 +428,7 @@ private func hotUpdaterGetMinBundleId() -> String {
             NSLog("[HotUpdaterImpl] updateBundle called with bundleId: \(bundleId), manifestUrl: \(manifestUrl.absoluteString)")
 
             // Heavy work is delegated to bundle storage service with safe error handling
-            bundleStorage.updateBundle(bundleId: bundleId, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, archiveUrl: archiveUrl, assets: planned.assets, fileResolver: planned.fileResolver, progressHandler: { payload in
+            bundleStorage.updateBundle(bundleId: bundleId, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, archiveUrl: archiveUrl, assets: planned.assets, fileResolver: planned.fileResolver, selection: selection, progressHandler: { payload in
                 DispatchQueue.main.async {
                     NotificationCenter.default.post(
                         name: .updateProgressDidChange,
@@ -379,6 +439,7 @@ private func hotUpdaterGetMinBundleId() -> String {
                     if let callback = progressCallback {
                         callback([payload.progress])
                     }
+                    onProgress?(payload.progress)
                 }
             }) { [weak self] result in
                 guard let self = self else {
@@ -465,7 +526,8 @@ private func hotUpdaterGetMinBundleId() -> String {
     /// by one, with the update check's headers and timeout; nil when
     /// `filesUrl` is missing and not `required`.
     private static func parseFileResolver(_ data: [AnyHashable: Any],
-                                          required: Bool) -> Result<ArtifactFileResolver?, NSError> {
+                                          required: Bool,
+                                          onResponse: ((Int, String?) -> Void)?) -> Result<ArtifactFileResolver?, NSError> {
         let filesUrlString = data["filesUrl"] as? String ?? ""
         if filesUrlString.isEmpty && !required {
             return .success(nil)
@@ -480,16 +542,22 @@ private func hotUpdaterGetMinBundleId() -> String {
             .compactMapValues { $0 as? String }
         let timeout = (data["requestTimeout"] as? NSNumber).map { $0.doubleValue / 1000 }
             .flatMap { $0 > 0 ? $0 : nil } ?? HTTPArtifactFileResolver.defaultTimeout
-        return .success(HTTPArtifactFileResolver(filesUrl: filesUrl, headers: headers, timeout: timeout))
+        return .success(HTTPArtifactFileResolver(
+            filesUrl: filesUrl,
+            headers: headers,
+            timeout: timeout,
+            onResponse: onResponse
+        ))
     }
 
     /// Artifact protocol v2: the Hermes patch as the only planned asset, and
     /// the resolver that asks `filesUrl` for the files native downloads one
     /// by one.
     private static func parseArtifactInstall(_ data: [AnyHashable: Any],
+                                             onFilesResponse: ((Int, String?) -> Void)?,
                                              rejecter reject: RCTPromiseRejectBlock) -> StagePlan? {
         let fileResolver: ArtifactFileResolver?
-        switch parseFileResolver(data, required: true) {
+        switch parseFileResolver(data, required: true, onResponse: onFilesResponse) {
         case .failure(let error):
             reject("INVALID_FILE_URL", error.localizedDescription, error)
             return nil
@@ -644,7 +712,11 @@ private func hotUpdaterGetMinBundleId() -> String {
             reject("INVALID_SELECTION", error.localizedDescription, error)
             return
         }
-        resolve(bundleStorage.commitReleaseSelection(selection))
+        // A built-in commit deletes every downloaded bundle, so it runs under
+        // the launch lock as a channel reset does.
+        resolve(launchPreparationLock.commitReleaseSelection(selection, in: bundleStorage) {
+            self.currentLaunchSelection = nil
+        })
     }
 
     /**
@@ -764,6 +836,13 @@ private func hotUpdaterGetMinBundleId() -> String {
         return nil
     }
 
+    /// The bundle this process runs. A channel reset clears
+    /// currentLaunchSelection for the next launch, but the running bundle
+    /// stays until React Native reloads.
+    func runningBundleId() -> String? {
+        (currentLaunchSelection ?? runningLaunchSelection)?.launchedBundleId
+    }
+
     /**
      * Gets the current manifest from bundle storage.
      */
@@ -777,21 +856,57 @@ private func hotUpdaterGetMinBundleId() -> String {
 
     public func resetLaunchPreparation() {
         currentLaunchSelection = nil
+        runningLaunchSelection = nil
+    }
+
+    // MARK: - Native Update Check
+
+    /**
+     * The bundle the native update check counts as running: the launched one,
+     * or before React Native starts, the one its launch would pick. Preparing
+     * the launch here would keep a forced update staged before React Native
+     * starts from applying in this session.
+     */
+    func bundleIdForUpdateCheck() -> String? {
+        launchPreparationLock.withLock {
+            if let launchSelection = currentLaunchSelection ?? runningLaunchSelection {
+                return launchSelection.launchedBundleId
+            }
+            // Settles what the previous process left first, so the check reads the
+            // selection, launch state, and crash history this launch will use.
+            bundleStorage.settlePreviousLaunch(pendingRecovery: recoveryManager.consumePendingCrashRecovery)
+            return bundleStorage.peekLaunchBundleId()
+        }
+    }
+
+    func releaseCatalogCacheValue(_ partition: String) -> String? {
+        releaseCatalogCache.get(partition: partition)
+    }
+
+    func setReleaseCatalogCacheValue(_ partition: String, value: String) -> Bool {
+        releaseCatalogCache.set(partition: partition, value: value)
+    }
+
+    func removeReleaseCatalogCacheValue(_ partition: String) {
+        releaseCatalogCache.remove(partition: partition)
     }
 
     @objc
     public func resetChannel(_ resolver: @escaping RCTPromiseResolveBlock,
                              rejecter reject: @escaping RCTPromiseRejectBlock) {
-        let result = bundleStorage.resetChannel()
-
-        switch result {
-        case .success(let success):
+        // Under the launch lock, so React Native never selects a bundle the
+        // reset is about to delete.
+        let result = launchPreparationLock.resetChannel(in: bundleStorage) {
             do {
                 try preferences.setItem(nil, forKey: Self.CHANNEL_STORAGE_KEY)
             } catch {
                 NSLog("[HotUpdaterImpl] Failed to clear channel override: \(error)")
             }
             self.currentLaunchSelection = nil
+        }
+
+        switch result {
+        case .success(let success):
             resolver(success)
         case .failure(let error):
             let normalizedCode = HotUpdaterImpl.normalizeErrorCode(from: error)
@@ -801,6 +916,10 @@ private func hotUpdaterGetMinBundleId() -> String {
     }
 
     private func prepareLaunchIfNeeded(bundle: Bundle) -> LaunchSelection {
+        launchPreparationLock.withLock { prepareLaunchLocked(bundle: bundle) }
+    }
+
+    private func prepareLaunchLocked(bundle: Bundle) -> LaunchSelection {
         if let currentLaunchSelection {
             return currentLaunchSelection
         }
@@ -811,6 +930,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         recoveryManager.startMonitoring(bundleId: selection.launchedBundleId, shouldRollback: selection.shouldRollbackOnCrash) { [weak self] launchedBundleId in
             self?.bundleStorage.markLaunchCompleted(bundleId: launchedBundleId)
         }
+        runningLaunchSelection = selection
         currentLaunchSelection = selection
         return selection
     }

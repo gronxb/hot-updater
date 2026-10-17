@@ -54,6 +54,7 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 @protocol HotUpdaterConfigInterface <NSObject>
+@property (nonatomic, strong) NSBundle *bundle;
 - (void)configureWithFingerprintHash:(nullable NSString *)fingerprintHash
                            publicKey:(nullable NSString *)publicKey
                              channel:(nullable NSString *)channel
@@ -61,9 +62,19 @@ NS_ASSUME_NONNULL_BEGIN
     NS_SWIFT_NAME(configureWithFingerprintHash(_:publicKey:channel:isolationKey:));
 @end
 
+// The TurboModule's channel reset and event replay, which go through the
+// Swift native update check.
+@protocol HotUpdaterNativeUpdatesInterface <NSObject>
+- (void)resetChannelWithImpl:(id<HotUpdaterImplInterface>)impl
+                    resolver:(RCTPromiseResolveBlock)resolve
+                    rejecter:(RCTPromiseRejectBlock)reject;
+- (nullable NSString *)takeEventsWithImpl:(id<HotUpdaterImplInterface>)impl;
+@end
+
 // Implemented in HotUpdaterInterface.swift.
 FOUNDATION_EXTERN id<HotUpdaterImplInterface> HotUpdaterMakeImpl(void);
 FOUNDATION_EXTERN NSString *_Nullable HotUpdaterAppVersion(void);
 FOUNDATION_EXTERN id<HotUpdaterConfigInterface> HotUpdaterSharedConfig(void);
+FOUNDATION_EXTERN id<HotUpdaterNativeUpdatesInterface> HotUpdaterNativeUpdates(void);
 
 NS_ASSUME_NONNULL_END

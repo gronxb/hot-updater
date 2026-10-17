@@ -1,7 +1,6 @@
 import { useHotUpdaterStore } from "@hot-updater/react-native";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Alert } from "react-native";
-import BootSplash from "react-native-bootsplash";
 import { useSnapshot } from "valtio";
 
 import type { E2eScreenState } from "../e2eRuntimeConfig";
@@ -95,14 +94,6 @@ export const useE2eRuntimeModel = (scenarioMarker: string): E2eRuntimeModel => {
       isMounted = false;
     };
   }, [initialCohort]);
-
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      BootSplash.hide({ fade: false }).catch(() => undefined);
-    }, 1000);
-
-    return () => clearTimeout(timeout);
-  }, []);
 
   useEffect(() => {
     let active = true;

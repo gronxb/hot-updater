@@ -16,6 +16,7 @@ import {
 
 const context: MobileContext = {
   platform: "ios",
+  track: "greenfield",
   deviceId: "dedicated-simulator",
   session: "job-profile-ios",
   runId: "job-123",

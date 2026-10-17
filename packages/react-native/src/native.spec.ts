@@ -1,5 +1,5 @@
 import { INVALID_COHORT_ERROR_MESSAGE } from "@hot-updater/protocol";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const nativeModuleMock = vi.hoisted(() => {
   const getManifest = vi.fn<() => Record<string, unknown> | string>();
@@ -34,15 +34,15 @@ const nativeModuleMock = vi.hoisted(() => {
   };
 });
 
+const platformMock = vi.hoisted(() => ({ OS: "ios" }));
+
 vi.mock("react-native", () => ({
   NativeEventEmitter: class {
     addListener() {
       return { remove: () => {} };
     }
   },
-  Platform: {
-    OS: "ios",
-  },
+  Platform: platformMock,
 }));
 
 vi.mock("./specs/NativeHotUpdater", () => ({
@@ -1007,5 +1007,61 @@ describe("notifyAppReady", () => {
     const { getCohort } = await import("./native");
 
     expect(() => getCohort()).toThrow(INVALID_COHORT_ERROR_MESSAGE);
+  });
+});
+
+describe("reload", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    nativeModuleMock.reload.mockReset();
+    nativeModuleMock.reloadProcess.mockReset();
+  });
+
+  afterEach(() => {
+    platformMock.OS = "ios";
+  });
+
+  it("restarts the process on Android", async () => {
+    platformMock.OS = "android";
+    const { reload } = await import("./native");
+
+    await reload();
+
+    expect(nativeModuleMock.reloadProcess).toHaveBeenCalledTimes(1);
+    expect(nativeModuleMock.reload).not.toHaveBeenCalled();
+  });
+
+  it("reloads React Native in place on iOS", async () => {
+    const { reload } = await import("./native");
+
+    await reload();
+
+    expect(nativeModuleMock.reload).toHaveBeenCalledTimes(1);
+    expect(nativeModuleMock.reloadProcess).not.toHaveBeenCalled();
+  });
+});
+
+describe("takeNativeUpdateEvents", () => {
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    Reflect.deleteProperty(nativeModuleMock, "takeNativeUpdateEvents");
+  });
+
+  it("returns the events native took", async () => {
+    const takeNativeUpdateEvents = vi.fn(() => '[{"type":"x"}]');
+    Object.assign(nativeModuleMock, { takeNativeUpdateEvents });
+    const native = await import("./native");
+
+    expect(native.takeNativeUpdateEvents()).toBe('[{"type":"x"}]');
+    expect(takeNativeUpdateEvents).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null on native built from an earlier SDK", async () => {
+    const native = await import("./native");
+
+    expect(native.takeNativeUpdateEvents()).toBeNull();
   });
 });

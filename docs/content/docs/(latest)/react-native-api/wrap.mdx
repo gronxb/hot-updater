@@ -136,8 +136,8 @@ update becomes active on the next runtime start or after a later
 `hotUpdater.reload()` call.
 
 This option only controls `wrap`. `updateBundle()` never reloads the app by
-itself. The reload follows
-[`hotUpdater.setReloadBehavior()`](/docs/react-native-api/setReloadBehavior).
+itself. The reload works as [`hotUpdater.reload()`](/docs/react-native-api/reload)
+does.
 
 ```tsx title="App.tsx"
 export default hotUpdater.wrap({

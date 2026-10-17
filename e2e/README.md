@@ -1,6 +1,6 @@
 # End-to-end tests
 
-Run the same 32 OTA, Remote Config, and Console Insights scenarios locally and in the E2E bot
+Run the same 33 OTA, Remote Config, and Console Insights scenarios locally and in the E2E bot
 with `pnpm -w e2e`. Local mode prepares the example app, a PGlite provider and
 real S3-compatible storage. It requires no provider account, private bot setup,
 or model credentials: the scenarios are deterministic `e2e` tests, described in
@@ -62,6 +62,32 @@ Repeat `--scenario` to select several. With no selection, `--suite default`
 runs all scenarios. `HOT_UPDATER_E2E_SCENARIOS` also accepts a comma-separated
 selection. Results include the normalized `hot-updater-result.json`, SDK report,
 scenario diagnostics and Console Insights evidence.
+
+## Brownfield track
+
+`--track brownfield` runs the same scenarios against the example packaged as
+an XCFramework and an AAR inside the native apps in
+[`examples/brownfield-host`](../examples/brownfield-host), as the
+[brownfield guide](<../docs/content/docs/(latest)/guides/brownfield.mdx>)
+describes. The host apps reuse the example's bundle ID, package, display name,
+version, and deep-link scheme, and show React Native on every launch, so the
+scenarios, the control server, and the bot's device handling run unchanged.
+
+```sh
+pnpm -w e2e -- --platform ios --track brownfield --device <simulator-UDID>
+pnpm -w e2e -- --platform android --track brownfield --device emulator-5554
+```
+
+The track runs the `brownfield` suite,
+[`brownfield-scenario-names.json`](brownfield-scenario-names.json): every
+default scenario except the three a native app shell cannot host, a headless
+launch and the two that reload from JavaScript, plus the two brownfield-only
+scenarios of the native update check (`HotUpdaterInstance`), a required update
+staged before React Native starts and a minor one that applies at the next
+start. `e2e:build --track brownfield`
+packages the frameworks with `brownfield package:ios` and the AAR into
+`examples/v0.85.0/android/brownfieldlib/build/maven`, then builds the host
+apps.
 
 ## Local preparation and cleanup
 
