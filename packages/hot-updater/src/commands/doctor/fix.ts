@@ -79,6 +79,7 @@ const REPAIRS: readonly {
       "MISSING_FINGERPRINT_HASH",
       "FINGERPRINT_HASH_MISMATCH",
       "FINGERPRINT_JSON_STALE",
+      "FINGERPRINT_ENGINE_UNRECORDED",
     ],
     writesNativeFiles: true,
     run: async (_issues, context, all) => {
