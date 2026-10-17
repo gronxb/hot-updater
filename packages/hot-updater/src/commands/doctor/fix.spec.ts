@@ -162,6 +162,33 @@ describe("applyDoctorFixes", () => {
     expect(fixesWroteNativeFiles(fixes)).toBe(false);
   });
 
+  it("never records a changed fingerprint engine: it leaves fingerprint.json to the user", async () => {
+    const fixes = await applyDoctorFixes(
+      issues("FINGERPRINT_ENGINE_CHANGED", "FINGERPRINT_JSON_STALE"),
+      context(),
+    );
+
+    expect(fixes).toEqual([
+      {
+        repair: "fingerprint",
+        codes: ["FINGERPRINT_JSON_STALE"],
+        status: "skipped",
+        wrote: [],
+        native: false,
+        note: expect.stringContaining("Resolve FINGERPRINT_ENGINE_CHANGED"),
+      },
+      {
+        repair: "fingerprint-engine",
+        codes: ["FINGERPRINT_ENGINE_CHANGED"],
+        status: "skipped",
+        wrote: [],
+        native: false,
+        note: expect.stringContaining("never rewrites fingerprint.json"),
+      },
+    ]);
+    expect(syncFingerprintFiles).not.toHaveBeenCalled();
+  });
+
   it("skips native-file repairs on an Expo project whose native folders prebuild generates, judged in the run's directory", async () => {
     vi.mocked(isExpoCNG).mockReturnValue(true);
     vi.mocked(isProjectFileTracked).mockReturnValue(false);

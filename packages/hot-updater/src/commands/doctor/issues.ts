@@ -15,6 +15,7 @@ export interface NativeCheckIssue {
     | "MISSING_ANDROID_BUNDLE_PROVIDER"
     | "MISSING_FINGERPRINT_JSON"
     | "FINGERPRINT_JSON_STALE"
+    | "FINGERPRINT_ENGINE_CHANGED"
     | "FINGERPRINT_GENERATION_FAILED"
     | "MISSING_CLIENT_PLUGIN"
     | "CLIENT_PLUGINS_UNCHECKED"
@@ -94,6 +95,7 @@ export type DoctorIssueCode =
 export interface DoctorFix {
   readonly repair:
     | "fingerprint"
+    | "fingerprint-engine"
     | "public-key"
     | "orphan-public-key"
     | "release-catalogs"

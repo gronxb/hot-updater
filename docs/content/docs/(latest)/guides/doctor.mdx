@@ -141,10 +141,10 @@ For fingerprint projects, doctor computes the project's fingerprint as
 seconds. When a platform's fingerprint differs from `fingerprint.json`, doctor
 reports `FINGERPRINT_JSON_STALE` and lists the sources that changed, in
 `changes` with `--json`. When the hash changed because the fingerprint engine
-changed rather than a native input, it says so instead. When it cannot compute
-the fingerprint, for example because an Expo project lacks
-`@expo/fingerprint`, it reports `FINGERPRINT_GENERATION_FAILED` with the
-reason.
+changed rather than a native input, it reports `FINGERPRINT_ENGINE_CHANGED`
+instead and names both engines. When it cannot compute the fingerprint, for
+example because an Expo project lacks `@expo/fingerprint`, it reports
+`FINGERPRINT_GENERATION_FAILED` with the reason.
 
 Fix missing or stale fingerprint settings with `fingerprint create`, or with
 `doctor --fix`, which runs the same repair:
@@ -195,8 +195,10 @@ native files it was built with. A replaced public key only reaches new builds;
 apps already installed keep the previous key and reject bundles signed with the
 configured one.
 
-`--fix` leaves an issue with more than one remedy to you, and never removes a
-public key. For `ORPHAN_PUBLIC_KEY`, remove the key with `keys remove` or enable
+`--fix` leaves an issue with more than one remedy to you. It never rewrites
+`fingerprint.json` for `FINGERPRINT_ENGINE_CHANGED`: go back to the engine
+`fingerprint.json` records to keep updating the apps you shipped, or run
+`fingerprint create` and rebuild them. It never removes a public key. For `ORPHAN_PUBLIC_KEY`, remove the key with `keys remove` or enable
 signing yourself: removing it turns off signature verification in the app,
 which is wrong when signing is set up where this machine cannot see it, such as
 an environment variable only CI sets.

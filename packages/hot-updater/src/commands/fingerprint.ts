@@ -79,24 +79,24 @@ export const handleCreateFingerprint = async () => {
     if (localFingerprint && result.fingerprint) {
       const fingerprintConfig = await ensureFingerprintConfig();
 
-      try {
-        for (const [platform, label] of [
-          ["ios", "iOS"],
-          ["android", "Android"],
-        ] as const) {
-          const before = localFingerprint[platform];
-          const after = result.fingerprint[platform];
-          if (!before || before.hash === after.hash) continue;
-          const engineChange = getFingerprintEngineChange(before, after);
-          if (engineChange) {
-            const { message, resolution } = describeFingerprintEngineChange(
-              engineChange,
-              label,
-            );
-            p.log.warn(message);
-            p.log.info(resolution);
-            continue;
-          }
+      for (const [platform, label] of [
+        ["ios", "iOS"],
+        ["android", "Android"],
+      ] as const) {
+        const before = localFingerprint[platform];
+        const after = result.fingerprint[platform];
+        if (!before || before.hash === after.hash) continue;
+        const engineChange = getFingerprintEngineChange(before, after);
+        if (engineChange) {
+          const { message, resolution } = describeFingerprintEngineChange(
+            engineChange,
+            label,
+          );
+          p.log.warn(message);
+          p.log.info(resolution);
+          continue;
+        }
+        try {
           showFingerprintDiff(
             await getFingerprintDiff(before, {
               platform,
@@ -104,9 +104,9 @@ export const handleCreateFingerprint = async () => {
             }),
             label,
           );
+        } catch {
+          p.log.warn(`Could not generate the ${label} fingerprint diff`);
         }
-      } catch {
-        p.log.warn("Could not generate fingerprint diff");
       }
     }
   } else if (fileChanged) {

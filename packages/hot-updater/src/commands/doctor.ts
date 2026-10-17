@@ -920,6 +920,7 @@ const promptServerBaseUrl = async () => {
 
 const FIX_DESCRIPTIONS: Record<DoctorFix["repair"], string> = {
   fingerprint: "Recreate fingerprint.json and the native fingerprint hashes",
+  "fingerprint-engine": "Record the changed fingerprint engine's hashes",
   "public-key": "Write the configured public key into the native files",
   "orphan-public-key": "Remove the public key from the native files",
   "release-catalogs": "Rebuild the stale release catalogs from their releases",
@@ -929,6 +930,7 @@ const FIX_DESCRIPTIONS: Record<DoctorFix["repair"], string> = {
 /** What each repair's writes are, in its output. */
 const WROTE_LABELS: Record<DoctorFix["repair"], string> = {
   fingerprint: "Path",
+  "fingerprint-engine": "Path",
   "public-key": "Path",
   "orphan-public-key": "Path",
   "release-catalogs": "Catalog",

@@ -40,11 +40,11 @@ const TEST_DIRS = [
 const NATIVE_FILES = {
   ios: [
     "*.podspec",
-    "ios/**/*.{h,hpp,m,mm,c,cc,cpp,swift}",
-    "apple/**/*.{h,hpp,m,mm,c,cc,cpp,swift}",
+    "ios/**/*.{h,hpp,hxx,m,mm,c,cc,cpp,cxx,swift}",
+    "apple/**/*.{h,hpp,hxx,m,mm,c,cc,cpp,cxx,swift}",
   ],
   android: [
-    "android/**/*.{java,kt,c,cc,cpp,h,hpp,gradle,kts}",
+    "android/**/*.{java,kt,c,cc,cpp,cxx,h,hpp,hxx,gradle,kts}",
     "android/**/CMakeLists.txt",
   ],
 } as const;
@@ -67,10 +67,28 @@ export type NativeDependency =
     }
   | { name: string; version: string };
 
+/**
+ * The folders under `dir` that hold a package of their own, such as an example
+ * app beside a library's podspec: their files belong to that package.
+ */
+const nestedPackages = async (dir: string): Promise<string[]> =>
+  (
+    await fg("**/package.json", {
+      cwd: dir,
+      ignore: [...GENERATED_DIRS],
+    })
+  )
+    .map((file) => path.posix.dirname(file))
+    .filter((folder) => folder !== ".")
+    .map((folder) => `${folder}/**`);
+
 /** A platform's native files in a folder autolinking points at. */
 const NATIVE_SOURCE_FILES = {
-  ios: ["*.podspec", "**/*.{h,hpp,m,mm,c,cc,cpp,swift}"],
-  android: ["**/*.{java,kt,c,cc,cpp,h,hpp,gradle,kts}", "**/CMakeLists.txt"],
+  ios: ["*.podspec", "**/*.{h,hpp,hxx,m,mm,c,cc,cpp,cxx,swift}"],
+  android: [
+    "**/*.{java,kt,c,cc,cpp,cxx,h,hpp,hxx,gradle,kts}",
+    "**/CMakeLists.txt",
+  ],
 } as const;
 
 /**
@@ -261,11 +279,16 @@ const readGradleFlags = async (
     if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("!")) {
       continue;
     }
-    const separator = trimmed.search(/[=:]/);
-    if (separator < 0) continue;
-    const key = trimmed.slice(0, separator).trim();
+    // A key ends at the first `=`, `:`, or whitespace, as Java properties
+    // read it; the value follows any whitespace and one `=` or `:`.
+    const end = trimmed.search(/[=:\s]/);
+    if (end < 0) continue;
+    const key = trimmed.slice(0, end);
     if (GRADLE_FLAGS.includes(key)) {
-      flags[`android:${key}`] = trimmed.slice(separator + 1).trim();
+      flags[`android:${key}`] = trimmed
+        .slice(end)
+        .replace(/^\s*[=:]?/, "")
+        .trim();
     }
   }
   return flags;
@@ -494,11 +517,15 @@ export const createInterfaceFingerprint = async (
           absolute: true,
           ignore: [...GENERATED_DIRS, ...TEST_DIRS],
         })),
-        ...(sourceDir && sourceDir !== root
+        ...(sourceDir
           ? await fg([...NATIVE_SOURCE_FILES[platform]], {
               cwd: sourceDir,
               absolute: true,
-              ignore: [...GENERATED_DIRS, ...TEST_DIRS],
+              ignore: [
+                ...GENERATED_DIRS,
+                ...TEST_DIRS,
+                ...(await nestedPackages(sourceDir)),
+              ],
             })
           : []),
       ].filter((file, index, all) => all.indexOf(file) === index);
