@@ -699,7 +699,7 @@ describe("readReactNativeInterface", () => {
       [
         "# comment",
         "org.gradle.jvmargs=-Xmx2048m",
-        "newArchEnabled=true",
+        "newArchEnabled",
         "hermesEnabled = true",
         "react.hermesV1Enabled: false",
         "hermesV1Enabled true",
@@ -717,7 +717,7 @@ describe("readReactNativeInterface", () => {
       "ios:hermes-engine": "250829098.0.10",
     });
     expect((await read("android")).settings).toEqual({
-      "android:newArchEnabled": "true",
+      "android:newArchEnabled": "",
       "android:hermesEnabled": "true",
       "android:react.hermesV1Enabled": "false",
       "android:hermesV1Enabled": "true",

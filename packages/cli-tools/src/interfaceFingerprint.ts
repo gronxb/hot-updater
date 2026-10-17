@@ -290,9 +290,10 @@ const readGradleFlags = async (
       continue;
     }
     // A key ends at the first `=`, `:`, or whitespace, as Java properties
-    // read it; the value follows any whitespace and one `=` or `:`.
-    const end = trimmed.search(/[=:\s]/);
-    if (end < 0) continue;
+    // read it; the value follows any whitespace and one `=` or `:`. A line
+    // with only a key sets it to an empty value.
+    const separator = trimmed.search(/[=:\s]/);
+    const end = separator < 0 ? trimmed.length : separator;
     const key = trimmed.slice(0, end);
     if (GRADLE_FLAGS.includes(key)) {
       flags[`android:${key}`] = trimmed
