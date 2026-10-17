@@ -1233,6 +1233,49 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `an instance that found every native slot taken records its launch before it counts as armed`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        // Main and seven named instances hold the eight native slots.
+        val manager = HotUpdaterRecoveryManager::class.java
+        val slots = manager.getDeclaredField("slots").apply { isAccessible = true }.get(null)
+        val taken =
+            slots.javaClass
+                .getDeclaredField("slots")
+                .apply { isAccessible = true }
+                .get(slots) as MutableMap<String, Int>
+        (1..7).forEach { taken["other-$it"] = it }
+        stagePending(context, widget, "widget-bundle")
+        val storedWhenArmed = mutableListOf<Boolean>()
+        // The watchdog starts once the launch counts as armed.
+        HotUpdaterRecoveryManager.watchdogAlarm = { _, _ -> storedWhenArmed += metadata(context, widget).launchInProgress }
+        var slotUpdates = 0
+        HotUpdaterRecoveryManager.nativeRecovery =
+            object : HotUpdaterNativeRecovery {
+                override fun updateSlot(
+                    slot: Int,
+                    crashMarkerPath: String,
+                    bundleId: String?,
+                    shouldRollback: Boolean,
+                    writesWhenVerified: Boolean,
+                ) {
+                    if (crashMarkerPath == crashMarker(context, widget).absolutePath) slotUpdates += 1
+                }
+
+                override fun attributeCrash(slot: Int) = Unit
+
+                override fun clearCrashAttribution() = Unit
+            }
+
+        HotUpdaterImpl(context, widget).getJSBundleFile()
+
+        // No slot writes a marker for the widget: a signal from the moment it
+        // is armed finds its launch unfinished in storage, which rolls it back.
+        assertEquals(0, slotUpdates)
+        assertEquals(listOf(true), storedWhenArmed.take(1))
+        assertTrue(metadata(context, widget).launchInProgress)
+    }
+
+    @Test
     fun `a verified launch's slot stops asking before storage records the verification`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, widget, "widget-bundle")

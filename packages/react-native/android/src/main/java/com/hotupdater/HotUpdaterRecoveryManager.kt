@@ -200,7 +200,12 @@ internal class HotUpdaterRecoveryManager(
             if (endedByAnotherInstance) return
             // The native slot asks for rollback before any file is written,
             // then the watchdog, then the launch is recorded in storage: a
-            // signal during either write still rolls the launch back.
+            // signal during either write still rolls the launch back. An
+            // instance that found every slot taken gets no marker from a
+            // signal, so its launch is recorded first: from the moment it
+            // counts as armed, a signal leaves it unfinished in storage.
+            val recordsFirst = !armed && slots.slotOf(name) == null
+            if (recordsFirst) markLaunchStarted()
             if (!armed) {
                 armed = true
                 updateNativeLaunchStateLocked()
@@ -208,7 +213,7 @@ internal class HotUpdaterRecoveryManager(
                     startRecoveryWatchdog()
                 }
             }
-            markLaunchStarted()
+            if (!recordsFirst) markLaunchStarted()
         }
     }
 

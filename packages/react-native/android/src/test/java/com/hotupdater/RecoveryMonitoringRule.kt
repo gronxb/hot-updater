@@ -70,6 +70,8 @@ class RecoveryMonitoringRule : ExternalResource() {
         // A JavaScript error a test claimed must not claim another test's crash.
         val slots = field(manager, "slots").get(null)
         field(slots.javaClass, "attributedName").set(slots, null)
+        // Each test's instances take the slots afresh, whichever tests ran before.
+        synchronized(slots) { (field(slots.javaClass, "slots").get(slots) as MutableMap<*, *>).clear() }
     }
 
     private fun field(
