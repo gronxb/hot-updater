@@ -60,6 +60,22 @@ describe("getOtaFingerprintOptions", () => {
       getExtraSourceIds("android", { ios: [IOS_ONLY_SOURCE] }),
     ).resolves.toEqual([]);
   });
+
+  it("hashes nativeVersion with @expo/fingerprint too", async () => {
+    const { extraSources } = await getOtaFingerprintOptions("ios", getCwd(), {
+      platform: "ios",
+      nativeVersion: 2,
+    });
+
+    expect(extraSources).toEqual([
+      {
+        type: "contents",
+        id: "nativeVersion",
+        contents: "2",
+        reasons: ["config"],
+      },
+    ]);
+  });
 });
 
 describe("appendFingerprintExtraSources", () => {

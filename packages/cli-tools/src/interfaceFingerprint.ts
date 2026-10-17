@@ -61,9 +61,9 @@ export type NativeDependency =
       /**
        * Where autolinking finds the platform's native code when it isn't the
        * package's `ios`/`android` folder: Android's `sourceDir`, or the
-       * folder of the iOS podspec.
+       * folder of the iOS podspec. An Expo module can name several.
        */
-      sourceDir?: string;
+      sourceDirs?: string[];
     }
   | { name: string; version: string };
 
@@ -226,13 +226,18 @@ const readExpoModules = async (
     modules.flatMap((module) => {
       const name = module.packageName;
       if (!name) return [];
-      const from =
-        module.projects?.[0]?.sourceDir ?? module.pods?.[0]?.podspecDir;
+      // Every Android project and iOS pod the module declares.
+      const sourceDirs = [
+        ...(module.projects ?? []).map(({ sourceDir }) => sourceDir),
+        ...(module.pods ?? []).map(({ podspecDir }) => podspecDir),
+      ].filter((dir): dir is string => Boolean(dir));
       return [
         (async (): Promise<NativeDependency> => {
-          const root = from ? await findPackageRoot(from, name) : null;
+          const root = sourceDirs[0]
+            ? await findPackageRoot(sourceDirs[0], name)
+            : null;
           return root
-            ? { name, root, ...(from ? { sourceDir: from } : {}) }
+            ? { name, root, sourceDirs }
             : { name, version: module.packageVersion ?? "unknown" };
         })(),
       ];
@@ -336,7 +341,9 @@ export const readReactNativeInterface = async ({
               dependency.platforms[platform],
             ),
           },
-        ]
+        ].map(({ sourceDir, ...rest }) =>
+          sourceDir ? { ...rest, sourceDirs: [sourceDir] } : rest,
+        )
       : [],
   );
   const linksExpoModules = dependencies.some(({ name }) => name === "expo");
@@ -524,30 +531,31 @@ export const createInterfaceFingerprint = async (
     const specs = found && found.length > 0 ? found : null;
     // The package's ios/android folders, and the folder autolinking reads
     // when the package points it elsewhere.
-    const sourceDir = dependency.sourceDir
-      ? await fs.realpath(dependency.sourceDir).catch(() => undefined)
-      : undefined;
-    const files =
-      specs ??
-      [
-        ...(await fg([...NATIVE_FILES[platform]], {
-          cwd: root,
-          absolute: true,
-          ignore: [...GENERATED_DIRS, ...TEST_DIRS],
-        })),
-        ...(sourceDir
-          ? await fg([...NATIVE_SOURCE_FILES[platform]], {
-              cwd: sourceDir,
-              absolute: true,
-              ignore: [
-                ...GENERATED_DIRS,
-                ...TEST_DIRS,
-                ...(await nestedPackages(sourceDir)),
-              ],
-            })
-          : []),
-      ].filter((file, index, all) => all.indexOf(file) === index);
-    for (const file of files) {
+    const files = specs ?? [
+      ...(await fg([...NATIVE_FILES[platform]], {
+        cwd: root,
+        absolute: true,
+        ignore: [...GENERATED_DIRS, ...TEST_DIRS],
+      })),
+    ];
+    if (!specs) {
+      for (const dir of dependency.sourceDirs ?? []) {
+        const sourceDir = await fs.realpath(dir).catch(() => undefined);
+        if (!sourceDir) continue;
+        files.push(
+          ...(await fg([...NATIVE_SOURCE_FILES[platform]], {
+            cwd: sourceDir,
+            absolute: true,
+            ignore: [
+              ...GENERATED_DIRS,
+              ...TEST_DIRS,
+              ...(await nestedPackages(sourceDir)),
+            ],
+          })),
+        );
+      }
+    }
+    for (const file of new Set(files)) {
       await addFile(
         file,
         specs ? "local-dependency-codegen-spec" : "local-dependency-native",

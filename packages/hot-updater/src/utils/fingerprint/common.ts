@@ -144,10 +144,23 @@ export async function getOtaFingerprintOptions(
       SourceSkips.ExpoConfigExtraSection |
       SourceSkips.ExpoConfigEASProject |
       SourceSkips.ExpoConfigSchemes,
-    extraSources: processExtraSources(
-      resolveExtraSources(options.extraSources, platform),
-      path,
-    ),
+    extraSources: [
+      ...processExtraSources(
+        resolveExtraSources(options.extraSources, platform),
+        path,
+      ),
+      // The interface engine hashes the same contents.
+      ...(options.nativeVersion === undefined
+        ? []
+        : [
+            {
+              type: "contents" as const,
+              id: "nativeVersion",
+              contents: String(options.nativeVersion),
+              reasons: ["config"],
+            },
+          ]),
+    ],
     debug: options.debug,
   };
 }
@@ -230,7 +243,10 @@ type OtaFingerprintOptions = {
   platforms: Array<"ios" | "android">;
   ignorePaths: string[];
   sourceSkips: number;
-  extraSources: ReturnType<typeof processExtraSources>;
+  extraSources: (
+    | ReturnType<typeof processExtraSources>[number]
+    | { type: "contents"; id: string; contents: string; reasons: string[] }
+  )[];
   debug?: boolean;
 };
 

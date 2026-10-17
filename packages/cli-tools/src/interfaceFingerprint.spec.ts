@@ -291,7 +291,7 @@ describe("createInterfaceFingerprint", () => {
         {
           name: "local-module",
           root: path.join(root, "packages/local-module"),
-          sourceDir: path.join(root, "packages/local-module/native/android"),
+          sourceDirs: [path.join(root, "packages/local-module/native/android")],
         },
       ],
     });
@@ -334,7 +334,7 @@ describe("createInterfaceFingerprint", () => {
         {
           name: "local-module",
           root: path.join(root, "packages/local-module"),
-          sourceDir: path.join(root, "packages/local-module"),
+          sourceDirs: [path.join(root, "packages/local-module")],
         },
       ],
     });
@@ -371,7 +371,7 @@ describe("createInterfaceFingerprint", () => {
         {
           name: "local-module",
           root: path.join(root, "packages/local-module"),
-          ...(sourceDir ? { sourceDir } : {}),
+          ...(sourceDir ? { sourceDirs: [sourceDir] } : {}),
         },
       ],
     });
@@ -562,10 +562,48 @@ describe("readReactNativeInterface", () => {
       {
         name: "expo-font",
         root: path.join(root, "node_modules/expo-font"),
-        sourceDir: path.join(root, "node_modules/expo-font/ios"),
+        sourceDirs: [path.join(root, "node_modules/expo-font/ios")],
       },
       { name: "expo-local", version: "1.0.0" },
     ]);
+  });
+
+  it("hashes every native folder a local Expo module declares", async () => {
+    await fs.rm(path.join(root, "packages/local-module/src"), {
+      recursive: true,
+    });
+    await write(
+      path.join(root, "packages/local-module/package.json"),
+      manifest({ name: "local-module", version: "1.0.0" }),
+    );
+    await write(
+      path.join(root, "packages/local-module/android/Local.kt"),
+      "class Local",
+    );
+    await write(
+      path.join(root, "packages/local-module/extra/android/Extra.kt"),
+      "class Extra",
+    );
+    const native: NativeInterface = {
+      runtime: "react-native@0.85.2",
+      dependencies: [
+        {
+          name: "local-module",
+          root: path.join(root, "packages/local-module"),
+          sourceDirs: [
+            path.join(root, "packages/local-module/android"),
+            path.join(root, "packages/local-module/extra/android"),
+          ],
+        },
+      ],
+    };
+    const before = await hashOf({ platform: "android" }, native);
+
+    await write(
+      path.join(root, "packages/local-module/extra/android/Extra.kt"),
+      "class Extra { fun ping() {} }",
+    );
+    expect(await hashOf({ platform: "android" }, native)).not.toBe(before);
   });
 
   it("explains a config command that prints no configuration", async () => {
