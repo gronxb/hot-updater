@@ -143,9 +143,10 @@ reports `FINGERPRINT_JSON_STALE` and lists the sources that changed, in
 `changes` with `--json`. When the fingerprint changed because the engine that
 computes it changed, for example a newer `@expo/fingerprint`, doctor reports
 `FINGERPRINT_ENGINE_CHANGED` instead and names both engines. A
-`fingerprint.json` created before engines were recorded gets the warning
-`FINGERPRINT_ENGINE_UNRECORDED` while its hashes still match; recording the
-engine keeps the fingerprint the same. When it cannot
+`fingerprint.json` that doesn't record the current engine, because it predates
+recorded engines or another engine version computes the same hash, gets the
+warning `FINGERPRINT_ENGINE_UNRECORDED`; recording the engine keeps the
+fingerprint the same. When it cannot
 compute the fingerprint, for example because `@expo/fingerprint` is not
 installed, it reports
 `FINGERPRINT_GENERATION_FAILED` with the reason.
