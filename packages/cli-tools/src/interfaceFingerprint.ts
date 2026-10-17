@@ -55,8 +55,40 @@ const NATIVE_FILES = {
  * elsewhere (a CocoaPods or Maven dependency).
  */
 export type NativeDependency =
-  | { name: string; root: string }
+  | {
+      name: string;
+      root: string;
+      /**
+       * Where autolinking finds the platform's native code when it isn't the
+       * package's `ios`/`android` folder: Android's `sourceDir`, or the
+       * folder of the iOS podspec.
+       */
+      sourceDir?: string;
+    }
   | { name: string; version: string };
+
+/** A platform's native files in a folder autolinking points at. */
+const NATIVE_SOURCE_FILES = {
+  ios: ["*.podspec", "**/*.{h,hpp,m,mm,c,cc,cpp,swift}"],
+  android: ["**/*.{java,kt,c,cc,cpp,h,hpp,gradle,kts}", "**/CMakeLists.txt"],
+} as const;
+
+/**
+ * The folder autolinking reads a dependency's native code from, when the
+ * config names one: Android's `sourceDir`, or the iOS podspec's folder.
+ */
+const nativeSourceDir = (
+  platform: Platform,
+  config: unknown,
+): string | undefined => {
+  if (!config || typeof config !== "object") return undefined;
+  const value =
+    platform === "ios"
+      ? (config as { podspecPath?: unknown }).podspecPath
+      : (config as { sourceDir?: unknown }).sourceDir;
+  if (typeof value !== "string") return undefined;
+  return platform === "ios" ? path.dirname(value) : value;
+};
 
 /**
  * The native side JavaScript runs against: the runtime, such as
@@ -178,7 +210,7 @@ const readExpoModules = async (
         (async (): Promise<NativeDependency> => {
           const root = from ? await findPackageRoot(from, name) : null;
           return root
-            ? { name, root }
+            ? { name, root, ...(from ? { sourceDir: from } : {}) }
             : { name, version: module.packageVersion ?? "unknown" };
         })(),
       ];
@@ -268,7 +300,16 @@ export const readReactNativeInterface = async ({
     config.dependencies ?? {},
   ).flatMap((dependency) =>
     dependency.name && dependency.root && dependency.platforms?.[platform]
-      ? [{ name: dependency.name, root: dependency.root }]
+      ? [
+          {
+            name: dependency.name,
+            root: dependency.root,
+            sourceDir: nativeSourceDir(
+              platform,
+              dependency.platforms[platform],
+            ),
+          },
+        ]
       : [],
   );
   const linksExpoModules = dependencies.some(({ name }) => name === "expo");
@@ -440,13 +481,27 @@ export const createInterfaceFingerprint = async (
     // other, exposes its interface through native code here.
     const found = await findCodegenSpecs(root, platform);
     const specs = found && found.length > 0 ? found : null;
+    // The package's ios/android folders, and the folder autolinking reads
+    // when the package points it elsewhere.
+    const sourceDir = dependency.sourceDir
+      ? await fs.realpath(dependency.sourceDir).catch(() => undefined)
+      : undefined;
     const files =
       specs ??
-      (await fg([...NATIVE_FILES[platform]], {
-        cwd: root,
-        absolute: true,
-        ignore: [...GENERATED_DIRS, ...TEST_DIRS],
-      }));
+      [
+        ...(await fg([...NATIVE_FILES[platform]], {
+          cwd: root,
+          absolute: true,
+          ignore: [...GENERATED_DIRS, ...TEST_DIRS],
+        })),
+        ...(sourceDir && sourceDir !== root
+          ? await fg([...NATIVE_SOURCE_FILES[platform]], {
+              cwd: sourceDir,
+              absolute: true,
+              ignore: [...GENERATED_DIRS, ...TEST_DIRS],
+            })
+          : []),
+      ].filter((file, index, all) => all.indexOf(file) === index);
     for (const file of files) {
       await addFile(
         file,

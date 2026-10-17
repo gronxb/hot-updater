@@ -74,8 +74,9 @@ export default defineConfig({
 When JavaScript starts to depend on a native change the list above doesn't
 cover, change `nativeVersion`. Examples: a native module without a codegen
 spec, a changed return value, a new permission or `Info.plist` key, a manually
-linked library, or switching the New Architecture on iOS before React Native
-made it the only architecture.
+linked library, moving a native package installed from Git to another commit
+while its version stays the same, or switching the New Architecture on iOS
+before React Native made it the only architecture.
 
 ```typescript title="hot-updater.config.ts (partial)"
 export default defineConfig({
