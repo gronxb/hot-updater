@@ -203,11 +203,14 @@ void HotUpdaterLoadBytes(const std::atomic<char> *source, char *destination, siz
   }
 }
 
+// The strings first, the flag last with release: a reader that loads the flag
+// with acquire and finds it asking for rollback sees the whole strings, even
+// when it interrupts this copy (see HotUpdaterReadFirstCrashSlotWrite).
 void HotUpdaterStoreCrashSlotData(HotUpdaterAtomicCrashSlotData &destination, const HotUpdaterCrashSlotData &source)
 {
   HotUpdaterStoreBytes(destination.markerPath, source.markerPath, sizeof(source.markerPath));
   HotUpdaterStoreBytes(destination.bundleId, source.bundleId, sizeof(source.bundleId));
-  destination.shouldRollback.store(source.shouldRollback, std::memory_order_relaxed);
+  destination.shouldRollback.store(source.shouldRollback, std::memory_order_release);
 }
 
 void HotUpdaterLoadCrashSlotData(const HotUpdaterAtomicCrashSlotData &source, HotUpdaterCrashSlotData &destination)
@@ -279,27 +282,43 @@ bool HotUpdaterReadCrashSlotBuffer(const HotUpdaterCrashSlotBuffer &buffer, HotU
   return buffer.sequence.load(std::memory_order_relaxed) == before;
 }
 
+// The slot's first write, before anything was published, into the buffer
+// that was all zero: whole, or interrupted (a crash on the writer's own
+// thread, or another thread's crash) once its flag asks for rollback, since
+// the strings were stored before it. Nothing to write from otherwise.
+bool HotUpdaterReadFirstCrashSlotWrite(const HotUpdaterCrashSlotBuffer &buffer, HotUpdaterCrashSlotData &snapshot)
+{
+  if (HotUpdaterReadCrashSlotBuffer(buffer, snapshot)) {
+    return snapshot.markerPath[0] != '\0';
+  }
+  const int shouldRollback = buffer.data.shouldRollback.load(std::memory_order_acquire);
+  if (shouldRollback == 0) {
+    // Not asking for rollback yet: a marker would change nothing.
+    return false;
+  }
+  HotUpdaterLoadBytes(buffer.data.markerPath, snapshot.markerPath, sizeof(snapshot.markerPath));
+  HotUpdaterLoadBytes(buffer.data.bundleId, snapshot.bundleId, sizeof(snapshot.bundleId));
+  snapshot.markerPath[sizeof(snapshot.markerPath) - 1] = '\0';
+  snapshot.bundleId[sizeof(snapshot.bundleId) - 1] = '\0';
+  snapshot.shouldRollback = shouldRollback;
+  return snapshot.markerPath[0] != '\0';
+}
+
+// A snapshot to write the slot's marker from, or false when there is none.
+// Before anything was published, only the first write is read, never the
+// unwritten published buffer. After, only the published buffer, retried while
+// it is rewritten.
 bool HotUpdaterReadCrashSlot(const HotUpdaterCrashSlot &slot, HotUpdaterCrashSlotData &snapshot)
 {
   for (int attempt = 0; attempt < 4; ++attempt) {
     const uint32_t state = slot.published.load(std::memory_order_acquire);
     const uint32_t published = state & kPublishedIndexMask;
-    if (!HotUpdaterReadCrashSlotBuffer(slot.buffers[published], snapshot)) {
-      // Only a buffer published before the latest flip is ever rewritten;
-      // read the slot again.
-      continue;
-    }
     if ((state & kPublishedOnceFlag) == 0) {
-      // Nothing published yet: a first write that finished before its flip
-      // (a crash between the copy and the flip, even on the writer's own
-      // thread) is already whole in the other buffer. Once anything was
-      // published, an empty slot is a cleared one and stays empty.
-      HotUpdaterCrashSlotData pending;
-      if (HotUpdaterReadCrashSlotBuffer(slot.buffers[published ^ 1U], pending)) {
-        snapshot = pending;
-      }
+      return HotUpdaterReadFirstCrashSlotWrite(slot.buffers[published ^ 1U], snapshot);
     }
-    return true;
+    if (HotUpdaterReadCrashSlotBuffer(slot.buffers[published], snapshot)) {
+      return true;
+    }
   }
   return false;
 }

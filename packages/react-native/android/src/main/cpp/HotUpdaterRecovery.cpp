@@ -37,7 +37,8 @@ struct SlotData {
 
 // The published copy of SlotData. Every field is atomic, copied with relaxed
 // loads and stores, so a reader racing a writer reads defined (if mixed)
-// values, which the sequence then rejects.
+// values, which the sequence then rejects. The flags are stored last, with
+// release, after the strings: see readFirstWrite.
 struct AtomicSlotData {
   std::atomic<char> crashMarkerPath[PATH_MAX];
   std::atomic<char> bundleId[kMaxBundleIdLength];
@@ -155,8 +156,6 @@ int attributedSlot() {
   return static_cast<int>(slotCode) - kClaimSlotOffset;
 }
 
-// Copies a consistent snapshot of the slot, or returns false while it is
-// being rewritten.
 void storeBytes(std::atomic<char> *destination, const char *source, size_t size) {
   for (size_t index = 0; index < size; ++index) {
     destination[index].store(source[index], std::memory_order_relaxed);
@@ -172,19 +171,25 @@ void loadBytes(const std::atomic<char> *source, char *destination, size_t size) 
 void storeSlotData(AtomicSlotData &destination, const SlotData &source) {
   storeBytes(destination.crashMarkerPath, source.crashMarkerPath, sizeof(source.crashMarkerPath));
   storeBytes(destination.bundleId, source.bundleId, sizeof(source.bundleId));
-  destination.shouldRollback.store(source.shouldRollback, std::memory_order_relaxed);
-  destination.writesWhenVerified.store(source.writesWhenVerified, std::memory_order_relaxed);
+  // The flags last, each with release: a reader that sees one set sees the
+  // strings stored before it (readFirstWrite).
+  destination.shouldRollback.store(source.shouldRollback, std::memory_order_release);
+  destination.writesWhenVerified.store(source.writesWhenVerified, std::memory_order_release);
 }
 
-void loadSlotData(const AtomicSlotData &source, SlotData &destination) {
+void loadStrings(const AtomicSlotData &source, SlotData &destination) {
   loadBytes(source.crashMarkerPath, destination.crashMarkerPath, sizeof(destination.crashMarkerPath));
   loadBytes(source.bundleId, destination.bundleId, sizeof(destination.bundleId));
-  destination.shouldRollback = source.shouldRollback.load(std::memory_order_relaxed);
-  destination.writesWhenVerified = source.writesWhenVerified.load(std::memory_order_relaxed);
   // A copy taken mid-rewrite is rejected by the sequence, but the strings must
   // still end inside their buffers.
   destination.crashMarkerPath[sizeof(destination.crashMarkerPath) - 1] = '\0';
   destination.bundleId[sizeof(destination.bundleId) - 1] = '\0';
+}
+
+void loadSlotData(const AtomicSlotData &source, SlotData &destination) {
+  loadStrings(source, destination);
+  destination.shouldRollback = source.shouldRollback.load(std::memory_order_relaxed);
+  destination.writesWhenVerified = source.writesWhenVerified.load(std::memory_order_relaxed);
 }
 
 bool readBuffer(const SlotBuffer &buffer, SlotData &snapshot) {
@@ -197,26 +202,44 @@ bool readBuffer(const SlotBuffer &buffer, SlotData &snapshot) {
   return buffer.sequence.load(std::memory_order_relaxed) == before;
 }
 
+// The slot's first write, before anything was published: its buffer was
+// empty, and the write only fills it, strings first and the flags last with
+// release. A write that finished (a crash between the copy and the flip,
+// even on the writer's own thread) is whole. One interrupted mid-copy, as by
+// a crash on the writer's own thread, which sees its stores in program
+// order, holds whole strings once either flag is set, and nothing that asks
+// for a marker while neither is.
+bool readFirstWrite(const SlotBuffer &buffer, SlotData &snapshot) {
+  if (!readBuffer(buffer, snapshot)) {
+    const int shouldRollback = buffer.data.shouldRollback.load(std::memory_order_acquire);
+    const int writesWhenVerified = buffer.data.writesWhenVerified.load(std::memory_order_acquire);
+    if (shouldRollback == 0 && writesWhenVerified == 0) {
+      return false;
+    }
+    loadStrings(buffer.data, snapshot);
+    snapshot.shouldRollback = shouldRollback;
+    snapshot.writesWhenVerified = writesWhenVerified;
+  }
+  return snapshot.crashMarkerPath[0] != '\0';
+}
+
+// A consistent snapshot of the slot; false when it holds nothing a marker
+// can be written from, or stays mid-rewrite.
 bool readSlot(const Slot &slot, SlotData &snapshot) {
   for (int attempt = 0; attempt < 4; ++attempt) {
     const uint32_t state = slot.published.load(std::memory_order_acquire);
     const uint32_t published = state & kPublishedIndexMask;
-    if (!readBuffer(slot.buffers[published], snapshot)) {
-      // Only a buffer published before the latest flip is ever rewritten;
-      // read the slot again.
-      continue;
-    }
     if ((state & kPublishedOnceFlag) == 0) {
-      // Nothing published yet: a first write that finished before its flip
-      // (a crash between the copy and the flip, even on the writer's own
-      // thread) is already whole in the other buffer. Once anything was
-      // published, an empty slot is a cleared one and stays empty.
-      SlotData pending;
-      if (readBuffer(slot.buffers[published ^ 1U], pending)) {
-        snapshot = pending;
-      }
+      // Nothing published yet: only the first write's buffer, the one the
+      // flip will publish, can hold anything.
+      return readFirstWrite(slot.buffers[published ^ 1U], snapshot);
     }
-    return true;
+    // Once anything was published, an empty slot is a cleared one.
+    if (readBuffer(slot.buffers[published], snapshot)) {
+      return true;
+    }
+    // Only a buffer published before the latest flip is ever rewritten;
+    // read the slot again.
   }
   return false;
 }
