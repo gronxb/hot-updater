@@ -56,6 +56,27 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func aQueuedResponseBodyIsBoundedByUTF16CodeUnits() {
+        // One character with thousands of combining marks is one grapheme but
+        // far over the limit in code units, as Android and JavaScript count it.
+        let combining = "e" + String(repeating: "\u{0301}", count: 5_000)
+        #expect(combining.count == 1)
+        let bounded = NativeUpdateChecker.queuedHttpResponseBody(combining)
+        #expect(bounded.truncated)
+        #expect(bounded.body.utf16.count == NativeUpdateChecker.httpResponseBodyLimit)
+
+        let short = NativeUpdateChecker.queuedHttpResponseBody("{}")
+        #expect(short == ("{}", false))
+
+        // A surrogate pair split at the limit decodes to one replacement character.
+        let split = String(repeating: "a", count: NativeUpdateChecker.httpResponseBodyLimit - 1) + "😀"
+        let repaired = NativeUpdateChecker.queuedHttpResponseBody(split)
+        #expect(repaired.truncated)
+        #expect(repaired.body.utf16.count == NativeUpdateChecker.httpResponseBodyLimit)
+        #expect(repaired.body.hasSuffix("\u{FFFD}"))
+    }
+
+    @Test
     func notModifiedUsesTheCachedCatalog() async throws {
         let host = FakeUpdateHost()
         let body = catalog(releases: [descriptor(release2, bundle2)])
