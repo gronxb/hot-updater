@@ -1,4 +1,7 @@
-import { p } from "@hot-updater/cli-tools";
+import fs from "node:fs";
+import path from "node:path";
+
+import { getCwd, p } from "@hot-updater/cli-tools";
 
 import { warnIfExpoCNG } from "@/utils/expoDetection";
 import {
@@ -49,10 +52,18 @@ export const handleCreateFingerprint = async () => {
 
   const s = p.spinner();
   s.start("Creating fingerprint.json");
+  // The file can change while the hashes stay the same, as when it records
+  // the engine that computed them.
+  const fingerprintJsonPath = path.join(getCwd(), "fingerprint.json");
+  const readFingerprintJson = () =>
+    fs.promises.readFile(fingerprintJsonPath, "utf8").catch(() => null);
+  let fileChanged = false;
 
   try {
+    const before = await readFingerprintJson();
     localFingerprint = await readLocalFingerprint();
     result = await createAndInjectFingerprintFiles();
+    fileChanged = (await readFingerprintJson()) !== before;
 
     if (!isFingerprintEquals(localFingerprint, result.fingerprint)) {
       diffChanged = true;
@@ -123,6 +134,13 @@ export const handleCreateFingerprint = async () => {
         p.log.warn("Could not generate fingerprint diff");
       }
     }
+  } else if (fileChanged) {
+    p.log.success(
+      ui.line([
+        ui.path("fingerprint.json"),
+        "updated. The fingerprint is unchanged, so builds you shipped keep receiving updates.",
+      ]),
+    );
   } else {
     p.log.success(ui.line([ui.path("fingerprint.json"), "is up to date."]));
   }
