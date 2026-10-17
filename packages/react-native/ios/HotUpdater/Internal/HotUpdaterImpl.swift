@@ -55,7 +55,12 @@ private func hotUpdaterGetMinBundleId() -> String {
     private let bundleStorage: BundleStorageService
     private let preferences: PreferencesService
     private let cohortService: CohortService
-    private let recoveryManager: HotUpdaterRecoveryManager
+    /// Whose state this impl keeps; see `HotUpdaterInstanceEnvironment`.
+    let environment: HotUpdaterInstanceEnvironment
+    /// Main's only. Crash recovery watches the one React Native runtime the
+    /// process-wide handlers know, so a named impl has none until each
+    /// instance gets its own.
+    private let recoveryManager: HotUpdaterRecoveryManager?
     private let releaseCatalogCache: ReleaseCatalogCacheService
     private let keyValueStorage: KeyValueStorageService
     // Read by native update checks on other threads while React Native sets it.
@@ -95,7 +100,6 @@ private func hotUpdaterGetMinBundleId() -> String {
     private let launchPreparationLock = LaunchPreparationLock()
     private var launchStartObservers: [NSObjectProtocol] = []
 
-    private static let DEFAULT_CHANNEL = "production"
     private static let CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
 
     private static func parseSafeByteSize(_ value: Any?) -> Int64? {
@@ -119,26 +123,39 @@ private func hotUpdaterGetMinBundleId() -> String {
      * Convenience initializer that creates and configures all dependencies.
      */
     public convenience override init() {
+        self.init(environment: .main)
+    }
+
+    /**
+     * Creates the impl of one instance name, with its own storage, keys, and
+     * config. Main's is `HotUpdaterNativeUpdateBridge.sharedImpl`.
+     */
+    convenience init(environment: HotUpdaterInstanceEnvironment) {
         let fileSystem = FileManagerService()
-        let isolationKey = HotUpdaterImpl.getIsolationKey()
+        let isolationKey = environment.isolationKey(appVersion: Self.appVersion)
         let preferences = VersionedPreferencesService()
-        let downloadService = URLSessionDownloadService()
+        let downloadService = URLSessionDownloadService(
+            backgroundSessionIdentifier: environment.backgroundSessionIdentifier
+        )
         let bundleStorage = BundleFileStorageService(
             fileSystem: fileSystem,
             downloadService: downloadService,
             preferences: preferences,
             isolationKey: isolationKey,
+            instance: environment,
             builtInBundleIdProvider: { HotUpdaterImpl.minBundleId() }
         )
-        let recoveryManager = HotUpdaterRecoveryManager.shared
 
         self.init(
             bundleStorage: bundleStorage,
             preferences: preferences,
-            recoveryManager: recoveryManager,
-            releaseCatalogCache: ReleaseCatalogCacheService(),
+            environment: environment,
+            recoveryManager: environment.isMain ? HotUpdaterRecoveryManager.shared : nil,
+            releaseCatalogCache: ReleaseCatalogCacheService(
+                rootDirectory: environment.releaseCatalogCacheDirectory(in: fileSystem)
+            ),
             keyValueStorage: KeyValueStorageService(
-                directory: NoBackupStorage.directory(in: fileSystem)
+                directory: environment.keyValueStorageDirectory(in: fileSystem)
             )
         )
     }
@@ -152,7 +169,8 @@ private func hotUpdaterGetMinBundleId() -> String {
     internal init(
         bundleStorage: BundleStorageService,
         preferences: PreferencesService,
-        recoveryManager: HotUpdaterRecoveryManager,
+        environment: HotUpdaterInstanceEnvironment = .main,
+        recoveryManager: HotUpdaterRecoveryManager?,
         releaseCatalogCache: ReleaseCatalogCacheService = ReleaseCatalogCacheService(),
         keyValueStorage: KeyValueStorageService = KeyValueStorageService(
             directory: NoBackupStorage.directory(in: FileManagerService())
@@ -161,13 +179,14 @@ private func hotUpdaterGetMinBundleId() -> String {
         self.bundleStorage = bundleStorage
         self.preferences = preferences
         self.cohortService = CohortService()
+        self.environment = environment
         self.recoveryManager = recoveryManager
         self.releaseCatalogCache = releaseCatalogCache
         self.keyValueStorage = keyValueStorage
         super.init()
 
         // Configure preferences with isolation key
-        let isolationKey = HotUpdaterImpl.getIsolationKey()
+        let isolationKey = environment.isolationKey(appVersion: Self.appVersion)
         (preferences as? VersionedPreferencesService)?.configure(isolationKey: isolationKey)
     }
     
@@ -177,17 +196,14 @@ private func hotUpdaterGetMinBundleId() -> String {
      * Returns the app version from main bundle info.
      */
     public static var appVersion: String? {
-        return Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+        return HotUpdaterInstanceEnvironment.appVersion
     }
 
     /**
-     * Returns the app version from main bundle info.
+     * Returns main's default channel.
      */
     public static var appChannel: String {
-        if let override = HotUpdaterConfig.shared.channel, !override.isEmpty {
-            return override
-        }
-        return HotUpdaterConfig.shared.infoValue(forKey: "HOT_UPDATER_CHANNEL") ?? Self.DEFAULT_CHANNEL
+        return HotUpdaterInstanceEnvironment.main.defaultChannel()
     }
 
     public static func minBundleId() -> String {
@@ -199,29 +215,9 @@ private func hotUpdaterGetMinBundleId() -> String {
      * @return The isolation key in format: hotupdater_{fingerprintOrVersion}_{channel}_
      */
     public static func getIsolationKey() -> String {
-        // Programmatic override (brownfield/XCFramework). When set, it is used verbatim
+        // A programmatic override (brownfield/XCFramework) is used verbatim
         // so the OTA cache can stay stable across host app version bumps.
-        if let override = HotUpdaterConfig.shared.isolationKey, !override.isEmpty {
-            return override
-        }
-
-        // Get fingerprint hash from programmatic override or Info.plist
-        let fingerprintHash = HotUpdaterConfig.shared.fingerprintHash
-            ?? HotUpdaterConfig.shared.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
-
-        // Get app version and channel
-        let appVersion = self.appVersion ?? "unknown"
-        let appChannel = self.appChannel
-
-        // Include both fingerprint hash and app version for complete isolation
-        let baseKey: String
-        if let hash = fingerprintHash, !hash.isEmpty {
-            baseKey = "\(hash)_\(appVersion)"
-        } else {
-            baseKey = appVersion
-        }
-
-        return "hotupdater_\(baseKey)_\(appChannel)_"
+        return HotUpdaterInstanceEnvironment.main.isolationKey(appVersion: appVersion)
     }
 
     // MARK: - Channel Management
@@ -243,11 +239,11 @@ private func hotUpdaterGetMinBundleId() -> String {
             return savedChannel
         }
 
-        return Self.appChannel
+        return environment.defaultChannel()
     }
 
     public func getDefaultChannel() -> String {
-        return Self.appChannel
+        return environment.defaultChannel()
     }
 
     /**
@@ -255,10 +251,7 @@ private func hotUpdaterGetMinBundleId() -> String {
      * @return The fingerprint hash or nil if not set
      */
     public func getFingerprintHash() -> String? {
-        if let override = HotUpdaterConfig.shared.fingerprintHash, !override.isEmpty {
-            return override
-        }
-        return HotUpdaterConfig.shared.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
+        return environment.fingerprintHash()
     }
 
     // MARK: - Cohort Management
@@ -276,11 +269,14 @@ private func hotUpdaterGetMinBundleId() -> String {
     /**
      * Gets the URL to the bundle file.
      * @param bundle instance to lookup the JavaScript bundle resource. Defaults to Bundle.main.
-     *   It is recorded in `HotUpdaterConfig.shared.bundle` for reloads and Info.plist keys.
+     *   Main records it in `HotUpdaterConfig.shared.bundle` for reloads and Info.plist keys;
+     *   a named impl reads its own bundle and leaves main's alone.
      * @return URL to the bundle or nil
      */
     public func bundleURL(bundle: Bundle = Bundle.main) -> URL? {
-        HotUpdaterConfig.shared.bundle = bundle
+        if environment.isMain {
+            HotUpdaterMainBundle.shared.note(bundle)
+        }
         return prepareLaunchIfNeeded(bundle: bundle).bundleURL
     }
     
@@ -430,9 +426,11 @@ private func hotUpdaterGetMinBundleId() -> String {
             // Heavy work is delegated to bundle storage service with safe error handling
             bundleStorage.updateBundle(bundleId: bundleId, manifestUrl: manifestUrl, manifestFileHash: manifestFileHash, archiveUrl: archiveUrl, assets: planned.assets, fileResolver: planned.fileResolver, selection: selection, progressHandler: { payload in
                 DispatchQueue.main.async {
+                    // The impl as the object: HotUpdater.mm forwards only
+                    // main's progress to JavaScript.
                     NotificationCenter.default.post(
                         name: .updateProgressDidChange,
-                        object: nil,
+                        object: self,
                         userInfo: payload.userInfo
                     )
 
@@ -874,7 +872,8 @@ private func hotUpdaterGetMinBundleId() -> String {
             }
             // Settles what the previous process left first, so the check reads the
             // selection, launch state, and crash history this launch will use.
-            bundleStorage.settlePreviousLaunch(pendingRecovery: recoveryManager.consumePendingCrashRecovery)
+            // The crash marker is main's: a named impl must not consume it.
+            bundleStorage.settlePreviousLaunch(pendingRecovery: { self.recoveryManager?.consumePendingCrashRecovery() })
             return bundleStorage.peekLaunchBundleId()
         }
     }
@@ -922,6 +921,17 @@ private func hotUpdaterGetMinBundleId() -> String {
     private func prepareLaunchLocked(bundle: Bundle) -> LaunchSelection {
         if let currentLaunchSelection {
             return currentLaunchSelection
+        }
+
+        guard let recoveryManager else {
+            // C1 only: nothing reports a named instance's first content yet,
+            // so its launch counts as verified once selected. Left in
+            // progress, the next start would roll it back.
+            let selection = bundleStorage.prepareLaunch(bundle: bundle, pendingRecovery: nil)
+            bundleStorage.markLaunchCompleted(bundleId: selection.launchedBundleId)
+            runningLaunchSelection = selection
+            currentLaunchSelection = selection
+            return selection
         }
 
         let pendingRecovery = recoveryManager.consumePendingCrashRecovery()

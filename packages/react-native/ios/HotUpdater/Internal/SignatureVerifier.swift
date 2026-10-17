@@ -102,14 +102,15 @@ public enum SignatureVerificationError: Error, CustomNSError {
 public class SignatureVerifier {
 
     /**
-     * Reads public key from Info.plist configuration.
+     * Reads main's public key: `HotUpdaterConfig.shared`, then Info.plist.
+     * A named instance passes its own key to the `publicKey:` variants.
      * @return Public key PEM string or nil if not configured
      */
-    private static func getPublicKeyFromConfig() -> String? {
-        if let override = HotUpdaterConfig.shared.publicKey, !override.isEmpty {
+    static func getPublicKeyFromConfig(_ config: HotUpdaterConfig = .shared) -> String? {
+        if let override = config.publicKey, !override.isEmpty {
             return override
         }
-        guard let publicKeyPEM = HotUpdaterConfig.shared.infoValue(forKey: "HOT_UPDATER_PUBLIC_KEY") else {
+        guard let publicKeyPEM = config.infoValue(forKey: "HOT_UPDATER_PUBLIC_KEY") else {
             NSLog("[SignatureVerifier] HOT_UPDATER_PUBLIC_KEY not found in Info.plist")
             return nil
         }
@@ -121,7 +122,11 @@ public class SignatureVerifier {
      * @return true if public key is configured
      */
     public static func isSigningEnabled() -> Bool {
-        return getPublicKeyFromConfig() != nil
+        return isSigningEnabled(publicKey: getPublicKeyFromConfig())
+    }
+
+    static func isSigningEnabled(publicKey: String?) -> Bool {
+        return publicKey != nil
     }
 
     /**
@@ -153,7 +158,12 @@ public class SignatureVerifier {
      * @return Result indicating verification success or failure with error
      */
     public static func verifyBundle(fileURL: URL, fileHash: String?) -> Result<Void, SignatureVerificationError> {
-        let signingEnabled = isSigningEnabled()
+        return verifyBundle(fileURL: fileURL, fileHash: fileHash, publicKey: getPublicKeyFromConfig())
+    }
+
+    /// `verifyBundle` with an instance's public key, or nil when it has none.
+    static func verifyBundle(fileURL: URL, fileHash: String?, publicKey: String?) -> Result<Void, SignatureVerificationError> {
+        let signingEnabled = isSigningEnabled(publicKey: publicKey)
 
         // Rule: null/empty fileHash → REJECT
         guard let hash = fileHash, !hash.isEmpty else {
@@ -175,7 +185,7 @@ public class SignatureVerifier {
             }
 
             // Rule: sig:... + public key configured → verify signature
-            return verifySignature(fileURL: fileURL, signatureBase64: signature)
+            return verifySignature(fileURL: fileURL, signatureBase64: signature, publicKey: publicKey)
         } else {
             // Unsigned format: <hex_hash>
 
@@ -217,10 +227,13 @@ public class SignatureVerifier {
      * @return Result indicating verification success or failure with error
      */
     public static func verifySignature(fileURL: URL, signatureBase64: String) -> Result<Void, SignatureVerificationError> {
+        return verifySignature(fileURL: fileURL, signatureBase64: signatureBase64, publicKey: getPublicKeyFromConfig())
+    }
+
+    static func verifySignature(fileURL: URL, signatureBase64: String, publicKey: String?) -> Result<Void, SignatureVerificationError> {
         NSLog("[SignatureVerifier] Verifying signature for file: \(fileURL.lastPathComponent)")
 
-        // Get public key from config
-        guard let publicKeyPEM = getPublicKeyFromConfig() else {
+        guard let publicKeyPEM = publicKey else {
             NSLog("[SignatureVerifier] Cannot verify signature: public key not configured in Info.plist")
             return .failure(.publicKeyNotConfigured)
         }
@@ -249,7 +262,11 @@ public class SignatureVerifier {
      * Verifies an RSA-SHA256 signature for an explicit SHA256 file hash.
      */
     public static func verifyHashSignature(fileHash: String, signatureBase64: String) -> Result<Void, SignatureVerificationError> {
-        guard let publicKeyPEM = getPublicKeyFromConfig() else {
+        return verifyHashSignature(fileHash: fileHash, signatureBase64: signatureBase64, publicKey: getPublicKeyFromConfig())
+    }
+
+    static func verifyHashSignature(fileHash: String, signatureBase64: String, publicKey: String?) -> Result<Void, SignatureVerificationError> {
+        guard let publicKeyPEM = publicKey else {
             NSLog("[SignatureVerifier] Cannot verify signature: public key not configured in Info.plist")
             return .failure(.publicKeyNotConfigured)
         }

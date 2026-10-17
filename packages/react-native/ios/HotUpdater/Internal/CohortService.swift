@@ -2,6 +2,10 @@ import Foundation
 import UIKit
 
 final class CohortService {
+    /// App-wide: every instance's service reads and creates the same stored
+    /// cohort, so instances that check at once never pick different ones.
+    private static let lock = NSLock()
+
     private let userDefaults: UserDefaults
 
     private let cohortKey = "HotUpdater_CustomCohort"
@@ -41,10 +45,14 @@ final class CohortService {
         if cohort.isEmpty {
             return
         }
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
         userDefaults.set(cohort, forKey: cohortKey)
     }
 
     func getCohort() -> String {
+        Self.lock.lock()
+        defer { Self.lock.unlock() }
         if let cohort = userDefaults.string(forKey: cohortKey), !cohort.isEmpty {
             return cohort
         }

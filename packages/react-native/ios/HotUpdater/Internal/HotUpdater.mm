@@ -444,6 +444,9 @@ RCT_EXPORT_MODULE();
 
 - (void)handleDownloadProgress:(NSNotification *)notification {
      if (!hasListeners) return;
+     // A named native instance downloads with its own impl; JavaScript runs
+     // on main's.
+     if (notification.object != [HotUpdater sharedImpl]) return;
 
      NSDictionary *userInfo = notification.userInfo;
      NSNumber *progressNum = userInfo[@"progress"];

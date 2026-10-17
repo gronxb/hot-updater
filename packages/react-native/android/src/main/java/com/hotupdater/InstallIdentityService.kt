@@ -14,9 +14,19 @@ class InstallIdentityService(
     private val identityFile: File,
 ) {
     companion object {
-        /** The install id kept in `noBackupFilesDir/hot-updater/install-identity.json`. */
+        private val services = mutableMapOf<String, InstallIdentityService>()
+
+        /**
+         * The install id kept in `noBackupFilesDir/hot-updater/install-identity.json`.
+         * One service per file for the whole process: every instance reads the
+         * same file, so instances that start at once never create different ids.
+         */
         fun create(context: Context): InstallIdentityService =
-            InstallIdentityService(NoBackupStorage.file(context, InstallationIdentity.IDENTITY_FILENAME))
+            forFile(NoBackupStorage.file(context, InstallationIdentity.IDENTITY_FILENAME))
+
+        @Synchronized
+        internal fun forFile(identityFile: File): InstallIdentityService =
+            services.getOrPut(identityFile.absolutePath) { InstallIdentityService(identityFile) }
     }
 
     private var identity: InstallationIdentity? = null

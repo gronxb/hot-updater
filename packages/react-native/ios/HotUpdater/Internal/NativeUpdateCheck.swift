@@ -41,17 +41,43 @@ import Foundation
     /// `HOT_UPDATER_*` Info.plist keys: a brownfield XCFramework passes its
     /// own bundle.
     @objc public let bundle: Bundle
+    /// Keeps this instance's staged bundles, channel, and queued events apart
+    /// from every other name's, like a Firebase app name: 1 to 32 of `a-z`,
+    /// `0-9`, and `-`. Instances with the same name share them. `"main"`, the
+    /// default, is the state the TurboModule and `HotUpdater.bundleURL()` use.
+    @objc public let name: String
 
     @objc public init(
         baseURL: String,
         requestHeaders: [String: String] = [:],
         requestTimeout: TimeInterval = 5,
-        bundle: Bundle = .main
+        bundle: Bundle = .main,
+        name: String = "main"
     ) {
         self.baseURL = baseURL
         self.requestHeaders = requestHeaders
         self.requestTimeout = requestTimeout
         self.bundle = bundle
+        self.name = name
+    }
+
+    /// The initializer without `name`, for Objective-C, where the defaults
+    /// above don't apply.
+    @available(swift, obsoleted: 1.0, message: "Use init(baseURL:requestHeaders:requestTimeout:bundle:name:)")
+    @objc(initWithBaseURL:requestHeaders:requestTimeout:bundle:)
+    public convenience init(
+        objcBaseURL baseURL: String,
+        requestHeaders: [String: String],
+        requestTimeout: TimeInterval,
+        bundle: Bundle
+    ) {
+        self.init(
+            baseURL: baseURL,
+            requestHeaders: requestHeaders,
+            requestTimeout: requestTimeout,
+            bundle: bundle,
+            name: "main"
+        )
     }
 }
 

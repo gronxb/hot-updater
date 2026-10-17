@@ -134,7 +134,10 @@ class HotUpdater {
          * instance with this server and these request defaults, for checking
          * for and staging updates before React Native starts.
          * @throws IllegalArgumentException when [HotUpdaterOptions.baseURL] is
-         * not an absolute HTTP(S) URL, as `HotUpdater.init` throws
+         * not an absolute HTTP(S) URL, as `HotUpdater.init` throws, when
+         * [HotUpdaterOptions.name] is not 1 to 32 lowercase letters, digits, or
+         * hyphens, or when the name was already created with another channel,
+         * fingerprint hash, public key, or bundle asset name
          */
         @JvmStatic
         fun init(
@@ -142,7 +145,7 @@ class HotUpdater {
             options: HotUpdaterOptions,
         ): HotUpdaterInstance {
             requireValidBaseURL(options.baseURL)
-            return HotUpdaterInstance(context.applicationContext, options)
+            return HotUpdaterInstance.create(context.applicationContext, options)
         }
 
         /**

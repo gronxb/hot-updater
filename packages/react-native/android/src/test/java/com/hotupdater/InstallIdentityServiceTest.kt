@@ -50,6 +50,19 @@ class InstallIdentityServiceTest {
     }
 
     @Test
+    fun `every instance of the app shares one install identity`() {
+        val noBackupDirectory = temporaryFolder.newFolder("shared")
+        val context = NoBackupContext(noBackupDirectory)
+
+        val installId = InstallIdentityService.create(context).getInstallId()
+        // Two instances that start at once share the id the first created,
+        // even before (or without) it reaching the file.
+        File(noBackupDirectory, "hot-updater/install-identity.json").delete()
+
+        assertEquals(installId, InstallIdentityService.create(context).getInstallId())
+    }
+
+    @Test
     fun `replaces an unreadable identity with a new id`() {
         val identityFile = File(temporaryFolder.root, "install-identity.json").apply { writeText("{") }
 
