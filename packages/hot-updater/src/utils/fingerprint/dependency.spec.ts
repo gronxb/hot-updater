@@ -47,7 +47,11 @@ afterEach(async () => {
   );
 });
 
-async function runWithFingerprint(source?: string, type = "commonjs") {
+async function runWithFingerprint(
+  source?: string,
+  type = "commonjs",
+  expression = 'JSON.stringify((await loadExpoFingerprint("./project")).SourceSkips)',
+) {
   const root = await fs.mkdtemp(
     path.join(os.tmpdir(), "fingerprint-resolution-"),
   );
@@ -67,6 +71,7 @@ async function runWithFingerprint(source?: string, type = "commonjs") {
       path.join(packageDir, "package.json"),
       JSON.stringify({
         name: "@expo/fingerprint",
+        version: dir === projectDir ? "0.20.14" : "0.21.5",
         main: "index.js",
         type: dir === projectDir ? type : "commonjs",
       }),
@@ -91,7 +96,7 @@ async function runWithFingerprint(source?: string, type = "commonjs") {
     [
       "--input-type=module",
       "--eval",
-      'import { loadExpoFingerprint } from "./adapter/loader.mts"; console.log(JSON.stringify((await loadExpoFingerprint("./project")).SourceSkips));',
+      `import { getExpoFingerprintEngine, loadExpoFingerprint } from "./adapter/loader.mts"; console.log(${expression});`,
     ],
     { cwd: root, encoding: "utf8", env: { ...process.env, NODE_PATH: "" } },
   );
@@ -113,6 +118,16 @@ describe("project-scoped fingerprint loader", () => {
     );
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout)).toEqual({ ExpoConfigAll: "project" });
+  });
+
+  it("records the version of the project's fingerprint package as the engine", async () => {
+    const result = await runWithFingerprint(
+      'exports.SourceSkips = { ExpoConfigAll: "project" };',
+      "commonjs",
+      'JSON.stringify(await getExpoFingerprintEngine("./project"))',
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toBe("@expo/fingerprint@0.20.14");
   });
 
   it("reports a missing project package even when the CLI has its own copy", async () => {

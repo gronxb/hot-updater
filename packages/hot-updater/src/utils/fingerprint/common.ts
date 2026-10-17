@@ -177,9 +177,38 @@ export type FingerprintOptions = {
 };
 
 export type FingerprintResult = {
+  /**
+   * What computed `hash`, such as `@expo/fingerprint@0.20.14`. Absent from
+   * a fingerprint.json written before engines were recorded.
+   */
+  engine?: string;
   hash: string;
   sources: FingerprintSource[];
 };
+
+/**
+ * The engines of two fingerprints when both are recorded and differ. The hash
+ * then changed with the engine, whether or not a native input changed.
+ */
+export const getFingerprintEngineChange = (
+  before: Pick<FingerprintResult, "engine"> | null | undefined,
+  after: Pick<FingerprintResult, "engine"> | null | undefined,
+): { before: string; after: string } | null =>
+  before?.engine && after?.engine && before.engine !== after.engine
+    ? { before: before.engine, after: after.engine }
+    : null;
+
+/**
+ * Explains a hash that changed with its engine, for deploy, doctor, and
+ * `fingerprint create`.
+ */
+export const describeFingerprintEngineChange = (
+  change: { before: string; after: string },
+  label: string,
+): { message: string; resolution: string } => ({
+  message: `The ${label} fingerprint changed because fingerprint.json was created with ${change.before} and the project now uses ${change.after}. Native inputs may be unchanged.`,
+  resolution: `To keep updating ${label} builds you already shipped, go back to ${change.before}. Otherwise run \`npx hot-updater fingerprint create\`, then rebuild the ${label} app.`,
+});
 
 type OtaFingerprintOptions = {
   useRNCoreAutolinkingFromExpo: boolean;

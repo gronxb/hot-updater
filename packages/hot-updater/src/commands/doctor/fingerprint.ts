@@ -1,8 +1,10 @@
 import {
+  describeFingerprintEngineChange,
   ensureFingerprintConfig,
   type FingerprintResult,
   generateFingerprints,
   getFingerprintDiff,
+  getFingerprintEngineChange,
   summarizeFingerprintDiff,
 } from "../../utils/fingerprint";
 import {
@@ -68,6 +70,19 @@ export const checkFingerprintJson = async (
     const before = local[platform];
     if (before?.hash === current[platform].hash) continue;
     const label = PLATFORM_LABELS[platform];
+    const engineChange = getFingerprintEngineChange(before, current[platform]);
+    if (engineChange) {
+      issues.push({
+        type: "error",
+        platform,
+        code: "FINGERPRINT_JSON_STALE",
+        ...describeFingerprintEngineChange(engineChange, label),
+        fixability: "command",
+        commands: [FINGERPRINT_CREATE],
+        paths: ["fingerprint.json"],
+      });
+      continue;
+    }
     let changes: NativeCheckIssue["changes"];
     if (before?.sources) {
       try {

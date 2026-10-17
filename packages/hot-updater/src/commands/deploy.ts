@@ -46,6 +46,8 @@ import {
 import { createBundleDiff } from "@/utils/createBundleDiff";
 import {
   appendFingerprintExtraSources,
+  describeFingerprintEngineChange,
+  getFingerprintEngineChange,
   isFingerprintEquals,
   nativeFingerprint,
   readLocalFingerprint,
@@ -759,8 +761,19 @@ const deployPlatform = async ({
         "Fingerprint mismatch. 'hot-updater fingerprint create' to update fingerprint.json",
       );
 
-      // Show what changed
-      if (projectFingerprint?.[platform]) {
+      const engineChange = getFingerprintEngineChange(
+        projectFingerprint?.[platform],
+        newFingerprint,
+      );
+      if (engineChange) {
+        const { message, resolution } = describeFingerprintEngineChange(
+          engineChange,
+          platform === "ios" ? "iOS" : "Android",
+        );
+        p.log.warn(message);
+        p.log.info(resolution);
+      } else if (projectFingerprint?.[platform]) {
+        // Show what changed
         try {
           const diff = await getFingerprintDiff(projectFingerprint[platform], {
             platform,

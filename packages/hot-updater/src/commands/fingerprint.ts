@@ -3,8 +3,10 @@ import { p } from "@hot-updater/cli-tools";
 import { warnIfExpoCNG } from "@/utils/expoDetection";
 import {
   createAndInjectFingerprintFiles,
+  describeFingerprintEngineChange,
   ensureFingerprintConfig,
   type FingerprintResult,
+  getFingerprintEngineChange,
   isFingerprintEquals,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
@@ -92,31 +94,27 @@ export const handleCreateFingerprint = async () => {
       const fingerprintConfig = await ensureFingerprintConfig();
 
       try {
-        // Show iOS changes
-        if (
-          localFingerprint.ios &&
-          localFingerprint.ios.hash !== result.fingerprint.ios.hash
-        ) {
-          const iosDiff = await getFingerprintDiff(localFingerprint.ios, {
-            platform: "ios",
-            ...fingerprintConfig,
-          });
-          showFingerprintDiff(iosDiff, "iOS");
-        }
-
-        // Show Android changes
-        if (
-          localFingerprint.android &&
-          localFingerprint.android.hash !== result.fingerprint.android.hash
-        ) {
-          const androidDiff = await getFingerprintDiff(
-            localFingerprint.android,
-            {
-              platform: "android",
+        for (const [platform, label] of [
+          ["ios", "iOS"],
+          ["android", "Android"],
+        ] as const) {
+          const before = localFingerprint[platform];
+          const after = result.fingerprint[platform];
+          if (!before || before.hash === after.hash) continue;
+          const engineChange = getFingerprintEngineChange(before, after);
+          if (engineChange) {
+            p.log.warn(
+              describeFingerprintEngineChange(engineChange, label).message,
+            );
+            continue;
+          }
+          showFingerprintDiff(
+            await getFingerprintDiff(before, {
+              platform,
               ...fingerprintConfig,
-            },
+            }),
+            label,
           );
-          showFingerprintDiff(androidDiff, "Android");
         }
       } catch {
         p.log.warn("Could not generate fingerprint diff");

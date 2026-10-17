@@ -111,6 +111,70 @@ describe("checkFingerprintJson", () => {
     expect(issues[0]).not.toHaveProperty("changes");
   });
 
+  it("blames a changed engine instead of listing sources when the engines differ", async () => {
+    vi.mocked(getFingerprintDiff).mockClear();
+    vi.mocked(generateFingerprints).mockResolvedValue({
+      ios: { ...fingerprint("ios-now"), engine: "@expo/fingerprint@0.21.5" },
+      android: {
+        ...fingerprint("android-now"),
+        engine: "@expo/fingerprint@0.21.5",
+      },
+    });
+
+    const issues = await checkFingerprintJson({
+      ios: {
+        ...fingerprint("ios-before"),
+        engine: "@expo/fingerprint@0.20.14",
+      },
+      android: {
+        ...fingerprint("android-now"),
+        engine: "@expo/fingerprint@0.21.5",
+      },
+    });
+
+    expect(issues).toEqual([
+      {
+        type: "error",
+        platform: "ios",
+        code: "FINGERPRINT_JSON_STALE",
+        message:
+          "The iOS fingerprint changed because fingerprint.json was created with @expo/fingerprint@0.20.14 and the project now uses @expo/fingerprint@0.21.5. Native inputs may be unchanged.",
+        resolution:
+          "To keep updating iOS builds you already shipped, go back to @expo/fingerprint@0.20.14. Otherwise run `npx hot-updater fingerprint create`, then rebuild the iOS app.",
+        fixability: "command",
+        commands: ["npx hot-updater fingerprint create"],
+        paths: ["fingerprint.json"],
+      },
+    ]);
+    expect(getFingerprintDiff).not.toHaveBeenCalled();
+  });
+
+  it("lists changed sources when fingerprint.json predates recorded engines", async () => {
+    vi.mocked(getFingerprintDiff).mockClear();
+    vi.mocked(generateFingerprints).mockResolvedValue({
+      ios: { ...fingerprint("ios-now"), engine: "@expo/fingerprint@0.21.5" },
+      android: {
+        ...fingerprint("android-now"),
+        engine: "@expo/fingerprint@0.21.5",
+      },
+    });
+    vi.mocked(getFingerprintDiff).mockResolvedValue([]);
+
+    const issues = await checkFingerprintJson({
+      ios: { ...fingerprint("ios-before"), sources: [source("ios/Podfile")] },
+      android: fingerprint("android-now"),
+    });
+
+    expect(issues).toMatchObject([
+      {
+        platform: "ios",
+        message:
+          "The iOS fingerprint changed since fingerprint.json was created.",
+      },
+    ]);
+    expect(getFingerprintDiff).toHaveBeenCalled();
+  });
+
   it("reports a fingerprint it cannot compute, with the install command for a missing dependency", async () => {
     vi.mocked(generateFingerprints).mockRejectedValue(
       new MissingFingerprintDependencyError(),

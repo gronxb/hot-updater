@@ -12,7 +12,7 @@ import {
   getOtaFingerprintOptions,
   isFingerprintEquals,
 } from "./common";
-import { loadExpoFingerprint } from "./dependency";
+import { getExpoFingerprintEngine, loadExpoFingerprint } from "./dependency";
 
 export * from "./common";
 export * from "./diff";
@@ -25,11 +25,15 @@ export async function nativeFingerprint(
   options: FingerprintOptions,
 ): Promise<FingerprintResult> {
   const platform = options.platform;
-  const { createFingerprintAsync } = await loadExpoFingerprint(path);
-  return createFingerprintAsync(
+  const [{ createFingerprintAsync }, engine] = await Promise.all([
+    loadExpoFingerprint(path),
+    getExpoFingerprintEngine(path),
+  ]);
+  const fingerprint = await createFingerprintAsync(
     path,
     await getOtaFingerprintOptions(platform, path, options),
   );
+  return { engine, ...fingerprint };
 }
 
 export const generateFingerprints = async (

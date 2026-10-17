@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   appendFingerprintExtraSources,
+  getFingerprintEngineChange,
   getOtaFingerprintOptions,
 } from "./common";
 
@@ -76,5 +77,26 @@ describe("appendFingerprintExtraSources", () => {
     expect(
       appendFingerprintExtraSources([SHARED_SOURCE], [SHARED_SOURCE]),
     ).toEqual([SHARED_SOURCE]);
+  });
+});
+
+describe("getFingerprintEngineChange", () => {
+  it("returns both engines when they differ", () => {
+    expect(
+      getFingerprintEngineChange(
+        { engine: "@expo/fingerprint@0.20.14" },
+        { engine: "@expo/fingerprint@0.21.5" },
+      ),
+    ).toEqual({
+      before: "@expo/fingerprint@0.20.14",
+      after: "@expo/fingerprint@0.21.5",
+    });
+  });
+
+  it("returns null for the same engine or an unrecorded one", () => {
+    const engine = { engine: "@expo/fingerprint@0.21.5" };
+    expect(getFingerprintEngineChange(engine, engine)).toBeNull();
+    expect(getFingerprintEngineChange({}, engine)).toBeNull();
+    expect(getFingerprintEngineChange(null, engine)).toBeNull();
   });
 });
