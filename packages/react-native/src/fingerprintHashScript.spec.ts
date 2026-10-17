@@ -3,6 +3,7 @@ import {
   existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -123,7 +124,35 @@ describe("iOS fingerprint generation", () => {
     expect(manifest).toMatch(/plugins: \[[^\]]*"HotUpdaterFingerprintPlugin"/);
     expect(plugin).toContain('"ios/scripts/generate-fingerprint-hash.zsh"');
     expect(plugin).toContain('"HOT_UPDATER_APP_ROOT"');
+    // A prebuild command gets only the environment the plugin passes.
+    expect(plugin).toContain('"PATH"');
   });
+
+  it.skipIf(!existsSync(zsh))(
+    "names the generated Swift function apart from the HotUpdaterSwift target's own declarations",
+    () => {
+      const outputDirectory = makeDirectory();
+      run(["--swift", outputDirectory, makeApp()], {});
+      const generated = readFileSync(
+        join(outputDirectory, "HotUpdaterBuildFingerprintHash.swift"),
+        "utf8",
+      );
+      const name = /public func (\w+)\(/.exec(generated)?.[1];
+      expect(name).toBeDefined();
+
+      // SwiftPM compiles the generated file into the same module.
+      const internal = join(packageRoot, "ios/HotUpdater/Internal");
+      const declaration = new RegExp(`\\b(?:let|var|func) ${name}\\b`);
+      for (const file of readdirSync(internal).filter((entry) =>
+        entry.endsWith(".swift"),
+      )) {
+        expect(
+          readFileSync(join(internal, file), "utf8"),
+          `${file} declares ${name}`,
+        ).not.toMatch(declaration);
+      }
+    },
+  );
 
   it.skipIf(!existsSync(zsh))(
     "computes the fingerprint in a Release build",

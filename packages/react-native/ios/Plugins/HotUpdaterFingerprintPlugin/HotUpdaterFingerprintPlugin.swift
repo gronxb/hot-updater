@@ -18,8 +18,11 @@ struct HotUpdaterFingerprintPlugin: BuildToolPlugin {
         let appRoot = context.package.directoryURL
             .appending(path: "../../../../../..")
             .standardized
+        // A prebuild command gets only this environment. PATH lets the
+        // script find node, as React Native's own script phases do, when
+        // ios/.xcode.env.local sets no NODE_BINARY.
         var environment: [String: String] = [:]
-        for key in ["HOT_UPDATER_APP_ROOT", "CONFIGURATION", "NODE_BINARY"] {
+        for key in ["HOT_UPDATER_APP_ROOT", "CONFIGURATION", "NODE_BINARY", "PATH"] {
             if let value = ProcessInfo.processInfo.environment[key] {
                 environment[key] = value
             }
