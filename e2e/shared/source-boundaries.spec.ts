@@ -30,6 +30,8 @@ const legacyHarnessPattern = new RegExp(
 const controlServerPath = path.join(sharedDir, "control-server/controller.ts");
 const expectedScenarioModuleFiles = [
   "asset-heavy-ota-uses-archive.ts",
+  "brownfield-native-minor-update.ts",
+  "brownfield-native-required-update.ts",
   "bspatch-builtin-to-diff-ota.ts",
   "bspatch-consecutive-diff-ota.ts",
   "bspatch-disabled-chain-rollback.ts",
@@ -92,6 +94,7 @@ describe("E2E source boundaries", () => {
           ![
             "e2e/runner-contract.json",
             "e2e/scenario-names.json",
+            "e2e/brownfield-scenario-names.json",
             "e2e/run.ts",
             "e2e/run.spec.ts",
             "e2e/README.md",

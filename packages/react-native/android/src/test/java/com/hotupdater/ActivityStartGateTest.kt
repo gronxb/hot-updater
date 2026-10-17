@@ -99,10 +99,96 @@ class ActivityStartGateTest {
         assertEquals(1, runs)
     }
 
+    @Test
+    fun `native screen without a React Native view waits for one`() {
+        // A brownfield app loads the bundle with its first native screen.
+        val application = RecordingApplication()
+        val gate = createGate(application)
+        var runs = 0
+        showsReactView = false
+
+        application.startActivity()
+        gate.runWhenActivityStarted { runs += 1 }
+        assertEquals(0, runs)
+        application.layout()
+        assertEquals(0, runs)
+
+        showsReactView = true
+        application.layout()
+        application.layout()
+        assertEquals(1, runs)
+        assertEquals(0, layoutWatches)
+    }
+
+    @Test
+    fun `native screen that never shows React Native never runs`() {
+        val application = RecordingApplication()
+        val gate = createGate(application)
+        var runs = 0
+        showsReactView = false
+
+        gate.runWhenActivityStarted { runs += 1 }
+        application.startActivity()
+        application.layout()
+        application.stopActivity()
+        showsReactView = true
+        application.layout()
+
+        assertEquals(0, runs)
+        assertEquals(0, layoutWatches)
+    }
+
+    @Test
+    fun `activity that starts with a React Native view runs at once`() {
+        val application = RecordingApplication()
+        val gate = createGate(application)
+        var runs = 0
+        showsReactView = false
+
+        gate.runWhenActivityStarted { runs += 1 }
+        application.startActivity()
+        assertEquals(0, runs)
+        application.stopActivity()
+
+        showsReactView = true
+        application.startActivity()
+        assertEquals(1, runs)
+        assertEquals(0, layoutWatches)
+    }
+
+    @Test
+    fun `next launch stops watching for the waiting one`() {
+        val application = RecordingApplication()
+        val gate = createGate(application)
+        val runs = mutableListOf<String>()
+        showsReactView = false
+
+        application.startActivity()
+        gate.runWhenActivityStarted { runs += "first" }
+        gate.runWhenActivityStarted(null)
+        assertEquals(0, layoutWatches)
+
+        showsReactView = true
+        application.layout()
+        assertEquals(emptyList<String>(), runs)
+    }
+
+    private var showsReactView = true
+    private val layoutListeners = mutableListOf<() -> Unit>()
+    private val layoutWatches get() = layoutListeners.size
+
     private fun createGate(
         application: Application?,
         startedBefore: Boolean = false,
-    ) = ActivityStartGate(application) { startedBefore }
+    ) = ActivityStartGate(
+        application,
+        processHasStartedActivity = { startedBefore },
+        showsReactView = { showsReactView },
+        watchLayout = { _, onLayout ->
+            layoutListeners += onLayout
+            { layoutListeners -= onLayout }
+        },
+    )
 
     private inner class RecordingApplication : Application() {
         private val callbacks = mutableListOf<ActivityLifecycleCallbacks>()
@@ -114,5 +200,7 @@ class ActivityStartGateTest {
         fun startActivity() = callbacks.forEach { it.onActivityStarted(activity) }
 
         fun stopActivity() = callbacks.forEach { it.onActivityStopped(activity) }
+
+        fun layout() = layoutListeners.toList().forEach { it() }
     }
 }

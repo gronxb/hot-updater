@@ -8,6 +8,7 @@ import type { MobileContext } from "./context.ts";
 
 const context: MobileContext = {
   platform: "android",
+  track: "greenfield",
   deviceId: "emulator-5562",
   session: "isolated",
   runId: "run",

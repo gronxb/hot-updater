@@ -110,13 +110,33 @@ interface BundleStorageService {
     fun prepareLaunch(pendingRecovery: PendingCrashRecovery?): LaunchSelection
 
     /**
+     * Settles what the previous process left once per process, before the
+     * first read of the selection: interrupted promotions, a crash rollback,
+     * and a launch that never finished. [prepareLaunch] runs it first; a native
+     * update check that runs before React Native starts runs it earlier.
+     * [pendingRecovery] is called only when this run settles.
+     */
+    fun settlePreviousLaunch(pendingRecovery: () -> PendingCrashRecovery?) {}
+
+    /**
+     * The bundle [prepareLaunch] would load, read from the saved metadata
+     * without preparing the launch. Null is the built-in bundle. Call
+     * [settlePreviousLaunch] first, or a bundle the next launch rolls back
+     * is returned.
+     */
+    fun peekLaunchBundleId(): String? = null
+
+    /**
      * Updates the bundle from the specified URL
      * @param bundleId ID of the bundle to update
      * @param manifestUrl URL of the target bundle manifest
      * @param manifestFileHash Manifest hash or signature
+     * @param selection the Release selection this staging commits, checked
+     *   before the download and again when the staging commits
      * @param progressCallback Callback for download progress updates
      * @return how the staged bundle arrived
      * @throws HotUpdaterException if the update fails
+     * @throws StaleReleaseSelectionException if [selection] is no longer current
      */
     suspend fun updateBundle(
         bundleId: String,
@@ -125,10 +145,9 @@ interface BundleStorageService {
         assets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String? = null,
         fileResolver: ArtifactFileResolver? = null,
+        selection: PersistedSelection? = null,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult
-
-    fun stageReleaseSelection(selection: PersistedSelection): Boolean = false
 
     fun acceptReleaseCatalog(
         catalogId: String,
@@ -256,7 +275,6 @@ class BundleFileStorageService(
     }
 
     private val releaseStateLock = Any()
-    private val pendingInstallSelections = java.util.concurrent.ConcurrentHashMap<String, PersistedSelection>()
     private val updateMutex = Mutex()
     private val builtInAssetResolver =
         builtInAssetResolver ?: AndroidBuiltInAssetResolver(
@@ -608,6 +626,8 @@ class BundleFileStorageService(
     }
 
     private var hasPreparedLaunch = false
+    private val settleLock = Any()
+    private var hasSettledPreviousLaunch = false
     private var currentLaunchReport: LaunchReport? = null
 
     // The staged bundle this process launched before its first content. Only that
@@ -1108,10 +1128,10 @@ class BundleFileStorageService(
     private fun prepareMetadataForNewStagingBundle(
         metadata: BundleMetadata,
         bundleId: String,
+        incomingSelection: PersistedSelection?,
     ): BundleMetadata {
         val currentVerifiedBundleId =
             getCurrentVerifiedBundleId(metadata)?.takeIf { it != bundleId }
-        val incomingSelection = pendingInstallSelections.remove(bundleId)
         if (incomingSelection != null && !isSelectionCurrent(incomingSelection)) {
             throw StaleReleaseSelectionException()
         }
@@ -1141,6 +1161,7 @@ class BundleFileStorageService(
                 ),
             verificationPending = true,
             launchInProgress = false,
+            currentSelectionContexts = contextsAfterCommitting(metadata.currentSelectionContexts, incomingSelection),
             updatedAt = System.currentTimeMillis(),
         )
     }
@@ -1259,6 +1280,22 @@ class BundleFileStorageService(
         scopeKey: String,
     ): String = "$catalogId|$scopeKey"
 
+    /**
+     * The selection contexts that stay current once [selection] commits: only
+     * its own scope's, or none for a staging without a Release selection. A
+     * check made before this commit, of another scope such as another channel,
+     * no longer stages over it.
+     */
+    private fun contextsAfterCommitting(
+        contexts: Map<String, String>,
+        selection: PersistedSelection?,
+    ): Map<String, String> {
+        val catalogId = selection?.catalogId ?: return emptyMap()
+        val scopeKey = selection.scopeKey ?: return emptyMap()
+        val stateKey = releaseScopeStateKey(catalogId, scopeKey)
+        return contexts.filterKeys { it == stateKey }
+    }
+
     private fun selectionContextValue(
         channel: String,
         selectionContextHash: String,
@@ -1355,12 +1392,6 @@ class BundleFileStorageService(
         )
     }
 
-    override fun stageReleaseSelection(selection: PersistedSelection): Boolean {
-        if (!isSelectionCurrent(selection)) return false
-        pendingInstallSelections[selection.bundleId] = selection
-        return true
-    }
-
     override suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean =
         withContext(Dispatchers.IO) {
             synchronized(releaseStateLock) {
@@ -1374,6 +1405,15 @@ class BundleFileStorageService(
                                 metadata.copy(
                                     stagingBundleId = selection.bundleId,
                                     stagingSelection = selection,
+                                    // The launch of the staged bundle reports this Release as applied.
+                                    pendingTransition =
+                                        metadata.pendingTransition?.let { transition ->
+                                            if (transition.toBundleId == selection.bundleId) {
+                                                transition.copy(toReleaseId = selection.releaseId)
+                                            } else {
+                                                transition
+                                            }
+                                        },
                                     updatedAt = System.currentTimeMillis(),
                                 )
                             }
@@ -1405,7 +1445,11 @@ class BundleFileStorageService(
                             updatedAt = System.currentTimeMillis(),
                         )
                     }
-                if (!saveMetadata(nextMetadata)) return@synchronized false
+                val committedMetadata =
+                    nextMetadata.copy(
+                        currentSelectionContexts = contextsAfterCommitting(nextMetadata.currentSelectionContexts, selection),
+                    )
+                if (!saveMetadata(committedMetadata)) return@synchronized false
 
                 if (selection.channel == defaultChannelProvider()) {
                     preferences.setItem("HotUpdaterChannel", null)
@@ -1616,17 +1660,38 @@ class BundleFileStorageService(
 
     override fun getFallbackBundleURL(): String = "assets://index.android.bundle"
 
-    override fun prepareLaunch(pendingRecovery: PendingCrashRecovery?): LaunchSelection {
-        recoverInterruptedPromotions()
-        saveLaunchReport(null)
-        applyPendingRecoveryIfNeeded(pendingRecovery)
-        // Only a new storage instance consumes an unfinished launch. Repeated bundle
-        // lookups or bridge reloads in this process must not reject its own launch.
-        if (!hasPreparedLaunch) {
+    override fun settlePreviousLaunch(pendingRecovery: () -> PendingCrashRecovery?) {
+        synchronized(settleLock) {
+            if (hasSettledPreviousLaunch) return
+            hasSettledPreviousLaunch = true
+            recoverInterruptedPromotions()
+            // Cleared before the rollbacks below, so the launch reports their RECOVERED.
+            saveLaunchReport(null)
+            applyPendingRecoveryIfNeeded(pendingRecovery())
+            // Only a new storage instance consumes an unfinished launch. Repeated bundle
+            // lookups or bridge reloads in this process must not reject its own launch.
             val metadata = loadMetadataOrNull()
             if (metadata?.verificationPending == true && metadata.launchInProgress) {
                 metadata.stagingBundleId?.let { rollbackPendingBundle(it, unfinishedLaunch = true) }
             }
+            // A pending bundle whose file is gone rolls back, as selectLaunch does.
+            val settled = loadMetadataOrNull()
+            settled?.stagingBundleId?.let { stagingBundleId ->
+                if (settled.verificationPending && getBundleUrlForId(stagingBundleId) == null) {
+                    rollbackPendingBundle(stagingBundleId)
+                }
+            }
+        }
+    }
+
+    override fun prepareLaunch(pendingRecovery: PendingCrashRecovery?): LaunchSelection {
+        if (hasPreparedLaunch) {
+            // A later launch in this process, after a reset or a reload.
+            recoverInterruptedPromotions()
+            saveLaunchReport(null)
+            applyPendingRecoveryIfNeeded(pendingRecovery)
+        } else {
+            settlePreviousLaunch { pendingRecovery }
         }
         hasPreparedLaunch = true
 
@@ -1640,6 +1705,17 @@ class BundleFileStorageService(
         return selection
     }
 
+    override fun peekLaunchBundleId(): String? {
+        val metadata = loadMetadataOrNull() ?: return null
+        metadata.stagingBundleId?.let { stagingBundleId ->
+            if (getBundleUrlForId(stagingBundleId) != null) return stagingBundleId
+        }
+        metadata.stableBundleId?.let { stableBundleId ->
+            if (getBundleUrlForId(stableBundleId) != null) return stableBundleId
+        }
+        return null
+    }
+
     override suspend fun updateBundle(
         bundleId: String,
         manifestUrl: String,
@@ -1647,9 +1723,15 @@ class BundleFileStorageService(
         assets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String?,
         fileResolver: ArtifactFileResolver?,
+        selection: PersistedSelection?,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult =
         updateMutex.withLock {
+            // The selection travels with this staging: another staging of the
+            // same bundle carries its own.
+            if (selection != null && !isSelectionCurrent(selection)) {
+                throw StaleReleaseSelectionException()
+            }
             updateBundleSerialized(
                 bundleId = bundleId,
                 manifestUrl = manifestUrl,
@@ -1657,6 +1739,7 @@ class BundleFileStorageService(
                 changedAssets = assets,
                 archiveUrl = archiveUrl,
                 fileResolver = fileResolver,
+                selection = selection,
                 progressCallback = progressCallback,
             )
         }
@@ -1668,6 +1751,7 @@ class BundleFileStorageService(
         changedAssets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String?,
         fileResolver: ArtifactFileResolver?,
+        selection: PersistedSelection?,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult {
         Log.d(
@@ -1700,6 +1784,7 @@ class BundleFileStorageService(
                 changedAssets = changedAssets,
                 archiveUrl = archiveUrl,
                 fileResolver = fileResolver,
+                selection = selection,
                 bundleStoreDir = bundleStoreDir,
                 finalBundleDir = finalBundleDir,
                 progressCallback = progressCallback,
@@ -1769,9 +1854,14 @@ class BundleFileStorageService(
                 }
             for (path in paths) {
                 val file = files[path] ?: throw HotUpdaterException.invalidBundle()
-                try {
-                    URL(file.url)
-                } catch (error: java.net.MalformedURLException) {
+                val url =
+                    try {
+                        URL(file.url)
+                    } catch (error: java.net.MalformedURLException) {
+                        throw HotUpdaterException.invalidFileUrl(path, file.url, UpdateFailureResource.FILE)
+                    }
+                // java.net.URL also takes file: URLs and a hostless "https://"; a download needs neither.
+                if (url.protocol.lowercase() !in setOf("http", "https") || url.host.isNullOrEmpty()) {
                     throw HotUpdaterException.invalidFileUrl(path, file.url, UpdateFailureResource.FILE)
                 }
                 downloads[path] = downloads.getValue(path).copy(fileUrl = file.url, fileCompression = file.compression)
@@ -2149,6 +2239,7 @@ class BundleFileStorageService(
         changedAssets: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String?,
         fileResolver: ArtifactFileResolver?,
+        selection: PersistedSelection?,
         bundleStoreDir: File,
         finalBundleDir: File,
         progressCallback: (UpdateProgressPayload) -> Unit,
@@ -2415,7 +2506,7 @@ class BundleFileStorageService(
                             finalBundleDir.setLastModified(System.currentTimeMillis())
 
                             val currentMetadata = loadMetadataOrNull() ?: createInitialMetadata()
-                            val nextMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId)
+                            val nextMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId, selection)
                             if (!setBundleURL(finalIndexFile.absolutePath)) {
                                 throw HotUpdaterException.storageFailed("Failed to persist bundle URL")
                             }
@@ -2612,6 +2703,9 @@ class BundleFileStorageService(
                     pendingTransition = null,
                     verificationPending = false,
                     launchInProgress = false,
+                    // Selections made before the reset no longer stage; the
+                    // high-water marks stay, so an older catalog is still refused.
+                    currentSelectionContexts = emptyMap(),
                     updatedAt = System.currentTimeMillis(),
                 )
 

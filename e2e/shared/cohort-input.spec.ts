@@ -55,8 +55,7 @@ function fixture() {
             vi.fn(),
           ],
         };
-      if (name === "react-native" || name === "react-native-bootsplash")
-        return {};
+      if (name === "react-native") return {};
       if (name === "valtio") return { useSnapshot: () => ({}) };
       if (name === "./runtime")
         return {

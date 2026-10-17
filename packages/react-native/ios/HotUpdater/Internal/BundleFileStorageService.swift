@@ -283,10 +283,24 @@ public protocol BundleStorageService {
     func getCachedBundleURL() -> URL?
     func getFallbackBundleURL(bundle: Bundle) -> URL? // Synchronous as it's lightweight
     func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection
+    /// Settles what the previous process left once per process, before the
+    /// first read of the selection: a crash rollback and a launch that never
+    /// finished. `prepareLaunch` runs it first; a native update check that runs
+    /// before React Native starts runs it earlier. `pendingRecovery` is called
+    /// only when this run settles.
+    func settlePreviousLaunch(pendingRecovery: () -> PendingCrashRecovery?)
+    /// The bundle the next `prepareLaunch` would run, read without preparing
+    /// the launch. Nil is the built-in bundle. Call `settlePreviousLaunch`
+    /// first, or a bundle the next launch rolls back is returned.
+    func peekLaunchBundleId() -> String?
 
     // Bundle update
-    func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL?, assets: [String: ChangedAssetDescriptor], fileResolver: ArtifactFileResolver?, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<UpdateDelivery, Error>) -> Void)
-    func stageReleaseSelection(_ selection: PersistedSelection) -> Bool
+    /// Stages a bundle. `selection` is the Release selection the staging
+    /// commits; it travels with this staging, and the staging fails as stale
+    /// when it is no longer current.
+    func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL?, assets: [String: ChangedAssetDescriptor], fileResolver: ArtifactFileResolver?, selection: PersistedSelection?, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<UpdateDelivery, Error>) -> Void)
+    /// Whether a staging of `selection` would still commit.
+    func isSelectionCurrent(_ selection: PersistedSelection) -> Bool
     func acceptReleaseCatalog(catalogId: String, scopeKey: String, generation: Int64, catalogHash: String, channel: String, selectionContextHash: String) -> Bool
     func getActiveUpdateState() -> [String: Any]
     func isReleaseSelectionCurrent(catalogId: String, scopeKey: String, generation: Int64, catalogHash: String, channel: String, selectionContextHash: String) -> Bool
@@ -327,7 +341,9 @@ public protocol BundleStorageService {
 }
 
 public extension BundleStorageService {
-    func stageReleaseSelection(_: PersistedSelection) -> Bool { false }
+    func settlePreviousLaunch(pendingRecovery _: () -> PendingCrashRecovery?) {}
+    func peekLaunchBundleId() -> String? { nil }
+    func isSelectionCurrent(_: PersistedSelection) -> Bool { false }
     func acceptReleaseCatalog(catalogId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Bool { false }
     func getActiveUpdateState() -> [String: Any] { [:] }
     func isReleaseSelectionCurrent(catalogId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Bool { false }
@@ -379,6 +395,8 @@ class BundleFileStorageService: BundleStorageService {
     private let fileOperationQueue: DispatchQueue
 
     private var hasPreparedLaunch = false
+    private let settleLock = NSLock()
+    private var hasSettledPreviousLaunch = false
     private var currentLaunchReport: LaunchReport?
     // The staged bundle this process launched before its first content. Only that
     // launch is pending; a bundle staged later waits for the next launch.
@@ -393,7 +411,6 @@ class BundleFileStorageService: BundleStorageService {
     private let builtInAssetResolver: BuiltInAssetResolver
     private let updateStrategyProvider: () -> UpdateStrategy
     private let releaseStateLock = NSRecursiveLock()
-    private var pendingInstallSelections: [String: PersistedSelection] = [:]
 
     private let installIdentityLock = NSLock()
     private var currentInstallIdentity: InstallIdentity?
@@ -752,7 +769,7 @@ class BundleFileStorageService: BundleStorageService {
                 builtInAssetResolver: BuiltInAssetResolver? = nil,
                 updateStrategyProvider: @escaping () -> UpdateStrategy = {
                     let fingerprintHash = HotUpdaterConfig.shared.fingerprintHash
-                        ?? Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
+                        ?? HotUpdaterConfig.shared.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
                     return (fingerprintHash?.isEmpty == false) ? .fingerprint : .appVersion
                 },
                 downloadRetryDelay: TimeInterval = 1) {
@@ -1285,11 +1302,12 @@ class BundleFileStorageService: BundleStorageService {
         return metadata.verificationPending && metadata.stagingBundleId != nil
     }
 
-    private func prepareMetadataForNewStagingBundle(_ metadata: BundleMetadata, bundleId: String) -> BundleMetadata? {
+    private func prepareMetadataForNewStagingBundle(
+        _ metadata: BundleMetadata,
+        bundleId: String,
+        incomingSelection: PersistedSelection?
+    ) -> BundleMetadata? {
         let currentVerifiedBundleId = getCurrentVerifiedBundleId(metadata).flatMap { $0 == bundleId ? nil : $0 }
-        releaseStateLock.lock()
-        let incomingSelection = pendingInstallSelections.removeValue(forKey: bundleId)
-        releaseStateLock.unlock()
         if let incomingSelection, !isSelectionCurrent(incomingSelection) {
             return nil
         }
@@ -1325,7 +1343,7 @@ class BundleFileStorageService: BundleStorageService {
                 toBundleId: stagingSelection.bundleId
             ),
             highestSeenCatalogs: metadata.highestSeenCatalogs,
-            currentSelectionContexts: metadata.currentSelectionContexts,
+            currentSelectionContexts: contextsAfterCommitting(metadata.currentSelectionContexts, incomingSelection),
             updatedAt: Date().timeIntervalSince1970 * 1000
         )
     }
@@ -1424,6 +1442,21 @@ class BundleFileStorageService: BundleStorageService {
         "\(catalogId)|\(scopeKey)"
     }
 
+    /// The selection contexts that stay current once `selection` commits: only
+    /// its own scope's, or none for a staging without a Release selection. A
+    /// check made before this commit, of another scope such as another channel,
+    /// no longer stages over it.
+    private func contextsAfterCommitting(
+        _ contexts: [String: String],
+        _ selection: PersistedSelection?
+    ) -> [String: String] {
+        guard let catalogId = selection?.catalogId, let scopeKey = selection?.scopeKey else {
+            return [:]
+        }
+        let stateKey = releaseScopeStateKey(catalogId: catalogId, scopeKey: scopeKey)
+        return contexts.filter { $0.key == stateKey }
+    }
+
     private func selectionContextValue(channel: String, selectionContextHash: String) -> String {
         "\(channel)\n\(selectionContextHash)"
     }
@@ -1511,7 +1544,7 @@ class BundleFileStorageService: BundleStorageService {
         )
     }
 
-    private func isSelectionCurrent(_ selection: PersistedSelection) -> Bool {
+    func isSelectionCurrent(_ selection: PersistedSelection) -> Bool {
         guard let catalogId = selection.catalogId,
               let scopeKey = selection.scopeKey,
               let generation = selection.generation,
@@ -1529,13 +1562,6 @@ class BundleFileStorageService: BundleStorageService {
         )
     }
 
-    func stageReleaseSelection(_ selection: PersistedSelection) -> Bool {
-        releaseStateLock.lock()
-        defer { releaseStateLock.unlock() }
-        guard isSelectionCurrent(selection) else { return false }
-        pendingInstallSelections[selection.bundleId] = selection
-        return true
-    }
 
     func commitReleaseSelection(_ selection: PersistedSelection) -> Bool {
         releaseStateLock.lock()
@@ -1547,6 +1573,15 @@ class BundleFileStorageService: BundleStorageService {
                 || metadata.stagingBundleId == selection.bundleId {
                 metadata.stagingBundleId = selection.bundleId
                 metadata.stagingSelection = selection
+                // The launch of the staged bundle reports this Release as applied.
+                if let transition = metadata.pendingSelectionTransition, transition.toBundleId == selection.bundleId {
+                    metadata.pendingSelectionTransition = PendingSelectionTransition(
+                        fromReleaseId: transition.fromReleaseId,
+                        fromBundleId: transition.fromBundleId,
+                        toReleaseId: selection.releaseId,
+                        toBundleId: transition.toBundleId
+                    )
+                }
             } else if metadata.stableSelection?.bundleId == selection.bundleId
                 || metadata.stableBundleId == selection.bundleId {
                 metadata.stableBundleId = selection.bundleId
@@ -1566,6 +1601,7 @@ class BundleFileStorageService: BundleStorageService {
             metadata.pendingSelectionTransition = nil
         }
         metadata.updatedAt = Date().timeIntervalSince1970 * 1000
+        metadata.currentSelectionContexts = contextsAfterCommitting(metadata.currentSelectionContexts, selection)
         guard saveMetadata(metadata) else { return false }
         do {
             try preferences.setItem(
@@ -1998,19 +2034,68 @@ class BundleFileStorageService: BundleStorageService {
         )
     }
 
-    func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection {
-        builtInAssetResolver.use(bundle: bundle)
+    func peekLaunchBundleId() -> String? {
+        // Reads the store without bundleStoreDir(), which creates it.
+        let storeDir = (fileSystem.documentsPath() as NSString).appendingPathComponent("bundle-store")
+        let metadataFile = URL(fileURLWithPath: storeDir).appendingPathComponent(BundleMetadata.metadataFilename)
+        guard let metadata = BundleMetadata.load(from: metadataFile, expectedIsolationKey: isolationKey) else {
+            return nil
+        }
+        func hasBundleFile(_ bundleId: String) -> Bool {
+            let directory = (storeDir as NSString).appendingPathComponent(bundleId)
+            guard case .success(let bundlePath) = findBundleFile(in: directory, expectedBundleId: bundleId) else {
+                return false
+            }
+            return bundlePath != nil
+        }
+        if let stagingBundleId = metadata.stagingBundleId, hasBundleFile(stagingBundleId) {
+            return stagingBundleId
+        }
+        if let stableBundleId = metadata.stableBundleId, hasBundleFile(stableBundleId) {
+            return stableBundleId
+        }
+        return nil
+    }
+
+    func settlePreviousLaunch(pendingRecovery: () -> PendingCrashRecovery?) {
+        settleLock.lock()
+        defer { settleLock.unlock() }
+        guard !hasSettledPreviousLaunch else { return }
+        hasSettledPreviousLaunch = true
+        // Cleared before the rollbacks below, so the launch reports their RECOVERED.
         saveLaunchReport(nil)
-        loadOrCreateInstallIdentity()
-        applyPendingRecoveryIfNeeded(pendingRecovery)
+        applyPendingRecoveryIfNeeded(pendingRecovery())
         // Only a new storage instance consumes an unfinished launch. Repeated bundle
         // lookups or bridge reloads in this process must not reject its own launch.
-        if !hasPreparedLaunch,
-           let metadata = loadMetadataOrNull(),
+        if let metadata = loadMetadataOrNull(),
            metadata.verificationPending,
            metadata.launchInProgress,
            let stagingBundleId = metadata.stagingBundleId {
             rollbackPendingBundle(stagingBundleId, unfinishedLaunch: true)
+        }
+        // A pending bundle whose file is gone rolls back, as selectLaunch does.
+        if let metadata = loadMetadataOrNull(),
+           metadata.verificationPending,
+           let stagingBundleId = metadata.stagingBundleId,
+           case .success(let storeDir) = bundleStoreDir() {
+            let stagingBundleDir = (storeDir as NSString).appendingPathComponent(stagingBundleId)
+            if case .success(let bundlePath) = findBundleFile(in: stagingBundleDir, expectedBundleId: stagingBundleId),
+               bundlePath != nil {
+                return
+            }
+            rollbackPendingBundle(stagingBundleId)
+        }
+    }
+
+    func prepareLaunch(bundle: Bundle, pendingRecovery: PendingCrashRecovery?) -> LaunchSelection {
+        builtInAssetResolver.use(bundle: bundle)
+        loadOrCreateInstallIdentity()
+        if hasPreparedLaunch {
+            // A later launch in this process, after a reset or a reload.
+            saveLaunchReport(nil)
+            applyPendingRecoveryIfNeeded(pendingRecovery)
+        } else {
+            settlePreviousLaunch { pendingRecovery }
         }
         hasPreparedLaunch = true
         // A launch is recorded only once it can show UI (markLaunchStarted).
@@ -2029,7 +2114,7 @@ class BundleFileStorageService: BundleStorageService {
      * @param progressHandler Callback for download and extraction progress (0.0 to 1.0)
      * @param completion Callback with result of the operation
      */
-    func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL? = nil, assets: [String: ChangedAssetDescriptor], fileResolver: ArtifactFileResolver? = nil, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<UpdateDelivery, Error>) -> Void) {
+    func updateBundle(bundleId: String, manifestUrl: URL, manifestFileHash: String, archiveUrl: URL? = nil, assets: [String: ChangedAssetDescriptor], fileResolver: ArtifactFileResolver? = nil, selection: PersistedSelection? = nil, progressHandler: @escaping (UpdateProgressPayload) -> Void, completion: @escaping (Result<UpdateDelivery, Error>) -> Void) {
         // Check if bundle is in crashed history
         if getCrashHistory().contains(bundleId) {
             NSLog("[BundleStorage] Bundle '\(bundleId)' is in crashed history, rejecting update")
@@ -2053,6 +2138,7 @@ class BundleFileStorageService: BundleStorageService {
                 archiveUrl: archiveUrl,
                 changedAssets: assets,
                 fileResolver: fileResolver,
+                selection: selection,
                 storeDir: storeDir,
                 progressHandler: progressHandler,
                 completion: completion
@@ -2078,6 +2164,16 @@ class BundleFileStorageService: BundleStorageService {
             for path in chunk {
                 guard let file = files[path], let descriptor = downloads[path] else {
                     throw BundleStorageError.invalidBundle
+                }
+                // A download needs an absolute HTTP(S) URL with a host.
+                guard ["http", "https"].contains(file.url.scheme?.lowercased() ?? ""),
+                      file.url.host?.isEmpty == false else {
+                    throw UpdateFailureError(
+                        underlying: NSError(domain: "HotUpdater", code: 0, userInfo: [
+                            NSLocalizedDescriptionKey: "Invalid '\(path)' provided: \(file.url.absoluteString)"
+                        ]),
+                        failure: UpdateFailure.invalidResponse.with(resource: .file)
+                    )
                 }
                 downloads[path] = ChangedAssetDescriptor(
                     fileUrl: file.url,
@@ -2481,6 +2577,7 @@ class BundleFileStorageService: BundleStorageService {
 
     private func promoteStagedBundle(
         bundleId: String,
+        selection: PersistedSelection?,
         stagingDirectory: String,
         finalDirectory: String,
         bundlePathInStaging: String
@@ -2488,7 +2585,11 @@ class BundleFileStorageService: BundleStorageService {
         releaseStateLock.lock()
         defer { releaseStateLock.unlock() }
         let currentMetadata = loadMetadataOrNull() ?? createInitialMetadata()
-        guard let updatedMetadata = prepareMetadataForNewStagingBundle(currentMetadata, bundleId: bundleId) else {
+        guard let updatedMetadata = prepareMetadataForNewStagingBundle(
+            currentMetadata,
+            bundleId: bundleId,
+            incomingSelection: selection
+        ) else {
             throw BundleStorageError.unknown(StaleReleaseSelectionError())
         }
         let finalBundlePath = try resolveBundlePathAfterMove(
@@ -2535,6 +2636,7 @@ class BundleFileStorageService: BundleStorageService {
         archiveUrl: URL?,
         changedAssets: [String: ChangedAssetDescriptor],
         fileResolver: ArtifactFileResolver?,
+        selection: PersistedSelection?,
         storeDir: String,
         progressHandler: @escaping (UpdateProgressPayload) -> Void,
         completion: @escaping (Result<UpdateDelivery, Error>) -> Void
@@ -2831,6 +2933,7 @@ class BundleFileStorageService: BundleStorageService {
 
                 let updatedMetadata = try promoteStagedBundle(
                     bundleId: bundleId,
+                    selection: selection,
                     stagingDirectory: tmpDir,
                     finalDirectory: realDir,
                     bundlePathInStaging: bundlePathInTmp
@@ -3077,6 +3180,9 @@ class BundleFileStorageService: BundleStorageService {
         clearedMetadata.verificationPending = false
         clearedMetadata.pendingTransition = nil
         clearedMetadata.pendingSelectionTransition = nil
+        // Selections made before the reset no longer stage; the high-water
+        // marks stay, so an older catalog is still refused.
+        clearedMetadata.currentSelectionContexts = [:]
         clearedMetadata.updatedAt = Date().timeIntervalSince1970 * 1000
 
         guard saveMetadata(clearedMetadata) else {

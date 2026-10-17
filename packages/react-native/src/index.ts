@@ -29,10 +29,10 @@ import {
   reload,
   resetChannel,
   setCohort,
-  setReloadBehavior,
   stageBundle,
   type UpdateParams,
 } from "./native";
+import { replayNativeUpdateEvents } from "./nativeUpdateEvents";
 import { createAppPluginHost } from "./pluginHost";
 import { hotUpdaterStore } from "./store";
 import { type HotUpdaterWrapOptions, wrap } from "./wrap";
@@ -79,7 +79,6 @@ export {
   type RemoteConfigValueSource,
 } from "@hot-updater/plugin-remote-config/client";
 export type {
-  CustomReloadHandler,
   HotUpdaterEvent,
   HotUpdaterProgressArtifactType,
   HotUpdaterProgressEvent,
@@ -87,8 +86,6 @@ export type {
   ManifestAsset,
   NotifyAppReadyResult,
   ActiveUpdateState,
-  ReloadBehavior,
-  ReloadBehaviorSetting,
 } from "./native";
 export * from "./store";
 export {
@@ -135,21 +132,10 @@ const createMissingNetworkConfigError = () =>
 /** The methods that read or change native state, the same on every instance. */
 const nativeMethods = {
   /**
-   * Reloads the app.
+   * Restarts the app so it loads the current bundle: a cold process restart
+   * on Android, an in-place React Native reload on iOS.
    */
   reload,
-
-  /**
-   * Configures how `hotUpdater.reload()` behaves.
-   *
-   * This can be called unconditionally on both platforms.
-   * The default is `processRestart`.
-   *
-   * - `reload`: built-in React Native reload on both platforms
-   * - `processRestart`: Android process restart, iOS behaves like normal reload
-   * - `custom`: run a custom JS handler on both platforms
-   */
-  setReloadBehavior,
 
   /**
    * Returns whether an update has finished downloading in this app session.
@@ -563,6 +549,12 @@ export const HotUpdater = {
       requestTimeout,
       onError,
     });
+    // Native events happened before this launch's report, such as the download
+    // it applies, so plugins receive them first. Native checks run on the one
+    // native instance, which shares this server as the brownfield guide sets
+    // it up: the first init of the runtime reports them, and a later init
+    // gets none because they were reported already.
+    replayNativeUpdateEvents(launch.emit);
     void launch.read({ onNotifyAppReady, onError });
     return Object.freeze({
       ...instance,

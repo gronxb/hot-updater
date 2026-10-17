@@ -51,7 +51,7 @@ describe("local standalone profile", () => {
     expect(profile.env.CONTROL_URL).toBeUndefined();
     expect(profile.env.HOT_UPDATER_E2E_ANDROID_BINARY_PATH).toBeUndefined();
     const builds = createNativeBuildPlan(
-      { platform: "ios", dryRun: false },
+      { platform: "ios", track: "greenfield", dryRun: false },
       profile.root,
       profile.env,
     );

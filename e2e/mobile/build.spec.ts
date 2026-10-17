@@ -13,9 +13,109 @@ const deviceId = "12345678-1234-1234-1234-1234567890AB";
 const otherDeviceId = "ABCDEFAB-1234-1234-1234-1234567890AB";
 
 describe("native Release builds", () => {
+  it("packages the example as an AAR and builds the Android brownfield host", () => {
+    expect(
+      createNativeBuildPlan(
+        { platform: "android", track: "brownfield", dryRun: false },
+        "/checkout",
+        { HOT_UPDATER_E2E_ANDROID_ARCHITECTURES: "arm64-v8a" },
+      ),
+    ).toEqual([
+      {
+        command: "rm",
+        args: ["-rf", "brownfieldlib/build"],
+        cwd: "/checkout/examples/v0.85.0/android",
+        env: {},
+      },
+      {
+        command: "./gradlew",
+        args: [
+          "--no-daemon",
+          ":brownfieldlib:publishMavenAarPublicationToBrownfieldE2eRepository",
+          "-Pkotlin.compiler.execution.strategy=in-process",
+          "-PreactNativeArchitectures=arm64-v8a",
+          "-PMIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000",
+        ],
+        cwd: "/checkout/examples/v0.85.0/android",
+        env: { NODE_ENV: "production", BABEL_ENV: "production" },
+      },
+      {
+        command: "./gradlew",
+        args: [
+          "--no-daemon",
+          ":app:assembleRelease",
+          "-Pkotlin.compiler.execution.strategy=in-process",
+          "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
+        ],
+        cwd: "/checkout/examples/brownfield-host/android",
+        env: {},
+      },
+    ]);
+  });
+
+  it("packages the example as an XCFramework and builds the iOS brownfield host", () => {
+    const [install, pods, framework, host] = createNativeBuildPlan(
+      { platform: "ios", track: "brownfield", deviceId, dryRun: false },
+      "/checkout",
+      { HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH: "/derived" },
+    );
+    expect(install!.cwd).toBe("/checkout/examples/v0.85.0/ios");
+    expect(pods!.args).toEqual(["exec", "pod", "install"]);
+    expect(framework).toEqual({
+      command: "/checkout/examples/v0.85.0/node_modules/.bin/brownfield",
+      args: [
+        "package:ios",
+        "--scheme",
+        "HotUpdaterExampleBrownfield",
+        "--configuration",
+        "Release",
+        "--no-install-pods",
+        "--build-folder",
+        "/derived/framework",
+        "--extra-params",
+        "HOT_UPDATER_MIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000",
+      ],
+      cwd: "/checkout/examples/v0.85.0",
+      env: { NODE_ENV: "production", BABEL_ENV: "production" },
+    });
+    expect(host).toEqual({
+      command: "xcodebuild",
+      args: [
+        "-project",
+        "HotUpdaterExampleHost.xcodeproj",
+        "-scheme",
+        "HotUpdaterExampleHost",
+        "-configuration",
+        "Release",
+        "-sdk",
+        "iphonesimulator",
+        "-destination",
+        `id=${deviceId}`,
+        "-derivedDataPath",
+        "/derived",
+        "-quiet",
+      ],
+      cwd: "/checkout/examples/brownfield-host/ios",
+      env: {},
+    });
+  });
+
+  it("parses the track and defaults to greenfield", () => {
+    expect(parseNativeBuildArgs(["--platform", "ios"]).track).toBe(
+      "greenfield",
+    );
+    expect(
+      parseNativeBuildArgs(["--platform", "ios", "--track", "brownfield"])
+        .track,
+    ).toBe("brownfield");
+    expect(() =>
+      parseNativeBuildArgs(["--platform", "ios", "--track", "expo"]),
+    ).toThrow("Unknown E2E track: expo");
+  });
+
   it("builds the debuggable Android Release app without an instrumentation APK", () => {
     const [command] = createNativeBuildPlan(
-      { platform: "android", dryRun: false },
+      { platform: "android", track: "greenfield", dryRun: false },
       "/checkout with spaces",
       { HOT_UPDATER_E2E_ANDROID_ARCHITECTURES: "arm64-v8a" },
     );
@@ -36,7 +136,7 @@ describe("native Release builds", () => {
 
   it("preserves both Android simulator architectures by default", () => {
     const [command] = createNativeBuildPlan(
-      { platform: "android", dryRun: false },
+      { platform: "android", track: "greenfield", dryRun: false },
       "/checkout",
       {},
     );
@@ -47,7 +147,7 @@ describe("native Release builds", () => {
 
   it("installs prebuilt RN pods before the explicit iOS Release simulator build", () => {
     const [install, pods, xcode] = createNativeBuildPlan(
-      { platform: "ios", deviceId, dryRun: false },
+      { platform: "ios", track: "greenfield", deviceId, dryRun: false },
       "/checkout",
       { HOT_UPDATER_E2E_DEVICE_ID: otherDeviceId },
     );
@@ -92,7 +192,7 @@ describe("native Release builds", () => {
 
   it("accepts the bot's existing explicit iOS device and build path environment", () => {
     const [, , xcode] = createNativeBuildPlan(
-      { platform: "ios", dryRun: false },
+      { platform: "ios", track: "greenfield", dryRun: false },
       "/checkout",
       {
         HOT_UPDATER_E2E_DEVICE_ID: deviceId,
@@ -105,14 +205,14 @@ describe("native Release builds", () => {
 
   it("builds for generic simulators before a device lease and rejects names as IDs", () => {
     const [, , xcode] = createNativeBuildPlan(
-      { platform: "ios", dryRun: false },
+      { platform: "ios", track: "greenfield", dryRun: false },
       "/checkout",
       {},
     );
     expect(xcode.args).toContain("generic/platform=iOS Simulator");
     expect(() =>
       createNativeBuildPlan(
-        { platform: "ios", deviceId: "iPhone 16", dryRun: false },
+        { platform: "ios", track: "greenfield", deviceId: "iPhone 16", dryRun: false },
         "/checkout",
         {},
       ),
@@ -172,6 +272,11 @@ describe("native Release builds", () => {
     });
     await fs.mkdir(bin);
     await fs.copyFile(source, script);
+    await fs.mkdir(path.join(root, "e2e/shared"), { recursive: true });
+    await fs.copyFile(
+      fileURLToPath(new URL("../shared/tracks.ts", import.meta.url)),
+      path.join(root, "e2e/shared/tracks.ts"),
+    );
     const compiler = `
       const fs = require('node:fs');
       process.on('SIGTERM', () => {});

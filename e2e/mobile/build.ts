@@ -6,10 +6,17 @@ import path from "node:path";
 import process from "node:process";
 import { fileURLToPath } from "node:url";
 
+import {
+  type E2eTrack,
+  iosDerivedDataDir,
+  parseE2eTrack,
+} from "../shared/tracks.ts";
+
 const minBundleId = "00000000-0000-7000-8000-000000000000";
 
 export type NativeBuildOptions = {
   platform: "ios" | "android";
+  track: E2eTrack;
   deviceId?: string;
   dryRun: boolean;
 };
@@ -25,6 +32,7 @@ export function parseNativeBuildArgs(
   argv: readonly string[],
 ): NativeBuildOptions {
   let platform: NativeBuildOptions["platform"] | undefined;
+  let track: string | undefined;
   let deviceId: string | undefined;
   let dryRun = false;
   for (let index = 0; index < argv.length; index += 1) {
@@ -32,13 +40,19 @@ export function parseNativeBuildArgs(
     if (arg === "--") continue;
     if (arg === "--dry-run") {
       dryRun = true;
-    } else if (arg === "--platform" || arg === "--device") {
+    } else if (
+      arg === "--platform" ||
+      arg === "--device" ||
+      arg === "--track"
+    ) {
       const value = argv[++index];
       if (!value || value.startsWith("--")) {
         throw new Error(`Missing value for ${arg}`);
       }
       if (arg === "--device") {
         deviceId = value;
+      } else if (arg === "--track") {
+        track = value;
       } else if (value === "ios" || value === "android") {
         platform = value;
       } else {
@@ -49,7 +63,7 @@ export function parseNativeBuildArgs(
     }
   }
   if (!platform) throw new Error("--platform ios|android is required");
-  return { platform, deviceId, dryRun };
+  return { platform, track: parseE2eTrack(track), deviceId, dryRun };
 }
 
 export function createNativeBuildPlan(
@@ -57,10 +71,52 @@ export function createNativeBuildPlan(
   repositoryRoot: string,
   env: NodeJS.ProcessEnv = process.env,
 ): NativeBuildCommand[] {
-  const cwd = path.join(repositoryRoot, "examples/v0.85.0", options.platform);
+  const exampleDir = path.join(repositoryRoot, "examples/v0.85.0");
+  const cwd = path.join(exampleDir, options.platform);
+  const hostDir = path.join(
+    repositoryRoot,
+    "examples/brownfield-host",
+    options.platform,
+  );
+  const bundleEnv = { NODE_ENV: "production", BABEL_ENV: "production" };
   if (options.platform === "android") {
     const architectures =
       env.HOT_UPDATER_E2E_ANDROID_ARCHITECTURES || "arm64-v8a,x86_64";
+    if (options.track === "brownfield") {
+      return [
+        // The library reuses an earlier JavaScript bundle from its build
+        // directory, so package from a clean one.
+        {
+          command: "rm",
+          args: ["-rf", "brownfieldlib/build"],
+          cwd,
+          env: {},
+        },
+        {
+          command: "./gradlew",
+          args: [
+            "--no-daemon",
+            ":brownfieldlib:publishMavenAarPublicationToBrownfieldE2eRepository",
+            "-Pkotlin.compiler.execution.strategy=in-process",
+            `-PreactNativeArchitectures=${architectures}`,
+            `-PMIN_BUNDLE_ID=${minBundleId}`,
+          ],
+          cwd,
+          env: bundleEnv,
+        },
+        {
+          command: "./gradlew",
+          args: [
+            "--no-daemon",
+            ":app:assembleRelease",
+            "-Pkotlin.compiler.execution.strategy=in-process",
+            "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
+          ],
+          cwd: hostDir,
+          env: {},
+        },
+      ];
+    }
     return [
       {
         command: "./gradlew",
@@ -73,7 +129,7 @@ export function createNativeBuildPlan(
           `-PMIN_BUNDLE_ID=${minBundleId}`,
         ],
         cwd,
-        env: { NODE_ENV: "production", BABEL_ENV: "production" },
+        env: bundleEnv,
       },
     ];
   }
@@ -90,7 +146,10 @@ export function createNativeBuildPlan(
     BUNDLE_PATH: path.join(repositoryRoot, "examples/v0.85.0/vendor/bundle"),
     BUNDLE_FROZEN: "1",
   };
-  return [
+  const destination = deviceId
+    ? `id=${deviceId}`
+    : "generic/platform=iOS Simulator";
+  const dependencies: NativeBuildCommand[] = [
     {
       command: "bundle",
       args: ["install"],
@@ -107,6 +166,55 @@ export function createNativeBuildPlan(
         RCT_USE_RN_DEP: "1",
       },
     },
+  ];
+  if (options.track === "brownfield") {
+    const derivedData = iosDerivedDataDir("brownfield", repositoryRoot, env);
+    return [
+      ...dependencies,
+      // Writes the XCFrameworks to examples/v0.85.0/ios/.brownfield/package/build,
+      // where the host project links them.
+      {
+        command: path.join(exampleDir, "node_modules/.bin/brownfield"),
+        args: [
+          "package:ios",
+          "--scheme",
+          "HotUpdaterExampleBrownfield",
+          "--configuration",
+          "Release",
+          // Device and simulator, as the guide packages: the CLI merges both.
+          "--no-install-pods",
+          "--build-folder",
+          path.join(derivedData, "framework"),
+          "--extra-params",
+          `HOT_UPDATER_MIN_BUNDLE_ID=${minBundleId}`,
+        ],
+        cwd: exampleDir,
+        env: bundleEnv,
+      },
+      {
+        command: "xcodebuild",
+        args: [
+          "-project",
+          "HotUpdaterExampleHost.xcodeproj",
+          "-scheme",
+          "HotUpdaterExampleHost",
+          "-configuration",
+          "Release",
+          "-sdk",
+          "iphonesimulator",
+          "-destination",
+          destination,
+          "-derivedDataPath",
+          derivedData,
+          "-quiet",
+        ],
+        cwd: hostDir,
+        env: {},
+      },
+    ];
+  }
+  return [
+    ...dependencies,
     {
       command: "xcodebuild",
       args: [
@@ -119,14 +227,14 @@ export function createNativeBuildPlan(
         "-sdk",
         "iphonesimulator",
         "-destination",
-        deviceId ? `id=${deviceId}` : "generic/platform=iOS Simulator",
+        destination,
         "-derivedDataPath",
         env.HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH || "build",
         "-quiet",
         `HOT_UPDATER_MIN_BUNDLE_ID=${minBundleId}`,
       ],
       cwd,
-      env: { NODE_ENV: "production", BABEL_ENV: "production" },
+      env: bundleEnv,
     },
   ];
 }
@@ -180,7 +288,7 @@ async function main(): Promise<number> {
   const argv = process.argv.slice(2);
   if (argv.includes("--help") || argv.includes("-h")) {
     console.log(
-      "Usage: pnpm -w e2e:build -- --platform ios|android [--device <UDID>] [--dry-run]",
+      "Usage: pnpm -w e2e:build -- --platform ios|android [--track greenfield|brownfield] [--device <UDID>] [--dry-run]",
     );
     return 0;
   }

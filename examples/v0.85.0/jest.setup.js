@@ -44,7 +44,6 @@ jest.mock("@hot-updater/react-native", () => {
     reload: jest.fn(() => Promise.resolve()),
     resetChannel: jest.fn(() => Promise.resolve(true)),
     setCohort: jest.fn(),
-    setReloadBehavior: jest.fn(),
     wrap: jest.fn(() => (Component) => Component),
     insights: { setUser: jest.fn() },
     remoteConfig: {
@@ -79,14 +78,6 @@ jest.mock(
   "react-native-safe-area-context",
   () => require("react-native-safe-area-context/jest/mock").default,
 );
-
-jest.mock("react-native-bootsplash", () => ({
-  hide: jest.fn(() => Promise.resolve()),
-}));
-
-jest.mock("react-native-launch-arguments", () => ({
-  LaunchArguments: { value: jest.fn(() => ({})) },
-}));
 
 jest.mock("react-native-screens", () =>
   Object.create(jest.requireActual("react-native-screens"), {

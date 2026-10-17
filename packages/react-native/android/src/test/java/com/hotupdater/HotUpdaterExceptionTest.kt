@@ -23,7 +23,7 @@ class HotUpdaterExceptionTest {
 
     @Test
     fun `enum values match the JS contract`() {
-        assertEquals(listOf("download", "install"), UpdateFailureStage.entries.map { it.value })
+        assertEquals(listOf("check", "download", "install"), UpdateFailureStage.entries.map { it.value })
         assertEquals(
             listOf(
                 "network",
@@ -38,7 +38,10 @@ class HotUpdaterExceptionTest {
             ),
             UpdateFailureReason.entries.map { it.value },
         )
-        assertEquals(listOf("manifest", "file", "patch", "archive"), UpdateFailureResource.entries.map { it.value })
+        assertEquals(
+            listOf("catalog", "artifact", "manifest", "file", "patch", "archive"),
+            UpdateFailureResource.entries.map { it.value },
+        )
         assertEquals(
             listOf("timeout", "dns", "tls", "connection", "offline", "cancelled"),
             UpdateFailureTransport.entries.map { it.value },

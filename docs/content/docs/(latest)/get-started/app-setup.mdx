@@ -568,10 +568,9 @@ For Objective-C projects, modify your `AppDelegate.mm`:
 </Tabs>
 
 <Callout type="info">
-  For brownfield apps where the JS bundle is embedded in an XCFramework, you can
-  pass a custom `Bundle` instance to look up the JavaScript bundle resource:
-  `HotUpdater.bundleURL(bundle: xcframeworkBundle)` in Swift or `[HotUpdater
-  bundleURLWithBundle:xcframeworkBundle]` in Objective-C.
+  If React Native ships to an existing native app as an XCFramework or AAR,
+  follow [Brownfield Apps](/docs/guides/brownfield) instead of this native code
+  setup.
 </Callout>
 
 ## Choose the native test channel

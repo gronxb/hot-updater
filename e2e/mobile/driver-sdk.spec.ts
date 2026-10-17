@@ -125,6 +125,7 @@ test("verified expected launch disconnect", async ({device, screen}) => {
       headSha: report.run.vcs.commit,
       profile: "fixture",
       platform: "ios",
+      track: "greenfield",
       deviceId: "fixture-device",
       session: "fixture-session",
       resultsDir: dir,

@@ -62,14 +62,6 @@ class HotUpdater {
         }
 
         /**
-         * Reloads the React Native application using the default singleton instance
-         * @param context Context (preferably ReactApplicationContext)
-         */
-        suspend fun reload(context: Context) {
-            getInstance(context).reload(context)
-        }
-
-        /**
          * Gets the app version - delegates to HotUpdaterImpl static method
          * @param context Application context
          * @return App version name or null if not available
@@ -99,6 +91,13 @@ class HotUpdater {
         /**
          * Programmatic configuration for brownfield/AAR setups where manifest
          * metadata or string resources in the host app are not desirable.
+         * A null argument means no override.
+         *
+         * [channel] is the app's fixed default channel: it must not change
+         * after the first launch, because it is part of the storage isolation
+         * key and changing it discards the stored bundles. Switch channels at
+         * runtime with [HotUpdaterCheckOptions.channel] and
+         * [HotUpdaterInstance.resetChannel].
          */
         fun configure(
             fingerprintHash: String? = null,
@@ -130,6 +129,27 @@ class HotUpdater {
             // No-op for old architecture
         }
 
-        suspend fun resetChannel(context: Context): Boolean = getInstance(context).resetChannel()
+        /**
+         * The native counterpart of JavaScript's `HotUpdater.init`: an
+         * instance with this server and these request defaults, for checking
+         * for and staging updates before React Native starts.
+         * @throws IllegalArgumentException when [HotUpdaterOptions.baseURL] is
+         * not an absolute HTTP(S) URL, as `HotUpdater.init` throws
+         */
+        @JvmStatic
+        fun init(
+            context: Context,
+            options: HotUpdaterOptions,
+        ): HotUpdaterInstance {
+            requireValidBaseURL(options.baseURL)
+            return HotUpdaterInstance(context.applicationContext, options)
+        }
+
+        /**
+         * Clears the runtime channel switch once other native update work
+         * finishes, as [HotUpdaterInstance.resetChannel] does.
+         */
+        suspend fun resetChannel(context: Context): Boolean =
+            NativeUpdateCheck.resetChannel(context.applicationContext) { getInstance(context) }
     }
 }

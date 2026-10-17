@@ -50,8 +50,10 @@ import {
   startResetRemoteBundlesJob,
   startSeedCrashedBundleFrontierJob,
   startWaitForAndroidRestartJob,
+  startSetNativeCheckJob,
   startWaitForArchiveResumeJob,
   startWaitForMetadataJob,
+  startWaitForNativeCheckJob,
 } from "./controller.ts";
 import { handlePatchE2eScreenState } from "./screen-state.ts";
 
@@ -160,9 +162,16 @@ app.post("/e2e/proxy-control", async (c) => {
     artifactFailures?: number;
     catalogDelayMs?: number;
     catalogMode?: "freeze" | "live" | "replay";
+    holdArtifacts?: boolean;
     replayGeneration?: number | null;
     reset?: boolean;
   };
+  if (
+    payload.holdArtifacts !== undefined &&
+    typeof payload.holdArtifacts !== "boolean"
+  ) {
+    return c.json({ error: "holdArtifacts must be a boolean" }, 400);
+  }
   if (
     payload.archiveAvailable !== undefined &&
     typeof payload.archiveAvailable !== "boolean"
@@ -491,6 +500,58 @@ app.post("/e2e/jobs/patch-release", async (c) => {
       shouldForceUpdate: payload.shouldForceUpdate,
       targetCohorts: payload.targetCohorts,
     }),
+  });
+});
+
+app.post("/e2e/jobs/set-native-check", async (c) => {
+  const payload = (await c.req.json()) as {
+    strategy?: string;
+    requestTimeoutMs?: number;
+    checkTimeoutMs?: number;
+  };
+  if (payload.strategy !== "appVersion" && payload.strategy !== "fingerprint") {
+    return c.json({ error: "strategy must be appVersion or fingerprint" }, 400);
+  }
+  if (
+    payload.requestTimeoutMs !== undefined &&
+    (!Number.isSafeInteger(payload.requestTimeoutMs) ||
+      payload.requestTimeoutMs <= 0)
+  ) {
+    return c.json(
+      { error: "requestTimeoutMs must be a positive integer" },
+      400,
+    );
+  }
+  if (
+    payload.checkTimeoutMs !== undefined &&
+    (!Number.isSafeInteger(payload.checkTimeoutMs) ||
+      payload.checkTimeoutMs <= 0)
+  ) {
+    return c.json({ error: "checkTimeoutMs must be a positive integer" }, 400);
+  }
+  return c.json({
+    jobId: startSetNativeCheckJob({
+      strategy: payload.strategy,
+      requestTimeoutMs: payload.requestTimeoutMs,
+      checkTimeoutMs: payload.checkTimeoutMs,
+    }),
+  });
+});
+
+app.post("/e2e/jobs/wait-for-native-check", async (c) => {
+  const payload = (await c.req.json()) as { nonce?: string; status?: string };
+  const status = payload.status;
+  if (
+    !payload.nonce ||
+    (status !== "upToDate" &&
+      status !== "ready" &&
+      status !== "pending" &&
+      status !== "failed")
+  ) {
+    return c.json({ error: "nonce and a prepare status are required" }, 400);
+  }
+  return c.json({
+    jobId: startWaitForNativeCheckJob({ nonce: payload.nonce, status }),
   });
 });
 

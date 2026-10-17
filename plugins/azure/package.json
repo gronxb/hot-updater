@@ -1,7 +1,7 @@
 {
   "name": "@hot-updater/azure",
   "type": "module",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "React Native OTA solution for self-hosted",
   "engines": {
     "node": ">=22"

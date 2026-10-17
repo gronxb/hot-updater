@@ -13,8 +13,13 @@ let coreSources = [
     "HashUtils.swift",
     "HotUpdaterConfig.swift",
     "KeyValueStorageService.swift",
+    "LaunchPreparationLock.swift",
+    "NativeUpdateCheck.swift",
     "NotificationExtension.swift",
+    "ReleaseCatalog.swift",
     "ReleaseCatalogCacheService.swift",
+    "ReleaseSelection.swift",
+    "StrictJson.swift",
     "SignatureVerifier.swift",
     "UpdateFailure.swift",
     "URLSessionDownloadService.swift",
@@ -27,9 +32,11 @@ let coreExcludedFiles = [
     "CohortService.swift",
     "HotUpdater-Bridging-Header.h",
     "HotUpdater.mm",
+    "HotUpdaterAsync.swift",
     "HotUpdaterImpl.swift",
     "HotUpdaterInterface.swift",
     "HotUpdaterMinBundleId.m",
+    "HotUpdaterNativeUpdates.swift",
 ]
 
 let bsdiffPatchBridgeExcludedFiles =
