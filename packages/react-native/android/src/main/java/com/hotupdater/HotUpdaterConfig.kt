@@ -51,11 +51,15 @@ object HotUpdaterConfig {
         channel: String? = null,
         isolationKey: String? = null,
     ) {
-        MainInstanceConfiguration.warnIfConfigureOverrides(fingerprintHash = fingerprintHash, publicKey = publicKey, channel = channel)
-        this.fingerprintHash = fingerprintHash
-        this.publicKey = publicKey
-        this.channel = channel
-        this.isolationKey = isolationKey
+        // Under the lock main's impl is created with, so the impl reads the
+        // values it records.
+        synchronized(MainInstanceConfiguration) {
+            MainInstanceConfiguration.warnIfConfigureOverrides(fingerprintHash = fingerprintHash, publicKey = publicKey, channel = channel)
+            this.fingerprintHash = fingerprintHash
+            this.publicKey = publicKey
+            this.channel = channel
+            this.isolationKey = isolationKey
+        }
     }
 
     @Deprecated(CONFIGURE_DEPRECATION)
@@ -81,16 +85,22 @@ internal object MainInstanceConfiguration {
     // replaces them.
     private var claimed = emptyMap<String, String>()
 
-    // Whether main's impl was built: its storage key and stored bundles are
-    // then fixed to the values it read.
-    private var implCreated = false
+    // The values main's impl was created with, once it was: its storage key
+    // and stored bundles are fixed to them, whatever HotUpdater.configure
+    // sets later.
+    private var createdWith: MainImplValues? = null
 
     /**
-     * Called before main's impl is built, under the lock that builds it.
+     * Creates main's impl with [create], recording the values it is created
+     * with. Options and `HotUpdater.configure` wait for it.
      */
     @Synchronized
-    fun markImplCreated() {
-        implCreated = true
+    fun createImpl(
+        context: Context,
+        create: () -> HotUpdaterImpl,
+    ): HotUpdaterImpl {
+        createdWith = MainImplValues.read(context)
+        return create()
     }
 
     /**
@@ -105,30 +115,32 @@ internal object MainInstanceConfiguration {
     fun claim(
         context: Context,
         options: HotUpdaterOptions,
-    ) = claim(context, options, implCreated)
+    ) = claim(options, createdWith)
 
-    /** [claim], with whether main's impl already exists. */
+    /** [claim], with the values main's impl was created with, or null before it exists. */
     @Synchronized
     @Suppress("DEPRECATION")
     fun claim(
-        context: Context,
         options: HotUpdaterOptions,
-        implCreated: Boolean,
+        createdWith: MainImplValues?,
     ) {
-        val main = HotUpdaterInstanceEnvironment.main
+        val implCreated = createdWith != null
         val fields =
             listOf(
-                Field("channel", options.channel.nonEmpty(), HotUpdaterConfig.channel.nonEmpty()) { main.defaultChannel(context) },
-                Field("fingerprintHash", options.fingerprintHash.nonEmpty(), HotUpdaterConfig.fingerprintHash.nonEmpty()) {
-                    main.fingerprintHash(context)
-                },
-                Field("publicKey", options.publicKey.nonEmpty(), HotUpdaterConfig.publicKey.nonEmpty()) { main.publicKey(context) },
+                Field("channel", options.channel.nonEmpty(), HotUpdaterConfig.channel.nonEmpty(), createdWith?.channel),
+                Field(
+                    "fingerprintHash",
+                    options.fingerprintHash.nonEmpty(),
+                    HotUpdaterConfig.fingerprintHash.nonEmpty(),
+                    createdWith?.fingerprintHash,
+                ),
+                Field("publicKey", options.publicKey.nonEmpty(), HotUpdaterConfig.publicKey.nonEmpty(), createdWith?.publicKey),
             )
         fields.forEach { field ->
             val requested = field.requested ?: return@forEach
             // Once the impl exists, a value it doesn't use, even where it uses
             // none, would be ignored.
-            val conflicts = if (implCreated) field.inUse() != requested else field.held != null && field.held != requested
+            val conflicts = if (implCreated) field.inUse != requested else field.held != null && field.held != requested
             require(!conflicts) {
                 "HotUpdater instance \"main\" was already created with another ${field.name}"
             }
@@ -174,6 +186,20 @@ internal object MainInstanceConfiguration {
         val name: String,
         val requested: String?,
         val held: String?,
-        val inUse: () -> String?,
+        val inUse: String?,
     )
+}
+
+/** The channel, fingerprint hash, and public key main's impl reads. */
+internal class MainImplValues(
+    val channel: String,
+    val fingerprintHash: String?,
+    val publicKey: String?,
+) {
+    companion object {
+        fun read(context: Context): MainImplValues {
+            val main = HotUpdaterInstanceEnvironment.main
+            return MainImplValues(main.defaultChannel(context), main.fingerprintHash(context), main.publicKey(context))
+        }
+    }
 }

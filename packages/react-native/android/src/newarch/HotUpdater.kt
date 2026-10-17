@@ -21,14 +21,14 @@ class HotUpdater {
          */
         fun getInstance(context: Context): HotUpdaterImpl =
             instance ?: synchronized(this) {
-                instance ?: run {
-                    // From here on, main's options can no longer change what
-                    // the impl reads.
-                    MainInstanceConfiguration.markImplCreated()
-                    HotUpdaterImpl(context.applicationContext).also {
+                instance ?: MainInstanceConfiguration
+                    .createImpl(context.applicationContext) {
+                        // From here on, main's options can no longer change
+                        // what the impl reads.
+                        HotUpdaterImpl(context.applicationContext)
+                    }.also {
                         instance = it
                     }
-                }
             }
 
         /**

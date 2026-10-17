@@ -134,18 +134,28 @@ class HotUpdaterInstanceEnvironmentTest {
 
         // Options after main's impl exists: it keeps the values it was created with.
         HotUpdater.configure(channel = "beta")
-        MainInstanceConfiguration.claim(context, HotUpdaterOptions(BASE_URL, channel = "beta"), implCreated = true)
+        val createdWith = MainImplValues.read(context)
+        MainInstanceConfiguration.claim(HotUpdaterOptions(BASE_URL, channel = "beta"), createdWith)
         listOf(
             HotUpdaterOptions(BASE_URL, channel = "production"),
             HotUpdaterOptions(BASE_URL, fingerprintHash = "app-fp"),
             HotUpdaterOptions(BASE_URL, publicKey = "APP KEY"),
         ).forEach { options ->
             assertThrows(IllegalArgumentException::class.java) {
-                MainInstanceConfiguration.claim(context, options, implCreated = true)
+                MainInstanceConfiguration.claim(options, createdWith)
             }
         }
         assertNull(HotUpdaterConfig.fingerprintHash)
         assertNull(HotUpdaterConfig.publicKey)
+
+        // HotUpdater.configure after the impl exists changes what main reads,
+        // not the key its stored bundles were created with.
+        HotUpdater.configure(channel = "alpha")
+        assertEquals("alpha", HotUpdaterInstanceEnvironment.main.defaultChannel(context))
+        assertThrows(IllegalArgumentException::class.java) {
+            MainInstanceConfiguration.claim(HotUpdaterOptions(BASE_URL, channel = "alpha"), createdWith)
+        }
+        MainInstanceConfiguration.claim(HotUpdaterOptions(BASE_URL, channel = "beta"), createdWith)
     }
 
     @Test
