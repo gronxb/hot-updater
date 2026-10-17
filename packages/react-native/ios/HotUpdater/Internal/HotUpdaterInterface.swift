@@ -11,7 +11,7 @@ extension HotUpdaterConfig: HotUpdaterConfigInterface {}
 
 @_cdecl("HotUpdaterMakeImpl")
 public func hotUpdaterMakeImpl() -> HotUpdaterImplInterface {
-    HotUpdaterImpl()
+    HotUpdaterNativeUpdateBridge.sharedImpl
 }
 
 @_cdecl("HotUpdaterAppVersion")
@@ -22,5 +22,28 @@ public func hotUpdaterAppVersion() -> NSString? {
 @_cdecl("HotUpdaterSharedConfig")
 public func hotUpdaterSharedConfig() -> HotUpdaterConfigInterface {
     HotUpdaterConfig.shared
+}
+
+/// The TurboModule's channel reset and event replay, for the Objective-C++
+/// module.
+final class HotUpdaterNativeUpdatesAdapter: NSObject, HotUpdaterNativeUpdatesInterface {
+    static let shared = HotUpdaterNativeUpdatesAdapter()
+
+    func resetChannel(
+        withImpl impl: HotUpdaterImplInterface,
+        resolver resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        HotUpdaterNativeUpdateBridge.resetChannel(impl: impl as! HotUpdaterImpl, resolver: resolve, rejecter: reject)
+    }
+
+    func takeEvents(withImpl impl: HotUpdaterImplInterface) -> String? {
+        HotUpdaterNativeUpdateBridge.takeEvents(impl: impl as! HotUpdaterImpl)
+    }
+}
+
+@_cdecl("HotUpdaterNativeUpdates")
+public func hotUpdaterNativeUpdates() -> HotUpdaterNativeUpdatesInterface {
+    HotUpdaterNativeUpdatesAdapter.shared
 }
 #endif

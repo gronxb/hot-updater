@@ -1,0 +1,6 @@
+{
+  "name": "e2e-launch-arguments",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Reads the E2E runner's launch arguments for the example app."
+}

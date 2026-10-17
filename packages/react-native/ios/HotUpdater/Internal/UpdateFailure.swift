@@ -278,6 +278,8 @@ enum UpdateFailureClassifier {
             return classifySignatureError(error, during: phase)
         case let error as DownloadError:
             return classifyDownloadError(error)
+        case is ArtifactFileResolverError:
+            return .invalidResponse
         case let error as URLError:
             return classifyURLError(error)
         default:

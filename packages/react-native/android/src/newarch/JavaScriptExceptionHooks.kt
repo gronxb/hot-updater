@@ -1,16 +1,21 @@
 package com.hotupdater
 
+import android.content.Context
 import com.facebook.react.ReactApplication
 
 /**
  * Routes JavaScript errors of the running React instance to crash recovery.
- * The New Architecture reaches the instance through ReactHost.
+ * The New Architecture reaches the instance through ReactHost: the one a
+ * brownfield app passes to `HotUpdater.setReactHost`, or the application's.
  */
 internal object JavaScriptExceptionHooks {
     private val patchedReactHostDelegateIds = mutableSetOf<Int>()
 
-    fun install(application: ReactApplication) {
-        val reactHost = application.reactHost ?: return
+    fun install(appContext: Context) {
+        val reactHost =
+            ReactHostHolder.getReactHost()
+                ?: (appContext as? ReactApplication)?.reactHost
+                ?: return
         val reactHostDelegate =
             HotUpdaterRecoveryManager.findField(reactHost.javaClass, "mReactHostDelegate")?.let { field ->
                 field.isAccessible = true

@@ -22,9 +22,10 @@ typedef NSObject<HotUpdaterConfigInterface> HotUpdaterConfig;
 #import "HotUpdater-Swift.h"
 #endif
 
+// The process's impl, which HotUpdaterInstance uses too.
 static HotUpdaterImpl *HotUpdaterMakeImpl(void)
 {
-  return [[HotUpdaterImpl alloc] init];
+  return [HotUpdaterNativeUpdateBridge sharedImpl];
 }
 
 static NSString *HotUpdaterAppVersion(void)
@@ -35,6 +36,12 @@ static NSString *HotUpdaterAppVersion(void)
 static HotUpdaterConfig *HotUpdaterSharedConfig(void)
 {
   return [HotUpdaterConfig shared];
+}
+
+// The class methods share the selectors of HotUpdaterNativeUpdatesInterface.
+static Class HotUpdaterNativeUpdates(void)
+{
+  return [HotUpdaterNativeUpdateBridge class];
 }
 #endif
 
@@ -206,7 +213,7 @@ extern "C" BOOL HotUpdaterPerformRecoveryReload(void)
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
     [impl resetLaunchPreparation];
 
-    NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
+    NSURL *bundleURL = [impl bundleURLWithBundle:HotUpdaterSharedConfig().bundle];
     if (!bundleURL) {
       RCTLogWarn(@"[HotUpdater.mm] Failed to resolve bundle URL for recovery reload");
       return;
@@ -414,22 +421,25 @@ RCT_EXPORT_MODULE();
 
 // Get bundleURL with default bundle using singleton
 + (NSURL *)bundleURL {
-    return [[HotUpdater sharedImpl] bundleURLWithBundle:[NSBundle mainBundle]];
+    return [self bundleURLWithBundle:[NSBundle mainBundle]];
 }
 
 // Get bundleURL with specific bundle using singleton
 + (NSURL *)bundleURLWithBundle:(NSBundle *)bundle {
+    // Record the bundle before the first sharedImpl, whose storage isolation
+    // key reads the bundle's HOT_UPDATER_* Info.plist keys.
+    HotUpdaterSharedConfig().bundle = bundle;
     return [[HotUpdater sharedImpl] bundleURLWithBundle:bundle];
 }
 
 // Get bundleURL with default bundle using instance impl
 - (NSURL *)bundleURL {
-    return [[HotUpdater sharedImpl] bundleURLWithBundle:[NSBundle mainBundle]];
+    return [HotUpdater bundleURLWithBundle:[NSBundle mainBundle]];
 }
 
 // Get bundleURL with specific bundle using instance impl
 - (NSURL *)bundleURLWithBundle:(NSBundle *)bundle {
-    return [[HotUpdater sharedImpl] bundleURLWithBundle:bundle];
+    return [HotUpdater bundleURLWithBundle:bundle];
 }
 
 + (void)configureWithFingerprintHash:(NSString *)fingerprintHash
@@ -492,7 +502,7 @@ RCT_EXPORT_MODULE();
         @try {
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
             [impl resetLaunchPreparation];
-            NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
+            NSURL *bundleURL = [impl bundleURLWithBundle:HotUpdaterSharedConfig().bundle];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
             if (bundleURL) {
                 RCTReloadCommandSetBundleURL(bundleURL);
@@ -669,6 +679,10 @@ RCT_EXPORT_MODULE();
     [impl setStorageItem:key value:value];
 }
 
+- (NSString * _Nullable)takeNativeUpdateEvents {
+    return [HotUpdaterNativeUpdates() takeEventsWithImpl:[HotUpdater sharedImpl]];
+}
+
 - (NSString * _Nullable)getBaseURL {
     NSLog(@"[HotUpdater.mm] getBaseURL called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
@@ -700,8 +714,9 @@ RCT_EXPORT_MODULE();
 
 - (void)resetChannel:(RCTPromiseResolveBlock)resolve
               reject:(RCTPromiseRejectBlock)reject {
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    [impl resetChannel:resolve rejecter:reject];
+    [HotUpdaterNativeUpdates() resetChannelWithImpl:[HotUpdater sharedImpl]
+                                           resolver:resolve
+                                           rejecter:reject];
 }
 
 - (facebook::react::ModuleConstants<JS::NativeHotUpdater::Constants::Builder>)constantsToExport {
@@ -730,7 +745,7 @@ RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
         @try {
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
             [impl resetLaunchPreparation];
-            NSURL *bundleURL = [impl bundleURLWithBundle:[NSBundle mainBundle]];
+            NSURL *bundleURL = [impl bundleURLWithBundle:HotUpdaterSharedConfig().bundle];
             RCTLogInfo(@"[HotUpdater.mm] Reloading with bundle URL: %@", bundleURL);
             if (bundleURL) {
                 RCTReloadCommandSetBundleURL(bundleURL);
@@ -842,6 +857,10 @@ RCT_EXPORT_METHOD(setStorageItem:(NSString *)key value:(NSString * _Nullable)val
     [impl setStorageItem:key value:value];
 }
 
+RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(takeNativeUpdateEvents) {
+    return [HotUpdaterNativeUpdates() takeEventsWithImpl:[HotUpdater sharedImpl]];
+}
+
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {
     NSLog(@"[HotUpdater.mm] getBaseURL called");
     HotUpdaterImpl *impl = [HotUpdater sharedImpl];
@@ -873,8 +892,9 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getManifest) {
 
 RCT_EXPORT_METHOD(resetChannel:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
-    [impl resetChannel:resolve rejecter:reject];
+    [HotUpdaterNativeUpdates() resetChannelWithImpl:[HotUpdater sharedImpl]
+                                           resolver:resolve
+                                           rejecter:reject];
 }
 
 - (NSDictionary *)constantsToExport {

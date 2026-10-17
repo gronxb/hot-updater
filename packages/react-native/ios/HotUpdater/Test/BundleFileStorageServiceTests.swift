@@ -85,6 +85,107 @@ struct BundleFileStorageServiceTests {
         #expect(downloads.requestedURLs == [manifestURL, fileURL])
     }
 
+    @Test
+    func peekLaunchBundleIdReadsTheStagedBundleWithoutPreparingTheLaunch() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        for bundleId in ["stable-bundle", "staged-bundle"] {
+            let directory = try createBundleDirectory(documentsDirectory: root, bundleId: bundleId)
+            try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+            try writeManifest(in: directory, bundleId: bundleId)
+        }
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "stable-bundle",
+            stagingBundleId: "staged-bundle",
+            verificationPending: true
+        ))
+        let metadataFile = root.appendingPathComponent("bundle-store/\(BundleMetadata.metadataFilename)")
+        let before = try Data(contentsOf: metadataFile)
+        let service = makeStorageService(documentsDirectory: root)
+
+        #expect(service.peekLaunchBundleId() == "staged-bundle")
+        #expect(service.peekLaunchBundleId() == "staged-bundle")
+
+        #expect(try Data(contentsOf: metadataFile) == before)
+        let launch = service.prepareLaunch(bundle: .main, pendingRecovery: nil)
+        #expect(launch.launchedBundleId == "staged-bundle")
+        #expect(launch.shouldRollbackOnCrash)
+    }
+
+    @Test
+    func peekLaunchBundleIdSkipsAStagedBundleWithoutItsFile() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let stable = try createBundleDirectory(documentsDirectory: root, bundleId: "stable-bundle")
+        try writeBundle(in: stable, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stable, bundleId: "stable-bundle")
+        let staged = try createBundleDirectory(documentsDirectory: root, bundleId: "staged-bundle")
+        try writeManifest(in: staged, bundleId: "staged-bundle")
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "stable-bundle",
+            stagingBundleId: "staged-bundle"
+        ))
+
+        #expect(makeStorageService(documentsDirectory: root).peekLaunchBundleId() == "stable-bundle")
+    }
+
+    @Test
+    func settlingBeforeTheLaunchRollsBackAnUnfinishedLaunchAndKeepsItsReport() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let preferences = InMemoryPreferencesService()
+        try leaveUnfinishedLaunch(documentsDirectory: root, preferences: preferences)
+        let nextProcess = makeStorageService(documentsDirectory: root, preferences: preferences)
+        var consumed = 0
+
+        // A native update check reads the selection before React Native starts.
+        nextProcess.settlePreviousLaunch { consumed += 1; return nil }
+        nextProcess.settlePreviousLaunch { consumed += 1; return nil }
+
+        #expect(consumed == 1)
+        #expect(nextProcess.peekLaunchBundleId() == "stable-bundle")
+        #expect(nextProcess.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == "stable-bundle")
+        #expect(nextProcess.notifyAppReady()["status"] as? String == "RECOVERED")
+    }
+
+    @Test
+    func settlingRollsBackAPendingBundleWhoseFileIsGone() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let stable = try createBundleDirectory(documentsDirectory: root, bundleId: "stable-bundle")
+        try writeBundle(in: stable, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: stable, bundleId: "stable-bundle")
+        try writeMetadata(documentsDirectory: root, BundleMetadata(
+            isolationKey: testIsolationKey,
+            stableBundleId: "stable-bundle",
+            stagingBundleId: "missing-bundle",
+            verificationPending: true
+        ))
+        let service = makeStorageService(documentsDirectory: root)
+
+        service.settlePreviousLaunch { nil }
+
+        // The selection no longer names the missing bundle, so a check reads what the launch runs.
+        #expect(loadMetadata(documentsDirectory: root)?.stagingBundleId == "stable-bundle")
+        #expect(service.peekLaunchBundleId() == "stable-bundle")
+        #expect(service.getCrashHistory().contains("missing-bundle"))
+    }
+
+    @Test
+    func peekLaunchBundleIdIsNilWithoutDownloadedBundles() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+
+        let service = makeStorageService(documentsDirectory: root)
+        let store = root.appendingPathComponent("bundle-store").path
+        let before = try? FileManager.default.contentsOfDirectory(atPath: store)
+
+        #expect(service.peekLaunchBundleId() == nil)
+        #expect((try? FileManager.default.contentsOfDirectory(atPath: store)) == before)
+    }
+
     @Test(arguments: ["before-rename", "complete", "corrupt"])
     func interruptedPromotionKeepsCompleteBundle(state: String) throws {
         let root = try makeWorkingDirectory()
@@ -997,6 +1098,33 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func builtInResolverUsesTheRegisteredBundleBeforeALaunch() throws {
+        // A brownfield framework's native update check stages an update
+        // before React Native passes the framework's bundle to a launch.
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let assetData = Data("framework-image".utf8)
+        let frameworkBundle = try makeFixtureBundle(
+            in: workingDirectory,
+            name: "Framework.bundle",
+            version: "1",
+            assetData: assetData
+        )
+        let resolver = IOSBuiltInAssetResolver(
+            cacheURL: workingDirectory.appendingPathComponent("builtin-index-v1.json"),
+            defaultBundle: { frameworkBundle }
+        )
+        let destination = workingDirectory.appendingPathComponent("destination.png")
+
+        #expect(resolver.copyIfMatches(
+            assetPath: "assets/image.png",
+            expectedHash: try #require(sha256(assetData, in: workingDirectory)),
+            destination: destination.path
+        ))
+        #expect(try Data(contentsOf: destination) == assetData)
+    }
+
+    @Test
     func builtInResolverRejectsEscapingLogicalPath() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(workingDirectory) }
@@ -1165,6 +1293,24 @@ struct BundleFileStorageServiceTests {
             metadata.highestSeenCatalogs["project-a|scope-production"]
                 == CatalogHighWater(generation: 2, catalogHash: "hash-2")
         )
+        // A selection made before the reset no longer stages.
+        #expect(service.isReleaseSelectionCurrent(
+            catalogId: "project-a",
+            scopeKey: "scope-production",
+            generation: 2,
+            catalogHash: "hash-2",
+            channel: "production",
+            selectionContextHash: "context-2"
+        ) == false)
+        // The same catalog, checked again, selects again.
+        #expect(service.acceptReleaseCatalog(
+            catalogId: "project-a",
+            scopeKey: "scope-production",
+            generation: 2,
+            catalogHash: "hash-2",
+            channel: "production",
+            selectionContextHash: "context-2"
+        ))
     }
 
     @Test
@@ -1189,6 +1335,12 @@ struct BundleFileStorageServiceTests {
                     generation: 1,
                     catalogHash: "hash-1",
                     selectionContextHash: "context-1"
+                ),
+                pendingSelectionTransition: PendingSelectionTransition(
+                    fromReleaseId: "release-zero",
+                    fromBundleId: "bundle-zero",
+                    toReleaseId: "release-one",
+                    toBundleId: "bundle-one"
                 )
             )
         )
@@ -1215,6 +1367,46 @@ struct BundleFileStorageServiceTests {
         #expect(metadata.stagingSelection?.releaseId == "release-two")
         #expect(metadata.stagingSelection?.generation == 2)
         #expect(metadata.verificationPending == false)
+        // The launch reports the adopted Release as the one applied.
+        #expect(metadata.pendingSelectionTransition?.toReleaseId == "release-two")
+        #expect(metadata.pendingSelectionTransition?.fromReleaseId == "release-zero")
+    }
+
+    @Test
+    func aCommittedSelectionMakesAnotherScopesSelectionStale() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+        let bundleDirectory = try createBundleDirectory(documentsDirectory: workingDirectory, bundleId: "bundle-one")
+        try writeBundle(in: bundleDirectory, bundleFileName: "index.ios.bundle")
+        try writeManifest(in: bundleDirectory, bundleId: "bundle-one")
+        try writeMetadata(
+            documentsDirectory: workingDirectory,
+            BundleMetadata(isolationKey: testIsolationKey, stagingBundleId: "bundle-one")
+        )
+        #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-production",
+            generation: 1, catalogHash: "hash-1", channel: "production", selectionContextHash: "context-1"))
+        #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-beta",
+            generation: 1, catalogHash: "hash-beta", channel: "beta", selectionContextHash: "context-beta"))
+        let beta = PersistedSelection(
+            kind: "BUNDLE",
+            releaseId: "release-beta",
+            bundleId: "bundle-one",
+            catalogId: "project-a",
+            scopeKey: "scope-beta",
+            generation: 1,
+            catalogHash: "hash-beta",
+            channel: "beta",
+            selectionContextHash: "context-beta"
+        )
+
+        #expect(service.commitReleaseSelection(beta))
+
+        // A production check kept from before the beta commit no longer stages.
+        #expect(service.isReleaseSelectionCurrent(catalogId: "project-a", scopeKey: "scope-production",
+            generation: 1, catalogHash: "hash-1", channel: "production", selectionContextHash: "context-1") == false)
+        #expect(service.isReleaseSelectionCurrent(catalogId: "project-a", scopeKey: "scope-beta",
+            generation: 1, catalogHash: "hash-beta", channel: "beta", selectionContextHash: "context-beta"))
     }
 
     @Test
@@ -1673,6 +1865,64 @@ struct BundleFileStorageServiceTests {
         let installed = root.appendingPathComponent("bundle-store/target")
         #expect(try Data(contentsOf: installed.appendingPathComponent("assets/changed148.png")) == changed["assets/changed148.png"])
         #expect(try Data(contentsOf: installed.appendingPathComponent("assets/reused3.png")) == reused["assets/reused3.png"])
+    }
+
+    @Test
+    func artifactProtocolV2RejectsAFileURLThatIsNotAbsoluteHTTP() throws {
+        for fileURL in ["https://", "file:///tmp/payload", "ftp://cdn.example.com/index.ios.bundle"] {
+            let root = try makeWorkingDirectory()
+            defer { cleanupWorkingDirectory(root) }
+            let manifest = try makeManifestData(
+                bundleId: "target",
+                assets: ["index.ios.bundle": try #require(sha256(Data("bundle".utf8), in: root))]
+            )
+            let manifestURL = URL(string: "https://example.com/manifest.json")!
+            let downloads = MappingDownloadService(contents: [manifestURL: manifest])
+            let service = makeStorageService(
+                documentsDirectory: root,
+                downloadService: downloads,
+                builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:])
+            )
+
+            let result = updateBundle(
+                service,
+                bundleId: "target",
+                manifestURL: manifestURL,
+                manifestHash: try #require(sha256(manifest, in: root)),
+                assets: [:],
+                fileResolver: RecordingArtifactFileResolver { _ in URL(string: fileURL)! }
+            )
+
+            #expect(updateFailure(of: result) == UpdateFailure.invalidResponse.with(resource: .file), "\(fileURL)")
+            #expect(downloads.requestedURLs == [manifestURL])
+        }
+    }
+
+    @Test
+    func artifactProtocolV2ReportsAMalformedFilesResponseAsAnInvalidResponse() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let manifest = try makeManifestData(
+            bundleId: "target",
+            assets: ["index.ios.bundle": try #require(sha256(Data("bundle".utf8), in: root))]
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let service = makeStorageService(
+            documentsDirectory: root,
+            downloadService: MappingDownloadService(contents: [manifestURL: manifest]),
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:])
+        )
+
+        let result = updateBundle(
+            service,
+            bundleId: "target",
+            manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)),
+            assets: [:],
+            fileResolver: FailingArtifactFileResolver()
+        )
+
+        #expect(updateFailure(of: result) == UpdateFailure.invalidResponse.with(resource: .file))
     }
 
     @Test
@@ -2815,15 +3065,15 @@ struct BundleFileStorageServiceTests {
             builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
         #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-production",
             generation: 1, catalogHash: "hash-1", channel: "production", selectionContextHash: "context-1"))
-        #expect(service.stageReleaseSelection(releaseSelection(releaseId: "release-one", bundleId: "target",
-            generation: 1, catalogHash: "hash-1", selectionContextHash: "context-1")))
         // A newer catalog arrives while the bundle downloads.
         #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-production",
             generation: 2, catalogHash: "hash-2", channel: "production", selectionContextHash: "context-2"))
 
         let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
             manifestHash: try #require(sha256(manifest, in: root)),
-            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)],
+            selection: releaseSelection(releaseId: "release-one", bundleId: "target",
+                generation: 1, catalogHash: "hash-1", selectionContextHash: "context-1"))
         let error = try #require(result.failureError)
         #expect(!(error is UpdateFailureError))
         let rejection = UpdateFailureError.rejectionError(for: error)
@@ -2832,6 +3082,44 @@ struct BundleFileStorageServiceTests {
         #expect((rejection.userInfo[NSUnderlyingErrorKey] as? NSError)?.localizedDescription
             == "Release catalog selection is stale")
         #expect(loadMetadata(documentsDirectory: root)?.stagingBundleId == nil)
+    }
+
+    @Test
+    func selectionStaysWithItsOwnStaging() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let bytes = Data("target hermes".utf8)
+        let hash = try #require(sha256(bytes, in: root))
+        let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": hash])
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+        let missingURL = URL(string: "https://example.com/missing.ios.bundle")!
+        let service = makeStorageService(documentsDirectory: root,
+            downloadService: MappingDownloadService(contents: [manifestURL: manifest, fileURL: bytes]),
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        #expect(service.acceptReleaseCatalog(catalogId: "project-a", scopeKey: "scope-production",
+            generation: 1, catalogHash: "hash-1", channel: "production", selectionContextHash: "context-1"))
+        let manifestHash = try #require(sha256(manifest, in: root))
+
+        let failed = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: manifestHash,
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: missingURL, fileHash: hash)],
+            selection: releaseSelection(releaseId: "release-one", bundleId: "target",
+                generation: 1, catalogHash: "hash-1", selectionContextHash: "context-1"))
+        #expect(failed.failureError != nil)
+
+        // A later staging of the same bundle without a selection stages a
+        // bare bundle, not the failed staging's Release.
+        let staged = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: manifestHash,
+            assets: ["index.ios.bundle": ChangedAssetDescriptor(fileUrl: fileURL, fileHash: hash)])
+        #expect(staged.failureError == nil)
+        let selection = try #require(loadMetadata(documentsDirectory: root)?.stagingSelection)
+        #expect(selection.bundleId == "target")
+        #expect(selection.releaseId == nil)
+        // A check from before that staging no longer stages over it.
+        #expect(service.isReleaseSelectionCurrent(catalogId: "project-a", scopeKey: "scope-production",
+            generation: 1, catalogHash: "hash-1", channel: "production", selectionContextHash: "context-1") == false)
     }
 
     @Test
@@ -3368,9 +3656,20 @@ private final class MappingDownloadService: DownloadService {
     }
 }
 
+private final class FailingArtifactFileResolver: ArtifactFileResolver {
+    func resolve(paths: [String]) throws -> [String: ResolvedArtifactFile] {
+        throw ArtifactFileResolverError.invalidResponse
+    }
+}
+
 private final class RecordingArtifactFileResolver: ArtifactFileResolver {
     private let lock = NSLock()
     private var recorded: [[String]] = []
+    private let urlOf: (String) -> URL
+
+    init(urlOf: @escaping (String) -> URL = { URL(string: "https://cdn.example.com/\($0)")! }) {
+        self.urlOf = urlOf
+    }
 
     var requests: [[String]] {
         lock.lock()
@@ -3383,7 +3682,7 @@ private final class RecordingArtifactFileResolver: ArtifactFileResolver {
         recorded.append(paths)
         lock.unlock()
         return Dictionary(uniqueKeysWithValues: paths.map {
-            ($0, ResolvedArtifactFile(url: URL(string: "https://cdn.example.com/\($0)")!, compression: nil))
+            ($0, ResolvedArtifactFile(url: urlOf($0), compression: nil))
         })
     }
 }
@@ -3601,7 +3900,8 @@ private func updateBundle(
     manifestHash: String,
     archiveURL: URL? = nil,
     assets: [String: ChangedAssetDescriptor],
-    fileResolver: ArtifactFileResolver? = nil
+    fileResolver: ArtifactFileResolver? = nil,
+    selection: PersistedSelection? = nil
 ) -> Result<UpdateDelivery, Error> {
     let completed = DispatchSemaphore(value: 0)
     var result: Result<UpdateDelivery, Error> = .failure(BundleStorageError.unknown(nil))
@@ -3612,6 +3912,7 @@ private func updateBundle(
         archiveUrl: archiveURL,
         assets: assets,
         fileResolver: fileResolver,
+        selection: selection,
         progressHandler: { _ in }
     ) {
         result = $0

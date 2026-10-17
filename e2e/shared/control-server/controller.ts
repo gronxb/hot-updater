@@ -243,6 +243,12 @@ const E2E_DEFAULT_COHORT = process.env.HOT_UPDATER_E2E_DEFAULT_COHORT || "782";
 const E2E_IOS_COHORT_DEFAULTS_KEY = "HotUpdater_CustomCohort";
 const E2E_ANDROID_COHORT_PREFS_FILE = "HotUpdaterCohort.xml";
 const E2E_ANDROID_COHORT_PREFS_KEY = "custom_cohort";
+// Read by the brownfield host's framework and library before React Native
+// starts (examples/v0.85.0 HotUpdaterExampleBrownfield and brownfieldlib).
+const E2E_IOS_NATIVE_CHECK_DEFAULTS_KEY = "HotUpdaterE2ENativeCheck";
+const E2E_ANDROID_NATIVE_CHECK_PREFS_FILE = "HotUpdaterE2E.xml";
+const E2E_ANDROID_NATIVE_CHECK_PREFS_KEY = "nativeCheck";
+const NATIVE_CHECK_REPORT_TIMEOUT_MS = 90_000;
 const E2E_RUNTIME_CONFIG_URL_ENV_KEY = "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL";
 const DEPLOY_MAX_OLD_SPACE_SIZE_ENV_KEY =
   "HOT_UPDATER_E2E_DEPLOY_MAX_OLD_SPACE_SIZE_MB";
@@ -556,6 +562,35 @@ let catalogProxyMode: "freeze" | "live" | "replay" = "live";
 let replayCatalogGeneration: number | null = null;
 let catalogResponseDelayMs = 0;
 let artifactResponseDelayMs = 0;
+// A hold keeps artifact responses back until a scenario releases it, so it
+// can order a download after a launch; the limit keeps a forgotten hold from
+// hanging the run.
+const ARTIFACT_HOLD_LIMIT_MS = 120_000;
+let artifactHold: { promise: Promise<void>; release: () => void } | null = null;
+
+function setArtifactHold(held: boolean) {
+  if (held) {
+    if (artifactHold) return;
+    let release = () => {};
+    const promise = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const hold = { promise, release };
+    artifactHold = hold;
+    // A hold a failed scenario never released ends for every request, so the
+    // proxy answers at once again and a later hold can start.
+    setTimeout(() => {
+      if (artifactHold === hold) setArtifactHold(false);
+    }, ARTIFACT_HOLD_LIMIT_MS).unref();
+    return;
+  }
+  artifactHold?.release();
+  artifactHold = null;
+}
+
+async function waitForArtifactRelease() {
+  await artifactHold?.promise;
+}
 let bootstrapJobId: string | null = null;
 let androidLaunchLogMarker: string | null = null;
 
@@ -3628,6 +3663,7 @@ export function handleConfigureProxy(input: {
   artifactFailures?: number;
   catalogDelayMs?: number;
   catalogMode?: "freeze" | "live" | "replay";
+  holdArtifacts?: boolean;
   replayGeneration?: number | null;
   reset?: boolean;
 }) {
@@ -3655,6 +3691,9 @@ export function handleConfigureProxy(input: {
   }
   if (input.artifactDelayMs !== undefined) {
     artifactResponseDelayMs = input.artifactDelayMs;
+  }
+  if (input.reset || input.holdArtifacts !== undefined) {
+    setArtifactHold(input.holdArtifacts === true);
   }
   if (input.artifactFailures !== undefined) {
     artifactFailuresRemaining = input.artifactFailures;
@@ -3949,6 +3988,7 @@ export async function handleProxyUpdateRequest(request: Request) {
     method: request.method,
   });
 
+  if (requestKind === "artifact") await waitForArtifactRelease();
   if (requestKind === "artifact" && artifactResponseDelayMs > 0) {
     await sleep(artifactResponseDelayMs);
   }
@@ -4485,6 +4525,99 @@ function writeAndroidE2ECohort(cohort: string) {
       ].join(" && "),
     ),
   ]);
+}
+
+/**
+ * Turns on the native update check in the brownfield host for the next launches
+ * of this attempt: the host checks the control proxy for an update before
+ * React Native starts and posts `<nonce>:<status>` as `nativeCheckResult`.
+ * Resetting the app removes it.
+ */
+async function setNativeCheck(input: {
+  strategy: "appVersion" | "fingerprint";
+  requestTimeoutMs?: number;
+  checkTimeoutMs?: number;
+}): Promise<JobResult> {
+  if (process.env.HOT_UPDATER_E2E_TRACK !== "brownfield") {
+    throw new Error("Native check runs only on the brownfield track");
+  }
+  const nonce = randomUUID();
+  const request = JSON.stringify({
+    baseURL: handleRuntimeConfig().baseURL,
+    updateStrategy: input.strategy,
+    nonce,
+    ...(input.requestTimeoutMs === undefined
+      ? {}
+      : { requestTimeoutMs: input.requestTimeoutMs }),
+    ...(input.checkTimeoutMs === undefined
+      ? {}
+      : { checkTimeoutMs: input.checkTimeoutMs }),
+  });
+  if (fixtureSession.platform === "ios") {
+    captureCommand("xcrun", [
+      "simctl",
+      "spawn",
+      deviceId as string,
+      "defaults",
+      "write",
+      fixtureSession.appId,
+      E2E_IOS_NATIVE_CHECK_DEFAULTS_KEY,
+      "-string",
+      request,
+    ]);
+  } else {
+    const prefsDir = `/data/data/${fixtureSession.appId}/shared_prefs`;
+    const prefsPath = `${prefsDir}/${E2E_ANDROID_NATIVE_CHECK_PREFS_FILE}`;
+    const prefsXml = [
+      "<?xml version='1.0' encoding='utf-8' standalone='yes' ?>",
+      "<map>",
+      `    <string name="${E2E_ANDROID_NATIVE_CHECK_PREFS_KEY}">${encodeXmlText(request)}</string>`,
+      "</map>",
+      "",
+    ].join("\n");
+    captureCommand("adb", [
+      "-s",
+      deviceId as string,
+      "shell",
+      "run-as",
+      fixtureSession.appId,
+      "sh",
+      "-c",
+      shellSingleQuote(
+        [
+          `mkdir -p ${shellSingleQuote(prefsDir)}`,
+          `printf %s ${shellSingleQuote(prefsXml)} > ${shellSingleQuote(prefsPath)}`,
+        ].join(" && "),
+      ),
+    ]);
+  }
+  logE2eFixture("native check enabled", {
+    nonce,
+    platform: fixtureSession.platform,
+    strategy: input.strategy,
+  });
+  return { nonce };
+}
+
+/** Waits for the host to report `status` for the request with `nonce`. */
+async function waitForNativeCheck(
+  input: { nonce: string; status: "upToDate" | "ready" | "pending" | "failed" },
+  signal: AbortSignal,
+): Promise<JobResult> {
+  const expected = `${input.nonce}:${input.status}`;
+  const deadline = Date.now() + NATIVE_CHECK_REPORT_TIMEOUT_MS;
+  while (Date.now() < deadline) {
+    signal.throwIfAborted();
+    if (readE2eScreenStateSnapshot().nativeCheckResult === expected) {
+      return { nativeCheckResult: expected };
+    }
+    await sleep(250, undefined, { signal });
+  }
+  throw new Error(
+    `Native check did not report ${input.status}; last report: ${
+      readE2eScreenStateSnapshot().nativeCheckResult || "none"
+    }`,
+  );
 }
 
 async function seedMissingE2ECohort() {
@@ -5340,6 +5473,7 @@ async function bootstrap() {
     artifactDelayMs: 0,
     catalogDelayMs: 0,
     catalogMode: "live",
+    holdArtifacts: false,
     replayGeneration: null,
     reset: true,
   });
@@ -6475,6 +6609,7 @@ async function resetRemoteBundles() {
     artifactDelayMs: 0,
     catalogDelayMs: 0,
     catalogMode: "live",
+    holdArtifacts: false,
     replayGeneration: null,
     reset: true,
   });
@@ -6809,6 +6944,21 @@ export function startSeedCrashedBundleFrontierJob(input: {
 
 export function startResetRemoteBundlesJob() {
   return createJob(() => resetRemoteBundles());
+}
+
+export function startSetNativeCheckJob(input: {
+  strategy: "appVersion" | "fingerprint";
+  requestTimeoutMs?: number;
+  checkTimeoutMs?: number;
+}) {
+  return createJob(() => setNativeCheck(input));
+}
+
+export function startWaitForNativeCheckJob(input: {
+  nonce: string;
+  status: "upToDate" | "ready" | "pending" | "failed";
+}) {
+  return createJob((context) => waitForNativeCheck(input, context.signal));
 }
 
 export function startWaitForMetadataJob(

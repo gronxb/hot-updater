@@ -11,10 +11,11 @@ import PackageDescription
 // relative to that symlink.
 //
 // SwiftPM compiles one language per target, so the module is split:
-// HotUpdaterSwift holds the Swift implementation, and HotUpdater, the
+// HotUpdaterSwift holds the Swift implementation, and HotUpdaterObjC, the
 // Objective-C++ module React Native loads, calls it through the protocols in
 // HotUpdaterInterface (see HotUpdaterInterface.h for why). Swift reaches the
-// Objective-C++ side through `@_silgen_name` symbols only.
+// Objective-C++ side through `@_silgen_name` symbols only. HotUpdater, the
+// module apps import, re-exports both and adds the async Swift API.
 let reactNativeDependencies: [Target.Dependency] = [
     .product(name: "ReactHeaders", package: "ReactNative"),
     .product(name: "ReactNativeHeaders", package: "ReactNative"),
@@ -39,8 +40,19 @@ let package = Package(
         .package(name: "React-GeneratedCode", path: "../../../ios"),
     ],
     targets: [
+        // The module apps import: re-exports HotUpdaterObjC and
+        // HotUpdaterSwift, and adds the async API, which needs both.
         .target(
             name: "HotUpdater",
+            dependencies: [
+                "HotUpdaterObjC",
+                "HotUpdaterSwift",
+            ] + reactNativeDependencies,
+            path: "ios/HotUpdater/Internal",
+            sources: ["HotUpdaterAsync.swift"]
+        ),
+        .target(
+            name: "HotUpdaterObjC",
             dependencies: [
                 "HotUpdaterInterface",
                 "HotUpdaterSwift",
@@ -63,6 +75,7 @@ let package = Package(
                 "BsdiffPatchBridge.mm",
                 "HotUpdater-Bridging-Header.h",
                 "HotUpdater.mm",
+                "HotUpdaterAsync.swift",
                 "HotUpdaterMinBundleId.m",
                 "HotUpdaterFingerprintHash.m",
             ],

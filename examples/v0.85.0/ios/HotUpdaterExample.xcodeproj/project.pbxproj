@@ -10,20 +10,30 @@
 		0C80B921A6F3F58F76C31292 /* libPods-HotUpdaterExample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-HotUpdaterExample.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
+		773AC28C02830D921A66B68B /* libPods-HotUpdaterExample-HotUpdaterExampleBrownfield.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DB2E7AC6484FA2E09D76265C /* libPods-HotUpdaterExample-HotUpdaterExampleBrownfield.a */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
+		C29601004C52F773764AC8B5 /* HotUpdaterExampleBrownfield.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3DAD5A3EFE870F14596377F /* HotUpdaterExampleBrownfield.swift */; };
+		CCF52BD2ACC793AD17784631 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 499A886C2074603BF6B2F508 /* Foundation.framework */; };
 		E412685610C001DD639E1636 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		10B1B9499265EC10BED9E8C5 /* HotUpdaterExampleBrownfield.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = HotUpdaterExampleBrownfield.framework; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07F961A680F5B00A75B9A /* HotUpdaterExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HotUpdaterExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = HotUpdaterExample/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = HotUpdaterExample/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = HotUpdaterExample/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		2DB281D3E8B4A41465EF716E /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		34CD639CE781804DBA658629 /* Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.debug.xcconfig"; path = "Target Support Files/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.debug.xcconfig"; sourceTree = "<group>"; };
 		3B4392A12AC88292D35C810B /* Pods-HotUpdaterExample.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HotUpdaterExample.debug.xcconfig"; path = "Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample.debug.xcconfig"; sourceTree = "<group>"; };
+		499A886C2074603BF6B2F508 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS14.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };
 		5709B34CF0A7D63546082F79 /* Pods-HotUpdaterExample.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HotUpdaterExample.release.xcconfig"; path = "Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample.release.xcconfig"; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-HotUpdaterExample.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-HotUpdaterExample.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = HotUpdaterExample/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = HotUpdaterExample/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		852F6384DBB79A6C867F6BE5 /* Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.release.xcconfig"; path = "Target Support Files/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.release.xcconfig"; sourceTree = "<group>"; };
+		B3DAD5A3EFE870F14596377F /* HotUpdaterExampleBrownfield.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HotUpdaterExampleBrownfield.swift; sourceTree = "<group>"; };
+		DB2E7AC6484FA2E09D76265C /* libPods-HotUpdaterExample-HotUpdaterExampleBrownfield.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-HotUpdaterExample-HotUpdaterExampleBrownfield.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -33,6 +43,15 @@
 			buildActionMask = 2147483647;
 			files = (
 				0C80B921A6F3F58F76C31292 /* libPods-HotUpdaterExample.a in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A9A8E29C5AE8157071425E65 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CCF52BD2ACC793AD17784631 /* Foundation.framework in Frameworks */,
+				773AC28C02830D921A66B68B /* libPods-HotUpdaterExample-HotUpdaterExampleBrownfield.a in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -56,6 +75,8 @@
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
 				5DCACB8F33CDC322A6C60F78 /* libPods-HotUpdaterExample.a */,
+				A3F6136E72B07A72B3D90CAC /* iOS */,
+				DB2E7AC6484FA2E09D76265C /* libPods-HotUpdaterExample-HotUpdaterExampleBrownfield.a */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -75,6 +96,7 @@
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
+				8611AA2C02D13D9DC70DDA03 /* HotUpdaterExampleBrownfield */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -85,8 +107,27 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* HotUpdaterExample.app */,
+				10B1B9499265EC10BED9E8C5 /* HotUpdaterExampleBrownfield.framework */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		8611AA2C02D13D9DC70DDA03 /* HotUpdaterExampleBrownfield */ = {
+			isa = PBXGroup;
+			children = (
+				B3DAD5A3EFE870F14596377F /* HotUpdaterExampleBrownfield.swift */,
+				2DB281D3E8B4A41465EF716E /* Info.plist */,
+			);
+			name = HotUpdaterExampleBrownfield;
+			path = HotUpdaterExampleBrownfield;
+			sourceTree = "<group>";
+		};
+		A3F6136E72B07A72B3D90CAC /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				499A886C2074603BF6B2F508 /* Foundation.framework */,
+			);
+			name = iOS;
 			sourceTree = "<group>";
 		};
 		BBD78D7AC51CEA395F1C20DB /* Pods */ = {
@@ -94,11 +135,23 @@
 			children = (
 				3B4392A12AC88292D35C810B /* Pods-HotUpdaterExample.debug.xcconfig */,
 				5709B34CF0A7D63546082F79 /* Pods-HotUpdaterExample.release.xcconfig */,
+				852F6384DBB79A6C867F6BE5 /* Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.release.xcconfig */,
+				34CD639CE781804DBA658629 /* Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.debug.xcconfig */,
 			);
 			path = Pods;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
+
+/* Begin PBXHeadersBuildPhase section */
+		085795069BEE51AA1C553377 /* Headers */ = {
+			isa = PBXHeadersBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXHeadersBuildPhase section */
 
 /* Begin PBXNativeTarget section */
 		13B07F861A680F5B00A75B9A /* HotUpdaterExample */ = {
@@ -121,6 +174,27 @@
 			productName = HotUpdaterExample;
 			productReference = 13B07F961A680F5B00A75B9A /* HotUpdaterExample.app */;
 			productType = "com.apple.product-type.application";
+		};
+		6D77112514223B0ECCA00E6A /* HotUpdaterExampleBrownfield */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 65D130278AD32A39E9A4786B /* Build configuration list for PBXNativeTarget "HotUpdaterExampleBrownfield" */;
+			buildPhases = (
+				89F9081AF425D7E1353D74AB /* [CP] Check Pods Manifest.lock */,
+				5A3FA3A253EAE1F8927A3C11 /* Bundle React Native code and images */,
+				085795069BEE51AA1C553377 /* Headers */,
+				C1AB81E9947E567ED49EA406 /* Sources */,
+				A9A8E29C5AE8157071425E65 /* Frameworks */,
+				522B70B8A006CE19FD2B7585 /* Resources */,
+				DED43F70495722996E0300ED /* [CP] Copy Pods Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = HotUpdaterExampleBrownfield;
+			productName = HotUpdaterExampleBrownfield;
+			productReference = 10B1B9499265EC10BED9E8C5 /* HotUpdaterExampleBrownfield.framework */;
+			productType = "com.apple.product-type.framework";
 		};
 /* End PBXNativeTarget section */
 
@@ -149,6 +223,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* HotUpdaterExample */,
+				6D77112514223B0ECCA00E6A /* HotUpdaterExampleBrownfield */,
 			);
 		};
 /* End PBXProject section */
@@ -161,6 +236,13 @@
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				E412685610C001DD639E1636 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		522B70B8A006CE19FD2B7585 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -200,6 +282,48 @@
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
+		5A3FA3A253EAE1F8927A3C11 /* Bundle React Native code and images */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/.xcode.env.local",
+				"$(SRCROOT)/.xcode.env",
+			);
+			name = "Bundle React Native code and images";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# Brownfield framework packaging must embed JS in Debug builds.\nif [[ \"$CONFIGURATION\" = *Debug* ]]; then\n  unset SKIP_BUNDLING\n  export FORCE_BUNDLING=1\n  export EXTRA_PACKAGER_ARGS=\"$EXTRA_PACKAGER_ARGS --dev false\"\nfi\n\nset -e\n\nif [[ -f \"$PODS_ROOT/../.xcode.env\" ]]; then\nsource \"$PODS_ROOT/../.xcode.env\"\nfi\nif [[ -f \"$PODS_ROOT/../.xcode.env.local\" ]]; then\nsource \"$PODS_ROOT/../.xcode.env.local\"\nfi\n\nexport CLI_PATH=\"$(\"$NODE_BINARY\" --print \"require('path').dirname(require.resolve('@react-native-community/cli/package.json')) + '/build/bin.js'\")\"\n\nWITH_ENVIRONMENT=\"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\"\nREACT_NATIVE_XCODE=\"$REACT_NATIVE_PATH/scripts/react-native-xcode.sh\"\n\n/bin/sh -c \"$WITH_ENVIRONMENT $REACT_NATIVE_XCODE\"\n";
+		};
+		89F9081AF425D7E1353D74AB /* [CP] Check Pods Manifest.lock */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${PODS_PODFILE_DIR_PATH}/Podfile.lock",
+				"${PODS_ROOT}/Manifest.lock",
+			);
+			name = "[CP] Check Pods Manifest.lock";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+				"$(DERIVED_FILE_DIR)/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield-checkManifestLockResult.txt",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
 		C38B50BA6285516D6DCD4F65 /* [CP] Check Pods Manifest.lock */ = {
 			isa = PBXShellScriptBuildPhase;
 			buildActionMask = 2147483647;
@@ -220,6 +344,23 @@
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
 			shellScript = "diff \"${PODS_PODFILE_DIR_PATH}/Podfile.lock\" \"${PODS_ROOT}/Manifest.lock\" > /dev/null\nif [ $? != 0 ] ; then\n    # print error to STDERR\n    echo \"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\" >&2\n    exit 1\nfi\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\necho \"SUCCESS\" > \"${SCRIPT_OUTPUT_FILE_0}\"\n";
+			showEnvVarsInLog = 0;
+		};
+		DED43F70495722996E0300ED /* [CP] Copy Pods Resources */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield-resources-${CONFIGURATION}-input-files.xcfilelist",
+			);
+			name = "[CP] Copy Pods Resources";
+			outputFileListPaths = (
+				"${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield-resources-${CONFIGURATION}-output-files.xcfilelist",
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield-resources.sh\"\n";
 			showEnvVarsInLog = 0;
 		};
 		E235C05ADACE081382539298 /* [CP] Copy Pods Resources */ = {
@@ -247,6 +388,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		C1AB81E9947E567ED49EA406 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				C29601004C52F773764AC8B5 /* HotUpdaterExampleBrownfield.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -304,6 +453,42 @@
 				PRODUCT_NAME = HotUpdaterExample;
 				SWIFT_VERSION = 5.0;
 				VERSIONING_SYSTEM = "apple-generic";
+			};
+			name = Release;
+		};
+		54D7C718250385333321E6AE /* Release */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 852F6384DBB79A6C867F6BE5 /* Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.release.xcconfig */;
+			buildSettings = {
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HotUpdaterExampleBrownfield/Info.plist;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				LD_DYLIB_INSTALL_NAME = "@rpath/$(EXECUTABLE_PATH)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.reactjs.native.example.HotUpdaterExample.brownfield;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = NO;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				USER_SCRIPT_SANDBOXING = NO;
+				VALIDATE_PRODUCT = YES;
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
 			};
 			name = Release;
 		};
@@ -463,6 +648,41 @@
 			};
 			name = Release;
 		};
+		8F7CCFFE8105870932736D6D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			baseConfigurationReference = 34CD639CE781804DBA658629 /* Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.debug.xcconfig */;
+			buildSettings = {
+				BUILD_LIBRARY_FOR_DISTRIBUTION = YES;
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEFINES_MODULE = YES;
+				DYLIB_COMPATIBILITY_VERSION = 1;
+				DYLIB_CURRENT_VERSION = 1;
+				DYLIB_INSTALL_NAME_BASE = "@rpath";
+				ENABLE_MODULE_VERIFIER = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = HotUpdaterExampleBrownfield/Info.plist;
+				INSTALL_PATH = "$(LOCAL_LIBRARY_DIR)/Frameworks";
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				LD_DYLIB_INSTALL_NAME = "@rpath/$(EXECUTABLE_PATH)";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.reactjs.native.example.HotUpdaterExample.brownfield;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = NO;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				USER_SCRIPT_SANDBOXING = NO;
+				VERSIONING_SYSTEM = "apple-generic";
+				VERSION_INFO_PREFIX = "";
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -471,6 +691,15 @@
 			buildConfigurations = (
 				13B07F941A680F5B00A75B9A /* Debug */,
 				13B07F951A680F5B00A75B9A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		65D130278AD32A39E9A4786B /* Build configuration list for PBXNativeTarget "HotUpdaterExampleBrownfield" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				54D7C718250385333321E6AE /* Release */,
+				8F7CCFFE8105870932736D6D /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
