@@ -1,18 +1,25 @@
 #if canImport(Testing)
 import Foundation
 
-/// Reads the flag from disk: a new URL has no cached resource values. The
-/// value is also true for an item inside an excluded directory.
+/// The extended attribute behind `URLResourceValues.isExcludedFromBackup`.
+private let backupExclusionAttribute = "com.apple.metadata:com_apple_backup_excludeItem"
+
+/// Whether `url` carries its own backup exclusion, read from disk. Unlike
+/// `URLResourceValues.isExcludedFromBackup`, an item inside an excluded
+/// directory does not count, so a file's own flag is checked as is.
 func isExcludedFromBackup(_ url: URL) -> Bool {
-    let freshURL = URL(fileURLWithPath: url.path)
-    return (try? freshURL.resourceValues(forKeys: [.isExcludedFromBackupKey]))?
-        .isExcludedFromBackup == true
+    getxattr(url.path, backupExclusionAttribute, nil, 0, 0, XATTR_NOFOLLOW) >= 0
 }
 
-func setExcludedFromBackup(_ url: URL, _ excluded: Bool) throws {
-    var freshURL = URL(fileURLWithPath: url.path)
-    var values = URLResourceValues()
-    values.isExcludedFromBackup = excluded
-    try freshURL.setResourceValues(values)
+/// Removes the flag from `url` synchronously. Clearing it through
+/// `setResourceValues` would also queue an asynchronous Spotlight update in
+/// CoreServices that can remove the flag again after the code under test
+/// sets it.
+func clearExcludedFromBackup(_ url: URL) throws {
+    guard removexattr(url.path, backupExclusionAttribute, XATTR_NOFOLLOW) == 0
+        || errno == ENOATTR
+    else {
+        throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO)
+    }
 }
 #endif

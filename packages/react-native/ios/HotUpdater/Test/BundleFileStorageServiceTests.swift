@@ -906,9 +906,8 @@ struct BundleFileStorageServiceTests {
         let directory = noBackupDirectory(documentsDirectory: workingDirectory)
         let identityFile = directory.appendingPathComponent(InstallIdentity.installIdentityFilename)
         #expect(InstallIdentity.load(from: identityFile)?.installId == installId)
-        #expect(isExcludedFromBackup(directory))
         // The file keeps its own flag, not only the one it inherits.
-        try setExcludedFromBackup(directory, false)
+        #expect(isExcludedFromBackup(directory))
         #expect(isExcludedFromBackup(identityFile))
         #expect(makeStorageService(documentsDirectory: workingDirectory).getInstallId() == installId)
         #expect(try Data(contentsOf: bundleStoreCopy) == Data(#"{"installId":"bundle-store-id"}"#.utf8))
