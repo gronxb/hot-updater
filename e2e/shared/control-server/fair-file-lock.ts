@@ -4,8 +4,6 @@ import path from "node:path";
 import { setTimeout as sleep } from "node:timers/promises";
 
 type FileLockOwner = {
-  /** What the holder mutates; see FairFileLockOptions.key. */
-  readonly key: string | null;
   readonly pid: number;
   readonly platform: string | null;
   readonly startedAt: string;
@@ -25,14 +23,6 @@ type FileLockWait = {
 
 type FairFileLockOptions = {
   readonly capacity?: number;
-  /**
-   * What the holder mutates in the files the lock guards, such as a hash of
-   * the sources and config a deploy writes into its checkout before its
-   * build. Holders share the
-   * lock only while their keys are equal: a waiter with another key waits
-   * until every holder has released, and nobody behind it passes it.
-   */
-  readonly key?: string;
   readonly lockRoot: string;
   readonly onAbandoned?: (lock: AbandonedFileLock) => void;
   readonly onWait?: (wait: FileLockWait) => void;
@@ -49,33 +39,6 @@ export type FairFileLock = {
 
 // Catalog writes are atomic; bound concurrent builds across all fixture shards.
 export const DEPLOY_LOCK_CAPACITY = 2;
-
-// One checkout's deploy inputs: deploys that write the same bytes may share
-// it, up to the shards' own build limit.
-export const CHECKOUT_INPUTS_LOCK_CAPACITY = DEPLOY_LOCK_CAPACITY;
-
-/**
- * Whether the waiter at `position` may take a lock now: it is within
- * capacity, every waiter ahead of it shares its key (so it never passes one
- * that has to wait), and every holder shares its key. A missing or unreadable
- * owner counts as another key.
- */
-export function canEnterFairFileLock(input: {
-  readonly aheadKeys: readonly (string | null | undefined)[];
-  readonly capacity: number;
-  readonly heldKeys: readonly (string | null | undefined)[];
-  readonly key: string | null;
-  readonly position: number;
-}): boolean {
-  const sameKey = (other: string | null | undefined) =>
-    other !== undefined && other === input.key;
-  return (
-    input.position >= 0 &&
-    input.position < input.capacity &&
-    input.aheadKeys.every(sameKey) &&
-    input.heldKeys.every(sameKey)
-  );
-}
 
 const defaultStaleMs = 45 * 60 * 1000;
 const defaultWaitIntervalMs = 500;
@@ -94,12 +57,10 @@ function parseOwner(value: unknown): FileLockOwner | null {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return null;
   }
-  const key = Reflect.get(value, "key");
   const pid = Reflect.get(value, "pid");
   const platform = Reflect.get(value, "platform");
   const startedAt = Reflect.get(value, "startedAt");
   if (
-    (typeof key !== "string" && key !== undefined) ||
     typeof pid !== "number" ||
     !Number.isInteger(pid) ||
     (typeof platform !== "string" && platform !== undefined) ||
@@ -107,7 +68,7 @@ function parseOwner(value: unknown): FileLockOwner | null {
   ) {
     return null;
   }
-  return { key: key ?? null, pid, platform: platform ?? null, startedAt };
+  return { pid, platform: platform ?? null, startedAt };
 }
 
 async function readOwner(directory: string): Promise<FileLockOwner | null> {
@@ -124,18 +85,6 @@ async function readOwner(directory: string): Promise<FileLockOwner | null> {
       (error instanceof Error && "code" in error && error.code === "ENOENT")
     ) {
       return null;
-    }
-    throw error;
-  }
-}
-
-async function pathExists(target: string): Promise<boolean> {
-  try {
-    await fs.stat(target);
-    return true;
-  } catch (error) {
-    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
-      return false;
     }
     throw error;
   }
@@ -194,19 +143,18 @@ async function waitForTurn(
   const ticketPath = path.join(queuePath, ticketName());
   const staleMs = options.staleMs ?? defaultStaleMs;
   const waitIntervalMs = options.waitIntervalMs ?? defaultWaitIntervalMs;
-  const key = options.key ?? null;
-  const ownerJson = () =>
-    JSON.stringify({
-      ...(options.key === undefined ? {} : { key: options.key }),
-      pid: process.pid,
-      platform: options.ownerLabel,
-      startedAt: new Date().toISOString(),
-    });
   let waitingLogged = false;
 
   await fs.mkdir(queuePath, { recursive: true });
   await fs.mkdir(ticketPath);
-  await fs.writeFile(path.join(ticketPath, "owner.json"), ownerJson());
+  await fs.writeFile(
+    path.join(ticketPath, "owner.json"),
+    JSON.stringify({
+      pid: process.pid,
+      platform: options.ownerLabel,
+      startedAt: new Date().toISOString(),
+    }),
+  );
 
   try {
     for (;;) {
@@ -224,7 +172,6 @@ async function waitForTurn(
       }
       const position = tickets.indexOf(path.basename(ticketPath));
       let owner: FileLockOwner | null = null;
-      const heldKeys: (string | null | undefined)[] = [];
       for (const lockPath of lockPaths) {
         const lockOwner = await readOwner(lockPath);
         owner ??= lockOwner;
@@ -233,27 +180,21 @@ async function waitForTurn(
           options.onAbandoned?.(abandoned);
           await fs.rm(lockPath, { force: true, recursive: true });
           waitingLogged = false;
-        } else if (await pathExists(lockPath)) {
-          heldKeys.push(lockOwner ? lockOwner.key : undefined);
         }
       }
-      const aheadKeys = await Promise.all(
-        tickets.slice(0, Math.max(position, 0)).map(async (ticket) => {
-          const ticketOwner = await readOwner(path.join(queuePath, ticket));
-          return ticketOwner ? ticketOwner.key : undefined;
-        }),
-      );
 
-      if (
-        canEnterFairFileLock({ aheadKeys, capacity, heldKeys, key, position })
-      ) {
+      if (position >= 0 && position < capacity) {
         for (const lockPath of lockPaths) {
           try {
             await fs.mkdir(lockPath);
             try {
               await fs.writeFile(
                 path.join(lockPath, "owner.json"),
-                ownerJson(),
+                JSON.stringify({
+                  pid: process.pid,
+                  platform: options.ownerLabel,
+                  startedAt: new Date().toISOString(),
+                }),
               );
             } catch (error) {
               await fs.rm(lockPath, { force: true, recursive: true });

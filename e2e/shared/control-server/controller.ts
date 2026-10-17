@@ -49,7 +49,7 @@ import {
   BARE_BUILD_INLINE_PATTERN,
   setBareEntryFile,
 } from "./bare-build-config.ts";
-import { exclusiveCheckoutLockKey, withCheckoutLock } from "./checkout-lock.ts";
+import { withCheckoutLock } from "./checkout-lock.ts";
 import { createControlJobs, type JobExecutionContext } from "./control-jobs.ts";
 import {
   createCrashRecoveryArtifactNames,
@@ -59,10 +59,8 @@ import {
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
-import { createDeployInputsKey } from "./deploy-inputs-key.ts";
 import {
   acquireFairFileLock,
-  CHECKOUT_INPUTS_LOCK_CAPACITY,
   DEPLOY_LOCK_CAPACITY,
   type FairFileLock,
 } from "./fair-file-lock.ts";
@@ -831,21 +829,17 @@ function checkoutInputsLockRoot() {
 }
 
 /**
- * Runs `task` holding this checkout's inputs lock under `key`: the rendered
- * inputs' key for a deploy, so deploys writing the same bytes share the
- * checkout while a main and a widget deploy take turns, or an exclusive key
- * for bootstrap and cleanup, which run alone.
+ * Runs `task` alone on this checkout's deploy inputs: a deploy's writes and
+ * the build that reads them, or bootstrap's and cleanup's resets. One
+ * controller owns a checkout, so only its own jobs ever wait here.
  */
 async function withCheckoutInputsLock<T>(
   purpose: string,
-  key: string,
   signal: AbortSignal | undefined,
   task: (lock: FairFileLock) => Promise<T>,
 ): Promise<T> {
   return withCheckoutLock(
     {
-      capacity: CHECKOUT_INPUTS_LOCK_CAPACITY,
-      key,
       lockRoot: checkoutInputsLockRoot(),
       onAbandoned: ({ ageMs, lockPath, owner, reason }) => {
         logE2eFixture(
@@ -869,7 +863,6 @@ async function withCheckoutInputsLock<T>(
     },
     async (lock) => {
       logE2eFixture("checkout inputs lock acquired", {
-        key,
         lockPath: lock.lockPath,
         platform: fixtureSession.platform,
         purpose,
@@ -882,8 +875,7 @@ async function withCheckoutInputsLock<T>(
 /**
  * The shards' shared deploy lock, a resource limit: at most
  * DEPLOY_LOCK_CAPACITY CLI builds at once across every shard of a run. It
- * guards no files, so it takes no key, and bootstrap and cleanup never
- * wait for it.
+ * guards no files, and bootstrap and cleanup never wait for it.
  */
 async function withDeployProcessLock<T>(
   signal: AbortSignal | undefined,
@@ -1309,32 +1301,6 @@ type DeployConfigInput = {
   strategy: "appVersion" | "fingerprint";
 };
 
-/**
- * The config and patch surface a deploy writes, and their key: deploys whose
- * keys match write the same bytes, so they may share the checkout.
- */
-async function renderDeployInputs(
-  deployConfig: DeployConfigInput,
-  appScenario: AppScenarioInput,
-) {
-  const configSource = await renderDeployConfig(deployConfig);
-  const appSource = await renderAppScenario(appScenario);
-  return {
-    appSource,
-    configSource,
-    key: createDeployInputsKey({
-      appSource,
-      appSourceFile: path.relative(
-        REPO_DIR,
-        appScenario.sourceFile ?? fixtureSession.appSourceFile,
-      ),
-      bundleProfile: appScenario.bundleProfile,
-      configSource,
-      marker: appScenario.marker,
-    }),
-  };
-}
-
 /** The hot-updater.config.ts a deploy builds with, without writing it. */
 async function renderDeployConfig({
   entryFile,
@@ -1415,6 +1381,10 @@ async function writeDeployConfig(input: DeployConfigInput, nextSource: string) {
     sourceFile: path.relative(REPO_DIR, fixtureSession.configSourceFile),
     strategy: input.strategy,
   });
+}
+
+async function applyDeployConfig(input: DeployConfigInput) {
+  await writeDeployConfig(input, await renderDeployConfig(input));
 }
 
 async function waitForFile(filePath: string, attempts = 360) {
@@ -6079,12 +6049,7 @@ async function bootstrap(signal?: AbortSignal) {
   // backup is never a deploy's input and no build reads them half reset.
   // Other shards' checkouts have locks of their own. Nothing here runs
   // inside a deploy, and nothing inside takes the lock again.
-  await withCheckoutInputsLock(
-    "bootstrap",
-    exclusiveCheckoutLockKey(),
-    signal,
-    resetCheckoutInputs,
-  );
+  await withCheckoutInputsLock("bootstrap", signal, resetCheckoutInputs);
 
   fixtureSession.bootstrapResult = {
     emptyCrashHistoryText: "No crashed bundles recorded\\.",
@@ -6139,12 +6104,6 @@ async function deployFixtureBundle(
         ? fixtureSession.widgetAppSourceFile
         : fixtureSession.appSourceFile,
   };
-  // Deploy jobs of this checkout write its inputs before their builds read
-  // them. The rendered inputs are the checkout lock's key, so deploys
-  // writing the same bytes share it while one with other inputs (a widget
-  // beside a main deploy, another marker) waits until they have built.
-  throwIfAborted(signal);
-  const deployInputs = await renderDeployInputs(deployConfig, appScenario);
 
   const deployOutputPath = await fsPromises.mkdtemp(
     path.join(os.tmpdir(), "hu-e2e-deploy-"),
@@ -6196,13 +6155,13 @@ async function deployFixtureBundle(
     targetAppVersion: request.targetAppVersion,
   });
   let deployDurationMs = 0;
+  // Deploy jobs of this checkout write its inputs (config, patch surface,
+  // fixture assets) before their builds read them, so one deploy writes and
+  // builds at a time: no build reads inputs another deploy is rewriting.
   const deployOutput = await withCheckoutInputsLock(
     "deploy",
-    deployInputs.key,
     signal,
     async () => {
-      // The inputs are written only while the lock is held, and stay until
-      // the build has read them.
       if (bundleProfile === "multiAssetReplacement") {
         throwIfAborted(signal);
         await ensureMultiAssetFixtures(request.marker);
@@ -6216,14 +6175,8 @@ async function deployFixtureBundle(
         await ensureAssetHeavyFixtures(request.marker);
       }
       throwIfAborted(signal);
-      const rendered = await renderDeployInputs(deployConfig, appScenario);
-      if (rendered.key !== deployInputs.key) {
-        throw new Error(
-          "The deploy inputs changed while waiting for the deploy lock",
-        );
-      }
-      await writeDeployConfig(deployConfig, rendered.configSource);
-      await writeAppScenario(appScenario, rendered.appSource);
+      await applyDeployConfig(deployConfig);
+      await applyAppScenario(appScenario);
       // The inputs stay locked while the build, in its turn among every
       // shard's builds, reads them.
       return withDeployProcessLock(signal, async () => {
@@ -7495,43 +7448,38 @@ async function cleanup() {
   }
 
   // Restores the checkout alone, as bootstrap resets it.
-  await withCheckoutInputsLock(
-    "cleanup",
-    exclusiveCheckoutLockKey(),
-    undefined,
-    async () => {
-      if (fixtureSession.appBackupPath) {
-        await restoreFile(
-          fixtureSession.appBackupPath,
-          fixtureSession.appSourceFile,
-        );
-      }
-      if (fixtureSession.widgetAppBackupPath) {
-        await restoreFile(
-          fixtureSession.widgetAppBackupPath,
-          fixtureSession.widgetAppSourceFile,
-        );
-      }
-      if (fixtureSession.configBackupPath) {
-        await restoreFile(
-          fixtureSession.configBackupPath,
-          fixtureSession.configSourceFile,
-        );
-      }
-      if (fixtureSession.envBackupPath) {
-        await restoreFile(
-          fixtureSession.envBackupPath,
-          fixtureSession.envSourceFile,
-        );
-      }
+  await withCheckoutInputsLock("cleanup", undefined, async () => {
+    if (fixtureSession.appBackupPath) {
       await restoreFile(
-        fixtureSession.sizeAwareLargeAssetBackupPath,
-        fixtureSession.sizeAwareLargeAssetPath,
+        fixtureSession.appBackupPath,
+        fixtureSession.appSourceFile,
       );
-      await restoreMultiAssetFixtures();
-      await removeAssetHeavyFixtures();
-    },
-  );
+    }
+    if (fixtureSession.widgetAppBackupPath) {
+      await restoreFile(
+        fixtureSession.widgetAppBackupPath,
+        fixtureSession.widgetAppSourceFile,
+      );
+    }
+    if (fixtureSession.configBackupPath) {
+      await restoreFile(
+        fixtureSession.configBackupPath,
+        fixtureSession.configSourceFile,
+      );
+    }
+    if (fixtureSession.envBackupPath) {
+      await restoreFile(
+        fixtureSession.envBackupPath,
+        fixtureSession.envSourceFile,
+      );
+    }
+    await restoreFile(
+      fixtureSession.sizeAwareLargeAssetBackupPath,
+      fixtureSession.sizeAwareLargeAssetPath,
+    );
+    await restoreMultiAssetFixtures();
+    await removeAssetHeavyFixtures();
+  });
 
   fixtureSession.appBackupPath = null;
   fixtureSession.widgetAppBackupPath = null;

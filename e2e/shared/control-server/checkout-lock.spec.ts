@@ -5,12 +5,8 @@ import { setTimeout as sleep } from "node:timers/promises";
 
 import { describe, expect, it } from "vitest";
 
-import { exclusiveCheckoutLockKey, withCheckoutLock } from "./checkout-lock.ts";
-import {
-  acquireFairFileLock,
-  CHECKOUT_INPUTS_LOCK_CAPACITY,
-  DEPLOY_LOCK_CAPACITY,
-} from "./fair-file-lock.ts";
+import { withCheckoutLock } from "./checkout-lock.ts";
+import { acquireFairFileLock, DEPLOY_LOCK_CAPACITY } from "./fair-file-lock.ts";
 
 const withLockRoot = async (run: (lockRoot: string) => Promise<void>) => {
   const lockRoot = await fs.mkdtemp(
@@ -24,56 +20,52 @@ const withLockRoot = async (run: (lockRoot: string) => Promise<void>) => {
 };
 
 describe("E2E checkout lock", () => {
-  it("runs an exclusive task alone, after the deploys ahead of it", async () => {
+  it("runs one checkout's deploys and resets one at a time, in arrival order", async () => {
     await withLockRoot(async (lockRoot) => {
       const events: string[] = [];
-      const options = (key: string) => ({
-        capacity: DEPLOY_LOCK_CAPACITY,
-        key,
-        lockRoot,
-        waitIntervalMs: 1,
-      });
-      const deployHeld = Promise.withResolvers<void>();
-      const finishDeploy = Promise.withResolvers<void>();
-      const deploy = withCheckoutLock(options("main"), async () => {
-        events.push("deploy start");
-        deployHeld.resolve();
-        await finishDeploy.promise;
-        events.push("deploy end");
-      });
-      await deployHeld.promise;
-
-      const bootstrapWaiting = Promise.withResolvers<void>();
-      const bootstrap = withCheckoutLock(
-        {
-          ...options(exclusiveCheckoutLockKey()),
-          onWait: () => bootstrapWaiting.resolve(),
-        },
+      const firstHeld = Promise.withResolvers<void>();
+      const finishFirst = Promise.withResolvers<void>();
+      // Two identical deploys: the second must not write while the first's
+      // build reads.
+      const first = withCheckoutLock(
+        { lockRoot, waitIntervalMs: 1 },
         async () => {
-          events.push("bootstrap start");
-          await sleep(20);
-          events.push("bootstrap end");
+          events.push("deploy 1 writes and builds");
+          firstHeld.resolve();
+          await finishFirst.promise;
+          events.push("deploy 1 done");
         },
       );
-      await bootstrapWaiting.promise;
-      // A deploy queued behind the bootstrap, even with the holder's key.
-      const lateDeployWaiting = Promise.withResolvers<void>();
-      const lateDeploy = withCheckoutLock(
-        { ...options("main"), onWait: () => lateDeployWaiting.resolve() },
-        async () => {
-          events.push("late deploy");
-        },
-      );
-      await lateDeployWaiting.promise;
+      await firstHeld.promise;
 
-      finishDeploy.resolve();
-      await Promise.all([deploy, bootstrap, lateDeploy]);
+      const waiting = (label: string) => {
+        const queued = Promise.withResolvers<void>();
+        const done = withCheckoutLock(
+          { lockRoot, onWait: () => queued.resolve(), waitIntervalMs: 1 },
+          async () => {
+            events.push(`${label} starts`);
+            await sleep(5);
+            events.push(`${label} done`);
+          },
+        );
+        return { done, queued: queued.promise };
+      };
+      const second = waiting("deploy 2");
+      await second.queued;
+      const cleanup = waiting("cleanup");
+      await cleanup.queued;
+      await sleep(20);
+      expect(events).toEqual(["deploy 1 writes and builds"]);
+
+      finishFirst.resolve();
+      await Promise.all([first, second.done, cleanup.done]);
       expect(events).toEqual([
-        "deploy start",
-        "deploy end",
-        "bootstrap start",
-        "bootstrap end",
-        "late deploy",
+        "deploy 1 writes and builds",
+        "deploy 1 done",
+        "deploy 2 starts",
+        "deploy 2 done",
+        "cleanup starts",
+        "cleanup done",
       ]);
     });
   });
@@ -87,12 +79,7 @@ describe("E2E checkout lock", () => {
           const deployHeld = Promise.withResolvers<void>();
           const finishDeploy = Promise.withResolvers<void>();
           const androidDeploy = withCheckoutLock(
-            {
-              capacity: CHECKOUT_INPUTS_LOCK_CAPACITY,
-              key: "android-main",
-              lockRoot: androidCheckoutRoot,
-              waitIntervalMs: 1,
-            },
+            { lockRoot: androidCheckoutRoot, waitIntervalMs: 1 },
             async () => {
               const build = await acquireFairFileLock({
                 capacity: DEPLOY_LOCK_CAPACITY,
@@ -110,8 +97,6 @@ describe("E2E checkout lock", () => {
           let iosCleanupWaited = false;
           await withCheckoutLock(
             {
-              capacity: CHECKOUT_INPUTS_LOCK_CAPACITY,
-              key: exclusiveCheckoutLockKey(),
               lockRoot: iosCheckoutRoot,
               onWait: () => {
                 iosCleanupWaited = true;
@@ -122,15 +107,10 @@ describe("E2E checkout lock", () => {
           );
           expect(iosCleanupWaited).toBe(false);
 
-          // An exclusive task in the Android checkout does wait for it.
+          // A cleanup in the Android checkout does wait for its deploy.
           let androidCleanupDone = false;
           const androidCleanup = withCheckoutLock(
-            {
-              capacity: CHECKOUT_INPUTS_LOCK_CAPACITY,
-              key: exclusiveCheckoutLockKey(),
-              lockRoot: androidCheckoutRoot,
-              waitIntervalMs: 1,
-            },
+            { lockRoot: androidCheckoutRoot, waitIntervalMs: 1 },
             async () => {
               androidCleanupDone = true;
             },
@@ -147,27 +127,16 @@ describe("E2E checkout lock", () => {
 
   it("refuses a nested acquire instead of waiting for itself, and releases on failure", async () => {
     await withLockRoot(async (lockRoot) => {
-      const options = {
-        capacity: DEPLOY_LOCK_CAPACITY,
-        key: exclusiveCheckoutLockKey(),
-        lockRoot,
-        waitIntervalMs: 1,
-      };
+      const options = { lockRoot, waitIntervalMs: 1 };
       await expect(
         withCheckoutLock(options, () =>
-          withCheckoutLock(
-            { ...options, key: exclusiveCheckoutLockKey() },
-            async () => "nested",
-          ),
+          withCheckoutLock(options, async () => "nested"),
         ),
       ).rejects.toThrow("a nested acquire would wait for itself");
       // The failed task released its lock: the next one gets it at once.
-      await expect(
-        withCheckoutLock(
-          { ...options, key: exclusiveCheckoutLockKey() },
-          async () => "next",
-        ),
-      ).resolves.toBe("next");
+      await expect(withCheckoutLock(options, async () => "next")).resolves.toBe(
+        "next",
+      );
     });
   });
 });

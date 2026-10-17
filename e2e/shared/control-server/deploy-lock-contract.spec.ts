@@ -5,11 +5,7 @@ import { setTimeout as sleep } from "timers/promises";
 
 import { describe, expect, it } from "vitest";
 
-import {
-  acquireFairFileLock,
-  canEnterFairFileLock,
-  DEPLOY_LOCK_CAPACITY,
-} from "./fair-file-lock.ts";
+import { acquireFairFileLock, DEPLOY_LOCK_CAPACITY } from "./fair-file-lock.ts";
 
 const repoDir = path.resolve(__dirname, "../../..");
 const controllerPath = path.join(
@@ -26,7 +22,7 @@ describe("E2E control-server deploy lock", () => {
         controllerSource.indexOf(to, controllerSource.indexOf(from)),
       );
 
-    // The shards' shared lock limits builds only: no key, no files.
+    // The shards' shared lock limits builds only: it guards no files.
     const shared = between(
       "async function withDeployProcessLock<T>(",
       "async function exportNativePublicKeyFromSigningKey(",
@@ -34,13 +30,14 @@ describe("E2E control-server deploy lock", () => {
     expect(shared).toContain("await acquireFairFileLock({");
     expect(shared).toContain("capacity: DEPLOY_LOCK_CAPACITY,");
     expect(shared).toContain("lockRoot: deployProcessLockRoot(),");
-    expect(shared).not.toContain("key");
     // The inputs lock lives under this checkout's own root.
     const inputs = between(
       "async function withCheckoutInputsLock<T>(",
       "async function withDeployProcessLock<T>(",
     );
     expect(inputs).toContain("return withCheckoutLock(");
+    // One holder at a time: withCheckoutLock fixes the capacity at 1.
+    expect(inputs).not.toContain("capacity");
     expect(inputs).toContain("lockRoot: checkoutInputsLockRoot(),");
     expect(inputs).not.toContain("deployProcessLockRoot");
     expect(
@@ -54,7 +51,7 @@ describe("E2E control-server deploy lock", () => {
     );
   });
 
-  it("writes a deploy's inputs only while holding its checkout's lock keyed by them", async () => {
+  it("writes a deploy's inputs and builds only while holding its checkout's exclusive lock", async () => {
     const controllerSource = await fs.readFile(controllerPath, "utf8");
     const deploy = controllerSource.slice(
       controllerSource.indexOf("async function deployFixtureBundle("),
@@ -62,11 +59,13 @@ describe("E2E control-server deploy lock", () => {
     );
     const lockIndex = deploy.indexOf("await withCheckoutInputsLock(");
 
-    expect(deploy).toContain('"deploy",\n    deployInputs.key,');
+    expect(deploy).toMatch(
+      /await withCheckoutInputsLock\(\s*"deploy",\s*signal,\s*async/,
+    );
     expect(lockIndex).toBeGreaterThan(0);
     for (const write of [
-      "await writeDeployConfig(",
-      "await writeAppScenario(",
+      "await applyDeployConfig(",
+      "await applyAppScenario(",
       "await ensureMultiAssetFixtures(",
       "await ensureSizeAwareLargeAsset(",
       "await ensureAssetHeavyFixtures(",
@@ -77,7 +76,7 @@ describe("E2E control-server deploy lock", () => {
     // shard's builds, after the inputs are written.
     const sharedIndex = deploy.indexOf("return withDeployProcessLock(signal,");
     expect(sharedIndex).toBeGreaterThan(
-      deploy.indexOf("await writeAppScenario("),
+      deploy.indexOf("await applyAppScenario("),
     );
     expect(deploy.indexOf('runLoggedCommand("node", args')).toBeGreaterThan(
       sharedIndex,
@@ -85,8 +84,9 @@ describe("E2E control-server deploy lock", () => {
     expect(
       deploy.indexOf("const releaseId = extractDeployReleaseId("),
     ).toBeGreaterThan(deploy.indexOf('runLoggedCommand("node", args'));
-    expect(deploy).not.toContain("applyDeployConfig(");
-    expect(deploy).not.toContain("applyAppScenario(");
+    // Each write happens exactly once, inside the lock.
+    expect(deploy.split("await applyDeployConfig(")).toHaveLength(2);
+    expect(deploy.split("await applyAppScenario(")).toHaveLength(2);
   });
 
   it("backs up and resets the checkout alone in bootstrap and cleanup", async () => {
@@ -108,7 +108,7 @@ describe("E2E control-server deploy lock", () => {
 
     // Bootstrap reaches the inputs only through the exclusive lock.
     expect(bootstrap).toMatch(
-      /await withCheckoutInputsLock\(\s*"bootstrap",\s*exclusiveCheckoutLockKey\(\),\s*signal,\s*resetCheckoutInputs,\s*\);/,
+      /await withCheckoutInputsLock\(\s*"bootstrap",\s*signal,\s*resetCheckoutInputs,?\s*\);/,
     );
     for (const write of [
       "backupFile(",
@@ -132,7 +132,7 @@ describe("E2E control-server deploy lock", () => {
     }
 
     const cleanupLock = cleanup.indexOf(
-      'await withCheckoutInputsLock(\n    "cleanup",\n    exclusiveCheckoutLockKey(),',
+      'await withCheckoutInputsLock("cleanup", undefined,',
     );
     expect(cleanupLock).toBeGreaterThan(0);
     for (const write of [
@@ -149,86 +149,6 @@ describe("E2E control-server deploy lock", () => {
         "async function updateFixtureRelease(",
       ),
     ).not.toContain("bootstrap(");
-  });
-
-  it("admits a waiter only behind and beside holders with its key", () => {
-    const enter = (
-      overrides: Partial<Parameters<typeof canEnterFairFileLock>[0]>,
-    ) =>
-      canEnterFairFileLock({
-        aheadKeys: [],
-        capacity: 2,
-        heldKeys: [],
-        key: "main",
-        position: 0,
-        ...overrides,
-      });
-
-    expect(enter({})).toBe(true);
-    // The same inputs share the checkout up to capacity.
-    expect(enter({ heldKeys: ["main"] })).toBe(true);
-    expect(enter({ aheadKeys: ["main"], position: 1 })).toBe(true);
-    expect(enter({ aheadKeys: ["main", "main"], position: 2 })).toBe(false);
-    // Other inputs wait for every holder to release.
-    expect(enter({ heldKeys: ["widget"] })).toBe(false);
-    expect(enter({ heldKeys: ["main", "widget"] })).toBe(false);
-    // Nobody passes a waiter with other inputs.
-    expect(enter({ aheadKeys: ["widget"], position: 1 })).toBe(false);
-    // An owner not written yet, or unreadable, counts as other inputs.
-    expect(enter({ heldKeys: [undefined] })).toBe(false);
-    expect(enter({ aheadKeys: [undefined], position: 1 })).toBe(false);
-    // Keyless holders still share with each other, as before keys.
-    expect(enter({ heldKeys: [null], key: null })).toBe(true);
-    expect(enter({ heldKeys: [null] })).toBe(false);
-  });
-
-  it("builds equal deploys at once and makes a different one take its turn", async () => {
-    const lockRoot = await fs.mkdtemp(
-      path.join(os.tmpdir(), "hot-updater-keyed-lock-"),
-    );
-    const order: string[] = [];
-    const widgetWaiting = Promise.withResolvers<void>();
-    const lateMainWaiting = Promise.withResolvers<void>();
-    const acquire = (key: string, onWait?: () => void) =>
-      acquireFairFileLock({
-        capacity: DEPLOY_LOCK_CAPACITY,
-        key,
-        lockRoot,
-        onWait,
-        waitIntervalMs: 1,
-      }).then((lock) => {
-        order.push(key);
-        return lock;
-      });
-
-    try {
-      // iOS and Android shards building the same bundle hold it together.
-      const [mainIos, mainAndroid] = await Promise.all([
-        acquire("main"),
-        acquire("main"),
-      ]);
-      const widgetPromise = acquire("widget", () => widgetWaiting.resolve());
-      await widgetWaiting.promise;
-      // A main deploy queued behind the widget does not pass it.
-      const lateMainPromise = acquire("main", () => lateMainWaiting.resolve());
-      await lateMainWaiting.promise;
-
-      await mainIos.release();
-      await sleep(20);
-      expect(order).toEqual(["main", "main"]);
-
-      await mainAndroid.release();
-      const widget = await widgetPromise;
-      await sleep(20);
-      expect(order).toEqual(["main", "main", "widget"]);
-
-      await widget.release();
-      const lateMain = await lateMainPromise;
-      expect(order).toEqual(["main", "main", "widget", "main"]);
-      await lateMain.release();
-    } finally {
-      await fs.rm(lockRoot, { force: true, recursive: true });
-    }
   });
 
   it("allows two deploys while keeping the next waiter queued", async () => {
