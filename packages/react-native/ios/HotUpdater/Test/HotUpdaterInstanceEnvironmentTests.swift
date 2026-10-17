@@ -371,6 +371,52 @@ struct HotUpdaterInstanceEnvironmentTests {
     }
 
     @Test
+    func aBundleMainsImplWasNotCreatedWithIsRefusedAfterIt() throws {
+        let framework = try makeBundle(info: [
+            "HOT_UPDATER_CHANNEL": "framework-channel",
+            "HOT_UPDATER_FINGERPRINT_HASH": "framework-hash",
+        ])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+        let bare = try makeBundle(info: [:])
+        defer { try? FileManager.default.removeItem(at: bare.bundleURL) }
+
+        // Main's impl created before any bundle was recorded, as direct use
+        // of sharedImpl does: it reads Bundle.main.
+        let config = HotUpdaterConfig(log: { _ in })
+        let claims = HotUpdaterMainBundle(config: config)
+        let impl = claims.implEnvironment()
+        #expect(impl.defaultChannel() == "production")
+
+        // A framework whose Info.plist resolves to other values, options nil.
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(framework) }
+        // Another bundle, even one resolving to the same values.
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(bare) }
+        #expect(config.bundle == .main)
+        // The bundle and values the impl was created with.
+        try claims.claim(.main)
+        try claims.claim(.main, channel: "production")
+    }
+
+    @Test
+    func mainOptionsAfterItsImplResolveAgainstTheProposedBundle() throws {
+        let framework = try makeBundle(info: ["HOT_UPDATER_CHANNEL": "framework-channel"])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+        let config = HotUpdaterConfig(log: { _ in })
+        let claims = HotUpdaterMainBundle(config: config)
+        // A claim recorded the framework, then the static launch API created
+        // main's impl with Bundle.main.
+        try claims.claim(framework)
+        config.bundle = .main
+        let impl = claims.implEnvironment()
+        #expect(impl.defaultChannel() == "production")
+
+        // The framework resolves to another channel than the impl uses.
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(framework) }
+        // Unless its options name the impl's.
+        try claims.claim(framework, channel: "production")
+    }
+
+    @Test
     func mainsImplUsesTheValuesItWasRecordedWithWhateverConfigureDoesAfter() throws {
         let config = HotUpdaterConfig(log: { _ in })
         let claims = HotUpdaterMainBundle(config: config)

@@ -70,6 +70,12 @@ public class HotUpdaterConfig: NSObject {
     /// host app's main bundle.
     @objc(infoValueForKey:)
     public func infoValue(forKey key: String) -> String? {
+        Self.infoValue(forKey: key, bundle: bundle)
+    }
+
+    /// A `HOT_UPDATER_*` Info.plist value from `bundle`, then from the host
+    /// app's main bundle.
+    static func infoValue(forKey key: String, bundle: Bundle) -> String? {
         for source in [bundle, Bundle.main] {
             if let value = source.object(forInfoDictionaryKey: key) as? String, !value.isEmpty {
                 return value

@@ -69,10 +69,10 @@ struct HotUpdaterInstanceEnvironment {
         HotUpdaterInstanceEnvironment(name: mainName, namedBundle: nil, config: config)
     }
 
-    /// Main with its values fixed from one read of `config`, which main's
-    /// impl is built from: a `configure` call during or after its creation
-    /// can't leave its key, channel, and public key apart.
-    func snapshot() -> HotUpdaterInstanceEnvironment {
+    /// Main with `values` fixed, which main's impl is built from: a
+    /// `configure` call during or after its creation can't leave its key,
+    /// channel, and public key apart.
+    func snapshot(_ values: MainValues) -> HotUpdaterInstanceEnvironment {
         guard isMain else {
             return self
         }
@@ -80,29 +80,35 @@ struct HotUpdaterInstanceEnvironment {
             name: name,
             namedBundle: nil,
             config: config,
-            mainSnapshot: mainValues()
+            mainSnapshot: values
         )
     }
 
-    /// Main's values: the snapshot, or resolved now from one read of `config`.
+    /// Main's values: the snapshot, or resolved now from one read of
+    /// `config`'s values and bundle.
     func mainValues() -> MainValues {
         if let mainSnapshot {
             return mainSnapshot
         }
-        let overrides = config.overrides
-        let plistFingerprintHash = config.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
+        return Self.resolveMain(overrides: config.overrides, bundle: config.bundle)
+    }
+
+    /// How main resolves its values: `overrides`, then `bundle`'s Info.plist,
+    /// then the app's, then the default channel.
+    static func resolveMain(overrides: HotUpdaterConfig.Overrides, bundle: Bundle) -> MainValues {
+        let plistFingerprintHash = HotUpdaterConfig.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH", bundle: bundle)
         return MainValues(
-            defaultChannel: Self.optionValue(overrides.channel)
-                ?? config.infoValue(forKey: "HOT_UPDATER_CHANNEL")
-                ?? Self.defaultChannel,
-            fingerprintHash: Self.optionValue(overrides.fingerprintHash) ?? plistFingerprintHash,
+            defaultChannel: optionValue(overrides.channel)
+                ?? HotUpdaterConfig.infoValue(forKey: "HOT_UPDATER_CHANNEL", bundle: bundle)
+                ?? defaultChannel,
+            fingerprintHash: optionValue(overrides.fingerprintHash) ?? plistFingerprintHash,
             // Main's isolation key and update strategy have always taken an
             // empty programmatic fingerprint as "none" instead of reading
             // Info.plist.
-            isolationFingerprintHash: Self.optionValue(overrides.fingerprintHash ?? plistFingerprintHash),
-            publicKey: Self.optionValue(overrides.publicKey)
-                ?? config.infoValue(forKey: "HOT_UPDATER_PUBLIC_KEY"),
-            isolationKeyOverride: Self.optionValue(overrides.isolationKey)
+            isolationFingerprintHash: optionValue(overrides.fingerprintHash ?? plistFingerprintHash),
+            publicKey: optionValue(overrides.publicKey)
+                ?? HotUpdaterConfig.infoValue(forKey: "HOT_UPDATER_PUBLIC_KEY", bundle: bundle),
+            isolationKeyOverride: optionValue(overrides.isolationKey)
         )
     }
 
@@ -337,9 +343,14 @@ final class HotUpdaterMainBundle {
     /// `implEnvironment` take while holding it.
     private let lock = NSLock()
     private var bundle: Bundle?
-    /// The channel, fingerprint hash, and public key main's impl was created
-    /// with, which fixed its isolation key. Nil until the impl exists.
-    private var created: HotUpdaterConfig.Overrides?
+    /// What main's impl was created from, which fixed its isolation key:
+    /// the config's values, the bundle, and the values they resolved to.
+    /// Nil until the impl exists.
+    private var created: (
+        overrides: HotUpdaterConfig.Overrides,
+        bundle: Bundle,
+        values: HotUpdaterInstanceEnvironment.MainValues
+    )?
     private let config: HotUpdaterConfig
 
     init(config: HotUpdaterConfig = .shared) {
@@ -377,10 +388,25 @@ final class HotUpdaterMainBundle {
         let fingerprintHash = HotUpdaterInstanceEnvironment.optionValue(fingerprintHash)
         let publicKey = HotUpdaterInstanceEnvironment.optionValue(publicKey)
         if let created {
-            // The impl's key is fixed: every value counts, nil included.
-            try Self.check(channel, against: created.channel, field: "channel")
-            try Self.check(fingerprintHash, against: created.fingerprintHash, field: "fingerprintHash")
-            try Self.check(publicKey, against: created.publicKey, field: "publicKey")
+            // The impl's key is fixed: what this instance resolves to, its
+            // options, then the config the impl was created with, then the
+            // proposed bundle's Info.plist and the app's, must be it.
+            let proposed = HotUpdaterInstanceEnvironment.resolveMain(
+                overrides: HotUpdaterConfig.Overrides(
+                    fingerprintHash: fingerprintHash ?? created.overrides.fingerprintHash,
+                    publicKey: publicKey ?? created.overrides.publicKey,
+                    channel: channel ?? created.overrides.channel,
+                    isolationKey: created.overrides.isolationKey
+                ),
+                bundle: bundle
+            )
+            try Self.check(proposed.defaultChannel, against: created.values.defaultChannel, field: "channel")
+            try Self.check(
+                proposed.isolationFingerprintHash,
+                against: created.values.isolationFingerprintHash,
+                field: "fingerprintHash"
+            )
+            try Self.check(proposed.publicKey, against: created.values.publicKey, field: "publicKey")
         } else {
             // Checked and recorded in one step under the config's lock.
             try config.claimOptions(
@@ -410,25 +436,28 @@ final class HotUpdaterMainBundle {
     /// one read of `config`, which from then on a main instance must match.
     /// The impl reads only this snapshot, so a `configure` call racing its
     /// creation can't leave it apart from what is recorded here.
+    /// The impl reads the bundle it was created with as main's bundle, so
+    /// that bundle becomes main's: a later main instance with another bundle
+    /// throws, as after a claim.
     func implEnvironment() -> HotUpdaterInstanceEnvironment {
         lock.lock()
         defer { lock.unlock() }
-        let environment = HotUpdaterInstanceEnvironment.main(config: config).snapshot()
+        let overrides = config.overrides
+        let bundle = config.bundle
+        let values = HotUpdaterInstanceEnvironment.resolveMain(overrides: overrides, bundle: bundle)
         if created == nil {
-            let values = environment.mainValues()
-            created = HotUpdaterConfig.Overrides(
-                fingerprintHash: values.isolationFingerprintHash,
-                publicKey: values.publicKey,
-                channel: values.defaultChannel
-            )
+            created = (overrides, bundle, values)
+            if self.bundle == nil {
+                self.bundle = bundle
+            }
         }
-        return environment
+        return HotUpdaterInstanceEnvironment.main(config: config).snapshot(values)
     }
 
-    /// `value` conflicts with the value main's impl uses whenever it is set
-    /// and differs, even where the impl uses none.
+    /// A value the instance resolves to conflicts with the one main's impl
+    /// uses whenever they differ, even where one of them is none.
     private static func check(_ value: String?, against inUse: String?, field: String) throws {
-        guard let value, value != inUse else {
+        guard value != inUse else {
             return
         }
         throw conflict(field)
