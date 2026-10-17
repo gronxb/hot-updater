@@ -36,6 +36,20 @@ same native interface receives the same updates.
 The Expo build adapter uses `@expo/fingerprint` instead. See
 [Expo projects](#expo-projects).
 
+### How the Fingerprint Stays Stable
+
+- The engine is part of Hot Updater, not a dependency of your app.
+  `fingerprint.json` records it, such as `hot-updater/interface@1`, and a change
+  to what is hashed ships as a new engine. `doctor` and `deploy` report a hash
+  that changed with its engine as such, not as a native change.
+- The fingerprint hashes versions and interface files, never build outputs,
+  timestamps, or absolute paths, so every machine, package manager, and CI job
+  computes the same one.
+- Each native build computes the fingerprint it embeds, so a binary always
+  carries the fingerprint of what it was built from.
+- `deploy` lists the fingerprints the channel's recent releases target that an
+  update won't reach.
+
 ## Setup
 
 ### Enable the Fingerprint Strategy
@@ -116,6 +130,28 @@ fingerprint itself: a Release build computes it from those inputs with
 and a Debug build uses the hash `fingerprint.json` holds. When the project
 changed after `fingerprint create`, the build embeds the fingerprint of what
 it was built from and warns that `fingerprint.json` is stale.
+
+Example `fingerprint.json` (sources shortened):
+
+```json title="fingerprint.json"
+{
+  "ios": {
+    "engine": "hot-updater/interface@1",
+    "hash": "af69cc634ddceb474dfd73469f46361be584787cd8046a186c24f9b393ba170b",
+    "sources": [
+      { "type": "contents", "id": "runtime", "contents": "react-native@0.85.2" },
+      { "type": "contents", "id": "dependency:react-native-screens", "contents": "react-native-screens@4.25.2" },
+      { "type": "file", "filePath": "src/specs/NativeDevice.ts" }
+    ]
+  },
+  "android": {
+    "engine": "hot-updater/interface@1",
+    "hash": "fc624f1d33295f5024cb88e6ca9f2689c24e4eaa6e64b2f533098441b387f51e",
+    "sources": []
+  },
+  "inputs": { "adapter": "bare", "nativeVersion": 2 }
+}
+```
 
 **Step 2: Build and Submit**
 

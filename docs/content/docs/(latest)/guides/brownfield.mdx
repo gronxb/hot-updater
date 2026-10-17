@@ -513,9 +513,11 @@ Brownfield guide, after `onReady` runs.
 ## Embed the native values
 
 Run the native configuration commands in the React Native project, before you
-package. By default they update every `Info.plist` under `ios/` and every
-`AndroidManifest.xml` under `android/`, which includes the framework target and
-the library module:
+package. By default `channel set` updates every `Info.plist` under `ios/` and
+every `AndroidManifest.xml` under `android/`, which includes the framework
+target and the library module. With the fingerprint strategy,
+`fingerprint create` writes `fingerprint.json`, and packaging in Release embeds
+the fingerprint in the framework and the library:
 
 ```bash
 npx hot-updater channel set production
@@ -529,10 +531,9 @@ the same way:
 npx hot-updater keys export-public
 ```
 
-Check that `ios/BrownfieldLib/Info.plist` has `HOT_UPDATER_CHANNEL` and
-`HOT_UPDATER_FINGERPRINT_HASH`, and that the library manifest has
-`com.hotupdater.CHANNEL` and `com.hotupdater.FINGERPRINT_HASH`. To limit the
-commands to the artifacts, list the files in your config:
+Check that `ios/BrownfieldLib/Info.plist` has `HOT_UPDATER_CHANNEL` and that
+the library manifest has `com.hotupdater.CHANNEL`. To limit the commands to the
+artifacts, list the files in your config:
 
 ```ts title="hot-updater.config.ts"
 export default defineConfig({
@@ -603,9 +604,10 @@ Add the XCFrameworks and the AAR to the native app as the React Native
 Brownfield guide describes, then build the native app in **Release**. Debug
 builds load the bundle from Metro and never apply updates.
 
-Repeat `fingerprint create` and packaging whenever the React Native project's
-native code or dependencies change. A new artifact needs a new native app
-release.
+Each packaged artifact carries the fingerprint of the native interface it was
+built from. When that interface changes, such as a native dependency or a
+codegen spec, run `fingerprint create` so deploy targets the new fingerprint,
+package again, and ship a new native app release.
 
 ## Deploy an update
 
@@ -689,7 +691,7 @@ the previous bundle, or to the one embedded in the artifact.
 
 | Symptom | Cause and fix |
 | --- | --- |
-| The channel is `production` and the fingerprint is `null` | The artifact has no Hot Updater values. Run `channel set` and `fingerprint create`, check the framework's `Info.plist` and the library manifest, and package again. On Android, check that the library manifest has an `<application>` element. |
+| The channel is `production` and the fingerprint is `null` | The artifact has no Hot Updater values. Run `channel set` and `fingerprint create`, check the framework's `Info.plist` and the library manifest, and package again. The fingerprint is embedded when packaging finds `fingerprint.json` in the React Native project; set `HOT_UPDATER_APP_ROOT` if its native folders are elsewhere. On Android, check that the library manifest has an `<application>` element. |
 | The native app fails with "no such module 'HotUpdater'" | The framework imports `HotUpdater` publicly. Use `internal import HotUpdater`. |
 | The status is always `skipped` | The native app passes `checkForUpdates: false`, as its Debug build does. Build it in Release. |
 | The status is `failed` | Check `baseURL` and the request headers in `HotUpdaterOptions`, and that the device reaches the update server. |
