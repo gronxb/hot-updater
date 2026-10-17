@@ -77,7 +77,11 @@ const REPAIRS: readonly {
   {
     // What `fingerprint create` writes, where it differs.
     repair: "fingerprint",
-    codes: ["MISSING_FINGERPRINT_JSON", "FINGERPRINT_JSON_STALE"],
+    codes: [
+      "MISSING_FINGERPRINT_JSON",
+      "FINGERPRINT_JSON_STALE",
+      "FINGERPRINT_ENGINE_UNRECORDED",
+    ],
     writesNativeFiles: false,
     run: async (_issues, context, all) => {
       // It rewrites both platforms, so it would record a changed engine too.

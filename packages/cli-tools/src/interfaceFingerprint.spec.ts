@@ -435,6 +435,22 @@ describe("createInterfaceFingerprint", () => {
 
     expect(await hashOf({ extraSources: ["config"] })).not.toBe(before);
   });
+
+  it("keeps an extraSources directory naming the project root inside it", async () => {
+    const { sources } = await createInterfaceFingerprint(
+      app,
+      { platform: "ios", extraSources: ["."] },
+      nativeInterface(),
+    );
+    const extra = sources.flatMap((source) =>
+      source.type === "file" && source.reasons?.includes("extra-source")
+        ? [source.filePath]
+        : [],
+    );
+
+    expect(extra.every((filePath) => !filePath.startsWith(".."))).toBe(true);
+    expect(extra).toContain("src/App.tsx");
+  });
 });
 
 describe("isCodegenSpecFile", () => {
@@ -449,6 +465,13 @@ describe("isCodegenSpecFile", () => {
       false,
     );
     expect(isCodegenSpecFile("src/App.tsx", "ios")).toBe(false);
+    expect(isCodegenSpecFile("src/NativeDevice.fb.js", "ios")).toBe(true);
+    expect(isCodegenSpecFile("src/NativeDevice.android.fb.js", "ios")).toBe(
+      false,
+    );
+    expect(isCodegenSpecFile("src/NativeDevice.android.fb.js", "android")).toBe(
+      true,
+    );
   });
 });
 

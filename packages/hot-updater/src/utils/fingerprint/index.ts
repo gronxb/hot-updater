@@ -85,9 +85,14 @@ export const syncFingerprintFiles = async (
   fingerprint: FingerprintFile,
 ): Promise<{ fingerprintJson: boolean }> => {
   const local = await readLocalFingerprint();
+  // A file from before engines were recorded gets the engine that computes
+  // its unchanged hashes.
   const fingerprintJson =
     !isFingerprintEquals(local, fingerprint) ||
-    JSON.stringify(local?.inputs) !== JSON.stringify(fingerprint.inputs);
+    JSON.stringify(local?.inputs) !== JSON.stringify(fingerprint.inputs) ||
+    (["ios", "android"] as const).some(
+      (platform) => local?.[platform]?.engine !== fingerprint[platform].engine,
+    );
   if (fingerprintJson) await createFingerprintJSON(fingerprint);
   return { fingerprintJson };
 };

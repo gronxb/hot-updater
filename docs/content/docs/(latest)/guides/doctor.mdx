@@ -142,8 +142,11 @@ seconds. When a platform's fingerprint differs from `fingerprint.json`, doctor
 reports `FINGERPRINT_JSON_STALE` and lists the sources that changed, in
 `changes` with `--json`. When the hash changed because the fingerprint engine
 changed rather than a native input, it reports `FINGERPRINT_ENGINE_CHANGED`
-instead and names both engines. When it cannot compute the fingerprint, for
-example because an Expo project lacks `@expo/fingerprint`, it reports
+instead and names both engines. A `fingerprint.json` created before engines
+were recorded gets the warning `FINGERPRINT_ENGINE_UNRECORDED` while its hashes
+still match; recording the engine keeps the fingerprint the same. When it
+cannot compute the fingerprint, for example because an Expo project lacks
+`@expo/fingerprint`, it reports
 `FINGERPRINT_GENERATION_FAILED` with the reason.
 
 Under the App Version strategy, a `fingerprint.json` left in the project is
@@ -183,7 +186,7 @@ them load, then rerun `doctor`.
 
 | Issues | Repair |
 | --- | --- |
-| `MISSING_FINGERPRINT_JSON`, `FINGERPRINT_JSON_STALE` | What `fingerprint create` writes, where it differs: `fingerprint.json` |
+| `MISSING_FINGERPRINT_JSON`, `FINGERPRINT_JSON_STALE`, `FINGERPRINT_ENGINE_UNRECORDED` | What `fingerprint create` writes, where it differs: `fingerprint.json` |
 | `FINGERPRINT_JSON_UNUSED` | `fingerprint.json`, deleted to match the configured `updateStrategy` |
 | `MISSING_PUBLIC_KEY`, `PUBLIC_KEY_MISMATCH` | What `keys export-public --yes` writes: the configured signing public key, in the native files |
 | `RELEASE_CATALOG_STALE` | Each stale scope's catalog, rebuilt from its Releases in the server's database |

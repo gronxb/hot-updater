@@ -72,8 +72,24 @@ export const checkFingerprintJson = async (
   const issues: NativeCheckIssue[] = [];
   for (const platform of ["ios", "android"] as const) {
     const before = local[platform];
-    if (before?.hash === current[platform].hash) continue;
     const label = PLATFORM_LABELS[platform];
+    if (before?.hash === current[platform].hash) {
+      // Without it, a later engine upgrade would read as changed sources.
+      const engine = current[platform].engine;
+      if (!before.engine && engine) {
+        issues.push({
+          type: "warning",
+          platform,
+          code: "FINGERPRINT_ENGINE_UNRECORDED",
+          message: `fingerprint.json doesn't record the engine behind the ${label} fingerprint, which ${engine} computes unchanged.`,
+          resolution: `Run \`${FINGERPRINT_CREATE}\` to record it, so doctor and deploy can tell an engine upgrade from a native change. The fingerprint stays the same.`,
+          fixability: "command",
+          commands: [FINGERPRINT_CREATE],
+          paths: ["fingerprint.json"],
+        });
+      }
+      continue;
+    }
     const engineChange = getFingerprintEngineChange(before, current[platform]);
     if (engineChange) {
       issues.push({
