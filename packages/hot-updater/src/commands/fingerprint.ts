@@ -103,9 +103,12 @@ export const handleCreateFingerprint = async () => {
           if (!before || before.hash === after.hash) continue;
           const engineChange = getFingerprintEngineChange(before, after);
           if (engineChange) {
-            p.log.warn(
-              describeFingerprintEngineChange(engineChange, label).message,
+            const { message, resolution } = describeFingerprintEngineChange(
+              engineChange,
+              label,
             );
+            p.log.warn(message);
+            p.log.info(resolution);
             continue;
           }
           showFingerprintDiff(
