@@ -114,7 +114,8 @@ final class HotUpdaterImplUpdateHost: NativeUpdateHost {
 }
 
 /// The impl and native update checker of each instance name, shared by the
-/// `HotUpdaterInstance`s of that name; main's also by the TurboModule.
+/// `HotUpdaterInstance`s of that name and by the TurboModule of each React
+/// Native runtime that runs its bundle.
 @objc(HotUpdaterNativeUpdateBridge)
 public final class HotUpdaterNativeUpdateBridge: NSObject {
     private static let lock = NSLock()
@@ -122,6 +123,9 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
     // identifier live as long as the process.
     private static var checkers: [ObjectIdentifier: NativeUpdateChecker] = [:]
     private static var namedImpls: [String: HotUpdaterImpl] = [:]
+    /// The launch URLs named impls handed out, which tell the TurboModule of
+    /// each React Native runtime whose bundle it runs.
+    static let router = HotUpdaterInstanceRouter()
 
     /// Main's impl, which HotUpdater.mm's `sharedImpl` returns too.
     /// Record the bundle in `HotUpdaterConfig` first: creating it reads that
@@ -148,6 +152,23 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
         let impl = HotUpdaterImpl(environment: environment)
         namedImpls[environment.name] = impl
         return impl
+    }
+
+    /// The impl of the React Native runtime that runs `bundleURL`: the named
+    /// impl that handed it out or keeps it in its storage, otherwise main's.
+    /// Each runtime's TurboModule asks with its own bundle URL, since
+    /// JavaScript never names its instance.
+    @objc(implForBundleURL:)
+    public static func impl(forBundleURL bundleURL: URL?) -> HotUpdaterImpl {
+        lock.lock()
+        let impls = namedImpls
+        lock.unlock()
+        let name = router.resolve(
+            bundleURL: bundleURL,
+            candidates: Array(impls.keys),
+            documentsPath: FileManagerService().documentsPath()
+        )
+        return impls[name] ?? sharedImpl
     }
 
     /// One checker per impl, so its gate serializes every native check of
