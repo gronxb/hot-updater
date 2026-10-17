@@ -6,7 +6,11 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { describe, expect, it } from "vitest";
 
 import { exclusiveCheckoutLockKey, withCheckoutLock } from "./checkout-lock.ts";
-import { DEPLOY_LOCK_CAPACITY } from "./fair-file-lock.ts";
+import {
+  acquireFairFileLock,
+  CHECKOUT_INPUTS_LOCK_CAPACITY,
+  DEPLOY_LOCK_CAPACITY,
+} from "./fair-file-lock.ts";
 
 const withLockRoot = async (run: (lockRoot: string) => Promise<void>) => {
   const lockRoot = await fs.mkdtemp(
@@ -71,6 +75,73 @@ describe("E2E checkout lock", () => {
         "bootstrap end",
         "late deploy",
       ]);
+    });
+  });
+
+  it("never makes one checkout's cleanup wait on another checkout's deploy", async () => {
+    await withLockRoot(async (sharedRoot) => {
+      await withLockRoot(async (iosCheckoutRoot) => {
+        await withLockRoot(async (androidCheckoutRoot) => {
+          // The Android shard's deploy holds its checkout's inputs and its
+          // turn in the shards' shared build limit.
+          const deployHeld = Promise.withResolvers<void>();
+          const finishDeploy = Promise.withResolvers<void>();
+          const androidDeploy = withCheckoutLock(
+            {
+              capacity: CHECKOUT_INPUTS_LOCK_CAPACITY,
+              key: "android-main",
+              lockRoot: androidCheckoutRoot,
+              waitIntervalMs: 1,
+            },
+            async () => {
+              const build = await acquireFairFileLock({
+                capacity: DEPLOY_LOCK_CAPACITY,
+                lockRoot: sharedRoot,
+                waitIntervalMs: 1,
+              });
+              deployHeld.resolve();
+              await finishDeploy.promise;
+              await build.release();
+            },
+          );
+          await deployHeld.promise;
+
+          // The iOS shard's cleanup takes only its own checkout's lock.
+          let iosCleanupWaited = false;
+          await withCheckoutLock(
+            {
+              capacity: CHECKOUT_INPUTS_LOCK_CAPACITY,
+              key: exclusiveCheckoutLockKey(),
+              lockRoot: iosCheckoutRoot,
+              onWait: () => {
+                iosCleanupWaited = true;
+              },
+              waitIntervalMs: 1,
+            },
+            async () => "cleaned",
+          );
+          expect(iosCleanupWaited).toBe(false);
+
+          // An exclusive task in the Android checkout does wait for it.
+          let androidCleanupDone = false;
+          const androidCleanup = withCheckoutLock(
+            {
+              capacity: CHECKOUT_INPUTS_LOCK_CAPACITY,
+              key: exclusiveCheckoutLockKey(),
+              lockRoot: androidCheckoutRoot,
+              waitIntervalMs: 1,
+            },
+            async () => {
+              androidCleanupDone = true;
+            },
+          );
+          await sleep(20);
+          expect(androidCleanupDone).toBe(false);
+          finishDeploy.resolve();
+          await Promise.all([androidDeploy, androidCleanup]);
+          expect(androidCleanupDone).toBe(true);
+        });
+      });
     });
   });
 

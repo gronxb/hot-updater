@@ -26,8 +26,9 @@ type FileLockWait = {
 type FairFileLockOptions = {
   readonly capacity?: number;
   /**
-   * What the holder mutates in the shared checkout, such as a hash of the
-   * sources and config a deploy writes before its build. Holders share the
+   * What the holder mutates in the files the lock guards, such as a hash of
+   * the sources and config a deploy writes into its checkout before its
+   * build. Holders share the
    * lock only while their keys are equal: a waiter with another key waits
    * until every holder has released, and nobody behind it passes it.
    */
@@ -48,6 +49,10 @@ export type FairFileLock = {
 
 // Catalog writes are atomic; bound concurrent builds across all fixture shards.
 export const DEPLOY_LOCK_CAPACITY = 2;
+
+// One checkout's deploy inputs: deploys that write the same bytes may share
+// it, up to the shards' own build limit.
+export const CHECKOUT_INPUTS_LOCK_CAPACITY = DEPLOY_LOCK_CAPACITY;
 
 /**
  * Whether the waiter at `position` may take a lock now: it is within

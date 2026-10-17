@@ -1,8 +1,8 @@
 import { createHash } from "node:crypto";
 
 /**
- * The deploy lock's key: a hash of everything a deploy writes into the
- * shared checkout before its build reads it. Equal keys write equal bytes,
+ * The checkout inputs lock's key: a hash of everything a deploy writes into
+ * its checkout before its build reads it. Equal keys write equal bytes,
  * so their deploys may build at once; any difference (the widget's entry or
  * patch surface beside main's, another marker, mode, or config) makes them
  * take turns.

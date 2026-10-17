@@ -62,6 +62,7 @@ import type { CrashRecoveryArtifactNames } from "./crash-recovery-wait.ts";
 import { createDeployInputsKey } from "./deploy-inputs-key.ts";
 import {
   acquireFairFileLock,
+  CHECKOUT_INPUTS_LOCK_CAPACITY,
   DEPLOY_LOCK_CAPACITY,
   type FairFileLock,
 } from "./fair-file-lock.ts";
@@ -813,11 +814,29 @@ function deployProcessLockRoot() {
 }
 
 /**
- * Runs `task` holding the shared checkout's deploy lock under `key`: the
- * rendered inputs' key for a deploy, so equal deploys build at once, or an
- * exclusive key for bootstrap and cleanup, which run alone.
+ * The lock of this checkout's deploy inputs (config, patch surfaces, fixture
+ * assets), beside the shards' shared deploy lock: each shard deploys from a
+ * checkout of its own, so only work in this checkout ever waits for it.
  */
-async function withDeployProcessLock<T>(
+function checkoutInputsLockRoot() {
+  const checkoutHash = createHash("sha256")
+    .update(REPO_DIR)
+    .digest("hex")
+    .slice(0, 16);
+  return path.join(
+    os.tmpdir(),
+    "hot-updater-e2e-checkout-inputs-lock",
+    checkoutHash,
+  );
+}
+
+/**
+ * Runs `task` holding this checkout's inputs lock under `key`: the rendered
+ * inputs' key for a deploy, so deploys writing the same bytes share the
+ * checkout while a main and a widget deploy take turns, or an exclusive key
+ * for bootstrap and cleanup, which run alone.
+ */
+async function withCheckoutInputsLock<T>(
   purpose: string,
   key: string,
   signal: AbortSignal | undefined,
@@ -825,20 +844,20 @@ async function withDeployProcessLock<T>(
 ): Promise<T> {
   return withCheckoutLock(
     {
-      capacity: DEPLOY_LOCK_CAPACITY,
+      capacity: CHECKOUT_INPUTS_LOCK_CAPACITY,
       key,
-      lockRoot: deployProcessLockRoot(),
+      lockRoot: checkoutInputsLockRoot(),
       onAbandoned: ({ ageMs, lockPath, owner, reason }) => {
         logE2eFixture(
           reason === "owner-exited"
-            ? "deploy process lock owner exited; removing"
-            : "deploy process lock stale; removing",
+            ? "checkout inputs lock owner exited; removing"
+            : "checkout inputs lock stale; removing",
           { ageMs, lockPath, owner },
         );
       },
       onWait: ({ owner, position }) => {
-        logE2eFixture("deploy process lock waiting", {
-          lockPath: deployProcessLockRoot(),
+        logE2eFixture("checkout inputs lock waiting", {
+          lockPath: checkoutInputsLockRoot(),
           owner,
           platform: fixtureSession.platform,
           position,
@@ -849,7 +868,7 @@ async function withDeployProcessLock<T>(
       signal,
     },
     async (lock) => {
-      logE2eFixture("deploy process lock acquired", {
+      logE2eFixture("checkout inputs lock acquired", {
         key,
         lockPath: lock.lockPath,
         platform: fixtureSession.platform,
@@ -858,6 +877,49 @@ async function withDeployProcessLock<T>(
       return task(lock);
     },
   );
+}
+
+/**
+ * The shards' shared deploy lock, a resource limit: at most
+ * DEPLOY_LOCK_CAPACITY CLI builds at once across every shard of a run. It
+ * guards no files, so it takes no key, and bootstrap and cleanup never
+ * wait for it.
+ */
+async function withDeployProcessLock<T>(
+  signal: AbortSignal | undefined,
+  task: () => Promise<T>,
+): Promise<T> {
+  const deployProcessLock = await acquireFairFileLock({
+    capacity: DEPLOY_LOCK_CAPACITY,
+    lockRoot: deployProcessLockRoot(),
+    onAbandoned: ({ ageMs, lockPath, owner, reason }) => {
+      logE2eFixture(
+        reason === "owner-exited"
+          ? "deploy process lock owner exited; removing"
+          : "deploy process lock stale; removing",
+        { ageMs, lockPath, owner },
+      );
+    },
+    onWait: ({ owner, position }) => {
+      logE2eFixture("deploy process lock waiting", {
+        lockPath: deployProcessLockRoot(),
+        owner,
+        platform: fixtureSession.platform,
+        position,
+      });
+    },
+    ownerLabel: fixtureSession.platform,
+    signal,
+  });
+  logE2eFixture("deploy process lock acquired", {
+    lockPath: deployProcessLock.lockPath,
+    platform: fixtureSession.platform,
+  });
+  try {
+    return await task();
+  } finally {
+    await deployProcessLock.release();
+  }
 }
 
 async function exportNativePublicKeyFromSigningKey() {
@@ -6012,11 +6074,12 @@ async function bootstrap(signal?: AbortSignal) {
 
   await waitForLocalProviderReady();
   await clearProviderReleasesAfterReadiness();
-  // Other shards build from this checkout: its inputs are backed up and
-  // reset only while no deploy holds the lock, so a backup is never another
-  // shard's deploy input and no build reads them half reset. Nothing here
-  // runs inside a deploy, and nothing inside takes the lock again.
-  await withDeployProcessLock(
+  // Deploy jobs of this checkout build from these inputs: they are backed
+  // up and reset only while no deploy of this checkout holds them, so a
+  // backup is never a deploy's input and no build reads them half reset.
+  // Other shards' checkouts have locks of their own. Nothing here runs
+  // inside a deploy, and nothing inside takes the lock again.
+  await withCheckoutInputsLock(
     "bootstrap",
     exclusiveCheckoutLockKey(),
     signal,
@@ -6076,10 +6139,10 @@ async function deployFixtureBundle(
         ? fixtureSession.widgetAppSourceFile
         : fixtureSession.appSourceFile,
   };
-  // Every shard deploys from this one checkout. The rendered inputs are the
-  // lock's key, so shards building the same bundle share it while a deploy
-  // with other inputs (a widget beside a main deploy, another marker) waits
-  // until they have built.
+  // Deploy jobs of this checkout write its inputs before their builds read
+  // them. The rendered inputs are the checkout lock's key, so deploys
+  // writing the same bytes share it while one with other inputs (a widget
+  // beside a main deploy, another marker) waits until they have built.
   throwIfAborted(signal);
   const deployInputs = await renderDeployInputs(deployConfig, appScenario);
 
@@ -6133,7 +6196,7 @@ async function deployFixtureBundle(
     targetAppVersion: request.targetAppVersion,
   });
   let deployDurationMs = 0;
-  const deployOutput = await withDeployProcessLock(
+  const deployOutput = await withCheckoutInputsLock(
     "deploy",
     deployInputs.key,
     signal,
@@ -6161,16 +6224,20 @@ async function deployFixtureBundle(
       }
       await writeDeployConfig(deployConfig, rendered.configSource);
       await writeAppScenario(appScenario, rendered.appSource);
-      const deployStartedAt = Date.now();
-      const output = await runLoggedCommand("node", args, {
-        cwd: fixtureSession.exampleDir,
-        env: getHotUpdaterControlEnv(),
-        logPath: deployLogPath,
-        signal,
-        onInterrupted: context?.markQuiescenceUncertain,
+      // The inputs stay locked while the build, in its turn among every
+      // shard's builds, reads them.
+      return withDeployProcessLock(signal, async () => {
+        const deployStartedAt = Date.now();
+        const output = await runLoggedCommand("node", args, {
+          cwd: fixtureSession.exampleDir,
+          env: getHotUpdaterControlEnv(),
+          logPath: deployLogPath,
+          signal,
+          onInterrupted: context?.markQuiescenceUncertain,
+        });
+        deployDurationMs = Date.now() - deployStartedAt;
+        return output;
       });
-      deployDurationMs = Date.now() - deployStartedAt;
-      return output;
     },
   );
   const releaseId = extractDeployReleaseId(deployOutput);
@@ -7428,7 +7495,7 @@ async function cleanup() {
   }
 
   // Restores the checkout alone, as bootstrap resets it.
-  await withDeployProcessLock(
+  await withCheckoutInputsLock(
     "cleanup",
     exclusiveCheckoutLockKey(),
     undefined,

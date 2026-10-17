@@ -18,27 +18,49 @@ const controllerPath = path.join(
 );
 
 describe("E2E control-server deploy lock", () => {
-  it("routes deploys through the bounded fair file lock", async () => {
+  it("bounds builds across shards with the keyless shared lock, and guards each checkout's inputs with its own", async () => {
     const controllerSource = await fs.readFile(controllerPath, "utf8");
+    const between = (from: string, to: string) =>
+      controllerSource.slice(
+        controllerSource.indexOf(from),
+        controllerSource.indexOf(to, controllerSource.indexOf(from)),
+      );
 
-    expect(controllerSource).toContain('from "./checkout-lock.ts";');
-    expect(controllerSource).toContain("return withCheckoutLock(");
-    expect(controllerSource).toContain("capacity: DEPLOY_LOCK_CAPACITY,");
-    // Every checkout holder goes through the one helper, with its key; the
-    // Remote Config lock is a separate lock root.
-    expect(controllerSource).not.toContain("const deployProcessLock =");
+    // The shards' shared lock limits builds only: no key, no files.
+    const shared = between(
+      "async function withDeployProcessLock<T>(",
+      "async function exportNativePublicKeyFromSigningKey(",
+    );
+    expect(shared).toContain("await acquireFairFileLock({");
+    expect(shared).toContain("capacity: DEPLOY_LOCK_CAPACITY,");
+    expect(shared).toContain("lockRoot: deployProcessLockRoot(),");
+    expect(shared).not.toContain("key");
+    // The inputs lock lives under this checkout's own root.
+    const inputs = between(
+      "async function withCheckoutInputsLock<T>(",
+      "async function withDeployProcessLock<T>(",
+    );
+    expect(inputs).toContain("return withCheckoutLock(");
+    expect(inputs).toContain("lockRoot: checkoutInputsLockRoot(),");
+    expect(inputs).not.toContain("deployProcessLockRoot");
+    expect(
+      between(
+        "function checkoutInputsLockRoot(",
+        "async function withCheckoutInputsLock<T>(",
+      ),
+    ).toContain(".update(REPO_DIR)");
     expect(controllerSource).not.toContain(
       "async function acquireDeployProcessLock",
     );
   });
 
-  it("writes a deploy's inputs only while holding the lock keyed by them", async () => {
+  it("writes a deploy's inputs only while holding its checkout's lock keyed by them", async () => {
     const controllerSource = await fs.readFile(controllerPath, "utf8");
     const deploy = controllerSource.slice(
       controllerSource.indexOf("async function deployFixtureBundle("),
       controllerSource.indexOf("async function updateFixtureRelease("),
     );
-    const lockIndex = deploy.indexOf("await withDeployProcessLock(");
+    const lockIndex = deploy.indexOf("await withCheckoutInputsLock(");
 
     expect(deploy).toContain('"deploy",\n    deployInputs.key,');
     expect(lockIndex).toBeGreaterThan(0);
@@ -51,9 +73,14 @@ describe("E2E control-server deploy lock", () => {
     ]) {
       expect(deploy.indexOf(write)).toBeGreaterThan(lockIndex);
     }
-    // The build runs inside the locked task.
+    // The build runs inside the locked task, in its turn among every
+    // shard's builds, after the inputs are written.
+    const sharedIndex = deploy.indexOf("return withDeployProcessLock(signal,");
+    expect(sharedIndex).toBeGreaterThan(
+      deploy.indexOf("await writeAppScenario("),
+    );
     expect(deploy.indexOf('runLoggedCommand("node", args')).toBeGreaterThan(
-      lockIndex,
+      sharedIndex,
     );
     expect(
       deploy.indexOf("const releaseId = extractDeployReleaseId("),
@@ -81,7 +108,7 @@ describe("E2E control-server deploy lock", () => {
 
     // Bootstrap reaches the inputs only through the exclusive lock.
     expect(bootstrap).toMatch(
-      /await withDeployProcessLock\(\s*"bootstrap",\s*exclusiveCheckoutLockKey\(\),\s*signal,\s*resetCheckoutInputs,\s*\);/,
+      /await withCheckoutInputsLock\(\s*"bootstrap",\s*exclusiveCheckoutLockKey\(\),\s*signal,\s*resetCheckoutInputs,\s*\);/,
     );
     for (const write of [
       "backupFile(",
@@ -96,11 +123,16 @@ describe("E2E control-server deploy lock", () => {
       expect(reset).toContain(write);
     }
     // No checkout write takes the lock again inside the locked task.
-    expect(reset).not.toContain("withDeployProcessLock(");
+    expect(reset).not.toContain("withCheckoutInputsLock(");
     expect(reset).not.toContain("withCheckoutLock(");
+    // Neither waits for other shards' builds.
+    for (const source of [bootstrap, reset, cleanup]) {
+      expect(source).not.toContain("withDeployProcessLock(");
+      expect(source).not.toContain("deployProcessLockRoot(");
+    }
 
     const cleanupLock = cleanup.indexOf(
-      'await withDeployProcessLock(\n    "cleanup",\n    exclusiveCheckoutLockKey(),',
+      'await withCheckoutInputsLock(\n    "cleanup",\n    exclusiveCheckoutLockKey(),',
     );
     expect(cleanupLock).toBeGreaterThan(0);
     for (const write of [
