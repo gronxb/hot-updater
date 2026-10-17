@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 
 import { assetHeavyOtaUsesArchiveScenario } from "./scenarios/asset-heavy-ota-uses-archive.ts";
+import { brownfieldNativeMinorUpdateScenario } from "./scenarios/brownfield-native-minor-update.ts";
+import { brownfieldNativeRequiredUpdateScenario } from "./scenarios/brownfield-native-required-update.ts";
 import { bspatchBuiltinToDiffOtaScenario } from "./scenarios/bspatch-builtin-to-diff-ota.ts";
 import { bspatchConsecutiveDiffOtaScenario } from "./scenarios/bspatch-consecutive-diff-ota.ts";
 import { bspatchDisabledChainRollbackScenario } from "./scenarios/bspatch-disabled-chain-rollback.ts";
@@ -75,6 +77,8 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   runtimeChannelCrashRestoreScenario,
   tenCrashHistorySafeBundleScenario,
   remoteConfigFetchActivateScenario,
+  brownfieldNativeRequiredUpdateScenario,
+  brownfieldNativeMinorUpdateScenario,
 ];
 
 const scenarioByName = new Map(

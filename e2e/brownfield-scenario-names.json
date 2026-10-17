@@ -28,5 +28,7 @@
   "crash-then-next-safe-update",
   "runtime-channel-crash-restore",
   "ten-crash-history-safe-bundle",
-  "remote-config-fetch-activate"
+  "remote-config-fetch-activate",
+  "brownfield-native-required-update",
+  "brownfield-native-minor-update"
 ]

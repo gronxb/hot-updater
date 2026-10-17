@@ -6,22 +6,41 @@ import android.widget.FrameLayout
 import androidx.appcompat.app.AppCompatActivity
 import com.callstack.reactnativebrownfield.ReactNativeBrownfield
 import com.callstack.reactnativebrownfield.ReactNativeFragment
+import com.hotupdaterexample.brownfield.ReactNativeHostManager
 
 /**
  * A native screen that shows the example's React Native root on every launch,
  * as the E2E scenarios expect.
  */
 class MainActivity : AppCompatActivity() {
+    private var reactNativeStarted = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // Start without restored fragments, as a ReactActivity does: a React
         // Native screen does not survive its process, and Hot Updater
         // restarts the process to apply or roll back a bundle.
         super.onCreate(null)
-        val container = FrameLayout(this).apply { id = R.id.react_native_root }
-        setContentView(container)
-        supportFragmentManager
+        setContentView(FrameLayout(this).apply { id = R.id.react_native_root })
+        ReactNativeHostManager.whenStarted {
+            reactNativeStarted = true
+            showReactNative()
+        }
+    }
+
+    // React Native can finish starting after this screen saved its state, when
+    // no fragment can be added; it is added when the screen resumes.
+    override fun onPostResume() {
+        super.onPostResume()
+        showReactNative()
+    }
+
+    private fun showReactNative() {
+        val fragments = supportFragmentManager
+        if (!reactNativeStarted || isFinishing || isDestroyed || fragments.isStateSaved) return
+        if (fragments.findFragmentById(R.id.react_native_root) != null) return
+        fragments
             .beginTransaction()
-            .replace(container.id, ReactNativeFragment.createReactNativeFragment("HotUpdaterExample"))
+            .replace(R.id.react_native_root, ReactNativeFragment.createReactNativeFragment("HotUpdaterExample"))
             .commitNow()
     }
 
@@ -29,7 +48,12 @@ class MainActivity : AppCompatActivity() {
     // that hosts a ReactNativeFragment has to do it itself.
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-        setIntent(intent)
-        ReactNativeBrownfield.shared.reactHost.onNewIntent(intent)
+        // The launch intent stays the activity's, as with a ReactActivity, so
+        // JavaScript reads the cold-start link as the initial URL. React
+        // Native's host drops an intent that arrives before its bundle loads,
+        // so every later link waits for it, in order.
+        ReactNativeHostManager.whenBundleLoaded {
+            ReactNativeBrownfield.shared.reactHost.onNewIntent(intent)
+        }
     }
 }

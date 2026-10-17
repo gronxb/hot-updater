@@ -267,6 +267,7 @@ export async function runMobile(
     HOT_UPDATER_E2E_CONTROL_PORT: controlPort,
     HOT_UPDATER_E2E_DEVICE_ID: deviceId,
     HOT_UPDATER_E2E_RESULTS_DIR: resultsDir,
+    HOT_UPDATER_E2E_TRACK: options.track,
     HOT_UPDATER_E2E_CHANNEL_NAMESPACE:
       env.HOT_UPDATER_E2E_CHANNEL_NAMESPACE ?? `mobile-${randomUUID()}`,
   });

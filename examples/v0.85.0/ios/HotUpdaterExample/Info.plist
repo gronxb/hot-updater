@@ -34,7 +34,7 @@
 		<key>CFBundleVersion</key>
 		<string>$(CURRENT_PROJECT_VERSION)</string>
 		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
-		<string>d50b00bdc2ff6a9f75b4bda8d6f835c5ecdd6fd7</string>
+		<string>90aa363cb3b94b170455b6dbb0f733f254eaa8e8</string>
 		<key>LSRequiresIPhoneOS</key>
 		<true/>
 		<key>NSAppTransportSecurity</key>
@@ -84,5 +84,7 @@ q4IbmcJBBmdVCgH8vXETEmnhvdttsL2bC56x2BI3qOx3QL61Qh8HFQrIoa6IKClB
 q7NXcKw1/lYati9BIzcAhWtHZ+H8H9LDwcRCMmBnXscmdW6xYgpUk5oSGmrm3yii
 sqUuNdElBASjowpKQMp2N/cCAwEAAQ==
 -----END PUBLIC KEY-----</string>
+		<key>HOT_UPDATER_MIN_BUNDLE_ID</key>
+		<string>$(HOT_UPDATER_MIN_BUNDLE_ID)</string>
 	</dict>
 </plist>
