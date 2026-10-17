@@ -21,7 +21,7 @@
 		<key>HOT_UPDATER_CHANNEL</key>
 		<string>production</string>
 		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
-		<string>e26ad46f15fc84df1fe13ad787419a998eac12a1</string>
+		<string>671b55e96501147d29134ba941391ff2f093990a</string>
 		<key>HOT_UPDATER_MIN_BUNDLE_ID</key>
 		<string>$(HOT_UPDATER_MIN_BUNDLE_ID)</string>
 		<key>HOT_UPDATER_PUBLIC_KEY</key>
