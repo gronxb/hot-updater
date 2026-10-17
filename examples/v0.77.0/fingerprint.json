@@ -1,7 +1,7 @@
 {
   "ios": {
     "engine": "hot-updater/interface@1",
-    "hash": "0e2ebb815bc85353e0e8ee788fe45571bf7e83db9dd57e0b241050c85e34ad3a",
+    "hash": "0e0b4c4ab865ccba24cf170b51921f115ec04385c90750c00cf71b1e2003078f",
     "sources": [
       {
         "type": "contents",
@@ -27,13 +27,13 @@
         "reasons": [
           "local-dependency-codegen-spec"
         ],
-        "hash": "ae5cda09ffb1bdb9be75d2b4d4008fb762b43a4bb4246bcddd8e6a7192916de3"
+        "hash": "206cbf04ed750458834234c88d2e45ec90cf0e067ac050e23bc1b21d934aa86f"
       }
     ]
   },
   "android": {
     "engine": "hot-updater/interface@1",
-    "hash": "02fb2ce38bf860f0aa86bcaadb6f6f2710bda73da2bec20ddc6aecfe22579a2a",
+    "hash": "8ff35d4013d9896ccb51e2fab6aaac690dcee5491bc4a42d9ed1af60f1cf8214",
     "sources": [
       {
         "type": "contents",
@@ -68,7 +68,7 @@
         "reasons": [
           "local-dependency-codegen-spec"
         ],
-        "hash": "ae5cda09ffb1bdb9be75d2b4d4008fb762b43a4bb4246bcddd8e6a7192916de3"
+        "hash": "206cbf04ed750458834234c88d2e45ec90cf0e067ac050e23bc1b21d934aa86f"
       }
     ]
   },
