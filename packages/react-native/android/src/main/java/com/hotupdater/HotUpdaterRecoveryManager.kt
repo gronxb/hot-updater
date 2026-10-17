@@ -139,7 +139,6 @@ internal class HotUpdaterRecoveryManager(
     ): Long {
         crashMarkerFile.parentFile?.mkdirs()
         ensureExceptionHandlerInstalled()
-        ensureNativeSignalHandlerInstalled()
         ensureContentAppearedListenerInstalled()
 
         val generation =
@@ -176,6 +175,11 @@ internal class HotUpdaterRecoveryManager(
                 if (isMain) installJavaScriptExceptionHooksLocked(generation)
                 generation
             }
+        // The signal handler only once this launch's slot is published: a
+        // signal from the moment it is installed finds the slot it needs.
+        // The slots are static in the native library, written before any
+        // handler reads them.
+        ensureNativeSignalHandlerInstalled()
 
         Log.d(TAG, "Started crash monitoring of $name bundleId=$bundleId shouldRollback=$shouldRollback")
         return generation
@@ -524,16 +528,8 @@ internal class HotUpdaterRecoveryManager(
     // would record Hot Updater's own handler as the one to forward to.
     private fun ensureNativeSignalHandlerInstalled() {
         synchronized(signalHandlerLock) {
-            if (signalHandlerInstalled || !HotUpdaterRecoveryNative.load()) {
-                return
-            }
-
-            try {
-                HotUpdaterRecoveryNative.nativeInstallSignalHandler()
-                signalHandlerInstalled = true
-            } catch (e: UnsatisfiedLinkError) {
-                Log.w(TAG, "Signal handler not available", e)
-            }
+            if (signalHandlerInstalled) return
+            signalHandlerInstalled = nativeRecovery.installSignalHandler()
         }
     }
 
@@ -673,8 +669,6 @@ internal class HotUpdaterRecoveryManager(
 
         @Volatile
         private var signalHandlerInstalled = false
-
-        internal fun isSignalHandlerInstalled(): Boolean = signalHandlerInstalled
 
         /** The native signal handler's slots and claim; tests stand in for it. */
         @Volatile
@@ -1685,10 +1679,24 @@ internal interface HotUpdaterNativeRecovery {
 
     fun clearCrashAttribution()
 
+    /** Installs the signal handler, which reads the slots; true once it is installed. */
+    fun installSignalHandler(): Boolean = true
+
     companion object {
-        /** The signal handler, once installed. */
+        /** The native library's slots and signal handler. */
         val jni: HotUpdaterNativeRecovery =
             object : HotUpdaterNativeRecovery {
+                override fun installSignalHandler(): Boolean {
+                    if (!HotUpdaterRecoveryNative.load()) return false
+                    return try {
+                        HotUpdaterRecoveryNative.nativeInstallSignalHandler()
+                        true
+                    } catch (e: UnsatisfiedLinkError) {
+                        Log.w("HotUpdaterRecovery", "Signal handler not available", e)
+                        false
+                    }
+                }
+
                 override fun updateSlot(
                     slot: Int,
                     crashMarkerPath: String,
@@ -1701,8 +1709,10 @@ internal interface HotUpdaterNativeRecovery {
 
                 override fun clearCrashAttribution() = call { HotUpdaterRecoveryNative.nativeClearCrashAttribution() }
 
+                // The slots are written once the library loads, before the
+                // handler that reads them is installed.
                 private fun call(native: () -> Unit) {
-                    if (!HotUpdaterRecoveryManager.isSignalHandlerInstalled()) return
+                    if (!HotUpdaterRecoveryNative.load()) return
                     try {
                         native()
                     } catch (e: UnsatisfiedLinkError) {

@@ -1502,6 +1502,43 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `main's slot is published before the signal handler is installed`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, main, "main-bundle")
+        HotUpdaterRecoveryManager::class.java
+            .getDeclaredField("signalHandlerInstalled")
+            .apply { isAccessible = true }
+            .setBoolean(null, false)
+        val events = mutableListOf<String>()
+        HotUpdaterRecoveryManager.nativeRecovery =
+            object : HotUpdaterNativeRecovery {
+                override fun updateSlot(
+                    slot: Int,
+                    crashMarkerPath: String,
+                    bundleId: String?,
+                    shouldRollback: Boolean,
+                    writesWhenVerified: Boolean,
+                ) {
+                    events += "slot $slot rollback=$shouldRollback"
+                }
+
+                override fun attributeCrash(slot: Int) = Unit
+
+                override fun clearCrashAttribution() = Unit
+
+                override fun installSignalHandler(): Boolean {
+                    events += "install"
+                    return true
+                }
+            }
+
+        HotUpdaterImpl(context, main).getJSBundleFile()
+
+        // A signal from the moment the handler is installed finds main's slot asking.
+        assertEquals(listOf("slot 0 rollback=true", "install"), events.take(2))
+    }
+
+    @Test
     fun `a verified launch's slot stops asking before storage records the verification`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, widget, "widget-bundle")

@@ -27,6 +27,7 @@ class RecoveryMonitoringRule : ExternalResource() {
         // over the JVM's own, and this rule removes it again.
         field(manager, "exceptionHandlerInstalled").setBoolean(null, false)
         field(manager, "previousExceptionHandler").set(null, null)
+        field(manager, "signalHandlerInstalled").setBoolean(null, false)
         // The next test's process has not set the watchdog's alarm yet.
         field(manager, "watchdogArmedInProcess").setBoolean(null, false)
 
