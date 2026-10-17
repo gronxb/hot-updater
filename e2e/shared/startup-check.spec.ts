@@ -7,13 +7,9 @@ import { describe, expect, it, vi } from "vitest";
 function fixture() {
   const checkForUpdate = vi.fn<() => Promise<unknown>>(async () => null);
   const reload = vi.fn(async () => undefined);
-  const setReloadBehavior = vi.fn((_behavior: string) => undefined);
   const persistScreenState = vi.fn(async (_patch: unknown) => undefined);
   const readE2eRuntimeConfig = vi.fn(async () => ({
-    screenState: {
-      startupCheckEpoch: "launch-1",
-      reloadBehavior: "processRestart",
-    },
+    screenState: { startupCheckEpoch: "launch-1" },
   }));
   const logError = vi.fn();
   const code = transformFileSync(
@@ -36,7 +32,7 @@ function fixture() {
     console: { error: logError },
     require: (name: string) => {
       if (name === "./runtime")
-        return { hotUpdater: { checkForUpdate, reload, setReloadBehavior } };
+        return { hotUpdater: { checkForUpdate, reload } };
       if (name === "../e2eRuntimeConfig") return { readE2eRuntimeConfig };
       if (name === "./screen-state-persistence") return { persistScreenState };
       throw new Error(`Unexpected dependency: ${name}`);
@@ -45,7 +41,6 @@ function fixture() {
   return {
     checkForUpdate,
     reload,
-    setReloadBehavior,
     persistScreenState,
     readE2eRuntimeConfig,
     logError,
@@ -104,22 +99,6 @@ describe("app startup catalog check acknowledgement", () => {
     expect(f.persistScreenState).toHaveBeenCalledWith({
       startupCheckSettledEpoch: "launch-1",
     });
-  });
-
-  it("applies a force update with the scenario's reload behavior", async () => {
-    const f = fixture();
-    f.readE2eRuntimeConfig.mockResolvedValue({
-      screenState: { startupCheckEpoch: "launch-1", reloadBehavior: "reload" },
-    });
-    f.checkForUpdate.mockResolvedValueOnce({
-      shouldForceUpdate: true,
-      updateBundle: vi.fn(async () => true),
-    });
-    await f.run(() => true);
-    expect(f.setReloadBehavior).toHaveBeenCalledWith("reload");
-    expect(f.setReloadBehavior.mock.invocationCallOrder[0]).toBeLessThan(
-      f.reload.mock.invocationCallOrder[0]!,
-    );
   });
 
   it("does not publish an acknowledgement after unmount during the catalog check", async () => {

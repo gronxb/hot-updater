@@ -4,13 +4,11 @@ import { persistScreenState } from "./screen-state-persistence";
 
 export const runStartupUpdateCheck = async (isActive: () => boolean) => {
   let startupCheckEpoch = "";
-  let reloadBehavior: "processRestart" | "reload" = "processRestart";
   let reloadStarted = false;
   try {
     try {
-      ({ startupCheckEpoch, reloadBehavior } = (
-        await readE2eRuntimeConfig()
-      ).screenState);
+      startupCheckEpoch = (await readE2eRuntimeConfig()).screenState
+        .startupCheckEpoch;
     } catch (error) {
       console.error(error);
     }
@@ -23,7 +21,6 @@ export const runStartupUpdateCheck = async (isActive: () => boolean) => {
       // The replacement runtime must complete its own startup check. The old
       // mount must not acknowledge readiness while native reload is starting.
       reloadStarted = true;
-      hotUpdater.setReloadBehavior(reloadBehavior);
       await hotUpdater.reload();
     }
   } catch (error) {

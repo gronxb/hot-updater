@@ -1,5 +1,5 @@
 import { INVALID_COHORT_ERROR_MESSAGE } from "@hot-updater/protocol";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const nativeModuleMock = vi.hoisted(() => {
   const getManifest = vi.fn<() => Record<string, unknown> | string>();
@@ -34,15 +34,15 @@ const nativeModuleMock = vi.hoisted(() => {
   };
 });
 
+const platformMock = vi.hoisted(() => ({ OS: "ios" }));
+
 vi.mock("react-native", () => ({
   NativeEventEmitter: class {
     addListener() {
       return { remove: () => {} };
     }
   },
-  Platform: {
-    OS: "ios",
-  },
+  Platform: platformMock,
 }));
 
 vi.mock("./specs/NativeHotUpdater", () => ({
@@ -1007,5 +1007,36 @@ describe("notifyAppReady", () => {
     const { getCohort } = await import("./native");
 
     expect(() => getCohort()).toThrow(INVALID_COHORT_ERROR_MESSAGE);
+  });
+});
+
+describe("reload", () => {
+  beforeEach(() => {
+    vi.resetModules();
+    nativeModuleMock.reload.mockReset();
+    nativeModuleMock.reloadProcess.mockReset();
+  });
+
+  afterEach(() => {
+    platformMock.OS = "ios";
+  });
+
+  it("restarts the process on Android", async () => {
+    platformMock.OS = "android";
+    const { reload } = await import("./native");
+
+    await reload();
+
+    expect(nativeModuleMock.reloadProcess).toHaveBeenCalledTimes(1);
+    expect(nativeModuleMock.reload).not.toHaveBeenCalled();
+  });
+
+  it("reloads React Native in place on iOS", async () => {
+    const { reload } = await import("./native");
+
+    await reload();
+
+    expect(nativeModuleMock.reload).toHaveBeenCalledTimes(1);
+    expect(nativeModuleMock.reloadProcess).not.toHaveBeenCalled();
   });
 });

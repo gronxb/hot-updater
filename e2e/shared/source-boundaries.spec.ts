@@ -41,7 +41,6 @@ const expectedScenarioModuleFiles = [
   "failed-download-same-generation-retry.ts",
   "fingerprint-initial-install.ts",
   "force-update-auto-reload.ts",
-  "force-update-in-process-reload.ts",
   "headless-launch-keeps-staged-bundle.ts",
   "interrupted-launch-retries-bundle.ts",
   "launch-status-after-session-install.ts",

@@ -8,11 +8,7 @@ export type E2eScreenState = {
   readonly updateActionResult: string;
   readonly startupCheckEpoch: string;
   readonly startupCheckSettledEpoch: string;
-  readonly reloadBehavior: E2eReloadBehavior;
 };
-
-// How the app's startup check applies a force update.
-export type E2eReloadBehavior = "processRestart" | "reload";
 
 type E2eScreenStatePatch = Partial<E2eScreenState>;
 
@@ -24,7 +20,6 @@ const defaultE2eScreenState = {
   updateActionResult: "idle",
   startupCheckEpoch: "",
   startupCheckSettledEpoch: "",
-  reloadBehavior: "processRestart",
 } as const satisfies E2eScreenState;
 
 let e2eScreenState: E2eScreenState = defaultE2eScreenState;
@@ -60,16 +55,6 @@ const parseOptionalCohortInput = (payload: Record<string, unknown>) => {
   });
 };
 
-const parseOptionalReloadBehavior = (payload: Record<string, unknown>) => {
-  if (!("reloadBehavior" in payload)) return undefined;
-  const value = payload.reloadBehavior;
-  if (value === "processRestart" || value === "reload") return value;
-  throw createScreenStateError(
-    "screen state field must be processRestart or reload",
-    { field: "reloadBehavior", received: value },
-  );
-};
-
 const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
   if (!isRecord(payload)) {
     throw createScreenStateError("screen state payload must be an object", {
@@ -88,7 +73,6 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
   );
   const updateActionResult = parseOptionalString(payload, "updateActionResult");
   const cohortInput = parseOptionalCohortInput(payload);
-  const reloadBehavior = parseOptionalReloadBehavior(payload);
   const startupCheckSettledEpoch = parseOptionalString(
     payload,
     "startupCheckSettledEpoch",
@@ -100,7 +84,6 @@ const parseScreenStatePatch = (payload: unknown): E2eScreenStatePatch => {
     ...(cohortInput === undefined ? {} : { cohortInput }),
     ...(runtimeChannelInput === undefined ? {} : { runtimeChannelInput }),
     ...(updateActionResult === undefined ? {} : { updateActionResult }),
-    ...(reloadBehavior === undefined ? {} : { reloadBehavior }),
     ...(startupCheckSettledEpoch &&
     startupCheckSettledEpoch === e2eScreenState.startupCheckEpoch
       ? { startupCheckSettledEpoch }

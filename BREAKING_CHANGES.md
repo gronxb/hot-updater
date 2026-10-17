@@ -436,6 +436,27 @@ export const hotUpdater = HotUpdater.init({
 });
 ```
 
+### Remove `setReloadBehavior`
+
+Search for `setReloadBehavior`, `ReloadBehavior`, `ReloadBehaviorSetting`,
+`CustomReloadHandler`.
+
+v1 has no reload setting. `hotUpdater.reload()` restarts the process on
+Android, which was the v0 default `processRestart`, and reloads React Native in
+place on iOS. Delete the call:
+
+```ts
+// v0
+HotUpdater.setReloadBehavior("processRestart");
+
+// v1: no call
+```
+
+An app that used `"reload"` or `"custom"` to keep native screens open, such as
+a brownfield app, downloads the update without calling `reload()` and lets the
+next launch load it. An app that must reopen a screen itself calls its own
+native code instead of `hotUpdater.reload()`.
+
 ### Handle the new `NotifyAppReadyResult`
 
 Search for `onNotifyAppReady`, `"STABLE"`, `crashedBundleId`,

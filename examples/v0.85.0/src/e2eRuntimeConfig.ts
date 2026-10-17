@@ -17,7 +17,6 @@ export type E2eScreenState = {
   readonly updateActionResult: string;
   readonly startupCheckEpoch: string;
   readonly startupCheckSettledEpoch: string;
-  readonly reloadBehavior: "processRestart" | "reload";
 };
 
 type E2ELaunchArguments = {
@@ -33,7 +32,6 @@ const defaultE2eScreenState = {
   updateActionResult: "idle",
   startupCheckEpoch: "",
   startupCheckSettledEpoch: "",
-  reloadBehavior: "processRestart",
 } as const satisfies E2eScreenState;
 
 const e2eLaunchArguments = LaunchArguments.value<E2ELaunchArguments>();
@@ -78,7 +76,6 @@ const parseScreenState = (payload: unknown): E2eScreenState => {
   if (!isRecord(payload)) return defaultE2eScreenState;
 
   const cohortInput = payload.cohortInput;
-  const reloadBehavior = payload.reloadBehavior;
 
   return {
     channelActionResult: stringField(
@@ -111,10 +108,6 @@ const parseScreenState = (payload: unknown): E2eScreenState => {
       "startupCheckSettledEpoch",
       "",
     ),
-    reloadBehavior:
-      reloadBehavior === "reload" || reloadBehavior === "processRestart"
-        ? reloadBehavior
-        : defaultE2eScreenState.reloadBehavior,
   };
 };
 

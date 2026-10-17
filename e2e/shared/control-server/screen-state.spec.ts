@@ -32,7 +32,6 @@ describe("E2E screen state control boundary", () => {
         updateActionResult: "idle",
         startupCheckEpoch: "",
         startupCheckSettledEpoch: "",
-        reloadBehavior: "processRestart",
       },
     });
   });
@@ -52,7 +51,6 @@ describe("E2E screen state control boundary", () => {
       updateActionResult: "idle",
       startupCheckEpoch: "",
       startupCheckSettledEpoch: "",
-      reloadBehavior: "processRestart",
     });
   });
 

@@ -54,11 +54,20 @@ export interface InstallArtifactParams {
 
 export interface Spec extends TurboModule {
   // Methods
+  /**
+   * Restarts the app process on Android and reloads React Native in place on
+   * iOS, so the app loads the current bundle.
+   */
   reload(): Promise<void>;
   /**
-   * Android process restart path used by `setReloadBehavior("processRestart")`.
-   *
-   * iOS exposes the same method name for API parity, but it behaves the same as `reload()`.
+   * @deprecated Kept for JavaScript↔native compatibility within this major
+   * version. Released JavaScript calls it on Android, and this SDK's
+   * JavaScript still calls it on Android because an older native build's
+   * `reload()` reloads React Native in place there. Native `reload()` now
+   * restarts the process on Android too: the Kotlin and Objective-C
+   * `reloadProcess` implementations run the same code as `reload()`, a
+   * process restart on Android and an in-place reload on iOS. The next major
+   * version removes it.
    */
   reloadProcess(): Promise<void>;
   /**

@@ -47,31 +47,6 @@ type ActiveBundleSnapshotCacheValues = {
 
 type ActiveBundleSnapshotCacheKey = keyof ActiveBundleSnapshotCacheValues;
 
-/**
- * Built-in reload behaviors used by `hotUpdater.reload()`.
- *
- * - `reload`: In-process React Native reload.
- * - `processRestart`: Android-only cold restart. On iOS the same call behaves like `reload`.
- */
-export type ReloadBehavior = "reload" | "processRestart";
-
-/**
- * Custom reload hook used when `setReloadBehavior("custom", handler)` is configured.
- *
- * This is useful for brownfield apps that need to delegate reload behavior to
- * a host-native container instead of using HotUpdater's built-in reload flow.
- */
-export type CustomReloadHandler = () => void | Promise<void>;
-
-/**
- * Full reload policy accepted by `setReloadBehavior()`.
- *
- * - `reload`: Built-in React reload on both platforms
- * - `processRestart`: Android process restart, iOS behaves like `reload`
- * - `custom`: Run a user-provided JS handler on both platforms
- */
-export type ReloadBehaviorSetting = ReloadBehavior | "custom";
-
 class HotUpdaterSessionState {
   private readonly defaultChannel: string;
   private currentChannel: string;
@@ -194,8 +169,6 @@ class HotUpdaterSessionState {
 }
 
 const sessionState = new HotUpdaterSessionState();
-let reloadBehavior: ReloadBehaviorSetting = "processRestart";
-let customReloadHandler: CustomReloadHandler | null = null;
 
 const cloneManifest = (manifest: Manifest): Manifest => ({
   bundleId: manifest.bundleId,
@@ -539,79 +512,20 @@ export const getAppVersion = (): string | null => {
 };
 
 /**
- * Reloads the app using the currently configured reload behavior.
+ * Restarts the app so it loads the current bundle.
  *
- * Default behavior is `processRestart`.
- * On iOS, `processRestart` behaves like the normal React reload path.
- *
- * When `setReloadBehavior("processRestart")` is used:
- * - Android performs a cold process restart
- * - iOS keeps the same behavior as the normal React reload path
- *
- * When `setReloadBehavior("custom", handler)` is used:
- * - both Android and iOS execute the provided handler
+ * Android restarts the app process cold, so no native module can reach the
+ * JavaScript runtime while it is replaced. iOS reloads React Native in place.
  */
 export const reload = async () => {
-  if (reloadBehavior === "custom") {
-    if (!customReloadHandler) {
-      throw new Error(
-        "[HotUpdater] setReloadBehavior('custom') requires a reload handler.",
-      );
-    }
-
-    await customReloadHandler();
-    return;
-  }
-
-  if (Platform.OS === "android" && reloadBehavior === "processRestart") {
+  if (Platform.OS === "android") {
+    // An older native build's reload() reloads in place on Android.
     await HotUpdaterNative.reloadProcess();
     return;
   }
 
   await HotUpdaterNative.reload();
 };
-
-/**
- * Configures how `hotUpdater.reload()` should behave.
- *
- * This API is available on both Android and iOS so app code can stay symmetric.
- * By default, HotUpdater uses `processRestart`.
- *
- * Supported behaviors:
- * - `reload`: Uses React Native's normal in-process reload flow
- * - `processRestart`: Uses Android process restart when available; iOS keeps the same behavior as `reload`
- * - `custom`: Executes a JS callback on both platforms
- *
- * `custom` is intended for brownfield apps that need host-native coordination.
- */
-export function setReloadBehavior(
-  ...args:
-    | [behavior: ReloadBehavior]
-    | [behavior: "custom", handler: CustomReloadHandler]
-): void {
-  const [behavior, handler] = args;
-
-  if (behavior === "custom") {
-    if (typeof handler !== "function") {
-      throw new Error(
-        "[HotUpdater] setReloadBehavior('custom') requires a reload handler.",
-      );
-    }
-
-    reloadBehavior = behavior;
-    customReloadHandler = handler;
-    return;
-  }
-
-  if (handler) {
-    throw new Error(
-      `[HotUpdater] setReloadBehavior('${behavior}') does not accept a custom reload handler.`,
-    );
-  }
-
-  reloadBehavior = behavior;
-  customReloadHandler = null;
-}
 
 /**
  * Fetches the minimum bundle id created from the native app build time.
