@@ -2396,6 +2396,7 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    @Suppress("DEPRECATION")
     fun `verification failures report hash mismatch signature or invalid response`() =
         runBlocking {
             val hashMismatch = UpdateFailure.download(UpdateFailureReason.HASH_MISMATCH)
@@ -2785,6 +2786,37 @@ class BundleFileStorageServiceTest {
         createService(nextMainRoot, isolationKey = "changed-isolation-key")
         assertFalse(File(bundleStoreDir(nextMainRoot), "main-bundle").exists())
         assertMainAndWidget(nextMainRoot, nextWidgetRoot, main = false)
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `a store under the old fingerprint key format is discarded once`() {
+        val root = temporaryFolder.newFolder()
+        // What main's key was before it held the build's min bundle id: the
+        // fingerprint, the app version, and the channel.
+        val oldKey = "HotUpdaterPrefs_app-fp_1.0.0_production"
+        HotUpdaterConfig.fingerprintHash = "app-fp"
+        try {
+            val newKey = HotUpdaterInstanceEnvironment.main.isolationKey(InstanceTestContext(temporaryFolder.newFolder()), MIN_BUNDLE_ID)
+            assertEquals("HotUpdaterPrefs_app-fp_${MIN_BUNDLE_ID}_production", newKey)
+            createCompleteBundle(root, "old-bundle", "old-bundle")
+            writeMetadata(root, BundleMetadata(isolationKey = oldKey, stableBundleId = "old-bundle"))
+
+            // The first launch under the new key starts from the built-in bundle.
+            val upgraded = createService(root, isolationKey = newKey)
+            assertFalse(File(bundleStoreDir(root), "old-bundle").exists())
+            assertNull(upgraded.prepareLaunch(null).launchedBundleId)
+
+            // A bundle stored under the new key survives every later launch.
+            createCompleteBundle(root, "new-bundle", "new-bundle")
+            writeMetadata(root, BundleMetadata(isolationKey = newKey, stableBundleId = "new-bundle"))
+            repeat(2) {
+                assertEquals("new-bundle", createService(root, isolationKey = newKey).prepareLaunch(null).launchedBundleId)
+                assertTrue(File(bundleStoreDir(root), "new-bundle/index.android.bundle").isFile)
+            }
+        } finally {
+            HotUpdaterConfig.clear()
+        }
     }
 
     @Test
@@ -3413,6 +3445,7 @@ class BundleFileStorageServiceTest {
 
     companion object {
         private const val TEST_ISOLATION_KEY = "test-isolation-key"
+        private const val MIN_BUNDLE_ID = "0190a1b2-c3d4-7000-8000-000000000000"
         private const val MANIFEST_URL = "https://example.com/manifest.json"
         private const val ARCHIVE_URL = "https://example.com/bundle.tar.br"
         private const val BUNDLE_URL = "https://example.com/index.android.bundle"

@@ -5,6 +5,7 @@ import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -25,6 +26,7 @@ class HotUpdaterInstanceEnvironmentTest {
     val recoveryMonitoring = RecoveryMonitoringRule()
 
     @After
+    @Suppress("DEPRECATION")
     fun clearConfig() {
         HotUpdaterConfig.clear()
     }
@@ -79,23 +81,188 @@ class HotUpdaterInstanceEnvironmentTest {
                 HotUpdaterOptions(BASE_URL, name = "init-widget", channel = "production", bundleAssetName = "init-widget.android.bundle"),
             )
         }
-        // main reads the manifest, so its options' configuration never conflicts.
+        // main refuses another channel, as a named instance does.
         HotUpdater.init(context, HotUpdaterOptions(BASE_URL, channel = "beta"))
-        HotUpdater.init(context, HotUpdaterOptions(BASE_URL, channel = "production"))
+        HotUpdater.init(context, HotUpdaterOptions(BASE_URL, channel = "beta"))
+        assertThrows(IllegalArgumentException::class.java) {
+            HotUpdater.init(context, HotUpdaterOptions(BASE_URL, channel = "production"))
+        }
     }
 
     @Test
+    fun `main honors its options' channel fingerprint hash and public key`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val main = HotUpdaterInstanceEnvironment.main
+
+        HotUpdater.init(context, HotUpdaterOptions(BASE_URL, channel = "beta", fingerprintHash = "app-fp", publicKey = "APP KEY"))
+
+        assertEquals("beta", main.defaultChannel(context))
+        assertEquals("app-fp", main.fingerprintHash(context))
+        assertEquals("APP KEY", main.publicKey(context))
+        assertEquals("HotUpdaterPrefs_app-fp_${MIN_BUNDLE_ID}_beta", main.isolationKey(context, MIN_BUNDLE_ID))
+        assertEquals("beta", HotUpdater.getChannel(context))
+        assertEquals("app-fp", HotUpdater.getFingerprintHash(context))
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `main refuses options that contradict its configuration`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+
+        // Options against earlier options.
+        HotUpdater.init(context, HotUpdaterOptions(BASE_URL, channel = "beta", fingerprintHash = "app-fp"))
+        assertThrows(IllegalArgumentException::class.java) {
+            HotUpdater.init(context, HotUpdaterOptions(BASE_URL, fingerprintHash = "other-fp"))
+        }
+        HotUpdaterConfig.clear()
+
+        // Options against HotUpdater.configure.
+        HotUpdater.configure(fingerprintHash = "app-fp", publicKey = "APP KEY", channel = "beta")
+        listOf(
+            HotUpdaterOptions(BASE_URL, channel = "production"),
+            HotUpdaterOptions(BASE_URL, fingerprintHash = "other-fp"),
+            HotUpdaterOptions(BASE_URL, publicKey = "OTHER KEY"),
+        ).forEach { options ->
+            assertThrows(IllegalArgumentException::class.java) { HotUpdater.init(context, options) }
+        }
+        // A refused init records nothing.
+        assertThrows(IllegalArgumentException::class.java) {
+            MainInstanceConfiguration.claim(context, HotUpdaterOptions(BASE_URL, channel = "beta", publicKey = "OTHER KEY"))
+        }
+        assertEquals("APP KEY", HotUpdaterConfig.publicKey)
+        HotUpdaterConfig.clear()
+
+        // Options after main's impl exists: it keeps the values it was created with.
+        HotUpdater.configure(channel = "beta")
+        MainInstanceConfiguration.claim(context, HotUpdaterOptions(BASE_URL, channel = "beta"), implCreated = true)
+        listOf(
+            HotUpdaterOptions(BASE_URL, channel = "production"),
+            HotUpdaterOptions(BASE_URL, fingerprintHash = "app-fp"),
+            HotUpdaterOptions(BASE_URL, publicKey = "APP KEY"),
+        ).forEach { options ->
+            assertThrows(IllegalArgumentException::class.java) {
+                MainInstanceConfiguration.claim(context, options, implCreated = true)
+            }
+        }
+        assertNull(HotUpdaterConfig.fingerprintHash)
+        assertNull(HotUpdaterConfig.publicKey)
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `main's options left null keep HotUpdater configure's values`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val main = HotUpdaterInstanceEnvironment.main
+        HotUpdater.configure(fingerprintHash = "app-fp", publicKey = "APP KEY", channel = "beta", isolationKey = "host-key")
+
+        listOf(
+            HotUpdaterOptions(BASE_URL),
+            // An empty string sets nothing, as in HotUpdater.configure.
+            HotUpdaterOptions(BASE_URL, channel = "", fingerprintHash = "", publicKey = ""),
+            HotUpdaterOptions(BASE_URL, channel = "beta", publicKey = "APP KEY"),
+        ).forEach { options ->
+            HotUpdater.init(context, options)
+
+            assertEquals("beta", main.defaultChannel(context))
+            assertEquals("app-fp", main.fingerprintHash(context))
+            assertEquals("APP KEY", main.publicKey(context))
+            assertEquals("host-key", main.isolationKey(context))
+        }
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `HotUpdater configure still replaces main's options and warns once`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val main = HotUpdaterInstanceEnvironment.main
+        val warnings = mutableListOf<String>()
+        val logWarning = MainInstanceConfiguration.logWarning
+        MainInstanceConfiguration.logWarning = { warnings += it }
+        try {
+            // Without options, configure is what it always was.
+            HotUpdater.configure(channel = "staging")
+            HotUpdaterConfig.clear()
+            assertEquals(emptyList<String>(), warnings)
+
+            HotUpdater.init(context, HotUpdaterOptions(BASE_URL, channel = "beta", fingerprintHash = "app-fp", publicKey = "APP KEY"))
+            HotUpdater.configure(fingerprintHash = "app-fp", publicKey = "OTHER KEY", channel = "production")
+
+            assertEquals("production", main.defaultChannel(context))
+            assertEquals("app-fp", main.fingerprintHash(context))
+            assertEquals("OTHER KEY", main.publicKey(context))
+            val warning = warnings.single()
+            assertTrue(warning, warning.contains("channel \"beta\" with \"production\""))
+            assertTrue(warning, warning.contains("publicKey"))
+            assertFalse(warning, warning.contains("fingerprintHash \""))
+            assertFalse(warning, warning.contains("APP KEY"))
+            assertTrue(warning, warning.contains("only through HotUpdaterOptions"))
+
+            // Once: the values are configure's now.
+            HotUpdater.configure(channel = "staging")
+            assertEquals("staging", main.defaultChannel(context))
+            assertNull(main.fingerprintHash(context))
+            assertEquals(1, warnings.size)
+        } finally {
+            MainInstanceConfiguration.logWarning = logWarning
+        }
+    }
+
+    @Test
+    fun `main launches its own bundle asset`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+
+        assertThrows(IllegalArgumentException::class.java) {
+            HotUpdaterInstanceEnvironment.of(HotUpdaterOptions(BASE_URL, bundleAssetName = "x.android.bundle"))
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            HotUpdater.init(context, HotUpdaterOptions(BASE_URL, channel = "beta", bundleAssetName = "x.android.bundle"))
+        }
+        // The refused init recorded nothing.
+        assertEquals("production", HotUpdaterInstanceEnvironment.main.defaultChannel(context))
+    }
+
+    @Test
+    fun `the fingerprint key is the fingerprint the build's min bundle id and the channel`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val main = HotUpdaterInstanceEnvironment.main
+        HotUpdater.init(context, HotUpdaterOptions(BASE_URL, fingerprintHash = "app-fp"))
+        val widget = environment("widget", fingerprintHash = "widget-fp")
+
+        assertEquals("HotUpdaterPrefs_app-fp_${MIN_BUNDLE_ID}_production", main.isolationKey(context, MIN_BUNDLE_ID))
+        assertEquals("HotUpdaterInstancePrefs_widget_widget-fp_${MIN_BUNDLE_ID}_production", widget.isolationKey(context, MIN_BUNDLE_ID))
+        // A new build, with a new min bundle id, gets a new key; the app version is no part of it.
+        assertNotEquals(main.isolationKey(context, MIN_BUNDLE_ID), main.isolationKey(context, NEXT_MIN_BUNDLE_ID))
+        assertFalse(main.isolationKey(context, MIN_BUNDLE_ID).contains("unknown"))
+        // The default is this build's id.
+        assertEquals(main.isolationKey(context, HotUpdaterImpl.getMinBundleId()), main.isolationKey(context))
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `the appVersion key and an explicit isolation key are unchanged`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val main = HotUpdaterInstanceEnvironment.main
+
+        // Without a fingerprint, the app version (unknown here) keys the store, whatever the build.
+        assertEquals("HotUpdaterPrefs_unknown_production", main.isolationKey(context, MIN_BUNDLE_ID))
+        assertEquals("HotUpdaterPrefs_unknown_production", main.isolationKey(context, NEXT_MIN_BUNDLE_ID))
+        assertEquals("HotUpdaterInstancePrefs_widget_unknown_production", environment("widget").isolationKey(context, MIN_BUNDLE_ID))
+
+        HotUpdater.configure(fingerprintHash = "app-fp", isolationKey = "host-isolation-key")
+        assertEquals("host-isolation-key", main.isolationKey(context, MIN_BUNDLE_ID))
+        assertEquals("host-isolation-key", main.isolationKey(context, NEXT_MIN_BUNDLE_ID))
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
     fun `main derives every path and key it always has`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val main = HotUpdaterInstanceEnvironment.main
 
         assertSame(main, environment("main"))
-        // main ignores the options' configuration and reads the manifest and HotUpdater.configure.
         assertSame(
             main,
-            HotUpdaterInstanceEnvironment.of(
-                HotUpdaterOptions(BASE_URL, channel = "beta", fingerprintHash = "fp", publicKey = "key", bundleAssetName = "x.bundle"),
-            ),
+            HotUpdaterInstanceEnvironment.of(HotUpdaterOptions(BASE_URL, channel = "beta", fingerprintHash = "fp", publicKey = "key")),
         )
         assertEquals(context.filesDir, main.filesRoot(context))
         assertEquals(File(context.noBackupFilesDir, "hot-updater/storage.json"), main.keyValueStorageFile(context))
@@ -108,7 +275,7 @@ class HotUpdaterInstanceEnvironmentTest {
         assertNull(main.publicKey(context))
 
         HotUpdaterConfig.configure(fingerprintHash = "app-fp", publicKey = "APP KEY", channel = "beta")
-        assertEquals("HotUpdaterPrefs_app-fp_unknown_beta", main.isolationKey(context))
+        assertEquals("HotUpdaterPrefs_app-fp_${MIN_BUNDLE_ID}_beta", main.isolationKey(context, MIN_BUNDLE_ID))
         assertEquals("beta", main.defaultChannel(context))
         assertEquals("app-fp", main.fingerprintHash(context))
         assertEquals("APP KEY", main.publicKey(context))
@@ -118,6 +285,7 @@ class HotUpdaterInstanceEnvironmentTest {
     }
 
     @Test
+    @Suppress("DEPRECATION")
     fun `a named instance keeps its state beside main's with its own configuration`() {
         val context = InstanceTestContext(temporaryFolder.root)
         val widget =
@@ -141,19 +309,27 @@ class HotUpdaterInstanceEnvironmentTest {
         )
         assertEquals("HotUpdaterInstancePrefs_widget_", widget.preferencesPrefix)
         // main's verbatim override is main's own key and never names a named instance's state.
-        assertEquals("HotUpdaterInstancePrefs_widget_widget-fp_unknown_beta", widget.isolationKey(context))
+        assertEquals("HotUpdaterInstancePrefs_widget_widget-fp_${MIN_BUNDLE_ID}_beta", widget.isolationKey(context, MIN_BUNDLE_ID))
         assertEquals("beta", widget.defaultChannel(context))
         assertEquals("widget-fp", widget.fingerprintHash(context))
         assertEquals("WIDGET KEY", widget.publicKey(context))
         assertEquals("assets://widget.android.bundle", widget.fallbackBundleURL)
 
-        // Without its own values, a named instance reads the app's, as main does.
+        // Without its own values, a named instance reads its manifest values,
+        // none here, never main's configuration.
         val plain = environment("plain")
-        assertEquals("HotUpdaterInstancePrefs_plain_app-fp_unknown_staging", plain.isolationKey(context))
-        assertEquals("staging", plain.defaultChannel(context))
-        assertEquals("app-fp", plain.fingerprintHash(context))
-        assertEquals("APP KEY", plain.publicKey(context))
+        assertEquals("HotUpdaterInstancePrefs_plain_unknown_production", plain.isolationKey(context))
+        assertEquals("production", plain.defaultChannel(context))
+        assertNull(plain.fingerprintHash(context))
+        assertNull(plain.publicKey(context))
         assertEquals("assets://plain.android.bundle", plain.fallbackBundleURL)
+
+        // Nor do main's options reach it.
+        HotUpdaterConfig.clear()
+        HotUpdater.init(context, HotUpdaterOptions(BASE_URL, channel = "beta", fingerprintHash = "app-fp", publicKey = "APP KEY"))
+        assertEquals("production", plain.defaultChannel(context))
+        assertNull(plain.fingerprintHash(context))
+        assertNull(plain.publicKey(context))
     }
 
     @Test
@@ -301,6 +477,7 @@ class HotUpdaterInstanceEnvironmentTest {
     private fun environment(
         name: String,
         channel: String? = null,
+        fingerprintHash: String? = null,
         publicKey: String? = null,
         bundleAssetName: String =
             if (name ==
@@ -312,7 +489,14 @@ class HotUpdaterInstanceEnvironmentTest {
             },
     ): HotUpdaterInstanceEnvironment =
         HotUpdaterInstanceEnvironment.of(
-            HotUpdaterOptions(BASE_URL, name = name, channel = channel, publicKey = publicKey, bundleAssetName = bundleAssetName),
+            HotUpdaterOptions(
+                BASE_URL,
+                name = name,
+                channel = channel,
+                fingerprintHash = fingerprintHash,
+                publicKey = publicKey,
+                bundleAssetName = bundleAssetName,
+            ),
         )
 
     private fun remainingPreferences(context: InstanceTestContext): Set<String> =
@@ -349,5 +533,7 @@ class HotUpdaterInstanceEnvironmentTest {
 
     companion object {
         private const val BASE_URL = "https://updates.example.com"
+        private const val MIN_BUNDLE_ID = "0190a1b2-c3d4-7000-8000-000000000000"
+        private const val NEXT_MIN_BUNDLE_ID = "0190a1b2-c3d5-7000-8000-000000000000"
     }
 }

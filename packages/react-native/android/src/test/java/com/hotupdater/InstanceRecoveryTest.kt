@@ -39,6 +39,7 @@ class InstanceRecoveryTest {
         HotUpdaterInstanceEnvironment.of(HotUpdaterOptions(BASE_URL, name = "widget", bundleAssetName = "widget.android.bundle"))
 
     @After
+    @Suppress("DEPRECATION")
     fun clearConfig() {
         HotUpdaterConfig.clear()
     }

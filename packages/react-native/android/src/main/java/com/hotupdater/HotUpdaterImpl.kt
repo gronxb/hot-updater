@@ -136,7 +136,7 @@ class HotUpdaterImpl {
 
     companion object {
         private const val TAG = "HotUpdaterImpl"
-        private const val DEFAULT_CHANNEL = "production"
+        internal const val DEFAULT_CHANNEL = "production"
         private const val CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
 
         // How many times one start prepares its launch while crashes of the

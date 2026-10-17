@@ -3,14 +3,15 @@ import Foundation
 /// Where one native instance keeps its state, and which config it reads.
 ///
 /// Instances are told apart by `HotUpdaterOptions.name`. `main` is the one
-/// the TurboModule and every static API use: it keeps the paths, keys, and
-/// `HotUpdaterConfig.shared` of an app with a single instance. Any other name
-/// keeps its state beside main's, never inside `bundle-store`, whose sweeps
-/// delete the entries they don't know. The install identity and the cohort
-/// stay device-level, shared by every name.
+/// the TurboModule and every static API use: it keeps the paths and
+/// `HotUpdaterConfig.shared` of an app with a single instance, where main's
+/// options are recorded. Any other name keeps its state beside main's, never
+/// inside `bundle-store`, whose sweeps delete the entries they don't know,
+/// and reads only its options and its own bundle. The install identity and
+/// the cohort stay device-level, shared by every name.
 struct HotUpdaterInstanceEnvironment {
     static let mainName = "main"
-    static let main = HotUpdaterInstanceEnvironment(name: mainName, namedBundle: nil, config: .shared)
+    static let main = HotUpdaterInstanceEnvironment.main(config: .shared)
 
     static let maxNameLength = 32
     /// `Documents/hot-updater-instances/<name>` holds a named instance's
@@ -28,21 +29,44 @@ struct HotUpdaterInstanceEnvironment {
     let name: String
     /// nil for main, which reads its bundle from `config` at each use.
     private let namedBundle: Bundle?
-    /// Main's programmatic config and recorded bundle; a named instance
-    /// never reads it.
+    /// Main's recorded options, programmatic config, and bundle; a named
+    /// instance never reads it.
     private let config: HotUpdaterConfig
+    /// A named instance's `HotUpdaterOptions` values, over its Info.plist.
+    /// Main's options are recorded in `config` instead.
+    private let options: HotUpdaterConfig.Overrides
 
-    private init(name: String, namedBundle: Bundle?, config: HotUpdaterConfig) {
+    private init(
+        name: String,
+        namedBundle: Bundle?,
+        config: HotUpdaterConfig,
+        options: HotUpdaterConfig.Overrides = HotUpdaterConfig.Overrides()
+    ) {
         self.name = name
         self.namedBundle = namedBundle
         self.config = config
+        self.options = options
     }
 
-    /// The environment of `name`. A named instance reads its `HOT_UPDATER_*`
-    /// Info.plist keys from `bundle`; main reads `config`, as before. Throws
-    /// when `name` is not 1 to 32 of `a-z`, `0-9`, and `-`, since it becomes
-    /// a directory and a key prefix.
-    init(name: String, bundle: Bundle, config: HotUpdaterConfig = .shared) throws {
+    /// Main, reading `config`.
+    static func main(config: HotUpdaterConfig) -> HotUpdaterInstanceEnvironment {
+        HotUpdaterInstanceEnvironment(name: mainName, namedBundle: nil, config: config)
+    }
+
+    /// The environment of `name`. A named instance reads `channel`,
+    /// `fingerprintHash`, and `publicKey`, then its `HOT_UPDATER_*` Info.plist
+    /// keys from `bundle`; main reads `config`, where
+    /// `HotUpdaterMainBundle.claim` records main's options. Throws when `name`
+    /// is not 1 to 32 of `a-z`, `0-9`, and `-`, since it becomes a directory
+    /// and a key prefix.
+    init(
+        name: String,
+        bundle: Bundle,
+        config: HotUpdaterConfig = .shared,
+        channel: String? = nil,
+        fingerprintHash: String? = nil,
+        publicKey: String? = nil
+    ) throws {
         guard Self.isValidName(name) else {
             throw NativeUpdateCheckError.hotUpdater(
                 "Invalid name: \(name). Use 1 to \(Self.maxNameLength) of a-z, 0-9, and -."
@@ -55,7 +79,43 @@ struct HotUpdaterInstanceEnvironment {
                 "A named HotUpdater instance needs its own bundle, not Bundle.main: \(name)"
             )
         }
-        self.init(name: name, namedBundle: name == Self.mainName ? nil : bundle, config: config)
+        let isMain = name == Self.mainName
+        self.init(
+            name: name,
+            namedBundle: isMain ? nil : bundle,
+            config: config,
+            options: isMain ? HotUpdaterConfig.Overrides() : HotUpdaterConfig.Overrides(
+                fingerprintHash: Self.optionValue(fingerprintHash),
+                publicKey: Self.optionValue(publicKey),
+                channel: Self.optionValue(channel)
+            )
+        )
+    }
+
+    /// The environment of `options`.
+    init(options: HotUpdaterOptions, config: HotUpdaterConfig = .shared) throws {
+        try self.init(
+            name: options.name,
+            bundle: options.bundle,
+            config: config,
+            channel: options.channel,
+            fingerprintHash: options.fingerprintHash,
+            publicKey: options.publicKey
+        )
+    }
+
+    /// An option left nil or empty reads Info.plist.
+    static func optionValue(_ value: String?) -> String? {
+        guard let value, !value.isEmpty else {
+            return nil
+        }
+        return value
+    }
+
+    /// Whether `other` is the same named instance: one service, so a second
+    /// instance of a name must match the first, as on Android.
+    func hasSameConfiguration(_ other: HotUpdaterInstanceEnvironment) -> Bool {
+        name == other.name && bundle == other.bundle && options == other.options
     }
 
     static func isValidName(_ name: String) -> Bool {
@@ -139,9 +199,9 @@ struct HotUpdaterInstanceEnvironment {
 
     func fingerprintHash() -> String? {
         guard isMain else {
-            return namedInfoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
+            return options.fingerprintHash ?? namedInfoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
         }
-        if let override = config.fingerprintHash, !override.isEmpty {
+        if let override = config.overrides.fingerprintHash, !override.isEmpty {
             return override
         }
         return config.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
@@ -149,9 +209,9 @@ struct HotUpdaterInstanceEnvironment {
 
     func defaultChannel() -> String {
         guard isMain else {
-            return namedInfoValue(forKey: "HOT_UPDATER_CHANNEL") ?? Self.defaultChannel
+            return options.channel ?? namedInfoValue(forKey: "HOT_UPDATER_CHANNEL") ?? Self.defaultChannel
         }
-        if let override = config.channel, !override.isEmpty {
+        if let override = config.overrides.channel, !override.isEmpty {
             return override
         }
         return config.infoValue(forKey: "HOT_UPDATER_CHANNEL") ?? Self.defaultChannel
@@ -160,36 +220,47 @@ struct HotUpdaterInstanceEnvironment {
     /// The key bundle signatures are verified with; nil disables signing.
     func publicKey() -> String? {
         guard isMain else {
-            return namedInfoValue(forKey: "HOT_UPDATER_PUBLIC_KEY")
+            return options.publicKey ?? namedInfoValue(forKey: "HOT_UPDATER_PUBLIC_KEY")
         }
         return SignatureVerifier.getPublicKeyFromConfig(config)
     }
 
     func updateStrategy() -> UpdateStrategy {
-        let fingerprintHash = isMain ? mainIsolationFingerprintHash() : fingerprintHash()
-        return (fingerprintHash?.isEmpty == false) ? .fingerprint : .appVersion
+        isolationFingerprintHash() != nil ? .fingerprint : .appVersion
+    }
+
+    /// The fingerprint hash the isolation key and the update strategy use,
+    /// or nil for the appVersion strategy.
+    func isolationFingerprintHash() -> String? {
+        Self.optionValue(isMain ? mainIsolationFingerprintHash() : fingerprintHash())
     }
 
     /// The prefix of this instance's preferences, also stamped into its
     /// metadata: a change wipes its bundles. Main keeps
-    /// `hotupdater_{fingerprint}_{appVersion}_{channel}_`, or
-    /// `HotUpdaterConfig.isolationKey` verbatim; a named instance prefixes the
-    /// same fields with `hotupdater_instance_<name>_`.
-    func isolationKey(appVersion: String?) -> String {
+    /// `hotupdater_{fingerprint}_{minBundleId}_{channel}_` under the
+    /// fingerprint strategy and `hotupdater_{appVersion}_{channel}_` under the
+    /// appVersion strategy, or the deprecated `HotUpdaterConfig.isolationKey`
+    /// verbatim; a named instance prefixes the same fields with
+    /// `hotupdater_instance_<name>_`.
+    ///
+    /// A fingerprint build's state is keyed by the artifact, not the host
+    /// app's version: a host release that ships the same artifact keeps its
+    /// downloads, and a new build, which has a new `minBundleId`, starts from
+    /// its newer embedded bundle. A key written before this format differs,
+    /// so the stored bundles are discarded once.
+    func isolationKey(appVersion: String?, minBundleId: String) -> String {
         if isMain,
-           let override = config.isolationKey,
+           let override = config.overrides.isolationKey,
            !override.isEmpty {
             return override
         }
 
-        let fingerprintHash = isMain ? mainIsolationFingerprintHash() : fingerprintHash()
-        let appVersion = appVersion ?? "unknown"
-        // Include both fingerprint hash and app version for complete isolation
         let baseKey: String
-        if let hash = fingerprintHash, !hash.isEmpty {
-            baseKey = "\(hash)_\(appVersion)"
+        if let hash = isolationFingerprintHash() {
+            let minBundleId = minBundleId.trimmingCharacters(in: .whitespacesAndNewlines)
+            baseKey = "\(hash)_\(minBundleId.isEmpty ? "unknown" : minBundleId)"
         } else {
-            baseKey = appVersion
+            baseKey = appVersion ?? "unknown"
         }
 
         let prefix = isMain ? "hotupdater_" : "hotupdater_instance_\(name)_"
@@ -199,7 +270,7 @@ struct HotUpdaterInstanceEnvironment {
     /// Main's isolation key and update strategy have always taken an empty
     /// programmatic fingerprint as "none" instead of reading Info.plist.
     private func mainIsolationFingerprintHash() -> String? {
-        config.fingerprintHash
+        config.overrides.fingerprintHash
             ?? config.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
     }
 
@@ -214,33 +285,72 @@ struct HotUpdaterInstanceEnvironment {
     }
 }
 
-/// The bundle main works with. Main is one service like any name: its
-/// storage and isolation key come from the first bundle it is given, so a
-/// main `HotUpdaterInstance` with another bundle would read that bundle's
-/// fingerprint, channel, and public key over state keyed by the first.
+/// The bundle and options main works with. Main is one service like any
+/// name: its storage and isolation key come from the first bundle and values
+/// it is given, so a main `HotUpdaterInstance` with another bundle, channel,
+/// fingerprint hash, or public key would read them over state keyed by the
+/// first.
 final class HotUpdaterMainBundle {
     static let shared = HotUpdaterMainBundle()
 
     private let lock = NSLock()
     private var bundle: Bundle?
+    /// The channel, fingerprint hash, and public key main's impl was created
+    /// with, which fixed its isolation key. Nil until the impl exists.
+    private var created: HotUpdaterConfig.Overrides?
     private let config: HotUpdaterConfig
 
     init(config: HotUpdaterConfig = .shared) {
         self.config = config
     }
 
-    /// Makes `bundle` main's for a `HotUpdaterInstance`.
-    /// Throws when main already works with another bundle.
-    func claim(_ bundle: Bundle) throws {
+    /// Makes `options.bundle` main's and records `options`' channel,
+    /// fingerprint hash, and public key in `config` for a main
+    /// `HotUpdaterInstance`, before main's impl exists. A value left nil
+    /// keeps what main has. Throws when main already works with another
+    /// bundle, or already holds another of these values: from an earlier
+    /// main instance, from the deprecated `HotUpdater.configure`, or because
+    /// main's impl was created with another.
+    func claim(_ options: HotUpdaterOptions) throws {
+        try claim(
+            options.bundle,
+            channel: options.channel,
+            fingerprintHash: options.fingerprintHash,
+            publicKey: options.publicKey
+        )
+    }
+
+    func claim(
+        _ bundle: Bundle,
+        channel: String? = nil,
+        fingerprintHash: String? = nil,
+        publicKey: String? = nil
+    ) throws {
         lock.lock()
         defer { lock.unlock() }
         if let claimed = self.bundle, claimed != bundle {
-            throw NativeUpdateCheckError.hotUpdater(
-                "HotUpdater instance \"\(HotUpdaterInstanceEnvironment.mainName)\" was already created with another bundle"
-            )
+            throw Self.conflict("bundle")
+        }
+        let channel = HotUpdaterInstanceEnvironment.optionValue(channel)
+        let fingerprintHash = HotUpdaterInstanceEnvironment.optionValue(fingerprintHash)
+        let publicKey = HotUpdaterInstanceEnvironment.optionValue(publicKey)
+        let recorded = config.overrides
+        if let created {
+            // The impl's key is fixed: every value counts, nil included.
+            try Self.check(channel, against: created.channel, always: true, field: "channel")
+            try Self.check(fingerprintHash, against: created.fingerprintHash, always: true, field: "fingerprintHash")
+            try Self.check(publicKey, against: created.publicKey, always: true, field: "publicKey")
+        } else {
+            try Self.check(channel, against: recorded.channel, always: false, field: "channel")
+            try Self.check(fingerprintHash, against: recorded.fingerprintHash, always: false, field: "fingerprintHash")
+            try Self.check(publicKey, against: recorded.publicKey, always: false, field: "publicKey")
         }
         self.bundle = bundle
         config.bundle = bundle
+        guard created == nil else {
+            return
+        }
+        config.recordOptions(channel: channel, fingerprintHash: fingerprintHash, publicKey: publicKey)
     }
 
     /// Records the bundle `HotUpdater.bundleURL(bundle:)` launches main with,
@@ -253,5 +363,37 @@ final class HotUpdaterMainBundle {
             self.bundle = bundle
         }
         config.bundle = bundle
+    }
+
+    /// Called as main's impl is created, before it reads its isolation key:
+    /// from then on a main instance must match the values it was created
+    /// with.
+    func noteImplCreated() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard created == nil else {
+            return
+        }
+        let main = HotUpdaterInstanceEnvironment.main(config: config)
+        created = HotUpdaterConfig.Overrides(
+            fingerprintHash: main.isolationFingerprintHash(),
+            publicKey: main.publicKey(),
+            channel: main.defaultChannel()
+        )
+    }
+
+    /// `value` conflicts with `held` when both are set and differ, or, when
+    /// `always`, whenever `value` is set and differs.
+    private static func check(_ value: String?, against held: String?, always: Bool, field: String) throws {
+        guard let value, always || held != nil, value != held else {
+            return
+        }
+        throw conflict(field)
+    }
+
+    private static func conflict(_ field: String) -> NativeUpdateCheckError {
+        NativeUpdateCheckError.hotUpdater(
+            "HotUpdater instance \"\(HotUpdaterInstanceEnvironment.mainName)\" was already created with another \(field)"
+        )
     }
 }

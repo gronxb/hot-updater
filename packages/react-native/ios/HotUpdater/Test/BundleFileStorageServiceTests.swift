@@ -3236,6 +3236,35 @@ struct BundleFileStorageServiceTests {
         #expect(service.prepareLaunch(bundle: .main, pendingRecovery: nil).launchedBundleId == nil)
     }
 
+    @Test
+    func aStoreKeyedByTheOldFingerprintFormatIsWipedOnce() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let store = root.appendingPathComponent("bundle-store", isDirectory: true)
+        let config = HotUpdaterConfig()
+        try HotUpdaterMainBundle(config: config).claim(.main, fingerprintHash: "fingerprint")
+        let main = HotUpdaterInstanceEnvironment.main(config: config)
+        // Before: fingerprint + app version + channel.
+        let oldKey = "hotupdater_fingerprint_1.0.0_production_"
+        let newKey = main.isolationKey(appVersion: "1.0.0", minBundleId: "0199b0f2-6c3a-7000-8000-000000000001")
+        #expect(newKey == "hotupdater_fingerprint_0199b0f2-6c3a-7000-8000-000000000001_production_")
+        #expect(newKey != oldKey)
+        let downloaded = try stageLaunchableBundle(in: store, bundleId: "downloaded-bundle", isolationKey: oldKey)
+
+        // The first launch with the new key discards the old store.
+        let upgraded = makeInstanceStorageService(documentsDirectory: root, instance: main, isolationKey: newKey)
+        #expect(!FileManager.default.fileExists(atPath: downloaded.path))
+        #expect(upgraded.peekLaunchBundleId() == nil)
+
+        // A bundle staged under the new key survives the next launches.
+        let next = try stageLaunchableBundle(in: store, bundleId: "next-bundle", isolationKey: newKey)
+        for _ in 0..<2 {
+            let relaunched = makeInstanceStorageService(documentsDirectory: root, instance: main, isolationKey: newKey)
+            #expect(FileManager.default.fileExists(atPath: next.path))
+            #expect(relaunched.peekLaunchBundleId() == "next-bundle")
+        }
+    }
+
     // MARK: - Instance names
 
     @Test
@@ -3412,6 +3441,18 @@ private func makeInstanceStorageService(
 
 private func instanceStoreDirectory(documentsDirectory: URL, instance: HotUpdaterInstanceEnvironment) -> URL {
     URL(fileURLWithPath: instance.bundleStorePath(documentsPath: documentsDirectory.path), isDirectory: true)
+}
+
+/// A launchable stable bundle in `store`, with metadata stamped with
+/// `isolationKey`, as a download leaves it; returns its directory.
+private func stageLaunchableBundle(in store: URL, bundleId: String, isolationKey: String) throws -> URL {
+    let directory = store.appendingPathComponent(bundleId, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    try writeBundle(in: directory, bundleFileName: "index.ios.bundle")
+    try writeManifest(in: directory, bundleId: bundleId)
+    #expect(BundleMetadata(isolationKey: isolationKey, stableBundleId: bundleId)
+        .save(to: store.appendingPathComponent(BundleMetadata.metadataFilename)))
+    return directory
 }
 
 /// A launchable bundle in main's store and in `widget`'s, each with its own
