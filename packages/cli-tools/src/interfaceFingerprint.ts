@@ -478,6 +478,9 @@ const findConfiguredPatches = async (
     patchedDependencies?: Record<string, string>;
     pnpm?: { patchedDependencies?: Record<string, string> };
     resolutions?: Record<string, string>;
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
+    optionalDependencies?: Record<string, string>;
   } | null;
   const workspace = await fs
     .readFile(path.join(root, "pnpm-workspace.yaml"), "utf8")
@@ -496,10 +499,17 @@ const findConfiguredPatches = async (
     name: packageNameOf(key),
     file: path.resolve(root, file),
   }));
-  for (const [key, value] of Object.entries(manifest?.resolutions ?? {})) {
+  // Yarn's `patch:` protocol, in a resolution (keyed `name@range`) or a
+  // dependency (keyed `name`): `patch:<name>@<range>#<file>[::<params>]`.
+  for (const [key, value] of [
+    ...Object.entries(manifest?.resolutions ?? {}),
+    ...Object.entries(manifest?.dependencies ?? {}),
+    ...Object.entries(manifest?.devDependencies ?? {}),
+    ...Object.entries(manifest?.optionalDependencies ?? {}),
+  ]) {
     const hash = value.lastIndexOf("#");
     if (!value.startsWith("patch:") || hash < 0) continue;
-    const file = value.slice(hash + 1);
+    const file = value.slice(hash + 1).split("::")[0]!;
     patches.push({
       name: packageNameOf(key),
       file: path.resolve(root, file.replace(/^~\//, "")),
