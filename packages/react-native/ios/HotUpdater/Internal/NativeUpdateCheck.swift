@@ -1580,22 +1580,31 @@ final class NativeUpdateChecker {
         }
     }
 
-    /// The longest response body queued: the queue lives in the key-value store.
-    private static let httpResponseBodyLimit = 4_096
+    /// The longest response body queued, in UTF-16 code units as the Android
+    /// and JavaScript paths count it: the queue lives in the key-value store.
+    /// A grapheme count would let one character with thousands of combining
+    /// marks through whole.
+    static let httpResponseBodyLimit = 4_096
+
+    /// The body as queued: at most `httpResponseBodyLimit` UTF-16 code units.
+    static func queuedHttpResponseBody(_ body: String) -> (body: String, truncated: Bool) {
+        let units = body.utf16
+        guard units.count > httpResponseBodyLimit else { return (body, false) }
+        // Decoding repairs a surrogate pair split at the limit.
+        return (String(decoding: Array(units.prefix(httpResponseBodyLimit)), as: UTF16.self), true)
+    }
 
     /// Queues a catalog or artifact response for `onHttpResponse`, as
     /// fetchUpdateResponse.ts reports it. `resource` is "catalog" or "artifact".
     private func queueHttpResponse(_ url: URL, resource: String, _ response: NativeUpdateResponse) {
         let path = url.path.isEmpty ? "/" : url.path
-        let truncated = response.body.count > Self.httpResponseBodyLimit
+        let queued = Self.queuedHttpResponseBody(response.body)
         var payload: [String: Any] = [
             "resource": resource,
             "path": path,
             "status": response.status,
-            "body": response.bodyReadFailed
-                ? NSNull()
-                : truncated ? String(response.body.prefix(Self.httpResponseBodyLimit)) : response.body,
-            "bodyTruncated": truncated,
+            "body": response.bodyReadFailed ? NSNull() : queued.body,
+            "bodyTruncated": queued.truncated,
         ]
         if let requestChannel { payload["channel"] = requestChannel }
         queueEvent("onHttpResponse", payload)
