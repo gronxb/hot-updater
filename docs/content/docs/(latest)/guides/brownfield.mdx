@@ -1,0 +1,498 @@
+---
+title: "Brownfield Apps"
+description: "Ship OTA updates to React Native packaged as an XCFramework or AAR inside an existing native iOS or Android app."
+icon: Boxes
+---
+
+import { Accordion, Accordions } from "fumadocs-ui/components/accordion";
+import { Callout } from "fumadocs-ui/components/callout";
+import { Step, Steps } from "fumadocs-ui/components/steps";
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
+
+## Overview
+
+A brownfield app is an existing native iOS or Android app that shows some
+screens with React Native. The React Native code lives in its own project and
+ships to the native app as a prebuilt artifact: an **XCFramework** on iOS and
+an **AAR** on Android. The native app never runs Metro, Node.js, or the Hot
+Updater CLI.
+
+Hot Updater works inside that artifact:
+
+- The React Native project keeps the usual setup: `@hot-updater/react-native`,
+  `hot-updater.config.ts`, `HotUpdater.init`, and `hot-updater deploy`.
+- The artifact asks Hot Updater for the JavaScript bundle when React Native
+  starts. Hot Updater returns the downloaded update, or the bundle embedded in
+  the artifact.
+- The CLI writes the channel, fingerprint, and signing public key into the
+  artifact's own `Info.plist` and `AndroidManifest.xml`, so they travel with
+  it.
+- The native app calls one function of the artifact and never imports Hot
+  Updater.
+
+```text
+React Native project (BrownfieldRN)
+├─ ios/BrownfieldLib       ── package ──▶ BrownfieldLib.xcframework ──▶ native iOS app
+├─ android/brownfieldlib   ── package ──▶ brownfieldlib AAR         ──▶ native Android app
+└─ hot-updater deploy      ──────────────▶ update server ──▶ downloaded by the artifact
+```
+
+This guide uses [React Native Brownfield](https://oss.callstack.com/react-native-brownfield/)
+to package the artifacts, through its `brownfield` CLI or the Rock brownfield
+plugins. Both produce the same artifacts with the same runtime library, so
+the Hot Updater steps are the same.
+
+## Before you start
+
+- Package and run React Native in your native app without Hot Updater first.
+  Follow the React Native Brownfield
+  [iOS](https://oss.callstack.com/react-native-brownfield/docs/getting-started/ios)
+  and [Android](https://oss.callstack.com/react-native-brownfield/docs/getting-started/android)
+  guides, or the [Rock brownfield guide](https://www.rockjs.dev/docs/brownfield/intro).
+  For a React Native CLI project,
+  `npm create @callstack/react-native-brownfield@latest` creates the framework
+  target and library module.
+- Use the New Architecture, which React Native Brownfield requires.
+- Install Hot Updater in the React Native project and connect it to an update
+  server, as in [Install packages](/docs/get-started/installation) and
+  [Connect your app](/docs/get-started/app-setup#configure-the-update-client).
+  Skip that page's [native code setup](/docs/get-started/app-setup#native-code-setup):
+  this guide replaces it.
+
+The examples use these names. Replace them with yours:
+
+| Name | Meaning |
+| --- | --- |
+| `BrownfieldRN` | The React Native project, and the component it registers with `AppRegistry` |
+| `BrownfieldLib` | The iOS framework target and its XCFramework |
+| `brownfieldlib` | The Android library module and its AAR |
+| `com.brownfieldrn` | The Android library module's package |
+
+## Choose an update strategy
+
+[Fingerprint](/docs/guides/update-strategies/fingerprint) suits brownfield apps
+best. Its hash comes from the React Native project, which builds every native
+part the JavaScript bundle depends on, so it changes only when you ship a new
+artifact.
+
+[App Version](/docs/guides/update-strategies/app-version) compares the
+**native app's** version: `CFBundleShortVersionString` of the app on iOS and
+`versionName` of the app on Android. The artifact has no version of its own at
+runtime. With App Version, deploy each update with `--target-app-version` set
+to the native app versions that contain the matching artifact.
+
+```ts title="hot-updater.config.ts"
+export default defineConfig({
+  // ... build, storage, database, and plugins
+  updateStrategy: "fingerprint",
+  fingerprint: {
+    extraSources: {
+      ios: [
+        "ios/BrownfieldLib/**/*.swift",
+        "ios/BrownfieldRN.xcodeproj/project.pbxproj",
+      ],
+      android: [
+        "android/brownfieldlib/src/**/*.kt",
+        "android/brownfieldlib/build.gradle.kts",
+      ],
+    },
+  },
+});
+```
+
+The fingerprint skips the `ios/` and `android/` trees by default.
+`extraSources` adds the framework and library module files you write in the
+steps below, and the Xcode project file that defines the framework target's
+build settings.
+
+## Connect the iOS framework
+
+<Steps>
+<Step>
+
+### Choose the bundle in the framework
+
+The framework's public interface file, which re-exports `ReactBrownfield`,
+starts React Native. Give React Native Brownfield a `bundleURLOverride` that
+asks Hot Updater for the bundle:
+
+```swift title="ios/BrownfieldLib/BrownfieldLib.swift"
+import Foundation
+
+@_exported import ReactBrownfield
+internal import HotUpdater // [!code ++]
+
+public let ReactNativeBundle = Bundle(for: InternalClassForBundle.self)
+
+class InternalClassForBundle {}
+
+/// Starts React Native with Hot Updater choosing the JavaScript bundle. // [!code ++:12]
+public func startReactNativeWithHotUpdater(onBundleLoaded: (() -> Void)? = nil) {
+  ReactNativeBrownfield.shared.bundle = ReactNativeBundle
+  ReactNativeBrownfield.shared.bundleURLOverride = {
+    #if DEBUG
+    return nil // Metro
+    #else
+    return HotUpdater.bundleURL(bundle: ReactNativeBundle)
+    #endif
+  }
+  ReactNativeBrownfield.shared.startReactNative(onBundleLoaded: onBundleLoaded)
+}
+```
+
+`HotUpdater.bundleURL(bundle: ReactNativeBundle)` returns the downloaded
+update, or `main.jsbundle` embedded in the framework. Hot Updater also reads
+its `HOT_UPDATER_*` keys from this bundle's `Info.plist` and reuses the bundle
+when it rolls back.
+
+Keep React Native Brownfield's default of loading the bundle with the first
+React Native screen. With `preloadBundle: true`, a new update loads while the
+app starts, and closing the app before any React Native screen appears counts
+as an [unfinished launch](/docs/concepts/automatic-rollback), which rolls the
+update back.
+
+<Callout type="info">
+  `internal import` keeps `HotUpdater` out of the framework's public Swift
+  interface, so the native app needs no `HotUpdater` module to build. A plain
+  `import HotUpdater` makes the native app fail with "no such module
+  'HotUpdater'".
+</Callout>
+
+</Step>
+<Step>
+
+### Start React Native from the iOS app
+
+Call the framework's function instead of
+`ReactNativeBrownfield.shared.startReactNative`. It sets every option React
+Native Brownfield reads, so set nothing on `ReactNativeBrownfield.shared` after
+the call.
+
+<Tabs items={["SwiftUI", "UIKit"]}>
+  <Tab value="SwiftUI">
+
+```swift title="NativeApp/NativeApp.swift"
+import SwiftUI
+import BrownfieldLib
+
+@main
+struct NativeApp: App {
+  init() {
+    startReactNativeWithHotUpdater()
+  }
+
+  var body: some Scene {
+    WindowGroup {
+      NavigationStack {
+        NavigationLink("Open React Native") {
+          ReactNativeView(moduleName: "BrownfieldRN")
+        }
+      }
+    }
+  }
+}
+```
+
+  </Tab>
+  <Tab value="UIKit">
+
+```swift title="NativeApp/AppDelegate.swift"
+import UIKit
+import BrownfieldLib
+
+@main
+class AppDelegate: UIResponder, UIApplicationDelegate {
+  var window: UIWindow?
+
+  func application(
+    _ application: UIApplication,
+    didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
+  ) -> Bool {
+    startReactNativeWithHotUpdater()
+
+    window = UIWindow(frame: UIScreen.main.bounds)
+    window?.rootViewController = ReactNativeViewController(moduleName: "BrownfieldRN")
+    window?.makeKeyAndVisible()
+    return true
+  }
+}
+```
+
+  </Tab>
+</Tabs>
+
+</Step>
+</Steps>
+
+## Connect the Android library
+
+<Steps>
+<Step>
+
+### Choose the bundle in the host manager
+
+The library module's `ReactNativeHostManager` creates the React host. Pass
+Hot Updater's bundle path as `jsBundleFilePath`, then hand the host to Hot
+Updater:
+
+```kotlin title="android/brownfieldlib/src/main/java/com/brownfieldrn/ReactNativeHostManager.kt"
+package com.brownfieldrn
+
+import android.app.Application
+import com.callstack.reactnativebrownfield.OnJSBundleLoaded
+import com.callstack.reactnativebrownfield.ReactNativeBrownfield
+import com.facebook.react.PackageList
+import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+import com.hotupdater.HotUpdater // [!code ++]
+
+object ReactNativeHostManager {
+    fun initialize(application: Application, onJSBundleLoaded: OnJSBundleLoaded? = null) {
+        ReactNativeBrownfield.initialize(application, onJSBundleLoaded) {
+            getDefaultReactHost(
+                context = application,
+                packageList = PackageList(application).packages,
+                jsMainModulePath = "index",
+                jsBundleAssetPath = "index.android.bundle",
+                jsBundleFilePath = // [!code ++:2]
+                    if (BuildConfig.DEBUG) null else HotUpdater.getJSBundleFile(application),
+                useDevSupport = BuildConfig.DEBUG,
+                jsRuntimeFactory = null,
+            )
+        }
+        HotUpdater.setReactHost(ReactNativeBrownfield.shared.reactHost) // [!code ++]
+    }
+}
+```
+
+`HotUpdater.getJSBundleFile` returns the downloaded update, or
+`assets://index.android.bundle` embedded in the AAR. A native app has no
+`ReactApplication`, so `HotUpdater.setReactHost` gives Hot Updater the host it
+runs.
+
+<Callout type="warn">
+  `ReactNativeBrownfield.initialize` loads React Native's native libraries.
+  Do not call `loadReactNative(application)` before it: a second load
+  crashes with "Feature flags cannot be overridden more than once".
+</Callout>
+
+</Step>
+<Step>
+
+### Give the library manifest an application element
+
+The CLI writes Hot Updater's values as `<meta-data>` of an `<application>`
+element. Android merges the library's manifest into the native app, so add one
+to the library:
+
+```xml title="android/brownfieldlib/src/main/AndroidManifest.xml"
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application /> <!-- [!code ++] -->
+</manifest>
+```
+
+</Step>
+<Step>
+
+### Start React Native from the Android app
+
+```kotlin title="app/src/main/java/com/example/nativeapp/NativeApplication.kt"
+import android.app.Application
+import com.brownfieldrn.ReactNativeHostManager
+
+class NativeApplication : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        ReactNativeHostManager.initialize(this)
+    }
+}
+```
+
+Show the screens with `ReactNativeFragment.createReactNativeFragment("BrownfieldRN")`
+or `ReactNativeBrownfield.shared.createView(...)`, as in the React Native
+Brownfield guide.
+
+</Step>
+</Steps>
+
+## Embed the native values
+
+Run the native configuration commands in the React Native project, before you
+package. By default they update every `Info.plist` under `ios/` and every
+`AndroidManifest.xml` under `android/`, which includes the framework target and
+the library module:
+
+```bash
+npx hot-updater channel set production
+npx hot-updater fingerprint create
+```
+
+If you use [bundle signing](/docs/guides/bundle-signing), export the public key
+the same way:
+
+```bash
+npx hot-updater keys export-public
+```
+
+Check that `ios/BrownfieldLib/Info.plist` has `HOT_UPDATER_CHANNEL` and
+`HOT_UPDATER_FINGERPRINT_HASH`, and that the library manifest has
+`com.hotupdater.CHANNEL` and `com.hotupdater.FINGERPRINT_HASH`. To limit the
+commands to the artifacts, list the files in your config:
+
+```ts title="hot-updater.config.ts"
+export default defineConfig({
+  // ...
+  platform: {
+    ios: { infoPlistPaths: ["ios/BrownfieldLib/Info.plist"] },
+    android: {
+      androidManifestPaths: ["android/brownfieldlib/src/main/AndroidManifest.xml"],
+    },
+  },
+});
+```
+
+<Accordions>
+<Accordion title="Set the values from the native app instead">
+
+When the native app decides a value at runtime, such as a channel per
+customer, set it before React Native starts. These values replace the embedded
+ones:
+
+```swift title="iOS, inside the framework"
+HotUpdater.configure(
+  withFingerprintHash: nil,
+  publicKey: nil,
+  channel: "beta",
+  isolationKey: nil
+)
+```
+
+```kotlin title="Android, inside the library module"
+HotUpdater.configure(channel = "beta")
+```
+
+Call it before `startReactNativeWithHotUpdater()` on iOS and before
+`HotUpdater.getJSBundleFile` on Android. `isolationKey` replaces the storage
+key that separates downloaded updates by fingerprint, app version, and channel.
+
+</Accordion>
+</Accordions>
+
+## Package and ship the artifacts
+
+Package after the native values are embedded. Run the commands from the React
+Native project:
+
+<Tabs items={["Brownfield CLI", "Rock"]}>
+  <Tab value="Brownfield CLI">
+
+```bash
+npx brownfield package:ios
+npx brownfield package:android
+npx brownfield publish:android
+```
+
+  </Tab>
+  <Tab value="Rock">
+
+```bash
+npx rock package:ios --scheme BrownfieldLib --configuration Release
+npx rock package:aar --variant Release --module-name brownfieldlib
+npx rock publish-local:aar --module-name brownfieldlib
+```
+
+  </Tab>
+</Tabs>
+
+Add the XCFrameworks and the AAR to the native app as the React Native
+Brownfield guide describes, then build the native app in **Release**. Debug
+builds load the bundle from Metro and never apply updates.
+
+Repeat `fingerprint create` and packaging whenever the React Native project's
+native code or dependencies change. A new artifact needs a new native app
+release.
+
+## Deploy an update
+
+Deploy from the React Native project as usual. Pass the channel you embedded:
+
+```bash
+npx hot-updater deploy -p ios -c production
+npx hot-updater deploy -p android -c production
+```
+
+See [Deploy](/docs/guides/deploy).
+
+## Apply updates without reloading
+
+React Native runs for the life of the native app's process, so download an
+update and let it apply the next time the app starts. Do not call
+`hotUpdater.reload()` in a native app: on Android it restarts the whole native
+app, which opens again at its first native screen.
+
+```tsx title="src/updates.ts"
+import { hotUpdater, reportUpdateError } from "./hotUpdater";
+
+export async function downloadUpdate() {
+  try {
+    const update = await hotUpdater.checkForUpdate({
+      updateStrategy: "fingerprint",
+    });
+
+    if (!update) {
+      return;
+    }
+
+    await update.updateBundle();
+  } catch (error) {
+    reportUpdateError(error);
+  }
+}
+```
+
+Call it where the React Native screen starts, for example in a top-level
+`useEffect`. The next launch of the native app loads the downloaded bundle. An
+update deployed as required (`shouldForceUpdate`) applies the same way.
+
+[Automatic rollback](/docs/concepts/automatic-rollback) works as in any app: a
+bundle that crashes before its first React Native screen appears rolls back to
+the previous bundle, or to the one embedded in the artifact.
+
+## Verify
+
+1. Show the native values in a React Native screen:
+
+   ```tsx
+   <Text>Channel: {hotUpdater.getChannel()}</Text>
+   <Text>Fingerprint: {String(hotUpdater.getFingerprintHash())}</Text>
+   <Text>Bundle ID: {hotUpdater.getBundleId()}</Text>
+   ```
+
+2. Build the native app in Release and open a React Native screen. The channel
+   and fingerprint match the values you embedded.
+3. Change a screen and deploy. Open the React Native screen so it downloads the
+   update, then close and reopen the native app. The bundle ID changes and the
+   screen shows your change.
+4. Close and reopen the native app again. The update stays applied.
+
+## Troubleshooting
+
+| Symptom | Cause and fix |
+| --- | --- |
+| The channel is `production` and the fingerprint is `null` | The artifact has no Hot Updater values. Run `channel set` and `fingerprint create`, check the framework's `Info.plist` and the library manifest, and package again. On Android, check that the library manifest has an `<application>` element. |
+| The native app fails with "no such module 'HotUpdater'" | The framework imports `HotUpdater` publicly. Use `internal import HotUpdater`. |
+| The update downloads but the screen does not change | The native app runs a Debug build, which loads Metro. Build it in Release. |
+| The native app restarts at its first screen on Android | Something calls `hotUpdater.reload()`. Remove it; the update applies at the next launch. |
+| "Feature flags cannot be overridden more than once" on Android | `loadReactNative` ran before `ReactNativeBrownfield.initialize`. Remove it, and pass the React host as a factory, `ReactNativeBrownfield.initialize(application) { getDefaultReactHost(...) }`, as the host manager above does. A host built before `initialize` fails with "SoLoader.init() not yet called". |
+| The AAR keeps showing JavaScript from an earlier package | The library module reused an earlier bundle. Delete `android/brownfieldlib/build` and package again. |
+| Deploy reports a fingerprint mismatch | The native code changed after `fingerprint create`. Create the fingerprint again, package, and ship a new native app release. |
+
+## Native API
+
+| Platform | API | Use |
+| --- | --- | --- |
+| iOS | `HotUpdater.bundleURL(bundle:)` | Returns the bundle to load; the bundle holds the embedded `main.jsbundle` and the `HOT_UPDATER_*` keys |
+| iOS | `HotUpdater.configure(withFingerprintHash:publicKey:channel:isolationKey:)` | Replaces embedded values at runtime |
+| Android | `HotUpdater.getJSBundleFile(context)` | Returns the bundle path to load |
+| Android | `HotUpdater.setReactHost(reactHost)` | Gives Hot Updater a host that no `ReactApplication` owns |
+| Android | `HotUpdater.configure(...)` | Replaces embedded values at runtime |

@@ -153,7 +153,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         if let override = HotUpdaterConfig.shared.channel, !override.isEmpty {
             return override
         }
-        return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_CHANNEL") as? String ?? Self.DEFAULT_CHANNEL
+        return HotUpdaterConfig.shared.infoValue(forKey: "HOT_UPDATER_CHANNEL") ?? Self.DEFAULT_CHANNEL
     }
 
     public static func minBundleId() -> String {
@@ -173,7 +173,7 @@ private func hotUpdaterGetMinBundleId() -> String {
 
         // Get fingerprint hash from programmatic override or Info.plist
         let fingerprintHash = HotUpdaterConfig.shared.fingerprintHash
-            ?? Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
+            ?? HotUpdaterConfig.shared.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
 
         // Get app version and channel
         let appVersion = self.appVersion ?? "unknown"
@@ -202,9 +202,8 @@ private func hotUpdaterGetMinBundleId() -> String {
            !channel.isEmpty {
             return channel
         }
-        if let override = HotUpdaterConfig.shared.channel, !override.isEmpty {
-            return override
-        }
+        // A runtime channel switch outranks the default channel, which a
+        // programmatic `configure(channel:)` only replaces, as on Android.
         if let savedChannel = try? preferences.getItem(forKey: Self.CHANNEL_STORAGE_KEY),
            !savedChannel.isEmpty {
             return savedChannel
@@ -225,7 +224,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         if let override = HotUpdaterConfig.shared.fingerprintHash, !override.isEmpty {
             return override
         }
-        return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
+        return HotUpdaterConfig.shared.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
     }
 
     // MARK: - Cohort Management
@@ -243,9 +242,11 @@ private func hotUpdaterGetMinBundleId() -> String {
     /**
      * Gets the URL to the bundle file.
      * @param bundle instance to lookup the JavaScript bundle resource. Defaults to Bundle.main.
+     *   It is recorded in `HotUpdaterConfig.shared.bundle` for reloads and Info.plist keys.
      * @return URL to the bundle or nil
      */
     public func bundleURL(bundle: Bundle = Bundle.main) -> URL? {
+        HotUpdaterConfig.shared.bundle = bundle
         return prepareLaunchIfNeeded(bundle: bundle).bundleURL
     }
     

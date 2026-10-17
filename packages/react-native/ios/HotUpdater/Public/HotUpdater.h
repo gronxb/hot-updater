@@ -19,7 +19,9 @@
  /**
  * Returns the currently active bundle URL with specific bundle from the default (static) instance.
  * Callable from Objective-C (e.g., AppDelegate).
- * This is implemented in HotUpdater.mm and calls the Swift static method.
+ * The bundle holds the embedded main.jsbundle, such as a brownfield XCFramework's
+ * bundle. Hot Updater reuses it for reloads and reads its HOT_UPDATER_* Info.plist
+ * keys before the main bundle's.
  */
 + (NSURL *)bundleURLWithBundle:(NSBundle *)bundle NS_SWIFT_NAME(bundleURL(bundle:));
 

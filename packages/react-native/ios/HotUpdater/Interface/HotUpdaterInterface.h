@@ -54,6 +54,7 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 @protocol HotUpdaterConfigInterface <NSObject>
+@property (nonatomic, strong) NSBundle *bundle;
 - (void)configureWithFingerprintHash:(nullable NSString *)fingerprintHash
                            publicKey:(nullable NSString *)publicKey
                              channel:(nullable NSString *)channel

@@ -69,6 +69,12 @@ export class AndroidConfigParser implements ConfigParser {
 
   private getApplication(result: ManifestXml): ApplicationElement | null {
     const application = result.manifest.application;
+    // An empty `<application />`, as in a brownfield library module's
+    // manifest, parses to "" and still takes meta-data.
+    if ((application as unknown) === "") {
+      result.manifest.application = {};
+      return result.manifest.application;
+    }
     if (!application) {
       return null;
     }
