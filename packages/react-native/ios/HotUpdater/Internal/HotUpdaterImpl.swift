@@ -95,8 +95,9 @@ private func hotUpdaterGetMinBundleId() -> String {
         }
     }
     // Serializes the launch's bundle selection with the update check's read
-    // of it, so a check never reads metadata the launch is still selecting from.
-    private let launchPreparationLock = NSLock()
+    // of it, and with a channel reset or built-in commit, which delete
+    // downloaded bundles.
+    private let launchPreparationLock = LaunchPreparationLock()
     private var launchStartObservers: [NSObjectProtocol] = []
 
     private static let CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
@@ -714,7 +715,11 @@ private func hotUpdaterGetMinBundleId() -> String {
             reject("INVALID_SELECTION", error.localizedDescription, error)
             return
         }
-        resolve(bundleStorage.commitReleaseSelection(selection))
+        // A built-in commit deletes every downloaded bundle, so it runs under
+        // the launch lock as a channel reset does.
+        resolve(launchPreparationLock.commitReleaseSelection(selection, in: bundleStorage) {
+            self.currentLaunchSelection = nil
+        })
     }
 
     /**
@@ -866,16 +871,16 @@ private func hotUpdaterGetMinBundleId() -> String {
      * starts from applying in this session.
      */
     func bundleIdForUpdateCheck() -> String? {
-        launchPreparationLock.lock()
-        defer { launchPreparationLock.unlock() }
-        if let launchSelection = currentLaunchSelection ?? runningLaunchSelection {
-            return launchSelection.launchedBundleId
+        launchPreparationLock.withLock {
+            if let launchSelection = currentLaunchSelection ?? runningLaunchSelection {
+                return launchSelection.launchedBundleId
+            }
+            // Settles what the previous process left first, so the check reads the
+            // selection, launch state, and crash history this launch will use.
+            // The crash marker is main's: a named impl must not consume it.
+            bundleStorage.settlePreviousLaunch(pendingRecovery: { self.recoveryManager?.consumePendingCrashRecovery() })
+            return bundleStorage.peekLaunchBundleId()
         }
-        // Settles what the previous process left first, so the check reads the
-        // selection, launch state, and crash history this launch will use.
-        // The crash marker is main's: a named impl must not consume it.
-        bundleStorage.settlePreviousLaunch(pendingRecovery: { self.recoveryManager?.consumePendingCrashRecovery() })
-        return bundleStorage.peekLaunchBundleId()
     }
 
     func releaseCatalogCacheValue(_ partition: String) -> String? {
@@ -895,9 +900,7 @@ private func hotUpdaterGetMinBundleId() -> String {
                              rejecter reject: @escaping RCTPromiseRejectBlock) {
         // Under the launch lock, so React Native never selects a bundle the
         // reset is about to delete.
-        launchPreparationLock.lock()
-        let result = bundleStorage.resetChannel()
-        if case .success = result {
+        let result = launchPreparationLock.resetChannel(in: bundleStorage) {
             do {
                 try preferences.setItem(nil, forKey: Self.CHANNEL_STORAGE_KEY)
             } catch {
@@ -905,7 +908,6 @@ private func hotUpdaterGetMinBundleId() -> String {
             }
             self.currentLaunchSelection = nil
         }
-        launchPreparationLock.unlock()
 
         switch result {
         case .success(let success):
@@ -918,8 +920,10 @@ private func hotUpdaterGetMinBundleId() -> String {
     }
 
     private func prepareLaunchIfNeeded(bundle: Bundle) -> LaunchSelection {
-        launchPreparationLock.lock()
-        defer { launchPreparationLock.unlock() }
+        launchPreparationLock.withLock { prepareLaunchLocked(bundle: bundle) }
+    }
+
+    private func prepareLaunchLocked(bundle: Bundle) -> LaunchSelection {
         if let currentLaunchSelection {
             return currentLaunchSelection
         }
