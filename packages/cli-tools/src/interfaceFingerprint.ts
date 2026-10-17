@@ -139,7 +139,11 @@ const readManifest = async (
 ): Promise<{
   name?: string;
   version?: string;
-  codegenConfig?: { jsSrcsDir?: string };
+  codegenConfig?: {
+    jsSrcsDir?: string;
+    /** The deprecated form React Native codegen still reads. */
+    libraries?: { jsSrcsDir?: string }[];
+  };
 } | null> => {
   try {
     return JSON.parse(
@@ -386,14 +390,26 @@ const findCodegenSpecs = async (
   packageRoot: string,
   platform: Platform,
 ): Promise<string[] | null> => {
-  const jsSrcsDir = (await readManifest(packageRoot))?.codegenConfig?.jsSrcsDir;
-  if (!jsSrcsDir) return null;
-  const files = await fg("**/*.{js,jsx,ts,tsx}", {
-    cwd: path.resolve(packageRoot, jsSrcsDir),
-    absolute: true,
-    ignore: ["**/node_modules/**"],
-  });
-  return files.filter((file) => isCodegenSpecFile(file, platform));
+  const config = (await readManifest(packageRoot))?.codegenConfig;
+  // React Native codegen reads `libraries` instead of the single config when
+  // it is there.
+  const jsSrcsDirs = (config?.libraries ?? (config ? [config] : []))
+    .map(({ jsSrcsDir }) => jsSrcsDir)
+    .filter((dir): dir is string => Boolean(dir));
+  if (jsSrcsDirs.length === 0) return null;
+  const files: string[] = [];
+  for (const jsSrcsDir of jsSrcsDirs) {
+    files.push(
+      ...(await fg("**/*.{js,jsx,ts,tsx}", {
+        cwd: path.resolve(packageRoot, jsSrcsDir),
+        absolute: true,
+        ignore: ["**/node_modules/**"],
+      })),
+    );
+  }
+  return files
+    .filter((file, index) => files.indexOf(file) === index)
+    .filter((file) => isCodegenSpecFile(file, platform));
 };
 
 const isPatchFor = (file: string, name: string) => {

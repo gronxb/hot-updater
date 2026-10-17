@@ -165,6 +165,45 @@ describe("createInterfaceFingerprint", () => {
     expect(await hashOf()).not.toBe(before);
   });
 
+  it("reads the specs of a package that lists codegen libraries", async () => {
+    await write(
+      path.join(root, "packages/local-module/package.json"),
+      manifest({
+        name: "local-module",
+        version: "1.0.0",
+        codegenConfig: {
+          libraries: [
+            { name: "LocalSpec", type: "modules", jsSrcsDir: "src" },
+            { name: "LocalViews", type: "components", jsSrcsDir: "views" },
+          ],
+        },
+      }),
+    );
+    await write(
+      path.join(
+        root,
+        "packages/local-module/views/LocalViewNativeComponent.ts",
+      ),
+      "export default {};",
+    );
+    const before = await hashOf();
+
+    await write(
+      path.join(root, "packages/local-module/ios/Local.swift"),
+      "final class Local { func ping() {} }",
+    );
+    expect(await hashOf()).toBe(before);
+
+    await write(
+      path.join(
+        root,
+        "packages/local-module/views/LocalViewNativeComponent.ts",
+      ),
+      "export default { color: 1 };",
+    );
+    expect(await hashOf()).not.toBe(before);
+  });
+
   it("hashes a dependency declared by name and version", async () => {
     const native = (version: string): NativeInterface => ({
       runtime: "lynx@4.0.3",
