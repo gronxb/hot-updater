@@ -13,16 +13,20 @@ const PACKAGE_NAME = "@expo/fingerprint";
 const MISSING_DEPENDENCY_ERROR_NAME = "MissingFingerprintDependencyError";
 
 /** The command that installs `@expo/fingerprint` with the project's package manager. */
+/**
+ * Installs the engine at an exact version: a range lets a later install pick
+ * another version, which can change every fingerprint.
+ */
 export const getFingerprintDependencyInstallCommand = () => {
   switch (getPackageManager()) {
     case "pnpm":
-      return `pnpm add -D ${PACKAGE_NAME}`;
+      return `pnpm add -D --save-exact ${PACKAGE_NAME}`;
     case "yarn":
-      return `yarn add -D ${PACKAGE_NAME}`;
+      return `yarn add -D --exact ${PACKAGE_NAME}`;
     case "bun":
-      return `bun add -d ${PACKAGE_NAME}`;
+      return `bun add -d --exact ${PACKAGE_NAME}`;
     default:
-      return `npm install -D ${PACKAGE_NAME}`;
+      return `npm install -D --save-exact ${PACKAGE_NAME}`;
   }
 };
 

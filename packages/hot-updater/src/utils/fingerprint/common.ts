@@ -205,6 +205,11 @@ export const getFingerprintEngineChange = (
  * Explains a hash that changed with its engine, for deploy, doctor, and
  * `fingerprint create`.
  */
+// Engines hash sources differently, so only the previous engine can tell
+// whether native inputs changed as well.
+const STILL_DIFFERS =
+  "If the fingerprint still differs with it, native inputs changed too, and builds you shipped need a rebuild.";
+
 export const describeFingerprintEngineChange = (
   change: { before: string; after: string },
   label: string,
@@ -216,8 +221,8 @@ export const describeFingerprintEngineChange = (
     engineName(change.before) !== engineName(change.after)
       ? `${recorded ? `fingerprint.json now records the ${change.after} hash. Rebuild` : "Run `npx hot-updater fingerprint create`, then rebuild"} the ${label} app. Builds you already shipped keep the old fingerprint and receive no updates until users install the new build.`
       : recorded
-        ? `fingerprint.json now records the ${change.after} hash. To keep updating ${label} builds you already shipped, go back to ${change.before} and run \`npx hot-updater fingerprint create\` again, or restore the previous fingerprint.json. Otherwise rebuild the ${label} app.`
-        : `To keep updating ${label} builds you already shipped, go back to ${change.before}. Otherwise run \`npx hot-updater fingerprint create\`, then rebuild the ${label} app.`,
+        ? `fingerprint.json now records the ${change.after} hash. To keep updating ${label} builds you already shipped, go back to ${change.before} and run \`npx hot-updater fingerprint create\` again, or restore the previous fingerprint.json. ${STILL_DIFFERS} Otherwise rebuild the ${label} app.`
+        : `To keep updating ${label} builds you already shipped, go back to ${change.before}. ${STILL_DIFFERS} Otherwise run \`npx hot-updater fingerprint create\`, then rebuild the ${label} app.`,
 });
 
 type OtaFingerprintOptions = {
