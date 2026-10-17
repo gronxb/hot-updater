@@ -129,7 +129,9 @@ fingerprint itself: a Release build computes it from those inputs with
 `npx hot-updater fingerprint hash`, without loading `hot-updater.config.ts`,
 and a Debug build uses the hash `fingerprint.json` holds. When the project
 changed after `fingerprint create`, the build embeds the fingerprint of what
-it was built from and warns that `fingerprint.json` is stale.
+it was built from and warns that `fingerprint.json` is stale. The build embeds
+no fingerprint when the app root has no `fingerprint.json`, so delete it when
+you switch a project to App Version.
 
 Example `fingerprint.json` (sources shortened):
 
