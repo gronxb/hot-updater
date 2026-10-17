@@ -12,6 +12,7 @@ let coreSources = [
     "FileManagerService.swift",
     "HashUtils.swift",
     "HotUpdaterConfig.swift",
+    "HotUpdaterInstanceEnvironment.swift",
     "KeyValueStorageService.swift",
     "LaunchPreparationLock.swift",
     "NativeUpdateCheck.swift",

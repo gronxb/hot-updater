@@ -96,7 +96,7 @@ object SignatureVerifier {
      * @param context Application context
      * @return Public key PEM string or null if not configured
      */
-    private fun getPublicKeyFromConfig(context: Context): String? {
+    internal fun getPublicKeyFromConfig(context: Context): String? {
         val publicKeyPEM =
             NativeConfigUtils.getString(
                 context,
@@ -148,8 +148,17 @@ object SignatureVerifier {
         context: Context,
         bundleFile: File,
         fileHash: String?,
+    ) = verifyBundle(getPublicKeyFromConfig(context), bundleFile, fileHash)
+
+    /**
+     * [verifyBundle] with an instance's own public key, null when signing is off.
+     */
+    internal fun verifyBundle(
+        publicKeyPEM: String?,
+        bundleFile: File,
+        fileHash: String?,
     ) {
-        val signingEnabled = isSigningEnabled(context)
+        val signingEnabled = publicKeyPEM != null
 
         // Rule: null/empty fileHash → REJECT
         if (fileHash.isNullOrEmpty()) {
@@ -172,7 +181,7 @@ object SignatureVerifier {
             }
 
             // Rule: sig:... + public key configured → verify signature
-            verifySignature(context, bundleFile, signature)
+            verifySignature(publicKeyPEM, bundleFile, signature)
         } else {
             // Unsigned format: <hex_hash>
 
@@ -220,12 +229,18 @@ object SignatureVerifier {
         context: Context,
         bundleFile: File,
         signatureBase64: String,
+    ) = verifySignature(getPublicKeyFromConfig(context), bundleFile, signatureBase64)
+
+    /** [verifySignature] with an instance's own public key. */
+    internal fun verifySignature(
+        publicKeyPEM: String?,
+        bundleFile: File,
+        signatureBase64: String,
     ) {
         Log.d(TAG, "Verifying signature for file: ${bundleFile.name}")
 
-        // Get public key from config
-        val publicKeyPEM =
-            getPublicKeyFromConfig(context)
+        val configuredKey =
+            publicKeyPEM
                 ?: run {
                     Log.e(TAG, "Cannot verify signature: public key not configured")
                     throw SignatureVerificationException.PublicKeyNotConfigured()
@@ -233,7 +248,7 @@ object SignatureVerifier {
 
         try {
             // Convert PEM to PublicKey
-            val publicKey = createPublicKey(publicKeyPEM)
+            val publicKey = createPublicKey(configuredKey)
 
             // Calculate file hash
             val fileHashHex =
@@ -261,9 +276,16 @@ object SignatureVerifier {
         context: Context,
         fileHash: String,
         signatureBase64: String,
+    ) = verifyHashSignature(getPublicKeyFromConfig(context), fileHash, signatureBase64)
+
+    /** [verifyHashSignature] with an instance's own public key. */
+    internal fun verifyHashSignature(
+        publicKeyPEM: String?,
+        fileHash: String,
+        signatureBase64: String,
     ) {
-        val publicKeyPEM =
-            getPublicKeyFromConfig(context)
+        val configuredKey =
+            publicKeyPEM
                 ?: run {
                     Log.e(TAG, "Cannot verify signature: public key not configured")
                     throw SignatureVerificationException.PublicKeyNotConfigured()
@@ -271,7 +293,7 @@ object SignatureVerifier {
 
         try {
             verifySignatureForHash(
-                createPublicKey(publicKeyPEM),
+                createPublicKey(configuredKey),
                 fileHash,
                 signatureBase64,
             )

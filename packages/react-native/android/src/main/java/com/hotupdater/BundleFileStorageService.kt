@@ -246,6 +246,10 @@ class BundleFileStorageService(
     private val preferences: PreferencesService,
     private val isolationKey: String,
     private val defaultChannelProvider: () -> String = { HotUpdaterImpl.getChannel(context) },
+    private val fingerprintHashProvider: () -> String? = { HotUpdaterImpl.getFingerprintHash(context) },
+    // The key bundles must be signed with, or null when signing is off.
+    private val publicKeyProvider: () -> String? = { SignatureVerifier.getPublicKeyFromConfig(context) },
+    private val fallbackBundleURL: String = "assets://index.android.bundle",
     builtInAssetResolver: BuiltInAssetResolver? = null,
     private val metadataWriter: (BundleMetadata, File) -> Boolean = { metadata, file ->
         metadata.saveToFile(file)
@@ -685,7 +689,7 @@ class BundleFileStorageService(
 
     private fun resolveUpdateStrategy(): String =
         try {
-            if (HotUpdaterImpl.getFingerprintHash(context).isNullOrEmpty()) {
+            if (fingerprintHashProvider().isNullOrEmpty()) {
                 "appVersion"
             } else {
                 "fingerprint"
@@ -771,9 +775,10 @@ class BundleFileStorageService(
         val packagedHash = builtInAssetResolver.packagedHashIfSourceMatches(assetPath, asset.fileHash) ?: return false
         return HashUtils.calculateSHA256(file).equals(packagedHash, ignoreCase = true) &&
             runCatching {
-                if (SignatureVerifier.isSigningEnabled(context)) {
+                val publicKey = publicKeyProvider()
+                if (publicKey != null) {
                     val signature = asset.signature ?: throw SignatureVerificationException.InvalidSignatureFormat()
-                    SignatureVerifier.verifyHashSignature(context, asset.fileHash, signature)
+                    SignatureVerifier.verifyHashSignature(publicKey, asset.fileHash, signature)
                 }
             }.isSuccess
     }
@@ -1025,15 +1030,13 @@ class BundleFileStorageService(
             throw SignatureVerificationException.FileHashMismatch()
         }
 
-        if (!SignatureVerifier.isSigningEnabled(context)) {
-            return
-        }
+        val publicKey = publicKeyProvider() ?: return
 
         val signature =
             asset.signature
                 ?: throw SignatureVerificationException.InvalidSignatureFormat()
 
-        SignatureVerifier.verifyHashSignature(context, asset.fileHash, signature)
+        SignatureVerifier.verifyHashSignature(publicKey, asset.fileHash, signature)
     }
 
     /**
@@ -1658,7 +1661,7 @@ class BundleFileStorageService(
         return resolvedBundle?.absolutePath ?: urlString
     }
 
-    override fun getFallbackBundleURL(): String = "assets://index.android.bundle"
+    override fun getFallbackBundleURL(): String = fallbackBundleURL
 
     override fun settlePreviousLaunch(pendingRecovery: () -> PendingCrashRecovery?) {
         synchronized(settleLock) {
@@ -2292,7 +2295,7 @@ class BundleFileStorageService(
                     }
 
                     try {
-                        SignatureVerifier.verifyBundle(context, manifestFile, manifestFileHash)
+                        SignatureVerifier.verifyBundle(publicKeyProvider(), manifestFile, manifestFileHash)
                     } catch (e: SignatureVerificationException) {
                         throw HotUpdaterException.signatureVerificationFailed(e)
                     }

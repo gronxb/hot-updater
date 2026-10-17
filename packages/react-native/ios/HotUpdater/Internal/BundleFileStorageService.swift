@@ -390,6 +390,9 @@ class BundleFileStorageService: BundleStorageService {
     private let downloadRetryDelay: TimeInterval
     private let preferences: PreferencesService
     private let isolationKey: String
+    /// Whose store this is: main's `Documents/bundle-store`, or a named
+    /// instance's own, with its public key and update strategy.
+    private let instance: HotUpdaterInstanceEnvironment
 
     // Queue for potentially long-running sequences within updateBundle or for explicit background tasks.
     private let fileOperationQueue: DispatchQueue
@@ -412,8 +415,11 @@ class BundleFileStorageService: BundleStorageService {
     private let updateStrategyProvider: () -> UpdateStrategy
     private let releaseStateLock = NSRecursiveLock()
 
-    private let installIdentityLock = NSLock()
-    private var currentInstallIdentity: InstallIdentity?
+    /// App-wide: every instance's storage reads the same install identity
+    /// file, so one lock and cache per file keep two instances that start at
+    /// once from creating different ids.
+    private static let installIdentityLock = NSLock()
+    private static var installIdentities: [String: InstallIdentity] = [:]
 
     private let protectedBundleStoreEntries: Set<String> = [
         BundleMetadata.metadataFilename,
@@ -742,7 +748,8 @@ class BundleFileStorageService: BundleStorageService {
             throw BundleStorageError.signatureVerificationFailed(.fileHashMismatch)
         }
 
-        guard SignatureVerifier.isSigningEnabled() else {
+        let publicKey = instance.publicKey()
+        guard SignatureVerifier.isSigningEnabled(publicKey: publicKey) else {
             return
         }
 
@@ -752,7 +759,8 @@ class BundleFileStorageService: BundleStorageService {
 
         switch SignatureVerifier.verifyHashSignature(
             fileHash: asset.fileHash,
-            signatureBase64: signature
+            signatureBase64: signature,
+            publicKey: publicKey
         ) {
         case .success:
             return
@@ -765,13 +773,10 @@ class BundleFileStorageService: BundleStorageService {
                 downloadService: DownloadService,
                 preferences: PreferencesService,
                 isolationKey: String,
+                instance: HotUpdaterInstanceEnvironment = .main,
                 builtInBundleIdProvider: @escaping () -> String = { "" },
                 builtInAssetResolver: BuiltInAssetResolver? = nil,
-                updateStrategyProvider: @escaping () -> UpdateStrategy = {
-                    let fingerprintHash = HotUpdaterConfig.shared.fingerprintHash
-                        ?? HotUpdaterConfig.shared.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
-                    return (fingerprintHash?.isEmpty == false) ? .fingerprint : .appVersion
-                },
+                updateStrategyProvider: (() -> UpdateStrategy)? = nil,
                 downloadRetryDelay: TimeInterval = 1) {
 
         self.fileSystem = fileSystem
@@ -779,13 +784,14 @@ class BundleFileStorageService: BundleStorageService {
         self.downloadService = downloadService
         self.preferences = preferences
         self.isolationKey = isolationKey
+        self.instance = instance
         self.builtInBundleIdProvider = builtInBundleIdProvider
         self.builtInAssetResolver = builtInAssetResolver ?? IOSBuiltInAssetResolver(
-            cacheURL: URL(fileURLWithPath: fileSystem.documentsPath())
-                .appendingPathComponent("bundle-store", isDirectory: true)
-                .appendingPathComponent("builtin-index-v1.json")
+            cacheURL: URL(fileURLWithPath: instance.bundleStorePath(documentsPath: fileSystem.documentsPath()), isDirectory: true)
+                .appendingPathComponent("builtin-index-v1.json"),
+            defaultBundle: { instance.bundle }
         )
-        self.updateStrategyProvider = updateStrategyProvider
+        self.updateStrategyProvider = updateStrategyProvider ?? { instance.updateStrategy() }
 
         // Create queue for file operations
         self.fileOperationQueue = DispatchQueue(label: "com.hotupdater.fileoperations",
@@ -877,21 +883,21 @@ class BundleFileStorageService: BundleStorageService {
     /// Loads the install identity, creating it once when its file is missing.
     @discardableResult
     private func loadOrCreateInstallIdentity() -> InstallIdentity {
-        installIdentityLock.lock()
-        defer { installIdentityLock.unlock() }
+        Self.installIdentityLock.lock()
+        defer { Self.installIdentityLock.unlock() }
 
-        if let currentInstallIdentity {
-            return currentInstallIdentity
-        }
         let file = installIdentityFileURL()
+        if let identity = Self.installIdentities[file.path] {
+            return identity
+        }
         if let identity = InstallIdentity.load(from: file) {
-            currentInstallIdentity = identity
+            Self.installIdentities[file.path] = identity
             return identity
         }
 
         let identity = InstallIdentity()
         // Keep the new id for this process even when it cannot be saved.
-        currentInstallIdentity = identity
+        Self.installIdentities[file.path] = identity
         _ = identity.save(to: file)
         return identity
     }
@@ -1644,7 +1650,7 @@ class BundleFileStorageService: BundleStorageService {
      * @return Result with the directory path or error
      */
     func bundleStoreDir() -> Result<String, Error> {
-        let path = (fileSystem.documentsPath() as NSString).appendingPathComponent("bundle-store")
+        let path = instance.bundleStorePath(documentsPath: fileSystem.documentsPath())
         return ensureDirectoryExists(path: path)
     }
     
@@ -1654,7 +1660,7 @@ class BundleFileStorageService: BundleStorageService {
      * @return Result with the directory path or error
      */
     func tempDir() -> Result<String, Error> {
-        let path = (fileSystem.documentsPath() as NSString).appendingPathComponent("bundle-temp")
+        let path = instance.tempPath(documentsPath: fileSystem.documentsPath())
         return ensureDirectoryExists(path: path)
     }
     
@@ -2036,7 +2042,7 @@ class BundleFileStorageService: BundleStorageService {
 
     func peekLaunchBundleId() -> String? {
         // Reads the store without bundleStoreDir(), which creates it.
-        let storeDir = (fileSystem.documentsPath() as NSString).appendingPathComponent("bundle-store")
+        let storeDir = instance.bundleStorePath(documentsPath: fileSystem.documentsPath())
         let metadataFile = URL(fileURLWithPath: storeDir).appendingPathComponent(BundleMetadata.metadataFilename)
         guard let metadata = BundleMetadata.load(from: metadataFile, expectedIsolationKey: isolationKey) else {
             return nil
@@ -2706,7 +2712,8 @@ class BundleFileStorageService: BundleStorageService {
             failurePhase = .verification
             let manifestVerificationResult = SignatureVerifier.verifyBundle(
                 fileURL: URL(fileURLWithPath: tempManifestPath),
-                fileHash: manifestFileHash
+                fileHash: manifestFileHash,
+                publicKey: instance.publicKey()
             )
             guard case .success = manifestVerificationResult else {
                 if case .failure(let error) = manifestVerificationResult {

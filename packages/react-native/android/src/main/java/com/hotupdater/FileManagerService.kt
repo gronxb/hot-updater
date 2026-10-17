@@ -99,6 +99,8 @@ interface FileSystemService {
  */
 class FileManagerService(
     private val context: Context,
+    // A named instance's root beside the app's files; null is the app's files directory.
+    private val internalFilesDir: File? = null,
 ) : FileSystemService {
     override fun fileExists(path: String): Boolean = File(path).exists()
 
@@ -145,5 +147,5 @@ class FileManagerService(
         return directory.listFiles()?.map { it.name } ?: listOf()
     }
 
-    override fun getInternalFilesDir(): File? = context.filesDir
+    override fun getInternalFilesDir(): File? = internalFilesDir ?: context.filesDir
 }
