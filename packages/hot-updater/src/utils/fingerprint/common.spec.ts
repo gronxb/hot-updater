@@ -60,6 +60,22 @@ describe("getOtaFingerprintOptions", () => {
       getExtraSourceIds("android", { ios: [IOS_ONLY_SOURCE] }),
     ).resolves.toEqual([]);
   });
+
+  it("hashes nativeVersion with @expo/fingerprint too", async () => {
+    const { extraSources } = await getOtaFingerprintOptions("ios", getCwd(), {
+      platform: "ios",
+      nativeVersion: 2,
+    });
+
+    expect(extraSources).toEqual([
+      {
+        type: "contents",
+        id: "nativeVersion",
+        contents: "2",
+        reasons: ["config"],
+      },
+    ]);
+  });
 });
 
 describe("appendFingerprintExtraSources", () => {
@@ -144,12 +160,12 @@ describe("describeFingerprintEngineChange", () => {
 
   it("tells fingerprint create users to rerun it after going back", () => {
     expect(describeFingerprintEngineChange(change, "iOS").resolution).toBe(
-      "To keep updating iOS builds you already shipped, go back to @expo/fingerprint@0.20.14. Otherwise run `npx hot-updater fingerprint create`, then rebuild the iOS app.",
+      "To keep updating iOS builds you already shipped, go back to @expo/fingerprint@0.20.14. If the fingerprint still differs with it, native inputs changed too, and builds you shipped need a rebuild. Otherwise run `npx hot-updater fingerprint create`, then rebuild the iOS app.",
     );
     expect(
       describeFingerprintEngineChange(change, "iOS", true).resolution,
     ).toBe(
-      "fingerprint.json now records the @expo/fingerprint@0.21.5 hash. To keep updating iOS builds you already shipped, go back to @expo/fingerprint@0.20.14 and run `npx hot-updater fingerprint create` again, or restore the previous fingerprint.json. Otherwise rebuild the iOS app.",
+      "fingerprint.json now records the @expo/fingerprint@0.21.5 hash. To keep updating iOS builds you already shipped, go back to @expo/fingerprint@0.20.14 and run `npx hot-updater fingerprint create` again, or restore the previous fingerprint.json. If the fingerprint still differs with it, native inputs changed too, and builds you shipped need a rebuild. Otherwise rebuild the iOS app.",
     );
   });
 });
