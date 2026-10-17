@@ -10,7 +10,7 @@ Hot Updater is a self-hostable OTA (Over-The-Air) update solution for React Nati
 
 ### Adapters and Plugins
 An adapter fills one slot of a config (`build`, `storage`, `database`, `signing`); a plugin is an entry of a `plugins` list. `plugins/plugin-core/` (`@hot-updater/plugin-core`) is the public kit both are written against (the adapter contracts, the storage engine with its KV and SQL kits, and `definePlugin`), and the docs' overview (`docs/content/docs/(latest)/concepts/plugin-system.mdx`) describes how to write each one:
-- **Build Adapters**: Handle bundling (Metro, Expo, Rock) - located in `plugins/bare/`, `plugins/expo/`, `plugins/rock/`
+- **Build Adapters**: Handle bundling and the native fingerprint (Metro, Expo, Rock) - located in `plugins/bare/`, `plugins/expo/`, `plugins/rock/`. Bare and Rock fingerprint the native interface with cli-tools' `createInterfaceFingerprint` through `nativeBuild.fingerprint`; Expo, and any adapter without one, uses `@expo/fingerprint`
 - **Storage Adapters**: Handle bundle storage (AWS S3, Cloudflare R2, Supabase Storage, Firebase Storage, Vercel Blob, Azure Blob Storage) - located in `plugins/aws/`, `plugins/cloudflare/`, `plugins/supabase/`, `plugins/firebase/`, `plugins/vercel/`, `plugins/azure/`, `plugins/standalone/`
 - **Database Adapters**: Handle metadata storage on one storage engine (Cloudflare D1, Supabase, DynamoDB, Firestore, Cosmos DB, PostgreSQL) - use the same directories as storage and build on plugin-core's database kit; the built-in Kysely, Drizzle, Prisma, and MongoDB adapters live in `packages/server/src/adapters/` (`@hot-updater/server/adapters/*`)
 - **Signing Adapters**: Sign bundle artifacts (local PEM, remote, AWS KMS, Google Cloud KMS) - `hot-updater/signing`
@@ -23,7 +23,7 @@ An adapter fills one slot of a config (`build`, `storage`, `database`, `signing`
 - `packages/server/`: `@hot-updater/server`, the server runtime (`createHotUpdater`) with its built-in adapters and plugins
 - `plugins/plugin-core/`: `@hot-updater/plugin-core`, the public kit for adapter and server plugin authors
 - `packages/test-utils/`: `@hot-updater/test-utils`, every test suite, fixture, and test helper
-- `packages/cli-tools/`: `@hot-updater/cli-tools`, tooling the CLI and the providers' `init` share
+- `packages/cli-tools/`: `@hot-updater/cli-tools`, tooling the CLI, the providers' `init`, and the build adapters share
 - `packages/hot-updater/`: CLI tool and main commands
 - `packages/react-native/`: React Native library for client-side integration
 - `packages/console/`: Web-based management console built with React and TanStack Start

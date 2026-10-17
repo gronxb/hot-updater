@@ -20,6 +20,7 @@ export * from "./HotUpdateDirUtil";
 export * from "./infrastructureGeneration";
 export * from "./initProvider";
 export * from "./initOptions";
+export * from "./interfaceFingerprint";
 export * from "./LogWriter";
 export * from "./loadConfig";
 export * from "./serverDefinition";

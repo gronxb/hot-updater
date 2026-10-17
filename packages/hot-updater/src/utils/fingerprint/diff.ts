@@ -1,12 +1,11 @@
 import { colors, getCwd, p } from "@hot-updater/cli-tools";
 
-import {
-  type FingerprintSource,
-  type FingerprintOptions,
-  type FingerprintResult,
-  getOtaFingerprintOptions,
+import type {
+  FingerprintSource,
+  FingerprintOptions,
+  FingerprintResult,
 } from "./common";
-import { type ExpoFingerprint, loadExpoFingerprint } from "./dependency";
+import { nativeFingerprint } from "./nativeFingerprint";
 
 export type FingerprintDiffItem =
   | {
@@ -23,30 +22,89 @@ export type FingerprintDiffItem =
       afterSource: FingerprintSource;
     };
 
+const sourceKey = (source: FingerprintSource) =>
+  source.type === "contents"
+    ? `contents:${source.id}`
+    : `${source.type}:${source.filePath}`;
+
+/**
+ * Compares a saved fingerprint with the project's fingerprint now, source by
+ * source, whichever engine computes it.
+ */
 export async function getFingerprintDiff(
   oldFingerprint: FingerprintResult,
   options: FingerprintOptions,
 ): Promise<FingerprintDiffItem[]> {
-  const projectPath = getCwd();
-  const { diffFingerprintChangesAsync } =
-    await loadExpoFingerprint(projectPath);
-  return await diffFingerprintChangesAsync(
-    oldFingerprint as Parameters<
-      ExpoFingerprint["diffFingerprintChangesAsync"]
-    >[0],
-    projectPath,
-    await getOtaFingerprintOptions(options.platform, projectPath, options),
+  const current = await nativeFingerprint(getCwd(), options);
+  const before = new Map(
+    oldFingerprint.sources.map((source) => [sourceKey(source), source]),
   );
+  const after = new Map(
+    current.sources.map((source) => [sourceKey(source), source]),
+  );
+  const diff: FingerprintDiffItem[] = [];
+  for (const [key, beforeSource] of before) {
+    const afterSource = after.get(key);
+    if (!afterSource) {
+      diff.push({ op: "removed", removedSource: beforeSource });
+    } else if (afterSource.hash !== beforeSource.hash) {
+      diff.push({ op: "changed", beforeSource, afterSource });
+    }
+  }
+  for (const [key, afterSource] of after) {
+    if (!before.has(key)) diff.push({ op: "added", addedSource: afterSource });
+  }
+  return diff;
 }
 
+/** Contents short enough to show, such as `react-native-screens@4.25.2`. */
+const readableContents = (source: FingerprintSource): string | null =>
+  source.type === "contents" &&
+  typeof source.contents === "string" &&
+  source.contents.length <= 120 &&
+  !source.contents.includes("\n")
+    ? source.contents
+    : null;
+
+/**
+ * A source as people read it: a file path, a value such as
+ * `react-native-screens@4.25.2` or `android:hermesEnabled=true`, or the
+ * source's id when its contents are long.
+ */
 function getSourcePath(source: FingerprintSource): string {
-  if (source.type === "file" || source.type === "dir") {
+  if (!("id" in source)) {
     return source.filePath;
   }
-  if ("id" in source) {
-    return source.id;
+  const contents = readableContents(source);
+  if (contents === null) return source.id;
+  return source.id.startsWith("setting:")
+    ? `${source.id.slice("setting:".length)}=${contents}`
+    : source.id === "nativeVersion"
+      ? `nativeVersion=${contents}`
+      : contents;
+}
+
+/**
+ * A changed source with its value before and after, such as
+ * `react-native-screens 4.25.2 → 4.26.0`, when both are short.
+ */
+function describeChange(
+  before: FingerprintSource,
+  after: FingerprintSource,
+): string {
+  const from = readableContents(before);
+  const to = readableContents(after);
+  if (from === null || to === null || !("id" in before)) {
+    return getSourcePath(before);
   }
-  return source.type;
+  const at = from.lastIndexOf("@");
+  if (at > 0 && to.startsWith(from.slice(0, at + 1))) {
+    return `${from.slice(0, at)} ${from.slice(at + 1)} → ${to.slice(at + 1)}`;
+  }
+  const label = before.id.startsWith("setting:")
+    ? before.id.slice("setting:".length)
+    : before.id;
+  return `${label} ${from} → ${to}`;
 }
 
 export function formatDiffItem(item: FingerprintDiffItem): string {
@@ -68,14 +126,14 @@ export function formatDiffItem(item: FingerprintDiffItem): string {
       sourcePath = getSourcePath(item.removedSource);
       break;
     case "changed":
-      sourcePath = getSourcePath(item.beforeSource);
+      sourcePath = describeChange(item.beforeSource, item.afterSource);
       break;
   }
 
   return `${color(`${prefix} ${sourcePath}`)}`;
 }
 
-/** A fingerprint diff as the source paths it added, removed, and changed. */
+/** A fingerprint diff as the sources it added, removed, and changed, as people read them. */
 export interface FingerprintChanges {
   readonly added: readonly string[];
   readonly removed: readonly string[];
@@ -93,7 +151,9 @@ export function summarizeFingerprintDiff(
       item.op === "removed" ? [getSourcePath(item.removedSource)] : [],
     ),
     changed: diff.flatMap((item) =>
-      item.op === "changed" ? [getSourcePath(item.beforeSource)] : [],
+      item.op === "changed"
+        ? [describeChange(item.beforeSource, item.afterSource)]
+        : [],
     ),
   };
 }
