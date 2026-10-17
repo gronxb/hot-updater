@@ -20,7 +20,9 @@ An OTA update replaces only JavaScript, so it stays compatible as long as the
 native interface it calls stays the same. With the bare and Rock build
 adapters, the fingerprint covers:
 
-- the React Native version;
+- the React Native version and its JavaScript engine: the Hermes pod
+  `Podfile.lock` records on iOS, and `hermesEnabled`, `hermesV1Enabled`, and
+  `newArchEnabled` in `android/gradle.properties`;
 - each autolinked native package, Expo modules included, by name and version;
 - the codegen specs of your app and of local native packages, or the native
   files of a local package without specs;
@@ -58,7 +60,8 @@ export default defineConfig({
 When JavaScript starts to depend on a native change the list above doesn't
 cover, change `nativeVersion`. Examples: a native module without a codegen
 spec, a changed return value, a new permission or `Info.plist` key, a manually
-linked library, or switching Hermes or the New Architecture.
+linked library, or switching the New Architecture on iOS before React Native
+made it the only architecture.
 
 ```typescript title="hot-updater.config.ts (partial)"
 export default defineConfig({

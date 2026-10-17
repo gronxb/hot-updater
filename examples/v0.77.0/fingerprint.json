@@ -1,7 +1,7 @@
 {
   "ios": {
     "engine": "hot-updater/interface@1",
-    "hash": "70db0fc2ccc8766e545437531fda0cc96143a0fede3b4633c7618005f757713f",
+    "hash": "0e2ebb815bc85353e0e8ee788fe45571bf7e83db9dd57e0b241050c85e34ad3a",
     "sources": [
       {
         "type": "contents",
@@ -11,6 +11,15 @@
           "runtime"
         ],
         "hash": "a151a1048959a0a2d93b2f397264f0d8e9361a7725b7deed7a3cf543be73b20b"
+      },
+      {
+        "type": "contents",
+        "id": "setting:ios:hermes-engine",
+        "contents": "0.77.0",
+        "reasons": [
+          "native-setting"
+        ],
+        "hash": "29edf0682a3271ce451939bbeb8e9c38fdda8919b02e4b4e41e0b48dc074f92b"
       },
       {
         "type": "file",
@@ -24,7 +33,7 @@
   },
   "android": {
     "engine": "hot-updater/interface@1",
-    "hash": "70db0fc2ccc8766e545437531fda0cc96143a0fede3b4633c7618005f757713f",
+    "hash": "02fb2ce38bf860f0aa86bcaadb6f6f2710bda73da2bec20ddc6aecfe22579a2a",
     "sources": [
       {
         "type": "contents",
@@ -34,6 +43,24 @@
           "runtime"
         ],
         "hash": "a151a1048959a0a2d93b2f397264f0d8e9361a7725b7deed7a3cf543be73b20b"
+      },
+      {
+        "type": "contents",
+        "id": "setting:android:hermesEnabled",
+        "contents": "true",
+        "reasons": [
+          "native-setting"
+        ],
+        "hash": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b"
+      },
+      {
+        "type": "contents",
+        "id": "setting:android:newArchEnabled",
+        "contents": "true",
+        "reasons": [
+          "native-setting"
+        ],
+        "hash": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b"
       },
       {
         "type": "file",

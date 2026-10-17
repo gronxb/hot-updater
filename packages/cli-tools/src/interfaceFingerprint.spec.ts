@@ -179,6 +179,18 @@ describe("createInterfaceFingerprint", () => {
     );
   });
 
+  it("changes with a native setting", async () => {
+    const withSettings = (settings: Record<string, string>) =>
+      hashOf({}, { ...nativeInterface(), settings });
+
+    expect(await withSettings({ "android:hermesEnabled": "true" })).toBe(
+      await withSettings({ "android:hermesEnabled": "true" }),
+    );
+    expect(await withSettings({ "android:hermesEnabled": "false" })).not.toBe(
+      await withSettings({ "android:hermesEnabled": "true" }),
+    );
+  });
+
   it("follows the runtime version", async () => {
     expect(
       await hashOf(
@@ -292,6 +304,7 @@ describe("readReactNativeInterface", () => {
     ).toEqual({
       runtime: "react-native@0.85.2",
       dependencies: [{ name: "both", root: "/both" }],
+      settings: {},
     });
   });
 
@@ -358,5 +371,54 @@ describe("readReactNativeInterface", () => {
         platform: "ios",
       }),
     ).rejects.toThrow("printed no JSON configuration");
+  });
+
+  it("reads the JavaScript engine React Native resolved for each platform", async () => {
+    await write(
+      path.join(root, "ios/Podfile.lock"),
+      [
+        "PODS:",
+        "  - hermes-engine (250829098.0.10):",
+        "    - hermes-engine/Pre-built (= 250829098.0.10)",
+        "  - hermes-engine/Pre-built (250829098.0.10)",
+        "",
+        "DEPENDENCIES:",
+        "  - hermes-engine (from `x`)",
+      ].join("\n"),
+    );
+    await write(
+      path.join(root, "android/gradle.properties"),
+      [
+        "# comment",
+        "org.gradle.jvmargs=-Xmx2048m",
+        "newArchEnabled=true",
+        "hermesEnabled = true",
+        "react.hermesV1Enabled: false",
+      ].join("\n"),
+    );
+    const read = (platform: "ios" | "android") =>
+      readReactNativeInterface({
+        cwd: root,
+        command: process.execPath,
+        args: ["-e", "console.log('{}')"],
+        platform,
+      });
+
+    expect((await read("ios")).settings).toEqual({
+      "ios:hermes-engine": "250829098.0.10",
+    });
+    expect((await read("android")).settings).toEqual({
+      "android:newArchEnabled": "true",
+      "android:hermesEnabled": "true",
+      "android:react.hermesV1Enabled": "false",
+    });
+
+    await write(
+      path.join(root, "ios/Podfile.lock"),
+      "PODS:\n  - Yoga (0.0.0)\n",
+    );
+    expect((await read("ios")).settings).toEqual({
+      "ios:hermes-engine": "none",
+    });
   });
 });

@@ -65,10 +65,19 @@ export type NativeDependency =
 export interface NativeInterface {
   runtime: string;
   dependencies: NativeDependency[];
+  /**
+   * Native settings that decide how JavaScript runs, such as the JavaScript
+   * engine, read from the files the framework itself reads.
+   */
+  settings?: Record<string, string>;
 }
 
 interface AutolinkingConfig {
   reactNativePath?: string;
+  project?: {
+    ios?: { sourceDir?: string };
+    android?: { sourceDir?: string };
+  };
   dependencies?: Record<
     string,
     { name?: string; root?: string; platforms?: Record<string, unknown> }
@@ -178,6 +187,59 @@ const readExpoModules = async (
 };
 
 /**
+ * The Hermes pod `pod install` resolved, as Podfile.lock records it: its
+ * version tells Hermes V1 from legacy Hermes, and its absence means JSC.
+ * Without a Podfile.lock there is nothing to read.
+ */
+const readHermesPod = async (
+  iosDir: string,
+): Promise<Record<string, string>> => {
+  const lock = await fs
+    .readFile(path.join(iosDir, "Podfile.lock"), "utf8")
+    .catch(() => null);
+  if (lock === null) return {};
+  const end = lock.indexOf("\nDEPENDENCIES:");
+  const pods = end < 0 ? lock : lock.slice(0, end);
+  const version = /^ {2}- hermes-engine \(([^)]+)\)/m.exec(pods)?.[1];
+  return { "ios:hermes-engine": version ?? "none" };
+};
+
+// The gradle.properties keys the React Native Gradle plugin reads to choose
+// the JavaScript engine and architecture.
+const GRADLE_FLAGS = [
+  "hermesEnabled",
+  "hermesV1Enabled",
+  "react.hermesV1Enabled",
+  "newArchEnabled",
+];
+
+/**
+ * The engine and architecture flags android/gradle.properties declares. An
+ * absent flag takes React Native's default, which follows its version.
+ */
+const readGradleFlags = async (
+  androidDir: string,
+): Promise<Record<string, string>> => {
+  const properties = await fs
+    .readFile(path.join(androidDir, "gradle.properties"), "utf8")
+    .catch(() => "");
+  const flags: Record<string, string> = {};
+  for (const line of properties.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("!")) {
+      continue;
+    }
+    const separator = trimmed.search(/[=:]/);
+    if (separator < 0) continue;
+    const key = trimmed.slice(0, separator).trim();
+    if (GRADLE_FLAGS.includes(key)) {
+      flags[`android:${key}`] = trimmed.slice(separator + 1).trim();
+    }
+  }
+  return flags;
+};
+
+/**
  * Reads the native interface of a React Native app from the JSON its
  * autolinking `config` command prints: `react-native config` for React Native
  * CLI, `rock config -p <platform>` for Rock. An app that links Expo modules
@@ -214,12 +276,21 @@ export const readReactNativeInterface = async ({
     ? await readExpoModules(cwd, platform)
     : [];
   const names = new Set(dependencies.map(({ name }) => name));
+  const settings =
+    platform === "ios"
+      ? await readHermesPod(
+          config.project?.ios?.sourceDir ?? path.join(cwd, "ios"),
+        )
+      : await readGradleFlags(
+          config.project?.android?.sourceDir ?? path.join(cwd, "android"),
+        );
   return {
     runtime: `react-native@${reactNative?.version ?? "unknown"}`,
     dependencies: [
       ...dependencies,
       ...expoModules.filter(({ name }) => !names.has(name)),
     ],
+    settings,
   };
 };
 
@@ -303,7 +374,8 @@ const findPatchDirs = async (cwd: string): Promise<string[]> => {
 
 /**
  * Fingerprints the native interface JavaScript depends on, not the native
- * build: the runtime, each registry package as `name@version`, the codegen
+ * build: the runtime and its native settings, each registry package as
+ * `name@version`, the codegen
  * specs of the app and of local packages (a local package without specs by
  * its native files), patches to those packages, `nativeVersion`, and
  * `extraSources`. Version and build numbers, native implementations, and
@@ -336,6 +408,9 @@ export const createInterfaceFingerprint = async (
   };
 
   addContents("runtime", nativeInterface.runtime, "runtime");
+  for (const [key, value] of Object.entries(nativeInterface.settings ?? {})) {
+    addContents(`setting:${key}`, value, "native-setting");
+  }
 
   for (const specFile of (await findCodegenSpecs(cwd, platform)) ?? []) {
     await addFile(specFile, "app-codegen-spec");
