@@ -234,6 +234,68 @@ describe("createInterfaceFingerprint", () => {
     expect(await hashOf()).not.toBe(before);
   });
 
+  it("hashes a local package's native code where autolinking points", async () => {
+    await fs.rm(path.join(root, "packages/local-module/src"), {
+      recursive: true,
+    });
+    await write(
+      path.join(root, "packages/local-module/package.json"),
+      manifest({ name: "local-module", version: "1.0.0" }),
+    );
+    await write(
+      path.join(root, "packages/local-module/native/android/Local.kt"),
+      "class Local",
+    );
+    const native = (): NativeInterface => ({
+      runtime: "react-native@0.85.2",
+      dependencies: [
+        {
+          name: "local-module",
+          root: path.join(root, "packages/local-module"),
+          sourceDir: path.join(root, "packages/local-module/native/android"),
+        },
+      ],
+    });
+    const before = await hashOf({ platform: "android" }, native());
+    await write(
+      path.join(root, "packages/local-module/native/android/Local.kt"),
+      "class Local { fun ping() {} }",
+    );
+
+    expect(await hashOf({ platform: "android" }, native())).not.toBe(before);
+  });
+
+  it("hashes the same files when autolinking points at the standard folders", async () => {
+    await fs.rm(path.join(root, "packages/local-module/src"), {
+      recursive: true,
+    });
+    await write(
+      path.join(root, "packages/local-module/package.json"),
+      manifest({ name: "local-module", version: "1.0.0" }),
+    );
+    await write(
+      path.join(root, "packages/local-module/android/src/Local.kt"),
+      "class Local",
+    );
+    const native = (sourceDir?: string): NativeInterface => ({
+      runtime: "react-native@0.85.2",
+      dependencies: [
+        {
+          name: "local-module",
+          root: path.join(root, "packages/local-module"),
+          ...(sourceDir ? { sourceDir } : {}),
+        },
+      ],
+    });
+
+    expect(
+      await hashOf(
+        { platform: "android" },
+        native(path.join(root, "packages/local-module/android")),
+      ),
+    ).toBe(await hashOf({ platform: "android" }, native()));
+  });
+
   it("applies ignorePaths inside an extraSources directory", async () => {
     await write(path.join(app, "config/native.json"), "{}");
     const options = {
@@ -386,7 +448,11 @@ describe("readReactNativeInterface", () => {
 
     expect(dependencies).toEqual([
       { name: "expo", root: path.join(root, "node_modules/expo") },
-      { name: "expo-font", root: path.join(root, "node_modules/expo-font") },
+      {
+        name: "expo-font",
+        root: path.join(root, "node_modules/expo-font"),
+        sourceDir: path.join(root, "node_modules/expo-font/ios"),
+      },
       { name: "expo-local", version: "1.0.0" },
     ]);
   });
