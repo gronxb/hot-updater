@@ -4,16 +4,20 @@ import Testing
 
 @testable import HotUpdaterCore
 
+// Serialized, and the racing parts run on dedicated threads: a semaphore wait
+// on a busy runner must not starve them of a thread.
+@Suite(.serialized)
 struct LaunchPreparationLockTests {
     /// A launch's selection that overlaps a built-in commit or a channel reset
     /// waits for it, so it never picks a bundle the change deletes.
     @Test(arguments: ["commit", "reset"])
     func aLaunchSelectionWaitsForAChangeThatDeletesBundles(change: String) {
         let launchPreparation = LaunchPreparationLock()
-        let storage = GatedBundleStorage(holdChange: true)
+        let events = EventLog()
+        let storage = GatedBundleStorage(holdChange: true, events: events)
         let cleared = Counter()
         let changed = DispatchSemaphore(value: 0)
-        DispatchQueue.global().async {
+        Thread {
             if change == "commit" {
                 _ = launchPreparation.commitReleaseSelection(selection("USE_BUILTIN"), in: storage) {
                     cleared.increment()
@@ -22,23 +26,31 @@ struct LaunchPreparationLockTests {
                 _ = launchPreparation.resetChannel(in: storage) { cleared.increment() }
             }
             changed.signal()
-        }
-        #expect(storage.changeEntered.wait(timeout: .now() + 5) == .success)
+        }.start()
+        #expect(storage.changeEntered.wait(timeout: .now() + 30) == .success)
 
         let launchBundleId = LockedBox<String?>("unset")
+        let readRequested = DispatchSemaphore(value: 0)
         let selected = DispatchSemaphore(value: 0)
-        DispatchQueue.global().async {
-            launchBundleId.value = launchPreparation.withLock { storage.peekLaunchBundleId() }
+        Thread {
+            readRequested.signal()
+            launchBundleId.value = launchPreparation.withLock {
+                events.append("launch read")
+                return storage.peekLaunchBundleId()
+            }
             selected.signal()
-        }
-
-        // The launch's selection runs under the lock the change holds.
-        #expect(selected.wait(timeout: .now() + 0.3) == .timedOut)
+        }.start()
+        #expect(readRequested.wait(timeout: .now() + 30) == .success)
+        // Gives a read that skipped the lock time to finish; with the lock it
+        // cannot finish while the change holds it, however long this waits.
+        Thread.sleep(forTimeInterval: 0.1)
+        #expect(!events.contains("launch read"))
 
         storage.releaseChange.signal()
-        #expect(changed.wait(timeout: .now() + 5) == .success)
-        #expect(selected.wait(timeout: .now() + 5) == .success)
-        // Selected after the change, so it sees the built-in bundle, not the deleted download.
+        #expect(changed.wait(timeout: .now() + 30) == .success)
+        #expect(selected.wait(timeout: .now() + 30) == .success)
+        // The read ran after the change, so it sees the built-in bundle, not the deleted download.
+        #expect(events.values == ["change started", "change finished", "launch read"])
         #expect(launchBundleId.value == nil)
         #expect(cleared.value == 1)
     }
@@ -46,7 +58,7 @@ struct LaunchPreparationLockTests {
     @Test
     func aCommitClearsTheNextLaunchOnlyWhenTheBuiltInBundleCommits() {
         let launchPreparation = LaunchPreparationLock()
-        let storage = GatedBundleStorage(holdChange: false)
+        let storage = GatedBundleStorage(holdChange: false, events: EventLog())
         let cleared = Counter()
 
         #expect(launchPreparation.commitReleaseSelection(selection("BUNDLE"), in: storage) { cleared.increment() })
@@ -95,6 +107,27 @@ private final class Counter: @unchecked Sendable {
     }
 }
 
+private final class EventLog: @unchecked Sendable {
+    private let lock = NSLock()
+    private var stored: [String] = []
+
+    var values: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return stored
+    }
+
+    func append(_ event: String) {
+        lock.lock()
+        stored.append(event)
+        lock.unlock()
+    }
+
+    func contains(_ event: String) -> Bool {
+        values.contains(event)
+    }
+}
+
 private final class LockedBox<Value>: @unchecked Sendable {
     private let lock = NSLock()
     private var stored: Value
@@ -124,6 +157,7 @@ private final class GatedBundleStorage: BundleStorageService, @unchecked Sendabl
     let changeEntered = DispatchSemaphore(value: 0)
     let releaseChange = DispatchSemaphore(value: 0)
     private let holdChange: Bool
+    private let events: EventLog
     private let downloadedBundleId = LockedBox<String?>("downloaded-bundle")
     private let commitsValue = LockedBox(true)
 
@@ -132,16 +166,19 @@ private final class GatedBundleStorage: BundleStorageService, @unchecked Sendabl
         set { commitsValue.value = newValue }
     }
 
-    init(holdChange: Bool) {
+    init(holdChange: Bool, events: EventLog) {
         self.holdChange = holdChange
+        self.events = events
     }
 
     private func deleteDownloadedBundles() {
+        events.append("change started")
         changeEntered.signal()
         if holdChange {
-            _ = releaseChange.wait(timeout: .now() + 5)
+            _ = releaseChange.wait(timeout: .now() + 30)
         }
         downloadedBundleId.value = nil
+        events.append("change finished")
     }
 
     func peekLaunchBundleId() -> String? { downloadedBundleId.value }

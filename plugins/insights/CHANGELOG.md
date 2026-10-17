@@ -1,5 +1,11 @@
 # @hot-updater/plugin-insights
 
+## 1.0.7
+
+### Patch Changes
+
+- @hot-updater/protocol@1.0.7
+
 ## 1.0.6
 
 ### Patch Changes
