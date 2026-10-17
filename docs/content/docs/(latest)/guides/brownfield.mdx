@@ -131,7 +131,7 @@ public let ReactNativeBundle = Bundle(for: InternalClassForBundle.self)
 
 class InternalClassForBundle {}
 
-// The counterpart of `HotUpdater.init` in your JavaScript. // [!code ++:69]
+// The counterpart of `HotUpdater.init` in your JavaScript. // [!code ++:77]
 private let hotUpdater = try! HotUpdaterInstance( // A valid baseURL never throws.
   HotUpdaterOptions(
     baseURL: "https://updates.example.com/hot-updater",
@@ -141,29 +141,37 @@ private let hotUpdater = try! HotUpdaterInstance( // A valid baseURL never throw
 )
 
 /// What `startReactNativeWithHotUpdater` found before React Native started.
-public enum ReactNativeUpdateStatus: String {
+public enum ReactNativeUpdateStatus: String, Sendable {
   case upToDate, ready, pending, failed, skipped
 }
 
+@MainActor private var reactNativeStart: Task<ReactNativeUpdateStatus, Never>?
+
 /// Checks for an update, then starts React Native with Hot Updater choosing
 /// the JavaScript bundle. A required update that downloads within `timeout`
-/// runs in this start.
+/// runs in this start. React Native starts once per process: later calls
+/// return the first call's status.
 @MainActor
 public func startReactNativeWithHotUpdater(
   checkForUpdates: Bool,
   timeout: TimeInterval = 3
 ) async -> ReactNativeUpdateStatus {
-  let status = checkForUpdates ? await checkForUpdate(timeout: timeout) : .skipped
-  ReactNativeBrownfield.shared.bundle = ReactNativeBundle
-  ReactNativeBrownfield.shared.bundleURLOverride = {
-    #if DEBUG
-    return nil // Metro
-    #else
-    return hotUpdater.bundleURL()
-    #endif
+  if let reactNativeStart { return await reactNativeStart.value }
+  let start = Task { @MainActor in
+    let status = checkForUpdates ? await checkForUpdate(timeout: timeout) : .skipped
+    ReactNativeBrownfield.shared.bundle = ReactNativeBundle
+    ReactNativeBrownfield.shared.bundleURLOverride = {
+      #if DEBUG
+      return nil // Metro
+      #else
+      return hotUpdater.bundleURL()
+      #endif
+    }
+    ReactNativeBrownfield.shared.startReactNative()
+    return status
   }
-  ReactNativeBrownfield.shared.startReactNative()
-  return status
+  reactNativeStart = start
+  return await start.value
 }
 
 /// Checks for an update and waits up to `timeout` seconds for a required one.
@@ -241,7 +249,9 @@ update back.
 Call the framework's function instead of
 `ReactNativeBrownfield.shared.startReactNative`, and show React Native screens
 once it returns. It sets every option React Native Brownfield reads, so set
-nothing on `ReactNativeBrownfield.shared` after the call.
+nothing on `ReactNativeBrownfield.shared` after the call. When your first
+screen is native, call it when the user first opens a React Native screen, as
+the SwiftUI example does; later calls return at once.
 
 <Tabs items={["SwiftUI", "UIKit"]}>
   <Tab value="SwiftUI">
@@ -250,26 +260,41 @@ nothing on `ReactNativeBrownfield.shared` after the call.
 import SwiftUI
 import BrownfieldLib
 
+#if DEBUG
+private let checkForUpdates = false
+#else
+private let checkForUpdates = true
+#endif
+
 @main
 struct NativeApp: App {
-  @State private var started = false
-
   var body: some Scene {
     WindowGroup {
-      NavigationStack {
-        NavigationLink("Open React Native") {
-          ReactNativeView(moduleName: "BrownfieldRN")
+      HomeView()
+    }
+  }
+}
+
+struct HomeView: View {
+  @State private var path: [String] = []
+  @State private var starting = false
+
+  var body: some View {
+    NavigationStack(path: $path) {
+      Button {
+        Task {
+          // The first tap starts React Native; later taps open it at once.
+          starting = true
+          _ = await startReactNativeWithHotUpdater(checkForUpdates: checkForUpdates)
+          starting = false
+          path.append("BrownfieldRN")
         }
-        .disabled(!started)
+      } label: {
+        if starting { ProgressView() } else { Text("Open React Native") }
       }
-      .task {
-        #if DEBUG
-        let checkForUpdates = false
-        #else
-        let checkForUpdates = true
-        #endif
-        _ = await startReactNativeWithHotUpdater(checkForUpdates: checkForUpdates)
-        started = true
+      .disabled(starting)
+      .navigationDestination(for: String.self) { moduleName in
+        ReactNativeView(moduleName: moduleName)
       }
     }
   }
@@ -278,6 +303,9 @@ struct NativeApp: App {
 
   </Tab>
   <Tab value="UIKit">
+
+This app shows React Native as its first screen, so it starts React Native
+at launch.
 
 ```swift title="NativeApp/AppDelegate.swift"
 import UIKit
@@ -346,13 +374,16 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
 
 object ReactNativeHostManager {
-    // Outlives every activity, so closing a screen never cancels the start. // [!code ++:2]
+    // Outlives every activity, so closing a screen never cancels the start. // [!code ++:4]
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var status: String? = null
+    private val waiting = mutableListOf<(String) -> Unit>()
 
     /**
-     * Checks for an update, then starts React Native. A required update that
-     * downloads within [timeoutMillis] runs in this start. [onReady] runs on
-     * the main thread with what was found.
+     * Checks for an update, then starts React Native, once per process. A
+     * required update that downloads within [timeoutMillis] runs in this
+     * start. Call it on the main thread. [onReady] runs on the main thread
+     * with what was found; later calls get the first call's status.
      */
     fun start(
         application: Application,
@@ -360,6 +391,9 @@ object ReactNativeHostManager {
         timeoutMillis: Long = 3_000,
         onReady: (String) -> Unit = {},
     ) {
+        status?.let { return onReady(it) } // [!code ++:3]
+        waiting += onReady
+        if (waiting.size > 1) return // Already starting.
         // The counterpart of `HotUpdater.init` in your JavaScript. // [!code ++:9]
         val hotUpdater =
             HotUpdater.init(
@@ -370,7 +404,7 @@ object ReactNativeHostManager {
                 ),
             )
         scope.launch {
-            val status = if (checkForUpdates) checkForUpdate(hotUpdater, timeoutMillis) else "skipped" // [!code ++]
+            val result = if (checkForUpdates) checkForUpdate(hotUpdater, timeoutMillis) else "skipped" // [!code ++]
             ReactNativeBrownfield.initialize(application) {
                 getDefaultReactHost(
                     context = application,
@@ -383,7 +417,9 @@ object ReactNativeHostManager {
                 )
             }
             HotUpdater.setReactHost(ReactNativeBrownfield.shared.reactHost) // [!code ++]
-            onReady(status)
+            status = result // [!code ++:3]
+            waiting.toList().forEach { it(result) }
+            waiting.clear()
         }
     }
 
@@ -472,6 +508,44 @@ to the library:
 
 ### Start React Native from the Android app
 
+When your first screen is native, start React Native when the user first
+opens a React Native screen. Later calls return at once:
+
+<Tabs items={["Native first screen", "React Native first screen"]}>
+  <Tab value="Native first screen">
+
+```kotlin title="app/src/main/java/com/example/nativeapp/MainActivity.kt"
+import android.content.Intent
+import android.os.Bundle
+import android.widget.Button
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.Lifecycle
+import com.brownfieldrn.ReactNativeHostManager
+
+class MainActivity : AppCompatActivity() {
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        val openReactNative = Button(this).apply { text = "Open React Native" }
+        setContentView(openReactNative)
+        openReactNative.setOnClickListener {
+            // The first tap starts React Native; later taps open it at once.
+            openReactNative.isEnabled = false
+            ReactNativeHostManager.start(application, checkForUpdates = !BuildConfig.DEBUG) {
+                openReactNative.isEnabled = true
+                if (lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                    startActivity(Intent(this, ReactNativeActivity::class.java))
+                }
+            }
+        }
+    }
+}
+```
+
+`ReactNativeActivity` is your activity that shows the React Native screen.
+
+  </Tab>
+  <Tab value="React Native first screen">
+
 ```kotlin title="app/src/main/java/com/example/nativeapp/NativeApplication.kt"
 import android.app.Application
 import android.os.Build
@@ -484,7 +558,7 @@ class NativeApplication : Application() {
         // Android also runs onCreate in Hot Updater's restart process. // [!code ++:2]
         if (currentProcessName() != applicationInfo.processName) return
         ReactNativeHostManager.start(this, checkForUpdates = !BuildConfig.DEBUG) { status ->
-            // React Native is ready: enable the entries that open its screens.
+            // React Native is ready: show its first screen.
         }
     }
 
@@ -499,9 +573,12 @@ class NativeApplication : Application() {
 
 Hot Updater restarts the app from a process of its own to apply a required
 update or roll back a crashed one, and Android runs `Application.onCreate` in
-every process of the app. Start React Native only in the main process, named
-`applicationInfo.processName`: the package name unless the manifest's
+every process of the app. Start React Native there only in the main process,
+named `applicationInfo.processName`: the package name unless the manifest's
 `<application>` sets `android:process`.
+
+  </Tab>
+</Tabs>
 
 Show the screens with `ReactNativeFragment.createReactNativeFragment("BrownfieldRN")`
 or `ReactNativeBrownfield.shared.createView(...)`, as in the React Native
@@ -638,16 +715,17 @@ one of these statuses:
   the status is `pending`, and show the user what is happening.
 - **Other updates** download in the background. They run at the next start,
   or at this one if they finish before React Native reads the bundle.
-
-The check request itself is small, but every device that finds a new update
-downloads it. If React Native is not your native app's first screen, start it
-when the user first heads to a React Native screen, not at every launch, so
-users who never open one download nothing. `checkForUpdates` is also where the
-native app can turn the check off, for example from its own remote flag.
 - **Rollbacks** deployed from the console apply the same way as updates.
 - An update applies at this start only when `updateBundle` finishes before
   `bundleURL()` or `getJSBundleFile()` is read. One that finishes later
   applies at the next start.
+
+The check request itself is small, but every device that finds a new update
+downloads it. If React Native is not your native app's first screen, start it
+when the user first heads to a React Native screen, not at every launch, so
+users who never open one download nothing, as the SwiftUI and Android
+"Native first screen" examples do. `checkForUpdates` is also where the native
+app can turn the check off, for example from its own remote flag.
 
 React Native runs for the life of the native app's process. Do not call
 `hotUpdater.reload()` in a native app: on Android it restarts the whole native
