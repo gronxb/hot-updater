@@ -17,6 +17,7 @@ export const localMutableFiles = [
   "ios/HotUpdaterExample/Info.plist",
   "ios/HotUpdaterExample/PrivacyInfo.xcprivacy",
   "ios/HotUpdaterExampleBrownfield/Info.plist",
+  "ios/HotUpdaterWidget/Info.plist",
   "android/app/src/main/AndroidManifest.xml",
   "android/app/src/debug/AndroidManifest.xml",
   "android/app/src/androidTest/AndroidManifest.xml",

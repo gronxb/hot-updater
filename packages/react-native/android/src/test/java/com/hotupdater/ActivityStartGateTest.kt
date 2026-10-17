@@ -2,7 +2,12 @@ package com.hotupdater
 
 import android.app.Activity
 import android.app.Application
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class ActivityStartGateTest {
@@ -88,6 +93,158 @@ class ActivityStartGateTest {
         createGate(application, startedBefore = true).runWhenActivityStarted { runs += 1 }
 
         assertEquals(1, runs)
+    }
+
+    @Test
+    fun `a gate that knows the activities started before it waits for its view there`() {
+        // A named instance prepared while the app already shows a native
+        // screen: the started activity is not its view.
+        val application = RecordingApplication()
+        var runs = 0
+        showsReactView = false
+        val gate = createGate(application, startedBefore = true, activitiesStartedBefore = { listOf(activity) })
+
+        gate.runWhenActivityStarted { runs += 1 }
+        assertEquals(0, runs)
+        assertEquals(1, layoutWatches)
+
+        showsReactView = true
+        application.layout()
+        assertEquals(1, runs)
+        assertEquals(0, layoutWatches)
+    }
+
+    @Test
+    fun `a gate that knows the activities started before it runs at once when one shows its view`() {
+        val application = RecordingApplication()
+        var runs = 0
+
+        createGate(application, startedBefore = true, activitiesStartedBefore = { listOf(activity) })
+            .runWhenActivityStarted { runs += 1 }
+
+        assertEquals(1, runs)
+    }
+
+    @Test
+    fun `a gate that knows no activity started before it waits for the next start`() {
+        val application = RecordingApplication()
+        var runs = 0
+        val gate = createGate(application, startedBefore = true, activitiesStartedBefore = { emptyList() })
+
+        gate.runWhenActivityStarted { runs += 1 }
+        assertEquals(0, runs)
+
+        application.startActivity()
+        assertEquals(1, runs)
+    }
+
+    @Test
+    fun `an activity handed to a waiting gate is checked and watched for its view`() {
+        // The tracker started after the activity, so only the runtime knows it.
+        val application = RecordingApplication()
+        var runs = 0
+        showsReactView = false
+        val gate = createGate(application, startedBefore = true, activitiesStartedBefore = { emptyList() })
+        gate.runWhenActivityStarted { runs += 1 }
+        assertEquals(0, layoutWatches)
+
+        gate.watchActivity(activity)
+        assertEquals(0, runs)
+        assertEquals(1, layoutWatches)
+
+        showsReactView = true
+        application.layout()
+        assertEquals(1, runs)
+        assertEquals(0, layoutWatches)
+    }
+
+    @Test
+    fun `an activity handed over while it shows the view runs at once and only while an action waits`() {
+        val application = RecordingApplication()
+        var runs = 0
+        val gate = createGate(application, startedBefore = true, activitiesStartedBefore = { emptyList() })
+
+        gate.watchActivity(activity)
+        gate.runWhenActivityStarted { runs += 1 }
+        // The handed-over activity counts as started from then on.
+        assertEquals(1, runs)
+
+        gate.watchActivity(activity)
+        assertEquals(1, runs)
+    }
+
+    @Test
+    fun `a handed-over activity that is not started now counts only once it starts`() {
+        // The app went to the background while the bundle loaded.
+        val application = RecordingApplication()
+        var runs = 0
+        startedNow = false
+        val gate = createGate(application, startedBefore = true, activitiesStartedBefore = { emptyList() })
+        gate.runWhenActivityStarted { runs += 1 }
+
+        gate.watchActivity(activity)
+        assertEquals(0, runs)
+        assertEquals(0, layoutWatches)
+
+        application.startActivity()
+        assertEquals(1, runs)
+    }
+
+    @Test
+    fun `an activity that reports no lifecycle is started while its window is shown`() {
+        // A brownfield app may host a ReactRootView in a plain Activity.
+        assertTrue(isActivityStarted(PlainActivity(), windowShown = { true }))
+        // The framework hides a stopped activity's window.
+        assertFalse(isActivityStarted(PlainActivity(), windowShown = { false }))
+        assertFalse(isActivityStarted(PlainActivity(finishing = true), windowShown = { true }))
+    }
+
+    @Test
+    fun `an activity that reports its lifecycle is started only by it`() {
+        val activity = LifecycleActivity()
+        assertFalse(isActivityStarted(activity, windowShown = { true }))
+
+        activity.lifecycleState = Lifecycle.State.STARTED
+        assertTrue(isActivityStarted(activity, windowShown = { false }))
+    }
+
+    @Test
+    fun `a request made off the main thread does not replace a newer one`() {
+        val application = RecordingApplication()
+        val mainThread = FakeMainThread(current = false)
+        val gate = createGate(application, mainThread = mainThread)
+        val runs = mutableListOf<String>()
+
+        // A launch prepared on a background thread, then one on the main thread.
+        gate.runWhenActivityStarted { runs += "older" }
+        mainThread.current = true
+        gate.runWhenActivityStarted { runs += "newer" }
+        mainThread.runAll()
+        application.startActivity()
+
+        assertEquals(listOf("newer"), runs)
+    }
+
+    @Test
+    fun `views are looked at for held content before a waiting action runs`() {
+        // A root view attached after its first content appeared verifies its
+        // launch, which the action then finds already verified.
+        val application = RecordingApplication()
+        val steps = mutableListOf<String>()
+        showsReactView = false
+        val gate = createGate(application, beforeCheckingViews = { steps += "resolve" })
+
+        application.startActivity()
+        gate.runWhenActivityStarted { steps += "arm" }
+        steps.clear()
+
+        showsReactView = true
+        application.layout()
+        assertEquals(listOf("resolve", "arm"), steps)
+
+        steps.clear()
+        gate.runWhenActivityStarted { steps += "arm" }
+        assertEquals(listOf("resolve", "arm"), steps)
     }
 
     @Test
@@ -180,6 +337,9 @@ class ActivityStartGateTest {
     private fun createGate(
         application: Application?,
         startedBefore: Boolean = false,
+        activitiesStartedBefore: (() -> Collection<Activity>)? = null,
+        mainThread: HotUpdaterMainThread = FakeMainThread(),
+        beforeCheckingViews: () -> Unit = {},
     ) = ActivityStartGate(
         application,
         processHasStartedActivity = { startedBefore },
@@ -188,7 +348,34 @@ class ActivityStartGateTest {
             layoutListeners += onLayout
             { layoutListeners -= onLayout }
         },
+        activitiesStartedBefore = activitiesStartedBefore,
+        isStarted = { startedNow },
+        mainThread = mainThread,
+        beforeCheckingViews = beforeCheckingViews,
     )
+
+    private var startedNow = true
+
+    private class PlainActivity(
+        private val finishing: Boolean = false,
+    ) : Activity() {
+        override fun isFinishing(): Boolean = finishing
+    }
+
+    private class LifecycleActivity :
+        Activity(),
+        LifecycleOwner {
+        private val registry = LifecycleRegistry.createUnsafe(this).apply { currentState = Lifecycle.State.CREATED }
+
+        var lifecycleState: Lifecycle.State
+            get() = registry.currentState
+            set(value) {
+                registry.currentState = value
+            }
+
+        override val lifecycle: Lifecycle
+            get() = registry
+    }
 
     private inner class RecordingApplication : Application() {
         private val callbacks = mutableListOf<ActivityLifecycleCallbacks>()

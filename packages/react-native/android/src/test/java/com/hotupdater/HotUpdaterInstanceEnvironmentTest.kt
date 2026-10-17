@@ -21,6 +21,9 @@ class HotUpdaterInstanceEnvironmentTest {
     @get:Rule
     val temporaryFolder = TemporaryFolder()
 
+    @get:Rule
+    val recoveryMonitoring = RecoveryMonitoringRule()
+
     @After
     fun clearConfig() {
         HotUpdaterConfig.clear()
@@ -206,7 +209,8 @@ class HotUpdaterInstanceEnvironmentTest {
     }
 
     @Test
-    fun `a named launch counts as verified once it is selected`() {
+    fun `a named launch stays pending after it is selected`() {
+        // Its own first content verifies it (InstanceRecoveryTest), as main's does.
         val context = InstanceTestContext(temporaryFolder.root)
         val widget = environment("widget")
         val root = widget.filesRoot(context)!!
@@ -229,14 +233,9 @@ class HotUpdaterInstanceEnvironmentTest {
 
         assertEquals(File(bundleDir, "index.android.bundle").absolutePath, impl.getJSBundleFile())
         val metadata = BundleMetadata.loadFromFile(metadataFile, isolationKey)!!
-        assertFalse(metadata.verificationPending)
-        assertFalse(metadata.launchInProgress)
-        assertEquals("UPDATE_APPLIED", impl.notifyAppReady()["status"])
-
-        // The next process keeps the bundle instead of rolling it back.
-        val next = HotUpdaterImpl(context, widget)
-        assertEquals(File(bundleDir, "index.android.bundle").absolutePath, next.getJSBundleFile())
-        assertTrue(next.getCrashHistory().isEmpty())
+        assertTrue(metadata.verificationPending)
+        assertEquals("widget-bundle", metadata.stagingBundleId)
+        assertEquals("PENDING", impl.notifyAppReady()["status"])
     }
 
     @Test

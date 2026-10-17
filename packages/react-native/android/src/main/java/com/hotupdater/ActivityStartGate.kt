@@ -3,12 +3,11 @@ package com.hotupdater
 import android.app.Activity
 import android.app.Application
 import android.os.Bundle
-import android.os.Handler
-import android.os.Looper
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ProcessLifecycleOwner
 import com.facebook.react.ReactRootView
 
@@ -25,17 +24,34 @@ import com.facebook.react.ReactRootView
  * Android does not replay lifecycle callbacks to a late registration. An
  * activity that started before this gate existed, as when a brownfield app adds
  * React Native to an activity already on screen, is read from
- * [processHasStartedActivity] instead, and counts at once.
+ * [processHasStartedActivity] instead, and counts at once. A gate that knows
+ * those activities ([activitiesStartedBefore]) checks them for a React Native
+ * view instead, as a named instance's gate must: a started activity says
+ * nothing about whether that instance's view is shown.
  */
 internal class ActivityStartGate(
     private val application: Application?,
     private val processHasStartedActivity: () -> Boolean = ::hasStartedActivity,
     private val showsReactView: (Activity) -> Boolean = ::hasReactRootView,
     private val watchLayout: (Activity, () -> Unit) -> () -> Unit = ::watchGlobalLayout,
+    private val activitiesStartedBefore: (() -> Collection<Activity>)? = null,
+    private val isStarted: (Activity) -> Boolean = { isActivityStarted(it) },
+    private val mainThread: HotUpdaterMainThread = HotUpdaterMainThread.android,
+    /**
+     * Runs on the main thread whenever this gate is about to look at an
+     * activity's views, before its action may run: a view now found there
+     * may be one whose first content appeared before it could be found, which
+     * verifies its launch instead of arming it.
+     */
+    private val beforeCheckingViews: () -> Unit = {},
 ) : Application.ActivityLifecycleCallbacks {
     private val startedActivities = mutableSetOf<Activity>()
     private val layoutWatches = mutableMapOf<Activity, () -> Unit>()
     private var pendingAction: (() -> Unit)? = null
+
+    // Counts the requests in the order they were made. A request made off the
+    // main thread runs later, and must not replace a newer one made there.
+    private var requests = 0L
 
     init {
         application?.registerActivityLifecycleCallbacks(this)
@@ -47,19 +63,30 @@ internal class ActivityStartGate(
      * cancels it. Without an application to observe, it runs [action] now.
      */
     fun runWhenActivityStarted(action: (() -> Unit)?) {
+        val request = synchronized(this) { ++requests }
         // Views and their layout listeners belong to the main thread.
-        if (Looper.myLooper() != Looper.getMainLooper()) {
-            Handler(Looper.getMainLooper()).post { runWhenActivityStarted(action) }
+        if (!mainThread.isCurrent()) {
+            mainThread.post { runWhenActivityStarted(request, action) }
             return
         }
+        runWhenActivityStarted(request, action)
+    }
+
+    private fun runWhenActivityStarted(
+        request: Long,
+        action: (() -> Unit)?,
+    ) {
+        beforeCheckingViews()
         val runNow =
             synchronized(this) {
+                if (request != requests) return
                 stopWatching()
                 pendingAction = null
+                if (application != null) activitiesStartedBefore?.let { startedActivities += it() }
                 val waits =
                     application != null &&
                         startedActivities.none(showsReactView) &&
-                        (startedActivities.isNotEmpty() || !processHasStartedActivity())
+                        (startedActivities.isNotEmpty() || activitiesStartedBefore != null || !processHasStartedActivity())
                 if (waits && action != null) {
                     pendingAction = action
                     startedActivities.forEach(::watch)
@@ -69,7 +96,38 @@ internal class ActivityStartGate(
         runNow?.invoke()
     }
 
+    /**
+     * Counts [activity], which this gate may never have seen start, as
+     * started when it is, and while an action waits, checks it for a React
+     * Native view and watches its layout for one. A named instance's runtime
+     * hands over its activity when its module is created.
+     */
+    fun watchActivity(activity: Activity) {
+        if (!mainThread.isCurrent()) {
+            mainThread.post { watchActivity(activity) }
+            return
+        }
+        beforeCheckingViews()
+        val action =
+            synchronized(this) {
+                // A runtime keeps its activity after it stops, as when the app
+                // goes to the background while the bundle loads. One that
+                // isn't started now counts when this gate sees it start.
+                if (application == null || !isStarted(activity)) return
+                // Counted until it stops, as one this gate saw start.
+                startedActivities += activity
+                if (pendingAction == null) return
+                if (!showsReactView(activity)) {
+                    watch(activity)
+                    return
+                }
+                takePendingAction()
+            }
+        action?.invoke()
+    }
+
     override fun onActivityStarted(activity: Activity) {
+        beforeCheckingViews()
         val action =
             synchronized(this) {
                 startedActivities += activity
@@ -97,6 +155,7 @@ internal class ActivityStartGate(
     }
 
     private fun onLayout(activity: Activity) {
+        beforeCheckingViews()
         val action =
             synchronized(this) {
                 if (pendingAction == null ||
@@ -149,6 +208,27 @@ private fun hasStartedActivity(): Boolean =
             .isAtLeast(Lifecycle.State.STARTED)
     }.getOrDefault(false)
 
+/**
+ * Whether [activity] is started now. An activity that reports its lifecycle
+ * (ComponentActivity, which ReactActivity and AppCompatActivity are) says so.
+ * Any other, such as a plain Activity hosting a ReactRootView itself, is
+ * started while its window is shown: the framework hides a stopped
+ * activity's window.
+ */
+internal fun isActivityStarted(
+    activity: Activity,
+    windowShown: (Activity) -> Boolean = ::isWindowShown,
+): Boolean {
+    if (activity.isFinishing || activity.isDestroyed) return false
+    val owner = activity as? LifecycleOwner ?: return windowShown(activity)
+    return runCatching { owner.lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED) }.getOrDefault(false)
+}
+
+private fun isWindowShown(activity: Activity): Boolean {
+    val decorView = activity.window?.peekDecorView() ?: return false
+    return decorView.isAttachedToWindow && decorView.windowVisibility == View.VISIBLE
+}
+
 private fun hasReactRootView(activity: Activity): Boolean = activity.window?.peekDecorView()?.let(::containsReactRootView) ?: false
 
 private fun containsReactRootView(view: View): Boolean =
@@ -157,12 +237,19 @@ private fun containsReactRootView(view: View): Boolean =
 
 // A React Native screen added later, such as a fragment of a native activity,
 // changes the activity's layout.
+// A dialog or presentation shows its views in a window of its own, whose
+// layout this activity's never sees; the activity's window loses focus to it.
 private fun watchGlobalLayout(
     activity: Activity,
     onLayout: () -> Unit,
 ): () -> Unit {
     val decorView = activity.window?.decorView ?: return {}
     val listener = ViewTreeObserver.OnGlobalLayoutListener(onLayout)
+    val focusListener = ViewTreeObserver.OnWindowFocusChangeListener { onLayout() }
     decorView.viewTreeObserver.addOnGlobalLayoutListener(listener)
-    return { runCatching { decorView.viewTreeObserver.removeOnGlobalLayoutListener(listener) } }
+    decorView.viewTreeObserver.addOnWindowFocusChangeListener(focusListener)
+    return {
+        runCatching { decorView.viewTreeObserver.removeOnGlobalLayoutListener(listener) }
+        runCatching { decorView.viewTreeObserver.removeOnWindowFocusChangeListener(focusListener) }
+    }
 }

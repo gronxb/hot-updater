@@ -32,7 +32,9 @@ internal class HotUpdaterInstanceEnvironment private constructor(
         // families must not start with it. Names have no underscore, so one
         // name's family is never a prefix of another's.
         private const val INSTANCE_PREFERENCES_PREFIX = "HotUpdaterInstancePrefs_"
-        private const val INSTANCES_DIRECTORY = "hot-updater-instances"
+
+        /** Beside `bundle-store` in the app's files directory: one directory per named instance. */
+        const val INSTANCES_DIRECTORY = "hot-updater-instances"
         private const val INSTANCES_NO_BACKUP_DIRECTORY = "instances"
         private const val RELEASE_CATALOG_CACHE_DIRECTORY = "release-catalog-cache"
         private val NAME_PATTERN = Regex("^[a-z0-9-]{1,32}$")
@@ -226,7 +228,9 @@ internal class HotUpdaterInstanceRegistry(
         context: Context,
         sourceURL: String?,
     ): String {
-        if (sourceURL.isNullOrEmpty()) return HotUpdaterInstanceEnvironment.MAIN_NAME
+        // Crash recovery asks for every view it checks; without a named
+        // instance, main's answer needs no path work.
+        if (sourceURL.isNullOrEmpty() || impls.isEmpty()) return HotUpdaterInstanceEnvironment.MAIN_NAME
 
         // Two names that hand out the same URL, such as the same embedded
         // bundle, can't be told apart by it.

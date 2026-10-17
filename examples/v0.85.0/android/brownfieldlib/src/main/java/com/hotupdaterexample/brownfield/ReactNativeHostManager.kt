@@ -8,6 +8,7 @@ import com.facebook.react.PackageList
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
 import com.hotupdater.HotUpdater
 import com.hotupdater.HotUpdaterCheckOptions
+import com.hotupdater.HotUpdaterInstance
 import com.hotupdater.HotUpdaterOptions
 import com.hotupdater.HotUpdaterUpdateStrategy
 import kotlinx.coroutines.CancellationException
@@ -36,8 +37,15 @@ object ReactNativeHostManager {
 
     fun start(application: Application) {
         scope.launch {
-            NativeUpdateCheckRequest.read(application)?.let { request ->
-                request.report(checkForUpdate(application, request))
+            NativeUpdateCheckRequest.read(application, NativeUpdateCheckRequest.MAIN_KEY)?.let { request ->
+                val status =
+                    runCatching {
+                        HotUpdater.init(
+                            application,
+                            HotUpdaterOptions(baseURL = request.baseURL, requestTimeoutMillis = request.requestTimeoutMillis),
+                        )
+                    }.fold(onSuccess = { checkForUpdate(it, request) }, onFailure = { "failed" })
+                request.report(status, field = "nativeCheckResult")
             }
             val loaded =
                 OnJSBundleLoaded {
@@ -66,21 +74,18 @@ object ReactNativeHostManager {
     }
 
     /**
-     * The brownfield guide's update check: checks, and waits up to the
+     * The brownfield guide's update check for [hotUpdater], run before the
+     * React Native runtime that uses it starts: checks, and waits up to the
      * request's timeout for a required update, which then runs in this start.
+     * Any other update downloads in the background and runs at the next start.
      * The timeout ends the wait, not the download.
      */
-    private suspend fun checkForUpdate(
-        application: Application,
+    internal suspend fun checkForUpdate(
+        hotUpdater: HotUpdaterInstance,
         request: NativeUpdateCheckRequest,
     ): String =
         withTimeoutOrNull(request.checkTimeoutMillis) {
             try {
-                val hotUpdater =
-                    HotUpdater.init(
-                        application,
-                        HotUpdaterOptions(baseURL = request.baseURL, requestTimeoutMillis = request.requestTimeoutMillis),
-                    )
                 val strategy =
                     if (request.updateStrategy == "fingerprint") {
                         HotUpdaterUpdateStrategy.FINGERPRINT
@@ -124,18 +129,23 @@ object ReactNativeHostManager {
 }
 
 /**
- * The native update check a scenario turns on. The E2E control server writes
- * it to this app's shared preferences; resetting the app removes it.
+ * A native update check a scenario turns on: the example's ([MAIN_KEY]), or
+ * the widget's, which also turns the widget on ([WIDGET_KEY]). The E2E control
+ * server writes it to this app's shared preferences; resetting the app
+ * removes it.
  */
-private class NativeUpdateCheckRequest(
+internal class NativeUpdateCheckRequest(
     val baseURL: String,
     val updateStrategy: String,
     val nonce: String,
     val requestTimeoutMillis: Long,
     val checkTimeoutMillis: Long,
 ) {
-    /** Publishes `<nonce>:<status>` to the control server's screen state. */
-    suspend fun report(status: String) {
+    /** Publishes `<nonce>:<status>` as [field] of the control server's screen state. */
+    suspend fun report(
+        status: String,
+        field: String,
+    ) {
         withContext(Dispatchers.IO) {
             runCatching {
                 val base = URL(baseURL)
@@ -146,7 +156,7 @@ private class NativeUpdateCheckRequest(
                 connection.doOutput = true
                 connection.setRequestProperty("Content-Type", "application/json")
                 connection.outputStream.use {
-                    it.write(JSONObject().put("nativeCheckResult", "$nonce:$status").toString().toByteArray())
+                    it.write(JSONObject().put(field, "$nonce:$status").toString().toByteArray())
                 }
                 connection.responseCode
                 connection.disconnect()
@@ -155,11 +165,17 @@ private class NativeUpdateCheckRequest(
     }
 
     companion object {
-        fun read(context: Context): NativeUpdateCheckRequest? {
+        const val MAIN_KEY = "nativeCheck"
+        const val WIDGET_KEY = "widget"
+
+        fun read(
+            context: Context,
+            key: String,
+        ): NativeUpdateCheckRequest? {
             val value =
                 context
                     .getSharedPreferences("HotUpdaterE2E", Context.MODE_PRIVATE)
-                    .getString("nativeCheck", null) ?: return null
+                    .getString(key, null) ?: return null
             return runCatching {
                 val json = JSONObject(value)
                 NativeUpdateCheckRequest(

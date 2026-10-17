@@ -33,6 +33,8 @@ describe("E2E screen state control boundary", () => {
         startupCheckEpoch: "",
         startupCheckSettledEpoch: "",
         nativeCheckResult: "",
+        widgetState: "",
+        widgetNativeCheckResult: "",
       },
     });
   });
@@ -51,6 +53,38 @@ describe("E2E screen state control boundary", () => {
     );
   });
 
+  it("keeps the widget's fields apart from main's and clears them for a new process", () => {
+    resetE2eScreenState();
+    handlePatchE2eScreenState({
+      nativeCheckResult: "nonce:ready",
+    });
+    handlePatchE2eScreenState({
+      widgetState: "widget-bundle marker",
+      widgetNativeCheckResult: "nonce:pending",
+    });
+
+    expect(readE2eScreenStateSnapshot()).toMatchObject({
+      nativeCheckResult: "nonce:ready",
+      widgetState: "widget-bundle marker",
+      widgetNativeCheckResult: "nonce:pending",
+    });
+    expect(() =>
+      handlePatchE2eScreenState({ widgetNativeCheckResult: 1 }),
+    ).toThrow("screen state field must be a string");
+
+    // A focused Android runtime keeps running, and so keeps its values.
+    prepareE2eStartupCheck(true);
+    expect(readE2eScreenStateSnapshot().widgetNativeCheckResult).toBe(
+      "nonce:pending",
+    );
+    prepareE2eStartupCheck();
+    expect(readE2eScreenStateSnapshot()).toMatchObject({
+      nativeCheckResult: "nonce:ready",
+      widgetState: "",
+      widgetNativeCheckResult: "",
+    });
+  });
+
   it("rejects malformed screen state patches", () => {
     resetE2eScreenState();
 
@@ -67,6 +101,8 @@ describe("E2E screen state control boundary", () => {
       startupCheckEpoch: "",
       startupCheckSettledEpoch: "",
       nativeCheckResult: "",
+      widgetState: "",
+      widgetNativeCheckResult: "",
     });
   });
 

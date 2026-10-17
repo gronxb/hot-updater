@@ -178,6 +178,13 @@ interface BundleStorageService {
     fun markLaunchStarted(launchedBundleId: String?)
 
     /**
+     * Undoes [markLaunchStarted] when another instance's crash ends the
+     * process: the launch did not fail, so the next process launches its
+     * bundle again instead of counting the launch as unfinished.
+     */
+    fun clearLaunchStarted(launchedBundleId: String?) {}
+
+    /**
      * Marks the current launch as successful after the first content appeared.
      */
     fun markLaunchCompleted(currentBundleId: String?)
@@ -1561,6 +1568,16 @@ class BundleFileStorageService(
                 return
             }
             saveMetadata(metadata.copy(launchInProgress = true))
+        }
+    }
+
+    override fun clearLaunchStarted(launchedBundleId: String?) {
+        synchronized(releaseStateLock) {
+            val metadata = loadMetadataOrNull() ?: return
+            if (!metadata.launchInProgress || metadata.stagingBundleId != launchedBundleId) {
+                return
+            }
+            saveMetadata(metadata.copy(launchInProgress = false))
         }
     }
 
