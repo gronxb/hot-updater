@@ -20,14 +20,11 @@ class HotUpdater {
          */
         fun getInstance(context: Context): HotUpdaterImpl =
             instance ?: synchronized(this) {
-                instance ?: MainInstanceConfiguration
-                    .createImpl(context.applicationContext) {
-                        // From here on, main's options can no longer change
-                        // what the impl reads.
-                        HotUpdaterImpl(context.applicationContext)
-                    }.also {
-                        instance = it
-                    }
+                // Built from one snapshot of main's values, which options and
+                // HotUpdater.configure can no longer change.
+                instance ?: MainInstanceConfiguration.shared.createImpl(context.applicationContext).also {
+                    instance = it
+                }
             }
 
         /**
@@ -98,7 +95,8 @@ class HotUpdater {
          * Main's configuration, which [HotUpdaterOptions] of [init] now set.
          * Each call replaces all four values; a null argument means no
          * override. [isolationKey] replaces main's storage key verbatim.
-         * Named instances never read these values.
+         * Main's native state reads the values once, when it is created, so a
+         * later call no longer changes it. Named instances never read them.
          */
         @Deprecated(
             "Pass channel, fingerprintHash, and publicKey to HotUpdaterOptions. " +

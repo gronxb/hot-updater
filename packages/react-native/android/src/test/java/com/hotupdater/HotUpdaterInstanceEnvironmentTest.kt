@@ -127,7 +127,7 @@ class HotUpdaterInstanceEnvironmentTest {
         }
         // A refused init records nothing.
         assertThrows(IllegalArgumentException::class.java) {
-            MainInstanceConfiguration.claim(context, HotUpdaterOptions(BASE_URL, channel = "beta", publicKey = "OTHER KEY"))
+            MainInstanceConfiguration.shared.claim(HotUpdaterOptions(BASE_URL, channel = "beta", publicKey = "OTHER KEY"))
         }
         assertEquals("APP KEY", HotUpdaterConfig.publicKey)
         HotUpdaterConfig.clear()
@@ -135,14 +135,14 @@ class HotUpdaterInstanceEnvironmentTest {
         // Options after main's impl exists: it keeps the values it was created with.
         HotUpdater.configure(channel = "beta")
         val createdWith = MainImplValues.read(context)
-        MainInstanceConfiguration.claim(HotUpdaterOptions(BASE_URL, channel = "beta"), createdWith)
+        MainInstanceConfiguration.shared.claim(HotUpdaterOptions(BASE_URL, channel = "beta"), createdWith)
         listOf(
             HotUpdaterOptions(BASE_URL, channel = "production"),
             HotUpdaterOptions(BASE_URL, fingerprintHash = "app-fp"),
             HotUpdaterOptions(BASE_URL, publicKey = "APP KEY"),
         ).forEach { options ->
             assertThrows(IllegalArgumentException::class.java) {
-                MainInstanceConfiguration.claim(options, createdWith)
+                MainInstanceConfiguration.shared.claim(options, createdWith)
             }
         }
         assertNull(HotUpdaterConfig.fingerprintHash)
@@ -153,9 +153,44 @@ class HotUpdaterInstanceEnvironmentTest {
         HotUpdater.configure(channel = "alpha")
         assertEquals("alpha", HotUpdaterInstanceEnvironment.main.defaultChannel(context))
         assertThrows(IllegalArgumentException::class.java) {
-            MainInstanceConfiguration.claim(HotUpdaterOptions(BASE_URL, channel = "alpha"), createdWith)
+            MainInstanceConfiguration.shared.claim(HotUpdaterOptions(BASE_URL, channel = "alpha"), createdWith)
         }
-        MainInstanceConfiguration.claim(HotUpdaterOptions(BASE_URL, channel = "beta"), createdWith)
+        MainInstanceConfiguration.shared.claim(HotUpdaterOptions(BASE_URL, channel = "beta"), createdWith)
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `main's impl reads only the snapshot it was created with`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        HotUpdaterConfig.configure(fingerprintHash = "app-fp", publicKey = "APP KEY", channel = "beta")
+        val configuration = MainInstanceConfiguration()
+        var implEnvironment: HotUpdaterInstanceEnvironment? = null
+
+        val impl =
+            configuration.createImpl(context) { appContext, environment ->
+                // Writes that land after the snapshot and before the impl is built.
+                HotUpdaterConfig.channel = "alpha"
+                HotUpdaterConfig.fingerprintHash = "other-fp"
+                HotUpdaterConfig.publicKey = "OTHER KEY"
+                HotUpdaterConfig.isolationKey = "host-key"
+                implEnvironment = environment
+                HotUpdaterImpl(appContext, environment)
+            }
+
+        val environment = implEnvironment!!
+        assertEquals("beta", impl.getDefaultChannel())
+        assertEquals("beta", impl.getChannel())
+        assertEquals("app-fp", impl.getFingerprintHash())
+        assertEquals("APP KEY", environment.publicKey(context))
+        assertEquals("HotUpdaterPrefs_app-fp_${MIN_BUNDLE_ID}_beta", environment.isolationKey(context, MIN_BUNDLE_ID))
+        val createdWith = configuration.createdWith!!
+        assertEquals(
+            listOf("beta", "app-fp", "APP KEY", null),
+            listOf(createdWith.channel, createdWith.fingerprintHash, createdWith.publicKey, createdWith.isolationKey),
+        )
+        // Main's static entry points read HotUpdaterConfig as it is now.
+        assertEquals("alpha", HotUpdaterInstanceEnvironment.main.defaultChannel(context))
+        assertEquals("host-key", HotUpdaterInstanceEnvironment.main.isolationKey(context))
     }
 
     @Test
@@ -186,8 +221,8 @@ class HotUpdaterInstanceEnvironmentTest {
         val context = InstanceTestContext(temporaryFolder.root)
         val main = HotUpdaterInstanceEnvironment.main
         val warnings = mutableListOf<String>()
-        val logWarning = MainInstanceConfiguration.logWarning
-        MainInstanceConfiguration.logWarning = { warnings += it }
+        val logWarning = MainInstanceConfiguration.shared.logWarning
+        MainInstanceConfiguration.shared.logWarning = { warnings += it }
         try {
             // Without options, configure is what it always was.
             HotUpdater.configure(channel = "staging")
@@ -213,7 +248,7 @@ class HotUpdaterInstanceEnvironmentTest {
             assertNull(main.fingerprintHash(context))
             assertEquals(1, warnings.size)
         } finally {
-            MainInstanceConfiguration.logWarning = logWarning
+            MainInstanceConfiguration.shared.logWarning = logWarning
         }
     }
 

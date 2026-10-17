@@ -30,7 +30,7 @@ class HotUpdaterInstance internal constructor(
         ): HotUpdaterInstance {
             val environment = HotUpdaterInstanceEnvironment.of(options)
             if (environment.isMain) {
-                MainInstanceConfiguration.claim(context, options)
+                MainInstanceConfiguration.shared.claim(options)
             } else {
                 HotUpdaterInstanceRegistry.shared.register(environment)
             }

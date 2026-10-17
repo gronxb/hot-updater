@@ -13,20 +13,29 @@ private const val CONFIGURE_DEPRECATION =
  * manifest metadata. Named instances never read it.
  */
 object HotUpdaterConfig {
+    // Every write takes MainInstanceConfiguration.shared's lock, which main's
+    // impl reads its values under.
+
     @Volatile
     var fingerprintHash: String? = null
         @Deprecated(CONFIGURE_DEPRECATION)
-        set
+        set(value) {
+            synchronized(MainInstanceConfiguration.shared) { field = value }
+        }
 
     @Volatile
     var publicKey: String? = null
         @Deprecated(CONFIGURE_DEPRECATION)
-        set
+        set(value) {
+            synchronized(MainInstanceConfiguration.shared) { field = value }
+        }
 
     @Volatile
     var channel: String? = null
         @Deprecated(CONFIGURE_DEPRECATION)
-        set
+        set(value) {
+            synchronized(MainInstanceConfiguration.shared) { field = value }
+        }
 
     /**
      * When set, main uses this value verbatim as its storage isolation key,
@@ -37,11 +46,15 @@ object HotUpdaterConfig {
     @Volatile
     var isolationKey: String? = null
         @Deprecated(CONFIGURE_DEPRECATION)
-        set
+        set(value) {
+            synchronized(MainInstanceConfiguration.shared) { field = value }
+        }
 
     /**
      * Replaces all four values; a null argument means no override. It still
      * replaces values main's [HotUpdaterOptions] set, and warns when it does.
+     * Main's impl reads the values once, when it is created; a later call
+     * changes only main's static entry points.
      */
     @Deprecated(CONFIGURE_DEPRECATION)
     @Suppress("DEPRECATION")
@@ -51,10 +64,14 @@ object HotUpdaterConfig {
         channel: String? = null,
         isolationKey: String? = null,
     ) {
-        // Under the lock main's impl is created with, so the impl reads the
-        // values it records.
-        synchronized(MainInstanceConfiguration) {
-            MainInstanceConfiguration.warnIfConfigureOverrides(fingerprintHash = fingerprintHash, publicKey = publicKey, channel = channel)
+        // Under the lock main's impl is created with, as every setter is, so
+        // the impl's values are never half of one call.
+        synchronized(MainInstanceConfiguration.shared) {
+            MainInstanceConfiguration.shared.warnIfConfigureOverrides(
+                fingerprintHash = fingerprintHash,
+                publicKey = publicKey,
+                channel = channel,
+            )
             this.fingerprintHash = fingerprintHash
             this.publicKey = publicKey
             this.channel = channel
@@ -74,8 +91,13 @@ object HotUpdaterConfig {
  * instance's [HotUpdaterOptions] into [HotUpdaterConfig] before main's impl
  * exists, and refuses values that would contradict what main already uses.
  */
-internal object MainInstanceConfiguration {
-    private const val TAG = "HotUpdaterConfig"
+internal class MainInstanceConfiguration {
+    companion object {
+        private const val TAG = "HotUpdaterConfig"
+
+        /** Main's: the one HotUpdater.init, HotUpdater.getInstance, and HotUpdaterConfig use. */
+        val shared = MainInstanceConfiguration()
+    }
 
     /** Where the warning about `HotUpdater.configure` overriding main's options goes. */
     @Volatile
@@ -88,19 +110,26 @@ internal object MainInstanceConfiguration {
     // The values main's impl was created with, once it was: its storage key
     // and stored bundles are fixed to them, whatever HotUpdater.configure
     // sets later.
-    private var createdWith: MainImplValues? = null
+    @get:Synchronized
+    var createdWith: MainImplValues? = null
+        private set
 
     /**
-     * Creates main's impl with [create], recording the values it is created
-     * with. Options and `HotUpdater.configure` wait for it.
+     * Creates main's impl from one snapshot of its values, which it reads
+     * from then on, and records the snapshot. Writes to HotUpdaterConfig wait
+     * for the snapshot and never reach the impl.
      */
-    @Synchronized
     fun createImpl(
         context: Context,
-        create: () -> HotUpdaterImpl,
+        create: (Context, HotUpdaterInstanceEnvironment) -> HotUpdaterImpl = { appContext, environment ->
+            HotUpdaterImpl(appContext, environment)
+        },
     ): HotUpdaterImpl {
-        createdWith = MainImplValues.read(context)
-        return create()
+        val values =
+            synchronized(this) {
+                MainImplValues.read(context).also { createdWith = it }
+            }
+        return create(context, HotUpdaterInstanceEnvironment.main(values))
     }
 
     /**
@@ -112,10 +141,7 @@ internal object MainInstanceConfiguration {
      * main's impl exists, other than the one it uses
      */
     @Synchronized
-    fun claim(
-        context: Context,
-        options: HotUpdaterOptions,
-    ) = claim(options, createdWith)
+    fun claim(options: HotUpdaterOptions) = claim(options, createdWith)
 
     /** [claim], with the values main's impl was created with, or null before it exists. */
     @Synchronized
@@ -190,16 +216,23 @@ internal object MainInstanceConfiguration {
     )
 }
 
-/** The channel, fingerprint hash, and public key main's impl reads. */
+/** The channel, fingerprint hash, public key, and isolation key override main's impl reads. */
 internal class MainImplValues(
     val channel: String,
     val fingerprintHash: String?,
     val publicKey: String?,
+    val isolationKey: String?,
 ) {
     companion object {
+        /** HotUpdaterConfig's values, then the manifest's, as main's static entry points read them. */
         fun read(context: Context): MainImplValues {
             val main = HotUpdaterInstanceEnvironment.main
-            return MainImplValues(main.defaultChannel(context), main.fingerprintHash(context), main.publicKey(context))
+            return MainImplValues(
+                main.defaultChannel(context),
+                main.fingerprintHash(context),
+                main.publicKey(context),
+                HotUpdaterConfig.isolationKey,
+            )
         }
     }
 }

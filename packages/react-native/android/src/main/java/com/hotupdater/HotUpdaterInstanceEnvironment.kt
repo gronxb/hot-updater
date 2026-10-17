@@ -22,6 +22,10 @@ internal class HotUpdaterInstanceEnvironment private constructor(
     private val fingerprintHash: String?,
     private val publicKey: String?,
     private val bundleAssetName: String,
+    // Main's impl: the values it was created with, which it reads instead of
+    // HotUpdaterConfig. Null for main's static entry points, which read
+    // HotUpdaterConfig, and for named instances.
+    private val mainValues: MainImplValues? = null,
 ) {
     companion object {
         const val MAIN_NAME = "main"
@@ -42,6 +46,9 @@ internal class HotUpdaterInstanceEnvironment private constructor(
         private val NAME_PATTERN = Regex("^[a-z0-9-]{1,32}$")
 
         val main = HotUpdaterInstanceEnvironment(MAIN_NAME, null, null, null, DEFAULT_BUNDLE_ASSET_NAME)
+
+        /** Main, fixed to [values]: what main's impl reads, so a later write to HotUpdaterConfig never reaches it. */
+        fun main(values: MainImplValues) = HotUpdaterInstanceEnvironment(MAIN_NAME, null, null, null, DEFAULT_BUNDLE_ASSET_NAME, values)
 
         /**
          * The environment of [options]. `main`'s configuration lives in
@@ -126,7 +133,8 @@ internal class HotUpdaterInstanceEnvironment private constructor(
             // The deprecated HotUpdater.configure(isolationKey:) override is
             // used verbatim. It is main's own key, so a named instance never
             // uses it.
-            HotUpdaterConfig.isolationKey?.takeIf { it.isNotEmpty() }?.let { return it }
+            val override = if (mainValues != null) mainValues.isolationKey else HotUpdaterConfig.isolationKey
+            override?.takeIf { it.isNotEmpty() }?.let { return it }
         }
 
         val fingerprintHash = fingerprintHash(context)
@@ -144,7 +152,7 @@ internal class HotUpdaterInstanceEnvironment private constructor(
     /** The channel the instance's build ships with, before any runtime switch. */
     fun defaultChannel(context: Context): String =
         if (isMain) {
-            HotUpdaterImpl.getChannel(context)
+            mainValues?.channel ?: HotUpdaterImpl.getChannel(context)
         } else {
             channel
                 ?: NativeConfigUtils.getManifestString(context, NativeConfigUtils.CHANNEL_META_DATA_KEY)
@@ -153,7 +161,7 @@ internal class HotUpdaterInstanceEnvironment private constructor(
 
     fun fingerprintHash(context: Context): String? =
         if (isMain) {
-            HotUpdaterImpl.getFingerprintHash(context)
+            if (mainValues != null) mainValues.fingerprintHash else HotUpdaterImpl.getFingerprintHash(context)
         } else {
             fingerprintHash ?: NativeConfigUtils.getManifestString(context, NativeConfigUtils.FINGERPRINT_HASH_META_DATA_KEY)
         }
@@ -161,7 +169,7 @@ internal class HotUpdaterInstanceEnvironment private constructor(
     /** The PEM key bundles must be signed with, or null when signing is off. */
     fun publicKey(context: Context): String? =
         if (isMain) {
-            SignatureVerifier.getPublicKeyFromConfig(context)
+            if (mainValues != null) mainValues.publicKey else SignatureVerifier.getPublicKeyFromConfig(context)
         } else {
             publicKey ?: NativeConfigUtils.getManifestString(context, NativeConfigUtils.PUBLIC_KEY_META_DATA_KEY)
         }
