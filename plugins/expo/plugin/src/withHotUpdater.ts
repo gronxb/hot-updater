@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+
 import type { ExpoConfig } from "expo/config";
 import {
   XML,
@@ -180,17 +183,22 @@ const withHotUpdaterConfigAsync =
     let modifiedConfig = config;
 
     // fingerprint.json, which the native build reads to embed each
-    // platform's fingerprint.
-    const writeFingerprintJson = async () => {
+    // platform's fingerprint. Under appVersion a fingerprint.json left from
+    // the fingerprint strategy would still be embedded, so it goes.
+    const writeFingerprintJson = async (projectRoot: string) => {
       const hotUpdaterConfig = await getHotUpdaterConfig();
       if (hotUpdaterConfig.updateStrategy !== "appVersion") {
         await getFingerprint(props.publicKeyPath);
+      } else {
+        await fs.rm(path.join(projectRoot, "fingerprint.json"), {
+          force: true,
+        });
       }
     };
 
     // === iOS: Add channel to Info.plist ===
     modifiedConfig = withInfoPlist(modifiedConfig, async (cfg) => {
-      await writeFingerprintJson();
+      await writeFingerprintJson(cfg.modRequest.projectRoot);
 
       // Load public key if signing is enabled
       const publicKey = await getPublicKey(cfg.modRequest.projectRoot);
@@ -207,7 +215,7 @@ const withHotUpdaterConfigAsync =
 
     // === Android: Add channel to AndroidManifest.xml ===
     modifiedConfig = withAndroidManifest(modifiedConfig, async (cfg) => {
-      await writeFingerprintJson();
+      await writeFingerprintJson(cfg.modRequest.projectRoot);
 
       // Load public key if signing is enabled
       const publicKey = await getPublicKey(cfg.modRequest.projectRoot);

@@ -32,7 +32,10 @@ import {
 import { getNativeAppVersion } from "../utils/version/getNativeAppVersion";
 import { findMissingClientPlugins } from "./doctor/clientPlugins";
 import { createDoctorContext, type DoctorContext } from "./doctor/context";
-import { checkFingerprintJson } from "./doctor/fingerprint";
+import {
+  checkFingerprintJson,
+  checkUnusedFingerprintJson,
+} from "./doctor/fingerprint";
 import { applyDoctorFixes } from "./doctor/fix";
 import {
   type ArtifactStatus,
@@ -551,6 +554,7 @@ async function checkNativeStatus({
         : {}),
       issues: [
         ...signing.issues.map(toNativeIssue),
+        ...checkUnusedFingerprintJson(cwd, config.updateStrategy),
         ...(localFingerprint
           ? await checkFingerprintJson(
               localFingerprint.value,
@@ -581,6 +585,7 @@ async function checkNativeStatus({
     ...ios.issues,
     ...android.issues,
     ...signing.issues.map(toNativeIssue),
+    ...checkUnusedFingerprintJson(cwd, config.updateStrategy),
   ];
 
   if (requireFingerprint && localFingerprint) {
@@ -921,6 +926,8 @@ const promptServerBaseUrl = async () => {
 const FIX_DESCRIPTIONS: Record<DoctorFix["repair"], string> = {
   fingerprint: "Recreate fingerprint.json and the native fingerprint hashes",
   "fingerprint-engine": "Record the changed fingerprint engine's hashes",
+  "unused-fingerprint":
+    "Delete the fingerprint.json the update strategy does not use",
   "public-key": "Write the configured public key into the native files",
   "orphan-public-key": "Remove the public key from the native files",
   "release-catalogs": "Rebuild the stale release catalogs from their releases",
@@ -931,6 +938,7 @@ const FIX_DESCRIPTIONS: Record<DoctorFix["repair"], string> = {
 const WROTE_LABELS: Record<DoctorFix["repair"], string> = {
   fingerprint: "Path",
   "fingerprint-engine": "Path",
+  "unused-fingerprint": "Path",
   "public-key": "Path",
   "orphan-public-key": "Path",
   "release-catalogs": "Catalog",

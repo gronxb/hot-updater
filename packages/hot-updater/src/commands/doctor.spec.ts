@@ -40,7 +40,8 @@ vi.mock("../packageJson", () => ({ packageJsonData: { version: "1.0.0" } }));
 
 // Computing a fingerprint hashes the whole project; doctor/fingerprint.spec
 // covers the comparison itself.
-vi.mock("./doctor/fingerprint", () => ({
+vi.mock("./doctor/fingerprint", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./doctor/fingerprint")>()),
   checkFingerprintJson: vi.fn(async () => []),
 }));
 
@@ -1405,7 +1406,7 @@ describe("doctor", () => {
     });
   });
 
-  it("ignores fingerprint.json when update strategy is appVersion", async () => {
+  it("reports a fingerprint.json the appVersion strategy leaves, which builds would embed", async () => {
     const cwd = await createTempProject();
     tempProjects.push(cwd);
     mockGetCwd.mockReturnValue(cwd);
@@ -1470,11 +1471,18 @@ describe("doctor", () => {
     const result = await doctor();
 
     expect(result).toMatchObject({
-      success: true,
+      success: false,
       details: {
         native: {
           updateStrategy: "appVersion",
-          issues: [],
+          issues: [
+            {
+              platform: "project",
+              code: "FINGERPRINT_JSON_UNUSED",
+              fixability: "auto",
+              paths: ["fingerprint.json"],
+            },
+          ],
         },
       },
     });

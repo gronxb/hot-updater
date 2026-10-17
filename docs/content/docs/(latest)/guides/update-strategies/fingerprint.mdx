@@ -128,11 +128,16 @@ This creates `fingerprint.json`: each platform's fingerprint, its sources,
 and the inputs it was computed from. Commit it. Every native build embeds the
 fingerprint itself: a Release build computes it from those inputs with
 `npx hot-updater fingerprint hash`, without loading `hot-updater.config.ts`,
-and a Debug build uses the hash `fingerprint.json` holds. When the project
+and a Debug build uses the hash `fingerprint.json` holds. Swift Package
+Manager builds always compute it, since a package build plugin can't tell
+Debug from Release. When the project
 changed after `fingerprint create`, the build embeds the fingerprint of what
 it was built from and warns that `fingerprint.json` is stale. The build embeds
 no fingerprint when the app root has no `fingerprint.json`, so delete it when
-you switch a project to App Version.
+you switch a project to App Version: an app with a fingerprint reports the
+fingerprint strategy. Under App Version, `doctor` reports a leftover
+`fingerprint.json` as `FINGERPRINT_JSON_UNUSED` and `doctor --fix` deletes it,
+`deploy` warns about it, and the Expo config plugin removes it at prebuild.
 
 Example `fingerprint.json` (sources shortened):
 

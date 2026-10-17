@@ -1,3 +1,8 @@
+import { existsSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { isExpoCNG } from "../../utils/expoDetection";
@@ -187,6 +192,30 @@ describe("applyDoctorFixes", () => {
       },
     ]);
     expect(syncFingerprintFiles).not.toHaveBeenCalled();
+  });
+
+  it("deletes the fingerprint.json an appVersion project's builds would embed", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "hot-updater-fix-"));
+    await writeFile(path.join(cwd, "fingerprint.json"), "{}");
+    try {
+      const fixes = await applyDoctorFixes(issues("FINGERPRINT_JSON_UNUSED"), {
+        ...context(),
+        cwd,
+      });
+
+      expect(fixes).toEqual([
+        {
+          repair: "unused-fingerprint",
+          codes: ["FINGERPRINT_JSON_UNUSED"],
+          status: "applied",
+          wrote: ["fingerprint.json"],
+          native: true,
+        },
+      ]);
+      expect(existsSync(path.join(cwd, "fingerprint.json"))).toBe(false);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
   });
 
   it("skips native-file repairs on an Expo project whose native folders prebuild generates, judged in the run's directory", async () => {

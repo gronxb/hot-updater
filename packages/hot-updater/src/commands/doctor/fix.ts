@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+
 import {
   getBundleSigningPublicKey,
   getCwd,
@@ -100,6 +103,16 @@ const REPAIRS: readonly {
     writesNativeFiles: false,
     reportOnly:
       "doctor --fix never rewrites fingerprint.json for a changed fingerprint engine. The issue has two remedies, and recording the new engine's hash stops updates to every app already built with the previous one. Go back to the engine fingerprint.json records, or run `npx hot-updater fingerprint create` and rebuild the apps.",
+  },
+  {
+    // The fingerprint.json an appVersion project's builds would still embed.
+    repair: "unused-fingerprint",
+    codes: ["FINGERPRINT_JSON_UNUSED"],
+    writesNativeFiles: false,
+    run: async (_issues, context) => {
+      await fs.rm(path.join(context.cwd, "fingerprint.json"), { force: true });
+      return { wrote: ["fingerprint.json"], native: true };
+    },
   },
   {
     // What `keys export-public --yes` writes.
