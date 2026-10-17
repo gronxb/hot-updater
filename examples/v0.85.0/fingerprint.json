@@ -1089,7 +1089,7 @@
         "reasons": [
           "rncoreAutolinking"
         ],
-        "hash": "7e2a9c1ad9634bf2570805186e15d71e44507400",
+        "hash": "dd330ae04589c38c0622b96ae53376103a376b38",
         "debugInfo": {
           "path": "node_modules/@hot-updater/react-native",
           "children": [
@@ -1098,7 +1098,7 @@
               "children": [
                 {
                   "path": "node_modules/@hot-updater/react-native/android/build.gradle",
-                  "hash": "6976487dbc7a41738b3a0b5d73e912267c41f4dd"
+                  "hash": "88d3c4cf95f9b092ce817436f45563bfa0103d2a"
                 },
                 {
                   "path": "node_modules/@hot-updater/react-native/android/hot-updater-builtin-assets.gradle",
@@ -1119,26 +1119,6 @@
                 {
                   "path": "node_modules/@hot-updater/react-native/android/src",
                   "children": [
-                    {
-                      "path": "node_modules/@hot-updater/react-native/android/src/bridge",
-                      "children": [
-                        {
-                          "path": "node_modules/@hot-updater/react-native/android/src/bridge/BridgeReactInstance.kt",
-                          "hash": "6b834856740056a8b7af40a952976a6b6517c90d"
-                        }
-                      ],
-                      "hash": "b14634f1784be63bf74993dad9da8bdcc099ce68"
-                    },
-                    {
-                      "path": "node_modules/@hot-updater/react-native/android/src/bridgeless",
-                      "children": [
-                        {
-                          "path": "node_modules/@hot-updater/react-native/android/src/bridgeless/BridgeReactInstance.kt",
-                          "hash": "ee0f795cca0864b8442a3445b2f8a42c4fa1ddb2"
-                        }
-                      ],
-                      "hash": "de2901d3c20ade5379dd318d28c792a6f8eaf87b"
-                    },
                     {
                       "path": "node_modules/@hot-updater/react-native/android/src/main",
                       "children": [
@@ -1194,10 +1174,6 @@
                                       "hash": "0ec856a768f9c7cd3157ff633091993f7e23fa17"
                                     },
                                     {
-                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/ContentAppearedLog.kt",
-                                      "hash": "f24a83ed874ff3de00b2941234caa4168972792c"
-                                    },
-                                    {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/FileManagerService.kt",
                                       "hash": "b5474fd252c6f15e7187496cdf0a158d731e9c17"
                                     },
@@ -1215,7 +1191,7 @@
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/HotUpdaterImpl.kt",
-                                      "hash": "4e1659be9b1b4eaa15b408cbf99b8ea8dd953255"
+                                      "hash": "8d5644b001911d518655b9430d0d504a97def559"
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/HotUpdaterInstance.kt",
@@ -1284,10 +1260,6 @@
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/OkHttpUpdateCheckTransport.kt",
                                       "hash": "c7ef1683e7dbfef7ff27d6b9181c2fb7e975ecbb"
-                                    },
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/ReactIntegrationManagerBase.kt",
-                                      "hash": "edc166023f86025e71584993c7f5b38654fbce41"
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/ReactNativeValueConverters.kt",
@@ -1404,27 +1376,27 @@
                                       "hash": "8b5b0ea79da48638f801babfc2152fa49b8dce2b"
                                     }
                                   ],
-                                  "hash": "83c8bfd400a6ae938465e3ed1d1e4b006cd5005e"
+                                  "hash": "4ff0b83884658135900ec009ac9d4b9602917a3d"
                                 }
                               ],
-                              "hash": "32e892a258fb857f3e8de2dd468b3dd189b8b707"
+                              "hash": "6640e2b366a9c75e5a8dcbf3527e939332ab810c"
                             }
                           ],
-                          "hash": "c0d6fb9237bc5e22f865ad4dfc840739368eeba3"
+                          "hash": "c0ac13e0e3fdbb9c8590d62850d829eec701968c"
                         }
                       ],
-                      "hash": "6a8ea0de28e865d47403556193659ad1b0d4aacb"
+                      "hash": "629818fdf0fd830d57f10cbf4b793bb03b40ec18"
                     },
                     {
                       "path": "node_modules/@hot-updater/react-native/android/src/newarch",
                       "children": [
                         {
                           "path": "node_modules/@hot-updater/react-native/android/src/newarch/HotUpdater.kt",
-                          "hash": "f7ebc842f445807388773b08f4db92b954c7c64a"
+                          "hash": "322ff68aeedfd449ddd46f16bad019fcd9690f09"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/android/src/newarch/HotUpdaterModule.kt",
-                          "hash": "a438f8906d9fcf7d8f5d55583f23e5c74ce5a407"
+                          "hash": "fb4d2008a8b1df289fac66c173181ae06c55d290"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/android/src/newarch/HotUpdaterPackage.kt",
@@ -1441,24 +1413,20 @@
                         {
                           "path": "node_modules/@hot-updater/react-native/android/src/newarch/ReactHostHolder.kt",
                           "hash": "9a3d61f4b340bf8d7304b6a008c37ed79658adaa"
-                        },
-                        {
-                          "path": "node_modules/@hot-updater/react-native/android/src/newarch/ReactIntegrationManager.kt",
-                          "hash": "b5b09b3c34b1524938e21711ff651dce21b7be4f"
                         }
                       ],
-                      "hash": "c779a8ab22a0f85c3baa7732e507bf6702dcfd6f"
+                      "hash": "0cdf38c23b433ea512508004199887b61b8a289f"
                     },
                     {
                       "path": "node_modules/@hot-updater/react-native/android/src/oldarch",
                       "children": [
                         {
                           "path": "node_modules/@hot-updater/react-native/android/src/oldarch/HotUpdater.kt",
-                          "hash": "db59d4e33ec57aa2f61fd4403505cc78fef2fa2b"
+                          "hash": "b360f1a4bf23ea9c19a3ac6d465af4dae4125b51"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/android/src/oldarch/HotUpdaterModule.kt",
-                          "hash": "0c56e5381436b977cb7e672c733a4900a00d87aa"
+                          "hash": "b6101e338b462029b6c23c397b21e6aba5a84795"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/android/src/oldarch/HotUpdaterPackage.kt",
@@ -1471,13 +1439,9 @@
                         {
                           "path": "node_modules/@hot-updater/react-native/android/src/oldarch/JavaScriptExceptionHooks.kt",
                           "hash": "4c6a4e1b51b3756f53d31bd727c82bd8fb288114"
-                        },
-                        {
-                          "path": "node_modules/@hot-updater/react-native/android/src/oldarch/ReactIntegrationManager.kt",
-                          "hash": "3a43affdface6224cb16d675e3d9cf8437eb28a7"
                         }
                       ],
-                      "hash": "83894b4090d1c66510ebbee01d52695938551efd"
+                      "hash": "ec93a8aa2af06f4fae6beb2d9cbd2483dc2ca3c6"
                     },
                     {
                       "path": "node_modules/@hot-updater/react-native/android/src/test",
@@ -1592,10 +1556,10 @@
                       "hash": "125177027a46b986371acda7b8214558ca10d0ca"
                     }
                   ],
-                  "hash": "c4582bee116b406fd89b44416b567efffb628843"
+                  "hash": "0439b4799a2039355681926562224bbb7bb8ec09"
                 }
               ],
-              "hash": "f3b406d1bb9f92f645efb0383d82ff59585d37c7"
+              "hash": "3ead30b4178c1b29b842d182490ffd5b86141aa6"
             },
             {
               "path": "node_modules/@hot-updater/react-native/HotUpdater.podspec",
@@ -1866,7 +1830,7 @@
               "hash": "6fa35536e787cedf7a20b0028f8429c44c353d86"
             }
           ],
-          "hash": "7e2a9c1ad9634bf2570805186e15d71e44507400"
+          "hash": "dd330ae04589c38c0622b96ae53376103a376b38"
         }
       },
       {
@@ -4749,18 +4713,6 @@
       },
       {
         "type": "contents",
-        "id": "expoAutolinkingConfig:ios",
-        "contents": "{\"extraDependencies\":[],\"modules\":[]}",
-        "reasons": [
-          "expoAutolinkingIos"
-        ],
-        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f",
-        "debugInfo": {
-          "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
-        }
-      },
-      {
-        "type": "contents",
         "id": "ios/HotUpdaterExample.xcodeproj/project.pbxproj",
         "contents": "// !$*UTF8*$!\n{\n\tarchiveVersion = 1;\n\tclasses = {\n\t};\n\tobjectVersion = 54;\n\tobjects = {\n\n/* Begin PBXBuildFile section */\n\t\t0C80B921A6F3F58F76C31292 /* libPods-HotUpdaterExample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-HotUpdaterExample.a */; };\n\t\t13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };\n\t\t761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };\n\t\t773AC28C02830D921A66B68B /* libPods-HotUpdaterExample-HotUpdaterExampleBrownfield.a in Frameworks */ = {isa = PBXBuildFile; fileRef = DB2E7AC6484FA2E09D76265C /* libPods-HotUpdaterExample-HotUpdaterExampleBrownfield.a */; };\n\t\t81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };\n\t\tC29601004C52F773764AC8B5 /* HotUpdaterExampleBrownfield.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3DAD5A3EFE870F14596377F /* HotUpdaterExampleBrownfield.swift */; };\n\t\tCCF52BD2ACC793AD17784631 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 499A886C2074603BF6B2F508 /* Foundation.framework */; };\n\t\tE412685610C001DD639E1636 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };\n/* End PBXBuildFile section */\n\n/* Begin PBXFileReference section */\n\t\t10B1B9499265EC10BED9E8C5 /* HotUpdaterExampleBrownfield.framework */ = {isa = PBXFileReference; explicitFileType = wrapper.framework; includeInIndex = 0; path = HotUpdaterExampleBrownfield.framework; sourceTree = BUILT_PRODUCTS_DIR; };\n\t\t13B07F961A680F5B00A75B9A /* HotUpdaterExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = HotUpdaterExample.app; sourceTree = BUILT_PRODUCTS_DIR; };\n\t\t13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = HotUpdaterExample/Images.xcassets; sourceTree = \"<group>\"; };\n\t\t13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = HotUpdaterExample/Info.plist; sourceTree = \"<group>\"; };\n\t\t13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = HotUpdaterExample/PrivacyInfo.xcprivacy; sourceTree = \"<group>\"; };\n\t\t2DB281D3E8B4A41465EF716E /* Info.plist */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = \"<group>\"; };\n\t\t34CD639CE781804DBA658629 /* Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = \"Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.debug.xcconfig\"; path = \"Target Support Files/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.debug.xcconfig\"; sourceTree = \"<group>\"; };\n\t\t3B4392A12AC88292D35C810B /* Pods-HotUpdaterExample.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = \"Pods-HotUpdaterExample.debug.xcconfig\"; path = \"Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample.debug.xcconfig\"; sourceTree = \"<group>\"; };\n\t\t499A886C2074603BF6B2F508 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = Platforms/iPhoneOS.platform/Developer/SDKs/iPhoneOS14.0.sdk/System/Library/Frameworks/Foundation.framework; sourceTree = DEVELOPER_DIR; };\n\t\t5709B34CF0A7D63546082F79 /* Pods-HotUpdaterExample.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = \"Pods-HotUpdaterExample.release.xcconfig\"; path = \"Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample.release.xcconfig\"; sourceTree = \"<group>\"; };\n\t\t5DCACB8F33CDC322A6C60F78 /* libPods-HotUpdaterExample.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = \"libPods-HotUpdaterExample.a\"; sourceTree = BUILT_PRODUCTS_DIR; };\n\t\t761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = HotUpdaterExample/AppDelegate.swift; sourceTree = \"<group>\"; };\n\t\t81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = HotUpdaterExample/LaunchScreen.storyboard; sourceTree = \"<group>\"; };\n\t\t852F6384DBB79A6C867F6BE5 /* Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = \"Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.release.xcconfig\"; path = \"Target Support Files/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.release.xcconfig\"; sourceTree = \"<group>\"; };\n\t\tB3DAD5A3EFE870F14596377F /* HotUpdaterExampleBrownfield.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = HotUpdaterExampleBrownfield.swift; sourceTree = \"<group>\"; };\n\t\tDB2E7AC6484FA2E09D76265C /* libPods-HotUpdaterExample-HotUpdaterExampleBrownfield.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = \"libPods-HotUpdaterExample-HotUpdaterExampleBrownfield.a\"; sourceTree = BUILT_PRODUCTS_DIR; };\n\t\tED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };\n/* End PBXFileReference section */\n\n/* Begin PBXFrameworksBuildPhase section */\n\t\t13B07F8C1A680F5B00A75B9A /* Frameworks */ = {\n\t\t\tisa = PBXFrameworksBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t\t0C80B921A6F3F58F76C31292 /* libPods-HotUpdaterExample.a in Frameworks */,\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t};\n\t\tA9A8E29C5AE8157071425E65 /* Frameworks */ = {\n\t\t\tisa = PBXFrameworksBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t\tCCF52BD2ACC793AD17784631 /* Foundation.framework in Frameworks */,\n\t\t\t\t773AC28C02830D921A66B68B /* libPods-HotUpdaterExample-HotUpdaterExampleBrownfield.a in Frameworks */,\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t};\n/* End PBXFrameworksBuildPhase section */\n\n/* Begin PBXGroup section */\n\t\t13B07FAE1A68108700A75B9A /* HotUpdaterExample */ = {\n\t\t\tisa = PBXGroup;\n\t\t\tchildren = (\n\t\t\t\t13B07FB51A68108700A75B9A /* Images.xcassets */,\n\t\t\t\t761780EC2CA45674006654EE /* AppDelegate.swift */,\n\t\t\t\t13B07FB61A68108700A75B9A /* Info.plist */,\n\t\t\t\t81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,\n\t\t\t\t13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,\n\t\t\t);\n\t\t\tname = HotUpdaterExample;\n\t\t\tsourceTree = \"<group>\";\n\t\t};\n\t\t2D16E6871FA4F8E400B85C8A /* Frameworks */ = {\n\t\t\tisa = PBXGroup;\n\t\t\tchildren = (\n\t\t\t\tED297162215061F000B7C4FE /* JavaScriptCore.framework */,\n\t\t\t\t5DCACB8F33CDC322A6C60F78 /* libPods-HotUpdaterExample.a */,\n\t\t\t\tA3F6136E72B07A72B3D90CAC /* iOS */,\n\t\t\t\tDB2E7AC6484FA2E09D76265C /* libPods-HotUpdaterExample-HotUpdaterExampleBrownfield.a */,\n\t\t\t);\n\t\t\tname = Frameworks;\n\t\t\tsourceTree = \"<group>\";\n\t\t};\n\t\t832341AE1AAA6A7D00B99B32 /* Libraries */ = {\n\t\t\tisa = PBXGroup;\n\t\t\tchildren = (\n\t\t\t);\n\t\t\tname = Libraries;\n\t\t\tsourceTree = \"<group>\";\n\t\t};\n\t\t83CBB9F61A601CBA00E9B192 = {\n\t\t\tisa = PBXGroup;\n\t\t\tchildren = (\n\t\t\t\t13B07FAE1A68108700A75B9A /* HotUpdaterExample */,\n\t\t\t\t832341AE1AAA6A7D00B99B32 /* Libraries */,\n\t\t\t\t83CBBA001A601CBA00E9B192 /* Products */,\n\t\t\t\t2D16E6871FA4F8E400B85C8A /* Frameworks */,\n\t\t\t\tBBD78D7AC51CEA395F1C20DB /* Pods */,\n\t\t\t\t8611AA2C02D13D9DC70DDA03 /* HotUpdaterExampleBrownfield */,\n\t\t\t);\n\t\t\tindentWidth = 2;\n\t\t\tsourceTree = \"<group>\";\n\t\t\ttabWidth = 2;\n\t\t\tusesTabs = 0;\n\t\t};\n\t\t83CBBA001A601CBA00E9B192 /* Products */ = {\n\t\t\tisa = PBXGroup;\n\t\t\tchildren = (\n\t\t\t\t13B07F961A680F5B00A75B9A /* HotUpdaterExample.app */,\n\t\t\t\t10B1B9499265EC10BED9E8C5 /* HotUpdaterExampleBrownfield.framework */,\n\t\t\t);\n\t\t\tname = Products;\n\t\t\tsourceTree = \"<group>\";\n\t\t};\n\t\t8611AA2C02D13D9DC70DDA03 /* HotUpdaterExampleBrownfield */ = {\n\t\t\tisa = PBXGroup;\n\t\t\tchildren = (\n\t\t\t\tB3DAD5A3EFE870F14596377F /* HotUpdaterExampleBrownfield.swift */,\n\t\t\t\t2DB281D3E8B4A41465EF716E /* Info.plist */,\n\t\t\t);\n\t\t\tname = HotUpdaterExampleBrownfield;\n\t\t\tpath = HotUpdaterExampleBrownfield;\n\t\t\tsourceTree = \"<group>\";\n\t\t};\n\t\tA3F6136E72B07A72B3D90CAC /* iOS */ = {\n\t\t\tisa = PBXGroup;\n\t\t\tchildren = (\n\t\t\t\t499A886C2074603BF6B2F508 /* Foundation.framework */,\n\t\t\t);\n\t\t\tname = iOS;\n\t\t\tsourceTree = \"<group>\";\n\t\t};\n\t\tBBD78D7AC51CEA395F1C20DB /* Pods */ = {\n\t\t\tisa = PBXGroup;\n\t\t\tchildren = (\n\t\t\t\t3B4392A12AC88292D35C810B /* Pods-HotUpdaterExample.debug.xcconfig */,\n\t\t\t\t5709B34CF0A7D63546082F79 /* Pods-HotUpdaterExample.release.xcconfig */,\n\t\t\t\t852F6384DBB79A6C867F6BE5 /* Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.release.xcconfig */,\n\t\t\t\t34CD639CE781804DBA658629 /* Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.debug.xcconfig */,\n\t\t\t);\n\t\t\tpath = Pods;\n\t\t\tsourceTree = \"<group>\";\n\t\t};\n/* End PBXGroup section */\n\n/* Begin PBXHeadersBuildPhase section */\n\t\t085795069BEE51AA1C553377 /* Headers */ = {\n\t\t\tisa = PBXHeadersBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t};\n/* End PBXHeadersBuildPhase section */\n\n/* Begin PBXNativeTarget section */\n\t\t13B07F861A680F5B00A75B9A /* HotUpdaterExample */ = {\n\t\t\tisa = PBXNativeTarget;\n\t\t\tbuildConfigurationList = 13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget \"HotUpdaterExample\" */;\n\t\t\tbuildPhases = (\n\t\t\t\tC38B50BA6285516D6DCD4F65 /* [CP] Check Pods Manifest.lock */,\n\t\t\t\t13B07F871A680F5B00A75B9A /* Sources */,\n\t\t\t\t13B07F8C1A680F5B00A75B9A /* Frameworks */,\n\t\t\t\t13B07F8E1A680F5B00A75B9A /* Resources */,\n\t\t\t\t00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,\n\t\t\t\t00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */,\n\t\t\t\tE235C05ADACE081382539298 /* [CP] Copy Pods Resources */,\n\t\t\t);\n\t\t\tbuildRules = (\n\t\t\t);\n\t\t\tdependencies = (\n\t\t\t);\n\t\t\tname = HotUpdaterExample;\n\t\t\tproductName = HotUpdaterExample;\n\t\t\tproductReference = 13B07F961A680F5B00A75B9A /* HotUpdaterExample.app */;\n\t\t\tproductType = \"com.apple.product-type.application\";\n\t\t};\n\t\t6D77112514223B0ECCA00E6A /* HotUpdaterExampleBrownfield */ = {\n\t\t\tisa = PBXNativeTarget;\n\t\t\tbuildConfigurationList = 65D130278AD32A39E9A4786B /* Build configuration list for PBXNativeTarget \"HotUpdaterExampleBrownfield\" */;\n\t\t\tbuildPhases = (\n\t\t\t\t89F9081AF425D7E1353D74AB /* [CP] Check Pods Manifest.lock */,\n\t\t\t\t5A3FA3A253EAE1F8927A3C11 /* Bundle React Native code and images */,\n\t\t\t\t085795069BEE51AA1C553377 /* Headers */,\n\t\t\t\tC1AB81E9947E567ED49EA406 /* Sources */,\n\t\t\t\tA9A8E29C5AE8157071425E65 /* Frameworks */,\n\t\t\t\t522B70B8A006CE19FD2B7585 /* Resources */,\n\t\t\t\tDED43F70495722996E0300ED /* [CP] Copy Pods Resources */,\n\t\t\t);\n\t\t\tbuildRules = (\n\t\t\t);\n\t\t\tdependencies = (\n\t\t\t);\n\t\t\tname = HotUpdaterExampleBrownfield;\n\t\t\tproductName = HotUpdaterExampleBrownfield;\n\t\t\tproductReference = 10B1B9499265EC10BED9E8C5 /* HotUpdaterExampleBrownfield.framework */;\n\t\t\tproductType = \"com.apple.product-type.framework\";\n\t\t};\n/* End PBXNativeTarget section */\n\n/* Begin PBXProject section */\n\t\t83CBB9F71A601CBA00E9B192 /* Project object */ = {\n\t\t\tisa = PBXProject;\n\t\t\tattributes = {\n\t\t\t\tLastUpgradeCheck = 1210;\n\t\t\t\tTargetAttributes = {\n\t\t\t\t\t13B07F861A680F5B00A75B9A = {\n\t\t\t\t\t\tLastSwiftMigration = 1120;\n\t\t\t\t\t};\n\t\t\t\t};\n\t\t\t};\n\t\t\tbuildConfigurationList = 83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject \"HotUpdaterExample\" */;\n\t\t\tcompatibilityVersion = \"Xcode 12.0\";\n\t\t\tdevelopmentRegion = en;\n\t\t\thasScannedForEncodings = 0;\n\t\t\tknownRegions = (\n\t\t\t\ten,\n\t\t\t\tBase,\n\t\t\t);\n\t\t\tmainGroup = 83CBB9F61A601CBA00E9B192;\n\t\t\tproductRefGroup = 83CBBA001A601CBA00E9B192 /* Products */;\n\t\t\tprojectDirPath = \"\";\n\t\t\tprojectRoot = \"\";\n\t\t\ttargets = (\n\t\t\t\t13B07F861A680F5B00A75B9A /* HotUpdaterExample */,\n\t\t\t\t6D77112514223B0ECCA00E6A /* HotUpdaterExampleBrownfield */,\n\t\t\t);\n\t\t};\n/* End PBXProject section */\n\n/* Begin PBXResourcesBuildPhase section */\n\t\t13B07F8E1A680F5B00A75B9A /* Resources */ = {\n\t\t\tisa = PBXResourcesBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t\t81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,\n\t\t\t\t13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,\n\t\t\t\tE412685610C001DD639E1636 /* PrivacyInfo.xcprivacy in Resources */,\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t};\n\t\t522B70B8A006CE19FD2B7585 /* Resources */ = {\n\t\t\tisa = PBXResourcesBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t};\n/* End PBXResourcesBuildPhase section */\n\n/* Begin PBXShellScriptBuildPhase section */\n\t\t00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */ = {\n\t\t\tisa = PBXShellScriptBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t);\n\t\t\tinputPaths = (\n\t\t\t\t\"$(SRCROOT)/.xcode.env.local\",\n\t\t\t\t\"$(SRCROOT)/.xcode.env\",\n\t\t\t);\n\t\t\tname = \"Bundle React Native code and images\";\n\t\t\toutputPaths = (\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t\tshellPath = /bin/sh;\n\t\t\tshellScript = \"set -e\\n\\nif [[ -f \\\"$PODS_ROOT/../.xcode.env\\\" ]]; then\\nsource \\\"$PODS_ROOT/../.xcode.env\\\"\\nfi\\nif [[ -f \\\"$PODS_ROOT/../.xcode.env.local\\\" ]]; then\\nsource \\\"$PODS_ROOT/../.xcode.env.local\\\"\\nfi\\n\\nexport CLI_PATH=\\\"$(\\\"$NODE_BINARY\\\" --print \\\"require('path').dirname(require.resolve('@react-native-community/cli/package.json')) + '/build/bin.js'\\\")\\\"\\n\\nWITH_ENVIRONMENT=\\\"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\\\"\\nREACT_NATIVE_XCODE=\\\"$REACT_NATIVE_PATH/scripts/react-native-xcode.sh\\\"\\n\\n/bin/sh -c \\\"$WITH_ENVIRONMENT $REACT_NATIVE_XCODE\\\"\\n\";\n\t\t};\n\t\t00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */ = {\n\t\t\tisa = PBXShellScriptBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t);\n\t\t\tinputFileListPaths = (\n\t\t\t\t\"${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample-frameworks-${CONFIGURATION}-input-files.xcfilelist\",\n\t\t\t);\n\t\t\tname = \"[CP] Embed Pods Frameworks\";\n\t\t\toutputFileListPaths = (\n\t\t\t\t\"${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample-frameworks-${CONFIGURATION}-output-files.xcfilelist\",\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t\tshellPath = /bin/sh;\n\t\t\tshellScript = \"\\\"${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample-frameworks.sh\\\"\\n\";\n\t\t\tshowEnvVarsInLog = 0;\n\t\t};\n\t\t5A3FA3A253EAE1F8927A3C11 /* Bundle React Native code and images */ = {\n\t\t\tisa = PBXShellScriptBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t);\n\t\t\tinputFileListPaths = (\n\t\t\t);\n\t\t\tinputPaths = (\n\t\t\t\t\"$(SRCROOT)/.xcode.env.local\",\n\t\t\t\t\"$(SRCROOT)/.xcode.env\",\n\t\t\t);\n\t\t\tname = \"Bundle React Native code and images\";\n\t\t\toutputFileListPaths = (\n\t\t\t);\n\t\t\toutputPaths = (\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t\tshellPath = /bin/sh;\n\t\t\tshellScript = \"# Brownfield framework packaging must embed JS in Debug builds.\\nif [[ \\\"$CONFIGURATION\\\" = *Debug* ]]; then\\n  unset SKIP_BUNDLING\\n  export FORCE_BUNDLING=1\\n  export EXTRA_PACKAGER_ARGS=\\\"$EXTRA_PACKAGER_ARGS --dev false\\\"\\nfi\\n\\nset -e\\n\\nif [[ -f \\\"$PODS_ROOT/../.xcode.env\\\" ]]; then\\nsource \\\"$PODS_ROOT/../.xcode.env\\\"\\nfi\\nif [[ -f \\\"$PODS_ROOT/../.xcode.env.local\\\" ]]; then\\nsource \\\"$PODS_ROOT/../.xcode.env.local\\\"\\nfi\\n\\nexport CLI_PATH=\\\"$(\\\"$NODE_BINARY\\\" --print \\\"require('path').dirname(require.resolve('@react-native-community/cli/package.json')) + '/build/bin.js'\\\")\\\"\\n\\nWITH_ENVIRONMENT=\\\"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\\\"\\nREACT_NATIVE_XCODE=\\\"$REACT_NATIVE_PATH/scripts/react-native-xcode.sh\\\"\\n\\n/bin/sh -c \\\"$WITH_ENVIRONMENT $REACT_NATIVE_XCODE\\\"\\n\";\n\t\t};\n\t\t89F9081AF425D7E1353D74AB /* [CP] Check Pods Manifest.lock */ = {\n\t\t\tisa = PBXShellScriptBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t);\n\t\t\tinputFileListPaths = (\n\t\t\t);\n\t\t\tinputPaths = (\n\t\t\t\t\"${PODS_PODFILE_DIR_PATH}/Podfile.lock\",\n\t\t\t\t\"${PODS_ROOT}/Manifest.lock\",\n\t\t\t);\n\t\t\tname = \"[CP] Check Pods Manifest.lock\";\n\t\t\toutputFileListPaths = (\n\t\t\t);\n\t\t\toutputPaths = (\n\t\t\t\t\"$(DERIVED_FILE_DIR)/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield-checkManifestLockResult.txt\",\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t\tshellPath = /bin/sh;\n\t\t\tshellScript = \"diff \\\"${PODS_PODFILE_DIR_PATH}/Podfile.lock\\\" \\\"${PODS_ROOT}/Manifest.lock\\\" > /dev/null\\nif [ $? != 0 ] ; then\\n    # print error to STDERR\\n    echo \\\"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\\\" >&2\\n    exit 1\\nfi\\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\\necho \\\"SUCCESS\\\" > \\\"${SCRIPT_OUTPUT_FILE_0}\\\"\\n\";\n\t\t\tshowEnvVarsInLog = 0;\n\t\t};\n\t\tC38B50BA6285516D6DCD4F65 /* [CP] Check Pods Manifest.lock */ = {\n\t\t\tisa = PBXShellScriptBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t);\n\t\t\tinputFileListPaths = (\n\t\t\t);\n\t\t\tinputPaths = (\n\t\t\t\t\"${PODS_PODFILE_DIR_PATH}/Podfile.lock\",\n\t\t\t\t\"${PODS_ROOT}/Manifest.lock\",\n\t\t\t);\n\t\t\tname = \"[CP] Check Pods Manifest.lock\";\n\t\t\toutputFileListPaths = (\n\t\t\t);\n\t\t\toutputPaths = (\n\t\t\t\t\"$(DERIVED_FILE_DIR)/Pods-HotUpdaterExample-checkManifestLockResult.txt\",\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t\tshellPath = /bin/sh;\n\t\t\tshellScript = \"diff \\\"${PODS_PODFILE_DIR_PATH}/Podfile.lock\\\" \\\"${PODS_ROOT}/Manifest.lock\\\" > /dev/null\\nif [ $? != 0 ] ; then\\n    # print error to STDERR\\n    echo \\\"error: The sandbox is not in sync with the Podfile.lock. Run 'pod install' or update your CocoaPods installation.\\\" >&2\\n    exit 1\\nfi\\n# This output is used by Xcode 'outputs' to avoid re-running this script phase.\\necho \\\"SUCCESS\\\" > \\\"${SCRIPT_OUTPUT_FILE_0}\\\"\\n\";\n\t\t\tshowEnvVarsInLog = 0;\n\t\t};\n\t\tDED43F70495722996E0300ED /* [CP] Copy Pods Resources */ = {\n\t\t\tisa = PBXShellScriptBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t);\n\t\t\tinputFileListPaths = (\n\t\t\t\t\"${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield-resources-${CONFIGURATION}-input-files.xcfilelist\",\n\t\t\t);\n\t\t\tname = \"[CP] Copy Pods Resources\";\n\t\t\toutputFileListPaths = (\n\t\t\t\t\"${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield-resources-${CONFIGURATION}-output-files.xcfilelist\",\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t\tshellPath = /bin/sh;\n\t\t\tshellScript = \"\\\"${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield/Pods-HotUpdaterExample-HotUpdaterExampleBrownfield-resources.sh\\\"\\n\";\n\t\t\tshowEnvVarsInLog = 0;\n\t\t};\n\t\tE235C05ADACE081382539298 /* [CP] Copy Pods Resources */ = {\n\t\t\tisa = PBXShellScriptBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t);\n\t\t\tinputFileListPaths = (\n\t\t\t\t\"${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample-resources-${CONFIGURATION}-input-files.xcfilelist\",\n\t\t\t);\n\t\t\tname = \"[CP] Copy Pods Resources\";\n\t\t\toutputFileListPaths = (\n\t\t\t\t\"${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample-resources-${CONFIGURATION}-output-files.xcfilelist\",\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t\tshellPath = /bin/sh;\n\t\t\tshellScript = \"\\\"${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample-resources.sh\\\"\\n\";\n\t\t\tshowEnvVarsInLog = 0;\n\t\t};\n/* End PBXShellScriptBuildPhase section */\n\n/* Begin PBXSourcesBuildPhase section */\n\t\t13B07F871A680F5B00A75B9A /* Sources */ = {\n\t\t\tisa = PBXSourcesBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t\t761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t};\n\t\tC1AB81E9947E567ED49EA406 /* Sources */ = {\n\t\t\tisa = PBXSourcesBuildPhase;\n\t\t\tbuildActionMask = 2147483647;\n\t\t\tfiles = (\n\t\t\t\tC29601004C52F773764AC8B5 /* HotUpdaterExampleBrownfield.swift in Sources */,\n\t\t\t);\n\t\t\trunOnlyForDeploymentPostprocessing = 0;\n\t\t};\n/* End PBXSourcesBuildPhase section */\n\n/* Begin XCBuildConfiguration section */\n\t\t13B07F941A680F5B00A75B9A /* Debug */ = {\n\t\t\tisa = XCBuildConfiguration;\n\t\t\tbaseConfigurationReference = 3B4392A12AC88292D35C810B /* Pods-HotUpdaterExample.debug.xcconfig */;\n\t\t\tbuildSettings = {\n\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;\n\t\t\t\tCLANG_ENABLE_MODULES = YES;\n\t\t\t\tCURRENT_PROJECT_VERSION = 1;\n\t\t\t\tENABLE_BITCODE = NO;\n\t\t\t\tINFOPLIST_FILE = HotUpdaterExample/Info.plist;\n\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 15.1;\n\t\t\t\tLD_RUNPATH_SEARCH_PATHS = (\n\t\t\t\t\t\"$(inherited)\",\n\t\t\t\t\t\"@executable_path/Frameworks\",\n\t\t\t\t);\n\t\t\t\tMARKETING_VERSION = 1.0;\n\t\t\t\tOTHER_LDFLAGS = (\n\t\t\t\t\t\"$(inherited)\",\n\t\t\t\t\t\"-ObjC\",\n\t\t\t\t\t\"-lc++\",\n\t\t\t\t);\n\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = \"org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)\";\n\t\t\t\tPRODUCT_NAME = HotUpdaterExample;\n\t\t\t\tSWIFT_OPTIMIZATION_LEVEL = \"-Onone\";\n\t\t\t\tSWIFT_VERSION = 5.0;\n\t\t\t\tVERSIONING_SYSTEM = \"apple-generic\";\n\t\t\t};\n\t\t\tname = Debug;\n\t\t};\n\t\t13B07F951A680F5B00A75B9A /* Release */ = {\n\t\t\tisa = XCBuildConfiguration;\n\t\t\tbaseConfigurationReference = 5709B34CF0A7D63546082F79 /* Pods-HotUpdaterExample.release.xcconfig */;\n\t\t\tbuildSettings = {\n\t\t\t\tASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;\n\t\t\t\tCLANG_ENABLE_MODULES = YES;\n\t\t\t\tCURRENT_PROJECT_VERSION = 1;\n\t\t\t\tINFOPLIST_FILE = HotUpdaterExample/Info.plist;\n\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 15.1;\n\t\t\t\tLD_RUNPATH_SEARCH_PATHS = (\n\t\t\t\t\t\"$(inherited)\",\n\t\t\t\t\t\"@executable_path/Frameworks\",\n\t\t\t\t);\n\t\t\t\tMARKETING_VERSION = 1.0;\n\t\t\t\tOTHER_LDFLAGS = (\n\t\t\t\t\t\"$(inherited)\",\n\t\t\t\t\t\"-ObjC\",\n\t\t\t\t\t\"-lc++\",\n\t\t\t\t);\n\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = \"org.reactjs.native.example.$(PRODUCT_NAME:rfc1034identifier)\";\n\t\t\t\tPRODUCT_NAME = HotUpdaterExample;\n\t\t\t\tSWIFT_VERSION = 5.0;\n\t\t\t\tVERSIONING_SYSTEM = \"apple-generic\";\n\t\t\t};\n\t\t\tname = Release;\n\t\t};\n\t\t54D7C718250385333321E6AE /* Release */ = {\n\t\t\tisa = XCBuildConfiguration;\n\t\t\tbaseConfigurationReference = 852F6384DBB79A6C867F6BE5 /* Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.release.xcconfig */;\n\t\t\tbuildSettings = {\n\t\t\t\tBUILD_LIBRARY_FOR_DISTRIBUTION = YES;\n\t\t\t\tCLANG_ENABLE_OBJC_WEAK = NO;\n\t\t\t\tCURRENT_PROJECT_VERSION = 1;\n\t\t\t\tDEFINES_MODULE = YES;\n\t\t\t\tDYLIB_COMPATIBILITY_VERSION = 1;\n\t\t\t\tDYLIB_CURRENT_VERSION = 1;\n\t\t\t\tDYLIB_INSTALL_NAME_BASE = \"@rpath\";\n\t\t\t\tENABLE_MODULE_VERIFIER = NO;\n\t\t\t\tGENERATE_INFOPLIST_FILE = NO;\n\t\t\t\tINFOPLIST_FILE = HotUpdaterExampleBrownfield/Info.plist;\n\t\t\t\tINSTALL_PATH = \"$(LOCAL_LIBRARY_DIR)/Frameworks\";\n\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 15.1;\n\t\t\t\tLD_DYLIB_INSTALL_NAME = \"@rpath/$(EXECUTABLE_PATH)\";\n\t\t\t\tLD_RUNPATH_SEARCH_PATHS = (\n\t\t\t\t\t\"$(inherited)\",\n\t\t\t\t\t\"@executable_path/Frameworks\",\n\t\t\t\t\t\"@executable_path/../../Frameworks\",\n\t\t\t\t);\n\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = org.reactjs.native.example.HotUpdaterExample.brownfield;\n\t\t\t\tPRODUCT_NAME = \"$(TARGET_NAME)\";\n\t\t\t\tSDKROOT = iphoneos;\n\t\t\t\tSKIP_INSTALL = NO;\n\t\t\t\tSWIFT_OPTIMIZATION_LEVEL = \"-O\";\n\t\t\t\tSWIFT_VERSION = 5.0;\n\t\t\t\tTARGETED_DEVICE_FAMILY = \"1,2\";\n\t\t\t\tUSER_SCRIPT_SANDBOXING = NO;\n\t\t\t\tVALIDATE_PRODUCT = YES;\n\t\t\t\tVERSIONING_SYSTEM = \"apple-generic\";\n\t\t\t\tVERSION_INFO_PREFIX = \"\";\n\t\t\t};\n\t\t\tname = Release;\n\t\t};\n\t\t83CBBA201A601CBA00E9B192 /* Debug */ = {\n\t\t\tisa = XCBuildConfiguration;\n\t\t\tbuildSettings = {\n\t\t\t\tALWAYS_SEARCH_USER_PATHS = NO;\n\t\t\t\tCLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;\n\t\t\t\tCLANG_CXX_LANGUAGE_STANDARD = \"c++20\";\n\t\t\t\tCLANG_CXX_LIBRARY = \"libc++\";\n\t\t\t\tCLANG_ENABLE_MODULES = YES;\n\t\t\t\tCLANG_ENABLE_OBJC_ARC = YES;\n\t\t\t\tCLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;\n\t\t\t\tCLANG_WARN_BOOL_CONVERSION = YES;\n\t\t\t\tCLANG_WARN_COMMA = YES;\n\t\t\t\tCLANG_WARN_CONSTANT_CONVERSION = YES;\n\t\t\t\tCLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;\n\t\t\t\tCLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;\n\t\t\t\tCLANG_WARN_EMPTY_BODY = YES;\n\t\t\t\tCLANG_WARN_ENUM_CONVERSION = YES;\n\t\t\t\tCLANG_WARN_INFINITE_RECURSION = YES;\n\t\t\t\tCLANG_WARN_INT_CONVERSION = YES;\n\t\t\t\tCLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;\n\t\t\t\tCLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;\n\t\t\t\tCLANG_WARN_OBJC_LITERAL_CONVERSION = YES;\n\t\t\t\tCLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;\n\t\t\t\tCLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;\n\t\t\t\tCLANG_WARN_RANGE_LOOP_ANALYSIS = YES;\n\t\t\t\tCLANG_WARN_STRICT_PROTOTYPES = YES;\n\t\t\t\tCLANG_WARN_SUSPICIOUS_MOVE = YES;\n\t\t\t\tCLANG_WARN_UNREACHABLE_CODE = YES;\n\t\t\t\tCLANG_WARN__DUPLICATE_METHOD_MATCH = YES;\n\t\t\t\t\"CODE_SIGN_IDENTITY[sdk=iphoneos*]\" = \"iPhone Developer\";\n\t\t\t\tCOPY_PHASE_STRIP = NO;\n\t\t\t\tENABLE_STRICT_OBJC_MSGSEND = YES;\n\t\t\t\tENABLE_TESTABILITY = YES;\n\t\t\t\t\"EXCLUDED_ARCHS[sdk=iphonesimulator*]\" = \"\";\n\t\t\t\tGCC_C_LANGUAGE_STANDARD = gnu99;\n\t\t\t\tGCC_DYNAMIC_NO_PIC = NO;\n\t\t\t\tGCC_NO_COMMON_BLOCKS = YES;\n\t\t\t\tGCC_OPTIMIZATION_LEVEL = 0;\n\t\t\t\tGCC_PREPROCESSOR_DEFINITIONS = (\n\t\t\t\t\t\"DEBUG=1\",\n\t\t\t\t\t\"$(inherited)\",\n\t\t\t\t);\n\t\t\t\tGCC_SYMBOLS_PRIVATE_EXTERN = NO;\n\t\t\t\tGCC_WARN_64_TO_32_BIT_CONVERSION = YES;\n\t\t\t\tGCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;\n\t\t\t\tGCC_WARN_UNDECLARED_SELECTOR = YES;\n\t\t\t\tGCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;\n\t\t\t\tGCC_WARN_UNUSED_FUNCTION = YES;\n\t\t\t\tGCC_WARN_UNUSED_VARIABLE = YES;\n\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 15.1;\n\t\t\t\tLD_RUNPATH_SEARCH_PATHS = (\n\t\t\t\t\t/usr/lib/swift,\n\t\t\t\t\t\"$(inherited)\",\n\t\t\t\t);\n\t\t\t\tLIBRARY_SEARCH_PATHS = (\n\t\t\t\t\t\"\\\"$(SDKROOT)/usr/lib/swift\\\"\",\n\t\t\t\t\t\"\\\"$(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)\\\"\",\n\t\t\t\t\t\"\\\"$(inherited)\\\"\",\n\t\t\t\t);\n\t\t\t\tMTL_ENABLE_DEBUG_INFO = YES;\n\t\t\t\tONLY_ACTIVE_ARCH = YES;\n\t\t\t\tOTHER_CFLAGS = (\n\t\t\t\t\t\"$(inherited)\",\n\t\t\t\t\t\"-DRCT_REMOVE_LEGACY_ARCH=1\",\n\t\t\t\t);\n\t\t\t\tOTHER_CPLUSPLUSFLAGS = (\n\t\t\t\t\t\"$(OTHER_CFLAGS)\",\n\t\t\t\t\t\"-DFOLLY_NO_CONFIG\",\n\t\t\t\t\t\"-DFOLLY_MOBILE=1\",\n\t\t\t\t\t\"-DFOLLY_USE_LIBCPP=1\",\n\t\t\t\t\t\"-DFOLLY_CFG_NO_COROUTINES=1\",\n\t\t\t\t\t\"-DFOLLY_HAVE_CLOCK_GETTIME=1\",\n\t\t\t\t\t\"-DRCT_REMOVE_LEGACY_ARCH=1\",\n\t\t\t\t);\n\t\t\t\tREACT_NATIVE_PATH = \"${PODS_ROOT}/../../node_modules/react-native\";\n\t\t\t\tSDKROOT = iphoneos;\n\t\t\t\tSWIFT_ACTIVE_COMPILATION_CONDITIONS = \"$(inherited) DEBUG\";\n\t\t\t\tSWIFT_ENABLE_EXPLICIT_MODULES = NO;\n\t\t\t\tUSE_HERMES = true;\n\t\t\t};\n\t\t\tname = Debug;\n\t\t};\n\t\t83CBBA211A601CBA00E9B192 /* Release */ = {\n\t\t\tisa = XCBuildConfiguration;\n\t\t\tbuildSettings = {\n\t\t\t\tALWAYS_SEARCH_USER_PATHS = NO;\n\t\t\t\tCLANG_ANALYZER_LOCALIZABILITY_NONLOCALIZED = YES;\n\t\t\t\tCLANG_CXX_LANGUAGE_STANDARD = \"c++20\";\n\t\t\t\tCLANG_CXX_LIBRARY = \"libc++\";\n\t\t\t\tCLANG_ENABLE_MODULES = YES;\n\t\t\t\tCLANG_ENABLE_OBJC_ARC = YES;\n\t\t\t\tCLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;\n\t\t\t\tCLANG_WARN_BOOL_CONVERSION = YES;\n\t\t\t\tCLANG_WARN_COMMA = YES;\n\t\t\t\tCLANG_WARN_CONSTANT_CONVERSION = YES;\n\t\t\t\tCLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;\n\t\t\t\tCLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;\n\t\t\t\tCLANG_WARN_EMPTY_BODY = YES;\n\t\t\t\tCLANG_WARN_ENUM_CONVERSION = YES;\n\t\t\t\tCLANG_WARN_INFINITE_RECURSION = YES;\n\t\t\t\tCLANG_WARN_INT_CONVERSION = YES;\n\t\t\t\tCLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;\n\t\t\t\tCLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;\n\t\t\t\tCLANG_WARN_OBJC_LITERAL_CONVERSION = YES;\n\t\t\t\tCLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;\n\t\t\t\tCLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;\n\t\t\t\tCLANG_WARN_RANGE_LOOP_ANALYSIS = YES;\n\t\t\t\tCLANG_WARN_STRICT_PROTOTYPES = YES;\n\t\t\t\tCLANG_WARN_SUSPICIOUS_MOVE = YES;\n\t\t\t\tCLANG_WARN_UNREACHABLE_CODE = YES;\n\t\t\t\tCLANG_WARN__DUPLICATE_METHOD_MATCH = YES;\n\t\t\t\t\"CODE_SIGN_IDENTITY[sdk=iphoneos*]\" = \"iPhone Developer\";\n\t\t\t\tCOPY_PHASE_STRIP = YES;\n\t\t\t\tENABLE_NS_ASSERTIONS = NO;\n\t\t\t\tENABLE_STRICT_OBJC_MSGSEND = YES;\n\t\t\t\t\"EXCLUDED_ARCHS[sdk=iphonesimulator*]\" = \"\";\n\t\t\t\tGCC_C_LANGUAGE_STANDARD = gnu99;\n\t\t\t\tGCC_NO_COMMON_BLOCKS = YES;\n\t\t\t\tGCC_WARN_64_TO_32_BIT_CONVERSION = YES;\n\t\t\t\tGCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;\n\t\t\t\tGCC_WARN_UNDECLARED_SELECTOR = YES;\n\t\t\t\tGCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;\n\t\t\t\tGCC_WARN_UNUSED_FUNCTION = YES;\n\t\t\t\tGCC_WARN_UNUSED_VARIABLE = YES;\n\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 15.1;\n\t\t\t\tLD_RUNPATH_SEARCH_PATHS = (\n\t\t\t\t\t/usr/lib/swift,\n\t\t\t\t\t\"$(inherited)\",\n\t\t\t\t);\n\t\t\t\tLIBRARY_SEARCH_PATHS = (\n\t\t\t\t\t\"\\\"$(SDKROOT)/usr/lib/swift\\\"\",\n\t\t\t\t\t\"\\\"$(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)\\\"\",\n\t\t\t\t\t\"\\\"$(inherited)\\\"\",\n\t\t\t\t);\n\t\t\t\tMTL_ENABLE_DEBUG_INFO = NO;\n\t\t\t\tOTHER_CFLAGS = (\n\t\t\t\t\t\"$(inherited)\",\n\t\t\t\t\t\"-DRCT_REMOVE_LEGACY_ARCH=1\",\n\t\t\t\t);\n\t\t\t\tOTHER_CPLUSPLUSFLAGS = (\n\t\t\t\t\t\"$(OTHER_CFLAGS)\",\n\t\t\t\t\t\"-DFOLLY_NO_CONFIG\",\n\t\t\t\t\t\"-DFOLLY_MOBILE=1\",\n\t\t\t\t\t\"-DFOLLY_USE_LIBCPP=1\",\n\t\t\t\t\t\"-DFOLLY_CFG_NO_COROUTINES=1\",\n\t\t\t\t\t\"-DFOLLY_HAVE_CLOCK_GETTIME=1\",\n\t\t\t\t\t\"-DRCT_REMOVE_LEGACY_ARCH=1\",\n\t\t\t\t);\n\t\t\t\tREACT_NATIVE_PATH = \"${PODS_ROOT}/../../node_modules/react-native\";\n\t\t\t\tSDKROOT = iphoneos;\n\t\t\t\tSWIFT_ENABLE_EXPLICIT_MODULES = NO;\n\t\t\t\tUSE_HERMES = true;\n\t\t\t\tVALIDATE_PRODUCT = YES;\n\t\t\t};\n\t\t\tname = Release;\n\t\t};\n\t\t8F7CCFFE8105870932736D6D /* Debug */ = {\n\t\t\tisa = XCBuildConfiguration;\n\t\t\tbaseConfigurationReference = 34CD639CE781804DBA658629 /* Pods-HotUpdaterExample-HotUpdaterExampleBrownfield.debug.xcconfig */;\n\t\t\tbuildSettings = {\n\t\t\t\tBUILD_LIBRARY_FOR_DISTRIBUTION = YES;\n\t\t\t\tCLANG_ENABLE_OBJC_WEAK = NO;\n\t\t\t\tCURRENT_PROJECT_VERSION = 1;\n\t\t\t\tDEFINES_MODULE = YES;\n\t\t\t\tDYLIB_COMPATIBILITY_VERSION = 1;\n\t\t\t\tDYLIB_CURRENT_VERSION = 1;\n\t\t\t\tDYLIB_INSTALL_NAME_BASE = \"@rpath\";\n\t\t\t\tENABLE_MODULE_VERIFIER = NO;\n\t\t\t\tGENERATE_INFOPLIST_FILE = NO;\n\t\t\t\tINFOPLIST_FILE = HotUpdaterExampleBrownfield/Info.plist;\n\t\t\t\tINSTALL_PATH = \"$(LOCAL_LIBRARY_DIR)/Frameworks\";\n\t\t\t\tIPHONEOS_DEPLOYMENT_TARGET = 15.1;\n\t\t\t\tLD_DYLIB_INSTALL_NAME = \"@rpath/$(EXECUTABLE_PATH)\";\n\t\t\t\tLD_RUNPATH_SEARCH_PATHS = (\n\t\t\t\t\t\"$(inherited)\",\n\t\t\t\t\t\"@executable_path/Frameworks\",\n\t\t\t\t\t\"@executable_path/../../Frameworks\",\n\t\t\t\t);\n\t\t\t\tPRODUCT_BUNDLE_IDENTIFIER = org.reactjs.native.example.HotUpdaterExample.brownfield;\n\t\t\t\tPRODUCT_NAME = \"$(TARGET_NAME)\";\n\t\t\t\tSDKROOT = iphoneos;\n\t\t\t\tSKIP_INSTALL = NO;\n\t\t\t\tSWIFT_OPTIMIZATION_LEVEL = \"-Onone\";\n\t\t\t\tSWIFT_VERSION = 5.0;\n\t\t\t\tTARGETED_DEVICE_FAMILY = \"1,2\";\n\t\t\t\tUSER_SCRIPT_SANDBOXING = NO;\n\t\t\t\tVERSIONING_SYSTEM = \"apple-generic\";\n\t\t\t\tVERSION_INFO_PREFIX = \"\";\n\t\t\t};\n\t\t\tname = Debug;\n\t\t};\n/* End XCBuildConfiguration section */\n\n/* Begin XCConfigurationList section */\n\t\t13B07F931A680F5B00A75B9A /* Build configuration list for PBXNativeTarget \"HotUpdaterExample\" */ = {\n\t\t\tisa = XCConfigurationList;\n\t\t\tbuildConfigurations = (\n\t\t\t\t13B07F941A680F5B00A75B9A /* Debug */,\n\t\t\t\t13B07F951A680F5B00A75B9A /* Release */,\n\t\t\t);\n\t\t\tdefaultConfigurationIsVisible = 0;\n\t\t\tdefaultConfigurationName = Release;\n\t\t};\n\t\t65D130278AD32A39E9A4786B /* Build configuration list for PBXNativeTarget \"HotUpdaterExampleBrownfield\" */ = {\n\t\t\tisa = XCConfigurationList;\n\t\t\tbuildConfigurations = (\n\t\t\t\t54D7C718250385333321E6AE /* Release */,\n\t\t\t\t8F7CCFFE8105870932736D6D /* Debug */,\n\t\t\t);\n\t\t\tdefaultConfigurationIsVisible = 0;\n\t\t\tdefaultConfigurationName = Release;\n\t\t};\n\t\t83CBB9FA1A601CBA00E9B192 /* Build configuration list for PBXProject \"HotUpdaterExample\" */ = {\n\t\t\tisa = XCConfigurationList;\n\t\t\tbuildConfigurations = (\n\t\t\t\t83CBBA201A601CBA00E9B192 /* Debug */,\n\t\t\t\t83CBBA211A601CBA00E9B192 /* Release */,\n\t\t\t);\n\t\t\tdefaultConfigurationIsVisible = 0;\n\t\t\tdefaultConfigurationName = Release;\n\t\t};\n/* End XCConfigurationList section */\n\t};\n\trootObject = 83CBB9F71A601CBA00E9B192 /* Project object */;\n}\n",
         "reasons": [
@@ -4808,7 +4760,7 @@
         }
       }
     ],
-    "hash": "05293ff309b11ac1cba986d3e171ac552fbb4758"
+    "hash": "8daff8adaa2cb5a6862f4c1c5717008c1b6cee5f"
   },
   "android": {
     "sources": [
@@ -5900,7 +5852,7 @@
         "reasons": [
           "rncoreAutolinking"
         ],
-        "hash": "7e2a9c1ad9634bf2570805186e15d71e44507400",
+        "hash": "dd330ae04589c38c0622b96ae53376103a376b38",
         "debugInfo": {
           "path": "node_modules/@hot-updater/react-native",
           "children": [
@@ -5909,7 +5861,7 @@
               "children": [
                 {
                   "path": "node_modules/@hot-updater/react-native/android/build.gradle",
-                  "hash": "6976487dbc7a41738b3a0b5d73e912267c41f4dd"
+                  "hash": "88d3c4cf95f9b092ce817436f45563bfa0103d2a"
                 },
                 {
                   "path": "node_modules/@hot-updater/react-native/android/hot-updater-builtin-assets.gradle",
@@ -5930,26 +5882,6 @@
                 {
                   "path": "node_modules/@hot-updater/react-native/android/src",
                   "children": [
-                    {
-                      "path": "node_modules/@hot-updater/react-native/android/src/bridge",
-                      "children": [
-                        {
-                          "path": "node_modules/@hot-updater/react-native/android/src/bridge/BridgeReactInstance.kt",
-                          "hash": "6b834856740056a8b7af40a952976a6b6517c90d"
-                        }
-                      ],
-                      "hash": "b14634f1784be63bf74993dad9da8bdcc099ce68"
-                    },
-                    {
-                      "path": "node_modules/@hot-updater/react-native/android/src/bridgeless",
-                      "children": [
-                        {
-                          "path": "node_modules/@hot-updater/react-native/android/src/bridgeless/BridgeReactInstance.kt",
-                          "hash": "ee0f795cca0864b8442a3445b2f8a42c4fa1ddb2"
-                        }
-                      ],
-                      "hash": "de2901d3c20ade5379dd318d28c792a6f8eaf87b"
-                    },
                     {
                       "path": "node_modules/@hot-updater/react-native/android/src/main",
                       "children": [
@@ -6005,10 +5937,6 @@
                                       "hash": "0ec856a768f9c7cd3157ff633091993f7e23fa17"
                                     },
                                     {
-                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/ContentAppearedLog.kt",
-                                      "hash": "f24a83ed874ff3de00b2941234caa4168972792c"
-                                    },
-                                    {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/FileManagerService.kt",
                                       "hash": "b5474fd252c6f15e7187496cdf0a158d731e9c17"
                                     },
@@ -6026,7 +5954,7 @@
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/HotUpdaterImpl.kt",
-                                      "hash": "4e1659be9b1b4eaa15b408cbf99b8ea8dd953255"
+                                      "hash": "8d5644b001911d518655b9430d0d504a97def559"
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/HotUpdaterInstance.kt",
@@ -6095,10 +6023,6 @@
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/OkHttpUpdateCheckTransport.kt",
                                       "hash": "c7ef1683e7dbfef7ff27d6b9181c2fb7e975ecbb"
-                                    },
-                                    {
-                                      "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/ReactIntegrationManagerBase.kt",
-                                      "hash": "edc166023f86025e71584993c7f5b38654fbce41"
                                     },
                                     {
                                       "path": "node_modules/@hot-updater/react-native/android/src/main/java/com/hotupdater/ReactNativeValueConverters.kt",
@@ -6215,27 +6139,27 @@
                                       "hash": "8b5b0ea79da48638f801babfc2152fa49b8dce2b"
                                     }
                                   ],
-                                  "hash": "83c8bfd400a6ae938465e3ed1d1e4b006cd5005e"
+                                  "hash": "4ff0b83884658135900ec009ac9d4b9602917a3d"
                                 }
                               ],
-                              "hash": "32e892a258fb857f3e8de2dd468b3dd189b8b707"
+                              "hash": "6640e2b366a9c75e5a8dcbf3527e939332ab810c"
                             }
                           ],
-                          "hash": "c0d6fb9237bc5e22f865ad4dfc840739368eeba3"
+                          "hash": "c0ac13e0e3fdbb9c8590d62850d829eec701968c"
                         }
                       ],
-                      "hash": "6a8ea0de28e865d47403556193659ad1b0d4aacb"
+                      "hash": "629818fdf0fd830d57f10cbf4b793bb03b40ec18"
                     },
                     {
                       "path": "node_modules/@hot-updater/react-native/android/src/newarch",
                       "children": [
                         {
                           "path": "node_modules/@hot-updater/react-native/android/src/newarch/HotUpdater.kt",
-                          "hash": "f7ebc842f445807388773b08f4db92b954c7c64a"
+                          "hash": "322ff68aeedfd449ddd46f16bad019fcd9690f09"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/android/src/newarch/HotUpdaterModule.kt",
-                          "hash": "a438f8906d9fcf7d8f5d55583f23e5c74ce5a407"
+                          "hash": "fb4d2008a8b1df289fac66c173181ae06c55d290"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/android/src/newarch/HotUpdaterPackage.kt",
@@ -6252,24 +6176,20 @@
                         {
                           "path": "node_modules/@hot-updater/react-native/android/src/newarch/ReactHostHolder.kt",
                           "hash": "9a3d61f4b340bf8d7304b6a008c37ed79658adaa"
-                        },
-                        {
-                          "path": "node_modules/@hot-updater/react-native/android/src/newarch/ReactIntegrationManager.kt",
-                          "hash": "b5b09b3c34b1524938e21711ff651dce21b7be4f"
                         }
                       ],
-                      "hash": "c779a8ab22a0f85c3baa7732e507bf6702dcfd6f"
+                      "hash": "0cdf38c23b433ea512508004199887b61b8a289f"
                     },
                     {
                       "path": "node_modules/@hot-updater/react-native/android/src/oldarch",
                       "children": [
                         {
                           "path": "node_modules/@hot-updater/react-native/android/src/oldarch/HotUpdater.kt",
-                          "hash": "db59d4e33ec57aa2f61fd4403505cc78fef2fa2b"
+                          "hash": "b360f1a4bf23ea9c19a3ac6d465af4dae4125b51"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/android/src/oldarch/HotUpdaterModule.kt",
-                          "hash": "0c56e5381436b977cb7e672c733a4900a00d87aa"
+                          "hash": "b6101e338b462029b6c23c397b21e6aba5a84795"
                         },
                         {
                           "path": "node_modules/@hot-updater/react-native/android/src/oldarch/HotUpdaterPackage.kt",
@@ -6282,13 +6202,9 @@
                         {
                           "path": "node_modules/@hot-updater/react-native/android/src/oldarch/JavaScriptExceptionHooks.kt",
                           "hash": "4c6a4e1b51b3756f53d31bd727c82bd8fb288114"
-                        },
-                        {
-                          "path": "node_modules/@hot-updater/react-native/android/src/oldarch/ReactIntegrationManager.kt",
-                          "hash": "3a43affdface6224cb16d675e3d9cf8437eb28a7"
                         }
                       ],
-                      "hash": "83894b4090d1c66510ebbee01d52695938551efd"
+                      "hash": "ec93a8aa2af06f4fae6beb2d9cbd2483dc2ca3c6"
                     },
                     {
                       "path": "node_modules/@hot-updater/react-native/android/src/test",
@@ -6403,10 +6319,10 @@
                       "hash": "125177027a46b986371acda7b8214558ca10d0ca"
                     }
                   ],
-                  "hash": "c4582bee116b406fd89b44416b567efffb628843"
+                  "hash": "0439b4799a2039355681926562224bbb7bb8ec09"
                 }
               ],
-              "hash": "f3b406d1bb9f92f645efb0383d82ff59585d37c7"
+              "hash": "3ead30b4178c1b29b842d182490ffd5b86141aa6"
             },
             {
               "path": "node_modules/@hot-updater/react-native/HotUpdater.podspec",
@@ -6677,7 +6593,7 @@
               "hash": "6fa35536e787cedf7a20b0028f8429c44c353d86"
             }
           ],
-          "hash": "7e2a9c1ad9634bf2570805186e15d71e44507400"
+          "hash": "dd330ae04589c38c0622b96ae53376103a376b38"
         }
       },
       {
@@ -9584,18 +9500,6 @@
       },
       {
         "type": "contents",
-        "id": "expoAutolinkingConfig:android",
-        "contents": "{\"extraDependencies\":[],\"modules\":[]}",
-        "reasons": [
-          "expoAutolinkingAndroid"
-        ],
-        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f",
-        "debugInfo": {
-          "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
-        }
-      },
-      {
-        "type": "contents",
         "id": "package:react-native",
         "contents": "{\"name\":\"react-native\",\"version\":\"0.85.2\",\"description\":\"A framework for building native apps using React\",\"license\":\"MIT\",\"repository\":{\"type\":\"git\",\"url\":\"git+https://github.com/facebook/react-native.git\",\"directory\":\"packages/react-native\"},\"homepage\":\"https://reactnative.dev/\",\"keywords\":[\"react\",\"react-native\",\"android\",\"ios\",\"mobile\",\"cross-platform\",\"app-framework\",\"mobile-development\"],\"bugs\":\"https://github.com/facebook/react-native/issues\",\"engines\":{\"node\":\"^20.19.4 || ^22.13.0 || ^24.3.0 || >= 25.0.0\"},\"bin\":{\"react-native\":\"cli.js\"},\"main\":\"./index.js\",\"types\":\"types\",\"exports\":{\".\":{\"react-native-strict-api\":\"./types_generated/index.d.ts\",\"types\":\"./types/index.d.ts\",\"default\":\"./index.js\"},\"./*\":{\"react-native-strict-api\":null,\"types\":\"./*.d.ts\",\"default\":\"./*.js\"},\"./*.js\":{\"react-native-strict-api\":null,\"default\":\"./*.js\"},\"./Libraries/*.d.ts\":{\"react-native-strict-api\":null,\"default\":\"./Libraries/*.d.ts\"},\"./scripts/*\":\"./scripts/*\",\"./src/*\":{\"react-native-strict-api\":null,\"default\":\"./src/*.js\"},\"./types/*.d.ts\":{\"react-native-strict-api\":null,\"default\":\"./types/*.d.ts\"},\"./gradle/*\":null,\"./React/*\":null,\"./ReactAndroid/*\":null,\"./ReactApple/*\":null,\"./ReactCommon/*\":null,\"./sdks/*\":null,\"./src/fb_internal/*\":\"./src/fb_internal/*\",\"./third-party-podspecs/*\":null,\"./types/*\":null,\"./types_generated/*\":null,\"./package.json\":\"./package.json\"},\"jest-junit\":{\"outputDirectory\":\"reports/junit\",\"outputName\":\"js-test-results.xml\"},\"files\":[\"build.gradle.kts\",\"cli.js\",\"flow\",\"gradle.properties\",\"gradle/libs.versions.toml\",\"index.js\",\"index.js.flow\",\"interface.js\",\"jest-preset.js\",\"Libraries\",\"LICENSE\",\"React-Core.podspec\",\"React-Core-prebuilt.podspec\",\"react-native.config.js\",\"React.podspec\",\"React\",\"!React/Fabric/RCTThirdPartyFabricComponentsProvider.*\",\"ReactAndroid\",\"!ReactAndroid/.cxx\",\"!ReactAndroid/build\",\"!ReactAndroid/external-artifacts/artifacts\",\"!ReactAndroid/external-artifacts/build\",\"!ReactAndroid/hermes-engine/.cxx\",\"!ReactAndroid/hermes-engine/build\",\"!ReactAndroid/src/main/third-party\",\"!ReactAndroid/src/test\",\"ReactApple\",\"ReactCommon\",\"README.md\",\"rn-get-polyfills.js\",\"scripts/replace-rncore-version.js\",\"scripts/bundle.js\",\"scripts/cocoapods\",\"scripts/codegen\",\"scripts/compose-source-maps.js\",\"scripts/find-node-for-xcode.sh\",\"scripts/generate-codegen-artifacts.js\",\"scripts/generate-provider-cli.js\",\"scripts/generate-specs-cli.js\",\"scripts/hermes/hermes-utils.js\",\"scripts/hermes/prepare-hermes-for-build.js\",\"scripts/ios-configure-glog.sh\",\"scripts/native_modules.rb\",\"scripts/node-binary.sh\",\"scripts/packager-reporter.js\",\"scripts/packager.sh\",\"scripts/react_native_pods_utils/script_phases.rb\",\"scripts/react_native_pods_utils/script_phases.sh\",\"scripts/react_native_pods.rb\",\"scripts/react-native-xcode.sh\",\"scripts/xcode/ccache-clang.sh\",\"scripts/xcode/ccache-clang++.sh\",\"scripts/xcode/ccache.conf\",\"scripts/xcode/with-environment.sh\",\"sdks/.hermesversion\",\"sdks/.hermesv1version\",\"sdks/hermes-engine\",\"sdks/hermesc\",\"settings.gradle.kts\",\"src\",\"!src/private/testing\",\"third-party-podspecs\",\"types\",\"types_generated\",\"!**/__docs__/**\",\"!**/__fixtures__/**\",\"!**/__flowtests__/**\",\"!**/__mocks__/**\",\"!**/__tests__/**\",\"!**/__typetests__/**\"],\"scripts\":{\"prepack\":\"node ./scripts/prepack.js\",\"featureflags\":\"node ./scripts/featureflags/index.js\"},\"peerDependencies\":{\"@react-native/jest-preset\":\"0.85.2\",\"@types/react\":\"^19.1.1\",\"react\":\"^19.2.3\"},\"peerDependenciesMeta\":{\"@types/react\":{\"optional\":true},\"@react-native/jest-preset\":{\"optional\":true}},\"dependencies\":{\"@react-native/assets-registry\":\"0.85.2\",\"@react-native/codegen\":\"0.85.2\",\"@react-native/community-cli-plugin\":\"0.85.2\",\"@react-native/gradle-plugin\":\"0.85.2\",\"@react-native/js-polyfills\":\"0.85.2\",\"@react-native/normalize-colors\":\"0.85.2\",\"@react-native/virtualized-lists\":\"0.85.2\",\"abort-controller\":\"^3.0.0\",\"anser\":\"^1.4.9\",\"ansi-regex\":\"^5.0.0\",\"babel-plugin-syntax-hermes-parser\":\"0.33.3\",\"base64-js\":\"^1.5.1\",\"commander\":\"^12.0.0\",\"flow-enums-runtime\":\"^0.0.6\",\"hermes-compiler\":\"250829098.0.10\",\"invariant\":\"^2.2.4\",\"memoize-one\":\"^5.0.0\",\"metro-runtime\":\"^0.84.0\",\"metro-source-map\":\"^0.84.0\",\"nullthrows\":\"^1.1.1\",\"pretty-format\":\"^29.7.0\",\"promise\":\"^8.3.0\",\"react-devtools-core\":\"^6.1.5\",\"react-refresh\":\"^0.14.0\",\"regenerator-runtime\":\"^0.13.2\",\"scheduler\":\"0.27.0\",\"semver\":\"^7.1.3\",\"stacktrace-parser\":\"^0.1.10\",\"tinyglobby\":\"^0.2.15\",\"whatwg-fetch\":\"^3.0.0\",\"ws\":\"^7.5.10\",\"yargs\":\"^17.6.2\"},\"codegenConfig\":{\"libraries\":[{\"name\":\"FBReactNativeSpec\",\"type\":\"all\",\"ios\":{\"modules\":{\"AccessibilityManager\":{\"unstableRequiresMainQueueSetup\":true},\"Appearance\":{\"unstableRequiresMainQueueSetup\":true},\"AppState\":{\"unstableRequiresMainQueueSetup\":true},\"DeviceInfo\":{\"unstableRequiresMainQueueSetup\":true},\"PlatformConstants\":{\"unstableRequiresMainQueueSetup\":true},\"StatusBarManager\":{\"unstableRequiresMainQueueSetup\":true}}},\"android\":{},\"jsSrcsDir\":\"src\"}]}}",
         "reasons": [
@@ -9619,6 +9523,6 @@
         }
       }
     ],
-    "hash": "d8b28976a681114f26eb58e5ebbc2b8a8d84b069"
+    "hash": "03f35b2afdf17f98fa78d85bfb686f27aeebcbc5"
   }
 }
