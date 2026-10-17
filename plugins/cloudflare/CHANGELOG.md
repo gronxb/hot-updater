@@ -1,5 +1,15 @@
 # @hot-updater/cloudflare
 
+## 1.1.0
+
+### Patch Changes
+
+- Updated dependencies [99d0356]
+  - @hot-updater/protocol@1.1.0
+  - @hot-updater/cli-tools@1.1.0
+  - @hot-updater/server@1.1.0
+  - @hot-updater/plugin-core@1.1.0
+
 ## 1.0.8
 
 ### Patch Changes
