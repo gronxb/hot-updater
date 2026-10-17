@@ -217,6 +217,35 @@ describe("createInterfaceFingerprint", () => {
     expect(await hashOf()).not.toBe(before);
   });
 
+  it("hashes a local package's native files for a platform its specs don't cover", async () => {
+    await fs.rm(path.join(root, "packages/local-module/src"), {
+      recursive: true,
+    });
+    await write(
+      path.join(root, "packages/local-module/src/NativeLocal.android.ts"),
+      "export interface Spec { ping(): void }",
+    );
+    const before = await hashOf();
+    await write(
+      path.join(root, "packages/local-module/ios/Local.swift"),
+      "final class Local { func ping() {} }",
+    );
+
+    expect(await hashOf()).not.toBe(before);
+  });
+
+  it("applies ignorePaths inside an extraSources directory", async () => {
+    await write(path.join(app, "config/native.json"), "{}");
+    const options = {
+      extraSources: ["config"],
+      ignorePaths: ["config/secrets.json"],
+    };
+    const before = await hashOf(options);
+    await write(path.join(app, "config/secrets.json"), "token");
+
+    expect(await hashOf(options)).toBe(before);
+  });
+
   it("leaves a local package's tests out of its native files", async () => {
     await fs.rm(path.join(root, "packages/local-module/src"), {
       recursive: true,

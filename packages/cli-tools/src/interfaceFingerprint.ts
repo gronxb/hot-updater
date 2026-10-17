@@ -436,7 +436,10 @@ export const createInterfaceFingerprint = async (
       continue;
     }
     // A local package keeps its version while its code changes.
-    const specs = await findCodegenSpecs(root, platform);
+    // A package with no spec for this platform, even one with specs for the
+    // other, exposes its interface through native code here.
+    const found = await findCodegenSpecs(root, platform);
+    const specs = found && found.length > 0 ? found : null;
     const files =
       specs ??
       (await fg([...NATIVE_FILES[platform]], {
@@ -482,12 +485,15 @@ export const createInterfaceFingerprint = async (
       markDirectories: true,
     });
     for (const match of files) {
+      // Expand a directory from the project root, so ignorePaths, which
+      // are relative to it, apply to the files inside.
+      const directory = toPosix(path.relative(cwd, match));
       const matches = match.endsWith("/")
-        ? await fg("**/*", {
-            cwd: match,
+        ? await fg(`${directory.replace(/\/$/, "")}/**/*`, {
+            cwd,
             absolute: true,
             dot: true,
-            ignore: GENERATED_DIRS,
+            ignore: [...GENERATED_DIRS, ...(options.ignorePaths ?? [])],
           })
         : [match];
       for (const file of matches) await addFile(file, "extra-source");
