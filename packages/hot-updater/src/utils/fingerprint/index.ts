@@ -12,7 +12,7 @@ import {
   getOtaFingerprintOptions,
   isFingerprintEquals,
 } from "./common";
-import { loadExpoFingerprint } from "./dependency";
+import { getExpoFingerprintEngine, loadExpoFingerprint } from "./dependency";
 
 export * from "./common";
 export * from "./diff";
@@ -25,11 +25,15 @@ export async function nativeFingerprint(
   options: FingerprintOptions,
 ): Promise<FingerprintResult> {
   const platform = options.platform;
-  const { createFingerprintAsync } = await loadExpoFingerprint(path);
-  return createFingerprintAsync(
+  const [{ createFingerprintAsync }, engine] = await Promise.all([
+    loadExpoFingerprint(path),
+    getExpoFingerprintEngine(path),
+  ]);
+  const fingerprint = await createFingerprintAsync(
     path,
     await getOtaFingerprintOptions(platform, path, options),
   );
+  return { engine, ...fingerprint };
 }
 
 export const generateFingerprints = async (
@@ -130,10 +134,14 @@ export const syncFingerprintFiles = async (fingerprint: {
   iosPaths: string[];
   androidPaths: string[];
 }> => {
-  const fingerprintJson = !isFingerprintEquals(
-    await readLocalFingerprint(),
-    fingerprint,
-  );
+  const local = await readLocalFingerprint();
+  // A file from before engines were recorded gets the engine that computes
+  // its unchanged hashes.
+  const fingerprintJson =
+    !isFingerprintEquals(local, fingerprint) ||
+    (["ios", "android"] as const).some(
+      (platform) => local?.[platform]?.engine !== fingerprint[platform].engine,
+    );
   if (fingerprintJson) await createFingerprintJSON(fingerprint);
   const written = { ios: [] as string[], android: [] as string[] };
   for (const platform of ["ios", "android"] as const) {

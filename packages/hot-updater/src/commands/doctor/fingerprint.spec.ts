@@ -111,6 +111,106 @@ describe("checkFingerprintJson", () => {
     expect(issues[0]).not.toHaveProperty("changes");
   });
 
+  it("blames a changed engine instead of listing sources when the engines differ", async () => {
+    vi.mocked(getFingerprintDiff).mockClear();
+    vi.mocked(generateFingerprints).mockResolvedValue({
+      ios: { ...fingerprint("ios-now"), engine: "@expo/fingerprint@0.21.5" },
+      android: {
+        ...fingerprint("android-now"),
+        engine: "@expo/fingerprint@0.21.5",
+      },
+    });
+
+    const issues = await checkFingerprintJson({
+      ios: {
+        ...fingerprint("ios-before"),
+        engine: "@expo/fingerprint@0.20.14",
+      },
+      android: {
+        ...fingerprint("android-now"),
+        engine: "@expo/fingerprint@0.21.5",
+      },
+    });
+
+    expect(issues).toEqual([
+      {
+        type: "error",
+        platform: "ios",
+        code: "FINGERPRINT_ENGINE_CHANGED",
+        message:
+          "The iOS fingerprint changed because fingerprint.json was created with @expo/fingerprint@0.20.14 and the project now uses @expo/fingerprint@0.21.5. Native inputs may be unchanged.",
+        resolution:
+          "To keep updating iOS builds you already shipped, go back to @expo/fingerprint@0.20.14. Otherwise run `npx hot-updater fingerprint create`, then rebuild the iOS app.",
+        fixability: "command",
+        commands: ["npx hot-updater fingerprint create"],
+        paths: ["fingerprint.json"],
+      },
+    ]);
+    expect(getFingerprintDiff).not.toHaveBeenCalled();
+  });
+
+  it("warns when fingerprint.json doesn't record the engine behind a matching hash", async () => {
+    vi.mocked(generateFingerprints).mockResolvedValue({
+      ios: { ...fingerprint("ios-now"), engine: "@expo/fingerprint@0.21.5" },
+      android: {
+        ...fingerprint("android-now"),
+        engine: "@expo/fingerprint@0.21.5",
+      },
+    });
+
+    const issues = await checkFingerprintJson({
+      ios: fingerprint("ios-now"),
+      android: {
+        ...fingerprint("android-now"),
+        engine: "@expo/fingerprint@0.21.5",
+      },
+    });
+
+    expect(issues).toEqual([
+      {
+        type: "warning",
+        platform: "ios",
+        code: "FINGERPRINT_ENGINE_UNRECORDED",
+        message:
+          "fingerprint.json doesn't record the engine behind the iOS fingerprint, which @expo/fingerprint@0.21.5 computes unchanged.",
+        resolution:
+          "Run `npx hot-updater fingerprint create` to record it, so doctor and deploy can tell an engine upgrade from a native change. The fingerprint stays the same.",
+        fixability: "command",
+        commands: ["npx hot-updater fingerprint create"],
+        paths: ["fingerprint.json"],
+      },
+    ]);
+  });
+
+  it("lists changed sources when fingerprint.json predates recorded engines", async () => {
+    vi.mocked(getFingerprintDiff).mockClear();
+    vi.mocked(generateFingerprints).mockResolvedValue({
+      ios: { ...fingerprint("ios-now"), engine: "@expo/fingerprint@0.21.5" },
+      android: {
+        ...fingerprint("android-now"),
+        engine: "@expo/fingerprint@0.21.5",
+      },
+    });
+    vi.mocked(getFingerprintDiff).mockResolvedValue([]);
+
+    const issues = await checkFingerprintJson({
+      ios: { ...fingerprint("ios-before"), sources: [source("ios/Podfile")] },
+      android: {
+        ...fingerprint("android-now"),
+        engine: "@expo/fingerprint@0.21.5",
+      },
+    });
+
+    expect(issues).toMatchObject([
+      {
+        platform: "ios",
+        message:
+          "The iOS fingerprint changed since fingerprint.json was created.",
+      },
+    ]);
+    expect(getFingerprintDiff).toHaveBeenCalled();
+  });
+
   it("reports a fingerprint it cannot compute, with the install command for a missing dependency", async () => {
     vi.mocked(generateFingerprints).mockRejectedValue(
       new MissingFingerprintDependencyError(),

@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -61,12 +62,9 @@ export const isMissingExpoFingerprintError = (error: unknown) => {
   );
 };
 
-export const loadExpoFingerprint = async (
-  projectRoot: string,
-): Promise<ExpoFingerprint> => {
-  let modulePath: string;
+const resolveExpoFingerprint = (projectRoot: string): string => {
   try {
-    modulePath = require.resolve("@expo/fingerprint", {
+    return require.resolve(PACKAGE_NAME, {
       paths: [path.resolve(projectRoot)],
     });
   } catch (error) {
@@ -76,5 +74,39 @@ export const loadExpoFingerprint = async (
 
     throw error;
   }
-  return import(pathToFileURL(modulePath).href) as Promise<ExpoFingerprint>;
+};
+
+export const loadExpoFingerprint = async (
+  projectRoot: string,
+): Promise<ExpoFingerprint> =>
+  import(
+    pathToFileURL(resolveExpoFingerprint(projectRoot)).href
+  ) as Promise<ExpoFingerprint>;
+
+/**
+ * The engine fingerprint.json records for the hashes `@expo/fingerprint`
+ * computes: its name and the version the project resolves, since another
+ * version can hash the same project differently.
+ */
+export const getExpoFingerprintEngine = async (
+  projectRoot: string,
+): Promise<string> => {
+  let dir = path.dirname(resolveExpoFingerprint(projectRoot));
+  while (true) {
+    try {
+      const manifest = JSON.parse(
+        await fs.readFile(path.join(dir, "package.json"), "utf8"),
+      ) as { name?: unknown; version?: unknown };
+      if (manifest.name === PACKAGE_NAME) {
+        return typeof manifest.version === "string"
+          ? `${PACKAGE_NAME}@${manifest.version}`
+          : PACKAGE_NAME;
+      }
+    } catch {
+      // No readable package.json here; keep walking up.
+    }
+    const parent = path.dirname(dir);
+    if (parent === dir) return PACKAGE_NAME;
+    dir = parent;
+  }
 };

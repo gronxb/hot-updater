@@ -1,10 +1,15 @@
-import { p } from "@hot-updater/cli-tools";
+import fs from "node:fs";
+import path from "node:path";
+
+import { getCwd, p } from "@hot-updater/cli-tools";
 
 import { warnIfExpoCNG } from "@/utils/expoDetection";
 import {
   createAndInjectFingerprintFiles,
+  describeFingerprintEngineChange,
   ensureFingerprintConfig,
   type FingerprintResult,
+  getFingerprintEngineChange,
   isFingerprintEquals,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
@@ -47,10 +52,18 @@ export const handleCreateFingerprint = async () => {
 
   const s = p.spinner();
   s.start("Creating fingerprint.json");
+  // The file can change while the hashes stay the same, as when it records
+  // the engine that computed them.
+  const fingerprintJsonPath = path.join(getCwd(), "fingerprint.json");
+  const readFingerprintJson = () =>
+    fs.promises.readFile(fingerprintJsonPath, "utf8").catch(() => null);
+  let fileChanged = false;
 
   try {
+    const before = await readFingerprintJson();
     localFingerprint = await readLocalFingerprint();
     result = await createAndInjectFingerprintFiles();
+    fileChanged = (await readFingerprintJson()) !== before;
 
     if (!isFingerprintEquals(localFingerprint, result.fingerprint)) {
       diffChanged = true;
@@ -91,37 +104,44 @@ export const handleCreateFingerprint = async () => {
     if (localFingerprint && result.fingerprint) {
       const fingerprintConfig = await ensureFingerprintConfig();
 
-      try {
-        // Show iOS changes
-        if (
-          localFingerprint.ios &&
-          localFingerprint.ios.hash !== result.fingerprint.ios.hash
-        ) {
-          const iosDiff = await getFingerprintDiff(localFingerprint.ios, {
-            platform: "ios",
-            ...fingerprintConfig,
-          });
-          showFingerprintDiff(iosDiff, "iOS");
-        }
-
-        // Show Android changes
-        if (
-          localFingerprint.android &&
-          localFingerprint.android.hash !== result.fingerprint.android.hash
-        ) {
-          const androidDiff = await getFingerprintDiff(
-            localFingerprint.android,
-            {
-              platform: "android",
-              ...fingerprintConfig,
-            },
+      for (const [platform, label] of [
+        ["ios", "iOS"],
+        ["android", "Android"],
+      ] as const) {
+        const before = localFingerprint[platform];
+        const after = result.fingerprint[platform];
+        if (!before || before.hash === after.hash) continue;
+        const engineChange = getFingerprintEngineChange(before, after);
+        if (engineChange) {
+          const { message, resolution } = describeFingerprintEngineChange(
+            engineChange,
+            label,
+            true,
           );
-          showFingerprintDiff(androidDiff, "Android");
+          p.log.warn(message);
+          p.log.info(resolution);
+          continue;
         }
-      } catch {
-        p.log.warn("Could not generate fingerprint diff");
+        try {
+          showFingerprintDiff(
+            await getFingerprintDiff(before, {
+              platform,
+              ...fingerprintConfig,
+            }),
+            label,
+          );
+        } catch {
+          p.log.warn(`Could not generate the ${label} fingerprint diff`);
+        }
       }
     }
+  } else if (fileChanged) {
+    p.log.success(
+      ui.line([
+        ui.path("fingerprint.json"),
+        "updated. The fingerprint is unchanged, so builds you shipped keep receiving updates.",
+      ]),
+    );
   } else {
     p.log.success(ui.line([ui.path("fingerprint.json"), "is up to date."]));
   }
