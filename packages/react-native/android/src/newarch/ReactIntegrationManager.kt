@@ -8,6 +8,7 @@ import com.facebook.react.ReactHost
 import com.facebook.react.ReactInstanceEventListener
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContext
+import com.facebook.react.bridge.UiThreadUtil
 import com.facebook.react.common.LifecycleState
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -90,7 +91,10 @@ class ReactIntegrationManager(
             object : ReactInstanceEventListener {
                 override fun onReactContextInitialized(context: ReactContext) {
                     reactHost.removeReactInstanceEventListener(this)
-                    ContentAppearedLog.rearm(context.currentActivity ?: activity)
+                    val rearm = { ContentAppearedLog.rearm(context.currentActivity ?: activity) }
+                    // ReactHostImpl calls this on the UI thread, before it restarts
+                    // the surfaces. Another host may not.
+                    if (UiThreadUtil.isOnUiThread()) rearm() else UiThreadUtil.runOnUiThread(rearm)
                 }
             }
         reactHost.addReactInstanceEventListener(listener)
