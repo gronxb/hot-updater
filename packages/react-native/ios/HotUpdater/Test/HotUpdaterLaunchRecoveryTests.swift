@@ -1586,6 +1586,36 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(mainSlotWhenWritten == false)
     }
 
+    /// Every native slot is taken: a launch that starts has no slot asking
+    /// for rollback, so its start is persisted before it counts as armed.
+    @Test
+    func aSlotlessLaunchPersistsItsStartBeforeItCountsAsArmed() throws {
+        let coordinator = HotUpdaterRecoveryCoordinator(sink: RecordingSlotSink())
+        let names = [Self.main] + (1..<HotUpdaterRecoveryCoordinator.slotCount).map { "named-\($0)" }
+        for name in names {
+            coordinator.register(name: name, markerURL: URL(fileURLWithPath: "/tmp/\(name).json"), storage: NoStorage())
+            coordinator.startMonitoring(name: name, bundleId: "\(name)-next", shouldRollback: true)
+        }
+        let late = ProbeStorage()
+        coordinator.register(name: "late", markerURL: URL(fileURLWithPath: "/tmp/late.json"), storage: late)
+        coordinator.startMonitoring(name: "late", bundleId: "late-next", shouldRollback: true)
+        #expect(coordinator.launch(named: "late")?.slot == nil)
+
+        var armedWhenPersisted: Bool?
+        late.onMarkLaunchStarted = { armedWhenPersisted = coordinator.launch(named: "late")?.isArmed }
+        #expect(coordinator.arm(name: "late"))
+        #expect(armedWhenPersisted == false)
+        #expect(coordinator.launch(named: "late")?.isArmed == true)
+
+        // Released by a claim the same way: persisted, then armed again.
+        let claim = try #require(coordinator.chargeFatal(owner: Self.main))
+        #expect(coordinator.launch(named: "late")?.isArmed == false)
+        armedWhenPersisted = nil
+        coordinator.clearAttribution(claim: claim)
+        #expect(armedWhenPersisted == false)
+        #expect(coordinator.launch(named: "late")?.isArmed == true)
+    }
+
     @Test
     func anErrorOfTheCurrentRuntimeStillChargesItsLaunch() throws {
         let scene = try Scene()
@@ -1998,6 +2028,11 @@ private class NoStorage: BundleStorageService {
 private final class ProbeStorage: NoStorage {
     var onClearLaunchStarted: (() -> Void)?
     var onMarkLaunchCompleted: (() -> Void)?
+    var onMarkLaunchStarted: (() -> Void)?
+
+    override func markLaunchStarted(bundleId _: String?) {
+        onMarkLaunchStarted?()
+    }
 
     override func markLaunchCompleted(bundleId _: String?) {
         onMarkLaunchCompleted?()

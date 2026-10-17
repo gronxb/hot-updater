@@ -394,9 +394,17 @@ final class HotUpdaterRecoveryCoordinator {
             disarmed.append((launch.name, launch.generation, bundleId, true, true))
             return false
         }
+        assignSlot(to: launch)
+        guard launch.slot != nil else {
+            // No native slot left: nothing asks for rollback if a signal
+            // comes, so the start is persisted before the launch counts as
+            // armed, and the unfinished-launch rule covers it.
+            launch.storage.markLaunchStarted(bundleId: launch.bundleId)
+            launch.isArmed = true
+            return true
+        }
         // The slot first, then storage.
         launch.isArmed = true
-        assignSlot(to: launch)
         mirror(launch)
         launch.storage.markLaunchStarted(bundleId: launch.bundleId)
         return true
@@ -1004,9 +1012,19 @@ final class HotUpdaterRecoveryCoordinator {
                   launch.bundleId == entry.bundleId else {
                 continue
             }
+            assignSlot(to: launch)
+            if launch.slot == nil {
+                // Slotless: the start is persisted before it counts as armed.
+                if entry.wasStarted {
+                    launch.storage.markLaunchStarted(bundleId: entry.bundleId)
+                }
+                if entry.wasArmed {
+                    launch.isArmed = true
+                }
+                continue
+            }
             if entry.wasArmed {
                 launch.isArmed = true
-                assignSlot(to: launch)
             }
             mirror(launch)
             if entry.wasStarted {
