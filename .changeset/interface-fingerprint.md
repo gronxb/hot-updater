@@ -8,7 +8,7 @@
 
 The bare and Rock build adapters fingerprint the native interface JavaScript calls with Hot Updater's own engine, `hot-updater/interface@1`, instead of `@expo/fingerprint`. The fingerprint covers:
 - the React Native version;
-- each autolinked native package by name and version;
+- each autolinked native package by name and version, Expo modules included;
 - the codegen specs of the app and of local native packages;
 - patches to those packages;
 - the new `fingerprint.nativeVersion` setting and `extraSources`.

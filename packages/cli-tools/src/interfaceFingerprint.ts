@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import path from "node:path";
 
 import type {
@@ -10,6 +11,8 @@ import type {
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import fg from "fast-glob";
+
+const require = createRequire(import.meta.url);
 
 /**
  * The engine fingerprint.json records for the interface fingerprint. Change
@@ -27,6 +30,13 @@ const GENERATED_DIRS = [
   "**/DerivedData/**",
 ];
 
+// Tests of a local package don't ship in the app.
+const TEST_DIRS = [
+  "**/{test,tests,Tests,androidTest,__tests__}/**",
+  "**/*Tests.swift",
+  "**/*Test.{kt,java}",
+];
+
 const NATIVE_FILES = {
   ios: [
     "*.podspec",
@@ -39,12 +49,14 @@ const NATIVE_FILES = {
   ],
 } as const;
 
-/** A native package autolinking links into the app. */
-export interface NativeDependency {
-  name: string;
-  /** The package directory. */
-  root: string;
-}
+/**
+ * A native package linked into the app: its directory, when it comes from a
+ * package manager, or its name and version, when the framework declares it
+ * elsewhere (a CocoaPods or Maven dependency).
+ */
+export type NativeDependency =
+  | { name: string; root: string }
+  | { name: string; version: string };
 
 /**
  * The native side JavaScript runs against: the runtime, such as
@@ -79,10 +91,97 @@ const readManifest = async (
   }
 };
 
+const parseJsonOutput = <T>(stdout: string, command: string): T => {
+  const start = stdout.indexOf("{");
+  try {
+    if (start >= 0) return JSON.parse(stdout.slice(start)) as T;
+  } catch {
+    // Reported below with the command that printed it.
+  }
+  throw new Error(
+    `\`${command}\` printed no JSON configuration. Check that it runs in this project.`,
+  );
+};
+
+const findPackageRoot = async (from: string, name: string) => {
+  let dir = from;
+  while (true) {
+    if ((await readManifest(dir))?.name === name) return dir;
+    const parent = path.dirname(dir);
+    if (parent === dir) return null;
+    dir = parent;
+  }
+};
+
+interface ExpoModule {
+  packageName?: string;
+  packageVersion?: string;
+  projects?: { sourceDir?: string }[];
+  pods?: { podspecDir?: string }[];
+}
+
+/**
+ * The Expo modules linked into a React Native app through
+ * `use_expo_modules!` / `useExpoModules()`. React Native CLI's config lists
+ * only the `expo` package for them, so they are read from
+ * expo-modules-autolinking.
+ */
+const readExpoModules = async (
+  cwd: string,
+  platform: Platform,
+): Promise<NativeDependency[]> => {
+  const expo = path.dirname(
+    require.resolve("expo/package.json", { paths: [cwd] }),
+  );
+  const autolinking = path.dirname(
+    require.resolve("expo-modules-autolinking/package.json", {
+      paths: [expo],
+    }),
+  );
+  const bin = path.join(autolinking, "bin/expo-modules-autolinking.js");
+  // SDKs before `apple` name the iOS platform `ios`.
+  let output: string | null = null;
+  for (const name of platform === "ios" ? ["apple", "ios"] : ["android"]) {
+    const result = await execa(
+      process.execPath,
+      [bin, "resolve", "--platform", name, "--json"],
+      { cwd, reject: false },
+    );
+    if (result.exitCode === 0) {
+      output = result.stdout;
+      break;
+    }
+  }
+  if (output === null) {
+    throw new Error("`expo-modules-autolinking resolve` failed.");
+  }
+  const { modules = [] } = parseJsonOutput<{ modules?: ExpoModule[] }>(
+    output,
+    "expo-modules-autolinking resolve",
+  );
+  return Promise.all(
+    modules.flatMap((module) => {
+      const name = module.packageName;
+      if (!name) return [];
+      const from =
+        module.projects?.[0]?.sourceDir ?? module.pods?.[0]?.podspecDir;
+      return [
+        (async (): Promise<NativeDependency> => {
+          const root = from ? await findPackageRoot(from, name) : null;
+          return root
+            ? { name, root }
+            : { name, version: module.packageVersion ?? "unknown" };
+        })(),
+      ];
+    }),
+  );
+};
+
 /**
  * Reads the native interface of a React Native app from the JSON its
  * autolinking `config` command prints: `react-native config` for React Native
- * CLI, `rock config -p <platform>` for Rock.
+ * CLI, `rock config -p <platform>` for Rock. An app that links Expo modules
+ * gets them from expo-modules-autolinking as well.
  */
 export const readReactNativeInterface = async ({
   cwd,
@@ -96,20 +195,31 @@ export const readReactNativeInterface = async ({
   platform: Platform;
 }): Promise<NativeInterface> => {
   const { stdout } = await execa(command, args, { cwd });
-  const config = JSON.parse(
-    stdout.slice(stdout.indexOf("{")),
-  ) as AutolinkingConfig;
+  const config = parseJsonOutput<AutolinkingConfig>(
+    stdout,
+    [path.basename(command), ...args].join(" "),
+  );
   const reactNative = config.reactNativePath
     ? await readManifest(config.reactNativePath)
     : null;
+  const dependencies: NativeDependency[] = Object.values(
+    config.dependencies ?? {},
+  ).flatMap((dependency) =>
+    dependency.name && dependency.root && dependency.platforms?.[platform]
+      ? [{ name: dependency.name, root: dependency.root }]
+      : [],
+  );
+  const linksExpoModules = dependencies.some(({ name }) => name === "expo");
+  const expoModules = linksExpoModules
+    ? await readExpoModules(cwd, platform)
+    : [];
+  const names = new Set(dependencies.map(({ name }) => name));
   return {
     runtime: `react-native@${reactNative?.version ?? "unknown"}`,
-    dependencies: Object.values(config.dependencies ?? {}).flatMap(
-      (dependency) =>
-        dependency.name && dependency.root && dependency.platforms?.[platform]
-          ? [{ name: dependency.name, root: dependency.root }]
-          : [],
-    ),
+    dependencies: [
+      ...dependencies,
+      ...expoModules.filter(({ name }) => !names.has(name)),
+    ],
   };
 };
 
@@ -232,6 +342,14 @@ export const createInterfaceFingerprint = async (
   }
 
   for (const dependency of nativeInterface.dependencies) {
+    if ("version" in dependency) {
+      addContents(
+        `dependency:${dependency.name}`,
+        `${dependency.name}@${dependency.version}`,
+        "native-dependency",
+      );
+      continue;
+    }
     const root = await fs.realpath(dependency.root);
     if (root.split(path.sep).includes("node_modules")) {
       const version = (await readManifest(root))?.version ?? "unknown";
@@ -249,7 +367,7 @@ export const createInterfaceFingerprint = async (
       (await fg([...NATIVE_FILES[platform]], {
         cwd: root,
         absolute: true,
-        ignore: GENERATED_DIRS,
+        ignore: [...GENERATED_DIRS, ...TEST_DIRS],
       }));
     for (const file of files) {
       await addFile(

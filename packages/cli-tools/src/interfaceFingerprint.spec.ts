@@ -165,6 +165,20 @@ describe("createInterfaceFingerprint", () => {
     expect(await hashOf()).not.toBe(before);
   });
 
+  it("hashes a dependency declared by name and version", async () => {
+    const native = (version: string): NativeInterface => ({
+      runtime: "lynx@4.0.3",
+      dependencies: [{ name: "pod:SDWebImage", version }],
+    });
+
+    expect(await hashOf({}, native("5.15.5"))).toBe(
+      await hashOf({}, native("5.15.5")),
+    );
+    expect(await hashOf({}, native("5.16.0"))).not.toBe(
+      await hashOf({}, native("5.15.5")),
+    );
+  });
+
   it("follows the runtime version", async () => {
     expect(
       await hashOf(
@@ -189,6 +203,32 @@ describe("createInterfaceFingerprint", () => {
     );
 
     expect(await hashOf()).not.toBe(before);
+  });
+
+  it("leaves a local package's tests out of its native files", async () => {
+    await fs.rm(path.join(root, "packages/local-module/src"), {
+      recursive: true,
+    });
+    await write(
+      path.join(root, "packages/local-module/android/build.gradle"),
+      "android {}",
+    );
+    const ios = await hashOf();
+    const android = await hashOf({ platform: "android" });
+    await write(
+      path.join(root, "packages/local-module/ios/Tests/LocalTests.swift"),
+      "final class LocalTests {}",
+    );
+    await write(
+      path.join(
+        root,
+        "packages/local-module/android/src/test/java/LocalTest.kt",
+      ),
+      "class LocalTest",
+    );
+
+    expect(await hashOf()).toBe(ios);
+    expect(await hashOf({ platform: "android" })).toBe(android);
   });
 
   it("keeps a platform-specific spec out of the other platform", async () => {
@@ -253,5 +293,70 @@ describe("readReactNativeInterface", () => {
       runtime: "react-native@0.85.2",
       dependencies: [{ name: "both", root: "/both" }],
     });
+  });
+
+  it("adds the Expo modules an app links through expo-modules-autolinking", async () => {
+    await write(
+      path.join(root, "node_modules/expo/package.json"),
+      manifest({ name: "expo", version: "52.0.49" }),
+    );
+    await write(
+      path.join(root, "node_modules/expo-modules-autolinking/package.json"),
+      manifest({ name: "expo-modules-autolinking", version: "2.0.8" }),
+    );
+    await write(
+      path.join(root, "node_modules/expo-font/package.json"),
+      manifest({ name: "expo-font", version: "13.3.2" }),
+    );
+    const modules = {
+      modules: [
+        {
+          packageName: "expo-font",
+          packageVersion: "13.3.2",
+          pods: [{ podspecDir: path.join(root, "node_modules/expo-font/ios") }],
+        },
+        { packageName: "expo-local", packageVersion: "1.0.0" },
+      ],
+    };
+    await write(
+      path.join(
+        root,
+        "node_modules/expo-modules-autolinking/bin/expo-modules-autolinking.js",
+      ),
+      `if (process.argv.includes("apple")) console.log(${JSON.stringify(JSON.stringify(modules))}); else process.exit(1);`,
+    );
+    const config = {
+      dependencies: {
+        expo: {
+          name: "expo",
+          root: path.join(root, "node_modules/expo"),
+          platforms: { ios: {} },
+        },
+      },
+    };
+
+    const { dependencies } = await readReactNativeInterface({
+      cwd: root,
+      command: process.execPath,
+      args: ["-e", `console.log(${JSON.stringify(JSON.stringify(config))})`],
+      platform: "ios",
+    });
+
+    expect(dependencies).toEqual([
+      { name: "expo", root: path.join(root, "node_modules/expo") },
+      { name: "expo-font", root: path.join(root, "node_modules/expo-font") },
+      { name: "expo-local", version: "1.0.0" },
+    ]);
+  });
+
+  it("explains a config command that prints no configuration", async () => {
+    await expect(
+      readReactNativeInterface({
+        cwd: root,
+        command: process.execPath,
+        args: ["-e", "console.log('install @react-native-community/cli')"],
+        platform: "ios",
+      }),
+    ).rejects.toThrow("printed no JSON configuration");
   });
 });
