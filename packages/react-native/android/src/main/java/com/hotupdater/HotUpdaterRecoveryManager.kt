@@ -334,6 +334,9 @@ internal class HotUpdaterRecoveryManager(
 
     private fun currentGeneration(): Long = synchronized(lock) { generation }
 
+    /** Whether the launch of [generation] is still the one monitored. */
+    fun monitorsLaunch(generation: Long): Boolean = synchronized(lock) { generation == this.generation && launchState.snapshot() != null }
+
     /** A launch waiting for its first content, whose root view may not be found yet. */
     private fun awaitsFirstContent(): Boolean = synchronized(lock) { launchState.snapshot() != null && !launchState.hasContentAppeared() }
 

@@ -1034,7 +1034,14 @@ private func hotUpdaterGetMinBundleId() -> String {
                 return bundleStorage.prepareLaunch(bundle: bundle, pendingRecovery: pendingRecovery)
             },
             startMonitoring: { selection in
-                recoveryManager.startMonitoring(
+                // The same bundle again (a named instance): its launch goes on.
+                if !environment.isMain, let generation = recoveryManager.continuingLaunch(
+                    bundleId: selection.launchedBundleId,
+                    launchURL: selection.bundleURL
+                ) {
+                    return generation
+                }
+                return recoveryManager.startMonitoring(
                     bundleId: selection.launchedBundleId,
                     shouldRollback: selection.shouldRollbackOnCrash,
                     launchURL: selection.bundleURL
@@ -1166,6 +1173,12 @@ final class HotUpdaterRecoveryManager: NSObject {
 
         hub.installIfNeeded()
         return generation
+    }
+
+    /// The generation of the launch a preparation of the same bundle
+    /// continues, if any.
+    func continuingLaunch(bundleId: String?, launchURL: URL?) -> Int? {
+        hub.coordinator.continuingLaunch(name: name, bundleId: bundleId, launchURL: launchURL)
     }
 
     /// Main only: its launch of `generation` is in the foreground.

@@ -49,6 +49,10 @@ class HotUpdaterImpl {
     @Volatile
     private var currentLaunchInvalidations = 0L
 
+    // The selection a named instance's monitored launch runs, with that
+    // launch, under the launch lock.
+    private var monitoredLaunch: Pair<LaunchSelection, Long>? = null
+
     // Serializes the launch's bundle selection with the update check's read
     // of it, so a check never reads metadata the launch is still selecting from,
     // and with a channel reset or built-in commit, which delete downloaded bundles.
@@ -584,18 +588,46 @@ class HotUpdaterImpl {
         // latest selection goes, and the count it started from has the next
         // start prepare again.
         repeat(MAX_LAUNCH_PREPARATIONS - 1) {
-            val (selection, launch) = selectAndMonitorLaunchLocked()
+            val prepared = selectAndMonitorLaunchLocked()
             val now = launchInvalidations.get()
-            if (now == invalidations) return publishLaunchLocked(selection, launch, invalidations)
+            if (now == invalidations) return publishLaunchLocked(prepared, invalidations)
             invalidations = now
         }
-        val (selection, launch) = selectAndMonitorLaunchLocked()
-        return publishLaunchLocked(selection, launch, invalidations)
+        return publishLaunchLocked(selectAndMonitorLaunchLocked(), invalidations)
     }
 
-    private fun selectAndMonitorLaunchLocked(): Pair<LaunchSelection, Long> {
+    private class PreparedLaunch(
+        val selection: LaunchSelection,
+        val launch: Long,
+        /** False when the selection continues the launch already monitored. */
+        val started: Boolean,
+    )
+
+    /**
+     * Whether [next] continues the named instance's launch of [current]
+     * rather than starting another: the same bundle, from the same URL,
+     * still unverified, or verified since. A launch's state is its bundle's
+     * persisted verification, so the same bundle selected again in this
+     * process, as after a reset that keeps it or a reload before the
+     * process restarts, is the same launch; another one would make its
+     * runtimes, which load the same URL, look like a replacement's.
+     */
+    private fun continuesLaunch(
+        current: LaunchSelection,
+        next: LaunchSelection,
+    ): Boolean =
+        current.launchedBundleId == next.launchedBundleId &&
+            current.bundleUrl == next.bundleUrl &&
+            (current.shouldRollbackOnCrash || !next.shouldRollbackOnCrash)
+
+    private fun selectAndMonitorLaunchLocked(): PreparedLaunch {
         val pendingRecovery = recoveryManager.consumePendingCrashRecovery()
         val selection = bundleStorage.prepareLaunch(pendingRecovery)
+        monitoredLaunch?.let { (current, launch) ->
+            if (!environment.isMain && continuesLaunch(current, selection) && recoveryManager.monitorsLaunch(launch)) {
+                return PreparedLaunch(selection, launch, started = false)
+            }
+        }
         val launch =
             recoveryManager.startMonitoring(
                 bundleId = selection.launchedBundleId,
@@ -618,14 +650,23 @@ class HotUpdaterImpl {
                 launchURL = selection.bundleUrl,
                 onCharged = { launchInvalidations.incrementAndGet() },
             )
-        return selection to launch
+        return PreparedLaunch(selection, launch, started = true)
     }
 
     private fun publishLaunchLocked(
-        selection: LaunchSelection,
-        launch: Long,
+        prepared: PreparedLaunch,
         invalidations: Long,
     ): LaunchSelection {
+        val selection = prepared.selection
+        val launch = prepared.launch
+        monitoredLaunch = selection to launch
+        // A launch continued keeps its gate, which may have armed it already.
+        if (!prepared.started) {
+            runningLaunchSelection = selection
+            currentLaunchInvalidations = invalidations
+            currentLaunchSelection = selection
+            return selection
+        }
         // A headless JS task, such as a background push, loads the bundle without
         // an activity and never renders. Only a launch with an activity may leave
         // an unfinished launch for the next process to roll back. A named

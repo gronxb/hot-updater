@@ -1445,6 +1445,63 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a second preparation of the same bundle keeps its launch`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        val impl = HotUpdaterImpl(context, widget, unshownGate())
+        val launchURL = impl.getJSBundleFile()
+        val launch = liveGeneration(widget.name)
+
+        // Prepared again in this process, as after a charge whose marker
+        // couldn't be written: the bundle is still unverified.
+        invalidateLaunch(impl)
+        assertEquals(launchURL, impl.getJSBundleFile())
+
+        assertEquals(launch, liveGeneration(widget.name))
+        assertTrue(metadata(context, widget).verificationPending)
+    }
+
+    @Test
+    fun `a preparation of the same bundle after its verification keeps its launch`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        val impl = HotUpdaterImpl(context, widget, unshownGate())
+        val launchURL = impl.getJSBundleFile()
+        val launch = liveGeneration(widget.name)
+        HotUpdaterRecoveryManager.contentAppeared(widget.name)
+        assertFalse(metadata(context, widget).verificationPending)
+
+        invalidateLaunch(impl)
+        assertEquals(launchURL, impl.getJSBundleFile())
+
+        assertEquals(launch, liveGeneration(widget.name))
+    }
+
+    private fun invalidateLaunch(impl: HotUpdaterImpl) {
+        (
+            HotUpdaterImpl::class.java
+                .getDeclaredField("launchInvalidations")
+                .apply {
+                    isAccessible = true
+                }.get(impl) as java.util.concurrent.atomic.AtomicLong
+        ).incrementAndGet()
+    }
+
+    private fun liveGeneration(instanceName: String): Long {
+        val live =
+            (
+                HotUpdaterRecoveryManager::class.java
+                    .getDeclaredField("liveManagers")
+                    .apply { isAccessible = true }
+                    .get(null) as Map<*, *>
+            )[instanceName]!!
+        return live.javaClass
+            .getDeclaredField("generation")
+            .apply { isAccessible = true }
+            .getLong(live)
+    }
+
+    @Test
     fun `a verified launch's slot stops asking before storage records the verification`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, widget, "widget-bundle")

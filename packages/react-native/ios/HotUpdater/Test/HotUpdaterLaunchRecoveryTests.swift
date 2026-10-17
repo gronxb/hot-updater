@@ -1830,6 +1830,53 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(process2Scene.metadata(Self.widget)?.verificationPending == true)
     }
 
+    /// A named instance preparing the same bundle again keeps its launch,
+    /// generation and monitoring: two launches of one name never share a
+    /// bundle. Another bundle, or main, starts a new launch.
+    @Test
+    func aSecondPreparationOfTheSameBundleContinuesItsLaunch() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let url = try #require(scene.launchURL(Self.widget, bundleId: "widget-next"))
+        let generation = try #require(coordinator.generations()[Self.widget])
+        #expect(coordinator.arm(name: Self.widget))
+
+        #expect(coordinator.continuingLaunch(name: Self.widget, bundleId: "widget-next", launchURL: url) == generation)
+        #expect(coordinator.launch(named: Self.widget)?.isArmed == true)
+        // Another bundle, or the same bundle elsewhere, is a new launch.
+        let stable = try #require(scene.launchURL(Self.widget, bundleId: "widget-stable"))
+        #expect(coordinator.continuingLaunch(name: Self.widget, bundleId: "widget-stable", launchURL: stable) == nil)
+        #expect(coordinator.continuingLaunch(name: Self.widget, bundleId: "widget-next", launchURL: stable) == nil)
+        // Main reloads its launch in place: always a new one.
+        let mainURL = try #require(scene.launchURL(Self.main, bundleId: "main-next"))
+        #expect(coordinator.continuingLaunch(name: Self.main, bundleId: "main-next", launchURL: mainURL) == nil)
+    }
+
+    /// A fatal after the widget's content was verified, and its monitoring
+    /// ended: preparing the same, now verified, bundle again starts no new
+    /// launch.
+    @Test
+    func aPreparationAfterVerificationOfTheSameBundleStartsNoNewLaunch() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let verified = try #require(coordinator.contentAppeared(owner: Self.widget))
+        coordinator.finishMonitoring(name: Self.widget, generation: verified.generation)
+        coordinator.chargeFatal(owner: Self.widget)
+
+        let selection = scene.makeStorage(Self.widget).prepareLaunch(bundle: namedTestBundle, pendingRecovery: nil)
+        #expect(selection.launchedBundleId == "widget-next")
+        #expect(!selection.shouldRollbackOnCrash)
+        #expect(coordinator.continuingLaunch(
+            name: Self.widget,
+            bundleId: selection.launchedBundleId,
+            launchURL: selection.bundleURL
+        ) == verified.generation)
+    }
+
     @Test
     func anErrorOfTheCurrentRuntimeStillChargesItsLaunch() throws {
         let scene = try Scene()

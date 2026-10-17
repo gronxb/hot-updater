@@ -123,6 +123,8 @@ final class HotUpdaterRecoveryCoordinator {
         fileprivate(set) var hasShownContent = false
         /// The bundle URL this launch handed out to React Native.
         fileprivate(set) var launchURL: URL?
+        /// The bundle this launch selected, kept after its monitoring ends.
+        fileprivate(set) var selectedBundleId: String?
 
         init(name: String, markerURL: URL, storage: BundleStorageService) {
             self.name = name
@@ -320,6 +322,7 @@ final class HotUpdaterRecoveryCoordinator {
             }
             launch.launchURL = launchURL
             launch.bundleId = bundleId
+            launch.selectedBundleId = bundleId
             launch.shouldRollback = shouldRollback
             launch.isArmed = false
             launch.recoveryRequested = false
@@ -334,6 +337,34 @@ final class HotUpdaterRecoveryCoordinator {
             assignSlot(to: launch)
             mirror(launch)
             return launch.generation
+        }
+    }
+
+    /// The generation of `name`'s launch when a new preparation selected the
+    /// same bundle at the same URL: that launch continues, with its
+    /// generation and monitoring, rather than a new one starting. A named
+    /// instance prepares again only after a channel reset, a built-in
+    /// commit, or its own rollback, each of which selects another bundle
+    /// (or the built-in, never pending), and it never reloads; so two
+    /// launches of one name never share a bundle, which is what tells their
+    /// runtimes apart. Main, which reloads its launch in place, always
+    /// starts a new one.
+    func continuingLaunch(name: String, bundleId: String?, launchURL: URL?) -> Int? {
+        withLock {
+            guard let launch = launches[name], !launch.isMain, launch.generation > 0,
+                  launch.selectedBundleId == bundleId else {
+                return nil
+            }
+            let sameURL: Bool
+            switch (launch.launchURL, launchURL) {
+            case (nil, nil):
+                sameURL = true
+            case let (current?, new?):
+                sameURL = HotUpdaterInstanceRouter.comparableKey(current) == HotUpdaterInstanceRouter.comparableKey(new)
+            default:
+                sameURL = false
+            }
+            return sameURL ? launch.generation : nil
         }
     }
 
