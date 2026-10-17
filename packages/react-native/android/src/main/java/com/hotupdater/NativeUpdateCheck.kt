@@ -113,8 +113,8 @@ internal class HotUpdaterImplUpdateCheckState(
 
 /**
  * One native update checker per instance name, behind [HotUpdaterInstance]
- * and the TurboModule's `resetChannel`, which uses main's. Each checker
- * serializes the work of its own name's state.
+ * and the TurboModule's `resetChannel`, which uses the checker of its
+ * runtime's instance. Each checker serializes the work of its own name's state.
  */
 internal object NativeUpdateCheck {
     private val checkers = HashMap<String, NativeUpdateChecker>()

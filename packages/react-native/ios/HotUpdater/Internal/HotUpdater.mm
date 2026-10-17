@@ -276,10 +276,13 @@ NSNotificationName const HotUpdaterUpdateProgressDidChangeNotification = @"HotUp
 
 @implementation HotUpdater {
     bool hasListeners;
+    // The impl of this module's React Native runtime, once its bundle URL is known.
+    HotUpdaterImpl *_instanceImpl;
 }
 
 @synthesize bridge = _bridge;
 @synthesize moduleRegistry = _moduleRegistry;
+@synthesize bundleManager = _bundleManager;
 
 + (BOOL)requiresMainQueueSetup {
     return YES;
@@ -391,6 +394,52 @@ RCT_EXPORT_MODULE();
     return _sharedImpl;
 }
 
+#pragma mark - Instance Routing
+
+// The impl of the instance whose bundle this module's React Native runtime
+// runs. Each runtime has its own module, and JavaScript never names its
+// instance, so the runtime's bundle URL tells them apart. Resolved on first
+// use: the URL isn't set yet in -init, and React Native also creates a module
+// that never joins a runtime.
+- (HotUpdaterImpl *)instanceImpl {
+    @synchronized (self) {
+        if (_instanceImpl) {
+            return _instanceImpl;
+        }
+    }
+
+#ifdef RCT_NEW_ARCH_ENABLED
+    NSURL *bundleURL = self.bundleManager.bundleURL;
+#else
+    NSURL *bundleURL = self.bridge.bundleURL;
+#endif
+    if (!bundleURL) {
+        // Not cached: the next call resolves again once the URL is set.
+        return [HotUpdater sharedImpl];
+    }
+
+    HotUpdaterImpl *impl = [HotUpdaterNativeUpdates() implForBundleURL:bundleURL];
+    @synchronized (self) {
+        if (!_instanceImpl) {
+            _instanceImpl = impl;
+        }
+        return _instanceImpl;
+    }
+}
+
+// Reloading reloads main's React host or the whole app, so a runtime of a
+// named instance refuses it until each React host can reload its own.
+- (BOOL)rejectReloadOfNamedInstance:(RCTPromiseRejectBlock)reject {
+    if ([self instanceImpl] == [HotUpdater sharedImpl]) {
+        return NO;
+    }
+    reject(@"RELOAD_UNSUPPORTED",
+           @"HotUpdater.reload() and HotUpdater.reloadProcess() are not supported in a React Native runtime of a named "
+           @"HotUpdaterInstance yet. Reload its React Native host from native code.",
+           nil);
+    return YES;
+}
+
 #pragma mark - React Native Constants (Keep getMinBundleId, delegate others)
 
 // Returns the bundle ID of the bundle this build ships (MIN_BUNDLE_ID)
@@ -402,9 +451,9 @@ RCT_EXPORT_MODULE();
     return @{
         @"MIN_BUNDLE_ID": [self getMinBundleId] ?: [NSNull null],
         @"APP_VERSION": HotUpdaterAppVersion() ?: [NSNull null],
-        @"CHANNEL": [[HotUpdater sharedImpl] getChannel] ?: [NSNull null],
-        @"DEFAULT_CHANNEL": [[HotUpdater sharedImpl] getDefaultChannel] ?: [NSNull null],
-        @"FINGERPRINT_HASH": [[HotUpdater sharedImpl] getFingerprintHash] ?: [NSNull null]
+        @"CHANNEL": [[self instanceImpl] getChannel] ?: [NSNull null],
+        @"DEFAULT_CHANNEL": [[self instanceImpl] getDefaultChannel] ?: [NSNull null],
+        @"FINGERPRINT_HASH": [[self instanceImpl] getFingerprintHash] ?: [NSNull null]
     };
 }
 
@@ -444,9 +493,9 @@ RCT_EXPORT_MODULE();
 
 - (void)handleDownloadProgress:(NSNotification *)notification {
      if (!hasListeners) return;
-     // A named native instance downloads with its own impl; JavaScript runs
-     // on main's.
-     if (notification.object != [HotUpdater sharedImpl]) return;
+     // Every impl posts its progress here; this runtime's JavaScript gets
+     // only its own instance's.
+     if (notification.object != [self instanceImpl]) return;
 
      NSDictionary *userInfo = notification.userInfo;
      NSNumber *progressNum = userInfo[@"progress"];
@@ -491,6 +540,9 @@ RCT_EXPORT_MODULE();
 - (void)reload:(RCTPromiseResolveBlock)resolve
         reject:(RCTPromiseRejectBlock)reject {
     RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
+    if ([self rejectReloadOfNamedInstance:reject]) {
+        return;
+    }
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
@@ -556,7 +608,7 @@ RCT_EXPORT_MODULE();
         paramDict[@"requestTimeout"] = @(params.requestTimeout().value());
     }
 
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     [impl updateBundle:paramDict resolver:resolve rejecter:reject];
 }
 
@@ -596,63 +648,63 @@ RCT_EXPORT_MODULE();
         paramDict[@"selection"] = params.selection();
     }
 
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     [impl installArtifact:paramDict resolver:resolve rejecter:reject];
 }
 
 - (NSNumber *)acceptReleaseCatalog:(NSDictionary *)params {
-    return @([[HotUpdater sharedImpl] acceptReleaseCatalog:params]);
+    return @([[self instanceImpl] acceptReleaseCatalog:params]);
 }
 
 - (NSDictionary *)getActiveUpdateState {
-    return [[HotUpdater sharedImpl] getActiveUpdateState];
+    return [[self instanceImpl] getActiveUpdateState];
 }
 
 - (void)getReleaseCatalogCache:(NSString *)partition
                         resolve:(RCTPromiseResolveBlock)resolve
                          reject:(RCTPromiseRejectBlock)reject {
-    [[HotUpdater sharedImpl] getReleaseCatalogCache:partition resolver:resolve rejecter:reject];
+    [[self instanceImpl] getReleaseCatalogCache:partition resolver:resolve rejecter:reject];
 }
 
 - (void)setReleaseCatalogCache:(NSString *)partition
                        payload:(NSString *)payload
                        resolve:(RCTPromiseResolveBlock)resolve
                         reject:(RCTPromiseRejectBlock)reject {
-    [[HotUpdater sharedImpl] setReleaseCatalogCache:partition payload:payload resolver:resolve rejecter:reject];
+    [[self instanceImpl] setReleaseCatalogCache:partition payload:payload resolver:resolve rejecter:reject];
 }
 
 - (void)removeReleaseCatalogCache:(NSString *)partition
                           resolve:(RCTPromiseResolveBlock)resolve
                            reject:(RCTPromiseRejectBlock)reject {
-    [[HotUpdater sharedImpl] removeReleaseCatalogCache:partition resolver:resolve rejecter:reject];
+    [[self instanceImpl] removeReleaseCatalogCache:partition resolver:resolve rejecter:reject];
 }
 
 - (NSNumber *)isReleaseSelectionCurrent:(NSDictionary *)params {
-    return @([[HotUpdater sharedImpl] isReleaseSelectionCurrent:params]);
+    return @([[self instanceImpl] isReleaseSelectionCurrent:params]);
 }
 
 - (void)commitReleaseSelection:(NSDictionary *)params
                        resolve:(RCTPromiseResolveBlock)resolve
                         reject:(RCTPromiseRejectBlock)reject {
-    [[HotUpdater sharedImpl] commitReleaseSelection:params resolver:resolve rejecter:reject];
+    [[self instanceImpl] commitReleaseSelection:params resolver:resolve rejecter:reject];
 }
 
 - (NSDictionary *)notifyAppReady {
     NSLog(@"[HotUpdater.mm] notifyAppReady called");
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     return [impl notifyAppReady];
 }
 
 - (NSArray<NSString *> *)getCrashHistory {
     NSLog(@"[HotUpdater.mm] getCrashHistory called");
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     NSArray<NSString *> *crashHistory = [impl getCrashHistory];
     return crashHistory ?: @[];
 }
 
 - (NSNumber *)clearCrashHistory {
     NSLog(@"[HotUpdater.mm] clearCrashHistory called");
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     BOOL result = [impl clearCrashHistory];
     return @(result);
 }
@@ -663,22 +715,22 @@ RCT_EXPORT_MODULE();
 }
 
 - (NSString * _Nullable)getStorageItem:(NSString *)key {
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     return [impl getStorageItem:key];
 }
 
 - (void)setStorageItem:(NSString *)key value:(NSString * _Nullable)value {
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     [impl setStorageItem:key value:value];
 }
 
 - (NSString * _Nullable)takeNativeUpdateEvents {
-    return [HotUpdaterNativeUpdates() takeEventsWithImpl:[HotUpdater sharedImpl]];
+    return [HotUpdaterNativeUpdates() takeEventsWithImpl:[self instanceImpl]];
 }
 
 - (NSString * _Nullable)getBaseURL {
     NSLog(@"[HotUpdater.mm] getBaseURL called");
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     return [impl getBaseURL];
 }
 
@@ -694,20 +746,20 @@ RCT_EXPORT_MODULE();
 
 - (NSString * _Nullable)getBundleId {
     NSLog(@"[HotUpdater.mm] getBundleId called");
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     return [impl getBundleId];
 }
 
 - (NSDictionary<NSString *, id> *)getManifest {
     NSLog(@"[HotUpdater.mm] getManifest called");
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     NSDictionary<NSString *, id> *manifest = [impl getManifest];
     return manifest ?: @{};
 }
 
 - (void)resetChannel:(RCTPromiseResolveBlock)resolve
               reject:(RCTPromiseRejectBlock)reject {
-    [HotUpdaterNativeUpdates() resetChannelWithImpl:[HotUpdater sharedImpl]
+    [HotUpdaterNativeUpdates() resetChannelWithImpl:[self instanceImpl]
                                            resolver:resolve
                                            rejecter:reject];
 }
@@ -717,7 +769,7 @@ RCT_EXPORT_MODULE();
 }
 
 - (facebook::react::ModuleConstants<JS::NativeHotUpdater::Constants::Builder>)getConstants {
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     return facebook::react::typedConstants<JS::NativeHotUpdater::Constants::Builder>({
         .MIN_BUNDLE_ID = [self getMinBundleId],
         .APP_VERSION = HotUpdaterAppVersion(),
@@ -734,6 +786,9 @@ RCT_EXPORT_MODULE();
 RCT_EXPORT_METHOD(reload:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
     RCTLogInfo(@"[HotUpdater.mm] HotUpdater requested a reload");
+    if ([self rejectReloadOfNamedInstance:reject]) {
+        return;
+    }
     dispatch_async(dispatch_get_main_queue(), ^{
         @try {
             HotUpdaterImpl *impl = [HotUpdater sharedImpl];
@@ -766,7 +821,7 @@ RCT_EXPORT_METHOD(updateBundle:(NSDictionary *)params
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
     NSLog(@"[HotUpdater.mm] updateBundle called. params: %@", params);
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     [impl updateBundle:params resolver:resolve rejecter:reject];
 }
 
@@ -774,63 +829,63 @@ RCT_EXPORT_METHOD(installArtifact:(NSDictionary *)params
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
     NSLog(@"[HotUpdater.mm] installArtifact called.");
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     [impl installArtifact:params resolver:resolve rejecter:reject];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(acceptReleaseCatalog:(NSDictionary *)params) {
-    return @([[HotUpdater sharedImpl] acceptReleaseCatalog:params]);
+    return @([[self instanceImpl] acceptReleaseCatalog:params]);
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getActiveUpdateState) {
-    return [[HotUpdater sharedImpl] getActiveUpdateState];
+    return [[self instanceImpl] getActiveUpdateState];
 }
 
 RCT_EXPORT_METHOD(getReleaseCatalogCache:(NSString *)partition
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-    [[HotUpdater sharedImpl] getReleaseCatalogCache:partition resolver:resolve rejecter:reject];
+    [[self instanceImpl] getReleaseCatalogCache:partition resolver:resolve rejecter:reject];
 }
 
 RCT_EXPORT_METHOD(setReleaseCatalogCache:(NSString *)partition
                   payload:(NSString *)payload
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-    [[HotUpdater sharedImpl] setReleaseCatalogCache:partition payload:payload resolver:resolve rejecter:reject];
+    [[self instanceImpl] setReleaseCatalogCache:partition payload:payload resolver:resolve rejecter:reject];
 }
 
 RCT_EXPORT_METHOD(removeReleaseCatalogCache:(NSString *)partition
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-    [[HotUpdater sharedImpl] removeReleaseCatalogCache:partition resolver:resolve rejecter:reject];
+    [[self instanceImpl] removeReleaseCatalogCache:partition resolver:resolve rejecter:reject];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(isReleaseSelectionCurrent:(NSDictionary *)params) {
-    return @([[HotUpdater sharedImpl] isReleaseSelectionCurrent:params]);
+    return @([[self instanceImpl] isReleaseSelectionCurrent:params]);
 }
 
 RCT_EXPORT_METHOD(commitReleaseSelection:(NSDictionary *)params
                   resolve:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-    [[HotUpdater sharedImpl] commitReleaseSelection:params resolver:resolve rejecter:reject];
+    [[self instanceImpl] commitReleaseSelection:params resolver:resolve rejecter:reject];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(notifyAppReady) {
     NSLog(@"[HotUpdater.mm] notifyAppReady called");
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     return [impl notifyAppReady];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCrashHistory) {
     NSLog(@"[HotUpdater.mm] getCrashHistory called");
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     NSArray<NSString *> *crashHistory = [impl getCrashHistory];
     return crashHistory ?: @[];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(clearCrashHistory) {
     NSLog(@"[HotUpdater.mm] clearCrashHistory called");
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     BOOL result = [impl clearCrashHistory];
     return @(result);
 }
@@ -841,22 +896,22 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getInstallId) {
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getStorageItem:(NSString *)key) {
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     return [impl getStorageItem:key];
 }
 
 RCT_EXPORT_METHOD(setStorageItem:(NSString *)key value:(NSString * _Nullable)value) {
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     [impl setStorageItem:key value:value];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(takeNativeUpdateEvents) {
-    return [HotUpdaterNativeUpdates() takeEventsWithImpl:[HotUpdater sharedImpl]];
+    return [HotUpdaterNativeUpdates() takeEventsWithImpl:[self instanceImpl]];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBaseURL) {
     NSLog(@"[HotUpdater.mm] getBaseURL called");
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     return [impl getBaseURL];
 }
 
@@ -872,20 +927,20 @@ RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getCohort) {
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getBundleId) {
     NSLog(@"[HotUpdater.mm] getBundleId called");
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     return [impl getBundleId];
 }
 
 RCT_EXPORT_BLOCKING_SYNCHRONOUS_METHOD(getManifest) {
     NSLog(@"[HotUpdater.mm] getManifest called");
-    HotUpdaterImpl *impl = [HotUpdater sharedImpl];
+    HotUpdaterImpl *impl = [self instanceImpl];
     NSDictionary<NSString *, id> *manifest = [impl getManifest];
     return manifest ?: @{};
 }
 
 RCT_EXPORT_METHOD(resetChannel:(RCTPromiseResolveBlock)resolve
                   reject:(RCTPromiseRejectBlock)reject) {
-    [HotUpdaterNativeUpdates() resetChannelWithImpl:[HotUpdater sharedImpl]
+    [HotUpdaterNativeUpdates() resetChannelWithImpl:[self instanceImpl]
                                            resolver:resolve
                                            rejecter:reject];
 }

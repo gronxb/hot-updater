@@ -16,6 +16,6 @@
         </activity>
         <receiver android:name=".HeadlessTaskReceiver" android:exported="true"/>
         <service android:name=".HeadlessTaskService" android:exported="false"/>
-        <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="ab79d10c5ae9ea51d76fe226d418262552133dbb"/>
+        <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="223af69b6606303fea782a0855ca488d90884f6a"/>
     </application>
 </manifest>
