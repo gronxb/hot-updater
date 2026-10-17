@@ -665,7 +665,7 @@ class InstanceRecoveryTest {
         val registry = HotUpdaterInstanceRegistry.shared
         try {
             val widgetURL = registry.impl(context, throwing).getJSBundleFile()
-            val handler = HotUpdaterRecoveryManager.RecoveryJSExceptionHandler(null) { widgetURL }
+            val handler = HotUpdaterRecoveryManager.RecoveryJSExceptionHandler(null, { widgetURL })
 
             assertThrows(RuntimeException::class.java) { handler.handleException(RuntimeException("widget failed")) }
 
@@ -1405,6 +1405,40 @@ class InstanceRecoveryTest {
             assertEquals(replaced.name, HotUpdaterRecoveryManager.registerRuntime(newRuntime))
             HotUpdaterRecoveryManager.handleContentAppeared(rootTag = 31)
             assertFalse(metadata(context, replaced).verificationPending)
+        } finally {
+            forget(registry, replaced.name)
+        }
+    }
+
+    @Test
+    fun `a runtime registered for an earlier launch of the same bundle stays that launch's`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val replaced = namedEnvironment("replaced-runtime")
+        stagePending(context, replaced, "widget-bundle")
+        val registry = HotUpdaterInstanceRegistry.shared
+        try {
+            registry.impl(context, replaced)
+            val launchURL = HotUpdaterImpl(context, replaced, unshownGate()).getJSBundleFile()
+            val runtimeA = TestReactContext(context, launchURL) { null }
+            assertEquals(replaced.name, HotUpdaterRecoveryManager.registerRuntime(runtimeA))
+            assertEquals(true, HotUpdaterRecoveryManager.runtimeRunsCurrentLaunch(replaced.name, runtimeA))
+            // Launch B of the same bundle, while A's runtime still lives.
+            assertEquals(launchURL, HotUpdaterImpl(context, replaced, unshownGate()).getJSBundleFile())
+            assertEquals(false, HotUpdaterRecoveryManager.runtimeRunsCurrentLaunch(replaced.name, runtimeA))
+            // Its module created again, it doesn't join B.
+            assertFalse(HotUpdaterRecoveryManager.registerRuntime(replaced.name, runtimeA, launchURL, null))
+
+            // A's late fatal error charges no launch: B has no marker.
+            HotUpdaterRecoveryManager.handleJavaScriptError(RuntimeException("A failed"), launchURL, runtimeA)
+            assertFalse(crashMarker(context, replaced).exists())
+            HotUpdaterRecoveryManager.releaseClaim()
+
+            // B's own runtime's error is B's.
+            val runtimeB = TestReactContext(context, launchURL) { null }
+            assertEquals(replaced.name, HotUpdaterRecoveryManager.registerRuntime(runtimeB))
+            assertEquals(true, HotUpdaterRecoveryManager.runtimeRunsCurrentLaunch(replaced.name, runtimeB))
+            HotUpdaterRecoveryManager.handleJavaScriptError(RuntimeException("B failed"), launchURL, runtimeB)
+            assertTrue(crashMarker(context, replaced).exists())
         } finally {
             forget(registry, replaced.name)
         }

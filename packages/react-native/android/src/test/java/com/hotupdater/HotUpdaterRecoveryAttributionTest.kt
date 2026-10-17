@@ -116,6 +116,68 @@ class HotUpdaterRecoveryAttributionTest {
         assertFalse(attribution.showsViewOf(activity, WIDGET))
     }
 
+    @Test
+    fun `a view of a runtime registered for an earlier launch of the same bundle neither arms nor verifies its replacement`() {
+        // The host started launch B of the same bundle while launch A's root is still shown.
+        val activity = Activity()
+        val runtimeA = Any()
+        val runtimeB = Any()
+        val decorViews = mutableListOf(HotUpdaterDecorRoots.Root(21, CURRENT_URL, runtimeA))
+        val shown = mutableListOf<HotUpdaterRuntimeRoots.Runtime>()
+        val runtimeRoots =
+            object : HotUpdaterRuntimeRoots {
+                override fun runtimeOfRootTag(rootTag: Int): HotUpdaterRuntimeRoots.Runtime? =
+                    when (rootTag) {
+                        51 -> HotUpdaterRuntimeRoots.Runtime(CURRENT_URL, runtimeA)
+                        61 -> HotUpdaterRuntimeRoots.Runtime(CURRENT_URL, runtimeB)
+                        else -> null
+                    }
+
+                override fun runtimesShownIn(activity: Activity): List<HotUpdaterRuntimeRoots.Runtime> = shown.toList()
+            }
+        val attribution =
+            HotUpdaterRecoveryAttribution(
+                resolveName = { _, url -> if (url.contains("/hot-updater-instances/widget/")) WIDGET else MAIN },
+                runtimeRoots = runtimeRoots,
+                decorRoots = { decorViews.toList() },
+                runsCurrentLaunch = { _, url -> url == CURRENT_URL },
+                runtimeRunsCurrentLaunch = { _, runtime ->
+                    when (runtime) {
+                        runtimeA -> false
+                        runtimeB -> true
+                        else -> null
+                    }
+                },
+            ).apply {
+                track(
+                    InstanceTestContext(
+                        kotlin.io.path
+                            .createTempDirectory()
+                            .toFile(),
+                    ),
+                )
+                noteActivity(activity)
+            }
+
+        // A's root, in the decor view or another window, is A's.
+        assertFalse(attribution.showsViewOf(activity, WIDGET))
+        assertNotEquals(WIDGET, attribution.instanceOfRootTag(21))
+        decorViews.clear()
+        shown += HotUpdaterRuntimeRoots.Runtime(CURRENT_URL, runtimeA)
+        assertFalse(attribution.showsViewOf(activity, WIDGET))
+        assertNotEquals(WIDGET, attribution.instanceOfRootTag(51))
+        assertFalse(attribution.showsViewOf(activity, MAIN))
+
+        // B's own roots are B's.
+        shown += HotUpdaterRuntimeRoots.Runtime(CURRENT_URL, runtimeB)
+        assertTrue(attribution.showsViewOf(activity, WIDGET))
+        assertEquals(WIDGET, attribution.instanceOfRootTag(61))
+        shown.clear()
+        decorViews += HotUpdaterDecorRoots.Root(31, CURRENT_URL, runtimeB)
+        assertTrue(attribution.showsViewOf(activity, WIDGET))
+        assertEquals(WIDGET, attribution.instanceOfRootTag(31))
+    }
+
     private fun attribution(
         runtimeRoots: HotUpdaterRuntimeRoots,
         decorRoots: HotUpdaterDecorRoots = HotUpdaterDecorRoots { emptyList() },
@@ -141,7 +203,8 @@ class HotUpdaterRecoveryAttributionTest {
         override fun runtimeOfRootTag(rootTag: Int): HotUpdaterRuntimeRoots.Runtime? =
             rootURLs[rootTag]?.let { HotUpdaterRuntimeRoots.Runtime(it) }
 
-        override fun runtimeURLsShownIn(activity: Activity): List<String?> = shown
+        override fun runtimesShownIn(activity: Activity): List<HotUpdaterRuntimeRoots.Runtime> =
+            shown.map { HotUpdaterRuntimeRoots.Runtime(it) }
     }
 
     @Test

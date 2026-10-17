@@ -69,8 +69,9 @@ internal object JavaScriptExceptionHooks {
 
             exceptionHandlerField.set(reactHostDelegate) { exception: Exception ->
                 // The host still holds the runtime that failed: it tears it down after the delegate.
-                val sourceURL = runCatching { reactHost.currentReactContext?.sourceURL }.getOrNull()
-                val outcome = HotUpdaterRecoveryManager.handleJavaScriptError(exception, sourceURL)
+                val runtime = runCatching { reactHost.currentReactContext }.getOrNull()
+                val sourceURL = runCatching { runtime?.sourceURL }.getOrNull()
+                val outcome = HotUpdaterRecoveryManager.handleJavaScriptError(exception, sourceURL, runtime)
                 if (!outcome.recovered) {
                     previousHandler?.invoke(exception) ?: throw exception
                     // The handler returned: the error did not end the process.

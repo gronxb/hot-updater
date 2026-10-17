@@ -416,15 +416,19 @@ final class HotUpdaterRecoveryCoordinator {
     /// `generation`, when given, is the launch the content appeared in.
     /// `runtimeBundleURL` is the bundle the view's runtime runs, when known:
     /// content of a runtime of an earlier launch verifies no launch.
+    /// `runtimeGeneration` is the launch the view's runtime was recorded
+    /// for (`HotUpdaterRuntimeLaunches`), when known: it tells a runtime of
+    /// an earlier launch apart even with the same bundle.
     func contentAppeared(
         owner: String?,
         generation: Int? = nil,
-        runtimeBundleURL: URL? = nil
+        runtimeBundleURL: URL? = nil,
+        runtimeGeneration: Int? = nil
     ) -> (launch: Launch, generation: Int)? {
         withLock {
             guard let launch = self.owner(owner),
                   generation == nil || launch.generation == generation,
-                  isCurrentRuntime(of: launch, runtimeBundleURL: runtimeBundleURL),
+                  isCurrentRuntime(of: launch, runtimeBundleURL: runtimeBundleURL, runtimeGeneration: runtimeGeneration),
                   launch.isMonitoring,
                   launch.isAwaitingContent,
                   !launch.recoveryRequested else {
@@ -468,7 +472,8 @@ final class HotUpdaterRecoveryCoordinator {
     /// content, or the bound passes. Returns the launches it verified.
     func releaseHeldContent(
         owner: (AnyObject) -> String?,
-        runtimeBundleURL: (AnyObject) -> URL? = { _ in nil }
+        runtimeBundleURL: (AnyObject) -> URL? = { _ in nil },
+        runtimeGeneration: (AnyObject) -> Int? = { _ in nil }
     ) -> [(launch: Launch, generation: Int)] {
         withLock {
             guard !heldContent.isEmpty else { return [] }
@@ -480,7 +485,9 @@ final class HotUpdaterRecoveryCoordinator {
             let currentTime = self.now()
             for var held in heldContent {
                 if let view = held.view, let name = owner(view) {
-                    if let generation = held.generations[name],
+                    // The launch its runtime was recorded for, else the one
+                    // current when the content appeared.
+                    if let generation = runtimeGeneration(view) ?? held.generations[name],
                        let launch = contentAppeared(
                            owner: name,
                            generation: generation,
@@ -782,13 +789,20 @@ final class HotUpdaterRecoveryCoordinator {
     /// A named instance's runtime of an earlier launch, still being torn down
     /// after a later launch started, runs another bundle: its error charges
     /// no launch at all (see `attributeToEarlierRuntime`).
-    func chargeFatal(owner: String?, runtimeBundleURL: URL? = nil) -> Int? {
+    ///
+    /// `runtimeGeneration`, the launch the failing runtime was recorded for,
+    /// tells a runtime of an earlier launch apart even with the same bundle.
+    func chargeFatal(owner: String?, runtimeBundleURL: URL? = nil, runtimeGeneration: Int? = nil) -> Int? {
         charging {
             guard let owner, let launch = launches[owner] else {
                 chargeUnattributedCrash()
                 return nil
             }
-            let isCurrent = isCurrentRuntime(of: launch, runtimeBundleURL: runtimeBundleURL)
+            let isCurrent = isCurrentRuntime(
+                of: launch,
+                runtimeBundleURL: runtimeBundleURL,
+                runtimeGeneration: runtimeGeneration
+            )
             // The fatal of a load failure: the same crash, so the load
             // failure's claim is its claim, found among every claim (another
             // runtime's may have come in between). For this launch, by its
@@ -841,8 +855,8 @@ final class HotUpdaterRecoveryCoordinator {
     /// Without a fatal it is released when the instance launches again or
     /// after `loadFailureClaimBound` (`releaseExpiredLoadFailureClaims`).
     @discardableResult
-    func chargeLoadFailure(owner: String, runtimeBundleURL: URL? = nil) -> Int? {
-        let claim = chargeFatal(owner: owner, runtimeBundleURL: runtimeBundleURL)
+    func chargeLoadFailure(owner: String, runtimeBundleURL: URL? = nil, runtimeGeneration: Int? = nil) -> Int? {
+        let claim = chargeFatal(owner: owner, runtimeBundleURL: runtimeBundleURL, runtimeGeneration: runtimeGeneration)
         withLock {
             if let claim, let index = activeClaims.firstIndex(where: { $0.id == claim }) {
                 activeClaims[index].awaitingFatalSince = now()
@@ -885,15 +899,22 @@ final class HotUpdaterRecoveryCoordinator {
     /// Whether a runtime that runs `runtimeBundleURL` is `name`'s current
     /// launch: false only for a named instance whose launch handed out
     /// another bundle. Main, and an unknown URL, count as current.
-    func isCurrentRuntime(name: String, runtimeBundleURL: URL?) -> Bool {
+    /// `runtimeGeneration`, when known, decides instead: the runtime runs
+    /// the current launch only if it was recorded for it.
+    func isCurrentRuntime(name: String, runtimeBundleURL: URL?, runtimeGeneration: Int? = nil) -> Bool {
         withLock {
             guard let launch = launches[name] else { return true }
-            return isCurrentRuntime(of: launch, runtimeBundleURL: runtimeBundleURL)
+            return isCurrentRuntime(of: launch, runtimeBundleURL: runtimeBundleURL, runtimeGeneration: runtimeGeneration)
         }
     }
 
-    private func isCurrentRuntime(of launch: Launch, runtimeBundleURL: URL?) -> Bool {
-        guard !launch.isMain, let runtimeBundleURL, let launchURL = launch.launchURL else {
+    /// Main's runtime always counts as current, as it always has.
+    private func isCurrentRuntime(of launch: Launch, runtimeBundleURL: URL?, runtimeGeneration: Int? = nil) -> Bool {
+        guard !launch.isMain else { return true }
+        if let runtimeGeneration {
+            return runtimeGeneration == launch.generation
+        }
+        guard let runtimeBundleURL, let launchURL = launch.launchURL else {
             return true
         }
         return HotUpdaterInstanceRouter.comparableKey(runtimeBundleURL)
@@ -1473,9 +1494,24 @@ final class HotUpdaterRuntimeLaunches {
         lock.unlock()
     }
 
-    /// The launch `runtime` was recorded for; nil when unknown (no module,
-    /// as in the old architecture), which keeps content attributed by name
-    /// and bundle alone.
+    private let firstStarts = NSMapTable<AnyObject, NSDictionary>.weakToStrongObjects()
+
+    /// Each instance's launch at a surface's first start (`current`, for a
+    /// first start), kept for its later starts, such as its attachment to a
+    /// window after a replacement launch began: the launch a surface whose
+    /// runtime has no record belongs to.
+    func generationsOfFirstStart(_ surface: AnyObject, current: [String: Int]) -> [String: Int] {
+        lock.lock()
+        defer { lock.unlock() }
+        if let first = firstStarts.object(forKey: surface) as? [String: Int] {
+            return first
+        }
+        firstStarts.setObject(current as NSDictionary, forKey: surface)
+        return current
+    }
+
+    /// The launch `runtime` was recorded for; nil when unknown (no runtime
+    /// told apart yet), which keeps it attributed by name and bundle alone.
     func generation(of runtime: AnyObject?) -> Int? {
         guard let runtime else { return nil }
         lock.lock()

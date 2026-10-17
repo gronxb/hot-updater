@@ -1757,6 +1757,79 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(runtimes.generation(of: nil) == nil)
     }
 
+    /// A surface starts unattached under the widget's launch A; its host
+    /// starts replacement launch B of the same bundle before the view enters
+    /// a window: the attachment belongs to A and doesn't arm B. A surface
+    /// first started under B does.
+    @Test
+    func aSurfaceAttachedAfterAReplacementLaunchKeepsItsFirstLaunch() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let runtimes = HotUpdaterRuntimeLaunches()
+        let url = try #require(scene.launchURL(Self.widget, bundleId: "widget-next"))
+        let surfaceA = NSObject()
+        let firstA = runtimes.generationsOfFirstStart(surfaceA, current: coordinator.generations())
+
+        let launchB = coordinator.startMonitoring(name: Self.widget, bundleId: "widget-next", shouldRollback: true, launchURL: url)
+        // A's attachment, reported after B began.
+        let attachedA = runtimes.generationsOfFirstStart(surfaceA, current: coordinator.generations())
+        #expect(attachedA == firstA)
+        #expect(!coordinator.arm(name: Self.widget, generation: attachedA[Self.widget], runtimeBundleURL: url))
+
+        let surfaceB = NSObject()
+        let firstB = runtimes.generationsOfFirstStart(surfaceB, current: coordinator.generations())
+        #expect(firstB[Self.widget] == launchB)
+        #expect(coordinator.arm(name: Self.widget, generation: firstB[Self.widget], runtimeBundleURL: url))
+    }
+
+    /// An old-architecture host replaces the widget's launch with the same
+    /// bundle while the old bridge is torn down: the bridge's recorded
+    /// launch tells its content, load failure and fatal apart, where the
+    /// bundle alone can't.
+    @Test
+    func aRecordedRuntimeOfAnEarlierLaunchIsToldApartWithTheSameBundle() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        var clock: TimeInterval = 0
+        let process = scene.launch(now: { clock })
+        let coordinator = process.coordinator
+        let runtimes = HotUpdaterRuntimeLaunches()
+        let url = try #require(scene.launchURL(Self.widget, bundleId: "widget-next"))
+        let oldBridge = NSObject()
+        let first = try #require(coordinator.generations()[Self.widget])
+        runtimes.record(runtime: oldBridge, generation: first)
+        let replacement = coordinator.startMonitoring(name: Self.widget, bundleId: "widget-next", shouldRollback: true, launchURL: url)
+        #expect(coordinator.arm(name: Self.widget, generation: replacement))
+        let old = runtimes.generation(of: oldBridge)
+
+        #expect(!coordinator.isCurrentRuntime(name: Self.widget, runtimeBundleURL: url, runtimeGeneration: old))
+        #expect(coordinator.isCurrentRuntime(name: Self.widget, runtimeBundleURL: url, runtimeGeneration: replacement))
+        #expect(coordinator.contentAppeared(owner: Self.widget, runtimeBundleURL: url, runtimeGeneration: old) == nil)
+        // Its fatal is an earlier runtime's: no marker for the replacement.
+        coordinator.chargeFatal(owner: Self.widget, runtimeBundleURL: url, runtimeGeneration: old)
+        #expect(coordinator.earlierRuntimeClaim != nil)
+        #expect(!FileManager.default.fileExists(atPath: scene.markerURL(Self.widget).path))
+
+        // Held content of that runtime, released later, verifies nothing.
+        let view = NSObject()
+        let process2Scene = try Scene()
+        defer { process2Scene.cleanUp() }
+        let process2 = process2Scene.launch(now: { clock })
+        let second = process2.coordinator.startMonitoring(name: Self.widget, bundleId: "widget-next", shouldRollback: true, launchURL: url)
+        #expect(process2.coordinator.holdUnclaimedContent(view))
+        process2.coordinator.runtimeResolved(name: Self.widget, runtimeBundleURL: url)
+        clock += HotUpdaterRecoveryCoordinator.heldContentBound
+        let released = process2.coordinator.releaseHeldContent(
+            owner: { _ in Self.widget },
+            runtimeBundleURL: { _ in url },
+            runtimeGeneration: { _ in second - 1 }
+        )
+        #expect(!released.contains { $0.launch.name == Self.widget })
+        #expect(process2Scene.metadata(Self.widget)?.verificationPending == true)
+    }
+
     @Test
     func anErrorOfTheCurrentRuntimeStillChargesItsLaunch() throws {
         let scene = try Scene()

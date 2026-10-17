@@ -31,9 +31,11 @@ internal object JavaScriptExceptionHooks {
             val previousHandler = exceptionHandlerField.get(instanceManager) as? JSExceptionHandler
             exceptionHandlerField.set(
                 instanceManager,
-                HotUpdaterRecoveryManager.RecoveryJSExceptionHandler(previousHandler) {
-                    instanceManager.currentReactContext?.sourceURL
-                },
+                HotUpdaterRecoveryManager.RecoveryJSExceptionHandler(
+                    previousHandler,
+                    { instanceManager.currentReactContext?.sourceURL },
+                    { instanceManager.currentReactContext },
+                ),
             )
         }
 
@@ -72,7 +74,7 @@ internal object JavaScriptExceptionHooks {
         }
         exceptionHandlerField.set(
             catalystInstance,
-            HotUpdaterRecoveryManager.RecoveryJSExceptionHandler(previousHandler) { catalystInstance.sourceURL },
+            HotUpdaterRecoveryManager.RecoveryJSExceptionHandler(previousHandler, { catalystInstance.sourceURL }, { reactContext }),
         )
     }
 }

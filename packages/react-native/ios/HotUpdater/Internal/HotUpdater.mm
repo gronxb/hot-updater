@@ -533,6 +533,8 @@ static void HotUpdaterReleaseRuntimeQueueReference(void *reference)
 @implementation HotUpdaterRuntimeModuleReference
 @end
 
+static id HotUpdaterRuntimeIdentityOfModule(HotUpdater *module);
+
 // Every module that joined a runtime, weakly.
 static NSHashTable<HotUpdater *> *HotUpdaterRuntimeModules(void)
 {
@@ -768,7 +770,11 @@ RCT_EXPORT_MODULE();
     if (resolvedNow) {
         [[NSNotificationCenter defaultCenter] postNotificationName:HotUpdaterRuntimeDidResolveNotification
                                                             object:self
-                                                          userInfo:@{@"impl" : impl, @"bundleURL" : bundleURL}];
+                                                          userInfo:@{
+                                                              @"impl" : impl,
+                                                              @"bundleURL" : bundleURL,
+                                                              @"runtime" : HotUpdaterRuntimeIdentityOfModule(self) ?: self,
+                                                          }];
     }
     return impl;
 }
@@ -1410,9 +1416,33 @@ static NSURL *HotUpdaterBundleURLOfRuntime(id object)
 // an RCTInstance or RCTHost (by its surface presenter), an old-architecture
 // root view or bridge (by its bundle URL). Nil when no runtime claims it.
 // `runtimeBundleURL`, when given, receives the bundle the runtime runs.
-// `runtimeModule`, when given, receives the runtime's module when it is what
-// told the runtime apart (bridgeless).
-static HotUpdaterImpl *HotUpdaterImplForRootObject(id object, NSURL **runtimeBundleURL, HotUpdater **runtimeModule = nullptr)
+// The object that stands for one React Native runtime, which crash recovery
+// keeps the launch it runs by: the module (bridgeless), or the bridge the app
+// created (old architecture; a module, a root view and a load failure each
+// reach it, and its batched bridge points back to it).
+static id HotUpdaterRuntimeIdentityOfBridge(id bridge)
+{
+  if ([bridge respondsToSelector:NSSelectorFromString(@"parentBridge")]) {
+    id parent = [bridge valueForKey:@"parentBridge"];
+    if (parent) {
+      return parent;
+    }
+  }
+  return bridge;
+}
+
+static id HotUpdaterRuntimeIdentityOfModule(HotUpdater *module)
+{
+#ifdef RCT_NEW_ARCH_ENABLED
+  return module;
+#else
+  return HotUpdaterRuntimeIdentityOfBridge(module.bridge);
+#endif
+}
+
+// `runtimeIdentity`, when given, receives the runtime's identity (see
+// HotUpdaterRuntimeIdentityOfBridge) when one told the runtime apart.
+static HotUpdaterImpl *HotUpdaterImplForRootObject(id object, NSURL **runtimeBundleURL, id *runtimeIdentity = nullptr)
 {
   if (!object) {
     return nil;
@@ -1443,8 +1473,8 @@ static HotUpdaterImpl *HotUpdaterImplForRootObject(id object, NSURL **runtimeBun
           if (runtimeBundleURL) {
             *runtimeBundleURL = [module runtimeBundleURL];
           }
-          if (runtimeModule) {
-            *runtimeModule = module;
+          if (runtimeIdentity) {
+            *runtimeIdentity = HotUpdaterRuntimeIdentityOfModule(module);
           }
           return impl;
         }
@@ -1480,6 +1510,9 @@ static HotUpdaterImpl *HotUpdaterImplForRootObject(id object, NSURL **runtimeBun
   if (runtimeBundleURL) {
     *runtimeBundleURL = bundleURL;
   }
+  if (runtimeIdentity) {
+    *runtimeIdentity = HotUpdaterRuntimeIdentityOfBridge(bridge);
+  }
   return [HotUpdaterNativeUpdates() implForBundleURL:bundleURL];
 }
 
@@ -1497,14 +1530,13 @@ extern "C" void *HotUpdaterCopyBundleURLForRootObject(id object)
   return bundleURL ? (__bridge_retained void *)bundleURL : NULL;
 }
 
-// The module of the runtime `object` belongs to, or NULL when no module told
-// it apart (the old architecture, or a runtime without one yet). Crash
-// recovery keeps the launch each module's runtime runs by it.
-extern "C" void *HotUpdaterCopyRuntimeModuleForRootObject(id object)
+// The identity of the runtime `object` belongs to, or NULL when none told it
+// apart. Crash recovery keeps the launch each runtime runs by it.
+extern "C" void *HotUpdaterCopyRuntimeIdentityForRootObject(id object)
 {
-  HotUpdater *module = nil;
-  HotUpdaterImplForRootObject(object, nullptr, &module);
-  return module ? (__bridge_retained void *)module : NULL;
+  id identity = nil;
+  HotUpdaterImplForRootObject(object, nullptr, &identity);
+  return identity ? (__bridge_retained void *)identity : NULL;
 }
 
 // The impl of the runtime whose JavaScript thread, or old-architecture
@@ -1520,6 +1552,22 @@ extern "C" void *HotUpdaterCopyRuntimeImpl(void)
 #endif
   HotUpdaterImpl *impl = [reference.module resolvedInstanceImpl];
   return impl ? (__bridge_retained void *)impl : NULL;
+}
+
+// The identity of the runtime whose JavaScript thread, or old-architecture
+// ExceptionsManager queue, calls this, or NULL.
+extern "C" void *HotUpdaterCopyRuntimeIdentity(void)
+{
+  HotUpdaterRuntimeModuleReference *reference =
+      [NSThread currentThread].threadDictionary[HotUpdaterRuntimeModuleKey];
+#ifndef RCT_NEW_ARCH_ENABLED
+  if (!reference) {
+    reference = (__bridge HotUpdaterRuntimeModuleReference *)dispatch_get_specific(&kHotUpdaterRuntimeQueueKey);
+  }
+#endif
+  HotUpdater *module = reference.module;
+  id identity = module ? HotUpdaterRuntimeIdentityOfModule(module) : nil;
+  return identity ? (__bridge_retained void *)identity : NULL;
 }
 
 // The bundle the runtime whose JavaScript thread, or old-architecture

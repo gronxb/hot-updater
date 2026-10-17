@@ -29,12 +29,23 @@ private func hotUpdaterCopyRuntimeImplSymbol() -> UnsafeMutableRawPointer?
 @_silgen_name("HotUpdaterCopyBundleURLForRootObject")
 private func hotUpdaterCopyBundleURLForRootObjectSymbol(_ object: AnyObject) -> UnsafeMutableRawPointer?
 
-@_silgen_name("HotUpdaterCopyRuntimeModuleForRootObject")
-private func hotUpdaterCopyRuntimeModuleForRootObjectSymbol(_ object: AnyObject) -> UnsafeMutableRawPointer?
+@_silgen_name("HotUpdaterCopyRuntimeIdentityForRootObject")
+private func hotUpdaterCopyRuntimeIdentityForRootObjectSymbol(_ object: AnyObject) -> UnsafeMutableRawPointer?
 
-/// The module of the runtime `object` belongs to, when one told it apart.
-private func hotUpdaterRuntimeModule(forRootObject object: AnyObject) -> AnyObject? {
-    hotUpdaterCopyRuntimeModuleForRootObjectSymbol(object).map {
+@_silgen_name("HotUpdaterCopyRuntimeIdentity")
+private func hotUpdaterCopyRuntimeIdentitySymbol() -> UnsafeMutableRawPointer?
+
+/// The object standing for the runtime `object` belongs to (its module
+/// bridgeless, its bridge in the old architecture), when one told it apart.
+private func hotUpdaterRuntimeIdentity(forRootObject object: AnyObject) -> AnyObject? {
+    hotUpdaterCopyRuntimeIdentityForRootObjectSymbol(object).map {
+        Unmanaged<AnyObject>.fromOpaque($0).takeRetainedValue()
+    }
+}
+
+/// The object standing for the runtime whose JavaScript thread this is.
+private func hotUpdaterRuntimeIdentity() -> AnyObject? {
+    hotUpdaterCopyRuntimeIdentitySymbol().map {
         Unmanaged<AnyObject>.fromOpaque($0).takeRetainedValue()
     }
 }
@@ -1489,7 +1500,16 @@ final class HotUpdaterRecoveryHub: NSObject {
         // another instance's fatal. React Native's default crashes the
         // process, and the crash is this instance's alone. The claim is
         // released only once the forwarded handler returns.
-        let claim = coordinator.chargeFatal(owner: owner, runtimeBundleURL: attributed?.runtimeBundleURL)
+        // By its runtime, the launch it was recorded for, when the module told
+        // it apart.
+        let runtimeGeneration = attributed?.attribution == .runtimeModule
+            ? runtimeLaunches.generation(of: hotUpdaterRuntimeIdentity())
+            : nil
+        let claim = coordinator.chargeFatal(
+            owner: owner,
+            runtimeBundleURL: attributed?.runtimeBundleURL,
+            runtimeGeneration: runtimeGeneration
+        )
         forward()
         if let claim {
             coordinator.clearAttribution(claim: claim)
@@ -1573,16 +1593,23 @@ final class HotUpdaterRecoveryHub: NSObject {
         if let owner, owner != mainName {
             let runtimeBundleURL = (notification.object as AnyObject?).flatMap(hotUpdaterBundleURL(forRootObject:))
                 ?? (notification.userInfo?["bridge"] as AnyObject?).flatMap(hotUpdaterBundleURL(forRootObject:))
+            let runtime = (notification.object as AnyObject?).flatMap(hotUpdaterRuntimeIdentity(forRootObject:))
+                ?? (notification.userInfo?["bridge"] as AnyObject?).flatMap(hotUpdaterRuntimeIdentity(forRootObject:))
+            let runtimeGeneration = runtimeLaunches.generation(of: runtime)
             // A runtime of an earlier launch fails, not the current one: the
             // fatal that follows charges no launch.
-            guard coordinator.isCurrentRuntime(name: owner, runtimeBundleURL: runtimeBundleURL) else {
-                chargeLoadFailure(owner: owner, runtimeBundleURL: runtimeBundleURL)
+            guard coordinator.isCurrentRuntime(
+                name: owner,
+                runtimeBundleURL: runtimeBundleURL,
+                runtimeGeneration: runtimeGeneration
+            ) else {
+                chargeLoadFailure(owner: owner, runtimeBundleURL: runtimeBundleURL, runtimeGeneration: runtimeGeneration)
                 return
             }
             guard let generation = coordinator.awaitingContentGeneration(name: owner) else { return }
             // React Native's fatal follows and crashes the process: charge
             // this instance alone, so that fatal is attributed to it too.
-            chargeLoadFailure(owner: owner, runtimeBundleURL: runtimeBundleURL)
+            chargeLoadFailure(owner: owner, runtimeBundleURL: runtimeBundleURL, runtimeGeneration: runtimeGeneration)
             coordinator.stopAwaitingContent(name: owner, generation: generation)
             releaseHeldContent()
             return
@@ -1601,7 +1628,7 @@ final class HotUpdaterRecoveryHub: NSObject {
             // No in-process reload beside named instances: the fatal React
             // Native reports next is main's, and main rolls back at its next
             // start.
-            chargeLoadFailure(owner: mainName, runtimeBundleURL: nil)
+            chargeLoadFailure(owner: mainName, runtimeBundleURL: nil, runtimeGeneration: nil)
         }
         coordinator.stopAwaitingContent(name: mainName, generation: generation)
     }
@@ -1609,8 +1636,12 @@ final class HotUpdaterRecoveryHub: NSObject {
     /// Charges a load failure; its claim is the one the fatal React Native
     /// reports next takes over and releases. Without that fatal, the claim
     /// ends when the instance launches again or once the bound passes.
-    private func chargeLoadFailure(owner: String, runtimeBundleURL: URL?) {
-        coordinator.chargeLoadFailure(owner: owner, runtimeBundleURL: runtimeBundleURL)
+    private func chargeLoadFailure(owner: String, runtimeBundleURL: URL?, runtimeGeneration: Int?) {
+        coordinator.chargeLoadFailure(
+            owner: owner,
+            runtimeBundleURL: runtimeBundleURL,
+            runtimeGeneration: runtimeGeneration
+        )
         DispatchQueue.main.asyncAfter(
             deadline: .now() + HotUpdaterRecoveryCoordinator.loadFailureClaimBound + 0.1
         ) { [weak self] in
@@ -1637,13 +1668,15 @@ final class HotUpdaterRecoveryHub: NSObject {
         let runtimeBundleURL = owner == nil ? nil : view.flatMap(hotUpdaterBundleURL(forRootObject:))
         // The launch the view's runtime runs: content of a runtime torn down
         // after its host started a replacement with the same bundle verifies
-        // nothing. Unknown (no module, as in the old architecture): by name
-        // and bundle alone, as before.
-        let generation = owner == nil ? nil : runtimeLaunches.generation(of: view.flatMap(hotUpdaterRuntimeModule(forRootObject:)))
+        // nothing. Unknown (its runtime not told apart yet): by name and
+        // bundle alone, as before.
+        let runtimeGeneration = owner == nil
+            ? nil
+            : runtimeLaunches.generation(of: view.flatMap(hotUpdaterRuntimeIdentity(forRootObject:)))
         guard let verified = coordinator.contentAppeared(
             owner: owner,
-            generation: generation,
-            runtimeBundleURL: runtimeBundleURL
+            runtimeBundleURL: runtimeBundleURL,
+            runtimeGeneration: runtimeGeneration
         ) else {
             return
         }
@@ -1658,7 +1691,8 @@ final class HotUpdaterRecoveryHub: NSObject {
     private func releaseHeldContent() {
         for verified in coordinator.releaseHeldContent(
             owner: { self.owner(of: $0) },
-            runtimeBundleURL: { hotUpdaterBundleURL(forRootObject: $0) }
+            runtimeBundleURL: { hotUpdaterBundleURL(forRootObject: $0) },
+            runtimeGeneration: { self.runtimeLaunches.generation(of: hotUpdaterRuntimeIdentity(forRootObject: $0)) }
         ) {
             manager(named: verified.launch.name)?.contentAppeared(generation: verified.generation)
         }
@@ -1677,8 +1711,15 @@ final class HotUpdaterRecoveryHub: NSObject {
         let handle = { [weak self] in
             guard let self else { return }
             let inForeground = UIApplication.shared.applicationState != .background
+            // Kept from its first start for its later ones.
+            let firstGenerations = self.runtimeLaunches.generationsOfFirstStart(surface, current: generations)
             if let owner = self.owner(of: surface) {
-                self.viewStarted(owner: owner, view: surface, inForeground: inForeground, generation: generations[owner])
+                self.viewStarted(
+                    owner: owner,
+                    view: surface,
+                    inForeground: inForeground,
+                    generation: self.launchOfView(surface, owner: owner, firstGenerations: firstGenerations)
+                )
             } else {
                 // The surface starts before its bundle runs, so before the
                 // runtime's module that tells whose it is.
@@ -1701,10 +1742,12 @@ final class HotUpdaterRecoveryHub: NSObject {
             coordinator.runtimeResolved(name: name, runtimeBundleURL: runtimeBundleURL)
             // The launch this runtime runs: the current one, when its bundle
             // is that launch's. A runtime of an earlier launch gets none.
-            if let module = notification.object as AnyObject?,
+            // Keyed by the runtime's identity: its module, or in the old
+            // architecture its bridge, which root views also reach.
+            if let runtime = (notification.userInfo?["runtime"] ?? notification.object) as AnyObject?,
                coordinator.isCurrentRuntime(name: name, runtimeBundleURL: runtimeBundleURL),
                let generation = coordinator.generations()[name] {
-                runtimeLaunches.record(runtime: module, generation: generation)
+                runtimeLaunches.record(runtime: runtime, generation: generation)
             }
         }
         DispatchQueue.main.async { [weak self] in
@@ -1721,10 +1764,21 @@ final class HotUpdaterRecoveryHub: NSObject {
                     owner: started.name,
                     view: started.surface,
                     inForeground: inForegroundNow,
-                    generation: started.generation
+                    generation: self.launchOfView(
+                        started.surface,
+                        owner: started.name,
+                        firstGenerations: self.runtimeLaunches.generationsOfFirstStart(started.surface, current: [:])
+                    ) ?? started.generation
                 )
             }
         }
+    }
+
+    /// The launch a view started for: the one its runtime was recorded for,
+    /// else the one current at its first start, so its later attachment
+    /// after a replacement launch began starts nothing. Main thread only.
+    private func launchOfView(_ view: AnyObject, owner: String, firstGenerations: [String: Int]) -> Int? {
+        runtimeLaunches.generation(of: hotUpdaterRuntimeIdentity(forRootObject: view)) ?? firstGenerations[owner]
     }
 
     private func viewStarted(owner: String, view: AnyObject, inForeground: Bool, generation: Int?) {

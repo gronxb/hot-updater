@@ -308,6 +308,9 @@ internal class HotUpdaterRecoveryManager(
                 val launchURL = launchURL
                 if (launchState.snapshot() == null) return false
                 if (launchURL != null && !isSameBundle(sourceURL, launchURL)) return false
+                // A runtime registered for an earlier launch, whose module is
+                // created again, stays that launch's.
+                runtimeLaunches[runtime]?.let { (instanceName, launch) -> if (instanceName == name && launch != generation) return false }
                 registeredRuntimes.add(runtime)
                 runtimeLaunches[runtime] = name to generation
                 runtimeActivityCallback
@@ -554,9 +557,11 @@ internal class HotUpdaterRecoveryManager(
     internal class RecoveryJSExceptionHandler(
         private val previousHandler: JSExceptionHandler?,
         private val sourceURL: () -> String?,
+        /** The runtime that threw, whose registered launch tells it apart from a replacement of the same bundle. */
+        private val runtime: () -> Any? = { null },
     ) : JSExceptionHandler {
         override fun handleException(e: Exception) {
-            val outcome = handleJavaScriptError(e, runCatching(sourceURL).getOrNull())
+            val outcome = handleJavaScriptError(e, runCatching(sourceURL).getOrNull(), runCatching(runtime).getOrNull())
             if (outcome.recovered) return
             previousHandler?.handleException(e) ?: throw e
             // The handler returned, however long it took: the error did not end the process.
@@ -929,6 +934,23 @@ internal class HotUpdaterRecoveryManager(
             return synchronized(recoveryLock) { runtimeLaunches[runtime]?.takeIf { it.first == instanceName }?.second }
         }
 
+        /**
+         * Whether [runtime] registered for [instanceName]'s current launch;
+         * null when it registered for no launch of it, which its URL decides.
+         */
+        internal fun runtimeRunsCurrentLaunch(
+            instanceName: String,
+            runtime: Any?,
+        ): Boolean? {
+            runtime ?: return null
+            return synchronized(recoveryLock) {
+                val (name, launch) = runtimeLaunches[runtime] ?: return@synchronized null
+                if (name != instanceName) return@synchronized null
+                val manager = liveManagers[instanceName] ?: return@synchronized null
+                manager.currentGeneration() == launch
+            }
+        }
+
         /** Each live instance's launch generation now. */
         private fun launchGenerations(): Map<String, Long> =
             synchronized(recoveryLock) { liveManagers.values.associate { it.name to it.currentGeneration() } }
@@ -1066,25 +1088,31 @@ internal class HotUpdaterRecoveryManager(
         internal fun handleJavaScriptError(
             exception: Exception,
             sourceURL: String?,
+            runtime: Any? = null,
         ): JavaScriptErrorOutcome {
             // The launches when the error was thrown: one that starts while
             // the runtime's instance is resolved is not the one that threw.
             val generations = launchGenerations()
             val instanceName = attribution.instanceOf(sourceURL)
-            return synchronized(recoveryLock) { handleJavaScriptExceptionLocked(exception, instanceName, sourceURL, generations) }
+            return synchronized(recoveryLock) { handleJavaScriptExceptionLocked(exception, instanceName, sourceURL, runtime, generations) }
         }
 
         private fun handleJavaScriptExceptionLocked(
             exception: Exception,
             instanceName: String?,
             sourceURL: String?,
+            runtime: Any?,
             generations: Map<String, Long>,
         ): JavaScriptErrorOutcome {
             val manager = instanceName?.let { liveManagers[it] }
             if (instanceName != null &&
                 instanceName != HotUpdaterInstanceEnvironment.MAIN_NAME &&
                 manager != null &&
-                (manager.currentGeneration() != generations[instanceName] || !manager.runsLaunchOf(sourceURL))
+                (
+                    manager.currentGeneration() != generations[instanceName] ||
+                        // The launch the runtime registered for, when it did; else its bundle's URL.
+                        !(runtimeRunsCurrentLaunch(instanceName, runtime) ?: manager.runsLaunchOf(sourceURL))
+                )
             ) {
                 // A runtime of an earlier launch of the instance, whose context
                 // still reports errors: the crash it may end in is its own, so
@@ -1451,7 +1479,7 @@ internal class HotUpdaterRecoveryManager(
                 return
             }
 
-            reactContext.setJSExceptionHandler(RecoveryJSExceptionHandler(previousHandler) { reactContext.sourceURL })
+            reactContext.setJSExceptionHandler(RecoveryJSExceptionHandler(previousHandler, { reactContext.sourceURL }, { reactContext }))
         }
 
         internal fun findField(
