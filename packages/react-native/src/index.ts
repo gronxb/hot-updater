@@ -32,6 +32,7 @@ import {
   stageBundle,
   type UpdateParams,
 } from "./native";
+import { replayNativeUpdateEvents } from "./nativeUpdateEvents";
 import { createAppPluginHost } from "./pluginHost";
 import { hotUpdaterStore } from "./store";
 import { type HotUpdaterWrapOptions, wrap } from "./wrap";
@@ -548,6 +549,12 @@ export const HotUpdater = {
       requestTimeout,
       onError,
     });
+    // Native events happened before this launch's report, such as the download
+    // it applies, so plugins receive them first. Native checks run on the one
+    // native instance, which shares this server as the brownfield guide sets
+    // it up: the first init of the runtime reports them, and a later init
+    // gets none because they were reported already.
+    replayNativeUpdateEvents(launch.emit);
     void launch.read({ onNotifyAppReady, onError });
     return Object.freeze({
       ...instance,

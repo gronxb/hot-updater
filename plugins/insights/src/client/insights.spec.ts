@@ -597,6 +597,82 @@ describe("insights() client plugin", () => {
       expect(new Set(ids).size).toBe(3);
     });
 
+    it("dates a download and a failure native code recorded on an earlier day", async () => {
+      const app = await launch();
+      const yesterday = MORNING - DAY_MS;
+
+      app.downloaded({ ...download, occurredAt: yesterday });
+      app.updateError(downloadFailure({ occurredAt: yesterday }));
+      app.updateError(downloadFailure());
+      await flush();
+
+      const times = sentEvents().map(({ eventId }) =>
+        parseInt(eventId.replace(/-/g, "").slice(0, 12), 16),
+      );
+      expect(sentEvents().map(({ type }) => type)).toEqual([
+        "UPDATE_DOWNLOADED",
+        "UPDATE_FAILED",
+        "UPDATE_FAILED",
+      ]);
+      expect(times).toEqual([
+        yesterday,
+        Date.UTC(2026, 8, 29),
+        Date.UTC(2026, 8, 30),
+      ]);
+    });
+
+    it("attaches a replayed response to a failure on the channel its check targeted", async () => {
+      const app = await launch();
+
+      app.runtime.hooks.onHttpResponse({
+        resource: "catalog",
+        channel: "beta",
+        path: "/api/release-catalogs/app-version/ios/beta/1.0.0",
+        status: 500,
+        body: "down",
+        bodyTruncated: false,
+      });
+      app.updateError(
+        downloadFailure({
+          stage: "check",
+          reason: "http",
+          httpStatus: 500,
+          channel: "beta",
+        }),
+      );
+      await flush();
+
+      expect(sentEvents()[0]?.metadata?.httpResponse).toMatchObject({
+        resource: "catalog",
+        status: 500,
+        body: "down",
+      });
+      expect(sentEvents()[0]?.metadata?.httpResponse).not.toHaveProperty(
+        "channel",
+      );
+    });
+
+    it("dates a no-update check native code recorded on an earlier day", async () => {
+      const app = await launch();
+      const yesterday = MORNING - DAY_MS;
+
+      app.updateCheck({
+        status: "UNCHANGED",
+        channel: "production",
+        bundleId: "bundle-a",
+        releaseId: "release-a",
+        previousReleaseId: "release-a",
+        occurredAt: yesterday,
+      });
+      await flush();
+
+      const [event] = sentEvents();
+      expect(event?.type).toBe("UNCHANGED");
+      expect(parseInt(event!.eventId.replace(/-/g, "").slice(0, 12), 16)).toBe(
+        yesterday,
+      );
+    });
+
     it("gives a failure that was not delivered the same id when it happens again", async () => {
       responses = [500, 500, 500];
       vi.spyOn(console, "warn").mockImplementation(() => {});

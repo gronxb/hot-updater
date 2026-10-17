@@ -118,9 +118,14 @@ const setUpInsights = (
   const pending = new Map<InsightsEventBody, PendingEvent>();
   let send: InsightsEventSender | null = null;
 
+  /**
+   * `occurredAt` dates an event native code recorded before this runtime
+   * started, such as a download a native `HotUpdaterInstance` finished.
+   */
   const createEvent = (
     movement: Movement,
     eventId?: (now: number, installId: string) => string,
+    occurredAt?: number,
   ): PendingEvent | null => {
     if (context === null || state === null) return null;
     const appVersion = context.appVersion;
@@ -130,7 +135,7 @@ const setUpInsights = (
       );
       return null;
     }
-    const now = context.now();
+    const now = occurredAt ?? context.now();
     const installId = context.installId;
     const userId = state.readUserId();
     const response = state.readHttpResponse(movement.channel, appVersion);
@@ -139,7 +144,7 @@ const setUpInsights = (
       ...(response
         ? { metadata: { ...movement.metadata, httpResponse: response } }
         : {}),
-      eventId: eventId?.(now, installId) ?? createUUIDv7(),
+      eventId: eventId?.(now, installId) ?? createUUIDv7(now),
       installId,
       ...(userId === null ? {} : { userId }),
       platform: context.platform,
@@ -198,20 +203,25 @@ const setUpInsights = (
     bundleId: string,
     releaseId: string | null,
     fromReleaseId: string | null,
+    occurredAt?: number,
   ) => {
     // After a download the server shows the update as waiting; a later
     // no-change report from this runtime would hide it.
     if (didDownload) return;
     enqueue(
-      createEvent({
-        type: "UNCHANGED",
-        channel,
-        fromBundleId: null,
-        fromReleaseId,
-        toBundleId: bundleId,
-        toReleaseId: releaseId,
-        updateStrategy: null,
-      }),
+      createEvent(
+        {
+          type: "UNCHANGED",
+          channel,
+          fromBundleId: null,
+          fromReleaseId,
+          toBundleId: bundleId,
+          toReleaseId: releaseId,
+          updateStrategy: null,
+        },
+        undefined,
+        occurredAt,
+      ),
     );
   };
 
@@ -242,6 +252,7 @@ const setUpInsights = (
       result.previousReleaseId === result.releaseId
         ? null
         : result.previousReleaseId,
+      result.occurredAt,
     );
   };
 
@@ -255,19 +266,23 @@ const setUpInsights = (
     lastDownloadedSelection = selection;
     didDownload = true;
     enqueue(
-      createEvent({
-        type: "UPDATE_DOWNLOADED",
-        channel: info.channel,
-        fromBundleId: info.fromBundleId,
-        fromReleaseId: info.fromReleaseId,
-        toBundleId: info.toBundleId,
-        toReleaseId: info.toReleaseId,
-        updateStrategy: info.updateStrategy,
-        metadata: {
-          delivery: info.delivery,
-          ...(info.patchFallback ? { patchFallback: true } : {}),
+      createEvent(
+        {
+          type: "UPDATE_DOWNLOADED",
+          channel: info.channel,
+          fromBundleId: info.fromBundleId,
+          fromReleaseId: info.fromReleaseId,
+          toBundleId: info.toBundleId,
+          toReleaseId: info.toReleaseId,
+          updateStrategy: info.updateStrategy,
+          metadata: {
+            delivery: info.delivery,
+            ...(info.patchFallback ? { patchFallback: true } : {}),
+          },
         },
-      }),
+        undefined,
+        info.occurredAt,
+      ),
     );
   };
 
@@ -319,6 +334,7 @@ const setUpInsights = (
           [installId, utcDay(now), failureKey].join("\n"),
           utcDayStart(now),
         ),
+      error.occurredAt,
     );
     enqueue(event === null ? null : { ...event, failureKey });
   };
@@ -329,12 +345,16 @@ const setUpInsights = (
     const body =
       response.body === null ? null : boundedText(response.body, 4_096);
     // Observe locally. Only an existing lifecycle report can send this snapshot.
-    state.recordHttpResponse(context.getChannel(), context.appVersion, {
-      ...response,
+    // A replayed response keeps the channel its check targeted, which the
+    // failure it explains reports.
+    const channel = response.channel ?? context.getChannel();
+    state.recordHttpResponse(channel, context.appVersion, {
+      resource: response.resource,
+      status: response.status,
       path: boundedText(response.path, 1_024),
       body,
       bodyTruncated: response.bodyTruncated || body !== response.body,
-      receivedAtMs: context.now(),
+      receivedAtMs: response.occurredAt ?? context.now(),
     });
   };
 

@@ -52,6 +52,12 @@ export type UpdateCheckResult =
       readonly releaseId: string | null;
       /** The Release before the check; it differs after an adoption. */
       readonly previousReleaseId: string | null;
+      /**
+       * When the event happened, in epoch milliseconds, for an event native
+       * code recorded before this runtime started (a native
+       * `HotUpdaterInstance`). Absent when the event happens now.
+       */
+      readonly occurredAt?: number;
     }
   | {
       /** The check found a Release to install, adopt, or roll back to. */
@@ -65,6 +71,12 @@ export type UpdateCheckResult =
       readonly updateStatus: "UPDATE" | "ROLLBACK";
       readonly shouldForceUpdate: boolean;
       readonly updateStrategy: UpdateStrategy;
+      /**
+       * When the event happened, in epoch milliseconds, for an event native
+       * code recorded before this runtime started (a native
+       * `HotUpdaterInstance`). Absent when the event happens now.
+       */
+      readonly occurredAt?: number;
     };
 
 /** A bundle the SDK downloaded, verified, and staged for the next launch. */
@@ -83,6 +95,12 @@ export interface BundleDownloadedInfo {
   readonly delivery: "patch" | "manifest" | "archive";
   /** A patch was tried, but the file or the archive was downloaded instead. */
   readonly patchFallback: boolean;
+  /**
+   * When the event happened, in epoch milliseconds, for an event native code
+   * recorded before this runtime started (a native `HotUpdaterInstance`).
+   * Absent when the event happens now.
+   */
+  readonly occurredAt?: number;
 }
 
 /**
@@ -148,17 +166,35 @@ export interface UpdateError {
   readonly updateStrategy: UpdateStrategy;
   /** The error the SDK caught. */
   readonly cause: unknown;
+  /**
+   * When the event happened, in epoch milliseconds, for an event native code
+   * recorded before this runtime started (a native `HotUpdaterInstance`).
+   * Absent when the event happens now.
+   */
+  readonly occurredAt?: number;
 }
 
 /** A response from the update server's catalog or artifact API. */
 export interface UpdateHttpResponse {
   readonly resource: "catalog" | "artifact";
+  /**
+   * The channel the request checked, for a response native code received before
+   * this runtime started (a native `HotUpdaterInstance`). Absent when the
+   * response belongs to the current channel.
+   */
+  readonly channel?: string;
   /** Request path only; authentication headers and query parameters are omitted. */
   readonly path: string;
   readonly status: number;
   /** The response as text, or null if the body could not be read. */
   readonly body: string | null;
   readonly bodyTruncated: boolean;
+  /**
+   * When the response arrived, in epoch milliseconds, for a response native
+   * code received before this runtime started (a native `HotUpdaterInstance`).
+   * Absent when it arrives now.
+   */
+  readonly occurredAt?: number;
 }
 
 /**

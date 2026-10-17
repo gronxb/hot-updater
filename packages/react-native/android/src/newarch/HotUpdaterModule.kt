@@ -514,11 +514,14 @@ class HotUpdaterModule internal constructor(
         getInstance().setStorageItem(key, value)
     }
 
+    override fun takeNativeUpdateEvents(): String? = getInstance().takeNativeUpdateEvents()
+
     override fun resetChannel(promise: Promise) {
         moduleScope.launch {
             try {
-                val impl = getInstance()
-                val success = impl.resetChannel()
+                // Waits for a native check or download, which would save its
+                // channel again after the reset.
+                val success = NativeUpdateCheck.resetChannel(mReactApplicationContext, ::getInstance)
                 promise.resolve(success)
             } catch (e: HotUpdaterException) {
                 promise.reject(e.code, e.message)

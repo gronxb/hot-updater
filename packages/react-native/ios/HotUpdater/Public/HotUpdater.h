@@ -40,6 +40,13 @@
 /**
  * Programmatic configuration for brownfield / XCFramework setups where
  * Info.plist (host) or string resources (Android) are not desirable.
+ * A nil argument means no override.
+ *
+ * `channel` is the app's fixed default channel, not a runtime switch: keep it
+ * the same from the first launch on. It is part of the storage isolation
+ * key, so changing it deletes the downloaded bundles. To check another
+ * channel at runtime, pass `channel` to `HotUpdaterInstance.checkForUpdate`,
+ * and undo that with its `resetChannel`.
  */
 + (void)configureWithFingerprintHash:(nullable NSString *)fingerprintHash
                            publicKey:(nullable NSString *)publicKey

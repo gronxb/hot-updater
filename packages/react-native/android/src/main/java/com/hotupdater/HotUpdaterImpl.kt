@@ -7,6 +7,7 @@ import android.content.Intent
 import android.os.Process
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import java.io.File
 
@@ -22,7 +23,21 @@ class HotUpdaterImpl {
     private val installIdentity: InstallIdentityService
     private val keyValueStorage: KeyValueStorageService
     private val activityStartGate: ActivityStartGate
+
+    // Read by native update checks on other threads while React Native sets it.
+    @Volatile
     private var currentLaunchSelection: LaunchSelection? = null
+
+    // The selection React Native runs in this process. A channel reset clears
+    // currentLaunchSelection, so React Native's next read picks the default
+    // channel's bundle, but the running bundle stays until a reload.
+    @Volatile
+    private var runningLaunchSelection: LaunchSelection? = null
+
+    // Serializes the launch's bundle selection with the update check's read
+    // of it, so a check never reads metadata the launch is still selecting from,
+    // and with a channel reset or built-in commit, which delete downloaded bundles.
+    private val launchPreparationLock = Any()
 
     /**
      * Primary constructor with dependency injection (for testing)
@@ -244,18 +259,16 @@ class HotUpdaterImpl {
         fileResolver: ArtifactFileResolver? = null,
         progressCallback: (UpdateProgressPayload) -> Unit,
     ): UpdateBundleResult {
-        if (selection != null && !bundleStorage.stageReleaseSelection(selection)) {
-            throw StaleReleaseSelectionException()
-        }
         val result =
             bundleStorage.updateBundle(
-                bundleId,
-                manifestUrl,
-                manifestFileHash,
-                assets,
-                archiveUrl,
-                fileResolver,
-                progressCallback,
+                bundleId = bundleId,
+                manifestUrl = manifestUrl,
+                manifestFileHash = manifestFileHash,
+                assets = assets,
+                archiveUrl = archiveUrl,
+                fileResolver = fileResolver,
+                selection = selection,
+                progressCallback = progressCallback,
             )
 
         if (!channel.isNullOrEmpty()) {
@@ -280,6 +293,7 @@ class HotUpdaterImpl {
                 }
             }
             currentLaunchSelection = null
+            runningLaunchSelection = null
         } catch (e: Exception) {
             Log.e("HotUpdaterImpl", "Failed to restart application process", e)
             throw e
@@ -362,7 +376,24 @@ class HotUpdaterImpl {
             selectionContextHash,
         )
 
-    suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean = bundleStorage.commitReleaseSelection(selection)
+    suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean {
+        if (selection.kind == "BUNDLE") return bundleStorage.commitReleaseSelection(selection)
+
+        // Committing the built-in bundle deletes every downloaded bundle, so it
+        // runs under the launch lock as a channel reset does: React Native never
+        // selects a bundle the commit is about to delete, and its next read picks
+        // the built-in bundle. The storage commit runs on another IO thread, so
+        // blocking this one cannot deadlock.
+        return withContext(Dispatchers.IO) {
+            synchronized(launchPreparationLock) {
+                val committed = runBlocking { bundleStorage.commitReleaseSelection(selection) }
+                if (committed) {
+                    currentLaunchSelection = null
+                }
+                committed
+            }
+        }
+    }
 
     fun getInstallId(): String = installIdentity.getInstallId()
 
@@ -420,6 +451,38 @@ class HotUpdaterImpl {
     }
 
     /**
+     * The bundle this process runs. A channel reset clears [currentLaunchSelection]
+     * for the next launch, but the running bundle stays until React Native reloads.
+     */
+    fun getRunningBundleId(): String? = (currentLaunchSelection ?: runningLaunchSelection)?.launchedBundleId
+
+    /** Takes the queued native update events for JavaScript's `takeNativeUpdateEvents`. */
+    fun takeNativeUpdateEvents(): String? =
+        NativeUpdateEventQueue(::getStorageItem, ::setStorageItem, build = {
+            NativeUpdateEventQueue.buildOf(getAppVersion(), getMinBundleId(), CohortService(context).getCohort())
+        }).take()
+
+    /**
+     * The bundle the native update check counts as running: the launched one,
+     * or before React Native starts, the one its launch would pick. Before
+     * React Native starts, what the previous process left is settled first, so
+     * the check reads the selection, launch state, and crash history the
+     * launch will use. Preparing the launch here would arm crash monitoring and
+     * keep a forced update staged before React Native starts from applying in
+     * this process.
+     */
+    fun getBundleIdForUpdateCheck(): String? =
+        synchronized(launchPreparationLock) {
+            val launchSelection = currentLaunchSelection ?: runningLaunchSelection
+            if (launchSelection != null) {
+                return@synchronized launchSelection.launchedBundleId
+            }
+
+            bundleStorage.settlePreviousLaunch(recoveryManager::consumePendingCrashRecovery)
+            bundleStorage.peekLaunchBundleId()
+        }
+
+    /**
      * Gets the current manifest from bundle storage.
      */
     fun getManifest(): Map<String, Any?> {
@@ -431,16 +494,27 @@ class HotUpdaterImpl {
         return emptyMap()
     }
 
-    suspend fun resetChannel(): Boolean {
-        val success = bundleStorage.resetChannel()
-        if (success) {
-            preferences.setItem(CHANNEL_STORAGE_KEY, null)
-            currentLaunchSelection = null
+    suspend fun resetChannel(): Boolean =
+        withContext(Dispatchers.IO) {
+            // Under the launch lock, so React Native never selects a bundle the
+            // reset is about to delete. The storage reset runs on another IO
+            // thread, so blocking this one cannot deadlock.
+            synchronized(launchPreparationLock) {
+                val success = runBlocking { bundleStorage.resetChannel() }
+                if (success) {
+                    preferences.setItem(CHANNEL_STORAGE_KEY, null)
+                    currentLaunchSelection = null
+                }
+                success
+            }
         }
-        return success
-    }
 
-    private fun prepareLaunchIfNeeded(): LaunchSelection {
+    private fun prepareLaunchIfNeeded(): LaunchSelection =
+        synchronized(launchPreparationLock) {
+            prepareLaunchLocked()
+        }
+
+    private fun prepareLaunchLocked(): LaunchSelection {
         currentLaunchSelection?.let { return it }
 
         val pendingRecovery = recoveryManager.consumePendingCrashRecovery()
@@ -465,6 +539,7 @@ class HotUpdaterImpl {
                 restartApplication(context)
             },
         )
+        runningLaunchSelection = selection
         currentLaunchSelection = selection
         return selection
     }
