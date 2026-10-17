@@ -84,61 +84,72 @@ if (scenarioByName.size !== registeredScenarios.length) {
   throw new Error("E2E scenario registrations contain duplicate names");
 }
 
-const defaultScenarioNames: unknown = JSON.parse(
-  readFileSync(path.join(process.cwd(), "e2e/scenario-names.json"), "utf8"),
-);
-if (
-  !Array.isArray(defaultScenarioNames) ||
-  defaultScenarioNames.length === 0 ||
-  !defaultScenarioNames.every(
-    (name) => typeof name === "string" && name.length > 0,
-  ) ||
-  new Set(defaultScenarioNames).size !== defaultScenarioNames.length
-) {
-  throw new Error("e2e/scenario-names.json must contain unique scenario names");
+/** Each suite's manifest; the bot reads the same files. */
+const suiteManifests = {
+  default: "e2e/scenario-names.json",
+  brownfield: "e2e/brownfield-scenario-names.json",
+} as const;
+
+function readSuite(manifest: string): readonly string[] {
+  const names: unknown = JSON.parse(
+    readFileSync(path.join(process.cwd(), manifest), "utf8"),
+  );
+  if (
+    !Array.isArray(names) ||
+    names.length === 0 ||
+    !names.every((name) => typeof name === "string" && name.length > 0) ||
+    new Set(names).size !== names.length
+  ) {
+    throw new Error(`${manifest} must contain unique scenario names`);
+  }
+  for (const name of names) {
+    if (!scenarioByName.has(name)) {
+      throw new Error(`${manifest} lists an unregistered scenario: ${name}`);
+    }
+  }
+  return names as string[];
 }
 
-const scenarios: readonly ScenarioDefinition[] = defaultScenarioNames.map(
-  (name) => {
-    const scenario = scenarioByName.get(name);
-    if (!scenario) {
-      throw new Error(`Default E2E scenario is not registered: ${name}`);
-    }
-    return scenario;
-  },
+const suites = new Map<string, readonly string[]>(
+  Object.entries(suiteManifests).map(([suite, manifest]) => [
+    suite,
+    readSuite(manifest),
+  ]),
 );
 
-if (scenarios.length !== registeredScenarios.length) {
-  const defaultScenarioSet = new Set(defaultScenarioNames);
-  const unlisted = registeredScenarios
-    .map((scenario) => scenario.name)
-    .filter((name) => !defaultScenarioSet.has(name));
+const suiteScenarioNames = new Set([...suites.values()].flat());
+const unlisted = registeredScenarios
+  .map((scenario) => scenario.name)
+  .filter((name) => !suiteScenarioNames.has(name));
+if (unlisted.length) {
   throw new Error(
-    `Registered E2E scenarios are missing from the default suite: ${unlisted.join(", ")}`,
+    `Registered E2E scenarios are missing from every suite: ${unlisted.join(", ")}`,
   );
 }
 
 export function listSuiteNames(): readonly string[] {
-  return ["default"];
+  return [...suites.keys()];
 }
 
-export function listScenarioNames(): readonly string[] {
-  return scenarios.map((scenario) => scenario.name);
+/** The scenarios of a suite, the default suite unless one is named. */
+export function listScenarioNames(suiteName = "default"): readonly string[] {
+  return resolveSuiteScenarioNames(suiteName);
 }
 
 export function resolveSuiteScenarioNames(
   suiteName: string,
 ): readonly string[] {
-  if (suiteName !== "default") {
+  const names = suites.get(suiteName);
+  if (!names) {
     throw new Error(`Unknown E2E suite: ${suiteName}`);
   }
-  return listScenarioNames();
+  return names;
 }
 
 export function getScenarioDefinition(
   scenarioName: string,
 ): ScenarioDefinition {
-  const scenario = scenarios.find((entry) => entry.name === scenarioName);
+  const scenario = scenarioByName.get(scenarioName);
   if (!scenario) {
     throw new Error(`Unknown E2E scenario: ${scenarioName}`);
   }

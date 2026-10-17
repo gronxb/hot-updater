@@ -24,6 +24,31 @@ describe("mobile wrapper", () => {
     );
   });
 
+  it("runs a track's suite and rejects scenarios outside it", () => {
+    const args = ["--platform", "android", "--device", "emulator-5558"];
+    const brownfield = parseMobileOptions(
+      [...args, "--track", "brownfield"],
+      {},
+    );
+    expect(brownfield.track).toBe("brownfield");
+    expect(brownfield.scenarios).toEqual(listScenarioNames("brownfield"));
+    expect(parseMobileOptions(args, {}).track).toBe("greenfield");
+    expect(() =>
+      parseMobileOptions(
+        [
+          ...args,
+          "--track",
+          "brownfield",
+          "--scenario",
+          "headless-launch-keeps-staged-bundle",
+        ],
+        {},
+      ),
+    ).toThrow(
+      "Unknown scenario for the brownfield track: headless-launch-keeps-staged-bundle",
+    );
+  });
+
   it("preserves bot comma-separated selection and rejects duplicates or unknown tests", () => {
     const names = listScenarioNames().slice(0, 2);
     const args = ["--", "--platform", "android", "--device", "emulator-5558"];
@@ -46,6 +71,23 @@ describe("mobile wrapper", () => {
         {},
       ),
     ).toThrow("either");
+  });
+
+  it("lists the requested suite, or the track's suite without one", async () => {
+    const output = vi.spyOn(console, "log").mockImplementation(() => {});
+    try {
+      await runMobile(["--list", "--suite", "brownfield"]);
+      await runMobile(["--list", "--track", "brownfield"]);
+      await runMobile(["--list"]);
+      const [suite, track, all] = output.mock.calls.map(([text]) =>
+        String(text).split("\n"),
+      );
+      expect(suite).toEqual([...listScenarioNames("brownfield")]);
+      expect(track).toEqual([...listScenarioNames("brownfield")]);
+      expect(all).toEqual([...listScenarioNames("default")]);
+    } finally {
+      output.mockRestore();
+    }
   });
 
   it("dry-runs without checking binaries, Git, or contacting devices and providers", async () => {

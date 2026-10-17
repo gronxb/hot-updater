@@ -10,6 +10,7 @@ import { PAX_LONG_ASSET_MANIFEST_PATH } from "./pax-long-path-fixture.ts";
 import {
   getScenarioDefinition,
   listScenarioNames,
+  listSuiteNames,
   resolveSuiteScenarioNames,
 } from "./scenarios.ts";
 import type { ControlOptions, ScenarioAppDriver } from "./scenarios.ts";
@@ -288,6 +289,21 @@ describe("E2E scenario contract", () => {
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
     expect(new Set(listScenarioNames()).size).toBe(33);
+  });
+
+  it("runs every default scenario a native app shell can host in the brownfield suite", () => {
+    // A brownfield host shows React Native on every launch, has no headless
+    // entry, and never reloads from JavaScript.
+    const needsGreenfieldApp = new Set([
+      "headless-launch-keeps-staged-bundle",
+      "force-update-auto-reload",
+      "skipped-force-update-propagates",
+    ]);
+
+    expect(listSuiteNames()).toEqual(["default", "brownfield"]);
+    expect(resolveSuiteScenarioNames("brownfield")).toEqual(
+      defaultScenarioNames.filter((name) => !needsGreenfieldApp.has(name)),
+    );
   });
 
   it("keeps repeated catalog checks as no-ops while already built-in", async () => {
@@ -818,7 +834,7 @@ describe("E2E scenario contract", () => {
     // Then: App.tsx imports a runtime helper and the helper gives E2E launch
     // arguments precedence over the public build settings.
     const launchArgumentsIndex = runtimeConfigSource.indexOf(
-      "LaunchArguments.value",
+      "NativeModules.E2ELaunchArguments",
     );
     const runtimeConfigIndex = runtimeConfigSource.indexOf(
       "HOT_UPDATER_E2E_RUNTIME_CONFIG_URL || DEFAULT_E2E_RUNTIME_CONFIG_URL",
@@ -847,9 +863,9 @@ describe("E2E scenario contract", () => {
     // HotUpdater has only init; the app calls the instance it returns.
     expect(e2eRuntimeSource).not.toMatch(/HotUpdater\.(?!init\b)/);
     expect(e2eRuntimeSource).not.toContain("username");
-    expect(exampleAppSource).not.toContain("react-native-launch-arguments");
+    expect(exampleAppSource).not.toContain("E2ELaunchArguments");
     expect(exampleAppSource).not.toContain('from "@env"');
-    expect(runtimeConfigSource).toContain("react-native-launch-arguments");
+    expect(runtimeConfigSource).toContain("NativeModules.E2ELaunchArguments");
     expect(launchArgumentsIndex).toBeGreaterThan(-1);
     expect(runtimeConfigIndex).toBe(-1);
     expect(runtimeConfigSource).toContain("detoxLaunchArgumentString");

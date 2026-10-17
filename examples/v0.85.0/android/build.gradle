@@ -15,6 +15,8 @@ buildscript {
         classpath("com.android.tools.build:gradle")
         classpath("com.facebook.react:react-native-gradle-plugin")
         classpath("org.jetbrains.kotlin:kotlin-gradle-plugin")
+        // Packages brownfieldlib as an AAR for the brownfield E2E track.
+        classpath("com.callstack.react:brownfield-gradle-plugin:2.0.0-alpha10")
     }
 }
 

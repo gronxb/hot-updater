@@ -127,11 +127,28 @@ internal object NativeUpdateCheck {
             ).also { checker = it }
         }
 
+    /**
+     * The app process checks; Hot Updater's restart process only relaunches
+     * it. A check there would settle the previous launch and consume the crash
+     * marker before the relaunched app reads them.
+     */
+    private fun requireAppProcess(
+        context: Context,
+        call: String,
+    ) {
+        check(!HotUpdaterProcess.isRestartProcess(context)) {
+            "$call runs in the app's process, not Hot Updater's restart process"
+        }
+    }
+
     suspend fun checkForUpdate(
         context: Context,
         impl: () -> HotUpdaterImpl,
         request: NativeCheckRequest,
-    ): HotUpdaterUpdate? = checker(context, impl).checkForUpdate(request)
+    ): HotUpdaterUpdate? {
+        requireAppProcess(context, "HotUpdaterInstance.checkForUpdate")
+        return checker(context, impl).checkForUpdate(request)
+    }
 
     /** Clears the runtime channel once a check or staging running in this process finishes. */
     suspend fun resetChannel(

@@ -9,6 +9,7 @@ import { setTimeout as sleep } from "node:timers/promises";
 import { createNativeBuildPlan } from "../mobile/build.ts";
 import { runMobile } from "../mobile/run.ts";
 import { publishedBin } from "../shared/published.ts";
+import { parseE2eTrack } from "../shared/tracks.ts";
 import { localMutableFiles, preserveFiles } from "./files.ts";
 import {
   createLocalProfile,
@@ -317,8 +318,14 @@ export async function runLocal(
     }
     await fs.chmod(path.join(profile.appDir, "keys/private-key.pem"), 0o600);
     await cliCommand(["keys", "export-public", "--yes"]);
+    const trackIndex = argv.indexOf("--track");
     const builds = createNativeBuildPlan(
-      { platform, deviceId: device, dryRun: false },
+      {
+        platform,
+        track: parseE2eTrack(trackIndex >= 0 ? argv[trackIndex + 1] : undefined),
+        deviceId: device,
+        dryRun: false,
+      },
       root,
       profile.env,
     );

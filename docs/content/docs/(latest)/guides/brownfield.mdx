@@ -474,17 +474,34 @@ to the library:
 
 ```kotlin title="app/src/main/java/com/example/nativeapp/NativeApplication.kt"
 import android.app.Application
+import android.os.Build
 import com.brownfieldrn.ReactNativeHostManager
+import java.io.File
 
 class NativeApplication : Application() {
     override fun onCreate() {
         super.onCreate()
+        // Android also runs onCreate in Hot Updater's restart process. // [!code ++:2]
+        if (currentProcessName() != applicationInfo.processName) return
         ReactNativeHostManager.start(this, checkForUpdates = !BuildConfig.DEBUG) { status ->
             // React Native is ready: enable the entries that open its screens.
         }
     }
+
+    private fun currentProcessName(): String = // [!code ++:5]
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+            getProcessName()
+        } else {
+            File("/proc/self/cmdline").readText().trimEnd('\u0000')
+        }
 }
 ```
+
+Hot Updater restarts the app from a process of its own to apply a required
+update or roll back a crashed one, and Android runs `Application.onCreate` in
+every process of the app. Start React Native only in the main process, named
+`applicationInfo.processName`: the package name unless the manifest's
+`<application>` sets `android:process`.
 
 Show the screens with `ReactNativeFragment.createReactNativeFragment("BrownfieldRN")`
 or `ReactNativeBrownfield.shared.createView(...)`, as in the React Native
@@ -682,6 +699,8 @@ the previous bundle, or to the one embedded in the artifact.
 | Downloaded updates disappear | Something calls `HotUpdater.configure(channel:)` with a different channel, which deletes the downloaded bundles. Embed the channel instead. |
 | "Feature flags cannot be overridden more than once" on Android | `loadReactNative` ran before `ReactNativeBrownfield.initialize`. Remove it, and pass the React host as a factory, `ReactNativeBrownfield.initialize(application) { getDefaultReactHost(...) }`, as the host manager above does. A host built before `initialize` fails with "SoLoader.init() not yet called". |
 | The AAR keeps showing JavaScript from an earlier package | The library module reused an earlier bundle. Delete `android/brownfieldlib/build` and package again. |
+| Packaging the AAR fails with "No namespace found in .../build.gradle" | React Native Brownfield reads each native module's `namespace` from the module's `build.gradle`. A module that declares its package only in `AndroidManifest.xml` cannot be packaged; ask its maintainer to add a `namespace`, or replace the module. |
+| The native app fails with "resource attr/... not found" from a library | When several native modules ship `res/values` resources, React Native Brownfield keeps only one module's in the AAR, so attributes and styles another module references go missing. Remove that library from the React Native project, or declare the missing resources in the native app. |
 | Deploy reports a fingerprint mismatch | The native code changed after `fingerprint create`. Create the fingerprint again, package, and ship a new native app release. |
 
 ## Native API

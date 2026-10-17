@@ -236,7 +236,15 @@ class HotUpdaterImpl {
      * Gets the path to the bundle file
      * @return The path to the bundle file
      */
-    fun getJSBundleFile(): String = prepareLaunchIfNeeded().bundleUrl
+    fun getJSBundleFile(): String {
+        // Hot Updater's restart process only relaunches the app; preparing a
+        // launch there would consume the crash marker and launch state the
+        // relaunched process needs.
+        if (HotUpdaterProcess.isRestartProcess(context)) {
+            return bundleStorage.getFallbackBundleURL()
+        }
+        return prepareLaunchIfNeeded().bundleUrl
+    }
 
     /**
      * Updates the bundle from its manifest and complete asset descriptors.

@@ -58,6 +58,18 @@ export default defineConfig({
   plugins: [apiKeys(), insights(), remoteConfig()],
   fingerprint: {
     debug: true,
+    // The brownfield framework and library module this example packages
+    // itself as, as the brownfield guide adds them.
+    extraSources: {
+      ios: [
+        "ios/HotUpdaterExampleBrownfield/**/*.swift",
+        "ios/HotUpdaterExample.xcodeproj/project.pbxproj",
+      ],
+      android: [
+        "android/brownfieldlib/src/**/*.kt",
+        "android/brownfieldlib/build.gradle.kts",
+      ],
+    },
   },
   /* E2E_AUTO_PATCH_CONFIG_START */
   patch: {

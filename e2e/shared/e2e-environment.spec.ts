@@ -78,8 +78,14 @@ function loadRuntimeConfig(
     fetch,
     require: (name: string) => {
       if (name === "./e2eBuildConfig") return buildSettings;
-      if (name === "react-native-launch-arguments") {
-        return { LaunchArguments: { value: () => launchArguments } };
+      if (name === "react-native") {
+        return {
+          NativeModules: {
+            E2ELaunchArguments: {
+              getConstants: () => ({ value: launchArguments }),
+            },
+          },
+        };
       }
       throw new Error(`Unexpected runtime import: ${name}`);
     },

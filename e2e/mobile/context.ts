@@ -1,7 +1,11 @@
 import { readFileSync } from "node:fs";
 
+import type { E2eTrack } from "../shared/tracks.ts";
+
 export interface MobileContext {
   platform: "ios" | "android";
+  /** The app shell: the example app, or the brownfield host apps. */
+  track: E2eTrack;
   deviceId: string;
   session: string;
   runId: string;

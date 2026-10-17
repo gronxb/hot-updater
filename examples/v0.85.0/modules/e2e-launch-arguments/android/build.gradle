@@ -1,0 +1,16 @@
+apply plugin: "com.android.library"
+
+android {
+    // React Native Brownfield's AAR packaging reads each module's namespace
+    // from its build.gradle.
+    namespace "com.hotupdaterexample.launcharguments"
+    compileSdk rootProject.ext.compileSdkVersion
+
+    defaultConfig {
+        minSdk rootProject.ext.minSdkVersion
+    }
+}
+
+dependencies {
+    implementation("com.facebook.react:react-android")
+}

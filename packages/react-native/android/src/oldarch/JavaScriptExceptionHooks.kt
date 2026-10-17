@@ -1,5 +1,6 @@
 package com.hotupdater
 
+import android.content.Context
 import com.facebook.react.ReactApplication
 import com.facebook.react.bridge.JSExceptionHandler
 import com.facebook.react.bridge.ReactContext
@@ -13,7 +14,8 @@ internal object JavaScriptExceptionHooks {
     private val patchedInstanceManagerIds = mutableSetOf<Int>()
     private val patchedCatalystInstanceIds = mutableSetOf<Int>()
 
-    fun install(application: ReactApplication) {
+    fun install(appContext: Context) {
+        val application = appContext as? ReactApplication ?: return
         val instanceManager = application.reactNativeHost.reactInstanceManager
         val managerIdentity = System.identityHashCode(instanceManager)
         if (patchedInstanceManagerIds.add(managerIdentity)) {
