@@ -8,7 +8,7 @@ import {
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -31,7 +31,10 @@ const makeDirectory = () => {
  * An app root with fingerprint.json and a hot-updater CLI whose
  * `fingerprint hash` prints what a Release build would compute.
  */
-const makeApp = ({ withFingerprintJson = true } = {}) => {
+const makeApp = ({
+  withFingerprintJson = true,
+  cliSource = "console.log(`computed:${process.argv.slice(2).join(' ')}`);",
+} = {}) => {
   const app = makeDirectory();
   writeFileSync(join(app, "package.json"), "{}");
   if (withFingerprintJson) {
@@ -49,10 +52,7 @@ const makeApp = ({ withFingerprintJson = true } = {}) => {
     join(cli, "package.json"),
     JSON.stringify({ name: "hot-updater", bin: { "hot-updater": "cli.js" } }),
   );
-  writeFileSync(
-    join(cli, "cli.js"),
-    "console.log(`computed:${process.argv.slice(2).join(' ')}`);",
-  );
+  writeFileSync(join(cli, "cli.js"), cliSource);
   return app;
 };
 
@@ -131,6 +131,30 @@ describe("iOS fingerprint generation", () => {
       expect(runScriptPhase(makeApp(), "Release")).toBe(
         "computed:fingerprint hash -p ios",
       );
+    },
+  );
+
+  it.skipIf(!existsSync(zsh))(
+    "lets the CLI spawn npm's tools beside node under Xcode's minimal PATH",
+    () => {
+      // Rock's adapter runs `npx rock config`; npx sits beside node.
+      const app = makeApp({
+        cliSource: `console.log(require("node:child_process").execFileSync("${basename(process.execPath)}", ["-p", "'beside node'"], { encoding: "utf8" }).trim());`,
+      });
+      const derivedFileDir = makeDirectory();
+      run([], {
+        DERIVED_FILE_DIR: derivedFileDir,
+        PODS_ROOT: join(app, "ios/Pods"),
+        CONFIGURATION: "Release",
+        PATH: "/usr/bin:/bin:/usr/sbin:/sbin",
+      });
+
+      expect(
+        readFileSync(
+          join(derivedFileDir, "HotUpdaterBuildFingerprintHash.h"),
+          "utf8",
+        ),
+      ).toContain('"beside node"');
     },
   );
 

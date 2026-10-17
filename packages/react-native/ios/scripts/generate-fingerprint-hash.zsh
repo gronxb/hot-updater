@@ -41,6 +41,9 @@ if [[ -n "$app_root" && -f "$app_root/fingerprint.json" ]]; then
     echo "error: [HotUpdater] node was not found. Set NODE_BINARY in ios/.xcode.env.local."
     exit 1
   fi
+  # Xcode runs script phases with a minimal PATH. Build adapters that spawn
+  # npm's tools, such as Rock's `npx rock config`, find them beside node.
+  export PATH="${node_binary:h}:$PATH"
 
   if [[ "${CONFIGURATION:-}" == "Debug" ]]; then
     fingerprint_hash=$("$node_binary" -e \
