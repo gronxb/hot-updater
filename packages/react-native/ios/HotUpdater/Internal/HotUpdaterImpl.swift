@@ -1188,10 +1188,17 @@ final class HotUpdaterRecoveryManager: NSObject {
         // A view of a runtime of an earlier launch, such as one torn down
         // while its host is recreated, starts nothing.
         guard hub.coordinator.isCurrentRuntime(name: name, runtimeBundleURL: runtimeBundleURL) else { return }
-        if inForeground {
+        switch HotUpdaterBackgroundViewStarts.viewStart(inForeground: inForeground, isShown: { hotUpdaterIsViewShown(view) }) {
+        case .arm:
             removeArmObservers(before: generation + 1)
             hub.coordinator.arm(name: name, generation: generation, runtimeBundleURL: runtimeBundleURL)
             return
+        case .waitForAttachment:
+            // Started for pre-rendering: its attachment to a window is
+            // reported as another start.
+            return
+        case .waitForForeground:
+            break
         }
         // Views of an earlier launch never start this one, nor remove what
         // a later launch installed.
@@ -1637,8 +1644,9 @@ final class HotUpdaterRecoveryHub: NSObject {
     }
 
     /// Posted by HotUpdaterRecoveryHooks.mm on the thread that shows a view:
-    /// before a Fabric surface starts, or, in the old architecture, when an
-    /// RCTRootView moves into a window.
+    /// once a Fabric surface started and whenever its view moves into a
+    /// window, or, in the old architecture, when an RCTRootView moves into a
+    /// window. The launch starts only once a view is shown.
     @objc private func handleSurfaceWillStart(_ notification: Notification) {
         guard let surface = notification.object as AnyObject? else { return }
         // The launches the view started in, read now on the thread that
@@ -1677,19 +1685,15 @@ final class HotUpdaterRecoveryHub: NSObject {
             // Content first: a launch whose content already appeared is
             // verified, and a surface start then no longer starts it.
             self.releaseHeldContent()
-            // The app may have come to the foreground since the surface
-            // started: a surface that started in the background counts as
-            // started in the foreground only if it is shown now.
+            // Decided by the app's state now, and whether the surface is
+            // shown now: the app may have come to the foreground, and the
+            // surface may have been attached, since it started.
             let inForegroundNow = UIApplication.shared.applicationState != .background
             for started in self.pendingSurfaceStarts.resolve({ self.owner(of: $0) }) {
                 self.viewStarted(
                     owner: started.name,
                     view: started.surface,
-                    inForeground: HotUpdaterBackgroundViewStarts.startsInForeground(
-                        startedInForeground: started.inForeground,
-                        inForegroundNow: inForegroundNow,
-                        isShown: { hotUpdaterIsViewShown(started.surface) }
-                    ),
+                    inForeground: inForegroundNow,
                     generation: started.generation
                 )
             }

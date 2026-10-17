@@ -1318,16 +1318,21 @@ final class HotUpdaterBackgroundViewStarts {
         return shown
     }
 
-    /// Whether a surface whose runtime was told apart only after it started
-    /// starts its launch as one in the foreground: it started there, or the
-    /// app is in the foreground now and the surface is shown. Otherwise it
-    /// waits for the next foreground transition.
-    static func startsInForeground(
-        startedInForeground: Bool,
-        inForegroundNow: Bool,
-        isShown: () -> Bool
-    ) -> Bool {
-        startedInForeground || (inForegroundNow && isShown())
+    /// What a view of a named launch's runtime does when it starts, is
+    /// attached to a window, or is told apart after either: its launch
+    /// starts only once the view is shown while the app is in the
+    /// foreground. A surface started for pre-rendering is not shown yet: it
+    /// waits for its view to be attached (the attachment is reported as
+    /// another start). In the background it waits for the foreground.
+    enum ViewStart: Equatable {
+        case arm
+        case waitForAttachment
+        case waitForForeground
+    }
+
+    static func viewStart(inForeground: Bool, isShown: () -> Bool) -> ViewStart {
+        guard inForeground else { return .waitForForeground }
+        return isShown() ? .arm : .waitForAttachment
     }
 
     func removeAll() {

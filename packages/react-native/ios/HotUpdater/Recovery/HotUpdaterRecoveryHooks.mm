@@ -4,6 +4,7 @@
 #ifdef RCT_NEW_ARCH_ENABLED
 #import <React/RCTFabricSurface.h>
 #import <React/RCTSurfacePresenter.h>
+#import <React/RCTSurfaceView.h>
 #else
 #import <React/RCTRootView.h>
 #endif
@@ -41,14 +42,41 @@ void HotUpdaterInstallRecoveryHooks(void)
         return;
       }
       if (HotUpdaterBeginSurfaceStart(&handler)) {
-        // A view of this surface's runtime is about to show: crash recovery
-        // starts the launch of the instance the runtime belongs to.
-        [[NSNotificationCenter defaultCenter] postNotificationName:@"HotUpdaterSurfaceWillStart" object:surface];
         // No coordination lock crosses the original call: older RN versions
         // invoke the completion synchronously on this same thread.
         ((void (*)(id, SEL))originalStart)(surface, startSelector);
+        // A surface of this runtime started: crash recovery starts the
+        // launch of the instance the runtime belongs to once its view is
+        // shown (see the attachment hook below).
+        [[NSNotificationCenter defaultCenter] postNotificationName:@"HotUpdaterSurfaceWillStart" object:surface];
       }
     }));
+
+    // A surface started for pre-rendering is shown only once its view moves
+    // into a window: reported as another start, which crash recovery checks
+    // for being shown. RCTSurfaceView doesn't override didMoveToWindow: add
+    // an override that calls UIView's, never exchanging UIView's own.
+    Class surfaceViewClass = RCTSurfaceView.class;
+    SEL moveSelector = @selector(didMoveToWindow);
+    Class surfaceViewSuperclass = class_getSuperclass(surfaceViewClass);
+    Method inheritedMove = class_getInstanceMethod(surfaceViewClass, moveSelector);
+    if (inheritedMove && surfaceViewSuperclass) {
+      IMP currentMove = class_getMethodImplementation(surfaceViewClass, moveSelector);
+      IMP ownMove = currentMove != class_getMethodImplementation(surfaceViewSuperclass, moveSelector) ? currentMove : NULL;
+      IMP moveReplacement = imp_implementationWithBlock(^(RCTSurfaceView *view) {
+        IMP next = ownMove ?: class_getMethodImplementation(surfaceViewSuperclass, moveSelector);
+        ((void (*)(id, SEL))next)(view, moveSelector);
+        id surface = view.surface;
+        if (view.window && surface) {
+          [[NSNotificationCenter defaultCenter] postNotificationName:@"HotUpdaterSurfaceWillStart" object:surface];
+        }
+      });
+      if (ownMove) {
+        method_setImplementation(inheritedMove, moveReplacement);
+      } else {
+        class_addMethod(surfaceViewClass, moveSelector, moveReplacement, method_getTypeEncoding(inheritedMove));
+      }
+    }
   });
 #else
   // Old architecture: a root view in a window shows its bridge's runtime,

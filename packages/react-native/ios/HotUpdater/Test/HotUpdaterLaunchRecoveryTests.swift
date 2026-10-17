@@ -1874,15 +1874,19 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(starts.isEmpty)
     }
 
-    /// A surface told apart after the app came to the foreground starts its
-    /// launch now if it is shown, not at the next foreground transition.
+    /// A named surface started for pre-rendering while the app is in the
+    /// foreground isn't shown: its launch starts only once its view is in a
+    /// window (the attachment is reported as another start). In the
+    /// background, it waits for the foreground.
     @Test
-    func aSurfaceResolvedInTheForegroundStartsItsLaunchIfShown() {
+    func aViewStartsItsLaunchOnlyOnceShownInTheForeground() {
         typealias Starts = HotUpdaterBackgroundViewStarts
-        #expect(Starts.startsInForeground(startedInForeground: true, inForegroundNow: false, isShown: { false }))
-        #expect(Starts.startsInForeground(startedInForeground: false, inForegroundNow: true, isShown: { true }))
-        #expect(!Starts.startsInForeground(startedInForeground: false, inForegroundNow: true, isShown: { false }))
-        #expect(!Starts.startsInForeground(startedInForeground: false, inForegroundNow: false, isShown: { true }))
+        var attached = false
+        #expect(Starts.viewStart(inForeground: true, isShown: { attached }) == .waitForAttachment)
+        attached = true
+        #expect(Starts.viewStart(inForeground: true, isShown: { attached }) == .arm)
+        #expect(Starts.viewStart(inForeground: false, isShown: { attached }) == .waitForForeground)
+        #expect(Starts.viewStart(inForeground: false, isShown: { false }) == .waitForForeground)
     }
 
     // MARK: - Sweeps
