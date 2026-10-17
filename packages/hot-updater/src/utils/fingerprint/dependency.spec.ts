@@ -23,7 +23,9 @@ describe("loadExpoFingerprint", () => {
     expect(error.message).toContain(
       "@expo/fingerprint is required for fingerprint commands but is not installed.",
     );
-    expect(error.message).toContain("pnpm add -D @expo/fingerprint");
+    expect(error.message).toContain(
+      "pnpm add -D --save-exact @expo/fingerprint",
+    );
   });
 
   it("detects missing @expo/fingerprint module errors", () => {

@@ -202,6 +202,11 @@ export const getFingerprintEngineChange = (
  * Explains a hash that changed with its engine, for deploy, doctor, and
  * `fingerprint create`.
  */
+// Engines hash sources differently, so only the previous engine can tell
+// whether native inputs changed as well.
+const STILL_DIFFERS =
+  "If the fingerprint still differs with it, native inputs changed too, and builds you shipped need a rebuild.";
+
 export const describeFingerprintEngineChange = (
   change: { before: string; after: string },
   label: string,
@@ -210,8 +215,8 @@ export const describeFingerprintEngineChange = (
 ): { message: string; resolution: string } => ({
   message: `The ${label} fingerprint changed because fingerprint.json was created with ${change.before} and the project now uses ${change.after}. Native inputs may be unchanged.`,
   resolution: recorded
-    ? `fingerprint.json now records the ${change.after} hash. To keep updating ${label} builds you already shipped, go back to ${change.before} and run \`npx hot-updater fingerprint create\` again, or restore the previous fingerprint.json. Otherwise rebuild the ${label} app.`
-    : `To keep updating ${label} builds you already shipped, go back to ${change.before}. Otherwise run \`npx hot-updater fingerprint create\`, then rebuild the ${label} app.`,
+    ? `fingerprint.json now records the ${change.after} hash. To keep updating ${label} builds you already shipped, go back to ${change.before} and run \`npx hot-updater fingerprint create\` again, or restore the previous fingerprint.json. ${STILL_DIFFERS} Otherwise rebuild the ${label} app.`
+    : `To keep updating ${label} builds you already shipped, go back to ${change.before}. ${STILL_DIFFERS} Otherwise run \`npx hot-updater fingerprint create\`, then rebuild the ${label} app.`,
 });
 
 type OtaFingerprintOptions = {
