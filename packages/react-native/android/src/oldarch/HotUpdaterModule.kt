@@ -211,6 +211,9 @@ class HotUpdaterModule internal constructor(
         )
     }
 
+    // Legacy: released JavaScript calls reload() on Android when the app chose
+    // setReloadBehavior("reload"). The in-place React Native reload is gone, so
+    // reload() restarts the process, and reloadProcess() runs the same code.
     @ReactMethod
     override fun reload(promise: Promise) {
         moduleScope.launch {
@@ -225,19 +228,10 @@ class HotUpdaterModule internal constructor(
         }
     }
 
+    // Deprecated: JavaScript calls reloadProcess() on Android, both released
+    // JavaScript and this SDK's, so it stays until the next major release.
     @ReactMethod
-    override fun reloadProcess(promise: Promise) {
-        moduleScope.launch {
-            try {
-                val impl = getInstance()
-                impl.reloadProcess(mReactApplicationContext)
-                promise.resolve(null)
-            } catch (e: Exception) {
-                Log.d("HotUpdater", "Failed to restart process", e)
-                promise.reject("reloadProcess", e)
-            }
-        }
-    }
+    override fun reloadProcess(promise: Promise) = reload(promise)
 
     @ReactMethod
     override fun updateBundle(

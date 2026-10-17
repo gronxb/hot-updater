@@ -519,6 +519,7 @@ export const getAppVersion = (): string | null => {
  */
 export const reload = async () => {
   if (Platform.OS === "android") {
+    // An older native build's reload() reloads in place on Android.
     await HotUpdaterNative.reloadProcess();
     return;
   }
