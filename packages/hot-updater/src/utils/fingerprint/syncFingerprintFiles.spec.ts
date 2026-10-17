@@ -80,6 +80,29 @@ describe("syncFingerprintFiles", () => {
     ).toEqual(fingerprint);
   });
 
+  it("records the engine in a fingerprint.json from before engines were recorded", async () => {
+    await writeFingerprintJson(fingerprint);
+    vi.mocked(getFingerprintHash).mockImplementation(async (platform) => ({
+      value: fingerprint[platform].hash,
+      paths: [],
+    }));
+    const withEngine = {
+      ios: { ...fingerprint.ios, engine: "@expo/fingerprint@0.21.5" },
+      android: { ...fingerprint.android, engine: "@expo/fingerprint@0.21.5" },
+    };
+
+    await expect(syncFingerprintFiles(withEngine)).resolves.toEqual({
+      fingerprintJson: true,
+      iosPaths: [],
+      androidPaths: [],
+    });
+    expect(
+      JSON.parse(
+        await fs.readFile(path.join(project, "fingerprint.json"), "utf8"),
+      ),
+    ).toEqual(withEngine);
+  });
+
   it("leaves a platform without native files alone", async () => {
     vi.mocked(getFingerprintHash).mockImplementation(async (platform) => {
       if (platform === "android") {

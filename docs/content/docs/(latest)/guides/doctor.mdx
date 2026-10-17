@@ -142,7 +142,10 @@ seconds. When a platform's fingerprint differs from `fingerprint.json`, doctor
 reports `FINGERPRINT_JSON_STALE` and lists the sources that changed, in
 `changes` with `--json`. When the fingerprint changed because the engine that
 computes it changed, for example a newer `@expo/fingerprint`, doctor reports
-`FINGERPRINT_ENGINE_CHANGED` instead and names both engines. When it cannot
+`FINGERPRINT_ENGINE_CHANGED` instead and names both engines. A
+`fingerprint.json` created before engines were recorded gets the warning
+`FINGERPRINT_ENGINE_UNRECORDED` while its hashes still match; recording the
+engine keeps the fingerprint the same. When it cannot
 compute the fingerprint, for example because `@expo/fingerprint` is not
 installed, it reports
 `FINGERPRINT_GENERATION_FAILED` with the reason.
@@ -179,7 +182,7 @@ them load, then rerun `doctor`.
 
 | Issues | Repair |
 | --- | --- |
-| `MISSING_FINGERPRINT_JSON`, `MISSING_FINGERPRINT_HASH`, `FINGERPRINT_HASH_MISMATCH`, `FINGERPRINT_JSON_STALE` | What `fingerprint create` writes, where it differs: `fingerprint.json`, and the fingerprint hash in `Info.plist` and `AndroidManifest.xml` |
+| `MISSING_FINGERPRINT_JSON`, `MISSING_FINGERPRINT_HASH`, `FINGERPRINT_HASH_MISMATCH`, `FINGERPRINT_JSON_STALE`, `FINGERPRINT_ENGINE_UNRECORDED` | What `fingerprint create` writes, where it differs: `fingerprint.json`, and the fingerprint hash in `Info.plist` and `AndroidManifest.xml` |
 | `MISSING_PUBLIC_KEY`, `PUBLIC_KEY_MISMATCH` | What `keys export-public --yes` writes: the configured signing public key, in the native files |
 | `RELEASE_CATALOG_STALE` | Each stale scope's catalog, rebuilt from its Releases in the server's database |
 | `UNREFERENCED_ARTIFACTS` | The artifact records no Release uses, deleted from the server's database |
