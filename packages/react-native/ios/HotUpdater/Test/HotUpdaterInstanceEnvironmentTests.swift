@@ -293,6 +293,21 @@ struct HotUpdaterInstanceEnvironmentTests {
     }
 
     @Test
+    func anEmptyLegacyValueIsNoneForMainsOptions() throws {
+        let config = HotUpdaterConfig(log: { _ in })
+        legacy(config).configureWithFingerprintHash("", publicKey: "", channel: "", isolationKey: nil)
+        let claims = HotUpdaterMainBundle(config: config)
+
+        try claims.claim(.main, channel: "production", fingerprintHash: "option-hash", publicKey: "option-key")
+
+        let main = HotUpdaterInstanceEnvironment.main(config: config)
+        #expect(main.defaultChannel() == "production")
+        #expect(main.fingerprintHash() == "option-hash")
+        #expect(main.publicKey() == "option-key")
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(.main, channel: "beta") }
+    }
+
+    @Test
     func mainOptionsAfterMainsImplExistsMustMatchIt() throws {
         let framework = try makeBundle(info: [
             "HOT_UPDATER_CHANNEL": "plist-channel",
@@ -434,6 +449,36 @@ struct HotUpdaterInstanceEnvironmentTests {
         let changes = try #require(logs.messages.last?.components(separatedBy: ". configure is deprecated").first)
         #expect(changes.hasSuffix("channel \"gamma\" -> \"delta\""))
         #expect(!changes.contains("fingerprintHash") && !changes.contains("publicKey"))
+    }
+
+    @Test
+    func theDeprecatedSettersWarnAndTakeOverOnlyTheirValue() throws {
+        let logs = LogRecorder()
+        let config = HotUpdaterConfig(log: logs.append)
+        let claims = HotUpdaterMainBundle(config: config)
+        try claims.claim(.main, channel: "beta", fingerprintHash: "option-hash", publicKey: "option-key")
+
+        legacy(config).channel = "alpha"
+        #expect(config.overrides.channel == "alpha")
+        #expect(logs.messages.count == 1)
+        let changes = try #require(logs.messages.last?.components(separatedBy: ". configure is deprecated").first)
+        #expect(changes.hasSuffix("channel \"beta\" -> \"alpha\""))
+
+        // The channel now belongs to the setter; the other values still to the options.
+        legacy(config).channel = "gamma"
+        #expect(logs.messages.count == 1)
+        legacy(config).publicKey = "other-key"
+        #expect(logs.messages.count == 2)
+        #expect(logs.messages.last?.contains("other-key") == false)
+        legacy(config).fingerprintHash = "other-hash"
+        #expect(logs.messages.count == 3)
+        legacy(config).isolationKey = "custom_"
+        #expect(logs.messages.count == 3)
+
+        // Options set the channel again, so the setter warns again.
+        try claims.claim(.main, channel: "gamma")
+        legacy(config).channel = "delta"
+        #expect(logs.messages.count == 4)
     }
 
     @Test
@@ -624,6 +669,8 @@ private let newerMinBundleId = "0199c4e1-0f2b-7000-8000-000000000002"
 /// The deprecated programmatic config, through a protocol so the tests that
 /// keep it working don't warn.
 protocol LegacyHotUpdaterConfig: AnyObject {
+    var channel: String? { get set }
+    var publicKey: String? { get set }
     var fingerprintHash: String? { get set }
     var isolationKey: String? { get set }
     func configureWithFingerprintHash(_ fingerprintHash: String?, publicKey: String?, channel: String?, isolationKey: String?)

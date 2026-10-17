@@ -13,28 +13,47 @@ private const val CONFIGURE_DEPRECATION =
  * manifest metadata. Named instances never read it.
  */
 object HotUpdaterConfig {
-    // Every write takes MainInstanceConfiguration.shared's lock, which main's
-    // impl reads its values under.
+    // The values themselves. Main's options record theirs here directly;
+    // every legacy write goes through the setters below. Each write takes
+    // MainInstanceConfiguration.shared's lock, which main's impl reads its
+    // values under.
+    @Volatile
+    internal var recordedFingerprintHash: String? = null
 
     @Volatile
-    var fingerprintHash: String? = null
+    internal var recordedPublicKey: String? = null
+
+    @Volatile
+    internal var recordedChannel: String? = null
+
+    @Volatile
+    internal var recordedIsolationKey: String? = null
+
+    /** Warns when it replaces a value main's [HotUpdaterOptions] set, as [configure] does. */
+    var fingerprintHash: String?
+        get() = recordedFingerprintHash
+
         @Deprecated(CONFIGURE_DEPRECATION)
         set(value) {
-            synchronized(MainInstanceConfiguration.shared) { field = value }
+            legacyWrite("HotUpdaterConfig.fingerprintHash", mapOf("fingerprintHash" to value)) { recordedFingerprintHash = value }
         }
 
-    @Volatile
-    var publicKey: String? = null
+    /** Warns when it replaces a value main's [HotUpdaterOptions] set, as [configure] does. */
+    var publicKey: String?
+        get() = recordedPublicKey
+
         @Deprecated(CONFIGURE_DEPRECATION)
         set(value) {
-            synchronized(MainInstanceConfiguration.shared) { field = value }
+            legacyWrite("HotUpdaterConfig.publicKey", mapOf("publicKey" to value)) { recordedPublicKey = value }
         }
 
-    @Volatile
-    var channel: String? = null
+    /** Warns when it replaces a value main's [HotUpdaterOptions] set, as [configure] does. */
+    var channel: String?
+        get() = recordedChannel
+
         @Deprecated(CONFIGURE_DEPRECATION)
         set(value) {
-            synchronized(MainInstanceConfiguration.shared) { field = value }
+            legacyWrite("HotUpdaterConfig.channel", mapOf("channel" to value)) { recordedChannel = value }
         }
 
     /**
@@ -43,11 +62,12 @@ object HotUpdaterConfig {
      * (fingerprint strategy) or `HotUpdaterPrefs_{appVersion}_{channel}`
      * (appVersion strategy) composition.
      */
-    @Volatile
-    var isolationKey: String? = null
+    var isolationKey: String?
+        get() = recordedIsolationKey
+
         @Deprecated(CONFIGURE_DEPRECATION)
         set(value) {
-            synchronized(MainInstanceConfiguration.shared) { field = value }
+            synchronized(MainInstanceConfiguration.shared) { recordedIsolationKey = value }
         }
 
     /**
@@ -57,25 +77,21 @@ object HotUpdaterConfig {
      * changes only main's static entry points.
      */
     @Deprecated(CONFIGURE_DEPRECATION)
-    @Suppress("DEPRECATION")
     fun configure(
         fingerprintHash: String? = null,
         publicKey: String? = null,
         channel: String? = null,
         isolationKey: String? = null,
     ) {
-        // Under the lock main's impl is created with, as every setter is, so
-        // the impl's values are never half of one call.
-        synchronized(MainInstanceConfiguration.shared) {
-            MainInstanceConfiguration.shared.warnIfConfigureOverrides(
-                fingerprintHash = fingerprintHash,
-                publicKey = publicKey,
-                channel = channel,
-            )
-            this.fingerprintHash = fingerprintHash
-            this.publicKey = publicKey
-            this.channel = channel
-            this.isolationKey = isolationKey
+        // One write, so main's impl never reads half of it.
+        legacyWrite(
+            "HotUpdater.configure",
+            mapOf("channel" to channel, "fingerprintHash" to fingerprintHash, "publicKey" to publicKey),
+        ) {
+            recordedFingerprintHash = fingerprintHash
+            recordedPublicKey = publicKey
+            recordedChannel = channel
+            recordedIsolationKey = isolationKey
         }
     }
 
@@ -83,6 +99,21 @@ object HotUpdaterConfig {
     @Suppress("DEPRECATION")
     fun clear() {
         configure()
+    }
+
+    // A write of the deprecated API, of the [written] values by field, under
+    // the lock main's impl reads its values under, warning when it replaces
+    // a value main's options set.
+    private fun legacyWrite(
+        source: String,
+        written: Map<String, String?>,
+        write: () -> Unit,
+    ) {
+        val configuration = MainInstanceConfiguration.shared
+        synchronized(configuration) {
+            configuration.warnIfLegacyWriteOverrides(source, written)
+            write()
+        }
     }
 }
 
@@ -145,7 +176,6 @@ internal class MainInstanceConfiguration {
 
     /** [claim], with the values main's impl was created with, or null before it exists. */
     @Synchronized
-    @Suppress("DEPRECATION")
     fun claim(
         options: HotUpdaterOptions,
         createdWith: MainImplValues?,
@@ -173,35 +203,34 @@ internal class MainInstanceConfiguration {
         }
         claimed = claimed + fields.mapNotNull { field -> field.requested?.let { field.name to it } }
         if (implCreated) return
-        options.channel.nonEmpty()?.let { HotUpdaterConfig.channel = it }
-        options.fingerprintHash.nonEmpty()?.let { HotUpdaterConfig.fingerprintHash = it }
-        options.publicKey.nonEmpty()?.let { HotUpdaterConfig.publicKey = it }
+        options.channel.nonEmpty()?.let { HotUpdaterConfig.recordedChannel = it }
+        options.fingerprintHash.nonEmpty()?.let { HotUpdaterConfig.recordedFingerprintHash = it }
+        options.publicKey.nonEmpty()?.let { HotUpdaterConfig.recordedPublicKey = it }
     }
 
     /**
-     * Warns, once for the values main's options set, when the deprecated
-     * `HotUpdater.configure` replaces one of them. The call still replaces
-     * them, as it always has; the values it sets are its own from then on.
+     * Warns, once for each value main's options set, when [source], the
+     * deprecated `HotUpdater.configure` or a `HotUpdaterConfig` setter,
+     * replaces it with another of [written], by field. The write still
+     * replaces it, as it always has; the field is the legacy API's from then on.
      */
     @Synchronized
-    fun warnIfConfigureOverrides(
-        fingerprintHash: String?,
-        publicKey: String?,
-        channel: String?,
+    fun warnIfLegacyWriteOverrides(
+        source: String,
+        written: Map<String, String?>,
     ) {
         val replaced =
-            listOf("channel" to channel, "fingerprintHash" to fingerprintHash, "publicKey" to publicKey)
-                .mapNotNull { (name, value) ->
-                    val set = claimed[name] ?: return@mapNotNull null
-                    if (set == value.nonEmpty()) return@mapNotNull null
-                    // A PEM key is long; its name says enough.
-                    if (name == "publicKey") "publicKey" else "$name \"$set\" with ${value.nonEmpty()?.let { "\"$it\"" } ?: "none"}"
-                }
-        claimed = emptyMap()
+            written.mapNotNull { (name, value) ->
+                val set = claimed[name] ?: return@mapNotNull null
+                if (set == value.nonEmpty()) return@mapNotNull null
+                // A PEM key is long; its name says enough.
+                if (name == "publicKey") "publicKey" else "$name \"$set\" with ${value.nonEmpty()?.let { "\"$it\"" } ?: "none"}"
+            }
+        claimed = claimed - written.keys
         if (replaced.isEmpty()) return
         logWarning(
-            "HotUpdater.configure replaced the ${replaced.joinToString()} that HotUpdaterOptions of instance \"main\" set. " +
-                "configure is deprecated: pass channel, fingerprintHash, and publicKey only through HotUpdaterOptions.",
+            "$source replaced the ${replaced.joinToString()} that HotUpdaterOptions of instance \"main\" set. " +
+                "It is deprecated: pass channel, fingerprintHash, and publicKey only through HotUpdaterOptions.",
         )
     }
 

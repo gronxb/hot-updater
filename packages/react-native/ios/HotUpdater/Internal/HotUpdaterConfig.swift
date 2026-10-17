@@ -27,6 +27,8 @@ public class HotUpdaterConfig: NSObject {
         var fingerprintHash = false
         var publicKey = false
         var channel = false
+
+        static let all = OptionFields(fingerprintHash: true, publicKey: true, channel: true)
     }
 
     private let lock = NSLock()
@@ -93,16 +95,23 @@ public class HotUpdaterConfig: NSObject {
         }
     }
 
-    /// The deprecated `configure`: replaces all four values, as it always
-    /// has. When it changes a value main's options set, it logs one warning
-    /// naming them; the values then belong to `configure`, so a later call
-    /// warns only after options set them again.
-    private func replace(with overrides: Overrides) {
+    /// The deprecated `configure` and setters: `update` writes the values,
+    /// as it always has. When it changes a value main's options set, it logs
+    /// one warning naming them; the `touched` values then belong to the
+    /// legacy API, so a later call warns only after options set them again.
+    private func replace(touching touched: OptionFields, _ update: (inout Overrides) -> Void) {
         lock.lock()
         let previous = _overrides
-        let fields = _optionFields
-        _overrides = overrides
-        _optionFields = OptionFields()
+        update(&_overrides)
+        let overrides = _overrides
+        let fields = OptionFields(
+            fingerprintHash: _optionFields.fingerprintHash && touched.fingerprintHash,
+            publicKey: _optionFields.publicKey && touched.publicKey,
+            channel: _optionFields.channel && touched.channel
+        )
+        _optionFields.fingerprintHash = _optionFields.fingerprintHash && !touched.fingerprintHash
+        _optionFields.publicKey = _optionFields.publicKey && !touched.publicKey
+        _optionFields.channel = _optionFields.channel && !touched.channel
         lock.unlock()
 
         var changes: [String] = []
@@ -135,19 +144,19 @@ public class HotUpdaterConfig: NSObject {
     @available(*, deprecated, message: "Pass fingerprintHash to HotUpdaterOptions.")
     public var fingerprintHash: String? {
         get { overrides.fingerprintHash }
-        set { lock.lock(); defer { lock.unlock() }; _overrides.fingerprintHash = newValue }
+        set { replace(touching: OptionFields(fingerprintHash: true)) { $0.fingerprintHash = newValue } }
     }
 
     @available(*, deprecated, message: "Pass publicKey to HotUpdaterOptions.")
     public var publicKey: String? {
         get { overrides.publicKey }
-        set { lock.lock(); defer { lock.unlock() }; _overrides.publicKey = newValue }
+        set { replace(touching: OptionFields(publicKey: true)) { $0.publicKey = newValue } }
     }
 
     @available(*, deprecated, message: "Pass channel to HotUpdaterOptions.")
     public var channel: String? {
         get { overrides.channel }
-        set { lock.lock(); defer { lock.unlock() }; _overrides.channel = newValue }
+        set { replace(touching: OptionFields(channel: true)) { $0.channel = newValue } }
     }
 
     /// When set, used verbatim as the storage isolation key, bypassing the
@@ -156,23 +165,25 @@ public class HotUpdaterConfig: NSObject {
     @available(*, deprecated, message: "Fingerprint downloads now survive native releases that ship the same artifact, so no isolation key is needed.")
     public var isolationKey: String? {
         get { overrides.isolationKey }
-        set { lock.lock(); defer { lock.unlock() }; _overrides.isolationKey = newValue }
+        set { replace(touching: OptionFields()) { $0.isolationKey = newValue } }
     }
 
     /// Replaces all four values. Deprecated with `HotUpdater.configure`.
     @available(*, deprecated, message: "Pass channel, fingerprintHash, and publicKey to HotUpdaterOptions. Fingerprint downloads now survive native releases that ship the same artifact.")
     @objc(configureWithFingerprintHash:publicKey:channel:isolationKey:)
     public func configureWithFingerprintHash(_ fingerprintHash: String?, publicKey: String?, channel: String?, isolationKey: String?) {
-        replace(with: Overrides(
-            fingerprintHash: fingerprintHash,
-            publicKey: publicKey,
-            channel: channel,
-            isolationKey: isolationKey
-        ))
+        replace(touching: .all) {
+            $0 = Overrides(
+                fingerprintHash: fingerprintHash,
+                publicKey: publicKey,
+                channel: channel,
+                isolationKey: isolationKey
+            )
+        }
     }
 
     @available(*, deprecated, message: "Pass channel, fingerprintHash, and publicKey to HotUpdaterOptions.")
     public func clear() {
-        replace(with: Overrides())
+        replace(touching: .all) { $0 = Overrides() }
     }
 }

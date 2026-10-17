@@ -253,6 +253,72 @@ class HotUpdaterInstanceEnvironmentTest {
     }
 
     @Test
+    @Suppress("DEPRECATION")
+    fun `a deprecated setter that replaces main's options warns once for that value`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val main = HotUpdaterInstanceEnvironment.main
+        val warnings = mutableListOf<String>()
+        val logWarning = MainInstanceConfiguration.shared.logWarning
+        MainInstanceConfiguration.shared.logWarning = { warnings += it }
+        try {
+            HotUpdater.init(context, HotUpdaterOptions(BASE_URL, channel = "beta", fingerprintHash = "app-fp"))
+            assertEquals(emptyList<String>(), warnings)
+
+            HotUpdaterConfig.channel = "alpha"
+            assertEquals("alpha", main.defaultChannel(context))
+            val warning = warnings.single()
+            assertTrue(warning, warning.startsWith("HotUpdaterConfig.channel replaced the channel \"beta\" with \"alpha\""))
+            assertTrue(warning, warning.contains("only through HotUpdaterOptions"))
+
+            // The setter took the channel over, so configure replacing it again
+            // is no override of the options; the fingerprint hash stays theirs.
+            HotUpdater.configure(channel = "gamma", fingerprintHash = "app-fp")
+            assertEquals(1, warnings.size)
+            HotUpdaterConfig.fingerprintHash = "other-fp"
+            assertEquals(1, warnings.size)
+            assertEquals("other-fp", main.fingerprintHash(context))
+
+            // Options again, then a setter that clears one of them.
+            HotUpdaterConfig.clear()
+            HotUpdater.init(context, HotUpdaterOptions(BASE_URL, publicKey = "APP KEY"))
+            HotUpdaterConfig.publicKey = ""
+            assertNull(main.publicKey(context))
+            assertTrue(warnings[1], warnings[1].startsWith("HotUpdaterConfig.publicKey replaced the publicKey that"))
+            assertFalse(warnings[1], warnings[1].contains("APP KEY"))
+            assertEquals(2, warnings.size)
+        } finally {
+            MainInstanceConfiguration.shared.logWarning = logWarning
+        }
+    }
+
+    @Test
+    @Suppress("DEPRECATION")
+    fun `empty legacy values are no override in main's conflict checks`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val main = HotUpdaterInstanceEnvironment.main
+
+        HotUpdater.configure(fingerprintHash = "", publicKey = "", channel = "")
+        HotUpdater.init(context, HotUpdaterOptions(BASE_URL, channel = "production", fingerprintHash = "app-fp", publicKey = "APP KEY"))
+        assertEquals("production", main.defaultChannel(context))
+        assertEquals("app-fp", main.fingerprintHash(context))
+        assertEquals("APP KEY", main.publicKey(context))
+        HotUpdaterConfig.clear()
+
+        HotUpdaterConfig.channel = ""
+        HotUpdater.init(context, HotUpdaterOptions(BASE_URL, channel = "beta"))
+        assertEquals("beta", main.defaultChannel(context))
+        HotUpdaterConfig.clear()
+
+        // After the impl exists: an empty legacy channel was the default one.
+        HotUpdater.configure(channel = "", fingerprintHash = "", publicKey = "")
+        val createdWith = MainImplValues.read(context)
+        MainInstanceConfiguration.shared.claim(HotUpdaterOptions(BASE_URL, channel = "production"), createdWith)
+        assertThrows(IllegalArgumentException::class.java) {
+            MainInstanceConfiguration.shared.claim(HotUpdaterOptions(BASE_URL, fingerprintHash = "app-fp"), createdWith)
+        }
+    }
+
+    @Test
     fun `main launches its own bundle asset`() {
         val context = InstanceTestContext(temporaryFolder.root)
 

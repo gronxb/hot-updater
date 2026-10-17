@@ -381,9 +381,11 @@ final class HotUpdaterMainBundle {
             try Self.check(fingerprintHash, against: created.fingerprintHash, always: true, field: "fingerprintHash")
             try Self.check(publicKey, against: created.publicKey, always: true, field: "publicKey")
         } else {
-            try Self.check(channel, against: recorded.channel, always: false, field: "channel")
-            try Self.check(fingerprintHash, against: recorded.fingerprintHash, always: false, field: "fingerprintHash")
-            try Self.check(publicKey, against: recorded.publicKey, always: false, field: "publicKey")
+            // As main's values resolve them: an empty legacy value is none.
+            let optionValue = HotUpdaterInstanceEnvironment.optionValue
+            try Self.check(channel, against: optionValue(recorded.channel), always: false, field: "channel")
+            try Self.check(fingerprintHash, against: optionValue(recorded.fingerprintHash), always: false, field: "fingerprintHash")
+            try Self.check(publicKey, against: optionValue(recorded.publicKey), always: false, field: "publicKey")
         }
         self.bundle = bundle
         config.bundle = bundle
