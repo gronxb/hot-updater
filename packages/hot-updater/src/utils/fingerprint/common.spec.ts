@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   appendFingerprintExtraSources,
+  describeFingerprintEngineChange,
   getFingerprintEngineChange,
   getOtaFingerprintOptions,
 } from "./common";
@@ -98,5 +99,23 @@ describe("getFingerprintEngineChange", () => {
     expect(getFingerprintEngineChange(engine, engine)).toBeNull();
     expect(getFingerprintEngineChange({}, engine)).toBeNull();
     expect(getFingerprintEngineChange(null, engine)).toBeNull();
+  });
+});
+
+describe("describeFingerprintEngineChange", () => {
+  const change = {
+    before: "@expo/fingerprint@0.20.14",
+    after: "@expo/fingerprint@0.21.5",
+  };
+
+  it("tells fingerprint create users to rerun it after going back", () => {
+    expect(describeFingerprintEngineChange(change, "iOS").resolution).toBe(
+      "To keep updating iOS builds you already shipped, go back to @expo/fingerprint@0.20.14. Otherwise run `npx hot-updater fingerprint create`, then rebuild the iOS app.",
+    );
+    expect(
+      describeFingerprintEngineChange(change, "iOS", true).resolution,
+    ).toBe(
+      "fingerprint.json now records the @expo/fingerprint@0.21.5 hash. To keep updating iOS builds you already shipped, go back to @expo/fingerprint@0.20.14 and run `npx hot-updater fingerprint create` again, or restore the previous fingerprint.json. Otherwise rebuild the iOS app.",
+    );
   });
 });

@@ -116,6 +116,7 @@ export const handleCreateFingerprint = async () => {
           const { message, resolution } = describeFingerprintEngineChange(
             engineChange,
             label,
+            true,
           );
           p.log.warn(message);
           p.log.info(resolution);
