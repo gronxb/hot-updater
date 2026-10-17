@@ -48,7 +48,7 @@ export default hotUpdater.wrap({
 ```
 
 Each call returns an instance with its own server configuration and plugins.
-Native update state, progress, and reload behavior are shared across instances.
+Native update state and progress are shared across instances.
 Create one instance per app: keep the call in its own module, at the top level,
 so it runs once per app start. Two instances each read the launch and report it
 through their own plugins.
