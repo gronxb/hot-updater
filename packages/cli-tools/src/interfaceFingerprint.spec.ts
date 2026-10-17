@@ -265,6 +265,55 @@ describe("createInterfaceFingerprint", () => {
     expect(await hashOf({ platform: "android" }, native())).not.toBe(before);
   });
 
+  it("hashes a local package's native code at its root, without a nested package's", async () => {
+    await fs.rm(path.join(root, "packages/local-module/src"), {
+      recursive: true,
+    });
+    await write(
+      path.join(root, "packages/local-module/package.json"),
+      manifest({ name: "local-module", version: "1.0.0" }),
+    );
+    await write(
+      path.join(root, "packages/local-module/local-module.podspec"),
+      "Pod::Spec.new",
+    );
+    await write(
+      path.join(root, "packages/local-module/cpp/Local.cxx"),
+      "int local() { return 1; }",
+    );
+    await write(
+      path.join(root, "packages/local-module/example/package.json"),
+      manifest({ name: "example" }),
+    );
+    await write(
+      path.join(root, "packages/local-module/example/ios/App.swift"),
+      "final class App {}",
+    );
+    const native = (): NativeInterface => ({
+      runtime: "react-native@0.85.2",
+      dependencies: [
+        {
+          name: "local-module",
+          root: path.join(root, "packages/local-module"),
+          sourceDir: path.join(root, "packages/local-module"),
+        },
+      ],
+    });
+    const before = await hashOf({}, native());
+
+    await write(
+      path.join(root, "packages/local-module/example/ios/App.swift"),
+      "final class App { func run() {} }",
+    );
+    expect(await hashOf({}, native())).toBe(before);
+
+    await write(
+      path.join(root, "packages/local-module/cpp/Local.cxx"),
+      "int local(int x) { return x; }",
+    );
+    expect(await hashOf({}, native())).not.toBe(before);
+  });
+
   it("hashes the same files when autolinking points at the standard folders", async () => {
     await fs.rm(path.join(root, "packages/local-module/src"), {
       recursive: true,
@@ -489,6 +538,7 @@ describe("readReactNativeInterface", () => {
         "newArchEnabled=true",
         "hermesEnabled = true",
         "react.hermesV1Enabled: false",
+        "hermesV1Enabled true",
       ].join("\n"),
     );
     const read = (platform: "ios" | "android") =>
@@ -506,6 +556,7 @@ describe("readReactNativeInterface", () => {
       "android:newArchEnabled": "true",
       "android:hermesEnabled": "true",
       "android:react.hermesV1Enabled": "false",
+      "android:hermesV1Enabled": "true",
     });
 
     await write(
