@@ -293,6 +293,36 @@ struct HotUpdaterInstanceEnvironmentTests {
     }
 
     @Test
+    func aConfigureCallCannotLandBetweenTheOptionsCheckAndTheirRecord() throws {
+        let logs = LogRecorder()
+        let configured = DispatchSemaphore(value: 0)
+        let blockedDuringClaim = LockedFlag()
+        var config: HotUpdaterConfig!
+        config = HotUpdaterConfig(log: logs.append, onOptionsChecked: {
+            // A configure call arriving right after the check passed.
+            DispatchQueue.global().async {
+                legacy(config).configureWithFingerprintHash(nil, publicKey: nil, channel: "alpha", isolationKey: nil)
+                configured.signal()
+            }
+            if configured.wait(timeout: .now() + 0.3) == .success {
+                // It landed inside the claim; let the test go on and fail.
+                configured.signal()
+            } else {
+                blockedDuringClaim.value = true
+            }
+        })
+
+        try HotUpdaterMainBundle(config: config).claim(.main, channel: "beta")
+        configured.wait()
+
+        // It waited for the record, then replaced it, and said so.
+        #expect(blockedDuringClaim.value)
+        #expect(config.overrides.channel == "alpha")
+        #expect(logs.messages.count == 1)
+        #expect(logs.messages.first?.contains("channel \"beta\" -> \"alpha\"") == true)
+    }
+
+    @Test
     func anEmptyLegacyValueIsNoneForMainsOptions() throws {
         let config = HotUpdaterConfig(log: { _ in })
         legacy(config).configureWithFingerprintHash("", publicKey: "", channel: "", isolationKey: nil)
@@ -679,6 +709,16 @@ protocol LegacyHotUpdaterConfig: AnyObject {
 extension HotUpdaterConfig: LegacyHotUpdaterConfig {}
 
 func legacy(_ config: HotUpdaterConfig) -> LegacyHotUpdaterConfig { config }
+
+final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value = false
+
+    var value: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return _value }
+        set { lock.lock(); defer { lock.unlock() }; _value = newValue }
+    }
+}
 
 final class LogRecorder: @unchecked Sendable {
     private let lock = NSLock()

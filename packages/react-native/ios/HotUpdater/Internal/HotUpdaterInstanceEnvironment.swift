@@ -333,6 +333,8 @@ struct HotUpdaterInstanceEnvironment {
 final class HotUpdaterMainBundle {
     static let shared = HotUpdaterMainBundle()
 
+    /// Lock order: this lock, then `HotUpdaterConfig`'s, which `claim` and
+    /// `implEnvironment` take while holding it.
     private let lock = NSLock()
     private var bundle: Bundle?
     /// The channel, fingerprint hash, and public key main's impl was created
@@ -374,25 +376,22 @@ final class HotUpdaterMainBundle {
         let channel = HotUpdaterInstanceEnvironment.optionValue(channel)
         let fingerprintHash = HotUpdaterInstanceEnvironment.optionValue(fingerprintHash)
         let publicKey = HotUpdaterInstanceEnvironment.optionValue(publicKey)
-        let recorded = config.overrides
         if let created {
             // The impl's key is fixed: every value counts, nil included.
-            try Self.check(channel, against: created.channel, always: true, field: "channel")
-            try Self.check(fingerprintHash, against: created.fingerprintHash, always: true, field: "fingerprintHash")
-            try Self.check(publicKey, against: created.publicKey, always: true, field: "publicKey")
+            try Self.check(channel, against: created.channel, field: "channel")
+            try Self.check(fingerprintHash, against: created.fingerprintHash, field: "fingerprintHash")
+            try Self.check(publicKey, against: created.publicKey, field: "publicKey")
         } else {
-            // As main's values resolve them: an empty legacy value is none.
-            let optionValue = HotUpdaterInstanceEnvironment.optionValue
-            try Self.check(channel, against: optionValue(recorded.channel), always: false, field: "channel")
-            try Self.check(fingerprintHash, against: optionValue(recorded.fingerprintHash), always: false, field: "fingerprintHash")
-            try Self.check(publicKey, against: optionValue(recorded.publicKey), always: false, field: "publicKey")
+            // Checked and recorded in one step under the config's lock.
+            try config.claimOptions(
+                channel: channel,
+                fingerprintHash: fingerprintHash,
+                publicKey: publicKey,
+                conflict: Self.conflict
+            )
         }
         self.bundle = bundle
         config.bundle = bundle
-        guard created == nil else {
-            return
-        }
-        config.recordOptions(channel: channel, fingerprintHash: fingerprintHash, publicKey: publicKey)
     }
 
     /// Records the bundle `HotUpdater.bundleURL(bundle:)` launches main with,
@@ -426,16 +425,16 @@ final class HotUpdaterMainBundle {
         return environment
     }
 
-    /// `value` conflicts with `held` when both are set and differ, or, when
-    /// `always`, whenever `value` is set and differs.
-    private static func check(_ value: String?, against held: String?, always: Bool, field: String) throws {
-        guard let value, always || held != nil, value != held else {
+    /// `value` conflicts with the value main's impl uses whenever it is set
+    /// and differs, even where the impl uses none.
+    private static func check(_ value: String?, against inUse: String?, field: String) throws {
+        guard let value, value != inUse else {
             return
         }
         throw conflict(field)
     }
 
-    private static func conflict(_ field: String) -> NativeUpdateCheckError {
+    private static func conflict(_ field: String) -> Error {
         NativeUpdateCheckError.hotUpdater(
             "HotUpdater instance \"\(HotUpdaterInstanceEnvironment.mainName)\" was already created with another \(field)"
         )

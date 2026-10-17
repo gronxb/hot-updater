@@ -31,8 +31,14 @@ public class HotUpdaterConfig: NSObject {
         static let all = OptionFields(fingerprintHash: true, publicKey: true, channel: true)
     }
 
+    /// Guards the values. Lock order: `HotUpdaterMainBundle`'s lock, then
+    /// this one. Code holding this lock never takes the other, and `log` runs
+    /// after it is released.
     private let lock = NSLock()
     private let log: (String) -> Void
+    /// Runs in `claimOptions` between its check and its record, with the
+    /// lock held.
+    private let onOptionsChecked: (() -> Void)?
 
     private var _overrides = Overrides()
     private var _optionFields = OptionFields()
@@ -43,9 +49,11 @@ public class HotUpdaterConfig: NSObject {
     }
 
     /// `log` receives the warning a `configure` call over main's options
-    /// logs.
-    init(log: @escaping (String) -> Void) {
+    /// logs. `onOptionsChecked` runs inside `claimOptions` between its check
+    /// and its record, to show no legacy write lands there.
+    init(log: @escaping (String) -> Void, onOptionsChecked: (() -> Void)? = nil) {
         self.log = log
+        self.onOptionsChecked = onOptionsChecked
         super.init()
     }
 
@@ -77,10 +85,34 @@ public class HotUpdaterConfig: NSObject {
         set { lock.lock(); defer { lock.unlock() }; _overrides = newValue }
     }
 
-    /// Records the values a main `HotUpdaterOptions` set; nil keeps a value.
-    func recordOptions(channel: String?, fingerprintHash: String?, publicKey: String?) {
+    /// Checks the values a main `HotUpdaterOptions` set against the ones
+    /// main holds, then records them, in one step under the lock the
+    /// deprecated `configure` and setters write under: a legacy write lands
+    /// before it, and conflicts, or after it, and warns. nil keeps a value,
+    /// and an empty held value is none, as main resolves it.
+    /// - Throws: the conflict `conflict(field)` returns, recording nothing.
+    func claimOptions(
+        channel: String?,
+        fingerprintHash: String?,
+        publicKey: String?,
+        conflict: (String) -> Error
+    ) throws {
         lock.lock()
         defer { lock.unlock() }
+        let fields: [(name: String, requested: String?, held: String?)] = [
+            ("channel", channel, _overrides.channel),
+            ("fingerprintHash", fingerprintHash, _overrides.fingerprintHash),
+            ("publicKey", publicKey, _overrides.publicKey),
+        ]
+        for field in fields {
+            guard let requested = field.requested,
+                  let held = field.held, !held.isEmpty,
+                  held != requested else {
+                continue
+            }
+            throw conflict(field.name)
+        }
+        onOptionsChecked?()
         if let channel {
             _overrides.channel = channel
             _optionFields.channel = true
