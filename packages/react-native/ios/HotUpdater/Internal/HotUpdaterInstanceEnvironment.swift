@@ -35,22 +35,75 @@ struct HotUpdaterInstanceEnvironment {
     /// A named instance's `HotUpdaterOptions` values, over its Info.plist.
     /// Main's options are recorded in `config` instead.
     private let options: HotUpdaterConfig.Overrides
+    /// Main's values as its impl was created with them; nil reads `config`
+    /// at each use.
+    private let mainSnapshot: MainValues?
+
+    /// Main's channel, fingerprint hash, public key, and isolation key
+    /// override, resolved from one read of `config` so they always agree.
+    struct MainValues: Equatable {
+        let defaultChannel: String
+        let fingerprintHash: String?
+        /// nil for the appVersion strategy.
+        let isolationFingerprintHash: String?
+        let publicKey: String?
+        let isolationKeyOverride: String?
+    }
 
     private init(
         name: String,
         namedBundle: Bundle?,
         config: HotUpdaterConfig,
-        options: HotUpdaterConfig.Overrides = HotUpdaterConfig.Overrides()
+        options: HotUpdaterConfig.Overrides = HotUpdaterConfig.Overrides(),
+        mainSnapshot: MainValues? = nil
     ) {
         self.name = name
         self.namedBundle = namedBundle
         self.config = config
         self.options = options
+        self.mainSnapshot = mainSnapshot
     }
 
-    /// Main, reading `config`.
+    /// Main, reading `config` at each use.
     static func main(config: HotUpdaterConfig) -> HotUpdaterInstanceEnvironment {
         HotUpdaterInstanceEnvironment(name: mainName, namedBundle: nil, config: config)
+    }
+
+    /// Main with its values fixed from one read of `config`, which main's
+    /// impl is built from: a `configure` call during or after its creation
+    /// can't leave its key, channel, and public key apart.
+    func snapshot() -> HotUpdaterInstanceEnvironment {
+        guard isMain else {
+            return self
+        }
+        return HotUpdaterInstanceEnvironment(
+            name: name,
+            namedBundle: nil,
+            config: config,
+            mainSnapshot: mainValues()
+        )
+    }
+
+    /// Main's values: the snapshot, or resolved now from one read of `config`.
+    func mainValues() -> MainValues {
+        if let mainSnapshot {
+            return mainSnapshot
+        }
+        let overrides = config.overrides
+        let plistFingerprintHash = config.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
+        return MainValues(
+            defaultChannel: Self.optionValue(overrides.channel)
+                ?? config.infoValue(forKey: "HOT_UPDATER_CHANNEL")
+                ?? Self.defaultChannel,
+            fingerprintHash: Self.optionValue(overrides.fingerprintHash) ?? plistFingerprintHash,
+            // Main's isolation key and update strategy have always taken an
+            // empty programmatic fingerprint as "none" instead of reading
+            // Info.plist.
+            isolationFingerprintHash: Self.optionValue(overrides.fingerprintHash ?? plistFingerprintHash),
+            publicKey: Self.optionValue(overrides.publicKey)
+                ?? config.infoValue(forKey: "HOT_UPDATER_PUBLIC_KEY"),
+            isolationKeyOverride: Self.optionValue(overrides.isolationKey)
+        )
     }
 
     /// The environment of `name`. A named instance reads `channel`,
@@ -201,20 +254,14 @@ struct HotUpdaterInstanceEnvironment {
         guard isMain else {
             return options.fingerprintHash ?? namedInfoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
         }
-        if let override = config.overrides.fingerprintHash, !override.isEmpty {
-            return override
-        }
-        return config.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
+        return mainValues().fingerprintHash
     }
 
     func defaultChannel() -> String {
         guard isMain else {
             return options.channel ?? namedInfoValue(forKey: "HOT_UPDATER_CHANNEL") ?? Self.defaultChannel
         }
-        if let override = config.overrides.channel, !override.isEmpty {
-            return override
-        }
-        return config.infoValue(forKey: "HOT_UPDATER_CHANNEL") ?? Self.defaultChannel
+        return mainValues().defaultChannel
     }
 
     /// The key bundle signatures are verified with; nil disables signing.
@@ -222,7 +269,7 @@ struct HotUpdaterInstanceEnvironment {
         guard isMain else {
             return options.publicKey ?? namedInfoValue(forKey: "HOT_UPDATER_PUBLIC_KEY")
         }
-        return SignatureVerifier.getPublicKeyFromConfig(config)
+        return mainValues().publicKey
     }
 
     func updateStrategy() -> UpdateStrategy {
@@ -232,7 +279,7 @@ struct HotUpdaterInstanceEnvironment {
     /// The fingerprint hash the isolation key and the update strategy use,
     /// or nil for the appVersion strategy.
     func isolationFingerprintHash() -> String? {
-        Self.optionValue(isMain ? mainIsolationFingerprintHash() : fingerprintHash())
+        isMain ? mainValues().isolationFingerprintHash : fingerprintHash()
     }
 
     /// The prefix of this instance's preferences, also stamped into its
@@ -249,14 +296,14 @@ struct HotUpdaterInstanceEnvironment {
     /// its newer embedded bundle. A key written before this format differs,
     /// so the stored bundles are discarded once.
     func isolationKey(appVersion: String?, minBundleId: String) -> String {
-        if isMain,
-           let override = config.overrides.isolationKey,
-           !override.isEmpty {
+        // One read of main's values, so the key's fields agree.
+        let main = isMain ? mainValues() : nil
+        if let override = main?.isolationKeyOverride {
             return override
         }
 
         let baseKey: String
-        if let hash = isolationFingerprintHash() {
+        if let hash = main?.isolationFingerprintHash ?? (isMain ? nil : fingerprintHash()) {
             let minBundleId = minBundleId.trimmingCharacters(in: .whitespacesAndNewlines)
             baseKey = "\(hash)_\(minBundleId.isEmpty ? "unknown" : minBundleId)"
         } else {
@@ -264,14 +311,7 @@ struct HotUpdaterInstanceEnvironment {
         }
 
         let prefix = isMain ? "hotupdater_" : "hotupdater_instance_\(name)_"
-        return "\(prefix)\(baseKey)_\(defaultChannel())_"
-    }
-
-    /// Main's isolation key and update strategy have always taken an empty
-    /// programmatic fingerprint as "none" instead of reading Info.plist.
-    private func mainIsolationFingerprintHash() -> String? {
-        config.overrides.fingerprintHash
-            ?? config.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
+        return "\(prefix)\(baseKey)_\(main?.defaultChannel ?? defaultChannel())_"
     }
 
     /// Only the instance's own bundle: falling back to the host app's
@@ -365,21 +405,23 @@ final class HotUpdaterMainBundle {
         config.bundle = bundle
     }
 
-    /// Called as main's impl is created, before it reads its isolation key:
-    /// from then on a main instance must match the values it was created
-    /// with.
-    func noteImplCreated() {
+    /// The environment main's impl is built from: main's values fixed from
+    /// one read of `config`, which from then on a main instance must match.
+    /// The impl reads only this snapshot, so a `configure` call racing its
+    /// creation can't leave it apart from what is recorded here.
+    func implEnvironment() -> HotUpdaterInstanceEnvironment {
         lock.lock()
         defer { lock.unlock() }
-        guard created == nil else {
-            return
+        let environment = HotUpdaterInstanceEnvironment.main(config: config).snapshot()
+        if created == nil {
+            let values = environment.mainValues()
+            created = HotUpdaterConfig.Overrides(
+                fingerprintHash: values.isolationFingerprintHash,
+                publicKey: values.publicKey,
+                channel: values.defaultChannel
+            )
         }
-        let main = HotUpdaterInstanceEnvironment.main(config: config)
-        created = HotUpdaterConfig.Overrides(
-            fingerprintHash: main.isolationFingerprintHash(),
-            publicKey: main.publicKey(),
-            channel: main.defaultChannel()
-        )
+        return environment
     }
 
     /// `value` conflicts with `held` when both are set and differ, or, when

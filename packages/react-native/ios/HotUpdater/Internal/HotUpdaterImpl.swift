@@ -208,11 +208,9 @@ private func hotUpdaterGetMinBundleId() -> String {
      * config. Main's is `HotUpdaterNativeUpdateBridge.sharedImpl`.
      */
     convenience init(environment: HotUpdaterInstanceEnvironment) {
-        if environment.isMain {
-            // Main's isolation key is fixed below: a later main instance
-            // must match the values it is built from.
-            HotUpdaterMainBundle.shared.noteImplCreated()
-        }
+        // Main is built from one snapshot of its values, which a later main
+        // instance must match; nothing below reads HotUpdaterConfig again.
+        let environment = environment.isMain ? HotUpdaterMainBundle.shared.implEnvironment() : environment
         let fileSystem = FileManagerService()
         let isolationKey = environment.isolationKey(appVersion: Self.appVersion, minBundleId: Self.minBundleId())
         let preferences = VersionedPreferencesService()

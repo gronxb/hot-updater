@@ -305,7 +305,7 @@ struct HotUpdaterInstanceEnvironmentTests {
         claims.note(framework)
 
         // As HotUpdater.bundleURL(bundle:) creates main's impl.
-        claims.noteImplCreated()
+        _ = claims.implEnvironment()
 
         #expect(throws: NativeUpdateCheckError.self) { try claims.claim(framework, channel: "beta") }
         #expect(throws: NativeUpdateCheckError.self) { try claims.claim(framework, fingerprintHash: "option-hash") }
@@ -319,10 +319,72 @@ struct HotUpdaterInstanceEnvironmentTests {
         let recorded = HotUpdaterConfig()
         let recordedClaims = HotUpdaterMainBundle(config: recorded)
         try recordedClaims.claim(.main, channel: "beta")
-        recordedClaims.noteImplCreated()
+        _ = recordedClaims.implEnvironment()
         legacy(recorded).configureWithFingerprintHash(nil, publicKey: nil, channel: "alpha", isolationKey: nil)
         #expect(throws: NativeUpdateCheckError.self) { try recordedClaims.claim(.main, channel: "alpha") }
         try recordedClaims.claim(.main, channel: "beta")
+    }
+
+    @Test
+    func mainsImplUsesTheValuesItWasRecordedWithWhateverConfigureDoesAfter() throws {
+        let config = HotUpdaterConfig(log: { _ in })
+        let claims = HotUpdaterMainBundle(config: config)
+        try claims.claim(.main, channel: "beta", fingerprintHash: "hash", publicKey: "key")
+
+        // The environment main's impl is built from: its key, storage, and
+        // signature checks read only this.
+        let impl = claims.implEnvironment()
+        // A configure call landing while or after the impl is created.
+        legacy(config).configureWithFingerprintHash("other-hash", publicKey: "other-key", channel: "alpha", isolationKey: "custom_")
+
+        #expect(impl.defaultChannel() == "beta")
+        #expect(impl.fingerprintHash() == "hash")
+        #expect(impl.publicKey() == "key")
+        #expect(impl.updateStrategy() == .fingerprint)
+        #expect(impl.isolationKey(appVersion: "1.0.0", minBundleId: minBundleId)
+            == "hotupdater_hash_\(minBundleId)_beta_")
+        // What later main instances must match is what the impl uses.
+        try claims.claim(.main, channel: "beta", fingerprintHash: "hash", publicKey: "key")
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(.main, channel: "alpha") }
+        // configure itself still replaced main's config.
+        #expect(HotUpdaterInstanceEnvironment.main(config: config).defaultChannel() == "alpha")
+
+        // A later impl environment, as a second HotUpdaterImpl() makes,
+        // never moves what main was created with.
+        #expect(claims.implEnvironment().defaultChannel() == "alpha")
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(.main, channel: "alpha") }
+    }
+
+    @Test
+    func configureRacingMainsImplCreationLeavesNoMismatch() throws {
+        // Two complete configurations; a snapshot must be all of one.
+        let sets = [("a-channel", "a-hash", "a-key"), ("b-channel", "b-hash", "b-key")]
+        for round in 0..<200 {
+            let config = HotUpdaterConfig(log: { _ in })
+            let claims = HotUpdaterMainBundle(config: config)
+            let writer = DispatchQueue(label: "configure-\(round)")
+            let group = DispatchGroup()
+            writer.async(group: group) {
+                for index in 0..<20 {
+                    let (channel, hash, key) = sets[index % 2]
+                    legacy(config).configureWithFingerprintHash(hash, publicKey: key, channel: channel, isolationKey: nil)
+                }
+            }
+            let impl = claims.implEnvironment()
+            group.wait()
+
+            let values = impl.mainValues()
+            #expect(sets.contains { $0 == (values.defaultChannel, values.fingerprintHash ?? "", values.publicKey ?? "") }
+                || (values.defaultChannel == "production" && values.fingerprintHash == nil && values.publicKey == nil))
+            #expect(impl.isolationKey(appVersion: "1.0.0", minBundleId: minBundleId).hasSuffix("_\(values.defaultChannel)_"))
+            // Recorded as the impl uses them.
+            try claims.claim(
+                .main,
+                channel: values.defaultChannel,
+                fingerprintHash: values.isolationFingerprintHash,
+                publicKey: values.publicKey
+            )
+        }
     }
 
     @Test
