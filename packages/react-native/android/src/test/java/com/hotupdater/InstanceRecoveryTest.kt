@@ -1276,6 +1276,50 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `an instance that found every native slot taken has its marker written before its claim is published`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val manager = HotUpdaterRecoveryManager::class.java
+        val slots = manager.getDeclaredField("slots").apply { isAccessible = true }.get(null)
+        val taken =
+            slots.javaClass
+                .getDeclaredField("slots")
+                .apply { isAccessible = true }
+                .get(slots) as MutableMap<String, Int>
+        (1..7).forEach { taken["other-$it"] = it }
+        stagePending(context, widget, "widget-bundle")
+        // Never armed: none of its views was shown, so storage has no launch in progress.
+        HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
+        assertFalse(metadata(context, widget).launchInProgress)
+        val markerWhenClaimed = mutableListOf<Boolean>()
+        val markerWhenAlarmSet = mutableListOf<Boolean>()
+        HotUpdaterRecoveryManager.watchdogAlarm = { _, _ -> markerWhenAlarmSet += crashMarker(context, widget).exists() }
+        HotUpdaterRecoveryManager.nativeRecovery =
+            object : HotUpdaterNativeRecovery {
+                override fun updateSlot(
+                    slot: Int,
+                    crashMarkerPath: String,
+                    bundleId: String?,
+                    shouldRollback: Boolean,
+                    writesWhenVerified: Boolean,
+                ) = Unit
+
+                override fun attributeCrash(slot: Int) {
+                    markerWhenClaimed += crashMarker(context, widget).exists()
+                }
+
+                override fun clearCrashAttribution() = Unit
+            }
+
+        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+
+        // The alarm before the marker, so a signal while it is written still
+        // relaunches the app; the marker before the claim, so a signal from
+        // the claim on finds it on disk.
+        assertEquals(false, markerWhenAlarmSet.firstOrNull())
+        assertEquals(listOf(true), markerWhenClaimed)
+    }
+
+    @Test
     fun `a verified launch's slot stops asking before storage records the verification`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, widget, "widget-bundle")

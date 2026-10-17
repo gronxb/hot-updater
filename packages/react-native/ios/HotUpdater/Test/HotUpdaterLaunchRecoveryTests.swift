@@ -1616,6 +1616,39 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(coordinator.launch(named: "late")?.isArmed == true)
     }
 
+    /// Every native slot is taken: the unarmed ninth instance's own fatal
+    /// has no slot to leave a marker, so its marker exists before the crash
+    /// is published as its (which stops every other slot).
+    @Test
+    func aSlotlessOwnersMarkerIsWrittenBeforeItsAttribution() throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let sink = RecordingSlotSink()
+        let coordinator = HotUpdaterRecoveryCoordinator(sink: sink)
+        let names = [Self.main] + (1..<HotUpdaterRecoveryCoordinator.slotCount).map { "named-\($0)" }
+        for name in names {
+            coordinator.register(name: name, markerURL: directory.appendingPathComponent("\(name).json"), storage: NoStorage())
+            coordinator.startMonitoring(name: name, bundleId: "\(name)-next", shouldRollback: true)
+        }
+        let lateMarker = directory.appendingPathComponent("late.json")
+        coordinator.register(name: "late", markerURL: lateMarker, storage: NoStorage())
+        coordinator.startMonitoring(name: "late", bundleId: "late-next", shouldRollback: true)
+        #expect(coordinator.launch(named: "late")?.slot == nil)
+
+        var markerAtAttribution: Bool?
+        sink.onAttribute = { _ in markerAtAttribution = FileManager.default.fileExists(atPath: lateMarker.path) }
+        coordinator.chargeFatal(owner: "late")
+        #expect(sink.attribution == HotUpdaterRecoveryCoordinator.attributedWithoutSlot)
+        #expect(markerAtAttribution == true)
+        #expect(HotUpdaterCrashMarker.consume(at: lateMarker)?.shouldRollback == true)
+
+        // An unclaimed load failure writes it before its claim too.
+        markerAtAttribution = nil
+        coordinator.startMonitoring(name: "late", bundleId: "late-next", shouldRollback: true)
+        coordinator.chargeUnclaimedLoadFailure()
+        #expect(markerAtAttribution == true)
+    }
+
     @Test
     func anErrorOfTheCurrentRuntimeStillChargesItsLaunch() throws {
         let scene = try Scene()

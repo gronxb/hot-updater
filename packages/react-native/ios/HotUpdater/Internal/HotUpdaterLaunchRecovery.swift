@@ -570,6 +570,10 @@ final class HotUpdaterRecoveryCoordinator {
             for launch in owners where launch.isMonitoring {
                 prepareCharge(launch)
             }
+            // Slotless owners' markers first: nothing native writes them.
+            for launch in owners where launch.isMonitoring && launch.slot == nil {
+                writeMarker(launch)
+            }
             claimGeneration += 1
             appendClaim(Claim(
                 id: claimGeneration,
@@ -581,7 +585,7 @@ final class HotUpdaterRecoveryCoordinator {
             publishLatestClaim()
             let ownerNames = Set(owners.map(\.name))
             disarm(launches.values.filter { !ownerNames.contains($0.name) })
-            for launch in owners where launch.isMonitoring {
+            for launch in owners where launch.isMonitoring && launch.slot != nil {
                 writeMarker(launch)
             }
             return claimGeneration
@@ -817,8 +821,14 @@ final class HotUpdaterRecoveryCoordinator {
             if launch.isMonitoring {
                 prepareCharge(launch)
             }
+            // Without a slot nothing native writes its marker: it is written
+            // before the attribution, which then stops every other slot.
+            let markerFirst = launch.isMonitoring && launch.slot == nil
+            if markerFirst {
+                writeMarker(launch)
+            }
             let claim = attribute(to: owner)
-            if launch.isMonitoring {
+            if launch.isMonitoring, !markerFirst {
                 writeMarker(launch)
             }
             return claim

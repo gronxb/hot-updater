@@ -457,15 +457,27 @@ internal class HotUpdaterRecoveryManager(
         // signal from here on writes the marker natively.
         charged = true
         updateNativeLaunchStateLocked()
-        // Then a claim publishes itself, still with no file written: a signal
-        // from here on writes only this launch's marker.
+        // An instance that found every slot taken gets no marker from a
+        // signal, and a launch none of whose views was shown has no
+        // launchInProgress: its marker is written first, so a signal from
+        // the claim on still rolls it back, after the watchdog's alarm, so a
+        // signal from the marker on relaunches the app. A receiver in a
+        // process that never set the alarm relaunches for any marker, with
+        // or without the watchdog's state, and clears the alarm without one.
+        val slotted = slots.slotOf(name) != null
+        if (!slotted) {
+            setWatchdogAlarmLocked(appContext)
+            writeCrashMarker(launch)
+        }
+        // Then a claim publishes itself, still with no file written for a
+        // slotted launch: a signal from here on writes only this launch's marker.
         onSlotAsking?.invoke()
         // Then the watchdog, file and alarm: a launch none of whose views was
         // shown has none yet, and the marker must relaunch the app.
         startRecoveryWatchdog()
         if (keepRelaunchIntent) keepRelaunchIntentLocked()
-        // The marker file last, with its alarm already set.
-        writeCrashMarker(launch)
+        // A slotted launch's marker file last, with its alarm already set.
+        if (slotted) writeCrashMarker(launch)
         // The next start prepares a new launch, which reads this marker.
         chargedCallback?.invoke()
     }
