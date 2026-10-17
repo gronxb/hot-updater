@@ -34,7 +34,7 @@
 		<key>CFBundleVersion</key>
 		<string>$(CURRENT_PROJECT_VERSION)</string>
 		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
-		<string>3ee2db074f884bea6a732d528d36ade8bc84e295</string>
+		<string>422f29d7b39d9eefdb2ffb2f16e02a2f4e374675</string>
 		<key>LSRequiresIPhoneOS</key>
 		<true/>
 		<key>NSAppTransportSecurity</key>
