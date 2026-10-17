@@ -181,6 +181,34 @@ describe("checkFingerprintJson", () => {
     ]);
   });
 
+  it("warns when another engine version computes the same hash", async () => {
+    vi.mocked(generateFingerprints).mockResolvedValue({
+      ios: { ...fingerprint("ios-now"), engine: "@expo/fingerprint@0.21.6" },
+      android: {
+        ...fingerprint("android-now"),
+        engine: "@expo/fingerprint@0.21.6",
+      },
+    });
+
+    const issues = await checkFingerprintJson({
+      ios: { ...fingerprint("ios-now"), engine: "@expo/fingerprint@0.21.5" },
+      android: {
+        ...fingerprint("android-now"),
+        engine: "@expo/fingerprint@0.21.6",
+      },
+    });
+
+    expect(issues).toMatchObject([
+      {
+        type: "warning",
+        platform: "ios",
+        code: "FINGERPRINT_ENGINE_UNRECORDED",
+        message:
+          "fingerprint.json records @expo/fingerprint@0.21.5 for the iOS fingerprint, which @expo/fingerprint@0.21.6 now computes unchanged.",
+      },
+    ]);
+  });
+
   it("lists changed sources when fingerprint.json predates recorded engines", async () => {
     vi.mocked(getFingerprintDiff).mockClear();
     vi.mocked(generateFingerprints).mockResolvedValue({
