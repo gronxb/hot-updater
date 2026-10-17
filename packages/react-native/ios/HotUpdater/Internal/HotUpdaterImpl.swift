@@ -29,6 +29,16 @@ private func hotUpdaterCopyRuntimeImplSymbol() -> UnsafeMutableRawPointer?
 @_silgen_name("HotUpdaterCopyBundleURLForRootObject")
 private func hotUpdaterCopyBundleURLForRootObjectSymbol(_ object: AnyObject) -> UnsafeMutableRawPointer?
 
+@_silgen_name("HotUpdaterCopyRuntimeModuleForRootObject")
+private func hotUpdaterCopyRuntimeModuleForRootObjectSymbol(_ object: AnyObject) -> UnsafeMutableRawPointer?
+
+/// The module of the runtime `object` belongs to, when one told it apart.
+private func hotUpdaterRuntimeModule(forRootObject object: AnyObject) -> AnyObject? {
+    hotUpdaterCopyRuntimeModuleForRootObjectSymbol(object).map {
+        Unmanaged<AnyObject>.fromOpaque($0).takeRetainedValue()
+    }
+}
+
 @_silgen_name("HotUpdaterCopyRuntimeBundleURL")
 private func hotUpdaterCopyRuntimeBundleURLSymbol() -> UnsafeMutableRawPointer?
 
@@ -1299,6 +1309,8 @@ final class HotUpdaterRecoveryHub: NSObject {
     static let shared = HotUpdaterRecoveryHub()
 
     let coordinator = HotUpdaterRecoveryCoordinator(sink: HotUpdaterSignalCrashSlots())
+    /// The launch each runtime runs, by its module.
+    private let runtimeLaunches = HotUpdaterRuntimeLaunches()
 
     override init() {
         super.init()
@@ -1623,7 +1635,16 @@ final class HotUpdaterRecoveryHub: NSObject {
         // Content of a runtime of an earlier launch verifies nothing, and
         // is not main's either.
         let runtimeBundleURL = owner == nil ? nil : view.flatMap(hotUpdaterBundleURL(forRootObject:))
-        guard let verified = coordinator.contentAppeared(owner: owner, runtimeBundleURL: runtimeBundleURL) else {
+        // The launch the view's runtime runs: content of a runtime torn down
+        // after its host started a replacement with the same bundle verifies
+        // nothing. Unknown (no module, as in the old architecture): by name
+        // and bundle alone, as before.
+        let generation = owner == nil ? nil : runtimeLaunches.generation(of: view.flatMap(hotUpdaterRuntimeModule(forRootObject:)))
+        guard let verified = coordinator.contentAppeared(
+            owner: owner,
+            generation: generation,
+            runtimeBundleURL: runtimeBundleURL
+        ) else {
             return
         }
         manager(named: verified.launch.name)?.contentAppeared(generation: verified.generation)
@@ -1675,10 +1696,16 @@ final class HotUpdaterRecoveryHub: NSObject {
     /// Posted by HotUpdater.mm when a runtime's module knows its instance.
     @objc private func handleRuntimeDidResolve(_ notification: Notification) {
         if let impl = notification.userInfo?["impl"] as? HotUpdaterImpl {
-            coordinator.runtimeResolved(
-                name: impl.environment.name,
-                runtimeBundleURL: notification.userInfo?["bundleURL"] as? URL
-            )
+            let name = impl.environment.name
+            let runtimeBundleURL = notification.userInfo?["bundleURL"] as? URL
+            coordinator.runtimeResolved(name: name, runtimeBundleURL: runtimeBundleURL)
+            // The launch this runtime runs: the current one, when its bundle
+            // is that launch's. A runtime of an earlier launch gets none.
+            if let module = notification.object as AnyObject?,
+               coordinator.isCurrentRuntime(name: name, runtimeBundleURL: runtimeBundleURL),
+               let generation = coordinator.generations()[name] {
+                runtimeLaunches.record(runtime: module, generation: generation)
+            }
         }
         DispatchQueue.main.async { [weak self] in
             guard let self else { return }

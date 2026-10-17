@@ -977,7 +977,7 @@ class InstanceRecoveryTest {
         HotUpdaterImpl(context, main).getJSBundleFile()
 
         // The widget renders another root before main shows anything.
-        HotUpdaterRecoveryManager.rootTagOwner = { rootTag -> widget.name.takeIf { rootTag == 51 } }
+        HotUpdaterRecoveryManager.rootTagOwner = { rootTag -> widget.name.takeIf { rootTag == 51 }?.let(::HotUpdaterRootOwner) }
         HotUpdaterRecoveryManager.handleContentAppeared(rootTag = 51)
 
         assertTrue(metadata(context, main).verificationPending)
@@ -1008,7 +1008,7 @@ class InstanceRecoveryTest {
         // starts a replacement launch of the same bundle.
         HotUpdaterRecoveryManager.rootTagOwner = { rootTag ->
             HotUpdaterImpl(context, widget, unshownGate()).getJSBundleFile()
-            widget.name.takeIf { rootTag == 61 }
+            widget.name.takeIf { rootTag == 61 }?.let(::HotUpdaterRootOwner)
         }
         HotUpdaterRecoveryManager.handleContentAppeared(rootTag = 61)
 
@@ -1378,6 +1378,36 @@ class InstanceRecoveryTest {
         // Torn down: its views are looked for no more.
         HotUpdaterRecoveryManager.unregisterRuntime(mainRuntime, null)
         assertNull(HotUpdaterRecoveryAttribution.shared.instanceOfRootTag(21))
+    }
+
+    @Test
+    fun `content of a runtime registered for an earlier launch of the same bundle does not verify its replacement`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val replaced = namedEnvironment("replaced-widget")
+        stagePending(context, replaced, "widget-bundle")
+        val registry = HotUpdaterInstanceRegistry.shared
+        try {
+            registry.impl(context, replaced)
+            val launchURL = HotUpdaterImpl(context, replaced, unshownGate()).getJSBundleFile()
+            val oldRoot = android.view.View(context)
+            val oldRuntime = TestReactContext(context, launchURL) { tag -> oldRoot.takeIf { tag == 21 } }
+            assertEquals(replaced.name, HotUpdaterRecoveryManager.registerRuntime(oldRuntime))
+            // The host starts a replacement launch of the same bundle while
+            // the old runtime is still torn down; its first content comes late.
+            assertEquals(launchURL, HotUpdaterImpl(context, replaced, unshownGate()).getJSBundleFile())
+
+            HotUpdaterRecoveryManager.handleContentAppeared(rootTag = 21)
+            assertTrue(metadata(context, replaced).verificationPending)
+
+            // The replacement's own runtime renders: that verifies it.
+            val newRoot = android.view.View(context)
+            val newRuntime = TestReactContext(context, launchURL) { tag -> newRoot.takeIf { tag == 31 } }
+            assertEquals(replaced.name, HotUpdaterRecoveryManager.registerRuntime(newRuntime))
+            HotUpdaterRecoveryManager.handleContentAppeared(rootTag = 31)
+            assertFalse(metadata(context, replaced).verificationPending)
+        } finally {
+            forget(registry, replaced.name)
+        }
     }
 
     @Test

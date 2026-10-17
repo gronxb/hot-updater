@@ -12,7 +12,7 @@ class HotUpdaterHeldContentTest {
         HotUpdaterHeldContent(
             mainThread = mainThread,
             clock = { now },
-            resolve = { views[it] },
+            resolve = { views[it]?.let(::HotUpdaterRootOwner) },
             credit = { name, generation -> credits += name to generation },
         )
 

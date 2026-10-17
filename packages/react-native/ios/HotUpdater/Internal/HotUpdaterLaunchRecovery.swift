@@ -1457,3 +1457,30 @@ struct HotUpdaterLatestGeneration {
     }
 }
 
+/// The launch each React Native runtime runs, by the runtime's module,
+/// recorded when the module tells its instance apart. A host can start a
+/// replacement launch with the same bundle while its previous runtime is
+/// still torn down; that runtime's late content then names the same
+/// instance and bundle, and only the launch it was recorded for tells it
+/// apart. Weakly: a runtime gone is forgotten.
+final class HotUpdaterRuntimeLaunches {
+    private let lock = NSLock()
+    private let generations = NSMapTable<AnyObject, NSNumber>.weakToStrongObjects()
+
+    func record(runtime: AnyObject, generation: Int) {
+        lock.lock()
+        generations.setObject(NSNumber(value: generation), forKey: runtime)
+        lock.unlock()
+    }
+
+    /// The launch `runtime` was recorded for; nil when unknown (no module,
+    /// as in the old architecture), which keeps content attributed by name
+    /// and bundle alone.
+    func generation(of runtime: AnyObject?) -> Int? {
+        guard let runtime else { return nil }
+        lock.lock()
+        defer { lock.unlock() }
+        return generations.object(forKey: runtime)?.intValue
+    }
+}
+

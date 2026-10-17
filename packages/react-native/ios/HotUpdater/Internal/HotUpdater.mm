@@ -1410,7 +1410,9 @@ static NSURL *HotUpdaterBundleURLOfRuntime(id object)
 // an RCTInstance or RCTHost (by its surface presenter), an old-architecture
 // root view or bridge (by its bundle URL). Nil when no runtime claims it.
 // `runtimeBundleURL`, when given, receives the bundle the runtime runs.
-static HotUpdaterImpl *HotUpdaterImplForRootObject(id object, NSURL **runtimeBundleURL)
+// `runtimeModule`, when given, receives the runtime's module when it is what
+// told the runtime apart (bridgeless).
+static HotUpdaterImpl *HotUpdaterImplForRootObject(id object, NSURL **runtimeBundleURL, HotUpdater **runtimeModule = nullptr)
 {
   if (!object) {
     return nil;
@@ -1440,6 +1442,9 @@ static HotUpdaterImpl *HotUpdaterImplForRootObject(id object, NSURL **runtimeBun
         if (impl) {
           if (runtimeBundleURL) {
             *runtimeBundleURL = [module runtimeBundleURL];
+          }
+          if (runtimeModule) {
+            *runtimeModule = module;
           }
           return impl;
         }
@@ -1490,6 +1495,16 @@ extern "C" void *HotUpdaterCopyBundleURLForRootObject(id object)
   NSURL *bundleURL = nil;
   HotUpdaterImplForRootObject(object, &bundleURL);
   return bundleURL ? (__bridge_retained void *)bundleURL : NULL;
+}
+
+// The module of the runtime `object` belongs to, or NULL when no module told
+// it apart (the old architecture, or a runtime without one yet). Crash
+// recovery keeps the launch each module's runtime runs by it.
+extern "C" void *HotUpdaterCopyRuntimeModuleForRootObject(id object)
+{
+  HotUpdater *module = nil;
+  HotUpdaterImplForRootObject(object, nullptr, &module);
+  return module ? (__bridge_retained void *)module : NULL;
 }
 
 // The impl of the runtime whose JavaScript thread, or old-architecture

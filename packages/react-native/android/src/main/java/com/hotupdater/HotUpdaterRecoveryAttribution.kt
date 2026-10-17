@@ -51,7 +51,8 @@ internal class HotUpdaterRecoveryAttribution(
                 emptyList()
             } else {
                 rootViewsIn(decorView).map { rootView ->
-                    HotUpdaterDecorRoots.Root(rootView.rootViewTag, runCatching { rootView.currentReactContext?.sourceURL }.getOrNull())
+                    val runtime = runCatching { rootView.currentReactContext }.getOrNull()
+                    HotUpdaterDecorRoots.Root(rootView.rootViewTag, runCatching { runtime?.sourceURL }.getOrNull(), runtime)
                 }
             }
         }
@@ -265,14 +266,27 @@ internal class HotUpdaterRecoveryAttribution(
      * Native names by its root tag; null when no known activity shows it or
      * its runtime isn't known yet.
      */
-    fun instanceOfRootTag(rootTag: Int): String? {
-        runtimeRoots.runtimeOfRootTag(rootTag)?.let { return launchInstanceOf(it.sourceURL) }
+    fun instanceOfRootTag(rootTag: Int): String? = rootOf(rootTag)?.instanceName
+
+    /** A root view's instance, as [instanceOfRootTag] has it, and the runtime that holds it. */
+    data class RootOwner(
+        val instanceName: String,
+        val runtime: Any?,
+    )
+
+    /** [instanceOfRootTag], with the runtime holding the root view, by which content is bound to that runtime's launch. */
+    fun rootOf(rootTag: Int): RootOwner? {
+        runtimeRoots.runtimeOfRootTag(rootTag)?.let { root ->
+            return launchInstanceOf(root.sourceURL)?.let { RootOwner(it, root.runtime) }
+        }
         val candidates =
             synchronized(activities) { activities.toList() } +
                 synchronized(runtimes) { runtimes.mapNotNull { it.get()?.currentActivity } }
         candidates.distinct().forEach { activity ->
             // A view whose runtime isn't known yet tells nothing either.
-            decorRoots.rootsIn(activity).firstOrNull { it.rootTag == rootTag }?.let { return launchInstanceOf(it.sourceURL) }
+            decorRoots.rootsIn(activity).firstOrNull { it.rootTag == rootTag }?.let { root ->
+                return launchInstanceOf(root.sourceURL)?.let { RootOwner(it, root.runtime) }
+            }
         }
         return null
     }
@@ -289,7 +303,7 @@ internal class HotUpdaterRecoveryAttribution(
         override fun runtimeOfRootTag(rootTag: Int): HotUpdaterRuntimeRoots.Runtime? {
             registeredRuntimes().forEach { runtime ->
                 if (RootViews.rootViewOf(RootViews.uiManagersOf(runtime), rootTag) != null) {
-                    return HotUpdaterRuntimeRoots.Runtime(runCatching { runtime.sourceURL }.getOrNull())
+                    return HotUpdaterRuntimeRoots.Runtime(runCatching { runtime.sourceURL }.getOrNull(), runtime)
                 }
             }
             return null
@@ -434,6 +448,8 @@ internal interface HotUpdaterRuntimeRoots {
     /** A registered runtime, by the URL it loaded its bundle from. */
     data class Runtime(
         val sourceURL: String?,
+        /** The runtime itself, which content is bound to the launch of. */
+        val runtime: Any? = null,
     )
 
     /** The registered runtime holding root view [rootTag], or null. */
@@ -449,6 +465,8 @@ internal fun interface HotUpdaterDecorRoots {
     data class Root(
         val rootTag: Int,
         val sourceURL: String?,
+        /** The runtime holding the view, which content is bound to the launch of. */
+        val runtime: Any? = null,
     )
 
     fun rootsIn(activity: Activity): List<Root>

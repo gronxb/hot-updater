@@ -1718,6 +1718,45 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(markerAtAttribution == true)
     }
 
+    /// The widget's host starts a replacement launch of the same bundle
+    /// while its previous runtime is torn down: the old runtime's late
+    /// content names the same instance and bundle, but not the same launch,
+    /// so only the new runtime's content verifies it.
+    @Test
+    func contentOfARuntimeOfAnEarlierLaunchWithTheSameBundleVerifiesNothing() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        let process = scene.launch()
+        let coordinator = process.coordinator
+        let runtimes = HotUpdaterRuntimeLaunches()
+        let url = try #require(scene.launchURL(Self.widget, bundleId: "widget-next"))
+        let oldRuntime = NSObject()
+        runtimes.record(runtime: oldRuntime, generation: try #require(coordinator.generations()[Self.widget]))
+
+        let replacement = coordinator.startMonitoring(
+            name: Self.widget,
+            bundleId: "widget-next",
+            shouldRollback: true,
+            launchURL: url
+        )
+        let newRuntime = NSObject()
+        runtimes.record(runtime: newRuntime, generation: replacement)
+
+        #expect(coordinator.contentAppeared(
+            owner: Self.widget,
+            generation: runtimes.generation(of: oldRuntime),
+            runtimeBundleURL: url
+        ) == nil)
+        #expect(scene.metadata(Self.widget)?.verificationPending == true)
+        #expect(coordinator.contentAppeared(
+            owner: Self.widget,
+            generation: runtimes.generation(of: newRuntime),
+            runtimeBundleURL: url
+        )?.generation == replacement)
+        #expect(scene.metadata(Self.widget)?.verificationPending == false)
+        #expect(runtimes.generation(of: nil) == nil)
+    }
+
     @Test
     func anErrorOfTheCurrentRuntimeStillChargesItsLaunch() throws {
         let scene = try Scene()

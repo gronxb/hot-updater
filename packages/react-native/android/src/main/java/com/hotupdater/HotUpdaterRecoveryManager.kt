@@ -20,6 +20,7 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.lang.ref.WeakReference
 import java.lang.reflect.Field
+import java.util.WeakHashMap
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
@@ -308,6 +309,7 @@ internal class HotUpdaterRecoveryManager(
                 if (launchState.snapshot() == null) return false
                 if (launchURL != null && !isSameBundle(sourceURL, launchURL)) return false
                 registeredRuntimes.add(runtime)
+                runtimeLaunches[runtime] = name to generation
                 runtimeActivityCallback
             }
         if (activity != null) callback?.invoke(activity)
@@ -646,9 +648,11 @@ internal class HotUpdaterRecoveryManager(
         @Volatile
         private var namedInstanceCreated = false
 
-        /** The instance whose runtime shows the root view of a root tag; main thread. Tests stand in for the views. */
+        /** The instance whose runtime shows the root view of a root tag, and that runtime's launch; main thread. Tests stand in for the views. */
         @Volatile
-        internal var rootTagOwner: (Int) -> String? = { rootTag -> attribution.instanceOfRootTag(rootTag) }
+        internal var rootTagOwner: (Int) -> HotUpdaterRootOwner? = { rootTag ->
+            attribution.rootOf(rootTag)?.let { HotUpdaterRootOwner(it.instanceName, launchOfRuntime(it.instanceName, it.runtime)) }
+        }
         internal val defaultRootTagOwner = rootTagOwner
 
         private const val TAG = "HotUpdaterRecovery"
@@ -863,10 +867,10 @@ internal class HotUpdaterRecoveryManager(
             // A named runtime may outlive its launch's monitoring and render
             // again: its content is its own, never main's, monitored or not.
             // Finding the view walks views and UI managers: outside the lock.
-            val viewInstance = rootTagOwner(rootTag)
+            val owner = rootTagOwner(rootTag)
             synchronized(recoveryLock) {
-                if (viewInstance != null) {
-                    contentAppeared(viewInstance, generations)
+                if (owner != null) {
+                    contentAppeared(owner.instanceName, owner.boundTo(generations))
                     return
                 }
                 val waitingNamedLaunch = liveManagers.values.any { !it.isMain && it.awaitsFirstContent() }
@@ -907,6 +911,22 @@ internal class HotUpdaterRecoveryManager(
         ) {
             val generation = generations[instanceName] ?: return
             liveManagers[instanceName]?.handleContentAppeared(generation)
+        }
+
+        // The launch each runtime registered for, by the runtime: a host may
+        // start a replacement launch of the same bundle while its previous
+        // runtime still renders, and that runtime's content is its own
+        // launch's, not the replacement's. Kept after the runtime is torn
+        // down, whose content may still arrive; weak, so it goes with it.
+        private val runtimeLaunches = WeakHashMap<Any, Pair<String, Long>>()
+
+        /** The launch of [instanceName] [runtime] registered for, or null when it didn't register for one. */
+        internal fun launchOfRuntime(
+            instanceName: String,
+            runtime: Any?,
+        ): Long? {
+            runtime ?: return null
+            return synchronized(recoveryLock) { runtimeLaunches[runtime]?.takeIf { it.first == instanceName }?.second }
         }
 
         /** Each live instance's launch generation now. */
@@ -1705,4 +1725,18 @@ internal object HotUpdaterRecoveryNative {
     /** Ends the claim [nativeAttributeCrash] made. */
     @JvmStatic
     external fun nativeClearCrashAttribution()
+}
+
+/**
+ * The instance whose runtime shows a root view, and the launch that runtime
+ * registered for, or null for a runtime that didn't register for one, such
+ * as main's: its content counts for the instance's launch when it appeared.
+ */
+internal data class HotUpdaterRootOwner(
+    val instanceName: String,
+    val launchGeneration: Long? = null,
+) {
+    /** The launches [generations] had when the content appeared, with this view's runtime's own. */
+    fun boundTo(generations: Map<String, Long>): Map<String, Long> =
+        launchGeneration?.let { generations + (instanceName to it) } ?: generations
 }

@@ -20,8 +20,8 @@ package com.hotupdater
 internal class HotUpdaterHeldContent(
     private val mainThread: HotUpdaterMainThread,
     private val clock: () -> Long,
-    /** The instance of the view with this root tag, or null while it can't be found. Main thread only. */
-    private val resolve: (Int) -> String?,
+    /** The instance of the view with this root tag, with its runtime's launch, or null while it can't be found. Main thread only. */
+    private val resolve: (Int) -> HotUpdaterRootOwner?,
     /** Verifies the launch of [generation] of the instance. */
     private val credit: (instanceName: String, generation: Long) -> Unit,
 ) {
@@ -64,8 +64,9 @@ internal class HotUpdaterHeldContent(
         val candidates = synchronized(this) { held.toList() }
         if (candidates.isEmpty()) return
         candidates.forEach { content ->
-            val instanceName = resolve(content.rootTag) ?: return@forEach
-            val generation = content.generations[instanceName]
+            val owner = resolve(content.rootTag) ?: return@forEach
+            val instanceName = owner.instanceName
+            val generation = owner.boundTo(content.generations)[instanceName]
             val alreadyCredited = instanceName == HotUpdaterInstanceEnvironment.MAIN_NAME && content.creditedToMain
             synchronized(this) { held.remove(content) }
             if (generation != null && !alreadyCredited) credit(instanceName, generation)
