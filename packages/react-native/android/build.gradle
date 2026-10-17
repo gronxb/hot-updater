@@ -116,11 +116,7 @@ android {
           "src/newarch",
           // Codegen specs
           "generated/java",
-          "generated/jni",
-          // React Native 0.81 and older can run the New Architecture on the
-          // bridge. Later versions have none, so their builds never compile
-          // ReactNativeHost.
-          project.ext.reactNativeMinorVersion >= 82 ? "src/bridgeless" : "src/bridge"
+          "generated/jni"
         ]
       }
     }

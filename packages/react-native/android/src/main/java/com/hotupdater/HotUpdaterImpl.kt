@@ -269,43 +269,24 @@ class HotUpdaterImpl {
     }
 
     /**
-     * Reloads the React Native application
+     * Restarts the app process so the next launch loads the current bundle.
      * @param reactContext The original context (preferably ReactApplicationContext to get current activity)
      */
     suspend fun reload(reactContext: Context) {
         try {
-            currentLaunchSelection = null
-            withContext(Dispatchers.Main) {
-                performReactReload(reactContext)
-            }
-        } catch (e: Exception) {
-            Log.e("HotUpdaterImpl", "Failed to reload application", e)
-        }
-    }
-
-    suspend fun reloadProcess(reactContext: Context) {
-        try {
-            currentLaunchSelection = null
             withContext(Dispatchers.Main) {
                 if (!restartApplication(reactContext)) {
-                    Log.w(TAG, "Falling back to in-process reload because process restart could not be started")
-                    performReactReload(reactContext)
+                    throw IllegalStateException("Process restart could not be started")
                 }
             }
+            currentLaunchSelection = null
         } catch (e: Exception) {
             Log.e("HotUpdaterImpl", "Failed to restart application process", e)
             throw e
         }
     }
 
-    private suspend fun performReactReload(reactContext: Context) {
-        val reactIntegrationManager = ReactIntegrationManager(reactContext)
-        val bundleURL = getJSBundleFile()
-        reactIntegrationManager.setJSBundle(bundleURL)
-        reactIntegrationManager.reload()
-    }
-
-    // Use a cold restart in release builds so bundle application does not depend on RN reload timing.
+    // A cold restart, so applying a bundle does not depend on React Native reload timing.
     private fun restartApplication(reactContext: Context): Boolean {
         val applicationContext = reactContext.applicationContext
         val currentActivity =
