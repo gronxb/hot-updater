@@ -207,7 +207,9 @@ configured one.
 `--fix` leaves an issue with more than one remedy to you. It never rewrites
 `fingerprint.json` for `FINGERPRINT_ENGINE_CHANGED`: go back to the engine
 `fingerprint.json` records to keep updating the apps you shipped, or run
-`fingerprint create` and rebuild them. It never removes a public key. For `ORPHAN_PUBLIC_KEY`, remove the key with `keys remove` or enable
+`fingerprint create` and rebuild them. That choice is the user's, so the issue's
+`fixability` is `blocked` and it lists no command. It never removes a public
+key. For `ORPHAN_PUBLIC_KEY`, remove the key with `keys remove` or enable
 signing yourself: removing it turns off signature verification in the app,
 which is wrong when signing is set up where this machine cannot see it, such as
 an environment variable only CI sets.

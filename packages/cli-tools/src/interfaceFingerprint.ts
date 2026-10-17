@@ -11,6 +11,7 @@ import type {
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 import fg from "fast-glob";
+import { parseYaml } from "workspace-tools/lib/lockfile/readYaml.js";
 
 const require = createRequire(import.meta.url);
 
@@ -446,19 +447,65 @@ const isWorkspaceRoot = async (dir: string) => {
 };
 
 /**
- * The `patches/` directories that apply to the app: its own and, in a
- * monorepo, the workspace root's, where pnpm and patch-package keep them.
+ * The folders whose patches apply to the app: its own and, in a monorepo,
+ * the workspace root, where pnpm and patch-package keep them.
  */
-const findPatchDirs = async (cwd: string): Promise<string[]> => {
-  const dirs = [path.join(cwd, "patches")];
+const findPatchRoots = async (cwd: string): Promise<string[]> => {
   let dir = cwd;
   while (!(await isWorkspaceRoot(dir))) {
     const parent = path.dirname(dir);
-    if (parent === dir) return dirs;
+    if (parent === dir) return [cwd];
     dir = parent;
   }
-  if (dir !== cwd) dirs.push(path.join(dir, "patches"));
-  return dirs;
+  return dir === cwd ? [cwd] : [cwd, dir];
+};
+
+/** `name` from a `name@version` or `name@npm:version` key. */
+const packageNameOf = (key: string) => {
+  const at = key.lastIndexOf("@");
+  return at > 0 ? key.slice(0, at) : key;
+};
+
+/**
+ * The patch files a package manager records for each package in `root`:
+ * pnpm's and Bun's `patchedDependencies` (in package.json or
+ * pnpm-workspace.yaml) and Yarn's `patch:` resolutions.
+ */
+const findConfiguredPatches = async (
+  root: string,
+): Promise<{ name: string; file: string }[]> => {
+  const manifest = (await readManifest(root)) as {
+    patchedDependencies?: Record<string, string>;
+    pnpm?: { patchedDependencies?: Record<string, string> };
+    resolutions?: Record<string, string>;
+  } | null;
+  const workspace = await fs
+    .readFile(path.join(root, "pnpm-workspace.yaml"), "utf8")
+    .then(
+      (contents) =>
+        parseYaml(contents) as {
+          patchedDependencies?: Record<string, string>;
+        } | null,
+    )
+    .catch(() => null);
+  const patches = Object.entries({
+    ...manifest?.patchedDependencies,
+    ...manifest?.pnpm?.patchedDependencies,
+    ...workspace?.patchedDependencies,
+  }).map(([key, file]) => ({
+    name: packageNameOf(key),
+    file: path.resolve(root, file),
+  }));
+  for (const [key, value] of Object.entries(manifest?.resolutions ?? {})) {
+    const hash = value.lastIndexOf("#");
+    if (!value.startsWith("patch:") || hash < 0) continue;
+    const file = value.slice(hash + 1);
+    patches.push({
+      name: packageNameOf(key),
+      file: path.resolve(root, file.replace(/^~\//, "")),
+    });
+  }
+  return patches;
 };
 
 /**
@@ -567,11 +614,22 @@ export const createInterfaceFingerprint = async (
     "react-native",
     ...nativeInterface.dependencies.map(({ name }) => name),
   ];
-  for (const dir of await findPatchDirs(cwd)) {
+  for (const root of await findPatchRoots(cwd)) {
+    const dir = path.join(root, "patches");
     const patches = await fs.readdir(dir).catch(() => [] as string[]);
     for (const patch of patches) {
       if (patchedNames.some((name) => isPatchFor(patch, name))) {
         await addFile(path.join(dir, patch), "native-dependency-patch");
+      }
+    }
+    for (const { name, file } of await findConfiguredPatches(root)) {
+      // The package manager refuses to install without the file.
+      const exists = await fs.access(file).then(
+        () => true,
+        () => false,
+      );
+      if (exists && patchedNames.includes(name)) {
+        await addFile(file, "native-dependency-patch");
       }
     }
   }

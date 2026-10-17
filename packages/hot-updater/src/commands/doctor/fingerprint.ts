@@ -97,8 +97,9 @@ export const checkFingerprintJson = async (
         platform,
         code: "FINGERPRINT_ENGINE_CHANGED",
         ...describeFingerprintEngineChange(engineChange, label),
-        fixability: "command",
-        commands: [FINGERPRINT_CREATE],
+        // Going back to the engine or rebuilding shipped apps is the user's
+        // call, so no command is offered to run.
+        fixability: "blocked",
         paths: ["fingerprint.json"],
       });
       continue;

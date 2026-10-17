@@ -204,6 +204,49 @@ describe("createInterfaceFingerprint", () => {
     expect(await hashOf()).not.toBe(before);
   });
 
+  it("reads the patch files a package manager records for native packages", async () => {
+    await write(path.join(root, "pnpm-workspace.yaml"), "packages: []\n");
+    const before = await hashOf();
+
+    await write(path.join(root, "patches/screens-native-fix.patch"), "a");
+    await write(path.join(root, "patches/fix-app-js.patch"), "a");
+    await write(
+      path.join(root, "pnpm-workspace.yaml"),
+      [
+        "packages: []",
+        "patchedDependencies:",
+        "  react-native-screens@4.25.2: patches/screens-native-fix.patch",
+        "  lodash: patches/fix-app-js.patch",
+        "",
+      ].join("\n"),
+    );
+    const patched = await hashOf();
+    expect(patched).not.toBe(before);
+
+    await write(path.join(root, "patches/fix-app-js.patch"), "b");
+    expect(await hashOf()).toBe(patched);
+    await write(path.join(root, "patches/screens-native-fix.patch"), "b");
+    expect(await hashOf()).not.toBe(patched);
+  });
+
+  it("reads a Yarn patch: resolution", async () => {
+    const before = await hashOf();
+    await write(path.join(app, ".yarn/patches/screens.patch"), "a");
+    await write(
+      path.join(app, "package.json"),
+      manifest({
+        name: "app",
+        codegenConfig: { jsSrcsDir: "src" },
+        resolutions: {
+          "react-native-screens@npm:4.25.2":
+            "patch:react-native-screens@npm%3A4.25.2#~/.yarn/patches/screens.patch",
+        },
+      }),
+    );
+
+    expect(await hashOf()).not.toBe(before);
+  });
+
   it("hashes a dependency declared by name and version", async () => {
     const native = (version: string): NativeInterface => ({
       runtime: "lynx@4.0.3",
