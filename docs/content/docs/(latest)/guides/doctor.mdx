@@ -178,7 +178,7 @@ them load, then rerun `doctor`.
 
 | Issues | Repair |
 | --- | --- |
-| `MISSING_FINGERPRINT_JSON`, `MISSING_FINGERPRINT_HASH`, `FINGERPRINT_HASH_MISMATCH`, `FINGERPRINT_JSON_STALE` | What `fingerprint create` writes, where it differs: `fingerprint.json`, and the fingerprint hash in `Info.plist` and `AndroidManifest.xml` |
+| `MISSING_FINGERPRINT_JSON`, `FINGERPRINT_JSON_STALE` | What `fingerprint create` writes, where it differs: `fingerprint.json` |
 | `MISSING_PUBLIC_KEY`, `PUBLIC_KEY_MISMATCH` | What `keys export-public --yes` writes: the configured signing public key, in the native files |
 | `RELEASE_CATALOG_STALE` | Each stale scope's catalog, rebuilt from its Releases in the server's database |
 | `UNREFERENCED_ARTIFACTS` | The artifact records no Release uses, deleted from the server's database |

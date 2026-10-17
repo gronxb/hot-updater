@@ -10,6 +10,7 @@ import type {
   BuildAdapterArgs,
   BuildAdapter,
   BuildAdapterConfig,
+  NativeFingerprintOptions,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
@@ -73,6 +74,26 @@ const runBundle = async ({
   };
 };
 
+/**
+ * The Rock adapter's native fingerprint: the native interface
+ * `rock config -p <platform>` reports. `hot-updater fingerprint hash` calls
+ * it during native builds, from the inputs fingerprint.json records.
+ */
+export const rockFingerprint = async (
+  cwd: string,
+  options: NativeFingerprintOptions,
+) =>
+  createInterfaceFingerprint(
+    cwd,
+    options,
+    await readReactNativeInterface({
+      cwd,
+      command: "npx",
+      args: ["rock", "config", "-p", options.platform],
+      platform: options.platform,
+    }),
+  );
+
 export interface RockAdapterConfig extends BuildAdapterConfig {
   /**
    * @default "index.js"
@@ -110,17 +131,7 @@ export const rock =
     } = config;
     return {
       nativeBuild: {
-        fingerprint: async (options) =>
-          createInterfaceFingerprint(
-            cwd,
-            options,
-            await readReactNativeInterface({
-              cwd,
-              command: "npx",
-              args: ["rock", "config", "-p", options.platform],
-              platform: options.platform,
-            }),
-          ),
+        fingerprint: (options) => rockFingerprint(cwd, options),
       },
       build: async ({ platform }) => {
         const buildPath = path.join(cwd, outDir);

@@ -43,6 +43,7 @@ static HotUpdaterConfig *HotUpdaterSharedConfig(void)
 @end
 
 extern "C" NSString *HotUpdaterBuildMinBundleId(void);
+extern "C" NSString *HotUpdaterBuildFingerprintHash(void);
 
 namespace {
 constexpr size_t kHotUpdaterMaxBundleIdLength = 128;
@@ -241,6 +242,15 @@ extern "C" NSString *HotUpdaterGetMinBundleId(void)
 extern "C" void *HotUpdaterCopyMinBundleId(void)
 {
   return (__bridge_retained void *)HotUpdaterGetMinBundleId();
+}
+
+// The fingerprint the build embedded, or NULL for an app without one.
+extern "C" void *HotUpdaterCopyBuildFingerprintHash(void)
+{
+  NSString *fingerprintHash = HotUpdaterBuildFingerprintHash();
+  return fingerprintHash.length > 0
+      ? (__bridge_retained void *)fingerprintHash
+      : NULL;
 }
 
 

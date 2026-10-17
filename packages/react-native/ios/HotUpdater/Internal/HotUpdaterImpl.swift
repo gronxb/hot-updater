@@ -33,6 +33,14 @@ private func hotUpdaterAfterSurfaceStarts(_ action: @convention(block) @escaping
 @_silgen_name("HotUpdaterCopyMinBundleId")
 private func hotUpdaterCopyMinBundleIdSymbol() -> UnsafeMutableRawPointer
 
+@_silgen_name("HotUpdaterCopyBuildFingerprintHash")
+private func hotUpdaterCopyBuildFingerprintHashSymbol() -> UnsafeMutableRawPointer?
+
+/// The fingerprint this build embedded: the hash of the native interface it
+/// was built from, or nil for an app without one.
+let hotUpdaterBuildFingerprintHash: String? = hotUpdaterCopyBuildFingerprintHashSymbol()
+    .map { Unmanaged<NSString>.fromOpaque($0).takeRetainedValue() as String }
+
 private func hotUpdaterInstallSignalHandlers(_ crashMarkerPath: String) {
     hotUpdaterInstallSignalHandlersSymbol(crashMarkerPath as NSString)
 }
@@ -171,9 +179,9 @@ private func hotUpdaterGetMinBundleId() -> String {
             return override
         }
 
-        // Get fingerprint hash from programmatic override or Info.plist
+        // Get fingerprint hash from programmatic override or the build
         let fingerprintHash = HotUpdaterConfig.shared.fingerprintHash
-            ?? Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
+            ?? hotUpdaterBuildFingerprintHash
 
         // Get app version and channel
         let appVersion = self.appVersion ?? "unknown"
@@ -225,7 +233,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         if let override = HotUpdaterConfig.shared.fingerprintHash, !override.isEmpty {
             return override
         }
-        return Bundle.main.object(forInfoDictionaryKey: "HOT_UPDATER_FINGERPRINT_HASH") as? String
+        return hotUpdaterBuildFingerprintHash
     }
 
     // MARK: - Cohort Management

@@ -73,23 +73,15 @@ const REPAIRS: readonly {
   {
     // What `fingerprint create` writes, where it differs.
     repair: "fingerprint",
-    codes: [
-      "MISSING_FINGERPRINT_JSON",
-      "MISSING_FINGERPRINT_HASH",
-      "FINGERPRINT_HASH_MISMATCH",
-      "FINGERPRINT_JSON_STALE",
-    ],
-    writesNativeFiles: true,
+    codes: ["MISSING_FINGERPRINT_JSON", "FINGERPRINT_JSON_STALE"],
+    writesNativeFiles: false,
     run: async (_issues, context) => {
-      const { fingerprintJson, iosPaths, androidPaths } =
-        await syncFingerprintFiles(await context.fingerprints());
+      const { fingerprintJson } = await syncFingerprintFiles(
+        await context.fingerprints(),
+      );
       return {
-        wrote: [
-          ...(fingerprintJson ? ["fingerprint.json"] : []),
-          ...iosPaths,
-          ...androidPaths,
-        ],
-        native: iosPaths.length + androidPaths.length > 0,
+        wrote: fingerprintJson ? ["fingerprint.json"] : [],
+        native: false,
       };
     },
   },

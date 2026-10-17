@@ -1,7 +1,9 @@
 import { p } from "@hot-updater/cli-tools";
+import type { Platform } from "@hot-updater/plugin-core";
 
 import { warnIfExpoCNG } from "@/utils/expoDetection";
 import {
+  computeRecordedFingerprintHash,
   createAndInjectFingerprintFiles,
   describeFingerprintEngineChange,
   ensureFingerprintConfig,
@@ -38,14 +40,9 @@ export const handleCreateFingerprint = async () => {
     ios: FingerprintResult | null;
     android: FingerprintResult | null;
   } | null = null;
-  let result: {
-    fingerprint: {
-      android: FingerprintResult;
-      ios: FingerprintResult;
-    };
-    androidPaths: string[];
-    iosPaths: string[];
-  } | null = null;
+  let result: Awaited<
+    ReturnType<typeof createAndInjectFingerprintFiles>
+  > | null = null;
 
   const s = p.spinner();
   s.start("Creating fingerprint.json");
@@ -64,30 +61,8 @@ export const handleCreateFingerprint = async () => {
   }
 
   if (diffChanged && result) {
-    if (result.androidPaths.length > 0) {
-      p.log.message(
-        ui.block(
-          "Android paths",
-          result.androidPaths.map((targetPath) =>
-            ui.kv("Path", ui.path(targetPath)),
-          ),
-        ),
-      );
-    }
-
-    if (result.iosPaths.length > 0) {
-      p.log.message(
-        ui.block(
-          "iOS paths",
-          result.iosPaths.map((targetPath) =>
-            ui.kv("Path", ui.path(targetPath)),
-          ),
-        ),
-      );
-    }
-
     p.log.success(ui.line([ui.path("fingerprint.json"), "changed."]));
-    p.log.warn("Rebuild native app.");
+    p.log.warn("Rebuild the native app to embed the new fingerprint.");
 
     // Show what changed
     if (localFingerprint && result.fingerprint) {
@@ -122,5 +97,30 @@ export const handleCreateFingerprint = async () => {
     }
   } else {
     p.log.success(ui.line([ui.path("fingerprint.json"), "is up to date."]));
+  }
+};
+
+/**
+ * Prints the fingerprint a native build of `platform` embeds: the hash of the
+ * project's native interface, computed from the inputs fingerprint.json
+ * records, so it needs no deploy secrets. Native builds run it; CI can run it
+ * to see the fingerprint a build will have. Writes nothing.
+ */
+export const handleFingerprintHash = async ({
+  platform,
+}: {
+  platform: Platform;
+}) => {
+  try {
+    const { hash, recorded } = await computeRecordedFingerprintHash(platform);
+    if (recorded !== null && recorded !== hash) {
+      console.error(
+        `warning: fingerprint.json is stale for ${platform}: it records ${recorded} and the project now hashes to ${hash}. The build embeds ${hash}; run \`npx hot-updater fingerprint create\` before deploying.`,
+      );
+    }
+    console.log(hash);
+  } catch (error) {
+    console.error(error instanceof Error ? error.message : String(error));
+    process.exit(1);
   }
 };

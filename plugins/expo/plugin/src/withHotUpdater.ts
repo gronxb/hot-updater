@@ -179,22 +179,24 @@ const withHotUpdaterConfigAsync =
 
     let modifiedConfig = config;
 
-    // === iOS: Add channel and fingerprint to Info.plist ===
-    modifiedConfig = withInfoPlist(modifiedConfig, async (cfg) => {
-      let fingerprintHash = null;
+    // fingerprint.json, which the native build reads to embed each
+    // platform's fingerprint.
+    const writeFingerprintJson = async () => {
       const hotUpdaterConfig = await getHotUpdaterConfig();
       if (hotUpdaterConfig.updateStrategy !== "appVersion") {
-        const fingerprint = await getFingerprint(props.publicKeyPath);
-        fingerprintHash = fingerprint.ios.hash;
+        await getFingerprint(props.publicKeyPath);
       }
+    };
+
+    // === iOS: Add channel to Info.plist ===
+    modifiedConfig = withInfoPlist(modifiedConfig, async (cfg) => {
+      await writeFingerprintJson();
 
       // Load public key if signing is enabled
       const publicKey = await getPublicKey(cfg.modRequest.projectRoot);
 
       cfg.modResults.HOT_UPDATER_CHANNEL = channel;
-      if (fingerprintHash) {
-        cfg.modResults.HOT_UPDATER_FINGERPRINT_HASH = fingerprintHash;
-      }
+      delete cfg.modResults.HOT_UPDATER_FINGERPRINT_HASH;
       if (publicKey) {
         cfg.modResults.HOT_UPDATER_PUBLIC_KEY = publicKey;
       } else {
@@ -203,14 +205,9 @@ const withHotUpdaterConfigAsync =
       return cfg;
     });
 
-    // === Android: Add channel and fingerprint to AndroidManifest.xml ===
+    // === Android: Add channel to AndroidManifest.xml ===
     modifiedConfig = withAndroidManifest(modifiedConfig, async (cfg) => {
-      let fingerprintHash = null;
-      const hotUpdaterConfig = await getHotUpdaterConfig();
-      if (hotUpdaterConfig.updateStrategy !== "appVersion") {
-        const fingerprint = await getFingerprint(props.publicKeyPath);
-        fingerprintHash = fingerprint.android.hash;
-      }
+      await writeFingerprintJson();
 
       // Load public key if signing is enabled
       const publicKey = await getPublicKey(cfg.modRequest.projectRoot);
@@ -226,13 +223,10 @@ const withHotUpdaterConfigAsync =
         channel,
       );
 
-      if (fingerprintHash) {
-        upsertAndroidMetaData(
-          application,
-          ANDROID_META_DATA_KEYS.fingerprintHash,
-          fingerprintHash,
-        );
-      }
+      removeAndroidMetaData(
+        application,
+        ANDROID_META_DATA_KEYS.fingerprintHash,
+      );
 
       if (publicKey) {
         upsertAndroidMetaData(

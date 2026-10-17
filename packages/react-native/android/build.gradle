@@ -134,6 +134,7 @@ android {
 }
 
 apply from: "$projectDir/hot-updater-min-bundle-id.gradle"
+apply from: "$projectDir/hot-updater-fingerprint.gradle"
 
 repositories {
   mavenCentral()

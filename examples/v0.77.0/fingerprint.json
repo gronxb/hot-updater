@@ -71,5 +71,8 @@
         "hash": "ae5cda09ffb1bdb9be75d2b4d4008fb762b43a4bb4246bcddd8e6a7192916de3"
       }
     ]
+  },
+  "inputs": {
+    "adapter": "bare"
   }
 }

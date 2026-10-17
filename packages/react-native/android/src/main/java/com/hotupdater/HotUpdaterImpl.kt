@@ -177,22 +177,25 @@ class HotUpdaterImpl {
          * @param context Application context
          * @return The fingerprint hash or null if not set
          */
-        fun getFingerprintHash(context: Context): String? =
-            NativeConfigUtils.getString(
-                context,
-                NativeConfigUtils.FINGERPRINT_HASH_META_DATA_KEY,
-            )
+        fun getFingerprintHash(
+            @Suppress("UNUSED_PARAMETER") context: Context,
+        ): String? = resolveFingerprintHash()
+
+        /**
+         * The programmatic override (brownfield/AAR setups, see HotUpdaterConfig),
+         * else the fingerprint the build embedded, written by the
+         * generateHotUpdaterFingerprintHash build task.
+         */
+        private fun resolveFingerprintHash(): String? =
+            HotUpdaterConfig.fingerprintHash?.takeIf { it.isNotEmpty() }
+                ?: HotUpdaterBuildFingerprintHash.get().takeIf { it.isNotEmpty() }
     }
 
     /**
      * Gets the current fingerprint hash
      * @return The fingerprint hash or null if not set
      */
-    fun getFingerprintHash(): String? =
-        NativeConfigUtils.getString(
-            context,
-            NativeConfigUtils.FINGERPRINT_HASH_META_DATA_KEY,
-        )
+    fun getFingerprintHash(): String? = resolveFingerprintHash()
 
     /**
      * Gets the current update channel

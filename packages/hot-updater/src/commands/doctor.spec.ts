@@ -1480,7 +1480,7 @@ describe("doctor", () => {
     });
   });
 
-  it("requires fingerprint.json and native hashes for fingerprint strategy", async () => {
+  it("requires fingerprint.json for fingerprint strategy", async () => {
     const cwd = await createTempProject();
     tempProjects.push(cwd);
     mockGetCwd.mockReturnValue(cwd);
@@ -1533,25 +1533,21 @@ describe("doctor", () => {
     if (result !== true) {
       expect(result.success).toBe(false);
       expect(result.details?.native?.issues.map((issue) => issue.code)).toEqual(
-        [
-          "MISSING_FINGERPRINT_HASH",
-          "MISSING_FINGERPRINT_HASH",
-          "MISSING_FINGERPRINT_JSON",
-        ],
+        ["MISSING_FINGERPRINT_JSON"],
       );
       expect(
         result.details?.native?.issues.map((issue) => issue.resolution),
       ).toContain("Run `npx hot-updater fingerprint create`.");
       expect(
         result.details?.native?.issues.map((issue) => issue.fixability),
-      ).toEqual(["command", "command", "command"]);
+      ).toEqual(["command"]);
       expect(
         result.details?.native?.issues.flatMap((issue) => issue.commands ?? []),
       ).toEqual(expect.arrayContaining(["npx hot-updater fingerprint create"]));
     }
   });
 
-  it("requires fingerprint hashes in native files when fingerprint.json exists", async () => {
+  it("needs no fingerprint hash in native files, which the build embeds", async () => {
     const cwd = await createTempProject();
     tempProjects.push(cwd);
     mockGetCwd.mockReturnValue(cwd);
@@ -1607,13 +1603,12 @@ describe("doctor", () => {
 
     const result = await doctor();
 
-    expect(result).not.toBe(true);
-    if (result !== true) {
-      expect(result.success).toBe(false);
-      expect(result.details?.native?.issues.map((issue) => issue.code)).toEqual(
-        ["MISSING_FINGERPRINT_HASH", "MISSING_FINGERPRINT_HASH"],
-      );
-    }
+    const codes =
+      result === true
+        ? []
+        : (result.details?.native?.issues.map((issue) => issue.code) ?? []);
+    expect(codes).not.toContain("MISSING_FINGERPRINT_HASH");
+    expect(codes).not.toContain("FINGERPRINT_HASH_MISMATCH");
   });
 
   /** A React Native project with both platforms wired to Hot Updater. */
@@ -1729,33 +1724,6 @@ describe("doctor", () => {
     expect(result).toMatchObject({
       success: false,
       details: { native: { issues: [staleIos] } },
-    });
-  });
-
-  it("names the manifest key when the Android fingerprint hash differs from fingerprint.json", async () => {
-    const cwd = await setUpNativeProject("fingerprint");
-    await writeAndroidManifest(
-      cwd,
-      '    <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="stale-android-fingerprint" />',
-    );
-
-    const result = await doctor();
-
-    expect(result).toMatchObject({
-      success: false,
-      details: {
-        native: {
-          issues: [
-            {
-              platform: "android",
-              code: "FINGERPRINT_HASH_MISMATCH",
-              message:
-                "com.hotupdater.FINGERPRINT_HASH in AndroidManifest.xml does not match fingerprint.json.",
-              paths: ["android/app/src/main/AndroidManifest.xml"],
-            },
-          ],
-        },
-      },
     });
   });
 

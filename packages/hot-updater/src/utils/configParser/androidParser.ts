@@ -28,7 +28,6 @@ interface ManifestXml {
 /** The AndroidManifest meta-data names the native SDK reads. */
 const MANIFEST_KEYS = new Set([
   "com.hotupdater.CHANNEL",
-  "com.hotupdater.FINGERPRINT_HASH",
   "com.hotupdater.PUBLIC_KEY",
 ]);
 

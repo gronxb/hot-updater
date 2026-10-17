@@ -109,28 +109,18 @@ Before building for App Store, generate the fingerprint:
 npx hot-updater fingerprint create
 ```
 
-This creates a `fingerprint.json` file and embeds the hash in your native files:
-
-- iOS: `ios/YourApp/Info.plist`
-- Android: application metadata in
-  `android/app/src/main/AndroidManifest.xml`
-
-Example `fingerprint.json`:
-
-```json title="fingerprint.json"
-{
-  "ios": {
-    "hash": "11142b9062165fa48665f5efa095dd94e9e45eb0"
-  },
-  "android": {
-    "hash": "c763ed5729a0bcccf23248ee0183ddf9016c2e6e"
-  }
-}
-```
+This creates `fingerprint.json`: each platform's fingerprint, its sources,
+and the inputs it was computed from. Commit it. Every native build embeds the
+fingerprint itself: a Release build computes it from those inputs with
+`npx hot-updater fingerprint hash`, without loading `hot-updater.config.ts`,
+and a Debug build uses the hash `fingerprint.json` holds. When the project
+changed after `fingerprint create`, the build embeds the fingerprint of what
+it was built from and warns that `fingerprint.json` is stale.
 
 **Step 2: Build and Submit**
 
-Build your app with the embedded fingerprint and submit to the App Store.
+Build your app and submit it to the App Store. The build embeds its
+fingerprint.
 
 **Step 3: Deploy OTA Updates**
 
@@ -165,8 +155,8 @@ same:
 npx hot-updater fingerprint create
 ```
 
-After creating a new fingerprint, rebuild your app to embed it in the binary
-before deploying OTA updates.
+After creating a new fingerprint, ship a new build before deploying OTA
+updates for it.
 
 ## Client Setup
 
@@ -252,42 +242,15 @@ it.
 
 ## Advanced
 
-### Multiple App Targets
+### Non-standard Project Layout
 
-`fingerprint create` automatically handles standard React Native projects. Only configure custom paths if you have:
-
-- iOS app extensions (widgets, share extensions)
-- Multiple Android build variants
-- Non-standard project structure
-
-```typescript title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
-
-export default defineConfig({
-  updateStrategy: "fingerprint",
-  // [!code ++:15]
-  platform: {
-    ios: {
-      infoPlistPaths: [
-        "ios/YourApp/Info.plist",
-        "ios/YourAppWidget/Info.plist",
-        "ios/YourAppExtension/Info.plist",
-      ],
-    },
-    android: {
-      androidManifestPaths: [
-        "android/app/src/main/AndroidManifest.xml",
-        "android/app/src/debug/AndroidManifest.xml",
-      ],
-    },
-  },
-});
-```
-
-The Android hash is stored as `com.hotupdater.FINGERPRINT_HASH` application
-metadata.
-
-Most projects can use the default paths.
+The native build finds `fingerprint.json` in the app root: two levels above
+the `Pods` folder on iOS (`<app>/ios/Pods`) or the Swift Package Manager
+autolinking folder, and above the `android` folder on Android. If your native
+projects live elsewhere, as in a brownfield app, set the app root explicitly:
+`HOT_UPDATER_APP_ROOT` as an Xcode build setting or environment variable, and
+`HOT_UPDATER_APP_ROOT` as a Gradle property (for example in
+`android/gradle.properties`).
 
 ### Test a fingerprint update
 
