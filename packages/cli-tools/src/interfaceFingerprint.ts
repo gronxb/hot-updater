@@ -372,7 +372,9 @@ const toPosix = (filePath: string) => filePath.split(path.sep).join("/");
  * rule of its `filterJSFile`, so a fingerprint follows the specs codegen
  * compiles and nothing else in `jsSrcsDir`.
  */
-export const isCodegenSpecFile = (file: string, platform: Platform) => {
+export const isCodegenSpecFile = (original: string, platform: Platform) => {
+  // Codegen drops a `.fb` suffix before it reads the name.
+  const file = original.replace(/\.fb(\.|$)/, "$1");
   const name = path.basename(file);
   if (
     !/^(Native.+|.+NativeComponent)/.test(name) ||
@@ -586,8 +588,9 @@ export const createInterfaceFingerprint = async (
       // Expand a directory from the project root, so ignorePaths, which
       // are relative to it, apply to the files inside.
       const directory = toPosix(path.relative(cwd, match));
+      const prefix = directory.replace(/\/$/, "");
       const matches = match.endsWith("/")
-        ? await fg(`${directory.replace(/\/$/, "")}/**/*`, {
+        ? await fg(prefix ? `${prefix}/**/*` : "**/*", {
             cwd,
             absolute: true,
             dot: true,
