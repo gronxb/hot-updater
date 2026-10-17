@@ -1421,6 +1421,41 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(prepared.value.launchedBundleId == "widget-stable")
         #expect(epoch.isCurrent(prepared.epoch))
 
+        // The running launch's fatal lands after the selection, before its
+        // monitoring is replaced: still prepared again, and rolled back.
+        let replaced = try Scene()
+        defer { replaced.cleanUp() }
+        let replacedProcess = replaced.launch()
+        let replacedWidget = replaced.makeStorage(Self.widget)
+        var monitoringStarts = 0
+        let monitored = epoch.prepareCurrent(
+            prepare: { () -> LaunchSelection in
+                let pending = HotUpdaterCrashMarker.consume(at: replaced.markerURL(Self.widget))
+                return replacedWidget.prepareLaunch(bundle: namedTestBundle, pendingRecovery: pending)
+            },
+            startMonitoring: { selection -> Int in
+                if monitoringStarts == 0 {
+                    // The running launch's fatal, before monitoring replaces it.
+                    HotUpdaterCrashMarker.write(
+                        bundleId: "widget-next",
+                        shouldRollback: true,
+                        to: replaced.markerURL(Self.widget)
+                    )
+                    epoch.invalidate()
+                }
+                monitoringStarts += 1
+                return replacedProcess.coordinator.startMonitoring(
+                    name: Self.widget,
+                    bundleId: selection.launchedBundleId,
+                    shouldRollback: selection.shouldRollbackOnCrash
+                )
+            }
+        )
+        #expect(monitoringStarts == 2)
+        #expect(monitored.value.launchedBundleId == "widget-stable")
+        #expect(monitored.monitoring == replacedProcess.coordinator.generations()[Self.widget])
+        #expect(replacedProcess.coordinator.launch(named: Self.widget)?.bundleId == "widget-stable")
+
         // A rollback marked on every attempt: bounded, and left stale.
         let always = epoch.prepareCurrent(maxAttempts: 3) { () -> Int in
             epoch.invalidate()

@@ -1412,13 +1412,27 @@ final class HotUpdaterLaunchEpoch {
     /// handing out the failing bundle. After `maxAttempts`, the latest
     /// result, with the epoch it started at: the next request prepares again.
     func prepareCurrent<Value>(maxAttempts: Int = 3, _ prepare: () -> Value) -> (value: Value, epoch: Int) {
+        let prepared = prepareCurrent(maxAttempts: maxAttempts, prepare: prepare, startMonitoring: { _ in () })
+        return (prepared.value, prepared.epoch)
+    }
+
+    /// `prepareCurrent`, with the launch's monitoring started in each
+    /// attempt (which replaces the running launch's; a later attempt
+    /// replaces it again). The check comes after: until monitoring is
+    /// replaced, the running launch's fatal can still mark a rollback.
+    func prepareCurrent<Value, Monitoring>(
+        maxAttempts: Int = 3,
+        prepare: () -> Value,
+        startMonitoring: (Value) -> Monitoring
+    ) -> (value: Value, monitoring: Monitoring, epoch: Int) {
         var attempts = 0
         while true {
             let epoch = current
             let value = prepare()
+            let monitoring = startMonitoring(value)
             attempts += 1
             if isCurrent(epoch) || attempts >= maxAttempts {
-                return (value, epoch)
+                return (value, monitoring, epoch)
             }
         }
     }

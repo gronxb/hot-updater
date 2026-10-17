@@ -997,17 +997,24 @@ private func hotUpdaterGetMinBundleId() -> String {
         }
 
         // The epoch is read before the marker is consumed, and checked again
-        // after: a rollback marked meanwhile prepares again, consuming it.
-        let (selection, epoch) = launchEpoch.prepareCurrent {
-            let pendingRecovery = recoveryManager.consumePendingCrashRecovery()
-            return bundleStorage.prepareLaunch(bundle: bundle, pendingRecovery: pendingRecovery)
-        }
-        // Registered first, so another instance's fatal that stops every
-        // started launch also sees this one before it is marked started.
-        let generation = recoveryManager.startMonitoring(
-            bundleId: selection.launchedBundleId,
-            shouldRollback: selection.shouldRollbackOnCrash,
-            launchURL: selection.bundleURL
+        // once this launch's monitoring replaced the running one's, after
+        // which that launch can no longer mark a rollback: a rollback marked
+        // meanwhile prepares again, consuming it. Monitoring is registered
+        // before the foreground mark, so another instance's fatal that stops
+        // every started launch also sees this one; starting it again on a
+        // retry replaces it.
+        let (selection, generation, epoch) = launchEpoch.prepareCurrent(
+            prepare: {
+                let pendingRecovery = recoveryManager.consumePendingCrashRecovery()
+                return bundleStorage.prepareLaunch(bundle: bundle, pendingRecovery: pendingRecovery)
+            },
+            startMonitoring: { selection in
+                recoveryManager.startMonitoring(
+                    bundleId: selection.launchedBundleId,
+                    shouldRollback: selection.shouldRollbackOnCrash,
+                    launchURL: selection.bundleURL
+                )
+            }
         )
         // A named runtime may be warmed up without UI, so its launch starts
         // only once one of its views is shown (HotUpdaterRecoveryHub), and
