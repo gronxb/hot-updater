@@ -50,7 +50,8 @@ class HotUpdaterImpl {
     private var currentLaunchInvalidations = 0L
 
     // Serializes the launch's bundle selection with the update check's read
-    // of it, so a check never reads metadata the launch is still selecting from.
+    // of it, so a check never reads metadata the launch is still selecting from,
+    // and with a channel reset or built-in commit, which delete downloaded bundles.
     private val launchPreparationLock = Any()
 
     /**
@@ -432,7 +433,24 @@ class HotUpdaterImpl {
             selectionContextHash,
         )
 
-    suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean = bundleStorage.commitReleaseSelection(selection)
+    suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean {
+        if (selection.kind == "BUNDLE") return bundleStorage.commitReleaseSelection(selection)
+
+        // Committing the built-in bundle deletes every downloaded bundle, so it
+        // runs under the launch lock as a channel reset does: React Native never
+        // selects a bundle the commit is about to delete, and its next read picks
+        // the built-in bundle. The storage commit runs on another IO thread, so
+        // blocking this one cannot deadlock.
+        return withContext(Dispatchers.IO) {
+            synchronized(launchPreparationLock) {
+                val committed = runBlocking { bundleStorage.commitReleaseSelection(selection) }
+                if (committed) {
+                    currentLaunchSelection = null
+                }
+                committed
+            }
+        }
+    }
 
     fun getInstallId(): String = installIdentity.getInstallId()
 

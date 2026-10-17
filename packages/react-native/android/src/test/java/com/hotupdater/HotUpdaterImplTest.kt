@@ -3,12 +3,17 @@ package com.hotupdater
 import android.content.ContextWrapper
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicReference
+import kotlin.concurrent.thread
 
 class HotUpdaterImplTest {
     @get:Rule
@@ -173,6 +178,71 @@ class HotUpdaterImplTest {
         }
 
     @Test
+    fun `a built-in commit clears the next launch's selection and keeps the running bundle`() =
+        runBlocking {
+            val storage = CommitGatedStorage(committed = true)
+            val impl = allocateWithoutConstructor<HotUpdaterImpl>()
+            setField(impl, "bundleStorage", storage)
+            val launched =
+                LaunchSelection(
+                    bundleUrl = "file:///bundle-store/downloaded-bundle/index.android.bundle",
+                    launchedBundleId = "downloaded-bundle",
+                    shouldRollbackOnCrash = false,
+                )
+            setField(impl, "runningLaunchSelection", launched)
+            setCurrentLaunchSelection(impl, launched)
+
+            assertTrue(impl.commitReleaseSelection(selection("BUNDLE", "downloaded-bundle")))
+            assertEquals("downloaded-bundle", impl.getBundleId())
+
+            storage.committed = false
+            assertFalse(impl.commitReleaseSelection(selection("USE_BUILTIN", "built-in")))
+            assertEquals("downloaded-bundle", impl.getBundleId())
+
+            storage.committed = true
+            assertTrue(impl.commitReleaseSelection(selection("USE_BUILTIN", "built-in")))
+
+            // React Native's next read picks the built-in bundle; the running bundle stays until a reload.
+            assertNull(impl.getBundleId())
+            assertEquals("downloaded-bundle", impl.getRunningBundleId())
+            assertEquals("downloaded-bundle", impl.getBundleIdForUpdateCheck())
+        }
+
+    @Test
+    fun `a launch selection waits for a built-in commit and never picks a bundle it deletes`() {
+        val storage = CommitGatedStorage(committed = true, holdCommit = true)
+        val impl = allocateWithoutConstructor<HotUpdaterImpl>()
+        setField(impl, "bundleStorage", storage)
+        val commitResult = AtomicReference<Boolean>()
+        val commit =
+            thread {
+                commitResult.set(runBlocking { impl.commitReleaseSelection(selection("USE_BUILTIN", "built-in")) })
+            }
+        assertTrue(storage.commitEntered.await(5, TimeUnit.SECONDS))
+
+        val launchBundleId = AtomicReference<String?>("unset")
+        val launchSelected = CountDownLatch(1)
+        val launch =
+            thread {
+                launchBundleId.set(impl.getBundleIdForUpdateCheck())
+                launchSelected.countDown()
+            }
+
+        // getBundleIdForUpdateCheck reads the next launch's bundle under the launch
+        // lock getJSBundleFile selects under, and stands in for it here: the
+        // launch's recovery hooks don't run on the JVM.
+        assertFalse(launchSelected.await(300, TimeUnit.MILLISECONDS))
+
+        storage.releaseCommit.countDown()
+        commit.join(5_000)
+        launch.join(5_000)
+        assertEquals(true, commitResult.get())
+        assertTrue(launchSelected.await(0, TimeUnit.SECONDS))
+        // Selected after the commit, so it sees the built-in bundle, not the deleted download.
+        assertNull(launchBundleId.get())
+    }
+
+    @Test
     fun `notifyAppReady reads the report without completing the current launch`() {
         val storage = FakeBundleStorageService(bundleId = null)
         val impl = allocateWithoutConstructor<HotUpdaterImpl>()
@@ -208,6 +278,45 @@ class HotUpdaterImplTest {
         impl.setStorageItem("plugins/insights/queue", null)
         assertNull(impl.getStorageItem("plugins/insights/queue"))
     }
+
+    /**
+     * Storage whose launch picks a downloaded bundle until a built-in commit
+     * deletes it, and whose commit can be held open to race a launch against it.
+     */
+    private class CommitGatedStorage(
+        @Volatile var committed: Boolean,
+        private val holdCommit: Boolean = false,
+    ) : BundleStorageService by FakeBundleStorageService(bundleId = null) {
+        val commitEntered = CountDownLatch(1)
+        val releaseCommit = CountDownLatch(1)
+
+        @Volatile
+        private var downloadedBundleId: String? = "downloaded-bundle"
+
+        override fun peekLaunchBundleId(): String? = downloadedBundleId
+
+        override suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean {
+            commitEntered.countDown()
+            if (holdCommit) assertTrue(releaseCommit.await(5, TimeUnit.SECONDS))
+            if (committed && selection.kind != "BUNDLE") downloadedBundleId = null
+            return committed
+        }
+    }
+
+    private fun selection(
+        kind: String,
+        bundleId: String,
+    ) = PersistedSelection(
+        kind = kind,
+        releaseId = "release",
+        bundleId = bundleId,
+        catalogId = "catalog",
+        scopeKey = "scope",
+        generation = 1,
+        catalogHash = "hash",
+        channel = "production",
+        selectionContextHash = "context",
+    )
 
     private class MapPreferences : PreferencesService {
         private val values = mutableMapOf<String, String>()
