@@ -32,7 +32,7 @@ class HotUpdaterInstance internal constructor(
             if (environment.isMain) {
                 MainInstanceConfiguration.shared.claim(options)
             } else {
-                HotUpdaterInstanceRegistry.shared.register(environment)
+                HotUpdaterInstanceRegistry.shared.register(context, environment)
             }
             return HotUpdaterInstance(context, options, environment)
         }

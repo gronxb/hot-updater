@@ -576,7 +576,7 @@ struct HotUpdaterInstanceEnvironmentTests {
     // MARK: - Named instances' options
 
     @Test
-    func aNamedInstanceOfTheSameNameMustHaveTheSameOptions() throws {
+    func aNamedInstanceOfTheSameNameMustResolveToTheSameValues() throws {
         let first = try HotUpdaterInstanceEnvironment(name: "widget", bundle: namedTestBundle, channel: "beta")
 
         #expect(first.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
@@ -598,6 +598,38 @@ struct HotUpdaterInstanceEnvironmentTests {
         defer { try? FileManager.default.removeItem(at: other.bundleURL) }
         #expect(!first.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
             name: "widget", bundle: other, channel: "beta"
+        )))
+    }
+
+    @Test
+    func namedInstancesThatResolveToTheSameValuesShareTheName() throws {
+        let framework = try makeBundle(info: [
+            "HOT_UPDATER_CHANNEL": "beta",
+            "HOT_UPDATER_FINGERPRINT_HASH": "widget-hash",
+            "HOT_UPDATER_PUBLIC_KEY": "widget-key",
+        ])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+        let omitted = try HotUpdaterInstanceEnvironment(name: "widget", bundle: framework)
+
+        // The values its Info.plist embeds, passed explicitly, or empty.
+        #expect(omitted.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
+            name: "widget", bundle: framework, channel: "beta", fingerprintHash: "widget-hash", publicKey: "widget-key"
+        )))
+        #expect(try HotUpdaterInstanceEnvironment(name: "widget", bundle: framework, channel: "beta")
+            .hasSameConfiguration(omitted))
+        #expect(omitted.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
+            name: "widget", bundle: framework, channel: "", publicKey: ""
+        )))
+
+        // Another value still makes it another instance.
+        #expect(!omitted.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
+            name: "widget", bundle: framework, channel: "alpha"
+        )))
+        #expect(!omitted.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
+            name: "widget", bundle: framework, fingerprintHash: "other-hash"
+        )))
+        #expect(!omitted.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
+            name: "widget", bundle: framework, publicKey: "other-key"
         )))
     }
 

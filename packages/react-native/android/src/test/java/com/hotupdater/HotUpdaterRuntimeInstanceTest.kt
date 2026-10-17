@@ -96,7 +96,7 @@ class HotUpdaterRuntimeInstanceTest {
     @Test
     fun `a name without an impl never matches`() {
         val widget = environment("widget")
-        registry.register(widget)
+        registry.register(context, widget)
 
         assertEquals(
             MAIN,

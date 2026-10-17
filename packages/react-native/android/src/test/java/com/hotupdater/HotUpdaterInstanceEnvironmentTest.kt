@@ -541,9 +541,30 @@ class HotUpdaterInstanceEnvironmentTest {
         assertNotSame(first, registry.impl(context, environment("widget-2")))
         assertEquals(listOf("widget", "widget-2"), created)
 
-        assertThrows(IllegalArgumentException::class.java) { registry.register(environment("widget", channel = "production")) }
+        assertThrows(IllegalArgumentException::class.java) { registry.register(context, environment("widget", channel = "production")) }
         assertThrows(IllegalArgumentException::class.java) { registry.impl(context, environment("widget", publicKey = "other")) }
-        assertThrows(IllegalArgumentException::class.java) { registry.register(HotUpdaterInstanceEnvironment.main) }
+        assertThrows(IllegalArgumentException::class.java) { registry.register(context, HotUpdaterInstanceEnvironment.main) }
+    }
+
+    @Test
+    fun `a name compares the configuration its options resolve to`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        val registry = HotUpdaterInstanceRegistry { _, _ -> allocateImpl() }
+
+        // Without a manifest value, an omitted channel resolves to production,
+        // and an omitted or empty fingerprint hash or public key to none.
+        registry.register(context, environment("widget"))
+        registry.register(context, environment("widget", channel = "production"))
+        registry.register(context, environment("widget", channel = "production", fingerprintHash = "", publicKey = ""))
+        assertThrows(IllegalArgumentException::class.java) { registry.register(context, environment("widget", channel = "beta")) }
+        assertThrows(IllegalArgumentException::class.java) { registry.register(context, environment("widget", fingerprintHash = "fp")) }
+
+        // The same through HotUpdater.init.
+        fun resolved(channel: String?) =
+            HotUpdaterOptions(BASE_URL, name = "init-resolved", channel = channel, bundleAssetName = "init-resolved.android.bundle")
+        HotUpdater.init(context, resolved(channel = "production"))
+        HotUpdater.init(context, resolved(channel = null))
+        assertThrows(IllegalArgumentException::class.java) { HotUpdater.init(context, resolved(channel = "beta")) }
     }
 
     @Test

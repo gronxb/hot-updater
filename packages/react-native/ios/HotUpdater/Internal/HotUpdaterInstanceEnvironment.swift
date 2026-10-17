@@ -172,9 +172,15 @@ struct HotUpdaterInstanceEnvironment {
     }
 
     /// Whether `other` is the same named instance: one service, so a second
-    /// instance of a name must match the first, as on Android.
+    /// instance of a name must have the same bundle and resolve to the same
+    /// channel, fingerprint hash, and public key, from its options or its
+    /// bundle's Info.plist alike.
     func hasSameConfiguration(_ other: HotUpdaterInstanceEnvironment) -> Bool {
-        name == other.name && bundle == other.bundle && options == other.options
+        name == other.name
+            && bundle == other.bundle
+            && defaultChannel() == other.defaultChannel()
+            && fingerprintHash() == other.fingerprintHash()
+            && publicKey() == other.publicKey()
     }
 
     static func isValidName(_ name: String) -> Bool {

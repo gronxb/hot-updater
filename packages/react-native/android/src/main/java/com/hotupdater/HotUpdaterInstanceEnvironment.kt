@@ -178,12 +178,19 @@ internal class HotUpdaterInstanceEnvironment private constructor(
     val fallbackBundleURL: String
         get() = "assets://$bundleAssetName"
 
-    /** Whether [other] reads the same configuration, so both can share this name's state. */
-    fun hasSameConfiguration(other: HotUpdaterInstanceEnvironment): Boolean =
+    /**
+     * Whether [other] resolves to the same configuration, so both can share
+     * this name's state: an option left out and one that names the value the
+     * manifest or the default gives are the same.
+     */
+    fun hasSameConfiguration(
+        other: HotUpdaterInstanceEnvironment,
+        context: Context,
+    ): Boolean =
         name == other.name &&
-            channel == other.channel &&
-            fingerprintHash == other.fingerprintHash &&
-            publicKey == other.publicKey &&
+            defaultChannel(context) == other.defaultChannel(context) &&
+            fingerprintHash(context) == other.fingerprintHash(context) &&
+            publicKey(context) == other.publicKey(context) &&
             bundleAssetName == other.bundleAssetName
 
     private fun noBackupRoot(context: Context): File = File(NoBackupStorage.file(context, INSTANCES_NO_BACKUP_DIRECTORY), name)
@@ -217,10 +224,13 @@ internal class HotUpdaterInstanceRegistry(
      * @throws IllegalArgumentException when the name was registered with another
      */
     @Synchronized
-    fun register(environment: HotUpdaterInstanceEnvironment) {
+    fun register(
+        context: Context,
+        environment: HotUpdaterInstanceEnvironment,
+    ) {
         require(!environment.isMain) { "main's state belongs to HotUpdater.getInstance" }
         val registered = environments.getOrPut(environment.name) { environment }
-        require(registered.hasSameConfiguration(environment)) {
+        require(registered.hasSameConfiguration(environment, context)) {
             "HotUpdater instance \"${environment.name}\" was already created with another channel, " +
                 "fingerprintHash, publicKey, or bundleAssetName"
         }
@@ -231,7 +241,7 @@ internal class HotUpdaterInstanceRegistry(
         context: Context,
         environment: HotUpdaterInstanceEnvironment,
     ): HotUpdaterImpl {
-        register(environment)
+        register(context, environment)
         return impls.getOrPut(environment.name) { create(context, environment) }
     }
 
