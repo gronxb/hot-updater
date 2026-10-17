@@ -638,6 +638,12 @@ one of these statuses:
   the status is `pending`, and show the user what is happening.
 - **Other updates** download in the background. They run at the next start,
   or at this one if they finish before React Native reads the bundle.
+
+The check request itself is small, but every device that finds a new update
+downloads it. If React Native is not your native app's first screen, start it
+when the user first heads to a React Native screen, not at every launch, so
+users who never open one download nothing. `checkForUpdates` is also where the
+native app can turn the check off, for example from its own remote flag.
 - **Rollbacks** deployed from the console apply the same way as updates.
 - An update applies at this start only when `updateBundle` finishes before
   `bundleURL()` or `getJSBundleFile()` is read. One that finishes later
