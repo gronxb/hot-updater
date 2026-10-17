@@ -36,6 +36,20 @@ same native interface receives the same updates.
 The Expo build adapter uses `@expo/fingerprint` instead. See
 [Expo projects](#expo-projects).
 
+### How the Fingerprint Stays Stable
+
+- The engine is part of Hot Updater, not a dependency of your app.
+  `fingerprint.json` records it, such as `hot-updater/interface@1`, and a change
+  to what is hashed ships as a new engine. `doctor` and `deploy` report a hash
+  that changed with its engine as such, not as a native change.
+- The fingerprint hashes versions and interface files, never build outputs,
+  timestamps, or absolute paths, so every machine, package manager, and CI job
+  computes the same one.
+- Each native build computes the fingerprint it embeds, so a binary always
+  carries the fingerprint of what it was built from.
+- `deploy` lists the fingerprints the channel's recent releases target that an
+  update won't reach.
+
 ## Setup
 
 ### Enable the Fingerprint Strategy
@@ -110,28 +124,47 @@ Before building for App Store, generate the fingerprint:
 npx hot-updater fingerprint create
 ```
 
-This creates a `fingerprint.json` file and embeds the hash in your native files:
+This creates `fingerprint.json`: each platform's fingerprint, its sources,
+and the inputs it was computed from. Commit it. Every native build embeds the
+fingerprint itself: a Release build computes it from those inputs with
+`npx hot-updater fingerprint hash`, without loading `hot-updater.config.ts`,
+and a Debug build uses the hash `fingerprint.json` holds. Swift Package
+Manager builds always compute it, since a package build plugin can't tell
+Debug from Release. When the project
+changed after `fingerprint create`, the build embeds the fingerprint of what
+it was built from and warns that `fingerprint.json` is stale. The build embeds
+no fingerprint when the app root has no `fingerprint.json`, so delete it when
+you switch a project to App Version: an app with a fingerprint reports the
+fingerprint strategy. Under App Version, `doctor` reports a leftover
+`fingerprint.json` as `FINGERPRINT_JSON_UNUSED` and `doctor --fix` deletes it,
+`deploy` warns about it, and the Expo config plugin removes it at prebuild.
 
-- iOS: `ios/YourApp/Info.plist`
-- Android: application metadata in
-  `android/app/src/main/AndroidManifest.xml`
-
-Example `fingerprint.json`:
+Example `fingerprint.json` (sources shortened):
 
 ```json title="fingerprint.json"
 {
   "ios": {
-    "hash": "11142b9062165fa48665f5efa095dd94e9e45eb0"
+    "engine": "hot-updater/interface@1",
+    "hash": "af69cc634ddceb474dfd73469f46361be584787cd8046a186c24f9b393ba170b",
+    "sources": [
+      { "type": "contents", "id": "runtime", "contents": "react-native@0.85.2" },
+      { "type": "contents", "id": "dependency:react-native-screens", "contents": "react-native-screens@4.25.2" },
+      { "type": "file", "filePath": "src/specs/NativeDevice.ts" }
+    ]
   },
   "android": {
-    "hash": "c763ed5729a0bcccf23248ee0183ddf9016c2e6e"
-  }
+    "engine": "hot-updater/interface@1",
+    "hash": "fc624f1d33295f5024cb88e6ca9f2689c24e4eaa6e64b2f533098441b387f51e",
+    "sources": []
+  },
+  "inputs": { "adapter": "bare", "nativeVersion": 2 }
 }
 ```
 
 **Step 2: Build and Submit**
 
-Build your app with the embedded fingerprint and submit to the App Store.
+Build your app and submit it to the App Store. The build embeds its
+fingerprint.
 
 **Step 3: Deploy OTA Updates**
 
@@ -166,8 +199,8 @@ same:
 npx hot-updater fingerprint create
 ```
 
-After creating a new fingerprint, rebuild your app to embed it in the binary
-before deploying OTA updates.
+After creating a new fingerprint, ship a new build before deploying OTA
+updates for it.
 
 ## Client Setup
 
@@ -253,42 +286,22 @@ it.
 
 ## Advanced
 
-### Multiple App Targets
+### Non-standard Project Layout
 
-`fingerprint create` automatically handles standard React Native projects. Only configure custom paths if you have:
+The native build finds `fingerprint.json` in the app root: two levels above
+the `Pods` folder on iOS (`<app>/ios/Pods`) or the Swift Package Manager
+autolinking folder, and above the `android` folder on Android. If your native
+projects live elsewhere, as in a brownfield app, set the app root explicitly:
+`HOT_UPDATER_APP_ROOT` as an Xcode build setting or environment variable, and
+`HOT_UPDATER_APP_ROOT` as a Gradle property (for example in
+`android/gradle.properties`).
 
-- iOS app extensions (widgets, share extensions)
-- Multiple Android build variants
-- Non-standard project structure
-
-```typescript title="hot-updater.config.ts"
-import { defineConfig } from "hot-updater";
-
-export default defineConfig({
-  updateStrategy: "fingerprint",
-  // [!code ++:15]
-  platform: {
-    ios: {
-      infoPlistPaths: [
-        "ios/YourApp/Info.plist",
-        "ios/YourAppWidget/Info.plist",
-        "ios/YourAppExtension/Info.plist",
-      ],
-    },
-    android: {
-      androidManifestPaths: [
-        "android/app/src/main/AndroidManifest.xml",
-        "android/app/src/debug/AndroidManifest.xml",
-      ],
-    },
-  },
-});
-```
-
-The Android hash is stored as `com.hotupdater.FINGERPRINT_HASH` application
-metadata.
-
-Most projects can use the default paths.
+The build runs `npx hot-updater fingerprint hash` with Node. iOS finds it the
+way React Native's own script phases do, through `NODE_BINARY` in
+`ios/.xcode.env` or `ios/.xcode.env.local`. Android uses the
+`HOT_UPDATER_NODE_BINARY` Gradle property, then the `NODE_BINARY` environment
+variable, then `node` on `PATH`; set the property when Android Studio can't
+find Node.
 
 ### Test a fingerprint update
 

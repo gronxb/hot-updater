@@ -1,3 +1,8 @@
+import { existsSync } from "node:fs";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { isExpoCNG } from "../../utils/expoDetection";
@@ -60,47 +65,34 @@ describe("applyDoctorFixes", () => {
     vi.mocked(isProjectFileTracked).mockReturnValue(true);
   });
 
-  it("writes the run's fingerprint once for all its issues, names each file, and counts the native ones", async () => {
+  it("writes the run's fingerprint once for all its issues", async () => {
     vi.mocked(syncFingerprintFiles).mockResolvedValue({
       fingerprintJson: true,
-      iosPaths: [IOS_PLIST],
-      androidPaths: [],
     });
     const run = context();
 
     const fixes = await applyDoctorFixes(
-      issues(
-        "MISSING_FINGERPRINT_HASH",
-        "FINGERPRINT_HASH_MISMATCH",
-        "FINGERPRINT_JSON_STALE",
-      ),
+      issues("MISSING_FINGERPRINT_JSON", "FINGERPRINT_JSON_STALE"),
       run,
     );
 
     expect(fixes).toEqual([
       {
         repair: "fingerprint",
-        codes: [
-          "MISSING_FINGERPRINT_HASH",
-          "FINGERPRINT_HASH_MISMATCH",
-          "FINGERPRINT_JSON_STALE",
-        ],
+        codes: ["MISSING_FINGERPRINT_JSON", "FINGERPRINT_JSON_STALE"],
         status: "applied",
-        wrote: ["fingerprint.json", IOS_PLIST],
-        native: true,
+        wrote: ["fingerprint.json"],
+        native: false,
       },
     ]);
     expect(syncFingerprintFiles).toHaveBeenCalledOnce();
     expect(syncFingerprintFiles).toHaveBeenCalledWith(fingerprints);
     expect(run.fingerprints).toHaveBeenCalledOnce();
-    expect(fixesWroteNativeFiles(fixes)).toBe(true);
   });
 
   it("asks for no native rebuild when only fingerprint.json changed", async () => {
     vi.mocked(syncFingerprintFiles).mockResolvedValue({
       fingerprintJson: true,
-      iosPaths: [],
-      androidPaths: [],
     });
 
     const fixes = await applyDoctorFixes(
@@ -202,6 +194,30 @@ describe("applyDoctorFixes", () => {
     expect(syncFingerprintFiles).not.toHaveBeenCalled();
   });
 
+  it("deletes the fingerprint.json an appVersion project's builds would embed", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "hot-updater-fix-"));
+    await writeFile(path.join(cwd, "fingerprint.json"), "{}");
+    try {
+      const fixes = await applyDoctorFixes(issues("FINGERPRINT_JSON_UNUSED"), {
+        ...context(),
+        cwd,
+      });
+
+      expect(fixes).toEqual([
+        {
+          repair: "unused-fingerprint",
+          codes: ["FINGERPRINT_JSON_UNUSED"],
+          status: "applied",
+          wrote: ["fingerprint.json"],
+          native: true,
+        },
+      ]);
+      expect(existsSync(path.join(cwd, "fingerprint.json"))).toBe(false);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
+  });
+
   it("skips native-file repairs on an Expo project whose native folders prebuild generates, judged in the run's directory", async () => {
     vi.mocked(isExpoCNG).mockReturnValue(true);
     vi.mocked(isProjectFileTracked).mockReturnValue(false);
@@ -211,7 +227,7 @@ describe("applyDoctorFixes", () => {
 
     const fixes = await applyDoctorFixes(
       [
-        { code: "FINGERPRINT_JSON_STALE" },
+        { code: "MISSING_PUBLIC_KEY" },
         {
           code: "RELEASE_CATALOG_STALE",
           scopeKey: "v1:app-version:ios:cHJvZA",
@@ -227,27 +243,25 @@ describe("applyDoctorFixes", () => {
     });
     expect(fixes).toMatchObject([
       {
-        repair: "fingerprint",
+        repair: "public-key",
         status: "skipped",
         note: expect.stringContaining("expo prebuild"),
       },
       { repair: "release-catalogs", status: "applied", native: false },
     ]);
-    expect(syncFingerprintFiles).not.toHaveBeenCalled();
+    expect(writePublicKeyToNativeFiles).not.toHaveBeenCalled();
   });
 
-  it("repairs the native files of an Expo project that commits them", async () => {
+  it("repairs fingerprint.json in an Expo project, which writes no native file", async () => {
     vi.mocked(isExpoCNG).mockReturnValue(true);
     vi.mocked(syncFingerprintFiles).mockResolvedValue({
-      fingerprintJson: false,
-      iosPaths: [],
-      androidPaths: [ANDROID_MANIFEST],
+      fingerprintJson: true,
     });
 
     await expect(
-      applyDoctorFixes(issues("FINGERPRINT_HASH_MISMATCH"), context()),
+      applyDoctorFixes(issues("FINGERPRINT_JSON_STALE"), context()),
     ).resolves.toMatchObject([
-      { status: "applied", wrote: [ANDROID_MANIFEST], native: true },
+      { status: "applied", wrote: ["fingerprint.json"], native: false },
     ]);
   });
 

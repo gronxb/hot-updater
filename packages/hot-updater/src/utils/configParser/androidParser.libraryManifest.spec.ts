@@ -41,12 +41,12 @@ describe("AndroidConfigParser on a brownfield library manifest", () => {
       ).resolves.toEqual({
         paths: [path.relative(process.cwd(), manifestPath)],
       });
-      await parser.set("com.hotupdater.FINGERPRINT_HASH", "abc123");
+      await parser.set("com.hotupdater.PUBLIC_KEY", "abc123");
 
       expect((await parser.get("com.hotupdater.CHANNEL")).value).toBe(
         "production",
       );
-      expect((await parser.get("com.hotupdater.FINGERPRINT_HASH")).value).toBe(
+      expect((await parser.get("com.hotupdater.PUBLIC_KEY")).value).toBe(
         "abc123",
       );
       const xml = await readFile(manifestPath, "utf-8");

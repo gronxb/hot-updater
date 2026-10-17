@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import {
   describeFingerprintEngineChange,
   ensureFingerprintConfig,
@@ -113,3 +116,28 @@ export const checkFingerprintJson = async (
   }
   return issues;
 };
+
+/**
+ * FINGERPRINT_JSON_UNUSED when fingerprint.json is left in a project whose
+ * update strategy is not `fingerprint`: native builds embed its hash, and an
+ * app with a fingerprint hash reports the fingerprint strategy.
+ */
+export const checkUnusedFingerprintJson = (
+  cwd: string,
+  updateStrategy: string,
+): NativeCheckIssue[] =>
+  updateStrategy !== "fingerprint" &&
+  fs.existsSync(path.join(cwd, "fingerprint.json"))
+    ? [
+        {
+          type: "error",
+          platform: "project",
+          code: "FINGERPRINT_JSON_UNUSED",
+          message: `fingerprint.json exists, but updateStrategy is '${updateStrategy}'. Native builds embed its fingerprint hash, so the app reports the fingerprint strategy.`,
+          resolution:
+            "Delete fingerprint.json, then rebuild the app. To use the fingerprint strategy instead, set updateStrategy to 'fingerprint' in hot-updater.config.ts.",
+          fixability: "auto",
+          paths: ["fingerprint.json"],
+        },
+      ]
+    : [];

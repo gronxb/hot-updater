@@ -77,7 +77,7 @@ describe("iOS MIN_BUNDLE_ID generation", () => {
       "ios/Plugins/HotUpdaterMinBundleIdPlugin/HotUpdaterMinBundleIdPlugin.swift",
     );
 
-    expect(manifest).toContain('plugins: ["HotUpdaterMinBundleIdPlugin"]');
+    expect(manifest).toMatch(/plugins: \[[^\]]*"HotUpdaterMinBundleIdPlugin"/);
     expect(manifest).toContain(
       'path: "ios/Plugins/HotUpdaterMinBundleIdPlugin"',
     );

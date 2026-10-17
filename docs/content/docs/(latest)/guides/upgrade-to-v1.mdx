@@ -428,14 +428,14 @@ artifacts signed by the replacement key to that app population.
 Search native projects for `hot_updater_channel`,
 `hot_updater_fingerprint_hash` and `hot_updater_public_key` in `strings.xml`.
 v1 reads only `<meta-data>` inside the manifest's `<application>`:
-`com.hotupdater.CHANNEL`, `com.hotupdater.FINGERPRINT_HASH` and
-`com.hotupdater.PUBLIC_KEY`. Old string values are ignored, which can silently
+`com.hotupdater.CHANNEL` and `com.hotupdater.PUBLIC_KEY`; the native build
+embeds the fingerprint. Old string values are ignored, which can silently
 reset the channel to `production` or prevent signed updates from loading.
 
-For bare apps, run `hot-updater channel set <channel>`,
-`hot-updater fingerprint create` when using fingerprints, and
+For bare apps, run `hot-updater channel set <channel>`, and
 `hot-updater keys export-public --yes` when signing. These commands write the
-manifest entries. Expo prebuild writes them from the plugin configuration.
+manifest entries. When using fingerprints, run `hot-updater fingerprint create`
+and commit `fingerprint.json`, which the native build reads. Expo prebuild writes them from the plugin configuration.
 Remove the old strings and `platform.android.stringResourcePaths` from
 `hot-updater.config.ts`; check any build-flavor overrides as well.
 

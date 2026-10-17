@@ -1,0 +1,114 @@
+import fs from "node:fs/promises";
+import { createRequire } from "node:module";
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+
+import { getCwd } from "@hot-updater/cli-tools";
+import type {
+  NativeFingerprint,
+  NativeFingerprintOptions,
+  Platform,
+} from "@hot-updater/plugin-core";
+
+import type { FingerprintInputs } from "./common";
+import { nativeFingerprint } from "./nativeFingerprint";
+
+/**
+ * The official build adapters whose fingerprint a native build computes from
+ * fingerprint.json alone: the package and the export that computes it.
+ */
+const ADAPTER_FINGERPRINTS: Readonly<
+  Record<string, { readonly packageName: string; readonly exportName: string }>
+> = {
+  bare: { packageName: "@hot-updater/bare", exportName: "bareFingerprint" },
+  rock: { packageName: "@hot-updater/rock", exportName: "rockFingerprint" },
+};
+
+type AdapterFingerprint = (
+  cwd: string,
+  options: NativeFingerprintOptions,
+) => Promise<NativeFingerprint>;
+
+const loadAdapterFingerprint = async (
+  cwd: string,
+  { packageName, exportName }: (typeof ADAPTER_FINGERPRINTS)[string],
+): Promise<AdapterFingerprint> => {
+  const entry = createRequire(path.join(cwd, "package.json")).resolve(
+    packageName,
+  );
+  const module = (await import(pathToFileURL(entry).href)) as Record<
+    string,
+    unknown
+  > & { default?: Record<string, unknown> };
+  const fingerprint = module[exportName] ?? module.default?.[exportName];
+  if (typeof fingerprint !== "function") {
+    throw new Error(`${packageName} does not export ${exportName}.`);
+  }
+  return fingerprint as AdapterFingerprint;
+};
+
+/**
+ * The fingerprint a native build of `platform` embeds, computed from the
+ * inputs fingerprint.json records instead of hot-updater.config.ts, whose
+ * storage and database need deploy secrets a build machine may not have.
+ * `recorded` is the hash fingerprint.json holds for the platform.
+ */
+export const computeRecordedFingerprintHash = async (
+  platform: Platform,
+): Promise<{ hash: string; recorded: string | null }> => {
+  const cwd = getCwd();
+  let file: {
+    ios?: { hash?: string };
+    android?: { hash?: string };
+    inputs?: FingerprintInputs;
+  };
+  try {
+    file = JSON.parse(
+      await fs.readFile(path.join(cwd, "fingerprint.json"), "utf8"),
+    );
+  } catch {
+    throw new Error(
+      "fingerprint.json was not found. Run `npx hot-updater fingerprint create`.",
+    );
+  }
+  const recorded = file[platform]?.hash ?? null;
+  const embedRecorded = (reason: string) => {
+    if (recorded === null) {
+      throw new Error(
+        `fingerprint.json has no ${platform} fingerprint. Run \`npx hot-updater fingerprint create\`.`,
+      );
+    }
+    console.error(`warning: ${reason} The build embeds ${recorded}.`);
+    return { hash: recorded, recorded };
+  };
+
+  const inputs = file.inputs;
+  if (!inputs) {
+    return embedRecorded(
+      "fingerprint.json records no inputs to compute the fingerprint from. Run `npx hot-updater fingerprint create`.",
+    );
+  }
+  const options: NativeFingerprintOptions = {
+    platform,
+    ...(inputs.extraSources === undefined
+      ? {}
+      : { extraSources: inputs.extraSources }),
+    ...(inputs.ignorePaths === undefined
+      ? {}
+      : { ignorePaths: inputs.ignorePaths }),
+    ...(inputs.nativeVersion === undefined
+      ? {}
+      : { nativeVersion: inputs.nativeVersion }),
+  };
+  const adapter = ADAPTER_FINGERPRINTS[inputs.adapter];
+  if (adapter) {
+    const fingerprint = await loadAdapterFingerprint(cwd, adapter);
+    return { hash: (await fingerprint(cwd, options)).hash, recorded };
+  }
+  if (inputs.adapter === "expo") {
+    return { hash: (await nativeFingerprint(cwd, options)).hash, recorded };
+  }
+  return embedRecorded(
+    `The "${inputs.adapter}" build adapter's fingerprint needs hot-updater.config.ts.`,
+  );
+};

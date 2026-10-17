@@ -33,6 +33,16 @@ private func hotUpdaterAfterSurfaceStarts(_ action: @convention(block) @escaping
 @_silgen_name("HotUpdaterCopyMinBundleId")
 private func hotUpdaterCopyMinBundleIdSymbol() -> UnsafeMutableRawPointer
 
+@_silgen_name("HotUpdaterCopyBuildFingerprintHash")
+private func hotUpdaterCopyBuildFingerprintHashSymbol() -> UnsafeMutableRawPointer?
+
+/// The fingerprint this build embedded: the hash of the native interface it
+/// was built from, or nil for an app without one. Named apart from the
+/// generated `hotUpdaterBuildFingerprintHash()`, which SwiftPM compiles into
+/// this module.
+private let embeddedFingerprintHash: String? = hotUpdaterCopyBuildFingerprintHashSymbol()
+    .map { Unmanaged<NSString>.fromOpaque($0).takeRetainedValue() as String }
+
 private func hotUpdaterInstallSignalHandlers(_ crashMarkerPath: String) {
     hotUpdaterInstallSignalHandlersSymbol(crashMarkerPath as NSString)
 }
@@ -128,7 +138,12 @@ private func hotUpdaterGetMinBundleId() -> String {
             downloadService: downloadService,
             preferences: preferences,
             isolationKey: isolationKey,
-            builtInBundleIdProvider: { HotUpdaterImpl.minBundleId() }
+            builtInBundleIdProvider: { HotUpdaterImpl.minBundleId() },
+            updateStrategyProvider: {
+                let fingerprintHash = HotUpdaterConfig.shared.fingerprintHash
+                    ?? embeddedFingerprintHash
+                return (fingerprintHash?.isEmpty == false) ? .fingerprint : .appVersion
+            }
         )
         let recoveryManager = HotUpdaterRecoveryManager.shared
 
@@ -205,9 +220,9 @@ private func hotUpdaterGetMinBundleId() -> String {
             return override
         }
 
-        // Get fingerprint hash from programmatic override or Info.plist
+        // Get fingerprint hash from programmatic override or the build
         let fingerprintHash = HotUpdaterConfig.shared.fingerprintHash
-            ?? HotUpdaterConfig.shared.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
+            ?? embeddedFingerprintHash
 
         // Get app version and channel
         let appVersion = self.appVersion ?? "unknown"
@@ -258,7 +273,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         if let override = HotUpdaterConfig.shared.fingerprintHash, !override.isEmpty {
             return override
         }
-        return HotUpdaterConfig.shared.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
+        return embeddedFingerprintHash
     }
 
     // MARK: - Cohort Management

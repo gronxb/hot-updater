@@ -45,6 +45,16 @@ Pod::Spec.new do |s|
     :execution_position => :before_compile,
     :output_files => ["$(DERIVED_FILE_DIR)/HotUpdaterBuildMinBundleId.h"],
     :always_out_of_date => "1"
+  }, {
+    # Every build, before compiling, writes the fingerprint of the native
+    # interface the app builds with into the header
+    # HotUpdaterFingerprintHash.m includes.
+    :name => "[HotUpdater] Generate fingerprint",
+    :script => File.read(File.join(__dir__, "ios/scripts/generate-fingerprint-hash.zsh")),
+    :shell_path => "/bin/zsh",
+    :execution_position => :before_compile,
+    :output_files => ["$(DERIVED_FILE_DIR)/HotUpdaterBuildFingerprintHash.h"],
+    :always_out_of_date => "1"
   }]
 
   # Use install_modules_dependencies helper to install the dependencies if React Native version >=0.71.0.
