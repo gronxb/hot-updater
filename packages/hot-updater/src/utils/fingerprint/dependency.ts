@@ -62,7 +62,32 @@ export const isMissingExpoFingerprintError = (error: unknown) => {
   );
 };
 
+/**
+ * The `@expo/fingerprint` an Expo SDK pins (SDK 52 and later depend on it),
+ * so its hashes change only with an SDK upgrade, which needs a new build
+ * anyway. Null when the project has no `expo`.
+ */
+const resolveSdkExpoFingerprint = (projectRoot: string): string | null => {
+  let expo: string;
+  try {
+    expo = path.dirname(
+      require.resolve("expo/package.json", {
+        paths: [path.resolve(projectRoot)],
+      }),
+    );
+  } catch {
+    return null;
+  }
+  try {
+    return require.resolve(PACKAGE_NAME, { paths: [expo] });
+  } catch {
+    return null;
+  }
+};
+
 const resolveExpoFingerprint = (projectRoot: string): string => {
+  const sdkCopy = resolveSdkExpoFingerprint(projectRoot);
+  if (sdkCopy) return sdkCopy;
   try {
     return require.resolve(PACKAGE_NAME, {
       paths: [path.resolve(projectRoot)],

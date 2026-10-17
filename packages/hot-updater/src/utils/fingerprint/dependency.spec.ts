@@ -51,6 +51,7 @@ async function runWithFingerprint(
   source?: string,
   type = "commonjs",
   expression = 'JSON.stringify((await loadExpoFingerprint("./project")).SourceSkips)',
+  { expoSdkFingerprint }: { expoSdkFingerprint?: string } = {},
 ) {
   const root = await fs.mkdtemp(
     path.join(os.tmpdir(), "fingerprint-resolution-"),
@@ -77,6 +78,27 @@ async function runWithFingerprint(
       }),
     );
     await fs.writeFile(path.join(packageDir, "index.js"), contents);
+  }
+  if (expoSdkFingerprint) {
+    const expoDir = path.join(projectDir, "node_modules/expo");
+    const sdkCopy = path.join(expoDir, "node_modules/@expo/fingerprint");
+    await fs.mkdir(sdkCopy, { recursive: true });
+    await fs.writeFile(
+      path.join(expoDir, "package.json"),
+      JSON.stringify({ name: "expo", version: "52.0.0" }),
+    );
+    await fs.writeFile(
+      path.join(sdkCopy, "package.json"),
+      JSON.stringify({
+        name: "@expo/fingerprint",
+        version: expoSdkFingerprint,
+        main: "index.js",
+      }),
+    );
+    await fs.writeFile(
+      path.join(sdkCopy, "index.js"),
+      "exports.SourceSkips = {};",
+    );
   }
   const loader = await fs.readFile(
     new URL("./dependency.ts", import.meta.url),
@@ -128,6 +150,17 @@ describe("project-scoped fingerprint loader", () => {
     );
     expect(result.status, result.stderr).toBe(0);
     expect(JSON.parse(result.stdout)).toBe("@expo/fingerprint@0.20.14");
+  });
+
+  it("prefers the fingerprint package the project's Expo SDK pins", async () => {
+    const result = await runWithFingerprint(
+      'exports.SourceSkips = { ExpoConfigAll: "project" };',
+      "commonjs",
+      'JSON.stringify(await getExpoFingerprintEngine("./project"))',
+      { expoSdkFingerprint: "0.11.11" },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(result.stdout)).toBe("@expo/fingerprint@0.11.11");
   });
 
   it("reports a missing project package even when the CLI has its own copy", async () => {
