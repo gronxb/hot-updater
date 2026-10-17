@@ -1320,6 +1320,42 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `a crash of the running launch while the next one is prepared rolls the next one back`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        stagePending(context, widget, "widget-bundle")
+        val impl = HotUpdaterImpl(context, widget)
+        val running = impl.getJSBundleFile()
+        assertTrue(running.contains("widget-bundle"))
+        val storageField = HotUpdaterImpl::class.java.getDeclaredField("bundleStorage").apply { isAccessible = true }
+        val storage = storageField.get(impl) as BundleStorageService
+        var crashesWhilePrepared = true
+        storageField.set(
+            impl,
+            object : BundleStorageService by storage {
+                // The running launch's fatal error, after the next launch read the markers.
+                override fun prepareLaunch(pendingRecovery: PendingCrashRecovery?): LaunchSelection {
+                    if (crashesWhilePrepared) {
+                        crashesWhilePrepared = false
+                        HotUpdaterRecoveryManager.handleJavaScriptException(RuntimeException("widget failed"), widget.name)
+                    }
+                    return storage.prepareLaunch(pendingRecovery)
+                }
+
+                // The host asks for its bundle again, keeping the staged one.
+                override suspend fun resetChannel(): Boolean = true
+            },
+        )
+        assertTrue(runBlocking { impl.resetChannel() })
+
+        val next = impl.getJSBundleFile()
+
+        assertFalse(crashesWhilePrepared)
+        // The marker the crash wrote rolled the failing bundle back.
+        assertFalse(next.contains("widget-bundle"))
+        assertEquals(next, impl.getJSBundleFile())
+    }
+
+    @Test
     fun `a verified launch's slot stops asking before storage records the verification`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, widget, "widget-bundle")

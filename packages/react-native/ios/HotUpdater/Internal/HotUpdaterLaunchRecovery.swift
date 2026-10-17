@@ -1406,6 +1406,22 @@ final class HotUpdaterLaunchEpoch {
     func isCurrent(_ epoch: Int) -> Bool {
         current == epoch
     }
+
+    /// Runs `prepare` until no rollback was marked while it ran, so a marker
+    /// written during a preparation is consumed by the next one instead of
+    /// handing out the failing bundle. After `maxAttempts`, the latest
+    /// result, with the epoch it started at: the next request prepares again.
+    func prepareCurrent<Value>(maxAttempts: Int = 3, _ prepare: () -> Value) -> (value: Value, epoch: Int) {
+        var attempts = 0
+        while true {
+            let epoch = current
+            let value = prepare()
+            attempts += 1
+            if isCurrent(epoch) || attempts >= maxAttempts {
+                return (value, epoch)
+            }
+        }
+    }
 }
 
 /// The newest launch generation main-queue work was scheduled for. Work

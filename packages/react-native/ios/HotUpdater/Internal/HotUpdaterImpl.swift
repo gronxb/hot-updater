@@ -996,11 +996,12 @@ private func hotUpdaterGetMinBundleId() -> String {
             return currentLaunchSelection
         }
 
-        // Read before the marker is consumed: a rollback marked from here on
-        // invalidates this selection.
-        let epoch = launchEpoch.current
-        let pendingRecovery = recoveryManager.consumePendingCrashRecovery()
-        let selection = bundleStorage.prepareLaunch(bundle: bundle, pendingRecovery: pendingRecovery)
+        // The epoch is read before the marker is consumed, and checked again
+        // after: a rollback marked meanwhile prepares again, consuming it.
+        let (selection, epoch) = launchEpoch.prepareCurrent {
+            let pendingRecovery = recoveryManager.consumePendingCrashRecovery()
+            return bundleStorage.prepareLaunch(bundle: bundle, pendingRecovery: pendingRecovery)
+        }
         // Registered first, so another instance's fatal that stops every
         // started launch also sees this one before it is marked started.
         let generation = recoveryManager.startMonitoring(

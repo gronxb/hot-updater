@@ -134,6 +134,10 @@ class HotUpdaterImpl {
         private const val DEFAULT_CHANNEL = "production"
         private const val CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
 
+        // How many times one start prepares its launch while crashes of the
+        // running launch keep writing markers.
+        private const val MAX_LAUNCH_PREPARATIONS = 3
+
         /**
          * Create BundleStorageService with all dependencies
          */
@@ -570,9 +574,28 @@ class HotUpdaterImpl {
         }
 
     private fun prepareLaunchLocked(): LaunchSelection {
-        val invalidations = launchInvalidations.get()
+        var invalidations = launchInvalidations.get()
         currentLaunchSelection?.takeIf { currentLaunchInvalidations == invalidations }?.let { return it }
 
+        // The running launch's crash may write its marker while this one is
+        // prepared, after the marker was read: the selection would launch
+        // the failing bundle again. Its monitoring is replaced only once the
+        // new launch's starts, so the count is checked after that, and the
+        // launch prepared again, reading the marker, while it changed. A
+        // crash can't recur faster than a launch is prepared; should it, the
+        // latest selection goes, and the count it started from has the next
+        // start prepare again.
+        repeat(MAX_LAUNCH_PREPARATIONS - 1) {
+            val (selection, launch) = selectAndMonitorLaunchLocked()
+            val now = launchInvalidations.get()
+            if (now == invalidations) return publishLaunchLocked(selection, launch, invalidations)
+            invalidations = now
+        }
+        val (selection, launch) = selectAndMonitorLaunchLocked()
+        return publishLaunchLocked(selection, launch, invalidations)
+    }
+
+    private fun selectAndMonitorLaunchLocked(): Pair<LaunchSelection, Long> {
         val pendingRecovery = recoveryManager.consumePendingCrashRecovery()
         val selection = bundleStorage.prepareLaunch(pendingRecovery)
         val launch =
@@ -597,6 +620,14 @@ class HotUpdaterImpl {
                 launchURL = selection.bundleUrl,
                 onCharged = { launchInvalidations.incrementAndGet() },
             )
+        return selection to launch
+    }
+
+    private fun publishLaunchLocked(
+        selection: LaunchSelection,
+        launch: Long,
+        invalidations: Long,
+    ): LaunchSelection {
         // A headless JS task, such as a background push, loads the bundle without
         // an activity and never renders. Only a launch with an activity may leave
         // an unfinished launch for the next process to roll back. A named

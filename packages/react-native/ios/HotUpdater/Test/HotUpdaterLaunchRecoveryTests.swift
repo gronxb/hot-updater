@@ -1395,6 +1395,40 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(epoch.isCurrent(again))
     }
 
+    /// The widget's own fatal marks a rollback while its next launch is
+    /// being prepared, after the marker was read: the preparation runs
+    /// again, consumes the marker, and hands out the rolled-back bundle.
+    @Test
+    func aRollbackMarkedDuringPreparationIsPreparedAgainBeforeReturning() throws {
+        let scene = try Scene()
+        defer { scene.cleanUp() }
+        _ = scene.launch()
+        let widget = scene.makeStorage(Self.widget)
+        let epoch = HotUpdaterLaunchEpoch()
+        var attempts = 0
+        let prepared = epoch.prepareCurrent { () -> LaunchSelection in
+            attempts += 1
+            let pending = HotUpdaterCrashMarker.consume(at: scene.markerURL(Self.widget))
+            let selection = widget.prepareLaunch(bundle: namedTestBundle, pendingRecovery: pending)
+            if attempts == 1 {
+                // The fatal lands now: marker, then invalidation.
+                HotUpdaterCrashMarker.write(bundleId: "widget-next", shouldRollback: true, to: scene.markerURL(Self.widget))
+                epoch.invalidate()
+            }
+            return selection
+        }
+        #expect(attempts == 2)
+        #expect(prepared.value.launchedBundleId == "widget-stable")
+        #expect(epoch.isCurrent(prepared.epoch))
+
+        // A rollback marked on every attempt: bounded, and left stale.
+        let always = epoch.prepareCurrent(maxAttempts: 3) { () -> Int in
+            epoch.invalidate()
+            return 0
+        }
+        #expect(!epoch.isCurrent(always.epoch))
+    }
+
     @Test
     func onlyANamedLaunchThatWouldRollBackIsPreparedAgain() throws {
         let scene = try Scene()
