@@ -645,8 +645,16 @@ export const setStorageItem = (key: string, value: string | null): void => {
   HotUpdaterNative.setStorageItem(key, value);
 };
 
-/** Takes and clears the events of the native update checks, as JSON. */
+/**
+ * Takes and clears the events of the native update checks, as JSON. Native
+ * built from an earlier SDK has no `takeNativeUpdateEvents`, and an OTA can
+ * bring this JavaScript to such native code, which has no events to replay.
+ */
 export const takeNativeUpdateEvents = (): string | null => {
+  const native = HotUpdaterNative as { takeNativeUpdateEvents?: unknown };
+  if (typeof native.takeNativeUpdateEvents !== "function") {
+    return null;
+  }
   const value: unknown = HotUpdaterNative.takeNativeUpdateEvents();
   return typeof value === "string" ? value : null;
 };
