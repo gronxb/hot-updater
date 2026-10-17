@@ -63,14 +63,6 @@ class HotUpdater {
         }
 
         /**
-         * Reloads the React Native application using the default singleton instance
-         * @param context Context (preferably ReactApplicationContext)
-         */
-        suspend fun reload(context: Context) {
-            getInstance(context).reload(context)
-        }
-
-        /**
          * Gets the app version - delegates to HotUpdaterImpl static method
          * @param context Application context
          * @return App version name or null if not available
@@ -123,9 +115,8 @@ class HotUpdater {
         }
 
         /**
-         * Sets the ReactHost for brownfield apps (New Architecture).
-         * Sets the ReactHost for brownfield apps that don't have ReactApplication.
-         * When set, reload() will use this ReactHost instead of accessing Application.
+         * Registers the ReactHost a brownfield app runs without a ReactApplication
+         * (New Architecture).
          * @param reactHost The ReactHost instance
          */
         fun setReactHost(reactHost: ReactHost) {
