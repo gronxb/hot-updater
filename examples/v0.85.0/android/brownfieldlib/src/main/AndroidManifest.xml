@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <application>
-        <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="bfa2d8c965a823ae2666fcfaad0c33b3c5270bca"/>
+        <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="83947f3b21379a089248bc4da29aa5ffcb2c048f"/>
     </application>
 </manifest>
