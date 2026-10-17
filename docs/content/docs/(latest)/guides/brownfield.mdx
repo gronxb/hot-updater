@@ -133,7 +133,7 @@ public let ReactNativeBundle = Bundle(for: InternalClassForBundle.self)
 
 class InternalClassForBundle {}
 
-// The counterpart of `HotUpdater.init` in your JavaScript. // [!code ++:77]
+// The counterpart of `HotUpdater.init` in your JavaScript. // [!code ++:80]
 private let hotUpdater = try! HotUpdaterInstance( // A valid baseURL never throws.
   HotUpdaterOptions(
     baseURL: "https://updates.example.com/hot-updater",
@@ -160,7 +160,7 @@ public func startReactNativeWithHotUpdater(
 ) async -> ReactNativeUpdateStatus {
   if let reactNativeStart { return await reactNativeStart.value }
   let start = Task { @MainActor in
-    let status = checkForUpdates ? await checkForUpdate(timeout: timeout) : .skipped
+    let status = checkForUpdates ? await checkForUpdate(hotUpdater, timeout: timeout) : .skipped
     ReactNativeBrownfield.shared.bundle = ReactNativeBundle
     ReactNativeBrownfield.shared.bundleURLOverride = {
       #if DEBUG
@@ -178,7 +178,10 @@ public func startReactNativeWithHotUpdater(
 
 /// Checks for an update and waits up to `timeout` seconds for a required one.
 /// The timeout ends the wait, not the download.
-private func checkForUpdate(timeout: TimeInterval) async -> ReactNativeUpdateStatus {
+private func checkForUpdate(
+  _ hotUpdater: HotUpdaterInstance,
+  timeout: TimeInterval
+) async -> ReactNativeUpdateStatus {
   await withTaskGroup(of: ReactNativeUpdateStatus.self) { group in
     group.addTask {
       do {
@@ -429,7 +432,7 @@ object ReactNativeHostManager {
      * Checks for an update and waits up to [timeoutMillis] for a required
      * one. The timeout ends the wait, not the download.
      */
-    private suspend fun checkForUpdate(
+    internal suspend fun checkForUpdate(
         hotUpdater: HotUpdaterInstance,
         timeoutMillis: Long,
     ): String =
@@ -790,6 +793,269 @@ time. Rebuilding only the native app is fine.
    reopen the native app: the status is `pending`. Close and reopen it again:
    the status is `upToDate`, and the React Native screen shows the change.
 
+## Run more than one React Native app
+
+Some native apps host more than one React Native app, each in its own React
+Native runtime with its own JavaScript bundle, such as a main app and a widget
+that ships on its own schedule. Give each one its own `HotUpdaterInstance`
+with a `name`, and Hot Updater updates each one on its own. When one bundle
+shows all your React Native screens, you don't need this: one runtime can
+register several components.
+
+The steps below add a second app, `widget`, from the entry file
+`index.widget.js`. The
+[example app](https://github.com/gronxb/hot-updater/tree/main/examples/v0.85.0)
+runs this setup.
+
+### Name each instance
+
+`name` in `HotUpdaterOptions` keeps an instance's downloads, channel, stored
+values, and crash history apart from every other name's. It is 1 to 32 of
+`a-z`, `0-9`, and `-`; any other name throws. The default is `main`, the
+instance the steps above create. Each named instance needs:
+
+- **Its own embedded bundle.** Hot Updater finds a runtime's instance by the
+  bundle it runs, so a named instance can't share main's:
+  - iOS: a resource bundle in the framework, such as `Widget.bundle`, that
+    holds the `main.jsbundle` built from `index.widget.js` and an `Info.plist`.
+    Pass it as `bundle`. `Bundle.main` throws.
+  - Android: an asset of the library module with a name of its own, such as
+    `widget.android.bundle`, built from `index.widget.js`. Pass it as
+    `bundleAssetName`. `index.android.bundle` throws.
+
+  The example app builds them in the `Bundle widget React Native code` phase
+  of its [Xcode project](https://github.com/gronxb/hot-updater/blob/main/examples/v0.85.0/ios/HotUpdaterExample.xcodeproj/project.pbxproj)
+  and in its library module's
+  [build.gradle.kts](https://github.com/gronxb/hot-updater/blob/main/examples/v0.85.0/android/brownfieldlib/build.gradle.kts).
+- **Its own channel**, as `channel` in its `HotUpdaterOptions`. Without it, an
+  Android instance reads the merged manifest, which holds main's channel, and
+  `channel set` writes one channel to every `Info.plist` it updates.
+- **The app's fingerprint and public key.** Both bundles come from one React
+  Native project, so deploy computes the same fingerprint for both. A named
+  instance reads `fingerprintHash` and `publicKey` from its options, then, on
+  iOS, from its own bundle's `Info.plist` only, never the framework's or the
+  app's. `fingerprint create` and `keys export-public` must update that file
+  too, so list it in `infoPlistPaths` if you set them. On Android it reads the merged manifest, which already has them. Pass
+  another `publicKey` only if you sign that channel's deploys with another key.
+
+### Start each runtime
+
+Create the named instance, check it for an update with the start code's
+`checkForUpdate`, then start its runtime with its bundle. React Native
+Brownfield runs one runtime, so the second one starts without it. Start it
+once main's bundle has loaded: after main's first React Native screen
+appears, or from React Native Brownfield's `onBundleLoaded` callback
+(`OnJSBundleLoaded` on Android).
+
+<Tabs items={["iOS", "Android"]}>
+  <Tab value="iOS">
+
+```swift title="ios/BrownfieldLib/BrownfieldLib.swift (excerpt)"
+import UIKit
+internal import React
+internal import React_RCTAppDelegate
+internal import ReactAppDependencyProvider
+
+private let widget = try! HotUpdaterInstance(
+  HotUpdaterOptions(
+    baseURL: "https://updates.example.com/hot-updater",
+    requestHeaders: [:],
+    bundle: Bundle(url: ReactNativeBundle.url(forResource: "Widget", withExtension: "bundle")!)!,
+    name: "widget",
+    channel: "widget"
+  )
+)
+
+/// Starts the widget's runtime with the bundle its instance picks.
+private final class WidgetDelegate: RCTDefaultReactNativeFactoryDelegate {
+  override func sourceURL(for bridge: RCTBridge) -> URL? { bundleURL() }
+  override func bundleURL() -> URL? { widget.bundleURL() }
+}
+
+@MainActor private var widgetRuntime: (delegate: WidgetDelegate, factory: RCTReactNativeFactory)?
+
+/// The widget's React Native view. Call it after main's bundle has loaded.
+/// The first call checks for the widget's update, then starts its runtime.
+@MainActor
+public func makeWidgetView(checkForUpdates: Bool, timeout: TimeInterval = 3) async -> UIView {
+  if widgetRuntime == nil, checkForUpdates {
+    _ = await checkForUpdate(widget, timeout: timeout)
+  }
+  if widgetRuntime == nil { // Another call may have started it meanwhile.
+    let delegate = WidgetDelegate()
+    delegate.dependencyProvider = RCTAppDependencyProvider()
+    widgetRuntime = (delegate, RCTReactNativeFactory(delegate: delegate))
+  }
+  return widgetRuntime!.factory.rootViewFactory.view(
+    withModuleName: "Widget",
+    initialProperties: nil,
+    launchOptions: nil
+  )
+}
+```
+
+  </Tab>
+  <Tab value="Android">
+
+```kotlin title="android/brownfieldlib/src/main/java/com/brownfieldrn/WidgetHost.kt"
+package com.brownfieldrn
+
+import android.app.Application
+import com.facebook.react.PackageList
+import com.facebook.react.ReactHost
+import com.facebook.react.bridge.JSBundleLoader
+import com.facebook.react.common.annotations.UnstableReactNativeAPI
+import com.facebook.react.defaults.DefaultComponentsRegistry
+import com.facebook.react.defaults.DefaultReactHostDelegate
+import com.facebook.react.defaults.DefaultTurboModuleManagerDelegate
+import com.facebook.react.fabric.ComponentFactory
+import com.facebook.react.runtime.ReactHostImpl
+import com.facebook.react.runtime.hermes.HermesInstance
+import com.hotupdater.HotUpdater
+import com.hotupdater.HotUpdaterOptions
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+
+object WidgetHost {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var reactHost: ReactHost? = null
+
+    /**
+     * Checks for the widget's update, then creates its React host, once per
+     * process. Call it on the main thread after main's bundle has loaded.
+     */
+    fun start(
+        application: Application,
+        checkForUpdates: Boolean,
+        timeoutMillis: Long = 3_000,
+        onReady: (ReactHost) -> Unit,
+    ) {
+        reactHost?.let { return onReady(it) }
+        scope.launch {
+            val widget =
+                HotUpdater.init(
+                    application,
+                    HotUpdaterOptions(
+                        baseURL = "https://updates.example.com/hot-updater",
+                        requestHeaders = emptyMap(),
+                        name = "widget",
+                        channel = "widget",
+                        bundleAssetName = "widget.android.bundle",
+                    ),
+                )
+            if (checkForUpdates) ReactNativeHostManager.checkForUpdate(widget, timeoutMillis)
+            // Another call may have created it while this one checked.
+            val host = reactHost ?: createReactHost(application, widget.getJSBundleFile()).also { reactHost = it }
+            onReady(host)
+        }
+    }
+
+    /** React Native Brownfield keeps one host per process, so this one is built here. */
+    @OptIn(UnstableReactNativeAPI::class)
+    private fun createReactHost(
+        application: Application,
+        bundleFile: String,
+    ): ReactHost {
+        val bundleLoader =
+            if (bundleFile.startsWith("assets://")) {
+                JSBundleLoader.createAssetLoader(application, bundleFile, true)
+            } else {
+                JSBundleLoader.createFileLoader(bundleFile)
+            }
+        val delegate =
+            DefaultReactHostDelegate(
+                jsMainModulePath = "index.widget",
+                jsBundleLoader = bundleLoader,
+                reactPackages = PackageList(application).packages,
+                jsRuntimeFactory = HermesInstance(),
+                turboModuleManagerDelegateBuilder = DefaultTurboModuleManagerDelegate.Builder(),
+            )
+        val componentFactory = ComponentFactory()
+        DefaultComponentsRegistry.register(componentFactory)
+        return ReactHostImpl(application, delegate, componentFactory, false, false)
+    }
+}
+```
+
+Show the widget with `host.createSurface(activity, "Widget", null)`, then the
+surface's `start()` and `view`, and pass the activity's resume, pause, and
+destroy to the host, as the example's
+[HotUpdaterWidgetHost.kt](https://github.com/gronxb/hot-updater/blob/main/examples/v0.85.0/android/brownfieldlib/src/main/java/com/hotupdaterexample/brownfield/HotUpdaterWidgetHost.kt)
+does.
+
+  </Tab>
+</Tabs>
+
+- `checkForUpdate` is the start code's helper, which takes the instance to
+  check.
+- The widget's runtime always loads the bundle its instance picks, never
+  Metro, so embed its bundle in every build that shows it, Debug included. A
+  runtime served by Metro works with `main`'s state.
+
+### Keep JavaScript the same
+
+`index.widget.js` registers the component the native code shows, `Widget`
+above, and calls `HotUpdater.init` as usual, with no name. Each runtime has its
+own Hot Updater native module, which finds its instance from the bundle the
+runtime runs. So `getChannel()`, `getBundleId()`, and the native checks
+reported to that runtime's plugins are the widget's.
+
+### Deploy each app to its channel
+
+Each instance checks its own channel, so deploy each bundle to its channel.
+The CLI has no entry file option: choose the build's entry file from the
+channel in a config function.
+
+```ts title="hot-updater.config.ts (excerpt)"
+// options is { platform, channel }, or null for a command without a platform.
+export default defineConfig((options) => ({
+  build: bare({
+    enableHermes: true,
+    entryFile: options?.channel === "widget" ? "index.widget.js" : "index.js",
+  }),
+  storage, // created outside the function
+  database,
+  // ...
+}));
+```
+
+```bash
+npx hot-updater deploy -p ios -c widget
+npx hot-updater deploy -p android -c widget
+```
+
+Create `storage` and `database` once, outside the function, as
+[Deploy both platforms](/docs/guides/deploy#deploy-both-platforms) explains.
+
+### What each instance keeps apart
+
+- **Downloads and state.** Each name has its own downloaded bundles, channel,
+  stored values, and update checks. A channel reset or an update of one leaves
+  the others alone.
+- **Crash recovery.** A launch of an instance starts when one of its views
+  shows in the foreground, and is verified by its own first content. A runtime
+  started without showing a view is never charged.
+- **Crashes and rollbacks.** A JavaScript error that crashes one runtime is
+  charged only to its instance: that runtime stops, the app may end (on iOS it
+  can keep running the others), and only that instance rolls back, at its
+  next start. A native crash is charged to each instance whose launch has not
+  shown content yet. One instance's crash never rolls back another.
+
+### Limits
+
+- `hotUpdater.reload()` and `reloadProcess()` reject with `RELOAD_UNSUPPORTED`
+  in a named runtime. Its updates apply the next time its runtime starts,
+  which for a runtime kept for the whole process is the next app launch.
+- Instances with the same name share their state. Creating a second one that
+  resolves to other values throws, on iOS
+  `HotUpdater instance "widget" was already created with another bundle, channel, fingerprintHash, or publicKey`,
+  and on Android `... another channel, fingerprintHash, publicKey, or bundleAssetName`.
+  Create each instance once, as the code above does.
+- A name and its embedded bundle ship in the artifact. Adding one takes a new
+  artifact and a native app release.
+
 ## Troubleshooting
 
 | Symptom | Cause and fix |
@@ -803,6 +1069,8 @@ time. Rebuilding only the native app is fine.
 | The native app restarts at its first screen on Android | Something calls `hotUpdater.reload()`. Remove it; the update applies at the next launch. |
 | Downloaded updates disappear | The channel changed between launches, which deletes the downloaded bundles. Keep `channel` in `HotUpdaterOptions` or the embedded channel the same, and switch channels with `HotUpdaterCheckOptions`. A native app release with a new artifact also starts from the bundle it embeds. |
 | `HotUpdater instance "main" was already created with another channel` (or fingerprintHash, publicKey) | The instance was created after React Native read the bundle, or a second one passes a different value. Create it once, before React Native starts. |
+| "A named HotUpdater instance needs its own bundle" (or `bundleAssetName`) | A named instance passes `Bundle.main` on iOS or `index.android.bundle` on Android. Give it its own embedded bundle, as in [Name each instance](#name-each-instance). |
+| `hotUpdater.reload()` rejects with `RELOAD_UNSUPPORTED` | It runs in a named instance's runtime, which can't reload. The update applies the next time that runtime starts. |
 | "Feature flags cannot be overridden more than once" on Android | `loadReactNative` ran before `ReactNativeBrownfield.initialize`. Remove it, and pass the React host as a factory, `ReactNativeBrownfield.initialize(application) { getDefaultReactHost(...) }`, as the host manager above does. A host built before `initialize` fails with "SoLoader.init() not yet called". |
 | The AAR keeps showing JavaScript from an earlier package | The library module reused an earlier bundle. Delete `android/brownfieldlib/build` and package again. |
 | Packaging the AAR fails with "No namespace found in .../build.gradle" | React Native Brownfield reads each native module's `namespace` from the module's `build.gradle`. A module that declares its package only in `AndroidManifest.xml` cannot be packaged; ask its maintainer to add a `namespace`, or replace the module. |
@@ -811,8 +1079,8 @@ time. Rebuilding only the native app is fine.
 
 ## Native API
 
-A native app updates one React Native bundle. Create its instance with the
-same server and headers as the bundle's `HotUpdater.init`: the first
+Each `HotUpdaterInstance` updates one React Native bundle. Create it with the
+same server and headers as that bundle's `HotUpdater.init`: the first
 `HotUpdater.init` after the next launch reports the native checks to its
 plugins.
 
@@ -824,11 +1092,11 @@ JavaScript.
 
 | Platform | API | Use |
 | --- | --- | --- |
-| iOS | `HotUpdaterInstance(HotUpdaterOptions(baseURL:requestHeaders:requestTimeout:bundle:channel:fingerprintHash:publicKey:))` | The counterpart of JavaScript's `HotUpdater.init`; `bundle` holds the embedded `main.jsbundle` and the `HOT_UPDATER_*` keys, and `channel`, `fingerprintHash`, and `publicKey` replace those keys' values. Create it before React Native starts |
+| iOS | `HotUpdaterInstance(HotUpdaterOptions(baseURL:requestHeaders:requestTimeout:bundle:name:channel:fingerprintHash:publicKey:))` | The counterpart of JavaScript's `HotUpdater.init`; `bundle` holds the embedded `main.jsbundle` and the `HOT_UPDATER_*` keys, and `channel`, `fingerprintHash`, and `publicKey` replace those keys' values. `name` picks the instance, `main` by default: see [Run more than one React Native app](#run-more-than-one-react-native-app). Create it before React Native starts |
 | iOS | `hotUpdater.checkForUpdate(HotUpdaterCheckOptions(updateStrategy:channel:requestHeaders:requestTimeout:))`, `update.updateBundle(onProgress:)` | Checks and downloads, as JavaScript's `checkForUpdate` and `updateBundle` do |
 | iOS | `hotUpdater.bundleURL()` | Returns the bundle React Native starts with |
 | iOS | `hotUpdater.resetChannel()`, `getChannel()`, `getBundleId()`, `getFingerprintHash()` | As JavaScript's methods of the same names |
-| Android | `HotUpdater.init(context, HotUpdaterOptions(baseURL, requestHeaders, requestTimeoutMillis))` | The counterpart of JavaScript's `HotUpdater.init`; returns a `HotUpdaterInstance`. The named arguments `channel`, `fingerprintHash`, and `publicKey` replace the manifest's values. Call it before React Native starts |
+| Android | `HotUpdater.init(context, HotUpdaterOptions(baseURL, requestHeaders, requestTimeoutMillis))` | The counterpart of JavaScript's `HotUpdater.init`; returns a `HotUpdaterInstance`. The named arguments `channel`, `fingerprintHash`, and `publicKey` replace the manifest's values. `name` picks the instance, `main` by default, and a named instance's `bundleAssetName` is its embedded bundle: see [Run more than one React Native app](#run-more-than-one-react-native-app). Call it before React Native starts |
 | Android | `hotUpdater.checkForUpdate(HotUpdaterCheckOptions(updateStrategy, channel, requestHeaders, requestTimeoutMillis))`, `update.updateBundle(onProgress)` | Checks and downloads, as JavaScript's `checkForUpdate` and `updateBundle` do |
 | Android | `hotUpdater.getJSBundleFile()` | Returns the bundle path React Native starts with |
 | Android | `hotUpdater.resetChannel()`, `getChannel()`, `getBundleId()`, `getFingerprintHash()` | As JavaScript's methods of the same names |
