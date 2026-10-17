@@ -16,11 +16,22 @@ abstract class GenerateHotUpdaterFingerprintHashTask extends DefaultTask {
   @Input
   abstract Property<Boolean> getRecordedOnly()
 
+  @Input
+  abstract Property<String> getNodeBinary()
+
   @OutputDirectory
   abstract DirectoryProperty getOutputDirectory()
 
   private String run(List<String> command, File workingDirectory) {
-    def process = new ProcessBuilder(command).directory(workingDirectory).start()
+    def builder = new ProcessBuilder(command).directory(workingDirectory)
+    // Build adapters that spawn npm's tools, such as Rock's `npx rock config`,
+    // find them beside a node given by path.
+    def executable = new File(command[0])
+    if (executable.isAbsolute()) {
+      def environment = builder.environment()
+      environment.put("PATH", executable.parent + File.pathSeparator + (environment.get("PATH") ?: ""))
+    }
+    def process = builder.start()
     def stdout = new StringBuilder()
     def stderr = new StringBuilder()
     process.waitForProcessOutput(stdout, stderr)
@@ -40,8 +51,9 @@ abstract class GenerateHotUpdaterFingerprintHashTask extends DefaultTask {
       if (getRecordedOnly().get()) {
         fingerprintHash = new groovy.json.JsonSlurper().parse(fingerprintJson)?.android?.hash ?: ""
       } else {
+        def node = getNodeBinary().get()
         def cli = run([
-          "node",
+          node,
           "-e",
           '''
           const path = require("node:path");
@@ -51,7 +63,7 @@ abstract class GenerateHotUpdaterFingerprintHashTask extends DefaultTask {
           ''',
           appRoot.path,
         ], appRoot)
-        fingerprintHash = run(["node", cli, "fingerprint", "hash", "-p", "android"], appRoot)
+        fingerprintHash = run([node, cli, "fingerprint", "hash", "-p", "android"], appRoot)
       }
     }
 
@@ -74,10 +86,17 @@ final class HotUpdaterBuildFingerprintHash {
 def hotUpdaterAppRoot = providers.gradleProperty("HOT_UPDATER_APP_ROOT")
   .orElse(rootProject.projectDir.parentFile.absolutePath)
 
+// The node that runs the CLI: the HOT_UPDATER_NODE_BINARY Gradle property,
+// else NODE_BINARY, as iOS builds read from ios/.xcode.env, else node on PATH.
+def hotUpdaterNodeBinary = providers.gradleProperty("HOT_UPDATER_NODE_BINARY")
+  .orElse(providers.environmentVariable("NODE_BINARY"))
+  .orElse("node")
+
 def registerHotUpdaterFingerprintTask = { String variantName, String buildType ->
   tasks.register("generateHotUpdaterFingerprintHash${variantName.capitalize()}", GenerateHotUpdaterFingerprintHashTask) {
     appRoot.set(hotUpdaterAppRoot)
     recordedOnly.set(buildType == "debug")
+    nodeBinary.set(hotUpdaterNodeBinary)
     outputDirectory.set(layout.buildDirectory.dir("generated/source/hotUpdaterFingerprintHash/${variantName}"))
     outputs.upToDateWhen { false }
   }

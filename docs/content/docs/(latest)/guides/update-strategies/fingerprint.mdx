@@ -290,6 +290,13 @@ projects live elsewhere, as in a brownfield app, set the app root explicitly:
 `HOT_UPDATER_APP_ROOT` as a Gradle property (for example in
 `android/gradle.properties`).
 
+The build runs `npx hot-updater fingerprint hash` with Node. iOS finds it the
+way React Native's own script phases do, through `NODE_BINARY` in
+`ios/.xcode.env` or `ios/.xcode.env.local`. Android uses the
+`HOT_UPDATER_NODE_BINARY` Gradle property, then the `NODE_BINARY` environment
+variable, then `node` on `PATH`; set the property when Android Studio can't
+find Node.
+
 ### Test a fingerprint update
 
 Follow [Test an OTA update](/docs/get-started/test-ota) with a Release build.
