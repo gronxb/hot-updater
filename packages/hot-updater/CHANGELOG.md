@@ -1,5 +1,25 @@
 # hot-updater
 
+## 1.1.0
+
+### Patch Changes
+
+- 8276eca: Fix OTA updates in brownfield apps that ship React Native as an XCFramework or AAR.
+  - iOS: the bundle passed to `HotUpdater.bundleURL(bundle:)` now also serves reloads and crash recovery, so a rollback finds the XCFramework's embedded `main.jsbundle` and assets. Hot Updater reads `HOT_UPDATER_CHANNEL`, `HOT_UPDATER_FINGERPRINT_HASH` and `HOT_UPDATER_PUBLIC_KEY` from that bundle's `Info.plist` before the app's, and a runtime channel switch now outranks `HotUpdater.configure(channel:)`, as on Android.
+  - Android: the Brotli decoder compiles into the SDK instead of a bundled jar, which AAR packaging dropped, so downloading an update no longer crashes a brownfield app with `NoClassDefFoundError`.
+  - Android: a launch counts as able to show UI once a started activity shows a React Native view, not when any activity starts. A brownfield app that loads React Native with a native screen, and that the user closes without opening a React Native screen, keeps its update on the next start.
+  - CLI: `channel set`, `fingerprint create` and `keys export-public` write into an empty `<application />` element, such as a brownfield library module's manifest.
+
+- Updated dependencies [99d0356]
+  - @hot-updater/protocol@1.1.0
+  - @hot-updater/android-helper@1.1.0
+  - @hot-updater/cli-tools@1.1.0
+  - @hot-updater/console@1.1.0
+  - @hot-updater/server@1.1.0
+  - @hot-updater/plugin-core@1.1.0
+  - @hot-updater/apple-helper@1.1.0
+  - @hot-updater/bsdiff@1.1.0
+
 ## 1.0.8
 
 ### Patch Changes
