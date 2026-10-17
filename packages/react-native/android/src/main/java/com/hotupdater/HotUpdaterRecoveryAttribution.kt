@@ -276,6 +276,8 @@ internal class HotUpdaterRecoveryAttribution(
 
     /** Root views through the registered runtimes' UI managers. Main thread, as UI managers require. */
     private inner class UIManagerRuntimeRoots : HotUpdaterRuntimeRoots {
+        private val liveRootTags = HotUpdaterLiveRootTags()
+
         override fun runtimeOfRootTag(rootTag: Int): HotUpdaterRuntimeRoots.Runtime? {
             registeredRuntimes().forEach { runtime ->
                 if (RootViews.rootViewOf(RootViews.uiManagersOf(runtime), rootTag) != null) {
@@ -288,11 +290,18 @@ internal class HotUpdaterRecoveryAttribution(
         override fun runtimeURLsShownIn(activity: Activity): List<String?> {
             val runtimes = registeredRuntimes()
             if (runtimes.isEmpty()) return emptyList()
-            val rootTags = RootViews.candidateRootTags(RootViews.nextRootViewTag() ?: return emptyList())
+            val nextRootViewTag = RootViews.nextRootViewTag() ?: return emptyList()
+            val uiManagers = runtimes.associateWith { RootViews.uiManagersOf(it) }
+            val rootTags =
+                liveRootTags.liveTags(nextRootViewTag) { rootTag ->
+                    uiManagers.values.any { RootViews.rootViewOf(it, rootTag) != null }
+                }
             return runtimes
                 .filter { runtime ->
-                    val uiManagers = RootViews.uiManagersOf(runtime)
-                    rootTags.any { rootTag -> RootViews.rootViewOf(uiManagers, rootTag)?.let { isShownIn(it, activity) } == true }
+                    rootTags.any { rootTag ->
+                        RootViews.rootViewOf(uiManagers.getValue(runtime), rootTag)?.let { isShownIn(it, activity) } ==
+                            true
+                    }
                 }.map { runCatching { it.sourceURL }.getOrNull() }
         }
 
@@ -342,9 +351,6 @@ internal class HotUpdaterRecoveryAttribution(
                     ?.getInt(null)
             }.getOrNull()
 
-        fun candidateRootTags(nextRootViewTag: Int): List<Int> =
-            (ROOT_TAG_FIRST until nextRootViewTag step ROOT_TAG_STEP).toList().takeLast(MAX_ROOT_TAGS)
-
         /** The activity a view's context belongs to, through wrappers such as a dialog's theme. */
         fun ownerActivity(context: Context?): Activity? {
             var current = context
@@ -359,10 +365,48 @@ internal class HotUpdaterRecoveryAttribution(
             return null
         }
 
-        private const val ROOT_TAG_FIRST = 1
-        private const val ROOT_TAG_STEP = 10
-        private const val MAX_ROOT_TAGS = 64
         private const val MAX_CONTEXT_DEPTH = 16
+    }
+}
+
+/**
+ * The root tags whose root view a registered runtime holds, however many
+ * React Native handed out before them. React Native hands out root tags from
+ * one counter for every runtime and both renderers, from 1 in steps of 10,
+ * and lists no live roots: each tag handed out is looked at once it is, and
+ * the ones a runtime holds are kept until their root goes, which no age
+ * bounds. Tags no runtime held yet, such as main's (whose runtime isn't
+ * registered) or a runtime's that registers later, are looked at again only
+ * while they are among the latest [maxUnheld]: a dead tag is never live again.
+ */
+internal class HotUpdaterLiveRootTags(
+    private val maxUnheld: Int = 64,
+) {
+    private var nextUnseen = ROOT_TAG_FIRST
+    private val live = linkedSetOf<Int>()
+    private val unheld = ArrayDeque<Int>()
+
+    /** The live root tags, with [nextRootViewTag] React Native's counter; [isHeld] whether a runtime holds a tag's root. */
+    @Synchronized
+    fun liveTags(
+        nextRootViewTag: Int,
+        isHeld: (Int) -> Boolean,
+    ): List<Int> {
+        while (nextUnseen < nextRootViewTag) {
+            unheld.addLast(nextUnseen)
+            nextUnseen += ROOT_TAG_STEP
+        }
+        live.retainAll(isHeld)
+        val held = unheld.filter(isHeld)
+        unheld.removeAll(held.toSet())
+        live += held
+        while (unheld.size > maxUnheld) unheld.removeFirst()
+        return live.toList()
+    }
+
+    private companion object {
+        const val ROOT_TAG_FIRST = 1
+        const val ROOT_TAG_STEP = 10
     }
 }
 

@@ -145,13 +145,51 @@ class HotUpdaterRecoveryAttributionTest {
     }
 
     @Test
-    fun `root tags are every tag React Native handed out`() {
-        val roots = HotUpdaterRecoveryAttribution.RootViews
+    fun `the counter React Native hands root tags out from can be read`() {
+        assertNotNull(HotUpdaterRecoveryAttribution.RootViews.nextRootViewTag())
+    }
 
-        assertEquals(emptyList<Int>(), roots.candidateRootTags(1))
-        assertEquals(listOf(1, 11, 21), roots.candidateRootTags(31))
-        // The counter React Native keeps for every runtime can be read.
-        assertNotNull(roots.nextRootViewTag())
+    @Test
+    fun `a live root is found however many root tags were handed out before it was shown`() {
+        val tags = HotUpdaterLiveRootTags()
+        val held = mutableSetOf<Int>()
+        assertEquals(emptyList<Int>(), tags.liveTags(1) { it in held })
+
+        // A named runtime's root in a dialog, then 70 more roots of main's or gone.
+        held += 1
+        assertEquals(listOf(1), tags.liveTags(711) { it in held })
+        assertEquals(listOf(1), tags.liveTags(5_001) { it in held })
+
+        // Handed out long before the gate first looks: still found, as every tag is looked at once.
+        val late = HotUpdaterLiveRootTags()
+        assertEquals(listOf(1), late.liveTags(5_001) { it in held })
+
+        // A root that goes is forgotten; a newer live one is found.
+        held -= 1
+        held += 5_001
+        assertEquals(listOf(5_001), tags.liveTags(5_011) { it in held })
+    }
+
+    @Test
+    fun `root tags no runtime holds are looked at again only while recent`() {
+        val tags = HotUpdaterLiveRootTags(maxUnheld = 2)
+        val looked = mutableListOf<Int>()
+        tags.liveTags(41) {
+            looked += it
+            false
+        }
+        assertEquals(listOf(1, 11, 21, 31), looked)
+
+        // A runtime that registers after its root was handed out is found while the tag is recent.
+        looked.clear()
+        assertEquals(
+            listOf(31),
+            tags.liveTags(41) {
+                looked += it
+                it == 31
+            },
+        )
+        assertEquals(listOf(21, 31), looked)
     }
 
     @Test
