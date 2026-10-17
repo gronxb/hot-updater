@@ -101,6 +101,7 @@ const defaultScenarioNames = [
   "target-cohorts-rollout-interaction",
   "targeted-cohort-switchback",
   "force-update-auto-reload",
+  "force-update-in-process-reload",
   "skipped-force-update-propagates",
   "disabled-bundle-rollback-to-builtin",
   "disabled-bundle-rollback-to-previous-ota",
@@ -287,7 +288,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(33);
+    expect(new Set(listScenarioNames()).size).toBe(34);
   });
 
   it("keeps repeated catalog checks as no-ops while already built-in", async () => {

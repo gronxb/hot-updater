@@ -13,6 +13,7 @@ import { disabledBundleRollbackToPreviousOtaScenario } from "./scenarios/disable
 import { failedDownloadSameGenerationRetryScenario } from "./scenarios/failed-download-same-generation-retry.ts";
 import { fingerprintInitialInstallScenario } from "./scenarios/fingerprint-initial-install.ts";
 import { forceUpdateAutoReloadScenario } from "./scenarios/force-update-auto-reload.ts";
+import { forceUpdateInProcessReloadScenario } from "./scenarios/force-update-in-process-reload.ts";
 import { headlessLaunchKeepsStagedBundleScenario } from "./scenarios/headless-launch-keeps-staged-bundle.ts";
 import { interruptedLaunchRetriesBundleScenario } from "./scenarios/interrupted-launch-retries-bundle.ts";
 import { launchStatusAfterSessionInstallScenario } from "./scenarios/launch-status-after-session-install.ts";
@@ -58,6 +59,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   targetCohortsRolloutInteractionScenario,
   targetedCohortSwitchbackScenario,
   forceUpdateAutoReloadScenario,
+  forceUpdateInProcessReloadScenario,
   skippedForceUpdatePropagatesScenario,
   disabledBundleRollbackToBuiltinScenario,
   disabledBundleRollbackToPreviousOtaScenario,

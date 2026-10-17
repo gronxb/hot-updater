@@ -1,5 +1,6 @@
 package com.hotupdater
 
+import android.app.Activity
 import android.content.Context
 import android.util.Log
 import com.facebook.react.ReactApplication
@@ -7,6 +8,7 @@ import com.facebook.react.ReactHost
 import com.facebook.react.ReactInstanceEventListener
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContext
+import com.facebook.react.bridge.UiThreadUtil
 import com.facebook.react.common.LifecycleState
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
@@ -67,10 +69,35 @@ class ReactIntegrationManager(
             if (reactHost.lifecycleState != LifecycleState.RESUMED && activity != null) {
                 reactHost.onHostResume(activity)
             }
+            rearmContentAppearedAfterReload(reactHost, activity)
             reactHost.reload("Requested by HotUpdater")
         } catch (e: Exception) {
             Log.d("HotUpdater", "Failed to reload with ReactHost: ${e.message}")
         }
+    }
+
+    /**
+     * Lets the reloaded bundle log its first content (see [ContentAppearedLog]).
+     *
+     * The views are re-armed once the new instance exists: by then reload has
+     * stopped and cleared the old surfaces, so the old bundle cannot complete the
+     * new bundle's launch, and the new bundle has not mounted anything yet.
+     */
+    private fun rearmContentAppearedAfterReload(
+        reactHost: ReactHost,
+        activity: Activity?,
+    ) {
+        val listener =
+            object : ReactInstanceEventListener {
+                override fun onReactContextInitialized(context: ReactContext) {
+                    reactHost.removeReactInstanceEventListener(this)
+                    val rearm = { ContentAppearedLog.rearm(context.currentActivity ?: activity) }
+                    // ReactHostImpl calls this on the UI thread, before it restarts
+                    // the surfaces. Another host may not.
+                    if (UiThreadUtil.isOnUiThread()) rearm() else UiThreadUtil.runOnUiThread(rearm)
+                }
+            }
+        reactHost.addReactInstanceEventListener(listener)
     }
 
     private fun getReactApplication(): ReactApplication? {
