@@ -198,6 +198,11 @@ internal class HotUpdaterRecoveryAttribution(
         }
     }
 
+    /** Forgets [reactContext], whose runtime was torn down. */
+    fun unregisterRuntime(reactContext: ReactContext) {
+        synchronized(runtimes) { runtimes.removeAll { it.get().let { runtime -> runtime == null || runtime === reactContext } } }
+    }
+
     /**
      * The activities started now, as far as this process has seen: the ones
      * seen starting since [track], and any other known activity, such as a

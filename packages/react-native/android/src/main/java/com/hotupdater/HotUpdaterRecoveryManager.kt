@@ -1330,12 +1330,20 @@ internal class HotUpdaterRecoveryManager(
          * HotUpdater module is created, since the app exposes only main's
          * host, and follows its activity for its views. Main's runtime is
          * left alone: main hooks its host only while it monitors a launch, as
-         * it always has.
+         * it always has. Every runtime's root views, main's too, are found
+         * through its UI managers: main may show a view in a dialog, outside
+         * any activity's decor view, while a named launch waits for its
+         * content. That is a weak reference, which an app with only main
+         * never reads.
          */
         internal fun registerRuntime(reactContext: ReactContext): String? {
-            val instanceName = attribution.instanceOf(runCatching { reactContext.sourceURL }.getOrNull())
-            if (instanceName == null || !registersRuntime(instanceName)) return null
             attribution.registerRuntime(reactContext)
+            val instanceName = attribution.instanceOf(runCatching { reactContext.sourceURL }.getOrNull())
+            if (instanceName == null || !registersRuntime(instanceName)) {
+                // Content main's runtime showed before can be told now.
+                if (namedInstanceCreated) heldContent.runtimeRegistered()
+                return null
+            }
             try {
                 JavaScriptExceptionHooks.installForRuntime(reactContext)
             } catch (e: Exception) {
@@ -1369,6 +1377,19 @@ internal class HotUpdaterRecoveryManager(
             // Content its runtime showed before can be told now.
             if (registered) heldContent.runtimeRegistered()
             return registered
+        }
+
+        /**
+         * [reactContext] was torn down, as in a reload: its root views are no
+         * longer looked for, and the runtime of [instanceName], the named
+         * instance it was registered for, counts for its launch no more.
+         */
+        internal fun unregisterRuntime(
+            reactContext: ReactContext,
+            instanceName: String?,
+        ) {
+            attribution.unregisterRuntime(reactContext)
+            instanceName?.let { unregisterRuntime(it, reactContext) }
         }
 
         /** [instanceName]'s [runtime] was torn down, as in a reload. */

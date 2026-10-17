@@ -1356,6 +1356,31 @@ class InstanceRecoveryTest {
     }
 
     @Test
+    fun `main's runtime is registered for its root views while its errors are left alone`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        // Main's root in a dialog: no activity's decor view contains it.
+        val dialogRoot = android.view.View(context)
+        val mainRuntime =
+            TestReactContext(context, "${context.filesDir}/bundle-store/main-bundle/index.android.bundle") { tag ->
+                dialogRoot.takeIf {
+                    tag ==
+                        21
+                }
+            }
+
+        assertNull(HotUpdaterRecoveryManager.registerRuntime(mainRuntime))
+
+        assertEquals(HotUpdaterInstanceEnvironment.MAIN_NAME, HotUpdaterRecoveryAttribution.shared.instanceOfRootTag(21))
+        assertNull(HotUpdaterRecoveryAttribution.shared.instanceOfRootTag(31))
+        // Main's errors are left alone, as they always were.
+        assertNull(mainRuntime.jsExceptionHandler)
+
+        // Torn down: its views are looked for no more.
+        HotUpdaterRecoveryManager.unregisterRuntime(mainRuntime, null)
+        assertNull(HotUpdaterRecoveryAttribution.shared.instanceOfRootTag(21))
+    }
+
+    @Test
     fun `a verified launch's slot stops asking before storage records the verification`() {
         val context = InstanceTestContext(temporaryFolder.root)
         stagePending(context, widget, "widget-bundle")
