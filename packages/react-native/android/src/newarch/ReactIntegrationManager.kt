@@ -5,9 +5,11 @@ import android.util.Log
 import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactInstanceEventListener
+import com.facebook.react.ReactRootView
 import com.facebook.react.bridge.ReactApplicationContext
 import com.facebook.react.bridge.ReactContext
 import com.facebook.react.common.LifecycleState
+import com.facebook.react.interfaces.fabric.ReactSurface
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
@@ -67,11 +69,55 @@ class ReactIntegrationManager(
             if (reactHost.lifecycleState != LifecycleState.RESUMED && activity != null) {
                 reactHost.onHostResume(activity)
             }
+            rearmContentAppearedAfterReload(reactHost)
             reactHost.reload("Requested by HotUpdater")
         } catch (e: Exception) {
             Log.d("HotUpdater", "Failed to reload with ReactHost: ${e.message}")
         }
     }
+
+    /**
+     * Lets the reloaded bundle log its first content.
+     *
+     * ReactHost.reload() restarts the surfaces it already has instead of creating
+     * new ones, and only surface creation arms ReactRootView's CONTENT_APPEARED
+     * marker. Without it the reloaded launch is never verified, and the next cold
+     * start rolls it back as one that ended before its first content.
+     *
+     * The surfaces are armed once the new instance exists: by then reload has
+     * stopped and cleared them, so the old bundle cannot log content for the new
+     * one, and the new bundle has not mounted anything yet.
+     */
+    private fun rearmContentAppearedAfterReload(reactHost: ReactHost) {
+        val listener =
+            object : ReactInstanceEventListener {
+                override fun onReactContextInitialized(context: ReactContext) {
+                    reactHost.removeReactInstanceEventListener(this)
+                    attachedSurfaceViews(reactHost).forEach { view ->
+                        view.setShouldLogContentAppeared(true)
+                    }
+                }
+            }
+        reactHost.addReactInstanceEventListener(listener)
+    }
+
+    // ReactHostImpl keeps its surfaces in a private field: mAttachedSurfaces while
+    // it was Java, attachedSurfaces since it moved to Kotlin.
+    private fun attachedSurfaceViews(reactHost: ReactHost): List<ReactRootView> =
+        try {
+            val field =
+                HotUpdaterRecoveryManager.findField(reactHost::class.java, "attachedSurfaces")
+                    ?: HotUpdaterRecoveryManager.findField(reactHost::class.java, "mAttachedSurfaces")
+                    ?: throw NoSuchFieldException("attachedSurfaces")
+            field.isAccessible = true
+            val surfaces = field.get(reactHost) as Set<*>
+            synchronized(surfaces) {
+                surfaces.mapNotNull { (it as? ReactSurface)?.view as? ReactRootView }
+            }
+        } catch (e: Exception) {
+            Log.d("HotUpdater", "Failed to read ReactHost surfaces: ${e.message}")
+            emptyList()
+        }
 
     private fun getReactApplication(): ReactApplication? {
         if (context is ReactApplicationContext) {

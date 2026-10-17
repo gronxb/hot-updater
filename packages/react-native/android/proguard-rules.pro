@@ -11,6 +11,8 @@
 -keepclassmembers class com.facebook.react.runtime.ReactHostImpl {
     private final ** mReactHostDelegate;
     private final ** reactHostDelegate;
+    private final ** mAttachedSurfaces;
+    private final ** attachedSurfaces;
 }
 
 -keepclassmembers class * implements com.facebook.react.runtime.ReactHostDelegate {
