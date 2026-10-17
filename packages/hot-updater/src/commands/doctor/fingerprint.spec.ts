@@ -136,7 +136,7 @@ describe("checkFingerprintJson", () => {
       {
         type: "error",
         platform: "ios",
-        code: "FINGERPRINT_JSON_STALE",
+        code: "FINGERPRINT_ENGINE_CHANGED",
         message:
           "The iOS fingerprint changed because fingerprint.json was created with @expo/fingerprint@0.20.14 and the project now uses @expo/fingerprint@0.21.5. Native inputs may be unchanged.",
         resolution:
