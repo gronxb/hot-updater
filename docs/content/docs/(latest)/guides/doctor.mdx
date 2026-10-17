@@ -140,9 +140,11 @@ For fingerprint projects, doctor computes the project's fingerprint as
 `fingerprint create` does, which hashes the native inputs and can take a few
 seconds. When a platform's fingerprint differs from `fingerprint.json`, doctor
 reports `FINGERPRINT_JSON_STALE` and lists the sources that changed, in
-`changes` with `--json`. When it cannot compute the fingerprint, for example
-because `@expo/fingerprint` is not installed, it reports
-`FINGERPRINT_GENERATION_FAILED` with the reason.
+`changes` with `--json`. When the hash changed because the fingerprint engine
+changed rather than a native input, it says so instead. When it cannot compute
+the fingerprint, for example because an Expo project lacks
+`@expo/fingerprint`, it reports `FINGERPRINT_GENERATION_FAILED` with the
+reason.
 
 Fix missing or stale fingerprint settings with `fingerprint create`, or with
 `doctor --fix`, which runs the same repair:

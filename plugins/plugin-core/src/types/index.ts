@@ -16,8 +16,63 @@ export interface BuildAdapterConfig {
   outDir?: string;
 }
 
+/**
+ * One input of a native fingerprint, listed in fingerprint.json so doctor and
+ * deploy can show what changed. A build adapter's fingerprint returns these.
+ */
+export type NativeFingerprintSource =
+  | {
+      type: "file" | "dir";
+      filePath: string;
+      reasons: string[];
+      hash: string | null;
+      debugInfo?: unknown;
+    }
+  | {
+      type: "contents";
+      id: string;
+      contents: string | Uint8Array;
+      reasons: string[];
+      hash: string | null;
+      debugInfo?: unknown;
+    };
+
+/** What a build adapter's fingerprint computes for one platform. */
+export interface NativeFingerprint {
+  /**
+   * What computed `hash`, such as `hot-updater/interface@1`. fingerprint.json
+   * records it, so a hash that changes with its engine is reported as such.
+   */
+  engine?: string;
+  hash: string;
+  sources: NativeFingerprintSource[];
+}
+
+/** The `fingerprint` settings of hot-updater.config.ts, for one platform. */
+export interface NativeFingerprintOptions {
+  platform: Platform;
+  extraSources?: FingerprintExtraSources;
+  ignorePaths?: string[];
+  nativeVersion?: string | number;
+  debug?: boolean;
+}
+
+/**
+ * Computes the native fingerprint of a project for one platform. A build
+ * adapter implements it to fingerprint the native interface its framework
+ * exposes to JavaScript.
+ */
+export type NativeFingerprintProvider = (
+  options: NativeFingerprintOptions,
+) => Promise<NativeFingerprint>;
+
 export interface BuildAdapter {
   nativeBuild?: {
+    /**
+     * Fingerprints the native interface JavaScript depends on. Without it, the
+     * CLI fingerprints the project with `@expo/fingerprint`.
+     */
+    fingerprint?: NativeFingerprintProvider;
     /** Resolves the public key embedded by the native build configuration. */
     getBundleSigningPublicKey?: () => Promise<{
       readonly publicKey: string;
@@ -400,9 +455,19 @@ export type ConfigInput = {
      */
     extraSources?: FingerprintExtraSources;
     /**
-     * The paths to be ignored in the fingerprint.
+     * The paths to be ignored in the fingerprint. The bare and Rock adapters
+     * apply them to `extraSources`.
      */
     ignorePaths?: string[];
+    /**
+     * A version you change when JavaScript starts to depend on a native change
+     * the fingerprint can't see, such as a native module without a codegen
+     * spec, a new permission, or a manually linked library. Changing it
+     * changes the fingerprint.
+     *
+     * @example 2
+     */
+    nativeVersion?: string | number;
     /**
      * When debug mode is enabled, more detailed information will be exposed in fingerprint.json.
      */

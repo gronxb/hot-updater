@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   appendFingerprintExtraSources,
+  describeFingerprintEngineChange,
   getFingerprintEngineChange,
   getOtaFingerprintOptions,
 } from "./common";
@@ -98,5 +99,39 @@ describe("getFingerprintEngineChange", () => {
     expect(getFingerprintEngineChange(engine, engine)).toBeNull();
     expect(getFingerprintEngineChange({}, engine)).toBeNull();
     expect(getFingerprintEngineChange(null, engine)).toBeNull();
+  });
+
+  it("counts an unrecorded engine as @expo/fingerprint against another engine", () => {
+    expect(
+      getFingerprintEngineChange({}, { engine: "hot-updater/interface@1" }),
+    ).toEqual({
+      before: "@expo/fingerprint",
+      after: "hot-updater/interface@1",
+    });
+  });
+});
+
+describe("describeFingerprintEngineChange", () => {
+  it("suggests going back for another version of the same engine", () => {
+    expect(
+      describeFingerprintEngineChange(
+        {
+          before: "@expo/fingerprint@0.20.14",
+          after: "@expo/fingerprint@0.21.5",
+        },
+        "iOS",
+      ).resolution,
+    ).toContain("go back to @expo/fingerprint@0.20.14");
+  });
+
+  it("asks for a rebuild when the engine itself changed", () => {
+    expect(
+      describeFingerprintEngineChange(
+        { before: "@expo/fingerprint", after: "hot-updater/interface@1" },
+        "Android",
+      ).resolution,
+    ).toBe(
+      "Run `npx hot-updater fingerprint create`, then rebuild the Android app. Builds you already shipped keep the old fingerprint and receive no updates until users install the new build.",
+    );
   });
 });

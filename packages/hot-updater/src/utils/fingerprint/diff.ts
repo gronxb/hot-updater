@@ -1,12 +1,11 @@
 import { colors, getCwd, p } from "@hot-updater/cli-tools";
 
-import {
-  type FingerprintSource,
-  type FingerprintOptions,
-  type FingerprintResult,
-  getOtaFingerprintOptions,
+import type {
+  FingerprintSource,
+  FingerprintOptions,
+  FingerprintResult,
 } from "./common";
-import { type ExpoFingerprint, loadExpoFingerprint } from "./dependency";
+import { nativeFingerprint } from "./nativeFingerprint";
 
 export type FingerprintDiffItem =
   | {
@@ -23,20 +22,39 @@ export type FingerprintDiffItem =
       afterSource: FingerprintSource;
     };
 
+const sourceKey = (source: FingerprintSource) =>
+  source.type === "contents"
+    ? `contents:${source.id}`
+    : `${source.type}:${source.filePath}`;
+
+/**
+ * Compares a saved fingerprint with the project's fingerprint now, source by
+ * source, whichever engine computes it.
+ */
 export async function getFingerprintDiff(
   oldFingerprint: FingerprintResult,
   options: FingerprintOptions,
 ): Promise<FingerprintDiffItem[]> {
-  const projectPath = getCwd();
-  const { diffFingerprintChangesAsync } =
-    await loadExpoFingerprint(projectPath);
-  return await diffFingerprintChangesAsync(
-    oldFingerprint as Parameters<
-      ExpoFingerprint["diffFingerprintChangesAsync"]
-    >[0],
-    projectPath,
-    await getOtaFingerprintOptions(options.platform, projectPath, options),
+  const current = await nativeFingerprint(getCwd(), options);
+  const before = new Map(
+    oldFingerprint.sources.map((source) => [sourceKey(source), source]),
   );
+  const after = new Map(
+    current.sources.map((source) => [sourceKey(source), source]),
+  );
+  const diff: FingerprintDiffItem[] = [];
+  for (const [key, beforeSource] of before) {
+    const afterSource = after.get(key);
+    if (!afterSource) {
+      diff.push({ op: "removed", removedSource: beforeSource });
+    } else if (afterSource.hash !== beforeSource.hash) {
+      diff.push({ op: "changed", beforeSource, afterSource });
+    }
+  }
+  for (const [key, afterSource] of after) {
+    if (!before.has(key)) diff.push({ op: "added", addedSource: afterSource });
+  }
+  return diff;
 }
 
 function getSourcePath(source: FingerprintSource): string {

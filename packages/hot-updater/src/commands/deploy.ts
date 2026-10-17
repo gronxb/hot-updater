@@ -692,6 +692,7 @@ const deployPlatform = async ({
       config.fingerprint.extraSources,
       nativeFingerprintExtraSources,
     ),
+    provider: buildAdapter.nativeBuild?.fingerprint,
   };
 
   // Validate signing configuration and the native key pinned by the app.

@@ -7,34 +7,14 @@ import type { Platform } from "@hot-updater/plugin-core";
 import { getFingerprintHash, setFingerprintHash } from "../setFingerprintHash";
 import {
   ensureFingerprintConfig,
-  type FingerprintOptions,
   type FingerprintResult,
-  getOtaFingerprintOptions,
   isFingerprintEquals,
 } from "./common";
-import { getExpoFingerprintEngine, loadExpoFingerprint } from "./dependency";
+import { nativeFingerprint } from "./nativeFingerprint";
 
 export * from "./common";
 export * from "./diff";
-
-/**
- * Calculates the fingerprint of the native parts project of the project.
- */
-export async function nativeFingerprint(
-  path: string,
-  options: FingerprintOptions,
-): Promise<FingerprintResult> {
-  const platform = options.platform;
-  const [{ createFingerprintAsync }, engine] = await Promise.all([
-    loadExpoFingerprint(path),
-    getExpoFingerprintEngine(path),
-  ]);
-  const fingerprint = await createFingerprintAsync(
-    path,
-    await getOtaFingerprintOptions(platform, path, options),
-  );
-  return { engine, ...fingerprint };
-}
+export * from "./nativeFingerprint";
 
 export const generateFingerprints = async (
   additionalExtraSources?: readonly string[],
