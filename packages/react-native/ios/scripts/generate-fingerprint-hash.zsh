@@ -45,7 +45,15 @@ if [[ -n "$app_root" && -f "$app_root/fingerprint.json" ]]; then
   # npm's tools, such as Rock's `npx rock config`, find them beside node.
   export PATH="${node_binary:h}:$PATH"
 
-  if [[ "${CONFIGURATION:-}" == "Debug" ]]; then
+  # Only a CLI with `fingerprint hash` records `inputs`; with an older one
+  # the build embeds the recorded hash.
+  has_inputs=$("$node_binary" -e \
+    'console.log(require(process.argv[1]).inputs ? "yes" : "")' \
+    "$app_root/fingerprint.json")
+  if [[ "${CONFIGURATION:-}" == "Debug" || -z "$has_inputs" ]]; then
+    if [[ "${CONFIGURATION:-}" != "Debug" ]]; then
+      echo "warning: [HotUpdater] fingerprint.json records no inputs, so the build embeds the hash it holds. Run \`npx hot-updater fingerprint create\` with this version of hot-updater."
+    fi
     fingerprint_hash=$("$node_binary" -e \
       'console.log(require(process.argv[1]).ios?.hash ?? "")' \
       "$app_root/fingerprint.json")

@@ -34,6 +34,7 @@ const makeDirectory = () => {
  */
 const makeApp = ({
   withFingerprintJson = true,
+  withInputs = true,
   cliSource = "console.log(`computed:${process.argv.slice(2).join(' ')}`);",
 } = {}) => {
   const app = makeDirectory();
@@ -44,6 +45,7 @@ const makeApp = ({
       JSON.stringify({
         ios: { hash: "recorded-ios" },
         android: { hash: "recorded-android" },
+        ...(withInputs ? { inputs: { adapter: "bare" } } : {}),
       }),
     );
   }
@@ -191,6 +193,18 @@ describe("iOS fingerprint generation", () => {
     "embeds the recorded fingerprint in a Debug build",
     () => {
       expect(runScriptPhase(makeApp(), "Debug")).toBe("recorded-ios");
+    },
+  );
+
+  it.skipIf(!existsSync(zsh))(
+    "embeds the recorded fingerprint when a CLI without `fingerprint hash` wrote fingerprint.json",
+    () => {
+      expect(
+        runScriptPhase(
+          makeApp({ withInputs: false, cliSource: "process.exit(1);" }),
+          "Release",
+        ),
+      ).toBe("recorded-ios");
     },
   );
 

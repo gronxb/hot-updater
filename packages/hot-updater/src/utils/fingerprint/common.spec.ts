@@ -5,6 +5,7 @@ import {
   appendFingerprintExtraSources,
   describeFingerprintEngineChange,
   getFingerprintEngineChange,
+  getFingerprintInputs,
   getOtaFingerprintOptions,
 } from "./common";
 
@@ -167,5 +168,17 @@ describe("describeFingerprintEngineChange", () => {
     ).toBe(
       "fingerprint.json now records the @expo/fingerprint@0.21.5 hash. To keep updating iOS builds you already shipped, go back to @expo/fingerprint@0.20.14 and run `npx hot-updater fingerprint create` again, or restore the previous fingerprint.json. If the fingerprint still differs with it, native inputs changed too, and builds you shipped need a rebuild. Otherwise rebuild the iOS app.",
     );
+  });
+});
+
+describe("getFingerprintInputs", () => {
+  it("records the adapter whose fingerprint computed the hash", () => {
+    const provider = async () => ({ hash: "h", sources: [] });
+
+    expect(getFingerprintInputs({ adapter: "bare", provider }).adapter).toBe(
+      "bare",
+    );
+    // An adapter without a fingerprint is fingerprinted by @expo/fingerprint.
+    expect(getFingerprintInputs({ adapter: "bare" }).adapter).toBe("expo");
   });
 });

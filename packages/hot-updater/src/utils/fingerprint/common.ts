@@ -76,10 +76,12 @@ export interface FingerprintInputs {
 export const getFingerprintInputs = (
   options: Pick<
     FingerprintOptions,
-    "adapter" | "extraSources" | "ignorePaths" | "nativeVersion"
+    "adapter" | "provider" | "extraSources" | "ignorePaths" | "nativeVersion"
   >,
 ): FingerprintInputs => ({
-  adapter: options.adapter ?? "unknown",
+  // An adapter without its own fingerprint is fingerprinted by
+  // `@expo/fingerprint`, which the native build computes as for Expo.
+  adapter: options.provider ? (options.adapter ?? "unknown") : "expo",
   ...(options.extraSources === undefined
     ? {}
     : { extraSources: options.extraSources }),

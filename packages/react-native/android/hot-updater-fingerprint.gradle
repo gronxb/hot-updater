@@ -49,8 +49,14 @@ abstract class GenerateHotUpdaterFingerprintHashTask extends DefaultTask {
     def fingerprintJson = new File(appRoot, "fingerprint.json")
     def fingerprintHash = ""
     if (fingerprintJson.isFile()) {
-      if (getRecordedOnly().get()) {
-        fingerprintHash = new groovy.json.JsonSlurper().parse(fingerprintJson)?.android?.hash ?: ""
+      def recorded = new groovy.json.JsonSlurper().parse(fingerprintJson)
+      // Only a CLI with `fingerprint hash` records `inputs`; with an older one
+      // the build embeds the recorded hash.
+      if (getRecordedOnly().get() || recorded?.inputs == null) {
+        if (!getRecordedOnly().get()) {
+          logger.warn("[HotUpdater] fingerprint.json records no inputs, so the build embeds the hash it holds. Run `npx hot-updater fingerprint create` with this version of hot-updater.")
+        }
+        fingerprintHash = recorded?.android?.hash ?: ""
       } else {
         def node = getNodeBinary().get()
         def cli = run([

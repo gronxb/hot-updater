@@ -11,6 +11,7 @@ Native builds embed their own fingerprint. A build step in the HotUpdater pod (o
 - `fingerprint.json` records the inputs each fingerprint came from: the build adapter and its fingerprint settings.
 - A Release build runs the new `npx hot-updater fingerprint hash -p <platform>`. It computes the fingerprint from those inputs without loading `hot-updater.config.ts`, so build machines need no deploy secrets.
 - A Debug build uses the hash `fingerprint.json` holds.
+- A `fingerprint.json` without `inputs`, written by an earlier `hot-updater`, is embedded as recorded with a warning, as is one whose build adapter is installed in a version without the new fingerprint export, so upgrading the React Native package alone doesn't break release builds.
 - When the project changed after `fingerprint create`, the build still embeds the fingerprint it was built from and warns that `fingerprint.json` is stale.
 - An app without `fingerprint.json` builds with no fingerprint, as the appVersion strategy expects. Under appVersion, `doctor` reports a leftover `fingerprint.json` as `FINGERPRINT_JSON_UNUSED` (`doctor --fix` deletes it), `deploy` warns about it, and the Expo config plugin removes it at prebuild.
 - Swift Package Manager builds always compute the fingerprint, since a package build plugin can't tell Debug from Release.

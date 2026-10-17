@@ -87,6 +87,26 @@ describe("computeRecordedFingerprintHash", () => {
     );
   });
 
+  it("embeds the recorded hash with a warning for an adapter version without the export", async () => {
+    await fs.writeFile(
+      path.join(project, "node_modules/@hot-updater/bare/index.js"),
+      "exports.bare = () => ({});",
+    );
+    await writeFingerprintJson({
+      ios: { hash: "recorded-ios", sources: [] },
+      android: { hash: "recorded-android", sources: [] },
+      inputs: { adapter: "bare" },
+    });
+
+    await expect(computeRecordedFingerprintHash("ios")).resolves.toEqual({
+      hash: "recorded-ios",
+      recorded: "recorded-ios",
+    });
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("does not export bareFingerprint"),
+    );
+  });
+
   it("fails without fingerprint.json", async () => {
     await expect(computeRecordedFingerprintHash("ios")).rejects.toThrow(
       "fingerprint.json was not found",

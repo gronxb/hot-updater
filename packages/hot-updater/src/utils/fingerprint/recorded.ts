@@ -32,7 +32,7 @@ type AdapterFingerprint = (
 const loadAdapterFingerprint = async (
   cwd: string,
   { packageName, exportName }: (typeof ADAPTER_FINGERPRINTS)[string],
-): Promise<AdapterFingerprint> => {
+): Promise<AdapterFingerprint | null> => {
   const entry = createRequire(path.join(cwd, "package.json")).resolve(
     packageName,
   );
@@ -41,10 +41,9 @@ const loadAdapterFingerprint = async (
     unknown
   > & { default?: Record<string, unknown> };
   const fingerprint = module[exportName] ?? module.default?.[exportName];
-  if (typeof fingerprint !== "function") {
-    throw new Error(`${packageName} does not export ${exportName}.`);
-  }
-  return fingerprint as AdapterFingerprint;
+  return typeof fingerprint === "function"
+    ? (fingerprint as AdapterFingerprint)
+    : null;
 };
 
 /**
@@ -103,6 +102,11 @@ export const computeRecordedFingerprintHash = async (
   const adapter = ADAPTER_FINGERPRINTS[inputs.adapter];
   if (adapter) {
     const fingerprint = await loadAdapterFingerprint(cwd, adapter);
+    if (!fingerprint) {
+      return embedRecorded(
+        `The installed ${adapter.packageName} does not export ${adapter.exportName}; update it to compute the fingerprint at build time.`,
+      );
+    }
     return { hash: (await fingerprint(cwd, options)).hash, recorded };
   }
   if (inputs.adapter === "expo") {
