@@ -113,6 +113,9 @@ class HotUpdaterImpl {
                 downloadService,
                 preferences,
                 isolationKey,
+                updateStrategyProvider = {
+                    if (getFingerprintHash(appContext).isNullOrEmpty()) "appVersion" else "fingerprint"
+                },
             )
         }
 

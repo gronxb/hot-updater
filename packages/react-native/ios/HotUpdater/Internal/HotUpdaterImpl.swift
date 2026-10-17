@@ -37,8 +37,10 @@ private func hotUpdaterCopyMinBundleIdSymbol() -> UnsafeMutableRawPointer
 private func hotUpdaterCopyBuildFingerprintHashSymbol() -> UnsafeMutableRawPointer?
 
 /// The fingerprint this build embedded: the hash of the native interface it
-/// was built from, or nil for an app without one.
-let hotUpdaterBuildFingerprintHash: String? = hotUpdaterCopyBuildFingerprintHashSymbol()
+/// was built from, or nil for an app without one. Named apart from the
+/// generated `hotUpdaterBuildFingerprintHash()`, which SwiftPM compiles into
+/// this module.
+private let embeddedFingerprintHash: String? = hotUpdaterCopyBuildFingerprintHashSymbol()
     .map { Unmanaged<NSString>.fromOpaque($0).takeRetainedValue() as String }
 
 private func hotUpdaterInstallSignalHandlers(_ crashMarkerPath: String) {
@@ -136,7 +138,12 @@ private func hotUpdaterGetMinBundleId() -> String {
             downloadService: downloadService,
             preferences: preferences,
             isolationKey: isolationKey,
-            builtInBundleIdProvider: { HotUpdaterImpl.minBundleId() }
+            builtInBundleIdProvider: { HotUpdaterImpl.minBundleId() },
+            updateStrategyProvider: {
+                let fingerprintHash = HotUpdaterConfig.shared.fingerprintHash
+                    ?? embeddedFingerprintHash
+                return (fingerprintHash?.isEmpty == false) ? .fingerprint : .appVersion
+            }
         )
         let recoveryManager = HotUpdaterRecoveryManager.shared
 
@@ -215,7 +222,7 @@ private func hotUpdaterGetMinBundleId() -> String {
 
         // Get fingerprint hash from programmatic override or the build
         let fingerprintHash = HotUpdaterConfig.shared.fingerprintHash
-            ?? hotUpdaterBuildFingerprintHash
+            ?? embeddedFingerprintHash
 
         // Get app version and channel
         let appVersion = self.appVersion ?? "unknown"
@@ -266,7 +273,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         if let override = HotUpdaterConfig.shared.fingerprintHash, !override.isEmpty {
             return override
         }
-        return hotUpdaterBuildFingerprintHash
+        return embeddedFingerprintHash
     }
 
     // MARK: - Cohort Management

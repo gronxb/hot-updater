@@ -247,6 +247,13 @@ class BundleFileStorageService(
     private val isolationKey: String,
     private val defaultChannelProvider: () -> String = { HotUpdaterImpl.getChannel(context) },
     builtInAssetResolver: BuiltInAssetResolver? = null,
+    /**
+     * The update strategy launch reports carry. HotUpdaterImpl passes one that
+     * also reads the fingerprint the build embedded.
+     */
+    private val updateStrategyProvider: () -> String = {
+        if (HotUpdaterConfig.fingerprintHash.isNullOrEmpty()) "appVersion" else "fingerprint"
+    },
     private val metadataWriter: (BundleMetadata, File) -> Boolean = { metadata, file ->
         metadata.saveToFile(file)
     },
@@ -685,11 +692,7 @@ class BundleFileStorageService(
 
     private fun resolveUpdateStrategy(): String =
         try {
-            if (HotUpdaterImpl.getFingerprintHash(context).isNullOrEmpty()) {
-                "appVersion"
-            } else {
-                "fingerprint"
-            }
+            updateStrategyProvider()
         } catch (_: Exception) {
             "appVersion"
         }
