@@ -294,7 +294,8 @@ autolinking folder, and above the `android` folder on Android. If your native
 projects live elsewhere, as in a brownfield app, set the app root explicitly:
 `HOT_UPDATER_APP_ROOT` as an Xcode build setting or environment variable, and
 `HOT_UPDATER_APP_ROOT` as a Gradle property (for example in
-`android/gradle.properties`).
+`android/gradle.properties`), where a relative path is relative to the Android
+project.
 
 The build runs `npx hot-updater fingerprint hash` with Node. iOS finds it the
 way React Native's own script phases do, through `NODE_BINARY` in

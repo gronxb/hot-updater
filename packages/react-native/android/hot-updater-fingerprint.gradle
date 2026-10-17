@@ -2,8 +2,9 @@
 // execution time on every build, so neither an up-to-date check nor the
 // configuration cache keeps an earlier build's value.
 //
-// The app root is the HOT_UPDATER_APP_ROOT Gradle property when set, else the
-// directory above the Android project (<app>/android). Without a
+// The app root is the HOT_UPDATER_APP_ROOT Gradle property when set (relative
+// to the Android project), else the directory above the Android project
+// (<app>/android). Without a
 // fingerprint.json there, the app uses the appVersion strategy and the
 // fingerprint is empty. The debug build type embeds the hash fingerprint.json
 // holds; any other runs `hot-updater fingerprint hash`, which computes it from
@@ -83,8 +84,15 @@ final class HotUpdaterBuildFingerprintHash {
   }
 }
 
+// A relative HOT_UPDATER_APP_ROOT is relative to the Android project, not to
+// the directory Gradle was started from.
+def hotUpdaterAndroidRoot = rootProject.projectDir
 def hotUpdaterAppRoot = providers.gradleProperty("HOT_UPDATER_APP_ROOT")
-  .orElse(rootProject.projectDir.parentFile.absolutePath)
+  .map { String root ->
+    def file = new File(root)
+    (file.isAbsolute() ? file : new File(hotUpdaterAndroidRoot, root)).absolutePath
+  }
+  .orElse(hotUpdaterAndroidRoot.parentFile.absolutePath)
 
 // The node that runs the CLI: the HOT_UPDATER_NODE_BINARY Gradle property,
 // else NODE_BINARY, as iOS builds read from ios/.xcode.env, else node on PATH.
