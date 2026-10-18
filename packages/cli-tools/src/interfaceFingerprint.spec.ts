@@ -101,6 +101,8 @@ describe("createInterfaceFingerprint", () => {
           : source.filePath,
       ),
     ).toEqual([
+      'codegen-config:.={"jsSrcsDir":"src"}',
+      'codegen-config:../packages/local-module={"jsSrcsDir":"src"}',
       "dependency:react-native-screens=react-native-screens@4.25.2",
       "runtime=react-native@0.85.2",
       "../packages/local-module/src/NativeLocal.ts",
@@ -266,6 +268,25 @@ describe("createInterfaceFingerprint", () => {
 
     await write(path.join(app, ".yarn/patches/screens.patch"), "b");
     expect(await hashOf()).not.toBe(patched);
+  });
+
+  it("changes with the codegen config, not its key order", async () => {
+    const before = await hashOf();
+    await write(
+      path.join(app, "package.json"),
+      JSON.stringify({ codegenConfig: { jsSrcsDir: "src" }, name: "app" }),
+    );
+    expect(await hashOf()).toBe(before);
+
+    await write(
+      path.join(root, "packages/local-module/package.json"),
+      manifest({
+        name: "local-module",
+        version: "1.0.0",
+        codegenConfig: { jsSrcsDir: "src", type: "all" },
+      }),
+    );
+    expect(await hashOf()).not.toBe(before);
   });
 
   it("hashes a dependency declared by name and version", async () => {

@@ -376,6 +376,16 @@ const sha256 = (data: string | Uint8Array) =>
 
 const toPosix = (filePath: string) => filePath.split(path.sep).join("/");
 
+/** JSON with object keys sorted, so key order in package.json doesn't count. */
+const stableStringify = (value: unknown): string =>
+  JSON.stringify(value, (_key, entry: unknown) =>
+    entry && typeof entry === "object" && !Array.isArray(entry)
+      ? Object.fromEntries(
+          Object.entries(entry).sort(([a], [b]) => (a < b ? -1 : 1)),
+        )
+      : entry,
+  );
+
 /**
  * Whether React Native codegen reads `file` as a spec for `platform`: the
  * rule of its `filterJSFile`, so a fingerprint follows the specs codegen
@@ -559,6 +569,20 @@ export const createInterfaceFingerprint = async (
     addContents(`setting:${key}`, value, "native-setting");
   }
 
+  // What codegen generates follows its config as well as the specs: `type`
+  // decides whether it generates modules, components, or both.
+  const addCodegenConfig = async (root: string) => {
+    const config = (await readManifest(root))?.codegenConfig;
+    if (config) {
+      addContents(
+        `codegen-config:${toPosix(path.relative(cwd, root)) || "."}`,
+        stableStringify(config),
+        "codegen-config",
+      );
+    }
+  };
+
+  await addCodegenConfig(cwd);
   for (const specFile of (await findCodegenSpecs(cwd, platform)) ?? []) {
     await addFile(specFile, "app-codegen-spec");
   }
@@ -585,6 +609,7 @@ export const createInterfaceFingerprint = async (
     // A local package keeps its version while its code changes.
     // A package with no spec for this platform, even one with specs for the
     // other, exposes its interface through native code here.
+    await addCodegenConfig(root);
     const found = await findCodegenSpecs(root, platform);
     const specs = found && found.length > 0 ? found : null;
     // The package's ios/android folders, and the folder autolinking reads
