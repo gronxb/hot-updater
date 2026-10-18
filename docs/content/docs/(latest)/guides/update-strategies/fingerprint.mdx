@@ -28,8 +28,13 @@ It is an optional peer dependency of `hot-updater`, so install it in your app
 project when using the Fingerprint strategy:
 
 ```package-install
-npm install @expo/fingerprint --save-dev
+npm install @expo/fingerprint --save-dev --save-exact
 ```
+
+Pin an exact version. Another `@expo/fingerprint` version can hash the same
+project differently, and builds you already shipped then stop receiving
+updates. `fingerprint.json` records the version that computed each hash, and
+`doctor` and `deploy` report when the version changes.
 
 `@expo/fingerprint` is a standalone Node.js
 library that [supports bare React Native projects](https://expo.dev/blog/fingerprint-your-native-runtime).

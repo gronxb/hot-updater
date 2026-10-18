@@ -1,8 +1,10 @@
 import {
+  describeFingerprintEngineChange,
   ensureFingerprintConfig,
   type FingerprintResult,
   generateFingerprints,
   getFingerprintDiff,
+  getFingerprintEngineChange,
   summarizeFingerprintDiff,
 } from "../../utils/fingerprint";
 import {
@@ -44,7 +46,8 @@ const generationFailed = (error: unknown): NativeCheckIssue => {
 /**
  * Compares fingerprint.json with the project's fingerprint as
  * `fingerprint create` computes it: FINGERPRINT_JSON_STALE for each
- * platform whose hash changed, with the sources that changed.
+ * platform whose hash changed, with the sources that changed, or
+ * FINGERPRINT_ENGINE_CHANGED when the engine that computes it changed.
  * `fingerprints` gives that fingerprint; a doctor run computes it once.
  */
 export const checkFingerprintJson = async (
@@ -66,8 +69,41 @@ export const checkFingerprintJson = async (
   const issues: NativeCheckIssue[] = [];
   for (const platform of ["ios", "android"] as const) {
     const before = local[platform];
-    if (before?.hash === current[platform].hash) continue;
     const label = PLATFORM_LABELS[platform];
+    if (before?.hash === current[platform].hash) {
+      // Without the current engine recorded, a later native change would read
+      // as an engine change, or an engine upgrade as changed sources.
+      const engine = current[platform].engine;
+      if (engine && before.engine !== engine) {
+        issues.push({
+          type: "warning",
+          platform,
+          code: "FINGERPRINT_ENGINE_UNRECORDED",
+          message: before.engine
+            ? `fingerprint.json records ${before.engine} for the ${label} fingerprint, which ${engine} now computes unchanged.`
+            : `fingerprint.json doesn't record the engine behind the ${label} fingerprint, which ${engine} computes unchanged.`,
+          resolution: `Run \`${FINGERPRINT_CREATE}\` to record it, so doctor and deploy can tell an engine upgrade from a native change. The fingerprint stays the same.`,
+          fixability: "command",
+          commands: [FINGERPRINT_CREATE],
+          paths: ["fingerprint.json"],
+        });
+      }
+      continue;
+    }
+    const engineChange = getFingerprintEngineChange(before, current[platform]);
+    if (engineChange) {
+      issues.push({
+        type: "error",
+        platform,
+        code: "FINGERPRINT_ENGINE_CHANGED",
+        ...describeFingerprintEngineChange(engineChange, label),
+        // Going back to the engine or rebuilding shipped apps is the user's
+        // call, so no command is offered to run.
+        fixability: "blocked",
+        paths: ["fingerprint.json"],
+      });
+      continue;
+    }
     let changes: NativeCheckIssue["changes"];
     if (before?.sources) {
       try {

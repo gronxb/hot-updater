@@ -140,8 +140,15 @@ For fingerprint projects, doctor computes the project's fingerprint as
 `fingerprint create` does, which hashes the native inputs and can take a few
 seconds. When a platform's fingerprint differs from `fingerprint.json`, doctor
 reports `FINGERPRINT_JSON_STALE` and lists the sources that changed, in
-`changes` with `--json`. When it cannot compute the fingerprint, for example
-because `@expo/fingerprint` is not installed, it reports
+`changes` with `--json`. When the fingerprint changed because the engine that
+computes it changed, for example a newer `@expo/fingerprint`, doctor reports
+`FINGERPRINT_ENGINE_CHANGED` instead and names both engines. A
+`fingerprint.json` that doesn't record the current engine, because it predates
+recorded engines or another engine version computes the same hash, gets the
+warning `FINGERPRINT_ENGINE_UNRECORDED`; recording the engine keeps the
+fingerprint the same. When it cannot
+compute the fingerprint, for example because `@expo/fingerprint` is not
+installed, it reports
 `FINGERPRINT_GENERATION_FAILED` with the reason.
 
 Fix missing or stale fingerprint settings with `fingerprint create`, or with
@@ -176,7 +183,7 @@ them load, then rerun `doctor`.
 
 | Issues | Repair |
 | --- | --- |
-| `MISSING_FINGERPRINT_JSON`, `MISSING_FINGERPRINT_HASH`, `FINGERPRINT_HASH_MISMATCH`, `FINGERPRINT_JSON_STALE` | What `fingerprint create` writes, where it differs: `fingerprint.json`, and the fingerprint hash in `Info.plist` and `AndroidManifest.xml` |
+| `MISSING_FINGERPRINT_JSON`, `MISSING_FINGERPRINT_HASH`, `FINGERPRINT_HASH_MISMATCH`, `FINGERPRINT_JSON_STALE`, `FINGERPRINT_ENGINE_UNRECORDED` | What `fingerprint create` writes, where it differs: `fingerprint.json`, and the fingerprint hash in `Info.plist` and `AndroidManifest.xml` |
 | `MISSING_PUBLIC_KEY`, `PUBLIC_KEY_MISMATCH` | What `keys export-public --yes` writes: the configured signing public key, in the native files |
 | `RELEASE_CATALOG_STALE` | Each stale scope's catalog, rebuilt from its Releases in the server's database |
 | `UNREFERENCED_ARTIFACTS` | The artifact records no Release uses, deleted from the server's database |
@@ -193,8 +200,12 @@ native files it was built with. A replaced public key only reaches new builds;
 apps already installed keep the previous key and reject bundles signed with the
 configured one.
 
-`--fix` leaves an issue with more than one remedy to you, and never removes a
-public key. For `ORPHAN_PUBLIC_KEY`, remove the key with `keys remove` or enable
+`--fix` leaves an issue with more than one remedy to you. It never rewrites
+`fingerprint.json` for `FINGERPRINT_ENGINE_CHANGED`: go back to the engine
+`fingerprint.json` records to keep updating the apps you shipped, or run
+`fingerprint create` and rebuild them. That choice is the user's, so the issue's
+`fixability` is `blocked` and it lists no command. It never removes a public
+key. For `ORPHAN_PUBLIC_KEY`, remove the key with `keys remove` or enable
 signing yourself: removing it turns off signature verification in the app,
 which is wrong when signing is set up where this machine cannot see it, such as
 an environment variable only CI sets.

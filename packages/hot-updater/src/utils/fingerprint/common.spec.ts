@@ -3,6 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 
 import {
   appendFingerprintExtraSources,
+  describeFingerprintEngineChange,
+  getFingerprintEngineChange,
   getOtaFingerprintOptions,
 } from "./common";
 
@@ -76,5 +78,44 @@ describe("appendFingerprintExtraSources", () => {
     expect(
       appendFingerprintExtraSources([SHARED_SOURCE], [SHARED_SOURCE]),
     ).toEqual([SHARED_SOURCE]);
+  });
+});
+
+describe("getFingerprintEngineChange", () => {
+  it("returns both engines when they differ", () => {
+    expect(
+      getFingerprintEngineChange(
+        { engine: "@expo/fingerprint@0.20.14" },
+        { engine: "@expo/fingerprint@0.21.5" },
+      ),
+    ).toEqual({
+      before: "@expo/fingerprint@0.20.14",
+      after: "@expo/fingerprint@0.21.5",
+    });
+  });
+
+  it("returns null for the same engine or an unrecorded one", () => {
+    const engine = { engine: "@expo/fingerprint@0.21.5" };
+    expect(getFingerprintEngineChange(engine, engine)).toBeNull();
+    expect(getFingerprintEngineChange({}, engine)).toBeNull();
+    expect(getFingerprintEngineChange(null, engine)).toBeNull();
+  });
+});
+
+describe("describeFingerprintEngineChange", () => {
+  const change = {
+    before: "@expo/fingerprint@0.20.14",
+    after: "@expo/fingerprint@0.21.5",
+  };
+
+  it("tells fingerprint create users to rerun it after going back", () => {
+    expect(describeFingerprintEngineChange(change, "iOS").resolution).toBe(
+      "To keep updating iOS builds you already shipped, go back to @expo/fingerprint@0.20.14. If the fingerprint still differs with it, native inputs changed too, and builds you shipped need a rebuild. Otherwise run `npx hot-updater fingerprint create`, then rebuild the iOS app.",
+    );
+    expect(
+      describeFingerprintEngineChange(change, "iOS", true).resolution,
+    ).toBe(
+      "fingerprint.json now records the @expo/fingerprint@0.21.5 hash. To keep updating iOS builds you already shipped, go back to @expo/fingerprint@0.20.14 and run `npx hot-updater fingerprint create` again, or restore the previous fingerprint.json. If the fingerprint still differs with it, native inputs changed too, and builds you shipped need a rebuild. Otherwise rebuild the iOS app.",
+    );
   });
 });
