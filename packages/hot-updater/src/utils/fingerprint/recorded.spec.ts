@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import Module from "node:module";
 import os from "node:os";
 import path from "node:path";
 
@@ -105,6 +106,32 @@ describe("computeRecordedFingerprintHash", () => {
     });
     expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining("does not export bareFingerprint"),
+    );
+  });
+
+  it("embeds the recorded hash with a warning when the recorded adapter is not installed", async () => {
+    await writeFingerprintJson({
+      ios: { hash: "recorded-ios", sources: [] },
+      android: { hash: "recorded-android", sources: [] },
+      inputs: { adapter: "expo" },
+    });
+    // pnpm puts the workspace's hoisted packages on NODE_PATH for the tests.
+    const nodePath = process.env["NODE_PATH"];
+    const initPaths = () =>
+      (Module as unknown as { _initPaths: () => void })._initPaths();
+    delete process.env["NODE_PATH"];
+    initPaths();
+    try {
+      await expect(computeRecordedFingerprintHash("ios")).resolves.toEqual({
+        hash: "recorded-ios",
+        recorded: "recorded-ios",
+      });
+    } finally {
+      if (nodePath !== undefined) process.env["NODE_PATH"] = nodePath;
+      initPaths();
+    }
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("@hot-updater/expo is not installed"),
     );
   });
 

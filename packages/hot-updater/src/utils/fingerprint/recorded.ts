@@ -32,10 +32,13 @@ type AdapterFingerprint = (
 const loadAdapterFingerprint = async (
   cwd: string,
   { packageName, exportName }: (typeof ADAPTER_FINGERPRINTS)[string],
-): Promise<AdapterFingerprint | null> => {
-  const entry = createRequire(path.join(cwd, "package.json")).resolve(
-    packageName,
-  );
+): Promise<AdapterFingerprint | "missing" | null> => {
+  let entry: string;
+  try {
+    entry = createRequire(path.join(cwd, "package.json")).resolve(packageName);
+  } catch {
+    return "missing";
+  }
   const module = (await import(pathToFileURL(entry).href)) as Record<
     string,
     unknown
@@ -102,6 +105,11 @@ export const computeRecordedFingerprintHash = async (
   const adapter = ADAPTER_FINGERPRINTS[inputs.adapter];
   if (adapter) {
     const fingerprint = await loadAdapterFingerprint(cwd, adapter);
+    if (fingerprint === "missing") {
+      return embedRecorded(
+        `fingerprint.json records the ${inputs.adapter} build adapter, but ${adapter.packageName} is not installed. Run \`npx hot-updater fingerprint create\`.`,
+      );
+    }
     if (!fingerprint) {
       return embedRecorded(
         `The installed ${adapter.packageName} does not export ${adapter.exportName}; update it to compute the fingerprint at build time.`,
