@@ -2,16 +2,93 @@
 #include <signal.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <time.h>
 #include <cstring>
 #include <limits.h>
+#include <atomic>
+#include <cstdint>
+#include <mutex>
 
 namespace {
 constexpr size_t kMaxBundleIdLength = 128;
 constexpr int kSignals[] = {SIGABRT, SIGBUS, SIGFPE, SIGILL, SIGSEGV, SIGTRAP};
 
-char gCrashMarkerPath[PATH_MAX] = {0};
-char gBundleId[kMaxBundleIdLength] = {0};
-volatile sig_atomic_t gShouldRollback = 0;
+// One slot per instance that monitors a launch (HotUpdaterRecoverySlots.kt,
+// SLOT_COUNT); main is slot 0. The handler can't allocate, so an instance that
+// finds every slot taken gets no marker from a native crash.
+constexpr int kSlotCount = 8;
+constexpr int kNotAttributed = -1;
+// A crash claimed by an instance that has no slot: no slot writes a marker.
+constexpr int kAttributedWithoutSlot = -2;
+// Kotlin clears the claim when it releases it: when the claimed error's
+// handler returns, or after HotUpdaterRecoverySlots.CLAIM_FAIL_SAFE_MS. The
+// claim also expires on its own after that same fail-safe, only so a release
+// that never runs can't leave it claiming crashes forever.
+constexpr uint32_t kNativeClaimFallbackMilliseconds = 60000;
+
+struct SlotData {
+  // Empty while the slot is free.
+  char crashMarkerPath[PATH_MAX];
+  char bundleId[kMaxBundleIdLength];
+  int shouldRollback;
+  // Main records a verified launch too, as it always has.
+  int writesWhenVerified;
+};
+
+// The published copy of SlotData. Every field is atomic, copied with relaxed
+// loads and stores, so a reader racing a writer reads defined (if mixed)
+// values, which the sequence then rejects. The flags are stored last, with
+// release, after the strings: see readFirstWrite.
+struct AtomicSlotData {
+  std::atomic<char> crashMarkerPath[PATH_MAX];
+  std::atomic<char> bundleId[kMaxBundleIdLength];
+  std::atomic<int> shouldRollback;
+  std::atomic<int> writesWhenVerified;
+};
+
+// A sequence lock: a crash on any thread may read a slot while another thread
+// rewrites it. The writer makes the sequence odd while it copies, and a
+// reader keeps a copy only when the sequence was even and unchanged across it.
+struct SlotBuffer {
+  std::atomic<uint32_t> sequence;
+  AtomicSlotData data;
+};
+
+// Two buffers per slot: the writer fills the one not published, then
+// publishes it. A crash during a rewrite, even on the writer's own thread,
+// still reads the previous whole copy.
+// `published`: bit 0 is the published buffer, bit 1 says anything was
+// published at all (a freshly started slot has neither).
+constexpr uint32_t kPublishedIndexMask = 1U;
+constexpr uint32_t kPublishedOnceFlag = 2U;
+
+struct Slot {
+  std::atomic<uint32_t> published;
+  SlotBuffer buffers[2];
+};
+// C++11, as old React Native builds compile it: the handler needs a
+// lock-free sequence.
+static_assert(ATOMIC_INT_LOCK_FREE == 2 && sizeof(uint32_t) == sizeof(int), "the crash handler needs a lock-free sequence");
+static_assert(ATOMIC_CHAR_LOCK_FREE == 2, "the crash handler needs lock-free slot bytes");
+
+// Zero-initialized: static storage. Every slot starts free.
+Slot gSlots[kSlotCount];
+// The sequence lock takes one writer at a time; launch preparation and the
+// main thread can update one slot at once. Never taken by the handler.
+std::mutex gSlotWriters[kSlotCount];
+// The claimed slot and when it was claimed, in one word, so a crash during
+// a new claim reads either the old claim or the new one, never a mix:
+// bits 4..31 hold the claim's monotonic milliseconds (modulo 2^28, about 74
+// hours, compared with wraparound), bits 0..3 the slot offset by
+// kClaimSlotOffset. Zero is no claim.
+constexpr uint32_t kClaimSlotBits = 4;
+constexpr uint32_t kClaimSlotMask = (1u << kClaimSlotBits) - 1;
+constexpr uint32_t kClaimTimeMask = 0xFFFFFFFFu >> kClaimSlotBits;
+static_assert(kNativeClaimFallbackMilliseconds < kClaimTimeMask / 2, "a claim's window fits its time bits");
+constexpr int kClaimSlotOffset = 3;
+static_assert(kSlotCount + kClaimSlotOffset <= static_cast<int>(kClaimSlotMask), "a claimed slot fits its bits");
+static_assert(kAttributedWithoutSlot + kClaimSlotOffset > 0, "a claim is never zero");
+std::atomic<uint32_t> gClaim(0);
 struct sigaction gPreviousActions[NSIG];
 
 void signalHandler(int signum, siginfo_t *info, void *context);
@@ -53,12 +130,126 @@ void safeCopyJString(JNIEnv *env, jstring source, char *destination, size_t dest
   env->ReleaseStringUTFChars(source, utfChars);
 }
 
-void writeCrashMarker() {
-  if (gCrashMarkerPath[0] == '\0') {
+// clock_gettime is async-signal-safe. Milliseconds of the monotonic clock,
+// modulo the claim's time bits.
+uint32_t claimTime() {
+  struct timespec now {};
+  if (clock_gettime(CLOCK_MONOTONIC, &now) != 0) {
+    return 0;
+  }
+  const uint64_t milliseconds =
+      static_cast<uint64_t>(now.tv_sec) * 1000u + static_cast<uint64_t>(now.tv_nsec) / 1000000u;
+  return static_cast<uint32_t>(milliseconds) & kClaimTimeMask;
+}
+
+int attributedSlot() {
+  const uint32_t claim = gClaim.load(std::memory_order_acquire);
+  const uint32_t slotCode = claim & kClaimSlotMask;
+  if (slotCode == 0) {
+    return kNotAttributed;
+  }
+  const uint32_t claimedAt = claim >> kClaimSlotBits;
+  const uint32_t elapsed = (claimTime() - claimedAt) & kClaimTimeMask;
+  if (elapsed > kNativeClaimFallbackMilliseconds) {
+    return kNotAttributed;
+  }
+  return static_cast<int>(slotCode) - kClaimSlotOffset;
+}
+
+void storeBytes(std::atomic<char> *destination, const char *source, size_t size) {
+  for (size_t index = 0; index < size; ++index) {
+    destination[index].store(source[index], std::memory_order_relaxed);
+  }
+}
+
+void loadBytes(const std::atomic<char> *source, char *destination, size_t size) {
+  for (size_t index = 0; index < size; ++index) {
+    destination[index] = source[index].load(std::memory_order_relaxed);
+  }
+}
+
+void storeSlotData(AtomicSlotData &destination, const SlotData &source) {
+  storeBytes(destination.crashMarkerPath, source.crashMarkerPath, sizeof(source.crashMarkerPath));
+  storeBytes(destination.bundleId, source.bundleId, sizeof(source.bundleId));
+  // The flags last, each with release: a reader that sees one set sees the
+  // strings stored before it (readFirstWrite).
+  destination.shouldRollback.store(source.shouldRollback, std::memory_order_release);
+  destination.writesWhenVerified.store(source.writesWhenVerified, std::memory_order_release);
+}
+
+void loadStrings(const AtomicSlotData &source, SlotData &destination) {
+  loadBytes(source.crashMarkerPath, destination.crashMarkerPath, sizeof(destination.crashMarkerPath));
+  loadBytes(source.bundleId, destination.bundleId, sizeof(destination.bundleId));
+  // A copy taken mid-rewrite is rejected by the sequence, but the strings must
+  // still end inside their buffers.
+  destination.crashMarkerPath[sizeof(destination.crashMarkerPath) - 1] = '\0';
+  destination.bundleId[sizeof(destination.bundleId) - 1] = '\0';
+}
+
+void loadSlotData(const AtomicSlotData &source, SlotData &destination) {
+  loadStrings(source, destination);
+  destination.shouldRollback = source.shouldRollback.load(std::memory_order_relaxed);
+  destination.writesWhenVerified = source.writesWhenVerified.load(std::memory_order_relaxed);
+}
+
+bool readBuffer(const SlotBuffer &buffer, SlotData &snapshot) {
+  const uint32_t before = buffer.sequence.load(std::memory_order_acquire);
+  if ((before & 1U) != 0) {
+    return false;
+  }
+  loadSlotData(buffer.data, snapshot);
+  std::atomic_thread_fence(std::memory_order_acquire);
+  return buffer.sequence.load(std::memory_order_relaxed) == before;
+}
+
+// The slot's first write, before anything was published: its buffer was
+// empty, and the write only fills it, strings first and the flags last with
+// release. A write that finished (a crash between the copy and the flip,
+// even on the writer's own thread) is whole. One interrupted mid-copy, as by
+// a crash on the writer's own thread, which sees its stores in program
+// order, holds whole strings once either flag is set, and nothing that asks
+// for a marker while neither is.
+bool readFirstWrite(const SlotBuffer &buffer, SlotData &snapshot) {
+  if (!readBuffer(buffer, snapshot)) {
+    const int shouldRollback = buffer.data.shouldRollback.load(std::memory_order_acquire);
+    const int writesWhenVerified = buffer.data.writesWhenVerified.load(std::memory_order_acquire);
+    if (shouldRollback == 0 && writesWhenVerified == 0) {
+      return false;
+    }
+    loadStrings(buffer.data, snapshot);
+    snapshot.shouldRollback = shouldRollback;
+    snapshot.writesWhenVerified = writesWhenVerified;
+  }
+  return snapshot.crashMarkerPath[0] != '\0';
+}
+
+// A consistent snapshot of the slot; false when it holds nothing a marker
+// can be written from, or stays mid-rewrite.
+bool readSlot(const Slot &slot, SlotData &snapshot) {
+  for (int attempt = 0; attempt < 4; ++attempt) {
+    const uint32_t state = slot.published.load(std::memory_order_acquire);
+    const uint32_t published = state & kPublishedIndexMask;
+    if ((state & kPublishedOnceFlag) == 0) {
+      // Nothing published yet: only the first write's buffer, the one the
+      // flip will publish, can hold anything.
+      return readFirstWrite(slot.buffers[published ^ 1U], snapshot);
+    }
+    // Once anything was published, an empty slot is a cleared one.
+    if (readBuffer(slot.buffers[published], snapshot)) {
+      return true;
+    }
+    // Only a buffer published before the latest flip is ever rewritten;
+    // read the slot again.
+  }
+  return false;
+}
+
+void writeCrashMarker(const SlotData &slot) {
+  if (slot.crashMarkerPath[0] == '\0') {
     return;
   }
 
-  const int fd = open(gCrashMarkerPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+  const int fd = open(slot.crashMarkerPath, O_WRONLY | O_CREAT | O_TRUNC, 0644);
   if (fd < 0) {
     return;
   }
@@ -70,17 +261,37 @@ void writeCrashMarker() {
   constexpr char suffix[] = "}\n";
 
   write(fd, prefix, sizeof(prefix) - 1);
-  if (gBundleId[0] != '\0') {
-    write(fd, gBundleId, safeStringLength(gBundleId, kMaxBundleIdLength));
+  if (slot.bundleId[0] != '\0') {
+    write(fd, slot.bundleId, safeStringLength(slot.bundleId, kMaxBundleIdLength));
   }
   write(fd, middle, sizeof(middle) - 1);
-  if (gShouldRollback != 0) {
+  if (slot.shouldRollback != 0) {
     write(fd, trueLiteral, sizeof(trueLiteral) - 1);
   } else {
     write(fd, falseLiteral, sizeof(falseLiteral) - 1);
   }
   write(fd, suffix, sizeof(suffix) - 1);
   close(fd);
+}
+
+// HotUpdaterRecoverySlots.markerTargets: a claimed crash writes only its
+// instance's marker; otherwise every launch still waiting for its first
+// content writes one, and main records its launch either way.
+void writeCrashMarkers() {
+  const int attributed = attributedSlot();
+  for (int index = 0; index < kSlotCount; ++index) {
+    if (attributed != kNotAttributed && attributed != index) {
+      continue;
+    }
+    SlotData slot;
+    if (!readSlot(gSlots[index], slot) || slot.crashMarkerPath[0] == '\0') {
+      continue;
+    }
+    if (slot.shouldRollback == 0 && slot.writesWhenVerified == 0) {
+      continue;
+    }
+    writeCrashMarker(slot);
+  }
 }
 
 void forwardToPreviousHandler(int signum, siginfo_t *info, void *context) {
@@ -110,34 +321,93 @@ void forwardToPreviousHandler(int signum, siginfo_t *info, void *context) {
 }
 
 void signalHandler(int signum, siginfo_t *info, void *context) {
-  writeCrashMarker();
+  writeCrashMarkers();
   forwardToPreviousHandler(signum, info, context);
 }
 } // namespace
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_hotupdater_HotUpdaterRecoveryManager_nativeInstallSignalHandler(
-    JNIEnv *env,
-    jobject /* this */,
-    jstring crashMarkerPath) {
-  safeCopyJString(env, crashMarkerPath, gCrashMarkerPath, sizeof(gCrashMarkerPath));
-
+Java_com_hotupdater_HotUpdaterRecoveryNative_nativeInstallSignalHandler(
+    JNIEnv * /* env */,
+    jclass /* clazz */) {
   struct sigaction action {};
   action.sa_sigaction = signalHandler;
   action.sa_flags = SA_SIGINFO | SA_ONSTACK;
   sigemptyset(&action.sa_mask);
 
   for (const int signum : kSignals) {
+    // Installed once per process: recording this handler as the previous one
+    // would make forwarding call itself.
+    struct sigaction current {};
+    if (sigaction(signum, nullptr, &current) == 0 && (current.sa_flags & SA_SIGINFO) != 0 &&
+        current.sa_sigaction == signalHandler) {
+      continue;
+    }
     sigaction(signum, &action, &gPreviousActions[signum]);
   }
 }
 
 extern "C" JNIEXPORT void JNICALL
-Java_com_hotupdater_HotUpdaterRecoveryManager_nativeUpdateLaunchState(
+Java_com_hotupdater_HotUpdaterRecoveryNative_nativeUpdateSlot(
     JNIEnv *env,
-    jobject /* this */,
+    jclass /* clazz */,
+    jint index,
+    jstring crashMarkerPath,
     jstring bundleId,
-    jboolean shouldRollback) {
-  safeCopyJString(env, bundleId, gBundleId, sizeof(gBundleId));
-  gShouldRollback = shouldRollback ? 1 : 0;
+    jboolean shouldRollback,
+    jboolean writesWhenVerified) {
+  if (index < 0 || index >= kSlotCount) {
+    return;
+  }
+
+  // Copied before the sequence turns odd, so the window a crash skips stays
+  // one copy long.
+  SlotData next {};
+  safeCopyJString(env, crashMarkerPath, next.crashMarkerPath, sizeof(next.crashMarkerPath));
+  safeCopyJString(env, bundleId, next.bundleId, sizeof(next.bundleId));
+  next.shouldRollback = shouldRollback ? 1 : 0;
+  next.writesWhenVerified = writesWhenVerified ? 1 : 0;
+
+  std::lock_guard<std::mutex> writer(gSlotWriters[index]);
+  Slot &slot = gSlots[index];
+  const uint32_t state = slot.published.load(std::memory_order_relaxed);
+  if ((state & kPublishedOnceFlag) != 0) {
+    // Same marker and bundle, only the flags change (a launch charged or
+    // verified): flip them in the published buffer with single atomic stores,
+    // so no crash ever falls inside a copy and reads the old flags.
+    SlotBuffer &current = slot.buffers[state & kPublishedIndexMask];
+    SlotData published;
+    loadSlotData(current.data, published);
+    if (std::strcmp(published.crashMarkerPath, next.crashMarkerPath) == 0 &&
+        std::strcmp(published.bundleId, next.bundleId) == 0) {
+      current.data.shouldRollback.store(next.shouldRollback, std::memory_order_release);
+      current.data.writesWhenVerified.store(next.writesWhenVerified, std::memory_order_release);
+      return;
+    }
+  }
+  const uint32_t target = (state & kPublishedIndexMask) ^ 1U;
+  SlotBuffer &buffer = slot.buffers[target];
+  const uint32_t sequence = buffer.sequence.load(std::memory_order_relaxed);
+  buffer.sequence.store(sequence + 1, std::memory_order_relaxed);
+  std::atomic_thread_fence(std::memory_order_release);
+  storeSlotData(buffer.data, next);
+  buffer.sequence.store(sequence + 2, std::memory_order_release);
+  slot.published.store(target | kPublishedOnceFlag, std::memory_order_release);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_hotupdater_HotUpdaterRecoveryNative_nativeAttributeCrash(
+    JNIEnv * /* env */,
+    jclass /* clazz */,
+    jint index) {
+  const int slot = (index >= 0 && index < kSlotCount) ? index : kAttributedWithoutSlot;
+  const uint32_t slotCode = static_cast<uint32_t>(slot + kClaimSlotOffset);
+  gClaim.store((claimTime() << kClaimSlotBits) | slotCode, std::memory_order_release);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_com_hotupdater_HotUpdaterRecoveryNative_nativeClearCrashAttribution(
+    JNIEnv * /* env */,
+    jclass /* clazz */) {
+  gClaim.store(0, std::memory_order_release);
 }

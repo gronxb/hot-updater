@@ -8,7 +8,8 @@ export function getFixtureResetChannels(namespace: string | null) {
       "Set HOT_UPDATER_E2E_CHANNEL_NAMESPACE to a unique E2E job namespace before resetting provider state.",
     );
   }
-  return ["production", "beta"].map(
+  // `widget` is the brownfield host's second instance's own channel.
+  return ["production", "beta", "widget"].map(
     (channel) => `${namespace.trim()}-${channel}`,
   );
 }

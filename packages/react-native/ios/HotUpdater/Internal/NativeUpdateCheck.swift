@@ -41,17 +41,90 @@ import Foundation
     /// `HOT_UPDATER_*` Info.plist keys: a brownfield XCFramework passes its
     /// own bundle.
     @objc public let bundle: Bundle
+    /// Keeps this instance's staged bundles, channel, and queued events apart
+    /// from every other name's, like a Firebase app name: 1 to 32 of `a-z`,
+    /// `0-9`, and `-`. Instances with the same name share them. `"main"`, the
+    /// default, is the state the TurboModule and `HotUpdater.bundleURL()` use.
+    @objc public let name: String
+    /// The channel this build ships with, before any runtime switch, over
+    /// the `HOT_UPDATER_CHANNEL` Info.plist key. Keep it the same from the
+    /// first launch on: it is part of the storage isolation key, so a change
+    /// deletes the downloaded bundles. To check another channel at runtime,
+    /// pass `channel` to `checkForUpdate`.
+    @objc public let channel: String?
+    /// Selects the fingerprint update strategy, over the
+    /// `HOT_UPDATER_FINGERPRINT_HASH` Info.plist key.
+    @objc public let fingerprintHash: String?
+    /// The PEM key bundle signatures are verified with, over the
+    /// `HOT_UPDATER_PUBLIC_KEY` Info.plist key.
+    @objc public let publicKey: String?
 
+    /// `channel`, `fingerprintHash`, and `publicKey` left nil (or empty) read
+    /// the instance's Info.plist: `bundle`'s, then, for `main`, the app's.
+    /// Instances of one name share their state, so a second instance of a
+    /// name with another bundle or another of these values throws.
     @objc public init(
         baseURL: String,
         requestHeaders: [String: String] = [:],
         requestTimeout: TimeInterval = 5,
-        bundle: Bundle = .main
+        bundle: Bundle = .main,
+        name: String = "main",
+        channel: String? = nil,
+        fingerprintHash: String? = nil,
+        publicKey: String? = nil
     ) {
         self.baseURL = baseURL
         self.requestHeaders = requestHeaders
         self.requestTimeout = requestTimeout
         self.bundle = bundle
+        self.name = name
+        self.channel = channel
+        self.fingerprintHash = fingerprintHash
+        self.publicKey = publicKey
+    }
+
+    /// The initializer without the embedded values, for Objective-C, where
+    /// the defaults above don't apply.
+    @available(swift, obsoleted: 1.0, message: "Use init(baseURL:requestHeaders:requestTimeout:bundle:name:channel:fingerprintHash:publicKey:)")
+    @objc(initWithBaseURL:requestHeaders:requestTimeout:bundle:name:)
+    public convenience init(
+        objcBaseURL baseURL: String,
+        requestHeaders: [String: String],
+        requestTimeout: TimeInterval,
+        bundle: Bundle,
+        name: String
+    ) {
+        self.init(
+            baseURL: baseURL,
+            requestHeaders: requestHeaders,
+            requestTimeout: requestTimeout,
+            bundle: bundle,
+            name: name,
+            channel: nil,
+            fingerprintHash: nil,
+            publicKey: nil
+        )
+    }
+
+    /// The initializer without `name`, for Objective-C.
+    @available(swift, obsoleted: 1.0, message: "Use init(baseURL:requestHeaders:requestTimeout:bundle:name:channel:fingerprintHash:publicKey:)")
+    @objc(initWithBaseURL:requestHeaders:requestTimeout:bundle:)
+    public convenience init(
+        objcBaseURL baseURL: String,
+        requestHeaders: [String: String],
+        requestTimeout: TimeInterval,
+        bundle: Bundle
+    ) {
+        self.init(
+            baseURL: baseURL,
+            requestHeaders: requestHeaders,
+            requestTimeout: requestTimeout,
+            bundle: bundle,
+            name: "main",
+            channel: nil,
+            fingerprintHash: nil,
+            publicKey: nil
+        )
     }
 }
 

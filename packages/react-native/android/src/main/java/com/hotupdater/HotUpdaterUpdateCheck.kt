@@ -17,16 +17,57 @@ enum class HotUpdaterUpdateStatus {
 
 /**
  * The values JavaScript passes to `HotUpdater.init`: the server and the
- * request defaults of a [HotUpdaterInstance].
+ * request defaults of a [HotUpdaterInstance], plus the native state it uses.
+ * `main` records [channel], [fingerprintHash], and [publicKey] before its
+ * native state is first read; a value left null keeps one the deprecated
+ * `HotUpdater.configure` set.
  */
-class HotUpdaterOptions(
-    /** The update server's absolute HTTP(S) URL. */
-    val baseURL: String,
-    /** Sent with every request; a check's own headers override them. */
-    val requestHeaders: Map<String, String> = emptyMap(),
-    /** Each request's timeout, unless a check sets its own. */
-    val requestTimeoutMillis: Long = 5_000,
-)
+class HotUpdaterOptions
+    @JvmOverloads
+    constructor(
+        /** The update server's absolute HTTP(S) URL. */
+        val baseURL: String,
+        /** Sent with every request; a check's own headers override them. */
+        val requestHeaders: Map<String, String> = emptyMap(),
+        /** Each request's timeout, unless a check sets its own. */
+        val requestTimeoutMillis: Long = 5_000,
+        /**
+         * Which native state the instance uses, like a Firebase app name: `main`,
+         * the default, is the state React Native's own `HotUpdater` uses. Any other
+         * name keeps its bundles, settings, and stored values apart from every
+         * other name's; instances with the same name share them. 1 to 32
+         * lowercase letters, digits, or hyphens.
+         */
+        val name: String = HotUpdaterInstanceEnvironment.MAIN_NAME,
+        /**
+         * The default channel the instance's build ships with, before any
+         * runtime switch; null reads the manifest's `com.hotupdater.CHANNEL`,
+         * then `production`. It is part of the storage key, so it must not
+         * change after the first launch: switch channels at runtime with
+         * [HotUpdaterCheckOptions.channel] and [HotUpdaterInstance.resetChannel].
+         * An instance of a name refuses a channel other than the one the name
+         * already uses.
+         */
+        val channel: String? = null,
+        /**
+         * The fingerprint hash of the fingerprint strategy; null reads the
+         * manifest's `com.hotupdater.FINGERPRINT_HASH`, and without one the
+         * instance uses the appVersion strategy's storage key.
+         */
+        val fingerprintHash: String? = null,
+        /**
+         * The PEM public key bundles must be signed with; null reads the
+         * manifest's `com.hotupdater.PUBLIC_KEY`, and without one signing is off.
+         */
+        val publicKey: String? = null,
+        /**
+         * The JavaScript bundle embedded in the app's assets that a named instance
+         * launches when it has no update. Assets of every library merge into the
+         * app's, so each named instance embeds its bundle under its own name.
+         * `main` launches `index.android.bundle` and refuses any other name.
+         */
+        val bundleAssetName: String = HotUpdaterInstanceEnvironment.DEFAULT_BUNDLE_ASSET_NAME,
+    )
 
 /** The values JavaScript passes to `checkForUpdate`. */
 class HotUpdaterCheckOptions(

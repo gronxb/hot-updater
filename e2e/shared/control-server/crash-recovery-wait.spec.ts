@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from "vitest";
 import {
   createCrashRecoveryArtifactNames,
   getLaunchReportState,
+  isCrashMarkerAskingRollback,
   waitForCrashRecoveryState,
 } from "./crash-recovery-wait.ts";
 import type {
@@ -215,6 +216,106 @@ describe("crash recovery wait", () => {
 
     await expect(waitForCrashRecoveryState(options)).resolves.toEqual({});
     expect(options.isAndroidRecoveryReady).not.toHaveBeenCalled();
+  });
+
+  it("recognizes a rollback to the built-in bundle by its ID suffix", async () => {
+    const builtInSuffix = "7000-8000-000000000000";
+    const rolledBack = (
+      toBundleId: string,
+      stagingBundleId: string | null,
+    ): CrashRecoveryDiagnostics => ({
+      ...pendingDiagnostics(),
+      launchReport: {
+        exists: true,
+        path: "report",
+        readError: null,
+        value: { fromBundleId: "crashed-1", status: "RECOVERED", toBundleId },
+      },
+      metadata: {
+        exists: true,
+        path: "metadata",
+        readError: null,
+        value: { stagingBundleId, verificationPending: false },
+      },
+    });
+
+    // The built-in bundle stages nothing, and its ID ends with the suffix.
+    await expect(
+      waitForCrashRecoveryState(
+        waitOptions({
+          platform: "ios",
+          readDiagnostics: vi.fn(() =>
+            rolledBack(`00000000-0000-${builtInSuffix}`, null),
+          ),
+          stableBundleId: builtInSuffix,
+          stableIsBuiltIn: true,
+        }),
+      ),
+    ).resolves.toEqual({});
+    // A rollback to an OTA is not one to the built-in bundle.
+    await expect(
+      waitForCrashRecoveryState(
+        waitOptions({
+          platform: "ios",
+          readDiagnostics: vi.fn(() => rolledBack("stable-1", "stable-1")),
+          stableBundleId: builtInSuffix,
+          stableIsBuiltIn: true,
+        }),
+      ),
+    ).rejects.toThrow("recovery timed out");
+    // Without the flag, the suffix is not an exact stable ID.
+    await expect(
+      waitForCrashRecoveryState(
+        waitOptions({
+          platform: "ios",
+          readDiagnostics: vi.fn(() =>
+            rolledBack(`00000000-0000-${builtInSuffix}`, null),
+          ),
+          stableBundleId: builtInSuffix,
+        }),
+      ),
+    ).rejects.toThrow("recovery timed out");
+  });
+
+  it("runs the poll hook before each read, so a dead app can be started", async () => {
+    const order: string[] = [];
+    const beforePoll = vi.fn(async () => {
+      order.push("beforePoll");
+    });
+    const readDiagnostics = vi.fn(() => {
+      order.push("read");
+      return order.length < 4 ? pendingDiagnostics() : recoveredDiagnostics();
+    });
+
+    await expect(
+      waitForCrashRecoveryState(
+        waitOptions({ beforePoll, platform: "ios", readDiagnostics }),
+      ),
+    ).resolves.toEqual({});
+    expect(order).toEqual(["beforePoll", "read", "beforePoll", "read"]);
+  });
+
+  it("reads a crash marker as charging only its own bundle's rollback", () => {
+    expect(
+      isCrashMarkerAskingRollback(
+        { bundleId: "crashed-1", shouldRollback: true },
+        "crashed-1",
+      ),
+    ).toBe(true);
+    // A verified launch's marker, another bundle's, or none charges nothing.
+    expect(
+      isCrashMarkerAskingRollback(
+        { bundleId: "crashed-1", shouldRollback: false },
+        "crashed-1",
+      ),
+    ).toBe(false);
+    expect(
+      isCrashMarkerAskingRollback(
+        { bundleId: "other", shouldRollback: true },
+        "crashed-1",
+      ),
+    ).toBe(false);
+    expect(isCrashMarkerAskingRollback(null, "crashed-1")).toBe(false);
   });
 
   it("uses per-request diagnostic artifact names for recovery snapshots", () => {

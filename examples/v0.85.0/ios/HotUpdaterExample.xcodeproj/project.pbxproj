@@ -181,6 +181,7 @@
 			buildPhases = (
 				89F9081AF425D7E1353D74AB /* [CP] Check Pods Manifest.lock */,
 				5A3FA3A253EAE1F8927A3C11 /* Bundle React Native code and images */,
+				1E4785A9A5EFFEBD1B69741B /* Bundle widget React Native code */,
 				085795069BEE51AA1C553377 /* Headers */,
 				C1AB81E9947E567ED49EA406 /* Sources */,
 				A9A8E29C5AE8157071425E65 /* Frameworks */,
@@ -281,6 +282,27 @@
 			shellPath = /bin/sh;
 			shellScript = "\"${PODS_ROOT}/Target Support Files/Pods-HotUpdaterExample/Pods-HotUpdaterExample-frameworks.sh\"\n";
 			showEnvVarsInLog = 0;
+		};
+		1E4785A9A5EFFEBD1B69741B /* Bundle widget React Native code */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"$(SRCROOT)/.xcode.env.local",
+				"$(SRCROOT)/.xcode.env",
+				"$(SRCROOT)/HotUpdaterWidget/Info.plist",
+			);
+			name = "Bundle widget React Native code";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "# The widget instance's own embedded bundle: index.widget.js, in\n# HotUpdaterWidget.bundle with the widget's HOT_UPDATER_* keys, since a named\n# Hot Updater instance reads main.jsbundle and Info.plist from its own bundle.\nif [[ \"$CONFIGURATION\" = *Debug* ]]; then\n  unset SKIP_BUNDLING\n  export FORCE_BUNDLING=1\n  export EXTRA_PACKAGER_ARGS=\"$EXTRA_PACKAGER_ARGS --dev false\"\nfi\n\nset -e\n\nif [[ -f \"$PODS_ROOT/../.xcode.env\" ]]; then\nsource \"$PODS_ROOT/../.xcode.env\"\nfi\nif [[ -f \"$PODS_ROOT/../.xcode.env.local\" ]]; then\nsource \"$PODS_ROOT/../.xcode.env.local\"\nfi\n\nexport CLI_PATH=\"$(\"$NODE_BINARY\" --print \"require('path').dirname(require.resolve('@react-native-community/cli/package.json')) + '/build/bin.js'\")\"\nexport ENTRY_FILE=index.widget.js\nexport BUNDLE_NAME=HotUpdaterWidget\n\nWITH_ENVIRONMENT=\"$REACT_NATIVE_PATH/scripts/xcode/with-environment.sh\"\nREACT_NATIVE_XCODE=\"$REACT_NATIVE_PATH/scripts/react-native-xcode.sh\"\n\n/bin/sh -c \"$WITH_ENVIRONMENT $REACT_NATIVE_XCODE\"\n\nDEST=\"$CONFIGURATION_BUILD_DIR/$UNLOCALIZED_RESOURCES_FOLDER_PATH\"\nWIDGET_BUNDLE=\"$DEST/HotUpdaterWidget.bundle\"\nrm -rf \"$WIDGET_BUNDLE\"\nmkdir -p \"$WIDGET_BUNDLE\"\nmv \"$DEST/HotUpdaterWidget.jsbundle\" \"$WIDGET_BUNDLE/main.jsbundle\"\ncp \"$SRCROOT/HotUpdaterWidget/Info.plist\" \"$WIDGET_BUNDLE/Info.plist\"\n";
 		};
 		5A3FA3A253EAE1F8927A3C11 /* Bundle React Native code and images */ = {
 			isa = PBXShellScriptBuildPhase;

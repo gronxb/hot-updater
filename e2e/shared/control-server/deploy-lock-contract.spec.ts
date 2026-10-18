@@ -14,18 +14,141 @@ const controllerPath = path.join(
 );
 
 describe("E2E control-server deploy lock", () => {
-  it("routes deploys through the bounded fair file lock", async () => {
+  it("bounds builds across shards with the keyless shared lock, and guards each checkout's inputs with its own", async () => {
     const controllerSource = await fs.readFile(controllerPath, "utf8");
+    const between = (from: string, to: string) =>
+      controllerSource.slice(
+        controllerSource.indexOf(from),
+        controllerSource.indexOf(to, controllerSource.indexOf(from)),
+      );
 
-    expect(controllerSource).toContain("acquireFairFileLock,");
-    expect(controllerSource).toContain('from "./fair-file-lock.ts";');
-    expect(controllerSource).toContain(
-      "const deployProcessLock = await acquireFairFileLock({",
+    // The shards' shared lock limits builds only: it guards no files.
+    const shared = between(
+      "async function withDeployProcessLock<T>(",
+      "async function exportNativePublicKeyFromSigningKey(",
     );
-    expect(controllerSource).toContain("capacity: DEPLOY_LOCK_CAPACITY,");
+    expect(shared).toContain("await acquireFairFileLock({");
+    expect(shared).toContain("capacity: DEPLOY_LOCK_CAPACITY,");
+    expect(shared).toContain("lockRoot: deployProcessLockRoot(),");
+    // The inputs lock lives under this checkout's own root.
+    const inputs = between(
+      "async function withCheckoutInputsLock<T>(",
+      "async function withDeployProcessLock<T>(",
+    );
+    expect(inputs).toContain("return withCheckoutLock(");
+    // One holder at a time: withCheckoutLock fixes the capacity at 1.
+    expect(inputs).not.toContain("capacity");
+    expect(inputs).toContain("lockRoot: checkoutInputsLockRoot(),");
+    expect(inputs).not.toContain("deployProcessLockRoot");
+    expect(
+      between(
+        "function checkoutInputsLockRoot(",
+        "async function withCheckoutInputsLock<T>(",
+      ),
+    ).toContain(".update(REPO_DIR)");
     expect(controllerSource).not.toContain(
       "async function acquireDeployProcessLock",
     );
+  });
+
+  it("writes a deploy's inputs and builds only while holding its checkout's exclusive lock", async () => {
+    const controllerSource = await fs.readFile(controllerPath, "utf8");
+    const deploy = controllerSource.slice(
+      controllerSource.indexOf("async function deployFixtureBundle("),
+      controllerSource.indexOf("async function updateFixtureRelease("),
+    );
+    const lockIndex = deploy.indexOf("await withCheckoutInputsLock(");
+
+    expect(deploy).toMatch(
+      /await withCheckoutInputsLock\(\s*"deploy",\s*signal,\s*async/,
+    );
+    expect(lockIndex).toBeGreaterThan(0);
+    for (const write of [
+      "await applyDeployConfig(",
+      "await applyAppScenario(",
+      "await ensureMultiAssetFixtures(",
+      "await ensureSizeAwareLargeAsset(",
+      "await ensureAssetHeavyFixtures(",
+    ]) {
+      expect(deploy.indexOf(write)).toBeGreaterThan(lockIndex);
+    }
+    // The build runs inside the locked task, in its turn among every
+    // shard's builds, after the inputs are written.
+    const sharedIndex = deploy.indexOf("return withDeployProcessLock(signal,");
+    expect(sharedIndex).toBeGreaterThan(
+      deploy.indexOf("await applyAppScenario("),
+    );
+    expect(deploy.indexOf('runLoggedCommand("node", args')).toBeGreaterThan(
+      sharedIndex,
+    );
+    expect(
+      deploy.indexOf("const releaseId = extractDeployReleaseId("),
+    ).toBeGreaterThan(deploy.indexOf('runLoggedCommand("node", args'));
+    // Each write happens exactly once, inside the lock.
+    expect(deploy.split("await applyDeployConfig(")).toHaveLength(2);
+    expect(deploy.split("await applyAppScenario(")).toHaveLength(2);
+  });
+
+  it("backs up and resets the checkout alone in bootstrap and cleanup", async () => {
+    const controllerSource = await fs.readFile(controllerPath, "utf8");
+    const between = (from: string, to: string) =>
+      controllerSource.slice(
+        controllerSource.indexOf(from),
+        controllerSource.indexOf(to, controllerSource.indexOf(from)),
+      );
+    const bootstrap = between(
+      "async function bootstrap(",
+      "async function captureBuiltInBundleId(",
+    );
+    const reset = between(
+      "async function resetCheckoutInputs(",
+      "async function bootstrap(",
+    );
+    const cleanup = between("async function cleanup(", "function createJob(");
+
+    // Bootstrap reaches the inputs only through the exclusive lock.
+    expect(bootstrap).toMatch(
+      /await withCheckoutInputsLock\(\s*"bootstrap",\s*signal,\s*resetCheckoutInputs,?\s*\);/,
+    );
+    for (const write of [
+      "backupFile(",
+      "restoreFile(",
+      "applyAppScenario(",
+      "patchEnvRuntimeConfigUrl(",
+      "exportNativePublicKeyFromSigningKey(",
+      "restoreMultiAssetFixtures(",
+      "removeAssetHeavyFixtures(",
+    ]) {
+      expect(bootstrap).not.toContain(write);
+      expect(reset).toContain(write);
+    }
+    // No checkout write takes the lock again inside the locked task.
+    expect(reset).not.toContain("withCheckoutInputsLock(");
+    expect(reset).not.toContain("withCheckoutLock(");
+    // Neither waits for other shards' builds.
+    for (const source of [bootstrap, reset, cleanup]) {
+      expect(source).not.toContain("withDeployProcessLock(");
+      expect(source).not.toContain("deployProcessLockRoot(");
+    }
+
+    const cleanupLock = cleanup.indexOf(
+      'await withCheckoutInputsLock("cleanup", undefined,',
+    );
+    expect(cleanupLock).toBeGreaterThan(0);
+    for (const write of [
+      "restoreFile(",
+      "restoreMultiAssetFixtures(",
+      "removeAssetHeavyFixtures(",
+    ]) {
+      expect(cleanup.indexOf(write)).toBeGreaterThan(cleanupLock);
+    }
+    // Bootstrap is its own job, never a step of a deploy.
+    expect(
+      between(
+        "async function deployFixtureBundle(",
+        "async function updateFixtureRelease(",
+      ),
+    ).not.toContain("bootstrap(");
   });
 
   it("allows two deploys while keeping the next waiter queued", async () => {

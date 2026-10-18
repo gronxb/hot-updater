@@ -1,5 +1,6 @@
 package com.hotupdater
 
+import android.app.Activity
 import android.content.Context
 import com.facebook.react.ReactHost
 
@@ -20,7 +21,9 @@ class HotUpdater {
          */
         fun getInstance(context: Context): HotUpdaterImpl =
             instance ?: synchronized(this) {
-                instance ?: HotUpdaterImpl(context.applicationContext).also {
+                // Built from one snapshot of main's values, which options and
+                // HotUpdater.configure can no longer change.
+                instance ?: MainInstanceConfiguration.shared.createImpl(context.applicationContext).also {
                     instance = it
                 }
             }
@@ -90,16 +93,22 @@ class HotUpdater {
         fun getChannel(context: Context): String = HotUpdaterImpl.getChannel(context)
 
         /**
-         * Programmatic configuration for brownfield/AAR setups where manifest
-         * metadata or string resources in the host app are not desirable.
-         * A null argument means no override.
-         *
-         * [channel] is the app's fixed default channel: it must not change
-         * after the first launch, because it is part of the storage isolation
-         * key and changing it discards the stored bundles. Switch channels at
-         * runtime with [HotUpdaterCheckOptions.channel] and
-         * [HotUpdaterInstance.resetChannel].
+         * Main's configuration, which [HotUpdaterOptions] of [init] now set.
+         * Each call replaces all four values; a null argument means no
+         * override. [isolationKey] replaces main's storage key verbatim.
+         * Main's native state reads the values once, when it is created, so a
+         * later call no longer changes it. Named instances never read them.
          */
+        @Deprecated(
+            "Pass channel, fingerprintHash, and publicKey to HotUpdaterOptions. " +
+                "Fingerprint downloads now survive native releases that ship the same artifact.",
+            ReplaceWith(
+                "HotUpdater.init(context, HotUpdaterOptions(baseURL, channel = channel, " +
+                    "fingerprintHash = fingerprintHash, publicKey = publicKey))",
+            ),
+        )
+        @JvmStatic
+        @Suppress("DEPRECATION")
         fun configure(
             fingerprintHash: String? = null,
             publicKey: String? = null,
@@ -135,7 +144,14 @@ class HotUpdater {
          * instance with this server and these request defaults, for checking
          * for and staging updates before React Native starts.
          * @throws IllegalArgumentException when [HotUpdaterOptions.baseURL] is
-         * not an absolute HTTP(S) URL, as `HotUpdater.init` throws
+         * not an absolute HTTP(S) URL, as `HotUpdater.init` throws, when
+         * [HotUpdaterOptions.name] is not 1 to 32 lowercase letters, digits, or
+         * hyphens, or when the name was already created with another channel,
+         * fingerprint hash, public key, or bundle asset name. `main` refuses
+         * a bundle asset name other than `index.android.bundle`, and a
+         * channel, fingerprint hash, or public key other than the one an
+         * earlier `init` or `HotUpdater.configure` set or, once its native
+         * state was first read, the one it uses
          */
         @JvmStatic
         fun init(
@@ -143,7 +159,10 @@ class HotUpdater {
             options: HotUpdaterOptions,
         ): HotUpdaterInstance {
             requireValidBaseURL(options.baseURL)
-            return HotUpdaterInstance(context.applicationContext, options)
+            // An activity started before this process followed activities is
+            // known only from the context the app hands over.
+            (context as? Activity)?.let(HotUpdaterRecoveryAttribution.shared::noteActivity)
+            return HotUpdaterInstance.create(context.applicationContext, options)
         }
 
         /**

@@ -63,12 +63,14 @@ NS_ASSUME_NONNULL_BEGIN
 @end
 
 // The TurboModule's channel reset and event replay, which go through the
-// Swift native update check.
+// Swift native update check, and the impl of the runtime that runs a bundle.
 @protocol HotUpdaterNativeUpdatesInterface <NSObject>
 - (void)resetChannelWithImpl:(id<HotUpdaterImplInterface>)impl
                     resolver:(RCTPromiseResolveBlock)resolve
                     rejecter:(RCTPromiseRejectBlock)reject;
 - (nullable NSString *)takeEventsWithImpl:(id<HotUpdaterImplInterface>)impl;
+- (id<HotUpdaterImplInterface>)implForBundleURL:(nullable NSURL *)bundleURL
+    NS_SWIFT_NAME(impl(forBundleURL:));
 @end
 
 // Implemented in HotUpdaterInterface.swift.

@@ -33,19 +33,34 @@ interface PreferencesService {
 class VersionedPreferencesService(
     private val context: Context,
     private val isolationKey: String,
+    // The family of isolation keys this service replaces: main's, or one named instance's.
+    private val familyPrefix: String = "HotUpdaterPrefs_",
 ) : PreferencesService {
-    private val prefs: SharedPreferences
-
-    init {
-
-        val sharedPrefsDir = File(context.applicationInfo.dataDir, "shared_prefs")
-        if (sharedPrefsDir.exists() && sharedPrefsDir.isDirectory) {
-            sharedPrefsDir.listFiles()?.forEach { file ->
-                if (file.name.startsWith("HotUpdaterPrefs_") && file.name != "$isolationKey.xml") {
-                    file.delete()
+    companion object {
+        /**
+         * Deletes the preferences of every other isolation key in [familyPrefix]'s
+         * family, the app version or channel this instance left behind. Files of
+         * other families belong to other instances and stay.
+         */
+        internal fun deleteStalePreferences(
+            sharedPrefsDir: File,
+            familyPrefix: String,
+            isolationKey: String,
+        ) {
+            if (sharedPrefsDir.exists() && sharedPrefsDir.isDirectory) {
+                sharedPrefsDir.listFiles()?.forEach { file ->
+                    if (file.name.startsWith(familyPrefix) && file.name != "$isolationKey.xml") {
+                        file.delete()
+                    }
                 }
             }
         }
+    }
+
+    private val prefs: SharedPreferences
+
+    init {
+        deleteStalePreferences(File(context.applicationInfo.dataDir, "shared_prefs"), familyPrefix, isolationKey)
 
         prefs = context.getSharedPreferences(isolationKey, Context.MODE_PRIVATE)
     }
