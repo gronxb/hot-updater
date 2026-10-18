@@ -7,11 +7,14 @@ import { parseSync, Visitor } from "oxc-parser";
  * resolves. An `import()` of a computed specifier, such as
  * `import("dayjs/locale/" + name + ".js")`, names no module to resolve.
  * Minified code reads the same as formatted code. `fileName` gives the
- * language, such as `.ts`.
+ * language, such as `.ts`. With `types: false`, TypeScript imports and
+ * re-exports whose bindings are all types, such as `import type`, which
+ * compilers erase, are left out.
  */
 export const moduleSpecifiersOf = (
   fileName: string,
   source: string,
+  { types = true }: { types?: boolean } = {},
 ): string[] => {
   const { errors, module, program } = parseSync(fileName, source);
   if (errors.length > 0) {
@@ -35,10 +38,19 @@ export const moduleSpecifiersOf = (
   }).visit(program);
   return [
     ...new Set([
-      ...module.staticImports.map(({ moduleRequest }) => moduleRequest.value),
+      ...module.staticImports
+        .filter(
+          ({ entries }) =>
+            types ||
+            entries.length === 0 ||
+            entries.some(({ isType }) => !isType),
+        )
+        .map(({ moduleRequest }) => moduleRequest.value),
       ...module.staticExports.flatMap(({ entries }) =>
-        entries.flatMap(({ moduleRequest }) =>
-          moduleRequest === null ? [] : [moduleRequest.value],
+        entries.flatMap(({ moduleRequest, isType }) =>
+          moduleRequest === null || (isType && !types)
+            ? []
+            : [moduleRequest.value],
         ),
       ),
       ...dynamicImports,

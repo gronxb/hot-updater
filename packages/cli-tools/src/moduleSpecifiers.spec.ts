@@ -38,6 +38,25 @@ describe("moduleSpecifiersOf", () => {
     );
   });
 
+  it("leaves out type-only imports and re-exports with types: false", () => {
+    const source = [
+      'import type { Options } from "./types";',
+      'import { type Props } from "./props";',
+      'import { type Mixed, value } from "./mixed";',
+      'import "./side-effect";',
+      'export type { Shape } from "./shape";',
+      'export type * from "./all-types";',
+      'export { helper } from "./helper";',
+      "",
+    ].join("\n");
+    expect(moduleSpecifiersOf("plugin.ts", source, { types: false })).toEqual([
+      "./mixed",
+      "./side-effect",
+      "./helper",
+    ]);
+    expect(moduleSpecifiersOf("plugin.ts", source)).toHaveLength(7);
+  });
+
   it("names the file it cannot parse", () => {
     expect(() => moduleSpecifiersOf("broken.mjs", "import {")).toThrow(
       /^Could not read the imports of broken\.mjs: /u,

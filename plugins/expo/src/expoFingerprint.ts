@@ -150,7 +150,8 @@ const staticImportsOf = (file: string): string[] => {
   let requires: string[];
   try {
     const source = fs.readFileSync(file, "utf8");
-    imports = moduleSpecifiersOf(file, source);
+    // Type-only imports are erased before the plugin runs.
+    imports = moduleSpecifiersOf(file, source, { types: false });
     requires = requireSpecifiersOf(file, source);
   } catch {
     return [];

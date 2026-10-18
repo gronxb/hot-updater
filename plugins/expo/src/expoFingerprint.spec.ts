@@ -774,6 +774,26 @@ describe("readExpoSettings", () => {
     expect(read()).not.toEqual(before);
   });
 
+  it("leaves out files a TypeScript plugin imports only for types", async () => {
+    await fs.writeFile(
+      path.join(project, "plugins/pluginTypes.ts"),
+      "export type Options = { a: string };",
+    );
+    await fs.writeFile(
+      path.join(project, "plugins/withTyped.ts"),
+      "import type { Options } from './pluginTypes';\nexport default (config: unknown, _options: Options) => config;",
+    );
+    const read = () =>
+      readExpoSettings(project, { plugins: ["./plugins/withTyped.ts"] }, "ios");
+    const before = read();
+
+    await fs.writeFile(
+      path.join(project, "plugins/pluginTypes.ts"),
+      "export type Options = { a: number };",
+    );
+    expect(read()).toEqual(before);
+  });
+
   it("numbers plugins without Hot Updater's own, so moving it changes nothing", () => {
     const read = (plugins: unknown[]) =>
       readExpoSettings(project, { plugins }, "ios");
