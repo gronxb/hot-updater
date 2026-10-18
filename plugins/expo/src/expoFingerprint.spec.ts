@@ -1,5 +1,5 @@
 import fs from "node:fs/promises";
-import { createRequire } from "node:module";
+import Module, { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
@@ -166,6 +166,34 @@ describe("readExpoSettings", () => {
     } finally {
       await fs.rm(workspace, { recursive: true, force: true });
     }
+  });
+
+  it("hashes what app.config.js imports for a plugin written inline in it", async () => {
+    await fs.writeFile(
+      path.join(project, "plugins/inlineHelper.js"),
+      "module.exports = 1;",
+    );
+    await fs.writeFile(path.join(project, "app.config.js"), "");
+    const configPath = await fs.realpath(path.join(project, "app.config.js"));
+    // Expo evaluates app.config.js from a string, as require-from-string does.
+    const config = new Module(configPath) as Module & {
+      _compile: (code: string, filename: string) => void;
+    };
+    config.filename = configPath;
+    config.paths = (
+      Module as unknown as { _nodeModulePaths: (dir: string) => string[] }
+    )._nodeModulePaths(path.dirname(configPath));
+    config._compile("require('./plugins/inlineHelper');", configPath);
+    const inline = (value: object) => value;
+    const read = () =>
+      readExpoSettings(project, { plugins: [inline] }, "ios", configPath);
+    const before = read();
+
+    await fs.writeFile(
+      path.join(project, "plugins/inlineHelper.js"),
+      "module.exports = 2;",
+    );
+    expect(read()).not.toEqual(before);
   });
 
   it("numbers plugins without Hot Updater's own, so moving it changes nothing", () => {

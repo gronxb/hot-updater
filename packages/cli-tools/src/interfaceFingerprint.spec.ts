@@ -327,6 +327,26 @@ describe("createInterfaceFingerprint", () => {
     );
   });
 
+  it("reads patches to the other packages a framework names", async () => {
+    await write(
+      path.join(app, "patches/expo-build-properties+0.13.2.patch"),
+      "a",
+    );
+    const withPlugin = (): NativeInterface => ({
+      ...nativeInterface(),
+      patchedPackages: ["expo-build-properties"],
+    });
+    const before = await hashOf({}, withPlugin());
+
+    await write(
+      path.join(app, "patches/expo-build-properties+0.13.2.patch"),
+      "b",
+    );
+    expect(await hashOf({}, withPlugin())).not.toBe(before);
+    // Not named, it isn't part of the native build.
+    expect(await hashOf()).toBe(await hashOf());
+  });
+
   it("hashes a dependency declared by name and version", async () => {
     const native = (version: string): NativeInterface => ({
       runtime: "lynx@4.0.3",

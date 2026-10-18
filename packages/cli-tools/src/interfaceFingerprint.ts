@@ -121,6 +121,11 @@ export interface NativeInterface {
    * engine, read from the files the framework itself reads.
    */
   settings?: Record<string, string>;
+  /**
+   * Other packages whose patches change the native build, such as Expo
+   * config plugins, which shape the native projects without being linked.
+   */
+  patchedPackages?: string[];
 }
 
 interface AutolinkingConfig {
@@ -673,6 +678,7 @@ export const createInterfaceFingerprint = async (
   const patchedNames = [
     "react-native",
     ...nativeInterface.dependencies.map(({ name }) => name),
+    ...(nativeInterface.patchedPackages ?? []),
   ];
   for (const root of await findPatchRoots(cwd)) {
     const dir = path.join(root, "patches");

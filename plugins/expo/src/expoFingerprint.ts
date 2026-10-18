@@ -146,10 +146,33 @@ const pluginSource = (cwd: string, plugin: string): string => {
 };
 
 /**
+ * The local files app.config.js imported. Expo evaluates it from a string,
+ * so its own module isn't cached, but each module it required records it as
+ * the parent.
+ */
+const configImports = (project: string, configPath: string): string[] => {
+  const files = new Set<string>();
+  for (const [file, module] of Object.entries(require.cache)) {
+    if (
+      module?.parent?.filename === configPath &&
+      file.startsWith(`${project}${path.sep}`) &&
+      isLocal(file)
+    ) {
+      for (const imported of pluginFiles(project, file)) files.add(imported);
+    }
+  }
+  return [...files].sort();
+};
+
+/**
  * The local module whose export is the function plugin `plugin`, such as
  * `plugins: [require("./plugins/withNative")]` in app.config.js.
  */
-const functionPluginSource = (cwd: string, plugin: Function): string => {
+const functionPluginSource = (
+  cwd: string,
+  plugin: Function,
+  configPath: string | null,
+): string => {
   const project = fs.realpathSync(cwd);
   for (const [file, module] of Object.entries(require.cache)) {
     const exports = module?.exports as { default?: unknown } | undefined;
@@ -161,8 +184,18 @@ const functionPluginSource = (cwd: string, plugin: Function): string => {
       return hashPluginFiles(project, file);
     }
   }
-  // Written inline in app.config.js.
-  return `sha256:${sha256(plugin.toString())}`;
+  // Written inline in app.config.js: its source, and what app.config.js
+  // imports, which it may call.
+  const imports = configPath ? configImports(project, configPath) : [];
+  return `sha256:${sha256(
+    [
+      plugin.toString(),
+      ...imports.map(
+        (file) =>
+          `${path.relative(project, file).split(path.sep).join("/")}\0${sha256(fs.readFileSync(file))}`,
+      ),
+    ].join("\0"),
+  )}`;
 };
 
 /**
@@ -175,6 +208,8 @@ export const readExpoSettings = (
   cwd: string,
   exp: AppConfig,
   platform: Platform,
+  /** app.config.js or app.config.ts, when the app has one. */
+  configPath: string | null = null,
 ): Record<string, string> => {
   const settings: Record<string, string> = {};
   const own = exp[platform];
@@ -201,7 +236,11 @@ export const readExpoSettings = (
       settings[`expo.plugin[${index}]:${plugin.name || "inline"}`] =
         JSON.stringify(
           sortKeys({
-            source: functionPluginSource(cwd, plugin),
+            source: functionPluginSource(
+              cwd,
+              plugin,
+              configPath && fs.realpathSync(configPath),
+            ),
             props: props ?? null,
           }),
         );
@@ -209,6 +248,21 @@ export const readExpoSettings = (
   });
   return settings;
 };
+
+/** The packages the app config names as config plugins. */
+const configPluginPackages = (exp: AppConfig): string[] =>
+  (exp.plugins ?? []).flatMap((entry) => {
+    const plugin = Array.isArray(entry) ? entry[0] : entry;
+    if (
+      typeof plugin !== "string" ||
+      plugin.startsWith(".") ||
+      path.isAbsolute(plugin)
+    ) {
+      return [];
+    }
+    const parts = plugin.split("/");
+    return [plugin.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!];
+  });
 
 const autolinkingBin = (cwd: string) => {
   const expo = path.dirname(
@@ -234,8 +288,15 @@ export const expoFingerprint = async (
   cwd: string,
   options: NativeFingerprintOptions,
 ) => {
-  const { exp } = await getConfig(cwd, { skipSDKVersionRequirement: true });
-  const settings = readExpoSettings(cwd, exp as AppConfig, options.platform);
+  const { exp, dynamicConfigPath } = await getConfig(cwd, {
+    skipSDKVersionRequirement: true,
+  });
+  const settings = readExpoSettings(
+    cwd,
+    exp as AppConfig,
+    options.platform,
+    dynamicConfigPath,
+  );
   const read = (command: string[]) =>
     readReactNativeInterface({
       cwd,
@@ -271,5 +332,9 @@ export const expoFingerprint = async (
       throw error;
     }
   }
-  return createInterfaceFingerprint(cwd, options, nativeInterface);
+  return createInterfaceFingerprint(cwd, options, {
+    ...nativeInterface,
+    // A patched config plugin changes what prebuild generates.
+    patchedPackages: configPluginPackages(exp as AppConfig),
+  });
 };
