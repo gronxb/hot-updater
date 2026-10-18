@@ -195,11 +195,18 @@ const pluginSource = (cwd: string, plugin: string): string => {
   return version === undefined ? "unresolved" : `${name}@${version}`;
 };
 
-/** The local files app.config.js imported, and the files they import. */
+/**
+ * The local code app.config.js imported, and the code that imports: what it
+ * can apply as plugins, as `withPlugins(config, [withLocal])` does without
+ * listing them in `plugins`. JSON holds no plugin code, and package.json,
+ * which app configs read for the version, changes with every release.
+ */
 const configImports = (configPath: string): string[] => {
   const files = new Set<string>();
   for (const file of localImports(configPath)) {
-    for (const imported of pluginFiles(file)) files.add(imported);
+    for (const imported of pluginFiles(file)) {
+      if (path.extname(imported) !== ".json") files.add(imported);
+    }
   }
   return [...files].sort();
 };
@@ -208,11 +215,7 @@ const configImports = (configPath: string): string[] => {
  * The local module whose export is the function plugin `plugin`, such as
  * `plugins: [require("./plugins/withNative")]` in app.config.js.
  */
-const functionPluginSource = (
-  cwd: string,
-  plugin: Function,
-  configPath: string | null,
-): string => {
+const functionPluginSource = (cwd: string, plugin: Function): string => {
   const project = fs.realpathSync(cwd);
   // Outside node_modules, a sibling workspace package included.
   for (const [file, module] of Object.entries(require.cache)) {
@@ -221,18 +224,9 @@ const functionPluginSource = (
       return hashPluginFiles(project, file);
     }
   }
-  // Written inline in app.config.js: its source, and what app.config.js
-  // imports, which it may call.
-  const imports = configPath ? configImports(configPath) : [];
-  return `sha256:${sha256(
-    [
-      plugin.toString(),
-      ...imports.map(
-        (file) =>
-          `${path.relative(project, file).split(path.sep).join("/")}\0${sha256(fs.readFileSync(file))}`,
-      ),
-    ].join("\0"),
-  )}`;
+  // Written inline in app.config.js: its source. What it calls from
+  // app.config.js's imports counts as `expo.config`.
+  return `sha256:${sha256(plugin.toString())}`;
 };
 
 /**
@@ -264,6 +258,20 @@ export const readExpoSettings = (
       ([plugin]) =>
         !(typeof plugin === "string" && HOT_UPDATER_PLUGINS.has(plugin)),
     );
+  if (configPath) {
+    const project = fs.realpathSync(cwd);
+    const imports = configImports(fs.realpathSync(configPath));
+    if (imports.length > 0) {
+      settings["expo.config"] = `sha256:${sha256(
+        imports
+          .map(
+            (file) =>
+              `${path.relative(project, file).split(path.sep).join("/")}\0${sha256(fs.readFileSync(file))}`,
+          )
+          .join("\0"),
+      )}`;
+    }
+  }
   plugins.forEach(([plugin, props], index) => {
     if (typeof plugin === "string") {
       settings[`expo.plugin[${index}]:${plugin}`] = JSON.stringify(
@@ -273,11 +281,7 @@ export const readExpoSettings = (
       settings[`expo.plugin[${index}]:${plugin.name || "inline"}`] =
         JSON.stringify(
           sortKeys({
-            source: functionPluginSource(
-              cwd,
-              plugin,
-              configPath && fs.realpathSync(configPath),
-            ),
+            source: functionPluginSource(cwd, plugin),
             props: props ?? null,
           }),
         );

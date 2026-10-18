@@ -259,6 +259,48 @@ describe("readExpoSettings", () => {
     }
   });
 
+  it("hashes the code app.config.js applies directly, but not package.json", async () => {
+    await fs.writeFile(
+      path.join(project, "plugins/direct.js"),
+      "module.exports = (c) => c;",
+    );
+    await fs.writeFile(
+      path.join(project, "package.json"),
+      JSON.stringify({ version: "1.0.0" }),
+    );
+    await fs.writeFile(path.join(project, "app.config.js"), "");
+    const configPath = await fs.realpath(path.join(project, "app.config.js"));
+    const config = new Module(configPath) as Module & {
+      _compile: (code: string, filename: string) => void;
+    };
+    config.filename = configPath;
+    config.paths = (
+      Module as unknown as { _nodeModulePaths: (dir: string) => string[] }
+    )._nodeModulePaths(path.dirname(configPath));
+    // return withPlugins(config, [require("./plugins/direct")]), version from package.json
+    await recordRequires(async () =>
+      config._compile(
+        "require('./plugins/direct'); require('./package.json');",
+        configPath,
+      ),
+    );
+    const read = () =>
+      readExpoSettings(project, { plugins: [] }, "ios", configPath);
+    const before = read();
+    expect(before["expo.config"]).toMatch(/^sha256:/);
+
+    await fs.writeFile(
+      path.join(project, "package.json"),
+      JSON.stringify({ version: "2.0.0" }),
+    );
+    expect(read()).toEqual(before);
+    await fs.writeFile(
+      path.join(project, "plugins/direct.js"),
+      "module.exports = (c) => ({ ...c });",
+    );
+    expect(read()).not.toEqual(before);
+  });
+
   it("numbers plugins without Hot Updater's own, so moving it changes nothing", () => {
     const read = (plugins: unknown[]) =>
       readExpoSettings(project, { plugins }, "ios");

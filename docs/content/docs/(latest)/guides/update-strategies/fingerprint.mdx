@@ -116,7 +116,10 @@ Hot Updater's own plugin, whose channel and public key don't change what
 JavaScript can call. A plugin from your project or workspace counts by the
 files it loads; one installed from the registry counts by its version and
 patches, like a native package, so bump `nativeVersion` if only its own
-dependencies change what it generates.
+dependencies change what it generates. With `app.config.js` or `app.config.ts`, the
+local code it imports counts too, since it can apply plugins directly with
+`withPlugins`. JSON files don't, so reading the version from `package.json`
+leaves the fingerprint unchanged.
 
 ## Workflow
 
