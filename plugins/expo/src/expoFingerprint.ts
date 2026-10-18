@@ -64,14 +64,43 @@ const packageVersion = (cwd: string, name: string): string | null => {
 };
 
 /**
+ * A local plugin file and the project files it loads. Expo requires config
+ * plugins, so once the app config is read, Node's module cache holds the
+ * files each one imported; a file it hasn't loaded counts by itself.
+ */
+const localPluginFiles = (cwd: string, entry: string): string[] => {
+  // Node caches modules by real path.
+  const root = `${fs.realpathSync(cwd)}${path.sep}`;
+  const files = new Set<string>();
+  const visit = (file: string) => {
+    if (files.has(file)) return;
+    files.add(file);
+    for (const child of require.cache[file]?.children ?? []) {
+      if (
+        child.filename.startsWith(root) &&
+        !child.filename.split(path.sep).includes("node_modules")
+      ) {
+        visit(child.filename);
+      }
+    }
+  };
+  visit(entry);
+  return [...files].sort();
+};
+
+/**
  * Where a config plugin's code comes from: the version of the package that
- * ships it, or the contents of a local plugin file.
+ * ships it, or the contents of a local plugin file and the files it imports.
  */
 const pluginSource = (cwd: string, plugin: string): string => {
   if (plugin.startsWith(".") || path.isAbsolute(plugin)) {
     try {
-      const file = require.resolve(path.resolve(cwd, plugin));
-      return `sha256:${sha256(fs.readFileSync(file))}`;
+      const entry = require.resolve(path.resolve(cwd, plugin));
+      const contents = localPluginFiles(cwd, entry).map(
+        (file) =>
+          `${path.relative(cwd, file).split(path.sep).join("/")}\0${sha256(fs.readFileSync(file))}`,
+      );
+      return `sha256:${sha256(contents.join("\0"))}`;
     } catch {
       return "unresolved";
     }
@@ -101,12 +130,16 @@ export const readExpoSettings = (
   if (newArchEnabled !== undefined) {
     settings["expo.newArchEnabled"] = String(newArchEnabled);
   }
-  (exp.plugins ?? []).forEach((entry, index) => {
-    const [plugin, props]: unknown[] = Array.isArray(entry)
-      ? entry
-      : [entry, undefined];
+  // Numbered after Hot Updater's own plugin is left out, so moving it
+  // renumbers nothing.
+  const plugins = (exp.plugins ?? [])
+    .map((entry): unknown[] => (Array.isArray(entry) ? entry : [entry]))
+    .filter(
+      ([plugin]) =>
+        !(typeof plugin === "string" && HOT_UPDATER_PLUGINS.has(plugin)),
+    );
+  plugins.forEach(([plugin, props], index) => {
     if (typeof plugin === "string") {
-      if (HOT_UPDATER_PLUGINS.has(plugin)) return;
       settings[`expo.plugin[${index}]:${plugin}`] = JSON.stringify(
         sortKeys({ source: pluginSource(cwd, plugin), props: props ?? null }),
       );

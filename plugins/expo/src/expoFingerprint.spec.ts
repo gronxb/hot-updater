@@ -1,4 +1,5 @@
 import fs from "node:fs/promises";
+import { createRequire } from "node:module";
 import os from "node:os";
 import path from "node:path";
 
@@ -51,12 +52,12 @@ describe("readExpoSettings", () => {
       Object.keys(settings).some((key) => key.includes("@hot-updater")),
     ).toBe(false);
     expect(
-      JSON.parse(settings["expo.plugin[1]:expo-build-properties"]!),
+      JSON.parse(settings["expo.plugin[0]:expo-build-properties"]!),
     ).toEqual({
       props: { ios: { deploymentTarget: "15.1" } },
       source: "expo-build-properties@0.13.2",
     });
-    expect(settings["expo.plugin[2]:./plugins/withLocal"]).toMatch(
+    expect(settings["expo.plugin[1]:./plugins/withLocal"]).toMatch(
       /"source":"sha256:[0-9a-f]{64}"/,
     );
   });
@@ -77,6 +78,38 @@ describe("readExpoSettings", () => {
       "module.exports = (config) => ({ ...config, name: 'x' });",
     );
     expect(read({ a: 1, b: 2 })).not.toEqual(before);
+  });
+
+  it("hashes the files a local plugin imports, as Expo loaded them", async () => {
+    await fs.writeFile(
+      path.join(project, "plugins/helper.js"),
+      "module.exports = 1;",
+    );
+    await fs.writeFile(
+      path.join(project, "plugins/withNative.js"),
+      "require('./helper'); module.exports = (config) => config;",
+    );
+    // Expo requires a plugin while it reads the app config.
+    createRequire(path.join(project, "package.json"))("./plugins/withNative");
+    const read = () =>
+      readExpoSettings(project, { plugins: ["./plugins/withNative"] }, "ios");
+    const before = read();
+
+    await fs.writeFile(
+      path.join(project, "plugins/helper.js"),
+      "module.exports = 2;",
+    );
+    expect(read()).not.toEqual(before);
+  });
+
+  it("numbers plugins without Hot Updater's own, so moving it changes nothing", () => {
+    const read = (plugins: unknown[]) =>
+      readExpoSettings(project, { plugins }, "ios");
+    const hotUpdater = ["@hot-updater/expo", { channel: "production" }];
+
+    expect(read([hotUpdater, "expo-build-properties"])).toEqual(
+      read(["expo-build-properties", hotUpdater]),
+    );
   });
 
   it("leaves out what the app config doesn't declare", () => {
