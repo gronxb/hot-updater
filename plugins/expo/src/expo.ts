@@ -13,7 +13,7 @@ import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
 
 import { getConfig } from "./expoConfig";
-import { expoFingerprint } from "./expoFingerprint";
+import { expoFingerprint, isHotUpdaterPlugin } from "./expoFingerprint";
 import { resolveMain } from "./resolveMain";
 import { runExpoPrebuild } from "./util/prebuild";
 
@@ -30,13 +30,11 @@ type HotUpdaterExpoPluginProps = {
 };
 
 const getHotUpdaterExpoPluginProps = (
+  cwd: string,
   plugins: Awaited<ReturnType<typeof getConfig>>["exp"]["plugins"],
 ): HotUpdaterExpoPluginProps | undefined => {
   const entry = plugins?.find(
-    (plugin) =>
-      Array.isArray(plugin) &&
-      (plugin[0] === "@hot-updater/expo" ||
-        plugin[0] === "@hot-updater/expo/app.plugin.js"),
+    (plugin) => Array.isArray(plugin) && isHotUpdaterPlugin(cwd, plugin[0]),
   );
   if (!entry || !Array.isArray(entry)) return undefined;
   const props = entry[1];
@@ -52,6 +50,7 @@ export const getExpoFingerprintExtraSources = async (
     skipSDKVersionRequirement: true,
   });
   const publicKeyPath = getHotUpdaterExpoPluginProps(
+    cwd,
     exp.plugins,
   )?.publicKeyPath;
   if (publicKeyPath === undefined) return [];
@@ -70,6 +69,7 @@ export const getExpoBundleSigningPublicKey = async (
     skipSDKVersionRequirement: true,
   });
   const publicKeyPath = getHotUpdaterExpoPluginProps(
+    cwd,
     exp.plugins,
   )?.publicKeyPath;
   if (publicKeyPath === undefined) return null;

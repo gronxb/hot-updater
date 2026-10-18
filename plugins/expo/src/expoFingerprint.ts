@@ -376,7 +376,7 @@ const functionPluginSource = (cwd: string, plugin: Function): PluginSource => {
  * Whether a config plugin is Hot Updater's own, in any form an app config
  * names it: the package, a path into it, or its function.
  */
-const isHotUpdaterPlugin = (cwd: string, plugin: unknown): boolean => {
+export const isHotUpdaterPlugin = (cwd: string, plugin: unknown): boolean => {
   let file: string | null = null;
   try {
     if (typeof plugin === "function") {
