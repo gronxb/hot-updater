@@ -77,8 +77,9 @@ let package = Package(
                 "HotUpdater.mm",
                 "HotUpdaterAsync.swift",
                 "HotUpdaterMinBundleId.m",
+                "HotUpdaterFingerprintHash.m",
             ],
-            plugins: ["HotUpdaterMinBundleIdPlugin"]
+            plugins: ["HotUpdaterMinBundleIdPlugin", "HotUpdaterFingerprintPlugin"]
         ),
         .target(
             name: "HotUpdaterInterface",
@@ -106,6 +107,13 @@ let package = Package(
             name: "HotUpdaterMinBundleIdPlugin",
             capability: .buildTool(),
             path: "ios/Plugins/HotUpdaterMinBundleIdPlugin"
+        ),
+        // Writes the fingerprint of the native interface the app builds
+        // with, as the podspec's script phase does for CocoaPods.
+        .plugin(
+            name: "HotUpdaterFingerprintPlugin",
+            capability: .buildTool(),
+            path: "ios/Plugins/HotUpdaterFingerprintPlugin"
         ),
     ],
     swiftLanguageModes: [.v5],

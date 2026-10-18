@@ -43,6 +43,7 @@ public class HotUpdaterConfig: NSObject {
     private var _overrides = Overrides()
     private var _optionFields = OptionFields()
     private var _bundle: Bundle = .main
+    private var _buildFingerprintHash: String?
 
     public override convenience init() {
         self.init(log: { NSLog("%@", $0) })
@@ -64,6 +65,15 @@ public class HotUpdaterConfig: NSObject {
     public var bundle: Bundle {
         get { lock.lock(); defer { lock.unlock() }; return _bundle }
         set { lock.lock(); defer { lock.unlock() }; _bundle = newValue }
+    }
+
+    /// The fingerprint this build embedded, or nil for an app without one.
+    /// The core package compiles without the generated source, so
+    /// `HotUpdaterImpl` sets it on `shared` before anything resolves an
+    /// instance's values.
+    var buildFingerprintHash: String? {
+        get { lock.lock(); defer { lock.unlock() }; return _buildFingerprintHash }
+        set { lock.lock(); defer { lock.unlock() }; _buildFingerprintHash = newValue }
     }
 
     /// Reads a `HOT_UPDATER_*` Info.plist value from `bundle`, then from the

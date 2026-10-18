@@ -52,8 +52,8 @@ import Foundation
     /// deletes the downloaded bundles. To check another channel at runtime,
     /// pass `channel` to `checkForUpdate`.
     @objc public let channel: String?
-    /// Selects the fingerprint update strategy, over the
-    /// `HOT_UPDATER_FINGERPRINT_HASH` Info.plist key.
+    /// Selects the fingerprint update strategy, over the fingerprint the
+    /// build embedded.
     @objc public let fingerprintHash: String?
     /// The PEM key bundle signatures are verified with, over the
     /// `HOT_UPDATER_PUBLIC_KEY` Info.plist key.

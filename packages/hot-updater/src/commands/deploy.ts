@@ -46,6 +46,7 @@ import {
 import { createBundleDiff } from "@/utils/createBundleDiff";
 import {
   appendFingerprintExtraSources,
+  assertNativeSdkEmbedsFingerprint,
   describeFingerprintEngineChange,
   getFingerprintEngineChange,
   isFingerprintEquals,
@@ -756,6 +757,12 @@ const deployPlatform = async ({
       );
       process.exit(1);
     }
+    try {
+      assertNativeSdkEmbedsFingerprint(cwd);
+    } catch (error) {
+      s.error(error instanceof Error ? error.message : String(error));
+      process.exit(1);
+    }
     const newFingerprint = await nativeFingerprint(cwd, {
       platform,
       ...fingerprintConfig,
@@ -812,6 +819,11 @@ const deployPlatform = async ({
       // Reach is informational; the deploy doesn't depend on it.
     }
   } else {
+    if (fs.existsSync(path.join(cwd, "fingerprint.json"))) {
+      p.log.warn(
+        `fingerprint.json exists, but updateStrategy is '${config.updateStrategy}'. Native builds embed its fingerprint hash, so apps built from this project report the fingerprint strategy. Delete fingerprint.json, or run \`npx hot-updater doctor --fix\`, then rebuild.`,
+      );
+    }
     const defaultTargetAppVersion = options.targetAppVersion
       ? null
       : await getDefaultTargetAppVersion(platform);

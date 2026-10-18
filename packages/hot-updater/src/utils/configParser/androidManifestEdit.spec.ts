@@ -11,7 +11,7 @@ import {
 import { AndroidConfigParser } from "./androidParser";
 
 const CHANNEL = "com.hotupdater.CHANNEL";
-const FINGERPRINT = "com.hotupdater.FINGERPRINT_HASH";
+const PUBLIC_KEY = "com.hotupdater.PUBLIC_KEY";
 
 /** A hand-written manifest: comments, multi-line attributes, a commented-out key. */
 const MANIFEST = `<manifest
@@ -29,7 +29,7 @@ const MANIFEST = `<manifest
             android:value="false"
             tools:replace="android:value" />
         <!-- <meta-data android:name="${CHANNEL}" android:value="commented-out" /> -->
-        <meta-data android:name="${FINGERPRINT}" android:value="old-hash" />
+        <meta-data android:name="${PUBLIC_KEY}" android:value="old-hash" />
 
         <activity
             android:name=".MainActivity"
@@ -54,12 +54,12 @@ afterEach(async () => {
 
 describe("setManifestMetaData", () => {
   it("replaces an existing value and changes nothing else", () => {
-    const result = setManifestMetaData(MANIFEST, FINGERPRINT, "new-hash");
+    const result = setManifestMetaData(MANIFEST, PUBLIC_KEY, "new-hash");
 
     expect(result).toBe(
       MANIFEST.replace(
-        `android:name="${FINGERPRINT}" android:value="old-hash"`,
-        `android:name="${FINGERPRINT}" android:value="new-hash"`,
+        `android:name="${PUBLIC_KEY}" android:value="old-hash"`,
+        `android:name="${PUBLIC_KEY}" android:value="new-hash"`,
       ),
     );
   });
@@ -87,47 +87,47 @@ describe("setManifestMetaData", () => {
   });
 
   it("escapes the value", () => {
-    const result = setManifestMetaData(MANIFEST, FINGERPRINT, `a&b<c>"d"`)!;
+    const result = setManifestMetaData(MANIFEST, PUBLIC_KEY, `a&b<c>"d"`)!;
 
     expect(result).toContain(`android:value="a&amp;b&lt;c&gt;&quot;d&quot;"`);
   });
 
   it("keeps line breaks of a PEM value as they are", () => {
     const pem = "-----BEGIN PUBLIC KEY-----\nAAAA\n-----END PUBLIC KEY-----";
-    const result = setManifestMetaData(MANIFEST, FINGERPRINT, pem)!;
+    const result = setManifestMetaData(MANIFEST, PUBLIC_KEY, pem)!;
 
     expect(result).toContain(`android:value="${pem}"`);
   });
 
   it("adds android:value when the element has none", () => {
     const xml = MANIFEST.replace(
-      `<meta-data android:name="${FINGERPRINT}" android:value="old-hash" />`,
-      `<meta-data android:name="${FINGERPRINT}" />`,
+      `<meta-data android:name="${PUBLIC_KEY}" android:value="old-hash" />`,
+      `<meta-data android:name="${PUBLIC_KEY}" />`,
     );
 
-    expect(setManifestMetaData(xml, FINGERPRINT, "new-hash")).toBe(
+    expect(setManifestMetaData(xml, PUBLIC_KEY, "new-hash")).toBe(
       MANIFEST.replace("old-hash", "new-hash"),
     );
   });
 
   it("turns an android:resource meta-data into a value, which Android would otherwise read first", () => {
     const xml = MANIFEST.replace(
-      `<meta-data android:name="${FINGERPRINT}" android:value="old-hash" />`,
-      `<meta-data android:name="${FINGERPRINT}" android:resource="@string/hash" />`,
+      `<meta-data android:name="${PUBLIC_KEY}" android:value="old-hash" />`,
+      `<meta-data android:name="${PUBLIC_KEY}" android:resource="@string/hash" />`,
     );
 
-    expect(setManifestMetaData(xml, FINGERPRINT, "new-hash")).toBe(
+    expect(setManifestMetaData(xml, PUBLIC_KEY, "new-hash")).toBe(
       MANIFEST.replace("old-hash", "new-hash"),
     );
   });
 
   it("drops android:resource when the element also has android:value", () => {
     const xml = MANIFEST.replace(
-      `<meta-data android:name="${FINGERPRINT}" android:value="old-hash" />`,
-      `<meta-data android:name="${FINGERPRINT}" android:value="old-hash"\n            android:resource="@string/hash" />`,
+      `<meta-data android:name="${PUBLIC_KEY}" android:value="old-hash" />`,
+      `<meta-data android:name="${PUBLIC_KEY}" android:value="old-hash"\n            android:resource="@string/hash" />`,
     );
 
-    expect(setManifestMetaData(xml, FINGERPRINT, "new-hash")).toBe(
+    expect(setManifestMetaData(xml, PUBLIC_KEY, "new-hash")).toBe(
       MANIFEST.replace("old-hash", "new-hash"),
     );
   });
@@ -191,11 +191,11 @@ describe("setManifestMetaData", () => {
 
 describe("removeManifestMetaData", () => {
   it("removes the element and its line, nothing else", () => {
-    const result = removeManifestMetaData(MANIFEST, FINGERPRINT);
+    const result = removeManifestMetaData(MANIFEST, PUBLIC_KEY);
 
     expect(result).toBe(
       MANIFEST.replace(
-        `        <meta-data android:name="${FINGERPRINT}" android:value="old-hash" />\n`,
+        `        <meta-data android:name="${PUBLIC_KEY}" android:value="old-hash" />\n`,
         "",
       ),
     );
@@ -216,8 +216,8 @@ describe("AndroidConfigParser writes", () => {
 
     await parser.set(CHANNEL, "staging");
     expect((await parser.get(CHANNEL)).value).toBe("staging");
-    await parser.set(FINGERPRINT, "new-hash");
-    expect((await parser.get(FINGERPRINT)).value).toBe("new-hash");
+    await parser.set(PUBLIC_KEY, "new-hash");
+    expect((await parser.get(PUBLIC_KEY)).value).toBe("new-hash");
 
     const written = await readFile(manifestPath, "utf-8");
     expect(written).toContain(
@@ -225,7 +225,7 @@ describe("AndroidConfigParser writes", () => {
     );
 
     await parser.remove(CHANNEL);
-    await parser.set(FINGERPRINT, "old-hash");
+    await parser.set(PUBLIC_KEY, "old-hash");
     expect(await readFile(manifestPath, "utf-8")).toBe(MANIFEST);
   });
 });

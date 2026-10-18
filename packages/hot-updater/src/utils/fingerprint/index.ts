@@ -4,26 +4,32 @@ import path from "path";
 import { getCwd } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 
-import { getFingerprintHash, setFingerprintHash } from "../setFingerprintHash";
 import {
   ensureFingerprintConfig,
+  type FingerprintFile,
+  type FingerprintInputs,
   type FingerprintResult,
+  getFingerprintInputs,
   isFingerprintEquals,
 } from "./common";
 import { nativeFingerprint } from "./nativeFingerprint";
+import { assertNativeSdkEmbedsFingerprint } from "./nativeSdk";
 
 export * from "./common";
 export * from "./diff";
 export * from "./nativeFingerprint";
+export * from "./nativeSdk";
+export * from "./recorded";
 
 export const generateFingerprints = async (
   additionalExtraSources?: readonly string[],
-) => {
+): Promise<FingerprintFile> => {
   const fingerprintConfig = await ensureFingerprintConfig(
     additionalExtraSources,
   );
 
   const projectPath = getCwd();
+  assertNativeSdkEmbedsFingerprint(projectPath);
   const [ios, android] = await Promise.all([
     nativeFingerprint(projectPath, {
       platform: "ios",
@@ -34,7 +40,7 @@ export const generateFingerprints = async (
       ...fingerprintConfig,
     }),
   ]);
-  return { ios, android };
+  return { ios, android, inputs: getFingerprintInputs(fingerprintConfig) };
 };
 
 export const generateFingerprint = async (platform: "ios" | "android") => {
@@ -46,6 +52,10 @@ export const generateFingerprint = async (platform: "ios" | "android") => {
   });
 };
 
+/**
+ * Writes fingerprint.json, which native builds read to embed each platform's
+ * hash. With `platform`, only that platform's fingerprint is replaced.
+ */
 export const createAndInjectFingerprintFiles = async ({
   platform,
 }: {
@@ -54,99 +64,43 @@ export const createAndInjectFingerprintFiles = async ({
   const localFingerprint = await readLocalFingerprint();
   const newFingerprint = await generateFingerprints();
 
-  const androidPaths: string[] = [];
-  const iosPaths: string[] = [];
   // replace whole file if and only if platform argument is none or fingerprint file doesn't exist
-  if (!localFingerprint || !platform) {
-    await createFingerprintJSON(newFingerprint);
-    const { paths: _androidPaths } = await setFingerprintHash(
-      "android",
-      newFingerprint.android.hash,
-    );
-    androidPaths.push(..._androidPaths);
+  await createFingerprintJSON(
+    !localFingerprint || !platform
+      ? newFingerprint
+      : {
+          android: localFingerprint.android || newFingerprint.android,
+          ios: localFingerprint.ios || newFingerprint.ios,
+          [platform]: newFingerprint[platform],
+          inputs: newFingerprint.inputs,
+        },
+  );
 
-    const { paths: _iosPaths } = await setFingerprintHash(
-      "ios",
-      newFingerprint.ios.hash,
-    );
-    iosPaths.push(..._iosPaths);
-  } else {
-    // respect previous local fingerprint content first and replace the fingerprint of target platform.
-    const nextFingerprints = {
-      android: localFingerprint.android || newFingerprint.android,
-      ios: localFingerprint.ios || newFingerprint.ios,
-      [platform]: newFingerprint[platform],
-    } satisfies Record<Platform, FingerprintResult>;
-
-    await createFingerprintJSON(nextFingerprints);
-    const { paths: _platformPaths } = await setFingerprintHash(
-      platform,
-      newFingerprint[platform].hash,
-    );
-    switch (platform) {
-      case "android":
-        androidPaths.push(..._platformPaths);
-        break;
-      case "ios":
-        iosPaths.push(..._platformPaths);
-        break;
-    }
-  }
-
-  return {
-    fingerprint: newFingerprint,
-    androidPaths,
-    iosPaths,
-  };
+  return { fingerprint: newFingerprint };
 };
 
 /**
- * Brings fingerprint.json and each platform's native hash to `fingerprint`,
- * writing only what differs: what `fingerprint create` writes, without
- * rewriting a file whose content already matches. A platform without native
- * files is left alone. Returns what it wrote.
+ * Brings fingerprint.json to `fingerprint`, writing it only when a hash or the
+ * recorded inputs differ: what `fingerprint create` writes, without rewriting
+ * a file that already matches. Returns whether it wrote.
  */
-export const syncFingerprintFiles = async (fingerprint: {
-  ios: FingerprintResult;
-  android: FingerprintResult;
-}): Promise<{
-  fingerprintJson: boolean;
-  iosPaths: string[];
-  androidPaths: string[];
-}> => {
+export const syncFingerprintFiles = async (
+  fingerprint: FingerprintFile,
+): Promise<{ fingerprintJson: boolean }> => {
   const local = await readLocalFingerprint();
   // A file from before engines were recorded gets the engine that computes
   // its unchanged hashes.
   const fingerprintJson =
     !isFingerprintEquals(local, fingerprint) ||
+    JSON.stringify(local?.inputs) !== JSON.stringify(fingerprint.inputs) ||
     (["ios", "android"] as const).some(
       (platform) => local?.[platform]?.engine !== fingerprint[platform].engine,
     );
   if (fingerprintJson) await createFingerprintJSON(fingerprint);
-  const written = { ios: [] as string[], android: [] as string[] };
-  for (const platform of ["ios", "android"] as const) {
-    let current: string | null;
-    try {
-      current = (await getFingerprintHash(platform)).value;
-    } catch {
-      continue;
-    }
-    if (current === fingerprint[platform].hash) continue;
-    written[platform] = (
-      await setFingerprintHash(platform, fingerprint[platform].hash)
-    ).paths;
-  }
-  return {
-    fingerprintJson,
-    iosPaths: written.ios,
-    androidPaths: written.android,
-  };
+  return { fingerprintJson };
 };
 
-export const createFingerprintJSON = async (fingerprint: {
-  ios: FingerprintResult;
-  android: FingerprintResult;
-}) => {
+export const createFingerprintJSON = async (fingerprint: FingerprintFile) => {
   const FINGERPRINT_FILE_PATH = path.join(getCwd(), "fingerprint.json");
   await fs.promises.writeFile(
     FINGERPRINT_FILE_PATH,
@@ -158,6 +112,7 @@ export const createFingerprintJSON = async (fingerprint: {
 export const readLocalFingerprint = async (): Promise<{
   ios: FingerprintResult | null;
   android: FingerprintResult | null;
+  inputs?: FingerprintInputs;
 } | null> => {
   const FINGERPRINT_FILE_PATH = path.join(getCwd(), "fingerprint.json");
   try {

@@ -51,8 +51,8 @@ class HotUpdaterOptions
         val channel: String? = null,
         /**
          * The fingerprint hash of the fingerprint strategy; null reads the
-         * manifest's `com.hotupdater.FINGERPRINT_HASH`, and without one the
-         * instance uses the appVersion strategy's storage key.
+         * fingerprint the build embedded, and without one the instance uses
+         * the appVersion strategy's storage key.
          */
         val fingerprintHash: String? = null,
         /**

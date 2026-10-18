@@ -28,9 +28,9 @@ Hot Updater works inside that artifact:
 - The artifact asks Hot Updater for the JavaScript bundle when React Native
   starts. Hot Updater returns the downloaded update, or the bundle embedded in
   the artifact.
-- The CLI writes the channel, fingerprint, and signing public key into the
-  artifact's own `Info.plist` and `AndroidManifest.xml`, so they travel with
-  it.
+- The CLI writes the channel and signing public key into the artifact's own
+  `Info.plist` and `AndroidManifest.xml`. Packaging embeds the fingerprint,
+  so these values travel with the artifact.
 - The native app calls one function of the artifact and never imports Hot
   Updater.
 
@@ -95,7 +95,9 @@ The examples below use Fingerprint. For App Version, set `updateStrategy` to
 `"appVersion"` in `hot-updater.config.ts` and change the native
 `HotUpdaterCheckOptions` to `.appVersion` on iOS and
 `HotUpdaterUpdateStrategy.APP_VERSION` on Android. Omit the `fingerprint`
-config below and skip `fingerprint create` in the later steps.
+config below and skip `fingerprint create` in the later steps. If the project
+already has a `fingerprint.json`, delete it before packaging: native builds
+embed a fingerprint whenever that file exists.
 
 ```ts title="hot-updater.config.ts"
 export default defineConfig({
@@ -605,9 +607,11 @@ Brownfield guide, after `onReady` runs.
 ## Embed the native values
 
 Run the native configuration commands in the React Native project, before you
-package. By default they update every `Info.plist` under `ios/` and every
-`AndroidManifest.xml` under `android/`, which includes the framework target and
-the library module:
+package. By default `channel set` updates every `Info.plist` under `ios/` and
+every `AndroidManifest.xml` under `android/`, which includes the framework
+target and the library module. With the fingerprint strategy,
+`fingerprint create` writes `fingerprint.json`, and packaging in Release embeds
+the fingerprint in the framework and the library:
 
 ```bash
 npx hot-updater channel set production
@@ -622,11 +626,9 @@ the same way:
 npx hot-updater keys export-public
 ```
 
-Check that `ios/BrownfieldLib/Info.plist` has `HOT_UPDATER_CHANNEL` and the
-library manifest has `com.hotupdater.CHANNEL`. With Fingerprint, also check
-for `HOT_UPDATER_FINGERPRINT_HASH` and `com.hotupdater.FINGERPRINT_HASH`,
-respectively. To limit the commands to the artifacts, list the files in your
-config:
+Check that `ios/BrownfieldLib/Info.plist` has `HOT_UPDATER_CHANNEL` and that
+the library manifest has `com.hotupdater.CHANNEL`. To limit the commands to the
+artifacts, list the files in your config:
 
 ```ts title="hot-updater.config.ts"
 export default defineConfig({
@@ -670,8 +672,9 @@ val hotUpdater =
     )
 ```
 
-A value you leave out comes, on iOS, from the framework's `Info.plist`, then
-the native app's, and on Android from the merged manifest.
+When omitted, `channel` and `publicKey` come, on iOS, from the framework's
+`Info.plist`, then the native app's, and on Android from the merged manifest.
+The fingerprint comes from the artifact's build.
 
 Create the instance once, before React Native starts, as the start code does.
 Hot Updater fixes these values when React Native first reads the bundle: an
@@ -683,7 +686,7 @@ second one, throws if it passes a different value.
 
 ## Package and ship the artifacts
 
-Package the artifacts in **Release** after the native values are embedded.
+Package the artifacts in **Release** after setting the native values above.
 For the Brownfield CLI, select Release in your brownfield configuration.
 Run the commands from the React Native project:
 
@@ -716,8 +719,10 @@ argument controls only the update check. A Release artifact in a Debug native
 app still loads its embedded or downloaded bundle.
 
 Package again whenever the React Native project's native code or dependencies
-change, running `fingerprint create` first if you use Fingerprint. A new
-artifact needs a new native app release.
+change. With Fingerprint, each packaged artifact carries the fingerprint of
+the native interface it was built from. Run `fingerprint create` before
+packaging so deploy targets that fingerprint. A new artifact needs a new
+native app release.
 
 ## Deploy an update
 
@@ -866,12 +871,14 @@ instance the steps above create. Each named instance needs:
   Android instance reads the merged manifest, which holds main's channel, and
   `channel set` writes one channel to every `Info.plist` it updates.
 - **The app's fingerprint and public key.** Both bundles come from one React
-  Native project, so deploy computes the same fingerprint for both. A named
-  instance reads `fingerprintHash` and `publicKey` from its options, then, on
-  iOS, from its own bundle's `Info.plist` only, never the framework's or the
-  app's. `fingerprint create` and `keys export-public` must update that file
-  too, so list it in `infoPlistPaths` if you set them. On Android it reads the merged manifest, which already has them. Pass
-  another `publicKey` only if you sign that channel's deploys with another key.
+  Native project, so deploy computes the same fingerprint for both, and every
+  instance uses the fingerprint packaging embedded unless its options pass
+  `fingerprintHash`. A named instance reads `publicKey` from its options,
+  then, on iOS, from its own bundle's `Info.plist` only, never the
+  framework's or the app's: `keys export-public` must update that file too,
+  so list it in `infoPlistPaths` if you set them. On Android it reads the
+  merged manifest, which already has it. Pass another `publicKey` only if you
+  sign that channel's deploys with another key.
 
 ### Start each runtime
 
@@ -1095,7 +1102,7 @@ Create `storage` and `database` once, outside the function, as
 
 | Symptom | Cause and fix |
 | --- | --- |
-| With Fingerprint, the channel is `production` and the fingerprint is `null` | The artifact has no Hot Updater values. Run `channel set` and `fingerprint create`, check the framework's `Info.plist` and the library manifest, and package again. On Android, check that the library manifest has an `<application>` element. |
+| With Fingerprint, the channel is `production` and the fingerprint is `null` | The artifact has no Hot Updater values. Run `channel set` and `fingerprint create`, check the channel in the framework's `Info.plist` and the library manifest, and package again. The fingerprint is embedded when packaging finds `fingerprint.json` in the React Native project; set `HOT_UPDATER_APP_ROOT` if its native folders are elsewhere. On Android, check that the library manifest has an `<application>` element. |
 | The native app fails with "no such module 'HotUpdater'" | The framework imports `HotUpdater` publicly. Use `internal import HotUpdater`. |
 | The status is always `skipped` | The native app passes `checkForUpdates: false`, as its Debug build does. Build it in Release. |
 | The status is `failed` | Check `baseURL` and the request headers in `HotUpdaterOptions`, and that the device reaches the update server. |
@@ -1127,11 +1134,11 @@ JavaScript.
 
 | Platform | API | Use |
 | --- | --- | --- |
-| iOS | `HotUpdaterInstance(HotUpdaterOptions(baseURL:requestHeaders:requestTimeout:bundle:name:channel:fingerprintHash:publicKey:))` | The counterpart of JavaScript's `HotUpdater.init`; `bundle` holds the embedded `main.jsbundle` and the `HOT_UPDATER_*` keys, and `channel`, `fingerprintHash`, and `publicKey` replace those keys' values. `name` picks the instance, `main` by default: see [Run more than one React Native app](#run-more-than-one-react-native-app). Create it before React Native starts |
+| iOS | `HotUpdaterInstance(HotUpdaterOptions(baseURL:requestHeaders:requestTimeout:bundle:name:channel:fingerprintHash:publicKey:))` | The counterpart of JavaScript's `HotUpdater.init`; `bundle` holds the embedded `main.jsbundle` and the `HOT_UPDATER_*` keys; `channel` and `publicKey` replace those keys' values, and `fingerprintHash` the fingerprint packaging embedded. `name` picks the instance, `main` by default: see [Run more than one React Native app](#run-more-than-one-react-native-app). Create it before React Native starts |
 | iOS | `hotUpdater.checkForUpdate(HotUpdaterCheckOptions(updateStrategy:channel:requestHeaders:requestTimeout:))`, `update.updateBundle(onProgress:)` | Checks and downloads, as JavaScript's `checkForUpdate` and `updateBundle` do |
 | iOS | `hotUpdater.bundleURL()` | Returns the bundle React Native starts with |
 | iOS | `hotUpdater.resetChannel()`, `getChannel()`, `getBundleId()`, `getFingerprintHash()` | As JavaScript's methods of the same names |
-| Android | `HotUpdater.init(context, HotUpdaterOptions(baseURL, requestHeaders, requestTimeoutMillis))` | The counterpart of JavaScript's `HotUpdater.init`; returns a `HotUpdaterInstance`. The named arguments `channel`, `fingerprintHash`, and `publicKey` replace the manifest's values. `name` picks the instance, `main` by default, and a named instance's `bundleAssetName` is its embedded bundle: see [Run more than one React Native app](#run-more-than-one-react-native-app). Call it before React Native starts |
+| Android | `HotUpdater.init(context, HotUpdaterOptions(baseURL, requestHeaders, requestTimeoutMillis))` | The counterpart of JavaScript's `HotUpdater.init`; returns a `HotUpdaterInstance`. The named arguments `channel` and `publicKey` replace the manifest's values, and `fingerprintHash` the fingerprint packaging embedded. `name` picks the instance, `main` by default, and a named instance's `bundleAssetName` is its embedded bundle: see [Run more than one React Native app](#run-more-than-one-react-native-app). Call it before React Native starts |
 | Android | `hotUpdater.checkForUpdate(HotUpdaterCheckOptions(updateStrategy, channel, requestHeaders, requestTimeoutMillis))`, `update.updateBundle(onProgress)` | Checks and downloads, as JavaScript's `checkForUpdate` and `updateBundle` do |
 | Android | `hotUpdater.getJSBundleFile()` | Returns the bundle path React Native starts with |
 | Android | `hotUpdater.resetChannel()`, `getChannel()`, `getBundleId()`, `getFingerprintHash()` | As JavaScript's methods of the same names |
