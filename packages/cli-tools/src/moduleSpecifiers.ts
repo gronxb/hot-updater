@@ -45,3 +45,48 @@ export const moduleSpecifiersOf = (
     ]),
   ];
 };
+
+/**
+ * The modules `source` loads with a `require()` of a string literal or a
+ * template without substitutions, wherever the call is, such as inside a
+ * function that runs later: what Node's CommonJS loader resolves. A
+ * `require()` of a computed specifier names no module to resolve. `fileName`
+ * gives the language, such as `.ts`.
+ */
+export const requireSpecifiersOf = (
+  fileName: string,
+  source: string,
+): string[] => {
+  const { errors, program } = parseSync(fileName, source);
+  if (errors.length > 0) {
+    throw new Error(
+      `Could not read the requires of ${fileName}: ${errors[0]!.message}`,
+    );
+  }
+  const specifiers = new Set<string>();
+  new Visitor({
+    CallExpression({ callee, arguments: args }) {
+      if (
+        callee.type !== "Identifier" ||
+        callee.name !== "require" ||
+        args.length !== 1
+      ) {
+        return;
+      }
+      const [specifier] = args;
+      if (
+        specifier?.type === "Literal" &&
+        typeof specifier.value === "string"
+      ) {
+        specifiers.add(specifier.value);
+      } else if (
+        specifier?.type === "TemplateLiteral" &&
+        specifier.expressions.length === 0 &&
+        typeof specifier.quasis[0]?.value.cooked === "string"
+      ) {
+        specifiers.add(specifier.quasis[0].value.cooked);
+      }
+    },
+  }).visit(program);
+  return [...specifiers];
+};

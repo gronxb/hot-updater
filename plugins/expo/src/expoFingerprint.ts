@@ -7,6 +7,7 @@ import {
   createInterfaceFingerprint,
   moduleSpecifiersOf,
   readReactNativeInterface,
+  requireSpecifiersOf,
 } from "@hot-updater/cli-tools";
 import type {
   NativeFingerprintOptions,
@@ -123,49 +124,66 @@ const SOURCE_EXTENSIONS = new Set([
   ".tsx",
 ]);
 
-/**
- * The files `file`'s import declarations and `import()` calls name. ESM
- * imports don't go through `require`, so neither the module cache nor the
- * recorded requires see them.
- */
-const staticImportsOf = (file: string): string[] => {
-  if (!SOURCE_EXTENSIONS.has(path.extname(file))) return [];
-  let specifiers: string[];
-  try {
-    specifiers = moduleSpecifiersOf(file, fs.readFileSync(file, "utf8"));
-  } catch {
-    return [];
-  }
-  // Node's ESM resolver: `exports` and `imports` under the `node` and
-  // `import` conditions, plus the extensions Expo tries for TypeScript.
-  const resolver = enhancedResolve.ResolverFactory.createResolver({
+// Node's resolvers: `exports` and `imports` under the `node` condition and
+// `import` for ESM or `require` for CommonJS, plus the extensions Expo tries
+// for TypeScript.
+const createResolver = (condition: "import" | "require") =>
+  enhancedResolve.ResolverFactory.createResolver({
     fileSystem: new enhancedResolve.CachedInputFileSystem(fs, 0),
     useSyncFileSystemCalls: true,
-    conditionNames: ["node", "import"],
+    conditionNames: ["node", condition],
     exportsFields: ["exports"],
     importsFields: ["imports"],
     mainFields: ["main"],
-    extensions: PLUGIN_EXTENSIONS,
+    extensions: [...PLUGIN_EXTENSIONS, ".json"],
   });
-  return specifiers.flatMap((specifier) => {
-    if (specifier.startsWith("node:")) return [];
-    try {
-      const resolved = resolver.resolveSync({}, path.dirname(file), specifier);
-      if (resolved) return [fs.realpathSync(resolved)];
-    } catch {
-      // Unresolvable: a built-in module, or a package without an entry.
-    }
-    if (specifier.startsWith(".") || specifier.startsWith("#")) return [];
-    const parts = specifier.split("/");
-    const name = specifier.startsWith("@")
-      ? parts.slice(0, 2).join("/")
-      : parts[0]!;
-    const dir = packageDir(path.dirname(file), name);
-    // A package without a resolvable entry still counts, by its version.
-    return dir === null
-      ? []
-      : [path.join(fs.realpathSync(dir), "package.json")];
-  });
+
+/**
+ * The files `file`'s import declarations, `import()` calls, and literal
+ * `require()` calls name. ESM imports don't go through `require`, and a
+ * `require()` inside a plugin or mod callback runs only at prebuild, so
+ * neither the module cache nor the recorded requires see them.
+ */
+const staticImportsOf = (file: string): string[] => {
+  if (!SOURCE_EXTENSIONS.has(path.extname(file))) return [];
+  let imports: string[];
+  let requires: string[];
+  try {
+    const source = fs.readFileSync(file, "utf8");
+    imports = moduleSpecifiersOf(file, source);
+    requires = requireSpecifiersOf(file, source);
+  } catch {
+    return [];
+  }
+  const resolveWith =
+    (resolver: ReturnType<typeof createResolver>) =>
+    (specifier: string): string[] => {
+      if (specifier.startsWith("node:")) return [];
+      try {
+        const resolved = resolver.resolveSync(
+          {},
+          path.dirname(file),
+          specifier,
+        );
+        if (resolved) return [fs.realpathSync(resolved)];
+      } catch {
+        // Unresolvable: a built-in module, or a package without an entry.
+      }
+      if (specifier.startsWith(".") || specifier.startsWith("#")) return [];
+      const parts = specifier.split("/");
+      const name = specifier.startsWith("@")
+        ? parts.slice(0, 2).join("/")
+        : parts[0]!;
+      const dir = packageDir(path.dirname(file), name);
+      // A package without a resolvable entry still counts, by its version.
+      return dir === null
+        ? []
+        : [path.join(fs.realpathSync(dir), "package.json")];
+    };
+  return [
+    ...imports.flatMap(resolveWith(createResolver("import"))),
+    ...requires.flatMap(resolveWith(createResolver("require"))),
+  ];
 };
 
 /** Every file `file` imports: required, cached first or not, or imported. */
@@ -181,14 +199,18 @@ const importsOf = (file: string): string[] => [
  * registry packages they import, by version. Expo requires config plugins,
  * so once the app config is read, the module cache and the recorded requires
  * hold each one's imports; a file nothing loaded counts by itself. The
- * project's own package.json, which app configs read for the version and
- * which changes with every release, is left out.
+ * project's own package.json, which app configs read for the version, and
+ * its static app config (app.json or app.config.json), whose fields count
+ * through the config Expo resolves, change with every release and are left
+ * out.
  */
 const pluginGraph = (
   project: string,
   entries: readonly string[],
 ): { files: string[]; packages: string[] } => {
-  const releaseManifest = path.join(project, "package.json");
+  const releaseFiles = ["package.json", "app.json", "app.config.json"].map(
+    (name) => path.join(project, name),
+  );
   const files = new Set<string>();
   const packages = new Set<string>();
   const visit = (file: string) => {
@@ -202,7 +224,7 @@ const pluginGraph = (
     for (const imported of importsOf(file)) visit(imported);
   };
   for (const entry of entries) visit(entry);
-  files.delete(releaseManifest);
+  for (const file of releaseFiles) files.delete(file);
   return { files: [...files].sort(), packages: [...packages].sort() };
 };
 

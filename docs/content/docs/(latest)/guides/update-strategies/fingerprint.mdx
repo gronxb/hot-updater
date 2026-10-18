@@ -114,12 +114,12 @@ links it: in a monorepo, that means it is listed in the app's `dependencies`.
 Changing a config plugin or its options changes the fingerprint, except for
 Hot Updater's own plugin, whose channel and public key don't change what
 JavaScript can call. A plugin from your project or workspace counts by the
-files it loads; one installed from the registry counts by its version and
+files it imports or requires, including a `require()` inside its callback; one installed from the registry counts by its version and
 patches, like a native package, so bump `nativeVersion` if only its own
 dependencies change what it generates. With `app.config.js` or `app.config.ts`, the
 local files it imports count too, since it can apply plugins directly with
-`withPlugins`, except the app's own `package.json`, so reading the version
-from it leaves the fingerprint unchanged; the registry packages any of that
+`withPlugins`, except the app's own `package.json` and `app.json`, so reading
+the version from them leaves the fingerprint unchanged; the registry packages any of that
 code imports count by version and patches. The app config file itself doesn't count, since
 it holds the version: keep a plugin you apply directly in its own file, or
 bump `nativeVersion` when one written inside the app config changes. A file a

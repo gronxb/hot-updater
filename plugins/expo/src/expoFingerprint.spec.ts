@@ -259,7 +259,7 @@ describe("readExpoSettings", () => {
     }
   });
 
-  it("hashes what app.config.js applies directly and the data it reads, but not package.json", async () => {
+  it("hashes what app.config.js applies directly and the data it reads, but not package.json or app.json", async () => {
     await fs.writeFile(
       path.join(project, "plugins/native.json"),
       JSON.stringify({ pod: "A" }),
@@ -281,10 +281,15 @@ describe("readExpoSettings", () => {
     config.paths = (
       Module as unknown as { _nodeModulePaths: (dir: string) => string[] }
     )._nodeModulePaths(path.dirname(configPath));
-    // return withPlugins(config, [require("./plugins/direct")]), version from package.json
+    await fs.writeFile(
+      path.join(project, "app.json"),
+      JSON.stringify({ expo: { version: "1.0.0" } }),
+    );
+    // return withPlugins(config, [require("./plugins/direct")]), version from
+    // package.json and app.json
     await recordRequires(async () =>
       config._compile(
-        "require('./plugins/direct'); require('./package.json');",
+        "require('./plugins/direct'); require('./package.json'); require('./app.json');",
         configPath,
       ),
     );
@@ -296,6 +301,10 @@ describe("readExpoSettings", () => {
     await fs.writeFile(
       path.join(project, "package.json"),
       JSON.stringify({ version: "2.0.0" }),
+    );
+    await fs.writeFile(
+      path.join(project, "app.json"),
+      JSON.stringify({ expo: { version: "2.0.0" } }),
     );
     expect(read()).toEqual(before);
 
@@ -739,6 +748,30 @@ describe("readExpoSettings", () => {
     } finally {
       await fs.rm(workspace, { recursive: true, force: true });
     }
+  });
+
+  it("follows a require() a plugin defers to its callback", async () => {
+    await fs.writeFile(
+      path.join(project, "plugins/deferredHelper.js"),
+      "module.exports = 1;",
+    );
+    await fs.writeFile(
+      path.join(project, "plugins/withDeferred.js"),
+      "module.exports = (config) => { require('./deferredHelper'); return config; };",
+    );
+    const read = () =>
+      readExpoSettings(
+        project,
+        { plugins: ["./plugins/withDeferred.js"] },
+        "ios",
+      );
+    const before = read();
+
+    await fs.writeFile(
+      path.join(project, "plugins/deferredHelper.js"),
+      "module.exports = 2;",
+    );
+    expect(read()).not.toEqual(before);
   });
 
   it("numbers plugins without Hot Updater's own, so moving it changes nothing", () => {
