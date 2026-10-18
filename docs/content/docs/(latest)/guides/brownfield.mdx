@@ -428,10 +428,8 @@ object ReactNativeHostManager {
         }
     }
 
-    /** // [!code ++:26]
-     * Checks for an update and waits up to [timeoutMillis] for a required
-     * one. The timeout ends the wait, not the download.
-     */
+    // Checks for an update and waits up to [timeoutMillis] for a required // [!code ++:24]
+    // one. The timeout ends the wait, not the download.
     internal suspend fun checkForUpdate(
         hotUpdater: HotUpdaterInstance,
         timeoutMillis: Long,
