@@ -313,6 +313,67 @@ describe("readExpoSettings", () => {
     expect(read()).not.toEqual(withNewData);
   });
 
+  it("resolves a local TypeScript plugin named without its extension", async () => {
+    await fs.writeFile(
+      path.join(project, "plugins/withTs.ts"),
+      "export default (config: unknown) => config;",
+    );
+    const source = JSON.parse(
+      readExpoSettings(project, { plugins: ["./plugins/withTs"] }, "ios")[
+        "expo.plugin[0]:./plugins/withTs"
+      ]!,
+    ).source;
+
+    expect(source).toMatch(/^sha256:/);
+  });
+
+  it("counts a registry plugin passed as a function, or imported by app.config.js, by its version", async () => {
+    const registry = path.join(project, "node_modules/expo-reg-plugin");
+    await fs.mkdir(registry, { recursive: true });
+    const setVersion = (version: string) =>
+      fs.writeFile(
+        path.join(registry, "package.json"),
+        JSON.stringify({ name: "expo-reg-plugin", version, main: "index.js" }),
+      );
+    await setVersion("1.0.0");
+    await fs.writeFile(
+      path.join(registry, "index.js"),
+      "module.exports = function withReg(config) { return config; };",
+    );
+    const withReg = createRequire(path.join(project, "package.json"))(
+      "expo-reg-plugin",
+    ) as () => unknown;
+
+    expect(
+      JSON.parse(
+        readExpoSettings(project, { plugins: [withReg] }, "ios")[
+          "expo.plugin[0]:withReg"
+        ]!,
+      ).source,
+    ).toBe("expo-reg-plugin@1.0.0");
+
+    // return withPlugins(config, [require("expo-reg-plugin")])
+    await fs.writeFile(path.join(project, "app.config.js"), "");
+    const configPath = await fs.realpath(path.join(project, "app.config.js"));
+    const config = new Module(configPath) as Module & {
+      _compile: (code: string, filename: string) => void;
+    };
+    config.filename = configPath;
+    config.paths = (
+      Module as unknown as { _nodeModulePaths: (dir: string) => string[] }
+    )._nodeModulePaths(path.dirname(configPath));
+    await recordRequires(async () =>
+      config._compile("require('expo-reg-plugin');", configPath),
+    );
+    const read = () =>
+      readExpoSettings(project, { plugins: [] }, "ios", configPath);
+    const before = read();
+    expect(before["expo.config"]).toMatch(/^sha256:/);
+
+    await setVersion("1.1.0");
+    expect(read()).not.toEqual(before);
+  });
+
   it("numbers plugins without Hot Updater's own, so moving it changes nothing", () => {
     const read = (plugins: unknown[]) =>
       readExpoSettings(project, { plugins }, "ios");

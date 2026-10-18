@@ -146,6 +146,54 @@ const hashPluginFiles = (root: string, entry: string): string =>
       .join("\0"),
   )}`;
 
+// The extensions Expo tries for a local plugin path without one.
+const PLUGIN_EXTENSIONS = [".js", ".cjs", ".mjs", ".ts", ".cts", ".mts"];
+
+/** A local plugin path's file, by real path, as Expo resolves it. */
+const resolvePluginFile = (cwd: string, plugin: string): string => {
+  const target = path.resolve(cwd, plugin);
+  try {
+    return fs.realpathSync(require.resolve(target));
+  } catch {
+    for (const extension of PLUGIN_EXTENSIONS) {
+      if (fs.existsSync(target + extension)) {
+        return fs.realpathSync(target + extension);
+      }
+    }
+    throw new Error(`Cannot resolve the config plugin ${plugin}.`);
+  }
+};
+
+/** The installed package a file in node_modules belongs to. */
+const owningPackage = (
+  file: string,
+): { name: string; version: string } | null => {
+  for (let dir = path.dirname(file); ; dir = path.dirname(dir)) {
+    const manifest = path.join(dir, "package.json");
+    if (fs.existsSync(manifest)) {
+      const { name, version } = JSON.parse(
+        fs.readFileSync(manifest, "utf8"),
+      ) as { name?: string; version?: string };
+      if (name) return { name, version: version ?? "unknown" };
+    }
+    if (path.basename(dir) === "node_modules" || path.dirname(dir) === dir) {
+      return null;
+    }
+  }
+};
+
+/**
+ * The cached module a function plugin comes from: the one whose export it
+ * is, such as `plugins: [require("./plugins/withNative")]`.
+ */
+const functionPluginModule = (plugin: unknown): string | null => {
+  for (const [file, module] of Object.entries(require.cache)) {
+    const exports = module?.exports as { default?: unknown } | undefined;
+    if (exports === plugin || exports?.default === plugin) return file;
+  }
+  return null;
+};
+
 /**
  * Where a config plugin's code comes from: the version of the registry
  * package that ships it, or, for a local file or a workspace package, the
@@ -156,10 +204,7 @@ const pluginSource = (cwd: string, plugin: string): string => {
   const project = fs.realpathSync(cwd);
   if (plugin.startsWith(".") || path.isAbsolute(plugin)) {
     try {
-      return hashPluginFiles(
-        project,
-        require.resolve(path.resolve(cwd, plugin)),
-      );
+      return hashPluginFiles(project, resolvePluginFile(cwd, plugin));
     } catch {
       return "unresolved";
     }
@@ -213,17 +258,36 @@ const configImports = (configPath: string): string[] => {
 };
 
 /**
+ * The registry packages app.config.js imported, which it can apply as
+ * plugins directly, such as `withPlugins(config, [require("expo-build-properties")])`.
+ */
+const configPackages = (configPath: string): string[] => {
+  const packages = new Set<string>();
+  for (const file of [
+    ...(require.cache[configPath]?.children ?? []).map(
+      ({ filename }) => filename,
+    ),
+    ...(requireEdges.get(configPath) ?? []),
+  ]) {
+    if (isLocal(file)) continue;
+    const owner = owningPackage(file);
+    if (owner) packages.add(`${owner.name}@${owner.version}`);
+  }
+  return [...packages].sort();
+};
+
+/**
  * The local module whose export is the function plugin `plugin`, such as
  * `plugins: [require("./plugins/withNative")]` in app.config.js.
  */
 const functionPluginSource = (cwd: string, plugin: Function): string => {
-  const project = fs.realpathSync(cwd);
-  // Outside node_modules, a sibling workspace package included.
-  for (const [file, module] of Object.entries(require.cache)) {
-    const exports = module?.exports as { default?: unknown } | undefined;
-    if (isLocal(file) && (exports === plugin || exports?.default === plugin)) {
-      return hashPluginFiles(project, file);
-    }
+  const file = functionPluginModule(plugin);
+  if (file !== null) {
+    // A sibling workspace package counts by its files, a registry package
+    // by its version, as a plugin named by a string does.
+    if (isLocal(file)) return hashPluginFiles(fs.realpathSync(cwd), file);
+    const owner = owningPackage(file);
+    if (owner) return `${owner.name}@${owner.version}`;
   }
   // Written inline in app.config.js: its source. What it calls from
   // app.config.js's imports counts as `expo.config`.
@@ -261,16 +325,16 @@ export const readExpoSettings = (
     );
   if (configPath) {
     const project = fs.realpathSync(cwd);
-    const imports = configImports(fs.realpathSync(configPath));
-    if (imports.length > 0) {
-      settings["expo.config"] = `sha256:${sha256(
-        imports
-          .map(
-            (file) =>
-              `${path.relative(project, file).split(path.sep).join("/")}\0${sha256(fs.readFileSync(file))}`,
-          )
-          .join("\0"),
-      )}`;
+    const config = fs.realpathSync(configPath);
+    const entries = [
+      ...configImports(config).map(
+        (file) =>
+          `${path.relative(project, file).split(path.sep).join("/")}\0${sha256(fs.readFileSync(file))}`,
+      ),
+      ...configPackages(config),
+    ];
+    if (entries.length > 0) {
+      settings["expo.config"] = `sha256:${sha256(entries.join("\0"))}`;
     }
   }
   plugins.forEach(([plugin, props], index) => {
@@ -292,19 +356,36 @@ export const readExpoSettings = (
 };
 
 /** The packages the app config names as config plugins. */
-const configPluginPackages = (exp: AppConfig): string[] =>
-  (exp.plugins ?? []).flatMap((entry) => {
+/**
+ * The registry packages the app config's plugins come from: named, passed as
+ * functions, or imported by app.config.js.
+ */
+const configPluginPackages = (
+  exp: AppConfig,
+  configPath: string | null,
+): string[] => {
+  const packages = new Set<string>();
+  for (const entry of exp.plugins ?? []) {
     const plugin = Array.isArray(entry) ? entry[0] : entry;
-    if (
-      typeof plugin !== "string" ||
-      plugin.startsWith(".") ||
-      path.isAbsolute(plugin)
-    ) {
-      return [];
+    if (typeof plugin === "string") {
+      if (plugin.startsWith(".") || path.isAbsolute(plugin)) continue;
+      const parts = plugin.split("/");
+      packages.add(
+        plugin.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!,
+      );
+    } else if (typeof plugin === "function") {
+      const file = functionPluginModule(plugin);
+      const owner = file && !isLocal(file) ? owningPackage(file) : null;
+      if (owner) packages.add(owner.name);
     }
-    const parts = plugin.split("/");
-    return [plugin.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!];
-  });
+  }
+  if (configPath) {
+    for (const entry of configPackages(fs.realpathSync(configPath))) {
+      packages.add(entry.slice(0, entry.lastIndexOf("@")));
+    }
+  }
+  return [...packages];
+};
 
 const autolinkingBin = (cwd: string) => {
   const expo = path.dirname(
@@ -377,6 +458,6 @@ export const expoFingerprint = async (
   return createInterfaceFingerprint(cwd, options, {
     ...nativeInterface,
     // A patched config plugin changes what prebuild generates.
-    patchedPackages: configPluginPackages(exp as AppConfig),
+    patchedPackages: configPluginPackages(exp as AppConfig, dynamicConfigPath),
   });
 };
