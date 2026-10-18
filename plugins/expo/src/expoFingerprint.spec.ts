@@ -5,7 +5,7 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { readExpoSettings } from "./expoFingerprint";
+import { readExpoSettings, recordRequires } from "./expoFingerprint";
 
 let project: string;
 
@@ -183,7 +183,11 @@ describe("readExpoSettings", () => {
     config.paths = (
       Module as unknown as { _nodeModulePaths: (dir: string) => string[] }
     )._nodeModulePaths(path.dirname(configPath));
-    config._compile("require('./plugins/inlineHelper');", configPath);
+    // Loaded earlier by another module, so Node keeps that one as its parent.
+    createRequire(path.join(project, "package.json"))("./plugins/inlineHelper");
+    await recordRequires(async () =>
+      config._compile("require('./plugins/inlineHelper');", configPath),
+    );
     const inline = (value: object) => value;
     const read = () =>
       readExpoSettings(project, { plugins: [inline] }, "ios", configPath);
@@ -218,6 +222,37 @@ describe("readExpoSettings", () => {
       const before = read();
 
       await fs.writeFile(path.join(sibling, "index.js"), "module.exports = 2;");
+      expect(read()).not.toEqual(before);
+    } finally {
+      await fs.rm(sibling, { recursive: true, force: true });
+    }
+  });
+
+  it("hashes a function plugin a sibling workspace package exports", async () => {
+    const sibling = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-fn-sibling-")),
+    );
+    try {
+      await fs.writeFile(
+        path.join(sibling, "helper.js"),
+        "module.exports = 1;",
+      );
+      await fs.writeFile(
+        path.join(sibling, "index.js"),
+        "require('./helper'); module.exports = function withAcme(config) { return config; };",
+      );
+      // app.config.js: plugins: [require("@acme/native-plugin")]
+      const withAcme = createRequire(path.join(project, "package.json"))(
+        path.join(sibling, "index.js"),
+      ) as () => unknown;
+      const read = () =>
+        readExpoSettings(project, { plugins: [withAcme] }, "ios");
+      const before = read();
+
+      await fs.writeFile(
+        path.join(sibling, "helper.js"),
+        "module.exports = 2;",
+      );
       expect(read()).not.toEqual(before);
     } finally {
       await fs.rm(sibling, { recursive: true, force: true });

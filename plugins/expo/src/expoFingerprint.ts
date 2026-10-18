@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs";
-import { createRequire } from "node:module";
+import Module, { createRequire } from "node:module";
 import path from "node:path";
 
 import {
@@ -65,6 +65,59 @@ const isLocal = (file: string) =>
   !file.split(path.sep).includes("node_modules");
 
 /**
+ * Every require seen while the app config was read, by the requiring file.
+ * A module's `children` only lists what it loaded first, and app.config.js,
+ * which Expo evaluates from a string, has no cached module at all.
+ */
+const requireEdges = new Map<string, Set<string>>();
+
+type ModuleInternals = {
+  prototype: { require: (this: Module, id: string) => unknown };
+  _resolveFilename: (request: string, parent: Module) => string;
+};
+
+let recording = 0;
+let unpatchedRequire: ModuleInternals["prototype"]["require"] | null = null;
+
+/** Runs `read` with every require it makes recorded in `requireEdges`. */
+export const recordRequires = async <T>(read: () => Promise<T>): Promise<T> => {
+  const internals = Module as unknown as ModuleInternals;
+  if (recording++ === 0) {
+    const original = internals.prototype.require;
+    unpatchedRequire = original;
+    internals.prototype.require = function (this: Module, id: string) {
+      const exports = original.call(this, id);
+      try {
+        const file = internals._resolveFilename(id, this);
+        if (this.filename && path.isAbsolute(file)) {
+          let edges = requireEdges.get(this.filename);
+          if (!edges) requireEdges.set(this.filename, (edges = new Set()));
+          edges.add(file);
+        }
+      } catch {
+        // A built-in module or one that didn't resolve: nothing to hash.
+      }
+      return exports;
+    };
+  }
+  try {
+    return await read();
+  } finally {
+    if (--recording === 0 && unpatchedRequire) {
+      internals.prototype.require = unpatchedRequire;
+      unpatchedRequire = null;
+    }
+  }
+};
+
+/** The local files `file` required, cached first or not. */
+const localImports = (file: string): string[] =>
+  [
+    ...(require.cache[file]?.children ?? []).map(({ filename }) => filename),
+    ...(requireEdges.get(file) ?? []),
+  ].filter(isLocal);
+
+/**
  * A plugin file and the local files it loads: every file outside
  * node_modules, sibling workspace packages included, since registry
  * packages count by version. Expo requires config plugins, so once the app
@@ -76,9 +129,7 @@ const pluginFiles = (entry: string): string[] => {
   const visit = (file: string) => {
     if (files.has(file)) return;
     files.add(file);
-    for (const child of require.cache[file]?.children ?? []) {
-      if (isLocal(child.filename)) visit(child.filename);
-    }
+    for (const imported of localImports(file)) visit(imported);
   };
   visit(entry);
   return [...files].sort();
@@ -144,21 +195,11 @@ const pluginSource = (cwd: string, plugin: string): string => {
   return version === undefined ? "unresolved" : `${name}@${version}`;
 };
 
-/**
- * The local files app.config.js imported. Expo evaluates it from a string,
- * so its own module isn't cached, but each module it required records it as
- * the parent.
- */
-const configImports = (project: string, configPath: string): string[] => {
+/** The local files app.config.js imported, and the files they import. */
+const configImports = (configPath: string): string[] => {
   const files = new Set<string>();
-  for (const [file, module] of Object.entries(require.cache)) {
-    if (
-      module?.parent?.filename === configPath &&
-      file.startsWith(`${project}${path.sep}`) &&
-      isLocal(file)
-    ) {
-      for (const imported of pluginFiles(file)) files.add(imported);
-    }
+  for (const file of localImports(configPath)) {
+    for (const imported of pluginFiles(file)) files.add(imported);
   }
   return [...files].sort();
 };
@@ -173,19 +214,16 @@ const functionPluginSource = (
   configPath: string | null,
 ): string => {
   const project = fs.realpathSync(cwd);
+  // Outside node_modules, a sibling workspace package included.
   for (const [file, module] of Object.entries(require.cache)) {
     const exports = module?.exports as { default?: unknown } | undefined;
-    if (
-      file.startsWith(`${project}${path.sep}`) &&
-      isLocal(file) &&
-      (exports === plugin || exports?.default === plugin)
-    ) {
+    if (isLocal(file) && (exports === plugin || exports?.default === plugin)) {
       return hashPluginFiles(project, file);
     }
   }
   // Written inline in app.config.js: its source, and what app.config.js
   // imports, which it may call.
-  const imports = configPath ? configImports(project, configPath) : [];
+  const imports = configPath ? configImports(configPath) : [];
   return `sha256:${sha256(
     [
       plugin.toString(),
@@ -287,9 +325,9 @@ export const expoFingerprint = async (
   cwd: string,
   options: NativeFingerprintOptions,
 ) => {
-  const { exp, dynamicConfigPath } = await getConfig(cwd, {
-    skipSDKVersionRequirement: true,
-  });
+  const { exp, dynamicConfigPath } = await recordRequires(() =>
+    getConfig(cwd, { skipSDKVersionRequirement: true }),
+  );
   const settings = readExpoSettings(
     cwd,
     exp as AppConfig,
