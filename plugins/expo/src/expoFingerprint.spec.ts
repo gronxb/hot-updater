@@ -374,6 +374,87 @@ describe("readExpoSettings", () => {
     expect(read()).not.toEqual(before);
   });
 
+  it("follows a local helper to the registry plugin it applies", async () => {
+    const registry = path.join(project, "node_modules/expo-deep-plugin");
+    await fs.mkdir(registry, { recursive: true });
+    const setVersion = (version: string) =>
+      fs.writeFile(
+        path.join(registry, "package.json"),
+        JSON.stringify({ name: "expo-deep-plugin", version, main: "index.js" }),
+      );
+    await setVersion("1.0.0");
+    await fs.writeFile(
+      path.join(registry, "index.js"),
+      "module.exports = (c) => c;",
+    );
+    await fs.writeFile(
+      path.join(project, "plugins/applyDeep.js"),
+      "module.exports = require('expo-deep-plugin');",
+    );
+    await fs.writeFile(path.join(project, "app.config.js"), "");
+    const configPath = await fs.realpath(path.join(project, "app.config.js"));
+    const config = new Module(configPath) as Module & {
+      _compile: (code: string, filename: string) => void;
+    };
+    config.filename = configPath;
+    config.paths = (
+      Module as unknown as { _nodeModulePaths: (dir: string) => string[] }
+    )._nodeModulePaths(path.dirname(configPath));
+    await recordRequires(async () =>
+      config._compile("require('./plugins/applyDeep');", configPath),
+    );
+    const read = () =>
+      readExpoSettings(project, { plugins: [] }, "ios", configPath);
+    const before = read();
+
+    await setVersion("1.1.0");
+    expect(read()).not.toEqual(before);
+  });
+
+  it("counts a plugin's own package.json, only the app's is left out", async () => {
+    const workspace = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-own-manifest-")),
+    );
+    try {
+      const writeManifest = (pod: string) =>
+        fs.writeFile(
+          path.join(workspace, "package.json"),
+          JSON.stringify({
+            name: "@acme/manifest-plugin",
+            version: "1.0.0",
+            pod,
+          }),
+        );
+      await writeManifest("A");
+      await fs.writeFile(
+        path.join(workspace, "app.plugin.js"),
+        "require('./package.json'); module.exports = (c) => c;",
+      );
+      await fs.mkdir(path.join(project, "node_modules/@acme"), {
+        recursive: true,
+      });
+      await fs.symlink(
+        workspace,
+        path.join(project, "node_modules/@acme/manifest-plugin"),
+      );
+      createRequire(path.join(project, "package.json"))(
+        "@acme/manifest-plugin/app.plugin.js",
+      );
+      const read = () =>
+        readExpoSettings(
+          project,
+          { plugins: ["@acme/manifest-plugin"] },
+          "ios",
+        );
+      const before = read();
+
+      await writeManifest("B");
+      expect(read()).not.toEqual(before);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("numbers plugins without Hot Updater's own, so moving it changes nothing", () => {
     const read = (plugins: unknown[]) =>
       readExpoSettings(project, { plugins }, "ios");

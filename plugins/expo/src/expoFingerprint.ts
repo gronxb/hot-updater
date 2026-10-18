@@ -110,40 +110,56 @@ export const recordRequires = async <T>(read: () => Promise<T>): Promise<T> => {
   }
 };
 
-/** The local files `file` required, cached first or not. */
-const localImports = (file: string): string[] =>
-  [
-    ...(require.cache[file]?.children ?? []).map(({ filename }) => filename),
-    ...(requireEdges.get(file) ?? []),
-  ].filter(isLocal);
+/** Every file `file` required, cached first or not. */
+const importsOf = (file: string): string[] => [
+  ...(require.cache[file]?.children ?? []).map(({ filename }) => filename),
+  ...(requireEdges.get(file) ?? []),
+];
 
 /**
- * A plugin file and the local files it loads: every file outside
- * node_modules, sibling workspace packages included, since registry
- * packages count by version. Expo requires config plugins, so once the app
- * config is read, Node's module cache holds the files each one imported; a
- * file it hasn't loaded counts by itself.
+ * What plugin code reaches from `entries`: the local files, followed
+ * through what they import (sibling workspace packages included), and the
+ * registry packages they import, by version. Expo requires config plugins,
+ * so once the app config is read, the module cache and the recorded requires
+ * hold each one's imports; a file nothing loaded counts by itself. The
+ * project's own package.json, which app configs read for the version and
+ * which changes with every release, is left out.
  */
-const pluginFiles = (entry: string): string[] => {
+const pluginGraph = (
+  project: string,
+  entries: readonly string[],
+): { files: string[]; packages: string[] } => {
+  const releaseManifest = path.join(project, "package.json");
   const files = new Set<string>();
+  const packages = new Set<string>();
   const visit = (file: string) => {
+    if (!isLocal(file)) {
+      const owner = owningPackage(file);
+      if (owner) packages.add(`${owner.name}@${owner.version}`);
+      return;
+    }
     if (files.has(file)) return;
     files.add(file);
-    for (const imported of localImports(file)) visit(imported);
+    for (const imported of importsOf(file)) visit(imported);
   };
-  visit(entry);
-  return [...files].sort();
+  for (const entry of entries) visit(entry);
+  files.delete(releaseManifest);
+  return { files: [...files].sort(), packages: [...packages].sort() };
 };
 
-/** The contents of a plugin's files, by their paths under `root`. */
-const hashPluginFiles = (root: string, entry: string): string =>
+/** A plugin graph's file contents, by their paths under `root`, and packages. */
+const hashGraph = (
+  root: string,
+  graph: { files: readonly string[]; packages: readonly string[] },
+): string =>
   `sha256:${sha256(
-    pluginFiles(entry)
-      .map(
+    [
+      ...graph.files.map(
         (file) =>
           `${path.relative(root, file).split(path.sep).join("/")}\0${sha256(fs.readFileSync(file))}`,
-      )
-      .join("\0"),
+      ),
+      ...graph.packages,
+    ].join("\0"),
   )}`;
 
 // The extensions Expo tries for a local plugin path without one.
@@ -194,25 +210,49 @@ const functionPluginModule = (plugin: unknown): string | null => {
   return null;
 };
 
+/** Where a plugin's code comes from, and the registry packages it reaches. */
+interface PluginSource {
+  source: string;
+  packages: string[];
+}
+
+const fromGraph = (
+  root: string,
+  graph: { files: string[]; packages: string[] },
+): PluginSource => ({
+  source: hashGraph(root, graph),
+  packages: graph.packages,
+});
+
+const fromPackage = (name: string, version: string): PluginSource => ({
+  source: `${name}@${version}`,
+  packages: [`${name}@${version}`],
+});
+
+const UNRESOLVED: PluginSource = { source: "unresolved", packages: [] };
+
 /**
  * Where a config plugin's code comes from: the version of the registry
  * package that ships it, or, for a local file or a workspace package, the
- * contents of the file Expo loads and the local files it imports.
+ * contents of the file Expo loads and what it imports.
  */
-const pluginSource = (cwd: string, plugin: string): string => {
+const pluginSource = (cwd: string, plugin: string): PluginSource => {
   // Node caches modules by real path.
   const project = fs.realpathSync(cwd);
   if (plugin.startsWith(".") || path.isAbsolute(plugin)) {
     try {
-      return hashPluginFiles(project, resolvePluginFile(cwd, plugin));
+      return fromGraph(
+        project,
+        pluginGraph(project, [resolvePluginFile(cwd, plugin)]),
+      );
     } catch {
-      return "unresolved";
+      return UNRESOLVED;
     }
   }
   const parts = plugin.split("/");
   const name = plugin.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!;
   const dir = packageDir(cwd, name);
-  if (dir === null) return "unresolved";
+  if (dir === null) return UNRESOLVED;
   const real = fs.realpathSync(dir);
   if (isLocal(real)) {
     // A workspace package: Expo loads its app.plugin.js, else its main.
@@ -229,91 +269,68 @@ const pluginSource = (cwd: string, plugin: string): string => {
               return require.resolve(name, { paths: [cwd] });
             }
           })();
-      return hashPluginFiles(real, fs.realpathSync(entry));
+      return fromGraph(real, pluginGraph(project, [fs.realpathSync(entry)]));
     } catch {
-      return "unresolved";
+      return UNRESOLVED;
     }
   }
   const { version } = JSON.parse(
     fs.readFileSync(path.join(dir, "package.json"), "utf8"),
   ) as { version?: string };
-  return version === undefined ? "unresolved" : `${name}@${version}`;
+  return version === undefined ? UNRESOLVED : fromPackage(name, version);
 };
 
 /**
- * The local files app.config.js imported, and the files they import: what
- * it can apply as plugins, as `withPlugins(config, [withLocal])` does without
- * listing them in `plugins`, and the data those plugins read. package.json,
- * which app configs read for the version, changes with every release, so it
- * doesn't count.
+ * A function plugin's source: the module whose export it is, such as
+ * `plugins: [require("./plugins/withNative")]`, counted like a plugin named
+ * by a string; or, written inline in app.config.js, its own source, with
+ * what it can call from app.config.js's imports counted as `expo.config`.
  */
-const configImports = (configPath: string): string[] => {
-  const files = new Set<string>();
-  for (const file of localImports(configPath)) {
-    for (const imported of pluginFiles(file)) {
-      if (path.basename(imported) !== "package.json") files.add(imported);
-    }
-  }
-  return [...files].sort();
-};
-
-/**
- * The registry packages app.config.js imported, which it can apply as
- * plugins directly, such as `withPlugins(config, [require("expo-build-properties")])`.
- */
-const configPackages = (configPath: string): string[] => {
-  const packages = new Set<string>();
-  for (const file of [
-    ...(require.cache[configPath]?.children ?? []).map(
-      ({ filename }) => filename,
-    ),
-    ...(requireEdges.get(configPath) ?? []),
-  ]) {
-    if (isLocal(file)) continue;
-    const owner = owningPackage(file);
-    if (owner) packages.add(`${owner.name}@${owner.version}`);
-  }
-  return [...packages].sort();
-};
-
-/**
- * The local module whose export is the function plugin `plugin`, such as
- * `plugins: [require("./plugins/withNative")]` in app.config.js.
- */
-const functionPluginSource = (cwd: string, plugin: Function): string => {
+const functionPluginSource = (cwd: string, plugin: Function): PluginSource => {
+  const project = fs.realpathSync(cwd);
   const file = functionPluginModule(plugin);
   if (file !== null) {
-    // A sibling workspace package counts by its files, a registry package
-    // by its version, as a plugin named by a string does.
-    if (isLocal(file)) return hashPluginFiles(fs.realpathSync(cwd), file);
+    if (isLocal(file)) return fromGraph(project, pluginGraph(project, [file]));
     const owner = owningPackage(file);
-    if (owner) return `${owner.name}@${owner.version}`;
+    if (owner) return fromPackage(owner.name, owner.version);
   }
-  // Written inline in app.config.js: its source. What it calls from
-  // app.config.js's imports counts as `expo.config`.
-  return `sha256:${sha256(plugin.toString())}`;
+  return { source: `sha256:${sha256(plugin.toString())}`, packages: [] };
 };
 
 /**
  * The settings an Expo app declares that decide its native build: the
  * JavaScript engine and the architecture, and the config plugins that
- * generate its native projects with their options. They come from the app
- * config, so they are the same before and after `expo prebuild`.
+ * generate its native projects, with their options and code. They come from
+ * the app config, so they are the same before and after `expo prebuild`.
+ * `packages` are the registry packages that plugin code reaches, whose
+ * patches change what prebuild generates.
  */
-export const readExpoSettings = (
+const collectExpoSettings = (
   cwd: string,
   exp: AppConfig,
   platform: Platform,
-  /** app.config.js or app.config.ts, when the app has one. */
-  configPath: string | null = null,
-): Record<string, string> => {
+  configPath: string | null,
+): { settings: Record<string, string>; packages: string[] } => {
   const settings: Record<string, string> = {};
+  const packages = new Set<string>();
   const own = exp[platform];
   const jsEngine = own?.jsEngine ?? exp.jsEngine;
   if (jsEngine !== undefined) settings["expo.jsEngine"] = String(jsEngine);
   const newArchEnabled = own?.newArchEnabled ?? exp.newArchEnabled;
   if (newArchEnabled !== undefined) {
     settings["expo.newArchEnabled"] = String(newArchEnabled);
+  }
+  if (configPath) {
+    // What app.config.js imports, which it can apply as plugins directly,
+    // as `withPlugins(config, [withLocal])` does without listing them in
+    // `plugins`. The app config file itself holds the version, so it
+    // doesn't count.
+    const project = fs.realpathSync(cwd);
+    const graph = pluginGraph(project, importsOf(fs.realpathSync(configPath)));
+    if (graph.files.length > 0 || graph.packages.length > 0) {
+      settings["expo.config"] = hashGraph(project, graph);
+    }
+    for (const entry of graph.packages) packages.add(entry);
   }
   // Numbered after Hot Updater's own plugin is left out, so moving it
   // renumbers nothing.
@@ -323,69 +340,40 @@ export const readExpoSettings = (
       ([plugin]) =>
         !(typeof plugin === "string" && HOT_UPDATER_PLUGINS.has(plugin)),
     );
-  if (configPath) {
-    const project = fs.realpathSync(cwd);
-    const config = fs.realpathSync(configPath);
-    const entries = [
-      ...configImports(config).map(
-        (file) =>
-          `${path.relative(project, file).split(path.sep).join("/")}\0${sha256(fs.readFileSync(file))}`,
-      ),
-      ...configPackages(config),
-    ];
-    if (entries.length > 0) {
-      settings["expo.config"] = `sha256:${sha256(entries.join("\0"))}`;
-    }
-  }
   plugins.forEach(([plugin, props], index) => {
-    if (typeof plugin === "string") {
-      settings[`expo.plugin[${index}]:${plugin}`] = JSON.stringify(
-        sortKeys({ source: pluginSource(cwd, plugin), props: props ?? null }),
-      );
-    } else if (typeof plugin === "function") {
-      settings[`expo.plugin[${index}]:${plugin.name || "inline"}`] =
-        JSON.stringify(
-          sortKeys({
-            source: functionPluginSource(cwd, plugin),
-            props: props ?? null,
-          }),
-        );
-    }
+    const found =
+      typeof plugin === "string"
+        ? pluginSource(cwd, plugin)
+        : typeof plugin === "function"
+          ? functionPluginSource(cwd, plugin)
+          : null;
+    if (!found) return;
+    const name =
+      typeof plugin === "string"
+        ? plugin
+        : (plugin as Function).name || "inline";
+    settings[`expo.plugin[${index}]:${name}`] = JSON.stringify(
+      sortKeys({ source: found.source, props: props ?? null }),
+    );
+    for (const entry of found.packages) packages.add(entry);
   });
-  return settings;
+  return {
+    settings,
+    packages: [...packages].map((entry) =>
+      entry.slice(0, entry.lastIndexOf("@")),
+    ),
+  };
 };
 
-/** The packages the app config names as config plugins. */
-/**
- * The registry packages the app config's plugins come from: named, passed as
- * functions, or imported by app.config.js.
- */
-const configPluginPackages = (
+/** The settings `collectExpoSettings` reads, for one platform. */
+export const readExpoSettings = (
+  cwd: string,
   exp: AppConfig,
-  configPath: string | null,
-): string[] => {
-  const packages = new Set<string>();
-  for (const entry of exp.plugins ?? []) {
-    const plugin = Array.isArray(entry) ? entry[0] : entry;
-    if (typeof plugin === "string") {
-      if (plugin.startsWith(".") || path.isAbsolute(plugin)) continue;
-      const parts = plugin.split("/");
-      packages.add(
-        plugin.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!,
-      );
-    } else if (typeof plugin === "function") {
-      const file = functionPluginModule(plugin);
-      const owner = file && !isLocal(file) ? owningPackage(file) : null;
-      if (owner) packages.add(owner.name);
-    }
-  }
-  if (configPath) {
-    for (const entry of configPackages(fs.realpathSync(configPath))) {
-      packages.add(entry.slice(0, entry.lastIndexOf("@")));
-    }
-  }
-  return [...packages];
-};
+  platform: Platform,
+  /** app.config.js or app.config.ts, when the app has one. */
+  configPath: string | null = null,
+): Record<string, string> =>
+  collectExpoSettings(cwd, exp, platform, configPath).settings;
 
 const autolinkingBin = (cwd: string) => {
   const expo = path.dirname(
@@ -414,7 +402,7 @@ export const expoFingerprint = async (
   const { exp, dynamicConfigPath } = await recordRequires(() =>
     getConfig(cwd, { skipSDKVersionRequirement: true }),
   );
-  const settings = readExpoSettings(
+  const { settings, packages } = collectExpoSettings(
     cwd,
     exp as AppConfig,
     options.platform,
@@ -458,6 +446,6 @@ export const expoFingerprint = async (
   return createInterfaceFingerprint(cwd, options, {
     ...nativeInterface,
     // A patched config plugin changes what prebuild generates.
-    patchedPackages: configPluginPackages(exp as AppConfig, dynamicConfigPath),
+    patchedPackages: packages,
   });
 };

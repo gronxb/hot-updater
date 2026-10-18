@@ -118,9 +118,9 @@ files it loads; one installed from the registry counts by its version and
 patches, like a native package, so bump `nativeVersion` if only its own
 dependencies change what it generates. With `app.config.js` or `app.config.ts`, the
 local files it imports count too, since it can apply plugins directly with
-`withPlugins`, except `package.json`, so reading the version from it leaves
-the fingerprint unchanged; the registry packages it imports count by version
-and patches. The app config file itself doesn't count, since
+`withPlugins`, except the app's own `package.json`, so reading the version
+from it leaves the fingerprint unchanged; the registry packages any of that
+code imports count by version and patches. The app config file itself doesn't count, since
 it holds the version: keep a plugin you apply directly in its own file, or
 bump `nativeVersion` when one written inside the app config changes.
 
