@@ -570,13 +570,18 @@ export const createInterfaceFingerprint = async (
   }
 
   // What codegen generates follows its config as well as the specs: `type`
-  // decides whether it generates modules, components, or both.
+  // decides whether it generates modules, components, or both. The other
+  // platform's section (`ios` or `android`) doesn't reach this build.
   const addCodegenConfig = async (root: string) => {
-    const config = (await readManifest(root))?.codegenConfig;
+    const config = (await readManifest(root))?.codegenConfig as
+      | Record<string, unknown>
+      | undefined;
     if (config) {
+      const { [platform === "ios" ? "android" : "ios"]: _other, ...own } =
+        config;
       addContents(
         `codegen-config:${toPosix(path.relative(cwd, root)) || "."}`,
-        stableStringify(config),
+        stableStringify(own),
         "codegen-config",
       );
     }

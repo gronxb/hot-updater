@@ -1,16 +1,16 @@
 {
   "ios": {
     "engine": "hot-updater/interface@1",
-    "hash": "cde30f1c79da098c82f9f56eb14dbfc80dd7d32f5f213f78aee9bb3a4d95f838",
+    "hash": "79cc9f4302b2b3658d7fdcd5e08505977bcbd5dc1a9bb41079ea60bc149fedf2",
     "sources": [
       {
         "type": "contents",
         "id": "codegen-config:../../packages/react-native",
-        "contents": "{\"android\":{\"javaPackageName\":\"com.hotupdater\"},\"jsSrcsDir\":\"./src\",\"name\":\"HotUpdaterSpec\",\"type\":\"modules\"}",
+        "contents": "{\"jsSrcsDir\":\"./src\",\"name\":\"HotUpdaterSpec\",\"type\":\"modules\"}",
         "reasons": [
           "codegen-config"
         ],
-        "hash": "ecce521895aafa20cdc7f16b850fa170e5caf929c501c86a7b6f0fd9c62b63ae"
+        "hash": "b78579dca957a3b428af48ea2b30ad38e079060d336dbad339bba77f1f6d76ab"
       },
       {
         "type": "contents",
