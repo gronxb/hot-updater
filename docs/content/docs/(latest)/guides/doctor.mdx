@@ -146,8 +146,7 @@ instead and names both engines. A `fingerprint.json` that doesn't record the
 current engine, because it predates recorded engines or another engine version
 computes the same hash, gets the warning `FINGERPRINT_ENGINE_UNRECORDED`;
 recording the engine keeps the fingerprint the same. When it cannot compute the
-fingerprint, for example because an Expo project lacks `@expo/fingerprint`, it
-reports
+fingerprint, for example because `react-native config` fails, it reports
 `FINGERPRINT_GENERATION_FAILED` with the reason.
 
 Under the App Version strategy, a `fingerprint.json` left in the project is

@@ -1,7 +1,7 @@
 {
   "ios": {
     "engine": "hot-updater/interface@1",
-    "hash": "562d7f65359572f5ac7e8f3f86db34039282d33e355b501efb0913f33f38dd8f",
+    "hash": "6063531196f4f449b5eb15d631306d7448f3898a55214813436bec5d3b064580",
     "sources": [
       {
         "type": "contents",
@@ -29,15 +29,6 @@
           "runtime"
         ],
         "hash": "9708041bb6cb6629529d81bcd10a3e45a607c59afdead6691f8d77fa247fff9f"
-      },
-      {
-        "type": "contents",
-        "id": "setting:ios:hermes-engine",
-        "contents": "0.80.1",
-        "reasons": [
-          "native-setting"
-        ],
-        "hash": "60d5db25e1cecbb793b84a3f33dd23785c3c97ac2fff765788120289352d6e49"
       }
     ]
   },
