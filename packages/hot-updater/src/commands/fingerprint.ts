@@ -4,7 +4,6 @@ import path from "node:path";
 import { getCwd, p } from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 
-import { warnIfExpoCNG } from "@/utils/expoDetection";
 import {
   computeRecordedFingerprintHash,
   createAndInjectFingerprintFiles,
@@ -20,6 +19,7 @@ import {
   getFingerprintDiff,
   showFingerprintDiff,
 } from "@/utils/fingerprint/diff";
+import { warnIfPrebuildGenerated } from "@/utils/prebuildDetection";
 
 import { ui } from "../utils/cli-ui";
 
@@ -37,7 +37,7 @@ const exitWithFingerprintError = (error: unknown): never => {
 };
 
 export const handleCreateFingerprint = async () => {
-  warnIfExpoCNG();
+  warnIfPrebuildGenerated();
   let diffChanged = false;
   let localFingerprint: {
     ios: FingerprintResult | null;

@@ -34,7 +34,7 @@ apply an update.
 Choose your project's build tool. Run the command for the platform you want to
 test on a simulator, emulator or connected device.
 
-<Tabs items={["React Native CLI", "Rock", "Expo"]}>
+<Tabs items={["React Native CLI", "Rock", "Expo", "One"]}>
   <Tab value="React Native CLI">
 
 For iOS, install the native dependencies with your project's CocoaPods setup,
@@ -81,6 +81,23 @@ For Android:
 
 ```sh
 npx expo run:android --variant release
+```
+
+  </Tab>
+  <Tab value="One">
+
+`one prebuild` generates the native projects; build them in Release.
+
+For iOS, run `npx one prebuild --platform ios`, then open
+`ios/<App>.xcworkspace` in Xcode, set the scheme's Run build configuration to
+Release, and run it.
+
+For Android:
+
+```sh
+npx one prebuild --platform android
+cd android
+./gradlew installRelease
 ```
 
   </Tab>

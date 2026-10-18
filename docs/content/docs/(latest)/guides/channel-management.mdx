@@ -136,7 +136,7 @@ channel.
 
 After setting the channel, rebuild your app in Release mode:
 
-<Tabs items={["Bare (React Native CLI)", "Rock", "Expo"]}>
+<Tabs items={["Bare (React Native CLI)", "Rock", "Expo", "One"]}>
   <Tab value="Bare (React Native CLI)">
     **iOS:**
     ```sh
@@ -169,6 +169,21 @@ After setting the channel, rebuild your app in Release mode:
     **Android:**
     ```sh
     npx expo run:android --variant release
+    ```
+  </Tab>
+  <Tab value="One">
+    Set the channel in the `@hot-updater/one` options in `native.app.plugins`,
+    then regenerate and build the native projects:
+    ```sh
+    npx one prebuild
+    ```
+
+    **iOS:** open `ios/<App>.xcworkspace` in Xcode and run the Release
+    configuration.
+
+    **Android:**
+    ```sh
+    cd android && ./gradlew installRelease
     ```
   </Tab>
 </Tabs>

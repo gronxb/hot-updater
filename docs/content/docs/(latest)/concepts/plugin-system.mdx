@@ -46,7 +46,7 @@ every project can reach.
 
 | Kind                                   | What it does                                                                        | Runs in                        | Official                                                                            | Write one                                                           |
 | -------------------------------------- | ----------------------------------------------------------------------------------- | ------------------------------ | ----------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| [Build adapter](#build-adapter)        | Bundles the app's JavaScript for `hot-updater deploy`                               | CLI                            | [Bare](/docs/build-adapters/bare), [Expo](/docs/build-adapters/expo), [Rock](/docs/build-adapters/rock) | `BuildAdapter` from `@hot-updater/plugin-core`                      |
+| [Build adapter](#build-adapter)        | Bundles the app's JavaScript for `hot-updater deploy`                               | CLI                            | [Bare](/docs/build-adapters/bare), [Expo](/docs/build-adapters/expo), [One](/docs/build-adapters/one), [Rock](/docs/build-adapters/rock) | `BuildAdapter` from `@hot-updater/plugin-core`                      |
 | [Storage adapter](#storage-adapter)    | Stores bundle artifacts and resolves their download URLs                            | CLI, Console, server           | Supabase, Cloudflare R2, AWS S3, Firebase, Vercel Blob, Azure Blob Storage, Standalone | [Create a storage adapter](/docs/storage-adapters/custom-storage)   |
 | [Database adapter](#database-adapter)  | Stores Bundles, Releases, Release Catalogs, Channels, and server plugins' tables    | CLI, Console, server           | Supabase, Cloudflare D1, DynamoDB, Firestore, PostgreSQL, Cosmos DB, Kysely, Drizzle, Prisma, MongoDB | [Create a database adapter](/docs/database-adapters/custom-database) |
 | [Signing adapter](#signing-adapter)    | Signs artifact hashes during deploy                                                 | CLI                            | [Local PEM](/docs/guides/signing/local), [AWS KMS](/docs/guides/signing/aws-kms), [Google Cloud KMS](/docs/guides/signing/google-cloud-kms), [remote](/docs/guides/signing/remote) | `BundleSigningAdapter` from `@hot-updater/plugin-core`              |
@@ -123,6 +123,8 @@ Build adapters generate JavaScript bundles when you run `hot-updater deploy`.
 - `@hot-updater/rock`: Runs the project's configured bundler through the
   [Rock CLI](https://github.com/callstack/rock) `bundle` command.
 - `@hot-updater/expo`: Executes the bundle command through Expo.
+- `@hot-updater/one`: Runs the React Native CLI `bundle` command, which One
+  routes through its own bundler.
 
 ## Storage adapter
 

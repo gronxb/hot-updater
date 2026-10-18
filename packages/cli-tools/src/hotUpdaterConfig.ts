@@ -98,6 +98,7 @@ const MANAGED_IMPORT_PACKAGES = new Set([
   "@hot-updater/cloudflare",
   "@hot-updater/expo",
   "@hot-updater/firebase",
+  "@hot-updater/one",
   "@hot-updater/postgres",
   "@hot-updater/rock",
   "@hot-updater/server/plugins",
@@ -109,7 +110,7 @@ const MANAGED_HELPER_NAMES = new Set([
   "commonOptions",
   "credential",
 ]);
-const KNOWN_BUILD_CALLEES = new Set(["bare", "expo", "rock"]);
+const KNOWN_BUILD_CALLEES = new Set(["bare", "expo", "one", "rock"]);
 /** Build adapter packages, whose imports a kept build still needs. */
 const BUILD_IMPORT_PACKAGES = new Set(
   [...KNOWN_BUILD_CALLEES].map((callee) => `@hot-updater/${callee}`),

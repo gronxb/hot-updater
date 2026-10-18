@@ -1034,10 +1034,10 @@ importers:
         version: 0.76.1
       '@rnx-kit/metro-config':
         specifier: ^2.0.1
-        version: 2.2.4(@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0)))(memfs@4.57.7(tslib@2.8.1))(metro@0.87.1)(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@15.1.3(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
+        version: 2.2.4(@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0)))(memfs@4.57.7(tslib@2.8.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@15.1.3(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)
       '@rnx-kit/metro-resolver-symlinks':
         specifier: ^0.2.1
-        version: 0.2.11(memfs@4.57.7(tslib@2.8.1))(metro@0.87.1)
+        version: 0.2.11(memfs@4.57.7(tslib@2.8.1))
       '@types/react':
         specifier: ^18.2.6
         version: 18.3.31
@@ -1403,10 +1403,10 @@ importers:
         version: 0.87.1
       '@rnx-kit/metro-config':
         specifier: ^2.0.1
-        version: 2.2.4(@react-native/metro-config@0.87.1(@babel/core@7.26.0))(memfs@4.57.7(tslib@2.8.1))(metro@0.87.1)(react-native@0.87.1(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@react-native/metro-config@0.87.1(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)
+        version: 2.2.4(@react-native/metro-config@0.87.1(@babel/core@7.26.0))(memfs@4.57.7(tslib@2.8.1))(react-native@0.87.1(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@react-native/metro-config@0.87.1(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)
       '@rnx-kit/metro-resolver-symlinks':
         specifier: ^0.2.1
-        version: 0.2.11(memfs@4.57.7(tslib@2.8.1))(metro@0.87.1)
+        version: 0.2.11(memfs@4.57.7(tslib@2.8.1))
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -2293,6 +2293,25 @@ importers:
         specifier: ^8.3.0
         version: 8.3.0
 
+  plugins/config-plugin:
+    dependencies:
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../../packages/cli-tools
+    devDependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.43
+      expo:
+        specifier: ^50.0.0
+        version: 50.0.21(@babel/core@7.26.0)(@react-native/babel-preset@0.87.1(@babel/core@7.26.0))(react-native@0.87.1(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(typescript@7.0.2))(@react-native/metro-config@0.87.1(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.6))(react@19.2.6)
+      hot-updater:
+        specifier: workspace:*
+        version: link:../../packages/hot-updater
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.14.6(@types/node@20.19.43)(typescript@7.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.14)(yaml@2.9.0))
+
   plugins/datadog-plugin:
     dependencies:
       '@hot-updater/plugin-core':
@@ -2333,6 +2352,9 @@ importers:
         specifier: 'catalog:'
         version: 1.2.1
     devDependencies:
+      '@hot-updater/config-plugin':
+        specifier: workspace:*
+        version: link:../config-plugin
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -2438,6 +2460,31 @@ importers:
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
+      vitest:
+        specifier: 'catalog:'
+        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.14.6(@types/node@20.19.43)(typescript@7.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.14)(yaml@2.9.0))
+
+  plugins/one:
+    dependencies:
+      '@hot-updater/bare':
+        specifier: workspace:*
+        version: link:../bare
+      '@hot-updater/cli-tools':
+        specifier: workspace:*
+        version: link:../../packages/cli-tools
+      '@hot-updater/plugin-core':
+        specifier: workspace:*
+        version: link:../plugin-core
+    devDependencies:
+      '@hot-updater/config-plugin':
+        specifier: workspace:*
+        version: link:../config-plugin
+      '@types/node':
+        specifier: 'catalog:'
+        version: 20.19.43
+      execa:
+        specifier: catalog:tools
+        version: 9.5.2
       vitest:
         specifier: 'catalog:'
         version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@20.19.43)(jsdom@29.1.1(@noble/hashes@2.2.0))(msw@2.14.6(@types/node@20.19.43)(typescript@7.0.2))(vite@8.0.14(@types/node@20.19.43)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.48.0)(tsx@4.23.14)(yaml@2.9.0))
@@ -24271,7 +24318,7 @@ snapshots:
       text-table: 0.2.0
       url-join: 4.0.0
       wrap-ansi: 7.0.0
-      ws: 8.21.0
+      ws: 8.21.3
     transitivePeerDependencies:
       - '@react-native/babel-preset'
       - bluebird
@@ -24638,8 +24685,8 @@ snapshots:
   '@expo/metro-config@0.17.8(@react-native/babel-preset@0.87.1(@babel/core@7.26.0))':
     dependencies:
       '@babel/core': 7.26.0
-      '@babel/generator': 7.29.7
-      '@babel/parser': 7.29.7
+      '@babel/generator': 7.29.8
+      '@babel/parser': 7.29.9
       '@babel/types': 7.26.0
       '@expo/config': 8.5.6
       '@expo/env': 0.2.3
@@ -29243,7 +29290,9 @@ snapshots:
       metro-runtime: 0.87.1
     transitivePeerDependencies:
       - '@babel/core'
+      - bufferutil
       - supports-color
+      - utf-8-validate
 
   '@react-native/new-app-screen@0.85.2(@types/react@19.2.15)(react-native@0.85.2(@babel/core@7.26.0)(@react-native-community/cli@20.1.0(@typescript/typescript6@6.0.2))(@react-native/jest-preset@0.85.2(@babel/core@7.26.0)(react@19.2.3))(@react-native/metro-config@0.85.2(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)':
     dependencies:
@@ -29450,10 +29499,10 @@ snapshots:
       - memfs
       - metro
 
-  '@rnx-kit/metro-config@2.2.4(@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0)))(memfs@4.57.7(tslib@2.8.1))(metro@0.87.1)(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@15.1.3(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)':
+  '@rnx-kit/metro-config@2.2.4(@react-native/metro-config@0.76.1(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0)))(memfs@4.57.7(tslib@2.8.1))(react-native@0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@15.1.3(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1))(react@18.3.1)':
     dependencies:
-      '@rnx-kit/tools-node': 3.0.4(metro@0.87.1)
-      '@rnx-kit/tools-react-native': 2.3.7(memfs@4.57.7(tslib@2.8.1))(metro@0.87.1)
+      '@rnx-kit/tools-node': 3.0.4
+      '@rnx-kit/tools-react-native': 2.3.7(memfs@4.57.7(tslib@2.8.1))
       '@rnx-kit/tools-workspaces': 0.2.3
       react: 18.3.1
       react-native: 0.76.9(@babel/core@7.26.0)(@babel/preset-env@7.29.7(@babel/core@7.26.0))(@react-native-community/cli@15.1.3(@typescript/typescript6@6.0.2))(@types/react@18.3.31)(react@18.3.1)
@@ -29489,15 +29538,25 @@ snapshots:
       - memfs
       - metro
 
-  '@rnx-kit/metro-config@2.2.4(@react-native/metro-config@0.87.1(@babel/core@7.26.0))(memfs@4.57.7(tslib@2.8.1))(metro@0.87.1)(react-native@0.87.1(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@react-native/metro-config@0.87.1(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)':
+  '@rnx-kit/metro-config@2.2.4(@react-native/metro-config@0.87.1(@babel/core@7.26.0))(memfs@4.57.7(tslib@2.8.1))(react-native@0.87.1(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@react-native/metro-config@0.87.1(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.3))(react@19.2.3)':
     dependencies:
-      '@rnx-kit/tools-node': 3.0.4(metro@0.87.1)
-      '@rnx-kit/tools-react-native': 2.3.7(memfs@4.57.7(tslib@2.8.1))(metro@0.87.1)
+      '@rnx-kit/tools-node': 3.0.4
+      '@rnx-kit/tools-react-native': 2.3.7(memfs@4.57.7(tslib@2.8.1))
       '@rnx-kit/tools-workspaces': 0.2.3
       react: 19.2.3
       react-native: 0.87.1(@babel/core@7.26.0)(@react-native-community/cli@20.2.0(@typescript/typescript6@6.0.2))(@react-native/metro-config@0.87.1(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.3)
     optionalDependencies:
       '@react-native/metro-config': 0.87.1(@babel/core@7.26.0)
+    transitivePeerDependencies:
+      - memfs
+      - metro
+
+  '@rnx-kit/metro-resolver-symlinks@0.2.11(memfs@4.57.7(tslib@2.8.1))':
+    dependencies:
+      '@rnx-kit/console': 2.0.0
+      '@rnx-kit/tools-node': 3.0.4
+      '@rnx-kit/tools-react-native': 2.3.7(memfs@4.57.7(tslib@2.8.1))
+      enhanced-resolve: 5.23.0
     transitivePeerDependencies:
       - memfs
       - metro
@@ -29532,19 +29591,15 @@ snapshots:
       - memfs
       - metro
 
-  '@rnx-kit/metro-resolver-symlinks@0.2.11(memfs@4.57.7(tslib@2.8.1))(metro@0.87.1)':
-    dependencies:
-      '@rnx-kit/console': 2.0.0
-      '@rnx-kit/tools-node': 3.0.4(metro@0.87.1)
-      '@rnx-kit/tools-react-native': 2.3.7(memfs@4.57.7(tslib@2.8.1))(metro@0.87.1)
-      enhanced-resolve: 5.23.0
-    transitivePeerDependencies:
-      - memfs
-      - metro
-
   '@rnx-kit/tools-filesystem@0.2.0(memfs@4.57.7(tslib@2.8.1))':
     optionalDependencies:
       memfs: 4.57.7(tslib@2.8.1)
+
+  '@rnx-kit/tools-node@3.0.4':
+    dependencies:
+      '@rnx-kit/types-node': 1.0.0
+    transitivePeerDependencies:
+      - metro
 
   '@rnx-kit/tools-node@3.0.4(metro@0.80.9)':
     dependencies:
@@ -29564,10 +29619,13 @@ snapshots:
     transitivePeerDependencies:
       - metro
 
-  '@rnx-kit/tools-node@3.0.4(metro@0.87.1)':
+  '@rnx-kit/tools-react-native@2.3.7(memfs@4.57.7(tslib@2.8.1))':
     dependencies:
-      '@rnx-kit/types-node': 1.0.0(metro@0.87.1)
+      '@rnx-kit/tools-filesystem': 0.2.0(memfs@4.57.7(tslib@2.8.1))
+      '@rnx-kit/tools-node': 3.0.4
+      '@rnx-kit/types-bundle-config': 1.0.0
     transitivePeerDependencies:
+      - memfs
       - metro
 
   '@rnx-kit/tools-react-native@2.3.7(memfs@4.57.7(tslib@2.8.1))(metro@0.80.9)':
@@ -29597,15 +29655,6 @@ snapshots:
       - memfs
       - metro
 
-  '@rnx-kit/tools-react-native@2.3.7(memfs@4.57.7(tslib@2.8.1))(metro@0.87.1)':
-    dependencies:
-      '@rnx-kit/tools-filesystem': 0.2.0(memfs@4.57.7(tslib@2.8.1))
-      '@rnx-kit/tools-node': 3.0.4(metro@0.87.1)
-      '@rnx-kit/types-bundle-config': 1.0.0(metro@0.87.1)
-    transitivePeerDependencies:
-      - memfs
-      - metro
-
   '@rnx-kit/tools-workspaces@0.2.3':
     dependencies:
       fast-glob: 3.3.3
@@ -29613,6 +29662,13 @@ snapshots:
       micromatch: 4.0.8
       read-yaml-file: 2.1.0
       strip-json-comments: 3.1.1
+
+  '@rnx-kit/types-bundle-config@1.0.0':
+    dependencies:
+      '@rnx-kit/types-metro-serializer-esbuild': 1.0.1
+      '@rnx-kit/types-plugin-cyclic-dependencies': 1.0.0
+      '@rnx-kit/types-plugin-duplicates-checker': 1.0.0
+      '@rnx-kit/types-plugin-typescript': 1.0.0
 
   '@rnx-kit/types-bundle-config@1.0.0(metro@0.80.9)':
     dependencies:
@@ -29641,14 +29697,11 @@ snapshots:
     optionalDependencies:
       metro: 0.84.0
 
-  '@rnx-kit/types-bundle-config@1.0.0(metro@0.87.1)':
+  '@rnx-kit/types-kit-config@1.0.0':
     dependencies:
-      '@rnx-kit/types-metro-serializer-esbuild': 1.0.1
-      '@rnx-kit/types-plugin-cyclic-dependencies': 1.0.0
-      '@rnx-kit/types-plugin-duplicates-checker': 1.0.0
-      '@rnx-kit/types-plugin-typescript': 1.0.0
-    optionalDependencies:
-      metro: 0.87.1
+      '@rnx-kit/types-bundle-config': 1.0.0
+    transitivePeerDependencies:
+      - metro
 
   '@rnx-kit/types-kit-config@1.0.0(metro@0.80.9)':
     dependencies:
@@ -29668,13 +29721,13 @@ snapshots:
     transitivePeerDependencies:
       - metro
 
-  '@rnx-kit/types-kit-config@1.0.0(metro@0.87.1)':
+  '@rnx-kit/types-metro-serializer-esbuild@1.0.1': {}
+
+  '@rnx-kit/types-node@1.0.0':
     dependencies:
-      '@rnx-kit/types-bundle-config': 1.0.0(metro@0.87.1)
+      '@rnx-kit/types-kit-config': 1.0.0
     transitivePeerDependencies:
       - metro
-
-  '@rnx-kit/types-metro-serializer-esbuild@1.0.1': {}
 
   '@rnx-kit/types-node@1.0.0(metro@0.80.9)':
     dependencies:
@@ -29691,12 +29744,6 @@ snapshots:
   '@rnx-kit/types-node@1.0.0(metro@0.84.0)':
     dependencies:
       '@rnx-kit/types-kit-config': 1.0.0(metro@0.84.0)
-    transitivePeerDependencies:
-      - metro
-
-  '@rnx-kit/types-node@1.0.0(metro@0.87.1)':
-    dependencies:
-      '@rnx-kit/types-kit-config': 1.0.0(metro@0.87.1)
     transitivePeerDependencies:
       - metro
 
@@ -31007,7 +31054,7 @@ snapshots:
 
   '@types/babel__template@7.4.4':
     dependencies:
-      '@babel/parser': 7.29.7
+      '@babel/parser': 7.29.9
       '@babel/types': 7.26.0
 
   '@types/babel__traverse@7.28.0':
@@ -36951,7 +36998,7 @@ snapshots:
   istanbul-lib-instrument@5.2.1:
     dependencies:
       '@babel/core': 7.26.0
-      '@babel/parser': 7.29.7
+      '@babel/parser': 7.29.9
       '@istanbuljs/schema': 0.1.6
       istanbul-lib-coverage: 3.2.2
       semver: 6.3.1
@@ -37423,7 +37470,7 @@ snapshots:
   jest-snapshot@29.7.0:
     dependencies:
       '@babel/core': 7.26.0
-      '@babel/generator': 7.29.7
+      '@babel/generator': 7.29.8
       '@babel/plugin-syntax-jsx': 7.29.7(@babel/core@7.26.0)
       '@babel/plugin-syntax-typescript': 7.28.6(@babel/core@7.26.0)
       '@babel/types': 7.26.0
@@ -39569,8 +39616,8 @@ snapshots:
     dependencies:
       '@babel/code-frame': 7.29.7
       '@babel/core': 7.26.0
-      '@babel/generator': 7.29.7
-      '@babel/parser': 7.29.7
+      '@babel/generator': 7.29.8
+      '@babel/parser': 7.29.9
       '@babel/template': 7.29.7
       '@babel/traverse': 7.29.7
       '@babel/types': 7.26.0
@@ -39765,8 +39812,8 @@ snapshots:
     dependencies:
       '@babel/code-frame': 7.29.7
       '@babel/core': 7.26.0
-      '@babel/generator': 7.29.7
-      '@babel/parser': 7.29.7
+      '@babel/generator': 7.29.8
+      '@babel/parser': 7.29.9
       '@babel/template': 7.29.7
       '@babel/traverse': 7.29.7
       '@babel/types': 7.26.0
@@ -39812,7 +39859,7 @@ snapshots:
     dependencies:
       '@babel/code-frame': 7.29.7
       '@babel/core': 7.26.0
-      '@babel/generator': 7.29.7
+      '@babel/generator': 7.29.8
       '@babel/parser': 7.29.9
       '@babel/template': 7.29.7
       '@babel/traverse': 7.29.7
@@ -39906,8 +39953,8 @@ snapshots:
     dependencies:
       '@babel/code-frame': 7.29.7
       '@babel/core': 7.26.0
-      '@babel/generator': 7.29.7
-      '@babel/parser': 7.29.7
+      '@babel/generator': 7.29.8
+      '@babel/parser': 7.29.9
       '@babel/template': 7.29.7
       '@babel/traverse': 7.29.7
       '@babel/types': 7.29.8

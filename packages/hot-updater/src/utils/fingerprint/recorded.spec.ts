@@ -56,6 +56,29 @@ describe("computeRecordedFingerprintHash", () => {
     });
   });
 
+  it("computes a One app's fingerprint with @hot-updater/one", async () => {
+    const one = path.join(project, "node_modules/@hot-updater/one");
+    await fs.mkdir(one, { recursive: true });
+    await fs.writeFile(
+      path.join(one, "package.json"),
+      JSON.stringify({ name: "@hot-updater/one", main: "index.js" }),
+    );
+    await fs.writeFile(
+      path.join(one, "index.js"),
+      "exports.oneFingerprint = async (cwd, options) => ({ hash: `one:${options.platform}`, sources: [] });",
+    );
+    await writeFingerprintJson({
+      ios: { hash: "recorded-ios", sources: [] },
+      android: { hash: "recorded-android", sources: [] },
+      inputs: { adapter: "one" },
+    });
+
+    await expect(computeRecordedFingerprintHash("android")).resolves.toEqual({
+      hash: "one:android",
+      recorded: "recorded-android",
+    });
+  });
+
   it("embeds the recorded hash with a warning when fingerprint.json records no inputs", async () => {
     await writeFingerprintJson({
       ios: { hash: "recorded-ios", sources: [] },

@@ -13,8 +13,8 @@ import {
 import { ui } from "../utils/cli-ui";
 import { AndroidConfigParser } from "../utils/configParser/androidParser";
 import { IosConfigParser } from "../utils/configParser/iosParser";
-import { warnIfExpoCNG } from "../utils/expoDetection";
 import { appendToProjectRootGitignore } from "../utils/git";
+import { warnIfPrebuildGenerated } from "../utils/prebuildDetection";
 import {
   generateKeyPair,
   getPrivateKeyGitignorePath,
@@ -316,7 +316,7 @@ export const keysExportPublic = async (
       return;
     }
 
-    warnIfExpoCNG();
+    warnIfPrebuildGenerated();
 
     const androidManifestPaths =
       config.platform.android.androidManifestPaths ?? [];

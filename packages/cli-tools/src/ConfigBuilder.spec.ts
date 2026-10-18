@@ -83,6 +83,7 @@ export default defineConfig({
   it.each([
     ["rock", 'import { rock } from "@hot-updater/rock";', "build: rock(),"],
     ["expo", 'import { expo } from "@hot-updater/expo";', "build: expo(),"],
+    ["one", 'import { one } from "@hot-updater/one";', "build: one(),"],
   ] as const)(
     "imports the %s build adapter",
     (build, importLine, buildLine) => {

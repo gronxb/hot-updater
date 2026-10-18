@@ -18,11 +18,10 @@
   "files": [
     "dist",
     "app.plugin.js",
-    "plugin/build",
     "package.json"
   ],
   "scripts": {
-    "build": "tsdown && tsc -p plugin/tsconfig.build.json",
+    "build": "tsdown",
     "test": "vitest run",
     "test:type": "tsc --noEmit"
   },
@@ -35,9 +34,10 @@
     "uuidv7": "catalog:"
   },
   "devDependencies": {
+    "@hot-updater/config-plugin": "workspace:*",
     "@types/node": "catalog:",
-    "expo": "^50.0.0",
     "execa": "catalog:tools",
+    "expo": "^50.0.0",
     "hot-updater": "workspace:*",
     "vitest": "catalog:"
   },

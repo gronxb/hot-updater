@@ -1,0 +1,113 @@
+---
+title: "One Adapter"
+description: Build adapter and config plugin for One apps. Bundles through One's own bundler and configures the native projects One Prebuild generates.
+icon: Package
+---
+
+[One](https://onestack.dev) builds its native bundle through
+`react-native bundle`, which One's `react-native.config.cjs` routes to its own
+bundler, and generates `ios/` and `android/` with `one prebuild`. The One
+adapter bundles the same way and ships the config plugin that sets up those
+generated projects.
+
+## Installation
+
+```package-install
+npm install @hot-updater/one --save-dev
+```
+
+## Configuration
+
+```typescript
+interface OneAdapterConfig {
+  outDir?: string;      // Output directory (default: "node_modules/.hot-updater/build")
+  sourcemap?: boolean;  // Generate sourcemaps (default: false)
+  resetCache?: boolean; // Reset One's transform cache before bundling (default: true)
+}
+```
+
+The bundle is always compiled with Hermes, which One apps use. The default
+`outDir` stays out of `dist/`, where One writes its web build and files of its
+native bundle step.
+
+## Usage
+
+```typescript title="hot-updater.config.ts"
+import { one } from '@hot-updater/one'; // [!code ++]
+import { defineConfig } from 'hot-updater';
+
+export default defineConfig({
+  build: one(), // [!code ++]
+  // ... other config
+});
+```
+
+## One configuration
+
+`one prebuild` deletes and regenerates `ios/` and `android/`, so Hot Updater's
+native changes have to be applied by prebuild itself. With a One version that
+runs config plugins from `native.app.plugins`, add the plugin in
+`vite.config.ts`:
+
+```ts title="vite.config.ts"
+one({
+  native: {
+    app: {
+      name: 'MyApp',
+      ios: { bundleId: 'com.example.myapp' },
+      android: { applicationId: 'com.example.myapp' },
+      plugins: [ // [!code ++]
+        ['@hot-updater/one', { channel: 'production' }], // [!code ++]
+      ], // [!code ++]
+    },
+  },
+})
+```
+
+The plugin accepts these options:
+
+| Option | Purpose |
+| --- | --- |
+| `channel` | Native update channel. Defaults to `production`. |
+| `publicKeyPath` | Optional path to the signing public key, relative to the project root. Required when bundle signing is enabled. |
+
+Run prebuild to apply the changes:
+
+```package-install
+npx one prebuild
+```
+
+On a One version without `native.app.plugins`, apply the
+[native code setup](/docs/get-started/app-setup#native-code-setup) to the
+generated `AppDelegate.swift` and `MainApplication.kt` after every
+`one prebuild`.
+
+<Callout type="warn">
+  Leave `native.app.updates` unset. It installs One's own update launcher,
+  which owns the same bundle URL as Hot Updater, and One prebuild refuses to
+  run both.
+</Callout>
+
+## Initialize the client
+
+`HotUpdater.init` runs on iOS and Android only. Put it in a `.native.ts` module
+and export a stub from the web file of the same name:
+
+```ts title="features/hotUpdater/hotUpdater.native.ts"
+import { HotUpdater } from '@hot-updater/react-native';
+
+export const hotUpdater = HotUpdater.init({
+  baseURL: 'https://your-update-server-url',
+});
+```
+
+```ts title="features/hotUpdater/hotUpdater.ts"
+export const hotUpdater = null;
+```
+
+## Key features
+
+- Bundles with `react-native bundle`, through One's bundler
+- Always compiles with Hermes
+- Runs `one prebuild` before native builds
+- Reads the plugin's `publicKeyPath` from `vite.config.ts` for signing and fingerprints

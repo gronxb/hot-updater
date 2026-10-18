@@ -70,8 +70,8 @@ vi.mock("../utils/configParser/iosParser", () => ({
   },
 }));
 
-vi.mock("../utils/expoDetection", () => ({
-  warnIfExpoCNG: vi.fn(),
+vi.mock("../utils/prebuildDetection", () => ({
+  warnIfPrebuildGenerated: vi.fn(),
 }));
 
 vi.mock("../utils/git", () => ({

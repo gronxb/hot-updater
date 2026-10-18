@@ -1,0 +1,41 @@
+{
+  "name": "@hot-updater/config-plugin",
+  "version": "1.0.8",
+  "private": true,
+  "description": "Hot Updater's config plugin for prebuild-generated native projects, bundled into @hot-updater/expo and @hot-updater/one",
+  "main": "./dist/withHotUpdater.js",
+  "types": "./dist/withHotUpdater.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "test": "vitest run",
+    "test:type": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hot-updater/cli-tools": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "expo": "^50.0.0",
+    "hot-updater": "workspace:*",
+    "vitest": "catalog:"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/withHotUpdater.d.ts",
+      "default": "./dist/withHotUpdater.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "expo": ">=50.0.0",
+    "hot-updater": "*"
+  },
+  "peerDependenciesMeta": {
+    "expo": {
+      "optional": true
+    },
+    "hot-updater": {
+      "optional": true
+    }
+  }
+}
