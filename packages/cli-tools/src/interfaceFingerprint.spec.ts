@@ -289,6 +289,24 @@ describe("createInterfaceFingerprint", () => {
     expect(await hashOf()).not.toBe(before);
   });
 
+  it("hashes only the platform's own section of the codegen config", async () => {
+    const ios = await hashOf();
+    const android = await hashOf({ platform: "android" });
+    await write(
+      path.join(app, "package.json"),
+      manifest({
+        name: "app",
+        codegenConfig: {
+          jsSrcsDir: "src",
+          android: { javaPackageName: "com.app" },
+        },
+      }),
+    );
+
+    expect(await hashOf()).toBe(ios);
+    expect(await hashOf({ platform: "android" })).not.toBe(android);
+  });
+
   it("hashes a dependency declared by name and version", async () => {
     const native = (version: string): NativeInterface => ({
       runtime: "lynx@4.0.3",
