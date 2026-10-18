@@ -122,7 +122,9 @@ local files it imports count too, since it can apply plugins directly with
 from it leaves the fingerprint unchanged; the registry packages any of that
 code imports count by version and patches. The app config file itself doesn't count, since
 it holds the version: keep a plugin you apply directly in its own file, or
-bump `nativeVersion` when one written inside the app config changes.
+bump `nativeVersion` when one written inside the app config changes. A file a
+plugin reads during prebuild instead of importing, such as a template or a
+native resource it copies, doesn't count either: list it in `extraSources`.
 
 ## Workflow
 
