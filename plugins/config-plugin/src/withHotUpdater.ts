@@ -9,7 +9,7 @@ import {
   withPlugins,
 } from "expo/config-plugins";
 
-import pkg from "../../package.json";
+import pkg from "../package.json";
 import { transformAndroid, transformIOS } from "./transformers";
 
 const loadCliTools = () => import("@hot-updater/cli-tools");

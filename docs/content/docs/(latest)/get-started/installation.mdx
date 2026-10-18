@@ -50,7 +50,7 @@ npm install hot-updater --save-dev
 
 Choose the app's build system:
 
-<Tabs items={["Bare (React Native CLI)", "Rock", "Expo"]}>
+<Tabs items={["Bare (React Native CLI)", "Rock", "Expo", "One"]}>
   <Tab value="Bare (React Native CLI)">
 
 ```package-install
@@ -73,6 +73,17 @@ npm install @hot-updater/expo --save-dev
 
 Keep `@hot-updater/react-native` as the runtime SDK. `@hot-updater/expo` supplies
 the build and native config plugins; configure it during
+[app setup](/docs/get-started/app-setup#build-configuration).
+
+  </Tab>
+  <Tab value="One">
+
+```package-install
+npm install @hot-updater/one --save-dev
+```
+
+Keep `@hot-updater/react-native` as the runtime SDK. `@hot-updater/one` supplies
+the build adapter and the config plugin for `one prebuild`; configure it during
 [app setup](/docs/get-started/app-setup#build-configuration).
 
   </Tab>

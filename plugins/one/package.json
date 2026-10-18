@@ -1,0 +1,47 @@
+{
+  "name": "@hot-updater/one",
+  "version": "1.0.8",
+  "description": "Hot Updater build adapter and config plugin for One",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.cts",
+  "license": "MIT",
+  "repository": "https://github.com/gronxb/hot-updater",
+  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
+  "bugs": {
+    "url": "https://github.com/gronxb/hot-updater/issues"
+  },
+  "homepage": "https://github.com/gronxb/hot-updater#readme",
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "dist",
+    "app.plugin.js",
+    "package.json"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "test": "vitest run",
+    "test:type": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@hot-updater/bare": "workspace:*",
+    "@hot-updater/cli-tools": "workspace:*",
+    "@hot-updater/config-plugin": "workspace:*",
+    "@hot-updater/plugin-core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "execa": "catalog:tools",
+    "vitest": "catalog:"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.cjs"
+    },
+    "./app.plugin.js": "./app.plugin.js",
+    "./package.json": "./package.json"
+  }
+}

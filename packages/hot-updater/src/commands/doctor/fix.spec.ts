@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-import { isExpoCNG } from "../../utils/expoDetection";
 import { syncFingerprintFiles } from "../../utils/fingerprint";
 import { isProjectFileTracked } from "../../utils/git";
+import { getPrebuildFramework } from "../../utils/prebuildDetection";
 import { writePublicKeyToNativeFiles } from "../keys";
 import type { DoctorContext } from "./context";
 import { applyDoctorFixes } from "./fix";
@@ -25,7 +25,10 @@ vi.mock("@hot-updater/cli-tools", () => ({
     },
   })),
 }));
-vi.mock("../../utils/expoDetection", () => ({ isExpoCNG: vi.fn() }));
+vi.mock("../../utils/prebuildDetection", async (importOriginal) => ({
+  ...(await importOriginal()),
+  getPrebuildFramework: vi.fn(),
+}));
 vi.mock("../../utils/fingerprint", () => ({ syncFingerprintFiles: vi.fn() }));
 vi.mock("../../utils/git", () => ({ isProjectFileTracked: vi.fn() }));
 vi.mock("../keys", () => ({ writePublicKeyToNativeFiles: vi.fn() }));
@@ -56,7 +59,7 @@ const context = (): DoctorContext => ({
 describe("applyDoctorFixes", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(isExpoCNG).mockReturnValue(false);
+    vi.mocked(getPrebuildFramework).mockReturnValue(null);
     vi.mocked(isProjectFileTracked).mockReturnValue(true);
   });
 
@@ -203,7 +206,7 @@ describe("applyDoctorFixes", () => {
   });
 
   it("skips native-file repairs on an Expo project whose native folders prebuild generates, judged in the run's directory", async () => {
-    vi.mocked(isExpoCNG).mockReturnValue(true);
+    vi.mocked(getPrebuildFramework).mockReturnValue("expo");
     vi.mocked(isProjectFileTracked).mockReturnValue(false);
     vi.mocked(rebuildReleaseCatalogs).mockResolvedValue([
       "release catalog v1:app-version:ios:cHJvZA, generation 4",
@@ -220,7 +223,7 @@ describe("applyDoctorFixes", () => {
       context(),
     );
 
-    expect(isExpoCNG).toHaveBeenCalledWith("/project");
+    expect(getPrebuildFramework).toHaveBeenCalledWith("/project");
     expect(isProjectFileTracked).toHaveBeenCalledWith({
       cwd: "/project",
       filePath: "ios",
@@ -236,8 +239,23 @@ describe("applyDoctorFixes", () => {
     expect(syncFingerprintFiles).not.toHaveBeenCalled();
   });
 
+  it("skips native-file repairs on a One app, whose prebuild generates its native folders", async () => {
+    vi.mocked(getPrebuildFramework).mockReturnValue("one");
+    vi.mocked(isProjectFileTracked).mockReturnValue(false);
+
+    await expect(
+      applyDoctorFixes(issues("FINGERPRINT_HASH_MISMATCH"), context()),
+    ).resolves.toMatchObject([
+      {
+        status: "skipped",
+        note: "This One project generates its native files with `npx one prebuild`, which would overwrite the repair.",
+      },
+    ]);
+    expect(syncFingerprintFiles).not.toHaveBeenCalled();
+  });
+
   it("repairs the native files of an Expo project that commits them", async () => {
-    vi.mocked(isExpoCNG).mockReturnValue(true);
+    vi.mocked(getPrebuildFramework).mockReturnValue("expo");
     vi.mocked(syncFingerprintFiles).mockResolvedValue({
       fingerprintJson: false,
       iosPaths: [],

@@ -4,9 +4,13 @@ import {
   loadConfig,
 } from "@hot-updater/cli-tools";
 
-import { isExpoCNG } from "../../utils/expoDetection";
 import { syncFingerprintFiles } from "../../utils/fingerprint";
 import { isProjectFileTracked } from "../../utils/git";
+import {
+  getPrebuildFramework,
+  PREBUILD_FRAMEWORKS,
+  type PrebuildFramework,
+} from "../../utils/prebuildDetection";
 import { writePublicKeyToNativeFiles } from "../keys";
 import type { DoctorContext } from "./context";
 import type { DoctorFix, DoctorIssueCode } from "./issues";
@@ -58,7 +62,7 @@ const serverCore = async (context: DoctorContext) => {
 const REPAIRS: readonly {
   readonly repair: DoctorFix["repair"];
   readonly codes: readonly Code[];
-  /** It writes native files, which an Expo prebuild would overwrite. */
+  /** It writes native files, which an Expo or One prebuild would overwrite. */
   readonly writesNativeFiles: boolean;
   /** Runs the repair for its issues. */
   readonly run?: (
@@ -174,19 +178,24 @@ const REPAIRS: readonly {
 ];
 
 /**
- * Whether this is an Expo project whose native folders prebuild generates:
- * a write to them would be overwritten by the next `expo prebuild`.
+ * The framework whose prebuild generates this project's native folders, when
+ * they are not committed: a write to them would be overwritten by the next
+ * prebuild.
  */
-const prebuildOwnsNativeFiles = (cwd: string): boolean =>
-  isExpoCNG(cwd) &&
-  !["ios", "android"].some((filePath) =>
+const prebuildOwnerOfNativeFiles = (cwd: string): PrebuildFramework | null => {
+  const framework = getPrebuildFramework(cwd);
+  if (framework === null) return null;
+  return ["ios", "android"].some((filePath) =>
     isProjectFileTracked({ cwd, filePath }),
-  );
+  )
+    ? null
+    : framework;
+};
 
 /**
  * Runs each repair once for the issues it repairs, in order, and reports
- * what each wrote. A repair of native files is skipped on an Expo project
- * whose native folders prebuild generates, and an issue with more than one
+ * what each wrote. A repair of native files is skipped on an Expo or One
+ * project whose native folders prebuild generates, and an issue with more than one
  * remedy is left to the user.
  */
 export const applyDoctorFixes = async (
@@ -214,10 +223,14 @@ export const applyDoctorFixes = async (
       );
       continue;
     }
-    if (repair.writesNativeFiles && prebuildOwnsNativeFiles(context.cwd)) {
+    const prebuildOwner = repair.writesNativeFiles
+      ? prebuildOwnerOfNativeFiles(context.cwd)
+      : null;
+    if (prebuildOwner !== null) {
+      const { label, command } = PREBUILD_FRAMEWORKS[prebuildOwner];
       fixes.push(
         skipped(
-          "This Expo project generates its native files with `expo prebuild`, which would overwrite the repair.",
+          `This ${label} project generates its native files with \`${command}\`, which would overwrite the repair.`,
         ),
       );
       continue;

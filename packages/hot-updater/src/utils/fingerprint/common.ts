@@ -6,7 +6,7 @@ import type {
   NativeFingerprintSource,
 } from "@hot-updater/plugin-core";
 
-import { isExpo } from "../expoDetection";
+import { isExpo } from "../prebuildDetection";
 import { loadExpoFingerprint } from "./dependency";
 import {
   processExtraSources,

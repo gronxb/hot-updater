@@ -202,7 +202,7 @@ Setup configures bundling through the `build` field in `hot-updater.config.ts`.
 Keep the selected build adapter alongside your existing storage, database and
 plugins settings.
 
-<Tabs items={['Bare (React Native CLI)', 'Rock', 'Expo']}>
+<Tabs items={['Bare (React Native CLI)', 'Rock', 'Expo', 'One']}>
   <Tab value="Bare (React Native CLI)">
 
 Use the Bare build adapter for standard React Native CLI projects:
@@ -288,6 +288,45 @@ npx expo prebuild
 </Callout>
 
   </Tab>
+  <Tab value="One">
+
+Use the One build adapter in `hot-updater.config.ts`:
+
+```ts title="hot-updater.config.ts"
+import { one } from "@hot-updater/one"; // [!code ++]
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  build: one(), // [!code ++]
+  // ... storage, database, plugins, and updateStrategy
+});
+```
+
+Then add the config plugin to `native.app.plugins` in `vite.config.ts`:
+
+```ts title="vite.config.ts (excerpt)"
+native: {
+  app: {
+    // ... name, ios, android
+    plugins: [["@hot-updater/one", { channel: "ota-test" }]], // [!code ++]
+  },
+},
+```
+
+Run prebuild to apply the native changes:
+
+```package-install
+npx one prebuild
+```
+
+<Callout>
+  `one prebuild` regenerates `ios/` and `android/`, so the config plugin applies
+  the native code configuration described in the next section on every run.
+  On a One version without `native.app.plugins`, apply that section after each
+  prebuild; see the [One adapter](/docs/build-adapters/one#one-configuration).
+</Callout>
+
+  </Tab>
 </Tabs>
 
 ## Native code setup
@@ -298,7 +337,7 @@ code. Use the variant matching your project; do not replace the entire native
 file with a sample application's boilerplate.
 
 <Callout type="info">
-  If you're using Expo with the plugin configured above, this step is handled
+  If you're using Expo or One with the plugin configured above, this step is handled
   automatically during prebuild.
 </Callout>
 

@@ -27,7 +27,7 @@ import {
 } from "./clientAuth";
 
 const require = createRequire(import.meta.url);
-export const INFRA_BUILDS = ["bare", "rock", "expo"] as const;
+export const INFRA_BUILDS = ["bare", "rock", "expo", "one"] as const;
 export type InfraOperation = "scaffold" | "setup" | "upgrade";
 
 export interface InfraOptions {

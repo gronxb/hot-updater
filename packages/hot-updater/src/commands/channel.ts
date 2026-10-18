@@ -1,12 +1,12 @@
 import { p } from "@hot-updater/cli-tools";
 
-import { warnIfExpoCNG } from "@/utils/expoDetection";
+import { warnIfPrebuildGenerated } from "@/utils/prebuildDetection";
 import { setChannel } from "@/utils/setChannel";
 
 import { ui } from "../utils/cli-ui";
 
 export const handleSetChannel = async (channel: string) => {
-  warnIfExpoCNG();
+  warnIfPrebuildGenerated();
   const { paths: androidPaths } = await setChannel("android", channel);
   p.log.success(ui.line(["Set", ui.platform("Android"), ui.channel(channel)]));
   if (androidPaths.length > 0) {

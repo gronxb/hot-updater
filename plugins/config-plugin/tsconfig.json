@@ -2,12 +2,14 @@
   "compilerOptions": {
     "lib": ["ESNext"],
     "module": "node16",
+    "types": ["node"],
     "moduleResolution": "node16",
     "skipLibCheck": true,
-    "outDir": "build",
+    "noEmit": true,
     "rootDir": "src",
     "resolveJsonModule": true,
     "esModuleInterop": true
   },
-  "include": ["./src/"]
+  "include": ["./src/"],
+  "exclude": ["./src/*.spec.ts"]
 }

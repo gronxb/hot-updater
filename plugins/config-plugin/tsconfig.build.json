@@ -5,10 +5,11 @@
     "types": ["node"],
     "moduleResolution": "node16",
     "skipLibCheck": true,
-    "outDir": "build",
+    "outDir": "dist",
     "rootDir": "src",
     "resolveJsonModule": true,
-    "esModuleInterop": true
+    "esModuleInterop": true,
+    "declaration": true
   },
   "include": ["./src/"],
   "exclude": ["./src/*.spec.ts"]

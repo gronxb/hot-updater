@@ -1,1 +1,1 @@
-module.exports = require("./plugin/build/withHotUpdater");
+module.exports = require("@hot-updater/config-plugin");

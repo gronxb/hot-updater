@@ -18,11 +18,10 @@
   "files": [
     "dist",
     "app.plugin.js",
-    "plugin/build",
     "package.json"
   ],
   "scripts": {
-    "build": "tsdown && tsc -p plugin/tsconfig.build.json",
+    "build": "tsdown",
     "test": "vitest run",
     "test:type": "tsc --noEmit"
   },
@@ -31,6 +30,7 @@
     "@babel/types": "7.26.0",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
+    "@hot-updater/config-plugin": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "uuidv7": "catalog:"
   },

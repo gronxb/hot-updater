@@ -1,4 +1,4 @@
-export type BuildType = "bare" | "rock" | "expo";
+export type BuildType = "bare" | "rock" | "expo" | "one";
 
 export type ImportInfo = {
   pkg: string;
@@ -136,12 +136,14 @@ export class ConfigBuilder {
         return "rock()";
       case "expo":
         return "expo()";
+      case "one":
+        return "one()";
       default:
         throw new Error(`Invalid build type: ${this.buildType}`);
     }
   }
 
-  /** Sets the build type ('bare', 'rock', or 'expo') and its import. */
+  /** Sets the build type ('bare', 'rock', 'expo', or 'one') and its import. */
   setBuildType(buildType: BuildType): this {
     this.buildType = buildType;
     this.imports.push({

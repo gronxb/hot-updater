@@ -354,7 +354,7 @@ const checkIosNativeStatus = async ({
       code: "MISSING_FINGERPRINT_HASH",
       message: "HOT_UPDATER_FINGERPRINT_HASH is missing from Info.plist.",
       resolution:
-        "Run `npx hot-updater fingerprint create` or rebuild through the Expo config plugin.",
+        "Run `npx hot-updater fingerprint create` or rebuild through the Hot Updater config plugin (Expo or One prebuild).",
       fixability: "command",
       commands: [...FINGERPRINT_RECOVERY_COMMANDS],
       paths: fingerprintHash?.paths.length ? fingerprintHash.paths : files,
@@ -486,7 +486,7 @@ const checkAndroidNativeStatus = async ({
       message:
         "com.hotupdater.FINGERPRINT_HASH is missing from AndroidManifest.xml.",
       resolution:
-        "Run `npx hot-updater fingerprint create` or rebuild through the Expo config plugin.",
+        "Run `npx hot-updater fingerprint create` or rebuild through the Hot Updater config plugin (Expo or One prebuild).",
       fixability: "command",
       commands: [...FINGERPRINT_RECOVERY_COMMANDS],
       paths: fingerprintHash?.paths.length ? fingerprintHash.paths : files,
