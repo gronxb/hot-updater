@@ -740,18 +740,12 @@ describe("readReactNativeInterface", () => {
     ).rejects.toThrow("printed no JSON configuration");
   });
 
-  it("reads the JavaScript engine React Native resolved for each platform", async () => {
+  it("reads the engine settings the project declares, never an install's lockfile", async () => {
+    // pod install records the Hermes pod here, but the file only exists
+    // after an install, so it never counts.
     await write(
       path.join(root, "ios/Podfile.lock"),
-      [
-        "PODS:",
-        "  - hermes-engine (250829098.0.10):",
-        "    - hermes-engine/Pre-built (= 250829098.0.10)",
-        "  - hermes-engine/Pre-built (250829098.0.10)",
-        "",
-        "DEPENDENCIES:",
-        "  - hermes-engine (from `x`)",
-      ].join("\n"),
+      "PODS:\n  - hermes-engine (250829098.0.10):\n",
     );
     await write(
       path.join(root, "android/gradle.properties"),
@@ -765,30 +759,30 @@ describe("readReactNativeInterface", () => {
         "  true",
       ].join("\n"),
     );
-    const read = (platform: "ios" | "android") =>
+    const read = (
+      platform: "ios" | "android",
+      settings?: Record<string, string>,
+    ) =>
       readReactNativeInterface({
         cwd: root,
         command: process.execPath,
         args: ["-e", "console.log('{}')"],
         platform,
+        ...(settings ? { settings } : {}),
       });
 
-    expect((await read("ios")).settings).toEqual({
-      "ios:hermes-engine": "250829098.0.10",
-    });
+    expect((await read("ios")).settings).toEqual({});
     expect((await read("android")).settings).toEqual({
       "android:newArchEnabled": "",
       "android:hermesEnabled": "true",
       "android:react.hermesV1Enabled": "false",
       "android:hermesV1Enabled": "true",
     });
-
-    await write(
-      path.join(root, "ios/Podfile.lock"),
-      "PODS:\n  - Yoga (0.0.0)\n",
-    );
-    expect((await read("ios")).settings).toEqual({
-      "ios:hermes-engine": "none",
+    // Settings a framework records elsewhere replace the native projects'.
+    expect(
+      (await read("android", { "expo.jsEngine": "jsc" })).settings,
+    ).toEqual({
+      "expo.jsEngine": "jsc",
     });
   });
 });

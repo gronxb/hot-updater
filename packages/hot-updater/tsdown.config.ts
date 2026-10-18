@@ -10,7 +10,6 @@ export default defineConfig({
   deps: {
     neverBundle: [
       "@aws-sdk/client-kms",
-      "@expo/fingerprint",
       "@google-cloud/kms",
     ],
     onlyBundle: false,

@@ -70,7 +70,8 @@ export interface BuildAdapter {
   nativeBuild?: {
     /**
      * Fingerprints the native interface JavaScript depends on. Without it, the
-     * CLI fingerprints the project with `@expo/fingerprint`.
+     * CLI uses React Native CLI's: the native interface `react-native config`
+     * reports.
      */
     fingerprint?: NativeFingerprintProvider;
     /** Resolves the public key embedded by the native build configuration. */

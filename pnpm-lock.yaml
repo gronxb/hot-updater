@@ -1757,9 +1757,6 @@ importers:
       '@commander-js/extra-typings':
         specifier: ^14.0.0
         version: 14.0.0(commander@14.0.3)
-      '@expo/fingerprint':
-        specifier: ^0.15.4
-        version: 0.15.5
       '@google-cloud/kms':
         specifier: 6.0.0
         version: 6.0.0

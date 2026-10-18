@@ -9,7 +9,6 @@ import {
   generateFingerprints,
   getFingerprintDiff,
 } from "../../utils/fingerprint";
-import { MissingFingerprintDependencyError } from "../../utils/fingerprint/dependency";
 import {
   checkFingerprintJson,
   checkUnusedFingerprintJson,
@@ -243,27 +242,6 @@ describe("checkFingerprintJson", () => {
       },
     ]);
     expect(getFingerprintDiff).toHaveBeenCalled();
-  });
-
-  it("reports a fingerprint it cannot compute, with the install command for a missing dependency", async () => {
-    vi.mocked(generateFingerprints).mockRejectedValue(
-      new MissingFingerprintDependencyError(),
-    );
-
-    const issues = await checkFingerprintJson({
-      ios: fingerprint("ios-now"),
-      android: fingerprint("android-now"),
-    });
-
-    expect(issues).toMatchObject([
-      {
-        type: "error",
-        platform: "project",
-        code: "FINGERPRINT_GENERATION_FAILED",
-        fixability: "command",
-        commands: [expect.stringContaining("@expo/fingerprint")],
-      },
-    ]);
   });
 });
 

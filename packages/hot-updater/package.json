@@ -74,7 +74,6 @@
     "@aws-sdk/client-kms": "3.1066.0",
     "@bacons/xcode": "1.0.0-alpha.33",
     "@commander-js/extra-typings": "^14.0.0",
-    "@expo/fingerprint": "^0.15.4",
     "@google-cloud/kms": "6.0.0",
     "@hot-updater/aws": "workspace:*",
     "@hot-updater/azure": "workspace:*",
@@ -105,7 +104,6 @@
   },
   "peerDependencies": {
     "@aws-sdk/client-kms": "^3.1066.0",
-    "@expo/fingerprint": "*",
     "@google-cloud/kms": "^6.0.0",
     "@hot-updater/aws": "workspace:^",
     "@hot-updater/azure": "workspace:^",
@@ -116,9 +114,6 @@
   },
   "peerDependenciesMeta": {
     "@aws-sdk/client-kms": {
-      "optional": true
-    },
-    "@expo/fingerprint": {
       "optional": true
     },
     "@google-cloud/kms": {

@@ -1,0 +1,85 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+
+import { readExpoSettings } from "./expoFingerprint";
+
+let project: string;
+
+beforeEach(async () => {
+  project = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-expo-fp-"));
+  const plugin = path.join(project, "node_modules/expo-build-properties");
+  await fs.mkdir(plugin, { recursive: true });
+  await fs.writeFile(
+    path.join(plugin, "package.json"),
+    JSON.stringify({ name: "expo-build-properties", version: "0.13.2" }),
+  );
+  await fs.mkdir(path.join(project, "plugins"));
+  await fs.writeFile(
+    path.join(project, "plugins/withLocal.js"),
+    "module.exports = (config) => config;",
+  );
+});
+
+afterEach(async () => {
+  await fs.rm(project, { recursive: true, force: true });
+});
+
+describe("readExpoSettings", () => {
+  it("reads the engine, the architecture, and the config plugins the app declares", () => {
+    const settings = readExpoSettings(
+      project,
+      {
+        jsEngine: "hermes",
+        newArchEnabled: true,
+        android: { jsEngine: "jsc" },
+        plugins: [
+          ["@hot-updater/expo", { channel: "production" }],
+          ["expo-build-properties", { ios: { deploymentTarget: "15.1" } }],
+          "./plugins/withLocal",
+        ],
+      },
+      "android",
+    );
+
+    expect(settings["expo.jsEngine"]).toBe("jsc");
+    expect(settings["expo.newArchEnabled"]).toBe("true");
+    // Hot Updater's own plugin writes the channel and key, not the interface.
+    expect(
+      Object.keys(settings).some((key) => key.includes("@hot-updater")),
+    ).toBe(false);
+    expect(
+      JSON.parse(settings["expo.plugin[1]:expo-build-properties"]!),
+    ).toEqual({
+      props: { ios: { deploymentTarget: "15.1" } },
+      source: "expo-build-properties@0.13.2",
+    });
+    expect(settings["expo.plugin[2]:./plugins/withLocal"]).toMatch(
+      /"source":"sha256:[0-9a-f]{64}"/,
+    );
+  });
+
+  it("changes with a plugin's options or code, not with its key order", async () => {
+    const read = (props: object) =>
+      readExpoSettings(
+        project,
+        { plugins: [["expo-build-properties", props], "./plugins/withLocal"] },
+        "ios",
+      );
+    const before = read({ a: 1, b: 2 });
+
+    expect(read({ b: 2, a: 1 })).toEqual(before);
+    expect(read({ a: 1, b: 3 })).not.toEqual(before);
+    await fs.writeFile(
+      path.join(project, "plugins/withLocal.js"),
+      "module.exports = (config) => ({ ...config, name: 'x' });",
+    );
+    expect(read({ a: 1, b: 2 })).not.toEqual(before);
+  });
+
+  it("leaves out what the app config doesn't declare", () => {
+    expect(readExpoSettings(project, {}, "ios")).toEqual({});
+  });
+});

@@ -3,15 +3,14 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { getCwd } from "@hot-updater/cli-tools";
+import { getCwd, reactNativeCliFingerprint } from "@hot-updater/cli-tools";
 import type {
   NativeFingerprint,
   NativeFingerprintOptions,
   Platform,
 } from "@hot-updater/plugin-core";
 
-import type { FingerprintInputs } from "./common";
-import { nativeFingerprint } from "./nativeFingerprint";
+import { DEFAULT_FINGERPRINT_ADAPTER, type FingerprintInputs } from "./common";
 
 /**
  * The official build adapters whose fingerprint a native build computes from
@@ -22,6 +21,7 @@ const ADAPTER_FINGERPRINTS: Readonly<
 > = {
   bare: { packageName: "@hot-updater/bare", exportName: "bareFingerprint" },
   rock: { packageName: "@hot-updater/rock", exportName: "rockFingerprint" },
+  expo: { packageName: "@hot-updater/expo", exportName: "expoFingerprint" },
 };
 
 type AdapterFingerprint = (
@@ -109,8 +109,11 @@ export const computeRecordedFingerprintHash = async (
     }
     return { hash: (await fingerprint(cwd, options)).hash, recorded };
   }
-  if (inputs.adapter === "expo") {
-    return { hash: (await nativeFingerprint(cwd, options)).hash, recorded };
+  if (inputs.adapter === DEFAULT_FINGERPRINT_ADAPTER) {
+    return {
+      hash: (await reactNativeCliFingerprint(cwd, options)).hash,
+      recorded,
+    };
   }
   return embedRecorded(
     `The "${inputs.adapter}" build adapter's fingerprint needs hot-updater.config.ts.`,

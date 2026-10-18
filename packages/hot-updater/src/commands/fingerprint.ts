@@ -15,7 +15,6 @@ import {
   isFingerprintEquals,
   readLocalFingerprint,
 } from "@/utils/fingerprint";
-import { isMissingFingerprintDependencyError } from "@/utils/fingerprint/dependency";
 import {
   getFingerprintDiff,
   showFingerprintDiff,
@@ -30,9 +29,7 @@ const exitWithFingerprintError = (error: unknown): never => {
     p.log.error(String(error));
   }
 
-  if (!isMissingFingerprintDependencyError(error)) {
-    console.error(error);
-  }
+  console.error(error);
   process.exit(1);
 };
 
