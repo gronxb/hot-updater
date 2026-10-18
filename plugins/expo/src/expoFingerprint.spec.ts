@@ -102,6 +102,72 @@ describe("readExpoSettings", () => {
     expect(read()).not.toEqual(before);
   });
 
+  it("hashes the files a function plugin's module imports", async () => {
+    await fs.writeFile(
+      path.join(project, "plugins/fnHelper.js"),
+      "module.exports = 1;",
+    );
+    await fs.writeFile(
+      path.join(project, "plugins/withFn.js"),
+      "require('./fnHelper'); module.exports = function withFn(config) { return config; };",
+    );
+    // app.config.js: plugins: [require("./plugins/withFn")]
+    const withFn = createRequire(path.join(project, "package.json"))(
+      "./plugins/withFn",
+    ) as () => unknown;
+    const read = () => readExpoSettings(project, { plugins: [withFn] }, "ios");
+    const before = read();
+
+    await fs.writeFile(
+      path.join(project, "plugins/fnHelper.js"),
+      "module.exports = 2;",
+    );
+    expect(read()).not.toEqual(before);
+  });
+
+  it("hashes a workspace plugin package's files, not just its version", async () => {
+    const workspace = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-ws-"),
+    );
+    try {
+      await fs.writeFile(
+        path.join(workspace, "package.json"),
+        JSON.stringify({ name: "@acme/native-plugin", version: "1.0.0" }),
+      );
+      await fs.writeFile(
+        path.join(workspace, "helper.js"),
+        "module.exports = 1;",
+      );
+      await fs.writeFile(
+        path.join(workspace, "app.plugin.js"),
+        "require('./helper'); module.exports = (config) => config;",
+      );
+      await fs.mkdir(path.join(project, "node_modules/@acme"), {
+        recursive: true,
+      });
+      await fs.symlink(
+        workspace,
+        path.join(project, "node_modules/@acme/native-plugin"),
+      );
+      // Expo loads the package's app.plugin.js.
+      createRequire(path.join(project, "package.json"))(
+        "@acme/native-plugin/app.plugin.js",
+      );
+      const read = () =>
+        readExpoSettings(project, { plugins: ["@acme/native-plugin"] }, "ios");
+      const before = read();
+      expect(before["expo.plugin[0]:@acme/native-plugin"]).toMatch(/sha256:/);
+
+      await fs.writeFile(
+        path.join(workspace, "helper.js"),
+        "module.exports = 2;",
+      );
+      expect(read()).not.toEqual(before);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("numbers plugins without Hot Updater's own, so moving it changes nothing", () => {
     const read = (plugins: unknown[]) =>
       readExpoSettings(project, { plugins }, "ios");

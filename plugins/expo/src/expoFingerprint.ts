@@ -49,37 +49,34 @@ const sortKeys = (value: unknown): unknown =>
         )
       : value;
 
-/** The installed version of `name`, from the node_modules folders above `cwd`. */
-const packageVersion = (cwd: string, name: string): string | null => {
+/**
+ * The folder of the installed package `name`, from the node_modules folders
+ * above `cwd`.
+ */
+const packageDir = (cwd: string, name: string): string | null => {
   for (let dir = path.resolve(cwd); ; dir = path.dirname(dir)) {
-    const manifest = path.join(dir, "node_modules", name, "package.json");
-    if (fs.existsSync(manifest)) {
-      const { version } = JSON.parse(fs.readFileSync(manifest, "utf8")) as {
-        version?: string;
-      };
-      return version ?? null;
-    }
+    const candidate = path.join(dir, "node_modules", name);
+    if (fs.existsSync(path.join(candidate, "package.json"))) return candidate;
     if (path.dirname(dir) === dir) return null;
   }
 };
 
+const isLocal = (file: string) =>
+  !file.split(path.sep).includes("node_modules");
+
 /**
- * A local plugin file and the project files it loads. Expo requires config
- * plugins, so once the app config is read, Node's module cache holds the
- * files each one imported; a file it hasn't loaded counts by itself.
+ * A plugin file and the local files it loads, under `root`. Expo requires
+ * config plugins, so once the app config is read, Node's module cache holds
+ * the files each one imported; a file it hasn't loaded counts by itself.
  */
-const localPluginFiles = (cwd: string, entry: string): string[] => {
-  // Node caches modules by real path.
-  const root = `${fs.realpathSync(cwd)}${path.sep}`;
+const pluginFiles = (root: string, entry: string): string[] => {
+  const prefix = `${root}${path.sep}`;
   const files = new Set<string>();
   const visit = (file: string) => {
     if (files.has(file)) return;
     files.add(file);
     for (const child of require.cache[file]?.children ?? []) {
-      if (
-        child.filename.startsWith(root) &&
-        !child.filename.split(path.sep).includes("node_modules")
-      ) {
+      if (child.filename.startsWith(prefix) && isLocal(child.filename)) {
         visit(child.filename);
       }
     }
@@ -88,27 +85,84 @@ const localPluginFiles = (cwd: string, entry: string): string[] => {
   return [...files].sort();
 };
 
+/** The contents of a plugin's files, by their paths under `root`. */
+const hashPluginFiles = (root: string, entry: string): string =>
+  `sha256:${sha256(
+    pluginFiles(root, entry)
+      .map(
+        (file) =>
+          `${path.relative(root, file).split(path.sep).join("/")}\0${sha256(fs.readFileSync(file))}`,
+      )
+      .join("\0"),
+  )}`;
+
 /**
- * Where a config plugin's code comes from: the version of the package that
- * ships it, or the contents of a local plugin file and the files it imports.
+ * Where a config plugin's code comes from: the version of the registry
+ * package that ships it, or, for a local file or a workspace package, the
+ * contents of the file Expo loads and the local files it imports.
  */
 const pluginSource = (cwd: string, plugin: string): string => {
+  // Node caches modules by real path.
+  const project = fs.realpathSync(cwd);
   if (plugin.startsWith(".") || path.isAbsolute(plugin)) {
     try {
-      const entry = require.resolve(path.resolve(cwd, plugin));
-      const contents = localPluginFiles(cwd, entry).map(
-        (file) =>
-          `${path.relative(cwd, file).split(path.sep).join("/")}\0${sha256(fs.readFileSync(file))}`,
+      return hashPluginFiles(
+        project,
+        require.resolve(path.resolve(cwd, plugin)),
       );
-      return `sha256:${sha256(contents.join("\0"))}`;
     } catch {
       return "unresolved";
     }
   }
   const parts = plugin.split("/");
   const name = plugin.startsWith("@") ? parts.slice(0, 2).join("/") : parts[0]!;
-  const version = packageVersion(cwd, name);
-  return version === null ? "unresolved" : `${name}@${version}`;
+  const dir = packageDir(cwd, name);
+  if (dir === null) return "unresolved";
+  const real = fs.realpathSync(dir);
+  if (isLocal(real)) {
+    // A workspace package: Expo loads its app.plugin.js, else its main.
+    try {
+      const subpath = plugin.slice(name.length);
+      const entry = subpath
+        ? require.resolve(plugin, { paths: [cwd] })
+        : (() => {
+            try {
+              return require.resolve(`${name}/app.plugin.js`, {
+                paths: [cwd],
+              });
+            } catch {
+              return require.resolve(name, { paths: [cwd] });
+            }
+          })();
+      return hashPluginFiles(real, fs.realpathSync(entry));
+    } catch {
+      return "unresolved";
+    }
+  }
+  const { version } = JSON.parse(
+    fs.readFileSync(path.join(dir, "package.json"), "utf8"),
+  ) as { version?: string };
+  return version === undefined ? "unresolved" : `${name}@${version}`;
+};
+
+/**
+ * The local module whose export is the function plugin `plugin`, such as
+ * `plugins: [require("./plugins/withNative")]` in app.config.js.
+ */
+const functionPluginSource = (cwd: string, plugin: Function): string => {
+  const project = fs.realpathSync(cwd);
+  for (const [file, module] of Object.entries(require.cache)) {
+    const exports = module?.exports as { default?: unknown } | undefined;
+    if (
+      file.startsWith(`${project}${path.sep}`) &&
+      isLocal(file) &&
+      (exports === plugin || exports?.default === plugin)
+    ) {
+      return hashPluginFiles(project, file);
+    }
+  }
+  // Written inline in app.config.js.
+  return `sha256:${sha256(plugin.toString())}`;
 };
 
 /**
@@ -144,11 +198,10 @@ export const readExpoSettings = (
         sortKeys({ source: pluginSource(cwd, plugin), props: props ?? null }),
       );
     } else if (typeof plugin === "function") {
-      // A plugin written inline in app.config.js.
       settings[`expo.plugin[${index}]:${plugin.name || "inline"}`] =
         JSON.stringify(
           sortKeys({
-            source: `sha256:${sha256(plugin.toString())}`,
+            source: functionPluginSource(cwd, plugin),
             props: props ?? null,
           }),
         );
@@ -182,21 +235,41 @@ export const expoFingerprint = async (
   options: NativeFingerprintOptions,
 ) => {
   const { exp } = await getConfig(cwd, { skipSDKVersionRequirement: true });
-  return createInterfaceFingerprint(
-    cwd,
-    options,
-    await readReactNativeInterface({
+  const settings = readExpoSettings(cwd, exp as AppConfig, options.platform);
+  const read = (command: string[]) =>
+    readReactNativeInterface({
       cwd,
       command: process.execPath,
-      args: [
-        autolinkingBin(cwd),
-        "react-native-config",
-        "--platform",
-        options.platform,
-        "--json",
-      ],
+      args: command,
       platform: options.platform,
-      settings: readExpoSettings(cwd, exp as AppConfig, options.platform),
-    }),
-  );
+      settings,
+    });
+  let nativeInterface;
+  try {
+    nativeInterface = await read([
+      autolinkingBin(cwd),
+      "react-native-config",
+      "--platform",
+      options.platform,
+      "--json",
+    ]);
+  } catch (error) {
+    // SDKs whose expo-modules-autolinking predates `react-native-config`
+    // (before 1.11.2, such as SDK 50) autolink React Native packages with
+    // React Native CLI, so its config lists them.
+    try {
+      nativeInterface = await read([
+        path.join(
+          path.dirname(
+            require.resolve("react-native/package.json", { paths: [cwd] }),
+          ),
+          "cli.js",
+        ),
+        "config",
+      ]);
+    } catch {
+      throw error;
+    }
+  }
+  return createInterfaceFingerprint(cwd, options, nativeInterface);
 };
