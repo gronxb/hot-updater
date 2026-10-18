@@ -2326,6 +2326,9 @@ importers:
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
+      enhanced-resolve:
+        specifier: ^5.23.0
+        version: 5.23.0
       uuidv7:
         specifier: 'catalog:'
         version: 1.2.1

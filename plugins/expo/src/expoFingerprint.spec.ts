@@ -624,6 +624,123 @@ describe("readExpoSettings", () => {
     }
   });
 
+  // A workspace package `@acme/<name>` linked into the project, with an ESM
+  // plugin that imports `specifier`; returns the package directory.
+  const linkWorkspacePackage = async (
+    name: string,
+    manifest: Record<string, unknown>,
+    files: Record<string, string>,
+    specifier: string,
+  ) => {
+    const workspace = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), `hot-updater-${name}-`)),
+    );
+    await fs.writeFile(
+      path.join(workspace, "package.json"),
+      JSON.stringify({ name: `@acme/${name}`, version: "1.0.0", ...manifest }),
+    );
+    for (const [file, contents] of Object.entries(files)) {
+      await fs.mkdir(path.dirname(path.join(workspace, file)), {
+        recursive: true,
+      });
+      await fs.writeFile(path.join(workspace, file), contents);
+    }
+    await fs.mkdir(path.join(project, "node_modules/@acme"), {
+      recursive: true,
+    });
+    await fs.symlink(
+      workspace,
+      path.join(project, `node_modules/@acme/${name}`),
+    );
+    await fs.writeFile(
+      path.join(project, `plugins/with-${name}.mjs`),
+      `import helper from '${specifier}'; export default (config) => config;`,
+    );
+    return workspace;
+  };
+
+  it("prefers the most specific export pattern, as Node does", async () => {
+    const workspace = await linkWorkspacePackage(
+      "specific",
+      { exports: { "./*": "./general/*", "./*.js": "./specific/*.mjs" } },
+      {
+        "general/foo.js": "export default 1;",
+        "specific/foo.mjs": "export default 1;",
+      },
+      "@acme/specific/foo.js",
+    );
+    try {
+      const read = () =>
+        readExpoSettings(
+          project,
+          { plugins: ["./plugins/with-specific.mjs"] },
+          "ios",
+        );
+      const before = read();
+      await fs.writeFile(
+        path.join(workspace, "specific/foo.mjs"),
+        "export default 2;",
+      );
+      expect(read()).not.toEqual(before);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("follows export conditions in declaration order", async () => {
+    const workspace = await linkWorkspacePackage(
+      "ordered",
+      { exports: { node: "./node.mjs", import: "./import.mjs" } },
+      { "node.mjs": "export default 1;", "import.mjs": "export default 1;" },
+      "@acme/ordered",
+    );
+    try {
+      const read = () =>
+        readExpoSettings(
+          project,
+          { plugins: ["./plugins/with-ordered.mjs"] },
+          "ios",
+        );
+      const before = read();
+      await fs.writeFile(path.join(workspace, "node.mjs"), "export default 2;");
+      expect(read()).not.toEqual(before);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  });
+
+  it("follows a workspace package's imports map", async () => {
+    const workspace = await linkWorkspacePackage(
+      "mapped",
+      {
+        type: "module",
+        exports: "./index.mjs",
+        imports: { "#native": "./native.mjs" },
+      },
+      {
+        "index.mjs": "import native from '#native'; export default native;",
+        "native.mjs": "export default 1;",
+      },
+      "@acme/mapped",
+    );
+    try {
+      const read = () =>
+        readExpoSettings(
+          project,
+          { plugins: ["./plugins/with-mapped.mjs"] },
+          "ios",
+        );
+      const before = read();
+      await fs.writeFile(
+        path.join(workspace, "native.mjs"),
+        "export default 2;",
+      );
+      expect(read()).not.toEqual(before);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("numbers plugins without Hot Updater's own, so moving it changes nothing", () => {
     const read = (plugins: unknown[]) =>
       readExpoSettings(project, { plugins }, "ios");

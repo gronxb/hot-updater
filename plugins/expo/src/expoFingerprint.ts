@@ -12,6 +12,7 @@ import type {
   NativeFingerprintOptions,
   Platform,
 } from "@hot-updater/plugin-core";
+import enhancedResolve from "enhanced-resolve";
 
 import { getConfig } from "./expoConfig";
 
@@ -135,103 +136,36 @@ const staticImportsOf = (file: string): string[] => {
   } catch {
     return [];
   }
+  // Node's ESM resolver: `exports` and `imports` under the `node` and
+  // `import` conditions, plus the extensions Expo tries for TypeScript.
+  const resolver = enhancedResolve.ResolverFactory.createResolver({
+    fileSystem: new enhancedResolve.CachedInputFileSystem(fs, 0),
+    useSyncFileSystemCalls: true,
+    conditionNames: ["node", "import"],
+    exportsFields: ["exports"],
+    importsFields: ["imports"],
+    mainFields: ["main"],
+    extensions: PLUGIN_EXTENSIONS,
+  });
   return specifiers.flatMap((specifier) => {
-    if (specifier.startsWith(".") || path.isAbsolute(specifier)) {
-      const target = path.resolve(path.dirname(file), specifier);
-      const found = [target, ...PLUGIN_EXTENSIONS.map((ext) => target + ext)]
-        .filter((candidate) => fs.existsSync(candidate))
-        .find((candidate) => fs.statSync(candidate).isFile());
-      return found ? [fs.realpathSync(found)] : [];
-    }
     if (specifier.startsWith("node:")) return [];
+    try {
+      const resolved = resolver.resolveSync({}, path.dirname(file), specifier);
+      if (resolved) return [fs.realpathSync(resolved)];
+    } catch {
+      // Unresolvable: a built-in module, or a package without an entry.
+    }
+    if (specifier.startsWith(".") || specifier.startsWith("#")) return [];
     const parts = specifier.split("/");
     const name = specifier.startsWith("@")
       ? parts.slice(0, 2).join("/")
       : parts[0]!;
     const dir = packageDir(path.dirname(file), name);
-    if (dir === null) return []; // A built-in module.
-    const real = fs.realpathSync(dir);
-    // A registry package counts by its version.
-    if (!isLocal(real)) return [path.join(real, "package.json")];
-    const entry = esmEntry(real, `.${specifier.slice(name.length)}`);
-    return [entry ?? path.join(real, "package.json")];
+    // A package without a resolvable entry still counts, by its version.
+    return dir === null
+      ? []
+      : [path.join(fs.realpathSync(dir), "package.json")];
   });
-};
-
-/**
- * The file an `import` of `subpath` loads from the workspace package in
- * `dir`, as ESM resolves it: its `exports` under the `import` condition
- * first, else its `module` or `main` for the package itself.
- */
-const esmEntry = (dir: string, subpath: string): string | null => {
-  const manifest = JSON.parse(
-    fs.readFileSync(path.join(dir, "package.json"), "utf8"),
-  ) as { exports?: unknown; module?: string; main?: string };
-  const pick = (target: unknown): string | null => {
-    if (typeof target === "string") return target;
-    if (Array.isArray(target)) {
-      for (const entry of target) {
-        const found = pick(entry);
-        if (found) return found;
-      }
-      return null;
-    }
-    if (target && typeof target === "object") {
-      const conditions = target as Record<string, unknown>;
-      for (const condition of ["import", "node", "default", "require"]) {
-        if (condition in conditions) {
-          const found = pick(conditions[condition]);
-          if (found) return found;
-        }
-      }
-    }
-    return null;
-  };
-  let relative: string | null = null;
-  const { exports } = manifest;
-  if (exports !== undefined) {
-    const map =
-      typeof exports === "string" ||
-      Array.isArray(exports) ||
-      !Object.keys(exports as object).some((key) => key.startsWith("."))
-        ? { ".": exports }
-        : (exports as Record<string, unknown>);
-    relative = subpath in map ? pick(map[subpath]) : null;
-    if (relative === null && !(subpath in map)) {
-      // A pattern key with one `*`, as Node matches it: the longest prefix
-      // wins, and the matched part replaces `*` in the target.
-      let best: { key: string; match: string } | null = null;
-      for (const key of Object.keys(map)) {
-        const star = key.indexOf("*");
-        if (star < 0 || key.indexOf("*", star + 1) >= 0) continue;
-        const prefix = key.slice(0, star);
-        const suffix = key.slice(star + 1);
-        if (
-          subpath.length >= key.length &&
-          subpath.startsWith(prefix) &&
-          subpath.endsWith(suffix) &&
-          (!best || prefix.length > best.key.indexOf("*"))
-        ) {
-          best = {
-            key,
-            match: subpath.slice(prefix.length, subpath.length - suffix.length),
-          };
-        }
-      }
-      const target = best ? pick(map[best.key]) : null;
-      relative = target && best ? target.split("*").join(best.match) : null;
-    }
-  } else if (subpath === ".") {
-    relative = manifest.module ?? manifest.main ?? "index.js";
-  } else {
-    relative = subpath;
-  }
-  if (relative === null) return null;
-  const target = path.resolve(dir, relative);
-  const found = [target, ...PLUGIN_EXTENSIONS.map((ext) => target + ext)].find(
-    (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
-  );
-  return found ? fs.realpathSync(found) : null;
 };
 
 /** Every file `file` imports: required, cached first or not, or imported. */
