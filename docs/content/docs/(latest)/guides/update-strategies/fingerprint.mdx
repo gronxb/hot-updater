@@ -138,6 +138,9 @@ you switch a project to App Version: an app with a fingerprint reports the
 fingerprint strategy. Under App Version, `doctor` reports a leftover
 `fingerprint.json` as `FINGERPRINT_JSON_UNUSED` and `doctor --fix` deletes it,
 `deploy` warns about it, and the Expo config plugin removes it at prebuild.
+Keep `hot-updater` and `@hot-updater/react-native` on the same version: the
+build step comes with the React Native package, so `fingerprint create` and
+`deploy` stop when it is from before build-time fingerprints.
 
 Example `fingerprint.json` (sources shortened):
 

@@ -192,6 +192,7 @@ vi.mock("@/utils/fingerprint", () => ({
       ? [...(Array.isArray(extraSources) ? extraSources : []), ...additions]
       : extraSources,
   ),
+  assertNativeSdkEmbedsFingerprint: vi.fn(),
   isFingerprintEquals: vi.fn(),
   nativeFingerprint: vi.fn(),
   readLocalFingerprint: vi.fn(),

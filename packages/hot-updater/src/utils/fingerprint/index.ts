@@ -13,10 +13,12 @@ import {
   isFingerprintEquals,
 } from "./common";
 import { nativeFingerprint } from "./nativeFingerprint";
+import { assertNativeSdkEmbedsFingerprint } from "./nativeSdk";
 
 export * from "./common";
 export * from "./diff";
 export * from "./nativeFingerprint";
+export * from "./nativeSdk";
 export * from "./recorded";
 
 export const generateFingerprints = async (
@@ -27,6 +29,7 @@ export const generateFingerprints = async (
   );
 
   const projectPath = getCwd();
+  assertNativeSdkEmbedsFingerprint(projectPath);
   const [ios, android] = await Promise.all([
     nativeFingerprint(projectPath, {
       platform: "ios",

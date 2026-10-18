@@ -46,6 +46,7 @@ import {
 import { createBundleDiff } from "@/utils/createBundleDiff";
 import {
   appendFingerprintExtraSources,
+  assertNativeSdkEmbedsFingerprint,
   describeFingerprintEngineChange,
   getFingerprintEngineChange,
   isFingerprintEquals,
@@ -754,6 +755,12 @@ const deployPlatform = async ({
       s.error(
         "Fingerprint.json not found. Please run 'hot-updater fingerprint create' to update fingerprint.json",
       );
+      process.exit(1);
+    }
+    try {
+      assertNativeSdkEmbedsFingerprint(cwd);
+    } catch (error) {
+      s.error(error instanceof Error ? error.message : String(error));
       process.exit(1);
     }
     const newFingerprint = await nativeFingerprint(cwd, {

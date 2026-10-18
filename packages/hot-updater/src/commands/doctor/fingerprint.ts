@@ -14,6 +14,7 @@ import {
   getFingerprintDependencyInstallCommand,
   isMissingFingerprintDependencyError,
 } from "../../utils/fingerprint/dependency";
+import { isNativeSdkWithoutBuildFingerprintError } from "../../utils/fingerprint/nativeSdk";
 import type { NativeCheckIssue } from "./issues";
 
 const FINGERPRINT_CREATE = "npx hot-updater fingerprint create";
@@ -32,6 +33,18 @@ const generationFailed = (error: unknown): NativeCheckIssue => {
       resolution: `Run \`${install}\`, then rerun doctor.`,
       fixability: "command",
       commands: [install],
+    };
+  }
+  if (isNativeSdkWithoutBuildFingerprintError(error)) {
+    return {
+      type: "error",
+      platform: "project",
+      code: "FINGERPRINT_GENERATION_FAILED",
+      message,
+      resolution:
+        "Update @hot-updater/react-native to the version of hot-updater, then rebuild the app and rerun doctor.",
+      fixability: "auto",
+      paths: ["package.json"],
     };
   }
   return {
