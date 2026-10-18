@@ -56,6 +56,10 @@ import {
   getFingerprintDiff,
   showFingerprintDiff,
 } from "@/utils/fingerprint/diff";
+import {
+  describeFingerprintReach,
+  findOtherServedFingerprints,
+} from "@/utils/fingerprint/reach";
 import { getBundleZipTargets } from "@/utils/getBundleZipTargets";
 import { getFileHashFromFile } from "@/utils/getFileHash";
 import { appendToProjectRootGitignore, getLatestGitCommit } from "@/utils/git";
@@ -692,6 +696,7 @@ const deployPlatform = async ({
       config.fingerprint.extraSources,
       nativeFingerprintExtraSources,
     ),
+    provider: buildAdapter.nativeBuild?.fingerprint,
   };
 
   // Validate signing configuration and the native key pinned by the app.
@@ -790,6 +795,22 @@ const deployPlatform = async ({
 
     target.fingerprintHash = newFingerprint.hash;
     s.stop(`Fingerprint(${platform}): ${newFingerprint.hash}`);
+    try {
+      const reach = describeFingerprintReach({
+        others: await findOtherServedFingerprints({
+          core,
+          channel: options.channel,
+          platform,
+          fingerprintHash: newFingerprint.hash,
+        }),
+        label: platform === "ios" ? "iOS" : "Android",
+        channel: options.channel,
+        fingerprintHash: newFingerprint.hash,
+      });
+      if (reach) p.log.warn(reach);
+    } catch {
+      // Reach is informational; the deploy doesn't depend on it.
+    }
   } else {
     const defaultTargetAppVersion = options.targetAppVersion
       ? null

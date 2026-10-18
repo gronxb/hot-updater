@@ -5,5 +5,7 @@
     <application
         android:usesCleartextTraffic="true"
         tools:targetApi="28"
-        tools:ignore="GoogleAppIndexingWarning"/>
+        tools:ignore="GoogleAppIndexingWarning">
+        <meta-data android:name="com.hotupdater.FINGERPRINT_HASH" android:value="791fee3e38217ae050fa9e9694b71d23704a0fc6e451ed0a94f7f6e0381e0c21"/>
+    </application>
 </manifest>

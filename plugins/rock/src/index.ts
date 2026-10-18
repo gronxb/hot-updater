@@ -1,7 +1,11 @@
 import fs from "fs/promises";
 import path from "path";
 
-import { log } from "@hot-updater/cli-tools";
+import {
+  createInterfaceFingerprint,
+  log,
+  readReactNativeInterface,
+} from "@hot-updater/cli-tools";
 import type {
   BuildAdapterArgs,
   BuildAdapter,
@@ -105,6 +109,19 @@ export const rock =
       hermes = true,
     } = config;
     return {
+      nativeBuild: {
+        fingerprint: async (options) =>
+          createInterfaceFingerprint(
+            cwd,
+            options,
+            await readReactNativeInterface({
+              cwd,
+              command: "npx",
+              args: ["rock", "config", "-p", options.platform],
+              platform: options.platform,
+            }),
+          ),
+      },
       build: async ({ platform }) => {
         const buildPath = path.join(cwd, outDir);
 

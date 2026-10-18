@@ -1,6 +1,6 @@
 ---
 title: "Fingerprint Update Strategy"
-description: "Match OTA updates to native builds using hashes of configured compatibility inputs."
+description: "Match OTA updates to native builds by hashing the native interface JavaScript calls."
 icon: Fingerprint
 ---
 
@@ -8,42 +8,35 @@ import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
 ## Why Choose Fingerprint?
 
-Fingerprint matches OTA updates to a native build by hashing selected native
-inputs. Deploy rejects a hash that differs from the saved `fingerprint.json`,
-and the client selects updates matching the hash embedded in its binary.
-Compatibility depends on covering every native input your app relies on.
-App Version instead lets you specify compatible version targets manually.
+Fingerprint matches OTA updates to native builds automatically. Hot Updater
+hashes the native interface your JavaScript calls, embeds the hash in each
+build, and delivers an update only to builds with the same hash. Deploy stops
+when the hash differs from the saved `fingerprint.json`. App Version instead
+lets you specify compatible version targets manually.
 
-Hot Updater excludes the `ios/` and `android/` trees from default hashing.
-App-owned Swift, Kotlin, and other native files require explicit file or glob
-entries in `fingerprint.extraSources`; a directory entry alone does not override
-those exclusions.
+## What the Fingerprint Covers
+
+An OTA update replaces only JavaScript, so it stays compatible as long as the
+native interface it calls stays the same. With the bare and Rock build
+adapters, the fingerprint covers:
+
+- the React Native version and its JavaScript engine: the Hermes pod
+  `Podfile.lock` records on iOS, and `hermesEnabled`, `hermesV1Enabled`, and
+  `newArchEnabled` in `android/gradle.properties`;
+- each autolinked native package, Expo modules included, by name and version;
+- the codegen specs of your app and of local native packages, or the native
+  files of a local package without specs;
+- patches to those packages in `patches/`;
+- `fingerprint.nativeVersion` and `fingerprint.extraSources`.
+
+Version and build numbers, native implementation edits, build settings, and
+JavaScript-only dependencies leave it unchanged, so every store build with the
+same native interface receives the same updates.
+
+The Expo build adapter uses `@expo/fingerprint` instead. See
+[Expo projects](#expo-projects).
 
 ## Setup
-
-### Install the Fingerprint Library
-
-Hot Updater uses `@expo/fingerprint` to calculate native compatibility hashes.
-It is an optional peer dependency of `hot-updater`, so install it in your app
-project when using the Fingerprint strategy:
-
-```package-install
-npm install @expo/fingerprint --save-dev --save-exact
-```
-
-Pin an exact version. Another `@expo/fingerprint` version can hash the same
-project differently, and builds you already shipped then stop receiving
-updates. `fingerprint.json` records the version that computed each hash, and
-`doctor` and `deploy` report when the version changes.
-
-`@expo/fingerprint` is a standalone Node.js
-library that [supports bare React Native projects](https://expo.dev/blog/fingerprint-your-native-runtime).
-You do not need to install `expo` or `expo-updates`, use Expo CLI, or migrate your
-app to Expo. Hot Updater runs the library when generating and checking
-fingerprints; it is not a runtime dependency of your app.
-
-Install development dependencies in CI jobs that build or deploy with the
-Fingerprint strategy too. Projects using `appVersion` do not need this package.
 
 ### Enable the Fingerprint Strategy
 
@@ -60,76 +53,50 @@ export default defineConfig({
 ```
 
 <a id="include-additional-files-optional" />
+<a id="include-app-owned-native-inputs" />
 
-### Include App-Owned Native Inputs
+### Bump `nativeVersion` for Changes the Fingerprint Can't See
 
-Keep your existing build, storage, database, and plugins settings, and add
-platform-scoped native inputs. This example is a starting point for a bare project; replace
-`YourApp` and extend the file list for your native modules and build settings:
+When JavaScript starts to depend on a native change the list above doesn't
+cover, change `nativeVersion`. Examples: a native module without a codegen
+spec, a changed return value, a new permission or `Info.plist` key, a manually
+linked library, moving a native package installed from Git to another commit
+while its version stays the same, or switching the New Architecture on iOS
+before React Native made it the only architecture.
 
 ```typescript title="hot-updater.config.ts (partial)"
-import { defineConfig } from "hot-updater";
-
 export default defineConfig({
   updateStrategy: "fingerprint",
   fingerprint: {
-    extraSources: {
-      ios: [
-        "ios/YourApp/**/*.{swift,h,m,mm,c,cc,cpp,cxx,hpp}",
-        "ios/Podfile",
-        "ios/YourApp.xcodeproj/project.pbxproj",
-      ],
-      android: [
-        "android/app/src/**/*.{kt,java,c,cc,cpp,cxx,h,hpp}",
-        "android/build.gradle*",
-        "android/settings.gradle*",
-        "android/gradle.properties",
-        "android/app/build.gradle*",
-        "android/app/proguard-rules.pro",
-      ],
-    },
-    debug: true,
+    nativeVersion: 2, // [!code ++]
   },
-  // Keep your existing build, storage, database, and plugins configuration.
 });
 ```
 
-File paths and files matched by globs become `contents` sources, so their text
-is hashed even inside the excluded native trees. Entries such as `"ios"` or
-`"android/app/src"` remain directory sources and are still ignored. Use explicit
-file paths or globs that match the files. Unmatched paths add no source; inspect
-the generated `fingerprint.json` sources to confirm that your paths matched.
+To track files instead, list them in `fingerprint.extraSources`. An array
+applies to both platforms; use `{ ios: [...], android: [...] }` for one.
+Don't list files whose text changes with every release, such as
+`project.pbxproj` or `build.gradle`, or files `fingerprint create` writes, such
+as `Info.plist` and `AndroidManifest.xml`.
 
-The object form keeps iOS-only inputs out of the Android hash and vice versa.
-An array such as `extraSources: ["config/native-config.json"]` hashes every
-entry into both platforms. For shared inputs in the object form, include the
-same file in both lists.
+To check the fingerprint, add a method to a spec or change `nativeVersion`, and
+run `npx hot-updater doctor`. It reports that the fingerprint changed and lists
+the source. Then restore the edit.
 
-### Check the Compatibility Boundary
+### Expo Projects
 
-- Default hashing filters file types and skips inputs including package scripts
-  and Expo app-config fields. Do not assume a native dependency, build setting,
-  config plugin, or app-config change is covered without checking its sources.
-  Include the relevant stable text inputs explicitly when they are excluded.
-- The bare build adapter adds no replacement sources for app-owned native files.
-  Build adapters may add their own sources, but this does not make the native
-  trees fully tracked.
-- Scope globs to app-owned source directories; avoid blanket `ios/**/*` or
-  `android/**/*` inputs that include Pods, generated files, and build outputs.
-  Explicit file/glob sources bypass the default path exclusions. Do not hash
-  `fingerprint.json` or native files that `fingerprint create` updates,
-  such as `Info.plist` and `AndroidManifest.xml`, as raw extra sources. Embedding
-  the new hash would change the next hash again.
-- If an excluded metadata file carries a compatibility-relevant change, reflect
-  that change in a separate tracked compatibility marker included in
-  `extraSources`, then generate a new fingerprint and rebuild the native app.
+The Expo build adapter fingerprints with `@expo/fingerprint`. From Expo SDK
+52, the `expo` package pins its own copy, and Hot Updater uses that one, so the
+fingerprint engine changes only when you upgrade the SDK, which needs a new
+build anyway. For older SDKs, install an exact version in your app project and
+in CI jobs that build or deploy:
 
-Before relying on this boundary, temporarily edit an app-owned Swift or Kotlin
-file and run `npx hot-updater doctor`. Confirm that it reports
-`FINGERPRINT_JSON_STALE` for the intended platform and lists the edited file,
-then restore the edit. Repeat for your other compatibility inputs.
-A matching fingerprint only proves those selected inputs are unchanged; it does
-not prove that JavaScript is compatible with an untracked native change.
+```package-install
+npm install @expo/fingerprint --save-dev --save-exact
+```
+
+`fingerprint.json` records the version that computed each hash, and `doctor`
+and `deploy` report when it changes.
 
 ## Workflow
 
@@ -176,6 +143,9 @@ npx hot-updater deploy -p android
 ```
 
 Hot Updater limits delivery to native builds with the same embedded fingerprint.
+When the channel's recent releases target other fingerprints, deploy lists
+them: builds on those fingerprints won't receive this update until users
+install a build with the new one.
 Use the [deployment sequence](/docs/guides/deploy#deploy-both-platforms) to stop
 the second platform when the first deployment fails.
 
@@ -267,9 +237,9 @@ inputs are unchanged, the fingerprint check permits deployment.
 
 ### Native Changes Require a Rebuild
 
-New native modules, React Native upgrades, app-owned native code changes, and
-native build-setting changes can require a new binary. When those changes are
-covered by your fingerprint sources, deploy detects the hash mismatch and exits:
+New native packages, React Native upgrades, spec changes, patches, and a new
+`nativeVersion` change the fingerprint and require a new binary. Deploy detects
+the hash mismatch and exits:
 
 ```text
 Fingerprint mismatch. 'hot-updater fingerprint create' to update fingerprint.json
@@ -277,8 +247,9 @@ Fingerprint mismatch. 'hot-updater fingerprint create' to update fingerprint.jso
 
 Generate the new fingerprint, rebuild and release the native app with that hash,
 then deploy updates for it. Generating a fingerprint alone does not rebuild
-installed apps. An untracked native change can leave the hash unchanged and
-will not be blocked; review the compatibility boundary above before deploying.
+installed apps. A native change the fingerprint doesn't cover leaves the hash
+unchanged and is not blocked; bump `nativeVersion` when JavaScript depends on
+it.
 
 ## Advanced
 

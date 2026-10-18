@@ -1,5 +1,10 @@
 import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
-import type { FingerprintExtraSources } from "@hot-updater/plugin-core";
+import type {
+  FingerprintExtraSources,
+  NativeFingerprint,
+  NativeFingerprintProvider,
+  NativeFingerprintSource,
+} from "@hot-updater/plugin-core";
 
 import { isExpo } from "../expoDetection";
 import { loadExpoFingerprint } from "./dependency";
@@ -38,12 +43,11 @@ export const ensureFingerprintConfig = async (
     );
     process.exit(1);
   }
-  let nativeExtraSources = additionalExtraSources;
-  if (nativeExtraSources === undefined) {
-    const buildAdapter = await config.build({ cwd: getCwd() });
-    nativeExtraSources =
-      (await buildAdapter.nativeBuild?.getFingerprintExtraSources?.()) ?? [];
-  }
+  const buildAdapter = await config.build({ cwd: getCwd() });
+  const nativeExtraSources =
+    additionalExtraSources ??
+    (await buildAdapter.nativeBuild?.getFingerprintExtraSources?.()) ??
+    [];
 
   return {
     ...config.fingerprint,
@@ -51,6 +55,7 @@ export const ensureFingerprintConfig = async (
       config.fingerprint.extraSources,
       nativeExtraSources,
     ),
+    provider: buildAdapter.nativeBuild?.fingerprint,
   };
 };
 
@@ -139,10 +144,23 @@ export async function getOtaFingerprintOptions(
       SourceSkips.ExpoConfigExtraSection |
       SourceSkips.ExpoConfigEASProject |
       SourceSkips.ExpoConfigSchemes,
-    extraSources: processExtraSources(
-      resolveExtraSources(options.extraSources, platform),
-      path,
-    ),
+    extraSources: [
+      ...processExtraSources(
+        resolveExtraSources(options.extraSources, platform),
+        path,
+      ),
+      // The interface engine hashes the same contents.
+      ...(options.nativeVersion === undefined
+        ? []
+        : [
+            {
+              type: "contents" as const,
+              id: "nativeVersion",
+              contents: String(options.nativeVersion),
+              reasons: ["config"],
+            },
+          ]),
+    ],
     debug: options.debug,
   };
 }
@@ -151,52 +169,50 @@ export type FingerprintSources = {
   extraSources: string[];
 };
 
-export type FingerprintSource =
-  | {
-      type: "file" | "dir";
-      filePath: string;
-      reasons: string[];
-      overrideHashKey?: string;
-      hash: string | null;
-      debugInfo?: any;
-    }
-  | {
-      type: "contents";
-      id: string;
-      contents: string | Buffer;
-      reasons: string[];
-      hash: string | null;
-      debugInfo?: any;
-    };
+export type FingerprintSource = NativeFingerprintSource;
 
 export type FingerprintOptions = {
   platform: "ios" | "android";
   extraSources?: FingerprintExtraSources;
   ignorePaths?: string[];
+  nativeVersion?: string | number;
   debug?: boolean;
+  /**
+   * The build adapter's fingerprint. Without one, `@expo/fingerprint`
+   * fingerprints the project.
+   */
+  provider?: NativeFingerprintProvider;
 };
 
-export type FingerprintResult = {
-  /**
-   * What computed `hash`, such as `@expo/fingerprint@0.20.14`. Absent from
-   * a fingerprint.json written before engines were recorded.
-   */
-  engine?: string;
-  hash: string;
-  sources: FingerprintSource[];
+export type FingerprintResult = NativeFingerprint;
+
+const EXPO_FINGERPRINT = "@expo/fingerprint";
+
+/** An engine id without its version: `@expo/fingerprint@0.20.14` → `@expo/fingerprint`. */
+const engineName = (engine: string) => {
+  const at = engine.lastIndexOf("@");
+  return at > 0 ? engine.slice(0, at) : engine;
 };
 
 /**
- * The engines of two fingerprints when both are recorded and differ. The hash
- * then changed with the engine, whether or not a native input changed.
+ * The engines of two fingerprints when they differ. The hash then changed with
+ * the engine, whether or not a native input changed. A fingerprint without a
+ * recorded engine counts as `@expo/fingerprint` against another engine.
  */
 export const getFingerprintEngineChange = (
   before: Pick<FingerprintResult, "engine"> | null | undefined,
   after: Pick<FingerprintResult, "engine"> | null | undefined,
-): { before: string; after: string } | null =>
-  before?.engine && after?.engine && before.engine !== after.engine
-    ? { before: before.engine, after: after.engine }
+): { before: string; after: string } | null => {
+  if (!before || !after?.engine) return null;
+  // fingerprint.json files from before engines were recorded all came from
+  // @expo/fingerprint, at a version nobody recorded.
+  const beforeEngine =
+    before.engine ??
+    (engineName(after.engine) === EXPO_FINGERPRINT ? null : EXPO_FINGERPRINT);
+  return beforeEngine && beforeEngine !== after.engine
+    ? { before: beforeEngine, after: after.engine }
     : null;
+};
 
 /**
  * Explains a hash that changed with its engine, for deploy, doctor, and
@@ -214,9 +230,12 @@ export const describeFingerprintEngineChange = (
   recorded = false,
 ): { message: string; resolution: string } => ({
   message: `The ${label} fingerprint changed because fingerprint.json was created with ${change.before} and the project now uses ${change.after}. Native inputs may be unchanged.`,
-  resolution: recorded
-    ? `fingerprint.json now records the ${change.after} hash. To keep updating ${label} builds you already shipped, go back to ${change.before} and run \`npx hot-updater fingerprint create\` again, or restore the previous fingerprint.json. ${STILL_DIFFERS} Otherwise rebuild the ${label} app.`
-    : `To keep updating ${label} builds you already shipped, go back to ${change.before}. ${STILL_DIFFERS} Otherwise run \`npx hot-updater fingerprint create\`, then rebuild the ${label} app.`,
+  resolution:
+    engineName(change.before) !== engineName(change.after)
+      ? `${recorded ? `fingerprint.json now records the ${change.after} hash. Rebuild` : "Run `npx hot-updater fingerprint create`, then rebuild"} the ${label} app. Builds you already shipped keep the old fingerprint and receive no updates until users install the new build.`
+      : recorded
+        ? `fingerprint.json now records the ${change.after} hash. To keep updating ${label} builds you already shipped, go back to ${change.before} and run \`npx hot-updater fingerprint create\` again, or restore the previous fingerprint.json. ${STILL_DIFFERS} Otherwise rebuild the ${label} app.`
+        : `To keep updating ${label} builds you already shipped, go back to ${change.before}. ${STILL_DIFFERS} Otherwise run \`npx hot-updater fingerprint create\`, then rebuild the ${label} app.`,
 });
 
 type OtaFingerprintOptions = {
@@ -224,7 +243,10 @@ type OtaFingerprintOptions = {
   platforms: Array<"ios" | "android">;
   ignorePaths: string[];
   sourceSkips: number;
-  extraSources: ReturnType<typeof processExtraSources>;
+  extraSources: (
+    | ReturnType<typeof processExtraSources>[number]
+    | { type: "contents"; id: string; contents: string; reasons: string[] }
+  )[];
   debug?: boolean;
 };
 
