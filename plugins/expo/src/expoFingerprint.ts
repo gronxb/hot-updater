@@ -5,6 +5,7 @@ import path from "node:path";
 
 import {
   createInterfaceFingerprint,
+  moduleSpecifiersOf,
   readReactNativeInterface,
 } from "@hot-updater/cli-tools";
 import type {
@@ -110,10 +111,61 @@ export const recordRequires = async <T>(read: () => Promise<T>): Promise<T> => {
   }
 };
 
-/** Every file `file` required, cached first or not. */
+const SOURCE_EXTENSIONS = new Set([
+  ".js",
+  ".cjs",
+  ".mjs",
+  ".jsx",
+  ".ts",
+  ".cts",
+  ".mts",
+  ".tsx",
+]);
+
+/**
+ * The files `file`'s import declarations and `import()` calls name. ESM
+ * imports don't go through `require`, so neither the module cache nor the
+ * recorded requires see them.
+ */
+const staticImportsOf = (file: string): string[] => {
+  if (!SOURCE_EXTENSIONS.has(path.extname(file))) return [];
+  let specifiers: string[];
+  try {
+    specifiers = moduleSpecifiersOf(file, fs.readFileSync(file, "utf8"));
+  } catch {
+    return [];
+  }
+  const fileRequire = createRequire(file);
+  return specifiers.flatMap((specifier) => {
+    try {
+      const resolved = fileRequire.resolve(specifier);
+      if (path.isAbsolute(resolved)) return [fs.realpathSync(resolved)];
+      return []; // A built-in module.
+    } catch {
+      // ESM resolution differs: a relative path may omit a TypeScript
+      // extension, and a package may export only an `import` condition.
+    }
+    if (specifier.startsWith(".") || path.isAbsolute(specifier)) {
+      const target = path.resolve(path.dirname(file), specifier);
+      const found = PLUGIN_EXTENSIONS.map(
+        (extension) => target + extension,
+      ).find((candidate) => fs.existsSync(candidate));
+      return found ? [fs.realpathSync(found)] : [];
+    }
+    const parts = specifier.split("/");
+    const name = specifier.startsWith("@")
+      ? parts.slice(0, 2).join("/")
+      : parts[0]!;
+    const dir = packageDir(path.dirname(file), name);
+    return dir ? [fs.realpathSync(path.join(dir, "package.json"))] : [];
+  });
+};
+
+/** Every file `file` imports: required, cached first or not, or imported. */
 const importsOf = (file: string): string[] => [
   ...(require.cache[file]?.children ?? []).map(({ filename }) => filename),
   ...(requireEdges.get(file) ?? []),
+  ...staticImportsOf(file),
 ];
 
 /**
@@ -255,20 +307,16 @@ const pluginSource = (cwd: string, plugin: string): PluginSource => {
   if (dir === null) return UNRESOLVED;
   const real = fs.realpathSync(dir);
   if (isLocal(real)) {
-    // A workspace package: Expo loads its app.plugin.js, else its main.
+    // A workspace package: Expo loads its app.plugin file from the package
+    // folder, whatever the package exports, else its main.
     try {
       const subpath = plugin.slice(name.length);
+      const appPlugin = PLUGIN_EXTENSIONS.map((extension) =>
+        path.join(real, `app.plugin${extension}`),
+      ).find((candidate) => fs.existsSync(candidate));
       const entry = subpath
         ? require.resolve(plugin, { paths: [cwd] })
-        : (() => {
-            try {
-              return require.resolve(`${name}/app.plugin.js`, {
-                paths: [cwd],
-              });
-            } catch {
-              return require.resolve(name, { paths: [cwd] });
-            }
-          })();
+        : (appPlugin ?? require.resolve(name, { paths: [cwd] }));
       return fromGraph(real, pluginGraph(project, [fs.realpathSync(entry)]));
     } catch {
       return UNRESOLVED;

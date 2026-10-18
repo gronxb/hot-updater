@@ -455,6 +455,80 @@ describe("readExpoSettings", () => {
     }
   });
 
+  it("follows the ESM imports of a local plugin", async () => {
+    await fs.writeFile(
+      path.join(project, "plugins/esmHelper.mjs"),
+      "export default 1;",
+    );
+    await fs.writeFile(
+      path.join(project, "plugins/withEsm.mjs"),
+      "import helper from './esmHelper.mjs'; export default (config) => config;",
+    );
+    const read = () =>
+      readExpoSettings(project, { plugins: ["./plugins/withEsm.mjs"] }, "ios");
+    const before = read();
+
+    await fs.writeFile(
+      path.join(project, "plugins/esmHelper.mjs"),
+      "export default 2;",
+    );
+    expect(read()).not.toEqual(before);
+  });
+
+  it("loads a workspace package's app.plugin file even when its exports leave it out", async () => {
+    const workspace = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-exports-")),
+    );
+    try {
+      await fs.writeFile(
+        path.join(workspace, "package.json"),
+        JSON.stringify({
+          name: "@acme/exported-plugin",
+          version: "1.0.0",
+          exports: { ".": "./index.js" },
+        }),
+      );
+      await fs.writeFile(
+        path.join(workspace, "index.js"),
+        "module.exports = {};",
+      );
+      await fs.writeFile(
+        path.join(workspace, "helper.js"),
+        "module.exports = 1;",
+      );
+      await fs.writeFile(
+        path.join(workspace, "app.plugin.js"),
+        "require('./helper'); module.exports = (c) => c;",
+      );
+      await fs.mkdir(path.join(project, "node_modules/@acme"), {
+        recursive: true,
+      });
+      await fs.symlink(
+        workspace,
+        path.join(project, "node_modules/@acme/exported-plugin"),
+      );
+      // Expo requires the file from the package folder.
+      createRequire(path.join(project, "package.json"))(
+        path.join(workspace, "app.plugin.js"),
+      );
+      const read = () =>
+        readExpoSettings(
+          project,
+          { plugins: ["@acme/exported-plugin"] },
+          "ios",
+        );
+      const before = read();
+
+      await fs.writeFile(
+        path.join(workspace, "helper.js"),
+        "module.exports = 2;",
+      );
+      expect(read()).not.toEqual(before);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("numbers plugins without Hot Updater's own, so moving it changes nothing", () => {
     const read = (plugins: unknown[]) =>
       readExpoSettings(project, { plugins }, "ios");
