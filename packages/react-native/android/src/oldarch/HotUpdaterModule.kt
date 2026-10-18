@@ -36,16 +36,39 @@ class HotUpdaterModule internal constructor(
         return value.toLong().takeIf { it in 0..9_007_199_254_740_991L }
     }
 
+    override fun initialize() {
+        super.initialize()
+        // Each runtime has its own module, so this reaches a named instance's
+        // runtime, whose host the app doesn't expose, and main's, whose root
+        // views are looked for too; main's errors are left alone.
+        registeredInstanceName = HotUpdaterRecoveryManager.registerRuntime(mReactApplicationContext)
+    }
+
+    // The named instance whose runtime this module registered; the runtime,
+    // whichever instance's, is unregistered when it is torn down.
+    private var registeredInstanceName: String? = null
+
+    private fun unregisterRuntime() {
+        HotUpdaterRecoveryManager.unregisterRuntime(mReactApplicationContext, registeredInstanceName)
+        registeredInstanceName = null
+    }
+
     override fun onCatalystInstanceDestroy() {
         super.onCatalystInstanceDestroy()
+        unregisterRuntime()
         // Cancel all ongoing coroutines when module is destroyed
         moduleScope.cancel()
     }
 
+    // The instance whose bundle this module's runtime runs, read from the
+    // URL React Native loaded it from.
+    private val runtimeInstance = HotUpdaterRuntimeInstance(mReactApplicationContext, { mReactApplicationContext.sourceURL })
+
     /**
-     * Gets the singleton HotUpdaterImpl instance
+     * The impl of this runtime's instance: main's, or a named instance's
+     * when the runtime runs its bundle
      */
-    private fun getInstance(): HotUpdaterImpl = HotUpdater.getInstance(mReactApplicationContext)
+    private fun getInstance(): HotUpdaterImpl = runtimeInstance.impl
 
     /**
      * Every changed file with its hash and URL or Hermes patch; with
@@ -216,6 +239,10 @@ class HotUpdaterModule internal constructor(
     // reload() restarts the process, and reloadProcess() runs the same code.
     @ReactMethod
     override fun reload(promise: Promise) {
+        runtimeInstance.reloadUnsupportedReason()?.let { reason ->
+            promise.reject(RELOAD_UNSUPPORTED_CODE, reason)
+            return
+        }
         moduleScope.launch {
             try {
                 val impl = getInstance()
@@ -479,7 +506,7 @@ class HotUpdaterModule internal constructor(
         constants["APP_VERSION"] = HotUpdater.getAppVersion(mReactApplicationContext)
         constants["CHANNEL"] = getInstance().getChannel()
         constants["DEFAULT_CHANNEL"] = getInstance().getDefaultChannel()
-        constants["FINGERPRINT_HASH"] = HotUpdater.getFingerprintHash(mReactApplicationContext)
+        constants["FINGERPRINT_HASH"] = getInstance().getFingerprintHash()
         return constants
     }
 
@@ -550,7 +577,8 @@ class HotUpdaterModule internal constructor(
             try {
                 // Waits for a native check or download, which would save its
                 // channel again after the reset.
-                val success = NativeUpdateCheck.resetChannel(mReactApplicationContext, ::getInstance)
+                val name = runtimeInstance.name
+                val success = NativeUpdateCheck.resetChannel(mReactApplicationContext, name) { runtimeInstance.impl(name) }
                 promise.resolve(success)
             } catch (e: HotUpdaterException) {
                 promise.reject(e.code, e.message)

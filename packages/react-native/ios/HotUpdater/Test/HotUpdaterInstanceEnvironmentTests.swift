@@ -1,0 +1,866 @@
+#if canImport(Testing)
+import Foundation
+import Testing
+
+@testable import HotUpdaterCore
+
+struct HotUpdaterInstanceEnvironmentTests {
+    @Test(arguments: ["main", "widget", "a", "checkout-2", String(repeating: "a", count: 32)])
+    func acceptsAName(name: String) throws {
+        #expect(try HotUpdaterInstanceEnvironment(name: name, bundle: namedTestBundle).name == name)
+    }
+
+    @Test
+    func aNamedInstanceNeedsABundleOtherThanMains() {
+        // Main's runtime is told apart by the bundle it runs.
+        #expect(throws: NativeUpdateCheckError.self) {
+            try HotUpdaterInstanceEnvironment(name: "widget", bundle: .main)
+        }
+        #expect(throws: Never.self) { try HotUpdaterInstanceEnvironment(name: "main", bundle: .main) }
+    }
+
+    @Test(arguments: ["", "Widget", "WIDGET", String(repeating: "a", count: 33), "a/b", "../main", "a_b", "a b", "위젯"])
+    func refusesAName(name: String) {
+        #expect(throws: NativeUpdateCheckError.self) {
+            try HotUpdaterInstanceEnvironment(name: name, bundle: namedTestBundle)
+        }
+    }
+
+    @Test
+    func mainKeepsTheFirstBundleItIsGiven() throws {
+        let framework = try makeBundle(info: [:])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+        let config = HotUpdaterConfig()
+        let main = HotUpdaterMainBundle(config: config)
+
+        try main.claim(framework)
+        try main.claim(framework)
+        #expect(config.bundle == framework)
+        // Main's state was keyed by the framework's Info.plist.
+        #expect(throws: NativeUpdateCheckError.self) { try main.claim(.main) }
+        #expect(config.bundle == framework)
+    }
+
+    @Test
+    func aLaunchRecordsMainsBundleForLaterInstances() throws {
+        let framework = try makeBundle(info: [:])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+        let config = HotUpdaterConfig()
+        let main = HotUpdaterMainBundle(config: config)
+
+        main.note(framework)
+        #expect(throws: NativeUpdateCheckError.self) { try main.claim(.main) }
+        try main.claim(framework)
+
+        // The static launch API records whatever it is given, as it always has.
+        main.note(.main)
+        #expect(config.bundle == .main)
+    }
+
+    @Test
+    func mainIsMainWhateverBundleItIsGiven() throws {
+        let framework = try makeBundle(info: [:])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+        let config = HotUpdaterConfig()
+        config.bundle = framework
+
+        let main = try HotUpdaterInstanceEnvironment(name: "main", bundle: .main, config: config)
+
+        #expect(main.isMain)
+        // Main reads the bundle HotUpdaterConfig recorded, as before.
+        #expect(main.bundle == framework)
+        #expect(try !HotUpdaterInstanceEnvironment(name: "widget", bundle: namedTestBundle).isMain)
+    }
+
+    @Test
+    func mainKeepsTodaysPaths() {
+        let documents = "/app/Documents"
+        let fileSystem = PathsFileSystemService(
+            documents: documents,
+            applicationSupport: "/app/Library/Application Support"
+        )
+        let main = HotUpdaterInstanceEnvironment.main
+
+        #expect(main.storageRootPath(documentsPath: documents) == "/app/Documents")
+        #expect(main.bundleStorePath(documentsPath: documents) == "/app/Documents/bundle-store")
+        #expect(main.tempPath(documentsPath: documents) == "/app/Documents/bundle-temp")
+        #expect(main.keyValueStorageDirectory(in: fileSystem).path
+            == "/app/Library/Application Support/HotUpdater")
+        let defaultCacheDirectory = FileManager.default.urls(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask
+        ).first!
+            .appendingPathComponent("HotUpdater", isDirectory: true)
+            .appendingPathComponent("ReleaseCatalogCache", isDirectory: true)
+        #expect(main.releaseCatalogCacheDirectory(in: fileSystem) == defaultCacheDirectory)
+        #expect(main.backgroundSessionIdentifier == "com.hotupdater.background.download")
+    }
+
+    @Test
+    func aNamedInstanceKeepsItsStateBesideMains() throws {
+        let documents = "/app/Documents"
+        let fileSystem = PathsFileSystemService(
+            documents: documents,
+            applicationSupport: "/app/Library/Application Support"
+        )
+        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: namedTestBundle)
+
+        #expect(widget.bundleStorePath(documentsPath: documents)
+            == "/app/Documents/hot-updater-instances/widget/bundle-store")
+        #expect(widget.tempPath(documentsPath: documents)
+            == "/app/Documents/hot-updater-instances/widget/bundle-temp")
+        #expect(widget.keyValueStorageDirectory(in: fileSystem).path
+            == "/app/Library/Application Support/HotUpdater/instances/widget")
+        #expect(widget.releaseCatalogCacheDirectory(in: fileSystem).path
+            == "/app/Library/Application Support/HotUpdater/instances/widget/ReleaseCatalogCache")
+        #expect(widget.backgroundSessionIdentifier == "com.hotupdater.background.download.widget")
+        // Never inside main's store, whose sweeps delete unknown entries.
+        #expect(!widget.bundleStorePath(documentsPath: documents)
+            .hasPrefix(HotUpdaterInstanceEnvironment.main.bundleStorePath(documentsPath: documents) + "/"))
+    }
+
+    @Test
+    func mainKeepsTodaysConfigAndIsolationKey() throws {
+        let framework = try makeBundle(info: [
+            "HOT_UPDATER_CHANNEL": "brownfield",
+            "HOT_UPDATER_PUBLIC_KEY": "plist-key",
+        ])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+        let config = HotUpdaterConfig()
+        config.buildFingerprintHash = "build-hash"
+        config.bundle = framework
+        let main = try HotUpdaterInstanceEnvironment(name: "main", bundle: .main, config: config)
+
+        #expect(main.fingerprintHash() == "build-hash")
+        #expect(main.defaultChannel() == "brownfield")
+        #expect(main.publicKey() == "plist-key")
+        #expect(main.updateStrategy() == .fingerprint)
+        #expect(main.isolationKey(appVersion: "1.0", minBundleId: minBundleId)
+            == "hotupdater_build-hash_\(minBundleId)_brownfield_")
+
+        legacy(config).configureWithFingerprintHash("override-hash", publicKey: "override-key", channel: "beta", isolationKey: nil)
+        #expect(main.fingerprintHash() == "override-hash")
+        #expect(main.defaultChannel() == "beta")
+        #expect(main.publicKey() == "override-key")
+        #expect(main.isolationKey(appVersion: nil, minBundleId: minBundleId)
+            == "hotupdater_override-hash_\(minBundleId)_beta_")
+
+        // An empty programmatic fingerprint has always meant none for the key.
+        legacy(config).fingerprintHash = ""
+        #expect(main.isolationKey(appVersion: "1.0", minBundleId: minBundleId) == "hotupdater_1.0_beta_")
+        #expect(main.updateStrategy() == .appVersion)
+
+        legacy(config).isolationKey = "custom_"
+        #expect(main.isolationKey(appVersion: "1.0", minBundleId: minBundleId) == "custom_")
+    }
+
+    // MARK: - Isolation key
+
+    @Test
+    func theFingerprintKeyHasTheMinBundleIdAndNoAppVersion() throws {
+        let framework = try makeBundle(info: [:])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+        let config = HotUpdaterConfig()
+        config.buildFingerprintHash = "build-hash"
+        config.bundle = framework
+        let main = try HotUpdaterInstanceEnvironment(name: "main", bundle: .main, config: config)
+        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: framework, config: config)
+
+        for environment in [main, widget] {
+            let key = environment.isolationKey(appVersion: "1.0.0", minBundleId: minBundleId)
+            #expect(key.contains("build-hash_\(minBundleId)_production_"))
+            #expect(!key.contains("1.0.0"))
+            // A host release that ships the same artifact keeps its key...
+            #expect(environment.isolationKey(appVersion: "2.0.0", minBundleId: minBundleId) == key)
+            // ...and a new build of the artifact, with a new min id, does not.
+            #expect(environment.isolationKey(appVersion: "1.0.0", minBundleId: newerMinBundleId) != key)
+        }
+        #expect(main.isolationKey(appVersion: "1.0.0", minBundleId: minBundleId)
+            == "hotupdater_build-hash_\(minBundleId)_production_")
+        #expect(widget.isolationKey(appVersion: "1.0.0", minBundleId: minBundleId)
+            == "hotupdater_instance_widget_build-hash_\(minBundleId)_production_")
+        // Never an empty field in the key.
+        #expect(main.isolationKey(appVersion: "1.0.0", minBundleId: " ")
+            == "hotupdater_build-hash_unknown_production_")
+    }
+
+    @Test
+    func theAppVersionKeyIsUnchanged() throws {
+        let bare = try makeBundle(info: [:])
+        defer { try? FileManager.default.removeItem(at: bare.bundleURL) }
+        let config = HotUpdaterConfig()
+        let main = try HotUpdaterInstanceEnvironment(name: "main", bundle: .main, config: config)
+        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: bare, config: config)
+
+        #expect(main.updateStrategy() == .appVersion)
+        #expect(main.isolationKey(appVersion: "1.0.0", minBundleId: minBundleId) == "hotupdater_1.0.0_production_")
+        #expect(main.isolationKey(appVersion: "1.0.0", minBundleId: newerMinBundleId) == "hotupdater_1.0.0_production_")
+        #expect(main.isolationKey(appVersion: nil, minBundleId: minBundleId) == "hotupdater_unknown_production_")
+        #expect(widget.isolationKey(appVersion: "1.0.0", minBundleId: newerMinBundleId)
+            == "hotupdater_instance_widget_1.0.0_production_")
+    }
+
+    @Test
+    func anExplicitIsolationKeyStillWins() throws {
+        let config = HotUpdaterConfig()
+        legacy(config).configureWithFingerprintHash("override-hash", publicKey: nil, channel: "beta", isolationKey: "custom_")
+        let main = try HotUpdaterInstanceEnvironment(name: "main", bundle: .main, config: config)
+
+        #expect(main.updateStrategy() == .fingerprint)
+        #expect(main.isolationKey(appVersion: "1.0.0", minBundleId: minBundleId) == "custom_")
+        #expect(main.isolationKey(appVersion: "2.0.0", minBundleId: newerMinBundleId) == "custom_")
+        // Main's own key: options leave it alone, and a named instance never uses it.
+        try HotUpdaterMainBundle(config: config).claim(
+            HotUpdaterOptions(baseURL: "https://example.com", fingerprintHash: "override-hash")
+        )
+        #expect(main.isolationKey(appVersion: "1.0.0", minBundleId: minBundleId) == "custom_")
+        #expect(try HotUpdaterInstanceEnvironment(name: "widget", bundle: namedTestBundle, config: config)
+            .isolationKey(appVersion: "1.0.0", minBundleId: minBundleId) == "hotupdater_instance_widget_1.0.0_production_")
+    }
+
+    // MARK: - Main's options
+
+    @Test
+    func mainHonorsItsOptions() throws {
+        let framework = try makeBundle(info: [
+            "HOT_UPDATER_CHANNEL": "plist-channel",
+            "HOT_UPDATER_PUBLIC_KEY": "plist-key",
+        ])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+        let config = HotUpdaterConfig()
+        config.buildFingerprintHash = "build-hash"
+        let claims = HotUpdaterMainBundle(config: config)
+
+        try claims.claim(HotUpdaterOptions(
+            baseURL: "https://example.com",
+            bundle: framework,
+            channel: "beta",
+            fingerprintHash: "option-hash",
+            publicKey: "option-key"
+        ))
+
+        let main = HotUpdaterInstanceEnvironment.main(config: config)
+        #expect(main.bundle == framework)
+        #expect(main.defaultChannel() == "beta")
+        #expect(main.fingerprintHash() == "option-hash")
+        #expect(main.publicKey() == "option-key")
+        #expect(main.updateStrategy() == .fingerprint)
+        #expect(main.isolationKey(appVersion: "1.0.0", minBundleId: minBundleId)
+            == "hotupdater_option-hash_\(minBundleId)_beta_")
+
+        // An option left nil (or empty) reads the bundle's Info.plist, and
+        // the fingerprint the build embedded.
+        let plistOnly = HotUpdaterConfig()
+        plistOnly.buildFingerprintHash = "build-hash"
+        try HotUpdaterMainBundle(config: plistOnly).claim(HotUpdaterOptions(
+            baseURL: "https://example.com",
+            bundle: framework,
+            channel: "",
+            publicKey: "option-key"
+        ))
+        let plistMain = HotUpdaterInstanceEnvironment.main(config: plistOnly)
+        #expect(plistMain.defaultChannel() == "plist-channel")
+        #expect(plistMain.fingerprintHash() == "build-hash")
+        #expect(plistMain.publicKey() == "option-key")
+    }
+
+    @Test
+    func mainOptionsConflictingWithEarlierOptionsThrow() throws {
+        let config = HotUpdaterConfig()
+        let claims = HotUpdaterMainBundle(config: config)
+        try claims.claim(.main, channel: "beta", fingerprintHash: "hash", publicKey: "key")
+
+        // The same values, or none, are the same instance.
+        try claims.claim(.main, channel: "beta", fingerprintHash: "hash", publicKey: "key")
+        try claims.claim(.main)
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(.main, channel: "alpha") }
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(.main, fingerprintHash: "other-hash") }
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(.main, publicKey: "other-key") }
+        // A throwing claim records nothing.
+        #expect(throws: NativeUpdateCheckError.self) {
+            try claims.claim(.main, channel: "beta", fingerprintHash: "hash", publicKey: "other-key")
+        }
+        #expect(config.overrides == HotUpdaterConfig.Overrides(fingerprintHash: "hash", publicKey: "key", channel: "beta"))
+    }
+
+    @Test
+    func mainOptionsConflictingWithConfigureThrow() throws {
+        let config = HotUpdaterConfig()
+        legacy(config).configureWithFingerprintHash("configured-hash", publicKey: "configured-key", channel: "configured", isolationKey: nil)
+        let claims = HotUpdaterMainBundle(config: config)
+
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(.main, channel: "beta") }
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(.main, fingerprintHash: "option-hash") }
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(.main, publicKey: "option-key") }
+        try claims.claim(.main, channel: "configured", fingerprintHash: "configured-hash", publicKey: "configured-key")
+    }
+
+    @Test
+    func aConfigureCallCannotLandBetweenTheOptionsCheckAndTheirRecord() throws {
+        let logs = LogRecorder()
+        let configured = DispatchSemaphore(value: 0)
+        let blockedDuringClaim = LockedFlag()
+        var config: HotUpdaterConfig!
+        config = HotUpdaterConfig(log: logs.append, onOptionsChecked: {
+            // A configure call arriving right after the check passed.
+            DispatchQueue.global().async {
+                legacy(config).configureWithFingerprintHash(nil, publicKey: nil, channel: "alpha", isolationKey: nil)
+                configured.signal()
+            }
+            if configured.wait(timeout: .now() + 0.3) == .success {
+                // It landed inside the claim; let the test go on and fail.
+                configured.signal()
+            } else {
+                blockedDuringClaim.value = true
+            }
+        })
+
+        try HotUpdaterMainBundle(config: config).claim(.main, channel: "beta")
+        configured.wait()
+
+        // It waited for the record, then replaced it, and said so.
+        #expect(blockedDuringClaim.value)
+        #expect(config.overrides.channel == "alpha")
+        #expect(logs.messages.count == 1)
+        #expect(logs.messages.first?.contains("channel \"beta\" -> \"alpha\"") == true)
+    }
+
+    @Test
+    func anEmptyLegacyValueIsNoneForMainsOptions() throws {
+        let config = HotUpdaterConfig(log: { _ in })
+        legacy(config).configureWithFingerprintHash("", publicKey: "", channel: "", isolationKey: nil)
+        let claims = HotUpdaterMainBundle(config: config)
+
+        try claims.claim(.main, channel: "production", fingerprintHash: "option-hash", publicKey: "option-key")
+
+        let main = HotUpdaterInstanceEnvironment.main(config: config)
+        #expect(main.defaultChannel() == "production")
+        #expect(main.fingerprintHash() == "option-hash")
+        #expect(main.publicKey() == "option-key")
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(.main, channel: "beta") }
+    }
+
+    @Test
+    func mainOptionsAfterMainsImplExistsMustMatchIt() throws {
+        let framework = try makeBundle(info: [
+            "HOT_UPDATER_CHANNEL": "plist-channel",
+        ])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+        let config = HotUpdaterConfig()
+        config.buildFingerprintHash = "build-hash"
+        config.bundle = framework
+        let claims = HotUpdaterMainBundle(config: config)
+        claims.note(framework)
+
+        // As HotUpdater.bundleURL(bundle:) creates main's impl.
+        _ = claims.implEnvironment()
+
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(framework, channel: "beta") }
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(framework, fingerprintHash: "option-hash") }
+        // The impl was created without a public key, so signing stays off.
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(framework, publicKey: "option-key") }
+        try claims.claim(framework, channel: "plist-channel", fingerprintHash: "build-hash")
+        try claims.claim(framework)
+        #expect(config.overrides == HotUpdaterConfig.Overrides())
+
+        // The values the impl was created with, not a configure call after it.
+        let recorded = HotUpdaterConfig()
+        let recordedClaims = HotUpdaterMainBundle(config: recorded)
+        try recordedClaims.claim(.main, channel: "beta")
+        _ = recordedClaims.implEnvironment()
+        legacy(recorded).configureWithFingerprintHash(nil, publicKey: nil, channel: "alpha", isolationKey: nil)
+        #expect(throws: NativeUpdateCheckError.self) { try recordedClaims.claim(.main, channel: "alpha") }
+        try recordedClaims.claim(.main, channel: "beta")
+    }
+
+    @Test
+    func aBundleMainsImplWasNotCreatedWithIsRefusedAfterIt() throws {
+        let framework = try makeBundle(info: [
+            "HOT_UPDATER_CHANNEL": "framework-channel",
+        ])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+        let bare = try makeBundle(info: [:])
+        defer { try? FileManager.default.removeItem(at: bare.bundleURL) }
+
+        // Main's impl created before any bundle was recorded, as direct use
+        // of sharedImpl does: it reads Bundle.main.
+        let config = HotUpdaterConfig(log: { _ in })
+        let claims = HotUpdaterMainBundle(config: config)
+        let impl = claims.implEnvironment()
+        #expect(impl.defaultChannel() == "production")
+
+        // A framework whose Info.plist resolves to other values, options nil.
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(framework) }
+        // Another bundle, even one resolving to the same values.
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(bare) }
+        #expect(config.bundle == .main)
+        // The bundle and values the impl was created with.
+        try claims.claim(.main)
+        try claims.claim(.main, channel: "production")
+    }
+
+    @Test
+    func mainOptionsAfterItsImplResolveAgainstTheProposedBundle() throws {
+        let framework = try makeBundle(info: ["HOT_UPDATER_CHANNEL": "framework-channel"])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+        let config = HotUpdaterConfig(log: { _ in })
+        let claims = HotUpdaterMainBundle(config: config)
+        // A claim recorded the framework, then the static launch API created
+        // main's impl with Bundle.main.
+        try claims.claim(framework)
+        config.bundle = .main
+        let impl = claims.implEnvironment()
+        #expect(impl.defaultChannel() == "production")
+
+        // The framework resolves to another channel than the impl uses.
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(framework) }
+        // Unless its options name the impl's.
+        try claims.claim(framework, channel: "production")
+    }
+
+    @Test
+    func mainsImplUsesTheValuesItWasRecordedWithWhateverConfigureDoesAfter() throws {
+        let config = HotUpdaterConfig(log: { _ in })
+        let claims = HotUpdaterMainBundle(config: config)
+        try claims.claim(.main, channel: "beta", fingerprintHash: "hash", publicKey: "key")
+
+        // The environment main's impl is built from: its key, storage, and
+        // signature checks read only this.
+        let impl = claims.implEnvironment()
+        // A configure call landing while or after the impl is created.
+        legacy(config).configureWithFingerprintHash("other-hash", publicKey: "other-key", channel: "alpha", isolationKey: "custom_")
+
+        #expect(impl.defaultChannel() == "beta")
+        #expect(impl.fingerprintHash() == "hash")
+        #expect(impl.publicKey() == "key")
+        #expect(impl.updateStrategy() == .fingerprint)
+        #expect(impl.isolationKey(appVersion: "1.0.0", minBundleId: minBundleId)
+            == "hotupdater_hash_\(minBundleId)_beta_")
+        // What later main instances must match is what the impl uses.
+        try claims.claim(.main, channel: "beta", fingerprintHash: "hash", publicKey: "key")
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(.main, channel: "alpha") }
+        // configure itself still replaced main's config.
+        #expect(HotUpdaterInstanceEnvironment.main(config: config).defaultChannel() == "alpha")
+
+        // A later impl environment, as a second HotUpdaterImpl() makes,
+        // never moves what main was created with.
+        #expect(claims.implEnvironment().defaultChannel() == "alpha")
+        #expect(throws: NativeUpdateCheckError.self) { try claims.claim(.main, channel: "alpha") }
+    }
+
+    @Test
+    func configureRacingMainsImplCreationLeavesNoMismatch() throws {
+        // Two complete configurations; a snapshot must be all of one.
+        let sets = [("a-channel", "a-hash", "a-key"), ("b-channel", "b-hash", "b-key")]
+        for round in 0..<200 {
+            let config = HotUpdaterConfig(log: { _ in })
+            let claims = HotUpdaterMainBundle(config: config)
+            let writer = DispatchQueue(label: "configure-\(round)")
+            let group = DispatchGroup()
+            writer.async(group: group) {
+                for index in 0..<20 {
+                    let (channel, hash, key) = sets[index % 2]
+                    legacy(config).configureWithFingerprintHash(hash, publicKey: key, channel: channel, isolationKey: nil)
+                }
+            }
+            let impl = claims.implEnvironment()
+            group.wait()
+
+            let values = impl.mainValues()
+            #expect(sets.contains { $0 == (values.defaultChannel, values.fingerprintHash ?? "", values.publicKey ?? "") }
+                || (values.defaultChannel == "production" && values.fingerprintHash == nil && values.publicKey == nil))
+            #expect(impl.isolationKey(appVersion: "1.0.0", minBundleId: minBundleId).hasSuffix("_\(values.defaultChannel)_"))
+            // Recorded as the impl uses them.
+            try claims.claim(
+                .main,
+                channel: values.defaultChannel,
+                fingerprintHash: values.isolationFingerprintHash,
+                publicKey: values.publicKey
+            )
+        }
+    }
+
+    @Test
+    func mainOptionsLeftNilKeepTheConfigureValues() throws {
+        let config = HotUpdaterConfig()
+        legacy(config).configureWithFingerprintHash("configured-hash", publicKey: "configured-key", channel: "configured", isolationKey: "configured_")
+
+        try HotUpdaterMainBundle(config: config).claim(HotUpdaterOptions(baseURL: "https://example.com"))
+
+        let main = HotUpdaterInstanceEnvironment.main(config: config)
+        #expect(main.defaultChannel() == "configured")
+        #expect(main.fingerprintHash() == "configured-hash")
+        #expect(main.publicKey() == "configured-key")
+        #expect(main.isolationKey(appVersion: "1.0.0", minBundleId: minBundleId) == "configured_")
+    }
+
+    @Test
+    func configureOverMainsOptionsWarnsOnceNamingTheChangedValues() throws {
+        let logs = LogRecorder()
+        let config = HotUpdaterConfig(log: logs.append)
+        let claims = HotUpdaterMainBundle(config: config)
+        let pem = "-----BEGIN PUBLIC KEY-----\noption\n-----END PUBLIC KEY-----"
+        try claims.claim(.main, channel: "beta", fingerprintHash: "option-hash", publicKey: pem)
+
+        legacy(config).configureWithFingerprintHash("configured-hash", publicKey: "configured-key", channel: "alpha", isolationKey: nil)
+
+        // It still replaces them, as it always has.
+        #expect(config.overrides == HotUpdaterConfig.Overrides(
+            fingerprintHash: "configured-hash", publicKey: "configured-key", channel: "alpha"
+        ))
+        #expect(logs.messages.count == 1)
+        let message = try #require(logs.messages.first)
+        #expect(message.contains("channel \"beta\" -> \"alpha\""))
+        #expect(message.contains("fingerprintHash \"option-hash\" -> \"configured-hash\""))
+        #expect(message.contains("publicKey"))
+        #expect(message.contains("HotUpdaterOptions"))
+        #expect(!message.contains("BEGIN PUBLIC KEY") && !message.contains("configured-key"))
+
+        // The values now belong to configure.
+        legacy(config).configureWithFingerprintHash(nil, publicKey: nil, channel: "gamma", isolationKey: nil)
+        #expect(logs.messages.count == 1)
+
+        // Until options set them again.
+        try claims.claim(.main, channel: "gamma")
+        legacy(config).configureWithFingerprintHash(nil, publicKey: nil, channel: "delta", isolationKey: nil)
+        #expect(logs.messages.count == 2)
+        let changes = try #require(logs.messages.last?.components(separatedBy: ". configure is deprecated").first)
+        #expect(changes.hasSuffix("channel \"gamma\" -> \"delta\""))
+        #expect(!changes.contains("fingerprintHash") && !changes.contains("publicKey"))
+    }
+
+    @Test
+    func theDeprecatedSettersWarnAndTakeOverOnlyTheirValue() throws {
+        let logs = LogRecorder()
+        let config = HotUpdaterConfig(log: logs.append)
+        let claims = HotUpdaterMainBundle(config: config)
+        try claims.claim(.main, channel: "beta", fingerprintHash: "option-hash", publicKey: "option-key")
+
+        legacy(config).channel = "alpha"
+        #expect(config.overrides.channel == "alpha")
+        #expect(logs.messages.count == 1)
+        let changes = try #require(logs.messages.last?.components(separatedBy: ". configure is deprecated").first)
+        #expect(changes.hasSuffix("channel \"beta\" -> \"alpha\""))
+
+        // The channel now belongs to the setter; the other values still to the options.
+        legacy(config).channel = "gamma"
+        #expect(logs.messages.count == 1)
+        legacy(config).publicKey = "other-key"
+        #expect(logs.messages.count == 2)
+        #expect(logs.messages.last?.contains("other-key") == false)
+        legacy(config).fingerprintHash = "other-hash"
+        #expect(logs.messages.count == 3)
+        legacy(config).isolationKey = "custom_"
+        #expect(logs.messages.count == 3)
+
+        // Options set the channel again, so the setter warns again.
+        try claims.claim(.main, channel: "gamma")
+        legacy(config).channel = "delta"
+        #expect(logs.messages.count == 4)
+    }
+
+    @Test
+    func configureWithoutOptionsOrChangesDoesNotWarn() throws {
+        let logs = LogRecorder()
+        let config = HotUpdaterConfig(log: logs.append)
+        legacy(config).configureWithFingerprintHash("hash", publicKey: "key", channel: "beta", isolationKey: nil)
+        legacy(config).configureWithFingerprintHash(nil, publicKey: nil, channel: "alpha", isolationKey: nil)
+        #expect(logs.messages.isEmpty)
+
+        // Options that set only the channel; configure keeps it and sets
+        // what the options left alone.
+        try HotUpdaterMainBundle(config: config).claim(.main, channel: "alpha")
+        legacy(config).configureWithFingerprintHash("hash", publicKey: "key", channel: "alpha", isolationKey: "custom_")
+        #expect(logs.messages.isEmpty)
+        #expect(config.overrides.fingerprintHash == "hash")
+    }
+
+    // MARK: - Named instances' options
+
+    @Test
+    func aNamedInstanceOfTheSameNameMustResolveToTheSameValues() throws {
+        let first = try HotUpdaterInstanceEnvironment(name: "widget", bundle: namedTestBundle, channel: "beta")
+
+        #expect(first.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
+            name: "widget", bundle: namedTestBundle, channel: "beta"
+        )))
+        #expect(!first.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
+            name: "widget", bundle: namedTestBundle, channel: "alpha"
+        )))
+        #expect(!first.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
+            name: "widget", bundle: namedTestBundle
+        )))
+        #expect(!first.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
+            name: "widget", bundle: namedTestBundle, channel: "beta", fingerprintHash: "hash"
+        )))
+        #expect(!first.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
+            name: "widget", bundle: namedTestBundle, channel: "beta", publicKey: "key"
+        )))
+        let other = try makeBundle(info: [:])
+        defer { try? FileManager.default.removeItem(at: other.bundleURL) }
+        #expect(!first.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
+            name: "widget", bundle: other, channel: "beta"
+        )))
+    }
+
+    @Test
+    func namedInstancesThatResolveToTheSameValuesShareTheName() throws {
+        let framework = try makeBundle(info: [
+            "HOT_UPDATER_CHANNEL": "beta",
+            "HOT_UPDATER_PUBLIC_KEY": "widget-key",
+        ])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+        let config = HotUpdaterConfig()
+        config.buildFingerprintHash = "widget-hash"
+        let omitted = try HotUpdaterInstanceEnvironment(name: "widget", bundle: framework, config: config)
+
+        // The values its Info.plist and the build embed, passed explicitly, or empty.
+        #expect(omitted.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
+            name: "widget", bundle: framework, config: config, channel: "beta", fingerprintHash: "widget-hash", publicKey: "widget-key"
+        )))
+        #expect(try HotUpdaterInstanceEnvironment(name: "widget", bundle: framework, config: config, channel: "beta")
+            .hasSameConfiguration(omitted))
+        #expect(omitted.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
+            name: "widget", bundle: framework, config: config, channel: "", publicKey: ""
+        )))
+
+        // Another value still makes it another instance.
+        #expect(!omitted.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
+            name: "widget", bundle: framework, config: config, channel: "alpha"
+        )))
+        #expect(!omitted.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
+            name: "widget", bundle: framework, config: config, fingerprintHash: "other-hash"
+        )))
+        #expect(!omitted.hasSameConfiguration(try HotUpdaterInstanceEnvironment(
+            name: "widget", bundle: framework, config: config, publicKey: "other-key"
+        )))
+    }
+
+    @Test
+    func aNamedInstanceReadsItsOptionsOverItsOwnBundle() throws {
+        let framework = try makeBundle(info: [
+            "HOT_UPDATER_CHANNEL": "widget-channel",
+            "HOT_UPDATER_FINGERPRINT_HASH": "widget-hash",
+            "HOT_UPDATER_PUBLIC_KEY": "widget-key",
+        ])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+
+        let widget = try HotUpdaterInstanceEnvironment(options: HotUpdaterOptions(
+            baseURL: "https://example.com",
+            bundle: framework,
+            name: "widget",
+            channel: "option-channel",
+            fingerprintHash: "option-hash",
+            publicKey: "option-key"
+        ), config: HotUpdaterConfig())
+
+        #expect(widget.defaultChannel() == "option-channel")
+        #expect(widget.fingerprintHash() == "option-hash")
+        #expect(widget.publicKey() == "option-key")
+        #expect(widget.isolationKey(appVersion: "1.0.0", minBundleId: minBundleId)
+            == "hotupdater_instance_widget_option-hash_\(minBundleId)_option-channel_")
+    }
+
+    @Test
+    func aNamedInstanceDoesNotInheritMainsOptions() throws {
+        let bare = try makeBundle(info: [:])
+        defer { try? FileManager.default.removeItem(at: bare.bundleURL) }
+        let config = HotUpdaterConfig()
+        try HotUpdaterMainBundle(config: config).claim(
+            .main, channel: "main-channel", fingerprintHash: "main-hash", publicKey: "main-key"
+        )
+
+        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: bare, config: config)
+        #expect(widget.defaultChannel() == "production")
+        #expect(widget.fingerprintHash() == nil)
+        #expect(widget.publicKey() == nil)
+        #expect(widget.updateStrategy() == .appVersion)
+        #expect(widget.isolationKey(appVersion: "1.0.0", minBundleId: minBundleId)
+            == "hotupdater_instance_widget_1.0.0_production_")
+        // Main's, recorded in config.
+        #expect(HotUpdaterInstanceEnvironment.main(config: config).defaultChannel() == "main-channel")
+    }
+
+    @Test
+    func aNamedInstanceReadsOnlyItsOwnBundle() throws {
+        let framework = try makeBundle(info: [
+            "HOT_UPDATER_CHANNEL": "widget-channel",
+            "HOT_UPDATER_PUBLIC_KEY": "widget-key",
+        ])
+        defer { try? FileManager.default.removeItem(at: framework.bundleURL) }
+        let bare = try makeBundle(info: [:])
+        defer { try? FileManager.default.removeItem(at: bare.bundleURL) }
+        // Main's programmatic config never reaches a named instance; the
+        // fingerprint the build embedded, the project's, does.
+        let config = HotUpdaterConfig()
+        config.buildFingerprintHash = "build-hash"
+        legacy(config).configureWithFingerprintHash("main-hash", publicKey: "main-key", channel: "main-channel", isolationKey: "main_")
+
+        let widget = try HotUpdaterInstanceEnvironment(name: "widget", bundle: framework, config: config)
+        #expect(widget.bundle == framework)
+        #expect(widget.fingerprintHash() == "build-hash")
+        #expect(widget.defaultChannel() == "widget-channel")
+        #expect(widget.publicKey() == "widget-key")
+        #expect(widget.updateStrategy() == .fingerprint)
+        #expect(widget.isolationKey(appVersion: "1.0", minBundleId: minBundleId)
+            == "hotupdater_instance_widget_build-hash_\(minBundleId)_widget-channel_")
+
+        let checkout = try HotUpdaterInstanceEnvironment(name: "checkout", bundle: bare, config: config)
+        #expect(checkout.fingerprintHash() == "build-hash")
+        #expect(checkout.defaultChannel() == "production")
+        #expect(checkout.publicKey() == nil)
+
+        // A build without a fingerprint uses the appVersion strategy.
+        let appVersionBuild = HotUpdaterConfig()
+        let plain = try HotUpdaterInstanceEnvironment(name: "checkout", bundle: bare, config: appVersionBuild)
+        #expect(plain.fingerprintHash() == nil)
+        #expect(plain.updateStrategy() == .appVersion)
+        #expect(plain.isolationKey(appVersion: "1.0", minBundleId: minBundleId)
+            == "hotupdater_instance_checkout_1.0_production_")
+    }
+
+    @Test
+    func preferencesOfMainAndANamedInstanceStayApart() throws {
+        let suiteName = "HotUpdaterInstanceEnvironmentTests-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let config = HotUpdaterConfig()
+        let main = VersionedPreferencesService(userDefaults: defaults)
+        main.configure(isolationKey: try HotUpdaterInstanceEnvironment(name: "main", bundle: .main, config: config)
+            .isolationKey(appVersion: "1.0", minBundleId: minBundleId))
+        let widget = VersionedPreferencesService(userDefaults: defaults)
+        widget.configure(isolationKey: try HotUpdaterInstanceEnvironment(name: "widget", bundle: namedTestBundle, config: config)
+            .isolationKey(appVersion: "1.0", minBundleId: minBundleId))
+
+        try main.setItem("beta", forKey: "HotUpdaterChannel")
+        #expect(try widget.getItem(forKey: "HotUpdaterChannel") == nil)
+        try widget.setItem("canary", forKey: "HotUpdaterChannel")
+        try main.setItem(nil, forKey: "HotUpdaterChannel")
+        #expect(try widget.getItem(forKey: "HotUpdaterChannel") == "canary")
+        #expect(defaults.dictionaryRepresentation().keys.contains("hotupdater_instance_widget_1.0_production_HotUpdaterChannel"))
+    }
+
+    @Test
+    func theKeyValueStoreAndItsEventQueueArePerName() throws {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("HotUpdaterInstanceEnvironmentTests-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: root) }
+        let fileSystem = PathsFileSystemService(
+            documents: root.appendingPathComponent("Documents").path,
+            applicationSupport: root.appendingPathComponent("Application Support").path
+        )
+        let main = KeyValueStorageService(
+            directory: HotUpdaterInstanceEnvironment.main.keyValueStorageDirectory(in: fileSystem)
+        )
+        let widgetDirectory = try HotUpdaterInstanceEnvironment(name: "widget", bundle: namedTestBundle)
+            .keyValueStorageDirectory(in: fileSystem)
+
+        #expect(KeyValueStorageService(directory: widgetDirectory).setItem("queue", value: "[\"widget\"]"))
+        #expect(main.setItem("queue", value: "[\"main\"]"))
+
+        // A fresh read of each file, as the next process makes.
+        #expect(KeyValueStorageService(directory: widgetDirectory).getItem("queue") == "[\"widget\"]")
+        #expect(KeyValueStorageService(
+            directory: HotUpdaterInstanceEnvironment.main.keyValueStorageDirectory(in: fileSystem)
+        ).getItem("queue") == "[\"main\"]")
+    }
+
+    private func makeBundle(info: [String: String]) throws -> Bundle {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("HotUpdaterInstanceEnvironmentTests-\(UUID().uuidString).framework")
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        var plist: [String: String] = [
+            "CFBundleIdentifier": "dev.hot-updater.tests.\(UUID().uuidString)",
+            "CFBundlePackageType": "FMWK",
+        ]
+        plist.merge(info) { _, new in new }
+        let data = try PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0)
+        try data.write(to: url.appendingPathComponent("Info.plist"))
+        return try #require(Bundle(url: url))
+    }
+}
+
+private let minBundleId = "0199b0f2-6c3a-7000-8000-000000000001"
+private let newerMinBundleId = "0199c4e1-0f2b-7000-8000-000000000002"
+
+/// The deprecated programmatic config, through a protocol so the tests that
+/// keep it working don't warn.
+protocol LegacyHotUpdaterConfig: AnyObject {
+    var channel: String? { get set }
+    var publicKey: String? { get set }
+    var fingerprintHash: String? { get set }
+    var isolationKey: String? { get set }
+    func configureWithFingerprintHash(_ fingerprintHash: String?, publicKey: String?, channel: String?, isolationKey: String?)
+}
+
+extension HotUpdaterConfig: LegacyHotUpdaterConfig {}
+
+func legacy(_ config: HotUpdaterConfig) -> LegacyHotUpdaterConfig { config }
+
+final class LockedFlag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _value = false
+
+    var value: Bool {
+        get { lock.lock(); defer { lock.unlock() }; return _value }
+        set { lock.lock(); defer { lock.unlock() }; _value = newValue }
+    }
+}
+
+final class LogRecorder: @unchecked Sendable {
+    private let lock = NSLock()
+    private var _messages: [String] = []
+
+    var messages: [String] {
+        lock.lock()
+        defer { lock.unlock() }
+        return _messages
+    }
+
+    func append(_ message: String) {
+        lock.lock()
+        defer { lock.unlock() }
+        _messages.append(message)
+    }
+}
+
+/// Only the two base directories matter to the environment's paths.
+private final class PathsFileSystemService: FileSystemService {
+    private let documents: String
+    private let applicationSupport: String
+
+    init(documents: String, applicationSupport: String) {
+        self.documents = documents
+        self.applicationSupport = applicationSupport
+    }
+
+    func fileExists(atPath path: String) -> Bool { FileManager.default.fileExists(atPath: path) }
+    func createDirectory(atPath path: String) -> Bool {
+        (try? FileManager.default.createDirectory(atPath: path, withIntermediateDirectories: true)) != nil
+    }
+    func removeItem(atPath path: String) throws { try FileManager.default.removeItem(atPath: path) }
+    func moveItem(atPath srcPath: String, toPath dstPath: String) throws {
+        try FileManager.default.moveItem(atPath: srcPath, toPath: dstPath)
+    }
+    func copyItem(atPath srcPath: String, toPath dstPath: String) throws {
+        try FileManager.default.copyItem(atPath: srcPath, toPath: dstPath)
+    }
+    func contentsOfDirectory(atPath path: String) throws -> [String] {
+        try FileManager.default.contentsOfDirectory(atPath: path)
+    }
+    func attributesOfItem(atPath path: String) throws -> [FileAttributeKey: Any] {
+        try FileManager.default.attributesOfItem(atPath: path)
+    }
+    func documentsPath() -> String { documents }
+    func applicationSupportPath() -> String { applicationSupport }
+}
+#endif
+
+/// A bundle other than `Bundle.main`, which a named instance needs.
+let namedTestBundle: Bundle = {
+    let url = FileManager.default.temporaryDirectory
+        .appendingPathComponent("hot-updater-named-instance-\(UUID().uuidString).bundle", isDirectory: true)
+    try? FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+    return Bundle(path: url.path)!
+}()
+

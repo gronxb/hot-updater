@@ -24,8 +24,8 @@ public func hotUpdaterSharedConfig() -> HotUpdaterConfigInterface {
     HotUpdaterConfig.shared
 }
 
-/// The TurboModule's channel reset and event replay, for the Objective-C++
-/// module.
+/// The TurboModule's channel reset, event replay, and impl lookup, for the
+/// Objective-C++ module.
 final class HotUpdaterNativeUpdatesAdapter: NSObject, HotUpdaterNativeUpdatesInterface {
     static let shared = HotUpdaterNativeUpdatesAdapter()
 
@@ -39,6 +39,10 @@ final class HotUpdaterNativeUpdatesAdapter: NSObject, HotUpdaterNativeUpdatesInt
 
     func takeEvents(withImpl impl: HotUpdaterImplInterface) -> String? {
         HotUpdaterNativeUpdateBridge.takeEvents(impl: impl as! HotUpdaterImpl)
+    }
+
+    func impl(forBundleURL bundleURL: URL?) -> HotUpdaterImplInterface {
+        HotUpdaterNativeUpdateBridge.impl(forBundleURL: bundleURL)
     }
 }
 

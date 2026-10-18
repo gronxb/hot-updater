@@ -162,7 +162,9 @@ class URLSessionDownloadService: NSObject, DownloadService {
     private var destinations: [URLSessionTask: String] = [:]
     private var fileSizeHandlers: [URLSessionTask: (Int64) -> Void] = [:]
 
-    override init() {
+    /// Each instance passes its own `backgroundSessionIdentifier`: a process
+    /// must not create two background sessions with one identifier.
+    init(backgroundSessionIdentifier: String = HotUpdaterInstanceEnvironment.main.backgroundSessionIdentifier) {
         super.init()
 
         // Foreground session (existing behavior)
@@ -171,7 +173,7 @@ class URLSessionDownloadService: NSObject, DownloadService {
 
         // Background session for persistent downloads
         let backgroundConfig = URLSessionConfiguration.background(
-            withIdentifier: "com.hotupdater.background.download"
+            withIdentifier: backgroundSessionIdentifier
         )
         backgroundConfig.isDiscretionary = false
         if #available(macOS 11.0, *) {

@@ -14,6 +14,8 @@
     "deliver-updates",
     "operate",
     "security",
+    "---Guides---",
+    "guides/brownfield",
     "---Adapters and Plugins---",
     "concepts/plugin-system",
     "build-adapters",

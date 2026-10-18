@@ -24,7 +24,8 @@ Delivery, operation and security have their own groups. Start here stays short:
 the introduction, the agent path, the manual path (a group of its steps:
 Choose infrastructure, Install packages, Connect your app), Test an OTA update,
 and the v0 migration. Workflows such as Control update timing belong to their
-Workflows group. The **Adapters
+Workflows group. **Guides** follows the Workflows groups and holds end-to-end
+guides for one kind of app, such as Brownfield Apps. The **Adapters
 and Plugins** section starts with its overview: an adapter fills one slot of a
 config (build, storage, database, signing), and a plugin is an entry of a
 `plugins` list (server, client) or an integration that wraps a build adapter.

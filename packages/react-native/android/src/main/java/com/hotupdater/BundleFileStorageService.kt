@@ -178,6 +178,13 @@ interface BundleStorageService {
     fun markLaunchStarted(launchedBundleId: String?)
 
     /**
+     * Undoes [markLaunchStarted] when another instance's crash ends the
+     * process: the launch did not fail, so the next process launches its
+     * bundle again instead of counting the launch as unfinished.
+     */
+    fun clearLaunchStarted(launchedBundleId: String?) {}
+
+    /**
      * Marks the current launch as successful after the first content appeared.
      */
     fun markLaunchCompleted(currentBundleId: String?)
@@ -246,14 +253,11 @@ class BundleFileStorageService(
     private val preferences: PreferencesService,
     private val isolationKey: String,
     private val defaultChannelProvider: () -> String = { HotUpdaterImpl.getChannel(context) },
+    private val fingerprintHashProvider: () -> String? = { HotUpdaterImpl.getFingerprintHash(context) },
+    // The key bundles must be signed with, or null when signing is off.
+    private val publicKeyProvider: () -> String? = { SignatureVerifier.getPublicKeyFromConfig(context) },
+    private val fallbackBundleURL: String = "assets://index.android.bundle",
     builtInAssetResolver: BuiltInAssetResolver? = null,
-    /**
-     * The update strategy launch reports carry. HotUpdaterImpl passes one that
-     * also reads the fingerprint the build embedded.
-     */
-    private val updateStrategyProvider: () -> String = {
-        if (HotUpdaterConfig.fingerprintHash.isNullOrEmpty()) "appVersion" else "fingerprint"
-    },
     private val metadataWriter: (BundleMetadata, File) -> Boolean = { metadata, file ->
         metadata.saveToFile(file)
     },
@@ -692,7 +696,11 @@ class BundleFileStorageService(
 
     private fun resolveUpdateStrategy(): String =
         try {
-            updateStrategyProvider()
+            if (fingerprintHashProvider().isNullOrEmpty()) {
+                "appVersion"
+            } else {
+                "fingerprint"
+            }
         } catch (_: Exception) {
             "appVersion"
         }
@@ -774,9 +782,10 @@ class BundleFileStorageService(
         val packagedHash = builtInAssetResolver.packagedHashIfSourceMatches(assetPath, asset.fileHash) ?: return false
         return HashUtils.calculateSHA256(file).equals(packagedHash, ignoreCase = true) &&
             runCatching {
-                if (SignatureVerifier.isSigningEnabled(context)) {
+                val publicKey = publicKeyProvider()
+                if (publicKey != null) {
                     val signature = asset.signature ?: throw SignatureVerificationException.InvalidSignatureFormat()
-                    SignatureVerifier.verifyHashSignature(context, asset.fileHash, signature)
+                    SignatureVerifier.verifyHashSignature(publicKey, asset.fileHash, signature)
                 }
             }.isSuccess
     }
@@ -1028,15 +1037,13 @@ class BundleFileStorageService(
             throw SignatureVerificationException.FileHashMismatch()
         }
 
-        if (!SignatureVerifier.isSigningEnabled(context)) {
-            return
-        }
+        val publicKey = publicKeyProvider() ?: return
 
         val signature =
             asset.signature
                 ?: throw SignatureVerificationException.InvalidSignatureFormat()
 
-        SignatureVerifier.verifyHashSignature(context, asset.fileHash, signature)
+        SignatureVerifier.verifyHashSignature(publicKey, asset.fileHash, signature)
     }
 
     /**
@@ -1564,6 +1571,16 @@ class BundleFileStorageService(
         }
     }
 
+    override fun clearLaunchStarted(launchedBundleId: String?) {
+        synchronized(releaseStateLock) {
+            val metadata = loadMetadataOrNull() ?: return
+            if (!metadata.launchInProgress || metadata.stagingBundleId != launchedBundleId) {
+                return
+            }
+            saveMetadata(metadata.copy(launchInProgress = false))
+        }
+    }
+
     override fun markLaunchCompleted(currentBundleId: String?) {
         readyInterruptedLaunchRetry(currentBundleId)
         val metadata = loadMetadataOrNull() ?: return
@@ -1661,7 +1678,7 @@ class BundleFileStorageService(
         return resolvedBundle?.absolutePath ?: urlString
     }
 
-    override fun getFallbackBundleURL(): String = "assets://index.android.bundle"
+    override fun getFallbackBundleURL(): String = fallbackBundleURL
 
     override fun settlePreviousLaunch(pendingRecovery: () -> PendingCrashRecovery?) {
         synchronized(settleLock) {
@@ -2295,7 +2312,7 @@ class BundleFileStorageService(
                     }
 
                     try {
-                        SignatureVerifier.verifyBundle(context, manifestFile, manifestFileHash)
+                        SignatureVerifier.verifyBundle(publicKeyProvider(), manifestFile, manifestFileHash)
                     } catch (e: SignatureVerificationException) {
                         throw HotUpdaterException.signatureVerificationFailed(e)
                     }

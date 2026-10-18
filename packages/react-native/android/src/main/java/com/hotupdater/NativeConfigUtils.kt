@@ -12,8 +12,8 @@ object NativeConfigUtils {
         context: Context,
         metaDataKey: String,
     ): String? {
-        // Programmatic overrides take priority over manifest metadata
-        // (brownfield/AAR setups, see HotUpdaterConfig).
+        // Main's options and the deprecated HotUpdater.configure take
+        // priority over manifest metadata (see HotUpdaterConfig).
         val override =
             when (metaDataKey) {
                 PUBLIC_KEY_META_DATA_KEY -> HotUpdaterConfig.publicKey
@@ -22,10 +22,11 @@ object NativeConfigUtils {
             }
         override?.takeIf { it.isNotEmpty() }?.let { return it }
 
-        return getManifestMetaDataString(context, metaDataKey)
+        return getManifestString(context, metaDataKey)
     }
 
-    private fun getManifestMetaDataString(
+    /** The merged manifest's value alone, which named instances read. */
+    internal fun getManifestString(
         context: Context,
         key: String,
     ): String? =

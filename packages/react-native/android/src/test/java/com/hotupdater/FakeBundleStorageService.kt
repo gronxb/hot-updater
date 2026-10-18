@@ -9,6 +9,7 @@ internal class FakeBundleStorageService(
         emptyMap(),
     private val launchedBundleBaseURLs: Map<String, String> = emptyMap(),
     private val nextLaunchBundleId: String? = null,
+    private val launchBundleUrl: () -> String = { "assets://index.android.bundle" },
 ) : BundleStorageService {
     var lastCompletedBundleId: String? = null
 
@@ -22,7 +23,7 @@ internal class FakeBundleStorageService(
 
     override fun prepareLaunch(pendingRecovery: PendingCrashRecovery?): LaunchSelection =
         LaunchSelection(
-            bundleUrl = "assets://index.android.bundle",
+            bundleUrl = launchBundleUrl(),
             launchedBundleId = null,
             shouldRollbackOnCrash = false,
         )

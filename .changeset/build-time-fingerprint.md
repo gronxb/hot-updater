@@ -17,6 +17,6 @@ Native builds embed their own fingerprint. A build step in the HotUpdater pod (o
 - An app without `fingerprint.json` builds with no fingerprint, as the appVersion strategy expects. Under appVersion, `doctor` reports a leftover `fingerprint.json` as `FINGERPRINT_JSON_UNUSED` (`doctor --fix` deletes it), `deploy` warns about it, and the Expo config plugin removes it at prebuild.
 - Swift Package Manager builds always compute the fingerprint, since a package build plugin can't tell Debug from Release.
 - Set `HOT_UPDATER_APP_ROOT` (an Xcode build setting or environment variable, or a Gradle property) when the native projects are not in `<app>/ios` and `<app>/android`.
-- `HotUpdaterConfig`'s `fingerprintHash` still takes precedence over the embedded fingerprint.
+- `HotUpdaterConfig`'s `fingerprintHash` and an instance's `HotUpdaterOptions.fingerprintHash` still take precedence over the embedded fingerprint. Named instances use the embedded fingerprint too, since every bundle comes from the project the build fingerprinted.
 
 doctor drops `MISSING_FINGERPRINT_HASH` and `FINGERPRINT_HASH_MISMATCH`, and the Expo config plugin writes `fingerprint.json` without injecting the hash.

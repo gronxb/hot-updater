@@ -163,6 +163,11 @@ For bare React Native and Rock, use the project's existing build-time
 configuration mechanism. Validate required values in the native and OTA build
 pipelines too. A missing URL or key must not silently disable initialization.
 
+If that mechanism inlines values from an env file into the bundle, give it a
+file with only the URL and client key. `.env.hotupdater` holds the CLI's
+provider credentials, such as a Supabase service-role key, which must never
+reach the app.
+
 ### Reporting and custom update timing
 
 To report launches and updates to [Insights](/docs/guides/insights), add the
