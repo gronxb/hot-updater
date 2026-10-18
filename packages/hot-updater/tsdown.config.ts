@@ -8,10 +8,7 @@ export default defineConfig({
     signing: "./src/signing.ts",
   },
   deps: {
-    neverBundle: [
-      "@aws-sdk/client-kms",
-      "@google-cloud/kms",
-    ],
+    neverBundle: ["@aws-sdk/client-kms", "@google-cloud/kms"],
     onlyBundle: false,
   },
   exports: {
