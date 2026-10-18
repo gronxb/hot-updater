@@ -30,14 +30,14 @@
     "@babel/types": "7.26.0",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/cli-tools": "workspace:*",
-    "@hot-updater/config-plugin": "workspace:*",
     "@hot-updater/plugin-core": "workspace:*",
     "uuidv7": "catalog:"
   },
   "devDependencies": {
+    "@hot-updater/config-plugin": "workspace:*",
     "@types/node": "catalog:",
-    "expo": "^50.0.0",
     "execa": "catalog:tools",
+    "expo": "^50.0.0",
     "hot-updater": "workspace:*",
     "vitest": "catalog:"
   },

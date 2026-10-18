@@ -1,23 +1,10 @@
 {
   "name": "@hot-updater/config-plugin",
   "version": "1.0.8",
-  "description": "Hot Updater config plugin for apps whose native projects prebuild generates (Expo, One)",
+  "private": true,
+  "description": "Hot Updater's config plugin for prebuild-generated native projects, bundled into @hot-updater/expo and @hot-updater/one",
   "main": "./dist/withHotUpdater.js",
   "types": "./dist/withHotUpdater.d.ts",
-  "license": "MIT",
-  "repository": "https://github.com/gronxb/hot-updater",
-  "author": "gronxb <gron1gh1@gmail.com> (https://github.com/gronxb)",
-  "bugs": {
-    "url": "https://github.com/gronxb/hot-updater/issues"
-  },
-  "homepage": "https://github.com/gronxb/hot-updater#readme",
-  "publishConfig": {
-    "access": "public"
-  },
-  "files": [
-    "dist",
-    "package.json"
-  ],
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "test": "vitest run",

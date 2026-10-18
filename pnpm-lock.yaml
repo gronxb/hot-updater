@@ -2345,9 +2345,6 @@ importers:
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
-      '@hot-updater/config-plugin':
-        specifier: workspace:*
-        version: link:../config-plugin
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
@@ -2355,6 +2352,9 @@ importers:
         specifier: 'catalog:'
         version: 1.2.1
     devDependencies:
+      '@hot-updater/config-plugin':
+        specifier: workspace:*
+        version: link:../config-plugin
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43
@@ -2472,13 +2472,13 @@ importers:
       '@hot-updater/cli-tools':
         specifier: workspace:*
         version: link:../../packages/cli-tools
-      '@hot-updater/config-plugin':
-        specifier: workspace:*
-        version: link:../config-plugin
       '@hot-updater/plugin-core':
         specifier: workspace:*
         version: link:../plugin-core
     devDependencies:
+      '@hot-updater/config-plugin':
+        specifier: workspace:*
+        version: link:../config-plugin
       '@types/node':
         specifier: 'catalog:'
         version: 20.19.43

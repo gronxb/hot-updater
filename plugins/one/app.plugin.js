@@ -1,1 +1,1 @@
-module.exports = require("@hot-updater/config-plugin");
+module.exports = require("./dist/app.plugin.cjs");
