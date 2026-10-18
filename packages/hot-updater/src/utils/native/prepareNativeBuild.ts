@@ -1,3 +1,4 @@
+import fs from "fs";
 import path from "path";
 
 import {
@@ -115,6 +116,14 @@ export async function prepareNativeBuild(
     }
     target.fingerprintHash = generatedFingerprint.hash;
   } else if (config.updateStrategy === "appVersion") {
+    // The native build embeds the hash of any fingerprint.json it finds,
+    // and an app with one reports the fingerprint strategy.
+    if (fs.existsSync(path.join(cwd, "fingerprint.json"))) {
+      p.log.error(
+        "fingerprint.json exists, but updateStrategy is 'appVersion'. The native build would embed its fingerprint, and the app would report the fingerprint strategy. Delete fingerprint.json, or run `npx hot-updater doctor --fix`, then build again.",
+      );
+      return null;
+    }
     const s = p.spinner();
     s.start(`Get native app version (${platform})`);
 
