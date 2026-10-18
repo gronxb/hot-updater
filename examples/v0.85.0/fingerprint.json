@@ -1,25 +1,25 @@
 {
   "ios": {
     "engine": "hot-updater/interface@1",
-    "hash": "221143f69c7dbbe35e69ed7dec28d49409bc22bf263e9fa5ebe65faa27a74954",
+    "hash": "ceecdb27f992d4c99d108d33639331a4c2bdaefedcd26a2f018e26987c859377",
     "sources": [
       {
         "type": "contents",
         "id": "codegen-config:.",
-        "contents": "{\"android\":{\"javaPackageName\":\"com.hotupdaterexample\"},\"jsSrcsDir\":\"./src\",\"name\":\"HotUpdaterExampleSpec\",\"type\":\"modules\"}",
+        "contents": "{\"jsSrcsDir\":\"./src\",\"name\":\"HotUpdaterExampleSpec\",\"type\":\"modules\"}",
         "reasons": [
           "codegen-config"
         ],
-        "hash": "41b95ee0d4cd34281a853d9bff399454d50f72dc7371e78d079a2b58f9e3193b"
+        "hash": "07c72c0791a0b21688fd33f8b00f14d7a2283b65d5d68edf9303584014fea506"
       },
       {
         "type": "contents",
         "id": "codegen-config:../../packages/react-native",
-        "contents": "{\"android\":{\"javaPackageName\":\"com.hotupdater\"},\"jsSrcsDir\":\"./src\",\"name\":\"HotUpdaterSpec\",\"type\":\"modules\"}",
+        "contents": "{\"jsSrcsDir\":\"./src\",\"name\":\"HotUpdaterSpec\",\"type\":\"modules\"}",
         "reasons": [
           "codegen-config"
         ],
-        "hash": "ecce521895aafa20cdc7f16b850fa170e5caf929c501c86a7b6f0fd9c62b63ae"
+        "hash": "b78579dca957a3b428af48ea2b30ad38e079060d336dbad339bba77f1f6d76ab"
       },
       {
         "type": "contents",
