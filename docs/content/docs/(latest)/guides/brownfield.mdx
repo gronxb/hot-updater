@@ -22,9 +22,9 @@ Hot Updater works inside that artifact:
 - The React Native project keeps the usual setup: `@hot-updater/react-native`,
   `hot-updater.config.ts`, `HotUpdater.init`, and `hot-updater deploy`.
 - Before React Native starts, the artifact checks for an update in native
-  code, with the same `checkForUpdate` and `updateBundle` as JavaScript. A
-  required update downloads before the first React Native screen; any other
-  update downloads in the background.
+  code, with the same `checkForUpdate` and `updateBundle` as JavaScript. It
+  waits up to a timeout for the check and any required update; other updates
+  download in the background.
 - The artifact asks Hot Updater for the JavaScript bundle when React Native
   starts. Hot Updater returns the downloaded update, or the bundle embedded in
   the artifact.
@@ -61,7 +61,11 @@ the Hot Updater steps are the same.
   server, as in [Install packages](/docs/get-started/installation) and
   [Connect your app](/docs/get-started/app-setup#configure-the-update-client).
   Skip that page's [native code setup](/docs/get-started/app-setup#native-code-setup):
-  this guide replaces it.
+  this guide replaces it. Keep its JavaScript `HotUpdater.init`, authentication,
+  plugins, and build adapter setup, but skip its JavaScript update button and
+  `wrap` examples: the native code below checks for updates. Give the native
+  `HotUpdaterOptions` the same server URL and client request headers as
+  JavaScript's `HotUpdater.init`.
 
 The examples use these names. Replace them with yours:
 
@@ -86,6 +90,12 @@ it embeds.
 `versionName` of the app on Android. The artifact has no version of its own at
 runtime. With App Version, deploy each update with `--target-app-version` set
 to the native app versions that contain the matching artifact.
+
+The examples below use Fingerprint. For App Version, set `updateStrategy` to
+`"appVersion"` in `hot-updater.config.ts` and change the native
+`HotUpdaterCheckOptions` to `.appVersion` on iOS and
+`HotUpdaterUpdateStrategy.APP_VERSION` on Android. Omit the `fingerprint`
+config below and skip `fingerprint create` in the later steps.
 
 ```ts title="hot-updater.config.ts"
 export default defineConfig({
@@ -176,8 +186,8 @@ public func startReactNativeWithHotUpdater(
   return await start.value
 }
 
-/// Checks for an update and waits up to `timeout` seconds for a required one.
-/// The timeout ends the wait, not the download.
+/// Waits up to `timeout` seconds for the check and any required update.
+/// A download already started continues after the timeout.
 private func checkForUpdate(
   _ hotUpdater: HotUpdaterInstance,
   timeout: TimeInterval
@@ -225,7 +235,8 @@ private func checkForUpdate(
   check fails. The failure still reaches your plugins as `onUpdateError`.
 - A required update runs in this start only if `updateBundle()` finishes
   before React Native reads the bundle. The task group stops waiting at
-  `timeout`; the download goes on and applies at the next start.
+  `timeout`. A download already started continues; a check still in progress
+  is cancelled and may not have started a download.
   [How updates apply](#how-updates-apply) explains each status.
 - `hotUpdater.bundleURL()` returns the downloaded update, or `main.jsbundle`
   embedded in the framework. Hot Updater reuses the bundle when it rolls back.
@@ -428,8 +439,8 @@ object ReactNativeHostManager {
         }
     }
 
-    // Checks for an update and waits up to [timeoutMillis] for a required // [!code ++:24]
-    // one. The timeout ends the wait, not the download.
+    // Waits up to [timeoutMillis] for the check and any required update. // [!code ++:24]
+    // A download already started continues after the timeout.
     internal suspend fun checkForUpdate(
         hotUpdater: HotUpdaterInstance,
         timeoutMillis: Long,
@@ -471,7 +482,8 @@ dependencies {
   check fails. The failure still reaches your plugins as `onUpdateError`.
 - A required update runs in this start only if `updateBundle()` finishes
   before React Native reads the bundle. `withTimeoutOrNull` stops waiting at
-  `timeoutMillis`; the download goes on and applies at the next start.
+  `timeoutMillis`. A download already started continues; a check still in
+  progress is cancelled and may not have started a download.
   [How updates apply](#how-updates-apply) explains each status.
 - The start runs in the module's own scope, not an activity's
   `lifecycleScope`: React Native must start even if the first screen closes.
@@ -599,6 +611,7 @@ the library module:
 
 ```bash
 npx hot-updater channel set production
+# Fingerprint strategy only:
 npx hot-updater fingerprint create
 ```
 
@@ -609,10 +622,11 @@ the same way:
 npx hot-updater keys export-public
 ```
 
-Check that `ios/BrownfieldLib/Info.plist` has `HOT_UPDATER_CHANNEL` and
-`HOT_UPDATER_FINGERPRINT_HASH`, and that the library manifest has
-`com.hotupdater.CHANNEL` and `com.hotupdater.FINGERPRINT_HASH`. To limit the
-commands to the artifacts, list the files in your config:
+Check that `ios/BrownfieldLib/Info.plist` has `HOT_UPDATER_CHANNEL` and the
+library manifest has `com.hotupdater.CHANNEL`. With Fingerprint, also check
+for `HOT_UPDATER_FINGERPRINT_HASH` and `com.hotupdater.FINGERPRINT_HASH`,
+respectively. To limit the commands to the artifacts, list the files in your
+config:
 
 ```ts title="hot-updater.config.ts"
 export default defineConfig({
@@ -669,8 +683,9 @@ second one, throws if it passes a different value.
 
 ## Package and ship the artifacts
 
-Package after the native values are embedded. Run the commands from the React
-Native project:
+Package the artifacts in **Release** after the native values are embedded.
+For the Brownfield CLI, select Release in your brownfield configuration.
+Run the commands from the React Native project:
 
 <Tabs items={["Brownfield CLI", "Rock"]}>
   <Tab value="Brownfield CLI">
@@ -694,12 +709,15 @@ npx rock publish-local:aar --module-name brownfieldlib
 </Tabs>
 
 Add the XCFrameworks and the AAR to the native app as the React Native
-Brownfield guide describes, then build the native app in **Release**. Debug
-builds load the bundle from Metro and never apply updates.
+Brownfield guide describes, then build the native app in **Release** for OTA
+verification. In the main runtime examples, the artifact's build configuration
+selects Metro or Hot Updater's bundle; the native app's `checkForUpdates`
+argument controls only the update check. A Release artifact in a Debug native
+app still loads its embedded or downloaded bundle.
 
-Repeat `fingerprint create` and packaging whenever the React Native project's
-native code or dependencies change. A new artifact needs a new native app
-release.
+Package again whenever the React Native project's native code or dependencies
+change, running `fingerprint create` first if you use Fingerprint. A new
+artifact needs a new native app release.
 
 ## Deploy an update
 
@@ -722,20 +740,25 @@ one of these statuses:
 | --- | --- |
 | `upToDate` | The bundle this start runs is the latest. It may have been downloaded by an earlier start. |
 | `ready` | A required update downloaded before React Native read the bundle, so this start runs it. |
-| `pending` | An update downloads in the background, or a required one did not finish within the timeout. It runs at the first start after it downloads. |
+| `pending` | An update downloads in the background, or the check or required download exceeded the timeout. A timed-out check may not have started a download. |
 | `failed` | The check or the required download failed. React Native starts with the current bundle. |
+| `skipped` | The native app passed `checkForUpdates: false`. React Native starts without checking for an update. |
 
-- **Required updates** (`shouldForceUpdate`) are waited for up to the timeout.
-  If the download takes longer, the download goes on, and calling
-  `updateBundle` again on the same update joins it. To block React Native
-  until a required update is in, check again a bounded number of times while
-  the status is `pending`, and show the user what is happening.
+- **Required updates** (`shouldForceUpdate`) share the timeout with the check.
+  The example starts React Native when that wait ends. A download already
+  started continues, and calling `updateBundle` again on the same update
+  joins it. If the check itself times out, its request is cancelled.
 - **Other updates** download in the background. They run at the next start,
   or at this one if they finish before React Native reads the bundle.
 - **Rollbacks** deployed from the console apply the same way as updates.
 - An update applies at this start only when `updateBundle` finishes before
   `bundleURL()` or `getJSBundleFile()` is read. One that finishes later
   applies at the next start.
+
+To block React Native until a required update is ready, change the helper
+inside the framework or library to wait or retry before initializing React
+Native, with a limit and a UI for failure or timeout. Calling the public start
+function again only returns the first call's status; it does not check again.
 
 The check request itself is small, but every device that finds a new update
 downloads it. If React Native is not your native app's first screen, start it
@@ -770,7 +793,10 @@ the previous bundle, or to the one embedded in the artifact.
 Package the artifact before you deploy, and do not package again until you
 have tested the update. Each package embeds a bundle with a new ID from the
 time it was built, and the update check skips updates deployed before that
-time. Rebuilding only the native app is fine.
+time. Rebuilding only the native app is fine. In these steps, restarting means
+fully terminating the native app's process and opening it again. Returning
+from the background or reopening a React Native screen does not run another
+check.
 
 1. Show the native values in a React Native screen:
 
@@ -780,16 +806,27 @@ time. Rebuilding only the native app is fine.
    <Text>Bundle ID: {hotUpdater.getBundleId()}</Text>
    ```
 
-   Show the status the framework or library returned in a native screen.
+   Show the status the framework or library returned in a native screen. For
+   this test, log when the native helper's `update.updateBundle()` returns
+   `true`, including inside its background download task. Use that log to
+   confirm completion before terminating the process; `pending` is not a
+   completion notification.
 
-2. Build the native app in Release and open it. The status is `upToDate`, and
-   the React Native screen shows the channel and fingerprint you embedded.
-3. Change a screen and deploy it as required with `--force-update`. Close and
-   reopen the native app: the status is `ready`, and the first React Native
-   screen shows your change.
-4. Change the screen again and deploy without `--force-update`. Close and
-   reopen the native app: the status is `pending`. Close and reopen it again:
-   the status is `upToDate`, and the React Native screen shows the change.
+2. Use Release artifacts, build the native app in Release, and open a React
+   Native screen. A successful check returns `upToDate`, and the screen shows
+   the channel and, with Fingerprint, the hash you embedded.
+3. Change a screen and deploy it as required with `--force-update`. Restart
+   the process and open the React Native screen. If the check and download
+   finish within the timeout, the status is `ready`, the bundle ID changes,
+   and the screen shows your change. `pending` is also expected when the
+   timeout expires: if a download started, wait for its completion log and
+   restart. If the check timed out before a download started, pass a longer
+   timeout to the start function for this test and restart the process.
+4. Change the screen again and deploy without `--force-update`. Restart the
+   process and open the React Native screen. Once the check succeeds, it starts
+   a background download and returns `pending`. Wait for the completion log,
+   then restart the process and open the screen again. Confirm the new bundle
+   ID and your screen change. A successful check now returns `upToDate`.
 
 ## Run more than one React Native app
 
@@ -1058,12 +1095,12 @@ Create `storage` and `database` once, outside the function, as
 
 | Symptom | Cause and fix |
 | --- | --- |
-| The channel is `production` and the fingerprint is `null` | The artifact has no Hot Updater values. Run `channel set` and `fingerprint create`, check the framework's `Info.plist` and the library manifest, and package again. On Android, check that the library manifest has an `<application>` element. |
+| With Fingerprint, the channel is `production` and the fingerprint is `null` | The artifact has no Hot Updater values. Run `channel set` and `fingerprint create`, check the framework's `Info.plist` and the library manifest, and package again. On Android, check that the library manifest has an `<application>` element. |
 | The native app fails with "no such module 'HotUpdater'" | The framework imports `HotUpdater` publicly. Use `internal import HotUpdater`. |
 | The status is always `skipped` | The native app passes `checkForUpdates: false`, as its Debug build does. Build it in Release. |
 | The status is `failed` | Check `baseURL` and the request headers in `HotUpdaterOptions`, and that the device reaches the update server. |
-| A required update is `pending` instead of `ready` | It did not download within the timeout. Raise the timeout, or check again while it is `pending`. |
-| The update downloads but the screen does not change | The native app runs a Debug build, which loads Metro. Build it in Release. |
+| A required update is `pending` instead of `ready` | The check or download exceeded the timeout. The download may not have started. Raise the timeout for the next process start, or wait for a started download to finish and restart. Recalling the start function does not check again. |
+| The update downloads but the screen does not change | In the main runtime examples, a Debug artifact loads Metro. Package the artifact in Release. With a Release artifact, a download that finishes after bundle selection applies at the next process start. |
 | The native app restarts at its first screen on Android | Something calls `hotUpdater.reload()`. Remove it; the update applies at the next launch. |
 | Downloaded updates disappear | The channel changed between launches, which deletes the downloaded bundles. Keep `channel` in `HotUpdaterOptions` or the embedded channel the same, and switch channels with `HotUpdaterCheckOptions`. A native app release with a new artifact also starts from the bundle it embeds. |
 | `HotUpdater instance "main" was already created with another channel` (or fingerprintHash, publicKey) | The instance was created after React Native read the bundle, or a second one passes a different value. Create it once, before React Native starts. |
