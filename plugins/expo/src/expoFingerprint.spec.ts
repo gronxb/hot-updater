@@ -577,6 +577,53 @@ describe("readExpoSettings", () => {
     }
   });
 
+  it("matches a workspace package's export pattern for an ESM subpath import", async () => {
+    const workspace = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-pattern-")),
+    );
+    try {
+      await fs.writeFile(
+        path.join(workspace, "package.json"),
+        JSON.stringify({
+          name: "@acme/patterned",
+          version: "1.0.0",
+          exports: { "./*": "./src/*.mjs" },
+        }),
+      );
+      await fs.mkdir(path.join(workspace, "src"));
+      await fs.writeFile(
+        path.join(workspace, "src/foo.mjs"),
+        "export default 1;",
+      );
+      await fs.mkdir(path.join(project, "node_modules/@acme"), {
+        recursive: true,
+      });
+      await fs.symlink(
+        workspace,
+        path.join(project, "node_modules/@acme/patterned"),
+      );
+      await fs.writeFile(
+        path.join(project, "plugins/withPattern.mjs"),
+        "import foo from '@acme/patterned/foo'; export default (config) => config;",
+      );
+      const read = () =>
+        readExpoSettings(
+          project,
+          { plugins: ["./plugins/withPattern.mjs"] },
+          "ios",
+        );
+      const before = read();
+
+      await fs.writeFile(
+        path.join(workspace, "src/foo.mjs"),
+        "export default 2;",
+      );
+      expect(read()).not.toEqual(before);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("numbers plugins without Hot Updater's own, so moving it changes nothing", () => {
     const read = (plugins: unknown[]) =>
       readExpoSettings(project, { plugins }, "ios");

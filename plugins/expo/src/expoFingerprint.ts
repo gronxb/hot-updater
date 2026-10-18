@@ -196,7 +196,31 @@ const esmEntry = (dir: string, subpath: string): string | null => {
       !Object.keys(exports as object).some((key) => key.startsWith("."))
         ? { ".": exports }
         : (exports as Record<string, unknown>);
-    relative = pick(map[subpath]);
+    relative = subpath in map ? pick(map[subpath]) : null;
+    if (relative === null && !(subpath in map)) {
+      // A pattern key with one `*`, as Node matches it: the longest prefix
+      // wins, and the matched part replaces `*` in the target.
+      let best: { key: string; match: string } | null = null;
+      for (const key of Object.keys(map)) {
+        const star = key.indexOf("*");
+        if (star < 0 || key.indexOf("*", star + 1) >= 0) continue;
+        const prefix = key.slice(0, star);
+        const suffix = key.slice(star + 1);
+        if (
+          subpath.length >= key.length &&
+          subpath.startsWith(prefix) &&
+          subpath.endsWith(suffix) &&
+          (!best || prefix.length > best.key.indexOf("*"))
+        ) {
+          best = {
+            key,
+            match: subpath.slice(prefix.length, subpath.length - suffix.length),
+          };
+        }
+      }
+      const target = best ? pick(map[best.key]) : null;
+      relative = target && best ? target.split("*").join(best.match) : null;
+    }
   } else if (subpath === ".") {
     relative = manifest.module ?? manifest.main ?? "index.js";
   } else {
