@@ -10,6 +10,7 @@ import type {
   BuildAdapterArgs,
   BuildAdapter,
   BuildAdapterConfig,
+  NativeFingerprintOptions,
 } from "@hot-updater/plugin-core";
 import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
@@ -95,6 +96,34 @@ const runBundle = async ({
   };
 };
 
+/**
+ * The bare adapter's native fingerprint: the native interface React Native
+ * CLI's `react-native config` reports. `hot-updater fingerprint hash` calls
+ * it during native builds, from the inputs fingerprint.json records.
+ */
+export const bareFingerprint = async (
+  cwd: string,
+  options: NativeFingerprintOptions,
+) =>
+  createInterfaceFingerprint(
+    cwd,
+    options,
+    await readReactNativeInterface({
+      cwd,
+      command: process.execPath,
+      args: [
+        path.join(
+          path.dirname(
+            require.resolve("react-native/package.json", { paths: [cwd] }),
+          ),
+          "cli.js",
+        ),
+        "config",
+      ],
+      platform: options.platform,
+    }),
+  );
+
 export interface BareAdapterConfig extends BuildAdapterConfig {
   /**
    * @default "index.js"
@@ -132,27 +161,7 @@ export const bare =
     } = config;
     return {
       nativeBuild: {
-        fingerprint: async (options) =>
-          createInterfaceFingerprint(
-            cwd,
-            options,
-            await readReactNativeInterface({
-              cwd,
-              command: process.execPath,
-              args: [
-                path.join(
-                  path.dirname(
-                    require.resolve("react-native/package.json", {
-                      paths: [cwd],
-                    }),
-                  ),
-                  "cli.js",
-                ),
-                "config",
-              ],
-              platform: options.platform,
-            }),
-          ),
+        fingerprint: (options) => bareFingerprint(cwd, options),
       },
       build: async ({ platform }) => {
         const buildPath = path.join(cwd, outDir);

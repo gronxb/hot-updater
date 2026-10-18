@@ -39,6 +39,7 @@ let coreExcludedFiles = [
     "HotUpdaterImpl.swift",
     "HotUpdaterInterface.swift",
     "HotUpdaterMinBundleId.m",
+    "HotUpdaterFingerprintHash.m",
     "HotUpdaterNativeUpdates.swift",
 ]
 

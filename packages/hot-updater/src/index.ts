@@ -53,7 +53,10 @@ import {
 } from "./commands/bundle";
 import { handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
-import { handleCreateFingerprint } from "./commands/fingerprint";
+import {
+  handleCreateFingerprint,
+  handleFingerprintHash,
+} from "./commands/fingerprint";
 import { generate } from "./commands/generate";
 import {
   handleInsightsEvents,
@@ -219,14 +222,28 @@ program
   .option("--json", "output machine-readable doctor result")
   .action(handleDoctor);
 
-program
+const fingerprintCommand = program
   .command("fingerprint")
-  .description("Manage fingerprint.json for the fingerprint update strategy")
+  .description("Manage fingerprint.json for the fingerprint update strategy");
+
+fingerprintCommand
   .command("create")
   .description(
-    "Create fingerprint.json and embed its hashes in the native files",
+    "Create fingerprint.json, which native builds read to embed each platform's fingerprint",
   )
   .action(handleCreateFingerprint);
+
+fingerprintCommand
+  .command("hash")
+  .description(
+    "Print the fingerprint a native build embeds, from the inputs fingerprint.json records",
+  )
+  .addOption(
+    new Option("-p, --platform <platform>", "the platform to fingerprint")
+      .choices(["ios", "android"])
+      .makeOptionMandatory(),
+  )
+  .action(handleFingerprintHash);
 
 program
   .command("channel")

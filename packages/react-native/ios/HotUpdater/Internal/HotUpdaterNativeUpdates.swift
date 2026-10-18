@@ -252,6 +252,7 @@ public final class HotUpdaterNativeUpdateBridge: NSObject {
     /// `HotUpdater.configure`, and the values main's impl was created with.
     @objc public init(_ options: HotUpdaterOptions) throws {
         _ = try NativeUpdateChecker.validatedBaseURL(options.baseURL)
+        _ = HotUpdaterInstanceEnvironment.registerBuildFingerprintHash
         let environment = try HotUpdaterInstanceEnvironment(options: options)
         self.options = options
         if environment.isMain {

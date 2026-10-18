@@ -94,6 +94,24 @@ private func hotUpdaterAfterSurfaceStarts(_ action: @convention(block) @escaping
 @_silgen_name("HotUpdaterCopyMinBundleId")
 private func hotUpdaterCopyMinBundleIdSymbol() -> UnsafeMutableRawPointer
 
+@_silgen_name("HotUpdaterCopyBuildFingerprintHash")
+private func hotUpdaterCopyBuildFingerprintHashSymbol() -> UnsafeMutableRawPointer?
+
+/// The fingerprint this build embedded: the hash of the native interface it
+/// was built from, or nil for an app without one. Named apart from the
+/// generated `hotUpdaterBuildFingerprintHash()`, which SwiftPM compiles into
+/// this module.
+private let embeddedFingerprintHash: String? = hotUpdaterCopyBuildFingerprintHashSymbol()
+    .map { Unmanaged<NSString>.fromOpaque($0).takeRetainedValue() as String }
+
+extension HotUpdaterInstanceEnvironment {
+    /// Hands the shared config the fingerprint this build embedded, once,
+    /// before anything resolves an instance's values.
+    static let registerBuildFingerprintHash: Void = {
+        HotUpdaterConfig.shared.buildFingerprintHash = embeddedFingerprintHash
+    }()
+}
+
 /// The impl whose runtime `object` belongs to: a Fabric surface or root
 /// view, an RCTInstance or RCTHost, an old-architecture root view or bridge.
 /// Nil when no runtime claims it yet.
@@ -208,6 +226,7 @@ private func hotUpdaterGetMinBundleId() -> String {
      * config. Main's is `HotUpdaterNativeUpdateBridge.sharedImpl`.
      */
     convenience init(environment: HotUpdaterInstanceEnvironment) {
+        _ = HotUpdaterInstanceEnvironment.registerBuildFingerprintHash
         // Main is built from one snapshot of its values, which a later main
         // instance must match; nothing below reads HotUpdaterConfig again.
         let environment = environment.isMain ? HotUpdaterMainBundle.shared.implEnvironment() : environment
@@ -300,6 +319,7 @@ private func hotUpdaterGetMinBundleId() -> String {
      */
     public static func getIsolationKey() -> String {
         // The deprecated programmatic override is used verbatim.
+        _ = HotUpdaterInstanceEnvironment.registerBuildFingerprintHash
         return HotUpdaterInstanceEnvironment.main.isolationKey(appVersion: appVersion, minBundleId: minBundleId())
     }
 

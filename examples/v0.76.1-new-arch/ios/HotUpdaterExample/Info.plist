@@ -47,7 +47,5 @@
 		</array>
 		<key>UIViewControllerBasedStatusBarAppearance</key>
 		<false/>
-		<key>HOT_UPDATER_FINGERPRINT_HASH</key>
-		<string>005c193c06b8030e52eea01918e840483a97f09a88d55a0b35d7f236d0f93f63</string>
 	</dict>
 </plist>

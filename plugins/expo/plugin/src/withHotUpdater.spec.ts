@@ -1,5 +1,5 @@
 import { generateKeyPairSync } from "node:crypto";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 
@@ -148,6 +148,46 @@ describe("withHotUpdater - Test Cases", () => {
       expect(XML.format(result.modResults)).toContain(
         `android:value="${expectedValue}"`,
       );
+    });
+
+    it("removes a fingerprint.json the appVersion strategy leaves, so the build embeds no hash", async () => {
+      const dir = await mkdtemp(path.join(tmpdir(), "hot-updater-expo-mod-"));
+      tempDirs.push(dir);
+      await writeFile(path.join(dir, "fingerprint.json"), "{}");
+      vi.spyOn(cliTools, "loadConfig").mockResolvedValue({
+        updateStrategy: "appVersion",
+      } as Awaited<ReturnType<typeof cliTools.loadConfig>>);
+
+      const config = withHotUpdater(
+        {
+          _internal: { projectRoot: dir },
+          name: "Hot Updater Test",
+          slug: "hot-updater-test",
+        },
+        {},
+      );
+      const manifestMod = config.mods?.android?.manifest;
+      if (!manifestMod) {
+        throw new Error("AndroidManifest mod was not registered");
+      }
+      await manifestMod({
+        ...config,
+        modRawConfig: config,
+        modRequest: {
+          introspect: true,
+          modName: "manifest",
+          platform: "android",
+          platformProjectRoot: path.join(dir, "android"),
+          projectRoot: dir,
+        },
+        modResults: {
+          manifest: { $: {}, application: [{}] },
+        } as Parameters<typeof manifestMod>[0]["modResults"],
+      });
+
+      await expect(
+        access(path.join(dir, "fingerprint.json")),
+      ).rejects.toThrow();
     });
 
     it("RN 0.82+ Kotlin: input -> output", () => {
