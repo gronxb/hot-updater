@@ -259,10 +259,14 @@ describe("readExpoSettings", () => {
     }
   });
 
-  it("hashes the code app.config.js applies directly, but not package.json", async () => {
+  it("hashes what app.config.js applies directly and the data it reads, but not package.json", async () => {
+    await fs.writeFile(
+      path.join(project, "plugins/native.json"),
+      JSON.stringify({ pod: "A" }),
+    );
     await fs.writeFile(
       path.join(project, "plugins/direct.js"),
-      "module.exports = (c) => c;",
+      "require('./native.json'); module.exports = (c) => c;",
     );
     await fs.writeFile(
       path.join(project, "package.json"),
@@ -294,11 +298,19 @@ describe("readExpoSettings", () => {
       JSON.stringify({ version: "2.0.0" }),
     );
     expect(read()).toEqual(before);
+
+    await fs.writeFile(
+      path.join(project, "plugins/native.json"),
+      JSON.stringify({ pod: "B" }),
+    );
+    const withNewData = read();
+    expect(withNewData).not.toEqual(before);
+
     await fs.writeFile(
       path.join(project, "plugins/direct.js"),
-      "module.exports = (c) => ({ ...c });",
+      "require('./native.json'); module.exports = (c) => ({ ...c });",
     );
-    expect(read()).not.toEqual(before);
+    expect(read()).not.toEqual(withNewData);
   });
 
   it("numbers plugins without Hot Updater's own, so moving it changes nothing", () => {

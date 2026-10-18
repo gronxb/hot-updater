@@ -196,16 +196,17 @@ const pluginSource = (cwd: string, plugin: string): string => {
 };
 
 /**
- * The local code app.config.js imported, and the code that imports: what it
- * can apply as plugins, as `withPlugins(config, [withLocal])` does without
- * listing them in `plugins`. JSON holds no plugin code, and package.json,
- * which app configs read for the version, changes with every release.
+ * The local files app.config.js imported, and the files they import: what
+ * it can apply as plugins, as `withPlugins(config, [withLocal])` does without
+ * listing them in `plugins`, and the data those plugins read. package.json,
+ * which app configs read for the version, changes with every release, so it
+ * doesn't count.
  */
 const configImports = (configPath: string): string[] => {
   const files = new Set<string>();
   for (const file of localImports(configPath)) {
     for (const imported of pluginFiles(file)) {
-      if (path.extname(imported) !== ".json") files.add(imported);
+      if (path.basename(imported) !== "package.json") files.add(imported);
     }
   }
   return [...files].sort();
