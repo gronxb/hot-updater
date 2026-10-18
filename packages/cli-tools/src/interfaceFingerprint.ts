@@ -284,7 +284,22 @@ const readGradleFlags = async (
     .readFile(path.join(androidDir, "gradle.properties"), "utf8")
     .catch(() => "");
   const flags: Record<string, string> = {};
+  // A line ending in an odd number of backslashes continues on the next one,
+  // whose leading whitespace is dropped.
+  const lines: string[] = [];
+  let pending = "";
   for (const line of properties.split(/\r?\n/)) {
+    const joined = pending + (pending ? line.trimStart() : line);
+    const trailing = /\\*$/.exec(joined)![0].length;
+    if (trailing % 2 === 1) {
+      pending = joined.slice(0, -1);
+      continue;
+    }
+    lines.push(joined);
+    pending = "";
+  }
+  if (pending) lines.push(pending);
+  for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed || trimmed.startsWith("#") || trimmed.startsWith("!")) {
       continue;
@@ -577,8 +592,20 @@ export const createInterfaceFingerprint = async (
       | Record<string, unknown>
       | undefined;
     if (config) {
-      const { [platform === "ios" ? "android" : "ios"]: _other, ...own } =
-        config;
+      const other = platform === "ios" ? "android" : "ios";
+      const ownSection = (section: Record<string, unknown>) => {
+        const { [other]: _other, ...own } = section;
+        return own;
+      };
+      const own = ownSection(config);
+      // The deprecated `libraries` form gives each library its own sections.
+      if (Array.isArray(own.libraries)) {
+        own.libraries = own.libraries.map((library: unknown) =>
+          library && typeof library === "object"
+            ? ownSection(library as Record<string, unknown>)
+            : library,
+        );
+      }
       addContents(
         `codegen-config:${toPosix(path.relative(cwd, root)) || "."}`,
         stableStringify(own),

@@ -305,6 +305,26 @@ describe("createInterfaceFingerprint", () => {
 
     expect(await hashOf()).toBe(ios);
     expect(await hashOf({ platform: "android" })).not.toBe(android);
+
+    // So does each entry's in the deprecated libraries form.
+    const libraries = (javaPackageName: string) =>
+      write(
+        path.join(app, "package.json"),
+        manifest({
+          name: "app",
+          codegenConfig: {
+            libraries: [{ jsSrcsDir: "src", android: { javaPackageName } }],
+          },
+        }),
+      );
+    await libraries("com.app");
+    const iosWithLibraries = await hashOf();
+    const androidWithLibraries = await hashOf({ platform: "android" });
+    await libraries("com.other");
+    expect(await hashOf()).toBe(iosWithLibraries);
+    expect(await hashOf({ platform: "android" })).not.toBe(
+      androidWithLibraries,
+    );
   });
 
   it("hashes a dependency declared by name and version", async () => {
@@ -741,7 +761,8 @@ describe("readReactNativeInterface", () => {
         "newArchEnabled",
         "hermesEnabled = true",
         "react.hermesV1Enabled: false",
-        "hermesV1Enabled true",
+        "hermesV1Enabled \\",
+        "  true",
       ].join("\n"),
     );
     const read = (platform: "ios" | "android") =>
