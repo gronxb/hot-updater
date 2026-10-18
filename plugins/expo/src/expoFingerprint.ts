@@ -33,10 +33,7 @@ type AppConfig = {
 
 // Hot Updater's own plugin writes the channel and the signing key, which
 // don't change what JavaScript can call.
-const HOT_UPDATER_PLUGINS = new Set([
-  "@hot-updater/expo",
-  "@hot-updater/expo/app.plugin.js",
-]);
+const HOT_UPDATER_PACKAGE = "@hot-updater/expo";
 
 const sha256 = (data: string | Uint8Array) =>
   createHash("sha256").update(data).digest("hex");
@@ -376,6 +373,36 @@ const functionPluginSource = (cwd: string, plugin: Function): PluginSource => {
 };
 
 /**
+ * Whether a config plugin is Hot Updater's own, in any form an app config
+ * names it: the package, a path into it, or its function.
+ */
+const isHotUpdaterPlugin = (cwd: string, plugin: unknown): boolean => {
+  let file: string | null = null;
+  try {
+    if (typeof plugin === "function") {
+      file = functionPluginModule(plugin);
+    } else if (typeof plugin === "string") {
+      if (
+        plugin === HOT_UPDATER_PACKAGE ||
+        plugin.startsWith(`${HOT_UPDATER_PACKAGE}/`)
+      ) {
+        return true;
+      }
+      file =
+        plugin.startsWith(".") || path.isAbsolute(plugin)
+          ? resolvePluginFile(cwd, plugin)
+          : require.resolve(plugin, { paths: [cwd] });
+    }
+  } catch {
+    return false;
+  }
+  return (
+    file !== null &&
+    owningPackage(fs.realpathSync(file))?.name === HOT_UPDATER_PACKAGE
+  );
+};
+
+/**
  * The settings an Expo app declares that decide its native build: the
  * JavaScript engine and the architecture, and the config plugins that
  * generate its native projects, with their options and code. They come from
@@ -414,10 +441,7 @@ const collectExpoSettings = (
   // renumbers nothing.
   const plugins = (exp.plugins ?? [])
     .map((entry): unknown[] => (Array.isArray(entry) ? entry : [entry]))
-    .filter(
-      ([plugin]) =>
-        !(typeof plugin === "string" && HOT_UPDATER_PLUGINS.has(plugin)),
-    );
+    .filter(([plugin]) => !isHotUpdaterPlugin(cwd, plugin));
   plugins.forEach(([plugin, props], index) => {
     const found =
       typeof plugin === "string"

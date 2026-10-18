@@ -804,6 +804,32 @@ describe("readExpoSettings", () => {
     );
   });
 
+  it("leaves out Hot Updater's own plugin as a function or a resolved path", async () => {
+    const own = path.join(project, "node_modules/@hot-updater/expo");
+    await fs.mkdir(own, { recursive: true });
+    await fs.writeFile(
+      path.join(own, "package.json"),
+      JSON.stringify({ name: "@hot-updater/expo", version: "1.0.0" }),
+    );
+    await fs.writeFile(
+      path.join(own, "app.plugin.js"),
+      "module.exports = (config) => config;",
+    );
+    const appPlugin = path.join(own, "app.plugin.js");
+    const withHotUpdater = createRequire(path.join(project, "package.json"))(
+      appPlugin,
+    ) as Function;
+    const read = (plugins: unknown[]) =>
+      readExpoSettings(project, { plugins }, "ios");
+    const none = read([]);
+
+    expect(read([[withHotUpdater, { channel: "production" }]])).toEqual(none);
+    expect(read([[appPlugin, { channel: "production" }]])).toEqual(none);
+    expect(
+      read([["@hot-updater/expo/app.plugin", { channel: "production" }]]),
+    ).toEqual(none);
+  });
+
   it("leaves out what the app config doesn't declare", () => {
     expect(readExpoSettings(project, {}, "ios")).toEqual({});
   });
