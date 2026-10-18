@@ -11,6 +11,9 @@ export default defineConfig([
     outDir: "dist",
     dts: true,
     failOnWarn: true,
+    // app.plugin keeps the shape the tsc-built plugin had: `exports.default`
+    // beside `getPublicKeyFromConfig`, which Expo and One prebuild both load.
+    outputOptions: { exports: "named" },
     // The app provides these: One prebuild resolves expo/config-plugins, and
     // the plugin loads the app's hot-updater CLI for fingerprints.
     deps: {
