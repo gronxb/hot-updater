@@ -1,8 +1,17 @@
 {
   "ios": {
     "engine": "hot-updater/interface@1",
-    "hash": "016aec25d917d7db61a82bb650a0b19fcb908f6a7b53ad97d6173e03cd75b84f",
+    "hash": "19b2d7302d8d17734cf1f70717964ac83b4415122a2b2b8ff263845becc7a607",
     "sources": [
+      {
+        "type": "contents",
+        "id": "codegen-config:../../packages/react-native",
+        "contents": "{\"android\":{\"javaPackageName\":\"com.hotupdater\"},\"jsSrcsDir\":\"./src\",\"name\":\"HotUpdaterSpec\",\"type\":\"modules\"}",
+        "reasons": [
+          "codegen-config"
+        ],
+        "hash": "ecce521895aafa20cdc7f16b850fa170e5caf929c501c86a7b6f0fd9c62b63ae"
+      },
       {
         "type": "contents",
         "id": "runtime",
@@ -33,8 +42,17 @@
   },
   "android": {
     "engine": "hot-updater/interface@1",
-    "hash": "3a2570629d4be7fee6e751947f8ced0694b68f0ae7d35f75cd9c2c1fb48b9e79",
+    "hash": "6b75948ec8a9c7b549880375b41cf22fbc02081583700475f3b468b513754bfc",
     "sources": [
+      {
+        "type": "contents",
+        "id": "codegen-config:../../packages/react-native",
+        "contents": "{\"android\":{\"javaPackageName\":\"com.hotupdater\"},\"jsSrcsDir\":\"./src\",\"name\":\"HotUpdaterSpec\",\"type\":\"modules\"}",
+        "reasons": [
+          "codegen-config"
+        ],
+        "hash": "ecce521895aafa20cdc7f16b850fa170e5caf929c501c86a7b6f0fd9c62b63ae"
+      },
       {
         "type": "contents",
         "id": "runtime",
