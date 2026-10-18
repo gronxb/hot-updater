@@ -135,30 +135,79 @@ const staticImportsOf = (file: string): string[] => {
   } catch {
     return [];
   }
-  const fileRequire = createRequire(file);
   return specifiers.flatMap((specifier) => {
-    try {
-      const resolved = fileRequire.resolve(specifier);
-      if (path.isAbsolute(resolved)) return [fs.realpathSync(resolved)];
-      return []; // A built-in module.
-    } catch {
-      // ESM resolution differs: a relative path may omit a TypeScript
-      // extension, and a package may export only an `import` condition.
-    }
     if (specifier.startsWith(".") || path.isAbsolute(specifier)) {
       const target = path.resolve(path.dirname(file), specifier);
-      const found = PLUGIN_EXTENSIONS.map(
-        (extension) => target + extension,
-      ).find((candidate) => fs.existsSync(candidate));
+      const found = [target, ...PLUGIN_EXTENSIONS.map((ext) => target + ext)]
+        .filter((candidate) => fs.existsSync(candidate))
+        .find((candidate) => fs.statSync(candidate).isFile());
       return found ? [fs.realpathSync(found)] : [];
     }
+    if (specifier.startsWith("node:")) return [];
     const parts = specifier.split("/");
     const name = specifier.startsWith("@")
       ? parts.slice(0, 2).join("/")
       : parts[0]!;
     const dir = packageDir(path.dirname(file), name);
-    return dir ? [fs.realpathSync(path.join(dir, "package.json"))] : [];
+    if (dir === null) return []; // A built-in module.
+    const real = fs.realpathSync(dir);
+    // A registry package counts by its version.
+    if (!isLocal(real)) return [path.join(real, "package.json")];
+    const entry = esmEntry(real, `.${specifier.slice(name.length)}`);
+    return [entry ?? path.join(real, "package.json")];
   });
+};
+
+/**
+ * The file an `import` of `subpath` loads from the workspace package in
+ * `dir`, as ESM resolves it: its `exports` under the `import` condition
+ * first, else its `module` or `main` for the package itself.
+ */
+const esmEntry = (dir: string, subpath: string): string | null => {
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(dir, "package.json"), "utf8"),
+  ) as { exports?: unknown; module?: string; main?: string };
+  const pick = (target: unknown): string | null => {
+    if (typeof target === "string") return target;
+    if (Array.isArray(target)) {
+      for (const entry of target) {
+        const found = pick(entry);
+        if (found) return found;
+      }
+      return null;
+    }
+    if (target && typeof target === "object") {
+      const conditions = target as Record<string, unknown>;
+      for (const condition of ["import", "node", "default", "require"]) {
+        if (condition in conditions) {
+          const found = pick(conditions[condition]);
+          if (found) return found;
+        }
+      }
+    }
+    return null;
+  };
+  let relative: string | null = null;
+  const { exports } = manifest;
+  if (exports !== undefined) {
+    const map =
+      typeof exports === "string" ||
+      Array.isArray(exports) ||
+      !Object.keys(exports as object).some((key) => key.startsWith("."))
+        ? { ".": exports }
+        : (exports as Record<string, unknown>);
+    relative = pick(map[subpath]);
+  } else if (subpath === ".") {
+    relative = manifest.module ?? manifest.main ?? "index.js";
+  } else {
+    relative = subpath;
+  }
+  if (relative === null) return null;
+  const target = path.resolve(dir, relative);
+  const found = [target, ...PLUGIN_EXTENSIONS.map((ext) => target + ext)].find(
+    (candidate) => fs.existsSync(candidate) && fs.statSync(candidate).isFile(),
+  );
+  return found ? fs.realpathSync(found) : null;
 };
 
 /** Every file `file` imports: required, cached first or not, or imported. */

@@ -529,6 +529,54 @@ describe("readExpoSettings", () => {
     }
   });
 
+  it("follows an ESM plugin into a workspace package's import target", async () => {
+    const workspace = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-esm-ws-")),
+    );
+    try {
+      await fs.writeFile(
+        path.join(workspace, "package.json"),
+        JSON.stringify({
+          name: "@acme/esm-helper",
+          version: "1.0.0",
+          exports: { ".": { import: "./esm.mjs", require: "./cjs.cjs" } },
+        }),
+      );
+      await fs.writeFile(
+        path.join(workspace, "cjs.cjs"),
+        "module.exports = 1;",
+      );
+      await fs.writeFile(path.join(workspace, "impl.mjs"), "export default 1;");
+      await fs.writeFile(
+        path.join(workspace, "esm.mjs"),
+        "export { default } from './impl.mjs';",
+      );
+      await fs.mkdir(path.join(project, "node_modules/@acme"), {
+        recursive: true,
+      });
+      await fs.symlink(
+        workspace,
+        path.join(project, "node_modules/@acme/esm-helper"),
+      );
+      await fs.writeFile(
+        path.join(project, "plugins/withEsmWorkspace.mjs"),
+        "import helper from '@acme/esm-helper'; export default (config) => config;",
+      );
+      const read = () =>
+        readExpoSettings(
+          project,
+          { plugins: ["./plugins/withEsmWorkspace.mjs"] },
+          "ios",
+        );
+      const before = read();
+
+      await fs.writeFile(path.join(workspace, "impl.mjs"), "export default 2;");
+      expect(read()).not.toEqual(before);
+    } finally {
+      await fs.rm(workspace, { recursive: true, force: true });
+    }
+  });
+
   it("numbers plugins without Hot Updater's own, so moving it changes nothing", () => {
     const read = (plugins: unknown[]) =>
       readExpoSettings(project, { plugins }, "ios");
