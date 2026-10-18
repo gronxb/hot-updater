@@ -7,14 +7,11 @@ import { parseSync, Visitor } from "oxc-parser";
  * resolves. An `import()` of a computed specifier, such as
  * `import("dayjs/locale/" + name + ".js")`, names no module to resolve.
  * Minified code reads the same as formatted code. `fileName` gives the
- * language, such as `.ts`. With `types: false`, TypeScript imports and
- * re-exports whose bindings are all types, such as `import type`, which
- * compilers erase, are left out.
+ * language, such as `.ts`.
  */
 export const moduleSpecifiersOf = (
   fileName: string,
   source: string,
-  { types = true }: { types?: boolean } = {},
 ): string[] => {
   const { errors, module, program } = parseSync(fileName, source);
   if (errors.length > 0) {
@@ -38,67 +35,13 @@ export const moduleSpecifiersOf = (
   }).visit(program);
   return [
     ...new Set([
-      ...module.staticImports
-        .filter(
-          ({ entries }) =>
-            types ||
-            entries.length === 0 ||
-            entries.some(({ isType }) => !isType),
-        )
-        .map(({ moduleRequest }) => moduleRequest.value),
+      ...module.staticImports.map(({ moduleRequest }) => moduleRequest.value),
       ...module.staticExports.flatMap(({ entries }) =>
-        entries.flatMap(({ moduleRequest, isType }) =>
-          moduleRequest === null || (isType && !types)
-            ? []
-            : [moduleRequest.value],
+        entries.flatMap(({ moduleRequest }) =>
+          moduleRequest === null ? [] : [moduleRequest.value],
         ),
       ),
       ...dynamicImports,
     ]),
   ];
-};
-
-/**
- * The modules `source` loads with a `require()` of a string literal or a
- * template without substitutions, wherever the call is, such as inside a
- * function that runs later: what Node's CommonJS loader resolves. A
- * `require()` of a computed specifier names no module to resolve. `fileName`
- * gives the language, such as `.ts`.
- */
-export const requireSpecifiersOf = (
-  fileName: string,
-  source: string,
-): string[] => {
-  const { errors, program } = parseSync(fileName, source);
-  if (errors.length > 0) {
-    throw new Error(
-      `Could not read the requires of ${fileName}: ${errors[0]!.message}`,
-    );
-  }
-  const specifiers = new Set<string>();
-  new Visitor({
-    CallExpression({ callee, arguments: args }) {
-      if (
-        callee.type !== "Identifier" ||
-        callee.name !== "require" ||
-        args.length !== 1
-      ) {
-        return;
-      }
-      const [specifier] = args;
-      if (
-        specifier?.type === "Literal" &&
-        typeof specifier.value === "string"
-      ) {
-        specifiers.add(specifier.value);
-      } else if (
-        specifier?.type === "TemplateLiteral" &&
-        specifier.expressions.length === 0 &&
-        typeof specifier.quasis[0]?.value.cooked === "string"
-      ) {
-        specifiers.add(specifier.quasis[0].value.cooked);
-      }
-    },
-  }).visit(program);
-  return [...specifiers];
 };

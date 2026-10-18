@@ -111,20 +111,19 @@ and Expo's autolinking, not the generated `ios/` and `android/` folders, so
 `fingerprint create` before `expo prebuild` and the native build after it
 compute the same fingerprint. An Expo module counts when Expo's autolinking
 links it: in a monorepo, that means it is listed in the app's `dependencies`.
-Changing a config plugin or its options changes the fingerprint, except for
-Hot Updater's own plugin, whose channel and public key don't change what
-JavaScript can call. A plugin from your project or workspace counts by the
-files it imports or requires, including a `require()` inside its callback; one installed from the registry counts by its version and
-patches, like a native package, so bump `nativeVersion` if only its own
-dependencies change what it generates. With `app.config.js` or `app.config.ts`, the
-local files it imports count too, since it can apply plugins directly with
-`withPlugins`, except the app's own `package.json` and `app.json`, so reading
-the version from them leaves the fingerprint unchanged; the registry packages any of that
-code imports count by version and patches. The app config file itself doesn't count, since
-it holds the version: keep a plugin you apply directly in its own file, or
-bump `nativeVersion` when one written inside the app config changes. A file a
-plugin reads during prebuild instead of importing, such as a template or a
-native resource it copies, doesn't count either: list it in `extraSources`.
+Adding, removing, or reordering a config plugin, or changing its options,
+changes the fingerprint, except for Hot Updater's own plugin, whose channel
+and public key don't change what JavaScript can call. A plugin installed from
+the registry also counts by its version and patches, like a native package.
+
+A plugin from your project or workspace counts by its name, not its code, the
+same way the bare adapter treats edits to `ios/` and `android/`: a plugin
+mostly writes permissions, `Info.plist` keys, and Gradle settings, which don't
+change what JavaScript can call. When a change to a local plugin, or to one
+written inside `app.config.js`, does change that interface, bump
+`nativeVersion`, or list the plugin's folder in `extraSources` to track its
+files. For custom native code, prefer a local Expo module in `modules/`:
+autolinking links it, so the fingerprint follows it like any native package.
 
 ## Workflow
 

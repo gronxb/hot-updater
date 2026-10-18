@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { moduleSpecifiersOf, requireSpecifiersOf } from "./moduleSpecifiers";
+import { moduleSpecifiersOf } from "./moduleSpecifiers";
 
 describe("moduleSpecifiersOf", () => {
   it("reads the imports, re-exports, and literal import() of minified code as of formatted code, and skips a computed import()", () => {
@@ -38,54 +38,9 @@ describe("moduleSpecifiersOf", () => {
     );
   });
 
-  it("leaves out type-only imports and re-exports with types: false", () => {
-    const source = [
-      'import type { Options } from "./types";',
-      'import { type Props } from "./props";',
-      'import { type Mixed, value } from "./mixed";',
-      'import "./side-effect";',
-      'export type { Shape } from "./shape";',
-      'export type * from "./all-types";',
-      'export { helper } from "./helper";',
-      "",
-    ].join("\n");
-    expect(moduleSpecifiersOf("plugin.ts", source, { types: false })).toEqual([
-      "./mixed",
-      "./side-effect",
-      "./helper",
-    ]);
-    expect(moduleSpecifiersOf("plugin.ts", source)).toHaveLength(7);
-  });
-
   it("names the file it cannot parse", () => {
     expect(() => moduleSpecifiersOf("broken.mjs", "import {")).toThrow(
       /^Could not read the imports of broken\.mjs: /u,
-    );
-  });
-});
-
-describe("requireSpecifiersOf", () => {
-  it("reads literal require() calls anywhere, deferred ones included, and skips computed ones", () => {
-    const source = [
-      'const fs = require("node:fs");',
-      "module.exports = (config) => {",
-      '  const helper = require("./helper");',
-      "  const template = require(`./template.json`);",
-      "  const computed = (name) => require(name);",
-      '  const joined = (name) => require("./locales/" + name);',
-      "  return config;",
-      "};",
-      'const text = "require(\\"./not-a-require\\")";',
-      "",
-    ].join("\n");
-    expect(requireSpecifiersOf("plugin.js", source).sort()).toEqual(
-      ["node:fs", "./helper", "./template.json"].sort(),
-    );
-  });
-
-  it("names the file it cannot parse", () => {
-    expect(() => requireSpecifiersOf("broken.js", "require(")).toThrow(
-      /^Could not read the requires of broken\.js: /u,
     );
   });
 });
