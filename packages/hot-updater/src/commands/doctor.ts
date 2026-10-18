@@ -530,7 +530,12 @@ async function checkNativeStatus({
     const buildAdapter = await config.build({ cwd });
     const getNativeSigningPublicKey =
       buildAdapter.nativeBuild?.getBundleSigningPublicKey;
-    if (!getNativeSigningPublicKey) return undefined;
+    if (!getNativeSigningPublicKey) {
+      const unused = checkUnusedFingerprintJson(cwd, config.updateStrategy);
+      return unused.length > 0
+        ? { updateStrategy: config.updateStrategy, issues: unused }
+        : undefined;
+    }
 
     const [nativeSigningPublicKey, expectedSigningPublicKey] =
       await Promise.all([

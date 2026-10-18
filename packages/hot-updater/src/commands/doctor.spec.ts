@@ -1337,6 +1337,37 @@ describe("doctor", () => {
     }
   });
 
+  it("reports a leftover fingerprint.json without native folders or a signing hook", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        updateStrategy: "appVersion",
+        build: async () => ({ build: vi.fn(), name: "bare" }),
+      }),
+    );
+    await writeFile(path.join(cwd, "fingerprint.json"), "{}");
+
+    const result = await doctor();
+
+    expect(result).not.toBe(true);
+    if (result !== true) {
+      expect(result.details?.native?.issues).toEqual([
+        expect.objectContaining({ code: "FINGERPRINT_JSON_UNUSED" }),
+      ]);
+    }
+  });
+
   it("accepts Java Companion Android bundle provider calls", async () => {
     const cwd = await createTempProject();
     tempProjects.push(cwd);
