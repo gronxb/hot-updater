@@ -65,20 +65,19 @@ const isLocal = (file: string) =>
   !file.split(path.sep).includes("node_modules");
 
 /**
- * A plugin file and the local files it loads, under `root`. Expo requires
- * config plugins, so once the app config is read, Node's module cache holds
- * the files each one imported; a file it hasn't loaded counts by itself.
+ * A plugin file and the local files it loads: every file outside
+ * node_modules, sibling workspace packages included, since registry
+ * packages count by version. Expo requires config plugins, so once the app
+ * config is read, Node's module cache holds the files each one imported; a
+ * file it hasn't loaded counts by itself.
  */
-const pluginFiles = (root: string, entry: string): string[] => {
-  const prefix = `${root}${path.sep}`;
+const pluginFiles = (entry: string): string[] => {
   const files = new Set<string>();
   const visit = (file: string) => {
     if (files.has(file)) return;
     files.add(file);
     for (const child of require.cache[file]?.children ?? []) {
-      if (child.filename.startsWith(prefix) && isLocal(child.filename)) {
-        visit(child.filename);
-      }
+      if (isLocal(child.filename)) visit(child.filename);
     }
   };
   visit(entry);
@@ -88,7 +87,7 @@ const pluginFiles = (root: string, entry: string): string[] => {
 /** The contents of a plugin's files, by their paths under `root`. */
 const hashPluginFiles = (root: string, entry: string): string =>
   `sha256:${sha256(
-    pluginFiles(root, entry)
+    pluginFiles(entry)
       .map(
         (file) =>
           `${path.relative(root, file).split(path.sep).join("/")}\0${sha256(fs.readFileSync(file))}`,
@@ -158,7 +157,7 @@ const configImports = (project: string, configPath: string): string[] => {
       file.startsWith(`${project}${path.sep}`) &&
       isLocal(file)
     ) {
-      for (const imported of pluginFiles(project, file)) files.add(imported);
+      for (const imported of pluginFiles(file)) files.add(imported);
     }
   }
   return [...files].sort();

@@ -196,6 +196,34 @@ describe("readExpoSettings", () => {
     expect(read()).not.toEqual(before);
   });
 
+  it("hashes a sibling workspace package a plugin imports", async () => {
+    const sibling = await fs.realpath(
+      await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-sibling-")),
+    );
+    try {
+      await fs.writeFile(path.join(sibling, "index.js"), "module.exports = 1;");
+      await fs.writeFile(
+        path.join(project, "plugins/withSibling.js"),
+        `require(${JSON.stringify(path.join(sibling, "index.js"))}); module.exports = (config) => config;`,
+      );
+      createRequire(path.join(project, "package.json"))(
+        "./plugins/withSibling",
+      );
+      const read = () =>
+        readExpoSettings(
+          project,
+          { plugins: ["./plugins/withSibling"] },
+          "ios",
+        );
+      const before = read();
+
+      await fs.writeFile(path.join(sibling, "index.js"), "module.exports = 2;");
+      expect(read()).not.toEqual(before);
+    } finally {
+      await fs.rm(sibling, { recursive: true, force: true });
+    }
+  });
+
   it("numbers plugins without Hot Updater's own, so moving it changes nothing", () => {
     const read = (plugins: unknown[]) =>
       readExpoSettings(project, { plugins }, "ios");
