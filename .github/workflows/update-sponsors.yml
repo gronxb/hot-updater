@@ -38,8 +38,8 @@ jobs:
                 ) {
                   nodes {
                     sponsorEntity {
-                      ... on User { login avatarUrl name url }
-                      ... on Organization { login avatarUrl name url }
+                      ... on User { databaseId login avatarUrl name url }
+                      ... on Organization { databaseId login avatarUrl name url }
                     }
                   }
                   pageInfo { hasNextPage endCursor }
@@ -74,8 +74,8 @@ jobs:
                       isOneTime
                     }
                     sponsor {
-                      ... on User { login }
-                      ... on Organization { login }
+                      ... on User { databaseId login }
+                      ... on Organization { databaseId login }
                     }
                   }
                   pageInfo { hasNextPage endCursor }
@@ -106,6 +106,7 @@ jobs:
                 .[].data.user.sponsorsActivities.nodes[]
                 | select(. != null and .sponsor != null)
                 | {
+                    id: .sponsor.databaseId,
                     login: .sponsor.login,
                     action,
                     timestamp,
@@ -114,13 +115,13 @@ jobs:
                     isOneTime: .sponsorsTier.isOneTime
                   }
               ]
-            | sort_by([(.login | ascii_downcase), .timestamp])
-            | group_by(.login | ascii_downcase)
+            | sort_by([.id, .timestamp])
+            | group_by(.id)
             | map(
                 . as $events
                 | reduce $events[] as $event (
                     {
-                      login: $events[0].login,
+                      id: $events[0].id,
                       amountInCents: 0,
                       recurring: null
                     };
@@ -191,6 +192,8 @@ jobs:
           ' > /tmp/sponsor-amounts.json
 
           # Preserve every sponsor that was public in an earlier revision.
+          # Sponsors are matched by GitHub account ID because logins can be
+          # renamed; revisions without an ID carry it in the avatar URL.
           git log --reverse --format=%H -- docs/public/sponsors.json |
             while read -r revision; do
               git show "$revision:docs/public/sponsors.json" | jq '.sponsors // []'
@@ -201,8 +204,18 @@ jobs:
             --slurpfile publicSponsors /tmp/public-sponsors.json \
             --slurpfile sponsorAmounts /tmp/sponsor-amounts.json \
             --slurpfile historicalSponsors /tmp/historical-sponsors.json '
+              def account_id:
+                if .id != null then .id
+                else
+                  (.avatarUrl // ""
+                    | capture("/u/(?<id>[0-9]+)").id
+                    | tonumber)
+                  // error("Missing account ID for sponsor: \(.login)")
+                end;
+
               ($publicSponsors[0]
                 | map({
+                    id: .databaseId,
                     login,
                     avatarUrl,
                     name,
@@ -210,28 +223,30 @@ jobs:
                   })) as $public
               | ($historicalSponsors[0] + $public
                   | reduce .[] as $sponsor ({};
-                      .[$sponsor.login | ascii_downcase] = {
-                        login: $sponsor.login,
-                        avatarUrl: $sponsor.avatarUrl,
-                        name: $sponsor.name,
-                        url: $sponsor.url
-                      }
+                      ($sponsor | account_id) as $id
+                      | .[$id | tostring] = {
+                          id: $id,
+                          login: $sponsor.login,
+                          avatarUrl: $sponsor.avatarUrl,
+                          name: $sponsor.name,
+                          url: $sponsor.url
+                        }
                     )
                   | [.[]]) as $sponsors
               | ($sponsorAmounts[0]
                   | reduce .[] as $sponsorship ({};
-                      .[$sponsorship.login | ascii_downcase] =
+                      .[$sponsorship.id | tostring] =
                         $sponsorship.amountInCents
                     )) as $amounts
               | ($sponsors
-                  | map($amounts[.login | ascii_downcase])
+                  | map($amounts[.id | tostring])
                   | max // 0) as $maxAmount
               | if $maxAmount <= 0 then
                   error("Could not calculate lifetime sponsorship amounts")
                 else
                   $sponsors
                   | map(
-                      ($amounts[.login | ascii_downcase]) as $amount
+                      ($amounts[.id | tostring]) as $amount
                       | if $amount == null then
                           error("Missing amount for historical sponsor: \(.login)")
                         else
