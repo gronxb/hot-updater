@@ -1,8 +1,26 @@
 {
   "ios": {
     "engine": "hot-updater/interface@1",
-    "hash": "9aebab105bb03e7dd3ba563112f40184d5578e59ffbfb443dc2637323ca1ad64",
+    "hash": "221143f69c7dbbe35e69ed7dec28d49409bc22bf263e9fa5ebe65faa27a74954",
     "sources": [
+      {
+        "type": "contents",
+        "id": "codegen-config:.",
+        "contents": "{\"android\":{\"javaPackageName\":\"com.hotupdaterexample\"},\"jsSrcsDir\":\"./src\",\"name\":\"HotUpdaterExampleSpec\",\"type\":\"modules\"}",
+        "reasons": [
+          "codegen-config"
+        ],
+        "hash": "41b95ee0d4cd34281a853d9bff399454d50f72dc7371e78d079a2b58f9e3193b"
+      },
+      {
+        "type": "contents",
+        "id": "codegen-config:../../packages/react-native",
+        "contents": "{\"android\":{\"javaPackageName\":\"com.hotupdater\"},\"jsSrcsDir\":\"./src\",\"name\":\"HotUpdaterSpec\",\"type\":\"modules\"}",
+        "reasons": [
+          "codegen-config"
+        ],
+        "hash": "ecce521895aafa20cdc7f16b850fa170e5caf929c501c86a7b6f0fd9c62b63ae"
+      },
       {
         "type": "contents",
         "id": "dependency:@callstack/react-native-brownfield",
@@ -85,8 +103,26 @@
   },
   "android": {
     "engine": "hot-updater/interface@1",
-    "hash": "4a3c108243dcb18d197fe5544e067d779e52c0a68aab5e19fa9fb2934bc33c1c",
+    "hash": "8681de8b88a8db15b82606b413e333ea11cb5626e35ee7242db528ed5a7e73d3",
     "sources": [
+      {
+        "type": "contents",
+        "id": "codegen-config:.",
+        "contents": "{\"android\":{\"javaPackageName\":\"com.hotupdaterexample\"},\"jsSrcsDir\":\"./src\",\"name\":\"HotUpdaterExampleSpec\",\"type\":\"modules\"}",
+        "reasons": [
+          "codegen-config"
+        ],
+        "hash": "41b95ee0d4cd34281a853d9bff399454d50f72dc7371e78d079a2b58f9e3193b"
+      },
+      {
+        "type": "contents",
+        "id": "codegen-config:../../packages/react-native",
+        "contents": "{\"android\":{\"javaPackageName\":\"com.hotupdater\"},\"jsSrcsDir\":\"./src\",\"name\":\"HotUpdaterSpec\",\"type\":\"modules\"}",
+        "reasons": [
+          "codegen-config"
+        ],
+        "hash": "ecce521895aafa20cdc7f16b850fa170e5caf929c501c86a7b6f0fd9c62b63ae"
+      },
       {
         "type": "contents",
         "id": "dependency:@callstack/react-native-brownfield",
