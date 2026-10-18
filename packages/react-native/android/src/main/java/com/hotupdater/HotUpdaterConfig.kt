@@ -29,6 +29,14 @@ object HotUpdaterConfig {
     @Volatile
     internal var recordedIsolationKey: String? = null
 
+    /**
+     * The fingerprint this build embedded, written by the
+     * generateHotUpdaterFingerprintHash build task, or null for an app
+     * without one.
+     */
+    @Volatile
+    internal var buildFingerprintHash: String? = HotUpdaterBuildFingerprintHash.get().takeIf { it.isNotEmpty() }
+
     /** Warns when it replaces a value main's [HotUpdaterOptions] set, as [configure] does. */
     var fingerprintHash: String?
         get() = recordedFingerprintHash

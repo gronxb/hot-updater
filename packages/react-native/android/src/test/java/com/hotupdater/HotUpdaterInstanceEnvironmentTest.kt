@@ -11,6 +11,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
+import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
@@ -25,10 +26,19 @@ class HotUpdaterInstanceEnvironmentTest {
     @get:Rule
     val recoveryMonitoring = RecoveryMonitoringRule()
 
+    private val buildFingerprintHash = HotUpdaterConfig.buildFingerprintHash
+
+    // Not the fingerprint the test app's build embedded.
+    @Before
+    fun clearBuildFingerprint() {
+        HotUpdaterConfig.buildFingerprintHash = null
+    }
+
     @After
     @Suppress("DEPRECATION")
     fun clearConfig() {
         HotUpdaterConfig.clear()
+        HotUpdaterConfig.buildFingerprintHash = buildFingerprintHash
     }
 
     @Test
@@ -441,6 +451,18 @@ class HotUpdaterInstanceEnvironmentTest {
         assertEquals("production", plain.defaultChannel(context))
         assertNull(plain.fingerprintHash(context))
         assertNull(plain.publicKey(context))
+    }
+
+    @Test
+    fun `a named instance without its own fingerprint reads the one the build embedded`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        HotUpdaterConfig.buildFingerprintHash = "build-fp"
+        // Main's programmatic fingerprint still never reaches it.
+        HotUpdaterConfig.configure(fingerprintHash = "app-fp", publicKey = null, channel = null)
+
+        val plain = environment("plain")
+        assertEquals("build-fp", plain.fingerprintHash(context))
+        assertEquals("HotUpdaterInstancePrefs_plain_build-fp_${MIN_BUNDLE_ID}_production", plain.isolationKey(context, MIN_BUNDLE_ID))
     }
 
     @Test

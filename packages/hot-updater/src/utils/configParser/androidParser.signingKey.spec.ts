@@ -43,9 +43,8 @@ describe("AndroidConfigParser on a manifest with a signing key", () => {
     const signature = sign("sha256", bundle, privateKey);
 
     for (const [key, value] of [
-      ["com.hotupdater.FINGERPRINT_HASH", "first-fingerprint"],
       ["com.hotupdater.CHANNEL", "staging"],
-      ["com.hotupdater.FINGERPRINT_HASH", "second-fingerprint"],
+      ["com.hotupdater.CHANNEL", "beta"],
     ] as const) {
       await parser.set(key, value);
       expect((await parser.get(key)).value).toBe(value);

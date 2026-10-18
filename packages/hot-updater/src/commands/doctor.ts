@@ -32,7 +32,10 @@ import {
 import { getNativeAppVersion } from "../utils/version/getNativeAppVersion";
 import { findMissingClientPlugins } from "./doctor/clientPlugins";
 import { createDoctorContext, type DoctorContext } from "./doctor/context";
-import { checkFingerprintJson } from "./doctor/fingerprint";
+import {
+  checkFingerprintJson,
+  checkUnusedFingerprintJson,
+} from "./doctor/fingerprint";
 import { applyDoctorFixes } from "./doctor/fix";
 import {
   type ArtifactStatus,
@@ -82,7 +85,6 @@ interface NativePlatformStatus {
   /** The version the native project builds: what the app reports. */
   appVersion?: string;
   channel?: string;
-  fingerprintHash?: string;
   bundleProviderConfigured?: boolean;
 }
 
@@ -307,13 +309,9 @@ const readLocalFingerprintFile = async (cwd: string) => {
 const checkIosNativeStatus = async ({
   cwd,
   config,
-  requireFingerprint,
-  expectedFingerprintHash,
 }: {
   cwd: string;
   config: ConfigResponse;
-  requireFingerprint: boolean;
-  expectedFingerprintHash?: string;
 }): Promise<{ status?: NativePlatformStatus; issues: NativeCheckIssue[] }> => {
   const configuredPaths = config.platform.ios.infoPlistPaths;
   const iosDetected =
@@ -343,40 +341,6 @@ const checkIosNativeStatus = async ({
   }
 
   const channel = await iosParser.get("HOT_UPDATER_CHANNEL");
-  const fingerprintHash = requireFingerprint
-    ? await iosParser.get("HOT_UPDATER_FINGERPRINT_HASH")
-    : undefined;
-
-  if (requireFingerprint && !fingerprintHash?.value) {
-    issues.push({
-      type: "error",
-      platform: "ios",
-      code: "MISSING_FINGERPRINT_HASH",
-      message: "HOT_UPDATER_FINGERPRINT_HASH is missing from Info.plist.",
-      resolution:
-        "Run `npx hot-updater fingerprint create` or rebuild through the Hot Updater config plugin (Expo or One prebuild).",
-      fixability: "command",
-      commands: [...FINGERPRINT_RECOVERY_COMMANDS],
-      paths: fingerprintHash?.paths.length ? fingerprintHash.paths : files,
-    });
-  } else if (
-    requireFingerprint &&
-    expectedFingerprintHash &&
-    fingerprintHash?.value !== expectedFingerprintHash
-  ) {
-    issues.push({
-      type: "error",
-      platform: "ios",
-      code: "FINGERPRINT_HASH_MISMATCH",
-      message: "HOT_UPDATER_FINGERPRINT_HASH does not match fingerprint.json.",
-      resolution:
-        "Run `npx hot-updater fingerprint create` and rebuild your iOS app.",
-      fixability: "command",
-      commands: [...FINGERPRINT_RECOVERY_COMMANDS],
-      paths: fingerprintHash?.paths ?? files,
-    });
-  }
-
   const appDelegateFiles = findNativeFiles({
     cwd,
     platform: "ios",
@@ -426,7 +390,6 @@ const checkIosNativeStatus = async ({
       files: [...files, ...appDelegateFiles],
       ...(appVersion === null ? {} : { appVersion }),
       channel: channel.value ?? undefined,
-      fingerprintHash: fingerprintHash?.value ?? undefined,
       bundleProviderConfigured,
     },
     issues,
@@ -436,13 +399,9 @@ const checkIosNativeStatus = async ({
 const checkAndroidNativeStatus = async ({
   cwd,
   config,
-  requireFingerprint,
-  expectedFingerprintHash,
 }: {
   cwd: string;
   config: ConfigResponse;
-  requireFingerprint: boolean;
-  expectedFingerprintHash?: string;
 }): Promise<{ status?: NativePlatformStatus; issues: NativeCheckIssue[] }> => {
   const configuredManifestPaths =
     config.platform.android.androidManifestPaths ?? [];
@@ -474,42 +433,6 @@ const checkAndroidNativeStatus = async ({
   }
 
   const channel = await androidParser.get("com.hotupdater.CHANNEL");
-  const fingerprintHash = requireFingerprint
-    ? await androidParser.get("com.hotupdater.FINGERPRINT_HASH")
-    : undefined;
-
-  if (requireFingerprint && !fingerprintHash?.value) {
-    issues.push({
-      type: "error",
-      platform: "android",
-      code: "MISSING_FINGERPRINT_HASH",
-      message:
-        "com.hotupdater.FINGERPRINT_HASH is missing from AndroidManifest.xml.",
-      resolution:
-        "Run `npx hot-updater fingerprint create` or rebuild through the Hot Updater config plugin (Expo or One prebuild).",
-      fixability: "command",
-      commands: [...FINGERPRINT_RECOVERY_COMMANDS],
-      paths: fingerprintHash?.paths.length ? fingerprintHash.paths : files,
-    });
-  } else if (
-    requireFingerprint &&
-    expectedFingerprintHash &&
-    fingerprintHash?.value !== expectedFingerprintHash
-  ) {
-    issues.push({
-      type: "error",
-      platform: "android",
-      code: "FINGERPRINT_HASH_MISMATCH",
-      message:
-        "com.hotupdater.FINGERPRINT_HASH in AndroidManifest.xml does not match fingerprint.json.",
-      resolution:
-        "Run `npx hot-updater fingerprint create` and rebuild your Android app.",
-      fixability: "command",
-      commands: [...FINGERPRINT_RECOVERY_COMMANDS],
-      paths: fingerprintHash?.paths ?? files,
-    });
-  }
-
   const mainApplicationFiles = findNativeFiles({
     cwd,
     platform: "android",
@@ -559,7 +482,6 @@ const checkAndroidNativeStatus = async ({
       files: [...files, ...mainApplicationFiles],
       ...(appVersion === null ? {} : { appVersion }),
       channel: channel.value ?? undefined,
-      fingerprintHash: fingerprintHash?.value ?? undefined,
       bundleProviderConfigured,
     },
     issues,
@@ -608,7 +530,12 @@ async function checkNativeStatus({
     const buildAdapter = await config.build({ cwd });
     const getNativeSigningPublicKey =
       buildAdapter.nativeBuild?.getBundleSigningPublicKey;
-    if (!getNativeSigningPublicKey) return undefined;
+    if (!getNativeSigningPublicKey) {
+      const unused = checkUnusedFingerprintJson(cwd, config.updateStrategy);
+      return unused.length > 0
+        ? { updateStrategy: config.updateStrategy, issues: unused }
+        : undefined;
+    }
 
     const [nativeSigningPublicKey, expectedSigningPublicKey] =
       await Promise.all([
@@ -632,6 +559,7 @@ async function checkNativeStatus({
         : {}),
       issues: [
         ...signing.issues.map(toNativeIssue),
+        ...checkUnusedFingerprintJson(cwd, config.updateStrategy),
         ...(localFingerprint
           ? await checkFingerprintJson(
               localFingerprint.value,
@@ -651,18 +579,8 @@ async function checkNativeStatus({
     )) ?? undefined;
 
   const [ios, android, signing] = await Promise.all([
-    checkIosNativeStatus({
-      cwd,
-      config,
-      requireFingerprint,
-      expectedFingerprintHash: localFingerprint?.value.ios?.hash,
-    }),
-    checkAndroidNativeStatus({
-      cwd,
-      config,
-      requireFingerprint,
-      expectedFingerprintHash: localFingerprint?.value.android?.hash,
-    }),
+    checkIosNativeStatus({ cwd, config }),
+    checkAndroidNativeStatus({ cwd, config }),
     validateSigningConfig(config, {
       expectedPublicKey: expectedSigningPublicKey,
     }),
@@ -672,6 +590,7 @@ async function checkNativeStatus({
     ...ios.issues,
     ...android.issues,
     ...signing.issues.map(toNativeIssue),
+    ...checkUnusedFingerprintJson(cwd, config.updateStrategy),
   ];
 
   if (requireFingerprint && localFingerprint) {
@@ -1012,6 +931,8 @@ const promptServerBaseUrl = async () => {
 const FIX_DESCRIPTIONS: Record<DoctorFix["repair"], string> = {
   fingerprint: "Recreate fingerprint.json and the native fingerprint hashes",
   "fingerprint-engine": "Record the changed fingerprint engine's hashes",
+  "unused-fingerprint":
+    "Delete the fingerprint.json the update strategy does not use",
   "public-key": "Write the configured public key into the native files",
   "orphan-public-key": "Remove the public key from the native files",
   "release-catalogs": "Rebuild the stale release catalogs from their releases",
@@ -1022,6 +943,7 @@ const FIX_DESCRIPTIONS: Record<DoctorFix["repair"], string> = {
 const WROTE_LABELS: Record<DoctorFix["repair"], string> = {
   fingerprint: "Path",
   "fingerprint-engine": "Path",
+  "unused-fingerprint": "Path",
   "public-key": "Path",
   "orphan-public-key": "Path",
   "release-catalogs": "Catalog",

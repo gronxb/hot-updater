@@ -2,7 +2,7 @@ import { createRequire } from "node:module";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-import { bare } from "@hot-updater/bare";
+import { bare, bareFingerprint } from "@hot-updater/bare";
 import { p, readBundleSigningPublicKeyFile } from "@hot-updater/cli-tools";
 import type {
   BuildAdapter,
@@ -119,6 +119,12 @@ const runOnePrebuild = async ({
     process.exit(1);
   }
 };
+
+/**
+ * One's native fingerprint, which a native build computes from
+ * fingerprint.json alone: bare's, since One bundles and links like bare.
+ */
+export const oneFingerprint = bareFingerprint;
 
 export interface OneAdapterConfig extends BuildAdapterConfig {
   /**

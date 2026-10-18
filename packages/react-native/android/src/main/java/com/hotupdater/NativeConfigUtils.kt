@@ -6,7 +6,6 @@ import android.os.Build
 
 object NativeConfigUtils {
     const val CHANNEL_META_DATA_KEY = "com.hotupdater.CHANNEL"
-    const val FINGERPRINT_HASH_META_DATA_KEY = "com.hotupdater.FINGERPRINT_HASH"
     const val PUBLIC_KEY_META_DATA_KEY = "com.hotupdater.PUBLIC_KEY"
 
     fun getString(
@@ -17,7 +16,6 @@ object NativeConfigUtils {
         // priority over manifest metadata (see HotUpdaterConfig).
         val override =
             when (metaDataKey) {
-                FINGERPRINT_HASH_META_DATA_KEY -> HotUpdaterConfig.fingerprintHash
                 PUBLIC_KEY_META_DATA_KEY -> HotUpdaterConfig.publicKey
                 CHANNEL_META_DATA_KEY -> HotUpdaterConfig.channel
                 else -> null

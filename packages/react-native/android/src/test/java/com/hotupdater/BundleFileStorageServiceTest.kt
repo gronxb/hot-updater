@@ -2989,6 +2989,8 @@ class BundleFileStorageServiceTest {
             preferences = preferences,
             isolationKey = isolationKey,
             defaultChannelProvider = { "production" },
+            // Not the fingerprint the test app's build embedded.
+            fingerprintHashProvider = { null },
             publicKeyProvider = { publicKey ?: SignatureVerifier.getPublicKeyFromConfig(ContextWrapper(null)) },
             fallbackBundleURL = fallbackBundleURL,
             builtInAssetResolver = builtInAssetResolver,

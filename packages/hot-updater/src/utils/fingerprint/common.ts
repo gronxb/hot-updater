@@ -55,9 +55,50 @@ export const ensureFingerprintConfig = async (
       config.fingerprint.extraSources,
       nativeExtraSources,
     ),
+    adapter: buildAdapter.name,
     provider: buildAdapter.nativeBuild?.fingerprint,
   };
 };
+
+/**
+ * What fingerprint.json records so a native build can compute the fingerprint
+ * without loading hot-updater.config.ts, whose storage and database need
+ * deploy secrets a build machine may not have: the build adapter and the
+ * fingerprint settings it receives.
+ */
+export interface FingerprintInputs {
+  adapter: string;
+  extraSources?: FingerprintExtraSources;
+  ignorePaths?: string[];
+  nativeVersion?: string | number;
+}
+
+export const getFingerprintInputs = (
+  options: Pick<
+    FingerprintOptions,
+    "adapter" | "provider" | "extraSources" | "ignorePaths" | "nativeVersion"
+  >,
+): FingerprintInputs => ({
+  // An adapter without its own fingerprint is fingerprinted by
+  // `@expo/fingerprint`, which the native build computes as for Expo.
+  adapter: options.provider ? (options.adapter ?? "unknown") : "expo",
+  ...(options.extraSources === undefined
+    ? {}
+    : { extraSources: options.extraSources }),
+  ...(options.ignorePaths === undefined
+    ? {}
+    : { ignorePaths: options.ignorePaths }),
+  ...(options.nativeVersion === undefined
+    ? {}
+    : { nativeVersion: options.nativeVersion }),
+});
+
+/** fingerprint.json: each platform's fingerprint and the inputs it came from. */
+export interface FingerprintFile {
+  ios: FingerprintResult;
+  android: FingerprintResult;
+  inputs?: FingerprintInputs;
+}
 
 /**
  * Utility function that takes an array of extensions and generates glob patterns to allow those extensions.
@@ -177,6 +218,8 @@ export type FingerprintOptions = {
   ignorePaths?: string[];
   nativeVersion?: string | number;
   debug?: boolean;
+  /** The build adapter's name, which fingerprint.json records. */
+  adapter?: string;
   /**
    * The build adapter's fingerprint. Without one, `@expo/fingerprint`
    * fingerprints the project.

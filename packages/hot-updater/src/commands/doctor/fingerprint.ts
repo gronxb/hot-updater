@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import {
   describeFingerprintEngineChange,
   ensureFingerprintConfig,
@@ -11,6 +14,7 @@ import {
   getFingerprintDependencyInstallCommand,
   isMissingFingerprintDependencyError,
 } from "../../utils/fingerprint/dependency";
+import { isNativeSdkWithoutBuildFingerprintError } from "../../utils/fingerprint/nativeSdk";
 import type { NativeCheckIssue } from "./issues";
 
 const FINGERPRINT_CREATE = "npx hot-updater fingerprint create";
@@ -29,6 +33,18 @@ const generationFailed = (error: unknown): NativeCheckIssue => {
       resolution: `Run \`${install}\`, then rerun doctor.`,
       fixability: "command",
       commands: [install],
+    };
+  }
+  if (isNativeSdkWithoutBuildFingerprintError(error)) {
+    return {
+      type: "error",
+      platform: "project",
+      code: "FINGERPRINT_GENERATION_FAILED",
+      message,
+      resolution:
+        "Update @hot-updater/react-native to the version of hot-updater, then rebuild the app and rerun doctor.",
+      fixability: "auto",
+      paths: ["package.json"],
     };
   }
   return {
@@ -133,3 +149,28 @@ export const checkFingerprintJson = async (
   }
   return issues;
 };
+
+/**
+ * FINGERPRINT_JSON_UNUSED when fingerprint.json is left in a project whose
+ * update strategy is not `fingerprint`: native builds embed its hash, and an
+ * app with a fingerprint hash reports the fingerprint strategy.
+ */
+export const checkUnusedFingerprintJson = (
+  cwd: string,
+  updateStrategy: string,
+): NativeCheckIssue[] =>
+  updateStrategy !== "fingerprint" &&
+  fs.existsSync(path.join(cwd, "fingerprint.json"))
+    ? [
+        {
+          type: "error",
+          platform: "project",
+          code: "FINGERPRINT_JSON_UNUSED",
+          message: `fingerprint.json exists, but updateStrategy is '${updateStrategy}'. Native builds embed its fingerprint hash, so the app reports the fingerprint strategy.`,
+          resolution:
+            "Delete fingerprint.json, then rebuild the app. To use the fingerprint strategy instead, set updateStrategy to 'fingerprint' in hot-updater.config.ts.",
+          fixability: "auto",
+          paths: ["fingerprint.json"],
+        },
+      ]
+    : [];

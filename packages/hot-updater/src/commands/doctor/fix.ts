@@ -1,3 +1,6 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+
 import {
   getBundleSigningPublicKey,
   getCwd,
@@ -80,12 +83,10 @@ const REPAIRS: readonly {
     repair: "fingerprint",
     codes: [
       "MISSING_FINGERPRINT_JSON",
-      "MISSING_FINGERPRINT_HASH",
-      "FINGERPRINT_HASH_MISMATCH",
       "FINGERPRINT_JSON_STALE",
       "FINGERPRINT_ENGINE_UNRECORDED",
     ],
-    writesNativeFiles: true,
+    writesNativeFiles: false,
     run: async (_issues, context, all) => {
       // It rewrites both platforms, so it would record a changed engine too.
       if (all.some(({ code }) => code === "FINGERPRINT_ENGINE_CHANGED")) {
@@ -93,15 +94,12 @@ const REPAIRS: readonly {
           skip: "The fingerprint engine changed, and recreating fingerprint.json would record its hashes. Resolve FINGERPRINT_ENGINE_CHANGED first.",
         };
       }
-      const { fingerprintJson, iosPaths, androidPaths } =
-        await syncFingerprintFiles(await context.fingerprints());
+      const { fingerprintJson } = await syncFingerprintFiles(
+        await context.fingerprints(),
+      );
       return {
-        wrote: [
-          ...(fingerprintJson ? ["fingerprint.json"] : []),
-          ...iosPaths,
-          ...androidPaths,
-        ],
-        native: iosPaths.length + androidPaths.length > 0,
+        wrote: fingerprintJson ? ["fingerprint.json"] : [],
+        native: false,
       };
     },
   },
@@ -113,6 +111,16 @@ const REPAIRS: readonly {
     writesNativeFiles: false,
     reportOnly:
       "doctor --fix never rewrites fingerprint.json for a changed fingerprint engine. The issue has two remedies, and recording the new engine's hash stops updates to every app already built with the previous one. Go back to the engine fingerprint.json records, or run `npx hot-updater fingerprint create` and rebuild the apps.",
+  },
+  {
+    // The fingerprint.json an appVersion project's builds would still embed.
+    repair: "unused-fingerprint",
+    codes: ["FINGERPRINT_JSON_UNUSED"],
+    writesNativeFiles: false,
+    run: async (_issues, context) => {
+      await fs.rm(path.join(context.cwd, "fingerprint.json"), { force: true });
+      return { wrote: ["fingerprint.json"], native: true };
+    },
   },
   {
     // What `keys export-public --yes` writes.

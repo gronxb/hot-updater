@@ -163,7 +163,9 @@ internal class HotUpdaterInstanceEnvironment private constructor(
         if (isMain) {
             if (mainValues != null) mainValues.fingerprintHash else HotUpdaterImpl.getFingerprintHash(context)
         } else {
-            fingerprintHash ?: NativeConfigUtils.getManifestString(context, NativeConfigUtils.FINGERPRINT_HASH_META_DATA_KEY)
+            // Every instance's bundle comes from the project the build
+            // fingerprinted.
+            fingerprintHash ?: HotUpdaterConfig.buildFingerprintHash
         }
 
     /** The PEM key bundles must be signed with, or null when signing is off. */

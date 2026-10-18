@@ -1,3 +1,7 @@
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import path from "node:path";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -6,7 +10,10 @@ import {
   getFingerprintDiff,
 } from "../../utils/fingerprint";
 import { MissingFingerprintDependencyError } from "../../utils/fingerprint/dependency";
-import { checkFingerprintJson } from "./fingerprint";
+import {
+  checkFingerprintJson,
+  checkUnusedFingerprintJson,
+} from "./fingerprint";
 
 vi.mock("../../utils/fingerprint", async (importOriginal) => ({
   ...(await importOriginal<typeof import("../../utils/fingerprint")>()),
@@ -257,5 +264,27 @@ describe("checkFingerprintJson", () => {
         commands: [expect.stringContaining("@expo/fingerprint")],
       },
     ]);
+  });
+});
+
+describe("checkUnusedFingerprintJson", () => {
+  it("reports a fingerprint.json only a non-fingerprint strategy leaves", async () => {
+    const cwd = await mkdtemp(path.join(tmpdir(), "hot-updater-unused-"));
+    try {
+      expect(checkUnusedFingerprintJson(cwd, "appVersion")).toEqual([]);
+
+      await writeFile(path.join(cwd, "fingerprint.json"), "{}");
+      expect(checkUnusedFingerprintJson(cwd, "fingerprint")).toEqual([]);
+      expect(checkUnusedFingerprintJson(cwd, "appVersion")).toMatchObject([
+        {
+          platform: "project",
+          code: "FINGERPRINT_JSON_UNUSED",
+          fixability: "auto",
+          paths: ["fingerprint.json"],
+        },
+      ]);
+    } finally {
+      await rm(cwd, { recursive: true, force: true });
+    }
   });
 });

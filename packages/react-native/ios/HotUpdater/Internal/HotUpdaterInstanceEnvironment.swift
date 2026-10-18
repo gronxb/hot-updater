@@ -90,22 +90,30 @@ struct HotUpdaterInstanceEnvironment {
         if let mainSnapshot {
             return mainSnapshot
         }
-        return Self.resolveMain(overrides: config.overrides, bundle: config.bundle)
+        return Self.resolveMain(
+            overrides: config.overrides,
+            bundle: config.bundle,
+            buildFingerprintHash: config.buildFingerprintHash
+        )
     }
 
     /// How main resolves its values: `overrides`, then `bundle`'s Info.plist,
-    /// then the app's, then the default channel.
-    static func resolveMain(overrides: HotUpdaterConfig.Overrides, bundle: Bundle) -> MainValues {
-        let plistFingerprintHash = HotUpdaterConfig.infoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH", bundle: bundle)
-        return MainValues(
+    /// then the app's, then the default channel. The fingerprint comes from
+    /// `overrides`, then the build.
+    static func resolveMain(
+        overrides: HotUpdaterConfig.Overrides,
+        bundle: Bundle,
+        buildFingerprintHash: String?
+    ) -> MainValues {
+        MainValues(
             defaultChannel: optionValue(overrides.channel)
                 ?? HotUpdaterConfig.infoValue(forKey: "HOT_UPDATER_CHANNEL", bundle: bundle)
                 ?? defaultChannel,
-            fingerprintHash: optionValue(overrides.fingerprintHash) ?? plistFingerprintHash,
+            fingerprintHash: optionValue(overrides.fingerprintHash) ?? buildFingerprintHash,
             // Main's isolation key and update strategy have always taken an
             // empty programmatic fingerprint as "none" instead of reading
-            // Info.plist.
-            isolationFingerprintHash: optionValue(overrides.fingerprintHash ?? plistFingerprintHash),
+            // the build's.
+            isolationFingerprintHash: optionValue(overrides.fingerprintHash ?? buildFingerprintHash),
             publicKey: optionValue(overrides.publicKey)
                 ?? HotUpdaterConfig.infoValue(forKey: "HOT_UPDATER_PUBLIC_KEY", bundle: bundle),
             isolationKeyOverride: optionValue(overrides.isolationKey)
@@ -264,7 +272,9 @@ struct HotUpdaterInstanceEnvironment {
 
     func fingerprintHash() -> String? {
         guard isMain else {
-            return options.fingerprintHash ?? namedInfoValue(forKey: "HOT_UPDATER_FINGERPRINT_HASH")
+            // Every instance's bundle comes from the project the build
+            // fingerprinted.
+            return options.fingerprintHash ?? config.buildFingerprintHash
         }
         return mainValues().fingerprintHash
     }
@@ -404,7 +414,8 @@ final class HotUpdaterMainBundle {
                     channel: channel ?? created.overrides.channel,
                     isolationKey: created.overrides.isolationKey
                 ),
-                bundle: bundle
+                bundle: bundle,
+                buildFingerprintHash: config.buildFingerprintHash
             )
             try Self.check(proposed.defaultChannel, against: created.values.defaultChannel, field: "channel")
             try Self.check(
@@ -450,7 +461,11 @@ final class HotUpdaterMainBundle {
         defer { lock.unlock() }
         let overrides = config.overrides
         let bundle = config.bundle
-        let values = HotUpdaterInstanceEnvironment.resolveMain(overrides: overrides, bundle: bundle)
+        let values = HotUpdaterInstanceEnvironment.resolveMain(
+            overrides: overrides,
+            bundle: bundle,
+            buildFingerprintHash: config.buildFingerprintHash
+        )
         if created == nil {
             created = (overrides, bundle, values)
             if self.bundle == nil {

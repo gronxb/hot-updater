@@ -38,8 +38,10 @@ jobs:
         working-directory: examples/v0.76.1-new-arch
         run: bundle install
 
+      # A Release build runs `hot-updater fingerprint hash`, which computes
+      # the example's fingerprint with the bare adapter.
       - name: Library Build
-        run: pnpm nx run @hot-updater/react-native:build
+        run: pnpm nx run-many -t build -p @hot-updater/react-native hot-updater @hot-updater/bare
 
       - name: Swift Tests
         run: pnpm test:swift
@@ -76,8 +78,10 @@ jobs:
         working-directory: examples/v0.74.1
         run: bundle install
 
+      # A Release build runs `hot-updater fingerprint hash`, which computes
+      # the example's fingerprint with the bare adapter.
       - name: Library Build
-        run: pnpm nx run @hot-updater/react-native:build
+        run: pnpm nx run-many -t build -p @hot-updater/react-native hot-updater @hot-updater/bare
 
       - name: Swift Tests
         run: pnpm test:swift
