@@ -108,6 +108,26 @@ export const bundle_totals = sqliteTable("bundle_totals", {
   primaryKey({ columns: [table["platform_key"], table["_shard"]] }),
 ]);
 
+export const native_builds = sqliteTable("native_builds", {
+  "id": column("TEXT")("id").notNull(),
+  "scope_key": column("TEXT")("scope_key").notNull(),
+  "platform": column("TEXT")("platform").notNull(),
+  "channel_id": column("TEXT")("channel_id").notNull(),
+  "fingerprint_hash": column("TEXT")("fingerprint_hash"),
+  "app_version": column("TEXT")("app_version"),
+  "min_bundle_id": column("TEXT")("min_bundle_id").notNull(),
+  "artifact_kind": column("TEXT")("artifact_kind").notNull(),
+  "artifact_storage_uri": column("TEXT")("artifact_storage_uri").notNull(),
+  "byte_size": column("INTEGER")("byte_size").notNull(),
+  "git_commit_hash": column("TEXT")("git_commit_hash"),
+  "created_at_ms": column("INTEGER")("created_at_ms").notNull(),
+  "_v": column("INTEGER")("_v").notNull().default(0),
+}, (table) => [
+  primaryKey({ columns: [table["id"]] }),
+  index("native_builds_byScope").on(table["scope_key"], table["id"]),
+  uniqueIndex("native_builds_min_bundle_id").on(table["min_bundle_id"]),
+]);
+
 export const bundle_events = sqliteTable("bundle_events", {
   "id": column("TEXT")("id").notNull(),
   "type": column("TEXT")("type").notNull(),

@@ -1,6 +1,7 @@
 import type {
   BundleRow,
   ChannelRow,
+  NativeBuildRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "@hot-updater/plugin-core";
@@ -16,8 +17,10 @@ import type { HttpTestClient } from "./httpTestClient";
 
 /**
  * Core's operations through admin API protocol 2 that the bundle and catalog
- * suites leave out: channels, deploy refusals, promotion, preflights, and a
- * bundle's patch children. Each test deletes what it wrote.
+ * suites leave out: channels, deploy refusals, promotion, preflights, a
+ * bundle's patch children, and the native build registry. Each test deletes
+ * what it wrote, except a native build, which the registry keeps: its IDs
+ * and channel are the test's own.
  */
 export const setupCoreAdminTestSuite = (options: {
   readonly getClient: () => HttpTestClient;
@@ -203,6 +206,75 @@ export const setupCoreAdminTestSuite = (options: {
         ((await adminJson(`/releases/${release.id}`)) as { data: ReleaseRow })
           .data,
       ).toEqual(release);
+    });
+
+    it("registers native builds, finds the newest of a scope, and keeps their built-in bundles", async () => {
+      const channel = `native-${namespace}`;
+      const registration = (
+        suffix: string,
+        id = bundleRow(`8${suffix}`).id,
+      ) => {
+        const builtIn = bundleRow(suffix);
+        return admin(
+          "/native-builds",
+          jsonRequest("POST", {
+            id,
+            platform: "ios",
+            channel,
+            fingerprintHash: "native-fingerprint",
+            appVersion: null,
+            minBundleId: builtIn.id,
+            gitCommitHash: null,
+            artifact: {
+              kind: "ipa",
+              storageUri: `storage://native-builds/ios/${suffix}/App.ipa`,
+              byteSize: 1_000,
+            },
+            embeddedBundle: {
+              manifestStorageUri: builtIn.manifest_storage_uri,
+              manifestFileHash: builtIn.manifest_file_hash,
+              assetBaseStorageUri: builtIn.asset_base_storage_uri,
+            },
+          }),
+        );
+      };
+      const register = async (suffix: string) => {
+        const response = await registration(suffix);
+        expect(response.status).toBe(201);
+        return ((await response.json()) as { data: NativeBuildRow }).data;
+      };
+      const scope = (query: string) =>
+        `/native-builds/latest?platform=ios&channel=${encodeURIComponent(channel)}&${query}`;
+      const before = (await adminJson("/bundles?limit=1&total=true")) as {
+        total: number;
+      };
+
+      await register("60");
+      const newest = await register("61");
+      // Another build of the same built-in bundle.
+      const again = await registration("61", bundleRow("862").id);
+      const refusedDelete = await admin(
+        "/bundles/delete",
+        jsonRequest("POST", { ids: [bundleRow("61").id] }),
+      );
+
+      expect(
+        (await adminJson(scope("fingerprintHash=native-fingerprint"))).data,
+      ).toEqual(newest);
+      expect((await adminJson(scope("appVersion=1.0.0"))).data).toBeNull();
+      expect(again.status).toBe(409);
+      expect(await again.json()).toMatchObject({ code: "NATIVE_BUILD_EXISTS" });
+      expect(refusedDelete.status).toBe(409);
+      await refusedDelete.text();
+      expect((await adminJson(`/bundles/${bundleRow("61").id}`)).data).toEqual({
+        bundle: { ...bundleRow("61"), metadata: {} },
+        patches: [],
+        childCount: 0,
+      });
+      const after = (await adminJson("/bundles?limit=1&total=true")) as {
+        total: number;
+      };
+      expect(after.total).toBe(before.total);
     });
 
     it("lists the patches that start from a bundle", async () => {
