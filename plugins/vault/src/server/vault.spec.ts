@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   VAULT_KEPT_VERSIONS,
   VAULT_MAX_VALUE_BYTES,
+  VaultConflictError,
   VaultInputError,
   VaultNotFoundError,
 } from "./api";
@@ -170,6 +171,40 @@ describe("vault", () => {
       id: secret.id,
     });
     await expect(locked.list()).resolves.toEqual([]);
+  });
+
+  it("writes only at the version a caller expects", async () => {
+    const { api } = start();
+    const add = (value: string) =>
+      api.put({ name: "n", kind: "generic", value, expectedVersion: 0 });
+
+    // Two adds under one name: one stores, the other refuses instead of
+    // becoming its next version.
+    const added = await Promise.allSettled([add("a"), add("b")]);
+    expect(added.map(({ status }) => status).sort()).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    expect(added.find(({ status }) => status === "rejected")).toMatchObject({
+      reason: expect.any(VaultConflictError),
+    });
+    const [secret] = await api.list();
+    expect(secret?.version).toBe(1);
+
+    await expect(
+      api.put({ name: "n", kind: "generic", value: "c", expectedVersion: 2 }),
+    ).rejects.toThrow('The secret "n" is at version 1 now, not 2.');
+    await expect(
+      api.put({ name: "n", kind: "generic", value: "c", expectedVersion: 1 }),
+    ).resolves.toMatchObject({ version: 2 });
+    await api.remove({ id: secret!.id });
+    await expect(
+      api.put({ name: "n", kind: "generic", value: "d", expectedVersion: 2 }),
+    ).rejects.toThrow('No secret is named "n" anymore.');
+    await expect(api.list()).resolves.toEqual([]);
+    await expect(
+      api.put({ name: "n", kind: "generic", value: "d", expectedVersion: -1 }),
+    ).rejects.toThrow(VaultInputError);
   });
 
   it("tells whether it is locked without reading the database", async () => {

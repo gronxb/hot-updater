@@ -137,13 +137,21 @@ export interface VaultApi {
   /**
    * Stores `value` as the next version of the secret `name`, creating it,
    * or bringing back a removed one, as needed. `metadata` replaces the
-   * secret's when given. Throws `VaultLockedError` without a master key.
+   * secret's when given. Throws `VaultLockedError` without a master key,
+   * and `VaultConflictError` when `expectedVersion` no longer holds.
    */
   put(input: {
     readonly name: string;
     readonly kind: VaultSecretKind;
     readonly value: unknown;
     readonly metadata?: Readonly<Record<string, unknown>>;
+    /**
+     * The version the caller saw, checked in the write's transaction: 0 for
+     * a name no secret has, so adding never replaces one, or a secret's
+     * current version, so an overwrite never replaces a newer one or brings
+     * back a removed one.
+     */
+    readonly expectedVersion?: number;
   }): Promise<VaultSecret>;
   /** Removes a secret and deletes its values; null when there is none. */
   remove(input: { readonly id: string }): Promise<VaultSecret | null>;
@@ -198,6 +206,11 @@ export interface VaultApi {
 /** An argument the vault refuses, such as an unknown kind. */
 export class VaultInputError extends TypeError {
   override readonly name = "VaultInputError";
+}
+
+/** A secret is no longer at the version a write expected. */
+export class VaultConflictError extends Error {
+  override readonly name = "VaultConflictError";
 }
 
 /** No secret has the id, or it was removed. */
@@ -523,10 +536,27 @@ export const createVaultApi = ({
     readonly plaintext: Uint8Array<ArrayBuffer>;
     readonly metadata: Readonly<Record<string, DatabaseJson>> | undefined;
     readonly key: VaultMasterKey;
+    readonly expectedVersion: number | undefined;
   }) =>
     db.transaction(async (tx) => {
       const at = now();
       const existing = await tx.findOne("secrets", { name: input.name });
+      const current =
+        existing !== null && existing.deleted_at_ms === null
+          ? existing.current_version
+          : 0;
+      if (
+        input.expectedVersion !== undefined &&
+        input.expectedVersion !== current
+      ) {
+        throw new VaultConflictError(
+          input.expectedVersion === 0
+            ? `A secret is already named "${input.name}".`
+            : current === 0
+              ? `No secret is named "${input.name}" anymore.`
+              : `The secret "${input.name}" is at version ${current} now, not ${input.expectedVersion}.`,
+        );
+      }
       if (
         existing !== null &&
         existing.deleted_at_ms === null &&
@@ -616,8 +646,17 @@ export const createVaultApi = ({
       return Object.freeze(secrets);
     },
 
-    async put({ name, kind, value, metadata }) {
+    async put({ name, kind, value, metadata, expectedVersion }) {
+      if (
+        expectedVersion !== undefined &&
+        (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0)
+      ) {
+        throw new VaultInputError(
+          "A put's expectedVersion is 0 or a secret's version.",
+        );
+      }
       const input = {
+        expectedVersion,
         name: normalizeName(name),
         kind: normalizeKind(kind),
         plaintext: encodeValue(value),

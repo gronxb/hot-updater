@@ -269,6 +269,23 @@ describe("SecretsCard", () => {
     ).toBe(true);
   });
 
+  it("refuses a file too large for a secret without saving it", async () => {
+    render(<SecretsCard secrets={loaded([])} status={unlocked} />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Add secret" })[0]!);
+    fireEvent.change(screen.getByLabelText("Private key (.p8)"), {
+      target: { files: [new File([new Uint8Array(50_000)], "AuthKey_X.p8")] },
+    });
+
+    expect(
+      await screen.findByText(
+        /This file is 48\.8 KB; a secret holds files up to 48\.0 KB/,
+      ),
+    ).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Save secret" }));
+    expect(putMutation.mutateAsync).not.toHaveBeenCalled();
+  });
+
   it("adds an App Store Connect key from its file, named after its kind", async () => {
     putMutation.mutateAsync.mockResolvedValue({
       name: "asc-api-key",
@@ -294,7 +311,7 @@ describe("SecretsCard", () => {
         name: "asc-api-key",
         kind: "asc-api-key",
         value: { p8: base64(P8), keyId: "ABC123DEFG", issuerId: "issuer" },
-        overwrite: false,
+        expectedVersion: 0,
       });
     });
     await waitFor(() => {
@@ -367,7 +384,7 @@ describe("SecretsCard", () => {
           keyAlias: "upload",
           keyPassword: "key",
         },
-        overwrite: true,
+        expectedVersion: 3,
       });
     });
     expect(toastSuccess).toHaveBeenCalledWith(

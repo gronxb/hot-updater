@@ -14,6 +14,7 @@ export {
   type VaultApi,
   type VaultAuditAction,
   type VaultAuditEntry,
+  VaultConflictError,
   VaultInputError,
   VaultNotFoundError,
   type VaultOptions,

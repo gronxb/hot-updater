@@ -97,7 +97,7 @@ describe("vault RPC", () => {
         name: "release-keystore",
         kind: "android-keystore",
         value: KEYSTORE,
-        overwrite: false,
+        expectedVersion: 0,
       },
     });
     const listed = await listVaultSecretsRpc();
@@ -127,9 +127,9 @@ describe("vault RPC", () => {
       value: { A: "1" },
     };
 
-    await putVaultSecretRpc({ data: { ...input, overwrite: false } });
+    await putVaultSecretRpc({ data: { ...input, expectedVersion: 0 } });
     const overwritten = await putVaultSecretRpc({
-      data: { ...input, value: { A: "2", B: "3" }, overwrite: true },
+      data: { ...input, value: { A: "2", B: "3" }, expectedVersion: 1 },
     });
 
     expect(overwritten).toMatchObject({
@@ -138,26 +138,30 @@ describe("vault RPC", () => {
     });
   });
 
-  it("never lets an add replace a secret, nor an overwrite bring back a deleted one", async () => {
+  it("never lets an add replace a secret, nor an overwrite replace a newer version or a deleted one", async () => {
     console_({ masterKey: MASTER_KEY });
     const input = { name: "deploy", kind: "generic", value: { A: "1" } };
     const saved = await putVaultSecretRpc({
-      data: { ...input, overwrite: false },
+      data: { ...input, expectedVersion: 0 },
     });
 
     await expect(
       putVaultSecretRpc({
-        data: { ...input, value: { A: "2" }, overwrite: false },
+        data: { ...input, value: { A: "2" }, expectedVersion: 0 },
       }),
-    ).rejects.toThrow("already named deploy");
+    ).rejects.toThrow('A secret is already named "deploy".');
+    await putVaultSecretRpc({ data: { ...input, expectedVersion: 1 } });
+    await expect(
+      putVaultSecretRpc({ data: { ...input, expectedVersion: 1 } }),
+    ).rejects.toThrow("is at version 2 now, not 1");
     await removeVaultSecretRpc({ data: { id: saved.id } });
     await expect(
-      putVaultSecretRpc({ data: { ...input, overwrite: true } }),
-    ).rejects.toThrow("No secret is named deploy anymore");
+      putVaultSecretRpc({ data: { ...input, expectedVersion: 2 } }),
+    ).rejects.toThrow('No secret is named "deploy" anymore.');
     await expect(listVaultSecretsRpc()).resolves.toEqual([]);
     await expect(
       putVaultSecretRpc({ data: { ...input } as never }),
-    ).rejects.toThrow("new or overwritten");
+    ).rejects.toThrow("expected version");
   });
 
   it("refuses a value that is not its kind's shape, naming the field", async () => {
@@ -169,13 +173,13 @@ describe("vault RPC", () => {
           name: "asc-api-key",
           kind: "asc-api-key",
           value: { p8: base64("not a key"), keyId: "A", issuerId: "B" },
-          overwrite: false,
+          expectedVersion: 0,
         },
       }),
     ).rejects.toThrow("has p8 as a .p8 private key");
     await expect(
       putVaultSecretRpc({
-        data: { name: "x", kind: "ssh-key", value: {}, overwrite: false },
+        data: { name: "x", kind: "ssh-key", value: {}, expectedVersion: 0 },
       }),
     ).rejects.toThrow("Unknown secret kind.");
     await expect(listVaultSecretsRpc()).resolves.toEqual([]);
@@ -190,7 +194,7 @@ describe("vault RPC", () => {
           name: "big",
           kind: "android-keystore",
           value: { ...KEYSTORE, keystore: btoa("x".repeat(64 * 1024)) },
-          overwrite: false,
+          expectedVersion: 0,
         },
       }),
     ).rejects.toThrow("holds up to 65536 bytes");
@@ -221,7 +225,7 @@ describe("vault RPC", () => {
           name: "generic",
           kind: "generic",
           value: { A: "2" },
-          overwrite: true,
+          expectedVersion: 1,
         },
       }),
     ).rejects.toThrow("The vault is locked");
@@ -251,7 +255,7 @@ describe("vault RPC", () => {
         name: "generic",
         kind: "generic",
         value: { A: "1" },
-        overwrite: false,
+        expectedVersion: 0,
       },
     });
 

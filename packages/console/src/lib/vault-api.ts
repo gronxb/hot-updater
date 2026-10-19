@@ -54,7 +54,7 @@ export const usePutVaultSecretMutation = () => {
       readonly name: string;
       readonly kind: VaultSecretKind;
       readonly value: unknown;
-      readonly overwrite: boolean;
+      readonly expectedVersion: number;
     }) => putVaultSecretRpc({ data: input }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: vaultQueryKeys.secrets });

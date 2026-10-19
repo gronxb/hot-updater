@@ -49,6 +49,12 @@ import {
 const inSentence = (label: string) =>
   /^[A-Z][a-z]/u.test(label) ? label[0]!.toLowerCase() + label.slice(1) : label;
 
+/**
+ * The largest file a secret can hold: base64 grows bytes by a third, so a
+ * larger file can't fit the value limit and isn't read at all.
+ */
+const MAX_FILE_BYTES = Math.floor((VAULT_VALUE_LIMIT_BYTES * 3) / 4);
+
 const formatBytes = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
 
@@ -191,11 +197,15 @@ function SecretForm({
     file: File | undefined,
   ) => {
     if (file === undefined) return;
-    const base64 = await fileToBase64(file);
     setFiles((current) => ({
       ...current,
       [field.key]: { name: file.name, size: file.size },
     }));
+    if (file.size > MAX_FILE_BYTES) {
+      setFields((current) => ({ ...current, [field.key]: "" }));
+      return;
+    }
+    const base64 = await fileToBase64(file);
     setFields((current) => {
       const keyId = ascKeyIdFromFileName(file.name);
       return {
@@ -218,7 +228,7 @@ function SecretForm({
         name: secretName,
         kind,
         value,
-        overwrite: secret !== undefined,
+        expectedVersion: secret?.version ?? 0,
       });
       toast.success(
         secret === undefined
@@ -313,7 +323,11 @@ function SecretForm({
             />
           ) : (
             kindUi.fields.map((field) => {
-              const error = shown(errors.fields[field.key]);
+              const file = files[field.key];
+              const error =
+                file !== undefined && file.size > MAX_FILE_BYTES
+                  ? `This file is ${formatBytes(file.size)}; a secret holds files up to ${formatBytes(MAX_FILE_BYTES)}.`
+                  : shown(errors.fields[field.key]);
               const inputId = `${id}-${field.key}`;
               return (
                 <Field data-invalid={error ? true : undefined} key={field.key}>
