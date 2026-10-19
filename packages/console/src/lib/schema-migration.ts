@@ -35,10 +35,21 @@ const compareVersions = (left: string, right: string): number => {
   return 0;
 };
 
-/** Whether a setting is one a migration moves forward. */
-const migrates = ({ key, expected, found }: SchemaSetting) =>
+/** The brand Hot Updater's own plugin factories set, read as the server reads it. */
+const OFFICIAL = Symbol.for("@hot-updater/server/official-plugin");
+
+/**
+ * Whether `doctor --fix` moves a setting forward: a missing one, or an older
+ * version of core's or of one of Hot Updater's own plugins. Another plugin's
+ * changed tables need its own migration.
+ */
+const migrates = (
+  { key, expected, found }: SchemaSetting,
+  official: ReadonlySet<string>,
+) =>
   found === null ||
-  (key !== "schema.engine" && compareVersions(found, expected) < 0);
+  ((key === "schema.core" || official.has(key)) &&
+    compareVersions(found, expected) < 0);
 
 /**
  * The fence's refusal in `error`, recognized by name: plugin-core may be
@@ -46,6 +57,8 @@ const migrates = ({ key, expected, found }: SchemaSetting) =>
  */
 export const schemaMigrationOf = (
   error: unknown,
+  /** The plugins the console's config lists. */
+  plugins: readonly unknown[] = [],
 ): SchemaMigrationStatus | null => {
   if (
     !(error instanceof Error) ||
@@ -53,9 +66,18 @@ export const schemaMigrationOf = (
   ) {
     return null;
   }
+  const official = new Set(
+    plugins.flatMap((plugin) =>
+      typeof plugin === "object" &&
+      plugin !== null &&
+      Reflect.get(plugin, OFFICIAL) === true
+        ? [`schema.${String(Reflect.get(plugin, "id"))}`]
+        : [],
+    ),
+  );
   const {
     settings = [],
-    plugins = [],
+    plugins: refused = [],
     currentVersion,
   } = error as Error & {
     readonly settings?: readonly SchemaSetting[];
@@ -70,10 +92,10 @@ export const schemaMigrationOf = (
       expected,
       found,
     })),
-    plugins: [...plugins],
+    plugins: [...refused],
     migratable:
       currentVersion === undefined &&
       settings.length > 0 &&
-      settings.every(migrates),
+      settings.every((setting) => migrates(setting, official)),
   };
 };

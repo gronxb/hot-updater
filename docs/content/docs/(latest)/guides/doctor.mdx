@@ -358,6 +358,14 @@ Upgrade the CLI and the `@hot-updater` packages instead. A database Hot
 Updater v1 cannot migrate in place, such as a v0 database, is
 `SCHEMA_NOT_MIGRATABLE`. Both are `blocked`.
 
+A plugin of your own whose stored `schemaVersion` differs from the configured
+one, such as `v1` against `v2`, is `PLUGIN_SCHEMA_CHANGED`, also `blocked`:
+`--fix` creates missing tables and changes no existing one, so apply the
+plugin's own migration for its changed tables first, then record its version
+with `hot-updater db migrate` in the server's project. While any of these
+blocked issues stands, `--fix` runs no migration, since a migration writes
+every configured setting.
+
 ## Check Release Catalogs
 
 When `hot-updater.config.ts` sets `database`, doctor opens it once for the

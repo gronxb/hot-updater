@@ -223,6 +223,37 @@ describe("doctor's schema check", () => {
     expect(row?.["value"]).toBe("2");
   });
 
+  it("leaves a plugin whose tables changed to its own migration, whatever its version labels", async () => {
+    const labeled = definePlugin({
+      id: "labeled",
+      schemaVersion: "v2",
+      schema: {},
+      init: () => ({ api: {} }),
+    });
+    await migrateCoreSchema(adapter, "memory", [notes]);
+    await storeSetting("schema.labeled", "v1");
+    serverProject(database(), [notes, labeled] as never);
+
+    await expect(doctor({ fix: true })).resolves.toMatchObject({
+      success: false,
+      details: {
+        schema: {
+          issues: [
+            {
+              code: "PLUGIN_SCHEMA_CHANGED",
+              fixability: "blocked",
+              message:
+                'A plugin\'s tables changed since the database recorded them: schema.labeled is "v1", expected "v2".',
+            },
+          ],
+        },
+        fixes: [],
+      },
+    });
+    const [row] = await adapter.get(SETTINGS_TABLE, [["schema.labeled"]]);
+    expect(row?.["value"]).toBe("v1");
+  });
+
   it("runs a managed provider's migration files through its init", async () => {
     const migrateDatabase = vi.fn(async () => {
       // What the provider's migrations do on this database.

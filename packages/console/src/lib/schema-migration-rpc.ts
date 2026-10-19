@@ -16,10 +16,11 @@ export const getSchemaMigrationRpc = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
   .handler(async (): Promise<SchemaMigrationStatus | null> => {
     const { prepareConfig } = await import("./server/config.server");
+    const { config, core } = await prepareConfig();
     try {
-      await (await prepareConfig()).core.listChannels();
+      await core.listChannels();
       return null;
     } catch (error) {
-      return schemaMigrationOf(error);
+      return schemaMigrationOf(error, config.plugins);
     }
   });

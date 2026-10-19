@@ -45,7 +45,10 @@ afterEach(() => vi.resetAllMocks());
 
 describe("getSchemaMigrationRpc", () => {
   it("reports what the schema fence found, as plain data", async () => {
-    mocks.prepare.mockResolvedValue({ core: await consoleCore() });
+    mocks.prepare.mockResolvedValue({
+      config: { plugins: [insights()] },
+      core: await consoleCore(),
+    });
 
     await expect(getSchemaMigrationRpc()).resolves.toEqual({
       message: expect.stringContaining("npx hot-updater doctor --fix"),
@@ -57,11 +60,13 @@ describe("getSchemaMigrationRpc", () => {
 
   it("is null when the read passes or fails for another reason", async () => {
     mocks.prepare.mockResolvedValue({
+      config: { plugins: [] },
       core: { listChannels: async () => [] },
     });
     await expect(getSchemaMigrationRpc()).resolves.toBeNull();
 
     mocks.prepare.mockResolvedValue({
+      config: { plugins: [] },
       core: {
         listChannels: async () => {
           throw new Error("connect ECONNREFUSED");
@@ -90,6 +95,26 @@ describe("schemaMigrationOf", () => {
         }),
       ),
     ).toMatchObject({ migratable: true });
+    // An older official plugin migrates; another plugin's changed tables
+    // need its own migration.
+    expect(
+      schemaMigrationOf(
+        refusal({
+          settings: [
+            { key: "schema.insights", expected: "1.1.0", found: "1.0.0" },
+          ],
+        }),
+        [insights()],
+      ),
+    ).toMatchObject({ migratable: true });
+    expect(
+      schemaMigrationOf(
+        refusal({
+          settings: [{ key: "schema.notes", expected: "2", found: "1" }],
+        }),
+        [insights()],
+      ),
+    ).toMatchObject({ migratable: false });
     for (const settings of [
       [{ key: "schema.core", expected: "1.0.0", found: "1.2.0" }],
       [{ key: "schema.engine", expected: "1", found: "2" }],

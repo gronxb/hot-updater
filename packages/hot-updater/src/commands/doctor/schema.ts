@@ -52,6 +52,22 @@ const describeSetting = ({ key, expected, found }: SchemaSetting) =>
 const listed = (settings: readonly SchemaSetting[]) =>
   settings.map(describeSetting).join("; ");
 
+/** The brand Hot Updater's own plugin factories set, read as the server reads it. */
+const OFFICIAL = Symbol.for("@hot-updater/server/official-plugin");
+
+/**
+ * The settings whose versions Hot Updater orders and changes only with a
+ * migration of its own: the engine's, core's, and its own plugins'.
+ */
+const ownedSettingKeys = ({ plugins }: LoadedServer): ReadonlySet<string> =>
+  new Set([
+    "schema.engine",
+    "schema.core",
+    ...plugins.flatMap((plugin) =>
+      Reflect.get(plugin, OFFICIAL) === true ? [`schema.${plugin.id}`] : [],
+    ),
+  ]);
+
 /** How `--fix` migrates a database, by what its tooling offers. */
 const migrationPath = (server: LoadedServer) => {
   const { database } = server;
@@ -162,13 +178,14 @@ const schemaStatus = (
     });
     return { settings: [...settings], issues };
   }
-  // The engine's layout, or a version this CLI cannot compare, is never
-  // migrated in place.
+  const owned = ownedSettingKeys(server);
+  // The engine's layout, or a version of Hot Updater's own this CLI cannot
+  // compare, is never migrated in place.
   const engine = settings.filter(
     ({ key, expected, found }) =>
       found !== null &&
       (key === "schema.engine" ||
-        Number.isNaN(compareVersions(found, expected))),
+        (owned.has(key) && Number.isNaN(compareVersions(found, expected)))),
   );
   const newer = settings.filter(
     (setting) =>
@@ -176,8 +193,20 @@ const schemaStatus = (
       setting.found !== null &&
       compareVersions(setting.found, setting.expected) > 0,
   );
+  // Another plugin's tables changed: its own migration changes them, which
+  // a migration here, creating only what is missing, would skip.
+  const changed = settings.filter(
+    (setting) =>
+      !engine.includes(setting) &&
+      !newer.includes(setting) &&
+      setting.found !== null &&
+      !owned.has(setting.key),
+  );
   const pending = settings.filter(
-    (setting) => !engine.includes(setting) && !newer.includes(setting),
+    (setting) =>
+      !engine.includes(setting) &&
+      !newer.includes(setting) &&
+      !changed.includes(setting),
   );
   if (engine.length > 0) {
     issues.push({
@@ -199,8 +228,24 @@ const schemaStatus = (
       fixability: "blocked",
     });
   }
-  // A migration writes every setting, so it would move a blocked one back.
-  if (pending.length > 0 && engine.length === 0 && newer.length === 0) {
+  if (changed.length > 0) {
+    issues.push({
+      type: "error",
+      code: "PLUGIN_SCHEMA_CHANGED",
+      message: `A plugin's tables changed since the database recorded them: ${listed(changed)}.`,
+      resolution:
+        "Apply the plugin's own migration for its changed tables, then run `npx hot-updater db migrate` in the server's project to record its version. doctor --fix creates missing tables and changes no existing one.",
+      fixability: "blocked",
+    });
+  }
+  // A migration writes every setting, so it would move a blocked one back,
+  // or record a changed plugin before its own migration ran.
+  if (
+    pending.length > 0 &&
+    engine.length === 0 &&
+    newer.length === 0 &&
+    changed.length === 0
+  ) {
     issues.push({
       type: "error",
       code: "SCHEMA_MIGRATION_PENDING",
