@@ -118,7 +118,8 @@ Adding, removing, or reordering a config plugin, or changing its options,
 changes the fingerprint, except for Hot Updater's own plugin, whose channel
 and public key don't change what JavaScript can call. `fingerprint.json`
 records a plugin's options by hash, so credentials passed to a plugin stay out
-of it. A plugin installed from
+of it. An option given as a function counts by its source, not by values it
+captures, so bump `nativeVersion` when only those change. A plugin installed from
 the registry also counts by its version and patches, like a native package.
 The fingerprint reads the `plugins` list: a plugin that `app.config.js`
 applies itself, as in `withPlugins(config, [...])`, isn't declared there and

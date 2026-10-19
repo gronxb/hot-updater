@@ -292,7 +292,8 @@ const collectExpoSettings = (
     // they are recorded by hash.
     settings[`expo.plugin[${index}]:${identity.name}`] = JSON.stringify({
       props:
-        props === undefined || props === null
+        // An omitted argument, which Expo passes as `undefined`.
+        props === undefined
           ? null
           : `sha256:${createHash("sha256")
               .update(JSON.stringify(canonical(props)))

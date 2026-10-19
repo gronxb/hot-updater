@@ -110,6 +110,18 @@ describe("readExpoSettings", () => {
     expect(read({ a: 1, b: 3 })).not.toEqual(before);
   });
 
+  it("tells an omitted options argument from an explicit null", () => {
+    const read = (entry: unknown) =>
+      pluginSettings(project, { plugins: [entry] }, "ios");
+
+    expect(read(["expo-build-properties"])).toEqual(
+      read("expo-build-properties"),
+    );
+    expect(read(["expo-build-properties", null])).not.toEqual(
+      read("expo-build-properties"),
+    );
+  });
+
   it("tells apart options JSON would drop or flatten", () => {
     const read = (props: object) =>
       pluginSettings(
