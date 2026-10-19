@@ -61,16 +61,26 @@ beforeEach(() => {
 });
 
 const BUILD_XCCONFIG = "/tmp/build/HotUpdater.xcconfig";
+/** Each setting, for every SDK and for the device and simulator SDKs. */
+const settings = (values: Record<string, string>) =>
+  Object.entries(values)
+    .flatMap(([key, value]) =>
+      ["", "[sdk=iphoneos*]", "[sdk=iphonesimulator*]"].map(
+        (condition) => `${key}${condition} = ${value}\n`,
+      ),
+    )
+    .join("");
 // Clears a target's manual profile and identity, which Xcode would report as
 // conflicting with automatic signing.
-const AUTOMATIC_SIGNING = `CODE_SIGN_STYLE = Automatic
-PROVISIONING_PROFILE = 
-PROVISIONING_PROFILE[sdk=iphoneos*] = 
-PROVISIONING_PROFILE_SPECIFIER = 
-PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*] = 
-CODE_SIGN_IDENTITY = Apple Development
-CODE_SIGN_IDENTITY[sdk=iphoneos*] = Apple Development
-`;
+const AUTOMATIC_SIGNING = settings({
+  CODE_SIGN_STYLE: "Automatic",
+  PROVISIONING_PROFILE: "",
+  PROVISIONING_PROFILE_SPECIFIER: "",
+  CODE_SIGN_IDENTITY: "Apple Development",
+});
+const MIN_BUNDLE_ID_SETTINGS = settings({
+  HOT_UPDATER_MIN_BUNDLE_ID: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
+});
 
 describe("xcodebuild arguments", () => {
   it("archives with the MIN_BUNDLE_ID as a build setting and in the environment, and with the signing arguments", async () => {
@@ -92,7 +102,7 @@ describe("xcodebuild arguments", () => {
     expect(args[args.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
     expect(writeFile).toHaveBeenCalledWith(
       BUILD_XCCONFIG,
-      `HOT_UPDATER_MIN_BUNDLE_ID = ${MIN_BUNDLE_ID}\n${AUTOMATIC_SIGNING}`,
+      `${MIN_BUNDLE_ID_SETTINGS}${AUTOMATIC_SIGNING}`,
     );
   });
 
@@ -115,7 +125,7 @@ describe("xcodebuild arguments", () => {
     expect(args).toContain("-quiet");
     expect(writeFile).toHaveBeenCalledWith(
       BUILD_XCCONFIG,
-      `#include "/app/ios/Release.xcconfig"\n#include "/configs/Manual.xcconfig"\nHOT_UPDATER_MIN_BUNDLE_ID = ${MIN_BUNDLE_ID}\n${AUTOMATIC_SIGNING}`,
+      `#include "/app/ios/Release.xcconfig"\n#include "/configs/Manual.xcconfig"\n${MIN_BUNDLE_ID_SETTINGS}${AUTOMATIC_SIGNING}`,
     );
   });
 
@@ -135,7 +145,7 @@ describe("xcodebuild arguments", () => {
     // An xcconfig that sets HOT_UPDATER_MIN_BUNDLE_ID cannot replace it.
     expect(writeFile).toHaveBeenCalledWith(
       BUILD_XCCONFIG,
-      `#include "/app/ios/Release.xcconfig"\nHOT_UPDATER_MIN_BUNDLE_ID = ${MIN_BUNDLE_ID}\n`,
+      `#include "/app/ios/Release.xcconfig"\n${MIN_BUNDLE_ID_SETTINGS}`,
     );
   });
 
@@ -184,7 +194,7 @@ describe("xcodebuild arguments", () => {
     expect(args[args.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
     expect(writeFile).toHaveBeenCalledWith(
       BUILD_XCCONFIG,
-      `HOT_UPDATER_MIN_BUNDLE_ID = ${MIN_BUNDLE_ID}\n`,
+      `${MIN_BUNDLE_ID_SETTINGS}`,
     );
   });
 
@@ -207,7 +217,7 @@ describe("xcodebuild arguments", () => {
     expect(args[args.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
     expect(writeFile).toHaveBeenCalledWith(
       BUILD_XCCONFIG,
-      `#include "/app/ios/Manual.xcconfig"\nHOT_UPDATER_MIN_BUNDLE_ID = ${MIN_BUNDLE_ID}\n${AUTOMATIC_SIGNING}`,
+      `#include "/app/ios/Manual.xcconfig"\n${MIN_BUNDLE_ID_SETTINGS}${AUTOMATIC_SIGNING}`,
     );
   });
 });

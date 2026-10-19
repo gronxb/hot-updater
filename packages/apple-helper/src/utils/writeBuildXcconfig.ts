@@ -1,6 +1,8 @@
 import fs from "fs";
 import path from "path";
 
+const SDK_CONDITIONS = ["", "[sdk=iphoneos*]", "[sdk=iphonesimulator*]"];
+
 /**
  * Writes the xcconfig a build loads, which sets the CLI's build settings
  * over every other. xcodebuild ranks an `-xcconfig`'s settings above the
@@ -37,7 +39,11 @@ export const writeBuildXcconfig = async ({
     buildXcconfig,
     [
       ...included.map((file) => `#include "${path.resolve(sourceDir, file)}"`),
-      ...Object.entries(settings).map(([key, value]) => `${key} = ${value}`),
+      // A matching SDK condition outranks the unconditional setting, so
+      // each is set for the device and simulator SDKs too.
+      ...Object.entries(settings).flatMap(([key, value]) =>
+        SDK_CONDITIONS.map((condition) => `${key}${condition} = ${value}`),
+      ),
       "",
     ].join("\n"),
   );
@@ -46,17 +52,13 @@ export const writeBuildXcconfig = async ({
 
 /**
  * Automatic signing over a target set to manual signing, whose provisioning
- * profile and identity Xcode would otherwise report as conflicting. Projects
- * also set them for device SDKs only, as React Native's template does.
+ * profile and identity Xcode would otherwise report as conflicting.
  */
 const AUTOMATIC_SIGNING = {
   CODE_SIGN_STYLE: "Automatic",
   PROVISIONING_PROFILE: "",
-  "PROVISIONING_PROFILE[sdk=iphoneos*]": "",
   PROVISIONING_PROFILE_SPECIFIER: "",
-  "PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]": "",
   CODE_SIGN_IDENTITY: "Apple Development",
-  "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Development",
 };
 
 /**
