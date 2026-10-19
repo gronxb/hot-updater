@@ -21,6 +21,7 @@ import {
 import { platformConfigs } from "../utils/platform";
 import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
 import { runXcodebuildWithLogging } from "../utils/runXcodebuildWithLogging";
+import { writeAutomaticSigningXcconfig } from "../utils/xcodeSigning";
 
 export const buildXcodeProject = async ({
   sourceDir,
@@ -73,14 +74,23 @@ export const buildXcodeProject = async ({
     );
   }
 
+  const signing = authenticationArgs
+    ? await writeAutomaticSigningXcconfig({
+        directory: await createRandomTmpDir(),
+        sourceDir,
+        extraParams,
+      })
+    : undefined;
+
   const buildArgs = prepareBuildArgs({
     authenticationArgs,
+    signingXcconfig: signing?.xcconfig,
     minBundleId,
     configuration,
     derivedDataPath,
     deviceType,
     resolvedDestinations,
-    extraParams,
+    extraParams: signing?.extraParams ?? extraParams,
     platform,
     xcodeScheme,
     sourceDir,
@@ -134,8 +144,11 @@ const prepareBuildArgs = ({
   extraParams,
   minBundleId,
   authenticationArgs,
+  signingXcconfig,
 }: {
   authenticationArgs?: string[];
+  /** From `writeAutomaticSigningXcconfig`, when the build signs with a key. */
+  signingXcconfig?: string;
   configuration: string;
   derivedDataPath: string;
   deviceType: AppleDeviceType;
@@ -168,9 +181,11 @@ const prepareBuildArgs = ({
   ];
 
   if (authenticationArgs) {
-    // The key authenticates automatic signing, which a target set to
-    // manual signing would not use.
-    args.push(...authenticationArgs, "CODE_SIGN_STYLE=Automatic");
+    args.push(...authenticationArgs);
+  }
+
+  if (signingXcconfig) {
+    args.push("-xcconfig", signingXcconfig);
   }
 
   if (extraParams) {

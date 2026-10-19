@@ -1,4 +1,3 @@
-import fs from "fs";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
@@ -19,6 +18,7 @@ import {
 } from "../utils/parseXcodeProjectInfo";
 import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
 import { runXcodebuildWithLogging } from "../utils/runXcodebuildWithLogging";
+import { writeAutomaticSigningXcconfig } from "../utils/xcodeSigning";
 
 export const archiveXcodeProject = async ({
   sourceDir,
@@ -58,18 +58,14 @@ export const archiveXcodeProject = async ({
   const archiveName = `${xcodeProject.name.replace(".xcworkspace", "").replace(".xcodeproj", "")}.xcarchive`;
   const archivePath = path.join(tmpDir, archiveName);
 
-  // Settings an xcconfig sets outrank the ones the command line sets, so
-  // automatic signing goes in an xcconfig that includes the scheme's.
-  const signingXcconfig =
-    authenticationArgs && xcconfig
-      ? path.join(tmpDir, "HotUpdaterSigning.xcconfig")
-      : undefined;
-  if (signingXcconfig && xcconfig) {
-    await fs.promises.writeFile(
-      signingXcconfig,
-      `#include "${path.resolve(sourceDir, xcconfig)}"\nCODE_SIGN_STYLE = Automatic\n`,
-    );
-  }
+  const signing = authenticationArgs
+    ? await writeAutomaticSigningXcconfig({
+        directory: tmpDir,
+        sourceDir,
+        xcconfig,
+        extraParams,
+      })
+    : { xcconfig, extraParams };
 
   const archiveArgs = prepareArchiveArgs({
     authenticationArgs,
@@ -79,9 +75,9 @@ export const archiveXcodeProject = async ({
     sourceDir,
     xcodeProject,
     configuration,
-    extraParams,
+    extraParams: signing.extraParams,
     destination,
-    xcconfig: signingXcconfig ?? xcconfig,
+    xcconfig: signing.xcconfig,
     xcodeScheme,
   });
 
@@ -150,9 +146,7 @@ const prepareArchiveArgs = ({
   ];
 
   if (authenticationArgs) {
-    // The key authenticates automatic signing, which a target set to
-    // manual signing would not use.
-    args.push(...authenticationArgs, "CODE_SIGN_STYLE=Automatic");
+    args.push(...authenticationArgs);
   }
 
   if (xcconfig) {

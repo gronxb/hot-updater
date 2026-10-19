@@ -53,9 +53,14 @@ const AUTHENTICATION_ARGS = [
 const xcodebuildCall = () =>
   vi.mocked(runXcodebuildWithLogging).mock.calls[0]![0];
 
+const writeFile = vi.spyOn(fs.promises, "writeFile");
+
 beforeEach(() => {
   vi.mocked(runXcodebuildWithLogging).mockClear();
+  writeFile.mockReset().mockResolvedValue(undefined);
 });
+
+const SIGNING_XCCONFIG = "/tmp/build/HotUpdaterSigning.xcconfig";
 
 describe("xcodebuild arguments", () => {
   it("archives with the MIN_BUNDLE_ID as a build setting and in the environment, and with the signing arguments", async () => {
@@ -74,33 +79,34 @@ describe("xcodebuild arguments", () => {
     expect(env).toEqual({ HOT_UPDATER_MIN_BUNDLE_ID: MIN_BUNDLE_ID });
     expect(args.join(" ")).toContain(AUTHENTICATION_ARGS.join(" "));
     // The key signs a target set to manual signing automatically too.
-    expect(args).toContain("CODE_SIGN_STYLE=Automatic");
+    expect(args[args.indexOf("-xcconfig") + 1]).toBe(SIGNING_XCCONFIG);
+    expect(writeFile).toHaveBeenCalledWith(
+      SIGNING_XCCONFIG,
+      "CODE_SIGN_STYLE = Automatic\n",
+    );
   });
 
-  it("sets automatic signing over the scheme's xcconfig, which outranks the command line", async () => {
-    const writeFile = vi
-      .spyOn(fs.promises, "writeFile")
-      .mockResolvedValue(undefined);
-
+  it("sets automatic signing over the scheme's xcconfig and the ones in extraParams, which outrank the command line", async () => {
     await archiveXcodeProject({
       sourceDir: "/app/ios",
       platform: "ios",
       installPods: false,
       xcodeScheme: "App",
       xcconfig: "Release.xcconfig",
+      extraParams: ["-quiet", "-xcconfig", "/configs/Manual.xcconfig"],
       logPrefix: "ios-release-build-archive",
       minBundleId: MIN_BUNDLE_ID,
       authenticationArgs: AUTHENTICATION_ARGS,
     });
 
     const { args } = xcodebuildCall();
-    const xcconfig = args[args.indexOf("-xcconfig") + 1];
-    expect(xcconfig).toBe("/tmp/build/HotUpdaterSigning.xcconfig");
+    expect(args.filter((arg) => arg === "-xcconfig")).toHaveLength(1);
+    expect(args[args.indexOf("-xcconfig") + 1]).toBe(SIGNING_XCCONFIG);
+    expect(args).toContain("-quiet");
     expect(writeFile).toHaveBeenCalledWith(
-      "/tmp/build/HotUpdaterSigning.xcconfig",
-      '#include "/app/ios/Release.xcconfig"\nCODE_SIGN_STYLE = Automatic\n',
+      SIGNING_XCCONFIG,
+      '#include "/app/ios/Release.xcconfig"\n#include "/configs/Manual.xcconfig"\nCODE_SIGN_STYLE = Automatic\n',
     );
-    writeFile.mockRestore();
   });
 
   it("passes the scheme's xcconfig as is when it signs without an App Store Connect API key", async () => {
@@ -141,7 +147,7 @@ describe("xcodebuild arguments", () => {
       "/tmp/ExportOptions.plist",
     ]);
     // -exportArchive takes no build settings.
-    expect(args).not.toContain("CODE_SIGN_STYLE=Automatic");
+    expect(args).not.toContain("-xcconfig");
   });
 
   it("builds without signing arguments unless it is given them", async () => {
@@ -160,6 +166,29 @@ describe("xcodebuild arguments", () => {
     expect(args).toContain(`HOT_UPDATER_MIN_BUNDLE_ID=${MIN_BUNDLE_ID}`);
     expect(env).toEqual({ HOT_UPDATER_MIN_BUNDLE_ID: MIN_BUNDLE_ID });
     expect(args).not.toContain("-allowProvisioningUpdates");
-    expect(args).not.toContain("CODE_SIGN_STYLE=Automatic");
+    expect(args).not.toContain("-xcconfig");
+  });
+
+  it("builds a device app that signs with a key with automatic signing over the xcconfigs in extraParams", async () => {
+    await buildXcodeProject({
+      sourceDir: "/app/ios",
+      platform: "ios",
+      xcodeScheme: "App",
+      configuration: "Release",
+      deviceType: "device",
+      logPrefix: "ios-release-run",
+      destination: [{ id: "device-udid" }],
+      extraParams: ["-xcconfig", "Manual.xcconfig"],
+      minBundleId: MIN_BUNDLE_ID,
+      authenticationArgs: AUTHENTICATION_ARGS,
+    });
+
+    const { args } = xcodebuildCall();
+    expect(args.filter((arg) => arg === "-xcconfig")).toHaveLength(1);
+    expect(args[args.indexOf("-xcconfig") + 1]).toBe(SIGNING_XCCONFIG);
+    expect(writeFile).toHaveBeenCalledWith(
+      SIGNING_XCCONFIG,
+      '#include "/app/ios/Manual.xcconfig"\nCODE_SIGN_STYLE = Automatic\n',
+    );
   });
 });
