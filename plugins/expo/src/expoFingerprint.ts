@@ -33,28 +33,41 @@ type AppConfig = {
 const HOT_UPDATER_PACKAGE = "@hot-updater/expo";
 
 /**
- * A plugin option as JSON that keeps every value apart: keys sorted, and the
- * values JSON drops or flattens (`undefined`, functions, dates, regular
- * expressions, big integers, maps, and sets) tagged with what they hold.
+ * A plugin option as JSON that keeps every value apart: each node is tagged
+ * with its type, so values JSON drops or flattens (`undefined`, functions,
+ * dates, regular expressions, big integers, maps, and sets) never meet an
+ * ordinary value, and object keys are sorted.
  */
 const canonical = (value: unknown): unknown => {
-  if (value === undefined) return { $undefined: true };
-  if (typeof value === "function") return { $function: value.toString() };
-  if (typeof value === "bigint") return { $bigint: value.toString() };
-  if (typeof value === "symbol") return { $symbol: value.toString() };
-  if (value === null || typeof value !== "object") return value;
-  if (Array.isArray(value)) return value.map(canonical);
-  if (value instanceof Date) return { $date: value.getTime() };
-  if (value instanceof RegExp) return { $regexp: value.toString() };
-  if (value instanceof Map) {
-    return { $map: [...value].map((entry) => entry.map(canonical)) };
+  if (value === null) return ["null"];
+  if (value === undefined) return ["undefined"];
+  switch (typeof value) {
+    case "string":
+      return ["string", value];
+    case "number":
+      return ["number", Object.is(value, -0) ? "-0" : String(value)];
+    case "boolean":
+      return ["boolean", value];
+    case "bigint":
+      return ["bigint", value.toString()];
+    case "symbol":
+      return ["symbol", value.toString()];
+    case "function":
+      return ["function", value.toString()];
   }
-  if (value instanceof Set) return { $set: [...value].map(canonical) };
-  return Object.fromEntries(
-    Object.entries(value)
+  if (Array.isArray(value)) return ["array", value.map(canonical)];
+  if (value instanceof Date) return ["date", value.getTime()];
+  if (value instanceof RegExp) return ["regexp", value.toString()];
+  if (value instanceof Map) {
+    return ["map", [...value].map((entry) => entry.map(canonical))];
+  }
+  if (value instanceof Set) return ["set", [...value].map(canonical)];
+  return [
+    "object",
+    Object.entries(value as object)
       .sort(([a], [b]) => (a < b ? -1 : 1))
       .map(([key, entry]) => [key, canonical(entry)]),
-  );
+  ];
 };
 
 /**

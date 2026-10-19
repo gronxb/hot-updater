@@ -120,6 +120,12 @@ describe("readExpoSettings", () => {
     const distinct = [
       {},
       { a: undefined },
+      { a: { $undefined: true } },
+      { a: ["undefined"] },
+      { a: null },
+      { a: "1" },
+      { a: 1 },
+      { a: Number.NaN },
       { a: () => 1 },
       { a: () => 2 },
       { a: new Date(0) },
