@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -247,8 +248,8 @@ const collectExpoSettings = (
   const settings: Record<string, string> = {};
   const packages = new Set<string>();
   const own = exp[platform];
-  const jsEngine = own?.jsEngine ?? exp.jsEngine;
-  if (jsEngine !== undefined) settings["expo.jsEngine"] = String(jsEngine);
+  // Expo builds with Hermes unless the app config says otherwise.
+  settings["expo.jsEngine"] = String(own?.jsEngine ?? exp.jsEngine ?? "hermes");
   const newArchEnabled = own?.newArchEnabled ?? exp.newArchEnabled;
   if (newArchEnabled !== undefined) {
     settings["expo.newArchEnabled"] = String(newArchEnabled);
@@ -260,9 +261,17 @@ const collectExpoSettings = (
     .filter(([plugin]) => !isHotUpdaterPlugin(cwd, plugin));
   plugins.forEach(([plugin, props], index) => {
     const identity = pluginIdentity(cwd, plugin);
-    settings[`expo.plugin[${index}]:${identity.name}`] = JSON.stringify(
-      sortKeys({ source: identity.source, props: props ?? null }),
-    );
+    // Options can hold credentials, and fingerprint.json is committed, so
+    // they are recorded by hash.
+    settings[`expo.plugin[${index}]:${identity.name}`] = JSON.stringify({
+      props:
+        props === undefined || props === null
+          ? null
+          : `sha256:${createHash("sha256")
+              .update(JSON.stringify(sortKeys(props)))
+              .digest("hex")}`,
+      source: identity.source,
+    });
     if (identity.package) packages.add(identity.package);
   });
   return { settings, packages: [...packages] };

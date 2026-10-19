@@ -53,6 +53,14 @@ afterEach(async () => {
 const load = (file: string) =>
   createRequire(path.join(project, "package.json"))(file) as Function;
 
+// The settings of the config plugins alone.
+const pluginSettings = (...args: Parameters<typeof readExpoSettings>) =>
+  Object.fromEntries(
+    Object.entries(readExpoSettings(...args)).filter(([key]) =>
+      key.startsWith("expo.plugin"),
+    ),
+  );
+
 describe("readExpoSettings", () => {
   it("reads the engine, the architecture, and the config plugins the app declares", () => {
     const settings = readExpoSettings(
@@ -70,23 +78,28 @@ describe("readExpoSettings", () => {
       "android",
     );
 
-    expect(settings).toEqual({
+    expect(
+      Object.fromEntries(
+        Object.entries(settings).map(([key, value]) => [
+          key,
+          key.startsWith("expo.plugin") ? JSON.parse(value) : value,
+        ]),
+      ),
+    ).toEqual({
       "expo.jsEngine": "jsc",
       "expo.newArchEnabled": "true",
-      "expo.plugin[0]:expo-build-properties": JSON.stringify({
-        props: { ios: { deploymentTarget: "15.1" } },
+      "expo.plugin[0]:expo-build-properties": {
+        // Options are recorded by hash, since they can hold credentials.
+        props: expect.stringMatching(/^sha256:[0-9a-f]{64}$/u),
         source: "expo-build-properties@0.13.2",
-      }),
-      "expo.plugin[1]:plugins/withLocal.js": JSON.stringify({
-        props: null,
-        source: "local",
-      }),
+      },
+      "expo.plugin[1]:plugins/withLocal.js": { props: null, source: "local" },
     });
   });
 
   it("changes with a plugin's options, not with their key order", () => {
     const read = (props: object) =>
-      readExpoSettings(
+      pluginSettings(
         project,
         { plugins: [["expo-build-properties", props]] },
         "ios",
@@ -99,7 +112,7 @@ describe("readExpoSettings", () => {
 
   it("counts a registry plugin by its version", async () => {
     const read = () =>
-      readExpoSettings(project, { plugins: ["expo-build-properties"] }, "ios");
+      pluginSettings(project, { plugins: ["expo-build-properties"] }, "ios");
     const before = read();
 
     await writePackage(
@@ -111,7 +124,7 @@ describe("readExpoSettings", () => {
 
   it("counts a local plugin by its name, not its code, like a bare app's native projects", async () => {
     const read = (plugins: unknown[]) =>
-      readExpoSettings(project, { plugins }, "ios");
+      pluginSettings(project, { plugins }, "ios");
     const before = read(["./plugins/withLocal"]);
 
     await fs.writeFile(
@@ -125,7 +138,7 @@ describe("readExpoSettings", () => {
 
   it("names a plugin the same however the app config refers to it", () => {
     const read = (plugin: unknown) =>
-      readExpoSettings(project, { plugins: [plugin] }, "ios");
+      pluginSettings(project, { plugins: [plugin] }, "ios");
     const local = read("./plugins/withLocal");
 
     expect(read("./plugins/withLocal.js")).toEqual(local);
@@ -152,7 +165,7 @@ describe("readExpoSettings", () => {
       path.join(project, "node_modules/expo-build-properties"),
     ) as unknown as { withNative: Function; withOther: Function };
     const read = (plugin: Function) =>
-      readExpoSettings(project, { plugins: [plugin] }, "ios");
+      pluginSettings(project, { plugins: [plugin] }, "ios");
 
     expect(read(withNative)).toEqual({
       "expo.plugin[0]:expo-build-properties/index.js#withNative":
@@ -171,7 +184,7 @@ describe("readExpoSettings", () => {
       "module.exports = require('expo-build-properties');",
     );
     const read = () =>
-      readExpoSettings(project, { plugins: [load("./plugins/barrel")] }, "ios");
+      pluginSettings(project, { plugins: [load("./plugins/barrel")] }, "ios");
 
     expect(read()).toEqual({
       "expo.plugin[0]:expo-build-properties/index.js": JSON.stringify({
@@ -196,7 +209,7 @@ describe("readExpoSettings", () => {
     });
 
     expect(
-      readExpoSettings(project, { plugins: ["native-plugin"] }, "ios"),
+      pluginSettings(project, { plugins: ["native-plugin"] }, "ios"),
     ).toEqual({
       "expo.plugin[0]:native-plugin": JSON.stringify({
         props: null,
@@ -222,7 +235,7 @@ describe("readExpoSettings", () => {
       );
 
       expect(
-        readExpoSettings(project, { plugins: ["@acme/plugin"] }, "ios"),
+        pluginSettings(project, { plugins: ["@acme/plugin"] }, "ios"),
       ).toEqual({
         "expo.plugin[0]:@acme/plugin": JSON.stringify({
           props: null,
@@ -237,19 +250,17 @@ describe("readExpoSettings", () => {
   it("names an inline plugin by its function name", () => {
     const withInline = (config: unknown) => config;
 
-    expect(readExpoSettings(project, { plugins: [withInline] }, "ios")).toEqual(
-      {
-        "expo.plugin[0]:withInline": JSON.stringify({
-          props: null,
-          source: "inline",
-        }),
-      },
-    );
+    expect(pluginSettings(project, { plugins: [withInline] }, "ios")).toEqual({
+      "expo.plugin[0]:withInline": JSON.stringify({
+        props: null,
+        source: "inline",
+      }),
+    });
   });
 
   it("numbers plugins without Hot Updater's own, so moving it changes nothing", () => {
     const read = (plugins: unknown[]) =>
-      readExpoSettings(project, { plugins }, "ios");
+      pluginSettings(project, { plugins }, "ios");
     const hotUpdater = ["@hot-updater/expo", { channel: "production" }];
 
     expect(read([hotUpdater, "expo-build-properties"])).toEqual(
@@ -258,7 +269,10 @@ describe("readExpoSettings", () => {
   });
 
   it("leaves out what the app config doesn't declare", () => {
-    expect(readExpoSettings(project, {}, "ios")).toEqual({});
+    // Expo builds with Hermes unless the app config says otherwise.
+    expect(readExpoSettings(project, {}, "ios")).toEqual({
+      "expo.jsEngine": "hermes",
+    });
   });
 });
 
