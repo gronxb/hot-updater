@@ -196,6 +196,16 @@ describe("createCredentialResolver", () => {
     );
   });
 
+  it("fails when an override path is not a file", async () => {
+    vi.stubEnv("HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH", directory);
+
+    await expect(
+      createCredentialResolver().resolve({ kind: "play-service-account" }),
+    ).rejects.toThrow(
+      "HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH does not point to a readable file.",
+    );
+  });
+
   it("rejects a service account that is not a JSON object", async () => {
     vi.stubEnv("HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON", "not json");
 

@@ -170,9 +170,14 @@ const readFileField = async (
   { name, value }: EnvValue,
 ) => {
   const filePath = path.resolve(value);
-  try {
-    await fs.access(filePath, fs.constants.R_OK);
-  } catch {
+  const isReadableFile = await fs
+    .stat(filePath)
+    .then(async (stats) => {
+      await fs.access(filePath, fs.constants.R_OK);
+      return stats.isFile();
+    })
+    .catch(() => false);
+  if (!isReadableFile) {
     throw new CredentialUnavailableError(
       kind,
       // The value is not echoed: it may be a credential set by mistake.
