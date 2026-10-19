@@ -7,7 +7,12 @@ import { describe, expect, it } from "vitest";
 
 import { kyselyAdapter } from "../../adapters/kysely";
 import { createHotUpdater } from "../../index";
-import { VAULT_KEPT_VERSIONS, vault, VaultLockedError } from "./index";
+import {
+  authorizeVaultToken,
+  VAULT_KEPT_VERSIONS,
+  vault,
+  VaultLockedError,
+} from "./index";
 
 const MASTER_KEY = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
 
@@ -50,6 +55,29 @@ describe("createHotUpdater with the vault() plugin", () => {
     await expect(
       hotUpdater.api.vault.put({ name: "n", kind: "generic", value: 1 }),
     ).rejects.toThrow(VaultLockedError);
+  });
+
+  it("issues, verifies, and revokes scoped tokens without a master key", async () => {
+    const hotUpdater = start();
+    const { token, metadata } = await hotUpdater.api.vault.issueToken({
+      name: "ci",
+      scope: { secrets: { kinds: ["bundle-signing-key"] }, actions: ["sign"] },
+    });
+
+    const verified = await hotUpdater.api.vault.verifyToken({ token });
+    expect(verified).toEqual({ ok: true, token: metadata });
+    expect(
+      verified.ok &&
+        authorizeVaultToken(verified.token, {
+          action: "sign",
+          secret: { name: "ota-key", kind: "bundle-signing-key" },
+        }),
+    ).toBe(true);
+    await hotUpdater.api.vault.revokeToken({ id: metadata.id });
+    await expect(hotUpdater.api.vault.verifyToken({ token })).resolves.toEqual({
+      ok: false,
+      reason: "revoked",
+    });
   });
 
   it("migrates its tables on PostgreSQL and keeps a value's last versions there", async () => {

@@ -5,15 +5,21 @@ import { markOfficial } from "./official";
 import { vaultSchema } from "./schema";
 
 export {
+  authorizeVaultToken,
   VAULT_KEPT_VERSIONS,
   VAULT_MAX_VALUE_BYTES,
   VAULT_SECRET_KINDS,
+  VAULT_TOKEN_ACTIONS,
   type VaultApi,
   VaultInputError,
   VaultNotFoundError,
   type VaultOptions,
   type VaultSecret,
   type VaultSecretKind,
+  type VaultToken,
+  type VaultTokenAction,
+  type VaultTokenScope,
+  type VaultTokenVerification,
 } from "./api";
 export {
   VAULT_MASTER_KEY_ENV,
@@ -24,10 +30,11 @@ export { vaultSchema, type VaultSchema } from "./schema";
 
 /**
  * Vault: signing and deploy credentials, stored in the database only as
- * AES-256-GCM ciphertext under data keys that the master key wraps. It adds
- * tables and `hotUpdater.api.vault`, and no routes: the Console serves the
- * vault and holds the master key, so a server or the CLI without it lists
- * secrets but cannot read them.
+ * AES-256-GCM ciphertext under data keys that the master key wraps, and the
+ * scoped tokens CI reaches them with. It adds tables and
+ * `hotUpdater.api.vault`, and no routes: the Console serves the vault and
+ * holds the master key, so a server or the CLI without it lists secrets and
+ * manages tokens but cannot read secrets.
  */
 export const vault = (options: VaultOptions = {}) => {
   const plugin = definePlugin({
