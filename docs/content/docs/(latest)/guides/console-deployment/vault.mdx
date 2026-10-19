@@ -55,7 +55,7 @@ base64:
 | `asc-api-key` | `{ p8, keyId, issuerId }`, the App Store Connect API key's `.p8` file and its ids |
 | `android-keystore` | `{ keystore, storePassword, keyAlias, keyPassword }` |
 | `play-service-account` | `{ serviceAccount }`, the service account's JSON key file |
-| `bundle-signing-key` | `{ privateKey }`, the RSA private key in PEM. The console signs bundles with it and never resolves it |
+| `bundle-signing-key` | `{ privateKey }`, the RSA private key in PEM, which the resolve route never returns |
 | `deploy-credentials` | Environment variable names and their values, such as `{ "HOT_UPDATER_S3_SECRET": "..." }` |
 | `generic` | Environment variable names and their values |
 
@@ -65,11 +65,10 @@ console shows of it.
 
 ## Issue vault tokens
 
-The **Tokens** tab issues, lists, and revokes vault tokens. A token's scope
-names the secrets it reaches, by name or by kind, and its actions: `read`
-returns values, and `sign` signs bundles with a bundle signing key in scope.
-It expires after 30 days, 90 days, a year, or never. Every user the console
-signs in can manage secrets and tokens.
+The **Tokens** tab issues, lists, and revokes vault tokens. A token the
+console issues reads the values of the secrets in its scope, named by secret
+or by kind, and expires after 30 days, 90 days, a year, or never. Every user
+the console signs in can manage secrets and tokens.
 
 The token shows once, with the two variables CI sets:
 

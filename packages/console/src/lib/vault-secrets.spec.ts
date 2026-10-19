@@ -4,7 +4,6 @@ import {
   parseVaultSecretValue,
   VAULT_MAX_VALUE_BYTES,
   VAULT_SECRET_KINDS,
-  VAULT_TOKEN_ACTIONS,
 } from "@hot-updater/server/plugins";
 import { describe, expect, it } from "vitest";
 
@@ -13,21 +12,19 @@ import {
   buildVaultValue,
   fileToBase64,
   VAULT_SECRET_KIND_IDS,
-  VAULT_TOKEN_ACTION_IDS,
   VAULT_VALUE_LIMIT_BYTES,
   vaultSecretKinds,
   vaultTokenState,
 } from "./vault-secrets";
 
 describe("vault secrets in the console", () => {
-  it("offers the vault's kinds, actions, and limit", () => {
+  it("offers the vault's kinds and limit", () => {
     expect([...VAULT_SECRET_KIND_IDS].sort()).toEqual(
       [...VAULT_SECRET_KINDS].sort(),
     );
     expect(Object.keys(vaultSecretKinds).sort()).toEqual(
       [...VAULT_SECRET_KINDS].sort(),
     );
-    expect(VAULT_TOKEN_ACTION_IDS).toEqual(VAULT_TOKEN_ACTIONS);
     expect(VAULT_VALUE_LIMIT_BYTES).toBe(VAULT_MAX_VALUE_BYTES);
   });
 

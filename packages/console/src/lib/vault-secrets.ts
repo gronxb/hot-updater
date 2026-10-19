@@ -2,7 +2,6 @@ import type {
   VaultSecretKind,
   VaultSecretValues,
   VaultToken,
-  VaultTokenAction,
 } from "@hot-updater/server/plugins";
 
 /**
@@ -20,11 +19,6 @@ export const VAULT_SECRET_KIND_IDS = [
 
 /** A value's limit in UTF-8 JSON bytes, as the vault enforces it. */
 export const VAULT_VALUE_LIMIT_BYTES = 64 * 1024;
-
-export const VAULT_TOKEN_ACTION_IDS = [
-  "read",
-  "sign",
-] as const satisfies readonly VaultTokenAction[];
 
 /** One input of a kind's form; a file is sent as its bytes in base64. */
 export interface VaultSecretField {
@@ -108,7 +102,7 @@ export const vaultSecretKinds: {
   "bundle-signing-key": {
     label: "Bundle signing key",
     description:
-      "Signs OTA bundles in the console, so the private key never reaches CI.",
+      "The private key OTA bundles are signed with. The vault never sends it to CI.",
     fields: [
       {
         key: "privateKey",

@@ -424,7 +424,7 @@ describe("TokensCard", () => {
       target: { value: " GitHub Actions " },
     });
     fireEvent.click(screen.getByRole("button", { name: "release-keystore" }));
-    fireEvent.click(screen.getByRole("button", { name: "Sign bundles" }));
+    expect(screen.queryByRole("button", { name: "Sign bundles" })).toBeNull();
     fireEvent.click(
       within(screen.getByRole("dialog")).getByRole("button", {
         name: "Issue token",
@@ -436,7 +436,7 @@ describe("TokensCard", () => {
       name: "GitHub Actions",
       scope: {
         secrets: { names: ["release-keystore"] },
-        actions: ["read", "sign"],
+        actions: ["read"],
       },
       expiresAtMs: expect.any(Number),
     });

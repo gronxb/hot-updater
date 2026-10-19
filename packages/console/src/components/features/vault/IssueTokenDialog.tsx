@@ -1,8 +1,4 @@
-import type {
-  VaultSecret,
-  VaultSecretKind,
-  VaultTokenAction,
-} from "@hot-updater/server/plugins";
+import type { VaultSecret, VaultSecretKind } from "@hot-updater/server/plugins";
 import {
   AlertTriangle,
   Check,
@@ -58,14 +54,6 @@ const EXPIRY_OPTIONS = {
 
 type Expiry = keyof typeof EXPIRY_OPTIONS;
 
-const ACTIONS: readonly {
-  readonly value: VaultTokenAction;
-  readonly label: string;
-}[] = [
-  { value: "read", label: "Read values" },
-  { value: "sign", label: "Sign bundles" },
-];
-
 /** A multi-select chip: checked and tinted while pressed, so the state never rests on shade alone. */
 function ScopeToggle({
   className,
@@ -103,8 +91,8 @@ const copy = async (text: string, what: string) => {
 };
 
 /**
- * Issues a vault token for CI: a name, the secrets it reaches by name or
- * kind, its actions, and an expiry. The plaintext token shows once.
+ * Issues a vault token for CI: a name, the secrets it reads by name or
+ * kind, and an expiry. The plaintext token shows once.
  */
 export function IssueTokenDialog({
   secrets,
@@ -156,7 +144,6 @@ function IssueTokenForm({
   const [name, setName] = useState("");
   const [names, setNames] = useState<string[]>([]);
   const [kinds, setKinds] = useState<VaultSecretKind[]>([]);
-  const [actions, setActions] = useState<VaultTokenAction[]>(["read"]);
   const [expiry, setExpiry] = useState<Expiry>("90");
   const [submitted, setSubmitted] = useState(false);
 
@@ -172,7 +159,6 @@ function IssueTokenForm({
       names.length + kinds.length === 0
         ? "Choose at least one secret or kind."
         : undefined,
-    actions: actions.length === 0 ? "Choose at least one action." : undefined,
   };
   const invalid = Object.values(errors).some((error) => error !== undefined);
   const shown = (message: string | undefined) =>
@@ -190,7 +176,8 @@ function IssueTokenForm({
             ...(names.length > 0 ? { names } : {}),
             ...(kinds.length > 0 ? { kinds } : {}),
           },
-          actions,
+          // Reading values is the one action the console serves tokens.
+          actions: ["read"],
         },
         ...(expiry === "never"
           ? {}
@@ -286,35 +273,6 @@ function IssueTokenForm({
               </div>
             </div>
             <FieldError>{shown(errors.scope)}</FieldError>
-          </FieldSet>
-
-          <FieldSet data-invalid={shown(errors.actions) ? true : undefined}>
-            <FieldLegend variant="label">Actions</FieldLegend>
-            <ToggleGroup
-              aria-label="Actions"
-              multiple
-              onValueChange={(values) =>
-                setActions(values as VaultTokenAction[])
-              }
-              spacing={1}
-              value={actions}
-              variant="outline"
-            >
-              {ACTIONS.map(({ value, label }) => (
-                <ScopeToggle
-                  className="min-h-11 px-2.5 sm:min-h-8"
-                  key={value}
-                  value={value}
-                >
-                  {label}
-                </ScopeToggle>
-              ))}
-            </ToggleGroup>
-            <FieldDescription>
-              Sign bundles lets CI sign OTA bundles with a bundle signing key in
-              its scope, without reading the key.
-            </FieldDescription>
-            <FieldError>{shown(errors.actions)}</FieldError>
           </FieldSet>
 
           <Field>
