@@ -1,11 +1,10 @@
 const SECRET_MASK = "********";
 
 /**
- * Shorter values are not masked: masking a two-letter value would redact
- * every occurrence of those letters. Keystore passwords are at least six
- * characters, and keys and service accounts are far longer.
+ * Shorter lines of a multi-line value are not masked on their own: masking
+ * a `{` line of a JSON file would redact every brace.
  */
-const MIN_SECRET_LENGTH = 6;
+const MIN_SECRET_LINE_LENGTH = 6;
 
 const PEM_ARMOR_LINE = /^-----(BEGIN|END) [A-Z0-9 ]+-----$/;
 
@@ -14,17 +13,23 @@ let secretValuesLongestFirst: readonly string[] = [];
 
 /**
  * Registers a credential value so every CLI log sink (`p`, `log`, and the
- * build log files) prints it masked. A multi-line value is also registered
- * line by line, so a PEM printed one line at a time stays masked.
+ * build log files) prints it masked, however short it is. A multi-line value
+ * is also registered line by line, so a PEM printed one line at a time stays
+ * masked.
  */
 export const registerSecretValue = (value: string) => {
-  const candidates = [value, ...value.split(/\r?\n/)];
-  for (const candidate of candidates) {
-    const trimmed = candidate.trim();
-    if (trimmed.length < MIN_SECRET_LENGTH || PEM_ARMOR_LINE.test(trimmed)) {
-      continue;
+  const whole = value.trim();
+  if (whole) {
+    secretValues.add(whole);
+  }
+  for (const line of value.split(/\r?\n/)) {
+    const trimmed = line.trim();
+    if (
+      trimmed.length >= MIN_SECRET_LINE_LENGTH &&
+      !PEM_ARMOR_LINE.test(trimmed)
+    ) {
+      secretValues.add(trimmed);
     }
-    secretValues.add(trimmed);
   }
   secretValuesLongestFirst = [...secretValues].sort(
     (left, right) => right.length - left.length,

@@ -284,7 +284,7 @@ describe("credential temporary files", () => {
     expect(await exists(keyPath)).toBe(false);
   });
 
-  it("deletes the files on process exit", async () => {
+  const resolveInFreshModule = async () => {
     vi.resetModules();
     const onSpy = vi.spyOn(process, "on");
     const { createCredentialResolver: createFreshResolver } =
@@ -294,19 +294,55 @@ describe("credential temporary files", () => {
       keyId: "EXIT",
       issuerId: "issuer-1",
     });
+    const resolver = createFreshResolver({ source });
+    const { keyPath } = await resolver.resolve({ kind: "asc-api-key" });
+    const listenerOf = (event: string) =>
+      onSpy.mock.calls.find(([name]) => name === event)?.[1] as (
+        signal?: NodeJS.Signals,
+      ) => void;
+    return { keyPath, listenerOf, resolver };
+  };
 
-    const { keyPath } = await createFreshResolver({ source }).resolve({
-      kind: "asc-api-key",
-    });
-    const exitListener = onSpy.mock.calls.find(
-      ([event]) => event === "exit",
-    )?.[1] as (() => void) | undefined;
-    process.off("exit", exitListener ?? (() => {}));
+  it("deletes the files on process exit", async () => {
+    const { keyPath, listenerOf } = await resolveInFreshModule();
+    const exitListener = listenerOf("exit");
 
     expect(exitListener).toBeTypeOf("function");
     expect(await exists(keyPath)).toBe(true);
-    exitListener?.();
+    exitListener();
     expect(await exists(keyPath)).toBe(false);
+  });
+
+  it("deletes the files on a termination signal and re-raises it", async () => {
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+    vi.spyOn(process, "listenerCount").mockReturnValue(0);
+    const { keyPath, listenerOf } = await resolveInFreshModule();
+
+    listenerOf("SIGTERM")("SIGTERM");
+
+    expect(await exists(keyPath)).toBe(false);
+    expect(kill).toHaveBeenCalledWith(process.pid, "SIGTERM");
+  });
+
+  it("leaves the signal to another listener that handles it", async () => {
+    const kill = vi.spyOn(process, "kill").mockImplementation(() => true);
+    vi.spyOn(process, "listenerCount").mockReturnValue(1);
+    const { keyPath, listenerOf } = await resolveInFreshModule();
+
+    listenerOf("SIGINT")("SIGINT");
+
+    expect(await exists(keyPath)).toBe(false);
+    expect(kill).not.toHaveBeenCalled();
+  });
+
+  it("stops listening once every file is deleted", async () => {
+    const { listenerOf, resolver } = await resolveInFreshModule();
+    const exitListener = listenerOf("exit");
+
+    expect(process.listeners("exit")).toContain(exitListener);
+    await resolver.dispose();
+    expect(process.listeners("exit")).not.toContain(exitListener);
+    expect(process.listeners("SIGINT")).not.toContain(listenerOf("SIGINT"));
   });
 });
 

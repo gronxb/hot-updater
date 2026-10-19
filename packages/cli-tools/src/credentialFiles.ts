@@ -20,8 +20,20 @@ export interface CredentialFiles {
   dispose(): Promise<void>;
 }
 
+const TERMINATION_SIGNALS = ["SIGHUP", "SIGINT", "SIGTERM"] as const;
+
 const liveDirectories = new Set<string>();
-let exitListenerRegistered = false;
+
+// Node exits on a termination signal without emitting `exit`, so both are
+// listened to while credential files exist.
+const onSignal = (signal: NodeJS.Signals) => {
+  removeLiveDirectories();
+  // Re-raise so the process still ends with the signal, unless another
+  // listener (such as a native build's) handles it.
+  if (process.listenerCount(signal) === 0) {
+    process.kill(process.pid, signal);
+  }
+};
 
 // An `exit` listener must be synchronous.
 const removeLiveDirectories = () => {
@@ -29,20 +41,40 @@ const removeLiveDirectories = () => {
     rmSync(directory, { force: true, recursive: true });
   }
   liveDirectories.clear();
+  stopListening();
+};
+
+const startListening = () => {
+  process.on("exit", removeLiveDirectories);
+  for (const signal of TERMINATION_SIGNALS) {
+    process.on(signal, onSignal);
+  }
+};
+
+const stopListening = () => {
+  process.off("exit", removeLiveDirectories);
+  for (const signal of TERMINATION_SIGNALS) {
+    process.off(signal, onSignal);
+  }
 };
 
 const trackDirectory = (directory: string) => {
+  if (liveDirectories.size === 0) {
+    startListening();
+  }
   liveDirectories.add(directory);
-  if (!exitListenerRegistered) {
-    exitListenerRegistered = true;
-    process.on("exit", removeLiveDirectories);
+};
+
+const untrackDirectory = (directory: string) => {
+  if (liveDirectories.delete(directory) && liveDirectories.size === 0) {
+    stopListening();
   }
 };
 
 /**
  * Creates the temporary files of one credential resolver: a `mkdtemp`
  * directory, created on the first write and removed by `dispose` or, if the
- * process exits first, on `exit`.
+ * process exits first, on `exit` or a termination signal.
  */
 export const createCredentialFiles = (): CredentialFiles => {
   let directory: Promise<string> | undefined;
@@ -82,7 +114,7 @@ export const createCredentialFiles = (): CredentialFiles => {
         return;
       }
       await fs.rm(created, { force: true, recursive: true });
-      liveDirectories.delete(created);
+      untrackDirectory(created);
     },
   };
 };

@@ -41,10 +41,15 @@ describe("registerSecretValue", () => {
     );
   });
 
-  it("does not mask values too short to be secrets", () => {
-    registerSecretValue("abc");
+  it("masks a short value, but not the short lines of a multi-line one", () => {
+    registerSecretValue("pw#1");
+    registerSecretValue('{\n  "private_key": "maskJsonPrivateKey"\n}');
 
-    expect(maskSecretValues("abc abc")).toBe("abc abc");
+    expect(maskSecretValues("password pw#1")).toBe("password ********");
+    expect(maskSecretValues("{ }")).toBe("{ }");
+    expect(maskSecretValues('"private_key": "maskJsonPrivateKey"')).toBe(
+      "********",
+    );
   });
 });
 
