@@ -16,7 +16,7 @@ export interface CredentialFiles {
    * logs.
    */
   write(fileName: string, contents: string | Uint8Array): Promise<string>;
-  /** Deletes every file written so far. */
+  /** Deletes every file written so far; nothing can be written after it. */
   dispose(): Promise<void>;
 }
 
@@ -78,6 +78,7 @@ const untrackDirectory = (directory: string) => {
  */
 export const createCredentialFiles = (): CredentialFiles => {
   let directory: Promise<string> | undefined;
+  let disposed = false;
 
   const ensureDirectory = () => {
     directory ??= fs
@@ -91,6 +92,9 @@ export const createCredentialFiles = (): CredentialFiles => {
 
   return {
     write: async (fileName, contents) => {
+      if (disposed) {
+        throw new Error("The credential files have been disposed.");
+      }
       if (typeof contents === "string") {
         registerSecretValue(contents);
       }
@@ -104,6 +108,7 @@ export const createCredentialFiles = (): CredentialFiles => {
       return filePath;
     },
     dispose: async () => {
+      disposed = true;
       const pending = directory;
       directory = undefined;
       if (!pending) {

@@ -192,7 +192,7 @@ describe("createCredentialResolver", () => {
     await expect(
       createCredentialResolver().resolve({ kind: "asc-api-key" }),
     ).rejects.toThrow(
-      `HOT_UPDATER_ASC_KEY_PATH points to ${missing}, which cannot be read.`,
+      "HOT_UPDATER_ASC_KEY_PATH does not point to a readable file.",
     );
   });
 
@@ -286,6 +286,36 @@ describe("credential temporary files", () => {
       expect(await fs.readFile(storeFile)).toEqual(keystore);
       expect((await fs.stat(storeFile)).mode & 0o777).toBe(0o600);
     });
+  });
+
+  it("waits for a resolution in flight before deleting the files", async () => {
+    let release = () => {};
+    const released = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    let keyPath = "";
+    const resolver = createCredentialResolver({
+      source: async (_request, { files }) => {
+        await released;
+        keyPath = await files.write("AuthKey_LATE.p8", P8_KEY);
+        return {
+          kind: "asc-api-key",
+          credential: { keyPath, keyId: "LATE", issuerId: "issuer-1" },
+        };
+      },
+    });
+
+    const resolving = resolver.resolve({ kind: "asc-api-key" });
+    const disposing = resolver.dispose();
+    release();
+    await resolving;
+    await disposing;
+
+    expect(keyPath).not.toBe("");
+    expect(await exists(keyPath)).toBe(false);
+    await expect(resolver.resolve({ kind: "asc-api-key" })).rejects.toThrow(
+      "The credential resolver has been disposed.",
+    );
   });
 
   it("deletes the files in finally when the command fails", async () => {

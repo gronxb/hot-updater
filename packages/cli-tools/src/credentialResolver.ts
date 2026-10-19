@@ -74,7 +74,10 @@ export interface CredentialResolver {
   resolve<TKind extends CredentialKind>(
     request: CredentialRequest<TKind>,
   ): Promise<Credentials[TKind]>;
-  /** Deletes every temporary file this resolver wrote. */
+  /**
+   * Waits for resolutions in flight, then deletes every temporary file this
+   * resolver wrote. The resolver resolves nothing after it.
+   */
   dispose(): Promise<void>;
 }
 
@@ -172,7 +175,8 @@ const readFileField = async (
   } catch {
     throw new CredentialUnavailableError(
       kind,
-      `${name} points to ${filePath}, which cannot be read.`,
+      // The value is not echoed: it may be a credential set by mistake.
+      `${name} does not point to a readable file.`,
     );
   }
   return filePath;
@@ -324,6 +328,7 @@ export const createCredentialResolver = ({
 }: CreateCredentialResolverOptions = {}): CredentialResolver => {
   const files = createCredentialFiles();
   const resolved = new Map<string, Promise<unknown>>();
+  let disposed = false;
 
   const resolveItem = async <TKind extends CredentialKind>(
     kind: TKind,
@@ -379,6 +384,11 @@ export const createCredentialResolver = ({
       kind,
       name = kind,
     }: CredentialRequest<TKind>) => {
+      if (disposed) {
+        return Promise.reject(
+          new Error("The credential resolver has been disposed."),
+        );
+      }
       const key = `${kind}\u0000${name}`;
       let pending = resolved.get(key) as
         | Promise<Credentials[TKind]>
@@ -391,6 +401,9 @@ export const createCredentialResolver = ({
       return pending;
     },
     dispose: async () => {
+      disposed = true;
+      // A resolution in flight may still write a file.
+      await Promise.allSettled(resolved.values());
       resolved.clear();
       await files.dispose();
     },
