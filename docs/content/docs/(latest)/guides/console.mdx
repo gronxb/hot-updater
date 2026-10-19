@@ -77,7 +77,10 @@ needs, such as after an upgrade or after adding a plugin to `plugins`, the
 Console shows a migration notice instead of its pages, with the settings the
 migration writes. Run
 [`npx hot-updater doctor --fix`](/docs/guides/doctor#check-the-database-schema)
-where `hot-updater.config.ts` names the database, then select **Check again**.
+where `hot-updater.config.ts` names the database, then select **Check again**. A
+database that a newer Hot Updater migrated, or one Hot Updater can't migrate in
+place, gets a notice that points to `npx hot-updater doctor` instead, which
+explains what it needs.
 
 ## Security model
 

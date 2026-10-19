@@ -26,6 +26,7 @@ vi.mock("@tanstack/react-start", () => ({
 }));
 vi.mock("./server/config.server", () => ({ prepareConfig: mocks.prepare }));
 
+import { schemaMigrationOf } from "./schema-migration";
 import { getSchemaMigrationRpc } from "./schema-migration-rpc";
 
 /** Core over a fenced memory database whose core tables an earlier release created. */
@@ -50,6 +51,7 @@ describe("getSchemaMigrationRpc", () => {
       message: expect.stringContaining("npx hot-updater doctor --fix"),
       settings: [{ key: "schema.insights", expected: "1.0.0", found: null }],
       plugins: ["insights"],
+      migratable: true,
     });
   });
 
@@ -67,5 +69,38 @@ describe("getSchemaMigrationRpc", () => {
       },
     });
     await expect(getSchemaMigrationRpc()).resolves.toBeNull();
+  });
+});
+
+describe("schemaMigrationOf", () => {
+  const refusal = (fields: Record<string, unknown>) =>
+    Object.assign(new Error("refused"), {
+      name: "HotUpdaterSchemaMigrationRequiredError",
+      ...fields,
+    });
+
+  it("migrates only settings that are missing or older", () => {
+    expect(
+      schemaMigrationOf(
+        refusal({
+          settings: [
+            { key: "schema.core", expected: "1.2.0", found: "1.0.0" },
+            { key: "schema.vault", expected: "1", found: null },
+          ],
+        }),
+      ),
+    ).toMatchObject({ migratable: true });
+    for (const settings of [
+      [{ key: "schema.core", expected: "1.0.0", found: "1.2.0" }],
+      [{ key: "schema.engine", expected: "1", found: "2" }],
+      [{ key: "schema.core", expected: "1.0.0", found: "next" }],
+    ]) {
+      expect(schemaMigrationOf(refusal({ settings }))).toMatchObject({
+        migratable: false,
+      });
+    }
+    expect(
+      schemaMigrationOf(refusal({ currentVersion: "0.21.0", settings: [] })),
+    ).toMatchObject({ migratable: false });
   });
 });

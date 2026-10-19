@@ -109,21 +109,53 @@ export const checkSchema = async (
     return undefined;
   } catch (error) {
     if (!isSchemaMigrationRequired(error)) return undefined;
-    return schemaStatus(server, error);
+    return schemaStatus(server, error, await v0VersionOf(server, error));
   }
+};
+
+/**
+ * A v0 database's schema version: the fence finds neither `schema.engine`
+ * nor `schema.core` on one, so the migrator reads the `version` row it kept.
+ * One read, only when both are missing; undefined on any other database.
+ */
+const v0VersionOf = async (
+  { database, plugins }: LoadedServer,
+  { settings }: SchemaMigrationRequired,
+): Promise<string | undefined> => {
+  const missing = (key: string) =>
+    settings.some((setting) => setting.key === key && setting.found === null);
+  const tooling = database as typeof database & {
+    readonly createMigrator?: unknown;
+  };
+  if (
+    isRemoteDatabase(database) ||
+    tooling.createMigrator === undefined ||
+    !missing("schema.engine") ||
+    !missing("schema.core")
+  ) {
+    return undefined;
+  }
+  return createMigrator({ database, plugins })
+    .getVersion()
+    .catch(() => undefined);
 };
 
 const schemaStatus = (
   server: LoadedServer,
-  { message, settings, currentVersion }: SchemaMigrationRequired,
+  { message, settings, currentVersion: fenced }: SchemaMigrationRequired,
+  v0Version: string | undefined,
 ): SchemaStatus => {
+  const currentVersion = fenced ?? v0Version;
   const issues: SchemaIssue[] = [];
   if (currentVersion !== undefined || settings.length === 0) {
     // A v0 database, or one the fence could not describe.
     issues.push({
       type: "error",
       code: "SCHEMA_NOT_MIGRATABLE",
-      message,
+      message:
+        currentVersion === undefined
+          ? message
+          : `The database is a Hot Updater v0 database, schema ${currentVersion}.`,
       resolution:
         "Create a new empty database and point hot-updater.config.ts at it; Hot Updater v1 does not migrate a v0 database in place.",
       fixability: "blocked",

@@ -299,6 +299,36 @@ describe("doctor's schema check", () => {
     });
   });
 
+  it("refuses a v0 database without offering a repair", async () => {
+    adapter = createMemoryAdapter();
+    // A v0 database's settings: its `version`, and no `schema.engine`, read
+    // whole as the SQL and MongoDB adapters read them.
+    await storeSetting("version", "0.21.0");
+    const { dispose: _dispose, ...v0 } = createEngineDatabase({
+      name: "memory",
+      adapter,
+      readSettings: async () => new Map([["version", "0.21.0"]]),
+    });
+    serverProject(v0);
+
+    await expect(doctor({ fix: true })).resolves.toMatchObject({
+      success: false,
+      details: {
+        schema: {
+          issues: [
+            {
+              code: "SCHEMA_NOT_MIGRATABLE",
+              message:
+                "The database is a Hot Updater v0 database, schema 0.21.0.",
+              fixability: "blocked",
+            },
+          ],
+        },
+        fixes: [],
+      },
+    });
+  });
+
   it("refuses a setting whose version it cannot compare", async () => {
     await storeSetting("schema.core", "next");
     serverProject(database());

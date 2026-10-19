@@ -15,6 +15,8 @@ import type { SchemaMigrationStatus } from "@/lib/schema-migration";
 
 export const DOCTOR_FIX_COMMAND = "npx hot-updater doctor --fix";
 
+export const DOCTOR_COMMAND = "npx hot-updater doctor";
+
 export const DOCTOR_GUIDE_URL = "https://hot-updater.dev/docs/guides/doctor";
 
 /**
@@ -30,9 +32,13 @@ export function SchemaMigrationRequired({
   readonly onRetry: () => Promise<void>;
 }) {
   const [checking, setChecking] = useState(false);
+  const command = status.migratable ? DOCTOR_FIX_COMMAND : DOCTOR_COMMAND;
+  const configFile = (
+    <code className="font-mono whitespace-nowrap">hot-updater.config.ts</code>
+  );
   const copyCommand = async () => {
     try {
-      await navigator.clipboard.writeText(DOCTOR_FIX_COMMAND);
+      await navigator.clipboard.writeText(command);
       toast.success("Command copied");
     } catch {
       toast.error("Could not copy the command");
@@ -55,20 +61,31 @@ export function SchemaMigrationRequired({
       <div className="flex min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6">
         <Empty>
           <EmptyHeader>
-            <EmptyTitle>The database needs a migration</EmptyTitle>
-            <EmptyDescription>
-              Its schema is older than this console's, so the console stops
-              before reading it. Run this where{" "}
-              <code className="font-mono whitespace-nowrap">
-                hot-updater.config.ts
-              </code>{" "}
-              names the database, then check again.
-            </EmptyDescription>
+            {status.migratable ? (
+              <>
+                <EmptyTitle>The database needs a migration</EmptyTitle>
+                <EmptyDescription>
+                  Its schema is older than this console's, so the console stops
+                  before reading it. Run this where {configFile} names the
+                  database, then check again.
+                </EmptyDescription>
+              </>
+            ) : (
+              <>
+                <EmptyTitle>The database's schema doesn't match</EmptyTitle>
+                <EmptyDescription>
+                  A newer Hot Updater migrated it, or it uses a layout this
+                  console can't migrate, so the console stops before reading it.
+                  Run this where {configFile} names the database to see what it
+                  needs.
+                </EmptyDescription>
+              </>
+            )}
           </EmptyHeader>
           <EmptyContent>
             <div className="flex w-full items-center gap-2 rounded-md border bg-muted/40 py-1 pr-1 pl-3">
               <code className="min-w-0 flex-1 overflow-x-auto text-left font-mono text-xs whitespace-nowrap">
-                {DOCTOR_FIX_COMMAND}
+                {command}
               </code>
               <Button
                 aria-label="Copy command"

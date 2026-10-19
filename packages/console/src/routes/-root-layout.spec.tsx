@@ -83,6 +83,7 @@ const status = {
   message: "The database needs migrations.",
   settings: [{ key: "schema.vault", expected: "1", found: null }],
   plugins: ["vault"],
+  migratable: true,
 };
 
 describe("RootLayout", () => {
@@ -154,6 +155,38 @@ describe("RootLayout", () => {
 
     // Then the page mounts and reads again
     expect(await screen.findByText("Current route")).toBeInstanceOf(
+      HTMLElement,
+    );
+  });
+
+  it("sends a database a newer release migrated to doctor, without --fix", async () => {
+    // Given
+    vi.mocked(getSchemaMigrationRpc).mockResolvedValue({
+      ...status,
+      settings: [{ key: "schema.core", expected: "1.0.0", found: "1.2.0" }],
+      plugins: [],
+      migratable: false,
+    });
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    await queryClient
+      .fetchQuery({
+        queryKey: ["channels"],
+        queryFn: async () => {
+          throw new Error(status.message);
+        },
+      })
+      .catch(() => undefined);
+
+    // When
+    renderLayout(queryClient);
+
+    // Then
+    expect(
+      await screen.findByText("The database's schema doesn't match"),
+    ).toBeInstanceOf(HTMLElement);
+    expect(screen.getByText("npx hot-updater doctor")).toBeInstanceOf(
       HTMLElement,
     );
   });
