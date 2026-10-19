@@ -189,6 +189,22 @@ describe("readExpoSettings", () => {
     ).toBe(true);
   });
 
+  it("counts an aliased registry plugin by the package it installs", async () => {
+    await writePackage(path.join(project, "node_modules/native-plugin"), {
+      name: "expo-build-properties",
+      version: "0.13.2",
+    });
+
+    expect(
+      readExpoSettings(project, { plugins: ["native-plugin"] }, "ios"),
+    ).toEqual({
+      "expo.plugin[0]:native-plugin": JSON.stringify({
+        props: null,
+        source: "expo-build-properties@0.13.2",
+      }),
+    });
+  });
+
   it("counts a workspace plugin package by its name", async () => {
     const workspace = await fs.realpath(
       await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-expo-ws-")),

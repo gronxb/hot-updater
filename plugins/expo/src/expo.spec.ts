@@ -112,6 +112,24 @@ describe("Hot Updater's plugin by path", () => {
   });
 });
 
+describe("Hot Updater's plugin listed twice", () => {
+  it("reads publicKeyPath from the last occurrence, whose props take effect", async () => {
+    const cwd = await createProject("keys/first.pem");
+    mocks.getConfig.mockReturnValue({
+      exp: {
+        plugins: [
+          ["@hot-updater/expo", { publicKeyPath: "keys/first.pem" }],
+          ["@hot-updater/expo", { publicKeyPath: "keys/last.pem" }],
+        ],
+      },
+    });
+
+    await expect(getExpoFingerprintExtraSources(cwd)).resolves.toEqual([
+      "keys/last.pem",
+    ]);
+  });
+});
+
 describe("getExpoFingerprintExtraSources", () => {
   it("includes the configured trust anchor in native fingerprints", async () => {
     const cwd = await createProject("keys/public-key.pem");

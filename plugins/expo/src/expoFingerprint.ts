@@ -186,12 +186,19 @@ const pluginIdentity = (cwd: string, plugin: unknown): PluginIdentity => {
   const dir = packageDir(cwd, packageName);
   if (dir === null) return { name, source: "unresolved" };
   if (isLocal(fs.realpathSync(dir))) return { name, source: "workspace" };
-  const { version } = JSON.parse(
+  const manifest = JSON.parse(
     fs.readFileSync(path.join(dir, "package.json"), "utf8"),
-  ) as { version?: string };
-  return version === undefined
+  ) as { name?: string; version?: string };
+  // Patches name the installed package, which an alias such as
+  // `npm:expo-build-properties@...` installs under another name.
+  const installed = manifest.name ?? packageName;
+  return manifest.version === undefined
     ? { name, source: "unresolved" }
-    : { name, source: `${packageName}@${version}`, package: packageName };
+    : {
+        name,
+        source: `${installed}@${manifest.version}`,
+        package: installed,
+      };
 };
 
 /**

@@ -33,8 +33,9 @@ const getHotUpdaterExpoPluginProps = (
   cwd: string,
   plugins: Awaited<ReturnType<typeof getConfig>>["exp"]["plugins"],
 ): HotUpdaterExpoPluginProps | undefined => {
-  const entry = plugins?.find(
-    (plugin) => Array.isArray(plugin) && isHotUpdaterPlugin(cwd, plugin[0]),
+  // Each occurrence runs at prebuild, and the last one's props take effect.
+  const entry = plugins?.findLast((plugin) =>
+    isHotUpdaterPlugin(cwd, Array.isArray(plugin) ? plugin[0] : plugin),
   );
   if (!entry || !Array.isArray(entry)) return undefined;
   const props = entry[1];
