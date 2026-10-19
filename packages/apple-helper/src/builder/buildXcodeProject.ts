@@ -168,7 +168,9 @@ const prepareBuildArgs = ({
   ];
 
   if (authenticationArgs) {
-    args.push(...authenticationArgs);
+    // The key authenticates automatic signing, which a target set to
+    // manual signing would not use.
+    args.push(...authenticationArgs, "CODE_SIGN_STYLE=Automatic");
   }
 
   if (extraParams) {

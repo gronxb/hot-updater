@@ -1,6 +1,10 @@
 import path from "path";
 
-import { type CredentialResolver, getCwd } from "@hot-updater/cli-tools";
+import {
+  type CredentialResolver,
+  createMinBundleId,
+  getCwd,
+} from "@hot-updater/cli-tools";
 
 import { runGradle } from "./builder/runGradle";
 import type { EnrichedNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
@@ -9,13 +13,14 @@ import { readBuiltApp } from "./utils/readBuiltApp";
 
 export const buildAndroid = async ({
   schemeConfig,
-  minBundleId,
+  minBundleId = createMinBundleId("android"),
   credentials,
 }: {
   schemeConfig: EnrichedNativeBuildAndroidScheme;
   /** The MIN_BUNDLE_ID the build compiles in. */
-  minBundleId: string;
-  credentials: Pick<CredentialResolver, "resolve">;
+  minBundleId?: string;
+  /** Resolves the scheme's `signing` keystore, when it signs with one. */
+  credentials?: Pick<CredentialResolver, "resolve">;
 }): Promise<{
   buildDirectory: string;
   buildArtifactPath: string;

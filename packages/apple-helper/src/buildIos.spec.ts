@@ -7,7 +7,10 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let root: string;
 
-vi.mock("@hot-updater/cli-tools", () => ({
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  createMinBundleId: (
+    await importOriginal<typeof import("@hot-updater/cli-tools")>()
+  ).createMinBundleId,
   getCwd: () => root,
   p: { log: { success: vi.fn(), warn: vi.fn(), error: vi.fn() } },
 }));
@@ -189,19 +192,27 @@ describe("buildIos", () => {
     expect(exportOptions).toContain("<string>automatic</string>");
   });
 
-  it("refuses a device build it cannot export, before archiving", async () => {
+  it("returns the archive of a device build it cannot export", async () => {
     const credentials = ascKeyResolver();
 
-    await expect(
-      buildIos({
-        schemeConfig: scheme(),
-        minBundleId: MIN_BUNDLE_ID,
-        credentials,
-      }),
-    ).rejects.toThrow(
-      "nativeBuild.ios.release builds for devices, which exports an .ipa with exportOptionsPlist",
+    const { buildDirectory, buildArtifactPath } = await buildIos({
+      schemeConfig: scheme(),
+      minBundleId: MIN_BUNDLE_ID,
+      credentials,
+    });
+
+    expect(buildArtifactPath).toBe(
+      path.join(buildDirectory, "archive", "App.xcarchive"),
     );
-    expect(archiveXcodeProject).not.toHaveBeenCalled();
+    expect(exportXcodeArchive).not.toHaveBeenCalled();
     expect(credentials.resolve).not.toHaveBeenCalled();
+  });
+
+  it("issues an iOS MIN_BUNDLE_ID without one, as callers before it did", async () => {
+    await buildIos({ schemeConfig: scheme({ simulator: true }) });
+
+    expect(vi.mocked(buildXcodeProject).mock.calls[0]![0].minBundleId).toMatch(
+      /^[0-9a-f]{8}-[0-9a-f]{4}-7000-8000-01[0-9a-f]{10}$/,
+    );
   });
 });

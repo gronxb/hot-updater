@@ -1,7 +1,10 @@
 import type { CredentialResolver } from "@hot-updater/cli-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@hot-updater/cli-tools", () => ({
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  createMinBundleId: (
+    await importOriginal<typeof import("@hot-updater/cli-tools")>()
+  ).createMinBundleId,
   getCwd: () => "/app",
   p: { log: { info: vi.fn() } },
 }));
@@ -96,6 +99,15 @@ describe("buildAndroid", () => {
       "ORG_GRADLE_PROJECT_android.injected.signing.key.password": "key-secret",
     });
     expect(JSON.stringify(args)).not.toContain("secret");
+  });
+
+  it("issues an Android MIN_BUNDLE_ID without one, as callers before it did", async () => {
+    await buildAndroid({ schemeConfig: scheme() });
+
+    const [{ args }] = vi.mocked(runGradle).mock.calls[0]!;
+    expect(args.extraParams?.[0]).toMatch(
+      /^-PMIN_BUNDLE_ID=[0-9a-f]{8}-[0-9a-f]{4}-7000-8000-02[0-9a-f]{10}$/,
+    );
   });
 
   it.each(["Debug", "stagingDebug"])(

@@ -1,6 +1,11 @@
 import path from "path";
 
-import { type CredentialResolver, getCwd, p } from "@hot-updater/cli-tools";
+import {
+  type CredentialResolver,
+  createMinBundleId,
+  getCwd,
+  p,
+} from "@hot-updater/cli-tools";
 
 import { buildXcodeProject } from "./builder/buildXcodeProject";
 import {
@@ -19,14 +24,15 @@ import { resolveXcodeAuthenticationArgs } from "./utils/xcodeSigning";
 export const runIos = async ({
   schemeConfig,
   runOption,
-  minBundleId,
+  minBundleId = createMinBundleId("ios"),
   credentials,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
   runOption: IosNativeRunOptions;
   /** The MIN_BUNDLE_ID the build compiles in. */
-  minBundleId: string;
-  credentials: Pick<CredentialResolver, "resolve">;
+  minBundleId?: string;
+  /** Resolves the scheme's `signing` key, when a device build signs with one. */
+  credentials?: Pick<CredentialResolver, "resolve">;
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
   const { interactive, device: deviceOption } = runOption;
 

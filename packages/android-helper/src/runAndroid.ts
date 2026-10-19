@@ -1,6 +1,11 @@
 import path from "path";
 
-import { type CredentialResolver, getCwd, p } from "@hot-updater/cli-tools";
+import {
+  type CredentialResolver,
+  createMinBundleId,
+  getCwd,
+  p,
+} from "@hot-updater/cli-tools";
 
 import { runGradle } from "./builder/runGradle";
 import { tryInstallAppOnDevice } from "./runner/tryInstallAppOnDevice";
@@ -13,14 +18,15 @@ import { resolveGradleSigningEnv } from "./utils/gradleSigning";
 export const runAndroid = async ({
   schemeConfig,
   runOption,
-  minBundleId,
+  minBundleId = createMinBundleId("android"),
   credentials,
 }: {
   schemeConfig: EnrichedNativeBuildAndroidScheme;
   runOption: AndroidNativeRunOptions;
   /** The MIN_BUNDLE_ID the build compiles in. */
-  minBundleId: string;
-  credentials: Pick<CredentialResolver, "resolve">;
+  minBundleId?: string;
+  /** Resolves the scheme's `signing` keystore, when it signs with one. */
+  credentials?: Pick<CredentialResolver, "resolve">;
 }): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
   const { interactive, device: deviceOption } = runOption;
 

@@ -53,7 +53,10 @@ beforeEach(async () => {
   vi.mocked(getCwd).mockReturnValue(project);
   vi.mocked(loadConfig).mockResolvedValue({
     updateStrategy: "appVersion",
-    nativeBuild: { ios: { release: { scheme: "App" } }, android: {} },
+    nativeBuild: {
+      ios: { release: { scheme: "App", simulator: true } },
+      android: {},
+    },
     build: () => buildAdapter,
   } as unknown as Awaited<ReturnType<typeof loadConfig>>);
 });
@@ -105,6 +108,28 @@ describe("prepareNativeBuild", () => {
         "release",
       ),
     });
+  });
+
+  it("refuses an iOS device scheme it cannot export as an .ipa, before the adapter's prebuild", async () => {
+    vi.mocked(loadConfig).mockResolvedValue({
+      updateStrategy: "appVersion",
+      nativeBuild: { ios: { release: { scheme: "App" } }, android: {} },
+      build: () => buildAdapter,
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+
+    await expect(
+      prepareNativeBuild({
+        platform: "ios",
+        scheme: "release",
+        interactive: false,
+      }),
+    ).resolves.toBeNull();
+    expect(p.log.error).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "nativeBuild.ios.release builds for devices, which exports an .ipa with exportOptionsPlist",
+      ),
+    );
+    expect(buildAdapter.nativeBuild.prebuild).not.toHaveBeenCalled();
   });
 
   it("returns the fingerprint a fingerprint build compiles in", async () => {

@@ -1,28 +1,36 @@
 import fs from "fs";
 import path from "path";
 
-import type { CredentialResolver } from "@hot-updater/cli-tools";
+import {
+  type CredentialResolver,
+  createCredentialResolver,
+} from "@hot-updater/cli-tools";
 
 import type { EnrichedNativeBuildIosScheme } from "./enrichNativeBuildIosScheme";
 
 /**
  * The xcodebuild arguments that sign with automatic signing, authenticated by
  * the scheme's App Store Connect API key. The key is resolved only here, for
- * a device build of a scheme with `signing`.
+ * a device build of a scheme with `signing`. Without `credentials`, it
+ * resolves from the environment, and the temporary files are deleted when
+ * the process exits.
  */
 export const resolveXcodeAuthenticationArgs = async ({
   schemeConfig,
   credentials,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
-  credentials: Pick<CredentialResolver, "resolve">;
+  credentials?: Pick<CredentialResolver, "resolve">;
 }): Promise<string[] | undefined> => {
   const name = schemeConfig.signing?.ascApiKey;
   if (!name) {
     return undefined;
   }
 
-  const key = await credentials.resolve({ kind: "asc-api-key", name });
+  const key = await (credentials ?? createCredentialResolver()).resolve({
+    kind: "asc-api-key",
+    name,
+  });
   return [
     "-allowProvisioningUpdates",
     "-authenticationKeyPath",

@@ -1,7 +1,12 @@
 import fs from "fs";
 import path from "path";
 
-import { type CredentialResolver, getCwd, p } from "@hot-updater/cli-tools";
+import {
+  type CredentialResolver,
+  createMinBundleId,
+  getCwd,
+  p,
+} from "@hot-updater/cli-tools";
 
 import { archiveXcodeProject } from "./builder/archiveXcodeProject";
 import { buildXcodeProject } from "./builder/buildXcodeProject";
@@ -17,17 +22,19 @@ import {
 
 /**
  * Builds a simulator `.app` for a `simulator` scheme, and otherwise archives
- * and exports an `.ipa`.
+ * and exports an `.ipa`, or returns the `.xcarchive` of a scheme it cannot
+ * export: one with neither `exportOptionsPlist` nor `signing.ascApiKey`.
  */
 export const buildIos = async ({
   schemeConfig,
-  minBundleId,
+  minBundleId = createMinBundleId("ios"),
   credentials,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
   /** The MIN_BUNDLE_ID the build compiles in. */
-  minBundleId: string;
-  credentials: Pick<CredentialResolver, "resolve">;
+  minBundleId?: string;
+  /** Resolves the scheme's `signing` key, when a device build signs with one. */
+  credentials?: Pick<CredentialResolver, "resolve">;
 }): Promise<{
   buildDirectory: string;
   buildArtifactPath: string;
@@ -76,11 +83,6 @@ export const buildIos = async ({
       builtApp: await readBuiltApp(finalAppPath),
     };
   } else {
-    if (!schemeConfig.exportOptionsPlist && !schemeConfig.signing?.ascApiKey) {
-      throw new Error(
-        `nativeBuild.ios.${schemeConfig.hotUpdaterSchemeName} builds for devices, which exports an .ipa with exportOptionsPlist. Set exportOptionsPlist, or signing.ascApiKey to export for App Store Connect with automatic signing.`,
-      );
-    }
     const authenticationArgs = await resolveXcodeAuthenticationArgs({
       schemeConfig,
       credentials,
@@ -115,6 +117,19 @@ export const buildIos = async ({
         recursive: true,
       });
       p.log.success(".app extracted from .xcarchive");
+    }
+
+    // Without export options, a scheme that signs with an App Store Connect
+    // API key exports for App Store Connect, and any other returns the
+    // archive.
+    if (!schemeConfig.exportOptionsPlist && !authenticationArgs) {
+      return {
+        buildDirectory,
+        buildArtifactPath: finalArchivePath,
+        builtApp: archivedAppPath
+          ? await readBuiltApp(archivedAppPath)
+          : undefined,
+      };
     }
 
     await fs.promises.mkdir(exportDir, { recursive: true });

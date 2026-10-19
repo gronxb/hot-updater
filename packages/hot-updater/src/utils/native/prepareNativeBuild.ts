@@ -92,6 +92,21 @@ export async function prepareNativeBuild(
     return null;
   }
 
+  const iosDeviceScheme =
+    platform === "ios" && !config.nativeBuild.ios[scheme]?.simulator
+      ? config.nativeBuild.ios[scheme]
+      : undefined;
+  if (
+    iosDeviceScheme &&
+    !iosDeviceScheme.exportOptionsPlist &&
+    !iosDeviceScheme.signing?.ascApiKey
+  ) {
+    p.log.error(
+      `nativeBuild.ios.${scheme} builds for devices, which exports an .ipa with exportOptionsPlist. Set exportOptionsPlist, or signing.ascApiKey to export for App Store Connect with automatic signing.`,
+    );
+    return null;
+  }
+
   // The adapter's prebuild writes the native projects, such as Expo's
   // `expo prebuild`, so it runs before anything reads them.
   const buildAdapter = await config.build({ cwd });

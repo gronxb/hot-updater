@@ -71,6 +71,8 @@ describe("xcodebuild arguments", () => {
     expect(args).toContain(`HOT_UPDATER_MIN_BUNDLE_ID=${MIN_BUNDLE_ID}`);
     expect(env).toEqual({ HOT_UPDATER_MIN_BUNDLE_ID: MIN_BUNDLE_ID });
     expect(args.join(" ")).toContain(AUTHENTICATION_ARGS.join(" "));
+    // The key signs a target set to manual signing automatically too.
+    expect(args).toContain("CODE_SIGN_STYLE=Automatic");
   });
 
   it("exports with the signing arguments", async () => {
@@ -95,6 +97,8 @@ describe("xcodebuild arguments", () => {
       "-exportOptionsPlist",
       "/tmp/ExportOptions.plist",
     ]);
+    // -exportArchive takes no build settings.
+    expect(args).not.toContain("CODE_SIGN_STYLE=Automatic");
   });
 
   it("builds without signing arguments unless it is given them", async () => {
@@ -113,5 +117,6 @@ describe("xcodebuild arguments", () => {
     expect(args).toContain(`HOT_UPDATER_MIN_BUNDLE_ID=${MIN_BUNDLE_ID}`);
     expect(env).toEqual({ HOT_UPDATER_MIN_BUNDLE_ID: MIN_BUNDLE_ID });
     expect(args).not.toContain("-allowProvisioningUpdates");
+    expect(args).not.toContain("CODE_SIGN_STYLE=Automatic");
   });
 });

@@ -1,6 +1,7 @@
 import { buildAndroid } from "@hot-updater/android-helper";
 import { buildIos } from "@hot-updater/apple-helper";
 import {
+  createMinBundleId,
   CredentialUnavailableError,
   p,
   withCredentialResolver,
@@ -12,7 +13,6 @@ import {
   createNativeBuild,
   type NativeBuildResult,
 } from "@/utils/native/createNativeBuild";
-import { createMinBundleId } from "@/utils/native/minBundleId";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import { getChannel } from "@/utils/setChannel";
