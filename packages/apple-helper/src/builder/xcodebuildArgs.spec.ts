@@ -1,3 +1,5 @@
+import fs from "node:fs";
+
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@hot-updater/cli-tools", () => ({
@@ -73,6 +75,47 @@ describe("xcodebuild arguments", () => {
     expect(args.join(" ")).toContain(AUTHENTICATION_ARGS.join(" "));
     // The key signs a target set to manual signing automatically too.
     expect(args).toContain("CODE_SIGN_STYLE=Automatic");
+  });
+
+  it("sets automatic signing over the scheme's xcconfig, which outranks the command line", async () => {
+    const writeFile = vi
+      .spyOn(fs.promises, "writeFile")
+      .mockResolvedValue(undefined);
+
+    await archiveXcodeProject({
+      sourceDir: "/app/ios",
+      platform: "ios",
+      installPods: false,
+      xcodeScheme: "App",
+      xcconfig: "Release.xcconfig",
+      logPrefix: "ios-release-build-archive",
+      minBundleId: MIN_BUNDLE_ID,
+      authenticationArgs: AUTHENTICATION_ARGS,
+    });
+
+    const { args } = xcodebuildCall();
+    const xcconfig = args[args.indexOf("-xcconfig") + 1];
+    expect(xcconfig).toBe("/tmp/build/HotUpdaterSigning.xcconfig");
+    expect(writeFile).toHaveBeenCalledWith(
+      "/tmp/build/HotUpdaterSigning.xcconfig",
+      '#include "/app/ios/Release.xcconfig"\nCODE_SIGN_STYLE = Automatic\n',
+    );
+    writeFile.mockRestore();
+  });
+
+  it("passes the scheme's xcconfig as is when it signs without an App Store Connect API key", async () => {
+    await archiveXcodeProject({
+      sourceDir: "/app/ios",
+      platform: "ios",
+      installPods: false,
+      xcodeScheme: "App",
+      xcconfig: "Release.xcconfig",
+      logPrefix: "ios-release-build-archive",
+      minBundleId: MIN_BUNDLE_ID,
+    });
+
+    const { args } = xcodebuildCall();
+    expect(args[args.indexOf("-xcconfig") + 1]).toBe("Release.xcconfig");
   });
 
   it("exports with the signing arguments", async () => {

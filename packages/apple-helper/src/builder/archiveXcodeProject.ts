@@ -1,3 +1,4 @@
+import fs from "fs";
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
@@ -57,6 +58,19 @@ export const archiveXcodeProject = async ({
   const archiveName = `${xcodeProject.name.replace(".xcworkspace", "").replace(".xcodeproj", "")}.xcarchive`;
   const archivePath = path.join(tmpDir, archiveName);
 
+  // Settings an xcconfig sets outrank the ones the command line sets, so
+  // automatic signing goes in an xcconfig that includes the scheme's.
+  const signingXcconfig =
+    authenticationArgs && xcconfig
+      ? path.join(tmpDir, "HotUpdaterSigning.xcconfig")
+      : undefined;
+  if (signingXcconfig && xcconfig) {
+    await fs.promises.writeFile(
+      signingXcconfig,
+      `#include "${path.resolve(sourceDir, xcconfig)}"\nCODE_SIGN_STYLE = Automatic\n`,
+    );
+  }
+
   const archiveArgs = prepareArchiveArgs({
     authenticationArgs,
     minBundleId,
@@ -67,7 +81,7 @@ export const archiveXcodeProject = async ({
     configuration,
     extraParams,
     destination,
-    xcconfig,
+    xcconfig: signingXcconfig ?? xcconfig,
     xcodeScheme,
   });
 
