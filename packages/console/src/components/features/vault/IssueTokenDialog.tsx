@@ -110,13 +110,10 @@ export function IssueTokenDialog({
   secrets,
   open,
   onOpenChange,
-  initialNames = [],
 }: {
   readonly secrets: readonly VaultSecret[];
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
-  /** Secrets the scope starts with, such as the row the dialog opened from. */
-  readonly initialNames?: readonly string[];
 }) {
   const [issued, setIssued] = useState<string | null>(null);
   return (
@@ -132,11 +129,7 @@ export function IssueTokenDialog({
         showCloseButton={issued === null}
       >
         {!open ? null : issued === null ? (
-          <IssueTokenForm
-            initialNames={initialNames}
-            onIssued={setIssued}
-            secrets={secrets}
-          />
+          <IssueTokenForm onIssued={setIssued} secrets={secrets} />
         ) : (
           <IssuedToken
             onDone={() => {
@@ -153,17 +146,15 @@ export function IssueTokenDialog({
 
 function IssueTokenForm({
   secrets,
-  initialNames,
   onIssued,
 }: {
   readonly secrets: readonly VaultSecret[];
-  readonly initialNames: readonly string[];
   readonly onIssued: (token: string) => void;
 }) {
   const id = useId();
   const issue = useIssueVaultTokenMutation();
   const [name, setName] = useState("");
-  const [names, setNames] = useState<string[]>([...initialNames]);
+  const [names, setNames] = useState<string[]>([]);
   const [kinds, setKinds] = useState<VaultSecretKind[]>([]);
   const [actions, setActions] = useState<VaultTokenAction[]>(["read"]);
   const [expiry, setExpiry] = useState<Expiry>("90");
