@@ -134,6 +134,9 @@ or to `--output-path`, and prints the artifact and its values:
     Channel:       production
 ```
 
+A Debug build reports the nil UUID as its min bundle ID, as its native SDK
+does: an Android variant or iOS configuration whose name ends in `Debug`.
+
 Every build gets its own min bundle ID: an iOS and an Android build never
 share one, and two builds of one platform get different IDs even when they
 start in the same millisecond.

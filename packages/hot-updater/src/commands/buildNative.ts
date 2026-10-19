@@ -65,8 +65,10 @@ const buildNativeInternal = async ({
         scheme,
         minBundleId,
         target,
-        // The native SDK of a Debug variant or configuration reports the nil
-        // UUID as its MIN_BUNDLE_ID.
+        // The native SDK of a Debug build reports the nil UUID as its
+        // MIN_BUNDLE_ID. Its debug flag follows the variant or configuration
+        // the app builds, which neither the artifact nor the app target's
+        // build settings expose, so the name decides, as for signing.
         debug: /debug$/i.test(
           platform === "android"
             ? androidSchemeConfig!.variant
