@@ -1,5 +1,36 @@
 # @hot-updater/plugin-core
 
+## 1.1.0
+
+### Minor Changes
+
+- 7eaad78: Fingerprint Expo apps with Hot Updater's interface engine and drop `@expo/fingerprint`.
+  - The Expo build adapter now provides its own fingerprint with the bare and Rock adapters' engine. It reads the native packages from Expo's autolinking (React Native CLI on SDKs before 52 or with `EXPO_USE_COMMUNITY_AUTOLINKING=1`), and `jsEngine` and `newArchEnabled` from the app config. It never reads the generated `ios/` and `android/` folders, so `fingerprint create` before `expo prebuild` and the native build after it compute the same fingerprint. Changing `jsEngine` or `newArchEnabled` now changes the fingerprint; it didn't before. `jsEngine` counts as `hermes` when the app config leaves it out, as Expo builds. Config plugins don't count, like edits to a bare app's native projects: bump `fingerprint.nativeVersion` when one changes what JavaScript can call.
+  - `fingerprint hash` embeds the recorded fingerprint with a warning when the build adapter `fingerprint.json` records is not installed.
+  - The interface engine no longer reads `Podfile.lock`, which only exists after `pod install` and depends on the machine that ran it. An iOS engine choice made by an environment variable at `pod install` goes through `fingerprint.nativeVersion`.
+  - `hot-updater` no longer depends on `@expo/fingerprint`. A build adapter without its own fingerprint gets React Native CLI's.
+  - Expo projects and bare iOS fingerprints change once, so builds made before the upgrade need a rebuild to keep receiving updates.
+
+- 60db3ea: The bare and Rock build adapters fingerprint the native interface JavaScript calls with Hot Updater's own engine, `hot-updater/interface@1`, instead of `@expo/fingerprint`. The fingerprint covers:
+  - the React Native version and its JavaScript engine (`hermesEnabled`, `hermesV1Enabled`, and `newArchEnabled` in `android/gradle.properties`);
+  - each autolinked native package by name and version, Expo modules included;
+  - the codegen specs of the app and of local native packages;
+  - patches to those packages;
+  - the new `fingerprint.nativeVersion` setting and `extraSources`.
+
+  Version and build numbers, native implementation edits, build settings, and JavaScript-only dependencies no longer change it, so OTA updates keep reaching every store build with the same native interface.
+
+  This changes the fingerprint of bare and Rock projects once. `doctor` and `deploy` report the change as an engine change. Run `npx hot-updater fingerprint create` and ship new store builds. Builds shipped with the old fingerprint receive no updates until users install a new build.
+
+  Build adapters can provide their own fingerprint through `nativeBuild.fingerprint` (`NativeFingerprintProvider` in `@hot-updater/plugin-core`). The Expo adapter uses the same engine (see the Expo changeset). Fingerprint changes list values before and after, such as `react-native-screens 4.25.2 → 4.26.0`.
+
+  When the channel's recent releases target other fingerprints, `deploy` lists them, so you see which builds the update won't reach.
+
+### Patch Changes
+
+- Updated dependencies [99d0356]
+  - @hot-updater/protocol@1.1.0
+
 ## 1.0.8
 
 ### Patch Changes
