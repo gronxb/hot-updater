@@ -118,6 +118,9 @@ Adding, removing, or reordering a config plugin, or changing its options,
 changes the fingerprint, except for Hot Updater's own plugin, whose channel
 and public key don't change what JavaScript can call. A plugin installed from
 the registry also counts by its version and patches, like a native package.
+The fingerprint reads the `plugins` list: a plugin that `app.config.js`
+applies itself, as in `withPlugins(config, [...])`, isn't declared there and
+doesn't count, so list it in `plugins` instead.
 
 A plugin from your project or workspace counts by its name, not its code, the
 same way the bare adapter treats edits to `ios/` and `android/`: a plugin
