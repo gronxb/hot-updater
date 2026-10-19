@@ -207,6 +207,21 @@ describe("vault", () => {
     ]);
   });
 
+  it("makes concurrent puts of one name consecutive versions", async () => {
+    const { api } = start();
+    await api.put({ name: "n", kind: "generic", value: 0 });
+
+    const versions = await Promise.all(
+      [1, 2, 3].map((value) =>
+        api.put({ name: "n", kind: "generic", value }).then((s) => s.version),
+      ),
+    );
+
+    expect(versions.toSorted()).toEqual([2, 3, 4]);
+    const [secret] = await api.list();
+    expect(secret).toMatchObject({ version: 4 });
+  });
+
   it("keeps metadata unless a put replaces it", async () => {
     const { api } = start();
     await api.put({

@@ -318,17 +318,21 @@ export const createVaultApi = ({
           metadata === undefined ? undefined : normalizeMetadata(metadata),
         key: await masterKey(),
       };
-      try {
-        return await write(input);
-      } catch (error) {
-        // Another put created the name first; this one becomes its next version.
-        if (
-          error instanceof DatabaseConstraintError &&
-          error.reason === "unique"
-        ) {
-          return write(input);
+      for (let attempt = 1; ; attempt += 1) {
+        try {
+          return await write(input);
+        } catch (error) {
+          // Another put took the name, or the version, first: this one
+          // becomes the next version.
+          if (
+            attempt < 3 &&
+            error instanceof DatabaseConstraintError &&
+            (error.reason === "unique" || error.reason === "exists")
+          ) {
+            continue;
+          }
+          throw error;
         }
-        throw error;
       }
     },
 
