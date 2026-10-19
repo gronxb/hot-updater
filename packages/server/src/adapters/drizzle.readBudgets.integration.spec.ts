@@ -13,6 +13,7 @@ import { drizzle } from "drizzle-orm/pglite";
 import { apiKeys } from "../plugins/api-keys";
 import { insights } from "../plugins/insights";
 import { remoteConfig } from "../plugins/remote-config";
+import { vault } from "../plugins/vault";
 import { drizzleExecutor } from "./drizzleExecutor";
 
 /**
@@ -24,12 +25,14 @@ setupReadBudgetTestSuite({
   name: "drizzle (PGlite)",
   createAdapter: async () => {
     const client = new PGlite();
+    const { schema, settings } = toolingTargetOf([
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+      vault(),
+    ]);
     await client.exec(
-      generateEngineSql(
-        "postgresql",
-        toolingTargetOf([insights(), apiKeys(), remoteConfig()]).schema,
-        toolingTargetOf([insights(), apiKeys(), remoteConfig()]).settings,
-      ).join(";\n"),
+      generateEngineSql("postgresql", schema, settings).join(";\n"),
     );
     const reads = postgresRowsExamined(
       async (sql, params) =>
