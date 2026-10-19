@@ -1,10 +1,9 @@
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
-import {
-  type ApplePlatform,
-  generateMinBundleId,
-  type IosBuildDestination,
+import type {
+  ApplePlatform,
+  IosBuildDestination,
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 
@@ -22,6 +21,10 @@ import {
 import { platformConfigs } from "../utils/platform";
 import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
 import { runXcodebuildWithLogging } from "../utils/runXcodebuildWithLogging";
+import {
+  buildSettingsOverScheme,
+  writeBuildXcconfig,
+} from "../utils/writeBuildXcconfig";
 
 export const buildXcodeProject = async ({
   sourceDir,
@@ -34,7 +37,11 @@ export const buildXcodeProject = async ({
   useGenericDestination = false,
   installPods,
   extraParams,
+  minBundleId,
+  authenticationArgs,
 }: {
+  /** Signing arguments from `resolveXcodeAuthenticationArgs`. */
+  authenticationArgs?: string[];
   sourceDir: string;
   platform: ApplePlatform;
   xcodeScheme: string;
@@ -45,6 +52,8 @@ export const buildXcodeProject = async ({
   useGenericDestination?: boolean;
   installPods?: boolean;
   extraParams?: string[];
+  /** The MIN_BUNDLE_ID the build compiles in. */
+  minBundleId: string;
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
   const xcodeProject = await parseXcodeProjectInfo(sourceDir);
 
@@ -68,14 +77,22 @@ export const buildXcodeProject = async ({
     );
   }
 
-  const minBundleId = generateMinBundleId();
+  const build = await writeBuildXcconfig({
+    directory: await createRandomTmpDir(),
+    sourceDir,
+    extraParams,
+    settings: buildSettingsOverScheme({ minBundleId, authenticationArgs }),
+  });
+
   const buildArgs = prepareBuildArgs({
+    authenticationArgs,
+    xcconfig: build.xcconfig,
     minBundleId,
     configuration,
     derivedDataPath,
     deviceType,
     resolvedDestinations,
-    extraParams,
+    extraParams: build.extraParams,
     platform,
     xcodeScheme,
     sourceDir,
@@ -128,7 +145,12 @@ const prepareBuildArgs = ({
   derivedDataPath,
   extraParams,
   minBundleId,
+  authenticationArgs,
+  xcconfig,
 }: {
+  authenticationArgs?: string[];
+  /** From `writeBuildXcconfig`. */
+  xcconfig: string;
   configuration: string;
   derivedDataPath: string;
   deviceType: AppleDeviceType;
@@ -159,6 +181,12 @@ const prepareBuildArgs = ({
     `HOT_UPDATER_MIN_BUNDLE_ID=${minBundleId}`,
     "build",
   ];
+
+  if (authenticationArgs) {
+    args.push(...authenticationArgs);
+  }
+
+  args.push("-xcconfig", xcconfig);
 
   if (extraParams) {
     args.push(...extraParams);

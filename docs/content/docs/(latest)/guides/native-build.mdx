@@ -1,0 +1,172 @@
+---
+title: "Build native apps"
+description: "Build an Android .apk or .aab, an iOS .ipa, or a simulator .app with the Hot Updater CLI."
+icon: Hammer
+---
+
+## Overview
+
+`hot-updater build:android` and `hot-updater build:ios` build the native app
+from a scheme in `hot-updater.config.ts`. Each build compiles in the values
+that select its OTA updates, and prints them with the artifact:
+
+| Value         | What the build compiles in                                                                         |
+| ------------- | -------------------------------------------------------------------------------------------------- |
+| Artifact      | The `.apk`, `.aab`, `.ipa` or simulator `.app`, copied to the output path                          |
+| Min bundle ID | The ID of the bundle built into the app, which only newer bundles replace (the nil UUID in Debug)  |
+| Fingerprint   | The native fingerprint, with the [fingerprint strategy](/docs/guides/update-strategies/fingerprint) |
+| App version   | The native app version, with the [app version strategy](/docs/guides/update-strategies/app-version) |
+| Channel       | The default channel that [`channel set`](/docs/guides/channel-management) wrote                    |
+
+The build reads the app version and channel from the artifact it built, so
+the values a flavor, build type, `versionNameSuffix`, `xcconfig` or
+`extraParams` sets are the ones it reports. On Android it reads them with the
+SDK's `aapt2`.
+
+`hot-updater run:android` and `hot-updater run:ios` build the same schemes and
+install the app on a device, emulator or simulator.
+
+## Prerequisites
+
+- The platform toolchain: the Android SDK and the project's Gradle wrapper, or
+  Xcode with CocoaPods.
+- A Hot Updater setup that a release build already passes: the
+  [App Setup](/docs/get-started/app-setup) native integration and the
+  [default channel](/docs/guides/channel-management).
+- With the fingerprint strategy, the build updates `fingerprint.json` before
+  it compiles. With the app version strategy, delete any `fingerprint.json` first
+  (`hot-updater doctor --fix` does), or the app reports the fingerprint
+  strategy.
+
+## Configure schemes
+
+Add one scheme per artifact under `nativeBuild.android` and `nativeBuild.ios`.
+Keep the other settings of `hot-updater.config.ts` as they are.
+
+```ts title="hot-updater.config.ts (partial)"
+import { defineConfig } from "hot-updater";
+
+export default defineConfig({
+  // build, storage, database and plugins stay as they are
+  nativeBuild: {
+    android: {
+      release: {
+        packageName: "com.example.app",
+        // An .aab by default; aab: false builds an .apk.
+        signing: { keystore: "release-keystore" },
+      },
+      previewApk: {
+        packageName: "com.example.app",
+        aab: false,
+        signing: { keystore: "release-keystore" },
+      },
+    },
+    ios: {
+      release: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        installPods: true,
+        signing: { ascApiKey: "asc-api-key" },
+      },
+      simulator: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        installPods: true,
+        simulator: true,
+      },
+    },
+  },
+});
+```
+
+Android schemes build the `Release` variant unless `variant` names another,
+such as `stagingRelease`. iOS schemes build the `Release` configuration unless
+`configuration` names another.
+
+An iOS scheme without `simulator` archives the app and exports an `.ipa`. It
+needs `signing.ascApiKey`, which exports for App Store Connect, or an
+`exportOptionsPlist` for another export method.
+
+## Provide signing credentials
+
+`signing` names a credential the CLI resolves while it builds. The build
+resolves it only when it signs: a Debug variant keeps the debug keystore, and a
+simulator build signs nothing. A scheme without `signing` keeps the project's
+own signing settings.
+
+Set these environment variables to provide the credentials:
+
+| Credential      | Environment variables                                                                                                                                   |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Android keystore | `HOT_UPDATER_ANDROID_KEYSTORE_PATH` (or `HOT_UPDATER_ANDROID_KEYSTORE_BASE64`), `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD`, `HOT_UPDATER_ANDROID_KEY_ALIAS`, `HOT_UPDATER_ANDROID_KEY_PASSWORD` |
+| App Store Connect API key | `HOT_UPDATER_ASC_KEY_PATH` (or `HOT_UPDATER_ASC_KEY`, the `.p8` contents), `HOT_UPDATER_ASC_KEY_ID`, `HOT_UPDATER_ASC_ISSUER_ID`                  |
+
+The CLI writes a keystore or key given as contents to a temporary file that
+only your user can read, and deletes it when the build ends. It masks passwords
+in its output.
+
+The Android build passes the keystore to Gradle as the signing properties
+Android Studio uses for signed builds, so it signs both `.apk` and `.aab`
+whatever the variant's `signingConfig` says. The iOS build signs with automatic
+signing: `xcodebuild` uses the App Store Connect API key to create or update
+certificates and provisioning profiles. The Xcode project needs its
+development team (`DEVELOPMENT_TEAM`), in the project or in `extraParams`.
+
+## Build
+
+```package-install
+npx hot-updater build:android --scheme release
+```
+
+```package-install
+npx hot-updater build:ios --scheme simulator
+```
+
+The build copies its output to `.hot-updater/output/build/<platform>/<scheme>`,
+or to `--output-path`, and prints the artifact and its values:
+
+```txt
+◆  Built Android bare
+    Artifact:      /path/to/app/.hot-updater/output/build/android/release/app-release.aab
+    Kind:          aab
+    Min bundle ID: 019a0f8e-7c41-7000-8000-02c5f1a9e3b7
+    Fingerprint:   4f1c0d6b2e9a…
+    Channel:       production
+```
+
+A Debug build reports the nil UUID as its min bundle ID, as its native SDK
+does: an Android variant or iOS configuration whose name ends in `Debug`.
+
+Every build gets its own min bundle ID: an iOS and an Android build never
+share one, and two builds of one platform get different IDs even when they
+start in the same millisecond.
+
+Install a simulator `.app` with
+`xcrun simctl install booted <path-to-app>`, and an `.apk` with
+`adb install <path-to-apk>`.
+
+## Run on a device
+
+```package-install
+npx hot-updater run:android --scheme previewApk
+```
+
+```package-install
+npx hot-updater run:ios --scheme release
+```
+
+`run:android` installs an `.apk` scheme on every connected device, and starts
+the first emulator when none is connected. `run:ios` runs on the first booted
+simulator or device, or else on the first simulator. Pass
+`--device <name or ID>` to pick one, or `-i` to choose from a list. An iOS
+device build signs with the scheme's `signing.ascApiKey` when it sets one.
+
+## Command options
+
+| Option                    | Commands            | Description                                     |
+| ------------------------- | ------------------- | ----------------------------------------------- |
+| `-s, --scheme <scheme>`   | all                 | The `nativeBuild` scheme to build               |
+| `-i, --interactive`       | all                 | Choose the scheme, and with `run:*` the device  |
+| `-o, --output-path <dir>` | `build:*`           | Where to copy the build output                  |
+| `-d, --device [device]`   | `run:*`             | The device name or ID to run on                 |
+| `--port <port>`           | `run:android`       | The Metro port the device reaches with `adb reverse` |

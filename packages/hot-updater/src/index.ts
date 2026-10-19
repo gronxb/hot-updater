@@ -12,7 +12,6 @@ import isPortReachable from "is-port-reachable";
 import { normalizeRange } from "verkit";
 
 import {
-  appIdSuffixCommandOption,
   deviceCommandOption,
   interactiveCommandOption,
   nativeBuildOutputCommandOption,
@@ -917,75 +916,46 @@ dbCommand
     },
   );
 
-if (process.env["EXPERIMENTAL"]) {
-  program
-    .command("build:android")
-    .description("build a new Android native artifact")
-    .addOption(nativeBuildOutputCommandOption)
-    .addOption(interactiveCommandOption)
-    .addOption(nativeBuildSchemeCommandOption)
-    .addOption(
-      new Option(
-        "-m, --message <message>",
-        "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
-      ),
-    )
-    .action(async (options: Omit<NativeBuildOptions, "platform">) => {
-      await buildAndroidNative(options);
-    });
+program
+  .command("build:android")
+  .description("build an Android .apk or .aab")
+  .addOption(nativeBuildOutputCommandOption)
+  .addOption(interactiveCommandOption)
+  .addOption(nativeBuildSchemeCommandOption)
+  .action(async (options: Omit<NativeBuildOptions, "platform">) => {
+    await buildAndroidNative(options);
+  });
 
-  program
-    .command("build:ios")
-    .description("build a new iOS native artifact")
-    .addOption(nativeBuildOutputCommandOption)
-    .addOption(interactiveCommandOption)
-    .addOption(nativeBuildSchemeCommandOption)
-    .addOption(
-      new Option(
-        "-m, --message <message>",
-        "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
-      ),
-    )
-    .action(async (options: Omit<NativeBuildOptions, "platform">) => {
-      await buildIosNative(options);
-    });
+program
+  .command("build:ios")
+  .description("build an iOS .ipa, or a simulator .app")
+  .addOption(nativeBuildOutputCommandOption)
+  .addOption(interactiveCommandOption)
+  .addOption(nativeBuildSchemeCommandOption)
+  .action(async (options: Omit<NativeBuildOptions, "platform">) => {
+    await buildIosNative(options);
+  });
 
-  program
-    .command("run:android")
-    .description("build and run Android app to device or emulator")
-    .addOption(nativeBuildOutputCommandOption)
-    .addOption(interactiveCommandOption)
-    .addOption(nativeBuildSchemeCommandOption)
-    .addOption(deviceCommandOption)
-    .addOption(portCommandOption)
-    .addOption(appIdSuffixCommandOption)
-    .addOption(
-      new Option(
-        "-m, --message <message>",
-        "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
-      ),
-    )
-    .action(async (options: AndroidNativeRunOptions) => {
-      await runAndroidNative(options);
-    });
+program
+  .command("run:android")
+  .description("build and run Android app to device or emulator")
+  .addOption(interactiveCommandOption)
+  .addOption(nativeBuildSchemeCommandOption)
+  .addOption(deviceCommandOption)
+  .addOption(portCommandOption)
+  .action(async (options: AndroidNativeRunOptions) => {
+    await runAndroidNative(options);
+  });
 
-  program
-    .command("run:ios")
-    .description("build and run iOS app to device or simulator")
-    .addOption(nativeBuildOutputCommandOption)
-    .addOption(interactiveCommandOption)
-    .addOption(nativeBuildSchemeCommandOption)
-    .addOption(deviceCommandOption)
-    .addOption(
-      new Option(
-        "-m, --message <message>",
-        "Specify a custom message for this deployment. If not provided, the latest git commit message will be used as the deployment message",
-      ),
-    )
-    .action(async (options: IosNativeRunOptions) => {
-      await runIosNative(options);
-    });
-}
+program
+  .command("run:ios")
+  .description("build and run iOS app to device or simulator")
+  .addOption(interactiveCommandOption)
+  .addOption(nativeBuildSchemeCommandOption)
+  .addOption(deviceCommandOption)
+  .action(async (options: IosNativeRunOptions) => {
+    await runIosNative(options);
+  });
 
 program.hook("preAction", (_command, actionCommand) => {
   if (

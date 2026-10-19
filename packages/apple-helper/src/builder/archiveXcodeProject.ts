@@ -1,10 +1,9 @@
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
-import {
-  type ApplePlatform,
-  generateMinBundleId,
-  type IosBuildDestination,
+import type {
+  ApplePlatform,
+  IosBuildDestination,
 } from "@hot-updater/plugin-core";
 
 import { installPodsIfNeeded } from "../utils/cocoapods";
@@ -19,6 +18,10 @@ import {
 } from "../utils/parseXcodeProjectInfo";
 import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
 import { runXcodebuildWithLogging } from "../utils/runXcodebuildWithLogging";
+import {
+  buildSettingsOverScheme,
+  writeBuildXcconfig,
+} from "../utils/writeBuildXcconfig";
 
 export const archiveXcodeProject = async ({
   sourceDir,
@@ -30,7 +33,11 @@ export const archiveXcodeProject = async ({
   xcodeScheme,
   xcconfig,
   logPrefix,
+  minBundleId,
+  authenticationArgs,
 }: {
+  /** Signing arguments from `resolveXcodeAuthenticationArgs`. */
+  authenticationArgs?: string[];
   configuration?: string;
   destination?: IosBuildDestination[];
   extraParams?: string[];
@@ -40,6 +47,8 @@ export const archiveXcodeProject = async ({
   sourceDir: string;
   xcconfig?: string;
   logPrefix: string;
+  /** The MIN_BUNDLE_ID the build compiles in. */
+  minBundleId: string;
 }): Promise<{ archivePath: string }> => {
   const xcodeProject = await parseXcodeProjectInfo(sourceDir);
 
@@ -52,17 +61,25 @@ export const archiveXcodeProject = async ({
   const archiveName = `${xcodeProject.name.replace(".xcworkspace", "").replace(".xcodeproj", "")}.xcarchive`;
   const archivePath = path.join(tmpDir, archiveName);
 
-  const minBundleId = generateMinBundleId();
+  const build = await writeBuildXcconfig({
+    directory: tmpDir,
+    sourceDir,
+    xcconfig,
+    extraParams,
+    settings: buildSettingsOverScheme({ minBundleId, authenticationArgs }),
+  });
+
   const archiveArgs = prepareArchiveArgs({
+    authenticationArgs,
     minBundleId,
     archivePath,
     platform,
     sourceDir,
     xcodeProject,
     configuration,
-    extraParams,
+    extraParams: build.extraParams,
     destination,
-    xcconfig,
+    xcconfig: build.xcconfig,
     xcodeScheme,
   });
 
@@ -103,8 +120,10 @@ const prepareArchiveArgs = ({
   extraParams,
   destination = [],
   minBundleId,
+  authenticationArgs,
 }: {
   archivePath: string;
+  authenticationArgs?: string[];
   configuration?: string;
   destination?: IosBuildDestination[];
   extraParams?: string[];
@@ -127,6 +146,10 @@ const prepareArchiveArgs = ({
     archivePath,
     `HOT_UPDATER_MIN_BUNDLE_ID=${minBundleId}`,
   ];
+
+  if (authenticationArgs) {
+    args.push(...authenticationArgs);
+  }
 
   if (xcconfig) {
     args.push("-xcconfig", xcconfig);

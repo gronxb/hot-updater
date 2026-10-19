@@ -8,8 +8,11 @@ export const exportXcodeArchive = async ({
   exportExtraParams,
   exportOptionsPlist,
   logPrefix,
+  authenticationArgs,
 }: {
   archivePath: string;
+  /** Signing arguments from `resolveXcodeAuthenticationArgs`. */
+  authenticationArgs?: string[];
   exportExtraParams?: string[];
   exportOptionsPlist: string;
   logPrefix: string;
@@ -17,6 +20,7 @@ export const exportXcodeArchive = async ({
 }): Promise<{ exportPath: string }> => {
   const exportPath = await createRandomTmpDir();
   const exportArgs = prepareExportArgs({
+    authenticationArgs,
     archivePath,
     exportPath,
     exportOptionsPlist,
@@ -43,8 +47,10 @@ const prepareExportArgs = ({
   archivePath,
   exportExtraParams,
   exportOptionsPlist,
+  authenticationArgs,
 }: {
   archivePath: string;
+  authenticationArgs?: string[];
   exportExtraParams?: string[];
   exportOptionsPlist: string;
   exportPath: string;
@@ -56,6 +62,10 @@ const prepareExportArgs = ({
     "-exportPath",
     exportPath,
   ];
+
+  if (authenticationArgs) {
+    args.push(...authenticationArgs);
+  }
 
   if (exportExtraParams) {
     args.push(...exportExtraParams);

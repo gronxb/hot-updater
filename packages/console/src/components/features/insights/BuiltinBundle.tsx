@@ -2,11 +2,13 @@ import { Badge } from "@/components/ui/badge";
 
 /**
  * A built-in bundle's ID: every native build makes it from its build time with
- * the random bits zeroed, or the nil UUID in a debug build. A deployed
- * bundle's ID is a random UUIDv7, so it never has this shape.
+ * `rand_a` zeroed, and a node that is zero or, from `hot-updater build:*`, a
+ * platform byte (`01` iOS, `02` Android) and random bits; or the nil UUID in a
+ * debug build. A deployed bundle's ID is a random UUIDv7, so it practically
+ * never has this shape.
  */
 const BUILTIN_BUNDLE_ID =
-  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-7000-8000-000000000000|00000000-0000-0000-0000-000000000000)$/iu;
+  /^(?:[0-9a-f]{8}-[0-9a-f]{4}-7000-8000-(?:000000000000|0[12][0-9a-f]{10})|00000000-0000-0000-0000-000000000000)$/iu;
 
 /**
  * Whether a reported bundle is one a native build shipped: the report's

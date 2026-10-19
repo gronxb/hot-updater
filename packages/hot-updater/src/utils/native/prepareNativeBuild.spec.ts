@@ -5,6 +5,7 @@ import path from "node:path";
 import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createAndInjectFingerprintFiles } from "@/utils/fingerprint";
 import { resolveNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import { prepareNativeBuild } from "./prepareNativeBuild";
@@ -34,14 +35,29 @@ vi.mock("@/utils/fingerprint", () => ({
 }));
 
 let project: string;
+const calls: string[] = [];
+const buildAdapter = {
+  name: "bare",
+  build: vi.fn(),
+  nativeBuild: {
+    prebuild: vi.fn(async () => {
+      calls.push("prebuild");
+    }),
+  },
+};
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  calls.length = 0;
   project = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-build-"));
   vi.mocked(getCwd).mockReturnValue(project);
   vi.mocked(loadConfig).mockResolvedValue({
     updateStrategy: "appVersion",
-    nativeBuild: { ios: { release: { scheme: "App" } }, android: {} },
+    nativeBuild: {
+      ios: { release: { scheme: "App", simulator: true } },
+      android: {},
+    },
+    build: () => buildAdapter,
   } as unknown as Awaited<ReturnType<typeof loadConfig>>);
 });
 
@@ -58,11 +74,112 @@ describe("prepareNativeBuild", () => {
         platform: "ios",
         scheme: "release",
         interactive: false,
+        operation: "build",
       } as Parameters<typeof prepareNativeBuild>[0]),
     ).resolves.toBeNull();
     expect(p.log.error).toHaveBeenCalledWith(
       expect.stringContaining("fingerprint.json exists"),
     );
+    expect(resolveNativeAppVersion).not.toHaveBeenCalled();
+  });
+
+  it("returns the scheme and the app version an appVersion build compiles in, read after the adapter's prebuild", async () => {
+    vi.mocked(resolveNativeAppVersion).mockImplementationOnce(async () => {
+      calls.push("resolveNativeAppVersion");
+      return { version: "1.0.0" } as Awaited<
+        ReturnType<typeof resolveNativeAppVersion>
+      >;
+    });
+
+    await expect(
+      prepareNativeBuild({
+        platform: "ios",
+        scheme: "release",
+        interactive: false,
+        operation: "build",
+      }),
+    ).resolves.toMatchObject({
+      scheme: "release",
+      target: { fingerprintHash: null, appVersion: "1.0.0" },
+      outputPath: path.join(
+        project,
+        ".hot-updater",
+        "output",
+        "build",
+        "ios",
+        "release",
+      ),
+    });
+  });
+
+  it("refuses an iOS device scheme it cannot export as an .ipa, before the adapter's prebuild", async () => {
+    vi.mocked(loadConfig).mockResolvedValue({
+      updateStrategy: "appVersion",
+      nativeBuild: { ios: { release: { scheme: "App" } }, android: {} },
+      build: () => buildAdapter,
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+
+    await expect(
+      prepareNativeBuild({
+        platform: "ios",
+        scheme: "release",
+        interactive: false,
+        operation: "build",
+      }),
+    ).resolves.toBeNull();
+    expect(p.log.error).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "nativeBuild.ios.release builds for devices, which exports an .ipa with exportOptionsPlist",
+      ),
+    );
+    expect(buildAdapter.nativeBuild.prebuild).not.toHaveBeenCalled();
+  });
+
+  it("runs an iOS device scheme that has no export options, which run:ios installs as an .app", async () => {
+    vi.mocked(loadConfig).mockResolvedValue({
+      updateStrategy: "appVersion",
+      nativeBuild: { ios: { release: { scheme: "App" } }, android: {} },
+      build: () => buildAdapter,
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+
+    await expect(
+      prepareNativeBuild({
+        platform: "ios",
+        scheme: "release",
+        interactive: false,
+        operation: "run",
+      }),
+    ).resolves.toMatchObject({ scheme: "release" });
+    expect(p.log.error).not.toHaveBeenCalled();
+  });
+
+  it("returns the fingerprint a fingerprint build compiles in", async () => {
+    vi.mocked(loadConfig).mockResolvedValue({
+      updateStrategy: "fingerprint",
+      nativeBuild: {
+        ios: {},
+        android: { release: { packageName: "com.example" } },
+      },
+      build: () => buildAdapter,
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+    vi.mocked(createAndInjectFingerprintFiles).mockResolvedValue({
+      fingerprint: { android: { hash: "android-hash", sources: [] } },
+    } as unknown as Awaited<
+      ReturnType<typeof createAndInjectFingerprintFiles>
+    >);
+
+    await expect(
+      prepareNativeBuild({
+        platform: "android",
+        scheme: "release",
+        interactive: false,
+        operation: "build",
+      }),
+    ).resolves.toMatchObject({
+      scheme: "release",
+      target: { fingerprintHash: "android-hash", appVersion: null },
+      androidSchemeConfig: { variant: "Release", aab: true },
+    });
     expect(resolveNativeAppVersion).not.toHaveBeenCalled();
   });
 });

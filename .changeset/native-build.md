@@ -1,0 +1,11 @@
+---
+"hot-updater": minor
+"@hot-updater/plugin-core": minor
+"@hot-updater/android-helper": minor
+"@hot-updater/apple-helper": minor
+"@hot-updater/cli-tools": minor
+---
+
+`build:android`, `build:ios`, `run:android`, and `run:ios` are available without `EXPERIMENTAL`. A build returns and prints the artifact (`.apk`, `.aab`, `.ipa`, or simulator `.app`) with the values compiled into it: the MIN_BUNDLE_ID, the fingerprint hash or app version, and the default channel (the app version and channel are read from the built artifact: the app's Info.plist on iOS, and with the SDK's `aapt2` the merged manifest of the `.apk` or `.aab` on Android). The build adapter's `prebuild`, such as `expo prebuild`, now runs before the commands read the native projects, and `run:*` runs the adapter's `prebuild` and `postbuild` too. The CLI issues each MIN_BUNDLE_ID with a platform byte and random bits after the build's millisecond, so an iOS and an Android build never share one, and two builds of one platform get different ones even in the same millisecond.
+
+A `nativeBuild` scheme signs with a credential the CLI resolves while it builds: `signing: { keystore }` on Android passes an `android-keystore` to Gradle as the injected signing properties of release variants, and `signing: { ascApiKey }` on iOS signs device builds with automatic signing through an `asc-api-key`. Debug variants and simulator builds resolve nothing. With `signing.ascApiKey` and no `exportOptionsPlist`, an iOS device build exports for App Store Connect, and `build:ios` refuses a device scheme with neither before it builds. The helpers' `minBundleId` and `credentials` are optional: without them, `buildAndroid`, `runAndroid`, `buildIos` and `runIos` issue a platform-tagged MIN_BUNDLE_ID (`createMinBundleId` from `@hot-updater/cli-tools`) and resolve signing credentials from the environment. The unused `--message` option of `build:*` and `run:*` and `--app-id-suffix` of `run:android` are removed.
