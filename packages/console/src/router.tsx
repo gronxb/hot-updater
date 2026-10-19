@@ -4,18 +4,18 @@ import { setupRouterSsrQueryIntegration } from "@tanstack/react-router-ssr-query
 // Import the route tree selected by the local or hosted Vite integration.
 import { routeTree } from "virtual:hot-updater-console/route-tree";
 
-import { isSchemaMigrationRequiredError } from "./lib/schema-migration";
+import { schemaMigrationQueryKey } from "./lib/schema-migration-api";
 import { routeScrollRestorationKey } from "./lib/scroll-restoration";
 
 // Create a new router instance
 export const getRouter = () => {
-  const queryClient = new QueryClient({
+  const queryClient: QueryClient = new QueryClient({
     defaultOptions: {
       queries: {
         // A database that needs migrations stays refused until someone runs
         // them; the console's notice retries when asked.
-        retry: (failures, error) =>
-          !isSchemaMigrationRequiredError(error) && failures < 3,
+        retry: (failures) =>
+          failures < 3 && !queryClient.getQueryData(schemaMigrationQueryKey),
       },
     },
   });

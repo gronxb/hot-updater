@@ -89,29 +89,6 @@ describe("console access before input", () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it("sends a database the schema fence refuses as the fence's settings", async () => {
-    mocks.requireConsoleAccess.mockResolvedValue({ email: "dev@example.com" });
-    const refused = Object.assign(
-      new Error("The database needs migrations.", {
-        cause: new Error("driver"),
-      }),
-      {
-        name: "HotUpdaterSchemaMigrationRequiredError",
-        settings: [{ key: "schema.core", expected: "1.2.0", found: "1.0.0" }],
-        plugins: [],
-      },
-    );
-    const next = vi.fn().mockRejectedValue(refused);
-
-    const sent = await mocks.server!({ next }).catch((error: unknown) => error);
-    expect(sent).toMatchObject({
-      name: "HotUpdaterSchemaMigrationRequiredError",
-      settings: refused.settings,
-      status: 503,
-    });
-    expect((sent as Error).cause).toBeUndefined();
-  });
-
   it("lets an authorized caller through to the function", async () => {
     mocks.requireConsoleAccess.mockResolvedValue({ email: "dev@example.com" });
     const next = vi.fn().mockResolvedValue("handled");

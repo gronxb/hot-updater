@@ -14,6 +14,7 @@ import {
 } from "@/lib/auth-rpc";
 import { consoleFeaturesQueryKey } from "@/lib/console-features-api";
 import { getConsoleFeaturesRpc } from "@/lib/console-features-rpc";
+import { getSchemaMigrationRpc } from "@/lib/schema-migration-rpc";
 
 vi.mock("react-grab", () => ({}));
 
@@ -55,6 +56,9 @@ vi.mock("@/lib/auth-rpc", () => ({
 vi.mock("@/lib/console-features-rpc", () => ({
   getConsoleFeaturesRpc: vi.fn(),
 }));
+vi.mock("@/lib/schema-migration-rpc", () => ({
+  getSchemaMigrationRpc: vi.fn(),
+}));
 
 import { Route } from "./__root";
 
@@ -74,16 +78,18 @@ const renderLayout = (queryClient = new QueryClient()) =>
     </QueryClientProvider>,
   );
 
-/** The schema fence's error, as a server function sends it to the client. */
-const schemaError = () =>
-  Object.assign(new Error("The database needs migrations."), {
-    name: "HotUpdaterSchemaMigrationRequiredError",
-    settings: [{ key: "schema.vault", expected: "1", found: null }],
-    plugins: ["vault"],
-  });
+/** What the schema fence found, as the console's status read returns it. */
+const status = {
+  message: "The database needs migrations.",
+  settings: [{ key: "schema.vault", expected: "1", found: null }],
+  plugins: ["vault"],
+};
 
 describe("RootLayout", () => {
-  afterEach(cleanup);
+  afterEach(() => {
+    cleanup();
+    vi.mocked(getSchemaMigrationRpc).mockReset();
+  });
 
   it("contains route overflow inside the sidebar inset", () => {
     // Given / When
@@ -93,30 +99,47 @@ describe("RootLayout", () => {
     expect(screen.getByRole("main").className).toContain("overflow-hidden");
   });
 
-  it("shows the migration notice instead of the page while the database needs migrations, and checks again", async () => {
-    // Given a page's read the schema fence refused
-    const queryClient = new QueryClient({
-      defaultOptions: { queries: { retry: false } },
+  it("reads nothing more while the pages' reads pass", async () => {
+    // Given
+    const queryClient = new QueryClient();
+    await queryClient.fetchQuery({
+      queryKey: ["channels"],
+      queryFn: async () => [],
     });
-    let migrated = false;
-    const read = () =>
-      queryClient.fetchQuery({
-        queryKey: ["channels"],
-        queryFn: async () => {
-          if (!migrated) throw schemaError();
-          return [];
-        },
-      });
-    await read().catch(() => undefined);
 
     // When
     renderLayout(queryClient);
 
     // Then
+    expect(screen.getByText("Current route")).toBeInstanceOf(HTMLElement);
+    expect(getSchemaMigrationRpc).not.toHaveBeenCalled();
+  });
+
+  it("shows the migration notice instead of the page when a read failed on the fence, and checks again", async () => {
+    // Given a page's read the schema fence refused
+    vi.mocked(getSchemaMigrationRpc).mockResolvedValue(status);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    let migrated = false;
+    await queryClient
+      .fetchQuery({
+        queryKey: ["channels"],
+        queryFn: async () => {
+          if (!migrated) throw new Error(status.message);
+          return [];
+        },
+      })
+      .catch(() => undefined);
+
+    // When
+    renderLayout(queryClient);
+
+    // Then
+    expect(
+      await screen.findByText("The database needs a migration"),
+    ).toBeInstanceOf(HTMLElement);
     expect(screen.queryByText("Current route")).toBeNull();
-    expect(screen.getByText("The database needs a migration")).toBeInstanceOf(
-      HTMLElement,
-    );
     expect(screen.getByText("npx hot-updater doctor --fix")).toBeInstanceOf(
       HTMLElement,
     );
@@ -124,11 +147,38 @@ describe("RootLayout", () => {
 
     // When the database is migrated and the user checks again
     migrated = true;
+    vi.mocked(getSchemaMigrationRpc).mockResolvedValue(null);
     await act(async () => {
       fireEvent.click(screen.getByRole("button", { name: "Check again" }));
     });
 
     // Then the page mounts and reads again
+    expect(await screen.findByText("Current route")).toBeInstanceOf(
+      HTMLElement,
+    );
+  });
+
+  it("leaves a failure the fence did not cause to the page", async () => {
+    // Given
+    vi.mocked(getSchemaMigrationRpc).mockResolvedValue(null);
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    await queryClient
+      .fetchQuery({
+        queryKey: ["channels"],
+        queryFn: async () => {
+          throw new Error("Offline");
+        },
+      })
+      .catch(() => undefined);
+
+    // When
+    renderLayout(queryClient);
+
+    // Then
+    await act(async () => {});
+    expect(getSchemaMigrationRpc).toHaveBeenCalled();
     expect(screen.getByText("Current route")).toBeInstanceOf(HTMLElement);
   });
 });

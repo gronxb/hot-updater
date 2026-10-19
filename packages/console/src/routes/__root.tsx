@@ -1,11 +1,11 @@
-import { type QueryClient, useQueryClient } from "@tanstack/react-query";
+import type { QueryClient } from "@tanstack/react-query";
 import {
   createRootRouteWithContext,
   HeadContent,
   Outlet,
   Scripts,
 } from "@tanstack/react-router";
-import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useState } from "react";
 
 import { AppSidebar } from "@/components/AppSidebar";
 import { ConsoleAccessPage } from "@/components/ConsoleAccessPage";
@@ -20,7 +20,7 @@ import {
   getConsoleAuthProvidersRpc,
 } from "@/lib/auth-rpc";
 import { consoleFeaturesQueryOptions } from "@/lib/console-features-api";
-import { isSchemaMigrationRequiredError } from "@/lib/schema-migration";
+import { useSchemaMigration } from "@/lib/schema-migration-api";
 
 import appCss from "../styles.css?url";
 
@@ -151,33 +151,8 @@ function RootLayout() {
   return <AuthorizedConsole canSignOut={providers.length > 0} />;
 }
 
-/**
- * The schema fence's error from any query the pages ran, with a retry that
- * clears it so the page mounts and reads again: one read already failed, so
- * the notice costs none.
- */
-function useSchemaMigrationRequired() {
-  const queryClient = useQueryClient();
-  const cache = queryClient.getQueryCache();
-  const error = useSyncExternalStore(
-    (onChange) => cache.subscribe(onChange),
-    () =>
-      cache
-        .getAll()
-        .map(({ state }) => state.error)
-        .find(isSchemaMigrationRequiredError) ?? null,
-    () => null,
-  );
-  const retry = useCallback(() => {
-    void queryClient.resetQueries({
-      predicate: ({ state }) => isSchemaMigrationRequiredError(state.error),
-    });
-  }, [queryClient]);
-  return { error, retry };
-}
-
 function AuthorizedConsole({ canSignOut }: { canSignOut: boolean }) {
-  const schema = useSchemaMigrationRequired();
+  const schema = useSchemaMigration();
   useEffect(() => {
     if (
       import.meta.env.DEV &&
@@ -191,9 +166,9 @@ function AuthorizedConsole({ canSignOut }: { canSignOut: boolean }) {
     <SidebarProvider>
       <AppSidebar canSignOut={canSignOut} />
       <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
-        {schema.error ? (
+        {schema.status ? (
           <SchemaMigrationRequired
-            error={schema.error}
+            status={schema.status}
             onRetry={schema.retry}
           />
         ) : (

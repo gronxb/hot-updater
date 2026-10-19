@@ -1,6 +1,3 @@
-/** The name of the schema fence's error, which survives serialization where its class does not. */
-const SCHEMA_MIGRATION_REQUIRED = "HotUpdaterSchemaMigrationRequiredError";
-
 /** A schema setting the fence found missing or different. */
 export interface SchemaSetting {
   readonly key: string;
@@ -9,37 +6,41 @@ export interface SchemaSetting {
 }
 
 /**
- * The database needs migrations before the console can read it: the fence's
- * error, as a server function sends it.
+ * The database needs migrations before the console can read it: what the
+ * schema fence reported, as plain data. TanStack Start sends a thrown error
+ * as its message alone, so the console asks for this separately.
  */
-export type SchemaMigrationRequiredError = Error & {
+export interface SchemaMigrationStatus {
+  readonly message: string;
   readonly settings: readonly SchemaSetting[];
   /** The plugins whose tables a migration has yet to create or change. */
   readonly plugins: readonly string[];
-};
-
-export const isSchemaMigrationRequiredError = (
-  error: unknown,
-): error is SchemaMigrationRequiredError =>
-  error instanceof Error &&
-  error.name === SCHEMA_MIGRATION_REQUIRED &&
-  Array.isArray(Reflect.get(error, "settings"));
+}
 
 /**
- * The fence's error without the driver error behind it, which may not
- * serialize, answered with 503 as the server's own handlers answer it. Any
- * other error is returned as it is.
+ * The fence's refusal in `error`, recognized by name: plugin-core may be
+ * another copy than the console's. Null for any other error.
  */
-export const toPublicSchemaError = (error: unknown): unknown => {
-  if (!isSchemaMigrationRequiredError(error)) return error;
-  return Object.assign(new Error(error.message), {
-    name: SCHEMA_MIGRATION_REQUIRED,
-    settings: error.settings.map(({ key, expected, found }) => ({
+export const schemaMigrationOf = (
+  error: unknown,
+): SchemaMigrationStatus | null => {
+  if (
+    !(error instanceof Error) ||
+    error.name !== "HotUpdaterSchemaMigrationRequiredError"
+  ) {
+    return null;
+  }
+  const { settings, plugins } = error as Error & {
+    readonly settings?: readonly SchemaSetting[];
+    readonly plugins?: readonly string[];
+  };
+  return {
+    message: error.message,
+    settings: (settings ?? []).map(({ key, expected, found }) => ({
       key,
       expected,
       found,
     })),
-    plugins: [...error.plugins],
-    status: 503,
-  });
+    plugins: [...(plugins ?? [])],
+  };
 };
