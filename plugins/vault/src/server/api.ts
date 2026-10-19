@@ -14,7 +14,13 @@ import {
   type VaultMasterKey,
 } from "./crypto";
 import type { VaultSchema } from "./schema";
-import { randomId } from "./token";
+import {
+  generateVaultToken,
+  hashVaultToken,
+  isVaultToken,
+  randomId,
+  VAULT_TOKEN_PREFIX,
+} from "./token";
 
 /** What a secret holds, which decides who reads it and how. */
 export const VAULT_SECRET_KINDS = [
@@ -33,9 +39,55 @@ export const VAULT_MAX_VALUE_BYTES = 64 * 1024;
 /** Versions kept per secret; writing a newer one deletes the oldest. */
 export const VAULT_KEPT_VERSIONS = 5;
 
+/**
+ * What a token may do with the secrets in its scope: `read` their values, or
+ * `sign` with them, which the Console's remote signing serves.
+ */
+export const VAULT_TOKEN_ACTIONS = ["read", "sign"] as const;
+
+export type VaultTokenAction = (typeof VAULT_TOKEN_ACTIONS)[number];
+
+/**
+ * The secrets a token reaches and what it may do with them. A secret is in
+ * scope when `names` lists its name or `kinds` its kind; a scope names at
+ * least one, and listing every kind is how a token reaches every secret.
+ */
+export interface VaultTokenScope {
+  readonly secrets: {
+    readonly names?: readonly string[];
+    readonly kinds?: readonly VaultSecretKind[];
+  };
+  readonly actions: readonly VaultTokenAction[];
+}
+
+/** A vault token without its digest; the plaintext is never stored. */
+export interface VaultToken {
+  readonly id: string;
+  readonly name: string;
+  /** The token's first characters, to tell tokens apart. */
+  readonly prefix: string;
+  readonly scope: VaultTokenScope;
+  /** When the token stops working; null when it never expires. */
+  readonly expiresAtMs: number | null;
+  readonly createdAtMs: number;
+  readonly revokedAtMs: number | null;
+}
+
+/** What `verifyToken` found: the token, or why it is refused. */
+export type VaultTokenVerification =
+  | { readonly ok: true; readonly token: VaultToken }
+  | {
+      readonly ok: false;
+      readonly reason: "unknown" | "revoked" | "expired";
+    };
+
 const MAX_METADATA_BYTES = 4 * 1024;
 const NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 const PAGE_SIZE = 500;
+/** Names or kinds a scope lists, which bounds its JSON. */
+const MAX_SCOPE_ENTRIES = 100;
+/** `hu_vault_` and the token's first four characters. */
+const TOKEN_PREFIX_LENGTH = VAULT_TOKEN_PREFIX.length + 4;
 
 /** A secret without its value. */
 export interface VaultSecret {
@@ -76,6 +128,27 @@ export interface VaultApi {
     /** Who reads the value, a token id or a Console user's email. */
     readonly actor: string;
   }): Promise<unknown>;
+  /**
+   * Issues a token for CI and returns its plaintext once; the vault keeps
+   * only its SHA-256 digest. Without `expiresAtMs` it never expires.
+   */
+  issueToken(input: {
+    readonly name: string;
+    readonly scope: VaultTokenScope;
+    readonly expiresAtMs?: number;
+  }): Promise<{ readonly token: string; readonly metadata: VaultToken }>;
+  /** Every token, revoked and expired ones too, newest first. */
+  listTokens(): Promise<readonly VaultToken[]>;
+  /** Revokes a token at once; null when there is none. */
+  revokeToken(input: { readonly id: string }): Promise<VaultToken | null>;
+  /**
+   * Looks a token up by its digest, one read on every call, so a revocation
+   * holds from the next request. Pass the token it returns to
+   * `authorizeVaultToken` for each secret and action.
+   */
+  verifyToken(input: {
+    readonly token: string;
+  }): Promise<VaultTokenVerification>;
 }
 
 /** An argument the vault refuses, such as an unknown kind. */
@@ -197,6 +270,165 @@ type SecretRow = {
   readonly metadata: DatabaseJson;
   readonly created_at_ms: number;
   readonly updated_at_ms: number;
+};
+
+const normalizeTokenName = (name: unknown): string => {
+  const normalized = typeof name === "string" ? name.trim() : "";
+  if (
+    normalized.length === 0 ||
+    normalized.length > 64 ||
+    /[\p{Cc}\p{Cf}]/u.test(normalized)
+  ) {
+    throw new VaultInputError("A token name is 1-64 visible characters.");
+  }
+  return normalized;
+};
+
+const isPlainObject = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && !Array.isArray(value);
+
+const refuseUnknownKeys = (
+  value: Record<string, unknown>,
+  allowed: readonly string[],
+  what: string,
+) => {
+  const unknown = Object.keys(value).filter((key) => !allowed.includes(key));
+  if (unknown.length > 0) {
+    throw new VaultInputError(
+      `A token's ${what} has only ${allowed.join(" and ")}, not ${unknown.join(", ")}.`,
+    );
+  }
+};
+
+/** A deduplicated list, or undefined when `value` is undefined. */
+const normalizeList = <T extends string>(
+  value: unknown,
+  what: string,
+  normalize: (entry: unknown) => T,
+): T[] | undefined => {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) {
+    throw new VaultInputError(`A token's ${what} is a list.`);
+  }
+  const entries = [...new Set(value.map(normalize))];
+  if (entries.length > MAX_SCOPE_ENTRIES) {
+    throw new VaultInputError(
+      `A token's ${what} lists up to ${MAX_SCOPE_ENTRIES} entries.`,
+    );
+  }
+  return entries;
+};
+
+const normalizeAction = (action: unknown): VaultTokenAction => {
+  if (!VAULT_TOKEN_ACTIONS.includes(action as VaultTokenAction)) {
+    throw new VaultInputError(
+      `A token's action is one of ${VAULT_TOKEN_ACTIONS.join(", ")}.`,
+    );
+  }
+  return action as VaultTokenAction;
+};
+
+const normalizeScope = (scope: unknown): VaultTokenScope => {
+  if (!isPlainObject(scope)) {
+    throw new VaultInputError("A token's scope is an object.");
+  }
+  refuseUnknownKeys(scope, ["secrets", "actions"], "scope");
+  if (!isPlainObject(scope.secrets)) {
+    throw new VaultInputError(
+      "A token's scope names its secrets, by names or kinds.",
+    );
+  }
+  refuseUnknownKeys(scope.secrets, ["names", "kinds"], "secrets");
+  const names = normalizeList(scope.secrets.names, "names", normalizeName);
+  const kinds = normalizeList(scope.secrets.kinds, "kinds", normalizeKind);
+  // No implicit "every secret": an empty scope reaches none, so it is refused.
+  if ((names?.length ?? 0) === 0 && (kinds?.length ?? 0) === 0) {
+    throw new VaultInputError(
+      "A token's scope names at least one secret or kind.",
+    );
+  }
+  const actions = normalizeList(scope.actions, "actions", normalizeAction);
+  if (actions === undefined || actions.length === 0) {
+    throw new VaultInputError(
+      `A token's scope allows at least one action of ${VAULT_TOKEN_ACTIONS.join(", ")}.`,
+    );
+  }
+  return {
+    secrets: {
+      ...(names === undefined ? {} : { names }),
+      ...(kinds === undefined ? {} : { kinds }),
+    },
+    actions,
+  };
+};
+
+/** A stored scope as read back; anything malformed reaches nothing. */
+const readScope = (value: DatabaseJson): VaultTokenScope => {
+  const strings = (list: unknown): string[] =>
+    Array.isArray(list)
+      ? list.filter((entry): entry is string => typeof entry === "string")
+      : [];
+  const scope = isPlainObject(value) ? value : {};
+  const secrets = isPlainObject(scope.secrets) ? scope.secrets : {};
+  return Object.freeze({
+    secrets: Object.freeze({
+      names: Object.freeze(strings(secrets.names)),
+      kinds: Object.freeze(
+        strings(secrets.kinds).filter((kind): kind is VaultSecretKind =>
+          VAULT_SECRET_KINDS.includes(kind as VaultSecretKind),
+        ),
+      ),
+    }),
+    actions: Object.freeze(
+      strings(scope.actions).filter((action): action is VaultTokenAction =>
+        VAULT_TOKEN_ACTIONS.includes(action as VaultTokenAction),
+      ),
+    ),
+  });
+};
+
+type TokenRow = {
+  readonly id: string;
+  readonly name: string;
+  readonly prefix: string;
+  readonly scope: DatabaseJson;
+  readonly expires_at_ms: number | null;
+  readonly created_at_ms: number;
+  readonly revoked_at_ms: number | null;
+};
+
+const toToken = (row: TokenRow): VaultToken =>
+  Object.freeze({
+    id: row.id,
+    name: row.name,
+    prefix: row.prefix,
+    scope: readScope(row.scope),
+    expiresAtMs: row.expires_at_ms,
+    createdAtMs: row.created_at_ms,
+    revokedAtMs: row.revoked_at_ms,
+  });
+
+/**
+ * Whether a token may take `action` on `secret`: the action is in its scope,
+ * and so is the secret, by name or by kind. `sign` is checked against the
+ * signing key's secret like `read`. It checks only the scope; pass a token
+ * `verifyToken` just returned, which has checked revocation and expiry.
+ */
+export const authorizeVaultToken = (
+  token: Pick<VaultToken, "scope" | "revokedAtMs">,
+  request: {
+    readonly action: VaultTokenAction;
+    readonly secret: { readonly name: string; readonly kind: string };
+  },
+): boolean => {
+  const { secrets, actions } = token.scope;
+  return (
+    token.revokedAtMs === null &&
+    actions.includes(request.action) &&
+    ((secrets.names?.includes(request.secret.name) ?? false) ||
+      (secrets.kinds?.includes(request.secret.kind as VaultSecretKind) ??
+        false))
+  );
 };
 
 const toSecret = (row: SecretRow): VaultSecret =>
@@ -379,6 +611,87 @@ export const createVaultApi = ({
         sealed,
       });
       return JSON.parse(new TextDecoder().decode(plaintext)) as unknown;
+    },
+
+    // Tokens need no master key: the vault stores their digests, so a locked
+    // vault, such as the CLI's over the database, still issues and revokes.
+    async issueToken({ name, scope, expiresAtMs }) {
+      const at = now();
+      if (
+        expiresAtMs !== undefined &&
+        (!Number.isSafeInteger(expiresAtMs) || expiresAtMs <= at)
+      ) {
+        throw new VaultInputError(
+          "A token's expiresAtMs is a time in milliseconds after now.",
+        );
+      }
+      const token = generateVaultToken();
+      const row = {
+        id: randomId("tok"),
+        hash: await hashVaultToken(token),
+        name: normalizeTokenName(name),
+        prefix: token.slice(0, TOKEN_PREFIX_LENGTH),
+        scope: normalizeScope(scope) as unknown as DatabaseJson,
+        expires_at_ms: expiresAtMs ?? null,
+        created_at_ms: at,
+        revoked_at_ms: null,
+      };
+      await db.transaction(async (tx) => {
+        tx.create("tokens", row);
+      });
+      return Object.freeze({ token, metadata: toToken(row) });
+    },
+
+    async listTokens() {
+      const tokens: VaultToken[] = [];
+      let cursor: string | undefined;
+      do {
+        const page = await db.findMany("tokens", {
+          index: "byCreated",
+          where: {},
+          order: "desc",
+          limit: PAGE_SIZE,
+          ...(cursor === undefined ? {} : { cursor }),
+        });
+        tokens.push(...page.rows.map(toToken));
+        cursor = page.next;
+      } while (cursor !== undefined);
+      return Object.freeze(
+        tokens.sort(
+          (left, right) =>
+            right.createdAtMs - left.createdAtMs ||
+            (left.id < right.id ? -1 : left.id > right.id ? 1 : 0),
+        ),
+      );
+    },
+
+    revokeToken: ({ id }) =>
+      db.transaction(async (tx) => {
+        const row = await tx.findOne("tokens", { id });
+        if (row === null) return null;
+        // A revoked token keeps the time it was first revoked.
+        if (row.revoked_at_ms !== null) return toToken(row);
+        const at = now();
+        tx.update("tokens", row, { revoked_at_ms: at });
+        return toToken({ ...row, revoked_at_ms: at });
+      }),
+
+    async verifyToken({ token }) {
+      // Not a vault token's shape: no digest to look up.
+      if (typeof token !== "string" || !isVaultToken(token)) {
+        return { ok: false, reason: "unknown" } as const;
+      }
+      const row = await db.findOne("tokens", {
+        hash: await hashVaultToken(token),
+      });
+      if (row === null) return { ok: false, reason: "unknown" } as const;
+      if (row.revoked_at_ms !== null) {
+        return { ok: false, reason: "revoked" } as const;
+      }
+      if (row.expires_at_ms !== null && row.expires_at_ms <= now()) {
+        return { ok: false, reason: "expired" } as const;
+      }
+      return { ok: true, token: toToken(row) } as const;
     },
   } satisfies VaultApi);
 };

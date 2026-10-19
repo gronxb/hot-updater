@@ -1,6 +1,11 @@
 import { PGlite } from "@electric-sql/pglite";
 import { toolingTargetOf, createSqlAdapter } from "@hot-updater/plugin-core";
-import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
+import {
+  apiKeys,
+  insights,
+  remoteConfig,
+  vault,
+} from "@hot-updater/server/plugins";
 import {
   postgresRowsExamined,
   setupReadBudgetTestSuite,
@@ -25,7 +30,7 @@ setupReadBudgetTestSuite({
     );
     await db.exec(
       supabaseSchemaSql(
-        toolingTargetOf([insights(), apiKeys(), remoteConfig()]),
+        toolingTargetOf([insights(), apiKeys(), remoteConfig(), vault()]),
       ),
     );
     await db.exec(
