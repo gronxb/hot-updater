@@ -31,7 +31,12 @@ interface RepairedIssue {
 
 /** What a repair wrote, and whether native files were among it; or why it wrote nothing. */
 type RepairResult =
-  | { readonly wrote: string[]; readonly native: boolean }
+  | {
+      readonly wrote: string[];
+      readonly native: boolean;
+      /** What is left after it, beside the repair's own note. */
+      readonly note?: string;
+    }
   | { readonly skip: string };
 
 /** The files a native-file repair wrote, or an error naming each platform it failed on. */
@@ -251,7 +256,7 @@ export const applyDoctorFixes = async (
         fixes.push(skipped(result.skip));
         continue;
       }
-      const note = repair.note?.(codes);
+      const note = result.note ?? repair.note?.(codes);
       fixes.push({
         repair: repair.repair,
         codes,

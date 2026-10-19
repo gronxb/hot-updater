@@ -911,9 +911,28 @@ export async function doctor(
       ],
       context,
     );
-    const after = fixes.some(({ status }) => status === "applied")
+    let after = fixes.some(({ status }) => status === "applied")
       ? normalizeDoctorResult(await checkProject(options, context))
       : before;
+    // The server's data is checked only once the schema passes, so a
+    // migration can reveal repairs the first checks could not see.
+    if (
+      fixes.some(
+        ({ repair, status }) => repair === "schema" && status === "applied",
+      )
+    ) {
+      const revealed = await applyDoctorFixes(
+        [
+          ...(after.details?.releaseCatalogs?.issues ?? []),
+          ...(after.details?.artifacts?.issues ?? []),
+        ],
+        context,
+      );
+      if (revealed.some(({ status }) => status === "applied")) {
+        after = normalizeDoctorResult(await checkProject(options, context));
+      }
+      fixes.push(...revealed);
+    }
     return { ...after, details: { ...after.details, fixes } };
   } finally {
     await context.dispose();

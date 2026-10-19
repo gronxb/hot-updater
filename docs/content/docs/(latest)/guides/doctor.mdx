@@ -183,7 +183,9 @@ them load, then rerun `doctor`.
 
 ## Repair issues
 
-`--fix` runs the repairs doctor can make itself, then checks again:
+`--fix` runs the repairs doctor can make itself, then checks again. After a
+schema migration, it also runs the release catalog and artifact repairs the
+migrated database reveals:
 
 | Issues | Repair |
 | --- | --- |

@@ -1,5 +1,6 @@
 import { loadConfig, readPackageUp } from "@hot-updater/cli-tools";
 import {
+  createEngine,
   createEngineDatabase,
   createMemoryAdapter,
   type DatabaseAdapter,
@@ -9,6 +10,8 @@ import {
   SETTINGS_TABLE,
   type ToolingDatabase,
 } from "@hot-updater/plugin-core";
+import { createHotUpdater } from "@hot-updater/server";
+import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { loadServer } from "../utils/loadServer";
@@ -150,6 +153,63 @@ describe("doctor's schema check", () => {
       },
     });
     await expect(doctor()).resolves.not.toHaveProperty("details.schema");
+  });
+
+  it("repairs what the migration lets it see, in the same run", async () => {
+    // A release whose catalog differs from it, behind the plugin's fence.
+    const { core } = createHotUpdater({
+      database: database(),
+      storage: createReleaseCatalogTestStorage(),
+      clientAccess: "public",
+    });
+    const [deployed] = await core.deploy([
+      {
+        bundle: {
+          assetBaseStorageUri: "storage://assets",
+          gitCommitHash: null,
+          id: "01900000-0000-7000-8000-000000000001",
+          manifestFileHash: "manifest-hash-1",
+          manifestStorageUri: "storage://artifacts/1/manifest.json",
+          metadata: {},
+          platform: "ios",
+        },
+        release: {
+          channel: "production",
+          enabled: true,
+          fingerprintHash: null,
+          message: null,
+          shouldForceUpdate: false,
+          targetAppVersion: "1.0.x",
+        },
+      },
+    ]);
+    const scopeKey = deployed!.release!.scope_key;
+    const engine = createEngine(database());
+    await engine.core.transaction(async (tx) => {
+      const row = await tx.findOne("release_catalogs", {
+        scope_key: scopeKey,
+      });
+      tx.update("release_catalogs", row!, {
+        catalog_hash: `sha256:${"0".repeat(64)}`,
+      });
+    });
+    await engine.dispose();
+    serverProject(database());
+
+    await expect(doctor({ fix: true })).resolves.toMatchObject({
+      success: true,
+      details: {
+        fixes: [
+          { repair: "schema", status: "applied" },
+          {
+            repair: "release-catalogs",
+            status: "applied",
+            wrote: [`release catalog ${scopeKey}, generation 2`],
+          },
+        ],
+        releaseCatalogs: { scopes: [{ scopeKey, state: "verified" }] },
+      },
+    });
   });
 
   it("reports core's stale schema first, and --fix migrates core and the plugins", async () => {
@@ -401,6 +461,37 @@ describe("doctor's schema check", () => {
           ],
         },
         fixes: [],
+      },
+    });
+  });
+
+  it("names what a managed Supabase project's migrations left for other plugins", async () => {
+    vi.spyOn(INIT_PROVIDER_PACKAGES.supabase, "load").mockResolvedValue({
+      migrateDatabase: async () => ({
+        applied: ["0002_hot-updater_1.2.0.sql"],
+      }),
+    } as never);
+    serverProject(
+      database("supabaseDatabase", {
+        generateSchema: vi.fn(),
+        createMigrator: undefined,
+      }),
+    );
+
+    await expect(doctor({ fix: true })).resolves.toMatchObject({
+      success: false,
+      details: {
+        fixes: [
+          {
+            repair: "schema",
+            status: "applied",
+            wrote: ["migration 0002_hot-updater_1.2.0.sql"],
+            note: expect.stringContaining(
+              "schema.notes belongs to a plugin they do not create",
+            ),
+          },
+        ],
+        schema: { issues: [{ code: "SCHEMA_MIGRATION_PENDING" }] },
       },
     });
   });

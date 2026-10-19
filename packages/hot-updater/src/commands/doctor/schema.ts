@@ -263,6 +263,25 @@ const schemaStatus = (
   return { settings: [...settings], issues };
 };
 
+/** The settings the fence still refuses, read through the server once more. */
+const stillRefused = async (
+  server: LoadedServer,
+): Promise<readonly SchemaSetting[]> => {
+  try {
+    await server.core.listChannels();
+    return [];
+  } catch (error) {
+    return isSchemaMigrationRequired(error) ? error.settings : [];
+  }
+};
+
+/** What to run for settings the provider's migrations do not create. */
+const uncoveredNote = (
+  packageName: string,
+  settings: readonly SchemaSetting[],
+) =>
+  `The migrations ${packageName} ships create core's tables and the official plugins'. ${settings.map(({ key }) => key).join(", ")} ${settings.length === 1 ? "belongs to a plugin" : "belong to plugins"} they do not create: run \`npx hot-updater db generate\` and apply the migration it writes.`;
+
 /**
  * `hot-updater db migrate` over the config's database and plugins: it
  * creates missing tables, then writes the settings rows. That moves core's
@@ -299,7 +318,7 @@ const runMigrator = async (
 export const migrateServerSchema = async (
   context: DoctorContext,
   settings: readonly SchemaSetting[],
-): Promise<{ wrote: string[] } | { skip: string }> => {
+): Promise<{ wrote: string[]; note?: string } | { skip: string }> => {
   const server = await context.server();
   if (server === null)
     throw new Error("hot-updater.config.ts names no database.");
@@ -340,11 +359,19 @@ export const migrateServerSchema = async (
         const { wrote } = await runMigrator(database, plugins, settings);
         return { wrote: [...applied, ...wrote] };
       }
-      return applied.length > 0
-        ? { wrote: applied }
-        : {
-            skip: `The database ran every migration ${packageName} ships, which create core's tables and the official plugins'. ${settings.map(({ key }) => key).join(", ")} ${settings.length === 1 ? "belongs to a plugin" : "belong to plugins"} they do not create: run \`npx hot-updater db generate\` and apply the migration it writes.`,
-          };
+      if (applied.length > 0) {
+        // The provider's migrations may leave another plugin's settings.
+        const left = await stillRefused(server);
+        return left.length === 0
+          ? { wrote: applied }
+          : {
+              wrote: applied,
+              note: uncoveredNote(packageName, left),
+            };
+      }
+      return {
+        skip: uncoveredNote(packageName, settings),
+      };
     }
     case "migrator":
       return runMigrator(database, plugins, settings);
