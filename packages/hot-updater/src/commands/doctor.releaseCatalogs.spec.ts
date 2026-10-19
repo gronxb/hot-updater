@@ -354,7 +354,9 @@ describe("doctor's release catalog check", () => {
       details: {
         artifacts: {
           unreferenced: [orphan.id],
-          issues: [{ code: "UNREFERENCED_ARTIFACTS", artifactIds: [orphan.id] }],
+          issues: [
+            { code: "UNREFERENCED_ARTIFACTS", artifactIds: [orphan.id] },
+          ],
         },
       },
     });

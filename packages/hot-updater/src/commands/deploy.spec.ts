@@ -216,6 +216,9 @@ vi.mock("@/utils/getFileHash", () => ({
   getFileHashFromFile: vi.fn(),
 }));
 
+// The upload helpers deploy shares import it by relative path: the same mock.
+vi.mock("../utils/getFileHash", () => import("@/utils/getFileHash"));
+
 vi.mock("@/utils/git", () => ({
   appendToProjectRootGitignore: mockCli.appendToProjectRootGitignore,
   getLatestGitCommit: vi.fn(),

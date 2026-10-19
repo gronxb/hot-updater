@@ -271,10 +271,7 @@ describe("handleStoragePrune", () => {
     mockStorageNode.listObjects.mockResolvedValue([
       object(`assets/sha256/${IMAGE_HASH.slice(0, 2)}/${IMAGE_HASH}.png`, old),
       object(`assets/sha256/${BUNDLE_HASH.slice(0, 2)}/${BUNDLE_HASH}.br`, old),
-      object(
-        `assets/sha256/${builtInHash.slice(0, 2)}/${builtInHash}.br`,
-        old,
-      ),
+      object(`assets/sha256/${builtInHash.slice(0, 2)}/${builtInHash}.br`, old),
       object(`bundles/${LIVE_BUNDLE_ID}/manifest.json`, old),
       object(`bundles/${builtInId}/manifest.json`, old),
       object(artifactKey, old, 1_000_000),
