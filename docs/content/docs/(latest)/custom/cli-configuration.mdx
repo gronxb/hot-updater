@@ -109,13 +109,15 @@ adapter instead, such as `kyselyAdapter(...)`. The CLI then assembles core over
 through it, the path the server's own writes take:
 
 - A plugin whose migration has not run stops a command before it reads or
-  writes. The error names the plugin and the fix. For a self-hosted server,
-  run `hot-updater db migrate`, or `hot-updater db generate` for a database
-  migrated from files, in the server's project: the `db` commands load the
-  server file, such as `src/hotUpdater.ts`, and don't read
-  `hot-updater.config.ts`. For a managed server, rerun
-  `hot-updater init --provider <provider>`. A plugin the server doesn't run
-  has no settings row, so listing one stops these commands too.
+  writes. The error names the plugin and the fix. Run
+  [`hot-updater doctor --fix`](/docs/guides/doctor#check-the-database-schema)
+  in this project: it applies a managed provider's migrations, or migrates the
+  database through its migrator. In the server's project,
+  `hot-updater db migrate`, or `hot-updater db generate` for a database
+  migrated from files, does the same: the `db` commands load the server file,
+  such as `src/hotUpdater.ts`, and don't read `hot-updater.config.ts`. A
+  plugin the server doesn't run has no settings row, so listing one stops
+  these commands too.
 - When a retention pass is due, a write first deletes expired rows of plugins'
   tables, such as Insights' events. The server and the CLI share one lease,
   due every hour, or every minute while a backlog remains. A pass deletes at

@@ -4,6 +4,7 @@ import type { Readable } from "stream";
 
 import { getCwd } from "./cwd";
 import { p } from "./prompts";
+import { maskSecretValues } from "./secretMasking";
 
 export type HotUpdaterLogWriter = {
   logFilePath: string | null;
@@ -113,16 +114,27 @@ export const createLogWriter = async ({
       if (!stream.writable || stream.destroyed) {
         return;
       }
-      const plainText = stripAnsi(normalizeChunk({ chunk: value })).replace(
-        /\r/g,
-        "",
+      const plainText = maskSecretValues(
+        stripAnsi(normalizeChunk({ chunk: value })).replace(/\r/g, ""),
       );
       stream.write(plainText);
     };
 
+    // Writes whole lines (progress output ends them with \r), so a credential
+    // value split across two chunks is still masked.
     const writeStream = async (input: Readable) => {
+      let partialLine = "";
       for await (const chunk of input) {
-        writeChunk(normalizeChunk({ chunk }));
+        const text = partialLine + normalizeChunk({ chunk });
+        const lineEnd =
+          Math.max(text.lastIndexOf("\n"), text.lastIndexOf("\r")) + 1;
+        partialLine = text.slice(lineEnd);
+        if (lineEnd > 0) {
+          writeChunk(text.slice(0, lineEnd));
+        }
+      }
+      if (partialLine) {
+        writeChunk(partialLine);
       }
     };
 

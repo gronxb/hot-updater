@@ -44,7 +44,9 @@ import {
   type NativeCheckIssue,
   type NativePlatform,
   type ReleaseCatalogStatus,
+  type SchemaStatus,
 } from "./doctor/issues";
+import { checkSchema } from "./doctor/schema";
 import { checkServerData, releaseCatalogsUnchecked } from "./doctor/serverData";
 import {
   hasVerificationOptions,
@@ -110,6 +112,8 @@ interface DoctorDetails {
   versionMismatches?: VersionMismatch[];
   infrastructure?: InfrastructureStatus;
   native?: NativeStatus;
+  /** The schema the server's fence checks, when it does not pass. */
+  schema?: SchemaStatus;
   /** The server's release catalogs, each against a rebuild from its releases. */
   releaseCatalogs?: ReleaseCatalogStatus;
   /** The server's artifact records against the releases that use them. */
@@ -136,6 +140,8 @@ interface DoctorOptions extends VerificationOptions {
   fetch?: typeof fetch;
   /** Runs every repair doctor can do itself, then checks again. */
   fix?: boolean;
+  /** Repairs never prompt, as for `--json`; by default when stdin is no terminal. */
+  nonInteractive?: boolean;
 }
 
 interface HandleDoctorOptions extends VerificationOptions {
@@ -794,9 +800,16 @@ async function checkProject(
       }
     }
 
-    const { releaseCatalogs, artifacts } = await checkServer(context);
-    if (releaseCatalogs) details.releaseCatalogs = releaseCatalogs;
-    if (artifacts) details.artifacts = artifacts;
+    // The server's data reads through the fence, so it is checked once the
+    // schema passes.
+    const schema = await checkSchema(context);
+    if (schema) {
+      details.schema = schema;
+    } else {
+      const { releaseCatalogs, artifacts } = await checkServer(context);
+      if (releaseCatalogs) details.releaseCatalogs = releaseCatalogs;
+      if (artifacts) details.artifacts = artifacts;
+    }
 
     // Add version mismatches if any
     if (versionMismatches.length > 0) {
@@ -811,6 +824,7 @@ async function checkProject(
     const hasNativeIssue =
       details.native?.issues.some((issue) => issue.type === "error") === true;
     const hasServerDataIssue = [
+      ...(details.schema?.issues ?? []),
       ...(details.releaseCatalogs?.issues ?? []),
       ...(details.artifacts?.issues ?? []),
     ].some((issue) => issue.type === "error");
@@ -835,7 +849,12 @@ async function checkProject(
       };
     }
 
-    if (details.native || details.releaseCatalogs || details.artifacts) {
+    if (
+      details.native ||
+      details.schema ||
+      details.releaseCatalogs ||
+      details.artifacts
+    ) {
       return {
         success: true,
         details,
@@ -869,7 +888,10 @@ export async function doctor(
   options: DoctorOptions = {},
 ): Promise<true | DoctorResult> {
   // One server and one fingerprint for the whole run, closed once at its end.
-  const context = createDoctorContext(options.cwd ?? getCwd());
+  const context = createDoctorContext(
+    options.cwd ?? getCwd(),
+    options.nonInteractive,
+  );
   try {
     const result = await checkProject(options, context);
     // Scoped verification never repairs: the CLI refuses --fix with its
@@ -882,15 +904,35 @@ export async function doctor(
     if (before.error !== undefined) return before;
     const fixes = await applyDoctorFixes(
       [
+        ...(before.details?.schema?.issues ?? []),
         ...(before.details?.native?.issues ?? []),
         ...(before.details?.releaseCatalogs?.issues ?? []),
         ...(before.details?.artifacts?.issues ?? []),
       ],
       context,
     );
-    const after = fixes.some(({ status }) => status === "applied")
+    let after = fixes.some(({ status }) => status === "applied")
       ? normalizeDoctorResult(await checkProject(options, context))
       : before;
+    // The server's data is checked only once the schema passes, so a
+    // migration can reveal repairs the first checks could not see.
+    if (
+      fixes.some(
+        ({ repair, status }) => repair === "schema" && status === "applied",
+      )
+    ) {
+      const revealed = await applyDoctorFixes(
+        [
+          ...(after.details?.releaseCatalogs?.issues ?? []),
+          ...(after.details?.artifacts?.issues ?? []),
+        ],
+        context,
+      );
+      if (revealed.some(({ status }) => status === "applied")) {
+        after = normalizeDoctorResult(await checkProject(options, context));
+      }
+      fixes.push(...revealed);
+    }
     return { ...after, details: { ...after.details, fixes } };
   } finally {
     await context.dispose();
@@ -929,6 +971,7 @@ const promptServerBaseUrl = async () => {
 };
 
 const FIX_DESCRIPTIONS: Record<DoctorFix["repair"], string> = {
+  schema: "Migrate the server's database to this hot-updater's schema",
   fingerprint: "Recreate fingerprint.json and the native fingerprint hashes",
   "fingerprint-engine": "Record the changed fingerprint engine's hashes",
   "unused-fingerprint":
@@ -941,6 +984,7 @@ const FIX_DESCRIPTIONS: Record<DoctorFix["repair"], string> = {
 
 /** What each repair's writes are, in its output. */
 const WROTE_LABELS: Record<DoctorFix["repair"], string> = {
+  schema: "Applied",
   fingerprint: "Path",
   "fingerprint-engine": "Path",
   "unused-fingerprint": "Path",
@@ -990,7 +1034,12 @@ export const handleDoctor = async ({
 }: HandleDoctorOptions = {}) => {
   if (json) {
     const result = normalizeDoctorResult(
-      await doctor({ serverBaseUrl, fix, ...verificationOptions }),
+      await doctor({
+        serverBaseUrl,
+        fix,
+        nonInteractive: true,
+        ...verificationOptions,
+      }),
     );
     console.log(JSON.stringify(result, null, 2));
     if (!result.success) {
@@ -1162,6 +1211,28 @@ export const handleDoctor = async ({
           issue.changes,
           issue.platform === "ios" ? "iOS" : "Android",
         );
+      }
+      p.log.info(issue.resolution);
+    }
+  }
+
+  if (details?.schema) {
+    p.log.message(
+      ui.block(
+        "Schema",
+        details.schema.settings.map(({ key, expected, found }) =>
+          ui.kv(
+            key,
+            `${found === null ? "missing" : ui.version(found)} → ${ui.version(expected)}`,
+          ),
+        ),
+      ),
+    );
+    for (const issue of details.schema.issues) {
+      if (issue.type === "error") {
+        p.log.error(issue.message);
+      } else {
+        p.log.warn(issue.message);
       }
       p.log.info(issue.resolution);
     }

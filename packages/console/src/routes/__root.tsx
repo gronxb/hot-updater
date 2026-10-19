@@ -10,6 +10,7 @@ import { useEffect, useState } from "react";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ConsoleAccessPage } from "@/components/ConsoleAccessPage";
 import { NotFoundPage } from "@/components/NotFoundPage";
+import { SchemaMigrationRequired } from "@/components/SchemaMigrationRequired";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar";
 import { Toaster } from "@/components/ui/sonner";
@@ -19,6 +20,7 @@ import {
   getConsoleAuthProvidersRpc,
 } from "@/lib/auth-rpc";
 import { consoleFeaturesQueryOptions } from "@/lib/console-features-api";
+import { useSchemaMigration } from "@/lib/schema-migration-api";
 
 import appCss from "../styles.css?url";
 
@@ -150,6 +152,7 @@ function RootLayout() {
 }
 
 function AuthorizedConsole({ canSignOut }: { canSignOut: boolean }) {
+  const schema = useSchemaMigration();
   useEffect(() => {
     if (
       import.meta.env.DEV &&
@@ -163,7 +166,14 @@ function AuthorizedConsole({ canSignOut }: { canSignOut: boolean }) {
     <SidebarProvider>
       <AppSidebar canSignOut={canSignOut} />
       <SidebarInset className="min-h-0 min-w-0 overflow-hidden">
-        <Outlet />
+        {schema.status ? (
+          <SchemaMigrationRequired
+            status={schema.status}
+            onRetry={schema.retry}
+          />
+        ) : (
+          <Outlet />
+        )}
       </SidebarInset>
     </SidebarProvider>
   );
