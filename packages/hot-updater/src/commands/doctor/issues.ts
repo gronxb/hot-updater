@@ -87,15 +87,47 @@ export interface ArtifactStatus {
   issues: ArtifactIssue[];
 }
 
+/** A schema setting the server's fence found missing or different. */
+export interface SchemaSetting {
+  readonly key: string;
+  readonly expected: string;
+  readonly found: string | null;
+}
+
+/** A finding about the schema the server's fence checks. */
+export interface SchemaIssue {
+  type: "error" | "warning";
+  code:
+    | "SCHEMA_MIGRATION_PENDING"
+    | "SCHEMA_NEWER_THAN_CLI"
+    | "SCHEMA_NOT_MIGRATABLE"
+    | "PLUGIN_SCHEMA_CHANGED";
+  /** SCHEMA_MIGRATION_PENDING: the settings a migration writes. */
+  settings?: SchemaSetting[];
+  message: string;
+  resolution: string;
+  fixability: DoctorFixability;
+  commands?: string[];
+}
+
+/** The server's schema against what this CLI's core and the configured plugins expect. */
+export interface SchemaStatus {
+  /** Every setting the fence found missing or different. */
+  settings: SchemaSetting[];
+  issues: SchemaIssue[];
+}
+
 /** An issue a repair can name. */
 export type DoctorIssueCode =
   | NativeCheckIssue["code"]
   | ReleaseCatalogIssue["code"]
-  | ArtifactIssue["code"];
+  | ArtifactIssue["code"]
+  | SchemaIssue["code"];
 
 /** A repair `doctor --fix` ran, with everything it wrote. */
 export interface DoctorFix {
   readonly repair:
+    | "schema"
     | "fingerprint"
     | "fingerprint-engine"
     | "unused-fingerprint"

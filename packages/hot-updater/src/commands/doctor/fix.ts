@@ -12,7 +12,8 @@ import { syncFingerprintFiles } from "../../utils/fingerprint";
 import { isProjectFileTracked } from "../../utils/git";
 import { writePublicKeyToNativeFiles } from "../keys";
 import type { DoctorContext } from "./context";
-import type { DoctorFix, DoctorIssueCode } from "./issues";
+import type { DoctorFix, DoctorIssueCode, SchemaSetting } from "./issues";
+import { migrateServerSchema } from "./schema";
 import {
   deleteUnreferencedArtifacts,
   rebuildReleaseCatalogs,
@@ -25,11 +26,17 @@ interface RepairedIssue {
   readonly code: Code;
   readonly scopeKey?: string;
   readonly artifactIds?: readonly string[];
+  readonly settings?: readonly SchemaSetting[];
 }
 
 /** What a repair wrote, and whether native files were among it; or why it wrote nothing. */
 type RepairResult =
-  | { readonly wrote: string[]; readonly native: boolean }
+  | {
+      readonly wrote: string[];
+      readonly native: boolean;
+      /** What is left after it, beside the repair's own note. */
+      readonly note?: string;
+    }
   | { readonly skip: string };
 
 /** The files a native-file repair wrote, or an error naming each platform it failed on. */
@@ -74,6 +81,19 @@ const REPAIRS: readonly {
   /** What to know once it applied, for these issues. */
   readonly note?: (codes: readonly Code[]) => string | undefined;
 }[] = [
+  {
+    // First: the server's other repairs read through the schema fence.
+    repair: "schema",
+    codes: ["SCHEMA_MIGRATION_PENDING"],
+    writesNativeFiles: false,
+    run: async (issues, context) => {
+      const result = await migrateServerSchema(
+        context,
+        issues.flatMap(({ settings }) => settings ?? []),
+      );
+      return "skip" in result ? result : { ...result, native: false };
+    },
+  },
   {
     // What `fingerprint create` writes, where it differs.
     repair: "fingerprint",
@@ -236,7 +256,7 @@ export const applyDoctorFixes = async (
         fixes.push(skipped(result.skip));
         continue;
       }
-      const note = repair.note?.(codes);
+      const note = result.note ?? repair.note?.(codes);
       fixes.push({
         repair: repair.repair,
         codes,

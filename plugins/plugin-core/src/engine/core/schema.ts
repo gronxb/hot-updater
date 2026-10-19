@@ -3,7 +3,18 @@ import { defineAggregate, defineTable } from "../database/schema";
 /** A channel's id is `channel:` and its name's channel key, so ids share channel_key's bound. */
 const CHANNEL_ID = { type: "string", maxLength: 1408, ascii: true } as const;
 
-/** Core's schema version: the `schema.core` settings row. */
+/**
+ * Core's schema version: the `schema.core` settings row. Bump it when core
+ * adds a table, then regenerate the managed migrations with
+ * HOT_UPDATER_UPDATE_SQL=1 (the D1 and Supabase schema specs), so the next
+ * release's numbered migration carries the change and `hot-updater doctor
+ * --fix` applies it to databases an earlier release created. The official
+ * plugins' `schemaVersion`s follow the same rule. A bump only adds tables:
+ * every database's migrator creates missing tables and then records the
+ * version, and none of them changes an existing table, so changing one
+ * needs a migration step of its own first. The schema fence answers 503 on
+ * a database whose row differs, until it runs.
+ */
 export const HOT_UPDATER_SCHEMA_VERSION = "1.0.0";
 
 const bundles = defineTable(
