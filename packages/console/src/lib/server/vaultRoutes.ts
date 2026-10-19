@@ -34,6 +34,8 @@ export type LoadConsole = (
 
 /** Names one resolve request takes, as a token's scope lists. */
 const MAX_NAMES = 100;
+/** A secret name, as the vault takes one: what a resolve may ask for and the audit log records. */
+const NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;
 /** Times a resolve lists and authorizes again when a secret changes under it. */
 const RESOLVE_ATTEMPTS = 3;
 /** `x-hot-updater-ci-run`, as the audit log keeps it. */
@@ -178,7 +180,7 @@ const namesOf = async (request: Request): Promise<string[] | undefined> => {
     !Array.isArray(names) ||
     names.length === 0 ||
     names.length > MAX_NAMES ||
-    !names.every((name) => typeof name === "string")
+    !names.every((name) => typeof name === "string" && NAME_PATTERN.test(name))
   ) {
     return undefined;
   }
@@ -210,7 +212,7 @@ export const resolveVaultSecrets = (request: Request, load: LoadConsole) =>
       return failure(
         400,
         "invalid_request",
-        `Send { "names": [...] }, 1-${MAX_NAMES} secret names.`,
+        `Send { "names": [...] }, 1-${MAX_NAMES} secret names, each 1-64 letters, digits, dots, dashes, or underscores.`,
       );
     }
     const context = requestContext(request);

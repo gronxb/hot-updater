@@ -469,6 +469,8 @@ describe("POST /_hot-updater/vault/v1/resolve", () => {
       { names: [] },
       { names: "release-keystore" },
       { names: [1] },
+      { names: ["x".repeat(5_000)] },
+      { names: ["release-keystore", "../etc"] },
       { names: Array.from({ length: 101 }, (_, n) => `secret-${n}`) },
     ]) {
       const response = await resolve(load, token, body);

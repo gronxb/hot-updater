@@ -67,7 +67,8 @@ reaches, for any of its actions, without values:
 ## Resolve values
 
 `POST /_hot-updater/vault/v1/resolve` with `{ "names": [...] }`, 1 to 100
-secret names, returns their current values in one response. The token's scope
+secret names of 1 to 64 letters, digits, dots, dashes, or underscores, returns
+their current values in one response. The token's scope
 must allow `read` on each:
 
 ```json
@@ -106,7 +107,7 @@ Refusals are `{ "error": { "code", "message" } }`:
 
 | Status | Code | Cause |
 | --- | --- | --- |
-| 400 | `invalid_request` | The resolve body is not `{ "names": [...] }` with 1 to 100 names |
+| 400 | `invalid_request` | The resolve body is not `{ "names": [...] }` with 1 to 100 secret names |
 | 401 | `unauthorized` | No token, or a token that is unknown, revoked, or expired |
 | 403 | `forbidden` | The scope does not allow `read`, a name is out of scope, or a name is a `bundle-signing-key` |
 | 404 | `vault_unavailable` | The console runs without `vault()`, or over `standaloneRepository(...)` |
