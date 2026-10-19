@@ -1,7 +1,55 @@
 import * as clack from "@clack/prompts";
 
+import { maskSecretValues } from "./secretMasking";
+
 type SpinnerOptions = NonNullable<Parameters<typeof clack.spinner>[0]>;
 type Spinner = ReturnType<typeof clack.spinner>;
+type Progress = ReturnType<typeof clack.progress>;
+
+const maskMessage = (message: string | undefined) =>
+  message === undefined ? message : maskSecretValues(message);
+
+const log: typeof clack.log = {
+  message: (message, options) =>
+    clack.log.message(
+      Array.isArray(message)
+        ? message.map(maskSecretValues)
+        : maskMessage(message),
+      options,
+    ),
+  info: (message, options) =>
+    clack.log.info(maskSecretValues(message), options),
+  success: (message, options) =>
+    clack.log.success(maskSecretValues(message), options),
+  step: (message, options) =>
+    clack.log.step(maskSecretValues(message), options),
+  warn: (message, options) =>
+    clack.log.warn(maskSecretValues(message), options),
+  warning: (message, options) =>
+    clack.log.warning(maskSecretValues(message), options),
+  error: (message, options) =>
+    clack.log.error(maskSecretValues(message), options),
+};
+
+const maskSpinner = (target: Spinner): Spinner => ({
+  start: (message) => target.start(maskMessage(message)),
+  stop: (message) => target.stop(maskMessage(message)),
+  cancel: (message) => target.cancel(maskMessage(message)),
+  error: (message) => target.error(maskMessage(message)),
+  message: (message) => target.message(maskMessage(message)),
+  clear: () => target.clear(),
+  get isCancelled() {
+    return target.isCancelled;
+  },
+});
+
+const maskProgress = (target: Progress): Progress => ({
+  ...maskSpinner(target),
+  advance: (step, message) => target.advance(step, maskMessage(message)),
+  get isCancelled() {
+    return target.isCancelled;
+  },
+});
 
 const createStaticSpinner = ({
   onCancel,
@@ -51,15 +99,17 @@ const createStaticSpinner = ({
 const spinner: typeof clack.spinner = (options = {}) => {
   const output = options.output ?? process.stdout;
   const isInteractive = clack.isTTY(output) && !clack.isCI();
-  return isInteractive ? clack.spinner(options) : createStaticSpinner(options);
+  return maskSpinner(
+    isInteractive ? clack.spinner(options) : createStaticSpinner(options),
+  );
 };
 
 const progress: typeof clack.progress = (options = {}) => {
   const output = options.output ?? process.stdout;
   const isInteractive = clack.isTTY(output) && !clack.isCI();
-  if (isInteractive) return clack.progress(options);
+  if (isInteractive) return maskProgress(clack.progress(options));
 
-  const staticSpinner = createStaticSpinner(options);
+  const staticSpinner = maskSpinner(createStaticSpinner(options));
   return {
     ...staticSpinner,
     advance: (_step, message) => staticSpinner.message(message),
@@ -84,8 +134,18 @@ const tasks: typeof clack.tasks = async (taskList, options) => {
   }
 };
 
+/**
+ * `@clack/prompts` with CI-safe spinners, and with every message a
+ * registered credential value appears in masked (`registerSecretValue`).
+ */
 export const p: typeof clack = {
   ...clack,
+  log,
+  cancel: (message, options) => clack.cancel(maskMessage(message), options),
+  intro: (title, options) => clack.intro(maskMessage(title), options),
+  note: (message, title, options) =>
+    clack.note(maskMessage(message), maskMessage(title), options),
+  outro: (message, options) => clack.outro(maskMessage(message), options),
   progress,
   spinner,
   tasks,
