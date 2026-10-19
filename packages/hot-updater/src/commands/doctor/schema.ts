@@ -199,7 +199,8 @@ const schemaStatus = (
       fixability: "blocked",
     });
   }
-  if (pending.length > 0) {
+  // A migration writes every setting, so it would move a blocked one back.
+  if (pending.length > 0 && engine.length === 0 && newer.length === 0) {
     issues.push({
       type: "error",
       code: "SCHEMA_MIGRATION_PENDING",

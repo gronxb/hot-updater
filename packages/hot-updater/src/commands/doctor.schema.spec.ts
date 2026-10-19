@@ -194,6 +194,35 @@ describe("doctor's schema check", () => {
     expect(row?.["value"]).toBe("9.0.0");
   });
 
+  it("offers no migration while a newer release's setting would move back", async () => {
+    const later = definePlugin({
+      id: "later",
+      schemaVersion: "1",
+      schema: {},
+      init: () => ({ api: {} }),
+    });
+    await migrateCoreSchema(adapter, "memory");
+    await storeSetting("schema.later", "2");
+    serverProject(database(), [notes, later] as never);
+
+    const result = await doctor({ fix: true });
+    expect(result).toMatchObject({
+      success: false,
+      details: {
+        schema: {
+          settings: [
+            { key: "schema.notes", expected: "1", found: null },
+            { key: "schema.later", expected: "1", found: "2" },
+          ],
+          issues: [{ code: "SCHEMA_NEWER_THAN_CLI" }],
+        },
+        fixes: [],
+      },
+    });
+    const [row] = await adapter.get(SETTINGS_TABLE, [["schema.later"]]);
+    expect(row?.["value"]).toBe("2");
+  });
+
   it("runs a managed provider's migration files through its init", async () => {
     const migrateDatabase = vi.fn(async () => {
       // What the provider's migrations do on this database.
