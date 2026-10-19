@@ -18,7 +18,10 @@ import {
 } from "../utils/parseXcodeProjectInfo";
 import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
 import { runXcodebuildWithLogging } from "../utils/runXcodebuildWithLogging";
-import { writeAutomaticSigningXcconfig } from "../utils/xcodeSigning";
+import {
+  buildSettingsOverScheme,
+  writeBuildXcconfig,
+} from "../utils/writeBuildXcconfig";
 
 export const archiveXcodeProject = async ({
   sourceDir,
@@ -58,14 +61,13 @@ export const archiveXcodeProject = async ({
   const archiveName = `${xcodeProject.name.replace(".xcworkspace", "").replace(".xcodeproj", "")}.xcarchive`;
   const archivePath = path.join(tmpDir, archiveName);
 
-  const signing = authenticationArgs
-    ? await writeAutomaticSigningXcconfig({
-        directory: tmpDir,
-        sourceDir,
-        xcconfig,
-        extraParams,
-      })
-    : { xcconfig, extraParams };
+  const build = await writeBuildXcconfig({
+    directory: tmpDir,
+    sourceDir,
+    xcconfig,
+    extraParams,
+    settings: buildSettingsOverScheme({ minBundleId, authenticationArgs }),
+  });
 
   const archiveArgs = prepareArchiveArgs({
     authenticationArgs,
@@ -75,9 +77,9 @@ export const archiveXcodeProject = async ({
     sourceDir,
     xcodeProject,
     configuration,
-    extraParams: signing.extraParams,
+    extraParams: build.extraParams,
     destination,
-    xcconfig: signing.xcconfig,
+    xcconfig: build.xcconfig,
     xcodeScheme,
   });
 

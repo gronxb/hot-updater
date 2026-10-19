@@ -9,47 +9,6 @@ import {
 import type { EnrichedNativeBuildIosScheme } from "./enrichNativeBuildIosScheme";
 
 /**
- * Puts automatic signing above every xcconfig a build that signs with an App
- * Store Connect API key loads. xcodebuild ranks an `-xcconfig`'s settings
- * above the command line's, so the scheme's `xcconfig` and each `-xcconfig`
- * in `extraParams` are included, in order, in one xcconfig that then sets
- * `CODE_SIGN_STYLE = Automatic`.
- */
-export const writeAutomaticSigningXcconfig = async ({
-  directory,
-  sourceDir,
-  xcconfig,
-  extraParams = [],
-}: {
-  directory: string;
-  /** The directory xcodebuild runs in, which xcconfig paths are relative to. */
-  sourceDir: string;
-  xcconfig?: string;
-  extraParams?: string[];
-}): Promise<{ xcconfig: string; extraParams: string[] }> => {
-  const included = xcconfig ? [xcconfig] : [];
-  const otherParams: string[] = [];
-  for (let i = 0; i < extraParams.length; i++) {
-    if (extraParams[i] === "-xcconfig" && i + 1 < extraParams.length) {
-      included.push(extraParams[++i]!);
-    } else {
-      otherParams.push(extraParams[i]!);
-    }
-  }
-
-  const signingXcconfig = path.join(directory, "HotUpdaterSigning.xcconfig");
-  await fs.promises.writeFile(
-    signingXcconfig,
-    [
-      ...included.map((file) => `#include "${path.resolve(sourceDir, file)}"`),
-      "CODE_SIGN_STYLE = Automatic",
-      "",
-    ].join("\n"),
-  );
-  return { xcconfig: signingXcconfig, extraParams: otherParams };
-};
-
-/**
  * The xcodebuild arguments that sign with automatic signing, authenticated by
  * the scheme's App Store Connect API key. The key is resolved only here, for
  * a device build of a scheme with `signing`. Without `credentials`, it

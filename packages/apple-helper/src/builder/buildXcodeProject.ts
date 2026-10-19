@@ -21,7 +21,10 @@ import {
 import { platformConfigs } from "../utils/platform";
 import { prettifyXcodebuildError } from "../utils/prettifyXcodebuildError";
 import { runXcodebuildWithLogging } from "../utils/runXcodebuildWithLogging";
-import { writeAutomaticSigningXcconfig } from "../utils/xcodeSigning";
+import {
+  buildSettingsOverScheme,
+  writeBuildXcconfig,
+} from "../utils/writeBuildXcconfig";
 
 export const buildXcodeProject = async ({
   sourceDir,
@@ -74,23 +77,22 @@ export const buildXcodeProject = async ({
     );
   }
 
-  const signing = authenticationArgs
-    ? await writeAutomaticSigningXcconfig({
-        directory: await createRandomTmpDir(),
-        sourceDir,
-        extraParams,
-      })
-    : undefined;
+  const build = await writeBuildXcconfig({
+    directory: await createRandomTmpDir(),
+    sourceDir,
+    extraParams,
+    settings: buildSettingsOverScheme({ minBundleId, authenticationArgs }),
+  });
 
   const buildArgs = prepareBuildArgs({
     authenticationArgs,
-    signingXcconfig: signing?.xcconfig,
+    xcconfig: build.xcconfig,
     minBundleId,
     configuration,
     derivedDataPath,
     deviceType,
     resolvedDestinations,
-    extraParams: signing?.extraParams ?? extraParams,
+    extraParams: build.extraParams,
     platform,
     xcodeScheme,
     sourceDir,
@@ -144,11 +146,11 @@ const prepareBuildArgs = ({
   extraParams,
   minBundleId,
   authenticationArgs,
-  signingXcconfig,
+  xcconfig,
 }: {
   authenticationArgs?: string[];
-  /** From `writeAutomaticSigningXcconfig`, when the build signs with a key. */
-  signingXcconfig?: string;
+  /** From `writeBuildXcconfig`. */
+  xcconfig: string;
   configuration: string;
   derivedDataPath: string;
   deviceType: AppleDeviceType;
@@ -184,9 +186,7 @@ const prepareBuildArgs = ({
     args.push(...authenticationArgs);
   }
 
-  if (signingXcconfig) {
-    args.push("-xcconfig", signingXcconfig);
-  }
+  args.push("-xcconfig", xcconfig);
 
   if (extraParams) {
     args.push(...extraParams);

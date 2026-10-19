@@ -60,7 +60,7 @@ beforeEach(() => {
   writeFile.mockReset().mockResolvedValue(undefined);
 });
 
-const SIGNING_XCCONFIG = "/tmp/build/HotUpdaterSigning.xcconfig";
+const BUILD_XCCONFIG = "/tmp/build/HotUpdater.xcconfig";
 
 describe("xcodebuild arguments", () => {
   it("archives with the MIN_BUNDLE_ID as a build setting and in the environment, and with the signing arguments", async () => {
@@ -79,14 +79,14 @@ describe("xcodebuild arguments", () => {
     expect(env).toEqual({ HOT_UPDATER_MIN_BUNDLE_ID: MIN_BUNDLE_ID });
     expect(args.join(" ")).toContain(AUTHENTICATION_ARGS.join(" "));
     // The key signs a target set to manual signing automatically too.
-    expect(args[args.indexOf("-xcconfig") + 1]).toBe(SIGNING_XCCONFIG);
+    expect(args[args.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
     expect(writeFile).toHaveBeenCalledWith(
-      SIGNING_XCCONFIG,
-      "CODE_SIGN_STYLE = Automatic\n",
+      BUILD_XCCONFIG,
+      `HOT_UPDATER_MIN_BUNDLE_ID = ${MIN_BUNDLE_ID}\nCODE_SIGN_STYLE = Automatic\n`,
     );
   });
 
-  it("sets automatic signing over the scheme's xcconfig and the ones in extraParams, which outrank the command line", async () => {
+  it("sets the MIN_BUNDLE_ID and automatic signing over the scheme's xcconfig and the ones in extraParams, which outrank the command line", async () => {
     await archiveXcodeProject({
       sourceDir: "/app/ios",
       platform: "ios",
@@ -101,15 +101,15 @@ describe("xcodebuild arguments", () => {
 
     const { args } = xcodebuildCall();
     expect(args.filter((arg) => arg === "-xcconfig")).toHaveLength(1);
-    expect(args[args.indexOf("-xcconfig") + 1]).toBe(SIGNING_XCCONFIG);
+    expect(args[args.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
     expect(args).toContain("-quiet");
     expect(writeFile).toHaveBeenCalledWith(
-      SIGNING_XCCONFIG,
-      '#include "/app/ios/Release.xcconfig"\n#include "/configs/Manual.xcconfig"\nCODE_SIGN_STYLE = Automatic\n',
+      BUILD_XCCONFIG,
+      `#include "/app/ios/Release.xcconfig"\n#include "/configs/Manual.xcconfig"\nHOT_UPDATER_MIN_BUNDLE_ID = ${MIN_BUNDLE_ID}\nCODE_SIGN_STYLE = Automatic\n`,
     );
   });
 
-  it("passes the scheme's xcconfig as is when it signs without an App Store Connect API key", async () => {
+  it("sets only the MIN_BUNDLE_ID over the scheme's xcconfig when it signs without an App Store Connect API key", async () => {
     await archiveXcodeProject({
       sourceDir: "/app/ios",
       platform: "ios",
@@ -121,7 +121,12 @@ describe("xcodebuild arguments", () => {
     });
 
     const { args } = xcodebuildCall();
-    expect(args[args.indexOf("-xcconfig") + 1]).toBe("Release.xcconfig");
+    expect(args[args.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
+    // An xcconfig that sets HOT_UPDATER_MIN_BUNDLE_ID cannot replace it.
+    expect(writeFile).toHaveBeenCalledWith(
+      BUILD_XCCONFIG,
+      `#include "/app/ios/Release.xcconfig"\nHOT_UPDATER_MIN_BUNDLE_ID = ${MIN_BUNDLE_ID}\n`,
+    );
   });
 
   it("exports with the signing arguments", async () => {
@@ -166,7 +171,11 @@ describe("xcodebuild arguments", () => {
     expect(args).toContain(`HOT_UPDATER_MIN_BUNDLE_ID=${MIN_BUNDLE_ID}`);
     expect(env).toEqual({ HOT_UPDATER_MIN_BUNDLE_ID: MIN_BUNDLE_ID });
     expect(args).not.toContain("-allowProvisioningUpdates");
-    expect(args).not.toContain("-xcconfig");
+    expect(args[args.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
+    expect(writeFile).toHaveBeenCalledWith(
+      BUILD_XCCONFIG,
+      `HOT_UPDATER_MIN_BUNDLE_ID = ${MIN_BUNDLE_ID}\n`,
+    );
   });
 
   it("builds a device app that signs with a key with automatic signing over the xcconfigs in extraParams", async () => {
@@ -185,10 +194,10 @@ describe("xcodebuild arguments", () => {
 
     const { args } = xcodebuildCall();
     expect(args.filter((arg) => arg === "-xcconfig")).toHaveLength(1);
-    expect(args[args.indexOf("-xcconfig") + 1]).toBe(SIGNING_XCCONFIG);
+    expect(args[args.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
     expect(writeFile).toHaveBeenCalledWith(
-      SIGNING_XCCONFIG,
-      '#include "/app/ios/Manual.xcconfig"\nCODE_SIGN_STYLE = Automatic\n',
+      BUILD_XCCONFIG,
+      `#include "/app/ios/Manual.xcconfig"\nHOT_UPDATER_MIN_BUNDLE_ID = ${MIN_BUNDLE_ID}\nCODE_SIGN_STYLE = Automatic\n`,
     );
   });
 });

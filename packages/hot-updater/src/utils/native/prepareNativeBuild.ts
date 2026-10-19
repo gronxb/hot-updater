@@ -96,20 +96,6 @@ export async function prepareNativeBuild(
     return null;
   }
 
-  // The CLI issues the MIN_BUNDLE_ID a build compiles in and reports, so a
-  // scheme cannot set another one.
-  if (
-    platform === "ios" &&
-    config.nativeBuild.ios[scheme]?.extraParams?.some((param) =>
-      param.startsWith("HOT_UPDATER_MIN_BUNDLE_ID="),
-    )
-  ) {
-    p.log.error(
-      `nativeBuild.ios.${scheme}.extraParams sets HOT_UPDATER_MIN_BUNDLE_ID, which the CLI issues for each build. Remove it from extraParams.`,
-    );
-    return null;
-  }
-
   const iosDeviceScheme =
     options.operation === "build" &&
     platform === "ios" &&
