@@ -275,6 +275,61 @@ describe("Standalone core API over admin API protocol 2", () => {
     );
     expect(response.status).toBe(400);
   });
+
+  it("registers native builds, finds the newest of a scope, and keeps their built-in bundles", async () => {
+    const remote = core();
+    const register = (minBundleId: string) =>
+      remote.registerNativeBuild({
+        id: uuidv7(),
+        platform: "android",
+        channel: "production",
+        fingerprintHash: "fingerprint-a",
+        appVersion: null,
+        minBundleId,
+        gitCommitHash: null,
+        artifact: {
+          kind: "apk",
+          storageUri: "test://storage/native-builds/android/app.apk",
+          byteSize: 42,
+        },
+        embeddedBundle: {
+          manifestStorageUri: `test://storage/bundles/${minBundleId}/manifest.json`,
+          manifestFileHash: "built-in-manifest-hash",
+          assetBaseStorageUri: "test://assets",
+        },
+      });
+    const [olderId, newerId] = [uuidv7(), uuidv7()];
+    await register(olderId);
+    const newer = await register(newerId);
+
+    await expect(
+      remote.findNativeBuild({
+        platform: "android",
+        channel: "production",
+        fingerprintHash: "fingerprint-a",
+        appVersion: null,
+      }),
+    ).resolves.toEqual(newer);
+    await expect(
+      remote.findNativeBuild({
+        platform: "android",
+        channel: "production",
+        fingerprintHash: null,
+        appVersion: "1.0.0",
+      }),
+    ).resolves.toBeNull();
+    await expect(remote.listNativeBuilds({ limit: 1, order: "desc" })).resolves.toEqual([
+      newer,
+    ]);
+    await expect(register(newerId)).rejects.toThrow("already registered");
+    await expect(remote.countBundles()).resolves.toBe(0);
+    await expect(remote.deleteBundles([newerId])).rejects.toThrow(
+      "still referenced",
+    );
+    await expect(remote.getBundle(newerId)).resolves.toMatchObject({
+      bundle: { id: newerId, platform: "android" },
+    });
+  });
 });
 
 describe("Insights through a self-hosted server's admin API", () => {

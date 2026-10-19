@@ -180,4 +180,79 @@ describe("admin API protocol 2 routes", () => {
     ).rejects.toBeInstanceOf(HandlerBadRequestError);
     expect(listReleases).not.toHaveBeenCalled();
   });
+
+  it("finds a native build by scope, answering a scope without one with null data", async () => {
+    const findNativeBuild = vi.fn(async () => null);
+
+    const response = await routes.findNativeBuild!(
+      {},
+      new Request(
+        `${BASE}/native-builds/latest?platform=android&channel=beta&appVersion=1.2.0`,
+      ),
+      apiWith({ findNativeBuild }),
+    );
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toEqual({ data: null });
+    expect(findNativeBuild).toHaveBeenCalledWith({
+      platform: "android",
+      channel: "beta",
+      fingerprintHash: null,
+      appVersion: "1.2.0",
+    });
+  });
+
+  it.each([
+    "platform=ios&channel=production",
+    "platform=ios&channel=production&fingerprintHash=f&appVersion=1.0.0",
+    "platform=web&channel=production&fingerprintHash=f",
+    "platform=ios&fingerprintHash=f",
+  ])("refuses the native build lookup %s", async (query) => {
+    const findNativeBuild = vi.fn();
+
+    await expect(
+      routes.findNativeBuild!(
+        {},
+        new Request(`${BASE}/native-builds/latest?${query}`),
+        apiWith({ findNativeBuild }),
+      ),
+    ).rejects.toBeInstanceOf(HandlerBadRequestError);
+    expect(findNativeBuild).not.toHaveBeenCalled();
+  });
+
+  it("registers a well-formed native build, and refuses one with both targets", async () => {
+    const registration = {
+      id: "01900000-0000-7000-8000-000000000002",
+      platform: "ios",
+      channel: "production",
+      fingerprintHash: "f",
+      appVersion: null,
+      minBundleId: "01900000-0000-7000-8000-000000000001",
+      gitCommitHash: null,
+      artifact: { kind: "ipa", storageUri: "s3://bucket/App.ipa", byteSize: 1 },
+      embeddedBundle: {
+        manifestStorageUri: "s3://bucket/manifest.json",
+        manifestFileHash: "hash",
+        assetBaseStorageUri: "s3://bucket/assets",
+      },
+    };
+    const registerNativeBuild = vi.fn(async () => ({ id: registration.id }));
+
+    const response = await routes.registerNativeBuild!(
+      {},
+      post("/native-builds", registration),
+      apiWith({ registerNativeBuild } as unknown as Partial<CoreApi>),
+    );
+
+    expect(response.status).toBe(201);
+    expect(registerNativeBuild).toHaveBeenCalledWith(registration);
+    await expect(
+      routes.registerNativeBuild!(
+        {},
+        post("/native-builds", { ...registration, appVersion: "1.0.0" }),
+        apiWith({ registerNativeBuild } as unknown as Partial<CoreApi>),
+      ),
+    ).rejects.toBeInstanceOf(HandlerBadRequestError);
+    expect(registerNativeBuild).toHaveBeenCalledTimes(1);
+  });
 });
