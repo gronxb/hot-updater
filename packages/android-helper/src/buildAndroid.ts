@@ -25,7 +25,11 @@ export const buildAndroid = async ({
   buildDirectory: string;
   buildArtifactPath: string;
   /** What the built artifact reports, or undefined without aapt2. */
-  builtApp?: { appVersion: string | null; channel: string | null };
+  builtApp?: {
+    appVersion: string | null;
+    /** undefined when the artifact's channel cannot be read exactly. */
+    channel?: string | null;
+  };
 }> => {
   const androidProjectPath = path.join(getCwd(), "android");
 

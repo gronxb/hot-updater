@@ -58,31 +58,74 @@ const findAapt2 = (androidProjectPath: string): string | undefined => {
 export const parseBadgingVersionName = (badging: string): string | null =>
   badging.match(/\bversionName='([^']*)'/)?.[1] || null;
 
+const RAW_MARKER = '" (Raw: "';
+
+/**
+ * An attribute aapt2 prints as `="<value>" (Raw: "<value>")`, given the text
+ * after `="`. aapt2 does not escape the value, so it is the prefix the rest
+ * of the line repeats; a value with a line break, which aapt2 indents, reads
+ * as undefined.
+ */
+const readQuotedValue = (rest: string): string | undefined => {
+  for (
+    let end = rest.indexOf(RAW_MARKER);
+    end !== -1;
+    end = rest.indexOf(RAW_MARKER, end + 1)
+  ) {
+    const value = rest.slice(0, end);
+    if (rest === `${value}${RAW_MARKER}${value}")`) {
+      return value;
+    }
+  }
+  return undefined;
+};
+
+/**
+ * The value of the attribute `marker` (such as `:value(0x01010024)=`) on
+ * `line`: null without one, and undefined when it cannot be read exactly.
+ */
+const readAttribute = (
+  line: string,
+  marker: string,
+): string | null | undefined => {
+  const start = line.indexOf(marker);
+  if (start === -1) {
+    return null;
+  }
+  const rest = line.slice(start + marker.length);
+  if (rest.startsWith('"')) {
+    return readQuotedValue(rest.slice(1));
+  }
+  // A resource reference, which an `.apk` prints as `@0x<id>` and an `.aab`
+  // as `@string/channel`.
+  return rest.match(/^@[\w./:]+/)?.[0];
+};
+
 /**
  * A `<meta-data>` value from `aapt2 dump xmltree` of the manifest: the
- * literal, or a resource reference such as `@string/channel`, which an `.apk`
- * prints as `@0x<id>` and an `.aab` as `@string/channel`.
+ * literal, or a resource reference such as `@string/channel`. null when the
+ * manifest has none, and undefined when aapt2 printed one it cannot read
+ * exactly.
  */
 export const parseManifestMetaData = (
   xmltree: string,
   name: string,
-): string | null => {
+): string | null | undefined => {
   const lines = xmltree.split("\n");
   for (let i = 0; i < lines.length; i++) {
     if (!/^\s*E: meta-data\b/.test(lines[i]!)) {
       continue;
     }
-    let metaDataName: string | undefined;
-    let value: string | undefined;
+    let metaDataName: string | null | undefined = null;
+    let value: string | null | undefined = null;
     for (let j = i + 1; j < lines.length && /^\s*A: /.test(lines[j]!); j++) {
-      metaDataName ??= lines[j]!.match(/:name\(0x[0-9a-f]+\)="([^"]*)"/)?.[1];
-      const valueMatch = lines[j]!.match(
-        /:value\(0x[0-9a-f]+\)=(?:"([^"]*)"|(@[\w./:]+))/,
-      );
-      value ??= valueMatch?.[1] ?? valueMatch?.[2];
+      metaDataName ||= readAttribute(lines[j]!, ":name(0x01010003)=");
+      if (value === null) {
+        value = readAttribute(lines[j]!, ":value(0x01010024)=");
+      }
     }
     if (metaDataName === name) {
-      return value || null;
+      return value ?? undefined;
     }
   }
   return null;
@@ -90,12 +133,13 @@ export const parseManifestMetaData = (
 
 /**
  * The string a resource reference resolves to, from `aapt2 dump resources`:
- * its default configuration's value, or else its first.
+ * its default configuration's value, or else its first. undefined when the
+ * table has none aapt2 printed on one line.
  */
 export const parseResourceString = (
   resources: string,
   reference: string,
-): string | null => {
+): string | undefined => {
   const lines = resources.split("\n");
   // `resource <id> <type>/<name>`, which either form of reference names.
   const start = lines.findIndex((line) => {
@@ -105,21 +149,22 @@ export const parseResourceString = (
     );
   });
   if (start === -1) {
-    return null;
+    return undefined;
   }
   const values: { config: string; value: string }[] = [];
   for (let i = start + 1; i < lines.length; i++) {
     if (/^\s*resource 0x/.test(lines[i]!)) {
       break;
     }
+    // aapt2 prints `(<config>) "<value>"` unescaped, so the value runs to
+    // the line's last quote. A value with a line break continues, indented,
+    // on the next line, so this reads it as none.
     const match = lines[i]!.match(/^\s*\(([^)]*)\) "(.*)"$/);
     if (match) {
       values.push({ config: match[1]!, value: match[2]! });
     }
   }
-  return (
-    (values.find(({ config }) => config === "") ?? values[0])?.value ?? null
-  );
+  return (values.find(({ config }) => config === "") ?? values[0])?.value;
 };
 
 /**
@@ -159,7 +204,12 @@ export const readBuiltApp = async ({
   artifactPath: string;
   androidProjectPath: string;
 }): Promise<
-  { appVersion: string | null; channel: string | null } | undefined
+  | {
+      appVersion: string | null;
+      /** undefined when the artifact's channel cannot be read exactly. */
+      channel?: string | null;
+    }
+  | undefined
 > => {
   const aapt2 = findAapt2(androidProjectPath);
   if (!aapt2) {
@@ -190,6 +240,11 @@ export const readBuiltApp = async ({
     if (channel?.startsWith("@")) {
       const resources = await execa(aapt2, ["dump", "resources", apkPath]);
       channel = parseResourceString(resources.stdout, channel);
+    }
+    if (channel === undefined) {
+      p.log.warn(
+        "aapt2 printed the artifact's com.hotupdater.CHANNEL in a form that cannot be read exactly, so the build reports the channel of the project files.",
+      );
     }
     return {
       appVersion: parseBadgingVersionName(badging.stdout),

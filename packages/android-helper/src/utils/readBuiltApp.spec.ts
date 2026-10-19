@@ -62,7 +62,45 @@ describe("aapt2 output", () => {
       ),
     ).toBe("@string/channel");
     expect(parseResourceString(resources, "@string/channel")).toBe("beta");
-    expect(parseResourceString(resources, "@0x7f100099")).toBeNull();
+    expect(parseResourceString(resources, "@0x7f100099")).toBeUndefined();
+  });
+
+  it("reads a channel with quotes as aapt2 prints it, unescaped", () => {
+    // aapt2 37.0.0's output for android:value="qa&quot;east (Raw: &quot;x".
+    const xmltree = XMLTREE.replace(
+      '="beta" (Raw: "beta")',
+      '="qa"east (Raw: "x" (Raw: "qa"east (Raw: "x")',
+    );
+    expect(parseManifestMetaData(xmltree, "com.hotupdater.CHANNEL")).toBe(
+      'qa"east (Raw: "x',
+    );
+  });
+
+  it("reads a channel with a line break, which aapt2 indents, as unknown", () => {
+    const xmltree = XMLTREE.replace(
+      '="beta" (Raw: "beta")',
+      '="qa\n              east" (Raw: "qa\n              east")',
+    );
+    expect(
+      parseManifestMetaData(xmltree, "com.hotupdater.CHANNEL"),
+    ).toBeUndefined();
+    // aapt2 37.0.0's output for <string name="channel">a\"b\nc</string>.
+    expect(
+      parseResourceString(
+        `    resource 0x7f10005c string/channel
+      () "a"b
+      c"
+    resource 0x7f10005d string/other`,
+        "@string/channel",
+      ),
+    ).toBeUndefined();
+    expect(
+      parseResourceString(
+        `    resource 0x7f10005c string/channel
+      () "a"b"`,
+        "@string/channel",
+      ),
+    ).toBe('a"b');
   });
 
   it("reads no channel from a manifest without one", () => {

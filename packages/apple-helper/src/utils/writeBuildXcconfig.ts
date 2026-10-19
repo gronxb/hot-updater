@@ -4,6 +4,46 @@ import path from "path";
 const SDK_CONDITIONS = ["", "[sdk=iphoneos*]", "[sdk=iphonesimulator*]"];
 
 /**
+ * Finds a setting of `keys` that an included xcconfig sets with a condition
+ * the build xcconfig does not, such as `[config=Release]` or `[arch=arm64]`,
+ * which would outrank the build's own. It follows `#include`s, which are
+ * relative to the including file.
+ */
+const findConditionalSetting = async (
+  files: string[],
+  keys: string[],
+  visited = new Set<string>(),
+): Promise<string | undefined> => {
+  for (const file of files) {
+    if (visited.has(file) || !fs.existsSync(file)) {
+      continue;
+    }
+    visited.add(file);
+    const lines = (await fs.promises.readFile(file, "utf-8")).split("\n");
+    for (const [index, line] of lines.entries()) {
+      const include = line.match(/^\s*#include\??\s*"([^"]+)"/)?.[1];
+      if (include) {
+        const found = await findConditionalSetting(
+          [path.resolve(path.dirname(file), include)],
+          keys,
+          visited,
+        );
+        if (found) {
+          return found;
+        }
+        continue;
+      }
+      const [, key, conditions] =
+        line.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)((?:\[[^\]]*\])+)\s*=/) ?? [];
+      if (key && keys.includes(key) && !SDK_CONDITIONS.includes(conditions!)) {
+        return `${file}:${index + 1} sets ${key}${conditions}`;
+      }
+    }
+  }
+  return undefined;
+};
+
+/**
  * Writes the xcconfig a build loads, which sets the CLI's build settings
  * over every other. xcodebuild ranks an `-xcconfig`'s settings above the
  * command line's, so the scheme's `xcconfig` and each `-xcconfig` in
@@ -34,11 +74,22 @@ export const writeBuildXcconfig = async ({
     }
   }
 
+  const includedFiles = included.map((file) => path.resolve(sourceDir, file));
+  const conditional = await findConditionalSetting(
+    includedFiles,
+    Object.keys(settings),
+  );
+  if (conditional) {
+    throw new Error(
+      `${conditional}, which would outrank the value the build sets. Set it without that condition, or remove it.`,
+    );
+  }
+
   const buildXcconfig = path.join(directory, "HotUpdater.xcconfig");
   await fs.promises.writeFile(
     buildXcconfig,
     [
-      ...included.map((file) => `#include "${path.resolve(sourceDir, file)}"`),
+      ...includedFiles.map((file) => `#include "${file}"`),
       // A matching SDK condition outranks the unconditional setting, so
       // each is set for the device and simulator SDKs too.
       ...Object.entries(settings).flatMap(([key, value]) =>

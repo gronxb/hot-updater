@@ -156,6 +156,27 @@ describe("createNativeBuild", () => {
     });
   });
 
+  it("reports the project's channel when the artifact's cannot be read exactly", async () => {
+    const built = await writeArtifact("app-release.apk");
+
+    const result = await createNativeBuild({
+      platform: "android",
+      scheme: "release",
+      minBundleId: "0190a1b2-c3d4-7000-8000-02a1b2c3d4e5",
+      target: { fingerprintHash: null, appVersion: "1.0.0" },
+      debug: false,
+      readChannel: async () => "from-project",
+      outputPath: path.join(root, "output"),
+      buildAdapter: buildAdapter([]),
+      builder: async () => ({
+        ...built,
+        builtApp: { appVersion: "1.0.0", channel: undefined },
+      }),
+    });
+
+    expect(result.channel).toBe("from-project");
+  });
+
   it("reports the nil UUID a debug build's native SDK reports as its MIN_BUNDLE_ID", async () => {
     const built = await writeArtifact("app-debug.apk");
 

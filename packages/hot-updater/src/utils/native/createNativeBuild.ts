@@ -78,7 +78,14 @@ export const createNativeBuild = async ({
      * What the built app reports at runtime, read from the artifact, which
      * an `xcconfig`, `extraParams`, flavors and build types shape.
      */
-    builtApp?: { appVersion: string | null; channel: string | null };
+    builtApp?: {
+      appVersion: string | null;
+      /**
+       * null for none, which the native SDK reports as `production`, and
+       * undefined when the artifact's cannot be read exactly.
+       */
+      channel?: string | null;
+    };
   }>;
 }): Promise<NativeBuildResult> => {
   const { buildDirectory, buildArtifactPath, builtApp } = await builder();
@@ -91,9 +98,10 @@ export const createNativeBuild = async ({
     throw new Error(`Unexpected native build artifact: ${buildArtifactPath}`);
   }
 
-  const channel = builtApp
-    ? (builtApp.channel ?? DEFAULT_CHANNEL)
-    : await readChannel();
+  const channel =
+    builtApp && builtApp.channel !== undefined
+      ? (builtApp.channel ?? DEFAULT_CHANNEL)
+      : await readChannel();
   const builtTarget: NativeBuildTarget =
     target.appVersion !== null && builtApp?.appVersion
       ? { fingerprintHash: null, appVersion: builtApp.appVersion }
