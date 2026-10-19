@@ -203,7 +203,8 @@ const readExpoModuleConfig = async (
   // `ios` is the legacy name of `apple`, read only when `apple` is absent.
   const section =
     platform === "ios" ? (config["apple"] ?? config["ios"]) : config["android"];
-  return JSON.stringify({
+  // Key order means nothing to Expo.
+  return stableStringify({
     listed: Array.isArray(config["platforms"])
       ? names.some((name) => (config["platforms"] as unknown[]).includes(name))
       : null,

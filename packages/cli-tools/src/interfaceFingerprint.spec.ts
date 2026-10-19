@@ -904,6 +904,28 @@ describe("readReactNativeInterface", () => {
     expect(await hashOf({ platform: "android" }, native)).not.toBe(before);
   });
 
+  it("ignores the key order of an Expo module's registration", async () => {
+    const native: NativeInterface = {
+      runtime: "react-native@0.85.2",
+      dependencies: [
+        {
+          name: "local-module",
+          root: path.join(root, "packages/local-module"),
+        },
+      ],
+    };
+    const register = (android: object) =>
+      write(
+        path.join(root, "packages/local-module/expo-module.config.json"),
+        JSON.stringify({ android }),
+      );
+    await register({ modules: ["A"], publication: { groupId: "g" } });
+    const before = await hashOf({ platform: "android" }, native);
+
+    await register({ publication: { groupId: "g" }, modules: ["A"] });
+    expect(await hashOf({ platform: "android" }, native)).toBe(before);
+  });
+
   it("explains a config command that prints no configuration", async () => {
     await expect(
       readReactNativeInterface({
