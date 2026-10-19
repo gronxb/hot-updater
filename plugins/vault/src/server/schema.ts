@@ -60,7 +60,11 @@ export const vaultSchema = {
       created_at_ms: { type: "integer" },
       revoked_at_ms: { type: "integer", required: false },
     },
-    { key: ["id"] },
+    {
+      key: ["id"],
+      // Tokens are listed newest first, as API keys are.
+      indexes: { byCreated: { eq: [], sort: ["created_at_ms"] } },
+    },
   ),
   /** Reads, signatures, and changes, with who made them and how they ended. */
   audit: defineTable(
@@ -74,7 +78,15 @@ export const vaultSchema = {
       outcome: { type: "string", maxLength: 16 },
       context: { type: "json" },
     },
-    { key: ["id"], indexes: { byTime: { eq: [], sort: ["at_ms"] } } },
+    {
+      key: ["id"],
+      // The log reads newest first, for the vault, one secret, or one actor.
+      indexes: {
+        byTime: { eq: [], sort: ["at_ms"] },
+        bySecret: { eq: ["secret_id"], sort: ["at_ms"] },
+        byActor: { eq: ["actor"], sort: ["at_ms"] },
+      },
+    },
   ),
 } as const;
 
