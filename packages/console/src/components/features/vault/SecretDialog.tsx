@@ -214,7 +214,12 @@ function SecretForm({
     setSubmitted(true);
     if (invalid) return;
     try {
-      const saved = await put.mutateAsync({ name: secretName, kind, value });
+      const saved = await put.mutateAsync({
+        name: secretName,
+        kind,
+        value,
+        overwrite: secret !== undefined,
+      });
       toast.success(
         secret === undefined
           ? `${saved.name} saved`

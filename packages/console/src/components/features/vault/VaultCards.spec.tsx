@@ -255,6 +255,20 @@ describe("SecretsCard", () => {
     expect(status.refetch).toHaveBeenCalledOnce();
   });
 
+  it("offers no add until the secrets have loaded", () => {
+    render(
+      <SecretsCard
+        secrets={{ ...loaded([]), data: undefined, isError: true }}
+        status={unlocked}
+      />,
+    );
+
+    expect(
+      (screen.getByRole("button", { name: "Add secret" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+  });
+
   it("adds an App Store Connect key from its file, named after its kind", async () => {
     putMutation.mutateAsync.mockResolvedValue({
       name: "asc-api-key",
@@ -280,6 +294,7 @@ describe("SecretsCard", () => {
         name: "asc-api-key",
         kind: "asc-api-key",
         value: { p8: base64(P8), keyId: "ABC123DEFG", issuerId: "issuer" },
+        overwrite: false,
       });
     });
     await waitFor(() => {
@@ -352,6 +367,7 @@ describe("SecretsCard", () => {
           keyAlias: "upload",
           keyPassword: "key",
         },
+        overwrite: true,
       });
     });
     expect(toastSuccess).toHaveBeenCalledWith(

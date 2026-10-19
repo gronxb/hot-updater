@@ -35,16 +35,26 @@ const parsePut = (
   readonly name: string;
   readonly kind: VaultSecretKind;
   readonly value: unknown;
+  readonly overwrite: boolean;
 } => {
   const name = field(input, "name");
   const kind = field(input, "kind");
+  const overwrite = field(input, "overwrite");
   if (typeof name !== "string") {
     throw new TypeError("A secret's name must be a string.");
   }
   if (!VAULT_SECRET_KIND_IDS.includes(kind as VaultSecretKind)) {
     throw new TypeError("Unknown secret kind.");
   }
-  return { name, kind: kind as VaultSecretKind, value: field(input, "value") };
+  if (typeof overwrite !== "boolean") {
+    throw new TypeError("Say whether the secret is new or overwritten.");
+  }
+  return {
+    name,
+    kind: kind as VaultSecretKind,
+    value: field(input, "value"),
+    overwrite,
+  };
 };
 
 const parseIssue = (
@@ -92,9 +102,12 @@ export const listVaultSecretsRpc = createServerFn({ method: "GET" })
   );
 
 /**
- * Stores a secret's value as its next version. The value must be its kind's
- * shape, and the secret's metadata is what the value shows without its
- * secrets, so the console never sends a value back.
+ * Stores a secret's value: a new secret, or with `overwrite`, the next
+ * version of one. The vault's `put` does either, so the name is checked
+ * first: adding never replaces a secret someone else stored under the name,
+ * and an overwrite never brings back one someone deleted. The value must be
+ * its kind's shape, and the secret's metadata is what the value shows
+ * without its secrets, so the console never sends a value back.
  */
 export const putVaultSecretRpc = createServerFn({ method: "POST" })
   .middleware([consoleAccess])
@@ -104,6 +117,14 @@ export const putVaultSecretRpc = createServerFn({ method: "POST" })
     const { parseVaultSecretValue, vaultSecretMetadata } =
       await import("@hot-updater/server/plugins");
     const value = parseVaultSecretValue(data.kind, data.value);
+    const exists = (await vault.list()).some(({ name }) => name === data.name);
+    if (exists !== data.overwrite) {
+      throw new Error(
+        exists
+          ? `A secret is already named ${data.name}. Overwrite it from its row instead.`
+          : `No secret is named ${data.name} anymore. Add it again.`,
+      );
+    }
     return vault.put({
       name: data.name,
       kind: data.kind,

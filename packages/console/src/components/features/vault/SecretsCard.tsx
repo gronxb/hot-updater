@@ -193,6 +193,8 @@ export function SecretsCard({
   const [deleting, setDeleting] = useState<VaultSecret | null>(null);
   // Writes wait for the vault to say it holds a key.
   const locked = status.data?.locked !== false;
+  // Adding checks names against the list, so it waits for one.
+  const canAdd = !locked && secrets.data !== undefined && !secrets.isError;
   const names = (secrets.data ?? []).map(({ name }) => name);
 
   return (
@@ -203,7 +205,7 @@ export function SecretsCard({
         </CardTitle>
         <Button
           className="min-h-11 sm:min-h-8"
-          disabled={locked}
+          disabled={!canAdd}
           onClick={() => setEditing(null)}
         >
           <Plus data-icon="inline-start" />
@@ -313,7 +315,7 @@ export function SecretsCard({
                       </p>
                       <Button
                         className="mt-1 min-h-11 sm:min-h-8"
-                        disabled={locked}
+                        disabled={!canAdd}
                         onClick={() => setEditing(null)}
                         size="sm"
                         variant="outline"
