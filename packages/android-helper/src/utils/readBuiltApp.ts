@@ -54,10 +54,6 @@ const findAapt2 = (androidProjectPath: string): string | undefined => {
     .find((aapt2) => fs.existsSync(aapt2));
 };
 
-/** `versionName` from `aapt2 dump badging`. */
-export const parseBadgingVersionName = (badging: string): string | null =>
-  badging.match(/\bversionName='([^']*)'/)?.[1] || null;
-
 const RAW_MARKER = '" (Raw: "';
 
 /**
@@ -126,6 +122,23 @@ export const parseManifestMetaData = (
     }
     if (metaDataName === name) {
       return value ?? undefined;
+    }
+  }
+  return null;
+};
+
+/**
+ * The `android:versionName` of the `<manifest>` element in `aapt2 dump
+ * xmltree`, which Gradle merges from the variant, with its suffixes: null
+ * without one, and undefined when it cannot be read exactly.
+ */
+export const parseManifestVersionName = (
+  xmltree: string,
+): string | null | undefined => {
+  for (const line of xmltree.split("\n")) {
+    const value = readAttribute(line, ":versionName(0x0101021c)=");
+    if (value !== null) {
+      return value;
     }
   }
   return null;
@@ -226,30 +239,35 @@ export const readBuiltApp = async ({
     const apkPath = artifactPath.endsWith(".aab")
       ? await writeBaseModuleApk(artifactPath, directory)
       : artifactPath;
-    const [badging, xmltree] = await Promise.all([
-      execa(aapt2, ["dump", "badging", apkPath]),
-      execa(aapt2, [
-        "dump",
-        "xmltree",
-        "--file",
-        "AndroidManifest.xml",
-        apkPath,
-      ]),
+    const { stdout: xmltree } = await execa(aapt2, [
+      "dump",
+      "xmltree",
+      "--file",
+      "AndroidManifest.xml",
+      apkPath,
     ]);
-    let channel = parseManifestMetaData(xmltree.stdout, CHANNEL_META_DATA_KEY);
-    if (channel?.startsWith("@")) {
-      const resources = await execa(aapt2, ["dump", "resources", apkPath]);
-      channel = parseResourceString(resources.stdout, channel);
-    }
-    if (channel === undefined) {
+    // Either value may name a string resource, which the resource table
+    // resolves.
+    let resources: Promise<string> | undefined;
+    const resolve = async (value: string | null | undefined) => {
+      if (!value?.startsWith("@")) {
+        return value;
+      }
+      resources ??= execa(aapt2, ["dump", "resources", apkPath]).then(
+        ({ stdout }) => stdout,
+      );
+      return parseResourceString(await resources, value);
+    };
+    const appVersion = await resolve(parseManifestVersionName(xmltree));
+    const channel = await resolve(
+      parseManifestMetaData(xmltree, CHANNEL_META_DATA_KEY),
+    );
+    if (appVersion === undefined || channel === undefined) {
       p.log.warn(
-        "aapt2 printed the artifact's com.hotupdater.CHANNEL in a form that cannot be read exactly, so the build reports the channel of the project files.",
+        "aapt2 printed the artifact's versionName or com.hotupdater.CHANNEL in a form that cannot be read exactly, so the build reports the project files' value for it.",
       );
     }
-    return {
-      appVersion: parseBadgingVersionName(badging.stdout),
-      channel,
-    };
+    return { appVersion: appVersion ?? null, channel };
   } finally {
     await fs.promises.rm(directory, { recursive: true, force: true });
   }

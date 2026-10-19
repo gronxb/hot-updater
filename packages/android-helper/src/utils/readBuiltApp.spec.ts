@@ -1,17 +1,16 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  parseBadgingVersionName,
   parseManifestMetaData,
+  parseManifestVersionName,
   parseResourceString,
 } from "./readBuiltApp";
 
 // Output of aapt2 37.0.0 for a release build of examples/v0.85.0.
-const BADGING = `package: name='com.hotupdaterexample' versionCode='1' versionName='1.0-staging' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
-minSdkVersion:'24'`;
-
 const XMLTREE = `N: android=http://schemas.android.com/apk/res/android (line=2)
   E: manifest (line=2)
+    A: http://schemas.android.com/apk/res/android:versionCode(0x0101021b)=1
+    A: http://schemas.android.com/apk/res/android:versionName(0x0101021c)="1.0-staging" (Raw: "1.0-staging")
       E: application (line=12)
           E: meta-data (line=62)
             A: http://schemas.android.com/apk/res/android:name(0x01010003)="com.hotupdater.FINGERPRINT_HASH" (Raw: "com.hotupdater.FINGERPRINT_HASH")
@@ -24,7 +23,18 @@ const XMLTREE = `N: android=http://schemas.android.com/apk/res/android (line=2)
 
 describe("aapt2 output", () => {
   it("reads the merged versionName, with its suffix", () => {
-    expect(parseBadgingVersionName(BADGING)).toBe("1.0-staging");
+    expect(parseManifestVersionName(XMLTREE)).toBe("1.0-staging");
+  });
+
+  it("reads a versionName with an apostrophe, which badging would cut", () => {
+    expect(
+      parseManifestVersionName(
+        XMLTREE.replace(
+          '="1.0-staging" (Raw: "1.0-staging")',
+          `="1.2'qa" (Raw: "1.2'qa")`,
+        ),
+      ),
+    ).toBe("1.2'qa");
   });
 
   it("reads the merged channel meta-data", () => {
