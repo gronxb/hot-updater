@@ -188,7 +188,13 @@ const fromEnv: {
     keyPath:
       key.name === "HOT_UPDATER_ASC_KEY_PATH"
         ? await readFileField("asc-api-key", key)
-        : await files.write(`AuthKey_${keyId.value}.p8`, key.value),
+        : await files.write(
+            `AuthKey_${keyId.value}.p8`,
+            // A PEM pasted into a one-line CI secret keeps its newlines as \n.
+            key.value.includes("\n")
+              ? key.value
+              : key.value.replaceAll("\\n", "\n"),
+          ),
     keyId: keyId.value,
     issuerId: issuerId.value,
   }),
@@ -201,8 +207,13 @@ const fromEnv: {
       storeFile = await readFileField("android-keystore", keystore);
     } else {
       registerSecretValue(keystore.value);
-      const contents = Buffer.from(keystore.value, "base64");
-      if (contents.length === 0) {
+      const base64 = keystore.value.replace(/\s/g, "");
+      const contents = Buffer.from(base64, "base64");
+      if (
+        contents.length === 0 ||
+        contents.toString("base64").replace(/=+$/, "") !==
+          base64.replace(/=+$/, "")
+      ) {
         throw new CredentialUnavailableError(
           "android-keystore",
           `${keystore.name} is not a base64-encoded keystore.`,

@@ -220,6 +220,31 @@ describe("credential temporary files", () => {
     expect(await exists(keyPath)).toBe(false);
   });
 
+  it("restores the newlines of a key pasted on one line", async () => {
+    vi.stubEnv("HOT_UPDATER_ASC_KEY", P8_KEY.replaceAll("\n", "\\n"));
+    vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "ABC123");
+    vi.stubEnv("HOT_UPDATER_ASC_ISSUER_ID", "issuer-1");
+
+    await withCredentialResolver(async (resolver) => {
+      const { keyPath } = await resolver.resolve({ kind: "asc-api-key" });
+
+      expect(await fs.readFile(keyPath, "utf-8")).toBe(P8_KEY);
+    });
+  });
+
+  it("rejects a keystore that is not base64", async () => {
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEYSTORE_BASE64", "not base64!");
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD", "store-password");
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEY_ALIAS", "release");
+    vi.stubEnv("HOT_UPDATER_ANDROID_KEY_PASSWORD", "key-password");
+
+    await expect(
+      createCredentialResolver().resolve({ kind: "android-keystore" }),
+    ).rejects.toThrow(
+      "HOT_UPDATER_ANDROID_KEYSTORE_BASE64 is not a base64-encoded keystore.",
+    );
+  });
+
   it("writes a base64 keystore as binary", async () => {
     const keystore = Buffer.from([0xfe, 0xed, 0xfe, 0xed, 0x00, 0x02]);
     vi.stubEnv(

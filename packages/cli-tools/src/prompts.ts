@@ -62,12 +62,12 @@ const createStaticSpinner = ({
   const logOptions = { output, withGuide };
   const finish = (
     message: string | undefined,
-    log: typeof clack.log.success,
+    logLine: typeof clack.log.success,
   ) => {
     if (!active) return;
     active = false;
     const finalMessage = message || latestMessage;
-    if (finalMessage) log(finalMessage, logOptions);
+    if (finalMessage) logLine(finalMessage, logOptions);
   };
 
   return {

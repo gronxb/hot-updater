@@ -120,13 +120,14 @@ export const createLogWriter = async ({
       stream.write(plainText);
     };
 
-    // Writes whole lines, so a credential value split across two chunks is
-    // still masked.
+    // Writes whole lines (progress output ends them with \r), so a credential
+    // value split across two chunks is still masked.
     const writeStream = async (input: Readable) => {
       let partialLine = "";
       for await (const chunk of input) {
         const text = partialLine + normalizeChunk({ chunk });
-        const lineEnd = text.lastIndexOf("\n") + 1;
+        const lineEnd =
+          Math.max(text.lastIndexOf("\n"), text.lastIndexOf("\r")) + 1;
         partialLine = text.slice(lineEnd);
         if (lineEnd > 0) {
           writeChunk(text.slice(0, lineEnd));
