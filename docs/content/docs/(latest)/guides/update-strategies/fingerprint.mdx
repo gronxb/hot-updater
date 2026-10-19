@@ -25,9 +25,8 @@ your project declares. It covers:
 - the JavaScript engine and the architecture: `hermesEnabled`,
   `hermesV1Enabled`, and `newArchEnabled` in `android/gradle.properties`, or,
   with Expo, `jsEngine` and `newArchEnabled` in the app config;
-- each native package autolinking links, Expo modules and the extra pods
-  Expo's autolinking adds included, by name and version, so installing,
-  removing, or upgrading one changes the fingerprint;
+- each native package autolinking links, Expo modules included, by name and
+  version, so installing, removing, or upgrading one changes the fingerprint;
 - the codegen specs of your app and of local native packages, with their
   `codegenConfig`, or the native files of a local package without specs;
 - patches to those packages, in `patches/` or wherever pnpm, Bun, or Yarn
@@ -111,9 +110,9 @@ differs only in where it reads two inputs, so `fingerprint create` before
 `expo prebuild` and the native build after it compute the same fingerprint:
 
 - **Native packages** come from Expo's autolinking, as the native build links
-  them: Expo modules from `expo-modules-autolinking resolve` (including the
-  extra pods it adds), and React Native packages from its `react-native-config`
-  (from SDK 52), or from React Native CLI on earlier SDKs or with
+  them: Expo modules from `expo-modules-autolinking resolve`, and React Native
+  packages from its `react-native-config` (from SDK 52), or from React Native
+  CLI on earlier SDKs or with
   `EXPO_USE_COMMUNITY_AUTOLINKING=1`. In a monorepo, a module is linked when it
   is listed in the app's `dependencies`. Set `EXPO_USE_COMMUNITY_AUTOLINKING`
   the same way where you run `fingerprint create` and where you build.
@@ -123,7 +122,8 @@ differs only in where it reads two inputs, so `fingerprint create` before
   `android/gradle.properties`.
 
 Nothing else in the app config counts, including config plugins and their
-options: like edits to a bare app's `ios/` and `android/`, they mostly write
+options, such as extra pods or Maven repositories `expo-build-properties`
+adds: like edits to a bare app's `ios/` and `android/`, they mostly write
 permissions, `Info.plist` keys, and Gradle settings, which don't change what
 JavaScript can call. When a config plugin change does change that interface,
 bump `nativeVersion`. For custom native code, prefer a local Expo module in

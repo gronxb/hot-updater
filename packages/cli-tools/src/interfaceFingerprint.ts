@@ -196,16 +196,15 @@ const readExpoModuleConfig = async (
   if (file === null) return null;
   const config = JSON.parse(file) as Record<string, unknown>;
   const names = platform === "ios" ? ["apple", "ios"] : ["android"];
+  // `ios` is the legacy name of `apple`, read only when `apple` is absent.
+  const section =
+    platform === "ios" ? (config["apple"] ?? config["ios"]) : config["android"];
   return JSON.stringify({
     listed: Array.isArray(config["platforms"])
       ? names.some((name) => (config["platforms"] as unknown[]).includes(name))
       : null,
     coreFeatures: config["coreFeatures"] ?? null,
-    ...Object.fromEntries(
-      names.flatMap((name) =>
-        name in config ? [[name, config[name]] as const] : [],
-      ),
-    ),
+    section: section ?? null,
   });
 };
 
@@ -267,10 +266,7 @@ export const resolveExpoAutolinking = (
 const readExpoModules = async (
   cwd: string,
   platform: Platform,
-): Promise<{
-  modules: NativeDependency[];
-  extraDependencies: unknown[];
-}> => {
+): Promise<NativeDependency[]> => {
   const { bin, version } = resolveExpoAutolinking(cwd);
   // expo-modules-autolinking 1.10 renamed the iOS platform `apple`.
   const name =
@@ -287,14 +283,11 @@ const readExpoModules = async (
   if (result.exitCode !== 0) {
     throw new Error("`expo-modules-autolinking resolve` failed.");
   }
-  const { modules = [], extraDependencies = [] } = parseJsonOutput<{
-    modules?: ExpoModule[];
-    extraDependencies?: unknown[];
-  }>(result.stdout, "expo-modules-autolinking resolve");
-  return {
-    extraDependencies,
-    modules: await readExpoModuleDependencies(modules),
-  };
+  const { modules = [] } = parseJsonOutput<{ modules?: ExpoModule[] }>(
+    result.stdout,
+    "expo-modules-autolinking resolve",
+  );
+  return readExpoModuleDependencies(modules);
 };
 
 const readExpoModuleDependencies = (
@@ -439,9 +432,9 @@ export const readReactNativeInterface = async ({
       : [],
   );
   const linksExpoModules = dependencies.some(({ name }) => name === "expo");
-  const { modules: expoModules, extraDependencies } = linksExpoModules
+  const expoModules = linksExpoModules
     ? await readExpoModules(cwd, platform)
-    : { modules: [], extraDependencies: [] };
+    : [];
   const names = new Set(dependencies.map(({ name }) => name));
   // iOS declares no engine setting React Native's pods read from a file:
   // `pod install` takes them from the environment.
@@ -458,24 +451,7 @@ export const readReactNativeInterface = async ({
       ...dependencies,
       ...expoModules.filter(({ name }) => !names.has(name)),
     ],
-    settings:
-      extraDependencies.length === 0
-        ? settings
-        : {
-            ...settings,
-            // The pods and Maven repositories Expo's autolinking adds, which
-            // the build links like a package. A Maven repository can carry
-            // credentials, and fingerprint.json is committed, so they are
-            // recorded by hash, with paths relative to the project so every
-            // machine computes the same one.
-            "expo-autolinking.extraDependencies": `sha256:${sha256(
-              JSON.stringify(extraDependencies, (_key, value: unknown) =>
-                typeof value === "string" && path.isAbsolute(value)
-                  ? toPosix(path.relative(cwd, value))
-                  : value,
-              ),
-            )}`,
-          },
+    settings,
   };
 };
 

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -692,7 +691,7 @@ describe("readReactNativeInterface", () => {
     ]);
   });
 
-  it("reads the extra pods Expo's autolinking adds, and names iOS by the autolinking version", async () => {
+  it("names the iOS platform by the expo-modules-autolinking version", async () => {
     await write(
       path.join(root, "node_modules/expo/package.json"),
       manifest({ name: "expo", version: "50.0.0" }),
@@ -702,14 +701,7 @@ describe("readReactNativeInterface", () => {
       manifest({ name: "expo-modules-autolinking", version: "1.9.0" }),
     );
     const resolved = {
-      modules: [],
-      extraDependencies: [
-        {
-          name: "Extra",
-          version: "1.0.0",
-          path: path.join(root, "pods/Extra"),
-        },
-      ],
+      modules: [{ packageName: "expo-old", packageVersion: "1.0.0" }],
     };
     // Before 1.10, expo-modules-autolinking names the iOS platform `ios`.
     await write(
@@ -729,24 +721,14 @@ describe("readReactNativeInterface", () => {
       },
     };
 
-    const { settings } = await readReactNativeInterface({
+    const { dependencies } = await readReactNativeInterface({
       cwd: root,
       command: process.execPath,
       args: ["-e", `console.log(${JSON.stringify(JSON.stringify(config))})`],
       platform: "ios",
     });
 
-    // By hash, since a Maven repository can carry credentials, and with
-    // paths relative to the project.
-    expect(settings).toEqual({
-      "expo-autolinking.extraDependencies": `sha256:${createHash("sha256")
-        .update(
-          JSON.stringify([
-            { name: "Extra", version: "1.0.0", path: "pods/Extra" },
-          ]),
-        )
-        .digest("hex")}`,
-    });
+    expect(dependencies).toContainEqual({ name: "expo-old", version: "1.0.0" });
   });
 
   it("hashes every native folder a local Expo module declares", async () => {
@@ -868,6 +850,35 @@ describe("readReactNativeInterface", () => {
       JSON.stringify({ apple: { modules: ["SecondModule"] } }),
     );
     expect(await hashOf({ platform: "ios" }, native)).not.toBe(before);
+  });
+
+  it("reads an Expo module's legacy ios registration only without apple", async () => {
+    await write(
+      path.join(root, "packages/local-module/expo-module.config.json"),
+      JSON.stringify({
+        apple: { modules: ["Apple"] },
+        ios: { modules: ["Old"] },
+      }),
+    );
+    const native: NativeInterface = {
+      runtime: "react-native@0.85.2",
+      dependencies: [
+        {
+          name: "local-module",
+          root: path.join(root, "packages/local-module"),
+        },
+      ],
+    };
+    const before = await hashOf({ platform: "ios" }, native);
+
+    await write(
+      path.join(root, "packages/local-module/expo-module.config.json"),
+      JSON.stringify({
+        apple: { modules: ["Apple"] },
+        ios: { modules: ["Older"] },
+      }),
+    );
+    expect(await hashOf({ platform: "ios" }, native)).toBe(before);
   });
 
   it("explains a config command that prints no configuration", async () => {
