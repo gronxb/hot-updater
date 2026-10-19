@@ -1,5 +1,6 @@
 import { loadConfig, readPackageUp } from "@hot-updater/cli-tools";
 import {
+  type AnyHotUpdaterPlugin,
   createEngine,
   createEngineDatabase,
   createMemoryAdapter,
@@ -14,6 +15,7 @@ import { createHotUpdater } from "@hot-updater/server";
 import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+import { apiKeys, insights, remoteConfig, vault } from "../plugins";
 import { loadServer } from "../utils/loadServer";
 import { testServer } from "../utils/testServer";
 import { doctor } from "./doctor";
@@ -57,7 +59,7 @@ const database = (name = "memory", tooling: Partial<ToolingDatabase> = {}) => {
 /** A server project whose hot-updater.config.ts names `configured` and `plugins`. */
 const serverProject = (
   configured: ToolingDatabase,
-  plugins: readonly (typeof notes)[] = [notes],
+  plugins: readonly AnyHotUpdaterPlugin[] = [notes],
 ) => {
   vi.mocked(readPackageUp).mockResolvedValue({
     packageJson: { dependencies: { "hot-updater": "1.0.0" } },
@@ -210,6 +212,46 @@ describe("doctor's schema check", () => {
         releaseCatalogs: { scopes: [{ scopeKey, state: "verified" }] },
       },
     });
+  });
+
+  it("migrates the vault's tables beside the managed plugins' with --fix, as a KV or Postgres database needs", async () => {
+    // A database an earlier release initialized for the managed plugins.
+    await migrateCoreSchema(adapter, "memory", [
+      insights(),
+      apiKeys(),
+      remoteConfig(),
+    ]);
+    serverProject(database(), [insights(), apiKeys(), remoteConfig(), vault()]);
+
+    await expect(doctor()).resolves.toMatchObject({
+      success: false,
+      details: {
+        schema: {
+          issues: [
+            {
+              code: "SCHEMA_MIGRATION_PENDING",
+              settings: [
+                { key: "schema.vault", expected: "1.0.0", found: null },
+              ],
+            },
+          ],
+        },
+      },
+    });
+    await expect(doctor({ fix: true })).resolves.toMatchObject({
+      success: true,
+      details: {
+        fixes: [
+          {
+            repair: "schema",
+            codes: ["SCHEMA_MIGRATION_PENDING"],
+            status: "applied",
+            wrote: ["schema.vault 1.0.0"],
+          },
+        ],
+      },
+    });
+    await expect(doctor()).resolves.not.toHaveProperty("details.schema");
   });
 
   it("reports core's stale schema first, and --fix migrates core and the plugins", async () => {
