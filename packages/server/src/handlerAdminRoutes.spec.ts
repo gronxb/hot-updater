@@ -5,6 +5,7 @@ import {
 import { describe, expect, it, vi } from "vitest";
 
 import type { CoreApi } from "./core/api";
+import { createApi } from "./handler.testFixtures";
 import { createAdminRouteHandlers } from "./handlerAdminRoutes";
 import { HandlerBadRequestError } from "./handlerErrors";
 import type { HandlerAPI } from "./handlerTypes";
@@ -254,5 +255,17 @@ describe("admin API protocol 2 routes", () => {
       ),
     ).rejects.toBeInstanceOf(HandlerBadRequestError);
     expect(registerNativeBuild).toHaveBeenCalledTimes(1);
+  });
+
+  it("refuses a fingerprint core cannot key, as a bad request", async () => {
+    await expect(
+      routes.findNativeBuild!(
+        {},
+        new Request(
+          `${BASE}/native-builds/latest?platform=ios&channel=production&fingerprintHash=${encodeURIComponent("a/b")}`,
+        ),
+        createApi(),
+      ),
+    ).rejects.toBeInstanceOf(HandlerBadRequestError);
   });
 });

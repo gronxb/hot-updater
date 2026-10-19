@@ -14,6 +14,7 @@ import {
 import type { Bundle } from "@hot-updater/protocol";
 
 import type { CoreApi } from "./core/api";
+import { NativeBuildInputError } from "./core/nativeBuilds";
 import { HandlerBadRequestError } from "./handlerErrors";
 import {
   decodeMaybe,
@@ -285,6 +286,18 @@ const nativeBuildScopeOf = (url: URL): NativeBuildScope => {
     : { platform, channel, fingerprintHash: null, appVersion: appVersion! };
 };
 
+/** A native build or scope core refuses: a bad request. */
+const refusingInvalid = async <T>(operation: () => Promise<T>): Promise<T> => {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error instanceof NativeBuildInputError) {
+      throw new HandlerBadRequestError(error.message);
+    }
+    throw error;
+  }
+};
+
 const isNativeBuildRegistration = (
   value: unknown,
 ): value is NativeBuildRegistration =>
@@ -535,18 +548,20 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     if (!isNativeBuildRegistration(input)) {
       throw new HandlerBadRequestError("Invalid native build");
     }
-    return json({ data: await core.registerNativeBuild(input) }, 201);
+    return json(
+      { data: await refusingInvalid(() => core.registerNativeBuild(input)) },
+      201,
+    );
   }),
 
   // A scope without a build answers 200 with null data, so a 404 means a
   // server without these routes.
-  findNativeBuild: onCore(async (core, request) =>
-    json({
-      data: await core.findNativeBuild(
-        nativeBuildScopeOf(new URL(request.url)),
-      ),
-    }),
-  ),
+  findNativeBuild: onCore(async (core, request) => {
+    const scope = nativeBuildScopeOf(new URL(request.url));
+    return json({
+      data: await refusingInvalid(() => core.findNativeBuild(scope)),
+    });
+  }),
 
   listNativeBuilds: onCore(async (core, request) => {
     const input = keyset(new URL(request.url));

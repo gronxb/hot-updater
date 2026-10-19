@@ -17,6 +17,11 @@ import { insertChannel, type CoreTransaction } from "./writes";
 
 const ARTIFACT_KINDS = new Set(["apk", "aab", "ipa", "app"]);
 
+/** A native build or scope core cannot store or look up: the caller's input. */
+export class NativeBuildInputError extends TypeError {
+  override readonly name = "NativeBuildInputError";
+}
+
 const pick = (row: Readonly<Record<string, unknown>>): NativeBuildRow => ({
   id: row.id as string,
   scope_key: row.scope_key as string,
@@ -40,18 +45,25 @@ const pick = (row: Readonly<Record<string, unknown>>): NativeBuildRow => ({
  */
 export const nativeBuildScopeKey = (scope: NativeBuildScope): string => {
   const channelKey = encodeChannelKey(scope.channel);
-  return scope.fingerprintHash !== null
-    ? createReleaseCatalogScopeKey({
-        channelKey,
-        fingerprintHash: scope.fingerprintHash,
-        platform: scope.platform,
-        strategy: "FINGERPRINT",
-      })
-    : `${createReleaseCatalogScopeKey({
-        channelKey,
-        platform: scope.platform,
-        strategy: "APP_VERSION",
-      })}:${encodeURIComponent(scope.appVersion)}`;
+  if (scope.fingerprintHash === null) {
+    return `${createReleaseCatalogScopeKey({
+      channelKey,
+      platform: scope.platform,
+      strategy: "APP_VERSION",
+    })}:${encodeURIComponent(scope.appVersion)}`;
+  }
+  try {
+    return createReleaseCatalogScopeKey({
+      channelKey,
+      fingerprintHash: scope.fingerprintHash,
+      platform: scope.platform,
+      strategy: "FINGERPRINT",
+    });
+  } catch (error) {
+    throw new NativeBuildInputError(
+      `Invalid native build scope: ${error instanceof Error ? error.message : String(error)}.`,
+    );
+  }
 };
 
 /** Whether `bundleId` is a native build's built-in bundle: one unique read. */
@@ -102,7 +114,7 @@ export const createNativeBuildApi = (
   async registerNativeBuild(registration) {
     const problem = problemOf(registration);
     if (problem !== null) {
-      throw new TypeError(`Invalid native build: ${problem}.`);
+      throw new NativeBuildInputError(`Invalid native build: ${problem}.`);
     }
     const channel = (
       await insertChannel(db, {
