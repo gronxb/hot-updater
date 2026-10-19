@@ -101,24 +101,31 @@ const owningPackage = (
 const functionPluginModule = (
   plugin: unknown,
 ): { file: string; exportName: string | null } | null => {
+  const matches: { file: string; exportName: string | null }[] = [];
   for (const [file, module] of Object.entries(require.cache)) {
     const exports: unknown = module?.exports;
-    if (exports === plugin) return { file, exportName: null };
-    if (exports !== null && typeof exports === "object") {
+    if (exports === plugin) {
+      matches.push({ file, exportName: null });
+    } else if (exports !== null && typeof exports === "object") {
       const exportName = Object.entries(exports).find(
         ([, value]) => value === plugin,
       )?.[0];
       if (exportName !== undefined) {
-        return {
+        matches.push({
           file,
           exportName: exportName === "default" ? null : exportName,
-        };
+        });
       }
     }
   }
-  return null;
-};
-/**
+  // A file that re-exports a plugin, such as a barrel with
+  // `module.exports = require("registry-plugin")`, enters the cache before
+  // the module it requires: prefer an installed package, then the module
+  // loaded last.
+  return (
+    matches.findLast(({ file }) => !isLocal(file)) ?? matches.at(-1) ?? null
+  );
+}; /**
  * What the fingerprint records for a config plugin: its name, and where it
  * comes from. A registry package counts by its version, and its patches
  * through `package`. A plugin from the project or a workspace package counts

@@ -165,6 +165,30 @@ describe("readExpoSettings", () => {
     expect(read(withOther)).not.toEqual(read(withNative));
   });
 
+  it("counts a registry plugin a local barrel re-exports by its package", async () => {
+    await fs.writeFile(
+      path.join(project, "plugins/barrel.js"),
+      "module.exports = require('expo-build-properties');",
+    );
+    const read = () =>
+      readExpoSettings(project, { plugins: [load("./plugins/barrel")] }, "ios");
+
+    expect(read()).toEqual({
+      "expo.plugin[0]:expo-build-properties/index.js": JSON.stringify({
+        props: null,
+        source: "expo-build-properties@0.13.2",
+      }),
+    });
+    // So is Hot Updater's own plugin, which is left out.
+    await fs.writeFile(
+      path.join(project, "plugins/hotUpdaterBarrel.js"),
+      "module.exports = require('@hot-updater/expo/app.plugin.js');",
+    );
+    expect(
+      isHotUpdaterPlugin(project, load("./plugins/hotUpdaterBarrel")),
+    ).toBe(true);
+  });
+
   it("counts a workspace plugin package by its name", async () => {
     const workspace = await fs.realpath(
       await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-expo-ws-")),
