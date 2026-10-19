@@ -21,6 +21,22 @@ import { Device } from "./utils/device";
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 import { resolveXcodeAuthenticationArgs } from "./utils/xcodeSigning";
 
+/**
+ * The signing arguments of a build for a physical device, which also lets
+ * automatic signing register a device the account does not have yet.
+ */
+const resolveDeviceAuthenticationArgs = async (
+  ...args: Parameters<typeof resolveXcodeAuthenticationArgs>
+) => {
+  const authenticationArgs = await resolveXcodeAuthenticationArgs(...args);
+  return (
+    authenticationArgs && [
+      ...authenticationArgs,
+      "-allowProvisioningDeviceRegistration",
+    ]
+  );
+};
+
 export const runIos = async ({
   schemeConfig,
   runOption,
@@ -104,7 +120,7 @@ export const runIos = async ({
     minBundleId,
     authenticationArgs:
       device.type === "device"
-        ? await resolveXcodeAuthenticationArgs({ schemeConfig, credentials })
+        ? await resolveDeviceAuthenticationArgs({ schemeConfig, credentials })
         : undefined,
   });
 

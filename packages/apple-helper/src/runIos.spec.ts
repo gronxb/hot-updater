@@ -86,6 +86,8 @@ describe("runIos", () => {
         authenticationArgs: expect.arrayContaining([
           "-allowProvisioningUpdates",
           "/tmp/AuthKey_ABC.p8",
+          // A device the account does not have yet is registered.
+          "-allowProvisioningDeviceRegistration",
         ]),
       }),
     );
