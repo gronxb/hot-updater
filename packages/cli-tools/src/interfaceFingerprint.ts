@@ -424,15 +424,17 @@ export const readReactNativeInterface = async ({
         : {
             ...settings,
             // The pods and Maven repositories Expo's autolinking adds, which
-            // the build links like a package. Paths are kept relative to the
-            // project, so the fingerprint is the same on every machine.
-            "expo-autolinking.extraDependencies": JSON.stringify(
-              extraDependencies,
-              (_key, value: unknown) =>
+            // the build links like a package. A Maven repository can carry
+            // credentials, and fingerprint.json is committed, so they are
+            // recorded by hash, with paths relative to the project so every
+            // machine computes the same one.
+            "expo-autolinking.extraDependencies": `sha256:${sha256(
+              JSON.stringify(extraDependencies, (_key, value: unknown) =>
                 typeof value === "string" && path.isAbsolute(value)
                   ? toPosix(path.relative(cwd, value))
                   : value,
-            ),
+              ),
+            )}`,
           },
   };
 };

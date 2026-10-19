@@ -293,9 +293,10 @@ inputs are unchanged, the fingerprint check permits deployment.
 ### Native Changes Require a Rebuild
 
 Installing, removing, or upgrading a native package, upgrading React Native,
-changing the JavaScript engine, a spec, a patch, or, with Expo, a config
-plugin, and a new `nativeVersion` change the fingerprint and require a new
-binary. Deploy detects
+changing the JavaScript engine, a spec, or a patch, and a new `nativeVersion`
+change the fingerprint and require a new binary. A native change the
+fingerprint doesn't see, such as an Expo config plugin change that alters what
+JavaScript can call, needs a `nativeVersion` bump. Deploy detects
 the hash mismatch and exits:
 
 ```text

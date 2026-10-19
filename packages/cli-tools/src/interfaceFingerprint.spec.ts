@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -735,10 +736,16 @@ describe("readReactNativeInterface", () => {
       platform: "ios",
     });
 
+    // By hash, since a Maven repository can carry credentials, and with
+    // paths relative to the project.
     expect(settings).toEqual({
-      "expo-autolinking.extraDependencies": JSON.stringify([
-        { name: "Extra", version: "1.0.0", path: "pods/Extra" },
-      ]),
+      "expo-autolinking.extraDependencies": `sha256:${createHash("sha256")
+        .update(
+          JSON.stringify([
+            { name: "Extra", version: "1.0.0", path: "pods/Extra" },
+          ]),
+        )
+        .digest("hex")}`,
     });
   });
 
