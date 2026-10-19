@@ -37,11 +37,19 @@ const CORE_SCHEMA_KEY = "schema.core";
 const stored = ({ key, expected, found }: SchemaSettingMismatch) =>
   `"${key}" is ${found === null ? "missing" : `"${found}"`}; expected "${expected}"`;
 
+/**
+ * How to migrate a database the fence refused: doctor applies a managed
+ * provider's migrations or the database's migrator, and names the steps of
+ * one whose ORM or files create the tables.
+ */
+const MIGRATE_SCHEMA_FIX =
+  "Run `npx hot-updater doctor --fix` in the project whose hot-updater.config.ts names this database: it migrates the database, or names the steps it needs. In a server project, `hot-updater db migrate` migrates the database its server file names.";
+
 const settingMessage = (
   adapterName: string,
   { key, expected, found }: SchemaSettingMismatch,
 ) =>
-  `Hot Updater schema setting "${key}" for ${adapterName} is ${found === null ? "missing" : `"${found}"`}; expected "${expected}". Run \`hot-updater db migrate\`.`;
+  `Hot Updater schema setting "${key}" for ${adapterName} is ${found === null ? "missing" : `"${found}"`}; expected "${expected}". ${MIGRATE_SCHEMA_FIX}`;
 
 /** The plugin a `schema.<id>` setting belongs to; undefined for core's and the engine's. */
 const pluginOf = ({ key }: SchemaSettingMismatch) =>
@@ -55,10 +63,6 @@ const listed = (items: readonly string[]) =>
   items.length < 2
     ? items.join("")
     : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
-
-/** How to create plugins' tables when the fence was given no fix. */
-const PLUGIN_TABLES_FIX =
-  "Run `hot-updater db migrate`. A managed server runs only its provider's plugins, and rerunning `hot-updater init --provider <provider>` applies the provider's migrations. Run `hot-updater db` commands in the server's project: they load the server file named on the command line, or src/hotUpdater.* or src/db.*, and don't read hot-updater.config.ts.";
 
 const pluginsMessage = (
   adapterName: string,
@@ -95,14 +99,14 @@ export class HotUpdaterSchemaMigrationRequiredError extends Error {
     super(
       setting === undefined
         ? currentVersion === undefined
-          ? `Hot Updater database schema is not initialized for ${adapterName}. Run \`hot-updater db migrate\` before using this adapter.`
+          ? `Hot Updater database schema is not initialized for ${adapterName}. ${MIGRATE_SCHEMA_FIX}`
           : `Hot Updater v1 cannot migrate schema ${currentVersion} in place. Create a new empty database and run \`hot-updater db migrate\`.`
         : plugins.length > 0 && plugins.length === settings.length
           ? pluginsMessage(
               adapterName,
               plugins,
               settings,
-              options?.fix ?? PLUGIN_TABLES_FIX,
+              options?.fix ?? MIGRATE_SCHEMA_FIX,
             )
           : settingMessage(adapterName, setting),
       options?.cause === undefined ? undefined : { cause: options.cause },

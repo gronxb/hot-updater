@@ -11,12 +11,14 @@ import {
   getInitProviderTextPromptValues,
   link,
   makeEnv,
+  type MigrateManagedDatabase,
   MissingInitInputsError,
   moduleSpecifiersOf,
   p,
   printAppSetup,
   provisionClientCredential,
   type ProvisionedClientCredential,
+  readHotUpdaterEnv,
   readHotUpdaterInitEnv,
   type RunInitOptions,
   resolvePackageVersion,
@@ -36,12 +38,16 @@ import {
   SUPABASE_DATABASE_PASSWORD_PROJECT_ID_ENV_KEY,
 } from "./init/index";
 import { type SupabaseApi, supabaseApi } from "./supabaseApi";
-import { getSupabaseCliEnv } from "./supabaseAuthentication";
+import {
+  getSupabaseCliEnv,
+  inputSupabaseAccessToken,
+} from "./supabaseAuthentication";
 import { preserveSupabaseBucketPrivacy } from "./supabaseBucketPrivacy";
 import {
   confirmSupabaseDatabaseMigrations,
   linkSupabase,
   pushDB,
+  pushPendingMigrations,
 } from "./supabaseCli";
 import {
   assertSupabaseFunctionCanInitialize,
@@ -1169,6 +1175,55 @@ export const runInit = (options: RunInitOptions): Promise<void> =>
   withSupabaseCliMetadataCleanup(process.cwd(), () =>
     runInitWithoutCliMetadata(options),
   );
+
+/**
+ * `hot-updater doctor --fix` on the managed Supabase project: pushes the
+ * package's migrations its history lacks, as init does when it runs again,
+ * with the Supabase access token or CLI login and the database password
+ * init saved or asks for.
+ */
+export const migrateDatabase: MigrateManagedDatabase = ({
+  cwd,
+  nonInteractive,
+}) =>
+  withSupabaseCliMetadataCleanup(cwd, async () => {
+    const managedEnv = await readHotUpdaterEnv(cwd);
+    const inputs = resolveSupabaseInitInputs(managedEnv, { managedEnv });
+    const { projectId } = inputs;
+    if (projectId === undefined) {
+      return {
+        skip: `Set ${SUPABASE_INIT_PROVIDER.inputs.projectId.envKey} in .env.hotupdater or the environment: the Supabase project init created.`,
+      };
+    }
+    if (nonInteractive && inputs.databasePassword === undefined) {
+      return {
+        skip: `Set ${SUPABASE_INIT_PROVIDER.inputs.databasePassword.envKey}, the project's database password, to push its migrations.`,
+      };
+    }
+    const accessToken = nonInteractive
+      ? inputs.accessToken
+      : await inputSupabaseAccessToken(inputs.accessToken);
+    const dbPassword = await inputSupabaseDatabasePassword({
+      databasePassword: inputs.databasePassword,
+      nonInteractive,
+      required: true,
+    });
+    const { tmpDir, removeTmpDir } = await copyDirToTmp(
+      path.dirname(
+        path.resolve(require.resolve("@hot-updater/supabase/scaffold")),
+      ),
+      "supabase",
+    );
+    try {
+      return await pushPendingMigrations(tmpDir, {
+        accessToken,
+        projectId,
+        dbPassword,
+      });
+    } finally {
+      await removeTmpDir();
+    }
+  });
 
 // What init asks for and checks before `runInit`.
 export { initProvider } from "./init/index";

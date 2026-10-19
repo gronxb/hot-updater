@@ -105,7 +105,7 @@ describe("schema fence", () => {
     ).rejects.toMatchObject({
       plugins: [],
       message:
-        'Hot Updater schema setting "schema.engine" for memory is missing; expected "1". Run `hot-updater db migrate`.',
+        'Hot Updater schema setting "schema.engine" for memory is missing; expected "1". Run `npx hot-updater doctor --fix` in the project whose hot-updater.config.ts names this database: it migrates the database, or names the steps it needs. In a server project, `hot-updater db migrate` migrates the database its server file names.',
     });
   });
 

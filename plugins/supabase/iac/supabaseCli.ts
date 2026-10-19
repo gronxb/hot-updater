@@ -44,7 +44,8 @@ const isSupabaseDatabaseAuthError = (err: ExecaError) => {
   );
 };
 
-const handleSupabaseDatabaseCommandError = (
+/** What a failed database command reports: a bad password, or the CLI's output. */
+const supabaseDatabaseCommandErrorMessage = (
   err: unknown,
   {
     dbPassword,
@@ -56,12 +57,23 @@ const handleSupabaseDatabaseCommandError = (
 ) => {
   if (err instanceof ExecaError) {
     if (dbPassword && isSupabaseDatabaseAuthError(err)) {
-      p.log.error(SUPABASE_DATABASE_CONNECTION_ERROR);
-    } else if (!stderrInherited && err.stderr) {
-      p.log.error(err.stderr);
-    } else {
-      p.log.error(err.message);
+      return SUPABASE_DATABASE_CONNECTION_ERROR;
     }
+    if (!stderrInherited && err.stderr) return err.stderr;
+    return err.message;
+  }
+  return err instanceof Error ? err.message : String(err);
+};
+
+const handleSupabaseDatabaseCommandError = (
+  err: unknown,
+  options: {
+    dbPassword?: string;
+    stderrInherited?: boolean;
+  },
+) => {
+  if (err instanceof ExecaError) {
+    p.log.error(supabaseDatabaseCommandErrorMessage(err, options));
   } else {
     console.error(err);
   }
@@ -86,7 +98,7 @@ export const confirmSupabaseDatabaseMigrations = async ({
   return confirmed === true;
 };
 
-export const linkSupabase = async (
+const runSupabaseLink = async (
   workdir: string,
   {
     accessToken,
@@ -98,102 +110,181 @@ export const linkSupabase = async (
     dbPassword?: string;
   },
 ) => {
+  await fs.writeFile(
+    path.join(workdir, "supabase", "config.toml"),
+    transformTemplate(SUPABASE_CONFIG_TEMPLATE, {
+      projectId,
+    }),
+  );
+  await execa(
+    "npx",
+    ["supabase", "link", "--project-ref", projectId, "--workdir", workdir],
+    {
+      cwd: workdir,
+      env: getSupabaseCommandEnv(accessToken, dbPassword),
+      input: "",
+      stdio: ["pipe", "pipe", "pipe"],
+    },
+  );
+};
+
+export const linkSupabase = async (
+  workdir: string,
+  options: {
+    accessToken?: string;
+    projectId: string;
+    dbPassword?: string;
+  },
+) => {
   const spinner = p.spinner();
 
   try {
-    await fs.writeFile(
-      path.join(workdir, "supabase", "config.toml"),
-      transformTemplate(SUPABASE_CONFIG_TEMPLATE, {
-        projectId,
-      }),
-    );
-
     spinner.start("Linking Supabase...");
-
-    await execa(
-      "npx",
-      ["supabase", "link", "--project-ref", projectId, "--workdir", workdir],
-      {
-        cwd: workdir,
-        env: getSupabaseCommandEnv(accessToken, dbPassword),
-        input: "",
-        stdio: ["pipe", "pipe", "pipe"],
-      },
-    );
+    await runSupabaseLink(workdir, options);
     spinner.stop("Supabase linked ✔");
   } catch (err) {
     spinner.stop();
     handleSupabaseDatabaseCommandError(
       err instanceof Error ? err : new Error(String(err)),
-      { dbPassword },
+      { dbPassword: options.dbPassword },
     );
   }
 };
 
-export const pushDB = async (
+/** Pushes the workdir's migrations the linked project has not run, after its own history. */
+const runSupabasePush = async (
   workdir: string,
   { accessToken, dbPassword }: { accessToken?: string; dbPassword?: string },
 ) => {
+  await execa(
+    "npx",
+    [
+      "supabase",
+      "migration",
+      "fetch",
+      "--linked",
+      "--yes",
+      "--workdir",
+      workdir,
+    ],
+    {
+      cwd: workdir,
+      env: getSupabaseCommandEnv(accessToken, dbPassword),
+    },
+  ).catch((error: unknown) => {
+    // A fresh project has no migration history table until its first db push.
+    if (
+      error instanceof ExecaError &&
+      [error.stderr, error.stdout].some(
+        (output) =>
+          typeof output === "string" &&
+          /relation \\?"supabase_migrations\.schema_migrations\\?" does not exist/.test(
+            output,
+          ),
+      )
+    ) {
+      return;
+    }
+    throw error;
+  });
+  return execa(
+    "npx",
+    ["supabase", "db", "push", "--include-all", "--yes", "--workdir", workdir],
+    {
+      cwd: workdir,
+      env: getSupabaseCommandEnv(accessToken, dbPassword),
+      stderr: ["pipe", "inherit"],
+      stdin: "inherit",
+      stdout: "inherit",
+    },
+  );
+};
+
+export const pushDB = async (
+  workdir: string,
+  options: { accessToken?: string; dbPassword?: string },
+) => {
   try {
-    await execa(
-      "npx",
-      [
-        "supabase",
-        "migration",
-        "fetch",
-        "--linked",
-        "--yes",
-        "--workdir",
-        workdir,
-      ],
-      {
-        cwd: workdir,
-        env: getSupabaseCommandEnv(accessToken, dbPassword),
-      },
-    ).catch((error: unknown) => {
-      // A fresh project has no migration history table until its first db push.
-      if (
-        error instanceof ExecaError &&
-        [error.stderr, error.stdout].some(
-          (output) =>
-            typeof output === "string" &&
-            /relation \\?"supabase_migrations\.schema_migrations\\?" does not exist/.test(
-              output,
-            ),
-        )
-      ) {
-        return;
-      }
-      throw error;
-    });
-    const dbPush = await execa(
-      "npx",
-      [
-        "supabase",
-        "db",
-        "push",
-        "--include-all",
-        "--yes",
-        "--workdir",
-        workdir,
-      ],
-      {
-        cwd: workdir,
-        env: getSupabaseCommandEnv(accessToken, dbPassword),
-        stderr: ["pipe", "inherit"],
-        stdin: "inherit",
-        stdout: "inherit",
-      },
-    );
+    const dbPush = await runSupabasePush(workdir, options);
     p.log.success("DB pushed ✔");
     return dbPush.stdout;
   } catch (err) {
     handleSupabaseDatabaseCommandError(
       err instanceof Error ? err : new Error(String(err)),
       {
-        dbPassword,
+        dbPassword: options.dbPassword,
         stderrInherited: true,
       },
+    );
+  }
+};
+
+/** The migration versions the linked project ran, from `supabase migration list`. */
+const listRemoteMigrationVersions = async (
+  workdir: string,
+  { accessToken, dbPassword }: { accessToken?: string; dbPassword?: string },
+): Promise<Set<string>> => {
+  const { stdout } = await execa(
+    "npx",
+    ["supabase", "migration", "list", "--linked", "--workdir", workdir],
+    { cwd: workdir, env: getSupabaseCommandEnv(accessToken, dbPassword) },
+  );
+  // Rows read `  Local | Remote | Time (UTC)`, with an empty column where a
+  // side lacks the version.
+  return new Set(
+    stdout
+      .split("\n")
+      .map((line) => line.split("|").map((column) => column.trim()))
+      .flatMap(([, remote]) =>
+        remote !== undefined && /^\d+$/u.test(remote) ? [remote] : [],
+      ),
+  );
+};
+
+/** The version Supabase records for a migration file: its leading number. */
+const migrationVersion = (name: string) => name.split("_")[0]!;
+
+/**
+ * Links the project and pushes the package's migrations it has not run, for
+ * `hot-updater doctor --fix`: what `hot-updater init` pushes when it runs
+ * again, without redeploying anything. A project whose history lacks the
+ * first migration is not one the managed init created, and is left alone.
+ * Throws with the CLI's message when a command fails.
+ */
+export const pushPendingMigrations = async (
+  workdir: string,
+  options: {
+    accessToken?: string;
+    projectId: string;
+    dbPassword?: string;
+  },
+): Promise<{ applied: string[] } | { skip: string }> => {
+  try {
+    await runSupabaseLink(workdir, options);
+    const remote = await listRemoteMigrationVersions(workdir, options);
+    const names = (
+      await fs.readdir(path.join(workdir, "supabase", "migrations"))
+    )
+      .filter((name) => name.endsWith(".sql"))
+      .sort();
+    const [first] = names;
+    if (first === undefined || !remote.has(migrationVersion(first))) {
+      return {
+        skip: `The Supabase project's migration history has no ${first}, so \`hot-updater init\` did not create its tables. Run \`npx hot-updater db generate\` and apply the migration it writes with \`supabase db push\`.`,
+      };
+    }
+    const pending = names.filter(
+      (name) => !remote.has(migrationVersion(name)),
+    );
+    if (pending.length > 0) await runSupabasePush(workdir, options);
+    return { applied: pending };
+  } catch (err) {
+    throw new Error(
+      supabaseDatabaseCommandErrorMessage(err, {
+        dbPassword: options.dbPassword,
+        stderrInherited: true,
+      }),
+      { cause: err },
     );
   }
 };
