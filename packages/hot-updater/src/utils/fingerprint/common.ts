@@ -6,13 +6,6 @@ import type {
   NativeFingerprintSource,
 } from "@hot-updater/plugin-core";
 
-import { isExpo } from "../expoDetection";
-import { loadExpoFingerprint } from "./dependency";
-import {
-  processExtraSources,
-  resolveExtraSources,
-} from "./processExtraSources";
-
 export const appendFingerprintExtraSources = (
   extraSources: FingerprintExtraSources | undefined,
   additions: readonly string[],
@@ -66,6 +59,9 @@ export const ensureFingerprintConfig = async (
  * deploy secrets a build machine may not have: the build adapter and the
  * fingerprint settings it receives.
  */
+/** The inputs' adapter for a build adapter without its own fingerprint. */
+export const DEFAULT_FINGERPRINT_ADAPTER = "react-native";
+
 export interface FingerprintInputs {
   adapter: string;
   extraSources?: FingerprintExtraSources;
@@ -79,9 +75,11 @@ export const getFingerprintInputs = (
     "adapter" | "provider" | "extraSources" | "ignorePaths" | "nativeVersion"
   >,
 ): FingerprintInputs => ({
-  // An adapter without its own fingerprint is fingerprinted by
-  // `@expo/fingerprint`, which the native build computes as for Expo.
-  adapter: options.provider ? (options.adapter ?? "unknown") : "expo",
+  // An adapter without its own fingerprint gets React Native CLI's, which
+  // the native build computes as for any React Native project.
+  adapter: options.provider
+    ? (options.adapter ?? "unknown")
+    : DEFAULT_FINGERPRINT_ADAPTER,
   ...(options.extraSources === undefined
     ? {}
     : { extraSources: options.extraSources }),
@@ -100,112 +98,6 @@ export interface FingerprintFile {
   inputs?: FingerprintInputs;
 }
 
-/**
- * Utility function that takes an array of extensions and generates glob patterns to allow those extensions.
- * @param extensions Array of allowed extensions (e.g., ["*.swift", "*.kt", "*.java"])
- * @returns Array of glob patterns
- */
-function allowExtensions(extensions: string[]): string[] {
-  return extensions.map((ext) => `!**/${ext}`);
-}
-
-/**
- * Utility function that returns the default ignore paths.
- * @returns Array of default ignore paths
- */
-function getDefaultIgnorePaths(): string[] {
-  return ["**/*", "**/.build/**/*", "**/build/", "**/build*/**/*"];
-}
-
-export async function getOtaFingerprintOptions(
-  platform: "ios" | "android",
-  path: string,
-  options: FingerprintOptions,
-): Promise<OtaFingerprintOptions> {
-  const { SourceSkips } = await loadExpoFingerprint(path);
-
-  return {
-    useRNCoreAutolinkingFromExpo: isExpo(path),
-    platforms: [platform],
-    ignorePaths: [
-      ...getDefaultIgnorePaths(),
-      ...allowExtensions([
-        // iOS native code
-        "*.swift",
-        "*.h",
-        "*.m",
-        "*.mm",
-
-        // Android native code
-        "*.kt",
-        "*.java",
-
-        // C/C++ native code
-        "*.cpp",
-        "*.hpp",
-        "*.c",
-        "*.cc",
-        "*.cxx",
-
-        // Build configuration files
-        "*.podspec",
-        "*.gradle",
-        "*.kts", // Kotlin Script (Gradle build scripts)
-        "CMakeLists.txt",
-        "Android.mk",
-        "Application.mk",
-
-        // Additional native code and build files
-        "*.pro", // ProGuard rules
-        "*.mk", // Makefiles
-        "*.cmake", // CMake files
-        "*.ninja", // Ninja build files
-        "Makefile", // Makefile (no extension)
-        "*.bazel", // Bazel build files
-        "*.buck", // Buck build files
-        "BUILD", // Bazel BUILD files
-        "WORKSPACE", // Bazel WORKSPACE files
-        "BUILD.bazel", // Bazel BUILD files with extension
-        "WORKSPACE.bazel", // Bazel WORKSPACE files with extension
-      ]),
-      // base paths (target CNG)
-      "android/**/*",
-      "ios/**/*",
-      ...(options.ignorePaths ?? []),
-    ],
-    sourceSkips:
-      SourceSkips.GitIgnore |
-      SourceSkips.PackageJsonScriptsAll |
-      SourceSkips.PackageJsonAndroidAndIosScriptsIfNotContainRun |
-      SourceSkips.ExpoConfigAll |
-      SourceSkips.ExpoConfigVersions |
-      SourceSkips.ExpoConfigNames |
-      SourceSkips.ExpoConfigRuntimeVersionIfString |
-      SourceSkips.ExpoConfigAssets |
-      SourceSkips.ExpoConfigExtraSection |
-      SourceSkips.ExpoConfigEASProject |
-      SourceSkips.ExpoConfigSchemes,
-    extraSources: [
-      ...processExtraSources(
-        resolveExtraSources(options.extraSources, platform),
-        path,
-      ),
-      // The interface engine hashes the same contents.
-      ...(options.nativeVersion === undefined
-        ? []
-        : [
-            {
-              type: "contents" as const,
-              id: "nativeVersion",
-              contents: String(options.nativeVersion),
-              reasons: ["config"],
-            },
-          ]),
-    ],
-    debug: options.debug,
-  };
-}
-
 export type FingerprintSources = {
   extraSources: string[];
 };
@@ -221,8 +113,8 @@ export type FingerprintOptions = {
   /** The build adapter's name, which fingerprint.json records. */
   adapter?: string;
   /**
-   * The build adapter's fingerprint. Without one, `@expo/fingerprint`
-   * fingerprints the project.
+   * The build adapter's fingerprint. Without one, the project gets React
+   * Native CLI's: the native interface `react-native config` reports.
    */
   provider?: NativeFingerprintProvider;
 };
@@ -280,18 +172,6 @@ export const describeFingerprintEngineChange = (
         ? `fingerprint.json now records the ${change.after} hash. To keep updating ${label} builds you already shipped, go back to ${change.before} and run \`npx hot-updater fingerprint create\` again, or restore the previous fingerprint.json. ${STILL_DIFFERS} Otherwise rebuild the ${label} app.`
         : `To keep updating ${label} builds you already shipped, go back to ${change.before}. ${STILL_DIFFERS} Otherwise run \`npx hot-updater fingerprint create\`, then rebuild the ${label} app.`,
 });
-
-type OtaFingerprintOptions = {
-  useRNCoreAutolinkingFromExpo: boolean;
-  platforms: Array<"ios" | "android">;
-  ignorePaths: string[];
-  sourceSkips: number;
-  extraSources: (
-    | ReturnType<typeof processExtraSources>[number]
-    | { type: "contents"; id: string; contents: string; reasons: string[] }
-  )[];
-  debug?: boolean;
-};
 
 export function isFingerprintEquals(
   lhs?: FingerprintResult | null,

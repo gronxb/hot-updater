@@ -13,6 +13,7 @@ import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
 
 import { getConfig } from "./expoConfig";
+import { expoFingerprint } from "./expoFingerprint";
 import { resolveMain } from "./resolveMain";
 import { runExpoPrebuild } from "./util/prebuild";
 
@@ -178,6 +179,7 @@ export const expo =
     const { outDir = "dist", sourcemap = false, resetCache = true } = config;
     return {
       nativeBuild: {
+        fingerprint: (options) => expoFingerprint(cwd, options),
         getBundleSigningPublicKey: () => getExpoBundleSigningPublicKey(cwd),
         getFingerprintExtraSources: async () =>
           getExpoFingerprintExtraSources(cwd),

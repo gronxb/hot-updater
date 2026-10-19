@@ -1,8 +1,9 @@
 import fs from "node:fs/promises";
+import Module from "node:module";
 import os from "node:os";
 import path from "node:path";
 
-import { getCwd } from "@hot-updater/cli-tools";
+import { getCwd, reactNativeCliFingerprint } from "@hot-updater/cli-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { computeRecordedFingerprintHash } from "./recorded";
@@ -10,6 +11,7 @@ import { computeRecordedFingerprintHash } from "./recorded";
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   getCwd: vi.fn(),
+  reactNativeCliFingerprint: vi.fn(),
 }));
 
 let project: string;
@@ -105,6 +107,53 @@ describe("computeRecordedFingerprintHash", () => {
     expect(console.error).toHaveBeenCalledWith(
       expect.stringContaining("does not export bareFingerprint"),
     );
+  });
+
+  it("embeds the recorded hash with a warning when the recorded adapter is not installed", async () => {
+    await writeFingerprintJson({
+      ios: { hash: "recorded-ios", sources: [] },
+      android: { hash: "recorded-android", sources: [] },
+      inputs: { adapter: "expo" },
+    });
+    // pnpm puts the workspace's hoisted packages on NODE_PATH for the tests.
+    const nodePath = process.env["NODE_PATH"];
+    const initPaths = () =>
+      (Module as unknown as { _initPaths: () => void })._initPaths();
+    delete process.env["NODE_PATH"];
+    initPaths();
+    try {
+      await expect(computeRecordedFingerprintHash("ios")).resolves.toEqual({
+        hash: "recorded-ios",
+        recorded: "recorded-ios",
+      });
+    } finally {
+      if (nodePath !== undefined) process.env["NODE_PATH"] = nodePath;
+      initPaths();
+    }
+    expect(console.error).toHaveBeenCalledWith(
+      expect.stringContaining("@hot-updater/expo is not installed"),
+    );
+  });
+
+  it("computes React Native CLI's fingerprint for an adapter without its own", async () => {
+    vi.mocked(reactNativeCliFingerprint).mockResolvedValue({
+      hash: "react-native-cli",
+      sources: [],
+    });
+    await writeFingerprintJson({
+      ios: { hash: "recorded-ios", sources: [] },
+      android: { hash: "recorded-android", sources: [] },
+      inputs: { adapter: "react-native", nativeVersion: 3 },
+    });
+
+    await expect(computeRecordedFingerprintHash("ios")).resolves.toEqual({
+      hash: "react-native-cli",
+      recorded: "recorded-ios",
+    });
+    expect(reactNativeCliFingerprint).toHaveBeenCalledWith(project, {
+      platform: "ios",
+      nativeVersion: 3,
+    });
   });
 
   it("fails without fingerprint.json", async () => {

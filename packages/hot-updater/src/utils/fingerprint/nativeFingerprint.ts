@@ -1,28 +1,17 @@
-import {
-  type FingerprintOptions,
-  type FingerprintResult,
-  getOtaFingerprintOptions,
-} from "./common";
-import { getExpoFingerprintEngine, loadExpoFingerprint } from "./dependency";
+import { reactNativeCliFingerprint } from "@hot-updater/cli-tools";
+
+import type { FingerprintOptions, FingerprintResult } from "./common";
 
 /**
  * Calculates the project's native fingerprint with the build adapter's
- * fingerprint, or with `@expo/fingerprint` for an adapter without one.
+ * fingerprint, or with React Native CLI's for an adapter without one.
  */
 export async function nativeFingerprint(
   path: string,
   options: FingerprintOptions,
 ): Promise<FingerprintResult> {
   const { provider, ...providerOptions } = options;
-  if (provider) return provider(providerOptions);
-  const platform = options.platform;
-  const [{ createFingerprintAsync }, engine] = await Promise.all([
-    loadExpoFingerprint(path),
-    getExpoFingerprintEngine(path),
-  ]);
-  const fingerprint = await createFingerprintAsync(
-    path,
-    await getOtaFingerprintOptions(platform, path, options),
-  );
-  return { engine, ...fingerprint };
+  return provider
+    ? provider(providerOptions)
+    : reactNativeCliFingerprint(path, providerOptions);
 }

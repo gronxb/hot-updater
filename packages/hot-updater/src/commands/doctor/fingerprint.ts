@@ -10,10 +10,6 @@ import {
   getFingerprintEngineChange,
   summarizeFingerprintDiff,
 } from "../../utils/fingerprint";
-import {
-  getFingerprintDependencyInstallCommand,
-  isMissingFingerprintDependencyError,
-} from "../../utils/fingerprint/dependency";
 import { isNativeSdkWithoutBuildFingerprintError } from "../../utils/fingerprint/nativeSdk";
 import type { NativeCheckIssue } from "./issues";
 
@@ -23,18 +19,6 @@ const PLATFORM_LABELS = { ios: "iOS", android: "Android" } as const;
 
 const generationFailed = (error: unknown): NativeCheckIssue => {
   const message = error instanceof Error ? error.message : String(error);
-  if (isMissingFingerprintDependencyError(error)) {
-    const install = getFingerprintDependencyInstallCommand();
-    return {
-      type: "error",
-      platform: "project",
-      code: "FINGERPRINT_GENERATION_FAILED",
-      message: message.split("\n")[0]!,
-      resolution: `Run \`${install}\`, then rerun doctor.`,
-      fixability: "command",
-      commands: [install],
-    };
-  }
   if (isNativeSdkWithoutBuildFingerprintError(error)) {
     return {
       type: "error",

@@ -691,6 +691,46 @@ describe("readReactNativeInterface", () => {
     ]);
   });
 
+  it("names the iOS platform by the expo-modules-autolinking version", async () => {
+    await write(
+      path.join(root, "node_modules/expo/package.json"),
+      manifest({ name: "expo", version: "50.0.0" }),
+    );
+    await write(
+      path.join(root, "node_modules/expo-modules-autolinking/package.json"),
+      manifest({ name: "expo-modules-autolinking", version: "1.9.0" }),
+    );
+    const resolved = {
+      modules: [{ packageName: "expo-old", packageVersion: "1.0.0" }],
+    };
+    // Before 1.10, expo-modules-autolinking names the iOS platform `ios`.
+    await write(
+      path.join(
+        root,
+        "node_modules/expo-modules-autolinking/bin/expo-modules-autolinking.js",
+      ),
+      `if (process.argv.includes("ios")) console.log(${JSON.stringify(JSON.stringify(resolved))}); else process.exit(1);`,
+    );
+    const config = {
+      dependencies: {
+        expo: {
+          name: "expo",
+          root: path.join(root, "node_modules/expo"),
+          platforms: { ios: {} },
+        },
+      },
+    };
+
+    const { dependencies } = await readReactNativeInterface({
+      cwd: root,
+      command: process.execPath,
+      args: ["-e", `console.log(${JSON.stringify(JSON.stringify(config))})`],
+      platform: "ios",
+    });
+
+    expect(dependencies).toContainEqual({ name: "expo-old", version: "1.0.0" });
+  });
+
   it("hashes every native folder a local Expo module declares", async () => {
     await fs.rm(path.join(root, "packages/local-module/src"), {
       recursive: true,
@@ -729,6 +769,163 @@ describe("readReactNativeInterface", () => {
     expect(await hashOf({ platform: "android" }, native)).not.toBe(before);
   });
 
+  it("hashes a local Expo module's registration and its prebuilt AARs", async () => {
+    await fs.rm(path.join(root, "packages/local-module/src"), {
+      recursive: true,
+    });
+    await write(
+      path.join(root, "packages/local-module/package.json"),
+      manifest({ name: "local-module", version: "1.0.0" }),
+    );
+    await write(
+      path.join(root, "packages/local-module/expo-module.config.json"),
+      JSON.stringify({ android: { modules: ["expo.local.FirstModule"] } }),
+    );
+    await write(path.join(root, "packages/local-module/libs/local.aar"), "v1");
+    const native: NativeInterface = {
+      runtime: "react-native@0.85.2",
+      dependencies: [
+        {
+          name: "local-module",
+          root: path.join(root, "packages/local-module"),
+          sourceDirs: [],
+          files: [path.join(root, "packages/local-module/libs/local.aar")],
+        },
+      ],
+    };
+    const before = await hashOf({ platform: "android" }, native);
+    const iosBefore = await hashOf({ platform: "ios" }, native);
+
+    await write(
+      path.join(root, "packages/local-module/expo-module.config.json"),
+      JSON.stringify({ android: { modules: ["expo.local.SecondModule"] } }),
+    );
+    const registered = await hashOf({ platform: "android" }, native);
+    expect(registered).not.toBe(before);
+    // The Android section leaves the iOS fingerprint alone, and so do
+    // non-native sections.
+    expect(await hashOf({ platform: "ios" }, native)).toBe(iosBefore);
+    await write(
+      path.join(root, "packages/local-module/expo-module.config.json"),
+      JSON.stringify({
+        platforms: ["android", "web"],
+        android: { modules: ["expo.local.SecondModule"] },
+        web: { modules: ["Web"] },
+        devtools: { webpageRoot: "dist" },
+      }),
+    );
+    const withWeb = await hashOf({ platform: "android" }, native);
+    await write(
+      path.join(root, "packages/local-module/expo-module.config.json"),
+      JSON.stringify({
+        platforms: ["android"],
+        android: { modules: ["expo.local.SecondModule"] },
+      }),
+    );
+    const androidOnly = await hashOf({ platform: "android" }, native);
+    expect(androidOnly).toBe(withWeb);
+
+    await write(path.join(root, "packages/local-module/libs/local.aar"), "v2");
+    expect(await hashOf({ platform: "android" }, native)).not.toBe(androidOnly);
+  });
+
+  it("hashes a local Expo module's registration even when it has codegen specs", async () => {
+    await write(
+      path.join(root, "packages/local-module/expo-module.config.json"),
+      JSON.stringify({ apple: { modules: ["FirstModule"] } }),
+    );
+    const native: NativeInterface = {
+      runtime: "react-native@0.85.2",
+      dependencies: [
+        {
+          name: "local-module",
+          root: path.join(root, "packages/local-module"),
+        },
+      ],
+    };
+    const before = await hashOf({ platform: "ios" }, native);
+
+    await write(
+      path.join(root, "packages/local-module/expo-module.config.json"),
+      JSON.stringify({ apple: { modules: ["SecondModule"] } }),
+    );
+    expect(await hashOf({ platform: "ios" }, native)).not.toBe(before);
+  });
+
+  it("reads an Expo module's legacy ios registration only without apple", async () => {
+    await write(
+      path.join(root, "packages/local-module/expo-module.config.json"),
+      JSON.stringify({
+        apple: { modules: ["Apple"] },
+        ios: { modules: ["Old"] },
+      }),
+    );
+    const native: NativeInterface = {
+      runtime: "react-native@0.85.2",
+      dependencies: [
+        {
+          name: "local-module",
+          root: path.join(root, "packages/local-module"),
+        },
+      ],
+    };
+    const before = await hashOf({ platform: "ios" }, native);
+
+    await write(
+      path.join(root, "packages/local-module/expo-module.config.json"),
+      JSON.stringify({
+        apple: { modules: ["Apple"] },
+        ios: { modules: ["Older"] },
+      }),
+    );
+    expect(await hashOf({ platform: "ios" }, native)).toBe(before);
+  });
+
+  it("reads a legacy Expo module's unimodule.json registration", async () => {
+    await write(
+      path.join(root, "packages/local-module/unimodule.json"),
+      JSON.stringify({ android: { modules: ["First"] } }),
+    );
+    const native: NativeInterface = {
+      runtime: "react-native@0.85.2",
+      dependencies: [
+        {
+          name: "local-module",
+          root: path.join(root, "packages/local-module"),
+        },
+      ],
+    };
+    const before = await hashOf({ platform: "android" }, native);
+
+    await write(
+      path.join(root, "packages/local-module/unimodule.json"),
+      JSON.stringify({ android: { modules: ["Second"] } }),
+    );
+    expect(await hashOf({ platform: "android" }, native)).not.toBe(before);
+  });
+
+  it("ignores the key order of an Expo module's registration", async () => {
+    const native: NativeInterface = {
+      runtime: "react-native@0.85.2",
+      dependencies: [
+        {
+          name: "local-module",
+          root: path.join(root, "packages/local-module"),
+        },
+      ],
+    };
+    const register = (android: object) =>
+      write(
+        path.join(root, "packages/local-module/expo-module.config.json"),
+        JSON.stringify({ android }),
+      );
+    await register({ modules: ["A"], publication: { groupId: "g" } });
+    const before = await hashOf({ platform: "android" }, native);
+
+    await register({ publication: { groupId: "g" }, modules: ["A"] });
+    expect(await hashOf({ platform: "android" }, native)).toBe(before);
+  });
+
   it("explains a config command that prints no configuration", async () => {
     await expect(
       readReactNativeInterface({
@@ -740,18 +937,12 @@ describe("readReactNativeInterface", () => {
     ).rejects.toThrow("printed no JSON configuration");
   });
 
-  it("reads the JavaScript engine React Native resolved for each platform", async () => {
+  it("reads the engine settings the project declares, never an install's lockfile", async () => {
+    // pod install records the Hermes pod here, but the file only exists
+    // after an install, so it never counts.
     await write(
       path.join(root, "ios/Podfile.lock"),
-      [
-        "PODS:",
-        "  - hermes-engine (250829098.0.10):",
-        "    - hermes-engine/Pre-built (= 250829098.0.10)",
-        "  - hermes-engine/Pre-built (250829098.0.10)",
-        "",
-        "DEPENDENCIES:",
-        "  - hermes-engine (from `x`)",
-      ].join("\n"),
+      "PODS:\n  - hermes-engine (250829098.0.10):\n",
     );
     await write(
       path.join(root, "android/gradle.properties"),
@@ -765,30 +956,30 @@ describe("readReactNativeInterface", () => {
         "  true",
       ].join("\n"),
     );
-    const read = (platform: "ios" | "android") =>
+    const read = (
+      platform: "ios" | "android",
+      settings?: Record<string, string>,
+    ) =>
       readReactNativeInterface({
         cwd: root,
         command: process.execPath,
         args: ["-e", "console.log('{}')"],
         platform,
+        ...(settings ? { settings } : {}),
       });
 
-    expect((await read("ios")).settings).toEqual({
-      "ios:hermes-engine": "250829098.0.10",
-    });
+    expect((await read("ios")).settings).toEqual({});
     expect((await read("android")).settings).toEqual({
       "android:newArchEnabled": "",
       "android:hermesEnabled": "true",
       "android:react.hermesV1Enabled": "false",
       "android:hermesV1Enabled": "true",
     });
-
-    await write(
-      path.join(root, "ios/Podfile.lock"),
-      "PODS:\n  - Yoga (0.0.0)\n",
-    );
-    expect((await read("ios")).settings).toEqual({
-      "ios:hermes-engine": "none",
+    // Settings a framework records elsewhere replace the native projects'.
+    expect(
+      (await read("android", { "expo.jsEngine": "jsc" })).settings,
+    ).toEqual({
+      "expo.jsEngine": "jsc",
     });
   });
 });

@@ -1,11 +1,7 @@
 import fs from "fs/promises";
 import path from "path";
 
-import {
-  createInterfaceFingerprint,
-  log,
-  readReactNativeInterface,
-} from "@hot-updater/cli-tools";
+import { log, reactNativeCliFingerprint } from "@hot-updater/cli-tools";
 import type {
   BuildAdapterArgs,
   BuildAdapter,
@@ -101,28 +97,10 @@ const runBundle = async ({
  * CLI's `react-native config` reports. `hot-updater fingerprint hash` calls
  * it during native builds, from the inputs fingerprint.json records.
  */
-export const bareFingerprint = async (
+export const bareFingerprint = (
   cwd: string,
   options: NativeFingerprintOptions,
-) =>
-  createInterfaceFingerprint(
-    cwd,
-    options,
-    await readReactNativeInterface({
-      cwd,
-      command: process.execPath,
-      args: [
-        path.join(
-          path.dirname(
-            require.resolve("react-native/package.json", { paths: [cwd] }),
-          ),
-          "cli.js",
-        ),
-        "config",
-      ],
-      platform: options.platform,
-    }),
-  );
+) => reactNativeCliFingerprint(cwd, options);
 
 export interface BareAdapterConfig extends BuildAdapterConfig {
   /**

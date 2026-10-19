@@ -1,133 +1,155 @@
 {
   "ios": {
-    "engine": "@expo/fingerprint@0.11.11",
+    "engine": "hot-updater/interface@1",
+    "hash": "edf922f46a51ca6b4bd053d582394784be6006a2856e6d4b03854feaa8676cc0",
     "sources": [
       {
-        "type": "dir",
-        "filePath": "ios",
+        "type": "contents",
+        "id": "codegen-config:../../packages/react-native",
+        "contents": "{\"jsSrcsDir\":\"./src\",\"name\":\"HotUpdaterSpec\",\"type\":\"modules\"}",
         "reasons": [
-          "bareNativeDir"
+          "codegen-config"
         ],
-        "hash": null
-      },
-      {
-        "type": "dir",
-        "filePath": "node_modules/@hot-updater/react-native",
-        "reasons": [
-          "rncoreAutolinkingIos"
-        ],
-        "hash": "7b0ab2e3502663385e420abac35043bf035fc0b5"
-      },
-      {
-        "type": "dir",
-        "filePath": "node_modules/expo",
-        "reasons": [
-          "rncoreAutolinkingIos"
-        ],
-        "hash": "58c1acd7560cc6c78083b9d91f90e6e87367f0f5"
-      },
-      {
-        "type": "dir",
-        "filePath": "node_modules/react-native-webview",
-        "reasons": [
-          "rncoreAutolinkingIos"
-        ],
-        "hash": "fbf3414e064b673dd3d82dc41cc5eac40d13a655"
+        "hash": "b78579dca957a3b428af48ea2b30ad38e079060d336dbad339bba77f1f6d76ab"
       },
       {
         "type": "contents",
-        "id": "expoAutolinkingConfig:ios",
-        "contents": "{\"extraDependencies\":[],\"modules\":[]}",
+        "id": "dependency:expo",
+        "contents": "expo@52.0.49",
         "reasons": [
-          "expoAutolinkingIos"
+          "native-dependency"
         ],
-        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
+        "hash": "f4069c2215bd5140b8b4110275c82dcd09c038d14adbc0eefe9c8abb4eed9b37"
       },
       {
         "type": "contents",
-        "id": "package:react-native",
-        "contents": "{\"name\":\"react-native\",\"version\":\"0.76.9\",\"description\":\"A framework for building native apps using React\",\"license\":\"MIT\",\"repository\":{\"type\":\"git\",\"url\":\"git+https://github.com/facebook/react-native.git\",\"directory\":\"packages/react-native\"},\"homepage\":\"https://reactnative.dev/\",\"keywords\":[\"react\",\"react-native\",\"android\",\"ios\",\"mobile\",\"cross-platform\",\"app-framework\",\"mobile-development\"],\"bugs\":\"https://github.com/facebook/react-native/issues\",\"engines\":{\"node\":\">=18\"},\"bin\":{\"react-native\":\"cli.js\"},\"types\":\"types\",\"jest-junit\":{\"outputDirectory\":\"reports/junit\",\"outputName\":\"js-test-results.xml\"},\"files\":[\"android\",\"build.gradle.kts\",\"cli.js\",\"flow\",\"gradle.properties\",\"gradle/libs.versions.toml\",\"index.js\",\"interface.js\",\"jest-preset.js\",\"jest\",\"Libraries\",\"LICENSE\",\"React-Core.podspec\",\"react-native.config.js\",\"React.podspec\",\"React\",\"!React/Fabric/RCTThirdPartyFabricComponentsProvider.*\",\"ReactAndroid\",\"ReactApple\",\"ReactCommon\",\"README.md\",\"rn-get-polyfills.js\",\"scripts/compose-source-maps.js\",\"scripts/find-node-for-xcode.sh\",\"scripts/bundle.js\",\"scripts/generate-codegen-artifacts.js\",\"scripts/generate-provider-cli.js\",\"scripts/generate-specs-cli.js\",\"scripts/codegen\",\"!scripts/codegen/__tests__\",\"!scripts/codegen/__test_fixtures__\",\"scripts/hermes/hermes-utils.js\",\"scripts/hermes/prepare-hermes-for-build.js\",\"scripts/ios-configure-glog.sh\",\"scripts/xcode/ccache-clang++.sh\",\"scripts/xcode/ccache-clang.sh\",\"scripts/xcode/ccache.conf\",\"scripts/xcode/with-environment.sh\",\"scripts/native_modules.rb\",\"scripts/node-binary.sh\",\"scripts/packager.sh\",\"scripts/packager-reporter.js\",\"scripts/react_native_pods_utils/script_phases.rb\",\"scripts/react_native_pods_utils/script_phases.sh\",\"scripts/react_native_pods.rb\",\"scripts/cocoapods\",\"!scripts/cocoapods/__tests__\",\"scripts/react-native-xcode.sh\",\"sdks/.hermesversion\",\"sdks/hermes-engine\",\"sdks/hermesc\",\"settings.gradle.kts\",\"src\",\"template.config.js\",\"template\",\"!template/node_modules\",\"!template/package-lock.json\",\"!template/yarn.lock\",\"third-party-podspecs\",\"types\"],\"scripts\":{\"prepack\":\"node ./scripts/prepack.js\",\"featureflags-check\":\"node ./scripts/featureflags/index.js --verify-unchanged\",\"featureflags-update\":\"node ./scripts/featureflags/index.js\"},\"peerDependencies\":{\"@types/react\":\"^18.2.6\",\"react\":\"^18.2.0\"},\"peerDependenciesMeta\":{\"@types/react\":{\"optional\":true}},\"dependencies\":{\"@jest/create-cache-key-function\":\"^29.6.3\",\"@react-native/assets-registry\":\"0.76.9\",\"@react-native/codegen\":\"0.76.9\",\"@react-native/community-cli-plugin\":\"0.76.9\",\"@react-native/gradle-plugin\":\"0.76.9\",\"@react-native/js-polyfills\":\"0.76.9\",\"@react-native/normalize-colors\":\"0.76.9\",\"@react-native/virtualized-lists\":\"0.76.9\",\"abort-controller\":\"^3.0.0\",\"anser\":\"^1.4.9\",\"ansi-regex\":\"^5.0.0\",\"babel-jest\":\"^29.7.0\",\"babel-plugin-syntax-hermes-parser\":\"^0.23.1\",\"base64-js\":\"^1.5.1\",\"chalk\":\"^4.0.0\",\"commander\":\"^12.0.0\",\"event-target-shim\":\"^5.0.1\",\"flow-enums-runtime\":\"^0.0.6\",\"glob\":\"^7.1.1\",\"invariant\":\"^2.2.4\",\"jest-environment-node\":\"^29.6.3\",\"jsc-android\":\"^250231.0.0\",\"memoize-one\":\"^5.0.0\",\"metro-runtime\":\"^0.81.0\",\"metro-source-map\":\"^0.81.0\",\"mkdirp\":\"^0.5.1\",\"nullthrows\":\"^1.1.1\",\"pretty-format\":\"^29.7.0\",\"promise\":\"^8.3.0\",\"react-devtools-core\":\"^5.3.1\",\"react-refresh\":\"^0.14.0\",\"regenerator-runtime\":\"^0.13.2\",\"scheduler\":\"0.24.0-canary-efb381bbf-20230505\",\"semver\":\"^7.1.3\",\"stacktrace-parser\":\"^0.1.10\",\"whatwg-fetch\":\"^3.0.0\",\"ws\":\"^6.2.3\",\"yargs\":\"^17.6.2\"},\"codegenConfig\":{\"libraries\":[{\"name\":\"FBReactNativeSpec\",\"type\":\"modules\",\"ios\":{},\"android\":{},\"jsSrcsDir\":\"src\"},{\"name\":\"rncore\",\"type\":\"components\",\"ios\":{},\"android\":{},\"jsSrcsDir\":\"src\"}]}}",
+        "id": "dependency:react-native-webview",
+        "contents": "react-native-webview@13.12.5",
         "reasons": [
-          "package:react-native"
+          "native-dependency"
         ],
-        "hash": "00fa34ab6630c44b802345affbafb3dd3524bab3"
+        "hash": "959760466a400ad40c37b042164973fee96248a063053498f7432b5ef7279954"
       },
       {
         "type": "contents",
-        "id": "rncoreAutolinkingConfig:ios",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/@hot-updater/react-native/HotUpdater.podspec\",\"version\":\"1.0.8\",\"configurations\":[],\"scriptPhases\":[]}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/expo/Expo.podspec\",\"version\":\"52.0.49\",\"configurations\":[],\"scriptPhases\":[]}}},\"react-native-webview\":{\"root\":\"node_modules/react-native-webview\",\"name\":\"react-native-webview\",\"platforms\":{\"ios\":{\"podspecPath\":\"node_modules/react-native-webview/react-native-webview.podspec\",\"version\":\"13.12.5\",\"configurations\":[],\"scriptPhases\":[]}}}}",
+        "id": "runtime",
+        "contents": "react-native@0.76.9",
         "reasons": [
-          "rncoreAutolinkingIos"
+          "runtime"
         ],
-        "hash": "912302be78eb5f806f0138546b59f6b3fcb261fa"
+        "hash": "da4b8d9692a27cb65826544c86420e3d49fd484caf04d322a6911e3d67babf3f"
+      },
+      {
+        "type": "contents",
+        "id": "setting:expo.jsEngine",
+        "contents": "hermes",
+        "reasons": [
+          "native-setting"
+        ],
+        "hash": "8cfde6efdfc4ed5ab1f6acbbd1ba49bf31932f84d0a4c090eb41c7d151e8b180"
+      },
+      {
+        "type": "contents",
+        "id": "setting:expo.newArchEnabled",
+        "contents": "true",
+        "reasons": [
+          "native-setting"
+        ],
+        "hash": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b"
+      },
+      {
+        "type": "file",
+        "filePath": "../../packages/react-native/src/specs/NativeHotUpdater.ts",
+        "reasons": [
+          "local-dependency-codegen-spec"
+        ],
+        "hash": "206cbf04ed750458834234c88d2e45ec90cf0e067ac050e23bc1b21d934aa86f"
+      },
+      {
+        "type": "file",
+        "filePath": "../../patches/expo.patch",
+        "reasons": [
+          "native-dependency-patch"
+        ],
+        "hash": "c4cad6b68d75b481a4fa82aedfb07bd11536c2710663c1c016f722115a7845d6"
       }
-    ],
-    "hash": "3d2e039dcce4d7508a83ca5509b59d62635f5c0e"
+    ]
   },
   "android": {
-    "engine": "@expo/fingerprint@0.11.11",
+    "engine": "hot-updater/interface@1",
+    "hash": "ec8f1525ead35967253cbd68104c387ccecf749dbdc83af92a42739c72e43dba",
     "sources": [
       {
-        "type": "dir",
-        "filePath": "android",
+        "type": "contents",
+        "id": "codegen-config:../../packages/react-native",
+        "contents": "{\"android\":{\"javaPackageName\":\"com.hotupdater\"},\"jsSrcsDir\":\"./src\",\"name\":\"HotUpdaterSpec\",\"type\":\"modules\"}",
         "reasons": [
-          "bareNativeDir"
+          "codegen-config"
         ],
-        "hash": null
-      },
-      {
-        "type": "dir",
-        "filePath": "node_modules/@hot-updater/react-native",
-        "reasons": [
-          "rncoreAutolinkingAndroid"
-        ],
-        "hash": "7b0ab2e3502663385e420abac35043bf035fc0b5"
-      },
-      {
-        "type": "dir",
-        "filePath": "node_modules/expo",
-        "reasons": [
-          "rncoreAutolinkingAndroid"
-        ],
-        "hash": "58c1acd7560cc6c78083b9d91f90e6e87367f0f5"
-      },
-      {
-        "type": "dir",
-        "filePath": "node_modules/react-native-webview",
-        "reasons": [
-          "rncoreAutolinkingAndroid"
-        ],
-        "hash": "fbf3414e064b673dd3d82dc41cc5eac40d13a655"
+        "hash": "ecce521895aafa20cdc7f16b850fa170e5caf929c501c86a7b6f0fd9c62b63ae"
       },
       {
         "type": "contents",
-        "id": "expoAutolinkingConfig:android",
-        "contents": "{\"extraDependencies\":[],\"modules\":[]}",
+        "id": "dependency:expo",
+        "contents": "expo@52.0.49",
         "reasons": [
-          "expoAutolinkingAndroid"
+          "native-dependency"
         ],
-        "hash": "a11c4dfdbf37b1bdcc11fcac45a79dc9228dcb0f"
+        "hash": "f4069c2215bd5140b8b4110275c82dcd09c038d14adbc0eefe9c8abb4eed9b37"
       },
       {
         "type": "contents",
-        "id": "package:react-native",
-        "contents": "{\"name\":\"react-native\",\"version\":\"0.76.9\",\"description\":\"A framework for building native apps using React\",\"license\":\"MIT\",\"repository\":{\"type\":\"git\",\"url\":\"git+https://github.com/facebook/react-native.git\",\"directory\":\"packages/react-native\"},\"homepage\":\"https://reactnative.dev/\",\"keywords\":[\"react\",\"react-native\",\"android\",\"ios\",\"mobile\",\"cross-platform\",\"app-framework\",\"mobile-development\"],\"bugs\":\"https://github.com/facebook/react-native/issues\",\"engines\":{\"node\":\">=18\"},\"bin\":{\"react-native\":\"cli.js\"},\"types\":\"types\",\"jest-junit\":{\"outputDirectory\":\"reports/junit\",\"outputName\":\"js-test-results.xml\"},\"files\":[\"android\",\"build.gradle.kts\",\"cli.js\",\"flow\",\"gradle.properties\",\"gradle/libs.versions.toml\",\"index.js\",\"interface.js\",\"jest-preset.js\",\"jest\",\"Libraries\",\"LICENSE\",\"React-Core.podspec\",\"react-native.config.js\",\"React.podspec\",\"React\",\"!React/Fabric/RCTThirdPartyFabricComponentsProvider.*\",\"ReactAndroid\",\"ReactApple\",\"ReactCommon\",\"README.md\",\"rn-get-polyfills.js\",\"scripts/compose-source-maps.js\",\"scripts/find-node-for-xcode.sh\",\"scripts/bundle.js\",\"scripts/generate-codegen-artifacts.js\",\"scripts/generate-provider-cli.js\",\"scripts/generate-specs-cli.js\",\"scripts/codegen\",\"!scripts/codegen/__tests__\",\"!scripts/codegen/__test_fixtures__\",\"scripts/hermes/hermes-utils.js\",\"scripts/hermes/prepare-hermes-for-build.js\",\"scripts/ios-configure-glog.sh\",\"scripts/xcode/ccache-clang++.sh\",\"scripts/xcode/ccache-clang.sh\",\"scripts/xcode/ccache.conf\",\"scripts/xcode/with-environment.sh\",\"scripts/native_modules.rb\",\"scripts/node-binary.sh\",\"scripts/packager.sh\",\"scripts/packager-reporter.js\",\"scripts/react_native_pods_utils/script_phases.rb\",\"scripts/react_native_pods_utils/script_phases.sh\",\"scripts/react_native_pods.rb\",\"scripts/cocoapods\",\"!scripts/cocoapods/__tests__\",\"scripts/react-native-xcode.sh\",\"sdks/.hermesversion\",\"sdks/hermes-engine\",\"sdks/hermesc\",\"settings.gradle.kts\",\"src\",\"template.config.js\",\"template\",\"!template/node_modules\",\"!template/package-lock.json\",\"!template/yarn.lock\",\"third-party-podspecs\",\"types\"],\"scripts\":{\"prepack\":\"node ./scripts/prepack.js\",\"featureflags-check\":\"node ./scripts/featureflags/index.js --verify-unchanged\",\"featureflags-update\":\"node ./scripts/featureflags/index.js\"},\"peerDependencies\":{\"@types/react\":\"^18.2.6\",\"react\":\"^18.2.0\"},\"peerDependenciesMeta\":{\"@types/react\":{\"optional\":true}},\"dependencies\":{\"@jest/create-cache-key-function\":\"^29.6.3\",\"@react-native/assets-registry\":\"0.76.9\",\"@react-native/codegen\":\"0.76.9\",\"@react-native/community-cli-plugin\":\"0.76.9\",\"@react-native/gradle-plugin\":\"0.76.9\",\"@react-native/js-polyfills\":\"0.76.9\",\"@react-native/normalize-colors\":\"0.76.9\",\"@react-native/virtualized-lists\":\"0.76.9\",\"abort-controller\":\"^3.0.0\",\"anser\":\"^1.4.9\",\"ansi-regex\":\"^5.0.0\",\"babel-jest\":\"^29.7.0\",\"babel-plugin-syntax-hermes-parser\":\"^0.23.1\",\"base64-js\":\"^1.5.1\",\"chalk\":\"^4.0.0\",\"commander\":\"^12.0.0\",\"event-target-shim\":\"^5.0.1\",\"flow-enums-runtime\":\"^0.0.6\",\"glob\":\"^7.1.1\",\"invariant\":\"^2.2.4\",\"jest-environment-node\":\"^29.6.3\",\"jsc-android\":\"^250231.0.0\",\"memoize-one\":\"^5.0.0\",\"metro-runtime\":\"^0.81.0\",\"metro-source-map\":\"^0.81.0\",\"mkdirp\":\"^0.5.1\",\"nullthrows\":\"^1.1.1\",\"pretty-format\":\"^29.7.0\",\"promise\":\"^8.3.0\",\"react-devtools-core\":\"^5.3.1\",\"react-refresh\":\"^0.14.0\",\"regenerator-runtime\":\"^0.13.2\",\"scheduler\":\"0.24.0-canary-efb381bbf-20230505\",\"semver\":\"^7.1.3\",\"stacktrace-parser\":\"^0.1.10\",\"whatwg-fetch\":\"^3.0.0\",\"ws\":\"^6.2.3\",\"yargs\":\"^17.6.2\"},\"codegenConfig\":{\"libraries\":[{\"name\":\"FBReactNativeSpec\",\"type\":\"modules\",\"ios\":{},\"android\":{},\"jsSrcsDir\":\"src\"},{\"name\":\"rncore\",\"type\":\"components\",\"ios\":{},\"android\":{},\"jsSrcsDir\":\"src\"}]}}",
+        "id": "dependency:react-native-webview",
+        "contents": "react-native-webview@13.12.5",
         "reasons": [
-          "package:react-native"
+          "native-dependency"
         ],
-        "hash": "00fa34ab6630c44b802345affbafb3dd3524bab3"
+        "hash": "959760466a400ad40c37b042164973fee96248a063053498f7432b5ef7279954"
       },
       {
         "type": "contents",
-        "id": "rncoreAutolinkingConfig:android",
-        "contents": "{\"@hot-updater/react-native\":{\"root\":\"node_modules/@hot-updater/react-native\",\"name\":\"@hot-updater/react-native\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/@hot-updater/react-native/android\",\"packageImportPath\":\"import com.hotupdater.HotUpdaterPackage;\",\"packageInstance\":\"new HotUpdaterPackage()\",\"buildTypes\":[],\"libraryName\":\"HotUpdaterSpec\",\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/@hot-updater/react-native/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}},\"expo\":{\"root\":\"node_modules/expo\",\"name\":\"expo\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/expo/android\",\"packageImportPath\":\"import expo.core.ExpoModulesPackage;\",\"packageInstance\":\"new ExpoModulesPackage()\",\"buildTypes\":[],\"componentDescriptors\":[],\"cmakeListsPath\":\"node_modules/expo/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}},\"react-native-webview\":{\"root\":\"node_modules/react-native-webview\",\"name\":\"react-native-webview\",\"platforms\":{\"android\":{\"sourceDir\":\"node_modules/react-native-webview/android\",\"packageImportPath\":\"import com.reactnativecommunity.webview.RNCWebViewPackage;\",\"packageInstance\":\"new RNCWebViewPackage()\",\"buildTypes\":[],\"libraryName\":\"RNCWebViewSpec\",\"componentDescriptors\":[\"RNCWebViewComponentDescriptor\"],\"cmakeListsPath\":\"node_modules/react-native-webview/android/build/generated/source/codegen/jni/CMakeLists.txt\",\"cxxModuleCMakeListsModuleName\":null,\"cxxModuleCMakeListsPath\":null,\"cxxModuleHeaderName\":null}}}}",
+        "id": "runtime",
+        "contents": "react-native@0.76.9",
         "reasons": [
-          "rncoreAutolinkingAndroid"
+          "runtime"
         ],
-        "hash": "65d688bf9140b57c299053806fef8fb73e28e3e5"
+        "hash": "da4b8d9692a27cb65826544c86420e3d49fd484caf04d322a6911e3d67babf3f"
+      },
+      {
+        "type": "contents",
+        "id": "setting:expo.jsEngine",
+        "contents": "hermes",
+        "reasons": [
+          "native-setting"
+        ],
+        "hash": "8cfde6efdfc4ed5ab1f6acbbd1ba49bf31932f84d0a4c090eb41c7d151e8b180"
+      },
+      {
+        "type": "contents",
+        "id": "setting:expo.newArchEnabled",
+        "contents": "true",
+        "reasons": [
+          "native-setting"
+        ],
+        "hash": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b"
+      },
+      {
+        "type": "file",
+        "filePath": "../../packages/react-native/src/specs/NativeHotUpdater.ts",
+        "reasons": [
+          "local-dependency-codegen-spec"
+        ],
+        "hash": "206cbf04ed750458834234c88d2e45ec90cf0e067ac050e23bc1b21d934aa86f"
+      },
+      {
+        "type": "file",
+        "filePath": "../../patches/expo.patch",
+        "reasons": [
+          "native-dependency-patch"
+        ],
+        "hash": "c4cad6b68d75b481a4fa82aedfb07bd11536c2710663c1c016f722115a7845d6"
       }
-    ],
-    "hash": "97d51ed3c31b14399c370b4d5da0252f7b5695af"
+    ]
   },
   "inputs": {
     "adapter": "expo",

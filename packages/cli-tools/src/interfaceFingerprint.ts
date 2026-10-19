@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -65,6 +66,8 @@ export type NativeDependency =
        * folder of the iOS podspec. An Expo module can name several.
        */
       sourceDirs?: string[];
+      /** Prebuilt native files autolinking links, such as an Expo module's AARs. */
+      files?: string[];
     }
   | { name: string; version: string };
 
@@ -177,12 +180,87 @@ const findPackageRoot = async (from: string, name: string) => {
   }
 };
 
+/**
+ * A local Expo module's registration for `platform`, from its
+ * expo-module.config.json (or legacy unimodule.json): whether it lists the platform, the platform's
+ * own section, and the native features it requires. Other platforms' and
+ * non-native sections, such as `web` and `devtools`, leave it alone.
+ */
+const readExpoModuleConfig = async (
+  root: string,
+  platform: Platform,
+): Promise<string | null> => {
+  // Expo autolinking reads the first of these it finds; unimodule.json is
+  // the legacy name.
+  let file: string | null = null;
+  for (const name of ["expo-module.config.json", "unimodule.json"]) {
+    file = await fs.readFile(path.join(root, name), "utf8").catch(() => null);
+    if (file !== null) break;
+  }
+  if (file === null) return null;
+  const config = JSON.parse(file) as Record<string, unknown>;
+  const names = platform === "ios" ? ["apple", "ios"] : ["android"];
+  // `ios` is the legacy name of `apple`, read only when `apple` is absent.
+  const section =
+    platform === "ios" ? (config["apple"] ?? config["ios"]) : config["android"];
+  // Key order means nothing to Expo.
+  return stableStringify({
+    listed: Array.isArray(config["platforms"])
+      ? names.some((name) => (config["platforms"] as unknown[]).includes(name))
+      : null,
+    coreFeatures: config["coreFeatures"] ?? null,
+    section: section ?? null,
+  });
+};
+
 interface ExpoModule {
   packageName?: string;
   packageVersion?: string;
-  projects?: { sourceDir?: string }[];
+  projects?: { sourceDir?: string; aarProjects?: { aarFilePath?: string }[] }[];
+  plugins?: { sourceDir?: string }[];
   pods?: { podspecDir?: string }[];
+  /** SDKs before 53 list a module's AARs here. */
+  aarProjects?: { aarFilePath?: string }[];
 }
+
+const atLeast = (version: string, minimum: [number, number, number]) => {
+  const parts = version.split(/[.+-]/u).map(Number);
+  for (let index = 0; index < 3; index++) {
+    const part = parts[index] ?? 0;
+    if (part !== minimum[index]) return part > minimum[index]!;
+  }
+  return true;
+};
+
+/**
+ * The expo-modules-autolinking an Expo app builds with, resolved from its
+ * `expo` package as the native templates resolve it.
+ */
+export const resolveExpoAutolinking = (
+  cwd: string,
+): {
+  bin: string;
+  version: string;
+  /** Whether it lists React Native packages (`react-native-config`, 1.12+). */
+  linksReactNative: boolean;
+} => {
+  const expo = path.dirname(
+    require.resolve("expo/package.json", { paths: [cwd] }),
+  );
+  const manifest = require.resolve("expo-modules-autolinking/package.json", {
+    paths: [expo],
+  });
+  const { version = "0.0.0" } = JSON.parse(readFileSync(manifest, "utf8")) as {
+    version?: string;
+  };
+  return {
+    bin: path.join(path.dirname(manifest), "bin/expo-modules-autolinking.js"),
+    version,
+    // The version @expo/fingerprint switches React Native core autolinking
+    // to Expo at, for SDK 52 and later.
+    linksReactNative: atLeast(version, [1, 12, 0]),
+  };
+};
 
 /**
  * The Expo modules linked into a React Native app through
@@ -194,75 +272,61 @@ const readExpoModules = async (
   cwd: string,
   platform: Platform,
 ): Promise<NativeDependency[]> => {
-  const expo = path.dirname(
-    require.resolve("expo/package.json", { paths: [cwd] }),
+  const { bin, version } = resolveExpoAutolinking(cwd);
+  // expo-modules-autolinking 1.10 renamed the iOS platform `apple`.
+  const name =
+    platform === "android"
+      ? "android"
+      : atLeast(version, [1, 10, 0])
+        ? "apple"
+        : "ios";
+  const result = await execa(
+    process.execPath,
+    [bin, "resolve", "--platform", name, "--json"],
+    { cwd, reject: false },
   );
-  const autolinking = path.dirname(
-    require.resolve("expo-modules-autolinking/package.json", {
-      paths: [expo],
-    }),
-  );
-  const bin = path.join(autolinking, "bin/expo-modules-autolinking.js");
-  // SDKs before `apple` name the iOS platform `ios`.
-  let output: string | null = null;
-  for (const name of platform === "ios" ? ["apple", "ios"] : ["android"]) {
-    const result = await execa(
-      process.execPath,
-      [bin, "resolve", "--platform", name, "--json"],
-      { cwd, reject: false },
-    );
-    if (result.exitCode === 0) {
-      output = result.stdout;
-      break;
-    }
-  }
-  if (output === null) {
+  if (result.exitCode !== 0) {
     throw new Error("`expo-modules-autolinking resolve` failed.");
   }
   const { modules = [] } = parseJsonOutput<{ modules?: ExpoModule[] }>(
-    output,
+    result.stdout,
     "expo-modules-autolinking resolve",
   );
-  return Promise.all(
+  return readExpoModuleDependencies(modules);
+};
+
+const readExpoModuleDependencies = (
+  modules: ExpoModule[],
+): Promise<NativeDependency[]> =>
+  Promise.all(
     modules.flatMap((module) => {
       const name = module.packageName;
       if (!name) return [];
-      // Every Android project and iOS pod the module declares.
+      // Every Android project, Gradle plugin, and iOS pod the module declares.
       const sourceDirs = [
         ...(module.projects ?? []).map(({ sourceDir }) => sourceDir),
+        ...(module.plugins ?? []).map(({ sourceDir }) => sourceDir),
         ...(module.pods ?? []).map(({ podspecDir }) => podspecDir),
       ].filter((dir): dir is string => Boolean(dir));
+      const files = [
+        ...(module.projects ?? []).flatMap(
+          ({ aarProjects }) => aarProjects ?? [],
+        ),
+        ...(module.aarProjects ?? []),
+      ]
+        .map(({ aarFilePath }) => aarFilePath)
+        .filter((file): file is string => Boolean(file));
       return [
         (async (): Promise<NativeDependency> => {
-          const root = sourceDirs[0]
-            ? await findPackageRoot(sourceDirs[0], name)
-            : null;
+          const anchor = sourceDirs[0] ?? files[0];
+          const root = anchor ? await findPackageRoot(anchor, name) : null;
           return root
-            ? { name, root, sourceDirs }
+            ? { name, root, sourceDirs, ...(files.length > 0 ? { files } : {}) }
             : { name, version: module.packageVersion ?? "unknown" };
         })(),
       ];
     }),
   );
-};
-
-/**
- * The Hermes pod `pod install` resolved, as Podfile.lock records it: its
- * version tells Hermes V1 from legacy Hermes, and its absence means JSC.
- * Without a Podfile.lock there is nothing to read.
- */
-const readHermesPod = async (
-  iosDir: string,
-): Promise<Record<string, string>> => {
-  const lock = await fs
-    .readFile(path.join(iosDir, "Podfile.lock"), "utf8")
-    .catch(() => null);
-  if (lock === null) return {};
-  const end = lock.indexOf("\nDEPENDENCIES:");
-  const pods = end < 0 ? lock : lock.slice(0, end);
-  const version = /^ {2}- hermes-engine \(([^)]+)\)/m.exec(pods)?.[1];
-  return { "ios:hermes-engine": version ?? "none" };
-};
 
 // The gradle.properties keys the React Native Gradle plugin reads to choose
 // the JavaScript engine and architecture.
@@ -323,19 +387,28 @@ const readGradleFlags = async (
 /**
  * Reads the native interface of a React Native app from the JSON its
  * autolinking `config` command prints: `react-native config` for React Native
- * CLI, `rock config -p <platform>` for Rock. An app that links Expo modules
- * gets them from expo-modules-autolinking as well.
+ * CLI, `rock config -p <platform>` for Rock, `expo-modules-autolinking
+ * react-native-config` for Expo. An app that links Expo modules gets them
+ * from expo-modules-autolinking as well.
+ *
+ * The engine and architecture settings come from what the project declares:
+ * `settings` when the framework records them elsewhere, such as Expo's app
+ * config, else android/gradle.properties. Nothing generated by an install,
+ * such as Podfile.lock, is read, so every machine computes the same
+ * fingerprint before and after `pod install` or `expo prebuild`.
  */
 export const readReactNativeInterface = async ({
   cwd,
   command,
   args,
   platform,
+  settings: declaredSettings,
 }: {
   cwd: string;
   command: string;
   args: string[];
   platform: Platform;
+  settings?: Record<string, string>;
 }): Promise<NativeInterface> => {
   const { stdout } = await execa(command, args, { cwd });
   const config = parseJsonOutput<AutolinkingConfig>(
@@ -368,14 +441,15 @@ export const readReactNativeInterface = async ({
     ? await readExpoModules(cwd, platform)
     : [];
   const names = new Set(dependencies.map(({ name }) => name));
+  // iOS declares no engine setting React Native's pods read from a file:
+  // `pod install` takes them from the environment.
   const settings =
-    platform === "ios"
-      ? await readHermesPod(
-          config.project?.ios?.sourceDir ?? path.join(cwd, "ios"),
-        )
-      : await readGradleFlags(
+    declaredSettings ??
+    (platform === "android"
+      ? await readGradleFlags(
           config.project?.android?.sourceDir ?? path.join(cwd, "android"),
-        );
+        )
+      : {});
   return {
     runtime: `react-native@${reactNative?.version ?? "unknown"}`,
     dependencies: [
@@ -653,6 +727,20 @@ export const createInterfaceFingerprint = async (
         ignore: [...GENERATED_DIRS, ...TEST_DIRS],
       })),
     ];
+    // An Expo module registers its native classes in expo-module.config.json
+    // and can link prebuilt AARs, whether or not it has specs.
+    const expoModuleConfig = await readExpoModuleConfig(root, platform);
+    if (expoModuleConfig !== null) {
+      addContents(
+        `expo-module-config:${dependency.name}`,
+        expoModuleConfig,
+        "local-dependency-expo-module",
+      );
+    }
+    for (const file of dependency.files ?? []) {
+      const real = await fs.realpath(file).catch(() => undefined);
+      if (real) await addFile(real, "local-dependency-native");
+    }
     if (!specs) {
       for (const dir of dependency.sourceDirs ?? []) {
         const sourceDir = await fs.realpath(dir).catch(() => undefined);
@@ -752,3 +840,31 @@ export const createInterfaceFingerprint = async (
     sources: sorted,
   };
 };
+
+/**
+ * The fingerprint of a React Native CLI project: the native interface
+ * `react-native config` reports. The bare adapter's fingerprint, and the one
+ * a build adapter without its own gets.
+ */
+export const reactNativeCliFingerprint = async (
+  cwd: string,
+  options: NativeFingerprintOptions,
+) =>
+  createInterfaceFingerprint(
+    cwd,
+    options,
+    await readReactNativeInterface({
+      cwd,
+      command: process.execPath,
+      args: [
+        path.join(
+          path.dirname(
+            require.resolve("react-native/package.json", { paths: [cwd] }),
+          ),
+          "cli.js",
+        ),
+        "config",
+      ],
+      platform: options.platform,
+    }),
+  );
