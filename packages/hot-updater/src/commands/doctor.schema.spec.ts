@@ -195,6 +195,23 @@ describe("doctor's schema check", () => {
   });
 
   it("offers no migration while a newer release's setting would move back", async () => {
+    await storeSetting("schema.core", "9.0.0");
+    serverProject(database());
+
+    const result = await doctor({ fix: true });
+    expect(result).toMatchObject({
+      success: false,
+      details: {
+        schema: {
+          settings: [{ key: "schema.core", expected: "1.0.0", found: "9.0.0" }],
+          issues: [{ code: "SCHEMA_NEWER_THAN_CLI" }],
+        },
+        fixes: [],
+      },
+    });
+  });
+
+  it("offers no migration beside a plugin whose version changed, numeric or not", async () => {
     const later = definePlugin({
       id: "later",
       schemaVersion: "1",
@@ -205,8 +222,7 @@ describe("doctor's schema check", () => {
     await storeSetting("schema.later", "2");
     serverProject(database(), [notes, later] as never);
 
-    const result = await doctor({ fix: true });
-    expect(result).toMatchObject({
+    await expect(doctor({ fix: true })).resolves.toMatchObject({
       success: false,
       details: {
         schema: {
@@ -214,7 +230,7 @@ describe("doctor's schema check", () => {
             { key: "schema.notes", expected: "1", found: null },
             { key: "schema.later", expected: "1", found: "2" },
           ],
-          issues: [{ code: "SCHEMA_NEWER_THAN_CLI" }],
+          issues: [{ code: "PLUGIN_SCHEMA_CHANGED" }],
         },
         fixes: [],
       },
@@ -243,7 +259,7 @@ describe("doctor's schema check", () => {
               code: "PLUGIN_SCHEMA_CHANGED",
               fixability: "blocked",
               message:
-                'A plugin\'s tables changed since the database recorded them: schema.labeled is "v1", expected "v2".',
+                'A plugin\'s version differs from the one the database recorded: schema.labeled is "v1", expected "v2".',
             },
           ],
         },

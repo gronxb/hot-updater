@@ -190,11 +190,12 @@ const schemaStatus = (
   const newer = settings.filter(
     (setting) =>
       !engine.includes(setting) &&
+      owned.has(setting.key) &&
       setting.found !== null &&
       compareVersions(setting.found, setting.expected) > 0,
   );
-  // Another plugin's tables changed: its own migration changes them, which
-  // a migration here, creating only what is missing, would skip.
+  // Another plugin's version differs: its own migration changes its
+  // tables, which a migration here, creating only what is missing, skips.
   const changed = settings.filter(
     (setting) =>
       !engine.includes(setting) &&
@@ -232,9 +233,9 @@ const schemaStatus = (
     issues.push({
       type: "error",
       code: "PLUGIN_SCHEMA_CHANGED",
-      message: `A plugin's tables changed since the database recorded them: ${listed(changed)}.`,
+      message: `A plugin's version differs from the one the database recorded: ${listed(changed)}.`,
       resolution:
-        "Apply the plugin's own migration for its changed tables, then run `npx hot-updater db migrate` in the server's project to record its version. doctor --fix creates missing tables and changes no existing one.",
+        "Apply the plugin's own migration for its changed tables, or use the plugin version that migrated the database; then run `npx hot-updater db migrate` in the server's project to record its version. doctor --fix creates missing tables and changes no existing one.",
       fixability: "blocked",
     });
   }
@@ -262,7 +263,13 @@ const schemaStatus = (
   return { settings: [...settings], issues };
 };
 
-/** `hot-updater db migrate` over the config's database and plugins. */
+/**
+ * `hot-updater db migrate` over the config's database and plugins: it
+ * creates missing tables, then writes the settings rows. That moves core's
+ * and the official plugins' versions forward because their bumps only add
+ * tables (`HOT_UPDATER_SCHEMA_VERSION`'s contract); another plugin's changed
+ * version never reaches it.
+ */
 const runMigrator = async (
   database: Parameters<typeof createMigrator>[0]["database"],
   plugins: LoadedServer["plugins"],
