@@ -60,6 +60,7 @@ const memoryStorage = () => {
       },
       async delete({ storageUri }) {
         objects.delete(keyOf(storageUri));
+        return { deleted: true };
       },
     }),
   };
