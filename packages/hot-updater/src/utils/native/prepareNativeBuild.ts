@@ -47,7 +47,11 @@ type PreparedNativeBuildConfig = {
 };
 
 export async function prepareNativeBuild(
-  options: NativeBuildOptions & { platform: Platform },
+  options: NativeBuildOptions & {
+    platform: Platform;
+    /** `build` exports an iOS device build as an `.ipa`; `run` installs the `.app`. */
+    operation: "build" | "run";
+  },
 ): Promise<PreparedNativeBuildConfig | null> {
   const cwd = getCwd();
   const platform = options.platform;
@@ -93,7 +97,9 @@ export async function prepareNativeBuild(
   }
 
   const iosDeviceScheme =
-    platform === "ios" && !config.nativeBuild.ios[scheme]?.simulator
+    options.operation === "build" &&
+    platform === "ios" &&
+    !config.nativeBuild.ios[scheme]?.simulator
       ? config.nativeBuild.ios[scheme]
       : undefined;
   if (

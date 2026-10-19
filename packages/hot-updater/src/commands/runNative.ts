@@ -30,6 +30,7 @@ const runNativeInternal = async <
   const preparedConfig = await prepareNativeBuild({
     ...options,
     platform,
+    operation: "run",
   });
   if (!preparedConfig) {
     p.log.error("preparing native build failed");
