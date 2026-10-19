@@ -22,6 +22,7 @@ import type { ConsoleRuntime } from "./runtime.server";
  * - 403 `forbidden`: the token's scope does not allow the request;
  * - 400 `invalid_request`: the body is not what the route takes;
  * - 404 `vault_unavailable`: this console serves no vault;
+ * - 405 `method_not_allowed`: the route takes another method;
  * - 503 `vault_locked`: the console has no master key to open values with.
  */
 
@@ -119,6 +120,12 @@ const serve = async (respond: () => Promise<Response>) => {
     return failure(500, "internal", "The vault could not serve the request.");
   }
 };
+
+/** A method the route does not take, with the one it does in `Allow`. */
+export const vaultMethodNotAllowed = (allow: "GET" | "POST") =>
+  failure(405, "method_not_allowed", `This route takes ${allow}.`, {
+    Allow: allow,
+  });
 
 /** Whether `token` may take any of its actions on `secret`. */
 const inScope = (token: VaultToken, secret: VaultSecret) =>

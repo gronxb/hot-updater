@@ -24,6 +24,7 @@ import {
   type LoadConsole,
   listVaultSecrets,
   resolveVaultSecrets,
+  vaultMethodNotAllowed,
 } from "./vaultRoutes";
 
 const MASTER_KEY = btoa(String.fromCharCode(...new Uint8Array(32).fill(9)));
@@ -474,6 +475,19 @@ describe("vault routes where the console serves no vault", () => {
         code: "vault_unavailable",
         message: expect.stringContaining("Add vault() to the plugins"),
       },
+    });
+  });
+});
+
+describe("vault routes for another method", () => {
+  it("answers 405 with the method the route takes", async () => {
+    const response = vaultMethodNotAllowed("POST");
+
+    expect(response.status).toBe(405);
+    expect(response.headers.get("allow")).toBe("POST");
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    await expect(response.json()).resolves.toEqual({
+      error: { code: "method_not_allowed", message: "This route takes POST." },
     });
   });
 });

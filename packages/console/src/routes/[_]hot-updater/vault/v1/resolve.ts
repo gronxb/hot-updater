@@ -11,6 +11,11 @@ export const Route = createFileRoute("/_hot-updater/vault/v1/resolve")({
         ]);
         return resolveVaultSecrets(request, loadConsole);
       },
+      ANY: async () => {
+        const { vaultMethodNotAllowed } =
+          await import("@/lib/server/vaultRoutes");
+        return vaultMethodNotAllowed("POST");
+      },
     },
   },
 });
