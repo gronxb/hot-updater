@@ -41,11 +41,21 @@ describe("registerSecretValue", () => {
     );
   });
 
-  it("masks a short value, but not the short lines of a multi-line one", () => {
+  it("masks a short value only where it stands alone", () => {
     registerSecretValue("pw#1");
+    registerSecretValue("a");
+
+    expect(maskSecretValues("-Ppassword=pw#1 and a")).toBe(
+      "-Ppassword=******** and ********",
+    );
+    expect(maskSecretValues("Gradle failed: pw#12")).toBe(
+      "Gradle failed: pw#12",
+    );
+  });
+
+  it("does not mask the short lines of a multi-line value", () => {
     registerSecretValue('{\n  "private_key": "maskJsonPrivateKey"\n}');
 
-    expect(maskSecretValues("password pw#1")).toBe("password ********");
     expect(maskSecretValues("{ }")).toBe("{ }");
     expect(maskSecretValues('"private_key": "maskJsonPrivateKey"')).toBe(
       "********",
