@@ -182,7 +182,7 @@ const findPackageRoot = async (from: string, name: string) => {
 
 /**
  * A local Expo module's registration for `platform`, from its
- * expo-module.config.json: whether it lists the platform, the platform's
+ * expo-module.config.json (or legacy unimodule.json): whether it lists the platform, the platform's
  * own section, and the native features it requires. Other platforms' and
  * non-native sections, such as `web` and `devtools`, leave it alone.
  */
@@ -190,9 +190,13 @@ const readExpoModuleConfig = async (
   root: string,
   platform: Platform,
 ): Promise<string | null> => {
-  const file = await fs
-    .readFile(path.join(root, "expo-module.config.json"), "utf8")
-    .catch(() => null);
+  // Expo autolinking reads the first of these it finds; unimodule.json is
+  // the legacy name.
+  let file: string | null = null;
+  for (const name of ["expo-module.config.json", "unimodule.json"]) {
+    file = await fs.readFile(path.join(root, name), "utf8").catch(() => null);
+    if (file !== null) break;
+  }
   if (file === null) return null;
   const config = JSON.parse(file) as Record<string, unknown>;
   const names = platform === "ios" ? ["apple", "ios"] : ["android"];

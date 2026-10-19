@@ -881,6 +881,29 @@ describe("readReactNativeInterface", () => {
     expect(await hashOf({ platform: "ios" }, native)).toBe(before);
   });
 
+  it("reads a legacy Expo module's unimodule.json registration", async () => {
+    await write(
+      path.join(root, "packages/local-module/unimodule.json"),
+      JSON.stringify({ android: { modules: ["First"] } }),
+    );
+    const native: NativeInterface = {
+      runtime: "react-native@0.85.2",
+      dependencies: [
+        {
+          name: "local-module",
+          root: path.join(root, "packages/local-module"),
+        },
+      ],
+    };
+    const before = await hashOf({ platform: "android" }, native);
+
+    await write(
+      path.join(root, "packages/local-module/unimodule.json"),
+      JSON.stringify({ android: { modules: ["Second"] } }),
+    );
+    expect(await hashOf({ platform: "android" }, native)).not.toBe(before);
+  });
+
   it("explains a config command that prints no configuration", async () => {
     await expect(
       readReactNativeInterface({
