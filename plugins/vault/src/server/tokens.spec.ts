@@ -1,4 +1,8 @@
-import { createEngine, createMemoryAdapter } from "@hot-updater/plugin-core";
+import {
+  createEngine,
+  createMemoryAdapter,
+  type DatabaseJson,
+} from "@hot-updater/plugin-core";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -353,27 +357,43 @@ describe("authorizeVaultToken", () => {
       false,
     );
 
+    // Any malformed part, even beside valid entries, empties the whole scope.
     const { api, db } = start();
-    const { token: plaintext, metadata } = await api.issueToken({
-      name: "ci",
-      scope: { secrets: { names: ["release-keystore"] }, actions: ["read"] },
-    });
-    await db.transaction(async (tx) => {
-      const row = await tx.findOne("tokens", { id: metadata.id });
-      tx.update("tokens", row!, {
-        scope: { secrets: { names: "release-keystore" }, actions: "read" },
+    const malformed: readonly DatabaseJson[] = [
+      { secrets: { names: "release-keystore" }, actions: "read" },
+      { secrets: { names: ["release-keystore"] }, actions: ["read", 1] },
+      { secrets: { names: ["release-keystore", null] }, actions: ["read"] },
+      { secrets: { names: ["release-keystore"] }, actions: ["read", "write"] },
+      {
+        secrets: { names: ["release-keystore"], kinds: ["ssh-key"] },
+        actions: ["read"],
+      },
+      {
+        secrets: { names: ["release-keystore"] },
+        actions: ["read"],
+        apps: ["widget"],
+      },
+    ];
+    for (const scope of malformed) {
+      const { token: plaintext, metadata } = await api.issueToken({
+        name: "ci",
+        scope: { secrets: { names: ["release-keystore"] }, actions: ["read"] },
       });
-    });
-    const verified = await api.verifyToken({ token: plaintext });
-    expect(verified).toMatchObject({
-      ok: true,
-      token: { scope: { secrets: { names: [], kinds: [] }, actions: [] } },
-    });
-    expect(
-      authorizeVaultToken(
-        (verified as { readonly token: typeof token }).token,
-        request,
-      ),
-    ).toBe(false);
+      await db.transaction(async (tx) => {
+        const row = await tx.findOne("tokens", { id: metadata.id });
+        tx.update("tokens", row!, { scope });
+      });
+      const verified = await api.verifyToken({ token: plaintext });
+      expect(verified).toMatchObject({
+        ok: true,
+        token: { scope: { secrets: { names: [], kinds: [] }, actions: [] } },
+      });
+      expect(
+        authorizeVaultToken(
+          (verified as { readonly token: typeof token }).token,
+          request,
+        ),
+      ).toBe(false);
+    }
   });
 });

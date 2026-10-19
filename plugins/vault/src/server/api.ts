@@ -362,28 +362,32 @@ const normalizeScope = (scope: unknown): VaultTokenScope => {
   };
 };
 
-/** A stored scope as read back; anything malformed reaches nothing. */
+const EMPTY_SCOPE: VaultTokenScope = Object.freeze({
+  secrets: Object.freeze({
+    names: Object.freeze([]),
+    kinds: Object.freeze([]),
+  }),
+  actions: Object.freeze([]),
+});
+
+/**
+ * A stored scope as read back, checked as `issueToken` checks one: a scope
+ * with any malformed part, such as one unknown action, reaches nothing.
+ */
 const readScope = (value: DatabaseJson): VaultTokenScope => {
-  const strings = (list: unknown): string[] =>
-    Array.isArray(list)
-      ? list.filter((entry): entry is string => typeof entry === "string")
-      : [];
-  const scope = isPlainObject(value) ? value : {};
-  const secrets = isPlainObject(scope.secrets) ? scope.secrets : {};
+  let scope: VaultTokenScope;
+  try {
+    scope = normalizeScope(value);
+  } catch (error) {
+    if (error instanceof VaultInputError) return EMPTY_SCOPE;
+    throw error;
+  }
   return Object.freeze({
     secrets: Object.freeze({
-      names: Object.freeze(strings(secrets.names)),
-      kinds: Object.freeze(
-        strings(secrets.kinds).filter((kind): kind is VaultSecretKind =>
-          VAULT_SECRET_KINDS.includes(kind as VaultSecretKind),
-        ),
-      ),
+      names: Object.freeze([...(scope.secrets.names ?? [])]),
+      kinds: Object.freeze([...(scope.secrets.kinds ?? [])]),
     }),
-    actions: Object.freeze(
-      strings(scope.actions).filter((action): action is VaultTokenAction =>
-        VAULT_TOKEN_ACTIONS.includes(action as VaultTokenAction),
-      ),
-    ),
+    actions: Object.freeze([...scope.actions]),
   });
 };
 
