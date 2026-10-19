@@ -6,7 +6,7 @@ CREATE INDEX IF NOT EXISTS "hot_updater_v1_vault_secrets_byName" ON "hot_updater
 
 CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_vault_secrets_name" ON "hot_updater_v1_vault_secrets" ("name");
 
-CREATE TABLE IF NOT EXISTS "hot_updater_v1_vault_secret_versions" ("secret_id" varchar(64) COLLATE "C" NOT NULL, "version" bigint NOT NULL, "kid" varchar(32) COLLATE "C" NOT NULL, "wrapped_dek" varchar(128) COLLATE "C" NOT NULL, "iv" varchar(32) COLLATE "C" NOT NULL, "ciphertext" varchar(100000) COLLATE "C" NOT NULL, "created_at_ms" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("secret_id", "version"));
+CREATE TABLE IF NOT EXISTS "hot_updater_v1_vault_secret_versions" ("secret_id" varchar(64) COLLATE "C" NOT NULL, "version" bigint NOT NULL, "kid" varchar(32) COLLATE "C" NOT NULL, "wrapped_dek" varchar(128) COLLATE "C" NOT NULL, "iv" varchar(32) COLLATE "C" NOT NULL, "ciphertext" text COLLATE "C" NOT NULL, "created_at_ms" bigint NOT NULL, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("secret_id", "version"));
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_vault_secret_versions_byKid" ON "hot_updater_v1_vault_secret_versions" ("kid", "secret_id", "version");
 

@@ -38,8 +38,11 @@ export const vaultSchema = {
       wrapped_dek: { type: "string", maxLength: 128 },
       /** base64url of the value's 12-byte IV. */
       iv: { type: "string", maxLength: 32 },
-      /** base64url of the value's ciphertext and tag. */
-      ciphertext: { type: "string", maxLength: 100_000 },
+      /**
+       * base64url of the value's ciphertext and tag, unbounded text: a 64 KB
+       * value takes about 87,400 characters, past MySQL's longest varchar.
+       */
+      ciphertext: { type: "string" },
       created_at_ms: { type: "integer" },
     },
     {

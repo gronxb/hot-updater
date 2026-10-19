@@ -1,4 +1,9 @@
-import { createEngine, createMemoryAdapter } from "@hot-updater/plugin-core";
+import {
+  createEngine,
+  createMemoryAdapter,
+  generateEngineSql,
+  toolingTargetOf,
+} from "@hot-updater/plugin-core";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -285,5 +290,16 @@ describe("vault", () => {
       ).rejects.toThrow(VaultInputError);
     }
     await expect(api.list()).resolves.toHaveLength(1);
+  });
+
+  it("declares columns every SQL database can create, MySQL's varchar limit included", () => {
+    const { schema, settings } = toolingTargetOf([vault()]);
+    const lengths = generateEngineSql("mysql", schema, settings).flatMap(
+      (sql) =>
+        [...sql.matchAll(/varchar\((\d+)\)/gu)].map(([, n]) => Number(n)),
+    );
+
+    // utf8mb4 varchar holds up to 16,383 characters.
+    expect(Math.max(...lengths)).toBeLessThanOrEqual(16_383);
   });
 });
