@@ -45,6 +45,20 @@ export const writeBuildXcconfig = async ({
 };
 
 /**
+ * Automatic signing over a target set to manual signing, whose provisioning
+ * profile and identity Xcode would otherwise report as conflicting. Projects
+ * also set them for device SDKs only, as React Native's template does.
+ */
+const AUTOMATIC_SIGNING = {
+  CODE_SIGN_STYLE: "Automatic",
+  PROVISIONING_PROFILE: "",
+  PROVISIONING_PROFILE_SPECIFIER: "",
+  "PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*]": "",
+  CODE_SIGN_IDENTITY: "Apple Development",
+  "CODE_SIGN_IDENTITY[sdk=iphoneos*]": "Apple Development",
+};
+
+/**
  * The settings a build sets over the scheme's: the MIN_BUNDLE_ID the CLI
  * issues and reports, and automatic signing when an App Store Connect API
  * key signs, which a target set to manual signing would not use.
@@ -57,5 +71,5 @@ export const buildSettingsOverScheme = ({
   authenticationArgs?: string[];
 }): Record<string, string> => ({
   HOT_UPDATER_MIN_BUNDLE_ID: minBundleId,
-  ...(authenticationArgs ? { CODE_SIGN_STYLE: "Automatic" } : {}),
+  ...(authenticationArgs ? AUTOMATIC_SIGNING : {}),
 });

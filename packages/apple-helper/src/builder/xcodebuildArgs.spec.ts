@@ -61,6 +61,15 @@ beforeEach(() => {
 });
 
 const BUILD_XCCONFIG = "/tmp/build/HotUpdater.xcconfig";
+// Clears a target's manual profile and identity, which Xcode would report as
+// conflicting with automatic signing.
+const AUTOMATIC_SIGNING = `CODE_SIGN_STYLE = Automatic
+PROVISIONING_PROFILE = 
+PROVISIONING_PROFILE_SPECIFIER = 
+PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*] = 
+CODE_SIGN_IDENTITY = Apple Development
+CODE_SIGN_IDENTITY[sdk=iphoneos*] = Apple Development
+`;
 
 describe("xcodebuild arguments", () => {
   it("archives with the MIN_BUNDLE_ID as a build setting and in the environment, and with the signing arguments", async () => {
@@ -82,7 +91,7 @@ describe("xcodebuild arguments", () => {
     expect(args[args.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
     expect(writeFile).toHaveBeenCalledWith(
       BUILD_XCCONFIG,
-      `HOT_UPDATER_MIN_BUNDLE_ID = ${MIN_BUNDLE_ID}\nCODE_SIGN_STYLE = Automatic\n`,
+      `HOT_UPDATER_MIN_BUNDLE_ID = ${MIN_BUNDLE_ID}\n${AUTOMATIC_SIGNING}`,
     );
   });
 
@@ -105,7 +114,7 @@ describe("xcodebuild arguments", () => {
     expect(args).toContain("-quiet");
     expect(writeFile).toHaveBeenCalledWith(
       BUILD_XCCONFIG,
-      `#include "/app/ios/Release.xcconfig"\n#include "/configs/Manual.xcconfig"\nHOT_UPDATER_MIN_BUNDLE_ID = ${MIN_BUNDLE_ID}\nCODE_SIGN_STYLE = Automatic\n`,
+      `#include "/app/ios/Release.xcconfig"\n#include "/configs/Manual.xcconfig"\nHOT_UPDATER_MIN_BUNDLE_ID = ${MIN_BUNDLE_ID}\n${AUTOMATIC_SIGNING}`,
     );
   });
 
@@ -197,7 +206,7 @@ describe("xcodebuild arguments", () => {
     expect(args[args.indexOf("-xcconfig") + 1]).toBe(BUILD_XCCONFIG);
     expect(writeFile).toHaveBeenCalledWith(
       BUILD_XCCONFIG,
-      `#include "/app/ios/Manual.xcconfig"\nHOT_UPDATER_MIN_BUNDLE_ID = ${MIN_BUNDLE_ID}\nCODE_SIGN_STYLE = Automatic\n`,
+      `#include "/app/ios/Manual.xcconfig"\nHOT_UPDATER_MIN_BUNDLE_ID = ${MIN_BUNDLE_ID}\n${AUTOMATIC_SIGNING}`,
     );
   });
 });
