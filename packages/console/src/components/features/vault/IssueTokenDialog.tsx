@@ -10,6 +10,7 @@ import {
   KeyRound,
   Loader2,
 } from "lucide-react";
+import type * as React from "react";
 import { type FormEvent, useId, useState } from "react";
 import { toast } from "sonner";
 
@@ -42,6 +43,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
 import { useIssueVaultTokenMutation } from "@/lib/vault-api";
 import { VAULT_SECRET_KIND_IDS, vaultSecretKinds } from "@/lib/vault-secrets";
 
@@ -63,6 +65,29 @@ const ACTIONS: readonly {
   { value: "read", label: "Read values" },
   { value: "sign", label: "Sign bundles" },
 ];
+
+/** A multi-select chip: checked and tinted while pressed, so the state never rests on shade alone. */
+function ScopeToggle({
+  className,
+  children,
+  ...props
+}: React.ComponentProps<typeof ToggleGroupItem>) {
+  return (
+    <ToggleGroupItem
+      className={cn(
+        "aria-pressed:border-primary/60 aria-pressed:bg-primary/10 aria-pressed:text-foreground",
+        className,
+      )}
+      {...props}
+    >
+      <Check
+        aria-hidden="true"
+        className="hidden size-3.5 text-primary group-aria-pressed/toggle:block"
+      />
+      {children}
+    </ToggleGroupItem>
+  );
+}
 
 /** The two variables CI sets to reach this console's vault. */
 export const vaultCiSnippet = (origin: string, token: string) =>
@@ -233,13 +258,13 @@ function IssueTokenForm({
                     variant="outline"
                   >
                     {secrets.map((secret) => (
-                      <ToggleGroupItem
+                      <ScopeToggle
                         className="min-h-11 px-2.5 font-mono sm:min-h-8"
                         key={secret.id}
                         value={secret.name}
                       >
                         {secret.name}
-                      </ToggleGroupItem>
+                      </ScopeToggle>
                     ))}
                   </ToggleGroup>
                 </div>
@@ -258,13 +283,13 @@ function IssueTokenForm({
                   variant="outline"
                 >
                   {VAULT_SECRET_KIND_IDS.map((kind) => (
-                    <ToggleGroupItem
+                    <ScopeToggle
                       className="min-h-11 px-2.5 sm:min-h-8"
                       key={kind}
                       value={kind}
                     >
                       {vaultSecretKinds[kind].label}
-                    </ToggleGroupItem>
+                    </ScopeToggle>
                   ))}
                 </ToggleGroup>
               </div>
@@ -285,13 +310,13 @@ function IssueTokenForm({
               variant="outline"
             >
               {ACTIONS.map(({ value, label }) => (
-                <ToggleGroupItem
+                <ScopeToggle
                   className="min-h-11 px-2.5 sm:min-h-8"
                   key={value}
                   value={value}
                 >
                   {label}
-                </ToggleGroupItem>
+                </ScopeToggle>
               ))}
             </ToggleGroup>
             <FieldDescription>
@@ -335,7 +360,10 @@ function IssueTokenForm({
             type="submit"
           >
             {issue.isPending ? (
-              <Loader2 className="animate-spin" data-icon="inline-start" />
+              <Loader2
+                className="motion-safe:animate-spin"
+                data-icon="inline-start"
+              />
             ) : (
               <KeyRound data-icon="inline-start" />
             )}
@@ -402,7 +430,7 @@ function IssuedToken({
             </Button>
           </div>
           <pre
-            className="overflow-x-auto rounded-md border bg-muted/40 px-3 py-2 font-mono text-xs"
+            className="rounded-md border bg-muted/40 px-3 py-2 font-mono text-xs break-all whitespace-pre-wrap"
             id={`${id}-ci`}
           >
             {snippet}

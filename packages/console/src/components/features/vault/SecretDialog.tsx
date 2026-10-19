@@ -45,6 +45,10 @@ import {
   vaultValueBytes,
 } from "@/lib/vault-secrets";
 
+/** A label inside a sentence: "Issuer ID" as "issuer ID", keeping acronyms. */
+const inSentence = (label: string) =>
+  /^[A-Z][a-z]/u.test(label) ? label[0]!.toLowerCase() + label.slice(1) : label;
+
 const formatBytes = (bytes: number) =>
   bytes < 1024 ? `${bytes} B` : `${(bytes / 1024).toFixed(1)} KB`;
 
@@ -138,8 +142,8 @@ function SecretForm({
               [
                 key,
                 type === "file"
-                  ? `Choose the ${label.toLowerCase()}.`
-                  : `Enter the ${label.toLowerCase()}.`,
+                  ? `Choose the ${inSentence(label)}.`
+                  : `Enter the ${inSentence(label)}.`,
               ],
             ],
       ),
@@ -382,7 +386,10 @@ function SecretForm({
             type="submit"
           >
             {put.isPending ? (
-              <Loader2 className="animate-spin" data-icon="inline-start" />
+              <Loader2
+                className="motion-safe:animate-spin"
+                data-icon="inline-start"
+              />
             ) : (
               <Save data-icon="inline-start" />
             )}

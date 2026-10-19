@@ -280,7 +280,7 @@ describe("SecretsCard", () => {
 
     expect(screen.getByText(/already named asc-api-key/)).toBeDefined();
     expect(screen.getByText("Choose the private key (.p8).")).toBeDefined();
-    expect(screen.getByText("Enter the issuer id.")).toBeDefined();
+    expect(screen.getByText("Enter the issuer ID.")).toBeDefined();
     expect(putMutation.mutateAsync).not.toHaveBeenCalled();
   });
 

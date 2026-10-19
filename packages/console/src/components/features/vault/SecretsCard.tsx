@@ -71,6 +71,12 @@ export const secretDetails = ({ kind, metadata }: VaultSecret): string => {
   }
 };
 
+/** The vault's reason without the "The vault is locked:" the title already says. */
+const lockedReason = (message: string) => {
+  const reason = message.replace(/^The vault is locked:\s*/u, "");
+  return reason.charAt(0).toUpperCase() + reason.slice(1);
+};
+
 /** Why the console cannot store secrets, and the variable that fixes it. */
 function VaultLockedAlert({ message }: { readonly message: string }) {
   const copyCommand = async () => {
@@ -86,7 +92,7 @@ function VaultLockedAlert({ message }: { readonly message: string }) {
       <LockKeyhole />
       <AlertTitle>The vault is locked</AlertTitle>
       <AlertDescription>
-        <p>{message}</p>
+        <p>{lockedReason(message)}</p>
         <p>
           Generate a key with{" "}
           <code className="font-mono">{MASTER_KEY_COMMAND}</code> and redeploy
@@ -314,7 +320,7 @@ export function SecretsCard({
                           </p>
                           <p className="text-xs text-muted-foreground md:hidden">
                             {details ? (
-                              <span className="break-all">{details} · </span>
+                              <span className="break-words">{details} · </span>
                             ) : null}
                             <span className="tabular-nums">
                               v{secret.version} · {updated}
@@ -323,7 +329,7 @@ export function SecretsCard({
                         </div>
                       </TableCell>
                       <TableCell className="hidden whitespace-normal text-xs text-muted-foreground md:table-cell">
-                        <span className="break-all">{details || "—"}</span>
+                        <span className="break-words">{details || "—"}</span>
                       </TableCell>
                       <TableCell className="hidden text-xs tabular-nums md:table-cell">
                         {secret.version}

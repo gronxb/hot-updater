@@ -56,7 +56,7 @@ function TokenScope({ token }: { readonly token: VaultToken }) {
       <div className="flex flex-wrap gap-1">
         {names.map((name) => (
           <Badge
-            className="break-all font-mono"
+            className="break-all font-mono font-medium"
             key={`name:${name}`}
             variant="outline"
           >
@@ -64,7 +64,11 @@ function TokenScope({ token }: { readonly token: VaultToken }) {
           </Badge>
         ))}
         {kinds.map((kind) => (
-          <Badge key={`kind:${kind}`} variant="secondary">
+          <Badge
+            className="font-medium"
+            key={`kind:${kind}`}
+            variant="secondary"
+          >
             Any {vaultSecretKinds[kind]?.label ?? kind}
           </Badge>
         ))}
