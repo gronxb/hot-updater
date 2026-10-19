@@ -81,7 +81,8 @@ export const answer = async (
       return json(
         {
           code: "NATIVE_BUILD_EXISTS",
-          error: "A native build with this ID or built-in bundle ID is already registered.",
+          error:
+            "A native build with this ID or built-in bundle ID is already registered.",
         },
         409,
       );

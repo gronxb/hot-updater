@@ -190,15 +190,17 @@ describe("the native build registry", () => {
     await core.registerNativeBuild(registration(1));
 
     await expect(
-      core.registerNativeBuild(registration(2, { minBundleId: minBundleId(1) })),
+      core.registerNativeBuild(
+        registration(2, { minBundleId: minBundleId(1) }),
+      ),
     ).rejects.toThrow(DatabaseConstraintError);
     await expect(
-      core.registerNativeBuild(registration(1, { minBundleId: minBundleId(2) })),
+      core.registerNativeBuild(
+        registration(1, { minBundleId: minBundleId(2) }),
+      ),
     ).rejects.toThrow(DatabaseConstraintError);
     await expect(core.getBundle(minBundleId(2))).resolves.toBeNull();
-    await expect(core.listNativeBuilds({ limit: 10 })).resolves.toHaveLength(
-      1,
-    );
+    await expect(core.listNativeBuilds({ limit: 10 })).resolves.toHaveLength(1);
   });
 
   it("refuses a debug build, which has no built-in bundle, and a scope without one target", async () => {

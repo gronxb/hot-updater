@@ -318,9 +318,9 @@ describe("Standalone core API over admin API protocol 2", () => {
         appVersion: "1.0.0",
       }),
     ).resolves.toBeNull();
-    await expect(remote.listNativeBuilds({ limit: 1, order: "desc" })).resolves.toEqual([
-      newer,
-    ]);
+    await expect(
+      remote.listNativeBuilds({ limit: 1, order: "desc" }),
+    ).resolves.toEqual([newer]);
     await expect(register(newerId)).rejects.toThrow("already registered");
     await expect(remote.countBundles()).resolves.toBe(0);
     await expect(remote.deleteBundles([newerId])).rejects.toThrow(

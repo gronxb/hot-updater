@@ -32,9 +32,7 @@ export const extractBuiltInBundle = async ({
   const { stdout } = await execa("unzip", ["-Z1", artifactPath]);
   const entry = stdout
     .split("\n")
-    .find((name) =>
-      /^Payload\/[^/]+\.app\/main\.jsbundle$/u.test(name.trim()),
-    )
+    .find((name) => /^Payload\/[^/]+\.app\/main\.jsbundle$/u.test(name.trim()))
     ?.trim();
   if (entry === undefined) {
     throw new Error(

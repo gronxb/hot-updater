@@ -161,9 +161,9 @@ describe("createStandaloneCoreApi", () => {
       }),
     ).rejects.toThrow(upgrade);
     await expect(
-      core.registerNativeBuild({} as Parameters<
-        typeof core.registerNativeBuild
-      >[0]),
+      core.registerNativeBuild(
+        {} as Parameters<typeof core.registerNativeBuild>[0],
+      ),
     ).rejects.toThrow(upgrade);
     // Such a server holds no native builds, so doctor's scan finds none.
     await expect(core.listNativeBuilds({ limit: 10 })).resolves.toEqual([]);
@@ -200,7 +200,11 @@ describe("createStandaloneCoreApi", () => {
       }),
     ).resolves.toBeNull();
     expect(queries).toEqual([
-      { platform: "ios", channel: "production", fingerprintHash: "fingerprint" },
+      {
+        platform: "ios",
+        channel: "production",
+        fingerprintHash: "fingerprint",
+      },
       { platform: "android", channel: "beta", appVersion: "1.0.0" },
     ]);
   });

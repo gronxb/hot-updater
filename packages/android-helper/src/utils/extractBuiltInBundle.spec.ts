@@ -58,6 +58,8 @@ describe("extractBuiltInBundle", () => {
         artifactPath,
         outputPath: path.join(dir, "index.android.bundle"),
       }),
-    ).rejects.toThrow("app-release.aab has no base/assets/index.android.bundle");
+    ).rejects.toThrow(
+      "app-release.aab has no base/assets/index.android.bundle",
+    );
   });
 });
