@@ -169,6 +169,9 @@ describe("createHotUpdater with plugins", () => {
         path: "/base-candidates/:candidateKey",
         access: "admin",
       },
+      { method: "POST", path: "/native-builds", access: "admin" },
+      { method: "GET", path: "/native-builds/latest", access: "admin" },
+      { method: "GET", path: "/native-builds", access: "admin" },
       { method: "GET", path: "/notes/:id", access: "client" },
       { method: "DELETE", path: "/notes/:id", access: "admin" },
     ]);

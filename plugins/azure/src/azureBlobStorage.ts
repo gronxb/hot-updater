@@ -198,14 +198,23 @@ export function azureBlobStorage(
     },
     async put({ key, body, contentType }) {
       const storageKey = getStorageKey(key);
-      // Bundles fit in memory, as the CLI that uploads them builds them there.
-      const bytes = new Uint8Array(await new Response(body).arrayBuffer());
-      await container.getBlockBlobClient(storageKey).uploadData(bytes, {
-        blobHTTPHeaders: {
-          blobContentType: contentType,
-          blobCacheControl: "max-age=31536000",
-        },
-      });
+      // Streamed in blocks, so a native build artifact never sits in memory.
+      const { Readable } = await import("node:stream");
+      await container
+        .getBlockBlobClient(storageKey)
+        .uploadStream(
+          Readable.fromWeb(
+            body as import("node:stream/web").ReadableStream<Uint8Array>,
+          ),
+          undefined,
+          undefined,
+          {
+            blobHTTPHeaders: {
+              blobContentType: contentType,
+              blobCacheControl: "max-age=31536000",
+            },
+          },
+        );
       return {
         storageUri: createStorageUri({
           bucket: containerName,
