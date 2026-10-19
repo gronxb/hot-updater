@@ -191,7 +191,8 @@ export const migrateServerSchema = async (
   settings: readonly SchemaSetting[],
 ): Promise<{ wrote: string[] } | { skip: string }> => {
   const server = await context.server();
-  if (server === null) throw new Error("hot-updater.config.ts names no database.");
+  if (server === null)
+    throw new Error("hot-updater.config.ts names no database.");
   const { database, plugins } = server;
   if (isRemoteDatabase(database)) {
     return {
@@ -218,7 +219,9 @@ export const migrateServerSchema = async (
     }
     case "migrator": {
       const migrator = createMigrator({ database, plugins });
-      const migration = await migrator.migrateToLatest({ updateSettings: true });
+      const migration = await migrator.migrateToLatest({
+        updateSettings: true,
+      });
       await migration.execute();
       return {
         wrote:

@@ -70,7 +70,9 @@ const runner = {
 it("leaves alone a database the managed init did not create", async () => {
   await expect(
     applyD1Migrations(runner, inject("d1Migrations")),
-  ).resolves.toEqual({ skip: expect.stringContaining("hot-updater db generate") });
+  ).resolves.toEqual({
+    skip: expect.stringContaining("hot-updater db generate"),
+  });
   const tables = await env.DB.prepare(
     "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE '_cf_%'",
   ).all();

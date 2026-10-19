@@ -665,7 +665,11 @@ describe("Cloudflare init discovery", () => {
       vars: { ACCOUNT_ID: "account-id", BUCKET_NAME: "bundles" },
     });
     expect(Object.keys(deployed.migrations ?? {}).sort()).toEqual(
-      (await fs.readdir(path.resolve(import.meta.dirname, "../worker/migrations")))
+      (
+        await fs.readdir(
+          path.resolve(import.meta.dirname, "../worker/migrations"),
+        )
+      )
         .filter((name) => name.endsWith(".sql"))
         .sort(),
     );

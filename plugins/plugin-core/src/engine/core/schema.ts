@@ -3,7 +3,14 @@ import { defineAggregate, defineTable } from "../database/schema";
 /** A channel's id is `channel:` and its name's channel key, so ids share channel_key's bound. */
 const CHANNEL_ID = { type: "string", maxLength: 1408, ascii: true } as const;
 
-/** Core's schema version: the `schema.core` settings row. */
+/**
+ * Core's schema version: the `schema.core` settings row. Bump it with a
+ * change to core's tables, then regenerate the managed migrations with
+ * HOT_UPDATER_UPDATE_SQL=1 (the D1 and Supabase schema specs), so the next
+ * release's numbered migration carries the change and `hot-updater doctor
+ * --fix` applies it to databases an earlier release created. The schema
+ * fence answers 503 on a database whose row differs, until it runs.
+ */
 export const HOT_UPDATER_SCHEMA_VERSION = "1.0.0";
 
 const bundles = defineTable(

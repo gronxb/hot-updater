@@ -80,7 +80,7 @@ const storeSetting = async (key: string, value: string) => {
           table: SETTINGS_TABLE,
           key: [key],
           set: { value },
-          guard: { v: Number(row!._v) },
+          guard: { v: Number(row!["_v"]) },
           previous: row!,
         },
   ]);
@@ -159,9 +159,7 @@ describe("doctor's schema check", () => {
     await expect(doctor()).resolves.toMatchObject({
       details: {
         schema: {
-          settings: [
-            { key: "schema.core", expected: "1.0.0", found: "0.9.0" },
-          ],
+          settings: [{ key: "schema.core", expected: "1.0.0", found: "0.9.0" }],
         },
       },
     });
@@ -193,7 +191,7 @@ describe("doctor's schema check", () => {
       },
     });
     const [row] = await adapter.get(SETTINGS_TABLE, [["schema.core"]]);
-    expect(row?.value).toBe("9.0.0");
+    expect(row?.["value"]).toBe("9.0.0");
   });
 
   it("runs a managed provider's migration files through its init", async () => {

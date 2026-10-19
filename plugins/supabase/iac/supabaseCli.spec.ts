@@ -15,20 +15,16 @@ vi.mock("execa", async (importOriginal) => ({
 
 const MIGRATIONS = path.resolve(import.meta.dirname, "../supabase/migrations");
 
-/** `supabase migration list`'s table for the versions the project ran. */
+/** `supabase migration list --output-format json` for the versions the project ran. */
 const migrationList = (local: readonly string[], remote: readonly string[]) =>
-  [
-    "",
-    "   Local | Remote | Time (UTC)",
-    "  -------|--------|------------",
-    ...[...new Set([...local, ...remote])]
-      .sort()
-      .map(
-        (version) =>
-          `   ${local.includes(version) ? version : ""} | ${remote.includes(version) ? version : ""} | ${version}`,
-      ),
-    "",
-  ].join("\n");
+  JSON.stringify({
+    migrations: [...new Set([...local, ...remote])].sort().map((version) => ({
+      local: local.includes(version) ? version : "",
+      remote: remote.includes(version) ? version : "",
+      time: version,
+    })),
+    message: "Migrations listed",
+  });
 
 let workdir: string;
 let names: string[];
@@ -40,7 +36,9 @@ beforeEach(async () => {
   await fs.cp(MIGRATIONS, path.join(workdir, "supabase", "migrations"), {
     recursive: true,
   });
-  names = (await fs.readdir(MIGRATIONS)).filter((name) => name.endsWith(".sql"));
+  names = (await fs.readdir(MIGRATIONS)).filter((name) =>
+    name.endsWith(".sql"),
+  );
   commands = [];
 });
 

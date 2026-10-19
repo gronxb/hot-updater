@@ -89,9 +89,7 @@ const describeSchema = (db: DatabaseSync) => ({
     )
     .all(),
   settings: db
-    .prepare(
-      "SELECT key, value FROM private_hot_updater_settings ORDER BY key",
-    )
+    .prepare("SELECT key, value FROM private_hot_updater_settings ORDER BY key")
     .all(),
 });
 
@@ -122,7 +120,9 @@ describe("d1 schema", () => {
   it("creates the managed schema from the migrations in order, as from the schema file", async () => {
     const migrated = new DatabaseSync(":memory:");
     for (const name of [...Object.keys(SHIPPED), LATEST]) {
-      for (const statement of d1MigrationStatements(await readMigration(name))) {
+      for (const statement of d1MigrationStatements(
+        await readMigration(name),
+      )) {
         migrated.exec(statement);
       }
     }
@@ -154,9 +154,9 @@ describe("d1 schema", () => {
       'CREATE TABLE IF NOT EXISTS "audit_entries" ("id" TEXT NOT NULL, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"))',
     ]);
     expect(
-      statements.filter((sql) => sql.startsWith("INSERT")).map((sql) =>
-        sql.match(/VALUES \('([^']+)'/u)?.[1],
-      ),
+      statements
+        .filter((sql) => sql.startsWith("INSERT"))
+        .map((sql) => sql.match(/VALUES \('([^']+)'/u)?.[1]),
     ).toEqual(Object.keys(later.settings));
   });
 

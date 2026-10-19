@@ -1,5 +1,11 @@
-import { QueryClient } from "@tanstack/react-query";
-import { cleanup, render, screen } from "@testing-library/react";
+import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
@@ -40,6 +46,7 @@ vi.mock("@/components/ui/sidebar", () => ({
   }) => <main className={className}>{children}</main>,
   SidebarProvider: ({ children }: { readonly children: React.ReactNode }) =>
     children,
+  SidebarTrigger: () => null,
 }));
 vi.mock("@/lib/auth-rpc", () => ({
   getConsoleAccessRpc: vi.fn(),
@@ -59,15 +66,70 @@ type RootLoader = (match: {
 }) => Promise<unknown>;
 const loader = Route.options.loader as unknown as RootLoader;
 
+/** The root layout with the query client the router provides. */
+const renderLayout = (queryClient = new QueryClient()) =>
+  render(
+    <QueryClientProvider client={queryClient}>
+      <RootLayout />
+    </QueryClientProvider>,
+  );
+
+/** The schema fence's error, as a server function sends it to the client. */
+const schemaError = () =>
+  Object.assign(new Error("The database needs migrations."), {
+    name: "HotUpdaterSchemaMigrationRequiredError",
+    settings: [{ key: "schema.vault", expected: "1", found: null }],
+    plugins: ["vault"],
+  });
+
 describe("RootLayout", () => {
   afterEach(cleanup);
 
   it("contains route overflow inside the sidebar inset", () => {
     // Given / When
-    render(<RootLayout />);
+    renderLayout();
 
     // Then
     expect(screen.getByRole("main").className).toContain("overflow-hidden");
+  });
+
+  it("shows the migration notice instead of the page while the database needs migrations, and checks again", async () => {
+    // Given a page's read the schema fence refused
+    const queryClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    let migrated = false;
+    const read = () =>
+      queryClient.fetchQuery({
+        queryKey: ["channels"],
+        queryFn: async () => {
+          if (!migrated) throw schemaError();
+          return [];
+        },
+      });
+    await read().catch(() => undefined);
+
+    // When
+    renderLayout(queryClient);
+
+    // Then
+    expect(screen.queryByText("Current route")).toBeNull();
+    expect(screen.getByText("The database needs a migration")).toBeInstanceOf(
+      HTMLElement,
+    );
+    expect(screen.getByText("npx hot-updater doctor --fix")).toBeInstanceOf(
+      HTMLElement,
+    );
+    expect(screen.getByText("schema.vault")).toBeInstanceOf(HTMLElement);
+
+    // When the database is migrated and the user checks again
+    migrated = true;
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Check again" }));
+    });
+
+    // Then the page mounts and reads again
+    expect(screen.getByText("Current route")).toBeInstanceOf(HTMLElement);
   });
 });
 

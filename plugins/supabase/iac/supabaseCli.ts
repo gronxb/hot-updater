@@ -226,19 +226,24 @@ const listRemoteMigrationVersions = async (
 ): Promise<Set<string>> => {
   const { stdout } = await execa(
     "npx",
-    ["supabase", "migration", "list", "--linked", "--workdir", workdir],
+    [
+      "supabase",
+      "migration",
+      "list",
+      "--linked",
+      "--output-format",
+      "json",
+      "--workdir",
+      workdir,
+    ],
     { cwd: workdir, env: getSupabaseCommandEnv(accessToken, dbPassword) },
   );
-  // Rows read `  Local | Remote | Time (UTC)`, with an empty column where a
-  // side lacks the version.
-  return new Set(
-    stdout
-      .split("\n")
-      .map((line) => line.split("|").map((column) => column.trim()))
-      .flatMap(([, remote]) =>
-        remote !== undefined && /^\d+$/u.test(remote) ? [remote] : [],
-      ),
-  );
+  // `{ "migrations": [{ "local": "0001", "remote": "0001", ... }] }`, with an
+  // empty `remote` for a version only the workdir has.
+  const { migrations = [] } = JSON.parse(stdout) as {
+    readonly migrations?: readonly { readonly remote?: string }[];
+  };
+  return new Set(migrations.flatMap(({ remote }) => (remote ? [remote] : [])));
 };
 
 /** The version Supabase records for a migration file: its leading number. */
@@ -273,9 +278,7 @@ export const pushPendingMigrations = async (
         skip: `The Supabase project's migration history has no ${first}, so \`hot-updater init\` did not create its tables. Run \`npx hot-updater db generate\` and apply the migration it writes with \`supabase db push\`.`,
       };
     }
-    const pending = names.filter(
-      (name) => !remote.has(migrationVersion(name)),
-    );
+    const pending = names.filter((name) => !remote.has(migrationVersion(name)));
     if (pending.length > 0) await runSupabasePush(workdir, options);
     return { applied: pending };
   } catch (err) {

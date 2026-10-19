@@ -196,8 +196,7 @@ describe("Supabase schema", () => {
       `REVOKE EXECUTE ON FUNCTION public.${SUPABASE_APPLY_FUNCTION}(jsonb) FROM PUBLIC, anon, authenticated`,
       `GRANT EXECUTE ON FUNCTION public.${SUPABASE_APPLY_FUNCTION}(jsonb) TO service_role`,
       ...Object.keys(later.settings).map(
-        () =>
-          `INSERT INTO "${SUPABASE_SETTINGS_TABLE}" ("key", "value", "_v")`,
+        () => `INSERT INTO "${SUPABASE_SETTINGS_TABLE}" ("key", "value", "_v")`,
       ),
     ]);
   });
@@ -323,7 +322,7 @@ describe("Supabase schema", () => {
     try {
       // Its tables come from migration files, which the fix names.
       await expect(hotUpdater.api.notes.read("n1")).rejects.toThrow(
-        'The tables of plugin "notes" are not migrated on supabaseDatabase: schema setting "schema.notes" is missing; expected "1". Run `hot-updater db generate` and apply the file it writes',
+        'The tables of plugin "notes" are not migrated on supabaseDatabase: schema setting "schema.notes" is missing; expected "1". Run `npx hot-updater doctor --fix` in the project whose hot-updater.config.ts names this database. On a database `hot-updater init` created, it applies the provider\'s migrations; for your own server, run `hot-updater db generate` and apply the file it writes.',
       );
       await db.exec(
         `RESET ROLE; ${migration.code} GRANT ALL ON ALL TABLES IN SCHEMA public TO service_role; SET ROLE service_role;`,

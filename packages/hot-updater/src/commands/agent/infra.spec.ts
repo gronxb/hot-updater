@@ -119,13 +119,15 @@ describe("published agent infrastructure commands", () => {
           "app/provision-client-credential.mjs",
           "app/verify-server.mjs",
         ]);
-        // A migration tool applies the package's migration, which holds
-        // core's tables and those of the prebuilt server's plugins.
-        const migrations = Object.keys(manifest.files).filter((file) =>
-          /migrations\/[^/]+\.sql$/u.test(file),
-        );
+        // A migration tool applies the package's numbered migrations, which
+        // hold core's tables and those of the prebuilt server's plugins.
+        const migrations = Object.keys(manifest.files)
+          .filter((file) => /migrations\/[^/]+\.sql$/u.test(file))
+          .sort();
         if (provider === "cloudflare" || provider === "supabase") {
-          expect(migrations).toHaveLength(1);
+          expect(
+            migrations.map((file) => path.basename(file).split("_")[0]),
+          ).toEqual(migrations.map((_, index) => `000${index + 1}`));
           const sql = await readFile(
             path.join(result.data.output, migrations[0]!),
             "utf8",

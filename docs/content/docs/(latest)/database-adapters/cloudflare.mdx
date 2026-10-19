@@ -34,12 +34,15 @@ npx wrangler d1 execute <database-name> --remote \
   --file node_modules/@hot-updater/cloudflare/sql/bundles.sql
 ```
 
-The same SQL ships as the Worker migration
-`worker/migrations/0001_hot-updater_1.0.0.sql`, which managed setup applies
-with `wrangler d1 migrations apply`. It creates the tables and indexes of core
-and of the managed Worker's plugins, Insights, API keys, and Remote Config, and
-the `_hu_write`
-table that batch writes use, then writes the schema settings rows last.
+The same schema ships as the Worker's numbered migrations in
+`worker/migrations`, which managed setup applies with
+`wrangler d1 migrations apply`. Together they create the tables and indexes of
+core and of the managed Worker's plugins, Insights, API keys, and Remote
+Config, and the `_hu_write` table that batch writes use, and each writes the
+schema settings rows last. A release whose schema changed adds the next
+migration, and
+[`hot-updater doctor --fix`](/docs/guides/doctor#check-the-database-schema)
+applies the ones a managed database has not run.
 
 A Worker that runs other
 [plugins](/docs/custom/server-plugins#create-the-plugins-tables)

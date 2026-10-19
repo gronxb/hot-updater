@@ -194,7 +194,9 @@ export const supabaseMigrationSql = (
   const settings = Object.keys(target.settings).length;
   const ran = new Set(earlier.flatMap(supabaseMigrationStatements));
   const apply = statements.findIndex((sql) =>
-    sql.startsWith(`CREATE OR REPLACE FUNCTION public.${SUPABASE_APPLY_FUNCTION}(`),
+    sql.startsWith(
+      `CREATE OR REPLACE FUNCTION public.${SUPABASE_APPLY_FUNCTION}(`,
+    ),
   );
   // The apply RPC's REVOKE and GRANT follow it.
   const grants = ran.has(statements[apply]!) ? [] : [apply + 1, apply + 2];

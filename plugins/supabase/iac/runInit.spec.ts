@@ -215,7 +215,10 @@ describe("Supabase init", () => {
 
     await runInit({ build: "bare", envFile: ".env.hotupdater" });
 
-    const migrations = path.resolve(import.meta.dirname, "../supabase/migrations");
+    const migrations = path.resolve(
+      import.meta.dirname,
+      "../supabase/migrations",
+    );
     const names = (await fs.readdir(migrations)).filter((name) =>
       name.endsWith(".sql"),
     );

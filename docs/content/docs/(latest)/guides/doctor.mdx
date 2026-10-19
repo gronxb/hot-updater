@@ -16,6 +16,7 @@ work:
 - `fingerprint.json` still matches the project, for the fingerprint update
   strategy
 - The app adds the client plugins that the server's plugins need
+- The server's database has run the migrations its core and plugins need
 - The server's release catalogs match their Releases
 - Your deployed infrastructure server is not outdated
 
@@ -186,6 +187,7 @@ them load, then rerun `doctor`.
 
 | Issues | Repair |
 | --- | --- |
+| `SCHEMA_MIGRATION_PENDING` | The migrations the server's database has not run: a managed provider's migration files, or the tables and settings rows its migrator creates |
 | `MISSING_FINGERPRINT_JSON`, `FINGERPRINT_JSON_STALE`, `FINGERPRINT_ENGINE_UNRECORDED` | What `fingerprint create` writes, where it differs: `fingerprint.json` |
 | `FINGERPRINT_JSON_UNUSED` | `fingerprint.json`, deleted to match the configured `updateStrategy` |
 | `MISSING_PUBLIC_KEY`, `PUBLIC_KEY_MISMATCH` | What `keys export-public --yes` writes: the configured signing public key, in the native files |
@@ -310,6 +312,45 @@ authentication succeeded. Keep keys and request headers out of logs.
 A successful download followed by the changed screen after restart verifies
 the app's update path. A healthy `/version`, a key listing or a `null` check
 result alone does not.
+
+## Check the database schema
+
+When `hot-updater.config.ts` sets `database`, doctor reads it once through the
+schema fence, as the server does. The fence compares the database's settings
+rows, such as `schema.core` and `schema.<plugin>` for each plugin in the
+config's `plugins`, with what this CLI's core and those plugins expect. When a
+row is missing or older, doctor reports `SCHEMA_MIGRATION_PENDING` with each
+setting it found in `details.schema.settings`, and it checks the release
+catalogs only once the schema passes. This happens after upgrading Hot Updater
+to a release whose schema changed, or after adding a plugin to `plugins`.
+Until then the server answers 503 and the Console shows a migration notice.
+
+Apply the migrations with:
+
+```package-install
+npx hot-updater doctor --fix
+```
+
+How `--fix` migrates depends on the database:
+
+| Database | What `--fix` runs |
+| --- | --- |
+| Cloudflare D1 that `hot-updater init` created | The Worker's migration files the database has not run, through the D1 API token in `.env.hotupdater`, each recorded in `d1_migrations` as `wrangler d1 migrations apply` records it |
+| Supabase project that `hot-updater init` created | `supabase db push` of the package's migration files its history lacks. It needs the Supabase access token or CLI login, and the database password: the saved `HOT_UPDATER_SUPABASE_DB_PASSWORD`, or a prompt |
+| DynamoDB, Firestore, Cosmos DB, PostgreSQL, Kysely, and MongoDB | The missing tables, then the settings rows, as `hot-updater db migrate` creates them |
+| Drizzle and Prisma | Nothing: run `hot-updater db generate`, apply the schema with the ORM, then `hot-updater db migrate` in the server's project |
+
+A managed provider's migrations create core's tables and the official
+plugins'. A D1 database or Supabase project that init did not create has none
+of them recorded, so `--fix` leaves it alone and names `hot-updater db
+generate` instead. Run `--fix` before you redeploy a managed server whose
+schema changed: the new server answers 503 until its database is migrated.
+
+A setting newer than this CLI expects is `SCHEMA_NEWER_THAN_CLI`: the database
+was migrated by a newer Hot Updater, and `--fix` never moves a schema back.
+Upgrade the CLI and the `@hot-updater` packages instead. A database Hot
+Updater v1 cannot migrate in place, such as a v0 database, is
+`SCHEMA_NOT_MIGRATABLE`. Both are `blocked`.
 
 ## Check Release Catalogs
 

@@ -21,18 +21,15 @@ export type D1DatabaseConfig = D1RestConfig;
  */
 export const d1Database = (config: D1DatabaseConfig): ToolingDatabase => ({
   ...createD1Database(d1RestRunner(config)),
-    generateSchema: ((version, _name, target = coreTarget) => {
-      if (version !== "latest" && version !== coreSettings["schema.core"]) {
-        throw new Error(`Invalid version ${version}`);
-      }
-      // Wrangler applies migrations in the order of their leading numbers.
-      const timestamp = new Date()
-        .toISOString()
-        .replace(/\D/g, "")
-        .slice(0, 14);
-      return {
-        code: d1SchemaSql(target),
-        path: `migrations/${timestamp}_hot-updater.sql`,
-      };
-    }) satisfies SchemaGenerator,
+  generateSchema: ((version, _name, target = coreTarget) => {
+    if (version !== "latest" && version !== coreSettings["schema.core"]) {
+      throw new Error(`Invalid version ${version}`);
+    }
+    // Wrangler applies migrations in the order of their leading numbers.
+    const timestamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
+    return {
+      code: d1SchemaSql(target),
+      path: `migrations/${timestamp}_hot-updater.sql`,
+    };
+  }) satisfies SchemaGenerator,
 });
