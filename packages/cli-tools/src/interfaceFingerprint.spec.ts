@@ -820,11 +820,31 @@ describe("readReactNativeInterface", () => {
     );
     const registered = await hashOf({ platform: "android" }, native);
     expect(registered).not.toBe(before);
-    // The Android section leaves the iOS fingerprint alone.
+    // The Android section leaves the iOS fingerprint alone, and so do
+    // non-native sections.
     expect(await hashOf({ platform: "ios" }, native)).toBe(iosBefore);
+    await write(
+      path.join(root, "packages/local-module/expo-module.config.json"),
+      JSON.stringify({
+        platforms: ["android", "web"],
+        android: { modules: ["expo.local.SecondModule"] },
+        web: { modules: ["Web"] },
+        devtools: { webpageRoot: "dist" },
+      }),
+    );
+    const withWeb = await hashOf({ platform: "android" }, native);
+    await write(
+      path.join(root, "packages/local-module/expo-module.config.json"),
+      JSON.stringify({
+        platforms: ["android"],
+        android: { modules: ["expo.local.SecondModule"] },
+      }),
+    );
+    const androidOnly = await hashOf({ platform: "android" }, native);
+    expect(androidOnly).toBe(withWeb);
 
     await write(path.join(root, "packages/local-module/libs/local.aar"), "v2");
-    expect(await hashOf({ platform: "android" }, native)).not.toBe(registered);
+    expect(await hashOf({ platform: "android" }, native)).not.toBe(androidOnly);
   });
 
   it("hashes a local Expo module's registration even when it has codegen specs", async () => {

@@ -181,9 +181,10 @@ const findPackageRoot = async (from: string, name: string) => {
 };
 
 /**
- * A local Expo module's registration for `platform`: its
- * expo-module.config.json without the other platform's section, so a change
- * to one platform's modules leaves the other's fingerprint alone.
+ * A local Expo module's registration for `platform`, from its
+ * expo-module.config.json: whether it lists the platform, the platform's
+ * own section, and the native features it requires. Other platforms' and
+ * non-native sections, such as `web` and `devtools`, leave it alone.
  */
 const readExpoModuleConfig = async (
   root: string,
@@ -194,14 +195,18 @@ const readExpoModuleConfig = async (
     .catch(() => null);
   if (file === null) return null;
   const config = JSON.parse(file) as Record<string, unknown>;
-  const others = platform === "ios" ? ["android"] : ["apple", "ios"];
-  return JSON.stringify(
-    Object.fromEntries(
-      Object.entries(config)
-        .filter(([key]) => !others.includes(key))
-        .sort(([a], [b]) => (a < b ? -1 : 1)),
+  const names = platform === "ios" ? ["apple", "ios"] : ["android"];
+  return JSON.stringify({
+    listed: Array.isArray(config["platforms"])
+      ? names.some((name) => (config["platforms"] as unknown[]).includes(name))
+      : null,
+    coreFeatures: config["coreFeatures"] ?? null,
+    ...Object.fromEntries(
+      names.flatMap((name) =>
+        name in config ? [[name, config[name]] as const] : [],
+      ),
     ),
-  );
+  });
 };
 
 interface ExpoModule {
