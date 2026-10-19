@@ -78,14 +78,14 @@ const resolvePluginFile = (cwd: string, plugin: string): string => {
 /** The installed package a file in node_modules belongs to. */
 const owningPackage = (
   file: string,
-): { name: string; version: string } | null => {
+): { name: string; version: string; dir: string } | null => {
   for (let dir = path.dirname(file); ; dir = path.dirname(dir)) {
     const manifest = path.join(dir, "package.json");
     if (fs.existsSync(manifest)) {
       const { name, version } = JSON.parse(
         fs.readFileSync(manifest, "utf8"),
       ) as { name?: string; version?: string };
-      if (name) return { name, version: version ?? "unknown" };
+      if (name) return { name, version: version ?? "unknown", dir };
     }
     if (path.basename(dir) === "node_modules" || path.dirname(dir) === dir) {
       return null;
@@ -98,21 +98,26 @@ const owningPackage = (
  * as `module.exports`, `default`, or a named export, such as
  * `plugins: [require("./plugins/withNative")]`.
  */
-const functionPluginModule = (plugin: unknown): string | null => {
+const functionPluginModule = (
+  plugin: unknown,
+): { file: string; exportName: string | null } | null => {
   for (const [file, module] of Object.entries(require.cache)) {
     const exports: unknown = module?.exports;
-    if (
-      exports === plugin ||
-      (exports !== null &&
-        typeof exports === "object" &&
-        Object.values(exports).includes(plugin))
-    ) {
-      return file;
+    if (exports === plugin) return { file, exportName: null };
+    if (exports !== null && typeof exports === "object") {
+      const exportName = Object.entries(exports).find(
+        ([, value]) => value === plugin,
+      )?.[0];
+      if (exportName !== undefined) {
+        return {
+          file,
+          exportName: exportName === "default" ? null : exportName,
+        };
+      }
     }
   }
   return null;
 };
-
 /**
  * What the fingerprint records for a config plugin: its name, and where it
  * comes from. A registry package counts by its version, and its patches
@@ -127,30 +132,37 @@ interface PluginIdentity {
   package?: string;
 }
 
-const fromFile = (project: string, file: string): PluginIdentity => {
+const fromFile = (
+  project: string,
+  file: string,
+  exportName: string | null = null,
+): PluginIdentity => {
+  // A package can ship several plugins, so the file and the export name
+  // which one.
+  const suffix = exportName === null ? "" : `#${exportName}`;
   if (!isLocal(file)) {
     const owner = owningPackage(file);
     if (owner) {
+      const subpath = path.relative(owner.dir, file).split(path.sep).join("/");
       return {
-        name: owner.name,
+        name: `${owner.name}/${subpath}${suffix}`,
         source: `${owner.name}@${owner.version}`,
         package: owner.name,
       };
     }
   }
   return {
-    name: path.relative(project, file).split(path.sep).join("/"),
+    name: `${path.relative(project, file).split(path.sep).join("/")}${suffix}`,
     source: "local",
   };
 };
-
 const pluginIdentity = (cwd: string, plugin: unknown): PluginIdentity => {
   const project = fs.realpathSync(cwd);
   if (typeof plugin === "function") {
-    const file = functionPluginModule(plugin);
-    return file === null
+    const found = functionPluginModule(plugin);
+    return found === null
       ? { name: plugin.name || "inline", source: "inline" }
-      : fromFile(project, fs.realpathSync(file));
+      : fromFile(project, fs.realpathSync(found.file), found.exportName);
   }
   const name = String(plugin);
   if (name.startsWith(".") || path.isAbsolute(name)) {
@@ -183,7 +195,7 @@ export const isHotUpdaterPlugin = (cwd: string, plugin: unknown): boolean => {
   let file: string | null = null;
   try {
     if (typeof plugin === "function") {
-      file = functionPluginModule(plugin);
+      file = functionPluginModule(plugin)?.file ?? null;
     } else if (typeof plugin === "string") {
       if (
         plugin === HOT_UPDATER_PACKAGE ||

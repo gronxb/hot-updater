@@ -136,30 +136,33 @@ describe("readExpoSettings", () => {
     expect(
       read(load(path.join(project, "node_modules/expo-build-properties"))),
     ).toEqual({
-      "expo.plugin[0]:expo-build-properties": JSON.stringify({
+      "expo.plugin[0]:expo-build-properties/index.js": JSON.stringify({
         props: null,
         source: "expo-build-properties@0.13.2",
       }),
     });
   });
 
-  it("counts a registry plugin passed as a named export by its version", async () => {
+  it("counts a registry plugin passed as a named export by its version and export", async () => {
     await fs.writeFile(
       path.join(project, "node_modules/expo-build-properties/index.js"),
-      "exports.withNative = (config) => config;",
+      "exports.withNative = (config) => config; exports.withOther = (config) => config;",
     );
-    const { withNative } = createRequire(path.join(project, "package.json"))(
+    const { withNative, withOther } = load(
       path.join(project, "node_modules/expo-build-properties"),
-    ) as { withNative: Function };
+    ) as unknown as { withNative: Function; withOther: Function };
+    const read = (plugin: Function) =>
+      readExpoSettings(project, { plugins: [plugin] }, "ios");
 
-    expect(readExpoSettings(project, { plugins: [withNative] }, "ios")).toEqual(
-      {
-        "expo.plugin[0]:expo-build-properties": JSON.stringify({
+    expect(read(withNative)).toEqual({
+      "expo.plugin[0]:expo-build-properties/index.js#withNative":
+        JSON.stringify({
           props: null,
           source: "expo-build-properties@0.13.2",
         }),
-      },
-    );
+    });
+    // Another plugin from the same package is another plugin.
+    expect(read(withOther)).not.toEqual(read(withNative));
   });
 
   it("counts a workspace plugin package by its name", async () => {
