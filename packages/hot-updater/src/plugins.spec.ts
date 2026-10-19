@@ -14,9 +14,10 @@ import {
   apiKeys as serverApiKeys,
   insights as serverInsights,
   remoteConfig as serverRemoteConfig,
+  vault as serverVault,
 } from "@hot-updater/server/plugins";
 import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
-import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
+import { apiKeys, insights, remoteConfig, vault } from "hot-updater/plugins";
 import { describe, expect, it } from "vitest";
 
 describe("hot-updater/plugins", () => {
@@ -24,11 +25,13 @@ describe("hot-updater/plugins", () => {
     expect(apiKeys).toBe(serverApiKeys);
     expect(insights).toBe(serverInsights);
     expect(remoteConfig).toBe(serverRemoteConfig);
+    expect(vault).toBe(serverVault);
 
     const plugins = [
       apiKeys({ headerName: "x-custom-key" }),
       insights({ retention: { rawDays: 7, dailyDays: 30 } }),
       remoteConfig(),
+      vault(),
     ];
     const definition = {
       database: { name: "memory", adapter: createMemoryAdapter() },
@@ -57,13 +60,14 @@ describe("hot-updater/plugins", () => {
         name: "memory",
         adapter: createMemoryAdapter(),
       }),
-      plugins: [apiKeys(), insights(), remoteConfig()],
+      plugins: [apiKeys(), insights(), remoteConfig(), vault()],
     });
 
     expect(Object.keys(server.api).sort()).toEqual([
       "apiKeys",
       "insights",
       "remoteConfig",
+      "vault",
     ]);
     expect(clientAuthOf(server)?.plugin).toBe("apiKeys");
     expect(server.clientPlugins).toEqual([

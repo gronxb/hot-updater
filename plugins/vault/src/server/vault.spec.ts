@@ -1,0 +1,320 @@
+import {
+  createEngine,
+  createMemoryAdapter,
+  generateEngineSql,
+  toolingTargetOf,
+} from "@hot-updater/plugin-core";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import {
+  VAULT_KEPT_VERSIONS,
+  VAULT_MAX_VALUE_BYTES,
+  VaultInputError,
+  VaultNotFoundError,
+} from "./api";
+import { createVaultApi } from "./api";
+import { VaultIntegrityError, VaultLockedError } from "./crypto";
+import { vault, type VaultOptions } from "./index";
+
+const MASTER_KEY = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
+const OTHER_KEY = btoa(String.fromCharCode(...new Uint8Array(32).fill(9)));
+
+const ASC_KEY = {
+  p8: "-----BEGIN PRIVATE KEY-----\nMIGT\n-----END PRIVATE KEY-----\n",
+  keyId: "ABC123",
+  issuerId: "00000000-0000-0000-0000-000000000000",
+};
+
+/** The vault's API and its tables on one in-memory database. */
+const start = (options: VaultOptions = { masterKey: MASTER_KEY }) => {
+  const adapter = createMemoryAdapter();
+  let clock = 1_000;
+  const plugin = vault();
+  const db = createEngine(
+    { name: "memory", adapter },
+    { plugins: [plugin] },
+  ).database(plugin);
+  const now = () => clock++;
+  return {
+    api: createVaultApi({ db, now, options }),
+    db,
+    /** The same tables seen by a vault with other options. */
+    with: (other: VaultOptions) => createVaultApi({ db, now, options: other }),
+  };
+};
+
+describe("vault", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("seals a value and reveals it, storing only ciphertext", async () => {
+    const { api, db } = start();
+
+    const secret = await api.put({
+      name: "asc-api-key",
+      kind: "asc-api-key",
+      value: ASC_KEY,
+      metadata: { keyId: ASC_KEY.keyId },
+    });
+
+    expect(secret).toMatchObject({
+      name: "asc-api-key",
+      kind: "asc-api-key",
+      version: 1,
+      metadata: { keyId: "ABC123" },
+    });
+    await expect(api.reveal({ id: secret.id, actor: "test" })).resolves.toEqual(
+      ASC_KEY,
+    );
+    const sealed = await db.findOne("secret_versions", {
+      secret_id: secret.id,
+      version: 1,
+    });
+    expect(sealed).toMatchObject({ kid: "default" });
+    expect(JSON.stringify(sealed)).not.toContain("BEGIN PRIVATE KEY");
+    expect(JSON.stringify(sealed)).not.toContain(ASC_KEY.issuerId);
+  });
+
+  it("refuses a version whose ciphertext was swapped in from another row", async () => {
+    const { api, db } = start();
+    const first = await api.put({
+      name: "release-keystore",
+      kind: "android-keystore",
+      value: { storePassword: "first" },
+    });
+    const second = await api.put({
+      name: "widget-keystore",
+      kind: "android-keystore",
+      value: { storePassword: "second" },
+    });
+    const sealed = (secretId: string, version: number) =>
+      db.findOne("secret_versions", { secret_id: secretId, version });
+    const { kid, wrapped_dek, iv, ciphertext } = (await sealed(second.id, 1))!;
+
+    // Another secret's sealed value: the AAD names the other secret's id.
+    await db.transaction(async (tx) => {
+      const row = await tx.findOne("secret_versions", {
+        secret_id: first.id,
+        version: 1,
+      });
+      tx.update("secret_versions", row!, { kid, wrapped_dek, iv, ciphertext });
+    });
+    await expect(api.reveal({ id: first.id, actor: "test" })).rejects.toThrow(
+      VaultIntegrityError,
+    );
+
+    // The same secret's older version: the AAD names the other version.
+    await api.put({
+      name: "widget-keystore",
+      kind: "android-keystore",
+      value: { storePassword: "third" },
+    });
+    await db.transaction(async (tx) => {
+      const row = await tx.findOne("secret_versions", {
+        secret_id: second.id,
+        version: 2,
+      });
+      tx.update("secret_versions", row!, { kid, wrapped_dek, iv, ciphertext });
+    });
+    await expect(api.reveal({ id: second.id, actor: "test" })).rejects.toThrow(
+      VaultIntegrityError,
+    );
+  });
+
+  it("lists and removes without a master key, and refuses to seal or reveal", async () => {
+    const { api, with: withOptions } = start();
+    const secret = await api.put({
+      name: "deploy",
+      kind: "deploy-credentials",
+      value: { HOT_UPDATER_S3_SECRET: "secret" },
+    });
+    const locked = withOptions({});
+
+    await expect(locked.list()).resolves.toEqual([secret]);
+    await expect(
+      locked.reveal({ id: secret.id, actor: "test" }),
+    ).rejects.toThrow(VaultLockedError);
+    await expect(
+      locked.put({ name: "other", kind: "generic", value: {} }),
+    ).rejects.toThrow(VaultLockedError);
+    await expect(
+      locked.reveal({ id: secret.id, actor: "test" }),
+    ).rejects.toThrow("HOT_UPDATER_VAULT_MASTER_KEY");
+    await expect(locked.remove({ id: secret.id })).resolves.toMatchObject({
+      id: secret.id,
+    });
+    await expect(locked.list()).resolves.toEqual([]);
+  });
+
+  it("reads the master key from HOT_UPDATER_VAULT_MASTER_KEY when it is not given", async () => {
+    const { with: withOptions } = start();
+    const fromEnv = withOptions({});
+    vi.stubEnv("HOT_UPDATER_VAULT_MASTER_KEY", MASTER_KEY);
+
+    const secret = await fromEnv.put({
+      name: "generic",
+      kind: "generic",
+      value: "value",
+    });
+    await expect(
+      withOptions({ masterKey: MASTER_KEY }).reveal({
+        id: secret.id,
+        actor: "test",
+      }),
+    ).resolves.toBe("value");
+  });
+
+  it("refuses a master key that is not 32 bytes, or not the one that sealed the value", async () => {
+    const { api, with: withOptions } = start();
+    const secret = await api.put({ name: "a", kind: "generic", value: 1 });
+
+    await expect(
+      withOptions({ masterKey: btoa("short") }).reveal({
+        id: secret.id,
+        actor: "test",
+      }),
+    ).rejects.toThrow(VaultLockedError);
+    await expect(
+      withOptions({ masterKey: OTHER_KEY }).reveal({
+        id: secret.id,
+        actor: "test",
+      }),
+    ).rejects.toThrow(VaultIntegrityError);
+  });
+
+  it("writes each value as a new version and keeps the last ones", async () => {
+    const { api, db } = start();
+    let secret = await api.put({ name: "n", kind: "generic", value: 1 });
+    const id = secret.id;
+    for (let value = 2; value <= VAULT_KEPT_VERSIONS + 2; value++) {
+      secret = await api.put({ name: "n", kind: "generic", value });
+    }
+
+    expect(secret).toMatchObject({ id, version: VAULT_KEPT_VERSIONS + 2 });
+    await expect(api.reveal({ id, actor: "test" })).resolves.toBe(
+      VAULT_KEPT_VERSIONS + 2,
+    );
+    const versions = await Promise.all(
+      Array.from({ length: VAULT_KEPT_VERSIONS + 2 }, (_, index) =>
+        db.findOne("secret_versions", { secret_id: id, version: index + 1 }),
+      ),
+    );
+    expect(versions.map((row) => row !== null)).toEqual([
+      false,
+      false,
+      ...Array<boolean>(VAULT_KEPT_VERSIONS).fill(true),
+    ]);
+  });
+
+  it("makes concurrent puts of one name consecutive versions", async () => {
+    const { api } = start();
+    await api.put({ name: "n", kind: "generic", value: 0 });
+
+    const versions = await Promise.all(
+      [1, 2, 3].map((value) =>
+        api.put({ name: "n", kind: "generic", value }).then((s) => s.version),
+      ),
+    );
+
+    expect(versions.toSorted()).toEqual([2, 3, 4]);
+    const [secret] = await api.list();
+    expect(secret).toMatchObject({ version: 4 });
+  });
+
+  it("keeps metadata unless a put replaces it", async () => {
+    const { api } = start();
+    await api.put({
+      name: "n",
+      kind: "generic",
+      value: 1,
+      metadata: { label: "a" },
+    });
+    await expect(
+      api.put({ name: "n", kind: "generic", value: 2 }),
+    ).resolves.toMatchObject({ metadata: { label: "a" } });
+    await expect(
+      api.put({ name: "n", kind: "generic", value: 3, metadata: {} }),
+    ).resolves.toMatchObject({ metadata: {} });
+  });
+
+  it("removes values with the secret, and continues its versions when the name comes back", async () => {
+    const { api, db } = start();
+    const first = await api.put({ name: "n", kind: "generic", value: 1 });
+    await api.put({ name: "n", kind: "generic", value: 2 });
+
+    await expect(api.remove({ id: first.id })).resolves.toMatchObject({
+      id: first.id,
+      version: 2,
+    });
+    await expect(api.remove({ id: first.id })).resolves.toBeNull();
+    await expect(api.remove({ id: "missing" })).resolves.toBeNull();
+    for (const version of [1, 2]) {
+      await expect(
+        db.findOne("secret_versions", { secret_id: first.id, version }),
+      ).resolves.toBeNull();
+    }
+    await expect(api.reveal({ id: first.id, actor: "test" })).rejects.toThrow(
+      VaultNotFoundError,
+    );
+    await expect(api.list()).resolves.toEqual([]);
+
+    // Back under another kind: a new version, so no id and version pair is sealed twice.
+    const again = await api.put({
+      name: "n",
+      kind: "deploy-credentials",
+      value: { KEY: "3" },
+    });
+    expect(again).toMatchObject({
+      id: first.id,
+      kind: "deploy-credentials",
+      version: 3,
+      metadata: {},
+    });
+    await expect(api.reveal({ id: first.id, actor: "test" })).resolves.toEqual({
+      KEY: "3",
+    });
+  });
+
+  it("lists secrets by name", async () => {
+    const { api } = start();
+    for (const name of ["b", "a", "c"]) {
+      await api.put({ name, kind: "generic", value: name });
+    }
+
+    expect((await api.list()).map(({ name }) => name)).toEqual(["a", "b", "c"]);
+  });
+
+  it("refuses invalid names, kinds, values, and metadata", async () => {
+    const { api } = start();
+    await api.put({ name: "keystore", kind: "android-keystore", value: {} });
+    const invalid = [
+      { name: "", kind: "generic", value: 1 },
+      { name: "has space", kind: "generic", value: 1 },
+      { name: "x".repeat(65), kind: "generic", value: 1 },
+      { name: "n", kind: "password", value: 1 },
+      { name: "n", kind: "generic", value: undefined },
+      { name: "n", kind: "generic", value: "x".repeat(VAULT_MAX_VALUE_BYTES) },
+      { name: "n", kind: "generic", value: 1, metadata: [] },
+      { name: "keystore", kind: "generic", value: {} },
+    ];
+
+    for (const input of invalid) {
+      await expect(
+        api.put(input as Parameters<typeof api.put>[0]),
+      ).rejects.toThrow(VaultInputError);
+    }
+    await expect(api.list()).resolves.toHaveLength(1);
+  });
+
+  it("declares columns every SQL database can create, MySQL's varchar limit included", () => {
+    const { schema, settings } = toolingTargetOf([vault()]);
+    const lengths = generateEngineSql("mysql", schema, settings).flatMap(
+      (sql) =>
+        [...sql.matchAll(/varchar\((\d+)\)/gu)].map(([, n]) => Number(n)),
+    );
+
+    // utf8mb4 varchar holds up to 16,383 characters.
+    expect(Math.max(...lengths)).toBeLessThanOrEqual(16_383);
+  });
+});
