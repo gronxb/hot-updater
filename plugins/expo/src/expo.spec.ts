@@ -79,57 +79,6 @@ describe("getExpoBundleSigningPublicKey", () => {
   });
 });
 
-describe("Hot Updater's plugin by path", () => {
-  it("reads publicKeyPath when the app config names the plugin by its resolved path", async () => {
-    const cwd = await fs.realpath(
-      await fs.mkdtemp(path.join(os.tmpdir(), "expo-signing-path-")),
-    );
-    tempDirs.push(cwd);
-    const own = path.join(cwd, "node_modules/@hot-updater/expo");
-    await fs.mkdir(own, { recursive: true });
-    await fs.writeFile(
-      path.join(own, "package.json"),
-      JSON.stringify({ name: "@hot-updater/expo", version: "1.0.0" }),
-    );
-    await fs.writeFile(
-      path.join(own, "app.plugin.js"),
-      "module.exports = (config) => config;",
-    );
-    mocks.getConfig.mockReturnValue({
-      exp: {
-        plugins: [
-          [
-            path.join(own, "app.plugin.js"),
-            { publicKeyPath: "keys/public-key.pem" },
-          ],
-        ],
-      },
-    });
-
-    await expect(getExpoFingerprintExtraSources(cwd)).resolves.toEqual([
-      "keys/public-key.pem",
-    ]);
-  });
-});
-
-describe("Hot Updater's plugin listed twice", () => {
-  it("reads publicKeyPath from the last occurrence, whose props take effect", async () => {
-    const cwd = await createProject("keys/first.pem");
-    mocks.getConfig.mockReturnValue({
-      exp: {
-        plugins: [
-          ["@hot-updater/expo", { publicKeyPath: "keys/first.pem" }],
-          ["@hot-updater/expo", { publicKeyPath: "keys/last.pem" }],
-        ],
-      },
-    });
-
-    await expect(getExpoFingerprintExtraSources(cwd)).resolves.toEqual([
-      "keys/last.pem",
-    ]);
-  });
-});
-
 describe("getExpoFingerprintExtraSources", () => {
   it("includes the configured trust anchor in native fingerprints", async () => {
     const cwd = await createProject("keys/public-key.pem");

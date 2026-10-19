@@ -13,7 +13,7 @@ import { ExecaError, execa } from "execa";
 import { uuidv7 } from "uuidv7";
 
 import { getConfig } from "./expoConfig";
-import { expoFingerprint, isHotUpdaterPlugin } from "./expoFingerprint";
+import { expoFingerprint } from "./expoFingerprint";
 import { resolveMain } from "./resolveMain";
 import { runExpoPrebuild } from "./util/prebuild";
 
@@ -30,12 +30,13 @@ type HotUpdaterExpoPluginProps = {
 };
 
 const getHotUpdaterExpoPluginProps = (
-  cwd: string,
   plugins: Awaited<ReturnType<typeof getConfig>>["exp"]["plugins"],
 ): HotUpdaterExpoPluginProps | undefined => {
-  // Each occurrence runs at prebuild, and the last one's props take effect.
-  const entry = plugins?.findLast((plugin) =>
-    isHotUpdaterPlugin(cwd, Array.isArray(plugin) ? plugin[0] : plugin),
+  const entry = plugins?.find(
+    (plugin) =>
+      Array.isArray(plugin) &&
+      (plugin[0] === "@hot-updater/expo" ||
+        plugin[0] === "@hot-updater/expo/app.plugin.js"),
   );
   if (!entry || !Array.isArray(entry)) return undefined;
   const props = entry[1];
@@ -51,7 +52,6 @@ export const getExpoFingerprintExtraSources = async (
     skipSDKVersionRequirement: true,
   });
   const publicKeyPath = getHotUpdaterExpoPluginProps(
-    cwd,
     exp.plugins,
   )?.publicKeyPath;
   if (publicKeyPath === undefined) return [];
@@ -70,7 +70,6 @@ export const getExpoBundleSigningPublicKey = async (
     skipSDKVersionRequirement: true,
   });
   const publicKeyPath = getHotUpdaterExpoPluginProps(
-    cwd,
     exp.plugins,
   )?.publicKeyPath;
   if (publicKeyPath === undefined) return null;

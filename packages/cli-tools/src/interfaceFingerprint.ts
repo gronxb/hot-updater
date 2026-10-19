@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import { createRequire } from "node:module";
 import path from "node:path";
@@ -121,11 +122,6 @@ export interface NativeInterface {
    * engine, read from the files the framework itself reads.
    */
   settings?: Record<string, string>;
-  /**
-   * Other packages whose patches change the native build, such as Expo
-   * config plugins, which shape the native projects without being linked.
-   */
-  patchedPackages?: string[];
 }
 
 interface AutolinkingConfig {
@@ -186,8 +182,48 @@ interface ExpoModule {
   packageName?: string;
   packageVersion?: string;
   projects?: { sourceDir?: string }[];
+  plugins?: { sourceDir?: string }[];
   pods?: { podspecDir?: string }[];
 }
+
+const atLeast = (version: string, minimum: [number, number, number]) => {
+  const parts = version.split(/[.+-]/u).map(Number);
+  for (let index = 0; index < 3; index++) {
+    const part = parts[index] ?? 0;
+    if (part !== minimum[index]) return part > minimum[index]!;
+  }
+  return true;
+};
+
+/**
+ * The expo-modules-autolinking an Expo app builds with, resolved from its
+ * `expo` package as the native templates resolve it.
+ */
+export const resolveExpoAutolinking = (
+  cwd: string,
+): {
+  bin: string;
+  version: string;
+  /** Whether it lists React Native packages (`react-native-config`, 1.12+). */
+  linksReactNative: boolean;
+} => {
+  const expo = path.dirname(
+    require.resolve("expo/package.json", { paths: [cwd] }),
+  );
+  const manifest = require.resolve("expo-modules-autolinking/package.json", {
+    paths: [expo],
+  });
+  const { version = "0.0.0" } = JSON.parse(readFileSync(manifest, "utf8")) as {
+    version?: string;
+  };
+  return {
+    bin: path.join(path.dirname(manifest), "bin/expo-modules-autolinking.js"),
+    version,
+    // The version @expo/fingerprint switches React Native core autolinking
+    // to Expo at, for SDK 52 and later.
+    linksReactNative: atLeast(version, [1, 12, 0]),
+  };
+};
 
 /**
  * The Expo modules linked into a React Native app through
@@ -198,43 +234,47 @@ interface ExpoModule {
 const readExpoModules = async (
   cwd: string,
   platform: Platform,
-): Promise<NativeDependency[]> => {
-  const expo = path.dirname(
-    require.resolve("expo/package.json", { paths: [cwd] }),
+): Promise<{
+  modules: NativeDependency[];
+  extraDependencies: unknown[];
+}> => {
+  const { bin, version } = resolveExpoAutolinking(cwd);
+  // expo-modules-autolinking 1.10 renamed the iOS platform `apple`.
+  const name =
+    platform === "android"
+      ? "android"
+      : atLeast(version, [1, 10, 0])
+        ? "apple"
+        : "ios";
+  const result = await execa(
+    process.execPath,
+    [bin, "resolve", "--platform", name, "--json"],
+    { cwd, reject: false },
   );
-  const autolinking = path.dirname(
-    require.resolve("expo-modules-autolinking/package.json", {
-      paths: [expo],
-    }),
-  );
-  const bin = path.join(autolinking, "bin/expo-modules-autolinking.js");
-  // SDKs before `apple` name the iOS platform `ios`.
-  let output: string | null = null;
-  for (const name of platform === "ios" ? ["apple", "ios"] : ["android"]) {
-    const result = await execa(
-      process.execPath,
-      [bin, "resolve", "--platform", name, "--json"],
-      { cwd, reject: false },
-    );
-    if (result.exitCode === 0) {
-      output = result.stdout;
-      break;
-    }
-  }
-  if (output === null) {
+  if (result.exitCode !== 0) {
     throw new Error("`expo-modules-autolinking resolve` failed.");
   }
-  const { modules = [] } = parseJsonOutput<{ modules?: ExpoModule[] }>(
-    output,
-    "expo-modules-autolinking resolve",
-  );
-  return Promise.all(
+  const { modules = [], extraDependencies = [] } = parseJsonOutput<{
+    modules?: ExpoModule[];
+    extraDependencies?: unknown[];
+  }>(result.stdout, "expo-modules-autolinking resolve");
+  return {
+    extraDependencies,
+    modules: await readExpoModuleDependencies(modules),
+  };
+};
+
+const readExpoModuleDependencies = (
+  modules: ExpoModule[],
+): Promise<NativeDependency[]> =>
+  Promise.all(
     modules.flatMap((module) => {
       const name = module.packageName;
       if (!name) return [];
-      // Every Android project and iOS pod the module declares.
+      // Every Android project, Gradle plugin, and iOS pod the module declares.
       const sourceDirs = [
         ...(module.projects ?? []).map(({ sourceDir }) => sourceDir),
+        ...(module.plugins ?? []).map(({ sourceDir }) => sourceDir),
         ...(module.pods ?? []).map(({ podspecDir }) => podspecDir),
       ].filter((dir): dir is string => Boolean(dir));
       return [
@@ -249,7 +289,6 @@ const readExpoModules = async (
       ];
     }),
   );
-};
 
 // The gradle.properties keys the React Native Gradle plugin reads to choose
 // the JavaScript engine and architecture.
@@ -360,9 +399,9 @@ export const readReactNativeInterface = async ({
       : [],
   );
   const linksExpoModules = dependencies.some(({ name }) => name === "expo");
-  const expoModules = linksExpoModules
+  const { modules: expoModules, extraDependencies } = linksExpoModules
     ? await readExpoModules(cwd, platform)
-    : [];
+    : { modules: [], extraDependencies: [] };
   const names = new Set(dependencies.map(({ name }) => name));
   // iOS declares no engine setting React Native's pods read from a file:
   // `pod install` takes them from the environment.
@@ -379,7 +418,22 @@ export const readReactNativeInterface = async ({
       ...dependencies,
       ...expoModules.filter(({ name }) => !names.has(name)),
     ],
-    settings,
+    settings:
+      extraDependencies.length === 0
+        ? settings
+        : {
+            ...settings,
+            // The pods and Maven repositories Expo's autolinking adds, which
+            // the build links like a package. Paths are kept relative to the
+            // project, so the fingerprint is the same on every machine.
+            "expo-autolinking.extraDependencies": JSON.stringify(
+              extraDependencies,
+              (_key, value: unknown) =>
+                typeof value === "string" && path.isAbsolute(value)
+                  ? toPosix(path.relative(cwd, value))
+                  : value,
+            ),
+          },
   };
 };
 
@@ -678,7 +732,6 @@ export const createInterfaceFingerprint = async (
   const patchedNames = [
     "react-native",
     ...nativeInterface.dependencies.map(({ name }) => name),
-    ...(nativeInterface.patchedPackages ?? []),
   ];
   for (const root of await findPatchRoots(cwd)) {
     const dir = path.join(root, "patches");

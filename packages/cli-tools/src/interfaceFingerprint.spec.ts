@@ -327,26 +327,6 @@ describe("createInterfaceFingerprint", () => {
     );
   });
 
-  it("reads patches to the other packages a framework names", async () => {
-    await write(
-      path.join(app, "patches/expo-build-properties+0.13.2.patch"),
-      "a",
-    );
-    const withPlugin = (): NativeInterface => ({
-      ...nativeInterface(),
-      patchedPackages: ["expo-build-properties"],
-    });
-    const before = await hashOf({}, withPlugin());
-
-    await write(
-      path.join(app, "patches/expo-build-properties+0.13.2.patch"),
-      "b",
-    );
-    expect(await hashOf({}, withPlugin())).not.toBe(before);
-    // Not named, it isn't part of the native build.
-    expect(await hashOf()).toBe(await hashOf());
-  });
-
   it("hashes a dependency declared by name and version", async () => {
     const native = (version: string): NativeInterface => ({
       runtime: "lynx@4.0.3",
@@ -709,6 +689,57 @@ describe("readReactNativeInterface", () => {
       },
       { name: "expo-local", version: "1.0.0" },
     ]);
+  });
+
+  it("reads the extra pods Expo's autolinking adds, and names iOS by the autolinking version", async () => {
+    await write(
+      path.join(root, "node_modules/expo/package.json"),
+      manifest({ name: "expo", version: "50.0.0" }),
+    );
+    await write(
+      path.join(root, "node_modules/expo-modules-autolinking/package.json"),
+      manifest({ name: "expo-modules-autolinking", version: "1.9.0" }),
+    );
+    const resolved = {
+      modules: [],
+      extraDependencies: [
+        {
+          name: "Extra",
+          version: "1.0.0",
+          path: path.join(root, "pods/Extra"),
+        },
+      ],
+    };
+    // Before 1.10, expo-modules-autolinking names the iOS platform `ios`.
+    await write(
+      path.join(
+        root,
+        "node_modules/expo-modules-autolinking/bin/expo-modules-autolinking.js",
+      ),
+      `if (process.argv.includes("ios")) console.log(${JSON.stringify(JSON.stringify(resolved))}); else process.exit(1);`,
+    );
+    const config = {
+      dependencies: {
+        expo: {
+          name: "expo",
+          root: path.join(root, "node_modules/expo"),
+          platforms: { ios: {} },
+        },
+      },
+    };
+
+    const { settings } = await readReactNativeInterface({
+      cwd: root,
+      command: process.execPath,
+      args: ["-e", `console.log(${JSON.stringify(JSON.stringify(config))})`],
+      platform: "ios",
+    });
+
+    expect(settings).toEqual({
+      "expo-autolinking.extraDependencies": JSON.stringify([
+        { name: "Extra", version: "1.0.0", path: "pods/Extra" },
+      ]),
+    });
   });
 
   it("hashes every native folder a local Expo module declares", async () => {
