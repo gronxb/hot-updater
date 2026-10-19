@@ -23,6 +23,7 @@ import type { ConsoleRuntime } from "./runtime.server";
  * - 400 `invalid_request`: the body is not what the route takes;
  * - 404 `vault_unavailable`: this console serves no vault;
  * - 405 `method_not_allowed`: the route takes another method;
+ * - 409 `conflict`: secrets kept changing while a resolve read them;
  * - 503 `vault_locked`: the console has no master key to open values with.
  */
 
@@ -33,6 +34,8 @@ export type LoadConsole = (
 
 /** Names one resolve request takes, as a token's scope lists. */
 const MAX_NAMES = 100;
+/** Times a resolve lists and authorizes again when a secret changes under it. */
+const RESOLVE_ATTEMPTS = 3;
 /** `x-hot-updater-ci-run`, as the audit log keeps it. */
 const MAX_CI_RUN_LENGTH = 255;
 
@@ -211,114 +214,122 @@ export const resolveVaultSecrets = (request: Request, load: LoadConsole) =>
       );
     }
     const context = requestContext(request);
-    const byName = new Map(
-      (await vault.list()).map((secret) => [secret.name, secret]),
-    );
-    const refuse = async (refused: readonly string[], message: string) => {
-      await vault.recordAudit({
-        entries: refused.map((name) => {
-          const secret = byName.get(name);
-          return {
-            actor: token.id,
-            action: "read",
-            ...(secret === undefined ? {} : { secretId: secret.id }),
-            outcome: "denied",
-            context: { ...context, name },
-          } satisfies VaultAuditEntry;
-        }),
-      });
-      return forbidden(message);
-    };
-
-    if (!token.scope.actions.includes("read")) {
-      return refuse(names, "The vault token's scope does not allow read.");
-    }
-    const outOfScope = names.filter((name) => {
-      const secret = byName.get(name);
-      return secret === undefined
-        ? !(token.scope.secrets.names?.includes(name) ?? false)
-        : !authorizeVaultToken(token, { action: "read", secret });
-    });
-    if (outOfScope.length > 0) {
-      return refuse(
-        outOfScope,
-        `The vault token's scope does not allow reading ${outOfScope.join(", ")}.`,
+    // Each read opens the version its authorization saw; a secret that
+    // changed since the list is listed and authorized again.
+    for (let attempt = 1; attempt <= RESOLVE_ATTEMPTS; attempt += 1) {
+      const byName = new Map(
+        (await vault.list()).map((secret) => [secret.name, secret]),
       );
-    }
-    const signingKeys = names.filter(
-      (name) => byName.get(name)?.kind === "bundle-signing-key",
-    );
-    if (signingKeys.length > 0) {
-      return refuse(
-        signingKeys,
-        `${signingKeys.join(", ")} ${signingKeys.length === 1 ? "is a bundle-signing-key" : "are bundle-signing-keys"}, which the vault never resolves: the console signs bundles with them at /_hot-updater/signing, for a token whose scope allows sign.`,
-      );
-    }
+      const refuse = async (refused: readonly string[], message: string) => {
+        await vault.recordAudit({
+          entries: refused.map((name) => {
+            const secret = byName.get(name);
+            return {
+              actor: token.id,
+              action: "read",
+              ...(secret === undefined ? {} : { secretId: secret.id }),
+              outcome: "denied",
+              context: { ...context, name },
+            } satisfies VaultAuditEntry;
+          }),
+        });
+        return forbidden(message);
+      };
 
-    const read = await Promise.all(
-      names.map(async (name) => {
-        const secret = byName.get(name);
-        if (secret === undefined) return { name, secret, value: undefined };
-        try {
-          const value = await vault.reveal({ id: secret.id, actor: token.id });
-          return { name, secret, value };
-        } catch (error) {
-          // Removed since the list: as if it were never there.
-          if (error instanceof VaultNotFoundError) {
-            return { name, secret: undefined, value: undefined };
-          }
-          throw error;
-        }
-      }),
-    ).catch((error: unknown) => {
-      if (error instanceof VaultLockedError) {
-        return failure(503, "vault_locked", error.message);
+      if (!token.scope.actions.includes("read")) {
+        return refuse(names, "The vault token's scope does not allow read.");
       }
-      if (error instanceof VaultIntegrityError) {
-        console.error("A vault secret did not decrypt:", error);
-        return failure(
-          500,
-          "vault_integrity",
-          "A secret's stored value did not decrypt: it was altered, or sealed under another master key.",
+      const outOfScope = names.filter((name) => {
+        const secret = byName.get(name);
+        return secret === undefined
+          ? !(token.scope.secrets.names?.includes(name) ?? false)
+          : !authorizeVaultToken(token, { action: "read", secret });
+      });
+      if (outOfScope.length > 0) {
+        return refuse(
+          outOfScope,
+          `The vault token's scope does not allow reading ${outOfScope.join(", ")}.`,
         );
       }
-      throw error;
-    });
-    if (read instanceof Response) return read;
+      const signingKeys = names.filter(
+        (name) => byName.get(name)?.kind === "bundle-signing-key",
+      );
+      if (signingKeys.length > 0) {
+        return refuse(
+          signingKeys,
+          `${signingKeys.join(", ")} ${signingKeys.length === 1 ? "is a bundle-signing-key" : "are bundle-signing-keys"}, which the vault never resolves: the console signs bundles with them at /_hot-updater/signing, for a token whose scope allows sign.`,
+        );
+      }
 
-    const secrets = read.flatMap(({ name, secret, value }) =>
-      secret === undefined
-        ? []
-        : [{ name, kind: secret.kind, version: secret.version, value }],
+      let read: { name: string; secret?: VaultSecret; value?: unknown }[];
+      try {
+        read = await Promise.all(
+          names.map(async (name) => {
+            const secret = byName.get(name);
+            if (secret === undefined) return { name };
+            const value = await vault.reveal({
+              id: secret.id,
+              actor: token.id,
+              version: secret.version,
+            });
+            return { name, secret, value };
+          }),
+        );
+      } catch (error) {
+        // Rotated, removed, or replaced since the list.
+        if (error instanceof VaultNotFoundError) continue;
+        if (error instanceof VaultLockedError) {
+          return failure(503, "vault_locked", error.message);
+        }
+        if (error instanceof VaultIntegrityError) {
+          console.error("A vault secret did not decrypt:", error);
+          return failure(
+            500,
+            "vault_integrity",
+            "A secret's stored value did not decrypt: it was altered, or sealed under another master key.",
+          );
+        }
+        throw error;
+      }
+
+      // Values leave only once their reads are in the audit log.
+      await vault.recordAudit({
+        entries: read.flatMap(({ name, secret }) =>
+          secret === undefined
+            ? []
+            : [
+                {
+                  actor: token.id,
+                  action: "read",
+                  secretId: secret.id,
+                  outcome: "allowed",
+                  context: { ...context, name },
+                } satisfies VaultAuditEntry,
+              ],
+        ),
+      });
+      return json(200, {
+        secrets: read.flatMap(({ name, secret, value }) =>
+          secret === undefined
+            ? []
+            : [{ name, kind: secret.kind, version: secret.version, value }],
+        ),
+        errors: read.flatMap(({ name, secret }) =>
+          secret === undefined
+            ? [
+                {
+                  name,
+                  code: "not_found",
+                  message: `No secret is named ${name}.`,
+                },
+              ]
+            : [],
+        ),
+      });
+    }
+    return failure(
+      409,
+      "conflict",
+      "The secrets changed while they were read; send the request again.",
     );
-    // Values leave only once their reads are in the audit log.
-    await vault.recordAudit({
-      entries: read.flatMap(({ name, secret }) =>
-        secret === undefined
-          ? []
-          : [
-              {
-                actor: token.id,
-                action: "read",
-                secretId: secret.id,
-                outcome: "allowed",
-                context: { ...context, name },
-              } satisfies VaultAuditEntry,
-            ],
-      ),
-    });
-    return json(200, {
-      secrets,
-      errors: read.flatMap(({ name, secret }) =>
-        secret === undefined
-          ? [
-              {
-                name,
-                code: "not_found",
-                message: `No secret is named ${name}.`,
-              },
-            ]
-          : [],
-      ),
-    });
   });

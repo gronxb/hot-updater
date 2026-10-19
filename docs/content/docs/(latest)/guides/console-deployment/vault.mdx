@@ -95,6 +95,8 @@ must allow `read` on each:
   in `errors` only when the scope lists that name.
 - A `bundle-signing-key` is never resolved, even in scope: the console signs
   bundles with it at `/_hot-updater/signing`.
+- Each value is the version the token was authorized for. A secret rotated
+  or replaced during the request is authorized again at its new version.
 - Each value read and each refused name is written to the vault's audit log
   before the response is sent.
 
@@ -108,6 +110,7 @@ Refusals are `{ "error": { "code", "message" } }`:
 | 401 | `unauthorized` | No token, or a token that is unknown, revoked, or expired |
 | 403 | `forbidden` | The scope does not allow `read`, a name is out of scope, or a name is a `bundle-signing-key` |
 | 404 | `vault_unavailable` | The console runs without `vault()`, or over `standaloneRepository(...)` |
+| 409 | `conflict` | The named secrets kept changing while the console read them; send the request again |
 | 503 | `vault_locked` | `HOT_UPDATER_VAULT_MASTER_KEY` is not set where the console runs |
 
 A 401 also carries `WWW-Authenticate: Bearer realm="hot-updater-vault"`.

@@ -77,6 +77,21 @@ const start = async (options: { readonly masterKey?: string | null } = {}) => {
   const load = vi.fn<LoadConsole>(async () => ({ runtime }));
   return {
     load,
+    /** A console whose vault runs `change` after each list, as a concurrent write would. */
+    loadChanging: (change: () => Promise<void>): LoadConsole => {
+      const api = runtime.apis.vault!;
+      const changing: VaultApi = {
+        ...api,
+        list: async () => {
+          const listed = await api.list();
+          await change();
+          return listed;
+        },
+      };
+      return async () => ({
+        runtime: { ...runtime, apis: { ...runtime.apis, vault: changing } },
+      });
+    },
     vault: seeding,
     apiKeys: server.api.apiKeys as ApiKeyManagementAPI,
     secrets: { asc, keystore, signing },
@@ -271,6 +286,70 @@ describe("POST /_hot-updater/vault/v1/resolve", () => {
         ),
       ),
     );
+  });
+
+  it("authorizes again a secret replaced after the list, never opening what it was not authorized for", async () => {
+    const { loadChanging, vault: api, issue, secrets } = await start();
+    const token = await issue({
+      secrets: { kinds: ["android-keystore"] },
+      actions: ["read"],
+    });
+    let replaced = false;
+    const load = loadChanging(async () => {
+      if (replaced) return;
+      replaced = true;
+      // Removed and stored again under its name and id, as a signing key.
+      await api.remove({ id: secrets.keystore.id });
+      await api.put({
+        name: "release-keystore",
+        kind: "bundle-signing-key",
+        value: "-----BEGIN RSA PRIVATE KEY-----",
+      });
+    });
+
+    const response = await resolve(load, token, {
+      names: ["release-keystore"],
+    });
+
+    expect(response.status).toBe(403);
+    expect(JSON.stringify(await response.json())).not.toContain("PRIVATE KEY");
+  });
+
+  it("returns a value rotated after the list at its new version, and gives up on one that keeps changing", async () => {
+    const { loadChanging, vault: api, issue } = await start();
+    const token = await issue(READ_KEYSTORE);
+    let rotations = 0;
+    const rotate = async () => {
+      rotations += 1;
+      await api.put({
+        name: "release-keystore",
+        kind: "android-keystore",
+        value: { storePassword: `rotated-${rotations}` },
+      });
+    };
+
+    let once = false;
+    const rotatedOnce = await resolve(
+      loadChanging(async () => {
+        if (once) return;
+        once = true;
+        await rotate();
+      }),
+      token,
+      { names: ["release-keystore"] },
+    );
+    expect(rotatedOnce.status).toBe(200);
+    await expect(rotatedOnce.json()).resolves.toMatchObject({
+      secrets: [{ version: 2, value: { storePassword: "rotated-1" } }],
+    });
+
+    const alwaysRotating = await resolve(loadChanging(rotate), token, {
+      names: ["release-keystore"],
+    });
+    expect(alwaysRotating.status).toBe(409);
+    await expect(alwaysRotating.json()).resolves.toMatchObject({
+      error: { code: "conflict" },
+    });
   });
 
   it("reports a name the scope lists but no secret has as not found", async () => {

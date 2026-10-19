@@ -138,13 +138,21 @@ export interface VaultApi {
   remove(input: { readonly id: string }): Promise<VaultSecret | null>;
   /**
    * The current value of a secret. Throws `VaultNotFoundError` when there is
-   * no such secret, `VaultLockedError` without the master key that sealed
-   * it, and `VaultIntegrityError` when its stored value does not decrypt.
+   * no such secret, or it is no longer at `version`, `VaultLockedError`
+   * without the master key that sealed it, and `VaultIntegrityError` when its
+   * stored value does not decrypt.
    */
   reveal(input: {
     readonly id: string;
     /** Who reads the value, a token id or a Console user's email. */
     readonly actor: string;
+    /**
+     * The version to open, such as the one `list` returned and a caller
+     * authorized: a secret's kind changes only with a new version, so a
+     * rotation, or a removal and a new secret under its id, since then is
+     * refused instead of opened.
+     */
+    readonly version?: number;
   }): Promise<unknown>;
   /**
    * Issues a token for CI and returns its plaintext once; the vault keeps
@@ -633,16 +641,25 @@ export const createVaultApi = ({
         return toSecret({ ...row, updated_at_ms: at });
       }),
 
-    async reveal({ id }) {
+    async reveal({ id, version }) {
       const key = await masterKey();
       const row = await db.findOne("secrets", { id });
       if (row === null || row.deleted_at_ms !== null) {
         throw new VaultNotFoundError(`No secret has the id "${id}".`);
       }
+      if (version !== undefined && row.current_version !== version) {
+        throw new VaultNotFoundError(
+          `The secret "${row.name}" is no longer at version ${version}.`,
+        );
+      }
       const sealed = await db.findOne("secret_versions", {
         secret_id: id,
         version: row.current_version,
       });
+      // Removed between the two reads: its versions went with it.
+      if (sealed === null && version !== undefined) {
+        throw new VaultNotFoundError(`No secret has the id "${id}".`);
+      }
       if (sealed === null) {
         throw new VaultIntegrityError(
           `The secret "${row.name}" has no version ${row.current_version}.`,

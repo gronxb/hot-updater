@@ -76,6 +76,31 @@ describe("vault", () => {
     expect(JSON.stringify(sealed)).not.toContain(ASC_KEY.issuerId);
   });
 
+  it("opens only the version a caller authorized, refusing one rotated or replaced since", async () => {
+    const { api } = start();
+    const first = await api.put({ name: "key", kind: "generic", value: "v1" });
+    await expect(
+      api.reveal({ id: first.id, actor: "test", version: 1 }),
+    ).resolves.toBe("v1");
+
+    await api.put({ name: "key", kind: "generic", value: "v2" });
+    await expect(
+      api.reveal({ id: first.id, actor: "test", version: 1 }),
+    ).rejects.toBeInstanceOf(VaultNotFoundError);
+
+    // Removed and stored again under its id, as another kind: a new version.
+    await api.remove({ id: first.id });
+    const replaced = await api.put({
+      name: "key",
+      kind: "bundle-signing-key",
+      value: "pem",
+    });
+    expect(replaced).toMatchObject({ id: first.id, version: 3 });
+    await expect(
+      api.reveal({ id: first.id, actor: "test", version: 2 }),
+    ).rejects.toBeInstanceOf(VaultNotFoundError);
+  });
+
   it("refuses a version whose ciphertext was swapped in from another row", async () => {
     const { api, db } = start();
     const first = await api.put({
