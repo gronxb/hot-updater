@@ -153,6 +153,37 @@ describe("prepareNativeBuild", () => {
     expect(p.log.error).not.toHaveBeenCalled();
   });
 
+  it("refuses a scheme that sets its own MIN_BUNDLE_ID, which the CLI issues and reports", async () => {
+    vi.mocked(loadConfig).mockResolvedValue({
+      updateStrategy: "appVersion",
+      nativeBuild: {
+        ios: {
+          release: {
+            scheme: "App",
+            simulator: true,
+            extraParams: [
+              "HOT_UPDATER_MIN_BUNDLE_ID=0190a1b2-c3d4-7000-8000-000000000000",
+            ],
+          },
+        },
+        android: {},
+      },
+      build: () => buildAdapter,
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+
+    await expect(
+      prepareNativeBuild({
+        platform: "ios",
+        scheme: "release",
+        interactive: false,
+        operation: "run",
+      }),
+    ).resolves.toBeNull();
+    expect(p.log.error).toHaveBeenCalledWith(
+      expect.stringContaining("sets HOT_UPDATER_MIN_BUNDLE_ID"),
+    );
+  });
+
   it("returns the fingerprint a fingerprint build compiles in", async () => {
     vi.mocked(loadConfig).mockResolvedValue({
       updateStrategy: "fingerprint",

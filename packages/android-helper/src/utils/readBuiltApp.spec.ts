@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { parseBadgingVersionName, parseManifestMetaData } from "./readBuiltApp";
+import {
+  parseBadgingVersionName,
+  parseManifestMetaData,
+  parseResourceString,
+} from "./readBuiltApp";
 
 // Output of aapt2 37.0.0 for a release build of examples/v0.85.0.
 const BADGING = `package: name='com.hotupdaterexample' versionCode='1' versionName='1.0-staging' platformBuildVersionName='16' platformBuildVersionCode='36' compileSdkVersion='36' compileSdkVersionCodename='16'
@@ -30,6 +34,35 @@ describe("aapt2 output", () => {
     expect(
       parseManifestMetaData(XMLTREE, "com.hotupdater.FINGERPRINT_HASH"),
     ).toBe("b10a99ce");
+  });
+
+  it("resolves a channel the manifest takes from a string resource", () => {
+    const reference = parseManifestMetaData(
+      XMLTREE.replace('="beta" (Raw: "beta")', "=@0x7f10001e"),
+      "com.hotupdater.CHANNEL",
+    );
+    expect(reference).toBe("@0x7f10001e");
+
+    const resources = `    resource 0x7f10001d string/app_name
+      () "HotUpdaterExample"
+    resource 0x7f10001e string/channel
+      (ko) "베타"
+      () "beta"
+    resource 0x7f10001f string/other
+      () "other"`;
+    expect(parseResourceString(resources, reference!)).toBe("beta");
+    // An .aab's proto manifest names the resource.
+    expect(
+      parseManifestMetaData(
+        XMLTREE.replace(
+          '="beta" (Raw: "beta")',
+          '=@string/channel (Raw: "@string/channel")',
+        ),
+        "com.hotupdater.CHANNEL",
+      ),
+    ).toBe("@string/channel");
+    expect(parseResourceString(resources, "@string/channel")).toBe("beta");
+    expect(parseResourceString(resources, "@0x7f100099")).toBeNull();
   });
 
   it("reads no channel from a manifest without one", () => {

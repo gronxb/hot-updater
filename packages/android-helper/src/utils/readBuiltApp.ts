@@ -58,7 +58,11 @@ const findAapt2 = (androidProjectPath: string): string | undefined => {
 export const parseBadgingVersionName = (badging: string): string | null =>
   badging.match(/\bversionName='([^']*)'/)?.[1] || null;
 
-/** A `<meta-data>` value from `aapt2 dump xmltree` of the manifest. */
+/**
+ * A `<meta-data>` value from `aapt2 dump xmltree` of the manifest: the
+ * literal, or a resource reference such as `@string/channel`, which an `.apk`
+ * prints as `@0x<id>` and an `.aab` as `@string/channel`.
+ */
 export const parseManifestMetaData = (
   xmltree: string,
   name: string,
@@ -72,13 +76,50 @@ export const parseManifestMetaData = (
     let value: string | undefined;
     for (let j = i + 1; j < lines.length && /^\s*A: /.test(lines[j]!); j++) {
       metaDataName ??= lines[j]!.match(/:name\(0x[0-9a-f]+\)="([^"]*)"/)?.[1];
-      value ??= lines[j]!.match(/:value\(0x[0-9a-f]+\)="([^"]*)"/)?.[1];
+      const valueMatch = lines[j]!.match(
+        /:value\(0x[0-9a-f]+\)=(?:"([^"]*)"|(@[\w./:]+))/,
+      );
+      value ??= valueMatch?.[1] ?? valueMatch?.[2];
     }
     if (metaDataName === name) {
       return value || null;
     }
   }
   return null;
+};
+
+/**
+ * The string a resource reference resolves to, from `aapt2 dump resources`:
+ * its default configuration's value, or else its first.
+ */
+export const parseResourceString = (
+  resources: string,
+  reference: string,
+): string | null => {
+  const lines = resources.split("\n");
+  // `resource <id> <type>/<name>`, which either form of reference names.
+  const start = lines.findIndex((line) => {
+    const [, id, name] = line.match(/^\s*resource (0x[0-9a-f]+) (\S+)/) ?? [];
+    return (
+      id !== undefined && (reference === `@${id}` || reference === `@${name}`)
+    );
+  });
+  if (start === -1) {
+    return null;
+  }
+  const values: { config: string; value: string }[] = [];
+  for (let i = start + 1; i < lines.length; i++) {
+    if (/^\s*resource 0x/.test(lines[i]!)) {
+      break;
+    }
+    const match = lines[i]!.match(/^\s*\(([^)]*)\) "(.*)"$/);
+    if (match) {
+      values.push({ config: match[1]!, value: match[2]! });
+    }
+  }
+  return (
+    (values.find(({ config }) => config === "") ?? values[0])?.value ?? null
+  );
 };
 
 /**
@@ -145,9 +186,14 @@ export const readBuiltApp = async ({
         apkPath,
       ]),
     ]);
+    let channel = parseManifestMetaData(xmltree.stdout, CHANNEL_META_DATA_KEY);
+    if (channel?.startsWith("@")) {
+      const resources = await execa(aapt2, ["dump", "resources", apkPath]);
+      channel = parseResourceString(resources.stdout, channel);
+    }
     return {
       appVersion: parseBadgingVersionName(badging.stdout),
-      channel: parseManifestMetaData(xmltree.stdout, CHANNEL_META_DATA_KEY),
+      channel,
     };
   } finally {
     await fs.promises.rm(directory, { recursive: true, force: true });
