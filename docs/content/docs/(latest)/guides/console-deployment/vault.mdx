@@ -67,10 +67,12 @@ console shows of it.
 
 The **Tokens** tab issues, lists, and revokes vault tokens. A token the
 console issues reads the values of the secrets in its scope, named by secret
-or by kind, and expires after 30 days, 90 days, a year, or never. Every user
-the console signs in can manage secrets and tokens.
+or by kind, and expires after 30 days, 90 days, a year, or never. Bundle
+signing keys are not offered: the routes below never return their values.
+Every user the console signs in can manage secrets and tokens.
 
-The token shows once, with the two variables CI sets:
+The token shows once, with the console's address, as two CI variables. CI
+sends the token to the routes below:
 
 ```bash
 HOT_UPDATER_CONSOLE_URL=https://console.example.com

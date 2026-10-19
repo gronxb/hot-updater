@@ -417,7 +417,20 @@ describe("TokensCard", () => {
       token: plaintext,
       metadata: token,
     });
-    render(<TokensCard secrets={[keystore]} tokens={loaded([])} />);
+    render(
+      <TokensCard
+        secrets={[
+          keystore,
+          {
+            ...keystore,
+            id: `sec-${"e".repeat(22)}`,
+            name: "bundle-signing-key",
+            kind: "bundle-signing-key",
+          },
+        ]}
+        tokens={loaded([])}
+      />,
+    );
 
     fireEvent.click(screen.getAllByRole("button", { name: "Issue token" })[0]!);
     fireEvent.change(screen.getByLabelText("Name"), {
@@ -425,6 +438,13 @@ describe("TokensCard", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "release-keystore" }));
     expect(screen.queryByRole("button", { name: "Sign bundles" })).toBeNull();
+    // A read token never reaches a bundle signing key, by kind or by name.
+    expect(
+      screen.queryByRole("button", { name: "Bundle signing key" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "bundle-signing-key" }),
+    ).toBeNull();
     fireEvent.click(
       within(screen.getByRole("dialog")).getByRole("button", {
         name: "Issue token",

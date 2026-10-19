@@ -54,6 +54,14 @@ const EXPIRY_OPTIONS = {
 
 type Expiry = keyof typeof EXPIRY_OPTIONS;
 
+/**
+ * The kinds a read token can reach: the vault never returns a bundle signing
+ * key's value, so a scope naming one would read nothing.
+ */
+const READABLE_KINDS = VAULT_SECRET_KIND_IDS.filter(
+  (kind) => kind !== "bundle-signing-key",
+);
+
 /** A multi-select chip: checked and tinted while pressed, so the state never rests on shade alone. */
 function ScopeToggle({
   className,
@@ -147,6 +155,7 @@ function IssueTokenForm({
   const [expiry, setExpiry] = useState<Expiry>("90");
   const [submitted, setSubmitted] = useState(false);
 
+  const readable = secrets.filter(({ kind }) => kind !== "bundle-signing-key");
   const trimmedName = name.trim();
   const errors = {
     name:
@@ -223,7 +232,7 @@ function IssueTokenForm({
               A kind covers every secret of it, including ones added later.
             </FieldDescription>
             <div className="flex flex-col gap-3">
-              {secrets.length > 0 ? (
+              {readable.length > 0 ? (
                 <div className="flex flex-col gap-1.5">
                   <p className="text-xs text-muted-foreground">By name</p>
                   <ToggleGroup
@@ -235,7 +244,7 @@ function IssueTokenForm({
                     value={names}
                     variant="outline"
                   >
-                    {secrets.map((secret) => (
+                    {readable.map((secret) => (
                       <ScopeToggle
                         className="min-h-11 px-2.5 font-mono sm:min-h-8"
                         key={secret.id}
@@ -260,7 +269,7 @@ function IssueTokenForm({
                   value={kinds}
                   variant="outline"
                 >
-                  {VAULT_SECRET_KIND_IDS.map((kind) => (
+                  {READABLE_KINDS.map((kind) => (
                     <ScopeToggle
                       className="min-h-11 px-2.5 sm:min-h-8"
                       key={kind}
@@ -385,8 +394,8 @@ function IssuedToken({
             {snippet}
           </pre>
           <FieldDescription>
-            Store both as CI secrets. The CLI reads them to fetch credentials
-            while it builds and deploys.
+            Store both as CI secrets: the console's address and the token its
+            vault routes take as a Bearer token.
           </FieldDescription>
         </Field>
         <Alert>
