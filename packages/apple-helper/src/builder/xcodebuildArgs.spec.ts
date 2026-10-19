@@ -65,6 +65,7 @@ const BUILD_XCCONFIG = "/tmp/build/HotUpdater.xcconfig";
 // conflicting with automatic signing.
 const AUTOMATIC_SIGNING = `CODE_SIGN_STYLE = Automatic
 PROVISIONING_PROFILE = 
+PROVISIONING_PROFILE[sdk=iphoneos*] = 
 PROVISIONING_PROFILE_SPECIFIER = 
 PROVISIONING_PROFILE_SPECIFIER[sdk=iphoneos*] = 
 CODE_SIGN_IDENTITY = Apple Development
