@@ -17,7 +17,11 @@ import {
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
-import type { NativeBuildOptions, Platform } from "@hot-updater/plugin-core";
+import type {
+  BuildAdapter,
+  NativeBuildOptions,
+  Platform,
+} from "@hot-updater/plugin-core";
 
 import {
   createAndInjectFingerprintFiles,
@@ -35,6 +39,7 @@ import type { NativeBuildTarget } from "./createNativeBuild";
 type PreparedNativeBuildConfig = {
   outputPath: string;
   config: ConfigResponse;
+  buildAdapter: BuildAdapter;
   scheme: string;
   target: NativeBuildTarget;
   androidSchemeConfig?: EnrichedNativeBuildAndroidScheme;
@@ -86,6 +91,11 @@ export async function prepareNativeBuild(
     );
     return null;
   }
+
+  // The adapter's prebuild writes the native projects, such as Expo's
+  // `expo prebuild`, so it runs before anything reads them.
+  const buildAdapter = await config.build({ cwd });
+  await buildAdapter.nativeBuild?.prebuild?.({ platform });
 
   let target: NativeBuildTarget;
 
@@ -174,6 +184,7 @@ export async function prepareNativeBuild(
     return {
       outputPath: resolvedOutputPath,
       config,
+      buildAdapter,
       scheme,
       target,
       iosSchemeConfig: await enrichNativeBuildIosScheme({
@@ -185,6 +196,7 @@ export async function prepareNativeBuild(
     return {
       outputPath: resolvedOutputPath,
       config,
+      buildAdapter,
       scheme,
       target,
       androidSchemeConfig: await enrichNativeBuildAndroidScheme({

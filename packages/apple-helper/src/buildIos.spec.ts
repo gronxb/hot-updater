@@ -96,7 +96,7 @@ describe("buildIos", () => {
   it("builds a simulator .app without resolving signing credentials", async () => {
     const credentials = ascKeyResolver();
 
-    const { buildDirectory, buildArtifactPath } = await buildIos({
+    const { buildDirectory, buildArtifactPath, appPath } = await buildIos({
       schemeConfig: scheme({
         simulator: true,
         signing: { ascApiKey: "asc-api-key" },
@@ -106,6 +106,7 @@ describe("buildIos", () => {
     });
 
     expect(buildArtifactPath).toBe(path.join(buildDirectory, "app", "App.app"));
+    expect(appPath).toBe(buildArtifactPath);
     expect(buildXcodeProject).toHaveBeenCalledWith(
       expect.objectContaining({
         deviceType: "simulator",
@@ -123,7 +124,7 @@ describe("buildIos", () => {
     const credentials = ascKeyResolver();
     const exportOptionsPlist = path.join(root, "ExportOptions.plist");
 
-    const { buildDirectory, buildArtifactPath } = await buildIos({
+    const { buildDirectory, buildArtifactPath, appPath } = await buildIos({
       schemeConfig: scheme({ exportOptionsPlist }),
       minBundleId: MIN_BUNDLE_ID,
       credentials,
@@ -132,6 +133,8 @@ describe("buildIos", () => {
     expect(buildArtifactPath).toBe(
       path.join(buildDirectory, "export", "App.ipa"),
     );
+    // The archived app, whose Info.plist holds what the build reports.
+    expect(appPath).toBe(path.join(buildDirectory, "archive", "App.app"));
     expect(archiveXcodeProject).toHaveBeenCalledWith(
       expect.objectContaining({
         minBundleId: MIN_BUNDLE_ID,

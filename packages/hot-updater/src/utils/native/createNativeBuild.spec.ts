@@ -29,9 +29,6 @@ const buildAdapter = (calls: string[]): BuildAdapter => ({
   name: "bare",
   build: vi.fn(),
   nativeBuild: {
-    prebuild: async ({ platform }) => {
-      calls.push(`prebuild:${platform}`);
-    },
     postbuild: async ({ platform }) => {
       calls.push(`postbuild:${platform}`);
     },
@@ -56,8 +53,8 @@ describe("createNativeBuild", () => {
       platform: "ios",
       scheme: "release",
       minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
-      channel: "beta",
       target: { fingerprintHash: null, appVersion: "1.2.0" },
+      readChannel: async () => "beta",
       outputPath,
       buildAdapter: buildAdapter(calls),
       builder: async () => {
@@ -66,7 +63,7 @@ describe("createNativeBuild", () => {
       },
     });
 
-    expect(calls).toEqual(["prebuild:ios", "build", "postbuild:ios"]);
+    expect(calls).toEqual(["build", "postbuild:ios"]);
     expect(result).toEqual({
       platform: "ios",
       scheme: "release",
@@ -93,8 +90,8 @@ describe("createNativeBuild", () => {
       platform: "android",
       scheme: "release",
       minBundleId: "0190a1b2-c3d4-7000-8000-02a1b2c3d4e5",
-      channel: "production",
       target: { fingerprintHash: "fingerprint", appVersion: null },
+      readChannel: async () => "production",
       outputPath: path.join(root, "output"),
       buildAdapter: buildAdapter([]),
       builder: async () => built,
@@ -102,6 +99,45 @@ describe("createNativeBuild", () => {
 
     expect(result.artifactKind).toBe(kind);
     expect(result.fingerprintHash).toBe("fingerprint");
+  });
+
+  it("reports the app version and channel the built iOS app's Info.plist holds", async () => {
+    const built = await writeArtifact("export/App.ipa");
+    const appPath = path.join(built.buildDirectory, "archive", "App.app");
+    await fs.mkdir(appPath, { recursive: true });
+    await fs.writeFile(
+      path.join(appPath, "Info.plist"),
+      `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0">
+<dict>
+  <key>CFBundleShortVersionString</key>
+  <string>2.0.0</string>
+  <key>HOT_UPDATER_CHANNEL</key>
+  <string>beta</string>
+</dict>
+</plist>
+`,
+    );
+    const readChannel = vi.fn(async () => "production");
+
+    const result = await createNativeBuild({
+      platform: "ios",
+      scheme: "release",
+      minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
+      // What the project files say, before an xcconfig overrides it.
+      target: { fingerprintHash: null, appVersion: "1.0.0" },
+      readChannel,
+      outputPath: path.join(root, "output"),
+      buildAdapter: buildAdapter([]),
+      builder: async () => ({ ...built, appPath }),
+    });
+
+    expect(result).toMatchObject({
+      appVersion: "2.0.0",
+      fingerprintHash: null,
+      channel: "beta",
+    });
+    expect(readChannel).not.toHaveBeenCalled();
   });
 
   it("rejects an artifact that is none of the kinds", async () => {
@@ -112,8 +148,8 @@ describe("createNativeBuild", () => {
         platform: "ios",
         scheme: "release",
         minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
-        channel: "production",
         target: { fingerprintHash: "fingerprint", appVersion: null },
+        readChannel: async () => "production",
         outputPath: path.join(root, "output"),
         buildAdapter: buildAdapter([]),
         builder: async () => built,

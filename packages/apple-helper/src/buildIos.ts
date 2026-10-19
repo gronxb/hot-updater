@@ -27,7 +27,12 @@ export const buildIos = async ({
   /** The MIN_BUNDLE_ID the build compiles in. */
   minBundleId: string;
   credentials: Pick<CredentialResolver, "resolve">;
-}): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
+}): Promise<{
+  buildDirectory: string;
+  buildArtifactPath: string;
+  /** The built `.app` inside `buildDirectory`. */
+  appPath?: string;
+}> => {
   await assertXcodebuildExist();
   const iosProjectRoot = path.join(getCwd(), "ios");
 
@@ -67,6 +72,7 @@ export const buildIos = async ({
     return {
       buildDirectory: buildDirectory,
       buildArtifactPath: finalAppPath,
+      appPath: finalAppPath,
     };
   } else {
     if (!schemeConfig.exportOptionsPlist && !schemeConfig.signing?.ascApiKey) {
@@ -100,12 +106,13 @@ export const buildIos = async ({
     // Extract .app from xcarchive if present
     const appFromArchive = extractAppFromXcarchive(finalArchivePath);
 
-    if (appFromArchive) {
-      await fs.promises.cp(
-        appFromArchive,
-        path.join(archiveDir, path.basename(appFromArchive)),
-        { recursive: true },
-      );
+    const archivedAppPath = appFromArchive
+      ? path.join(archiveDir, path.basename(appFromArchive))
+      : undefined;
+    if (appFromArchive && archivedAppPath) {
+      await fs.promises.cp(appFromArchive, archivedAppPath, {
+        recursive: true,
+      });
       p.log.success(".app extracted from .xcarchive");
     }
 
@@ -135,6 +142,7 @@ export const buildIos = async ({
     return {
       buildDirectory: buildDirectory,
       buildArtifactPath: path.join(exportDir, ipaFile),
+      appPath: archivedAppPath,
     };
   }
 };

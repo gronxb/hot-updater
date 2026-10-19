@@ -35,14 +35,26 @@ vi.mock("@/utils/fingerprint", () => ({
 }));
 
 let project: string;
+const calls: string[] = [];
+const buildAdapter = {
+  name: "bare",
+  build: vi.fn(),
+  nativeBuild: {
+    prebuild: vi.fn(async () => {
+      calls.push("prebuild");
+    }),
+  },
+};
 
 beforeEach(async () => {
   vi.clearAllMocks();
+  calls.length = 0;
   project = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-build-"));
   vi.mocked(getCwd).mockReturnValue(project);
   vi.mocked(loadConfig).mockResolvedValue({
     updateStrategy: "appVersion",
     nativeBuild: { ios: { release: { scheme: "App" } }, android: {} },
+    build: () => buildAdapter,
   } as unknown as Awaited<ReturnType<typeof loadConfig>>);
 });
 
@@ -67,7 +79,14 @@ describe("prepareNativeBuild", () => {
     expect(resolveNativeAppVersion).not.toHaveBeenCalled();
   });
 
-  it("returns the scheme and the app version an appVersion build compiles in", async () => {
+  it("returns the scheme and the app version an appVersion build compiles in, read after the adapter's prebuild", async () => {
+    vi.mocked(resolveNativeAppVersion).mockImplementationOnce(async () => {
+      calls.push("resolveNativeAppVersion");
+      return { version: "1.0.0" } as Awaited<
+        ReturnType<typeof resolveNativeAppVersion>
+      >;
+    });
+
     await expect(
       prepareNativeBuild({
         platform: "ios",
@@ -95,6 +114,7 @@ describe("prepareNativeBuild", () => {
         ios: {},
         android: { release: { packageName: "com.example" } },
       },
+      build: () => buildAdapter,
     } as unknown as Awaited<ReturnType<typeof loadConfig>>);
     vi.mocked(createAndInjectFingerprintFiles).mockResolvedValue({
       fingerprint: { android: { hash: "android-hash", sources: [] } },

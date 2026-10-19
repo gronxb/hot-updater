@@ -2,7 +2,6 @@ import { buildAndroid } from "@hot-updater/android-helper";
 import { buildIos } from "@hot-updater/apple-helper";
 import {
   CredentialUnavailableError,
-  getCwd,
   p,
   withCredentialResolver,
 } from "@hot-updater/cli-tools";
@@ -37,7 +36,7 @@ const buildNativeInternal = async ({
     process.exit(1);
   }
   const {
-    config,
+    buildAdapter,
     outputPath,
     scheme,
     target,
@@ -45,13 +44,9 @@ const buildNativeInternal = async ({
     iosSchemeConfig,
   } = preparedConfig;
 
-  const cwd = getCwd();
-  const buildAdapter = await config.build({ cwd });
-
   const platformName = platform === "android" ? "Android" : "iOS";
 
   try {
-    const { value: channel } = await getChannel(platform);
     const minBundleId = createMinBundleId(platform);
 
     p.log.info(
@@ -68,8 +63,8 @@ const buildNativeInternal = async ({
         platform,
         scheme,
         minBundleId,
-        channel,
         target,
+        readChannel: async () => (await getChannel(platform)).value,
         buildAdapter,
         outputPath,
         builder:

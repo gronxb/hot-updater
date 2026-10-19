@@ -61,6 +61,7 @@ const runNativeInternal = async <
         });
       }
     });
+    await preparedConfig.buildAdapter.nativeBuild?.postbuild?.({ platform });
 
     p.log.success(ui.line(["Ran", ui.platform(platformName)]));
   } catch (e) {
