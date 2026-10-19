@@ -787,6 +787,43 @@ describe("readReactNativeInterface", () => {
     expect(await hashOf({ platform: "android" }, native)).not.toBe(before);
   });
 
+  it("hashes a local Expo module's registration and its prebuilt AARs", async () => {
+    await fs.rm(path.join(root, "packages/local-module/src"), {
+      recursive: true,
+    });
+    await write(
+      path.join(root, "packages/local-module/package.json"),
+      manifest({ name: "local-module", version: "1.0.0" }),
+    );
+    await write(
+      path.join(root, "packages/local-module/expo-module.config.json"),
+      JSON.stringify({ android: { modules: ["expo.local.FirstModule"] } }),
+    );
+    await write(path.join(root, "packages/local-module/libs/local.aar"), "v1");
+    const native: NativeInterface = {
+      runtime: "react-native@0.85.2",
+      dependencies: [
+        {
+          name: "local-module",
+          root: path.join(root, "packages/local-module"),
+          sourceDirs: [],
+          files: [path.join(root, "packages/local-module/libs/local.aar")],
+        },
+      ],
+    };
+    const before = await hashOf({ platform: "android" }, native);
+
+    await write(
+      path.join(root, "packages/local-module/expo-module.config.json"),
+      JSON.stringify({ android: { modules: ["expo.local.SecondModule"] } }),
+    );
+    const registered = await hashOf({ platform: "android" }, native);
+    expect(registered).not.toBe(before);
+
+    await write(path.join(root, "packages/local-module/libs/local.aar"), "v2");
+    expect(await hashOf({ platform: "android" }, native)).not.toBe(registered);
+  });
+
   it("explains a config command that prints no configuration", async () => {
     await expect(
       readReactNativeInterface({

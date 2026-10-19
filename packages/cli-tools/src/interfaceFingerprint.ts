@@ -42,10 +42,13 @@ const TEST_DIRS = [
 const NATIVE_FILES = {
   ios: [
     "*.podspec",
+    // An Expo module registers its native classes here.
+    "expo-module.config.json",
     "ios/**/*.{h,hpp,hxx,m,mm,c,cc,cpp,cxx,swift}",
     "apple/**/*.{h,hpp,hxx,m,mm,c,cc,cpp,cxx,swift}",
   ],
   android: [
+    "expo-module.config.json",
     "android/**/*.{java,kt,c,cc,cpp,cxx,h,hpp,hxx,gradle,kts}",
     "android/**/CMakeLists.txt",
   ],
@@ -66,6 +69,8 @@ export type NativeDependency =
        * folder of the iOS podspec. An Expo module can name several.
        */
       sourceDirs?: string[];
+      /** Prebuilt native files autolinking links, such as an Expo module's AARs. */
+      files?: string[];
     }
   | { name: string; version: string };
 
@@ -181,9 +186,11 @@ const findPackageRoot = async (from: string, name: string) => {
 interface ExpoModule {
   packageName?: string;
   packageVersion?: string;
-  projects?: { sourceDir?: string }[];
+  projects?: { sourceDir?: string; aarProjects?: { aarFilePath?: string }[] }[];
   plugins?: { sourceDir?: string }[];
   pods?: { podspecDir?: string }[];
+  /** SDKs before 53 list a module's AARs here. */
+  aarProjects?: { aarFilePath?: string }[];
 }
 
 const atLeast = (version: string, minimum: [number, number, number]) => {
@@ -277,13 +284,20 @@ const readExpoModuleDependencies = (
         ...(module.plugins ?? []).map(({ sourceDir }) => sourceDir),
         ...(module.pods ?? []).map(({ podspecDir }) => podspecDir),
       ].filter((dir): dir is string => Boolean(dir));
+      const files = [
+        ...(module.projects ?? []).flatMap(
+          ({ aarProjects }) => aarProjects ?? [],
+        ),
+        ...(module.aarProjects ?? []),
+      ]
+        .map(({ aarFilePath }) => aarFilePath)
+        .filter((file): file is string => Boolean(file));
       return [
         (async (): Promise<NativeDependency> => {
-          const root = sourceDirs[0]
-            ? await findPackageRoot(sourceDirs[0], name)
-            : null;
+          const anchor = sourceDirs[0] ?? files[0];
+          const root = anchor ? await findPackageRoot(anchor, name) : null;
           return root
-            ? { name, root, sourceDirs }
+            ? { name, root, sourceDirs, ...(files.length > 0 ? { files } : {}) }
             : { name, version: module.packageVersion ?? "unknown" };
         })(),
       ];
@@ -707,6 +721,10 @@ export const createInterfaceFingerprint = async (
       })),
     ];
     if (!specs) {
+      for (const file of dependency.files ?? []) {
+        const real = await fs.realpath(file).catch(() => undefined);
+        if (real) files.push(real);
+      }
       for (const dir of dependency.sourceDirs ?? []) {
         const sourceDir = await fs.realpath(dir).catch(() => undefined);
         if (!sourceDir) continue;
