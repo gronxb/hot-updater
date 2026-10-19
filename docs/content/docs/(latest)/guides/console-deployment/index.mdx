@@ -204,6 +204,11 @@ You can edit or replace `console.auth.ts` in your clone to use your own authenti
 | `getAccess(request)` | Validate the session and decide who can access the console |
 | `getProviders(request)` | Select the built-in sign-in buttons |
 
+The adapter guards every management page and server function. The
+[vault routes](/docs/guides/console-deployment/vault) under
+`/_hot-updater/vault/v1/` never call it: they authenticate a vault token
+instead of a session.
+
 The packaged sign-in screen supports GitHub and Google. A new provider button or login form also needs changes to the UI and provider types in `@hot-updater/console`; adding environment variables alone does not add a new login method.
 
 <Accordions>

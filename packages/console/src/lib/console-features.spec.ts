@@ -19,6 +19,7 @@ describe("consoleFeatures", () => {
         remote: false,
       },
       apiKeys: { plugin: "apiKeys", label: "API keys", remote: false },
+      vault: { plugin: "vault", label: "Vault", remote: false },
       remoteConfig: {
         plugin: "remoteConfig",
         label: "Remote Config",
@@ -38,18 +39,21 @@ describe("resolveConsoleFeatures", () => {
       insights: true,
       insightsAnalytics: true,
       apiKeys: true,
+      vault: false,
       remoteConfig: true,
     });
     expect(resolveConsoleFeatures(["insights"], { remote: false })).toEqual({
       insights: true,
       insightsAnalytics: true,
       apiKeys: false,
+      vault: false,
       remoteConfig: false,
     });
     expect(resolveConsoleFeatures(["apiKeys"], { remote: false })).toEqual({
       insights: false,
       insightsAnalytics: false,
       apiKeys: true,
+      vault: false,
       remoteConfig: false,
     });
   });
@@ -63,12 +67,14 @@ describe("resolveConsoleFeatures", () => {
       insights: true,
       insightsAnalytics: false,
       apiKeys: false,
+      vault: false,
       remoteConfig: true,
     });
     expect(resolveConsoleFeatures(["apiKeys"], { remote: true })).toEqual({
       insights: false,
       insightsAnalytics: false,
       apiKeys: false,
+      vault: false,
       remoteConfig: false,
     });
   });
@@ -78,6 +84,7 @@ describe("resolveConsoleFeatures", () => {
       insights: false,
       insightsAnalytics: false,
       apiKeys: false,
+      vault: false,
       remoteConfig: false,
     };
 
