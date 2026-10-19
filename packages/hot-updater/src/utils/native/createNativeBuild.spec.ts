@@ -54,6 +54,7 @@ describe("createNativeBuild", () => {
       scheme: "release",
       minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
       target: { fingerprintHash: null, appVersion: "1.2.0" },
+      debug: false,
       readChannel: async () => "beta",
       outputPath,
       buildAdapter: buildAdapter(calls),
@@ -91,6 +92,7 @@ describe("createNativeBuild", () => {
       scheme: "release",
       minBundleId: "0190a1b2-c3d4-7000-8000-02a1b2c3d4e5",
       target: { fingerprintHash: "fingerprint", appVersion: null },
+      debug: false,
       readChannel: async () => "production",
       outputPath: path.join(root, "output"),
       buildAdapter: buildAdapter([]),
@@ -111,6 +113,7 @@ describe("createNativeBuild", () => {
       minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
       // What the project files say, before an xcconfig overrides it.
       target: { fingerprintHash: null, appVersion: "1.0.0" },
+      debug: false,
       readChannel,
       outputPath: path.join(root, "output"),
       buildAdapter: buildAdapter([]),
@@ -136,6 +139,7 @@ describe("createNativeBuild", () => {
       scheme: "release",
       minBundleId: "0190a1b2-c3d4-7000-8000-02a1b2c3d4e5",
       target: { fingerprintHash: "fingerprint", appVersion: null },
+      debug: false,
       readChannel: async () => "beta",
       outputPath: path.join(root, "output"),
       buildAdapter: buildAdapter([]),
@@ -152,6 +156,24 @@ describe("createNativeBuild", () => {
     });
   });
 
+  it("reports the nil UUID a debug build's native SDK reports as its MIN_BUNDLE_ID", async () => {
+    const built = await writeArtifact("app-debug.apk");
+
+    const result = await createNativeBuild({
+      platform: "android",
+      scheme: "debugApk",
+      minBundleId: "0190a1b2-c3d4-7000-8000-02a1b2c3d4e5",
+      target: { fingerprintHash: null, appVersion: "1.0.0" },
+      debug: true,
+      readChannel: async () => "production",
+      outputPath: path.join(root, "output"),
+      buildAdapter: buildAdapter([]),
+      builder: async () => built,
+    });
+
+    expect(result.minBundleId).toBe("00000000-0000-0000-0000-000000000000");
+  });
+
   it("rejects an artifact that is none of the kinds", async () => {
     const built = await writeArtifact("archive/App.xcarchive");
 
@@ -161,6 +183,7 @@ describe("createNativeBuild", () => {
         scheme: "release",
         minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
         target: { fingerprintHash: "fingerprint", appVersion: null },
+        debug: false,
         readChannel: async () => "production",
         outputPath: path.join(root, "output"),
         buildAdapter: buildAdapter([]),

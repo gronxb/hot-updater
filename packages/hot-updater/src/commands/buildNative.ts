@@ -65,6 +65,13 @@ const buildNativeInternal = async ({
         scheme,
         minBundleId,
         target,
+        // The native SDK of a Debug variant or configuration reports the nil
+        // UUID as its MIN_BUNDLE_ID.
+        debug: /debug$/i.test(
+          platform === "android"
+            ? androidSchemeConfig!.variant
+            : iosSchemeConfig!.configuration,
+        ),
         readChannel: async () => (await getChannel(platform)).value,
         buildAdapter,
         outputPath,

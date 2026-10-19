@@ -13,7 +13,7 @@ that select its OTA updates, and prints them with the artifact:
 | Value         | What the build compiles in                                                                         |
 | ------------- | -------------------------------------------------------------------------------------------------- |
 | Artifact      | The `.apk`, `.aab`, `.ipa` or simulator `.app`, copied to the output path                          |
-| Min bundle ID | The ID of the bundle built into the app, which only newer bundles replace                          |
+| Min bundle ID | The ID of the bundle built into the app, which only newer bundles replace (the nil UUID in Debug)  |
 | Fingerprint   | The native fingerprint, with the [fingerprint strategy](/docs/guides/update-strategies/fingerprint) |
 | App version   | The native app version, with the [app version strategy](/docs/guides/update-strategies/app-version) |
 | Channel       | The default channel that [`channel set`](/docs/guides/channel-management) wrote                    |

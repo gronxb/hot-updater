@@ -3,7 +3,7 @@ import path from "path";
 
 import { colors, getCwd, p } from "@hot-updater/cli-tools";
 import type { BuildAdapter } from "@hot-updater/plugin-core";
-import type { Platform } from "@hot-updater/protocol";
+import { NIL_UUID, type Platform } from "@hot-updater/protocol";
 
 /** The kinds of artifact `build:android` and `build:ios` produce. */
 export type NativeBuildArtifactKind = "apk" | "aab" | "ipa" | "app";
@@ -24,7 +24,10 @@ export type NativeBuildResult = NativeBuildTarget & {
   platform: Platform;
   /** The `nativeBuild` scheme built. */
   scheme: string;
-  /** The MIN_BUNDLE_ID compiled in, the ID of the built-in bundle. */
+  /**
+   * The MIN_BUNDLE_ID the app reports, the ID of the built-in bundle: the
+   * nil UUID for a debug build, whose native SDK reports that one.
+   */
   minBundleId: string;
   /** The default channel compiled in. */
   channel: string;
@@ -52,6 +55,7 @@ export const createNativeBuild = async ({
   scheme,
   minBundleId,
   target,
+  debug,
   readChannel,
   outputPath,
   buildAdapter,
@@ -61,6 +65,8 @@ export const createNativeBuild = async ({
   scheme: string;
   minBundleId: string;
   target: NativeBuildTarget;
+  /** A debug build, whose native SDK reports the nil UUID as MIN_BUNDLE_ID. */
+  debug: boolean;
   /** The native project's default channel, for a build that reads none. */
   readChannel: () => Promise<string>;
   outputPath: string;
@@ -109,7 +115,7 @@ export const createNativeBuild = async ({
   return {
     platform,
     scheme,
-    minBundleId,
+    minBundleId: debug ? NIL_UUID : minBundleId,
     channel,
     ...builtTarget,
     artifactPath: path.join(
