@@ -46,14 +46,17 @@ export type InitProviderDefinition<
  * when its database's schema ships as numbered migration files: applies the
  * files the database has not run, in order, and records each as the
  * provider's own tooling does, so a later init skips them. `skip` says why it
- * applied none, such as a database the provider's init did not create.
+ * applied none; `unmanaged` marks a database the provider's init did not
+ * create, which doctor migrates through the database's migrator when it has
+ * one.
  */
 export type MigrateManagedDatabase = (options: {
   readonly cwd: string;
   /** Prompts are off: a missing input is a skip that names its env key. */
   readonly nonInteractive: boolean;
 }) => Promise<
-  { readonly applied: readonly string[] } | { readonly skip: string }
+  | { readonly applied: readonly string[] }
+  | { readonly skip: string; readonly unmanaged?: true }
 >;
 
 export const defineInitProvider = <

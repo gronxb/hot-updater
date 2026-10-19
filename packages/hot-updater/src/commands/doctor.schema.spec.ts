@@ -121,7 +121,7 @@ describe("doctor's schema check", () => {
                 'The database has migrations to run before the server reads it: schema.notes is missing, expected "1".',
               resolution:
                 "Run `npx hot-updater doctor --fix` to create the missing tables and write the settings rows.",
-              fixability: "auto",
+              fixability: "command",
               commands: ["npx hot-updater doctor --fix"],
             },
           ],
@@ -233,6 +233,40 @@ describe("doctor's schema check", () => {
     expect(migrateDatabase).toHaveBeenCalledWith({
       cwd: "/project",
       nonInteractive: expect.any(Boolean),
+    });
+  });
+
+  it("migrates a D1 database the managed init did not create through its migrator", async () => {
+    vi.spyOn(INIT_PROVIDER_PACKAGES.cloudflare, "load").mockResolvedValue({
+      migrateDatabase: async () => ({
+        skip: "The D1 database has no record of 0001_hot-updater_1.0.0.sql.",
+        unmanaged: true,
+      }),
+    } as never);
+    serverProject(database("d1Database", { generateSchema: vi.fn() }));
+
+    await expect(doctor({ fix: true })).resolves.toMatchObject({
+      success: true,
+      details: {
+        fixes: [
+          { repair: "schema", status: "applied", wrote: ["schema.notes 1"] },
+        ],
+      },
+    });
+  });
+
+  it("refuses a setting whose version it cannot compare", async () => {
+    await storeSetting("schema.core", "next");
+    serverProject(database());
+
+    await expect(doctor({ fix: true })).resolves.toMatchObject({
+      success: false,
+      details: {
+        schema: {
+          issues: [{ code: "SCHEMA_NOT_MIGRATABLE", fixability: "blocked" }],
+        },
+        fixes: [],
+      },
     });
   });
 

@@ -98,6 +98,7 @@ describe("pushPendingMigrations", () => {
       pushPendingMigrations(workdir, { projectId: "project-ref" }),
     ).resolves.toEqual({
       skip: expect.stringContaining("hot-updater db generate"),
+      unmanaged: true,
     });
     expect(commands).not.toContain("db push");
   });

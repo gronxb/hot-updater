@@ -15,9 +15,10 @@ export type D1DatabaseConfig = D1RestConfig;
 /**
  * Hot Updater's database on D1 through the Cloudflare REST API, for the CLI
  * and console. `hot-updater db generate` writes a D1 migration of the built-in
- * tables and the server's plugin tables to `migrations`, which
- * `wrangler d1 migrations apply` runs. On the managed database,
- * `hot-updater doctor --fix` runs the provider's migrations it has not run.
+ * tables and the server's plugin tables to `migrations`, and
+ * `hot-updater db migrate` applies them through the API. On the managed
+ * database, `hot-updater doctor --fix` runs the Worker's migrations it has
+ * not run.
  */
 export const d1Database = (config: D1DatabaseConfig): ToolingDatabase => ({
   ...createD1Database(d1RestRunner(config)),

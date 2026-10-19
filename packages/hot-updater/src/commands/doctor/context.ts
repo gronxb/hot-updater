@@ -13,6 +13,8 @@ type Fingerprints = Awaited<ReturnType<typeof generateFingerprints>>;
  */
 export interface DoctorContext {
   readonly cwd: string;
+  /** Repairs never prompt: `--json`, or no terminal to answer in. */
+  readonly nonInteractive: boolean;
   /** The server hot-updater.config.ts describes; null when it names no database. */
   server(): Promise<LoadedServer | null>;
   /**
@@ -24,11 +26,15 @@ export interface DoctorContext {
   dispose(): Promise<void>;
 }
 
-export const createDoctorContext = (cwd: string): DoctorContext => {
+export const createDoctorContext = (
+  cwd: string,
+  nonInteractive = !process.stdin.isTTY,
+): DoctorContext => {
   let server: Promise<LoadedServer | null> | undefined;
   let fingerprints: Promise<Fingerprints> | undefined;
   return {
     cwd,
+    nonInteractive,
     server: () =>
       (server ??= loadConfig(null).then((config) =>
         config.database === undefined ? null : loadServer(config),

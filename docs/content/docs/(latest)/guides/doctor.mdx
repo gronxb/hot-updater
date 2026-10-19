@@ -341,10 +341,14 @@ How `--fix` migrates depends on the database:
 | Drizzle and Prisma | Nothing: run `hot-updater db generate`, apply the schema with the ORM, then `hot-updater db migrate` in the server's project |
 
 A managed provider's migrations create core's tables and the official
-plugins'. A D1 database or Supabase project that init did not create has none
-of them recorded, so `--fix` leaves it alone and names `hot-updater db
-generate` instead. Run `--fix` before you redeploy a managed server whose
-schema changed: the new server answers 503 until its database is migrated.
+plugins'. A D1 database that init did not create has none of them recorded, so
+`--fix` migrates it as `hot-updater db migrate` does instead; a Supabase
+project that init did not create is left alone, and `--fix` names `hot-updater
+db generate`. With `--json`, or without a terminal, `--fix` never prompts: a
+missing input, such as the Supabase database password, skips the repair and
+names its environment variable. Run `--fix` before you redeploy a managed
+server whose schema changed: the new server answers 503 until its database is
+migrated.
 
 A setting newer than this CLI expects is `SCHEMA_NEWER_THAN_CLI`: the database
 was migrated by a newer Hot Updater, and `--fix` never moves a schema back.

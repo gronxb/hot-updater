@@ -30,7 +30,7 @@ export const applyD1Migrations = async (
     batch(statements: readonly SqlStatement[]): Promise<readonly SqlResult[]>;
   },
   migrations: readonly D1Migration[],
-): Promise<{ applied: string[] } | { skip: string }> => {
+): Promise<{ applied: string[] } | { skip: string; unmanaged: true }> => {
   let ran: Set<string>;
   try {
     const { rows } = await runner.query({
@@ -44,7 +44,8 @@ export const applyD1Migrations = async (
   }
   if (!ran.has(FIRST_MIGRATION)) {
     return {
-      skip: `The D1 database has no record of ${FIRST_MIGRATION}, so \`hot-updater init\` did not create it. Run \`npx hot-updater db generate\` and apply the migration it writes with \`wrangler d1 migrations apply\`.`,
+      skip: `The D1 database has no record of ${FIRST_MIGRATION}, so \`hot-updater init\` did not create it. Run \`npx hot-updater db migrate\` in the server's project, or \`npx hot-updater db generate\` and apply the migration it writes with \`wrangler d1 migrations apply\`.`,
+      unmanaged: true,
     };
   }
   const pending = migrations

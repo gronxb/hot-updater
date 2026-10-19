@@ -53,6 +53,7 @@ const core = { name: "core" };
 /** A doctor run's context: one server and one fingerprint. */
 const context = (): DoctorContext => ({
   cwd: "/project",
+  nonInteractive: true,
   server: vi.fn(async () => ({ core }) as never),
   fingerprints: vi.fn(async () => fingerprints),
   dispose: vi.fn(async () => {}),

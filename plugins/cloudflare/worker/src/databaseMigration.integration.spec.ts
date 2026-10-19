@@ -72,6 +72,7 @@ it("leaves alone a database the managed init did not create", async () => {
     applyD1Migrations(runner, inject("d1Migrations")),
   ).resolves.toEqual({
     skip: expect.stringContaining("hot-updater db generate"),
+    unmanaged: true,
   });
   const tables = await env.DB.prepare(
     "SELECT name FROM sqlite_schema WHERE type = 'table' AND name NOT LIKE '_cf_%'",

@@ -140,6 +140,8 @@ interface DoctorOptions extends VerificationOptions {
   fetch?: typeof fetch;
   /** Runs every repair doctor can do itself, then checks again. */
   fix?: boolean;
+  /** Repairs never prompt, as for `--json`; by default when stdin is no terminal. */
+  nonInteractive?: boolean;
 }
 
 interface HandleDoctorOptions extends VerificationOptions {
@@ -886,7 +888,10 @@ export async function doctor(
   options: DoctorOptions = {},
 ): Promise<true | DoctorResult> {
   // One server and one fingerprint for the whole run, closed once at its end.
-  const context = createDoctorContext(options.cwd ?? getCwd());
+  const context = createDoctorContext(
+    options.cwd ?? getCwd(),
+    options.nonInteractive,
+  );
   try {
     const result = await checkProject(options, context);
     // Scoped verification never repairs: the CLI refuses --fix with its
@@ -1010,7 +1015,12 @@ export const handleDoctor = async ({
 }: HandleDoctorOptions = {}) => {
   if (json) {
     const result = normalizeDoctorResult(
-      await doctor({ serverBaseUrl, fix, ...verificationOptions }),
+      await doctor({
+        serverBaseUrl,
+        fix,
+        nonInteractive: true,
+        ...verificationOptions,
+      }),
     );
     console.log(JSON.stringify(result, null, 2));
     if (!result.success) {

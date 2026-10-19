@@ -1195,19 +1195,18 @@ export const migrateDatabase: MigrateManagedDatabase = ({
         skip: `Set ${SUPABASE_INIT_PROVIDER.inputs.projectId.envKey} in .env.hotupdater or the environment: the Supabase project init created.`,
       };
     }
-    if (nonInteractive && inputs.databasePassword === undefined) {
-      return {
-        skip: `Set ${SUPABASE_INIT_PROVIDER.inputs.databasePassword.envKey}, the project's database password, to push its migrations.`,
-      };
-    }
     const accessToken = nonInteractive
       ? inputs.accessToken
       : await inputSupabaseAccessToken(inputs.accessToken);
     const dbPassword = await inputSupabaseDatabasePassword({
       databasePassword: inputs.databasePassword,
       nonInteractive,
-      required: true,
     });
+    if (dbPassword === "") {
+      return {
+        skip: `Set ${SUPABASE_INIT_PROVIDER.inputs.databasePassword.envKey}, the project's database password, to push its migrations.`,
+      };
+    }
     const { tmpDir, removeTmpDir } = await copyDirToTmp(
       path.dirname(
         path.resolve(require.resolve("@hot-updater/supabase/scaffold")),

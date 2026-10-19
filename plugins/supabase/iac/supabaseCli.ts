@@ -154,7 +154,16 @@ export const linkSupabase = async (
 /** Pushes the workdir's migrations the linked project has not run, after its own history. */
 const runSupabasePush = async (
   workdir: string,
-  { accessToken, dbPassword }: { accessToken?: string; dbPassword?: string },
+  {
+    accessToken,
+    dbPassword,
+    quiet = false,
+  }: {
+    accessToken?: string;
+    dbPassword?: string;
+    /** Keeps the CLI's output off stdout, which `doctor --json` writes. */
+    quiet?: boolean;
+  },
 ) => {
   await execa(
     "npx",
@@ -193,9 +202,13 @@ const runSupabasePush = async (
     {
       cwd: workdir,
       env: getSupabaseCommandEnv(accessToken, dbPassword),
-      stderr: ["pipe", "inherit"],
-      stdin: "inherit",
-      stdout: "inherit",
+      ...(quiet
+        ? { input: "" }
+        : {
+            stderr: ["pipe", "inherit"] as const,
+            stdin: "inherit" as const,
+            stdout: "inherit" as const,
+          }),
     },
   );
 };
@@ -263,7 +276,7 @@ export const pushPendingMigrations = async (
     projectId: string;
     dbPassword?: string;
   },
-): Promise<{ applied: string[] } | { skip: string }> => {
+): Promise<{ applied: string[] } | { skip: string; unmanaged: true }> => {
   try {
     await runSupabaseLink(workdir, options);
     const remote = await listRemoteMigrationVersions(workdir, options);
@@ -276,16 +289,18 @@ export const pushPendingMigrations = async (
     if (first === undefined || !remote.has(migrationVersion(first))) {
       return {
         skip: `The Supabase project's migration history has no ${first}, so \`hot-updater init\` did not create its tables. Run \`npx hot-updater db generate\` and apply the migration it writes with \`supabase db push\`.`,
+        unmanaged: true,
       };
     }
     const pending = names.filter((name) => !remote.has(migrationVersion(name)));
-    if (pending.length > 0) await runSupabasePush(workdir, options);
+    if (pending.length > 0) {
+      await runSupabasePush(workdir, { ...options, quiet: true });
+    }
     return { applied: pending };
   } catch (err) {
     throw new Error(
       supabaseDatabaseCommandErrorMessage(err, {
         dbPassword: options.dbPassword,
-        stderrInherited: true,
       }),
       { cause: err },
     );

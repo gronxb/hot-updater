@@ -88,8 +88,6 @@ const REPAIRS: readonly {
       );
       return "skip" in result ? result : { ...result, native: false };
     },
-    note: () =>
-      "The checks ran again on the migrated database. Run doctor --fix again to repair what they found there.",
   },
   {
     // What `fingerprint create` writes, where it differs.

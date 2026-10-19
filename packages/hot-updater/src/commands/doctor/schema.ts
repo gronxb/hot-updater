@@ -102,7 +102,8 @@ export const checkSchema = async (
   } catch {
     return undefined;
   }
-  if (server === null) return undefined;
+  // A self-hosted server's admin API checks its own fence.
+  if (server === null || isRemoteDatabase(server.database)) return undefined;
   try {
     await server.core.listChannels();
     return undefined;
@@ -129,14 +130,19 @@ const schemaStatus = (
     });
     return { settings: [...settings], issues };
   }
+  // The engine's layout, or a version this CLI cannot compare, is never
+  // migrated in place.
   const engine = settings.filter(
-    ({ key, found }) => key === "schema.engine" && found !== null,
+    ({ key, expected, found }) =>
+      found !== null &&
+      (key === "schema.engine" ||
+        Number.isNaN(compareVersions(found, expected))),
   );
   const newer = settings.filter(
-    ({ key, expected, found }) =>
-      key !== "schema.engine" &&
-      found !== null &&
-      compareVersions(found, expected) > 0,
+    (setting) =>
+      !engine.includes(setting) &&
+      setting.found !== null &&
+      compareVersions(setting.found, setting.expected) > 0,
   );
   const pending = settings.filter(
     (setting) => !engine.includes(setting) && !newer.includes(setting),
@@ -145,7 +151,7 @@ const schemaStatus = (
     issues.push({
       type: "error",
       code: "SCHEMA_NOT_MIGRATABLE",
-      message: `The database's storage layout differs from this hot-updater's: ${listed(engine)}.`,
+      message: `The database's schema settings are not ones this hot-updater migrates: ${listed(engine)}.`,
       resolution:
         "Use the hot-updater version the database was created with, or create a new empty database.",
       fixability: "blocked",
@@ -168,7 +174,7 @@ const schemaStatus = (
       message: `The database has migrations to run before the server reads it: ${listed(pending)}.`,
       resolution: pendingResolution(server),
       settings: pending,
-      fixability: migrationPath(server) === "orm" ? "command" : "auto",
+      fixability: "command",
       commands:
         migrationPath(server) === "orm"
           ? ["npx hot-updater db generate", "npx hot-updater db migrate"]
@@ -176,6 +182,25 @@ const schemaStatus = (
     });
   }
   return { settings: [...settings], issues };
+};
+
+/** `hot-updater db migrate` over the config's database and plugins. */
+const runMigrator = async (
+  database: Parameters<typeof createMigrator>[0]["database"],
+  plugins: LoadedServer["plugins"],
+  settings: readonly SchemaSetting[],
+) => {
+  const migration = await createMigrator({
+    database,
+    plugins,
+  }).migrateToLatest({ updateSettings: true });
+  await migration.execute();
+  return {
+    wrote:
+      migration.operations.length === 0
+        ? []
+        : settings.map(({ key, expected }) => `${key} ${expected}`),
+  };
 };
 
 /**
@@ -211,25 +236,21 @@ export const migrateServerSchema = async (
       }
       const result = await migrateDatabase({
         cwd: context.cwd,
-        nonInteractive: !process.stdin.isTTY,
+        nonInteractive: context.nonInteractive,
       });
-      return "skip" in result
-        ? { skip: result.skip }
-        : { wrote: result.applied.map((name) => `migration ${name}`) };
-    }
-    case "migrator": {
-      const migrator = createMigrator({ database, plugins });
-      const migration = await migrator.migrateToLatest({
-        updateSettings: true,
-      });
-      await migration.execute();
-      return {
-        wrote:
-          migration.operations.length === 0
-            ? []
-            : settings.map(({ key, expected }) => `${key} ${expected}`),
+      if (!("skip" in result)) {
+        return { wrote: result.applied.map((name) => `migration ${name}`) };
+      }
+      // A database the provider's init did not create migrates as any other.
+      const tooling = database as typeof database & {
+        readonly createMigrator?: unknown;
       };
+      return result.unmanaged && tooling.createMigrator !== undefined
+        ? runMigrator(database, plugins, settings)
+        : { skip: result.skip };
     }
+    case "migrator":
+      return runMigrator(database, plugins, settings);
     case "orm":
       return {
         skip: "Drizzle and Prisma create their own tables. Run `npx hot-updater db generate`, apply the schema with your ORM, then run `npx hot-updater db migrate` in the server's project.",
