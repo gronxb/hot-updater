@@ -9,6 +9,7 @@ import { exportXcodeArchive } from "./builder/exportXcodeArchive";
 import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";
 import { createRandomTmpDir } from "./utils/createRandomTmpDir";
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
+import { readBuiltApp } from "./utils/readBuiltApp";
 import {
   resolveXcodeAuthenticationArgs,
   writeAppStoreConnectExportOptions,
@@ -30,8 +31,8 @@ export const buildIos = async ({
 }): Promise<{
   buildDirectory: string;
   buildArtifactPath: string;
-  /** The built `.app` inside `buildDirectory`. */
-  appPath?: string;
+  /** What the built app reports, from its Info.plist. */
+  builtApp?: { appVersion: string | null; channel: string | null };
 }> => {
   await assertXcodebuildExist();
   const iosProjectRoot = path.join(getCwd(), "ios");
@@ -72,7 +73,7 @@ export const buildIos = async ({
     return {
       buildDirectory: buildDirectory,
       buildArtifactPath: finalAppPath,
-      appPath: finalAppPath,
+      builtApp: await readBuiltApp(finalAppPath),
     };
   } else {
     if (!schemeConfig.exportOptionsPlist && !schemeConfig.signing?.ascApiKey) {
@@ -142,7 +143,9 @@ export const buildIos = async ({
     return {
       buildDirectory: buildDirectory,
       buildArtifactPath: path.join(exportDir, ipaFile),
-      appPath: archivedAppPath,
+      builtApp: archivedAppPath
+        ? await readBuiltApp(archivedAppPath)
+        : undefined,
     };
   }
 };

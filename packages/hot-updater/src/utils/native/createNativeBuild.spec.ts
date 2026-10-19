@@ -101,23 +101,8 @@ describe("createNativeBuild", () => {
     expect(result.fingerprintHash).toBe("fingerprint");
   });
 
-  it("reports the app version and channel the built iOS app's Info.plist holds", async () => {
+  it("reports the app version and channel the built app holds, over the project's", async () => {
     const built = await writeArtifact("export/App.ipa");
-    const appPath = path.join(built.buildDirectory, "archive", "App.app");
-    await fs.mkdir(appPath, { recursive: true });
-    await fs.writeFile(
-      path.join(appPath, "Info.plist"),
-      `<?xml version="1.0" encoding="UTF-8"?>
-<plist version="1.0">
-<dict>
-  <key>CFBundleShortVersionString</key>
-  <string>2.0.0</string>
-  <key>HOT_UPDATER_CHANNEL</key>
-  <string>beta</string>
-</dict>
-</plist>
-`,
-    );
     const readChannel = vi.fn(async () => "production");
 
     const result = await createNativeBuild({
@@ -129,7 +114,10 @@ describe("createNativeBuild", () => {
       readChannel,
       outputPath: path.join(root, "output"),
       buildAdapter: buildAdapter([]),
-      builder: async () => ({ ...built, appPath }),
+      builder: async () => ({
+        ...built,
+        builtApp: { appVersion: "2.0.0", channel: "beta" },
+      }),
     });
 
     expect(result).toMatchObject({
@@ -138,6 +126,30 @@ describe("createNativeBuild", () => {
       channel: "beta",
     });
     expect(readChannel).not.toHaveBeenCalled();
+  });
+
+  it("reports the default channel for a built app without one, and keeps the fingerprint", async () => {
+    const built = await writeArtifact("app-release.aab");
+
+    const result = await createNativeBuild({
+      platform: "android",
+      scheme: "release",
+      minBundleId: "0190a1b2-c3d4-7000-8000-02a1b2c3d4e5",
+      target: { fingerprintHash: "fingerprint", appVersion: null },
+      readChannel: async () => "beta",
+      outputPath: path.join(root, "output"),
+      buildAdapter: buildAdapter([]),
+      builder: async () => ({
+        ...built,
+        builtApp: { appVersion: "1.0.0", channel: null },
+      }),
+    });
+
+    expect(result).toMatchObject({
+      fingerprintHash: "fingerprint",
+      appVersion: null,
+      channel: "production",
+    });
   });
 
   it("rejects an artifact that is none of the kinds", async () => {

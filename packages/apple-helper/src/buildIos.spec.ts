@@ -11,6 +11,12 @@ vi.mock("@hot-updater/cli-tools", () => ({
   getCwd: () => root,
   p: { log: { success: vi.fn(), warn: vi.fn(), error: vi.fn() } },
 }));
+vi.mock("./utils/readBuiltApp", () => ({
+  readBuiltApp: vi.fn(async (appPath: string) => ({
+    appVersion: "2.0.0",
+    channel: appPath,
+  })),
+}));
 vi.mock("./utils/assertXcodebuildExist", () => ({
   assertXcodebuildExist: vi.fn(),
 }));
@@ -96,7 +102,7 @@ describe("buildIos", () => {
   it("builds a simulator .app without resolving signing credentials", async () => {
     const credentials = ascKeyResolver();
 
-    const { buildDirectory, buildArtifactPath, appPath } = await buildIos({
+    const { buildDirectory, buildArtifactPath, builtApp } = await buildIos({
       schemeConfig: scheme({
         simulator: true,
         signing: { ascApiKey: "asc-api-key" },
@@ -106,7 +112,11 @@ describe("buildIos", () => {
     });
 
     expect(buildArtifactPath).toBe(path.join(buildDirectory, "app", "App.app"));
-    expect(appPath).toBe(buildArtifactPath);
+    // Read from the built app.
+    expect(builtApp).toEqual({
+      appVersion: "2.0.0",
+      channel: buildArtifactPath,
+    });
     expect(buildXcodeProject).toHaveBeenCalledWith(
       expect.objectContaining({
         deviceType: "simulator",
@@ -124,7 +134,7 @@ describe("buildIos", () => {
     const credentials = ascKeyResolver();
     const exportOptionsPlist = path.join(root, "ExportOptions.plist");
 
-    const { buildDirectory, buildArtifactPath, appPath } = await buildIos({
+    const { buildDirectory, buildArtifactPath, builtApp } = await buildIos({
       schemeConfig: scheme({ exportOptionsPlist }),
       minBundleId: MIN_BUNDLE_ID,
       credentials,
@@ -133,8 +143,10 @@ describe("buildIos", () => {
     expect(buildArtifactPath).toBe(
       path.join(buildDirectory, "export", "App.ipa"),
     );
-    // The archived app, whose Info.plist holds what the build reports.
-    expect(appPath).toBe(path.join(buildDirectory, "archive", "App.app"));
+    // Read from the archived app the .ipa exports.
+    expect(builtApp?.channel).toBe(
+      path.join(buildDirectory, "archive", "App.app"),
+    );
     expect(archiveXcodeProject).toHaveBeenCalledWith(
       expect.objectContaining({
         minBundleId: MIN_BUNDLE_ID,

@@ -18,6 +18,11 @@ that select its OTA updates, and prints them with the artifact:
 | App version   | The native app version, with the [app version strategy](/docs/guides/update-strategies/app-version) |
 | Channel       | The default channel that [`channel set`](/docs/guides/channel-management) wrote                    |
 
+The build reads the app version and channel from the artifact it built, so
+the values a flavor, build type, `versionNameSuffix`, `xcconfig` or
+`extraParams` sets are the ones it reports. On Android it reads them with the
+SDK's `aapt2`.
+
 `hot-updater run:android` and `hot-updater run:ios` build the same schemes and
 install the app on a device, emulator or simulator.
 

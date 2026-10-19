@@ -5,6 +5,9 @@ vi.mock("@hot-updater/cli-tools", () => ({
   getCwd: () => "/app",
   p: { log: { info: vi.fn() } },
 }));
+vi.mock("./utils/readBuiltApp", () => ({
+  readBuiltApp: vi.fn(async () => ({ appVersion: "1.0", channel: "beta" })),
+}));
 vi.mock("./builder/runGradle", () => ({
   runGradle: vi.fn(async () => ({
     buildDirectory: "/app/android/app/build/outputs/apk/release",
@@ -46,10 +49,10 @@ beforeEach(() => {
 });
 
 describe("buildAndroid", () => {
-  it("compiles in the MIN_BUNDLE_ID it is given", async () => {
+  it("compiles in the MIN_BUNDLE_ID it is given, and reports what the built artifact holds", async () => {
     const credentials = keystoreResolver();
 
-    await buildAndroid({
+    const { builtApp } = await buildAndroid({
       schemeConfig: scheme(),
       minBundleId: MIN_BUNDLE_ID,
       credentials,
@@ -63,6 +66,7 @@ describe("buildAndroid", () => {
       }),
     );
     expect(credentials.resolve).not.toHaveBeenCalled();
+    expect(builtApp).toEqual({ appVersion: "1.0", channel: "beta" });
   });
 
   it("signs a release variant with the scheme's keystore through the environment, off the command line", async () => {
