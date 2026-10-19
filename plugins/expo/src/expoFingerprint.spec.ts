@@ -110,6 +110,30 @@ describe("readExpoSettings", () => {
     expect(read({ a: 1, b: 3 })).not.toEqual(before);
   });
 
+  it("tells apart options JSON would drop or flatten", () => {
+    const read = (props: object) =>
+      pluginSettings(
+        project,
+        { plugins: [["expo-build-properties", props]] },
+        "ios",
+      );
+    const distinct = [
+      {},
+      { a: undefined },
+      { a: () => 1 },
+      { a: () => 2 },
+      { a: new Date(0) },
+      { a: new Date(1) },
+      { a: /x/u },
+      { a: /y/u },
+      { a: 1n },
+      { a: new Map([["k", 1]]) },
+      { a: new Set([1]) },
+    ].map((props) => JSON.stringify(read(props)));
+
+    expect(new Set(distinct).size).toBe(distinct.length);
+  });
+
   it("counts a registry plugin by its version", async () => {
     const read = () =>
       pluginSettings(project, { plugins: ["expo-build-properties"] }, "ios");

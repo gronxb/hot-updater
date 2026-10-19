@@ -32,16 +32,30 @@ type AppConfig = {
 // don't change what JavaScript can call.
 const HOT_UPDATER_PACKAGE = "@hot-updater/expo";
 
-const sortKeys = (value: unknown): unknown =>
-  Array.isArray(value)
-    ? value.map(sortKeys)
-    : value && typeof value === "object"
-      ? Object.fromEntries(
-          Object.entries(value)
-            .sort(([a], [b]) => (a < b ? -1 : 1))
-            .map(([key, entry]) => [key, sortKeys(entry)]),
-        )
-      : value;
+/**
+ * A plugin option as JSON that keeps every value apart: keys sorted, and the
+ * values JSON drops or flattens (`undefined`, functions, dates, regular
+ * expressions, big integers, maps, and sets) tagged with what they hold.
+ */
+const canonical = (value: unknown): unknown => {
+  if (value === undefined) return { $undefined: true };
+  if (typeof value === "function") return { $function: value.toString() };
+  if (typeof value === "bigint") return { $bigint: value.toString() };
+  if (typeof value === "symbol") return { $symbol: value.toString() };
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map(canonical);
+  if (value instanceof Date) return { $date: value.getTime() };
+  if (value instanceof RegExp) return { $regexp: value.toString() };
+  if (value instanceof Map) {
+    return { $map: [...value].map((entry) => entry.map(canonical)) };
+  }
+  if (value instanceof Set) return { $set: [...value].map(canonical) };
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([a], [b]) => (a < b ? -1 : 1))
+      .map(([key, entry]) => [key, canonical(entry)]),
+  );
+};
 
 /**
  * The folder of the installed package `name`, from the node_modules folders
@@ -268,7 +282,7 @@ const collectExpoSettings = (
         props === undefined || props === null
           ? null
           : `sha256:${createHash("sha256")
-              .update(JSON.stringify(sortKeys(props)))
+              .update(JSON.stringify(canonical(props)))
               .digest("hex")}`,
       source: identity.source,
     });
