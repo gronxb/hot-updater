@@ -5,7 +5,11 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { isHotUpdaterPlugin, readExpoSettings } from "./expoFingerprint";
+import {
+  isHotUpdaterPlugin,
+  reactNativeConfigCommands,
+  readExpoSettings,
+} from "./expoFingerprint";
 
 let project: string;
 
@@ -139,6 +143,25 @@ describe("readExpoSettings", () => {
     });
   });
 
+  it("counts a registry plugin passed as a named export by its version", async () => {
+    await fs.writeFile(
+      path.join(project, "node_modules/expo-build-properties/index.js"),
+      "exports.withNative = (config) => config;",
+    );
+    const { withNative } = createRequire(path.join(project, "package.json"))(
+      path.join(project, "node_modules/expo-build-properties"),
+    ) as { withNative: Function };
+
+    expect(readExpoSettings(project, { plugins: [withNative] }, "ios")).toEqual(
+      {
+        "expo.plugin[0]:expo-build-properties": JSON.stringify({
+          props: null,
+          source: "expo-build-properties@0.13.2",
+        }),
+      },
+    );
+  });
+
   it("counts a workspace plugin package by its name", async () => {
     const workspace = await fs.realpath(
       await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-expo-ws-")),
@@ -211,5 +234,25 @@ describe("isHotUpdaterPlugin", () => {
     expect(isHotUpdaterPlugin(project, load(appPlugin))).toBe(true);
     expect(isHotUpdaterPlugin(project, "expo-build-properties")).toBe(false);
     expect(isHotUpdaterPlugin(project, "./plugins/withLocal")).toBe(false);
+  });
+});
+
+describe("reactNativeConfigCommands", () => {
+  it("lists React Native packages with Expo's autolinking, then React Native CLI", () => {
+    expect(reactNativeConfigCommands(project, "ios", {})).toHaveLength(2);
+  });
+
+  it("uses React Native CLI alone when EXPO_USE_COMMUNITY_AUTOLINKING=1", async () => {
+    await writePackage(path.join(project, "node_modules/react-native"), {
+      name: "react-native",
+      version: "0.76.0",
+    });
+    const commands = reactNativeConfigCommands(project, "ios", {
+      EXPO_USE_COMMUNITY_AUTOLINKING: "1",
+    });
+
+    expect(commands.map((command) => command())).toEqual([
+      [path.join(project, "node_modules/react-native/cli.js"), "config"],
+    ]);
   });
 });

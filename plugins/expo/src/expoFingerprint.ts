@@ -94,13 +94,21 @@ const owningPackage = (
 };
 
 /**
- * The cached module a function plugin comes from: the one whose export it
- * is, such as `plugins: [require("./plugins/withNative")]`.
+ * The cached module a function plugin comes from: the one that exports it,
+ * as `module.exports`, `default`, or a named export, such as
+ * `plugins: [require("./plugins/withNative")]`.
  */
 const functionPluginModule = (plugin: unknown): string | null => {
   for (const [file, module] of Object.entries(require.cache)) {
-    const exports = module?.exports as { default?: unknown } | undefined;
-    if (exports === plugin || exports?.default === plugin) return file;
+    const exports: unknown = module?.exports;
+    if (
+      exports === plugin ||
+      (exports !== null &&
+        typeof exports === "object" &&
+        Object.values(exports).includes(plugin))
+    ) {
+      return file;
+    }
   }
   return null;
 };
@@ -256,6 +264,41 @@ const autolinkingBin = (cwd: string) => {
 };
 
 /**
+ * The commands that list the React Native packages a build links, in the
+ * order to try. Expo's autolinking lists them, unless
+ * `EXPO_USE_COMMUNITY_AUTOLINKING=1` makes the native templates link them
+ * with React Native CLI, as Expo documents. SDKs whose
+ * expo-modules-autolinking predates `react-native-config` (before 1.11.2,
+ * such as SDK 50) also link them with React Native CLI.
+ */
+export const reactNativeConfigCommands = (
+  cwd: string,
+  platform: Platform,
+  env: NodeJS.ProcessEnv = process.env,
+): (() => string[])[] => {
+  const community = () => [
+    path.join(
+      path.dirname(
+        require.resolve("react-native/package.json", { paths: [cwd] }),
+      ),
+      "cli.js",
+    ),
+    "config",
+  ];
+  if (env["EXPO_USE_COMMUNITY_AUTOLINKING"] === "1") return [community];
+  return [
+    () => [
+      autolinkingBin(cwd),
+      "react-native-config",
+      "--platform",
+      platform,
+      "--json",
+    ],
+    community,
+  ];
+};
+
+/**
  * The Expo adapter's native fingerprint: the native packages Expo's
  * autolinking links, and the settings the app config declares. Neither
  * needs the generated ios/ and android/ folders, so `fingerprint create`
@@ -271,37 +314,22 @@ export const expoFingerprint = async (
     exp as AppConfig,
     options.platform,
   );
-  const read = (command: string[]) =>
+  const read = (command: () => string[]) =>
     readReactNativeInterface({
       cwd,
       command: process.execPath,
-      args: command,
+      args: command(),
       platform: options.platform,
       settings,
     });
+  const [first, fallback] = reactNativeConfigCommands(cwd, options.platform);
   let nativeInterface;
   try {
-    nativeInterface = await read([
-      autolinkingBin(cwd),
-      "react-native-config",
-      "--platform",
-      options.platform,
-      "--json",
-    ]);
+    nativeInterface = await read(first!);
   } catch (error) {
-    // SDKs whose expo-modules-autolinking predates `react-native-config`
-    // (before 1.11.2, such as SDK 50) autolink React Native packages with
-    // React Native CLI, so its config lists them.
+    if (!fallback) throw error;
     try {
-      nativeInterface = await read([
-        path.join(
-          path.dirname(
-            require.resolve("react-native/package.json", { paths: [cwd] }),
-          ),
-          "cli.js",
-        ),
-        "config",
-      ]);
+      nativeInterface = await read(fallback);
     } catch {
       throw error;
     }

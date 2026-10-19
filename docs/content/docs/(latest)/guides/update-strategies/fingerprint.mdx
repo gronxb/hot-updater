@@ -111,6 +111,9 @@ and Expo's autolinking, not the generated `ios/` and `android/` folders, so
 `fingerprint create` before `expo prebuild` and the native build after it
 compute the same fingerprint. An Expo module counts when Expo's autolinking
 links it: in a monorepo, that means it is listed in the app's `dependencies`.
+With `EXPO_USE_COMMUNITY_AUTOLINKING=1`, React Native packages come from React
+Native CLI, as the native build links them; set it the same way where you run
+`fingerprint create` and where you build.
 Adding, removing, or reordering a config plugin, or changing its options,
 changes the fingerprint, except for Hot Updater's own plugin, whose channel
 and public key don't change what JavaScript can call. A plugin installed from
