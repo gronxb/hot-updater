@@ -21,6 +21,7 @@ const featureSet = (
     insightsAnalytics: false,
     apiKeys: false,
     remoteConfig: false,
+    vault: false,
     ...features,
   },
   remote,

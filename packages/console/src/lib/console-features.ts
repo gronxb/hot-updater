@@ -22,6 +22,8 @@ export const consoleFeatures = {
   },
   /** API key management: `apiKeys()` mounts no admin routes to manage them. */
   apiKeys: { plugin: "apiKeys", label: "API keys", remote: false },
+  /** Secrets and vault tokens, read from the database and opened with the console's master key. */
+  vault: { plugin: "vault", label: "Vault", remote: false },
 } as const satisfies Readonly<
   Record<
     string,

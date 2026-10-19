@@ -1,6 +1,6 @@
 import path from "node:path";
 
-import { loadConfig, p } from "@hot-updater/cli-tools";
+import { loadConfig, lockVaultReveal, p } from "@hot-updater/cli-tools";
 import {
   type AnyHotUpdaterPlugin,
   type HotUpdaterCoreApi,
@@ -42,10 +42,11 @@ export interface PluginRequirement {
   readonly serverImportLine: string;
 }
 
+// The definition's own vault, which may hold a master key, reveals nothing here.
 const fromDefinition = (loaded: LoadHotUpdaterResult): PluginServer => ({
   core: loaded.hotUpdater.core,
   plugins: loaded.hotUpdater.plugins,
-  api: loaded.hotUpdater.api,
+  api: lockVaultReveal(loaded.hotUpdater.api),
   fetchAdmin: undefined,
   definitionPath: path.relative(process.cwd(), loaded.absoluteConfigPath),
   dispose: loaded.dispose,

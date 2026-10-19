@@ -73,6 +73,24 @@ export interface VaultToken {
   readonly revokedAtMs: number | null;
 }
 
+/** What an audit entry records: a list of secrets, or a read of their values. */
+export const VAULT_AUDIT_ACTIONS = ["list", "read"] as const;
+
+export type VaultAuditAction = (typeof VAULT_AUDIT_ACTIONS)[number];
+
+/** One line of the vault's audit log, as `recordAudit` takes it. */
+export interface VaultAuditEntry {
+  /** A token id or a Console user's email. */
+  readonly actor: string;
+  readonly action: VaultAuditAction;
+  /** The secret the entry is about; absent for a list. */
+  readonly secretId?: string;
+  /** `denied` when the vault refused the request, such as out of scope. */
+  readonly outcome: "allowed" | "denied";
+  /** Non-secret details, such as the requested name or a CI run. */
+  readonly context?: Readonly<Record<string, DatabaseJson>>;
+}
+
 /** What `verifyToken` found: the token, or why it is refused. */
 export type VaultTokenVerification =
   | { readonly ok: true; readonly token: VaultToken }
@@ -149,6 +167,13 @@ export interface VaultApi {
   verifyToken(input: {
     readonly token: string;
   }): Promise<VaultTokenVerification>;
+  /**
+   * Appends entries to the audit log in one write, reading nothing, so the
+   * Console records each request it serves before it answers.
+   */
+  recordAudit(input: {
+    readonly entries: readonly VaultAuditEntry[];
+  }): Promise<void>;
 }
 
 /** An argument the vault refuses, such as an unknown kind. */
@@ -286,6 +311,21 @@ const normalizeTokenName = (name: unknown): string => {
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
+
+const normalizeAuditContext = (
+  context: unknown,
+): Readonly<Record<string, DatabaseJson>> => {
+  if (!isPlainObject(context)) {
+    throw new VaultInputError("An audit entry's context is a JSON object.");
+  }
+  const json = JSON.stringify(context);
+  if (utf8Length(json) > MAX_METADATA_BYTES) {
+    throw new VaultInputError(
+      `An audit entry's context holds up to ${MAX_METADATA_BYTES} bytes of JSON.`,
+    );
+  }
+  return JSON.parse(json) as Record<string, DatabaseJson>;
+};
 
 const refuseUnknownKeys = (
   value: Record<string, unknown>,
@@ -696,6 +736,38 @@ export const createVaultApi = ({
         return { ok: false, reason: "expired" } as const;
       }
       return { ok: true, token: toToken(row) } as const;
+    },
+
+    async recordAudit({ entries }) {
+      const rows = entries.map((entry) => {
+        if (
+          !VAULT_AUDIT_ACTIONS.includes(entry.action) ||
+          (entry.outcome !== "allowed" && entry.outcome !== "denied") ||
+          typeof entry.actor !== "string" ||
+          entry.actor.length === 0 ||
+          entry.actor.length > 255
+        ) {
+          throw new VaultInputError(
+            `An audit entry has an actor of 1-255 characters, an action of ${VAULT_AUDIT_ACTIONS.join(", ")}, and an outcome of allowed or denied.`,
+          );
+        }
+        return {
+          id: randomId("aud"),
+          actor: entry.actor,
+          action: entry.action,
+          secret_id: entry.secretId ?? null,
+          outcome: entry.outcome,
+          context:
+            entry.context === undefined
+              ? {}
+              : normalizeAuditContext(entry.context),
+        };
+      });
+      if (rows.length === 0) return;
+      const at = now();
+      await db.transaction(async (tx) => {
+        for (const row of rows) tx.create("audit", { ...row, at_ms: at });
+      });
     },
   } satisfies VaultApi);
 };

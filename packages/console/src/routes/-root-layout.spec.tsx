@@ -223,6 +223,7 @@ describe("root loader", () => {
       insightsAnalytics: false,
       apiKeys: false,
       remoteConfig: false,
+      vault: false,
     },
     remote: true,
   };

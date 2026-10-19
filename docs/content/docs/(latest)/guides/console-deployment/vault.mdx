@@ -1,0 +1,113 @@
+---
+title: "Vault routes"
+description: "Serve the vault from the console to CI with a scoped vault token."
+icon: KeyRound
+---
+
+## Turn on the vault
+
+The console serves the vault of `vault()`, Hot Updater's vault plugin, at
+`/_hot-updater/vault/v1/`. It needs three things:
+
+- `vault()` in the `plugins` of `console.config.ts`, imported from
+  `@hot-updater/server/plugins`, and in the `plugins` of
+  `hot-updater.config.ts`, from `hot-updater/plugins`. Your server does not run
+  it.
+- The vault's tables in your database. A managed database gets them from
+  [`hot-updater doctor --fix`](/docs/guides/doctor#check-the-database-schema);
+  a self-hosted one from `hot-updater db migrate` or `db generate`.
+- `HOT_UPDATER_VAULT_MASTER_KEY` in the console's **runtime** environment: 32
+  random bytes in base64, from `openssl rand -base64 32`. Keep it out of the
+  environment that holds your database credentials and out of CI.
+
+The console is the only place secrets are decrypted. The CLI lists secrets and
+issues and revokes tokens over the database, but refuses to reveal a value,
+even where the master key is set or a server definition passes
+`vault({ masterKey })`.
+
+A console whose `database` is `standaloneRepository(...)` serves no vault: the
+secrets live in the server's database, which only a console over that database
+opens. Its vault routes answer `404 vault_unavailable`.
+
+## Authenticate with a vault token
+
+Send a vault token in every request:
+
+```http
+Authorization: Bearer hu_vault_...
+```
+
+The routes take no session cookie and no client API key, so the console's
+sign-in and email allowlist never apply to them. The token's scope decides
+which secrets a request reaches. An optional `x-hot-updater-ci-run` header,
+such as a CI run URL, is kept in the audit log. Every response is
+`Cache-Control: no-store`.
+
+## List secrets
+
+`GET /_hot-updater/vault/v1/secrets` returns the secrets the token's scope
+reaches, for any of its actions, without values:
+
+```json
+{
+  "secrets": [
+    {
+      "id": "sec-...",
+      "name": "release-keystore",
+      "kind": "android-keystore",
+      "version": 3,
+      "metadata": {},
+      "createdAtMs": 1790000000000,
+      "updatedAtMs": 1790000000000
+    }
+  ]
+}
+```
+
+## Resolve values
+
+`POST /_hot-updater/vault/v1/resolve` with `{ "names": [...] }`, 1 to 100
+secret names, returns their current values in one response. The token's scope
+must allow `read` on each:
+
+```json
+{
+  "secrets": [
+    {
+      "name": "release-keystore",
+      "kind": "android-keystore",
+      "version": 3,
+      "value": { "storePassword": "..." }
+    }
+  ],
+  "errors": [
+    {
+      "name": "play-account",
+      "code": "not_found",
+      "message": "No secret is named play-account."
+    }
+  ]
+}
+```
+
+- Any name outside the token's scope refuses the whole request with 403,
+  whether or not a secret has it. A name with no secret is a `not_found` entry
+  in `errors` only when the scope lists that name.
+- A `bundle-signing-key` is never resolved, even in scope: the console signs
+  bundles with it at `/_hot-updater/signing`.
+- Each value read and each refused name is written to the vault's audit log
+  before the response is sent.
+
+## Errors
+
+Refusals are `{ "error": { "code", "message" } }`:
+
+| Status | Code | Cause |
+| --- | --- | --- |
+| 400 | `invalid_request` | The resolve body is not `{ "names": [...] }` with 1 to 100 names |
+| 401 | `unauthorized` | No token, or a token that is unknown, revoked, or expired |
+| 403 | `forbidden` | The scope does not allow `read`, a name is out of scope, or a name is a `bundle-signing-key` |
+| 404 | `vault_unavailable` | The console runs without `vault()`, or over `standaloneRepository(...)` |
+| 503 | `vault_locked` | `HOT_UPDATER_VAULT_MASTER_KEY` is not set where the console runs |
+
+A 401 also carries `WWW-Authenticate: Bearer realm="hot-updater-vault"`.
