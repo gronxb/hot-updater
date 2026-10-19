@@ -145,6 +145,50 @@ Install a simulator `.app` with
 `xcrun simctl install booted <path-to-app>`, and an `.apk` with
 `adb install <path-to-apk>`.
 
+## Register a build
+
+Add `--register` to record a release build in the native build registry of
+the server that `database` and `storage` in `hot-updater.config.ts` name, with
+the same credentials `hot-updater deploy` uses:
+
+```package-install
+npx hot-updater build:android --scheme release --register
+```
+
+After the build, the CLI:
+
+1. Takes the JavaScript bundle the native build compiled in out of the
+   artifact, byte for byte: `assets/index.android.bundle` in an `.apk`,
+   `base/assets/index.android.bundle` in an `.aab`, and `main.jsbundle` in an
+   `.ipa` or `.app`.
+2. Uploads the artifact to `native-builds/<platform>/<build id>/` in your
+   storage. A simulator `.app` is uploaded as one `.app.zip` archive.
+3. Uploads that JavaScript bundle as the build's built-in bundle: a bundle
+   whose ID is the build's min bundle ID and whose manifest lists only that
+   file, at the path an OTA bundle's manifest gives it (`index.ios.bundle` or
+   `index.android.bundle`), in the shared asset storage.
+4. Registers the build and its built-in bundle in one database write.
+
+A registered build is found by its platform, its default channel, and its
+fingerprint or, with the app version strategy, its exact app version: the
+newest build of that scope.
+
+The built-in bundle is not an OTA update. No Release publishes it, so no
+device downloads it, and no update check changes. The bundle totals leave it
+out, a release of it and its deletion are refused, `hot-updater doctor --fix`
+keeps it, and `storage prune` keeps its files and the artifact.
+
+A Debug build loads its JavaScript from Metro and has no built-in bundle, so
+`--register` refuses it. A self-hosted server reached through
+`standaloneRepository` needs the native build routes of this release's
+`@hot-updater/server`; an older one answers `404`, and the CLI asks you to
+upgrade it before it uploads anything.
+
+Every official storage adapter streams the artifact to storage except
+`standaloneStorage`, which reads it into memory to post it to your server. A
+Supabase project's Storage upload file size limit, 50 MB on the Free plan,
+caps the artifact size.
+
 ## Run on a device
 
 ```package-install
@@ -168,5 +212,6 @@ device build signs with the scheme's `signing.ascApiKey` when it sets one.
 | `-s, --scheme <scheme>`   | all                 | The `nativeBuild` scheme to build               |
 | `-i, --interactive`       | all                 | Choose the scheme, and with `run:*` the device  |
 | `-o, --output-path <dir>` | `build:*`           | Where to copy the build output                  |
+| `--register`              | `build:*`           | Register the release build, its artifact and built-in bundle |
 | `-d, --device [device]`   | `run:*`             | The device name or ID to run on                 |
 | `--port <port>`           | `run:android`       | The Metro port the device reaches with `adb reverse` |
