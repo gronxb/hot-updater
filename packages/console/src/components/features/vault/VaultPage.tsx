@@ -75,7 +75,7 @@ export function VaultPage({
               </TabsTrigger>
             </TabsList>
             <TabsContent value="secrets">
-              <SecretsCard secrets={secrets} status={status.data} />
+              <SecretsCard secrets={secrets} status={status} />
             </TabsContent>
             <TabsContent value="tokens">
               <TokensCard secrets={secrets.data ?? []} tokens={tokens} />

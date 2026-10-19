@@ -180,14 +180,19 @@ export function SecretsCard({
     readonly isLoading: boolean;
     readonly refetch: () => unknown;
   };
-  readonly status: VaultStatus | undefined;
+  readonly status: {
+    readonly data: VaultStatus | undefined;
+    readonly isError: boolean;
+    readonly refetch: () => unknown;
+  };
 }) {
   // `undefined` while closed, `null` to add one, a secret to overwrite it.
   const [editing, setEditing] = useState<VaultSecret | null | undefined>(
     undefined,
   );
   const [deleting, setDeleting] = useState<VaultSecret | null>(null);
-  const locked = status?.locked !== false;
+  // Writes wait for the vault to say it holds a key.
+  const locked = status.data?.locked !== false;
   const names = (secrets.data ?? []).map(({ name }) => name);
 
   return (
@@ -206,9 +211,29 @@ export function SecretsCard({
         </Button>
       </CardHeader>
       <CardContent className="p-0">
-        {status?.locked === true ? (
+        {status.data?.locked === true ? (
           <div className="border-b p-4">
-            <VaultLockedAlert message={status.message} />
+            <VaultLockedAlert message={status.data.message} />
+          </div>
+        ) : status.isError ? (
+          <div className="border-b p-4">
+            <Alert variant="destructive">
+              <AlertTriangle />
+              <AlertTitle>Couldn't check the vault's master key</AlertTitle>
+              <AlertDescription>
+                Adding and overwriting secrets wait for it. Try again.
+              </AlertDescription>
+              <AlertAction>
+                <Button
+                  onClick={() => void status.refetch()}
+                  size="xs"
+                  variant="outline"
+                >
+                  <RefreshCw data-icon="inline-start" />
+                  Retry
+                </Button>
+              </AlertAction>
+            </Alert>
           </div>
         ) : null}
         {secrets.isError ? (

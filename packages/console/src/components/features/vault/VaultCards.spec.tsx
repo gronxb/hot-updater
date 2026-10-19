@@ -163,6 +163,12 @@ const loaded = <T,>(data: readonly T[]) => ({
   refetch: vi.fn(),
 });
 
+const unlocked = {
+  data: { locked: false as const },
+  isError: false,
+  refetch: vi.fn(),
+};
+
 const base64 = (text: string) =>
   btoa(String.fromCharCode(...new TextEncoder().encode(text)));
 
@@ -186,9 +192,7 @@ afterEach(cleanup);
 
 describe("SecretsCard", () => {
   it("lists a secret's metadata and never a value", () => {
-    render(
-      <SecretsCard secrets={loaded([keystore])} status={{ locked: false }} />,
-    );
+    render(<SecretsCard secrets={loaded([keystore])} status={unlocked} />);
     const row = screen.getByRole("row", { name: /release-keystore/ });
 
     expect(within(row).getByText("Android keystore")).toBeDefined();
@@ -204,9 +208,13 @@ describe("SecretsCard", () => {
       <SecretsCard
         secrets={loaded([keystore])}
         status={{
-          locked: true,
-          message:
-            "The vault is locked: set HOT_UPDATER_VAULT_MASTER_KEY where the Console runs to seal and reveal secrets.",
+          data: {
+            locked: true,
+            message:
+              "The vault is locked: set HOT_UPDATER_VAULT_MASTER_KEY where the Console runs to seal and reveal secrets.",
+          },
+          isError: false,
+          refetch: vi.fn(),
         }}
       />,
     );
@@ -232,12 +240,27 @@ describe("SecretsCard", () => {
     ).toBe(false);
   });
 
+  it("offers a retry instead of a silent lock when the key check fails", () => {
+    const status = { data: undefined, isError: true, refetch: vi.fn() };
+    render(<SecretsCard secrets={loaded([keystore])} status={status} />);
+
+    expect(
+      screen.getByText("Couldn't check the vault's master key"),
+    ).toBeDefined();
+    expect(
+      (screen.getByRole("button", { name: "Add secret" }) as HTMLButtonElement)
+        .disabled,
+    ).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
+    expect(status.refetch).toHaveBeenCalledOnce();
+  });
+
   it("adds an App Store Connect key from its file, named after its kind", async () => {
     putMutation.mutateAsync.mockResolvedValue({
       name: "asc-api-key",
       version: 1,
     });
-    render(<SecretsCard secrets={loaded([])} status={{ locked: false }} />);
+    render(<SecretsCard secrets={loaded([])} status={unlocked} />);
 
     fireEvent.click(screen.getAllByRole("button", { name: "Add secret" })[0]!);
     const file = new File([P8], "AuthKey_ABC123DEFG.p8");
@@ -271,7 +294,7 @@ describe("SecretsCard", () => {
         secrets={loaded([
           { ...keystore, name: "asc-api-key", kind: "asc-api-key" },
         ])}
-        status={{ locked: false }}
+        status={unlocked}
       />,
     );
 
@@ -289,9 +312,7 @@ describe("SecretsCard", () => {
       name: "release-keystore",
       version: 4,
     });
-    render(
-      <SecretsCard secrets={loaded([keystore])} status={{ locked: false }} />,
-    );
+    render(<SecretsCard secrets={loaded([keystore])} status={unlocked} />);
 
     fireEvent.click(
       screen.getByRole("button", { name: "Overwrite release-keystore" }),
@@ -340,9 +361,7 @@ describe("SecretsCard", () => {
 
   it("deletes a secret after confirmation", async () => {
     removeMutation.mutateAsync.mockResolvedValue(keystore);
-    render(
-      <SecretsCard secrets={loaded([keystore])} status={{ locked: false }} />,
-    );
+    render(<SecretsCard secrets={loaded([keystore])} status={unlocked} />);
 
     fireEvent.click(
       screen.getByRole("button", { name: "Delete release-keystore" }),
