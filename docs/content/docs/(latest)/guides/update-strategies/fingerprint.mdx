@@ -120,7 +120,10 @@ and public key don't change what JavaScript can call. A plugin installed from
 the registry also counts by its version and patches, like a native package.
 The fingerprint reads the `plugins` list: a plugin that `app.config.js`
 applies itself, as in `withPlugins(config, [...])`, isn't declared there and
-doesn't count, so list it in `plugins` instead.
+doesn't count, so list it in `plugins` instead. A plugin listed as a function
+counts by the package that exports it when the app config loads that package
+with `require`, as Expo does for `app.config.js` and `app.config.ts`; in an
+ES module config, name a registry plugin by its package instead.
 
 A plugin from your project or workspace counts by its name, not its code, the
 same way the bare adapter treats edits to `ios/` and `android/`: a plugin
