@@ -324,4 +324,65 @@ describe("doctor's release catalog check", () => {
     await expect(harness.core.getBundle(orphan.id)).resolves.toBeNull();
     expect(loadServer).toHaveBeenCalledTimes(2);
   });
+
+  it("keeps a native build's built-in bundle, which no release uses, under --fix", async () => {
+    const orphan = bundle(9);
+    await deploy();
+    await storeBundles(harness.database, [orphan]);
+    const builtIn = bundle(5, "android");
+    await harness.core.registerNativeBuild({
+      id: "01900000-0000-7000-8000-00000000b001",
+      platform: "android",
+      channel: "production",
+      fingerprintHash: null,
+      appVersion: "1.0.0",
+      minBundleId: builtIn.id,
+      gitCommitHash: null,
+      artifact: {
+        kind: "apk",
+        storageUri: "storage://native-builds/android/b001/app-release.apk",
+        byteSize: 1_024,
+      },
+      embeddedBundle: {
+        manifestStorageUri: builtIn.manifestStorageUri,
+        manifestFileHash: builtIn.manifestFileHash,
+        assetBaseStorageUri: builtIn.assetBaseStorageUri,
+      },
+    });
+
+    await expect(doctor()).resolves.toMatchObject({
+      details: {
+        artifacts: {
+          unreferenced: [orphan.id],
+          issues: [{ code: "UNREFERENCED_ARTIFACTS", artifactIds: [orphan.id] }],
+        },
+      },
+    });
+
+    await expect(doctor({ fix: true })).resolves.toMatchObject({
+      success: true,
+      details: {
+        fixes: [
+          {
+            repair: "unreferenced-artifacts",
+            status: "applied",
+            wrote: [`artifact record ${orphan.id}`],
+          },
+        ],
+        artifacts: { unreferenced: [], issues: [] },
+      },
+    });
+    await expect(harness.core.getBundle(orphan.id)).resolves.toBeNull();
+    await expect(harness.core.getBundle(builtIn.id)).resolves.toMatchObject({
+      bundle: { id: builtIn.id, platform: "android" },
+    });
+    await expect(
+      harness.core.findNativeBuild({
+        platform: "android",
+        channel: "production",
+        fingerprintHash: null,
+        appVersion: "1.0.0",
+      }),
+    ).resolves.toMatchObject({ min_bundle_id: builtIn.id });
+  });
 });

@@ -10,6 +10,8 @@ import type {
   ChannelRow,
   HotUpdaterCoreApi,
   KeysetInput,
+  NativeBuildRow,
+  NativeBuildScope,
   PromoteReleaseResult,
   ReleaseCatalogMutationPreflight,
   ReleaseCatalogMutationResult,
@@ -66,6 +68,17 @@ const refusal = (status: number, value: unknown, fallback: string): Error => {
   }
   return new StandaloneDatabaseError("request-failed", message, status);
 };
+
+const nativeBuildScopeParams = ({
+  platform,
+  channel,
+  fingerprintHash,
+  appVersion,
+}: NativeBuildScope): Record<string, string> => ({
+  platform,
+  channel,
+  ...(fingerprintHash === null ? { appVersion } : { fingerprintHash }),
+});
 
 const keysetParams = ({ order, after, limit }: KeysetInput) => ({
   limit: String(limit),
@@ -141,9 +154,12 @@ export const createStandaloneCoreApi = (
     {
       query = {},
       body,
+      requiredRoute,
     }: {
       readonly query?: Readonly<Record<string, string>>;
       readonly body?: unknown;
+      /** What the route serves, for a route an older server may not have: its 404 asks for an upgrade. */
+      readonly requiredRoute?: string;
     } = {},
   ): Promise<Record<string, unknown> | null> => {
     checked ??= checkProtocol().catch((error: unknown) => {
@@ -163,6 +179,13 @@ export const createStandaloneCoreApi = (
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     });
     if (response.status === 204) return null;
+    if (requiredRoute !== undefined && response.status === 404) {
+      throw new StandaloneDatabaseError(
+        "request-failed",
+        `The server at ${config.baseUrl} has no ${requiredRoute} route (${method} ${path} answered 404). Upgrade the server's @hot-updater/server, migrate its database, and try again.`,
+        404,
+      );
+    }
     if (method === "GET" && response.status === 404) return null;
     if (response.status === 503) {
       // The server's schema fence answers 503 until its database is migrated.
@@ -267,6 +290,16 @@ export const createStandaloneCoreApi = (
     listChannels: () => list<ChannelRow>("/channels", {}),
     findChannelByName: (name) =>
       call<ChannelRow>("GET", "/channels", { query: { name } }),
+    findNativeBuild: (scope) =>
+      call<NativeBuildRow>("GET", "/native-builds/latest", {
+        query: nativeBuildScopeParams(scope),
+        requiredRoute: "native build",
+      }),
+    // A server without the native build routes holds no native builds: its
+    // schema fence refuses a database whose schema has them. So its 404
+    // lists none, which keeps doctor working against it.
+    listNativeBuilds: (input) =>
+      list<NativeBuildRow>("/native-builds", keysetParams(input)),
 
     deploy: async (deployments) =>
       (await call<ReleaseCatalogMutationResult[]>("POST", "/releases", {
@@ -336,5 +369,10 @@ export const createStandaloneCoreApi = (
     deleteBundles: async (ids) => {
       await request("POST", "/bundles/delete", { body: { ids } });
     },
+    registerNativeBuild: async (registration) =>
+      (await call<NativeBuildRow>("POST", "/native-builds", {
+        body: registration,
+        requiredRoute: "native build",
+      }))!,
   };
 };

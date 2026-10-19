@@ -15,7 +15,7 @@ const CHANNEL_ID = { type: "string", maxLength: 1408, ascii: true } as const;
  * needs a migration step of its own first. The schema fence answers 503 on
  * a database whose row differs, until it runs.
  */
-export const HOT_UPDATER_SCHEMA_VERSION = "1.0.0";
+export const HOT_UPDATER_SCHEMA_VERSION = "1.2.0";
 
 const bundles = defineTable(
   {
@@ -159,6 +159,45 @@ const channels = defineTable(
   { key: ["id"], indexes: { all: { eq: [], sort: ["name"] } } },
 );
 
+/**
+ * The native builds `build:android` and `build:ios` register, newest first
+ * in each scope: a platform, a channel, and the fingerprint or app version
+ * the build compiled in. `min_bundle_id` names the build's built-in bundle,
+ * a `bundles` row no release publishes. Its references keep no counters, so
+ * adding this table changes no existing one.
+ */
+const nativeBuilds = defineTable(
+  {
+    id: { type: "string", maxLength: 36 },
+    scope_key: { type: "string", maxLength: 2048, ascii: true },
+    platform: { type: "string", maxLength: 16 },
+    channel_id: {
+      ...CHANNEL_ID,
+      references: { model: "channels", onDelete: "none" },
+    },
+    fingerprint_hash: { type: "string", maxLength: 255, required: false },
+    app_version: { type: "string", required: false },
+    min_bundle_id: {
+      type: "string",
+      maxLength: 36,
+      unique: true,
+      references: { model: "bundles", onDelete: "none" },
+    },
+    artifact_kind: { type: "string", maxLength: 16 },
+    artifact_storage_uri: { type: "string" },
+    byte_size: { type: "integer" },
+    git_commit_hash: { type: "string", maxLength: 255, required: false },
+    created_at_ms: { type: "integer" },
+  },
+  {
+    key: ["id"],
+    indexes: {
+      byScope: { eq: ["scope_key"], sort: ["id"] },
+      all: { eq: [], sort: ["id"] },
+    },
+  },
+);
+
 /** Bundles per platform and in total (`platform_key` is a platform or `*`). */
 const bundleTotals = defineAggregate(
   { platform_key: { type: "string", maxLength: 16 } },
@@ -176,6 +215,7 @@ export const coreSchema = {
   release_catalogs: releaseCatalogs,
   channels,
   bundle_totals: bundleTotals,
+  native_builds: nativeBuilds,
 } as const;
 
 /**
