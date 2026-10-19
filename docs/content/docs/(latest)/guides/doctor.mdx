@@ -335,13 +335,15 @@ How `--fix` migrates depends on the database:
 
 | Database | What `--fix` runs |
 | --- | --- |
-| Cloudflare D1 that `hot-updater init` created | The Worker's migration files the database has not run, through the D1 API token in `.env.hotupdater`, each recorded in `d1_migrations` as `wrangler d1 migrations apply` records it |
-| Supabase project that `hot-updater init` created | `supabase db push` of the package's migration files its history lacks. It needs the Supabase access token or CLI login, and the database password: the saved `HOT_UPDATER_SUPABASE_DB_PASSWORD`, or a prompt |
+| Cloudflare D1 that `hot-updater init` created | The Worker's migration files the database has not run, through `d1Database`'s API token, each recorded in `d1_migrations` as `wrangler d1 migrations apply` records it, then the tables of any other plugin in `plugins` |
+| Supabase project that `hot-updater init` created | `supabase db push` of the package's migration files its history lacks. It needs the Supabase access token or CLI login, and the project's database password: `HOT_UPDATER_SUPABASE_DB_PASSWORD` as init saved it for that project, or a prompt |
 | DynamoDB, Firestore, Cosmos DB, PostgreSQL, Kysely, and MongoDB | The missing tables, then the settings rows, as `hot-updater db migrate` creates them |
 | Drizzle and Prisma | Nothing: run `hot-updater db generate`, apply the schema with the ORM, then `hot-updater db migrate` in the server's project |
 
-A managed provider's migrations create core's tables and the official
-plugins'. A D1 database that init did not create has none of them recorded, so
+`--fix` migrates the database or project that `database` in
+`hot-updater.config.ts` names, the one doctor checked. A managed provider's
+migrations create core's tables and the official plugins'; on Supabase, a
+plugin they do not cover needs `hot-updater db generate`. A D1 database that init did not create has none of them recorded, so
 `--fix` migrates it as `hot-updater db migrate` does instead; a Supabase
 project that init did not create is left alone, and `--fix` names `hot-updater
 db generate`. With `--json`, or without a terminal, `--fix` never prompts: a

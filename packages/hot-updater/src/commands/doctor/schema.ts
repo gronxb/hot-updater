@@ -236,18 +236,30 @@ export const migrateServerSchema = async (
       }
       const result = await migrateDatabase({
         cwd: context.cwd,
+        database,
         nonInteractive: context.nonInteractive,
       });
-      if (!("skip" in result)) {
-        return { wrote: result.applied.map((name) => `migration ${name}`) };
-      }
-      // A database the provider's init did not create migrates as any other.
       const tooling = database as typeof database & {
         readonly createMigrator?: unknown;
       };
-      return result.unmanaged && tooling.createMigrator !== undefined
-        ? runMigrator(database, plugins, settings)
-        : { skip: result.skip };
+      if ("skip" in result) {
+        // A database the provider's init did not create migrates as any other.
+        return result.unmanaged && tooling.createMigrator !== undefined
+          ? runMigrator(database, plugins, settings)
+          : { skip: result.skip };
+      }
+      const applied = result.applied.map((name) => `migration ${name}`);
+      // The provider's migrations create core's tables and the official
+      // plugins'; a migrator creates any other plugin's.
+      if (tooling.createMigrator !== undefined) {
+        const { wrote } = await runMigrator(database, plugins, settings);
+        return { wrote: [...applied, ...wrote] };
+      }
+      return applied.length > 0
+        ? { wrote: applied }
+        : {
+            skip: `The database ran every migration ${packageName} ships, which create core's tables and the official plugins'. ${settings.map(({ key }) => key).join(", ")} ${settings.length === 1 ? "belongs to a plugin" : "belong to plugins"} they do not create: run \`npx hot-updater db generate\` and apply the migration it writes.`,
+          };
     }
     case "migrator":
       return runMigrator(database, plugins, settings);

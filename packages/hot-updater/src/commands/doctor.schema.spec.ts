@@ -232,6 +232,7 @@ describe("doctor's schema check", () => {
     });
     expect(migrateDatabase).toHaveBeenCalledWith({
       cwd: "/project",
+      database: expect.objectContaining({ name: "d1Database" }),
       nonInteractive: expect.any(Boolean),
     });
   });
@@ -250,6 +251,49 @@ describe("doctor's schema check", () => {
       details: {
         fixes: [
           { repair: "schema", status: "applied", wrote: ["schema.notes 1"] },
+        ],
+      },
+    });
+  });
+
+  it("creates on a managed D1 database the tables of a plugin its migrations do not cover", async () => {
+    vi.spyOn(INIT_PROVIDER_PACKAGES.cloudflare, "load").mockResolvedValue({
+      migrateDatabase: async () => ({ applied: [] }),
+    } as never);
+    serverProject(database("d1Database", { generateSchema: vi.fn() }));
+
+    await expect(doctor({ fix: true })).resolves.toMatchObject({
+      success: true,
+      details: {
+        fixes: [
+          { repair: "schema", status: "applied", wrote: ["schema.notes 1"] },
+        ],
+      },
+    });
+  });
+
+  it("names the plugins a managed Supabase project's migrations do not cover", async () => {
+    vi.spyOn(INIT_PROVIDER_PACKAGES.supabase, "load").mockResolvedValue({
+      migrateDatabase: async () => ({ applied: [] }),
+    } as never);
+    serverProject(
+      database("supabaseDatabase", {
+        generateSchema: vi.fn(),
+        createMigrator: undefined,
+      }),
+    );
+
+    await expect(doctor({ fix: true })).resolves.toMatchObject({
+      success: false,
+      details: {
+        fixes: [
+          {
+            repair: "schema",
+            status: "skipped",
+            note: expect.stringContaining(
+              "schema.notes belongs to a plugin they do not create",
+            ),
+          },
         ],
       },
     });

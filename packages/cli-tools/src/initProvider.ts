@@ -1,3 +1,5 @@
+import type { ConfiguredDatabase } from "@hot-updater/plugin-core";
+
 import { getHotUpdaterEnvValue } from "./hotUpdaterEnv";
 import { MissingInitInputsError } from "./initOptions";
 import { p } from "./prompts";
@@ -52,6 +54,11 @@ export type InitProviderDefinition<
  */
 export type MigrateManagedDatabase = (options: {
   readonly cwd: string;
+  /**
+   * hot-updater.config.ts's database: the one doctor checked, which the
+   * provider migrates, whatever `.env.hotupdater` holds.
+   */
+  readonly database: ConfiguredDatabase;
   /** Prompts are off: a missing input is a skip that names its env key. */
   readonly nonInteractive: boolean;
 }) => Promise<

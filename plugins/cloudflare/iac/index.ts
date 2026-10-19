@@ -9,7 +9,6 @@ import {
   getInitProviderEnvVars,
   getInitProviderTextPromptValues,
   getCwd,
-  getHotUpdaterEnvValue,
   link,
   makeEnv,
   type MigrateManagedDatabase,
@@ -17,7 +16,6 @@ import {
   printAppSetup,
   provisionClientCredential,
   type ProvisionedClientCredential,
-  readHotUpdaterEnv,
   readHotUpdaterInitEnv,
   type RunInitOptions,
   writeHotUpdaterFiles,
@@ -27,7 +25,7 @@ import { Cloudflare } from "cloudflare";
 
 import { d1Database } from "../src/d1Database";
 import { applyD1Migrations } from "../src/d1Migrations";
-import { d1RestRunner } from "../src/d1Rest";
+import { d1RestRunner, d1TargetOf } from "../src/d1Rest";
 import { createWrangler } from "../src/utils/createWrangler";
 import {
   validateCloudflareApiToken,
@@ -717,19 +715,19 @@ export const runInit = async ({ build, envFile }: RunInitOptions) => {
 
 /**
  * `hot-updater doctor --fix` on the managed D1 database: runs the Worker's
- * migrations it has not run, through the REST API with the D1 API token
- * hot-updater.config.ts reads, and records each in `d1_migrations`, as
- * `wrangler d1 migrations apply` does when init runs again.
+ * migrations that the database hot-updater.config.ts names has not run,
+ * through the REST API with the config's D1 API token, and records each in
+ * `d1_migrations`, as `wrangler d1 migrations apply` does when init runs
+ * again.
  */
-export const migrateDatabase: MigrateManagedDatabase = async ({ cwd }) => {
-  const env = await readHotUpdaterEnv(cwd);
-  const { accountId, apiToken, d1DatabaseId } = CLOUDFLARE_INIT_PROVIDER.inputs;
-  const [account, token, databaseId] = [accountId, apiToken, d1DatabaseId].map(
-    ({ envKey }) => getHotUpdaterEnvValue(env, envKey),
-  );
-  if (!account || !token || !databaseId) {
+export const migrateDatabase: MigrateManagedDatabase = async ({
+  cwd,
+  database,
+}) => {
+  const target = d1TargetOf(database);
+  if (target === undefined) {
     return {
-      skip: `Set ${[accountId, apiToken, d1DatabaseId].map(({ envKey }) => envKey).join(", ")} in .env.hotupdater or the environment: the D1 database and the API token with D1 edit permission.`,
+      skip: "hot-updater.config.ts's database is not d1Database from @hot-updater/cloudflare.",
     };
   }
   const migrationsPath = path.join(
@@ -745,7 +743,7 @@ export const migrateDatabase: MigrateManagedDatabase = async ({ cwd }) => {
     name.endsWith(".sql"),
   );
   return applyD1Migrations(
-    d1RestRunner({ accountId: account, cloudflareApiToken: token, databaseId }),
+    d1RestRunner(target),
     await Promise.all(
       names.map(async (name) => ({
         name,

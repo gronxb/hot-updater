@@ -31,6 +31,7 @@ import { delay } from "es-toolkit";
 import { ExecaError, execa } from "execa";
 
 import { supabaseDatabase } from "../src/supabaseDatabase";
+import { supabaseTargetOf } from "../src/supabaseTarget";
 import { getConfigScaffold } from "./configTemplate";
 import {
   initProvider as SUPABASE_INIT_PROVIDER,
@@ -1178,33 +1179,44 @@ export const runInit = (options: RunInitOptions): Promise<void> =>
 
 /**
  * `hot-updater doctor --fix` on the managed Supabase project: pushes the
- * package's migrations its history lacks, as init does when it runs again,
- * with the Supabase access token or CLI login and the database password
- * init saved or asks for.
+ * package's migrations that the project hot-updater.config.ts names lacks,
+ * as init does when it runs again, with the Supabase access token or CLI
+ * login and the database password init saved for that project or asks for.
  */
 export const migrateDatabase: MigrateManagedDatabase = ({
   cwd,
+  database,
   nonInteractive,
 }) =>
   withSupabaseCliMetadataCleanup(cwd, async () => {
-    const managedEnv = await readHotUpdaterEnv(cwd);
-    const inputs = resolveSupabaseInitInputs(managedEnv, { managedEnv });
-    const { projectId } = inputs;
-    if (projectId === undefined) {
+    const target = supabaseTargetOf(database);
+    if (target === undefined) {
       return {
-        skip: `Set ${SUPABASE_INIT_PROVIDER.inputs.projectId.envKey} in .env.hotupdater or the environment: the Supabase project init created.`,
+        skip: "hot-updater.config.ts's database is not supabaseDatabase from @hot-updater/supabase.",
       };
     }
+    const projectId = target.supabaseUrl.match(
+      /^https:\/\/([^.]+)\.supabase\.co/u,
+    )?.[1];
+    if (projectId === undefined) {
+      return {
+        skip: `The project ref is not in supabaseUrl ${target.supabaseUrl}. Push the package's migrations with \`supabase db push\` linked to the project.`,
+      };
+    }
+    const managedEnv = await readHotUpdaterEnv(cwd);
+    const inputs = resolveSupabaseInitInputs(managedEnv, { managedEnv });
     const accessToken = nonInteractive
       ? inputs.accessToken
       : await inputSupabaseAccessToken(inputs.accessToken);
+    // A saved password belongs to the project init saved it for.
     const dbPassword = await inputSupabaseDatabasePassword({
-      databasePassword: inputs.databasePassword,
+      databasePassword:
+        inputs.projectId === projectId ? inputs.databasePassword : undefined,
       nonInteractive,
     });
     if (dbPassword === "") {
       return {
-        skip: `Set ${SUPABASE_INIT_PROVIDER.inputs.databasePassword.envKey}, the project's database password, to push its migrations.`,
+        skip: `Set ${SUPABASE_INIT_PROVIDER.inputs.databasePassword.envKey}, the database password of project ${projectId}, to push its migrations.`,
       };
     }
     const { tmpDir, removeTmpDir } = await copyDirToTmp(

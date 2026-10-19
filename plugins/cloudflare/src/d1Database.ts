@@ -5,7 +5,7 @@ import type {
 } from "@hot-updater/plugin-core";
 
 import { createD1Database } from "./d1Executor";
-import { type D1RestConfig, d1RestRunner } from "./d1Rest";
+import { type D1RestConfig, d1RestRunner, withD1Target } from "./d1Rest";
 import { d1SchemaSql } from "./d1Schema";
 
 export { D1ExecutionError } from "./d1Executor";
@@ -20,17 +20,24 @@ export type D1DatabaseConfig = D1RestConfig;
  * database, `hot-updater doctor --fix` runs the Worker's migrations it has
  * not run.
  */
-export const d1Database = (config: D1DatabaseConfig): ToolingDatabase => ({
-  ...createD1Database(d1RestRunner(config)),
-  generateSchema: ((version, _name, target = coreTarget) => {
-    if (version !== "latest" && version !== coreSettings["schema.core"]) {
-      throw new Error(`Invalid version ${version}`);
-    }
-    // Wrangler applies migrations in the order of their leading numbers.
-    const timestamp = new Date().toISOString().replace(/\D/g, "").slice(0, 14);
-    return {
-      code: d1SchemaSql(target),
-      path: `migrations/${timestamp}_hot-updater.sql`,
-    };
-  }) satisfies SchemaGenerator,
-});
+export const d1Database = (config: D1DatabaseConfig): ToolingDatabase =>
+  withD1Target(
+    {
+      ...createD1Database(d1RestRunner(config)),
+      generateSchema: ((version, _name, target = coreTarget) => {
+        if (version !== "latest" && version !== coreSettings["schema.core"]) {
+          throw new Error(`Invalid version ${version}`);
+        }
+        // Wrangler applies migrations in the order of their leading numbers.
+        const timestamp = new Date()
+          .toISOString()
+          .replace(/\D/g, "")
+          .slice(0, 14);
+        return {
+          code: d1SchemaSql(target),
+          path: `migrations/${timestamp}_hot-updater.sql`,
+        };
+      }) satisfies SchemaGenerator,
+    },
+    config,
+  );
