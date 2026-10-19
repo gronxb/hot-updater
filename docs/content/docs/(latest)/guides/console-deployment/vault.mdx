@@ -1,6 +1,6 @@
 ---
-title: "Vault routes"
-description: "Serve the vault from the console to CI with a scoped vault token."
+title: "Vault"
+description: "Store CI credentials in the console, and serve them to CI with a scoped vault token."
 icon: KeyRound
 ---
 
@@ -28,6 +28,58 @@ even where the master key is set or a server definition passes
 A console whose `database` is `standaloneRepository(...)` serves no vault: the
 secrets live in the server's database, which only a console over that database
 opens. Its vault routes answer `404 vault_unavailable`.
+
+## Manage secrets
+
+**Vault** in the console's sidebar lists the secrets by name, kind, version,
+and last update, with what each shows without its values, such as a key ID or
+a keystore's alias. **Add secret** picks a kind and asks for its files and
+fields. A new secret is named after its kind, which is the name the CLI looks
+up unless your config names another secret, such as `widget-keystore`.
+
+Values are write-only. The console never shows or copies a stored value:
+**Overwrite** stores a new version from values you enter again, and
+**Delete** removes the secret with its values. The vault keeps the last five
+versions of each secret, and a value holds up to 64 KB of JSON.
+
+Without `HOT_UPDATER_VAULT_MASTER_KEY`, the page shows the vault as locked
+and offers no add or overwrite. Listing, deleting, and tokens keep working.
+A database without the vault's tables shows the console's migration notice
+with the command that adds them.
+
+Each kind's value, as the resolve route returns it. Files are their bytes in
+base64:
+
+| Kind | Value |
+| --- | --- |
+| `asc-api-key` | `{ p8, keyId, issuerId }`, the App Store Connect API key's `.p8` file and its ids |
+| `android-keystore` | `{ keystore, storePassword, keyAlias, keyPassword }` |
+| `play-service-account` | `{ serviceAccount }`, the service account's JSON key file |
+| `bundle-signing-key` | `{ privateKey }`, the RSA private key in PEM. The console signs bundles with it and never resolves it |
+| `deploy-credentials` | Environment variable names and their values, such as `{ "HOT_UPDATER_S3_SECRET": "..." }` |
+| `generic` | Environment variable names and their values |
+
+`parseVaultSecretValue(kind, value)` from `@hot-updater/server/plugins` checks
+a value's shape, and `vaultSecretMetadata(kind, value)` returns what the
+console shows of it.
+
+## Issue vault tokens
+
+The **Tokens** tab issues, lists, and revokes vault tokens. A token's scope
+names the secrets it reaches, by name or by kind, and its actions: `read`
+returns values, and `sign` signs bundles with a bundle signing key in scope.
+It expires after 30 days, 90 days, a year, or never. Every user the console
+signs in can manage secrets and tokens.
+
+The token shows once, with the two variables CI sets:
+
+```bash
+HOT_UPDATER_CONSOLE_URL=https://console.example.com
+HOT_UPDATER_VAULT_TOKEN=hu_vault_...
+```
+
+The list shows each token's prefix, scope, expiry, and creation date.
+Revoking one refuses its next request.
 
 ## Authenticate with a vault token
 

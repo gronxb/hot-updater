@@ -172,6 +172,28 @@ describe("vault", () => {
     await expect(locked.list()).resolves.toEqual([]);
   });
 
+  it("tells whether it is locked without reading the database", async () => {
+    const { api, with: withOptions, db } = start();
+    const findOne = vi.spyOn(db, "findOne");
+    const findMany = vi.spyOn(db, "findMany");
+
+    await expect(api.status()).resolves.toEqual({ locked: false });
+    await expect(withOptions({}).status()).resolves.toEqual({
+      locked: true,
+      message: expect.stringContaining("HOT_UPDATER_VAULT_MASTER_KEY"),
+    });
+    await expect(
+      withOptions({ masterKey: btoa("short") }).status(),
+    ).resolves.toEqual({
+      locked: true,
+      message: expect.stringContaining("32 bytes in base64"),
+    });
+    vi.stubEnv("HOT_UPDATER_VAULT_MASTER_KEY", MASTER_KEY);
+    await expect(withOptions({}).status()).resolves.toEqual({ locked: false });
+    expect(findOne).not.toHaveBeenCalled();
+    expect(findMany).not.toHaveBeenCalled();
+  });
+
   it("reads the master key from HOT_UPDATER_VAULT_MASTER_KEY when it is not given", async () => {
     const { with: withOptions } = start();
     const fromEnv = withOptions({});

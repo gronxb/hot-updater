@@ -119,8 +119,19 @@ export interface VaultSecret {
   readonly updatedAtMs: number;
 }
 
+/** Whether the vault can seal and open values, and why not. */
+export type VaultStatus =
+  | { readonly locked: false }
+  | { readonly locked: true; readonly message: string };
+
 /** `hotUpdater.api.vault`. */
 export interface VaultApi {
+  /**
+   * Whether a master key is set and well formed, so `put` and `reveal` can
+   * run. It reads nothing, so the Console asks before it offers to store a
+   * secret.
+   */
+  status(): Promise<VaultStatus>;
   /** Every secret but removed ones, by name, without values. */
   list(): Promise<readonly VaultSecret[]>;
   /**
@@ -575,6 +586,18 @@ export const createVaultApi = ({
     });
 
   return Object.freeze({
+    async status() {
+      try {
+        await masterKey();
+        return { locked: false } as const;
+      } catch (error) {
+        if (error instanceof VaultLockedError) {
+          return { locked: true, message: error.message } as const;
+        }
+        throw error;
+      }
+    },
+
     async list() {
       const secrets: VaultSecret[] = [];
       let cursor: string | undefined;

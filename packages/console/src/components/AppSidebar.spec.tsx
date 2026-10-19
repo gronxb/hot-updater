@@ -137,10 +137,11 @@ describe("AppSidebar navigation", () => {
       ["Bundles", "Remote Config"],
       { ...allOff, remoteConfig: true },
     ],
-    // Remote Config sits between Insights and API keys.
+    ["vault()", ["Bundles", "Vault"], { ...allOff, vault: true }],
+    // Remote Config sits between Insights and API keys, and Vault comes last.
     [
       "every plugin",
-      ["Bundles", "Insights", "Remote Config", "API keys"],
+      ["Bundles", "Insights", "Remote Config", "API keys", "Vault"],
       allOn,
     ],
     ["the features still loading", ["Bundles"], undefined],
@@ -152,7 +153,9 @@ describe("AppSidebar navigation", () => {
       .getAllByRole("link")
       .map((link) => link.textContent?.trim() ?? "")
       .filter((label) =>
-        ["Bundles", "Insights", "Remote Config", "API keys"].includes(label),
+        ["Bundles", "Insights", "Remote Config", "API keys", "Vault"].includes(
+          label,
+        ),
       );
     expect(shown).toEqual(labels);
     expect(screen.queryByRole("link", { name: /installations/i })).toBeNull();
