@@ -78,7 +78,7 @@ const untrackDirectory = (directory: string) => {
  */
 export const createCredentialFiles = (): CredentialFiles => {
   let directory: Promise<string> | undefined;
-  let disposed = false;
+  let disposal: Promise<void> | undefined;
 
   const ensureDirectory = () => {
     directory ??= fs
@@ -92,7 +92,7 @@ export const createCredentialFiles = (): CredentialFiles => {
 
   return {
     write: async (fileName, contents) => {
-      if (disposed) {
+      if (disposal) {
         throw new Error("The credential files have been disposed.");
       }
       if (typeof contents === "string") {
@@ -107,19 +107,17 @@ export const createCredentialFiles = (): CredentialFiles => {
       await fs.writeFile(filePath, contents, { flag: "wx", mode: 0o600 });
       return filePath;
     },
-    dispose: async () => {
-      disposed = true;
-      const pending = directory;
-      directory = undefined;
-      if (!pending) {
-        return;
-      }
-      const created = await pending.catch(() => undefined);
-      if (!created) {
-        return;
-      }
-      await fs.rm(created, { force: true, recursive: true });
-      untrackDirectory(created);
+    // Every caller waits for the same deletion.
+    dispose: () => {
+      disposal ??= (async () => {
+        const created = await directory?.catch(() => undefined);
+        if (!created) {
+          return;
+        }
+        await fs.rm(created, { force: true, recursive: true });
+        untrackDirectory(created);
+      })();
+      return disposal;
     },
   };
 };

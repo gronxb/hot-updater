@@ -328,7 +328,7 @@ export const createCredentialResolver = ({
 }: CreateCredentialResolverOptions = {}): CredentialResolver => {
   const files = createCredentialFiles();
   const resolved = new Map<string, Promise<unknown>>();
-  let disposed = false;
+  let disposal: Promise<void> | undefined;
 
   const resolveItem = async <TKind extends CredentialKind>(
     kind: TKind,
@@ -384,7 +384,7 @@ export const createCredentialResolver = ({
       kind,
       name = kind,
     }: CredentialRequest<TKind>) => {
-      if (disposed) {
+      if (disposal) {
         return Promise.reject(
           new Error("The credential resolver has been disposed."),
         );
@@ -400,12 +400,14 @@ export const createCredentialResolver = ({
       }
       return pending;
     },
-    dispose: async () => {
-      disposed = true;
-      // A resolution in flight may still write a file.
-      await Promise.allSettled(resolved.values());
-      resolved.clear();
-      await files.dispose();
+    dispose: () => {
+      disposal ??= (async () => {
+        // A resolution in flight may still write a file.
+        await Promise.allSettled(resolved.values());
+        resolved.clear();
+        await files.dispose();
+      })();
+      return disposal;
     },
   };
 };

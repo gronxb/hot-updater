@@ -318,6 +318,20 @@ describe("credential temporary files", () => {
     );
   });
 
+  it("makes every concurrent dispose wait for the deletion", async () => {
+    vi.stubEnv("HOT_UPDATER_ASC_KEY", P8_KEY);
+    vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "ABC123");
+    vi.stubEnv("HOT_UPDATER_ASC_ISSUER_ID", "issuer-1");
+    const resolver = createCredentialResolver();
+    const { keyPath } = await resolver.resolve({ kind: "asc-api-key" });
+
+    const first = resolver.dispose();
+    await resolver.dispose();
+
+    expect(await exists(keyPath)).toBe(false);
+    await first;
+  });
+
   it("deletes the files in finally when the command fails", async () => {
     vi.stubEnv("HOT_UPDATER_ASC_KEY", P8_KEY);
     vi.stubEnv("HOT_UPDATER_ASC_KEY_ID", "ABC123");
