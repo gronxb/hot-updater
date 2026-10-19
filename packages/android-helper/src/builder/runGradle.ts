@@ -11,6 +11,8 @@ type RunGradleArgs = {
   logPrefix: string;
   appModuleName: string;
   args: { extraParams?: string[]; port?: string | number };
+  /** Added to the Gradle environment, for values kept off the command line. */
+  env?: Record<string, string>;
   androidProjectPath: string;
 };
 
@@ -57,6 +59,7 @@ export async function runGradle({
   tasks,
   logPrefix,
   args,
+  env,
   androidProjectPath,
   appModuleName,
 }: RunGradleArgs): Promise<{
@@ -88,6 +91,7 @@ Args       ${gradleArgs.join(" ")}
   try {
     const process = execa(getGradleWrapper(), gradleArgs, {
       cwd: androidProjectPath,
+      env,
       all: true,
     });
     const outputStream = process.all ?? process.stdout;

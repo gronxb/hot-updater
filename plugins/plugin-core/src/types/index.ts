@@ -110,7 +110,7 @@ export interface NativeBuildAndroidScheme {
    * Artifact type.
    *
    * If `true`, the generated artifact type is `.aab`.
-   * If `flase`, the generated artifact type is `apk`.
+   * If `false`, the generated artifact type is `.apk`.
    *
    * @default true
    */
@@ -134,6 +134,17 @@ export interface NativeBuildAndroidScheme {
    * @default same as packageName
    */
   applicationId?: string;
+
+  /**
+   * Signs a release variant with a keystore the CLI resolves: `keystore` is
+   * the name of an `android-keystore` credential, which the
+   * `HOT_UPDATER_ANDROID_KEYSTORE_*` environment variables override. Debug
+   * variants keep the debug keystore and resolve nothing. Without it, the
+   * variant's own `signingConfig` signs.
+   *
+   * @example { keystore: "release-keystore" }
+   */
+  signing?: { keystore: string };
 }
 
 export type IosBuildDestination =
@@ -206,7 +217,9 @@ export interface NativeBuildIosScheme {
   destination?: IosBuildDestination[];
 
   /**
-   * Path to a plist file that specifies options for exporting the archive.
+   * Path to a plist file that specifies options for exporting the archive
+   * into an `.ipa`. A device build needs it unless `signing.ascApiKey` is
+   * set, which exports for App Store Connect with automatic signing.
    *
    * @example "exportOptions.plist"
    */
@@ -247,6 +260,17 @@ export interface NativeBuildIosScheme {
    * @default false
    */
   simulator?: boolean;
+
+  /**
+   * Signs a device build with automatic signing, authenticated by an App
+   * Store Connect API key the CLI resolves: `ascApiKey` is the name of an
+   * `asc-api-key` credential, which the `HOT_UPDATER_ASC_KEY*` environment
+   * variables override. Simulator builds resolve nothing. Without it, the
+   * project's signing settings and Xcode's accounts sign.
+   *
+   * @example { ascApiKey: "asc-api-key" }
+   */
+  signing?: { ascApiKey: string };
 }
 
 export interface PlatformConfig {
@@ -551,6 +575,5 @@ export type ConfigInput = {
 export interface NativeBuildOptions {
   outputPath?: string;
   interactive: boolean;
-  message?: string;
   scheme?: string;
 }

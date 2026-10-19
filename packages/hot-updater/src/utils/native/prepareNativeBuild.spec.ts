@@ -5,6 +5,7 @@ import path from "node:path";
 import { getCwd, loadConfig, p } from "@hot-updater/cli-tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { createAndInjectFingerprintFiles } from "@/utils/fingerprint";
 import { resolveNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import { prepareNativeBuild } from "./prepareNativeBuild";
@@ -63,6 +64,55 @@ describe("prepareNativeBuild", () => {
     expect(p.log.error).toHaveBeenCalledWith(
       expect.stringContaining("fingerprint.json exists"),
     );
+    expect(resolveNativeAppVersion).not.toHaveBeenCalled();
+  });
+
+  it("returns the scheme and the app version an appVersion build compiles in", async () => {
+    await expect(
+      prepareNativeBuild({
+        platform: "ios",
+        scheme: "release",
+        interactive: false,
+      }),
+    ).resolves.toMatchObject({
+      scheme: "release",
+      target: { fingerprintHash: null, appVersion: "1.0.0" },
+      outputPath: path.join(
+        project,
+        ".hot-updater",
+        "output",
+        "build",
+        "ios",
+        "release",
+      ),
+    });
+  });
+
+  it("returns the fingerprint a fingerprint build compiles in", async () => {
+    vi.mocked(loadConfig).mockResolvedValue({
+      updateStrategy: "fingerprint",
+      nativeBuild: {
+        ios: {},
+        android: { release: { packageName: "com.example" } },
+      },
+    } as unknown as Awaited<ReturnType<typeof loadConfig>>);
+    vi.mocked(createAndInjectFingerprintFiles).mockResolvedValue({
+      fingerprint: { android: { hash: "android-hash", sources: [] } },
+    } as unknown as Awaited<
+      ReturnType<typeof createAndInjectFingerprintFiles>
+    >);
+
+    await expect(
+      prepareNativeBuild({
+        platform: "android",
+        scheme: "release",
+        interactive: false,
+      }),
+    ).resolves.toMatchObject({
+      scheme: "release",
+      target: { fingerprintHash: "android-hash", appVersion: null },
+      androidSchemeConfig: { variant: "Release", aab: true },
+    });
     expect(resolveNativeAppVersion).not.toHaveBeenCalled();
   });
 });

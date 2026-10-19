@@ -3,10 +3,15 @@ import {
   runAndroid,
 } from "@hot-updater/android-helper";
 import { type IosNativeRunOptions, runIos } from "@hot-updater/apple-helper";
-import { p } from "@hot-updater/cli-tools";
+import {
+  CredentialUnavailableError,
+  p,
+  withCredentialResolver,
+} from "@hot-updater/cli-tools";
 import type { Platform } from "@hot-updater/plugin-core";
 import { ExecaError } from "execa";
 
+import { createMinBundleId } from "@/utils/native/minBundleId";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 
@@ -28,7 +33,7 @@ const runNativeInternal = async <
   });
   if (!preparedConfig) {
     p.log.error("preparing native build failed");
-    return;
+    process.exit(1);
   }
 
   const platformName = platform === "android" ? "Android" : "iOS";
@@ -36,17 +41,26 @@ const runNativeInternal = async <
   try {
     p.log.info(ui.line(["Running", ui.platform(platformName)]));
 
-    if (platform === "android") {
-      await runAndroid({
-        schemeConfig: preparedConfig.androidSchemeConfig!,
-        runOption: options as AndroidNativeRunOptions,
-      });
-    } else {
-      await runIos({
-        schemeConfig: preparedConfig.iosSchemeConfig!,
-        runOption: options as IosNativeRunOptions,
-      });
-    }
+    const minBundleId = createMinBundleId(platform);
+    // Signing credentials are resolved only by a build that signs with
+    // them, and their temporary files are deleted once it finishes.
+    await withCredentialResolver(async (credentials) => {
+      if (platform === "android") {
+        await runAndroid({
+          schemeConfig: preparedConfig.androidSchemeConfig!,
+          runOption: options as AndroidNativeRunOptions,
+          minBundleId,
+          credentials,
+        });
+      } else {
+        await runIos({
+          schemeConfig: preparedConfig.iosSchemeConfig!,
+          runOption: options as IosNativeRunOptions,
+          minBundleId,
+          credentials,
+        });
+      }
+    });
 
     p.log.success(ui.line(["Ran", ui.platform(platformName)]));
   } catch (e) {
@@ -57,6 +71,8 @@ const runNativeInternal = async <
 const cleanup = (e: unknown): never => {
   if (e instanceof ExecaError) {
     console.error(e);
+  } else if (e instanceof CredentialUnavailableError) {
+    p.log.error(e.message);
   } else if (e instanceof Error) {
     p.log.error(e.stack ?? e.message);
   } else {

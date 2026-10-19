@@ -1,0 +1,45 @@
+import { type CredentialResolver, p } from "@hot-updater/cli-tools";
+
+import type { EnrichedNativeBuildAndroidScheme } from "./enrichNativeBuildAndroidScheme";
+
+const isDebugVariant = (variant: string) => /debug$/i.test(variant);
+
+/**
+ * The environment that signs a release variant with the scheme's keystore,
+ * through the properties Android Studio's signed builds inject. Gradle reads
+ * `ORG_GRADLE_PROJECT_*` variables as project properties, so the passwords
+ * never appear in the Gradle command line. The keystore is resolved only
+ * here: a debug variant, or a scheme without `signing`, resolves nothing.
+ */
+export const resolveGradleSigningEnv = async ({
+  schemeConfig,
+  credentials,
+}: {
+  schemeConfig: EnrichedNativeBuildAndroidScheme;
+  credentials: Pick<CredentialResolver, "resolve">;
+}): Promise<Record<string, string> | undefined> => {
+  const name = schemeConfig.signing?.keystore;
+  if (!name) {
+    return undefined;
+  }
+  if (isDebugVariant(schemeConfig.variant)) {
+    p.log.info(
+      `${schemeConfig.variant} signs with the debug keystore, so signing.keystore is not used.`,
+    );
+    return undefined;
+  }
+
+  const keystore = await credentials.resolve({
+    kind: "android-keystore",
+    name,
+  });
+  return {
+    "ORG_GRADLE_PROJECT_android.injected.signing.store.file":
+      keystore.storeFile,
+    "ORG_GRADLE_PROJECT_android.injected.signing.store.password":
+      keystore.storePassword,
+    "ORG_GRADLE_PROJECT_android.injected.signing.key.alias": keystore.keyAlias,
+    "ORG_GRADLE_PROJECT_android.injected.signing.key.password":
+      keystore.keyPassword,
+  };
+};

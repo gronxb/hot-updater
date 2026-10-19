@@ -1,0 +1,123 @@
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+
+import { getCwd } from "@hot-updater/cli-tools";
+import type { BuildAdapter } from "@hot-updater/plugin-core";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+import { createNativeBuild } from "./createNativeBuild";
+
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
+  getCwd: vi.fn(),
+  p: { log: { info: vi.fn() } },
+}));
+
+let root: string;
+
+beforeEach(async () => {
+  root = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-native-"));
+  vi.mocked(getCwd).mockReturnValue(root);
+});
+
+afterEach(async () => {
+  await fs.rm(root, { recursive: true, force: true });
+});
+
+const buildAdapter = (calls: string[]): BuildAdapter => ({
+  name: "bare",
+  build: vi.fn(),
+  nativeBuild: {
+    prebuild: async ({ platform }) => {
+      calls.push(`prebuild:${platform}`);
+    },
+    postbuild: async ({ platform }) => {
+      calls.push(`postbuild:${platform}`);
+    },
+  },
+});
+
+const writeArtifact = async (relativePath: string) => {
+  const buildDirectory = path.join(root, "tmp-build");
+  const artifact = path.join(buildDirectory, relativePath);
+  await fs.mkdir(path.dirname(artifact), { recursive: true });
+  await fs.writeFile(artifact, "artifact");
+  return { buildDirectory, buildArtifactPath: artifact };
+};
+
+describe("createNativeBuild", () => {
+  it("returns the artifact copied to the output path with the values the build compiled in", async () => {
+    const calls: string[] = [];
+    const outputPath = path.join(root, "output");
+    const built = await writeArtifact("export/App.ipa");
+
+    const result = await createNativeBuild({
+      platform: "ios",
+      scheme: "release",
+      minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
+      channel: "beta",
+      target: { fingerprintHash: null, appVersion: "1.2.0" },
+      outputPath,
+      buildAdapter: buildAdapter(calls),
+      builder: async () => {
+        calls.push("build");
+        return built;
+      },
+    });
+
+    expect(calls).toEqual(["prebuild:ios", "build", "postbuild:ios"]);
+    expect(result).toEqual({
+      platform: "ios",
+      scheme: "release",
+      minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
+      channel: "beta",
+      fingerprintHash: null,
+      appVersion: "1.2.0",
+      artifactPath: path.join(outputPath, "export/App.ipa"),
+      artifactKind: "ipa",
+    });
+    await expect(fs.readFile(result.artifactPath, "utf-8")).resolves.toBe(
+      "artifact",
+    );
+  });
+
+  it.each([
+    ["app-release.apk", "apk"],
+    ["app-release.aab", "aab"],
+    ["app/App.app", "app"],
+  ] as const)("reports %s as an %s", async (artifact, kind) => {
+    const built = await writeArtifact(artifact);
+
+    const result = await createNativeBuild({
+      platform: "android",
+      scheme: "release",
+      minBundleId: "0190a1b2-c3d4-7000-8000-02a1b2c3d4e5",
+      channel: "production",
+      target: { fingerprintHash: "fingerprint", appVersion: null },
+      outputPath: path.join(root, "output"),
+      buildAdapter: buildAdapter([]),
+      builder: async () => built,
+    });
+
+    expect(result.artifactKind).toBe(kind);
+    expect(result.fingerprintHash).toBe("fingerprint");
+  });
+
+  it("rejects an artifact that is none of the kinds", async () => {
+    const built = await writeArtifact("archive/App.xcarchive");
+
+    await expect(
+      createNativeBuild({
+        platform: "ios",
+        scheme: "release",
+        minBundleId: "0190a1b2-c3d4-7000-8000-01a1b2c3d4e5",
+        channel: "production",
+        target: { fingerprintHash: "fingerprint", appVersion: null },
+        outputPath: path.join(root, "output"),
+        buildAdapter: buildAdapter([]),
+        builder: async () => built,
+      }),
+    ).rejects.toThrow("Unexpected native build artifact");
+  });
+});

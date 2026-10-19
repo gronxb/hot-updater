@@ -1,10 +1,9 @@
 import path from "path";
 
 import { p } from "@hot-updater/cli-tools";
-import {
-  type ApplePlatform,
-  generateMinBundleId,
-  type IosBuildDestination,
+import type {
+  ApplePlatform,
+  IosBuildDestination,
 } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 
@@ -34,7 +33,11 @@ export const buildXcodeProject = async ({
   useGenericDestination = false,
   installPods,
   extraParams,
+  minBundleId,
+  authenticationArgs,
 }: {
+  /** Signing arguments from `resolveXcodeAuthenticationArgs`. */
+  authenticationArgs?: string[];
   sourceDir: string;
   platform: ApplePlatform;
   xcodeScheme: string;
@@ -45,6 +48,8 @@ export const buildXcodeProject = async ({
   useGenericDestination?: boolean;
   installPods?: boolean;
   extraParams?: string[];
+  /** The MIN_BUNDLE_ID the build compiles in. */
+  minBundleId: string;
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
   const xcodeProject = await parseXcodeProjectInfo(sourceDir);
 
@@ -68,8 +73,8 @@ export const buildXcodeProject = async ({
     );
   }
 
-  const minBundleId = generateMinBundleId();
   const buildArgs = prepareBuildArgs({
+    authenticationArgs,
     minBundleId,
     configuration,
     derivedDataPath,
@@ -128,7 +133,9 @@ const prepareBuildArgs = ({
   derivedDataPath,
   extraParams,
   minBundleId,
+  authenticationArgs,
 }: {
+  authenticationArgs?: string[];
   configuration: string;
   derivedDataPath: string;
   deviceType: AppleDeviceType;
@@ -159,6 +166,10 @@ const prepareBuildArgs = ({
     `HOT_UPDATER_MIN_BUNDLE_ID=${minBundleId}`,
     "build",
   ];
+
+  if (authenticationArgs) {
+    args.push(...authenticationArgs);
+  }
 
   if (extraParams) {
     args.push(...extraParams);

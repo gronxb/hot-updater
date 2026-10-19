@@ -1,6 +1,6 @@
 import path from "path";
 
-import { getCwd, p } from "@hot-updater/cli-tools";
+import { type CredentialResolver, getCwd, p } from "@hot-updater/cli-tools";
 
 import { buildXcodeProject } from "./builder/buildXcodeProject";
 import {
@@ -14,13 +14,19 @@ import {
 import type { IosNativeRunOptions } from "./types";
 import { Device } from "./utils/device";
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
+import { resolveXcodeAuthenticationArgs } from "./utils/xcodeSigning";
 
 export const runIos = async ({
   schemeConfig,
   runOption,
+  minBundleId,
+  credentials,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
   runOption: IosNativeRunOptions;
+  /** The MIN_BUNDLE_ID the build compiles in. */
+  minBundleId: string;
+  credentials: Pick<CredentialResolver, "resolve">;
 }): Promise<{ appPath: string; infoPlistPath: string }> => {
   const { interactive, device: deviceOption } = runOption;
 
@@ -57,6 +63,7 @@ export const runIos = async ({
       installPods: schemeConfig.installPods,
       extraParams: schemeConfig.extraParams,
       logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-run`,
+      minBundleId,
     });
 
     const runnerOptions: SimulatorRunnerOptions = {
@@ -88,6 +95,11 @@ export const runIos = async ({
     installPods: schemeConfig.installPods,
     extraParams: schemeConfig.extraParams,
     logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-run`,
+    minBundleId,
+    authenticationArgs:
+      device.type === "device"
+        ? await resolveXcodeAuthenticationArgs({ schemeConfig, credentials })
+        : undefined,
   });
 
   const runnerOptions: DeviceRunnerOptions | SimulatorRunnerOptions = {

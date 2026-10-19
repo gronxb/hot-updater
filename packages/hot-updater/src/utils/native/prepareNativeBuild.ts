@@ -30,9 +30,13 @@ import {
 } from "@/utils/version/appVersionCandidates";
 import { resolveNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
+import type { NativeBuildTarget } from "./createNativeBuild";
+
 type PreparedNativeBuildConfig = {
   outputPath: string;
   config: ConfigResponse;
+  scheme: string;
+  target: NativeBuildTarget;
   androidSchemeConfig?: EnrichedNativeBuildAndroidScheme;
   iosSchemeConfig?: EnrichedNativeBuildIosScheme;
 };
@@ -83,13 +87,7 @@ export async function prepareNativeBuild(
     return null;
   }
 
-  const target: {
-    appVersion: string | null;
-    fingerprintHash: string | null;
-  } = {
-    appVersion: null,
-    fingerprintHash: null,
-  };
+  let target: NativeBuildTarget;
 
   // calculate fingerprint of the current file state in the native platform directory
 
@@ -114,8 +112,8 @@ export async function prepareNativeBuild(
         `${colors.blue(`fingerprint.json, ${platform} fingerprint config files`)} have been changed.`,
       );
     }
-    target.fingerprintHash = generatedFingerprint.hash;
-  } else if (config.updateStrategy === "appVersion") {
+    target = { fingerprintHash: generatedFingerprint.hash, appVersion: null };
+  } else {
     // The native build embeds the hash of any fingerprint.json it finds,
     // and an app with one reports the fingerprint strategy.
     if (fs.existsSync(path.join(cwd, "fingerprint.json"))) {
@@ -146,9 +144,7 @@ export async function prepareNativeBuild(
 
     s.stop(`App Version(${platform}): ${appVersion}`);
 
-    target.appVersion = appVersion;
-
-    if (!target.appVersion) {
+    if (!appVersion) {
       p.log.error(
         isAmbiguousAppVersion(resolved)
           ? platform === "ios"
@@ -158,6 +154,7 @@ export async function prepareNativeBuild(
       );
       return null;
     }
+    target = { fingerprintHash: null, appVersion };
   }
 
   const artifactResultStorePath =
@@ -177,6 +174,8 @@ export async function prepareNativeBuild(
     return {
       outputPath: resolvedOutputPath,
       config,
+      scheme,
+      target,
       iosSchemeConfig: await enrichNativeBuildIosScheme({
         scheme: config.nativeBuild.ios[scheme]!,
         hotUpdaterSchemeName: scheme,
@@ -186,6 +185,8 @@ export async function prepareNativeBuild(
     return {
       outputPath: resolvedOutputPath,
       config,
+      scheme,
+      target,
       androidSchemeConfig: await enrichNativeBuildAndroidScheme({
         schemeConfig: config.nativeBuild.android[scheme]!,
         hotUpdaterSchemeName: scheme,
