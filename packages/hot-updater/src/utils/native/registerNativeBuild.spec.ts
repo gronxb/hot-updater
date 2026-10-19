@@ -58,6 +58,9 @@ const memoryStorage = () => {
       async exists({ storageUri }) {
         return { exists: objects.has(keyOf(storageUri)) };
       },
+      async delete({ storageUri }) {
+        objects.delete(keyOf(storageUri));
+      },
     }),
   };
 };
@@ -221,5 +224,51 @@ describe("registerNativeBuild", () => {
     ).rejects.toThrow("no native build route");
     expect(storage.objects.size).toBe(0);
     expect(harness.dispose).toHaveBeenCalledOnce();
+  });
+
+  it("deletes the artifact of a registration the database refuses", async () => {
+    const artifactPath = path.join(dir, "app-release.apk");
+    await fs.promises.writeFile(artifactPath, "apk bytes");
+    vi.spyOn(harness.core, "registerNativeBuild").mockRejectedValueOnce(
+      new Error("connection lost"),
+    );
+
+    await expect(
+      registerNativeBuild(android({ artifactPath })),
+    ).rejects.toThrow("connection lost");
+    // The built-in bundle's files stay for `storage prune`.
+    expect(
+      [...storage.objects.keys()].filter((key) =>
+        key.startsWith("native-builds/"),
+      ),
+    ).toEqual([]);
+    expect(storage.objects.has(`bundles/${MIN_BUNDLE_ID}/manifest.json`)).toBe(
+      true,
+    );
+  });
+
+  it("keeps the artifact of a registration that committed although its write failed", async () => {
+    const artifactPath = path.join(dir, "app-release.apk");
+    await fs.promises.writeFile(artifactPath, "apk bytes");
+    const register = harness.core.registerNativeBuild;
+    vi.spyOn(harness.core, "registerNativeBuild").mockImplementationOnce(
+      async (registration) => {
+        await register(registration);
+        throw new Error("response lost");
+      },
+    );
+
+    await expect(
+      registerNativeBuild(android({ artifactPath })),
+    ).rejects.toThrow("response lost");
+    const build = await harness.core.findNativeBuild({
+      platform: "android",
+      channel: "production",
+      fingerprintHash: "fingerprint-a",
+      appVersion: null,
+    });
+    expect(
+      storage.objects.has(`native-builds/android/${build!.id}/app-release.apk`),
+    ).toBe(true);
   });
 });

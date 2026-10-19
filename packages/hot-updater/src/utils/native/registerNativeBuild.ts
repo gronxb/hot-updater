@@ -13,6 +13,7 @@ import {
   createBundleStorageKey,
   createStorageRootUriWithPath,
   createUUIDv7,
+  type NativeBuildRegistration,
   type NativeBuildRow,
 } from "@hot-updater/plugin-core";
 import { NIL_UUID } from "@hot-updater/protocol";
@@ -30,11 +31,32 @@ import {
 } from "../contentAddressedAssets";
 import { getFileHashFromFile } from "../getFileHash";
 import { getLatestGitCommit } from "../git";
-import { loadServer } from "../loadServer";
+import { type LoadedServer, loadServer } from "../loadServer";
 import type { NativeBuildResult } from "./createNativeBuild";
 
 /** Where a native build's artifact is stored, under the config's storage. */
 export const NATIVE_BUILD_STORAGE_PREFIX = "native-builds";
+
+/**
+ * Deletes the artifact of a registration that failed, which no `storage
+ * prune` reclaims. A registration that committed although its write failed,
+ * or that cannot be checked, keeps it. The built-in bundle's manifest and
+ * file stay for `storage prune`.
+ */
+const removeUnregisteredArtifact = async (
+  { core, storage }: Pick<LoadedServer, "core" | "storage">,
+  registration: NativeBuildRegistration,
+) => {
+  try {
+    const stored = await core.findNativeBuild(registration);
+    if (stored?.id === registration.id || storage.delete === undefined) return;
+    await storage.delete({ storageUri: registration.artifact.storageUri });
+  } catch {
+    p.log.warn(
+      `The native build was not registered, and its artifact stays at ${registration.artifact.storageUri}.`,
+    );
+  }
+};
 
 /**
  * Registers a release build in the native build registry, with the
@@ -139,7 +161,7 @@ export const registerNativeBuild = async (
       artifactFile,
     );
 
-    const row = await core.registerNativeBuild({
+    const registration: NativeBuildRegistration = {
       ...scope,
       id,
       minBundleId: build.minBundleId,
@@ -156,7 +178,14 @@ export const registerNativeBuild = async (
         metadata:
           build.appVersion === null ? {} : { app_version: build.appVersion },
       },
-    });
+    };
+    let row: NativeBuildRow;
+    try {
+      row = await core.registerNativeBuild(registration);
+    } catch (error) {
+      await removeUnregisteredArtifact(server, registration);
+      throw error;
+    }
     p.log.success(
       ui.line([
         "Registered native build",

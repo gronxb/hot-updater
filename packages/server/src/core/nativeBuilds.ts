@@ -12,7 +12,7 @@ import {
   encodeChannelKey,
 } from "@hot-updater/protocol";
 
-import type { CoreDatabase } from "./reads";
+import { after, type CoreDatabase } from "./reads";
 import { insertChannel, type CoreTransaction } from "./writes";
 
 const ARTIFACT_KINDS = new Set(["apk", "aab", "ipa", "app"]);
@@ -175,17 +175,12 @@ export const createNativeBuildApi = (
   },
 
   async listNativeBuilds(input: KeysetInput) {
-    const order = input.order ?? "asc";
     const page = await db.findMany("native_builds", {
       index: "all",
       where: {},
-      order,
+      order: input.order ?? "asc",
       limit: input.limit,
-      ...(input.after === undefined
-        ? {}
-        : {
-            range: order === "asc" ? { gt: input.after } : { lt: input.after },
-          }),
+      ...after(input),
     });
     return page.rows.map(pick);
   },
