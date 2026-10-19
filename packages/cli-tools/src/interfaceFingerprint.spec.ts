@@ -812,6 +812,7 @@ describe("readReactNativeInterface", () => {
       ],
     };
     const before = await hashOf({ platform: "android" }, native);
+    const iosBefore = await hashOf({ platform: "ios" }, native);
 
     await write(
       path.join(root, "packages/local-module/expo-module.config.json"),
@@ -819,9 +820,34 @@ describe("readReactNativeInterface", () => {
     );
     const registered = await hashOf({ platform: "android" }, native);
     expect(registered).not.toBe(before);
+    // The Android section leaves the iOS fingerprint alone.
+    expect(await hashOf({ platform: "ios" }, native)).toBe(iosBefore);
 
     await write(path.join(root, "packages/local-module/libs/local.aar"), "v2");
     expect(await hashOf({ platform: "android" }, native)).not.toBe(registered);
+  });
+
+  it("hashes a local Expo module's registration even when it has codegen specs", async () => {
+    await write(
+      path.join(root, "packages/local-module/expo-module.config.json"),
+      JSON.stringify({ apple: { modules: ["FirstModule"] } }),
+    );
+    const native: NativeInterface = {
+      runtime: "react-native@0.85.2",
+      dependencies: [
+        {
+          name: "local-module",
+          root: path.join(root, "packages/local-module"),
+        },
+      ],
+    };
+    const before = await hashOf({ platform: "ios" }, native);
+
+    await write(
+      path.join(root, "packages/local-module/expo-module.config.json"),
+      JSON.stringify({ apple: { modules: ["SecondModule"] } }),
+    );
+    expect(await hashOf({ platform: "ios" }, native)).not.toBe(before);
   });
 
   it("explains a config command that prints no configuration", async () => {

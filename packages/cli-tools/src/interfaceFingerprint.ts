@@ -42,13 +42,10 @@ const TEST_DIRS = [
 const NATIVE_FILES = {
   ios: [
     "*.podspec",
-    // An Expo module registers its native classes here.
-    "expo-module.config.json",
     "ios/**/*.{h,hpp,hxx,m,mm,c,cc,cpp,cxx,swift}",
     "apple/**/*.{h,hpp,hxx,m,mm,c,cc,cpp,cxx,swift}",
   ],
   android: [
-    "expo-module.config.json",
     "android/**/*.{java,kt,c,cc,cpp,cxx,h,hpp,hxx,gradle,kts}",
     "android/**/CMakeLists.txt",
   ],
@@ -181,6 +178,30 @@ const findPackageRoot = async (from: string, name: string) => {
     if (parent === dir) return null;
     dir = parent;
   }
+};
+
+/**
+ * A local Expo module's registration for `platform`: its
+ * expo-module.config.json without the other platform's section, so a change
+ * to one platform's modules leaves the other's fingerprint alone.
+ */
+const readExpoModuleConfig = async (
+  root: string,
+  platform: Platform,
+): Promise<string | null> => {
+  const file = await fs
+    .readFile(path.join(root, "expo-module.config.json"), "utf8")
+    .catch(() => null);
+  if (file === null) return null;
+  const config = JSON.parse(file) as Record<string, unknown>;
+  const others = platform === "ios" ? ["android"] : ["apple", "ios"];
+  return JSON.stringify(
+    Object.fromEntries(
+      Object.entries(config)
+        .filter(([key]) => !others.includes(key))
+        .sort(([a], [b]) => (a < b ? -1 : 1)),
+    ),
+  );
 };
 
 interface ExpoModule {
@@ -720,11 +741,21 @@ export const createInterfaceFingerprint = async (
         ignore: [...GENERATED_DIRS, ...TEST_DIRS],
       })),
     ];
+    // An Expo module registers its native classes in expo-module.config.json
+    // and can link prebuilt AARs, whether or not it has specs.
+    const expoModuleConfig = await readExpoModuleConfig(root, platform);
+    if (expoModuleConfig !== null) {
+      addContents(
+        `expo-module-config:${dependency.name}`,
+        expoModuleConfig,
+        "local-dependency-expo-module",
+      );
+    }
+    for (const file of dependency.files ?? []) {
+      const real = await fs.realpath(file).catch(() => undefined);
+      if (real) await addFile(real, "local-dependency-native");
+    }
     if (!specs) {
-      for (const file of dependency.files ?? []) {
-        const real = await fs.realpath(file).catch(() => undefined);
-        if (real) files.push(real);
-      }
       for (const dir of dependency.sourceDirs ?? []) {
         const sourceDir = await fs.realpath(dir).catch(() => undefined);
         if (!sourceDir) continue;
