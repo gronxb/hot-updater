@@ -17,7 +17,11 @@ import {
   loadConfig,
   p,
 } from "@hot-updater/cli-tools";
-import type { NativeBuildOptions, Platform } from "@hot-updater/plugin-core";
+import type {
+  BuildAdapter,
+  NativeBuildOptions,
+  Platform,
+} from "@hot-updater/plugin-core";
 
 import {
   createAndInjectFingerprintFiles,
@@ -30,15 +34,24 @@ import {
 } from "@/utils/version/appVersionCandidates";
 import { resolveNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
+import type { NativeBuildTarget } from "./createNativeBuild";
+
 type PreparedNativeBuildConfig = {
   outputPath: string;
   config: ConfigResponse;
+  buildAdapter: BuildAdapter;
+  scheme: string;
+  target: NativeBuildTarget;
   androidSchemeConfig?: EnrichedNativeBuildAndroidScheme;
   iosSchemeConfig?: EnrichedNativeBuildIosScheme;
 };
 
 export async function prepareNativeBuild(
-  options: NativeBuildOptions & { platform: Platform },
+  options: NativeBuildOptions & {
+    platform: Platform;
+    /** `build` exports an iOS device build as an `.ipa`; `run` installs the `.app`. */
+    operation: "build" | "run";
+  },
 ): Promise<PreparedNativeBuildConfig | null> {
   const cwd = getCwd();
   const platform = options.platform;
@@ -83,13 +96,29 @@ export async function prepareNativeBuild(
     return null;
   }
 
-  const target: {
-    appVersion: string | null;
-    fingerprintHash: string | null;
-  } = {
-    appVersion: null,
-    fingerprintHash: null,
-  };
+  const iosDeviceScheme =
+    options.operation === "build" &&
+    platform === "ios" &&
+    !config.nativeBuild.ios[scheme]?.simulator
+      ? config.nativeBuild.ios[scheme]
+      : undefined;
+  if (
+    iosDeviceScheme &&
+    !iosDeviceScheme.exportOptionsPlist &&
+    !iosDeviceScheme.signing?.ascApiKey
+  ) {
+    p.log.error(
+      `nativeBuild.ios.${scheme} builds for devices, which exports an .ipa with exportOptionsPlist. Set exportOptionsPlist, or signing.ascApiKey to export for App Store Connect with automatic signing.`,
+    );
+    return null;
+  }
+
+  // The adapter's prebuild writes the native projects, such as Expo's
+  // `expo prebuild`, so it runs before anything reads them.
+  const buildAdapter = await config.build({ cwd });
+  await buildAdapter.nativeBuild?.prebuild?.({ platform });
+
+  let target: NativeBuildTarget;
 
   // calculate fingerprint of the current file state in the native platform directory
 
@@ -114,8 +143,8 @@ export async function prepareNativeBuild(
         `${colors.blue(`fingerprint.json, ${platform} fingerprint config files`)} have been changed.`,
       );
     }
-    target.fingerprintHash = generatedFingerprint.hash;
-  } else if (config.updateStrategy === "appVersion") {
+    target = { fingerprintHash: generatedFingerprint.hash, appVersion: null };
+  } else {
     // The native build embeds the hash of any fingerprint.json it finds,
     // and an app with one reports the fingerprint strategy.
     if (fs.existsSync(path.join(cwd, "fingerprint.json"))) {
@@ -146,9 +175,7 @@ export async function prepareNativeBuild(
 
     s.stop(`App Version(${platform}): ${appVersion}`);
 
-    target.appVersion = appVersion;
-
-    if (!target.appVersion) {
+    if (!appVersion) {
       p.log.error(
         isAmbiguousAppVersion(resolved)
           ? platform === "ios"
@@ -158,6 +185,7 @@ export async function prepareNativeBuild(
       );
       return null;
     }
+    target = { fingerprintHash: null, appVersion };
   }
 
   const artifactResultStorePath =
@@ -177,6 +205,9 @@ export async function prepareNativeBuild(
     return {
       outputPath: resolvedOutputPath,
       config,
+      buildAdapter,
+      scheme,
+      target,
       iosSchemeConfig: await enrichNativeBuildIosScheme({
         scheme: config.nativeBuild.ios[scheme]!,
         hotUpdaterSchemeName: scheme,
@@ -186,6 +217,9 @@ export async function prepareNativeBuild(
     return {
       outputPath: resolvedOutputPath,
       config,
+      buildAdapter,
+      scheme,
+      target,
       androidSchemeConfig: await enrichNativeBuildAndroidScheme({
         schemeConfig: config.nativeBuild.android[scheme]!,
         hotUpdaterSchemeName: scheme,

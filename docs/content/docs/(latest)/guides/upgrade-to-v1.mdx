@@ -810,7 +810,7 @@ Replace bare `fingerprint` validation with `doctor`, and bare `channel`
 inspection with `doctor --json` (`details.native.ios.channel` and
 `details.native.android.channel`). `fingerprint create` and `channel set`
 remain available. Remove `keys export-public --input`; configure `signing` in
-`hot-updater.config.ts` instead. `build:android` now requires `EXPERIMENTAL=1`.
+`hot-updater.config.ts` instead.
 
 Promotion reuses uploaded bytes and never copies Storage objects. The target
 bundle is enabled with a 100% numeric rollout, no target cohorts, and a new

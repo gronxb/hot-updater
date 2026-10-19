@@ -27,6 +27,7 @@ export * from "./loadConfig";
 export * from "./serverDefinition";
 export * from "./log";
 export * from "./makeEnv";
+export * from "./minBundleId";
 export * from "./moduleSpecifiers";
 export * from "./prompts";
 export * from "./readPackageUp";

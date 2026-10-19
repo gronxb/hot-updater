@@ -681,7 +681,7 @@ that lacks the line.
 | `hot-updater fingerprint` (fails when `fingerprint.json` is stale) | `hot-updater doctor`, which fails on a stale fingerprint. Bare `fingerprint` prints help and exits 1; `fingerprint create` is unchanged.                               |
 | `hot-updater channel` (prints the native channels)                 | `hot-updater doctor --json`: `.details.native.ios.channel` and `.details.native.android.channel`. Bare `channel` prints help and exits 1; `channel set` is unchanged. |
 | `hot-updater keys export-public --input <private key>`             | Configure `signing` in `hot-updater.config.ts`, then run `hot-updater keys export-public`. `--input` is removed.                                                       |
-| `hot-updater build:android`                                        | `EXPERIMENTAL=1 hot-updater build:android`                                                                                                                            |
+| `hot-updater build:android --message <message>`                    | `--message` is removed; a native build records no message.                                                                                                            |
 | `hot-updater doctor --server-base-url <v0 URL>`                    | Pass the v1 URL. Doctor fails a v0 server.                                                                                                                            |
 
 A `rollback` that picked the newest enabled bundle becomes:

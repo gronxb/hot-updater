@@ -1,7 +1,12 @@
 import fs from "fs";
 import path from "path";
 
-import { getCwd, p } from "@hot-updater/cli-tools";
+import {
+  type CredentialResolver,
+  createMinBundleId,
+  getCwd,
+  p,
+} from "@hot-updater/cli-tools";
 
 import { archiveXcodeProject } from "./builder/archiveXcodeProject";
 import { buildXcodeProject } from "./builder/buildXcodeProject";
@@ -9,12 +14,33 @@ import { exportXcodeArchive } from "./builder/exportXcodeArchive";
 import { assertXcodebuildExist } from "./utils/assertXcodebuildExist";
 import { createRandomTmpDir } from "./utils/createRandomTmpDir";
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
+import { readBuiltApp } from "./utils/readBuiltApp";
+import {
+  resolveXcodeAuthenticationArgs,
+  writeAppStoreConnectExportOptions,
+} from "./utils/xcodeSigning";
 
+/**
+ * Builds a simulator `.app` for a `simulator` scheme, and otherwise archives
+ * and exports an `.ipa`, or returns the `.xcarchive` of a scheme it cannot
+ * export: one with neither `exportOptionsPlist` nor `signing.ascApiKey`.
+ */
 export const buildIos = async ({
   schemeConfig,
+  minBundleId = createMinBundleId("ios"),
+  credentials,
 }: {
   schemeConfig: EnrichedNativeBuildIosScheme;
-}): Promise<{ buildDirectory: string; buildArtifactPath: string }> => {
+  /** The MIN_BUNDLE_ID the build compiles in. */
+  minBundleId?: string;
+  /** Resolves the scheme's `signing` key, when a device build signs with one. */
+  credentials?: Pick<CredentialResolver, "resolve">;
+}): Promise<{
+  buildDirectory: string;
+  buildArtifactPath: string;
+  /** What the built app reports, from its Info.plist. */
+  builtApp?: { appVersion: string | null; channel: string | null };
+}> => {
   await assertXcodebuildExist();
   const iosProjectRoot = path.join(getCwd(), "ios");
 
@@ -43,6 +69,7 @@ export const buildIos = async ({
       installPods: schemeConfig.installPods,
       extraParams: schemeConfig.extraParams,
       useGenericDestination: true,
+      minBundleId,
     });
 
     const finalAppPath = path.join(appDir, path.basename(appPath));
@@ -53,10 +80,18 @@ export const buildIos = async ({
     return {
       buildDirectory: buildDirectory,
       buildArtifactPath: finalAppPath,
+      builtApp: await readBuiltApp(finalAppPath),
     };
   } else {
+    const authenticationArgs = await resolveXcodeAuthenticationArgs({
+      schemeConfig,
+      credentials,
+    });
+
     // archivePath is the .xcarchive file path
     const { archivePath } = await archiveXcodeProject({
+      authenticationArgs,
+      minBundleId,
       platform: schemeConfig.platform,
       sourceDir: iosProjectRoot,
       xcconfig: schemeConfig.xcconfig,
@@ -74,45 +109,58 @@ export const buildIos = async ({
     // Extract .app from xcarchive if present
     const appFromArchive = extractAppFromXcarchive(finalArchivePath);
 
-    if (appFromArchive) {
-      await fs.promises.cp(
-        appFromArchive,
-        path.join(archiveDir, path.basename(appFromArchive)),
-        { recursive: true },
-      );
+    const archivedAppPath = appFromArchive
+      ? path.join(archiveDir, path.basename(appFromArchive))
+      : undefined;
+    if (appFromArchive && archivedAppPath) {
+      await fs.promises.cp(appFromArchive, archivedAppPath, {
+        recursive: true,
+      });
       p.log.success(".app extracted from .xcarchive");
     }
 
-    // if export is needed
-    if (schemeConfig.exportOptionsPlist) {
-      await fs.promises.mkdir(exportDir, { recursive: true });
+    // Without export options, a scheme that signs with an App Store Connect
+    // API key exports for App Store Connect, and any other returns the
+    // archive.
+    if (!schemeConfig.exportOptionsPlist && !authenticationArgs) {
+      return {
+        buildDirectory,
+        buildArtifactPath: finalArchivePath,
+        builtApp: archivedAppPath
+          ? await readBuiltApp(archivedAppPath)
+          : undefined,
+      };
+    }
 
-      const { exportPath } = await exportXcodeArchive({
-        archivePath,
-        exportExtraParams: schemeConfig.exportExtraParams,
-        exportOptionsPlist: schemeConfig.exportOptionsPlist!,
-        sourceDir: iosProjectRoot,
-        logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build-export`,
-      });
+    await fs.promises.mkdir(exportDir, { recursive: true });
+    const exportOptionsPlist =
+      schemeConfig.exportOptionsPlist ??
+      (await writeAppStoreConnectExportOptions(await createRandomTmpDir()));
 
-      await fs.promises.cp(exportPath, exportDir, { recursive: true });
+    const { exportPath } = await exportXcodeArchive({
+      archivePath,
+      authenticationArgs,
+      exportExtraParams: schemeConfig.exportExtraParams,
+      exportOptionsPlist,
+      sourceDir: iosProjectRoot,
+      logPrefix: `ios-${schemeConfig.hotUpdaterSchemeName}-build-export`,
+    });
 
-      const ipaFile = fs
-        .readdirSync(exportDir)
-        .find((file) => file.endsWith(".ipa"));
+    await fs.promises.cp(exportPath, exportDir, { recursive: true });
 
-      if (ipaFile) {
-        const ipaPath = path.join(exportDir, ipaFile);
-        return {
-          buildDirectory: buildDirectory,
-          buildArtifactPath: ipaPath,
-        };
-      }
+    const ipaFile = fs
+      .readdirSync(exportDir)
+      .find((file) => file.endsWith(".ipa"));
+
+    if (!ipaFile) {
       throw new Error("IPA file not found after export");
     }
     return {
-      buildDirectory,
-      buildArtifactPath: finalArchivePath,
+      buildDirectory: buildDirectory,
+      buildArtifactPath: path.join(exportDir, ipaFile),
+      builtApp: archivedAppPath
+        ? await readBuiltApp(archivedAppPath)
+        : undefined,
     };
   }
 };

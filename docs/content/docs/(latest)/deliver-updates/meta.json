@@ -6,6 +6,7 @@
     "../guides/deploy",
     "../guides/custom-update",
     "../guides/channel-management",
+    "../guides/native-build",
     "../guides/runtime-channel-switch",
     "../guides/rollout-cohorts",
     "../guides/remote-config",

@@ -9,7 +9,6 @@ const cliPath = path.resolve(__dirname, "../dist/index.mjs");
 const run = (...args: string[]) => {
   const result = spawnSync(process.execPath, [cliPath, ...args], {
     encoding: "utf-8",
-    env: { ...process.env, EXPERIMENTAL: "" },
     timeout: 10_000,
   });
   expect(result.error).toBeUndefined();
@@ -144,8 +143,19 @@ describe("CLI commands", () => {
     expect(help("keys", "export-public")).not.toContain("--input");
   });
 
-  it("hides build:android unless EXPERIMENTAL is set", () => {
-    expect(help()).not.toMatch(/^\s+build:android\b/m);
+  it("lists the native build and run commands without a flag", () => {
+    const output = help();
+    for (const command of [
+      "build:android",
+      "build:ios",
+      "run:android",
+      "run:ios",
+    ]) {
+      expect(output).toMatch(new RegExp(`^\\s+${command}\\b`, "m"));
+    }
+    expect(help("build:ios")).toContain("--scheme <scheme>");
+    expect(help("build:ios")).not.toContain("--message");
+    expect(help("run:android")).not.toContain("--app-id-suffix");
   });
 
   it("manages API keys with the core api-key command, and groups no plugin commands", () => {
