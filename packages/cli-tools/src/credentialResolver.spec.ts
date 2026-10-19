@@ -81,10 +81,13 @@ describe("createCredentialResolver", () => {
 
   it("calls the source when no override is set", async () => {
     const source = vi.fn<CredentialSource>(async (_request, { files }) => ({
-      json: await fs.readFile(
-        await files.write("play.json", '{"client_email":"ci@example.com"}'),
-        "utf-8",
-      ),
+      kind: "play-service-account",
+      credential: {
+        json: await fs.readFile(
+          await files.write("play.json", '{"client_email":"ci@example.com"}'),
+          "utf-8",
+        ),
+      },
     }));
     const resolver = createCredentialResolver({ source });
 
@@ -102,7 +105,10 @@ describe("createCredentialResolver", () => {
   });
 
   it("resolves one item once", async () => {
-    const source = vi.fn<CredentialSource>(async () => ({ json: "{}" }));
+    const source = vi.fn<CredentialSource>(async () => ({
+      kind: "play-service-account",
+      credential: { json: "{}" },
+    }));
     const resolver = createCredentialResolver({ source });
 
     await resolver.resolve({ kind: "play-service-account" });
@@ -149,6 +155,21 @@ describe("createCredentialResolver", () => {
       "Cannot reach the Console at https://console.example.com. Set HOT_UPDATER_ANDROID_KEYSTORE_PATH (or HOT_UPDATER_ANDROID_KEYSTORE_BASE64), HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD, HOT_UPDATER_ANDROID_KEY_ALIAS, and HOT_UPDATER_ANDROID_KEY_PASSWORD to provide android-keystore without the vault.",
     );
     expect((error as Error).cause).toBe(reason);
+  });
+
+  it("fails when the source returns another kind", async () => {
+    const resolver = createCredentialResolver({
+      source: async () => ({
+        kind: "play-service-account",
+        credential: { json: "{}" },
+      }),
+    });
+
+    await expect(
+      resolver.resolve({ kind: "android-keystore" }),
+    ).rejects.toThrow(
+      "The credential source returned no valid android-keystore. Set HOT_UPDATER_ANDROID_KEYSTORE_PATH",
+    );
   });
 
   it("fails on a partial override instead of calling the source", async () => {
@@ -290,9 +311,12 @@ describe("credential temporary files", () => {
     const { createCredentialResolver: createFreshResolver } =
       await import("./credentialResolver");
     const source: CredentialSource = async (_request, { files }) => ({
-      keyPath: await files.write("AuthKey_EXIT.p8", P8_KEY),
-      keyId: "EXIT",
-      issuerId: "issuer-1",
+      kind: "asc-api-key",
+      credential: {
+        keyPath: await files.write("AuthKey_EXIT.p8", P8_KEY),
+        keyId: "EXIT",
+        issuerId: "issuer-1",
+      },
     });
     const resolver = createFreshResolver({ source });
     const { keyPath } = await resolver.resolve({ kind: "asc-api-key" });

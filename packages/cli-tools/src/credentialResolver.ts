@@ -46,6 +46,14 @@ export interface CredentialRequest<TKind extends CredentialKind> {
   readonly name?: string;
 }
 
+/** A credential tagged with its kind, as a source returns it. */
+export type SourcedCredential = {
+  readonly [TKind in CredentialKind]: {
+    readonly kind: TKind;
+    readonly credential: Credentials[TKind];
+  };
+}[CredentialKind];
+
 /**
  * Where a resolver finds a credential no environment override sets, such as
  * the Console vault. It returns the credential of `request.kind`, writes
@@ -55,7 +63,7 @@ export interface CredentialRequest<TKind extends CredentialKind> {
 export type CredentialSource = (
   request: { readonly kind: CredentialKind; readonly name: string },
   context: { readonly files: CredentialFiles },
-) => Promise<Credentials[CredentialKind]>;
+) => Promise<SourcedCredential>;
 
 /**
  * Resolves the credentials a command needs. Commands call `dispose` in a
@@ -247,6 +255,31 @@ const fromEnv: {
   },
 };
 
+const CREDENTIAL_FIELDS = {
+  "asc-api-key": ["keyPath", "keyId", "issuerId"],
+  "android-keystore": ["storeFile", "storePassword", "keyAlias", "keyPassword"],
+  "play-service-account": ["json"],
+} as const satisfies {
+  readonly [TKind in CredentialKind]: readonly (keyof Credentials[TKind])[];
+};
+
+const readSourcedCredential = <TKind extends CredentialKind>(
+  kind: TKind,
+  sourced: SourcedCredential,
+): Credentials[TKind] => {
+  const credential: Readonly<Record<string, unknown>> = sourced.credential;
+  const fields: readonly string[] = CREDENTIAL_FIELDS[kind];
+  if (
+    sourced.kind !== kind ||
+    !fields.every(
+      (field) => typeof credential[field] === "string" && credential[field],
+    )
+  ) {
+    throw new Error(`The credential source returned no valid ${kind}.`);
+  }
+  return sourced.credential as Credentials[TKind];
+};
+
 const registerCredentialSecrets = <TKind extends CredentialKind>(
   kind: TKind,
   credential: Credentials[TKind],
@@ -325,10 +358,10 @@ export const createCredentialResolver = ({
 
     let credential: Credentials[TKind];
     try {
-      credential = (await source(
-        { kind, name },
-        { files },
-      )) as Credentials[TKind];
+      credential = readSourcedCredential(
+        kind,
+        await source({ kind, name }, { files }),
+      );
     } catch (error) {
       const reason = error instanceof Error ? error.message : String(error);
       throw new CredentialUnavailableError(
