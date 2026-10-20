@@ -45,7 +45,10 @@ vi.mock("@/utils/native/prepareNativeBuild", () => ({
       variant: "stagingRelease",
       applicationId: "com.example.app",
     } as unknown as EnrichedNativeBuildAndroidScheme;
-    await options.beforePrebuild?.({ androidSchemeConfig });
+    await options.beforePrebuild?.({
+      scheme: "release",
+      androidScheme: { packageName: "com.example.app" },
+    });
     events.push("prebuild");
     return {
       buildAdapter: { name: "bare" },

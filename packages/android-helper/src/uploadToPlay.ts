@@ -7,10 +7,11 @@ import {
   p,
   registerSecretValue,
 } from "@hot-updater/cli-tools";
-
-import type { EnrichedNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
+import type { NativeBuildAndroidScheme } from "@hot-updater/plugin-core";
 
 const API_URL = "https://androidpublisher.googleapis.com";
+/** Where Google serves resumable upload sessions, as its docs show both. */
+const UPLOAD_ORIGINS = new Set([API_URL, "https://www.googleapis.com"]);
 const DEFAULT_TOKEN_URI = "https://oauth2.googleapis.com/token";
 const SCOPE = "https://www.googleapis.com/auth/androidpublisher";
 
@@ -413,7 +414,7 @@ const uploadBundle = async ({
     }
     const location = started.headers.get("location");
     // The session URL carries the upload's authority, so it is never echoed.
-    if (!location || new URL(location).origin !== API_URL) {
+    if (!location || !UPLOAD_ORIGINS.has(new URL(location).origin)) {
       throw new Error("Google returned no upload session for the .aab.");
     }
 
@@ -494,22 +495,28 @@ const confirmedOffset = (response: Response) => {
 
 /**
  * The Play service account a scheme's `.aab` uploads with: the
- * `play-service-account` item. Throws for a scheme whose build Google Play
- * would not take as a release: an `.apk`, which Play takes only as an
- * `.aab` from new apps, or a debug variant, which Play refuses.
+ * `play-service-account` item. It reads only the config, before the native
+ * projects are written, and throws for a scheme whose build Google Play
+ * would not take as a release: an `.apk`, which Play takes only as an `.aab`
+ * from new apps, or a debug variant, which Play refuses.
  */
-export const resolvePlayUploadServiceAccount = (
-  schemeConfig: EnrichedNativeBuildAndroidScheme,
-): CredentialRequest<"play-service-account"> => {
-  const scheme = schemeConfig.hotUpdaterSchemeName;
-  if (!schemeConfig.aab) {
+export const resolvePlayUploadServiceAccount = ({
+  scheme,
+  androidScheme,
+}: {
+  /** The scheme's name. */
+  scheme: string;
+  androidScheme: NativeBuildAndroidScheme;
+}): CredentialRequest<"play-service-account"> => {
+  if (androidScheme.aab === false) {
     throw new Error(
       `Google Play takes an .aab, and the scheme ${scheme} builds an .apk (aab: false).`,
     );
   }
-  if (/debug$/i.test(schemeConfig.variant)) {
+  const variant = androidScheme.variant ?? "Release";
+  if (/debug$/i.test(variant)) {
     throw new Error(
-      `Google Play takes a release build, and the scheme ${scheme} builds the ${schemeConfig.variant} variant, which is debuggable and loads its JavaScript from Metro.`,
+      `Google Play takes a release build, and the scheme ${scheme} builds the ${variant} variant, which is debuggable and loads its JavaScript from Metro.`,
     );
   }
   return { kind: "play-service-account", name: "play-service-account" };

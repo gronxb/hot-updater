@@ -126,11 +126,8 @@ describe("prepareNativeBuild", () => {
     });
 
     expect(beforePrebuild).toHaveBeenCalledWith({
-      iosSchemeConfig: expect.objectContaining({
-        scheme: "App",
-        configuration: "Release",
-        hotUpdaterSchemeName: "release",
-      }),
+      scheme: "release",
+      iosScheme: { scheme: "App", simulator: true },
     });
     expect(calls).toEqual(["beforePrebuild", "prebuild"]);
 

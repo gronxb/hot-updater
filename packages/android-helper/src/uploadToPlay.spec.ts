@@ -27,13 +27,13 @@ import {
   maskSecretValues,
   p,
 } from "@hot-updater/cli-tools";
+import type { NativeBuildAndroidScheme } from "@hot-updater/plugin-core";
 
 import {
   createServiceAccountAssertion,
   resolvePlayUploadServiceAccount,
   uploadToPlay,
 } from "./uploadToPlay";
-import type { EnrichedNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 
 const API = "https://androidpublisher.googleapis.com";
 const APP = `${API}/androidpublisher/v3/applications/com.example.app`;
@@ -259,6 +259,31 @@ describe("uploadToPlay", () => {
     );
   });
 
+  it("uploads to a session on www.googleapis.com, as Google documents", async () => {
+    const routes = successRoutes();
+    const location = `https://www.googleapis.com/upload/androidpublisher/v3/applications/com.example.app/edits/edit-1/bundles?uploadType=resumable&upload_id=session-1`;
+    routes[`POST ${SESSION}`] = { headers: { location } };
+    routes[`PUT ${location}`] = { json: { versionCode: 42 } };
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(upload(fetch)).resolves.toMatchObject({ versionCode: 42 });
+    expect(requests.some((request) => request.url === location)).toBe(true);
+  });
+
+  it("refuses an upload session on another host", async () => {
+    const routes = successRoutes();
+    routes[`POST ${SESSION}`] = {
+      headers: { location: "https://upload.example.com/session" },
+    };
+    routes[`DELETE ${EDIT}`] = { status: 204 };
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(upload(fetch)).rejects.toThrow(
+      "Google returned no upload session for the .aab.",
+    );
+    expect(requests.at(-1)).toMatchObject({ method: "DELETE", url: EDIT });
+  });
+
   it("resumes a chunk at the offset Google confirms after a failure", async () => {
     const routes = successRoutes();
     routes[`PUT ${LOCATION}`] = [
@@ -478,15 +503,10 @@ describe("uploadToPlay", () => {
 });
 
 const scheme = (
-  overrides: Partial<EnrichedNativeBuildAndroidScheme> = {},
-): EnrichedNativeBuildAndroidScheme => ({
-  aab: true,
-  variant: "Release",
-  appModuleName: "app",
-  packageName: "com.example.app",
-  applicationId: "com.example.app",
-  hotUpdaterSchemeName: "release",
-  ...overrides,
+  overrides: Partial<NativeBuildAndroidScheme> = {},
+): { scheme: string; androidScheme: NativeBuildAndroidScheme } => ({
+  scheme: "release",
+  androidScheme: { packageName: "com.example.app", ...overrides },
 });
 
 describe("resolvePlayUploadServiceAccount", () => {

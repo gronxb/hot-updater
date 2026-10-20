@@ -60,10 +60,13 @@ const buildNativeInternal = async ({
         // A scheme the store would refuse, or a missing upload credential,
         // fails before the prebuild and the build. The service account
         // stays in memory.
-        beforePrebuild: async ({ androidSchemeConfig }) => {
+        beforePrebuild: async ({ scheme, androidScheme }) => {
           if (upload === "play-internal") {
             const request = await reportUploadFailure(async () =>
-              resolvePlayUploadServiceAccount(androidSchemeConfig!),
+              resolvePlayUploadServiceAccount({
+                scheme,
+                androidScheme: androidScheme!,
+              }),
             );
             serviceAccount = await credentials.resolve(request);
           }
