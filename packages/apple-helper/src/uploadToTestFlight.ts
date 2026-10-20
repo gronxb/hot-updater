@@ -435,11 +435,13 @@ export const uploadToTestFlight = async ({
       "GET",
       `/v1/buildUploads/${buildUploadId}`,
     ).catch((error: unknown) => {
-      if (
-        error instanceof AppStoreConnectError &&
-        error.status < 500 &&
-        error.status !== 429
-      ) {
+      // Only a server error, a rate limit, or a network failure (which
+      // fetch rejects with a TypeError) is retried: a refused key is not.
+      const retryable =
+        error instanceof AppStoreConnectError
+          ? error.status >= 500 || error.status === 429
+          : error instanceof TypeError;
+      if (!retryable) {
         throw error;
       }
       return undefined;

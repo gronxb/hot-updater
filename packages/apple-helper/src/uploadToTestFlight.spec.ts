@@ -555,6 +555,32 @@ describe("uploadToTestFlight", () => {
     ).resolves.toMatchObject({ state: "COMPLETE" });
   });
 
+  it("stops waiting when App Store Connect refuses the key while it processes", async () => {
+    const routes = successRoutes();
+    routes[`GET ${API}/v1/buildUploads/upload-1`] = [
+      { json: { data: { attributes: { state: { state: "PROCESSING" } } } } },
+      {
+        status: 401,
+        json: { errors: [{ status: "401", code: "NOT_AUTHORIZED" }] },
+      },
+    ];
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).rejects.toThrow("App Store Connect refused the API key");
+    expect(
+      requests.filter(
+        (request) => request.url === `${API}/v1/buildUploads/upload-1`,
+      ),
+    ).toHaveLength(2);
+  });
+
   it("names what to check when App Store Connect refuses the key", async () => {
     const routes = successRoutes();
     routes[`GET ${appsUrl}`] = {
