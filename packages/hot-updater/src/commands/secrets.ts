@@ -411,7 +411,11 @@ export const handleSecretsImport = async (
     const content = await readEnvFile(file);
     // As process.loadEnvFile reads it for the config: inline comments and
     // quoted values included.
-    const env = parseEnv(content);
+    const env = Object.fromEntries(
+      Object.entries(parseEnv(content)).filter(
+        (entry): entry is [string, string] => entry[1] !== undefined,
+      ),
+    );
     const invalid = Object.keys(env).filter(
       (variable) => !ENV_NAME_PATTERN.test(variable),
     );
