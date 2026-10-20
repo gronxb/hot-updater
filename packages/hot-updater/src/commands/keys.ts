@@ -116,6 +116,7 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
     await saveKeyPair(keyPair, outputDir);
 
     spinner.stop("Keys generated");
+    spinning = false;
 
     // The public key is safe to commit and is required by native builds.
     const privateKeyGitignorePath = getPrivateKeyGitignorePath(cwd, outputDir);
@@ -174,12 +175,16 @@ const keysGenerateInVault = async (
   keySize: 2048 | 4096,
 ) => {
   const publicKeyPath = path.join(outputDir, "public-key.pem");
+  const spinner = p.spinner();
+  let spinning = false;
+  // The first directory this run made, removed with the key when it fails.
+  let createdDir: string | undefined;
   let publicKeyFile: Awaited<ReturnType<typeof fs.open>> | undefined;
   try {
     const client = connectVault(
       `hot-updater keys generate --vault stores the private key as ${name}`,
     );
-    await fs.mkdir(outputDir, { recursive: true });
+    createdDir = await fs.mkdir(outputDir, { recursive: true });
     try {
       publicKeyFile = await fs.open(publicKeyPath, "wx", 0o644);
     } catch (error) {
@@ -191,8 +196,8 @@ const keysGenerateInVault = async (
       throw error;
     }
 
-    const spinner = p.spinner();
     spinner.start(`Generating ${keySize}-bit RSA keys`);
+    spinning = true;
     const keyPair = await generateKeyPair(keySize);
     const privateKey = Buffer.from(keyPair.privateKey).toString("base64");
     // Masked before it is sent, so no failure can print it.
@@ -208,7 +213,6 @@ const keysGenerateInVault = async (
         expectedVersion: 0,
       });
     } catch (error) {
-      spinner.error("The private key was not stored");
       if (error instanceof VaultRequestError && error.status === 409) {
         throw new Error(
           `The vault already holds a secret named ${name}, and keys generate --vault never replaces one: installed apps reject bundles signed by a new key. Pass another name to --vault, or replace the key on purpose with hot-updater secrets put ${name} --kind bundle-signing-key --private-key <file>.`,
@@ -220,6 +224,7 @@ const keysGenerateInVault = async (
     await publicKeyFile.close();
     publicKeyFile = undefined;
     spinner.stop("Keys generated");
+    spinning = false;
 
     p.log.message(
       ui.block("Keys", [
@@ -249,9 +254,13 @@ const keysGenerateInVault = async (
       ]),
     );
   } catch (error) {
+    if (spinning) spinner.error("The private key was not stored");
     if (publicKeyFile !== undefined) {
       await publicKeyFile.close().catch(() => {});
       await fs.rm(publicKeyPath, { force: true });
+    }
+    if (createdDir !== undefined) {
+      await fs.rm(createdDir, { force: true, recursive: true });
     }
     p.log.error(error instanceof Error ? error.message : String(error));
     process.exitCode = 1;

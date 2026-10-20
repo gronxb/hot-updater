@@ -665,6 +665,12 @@ export const serveVaultSigning = (request: Request, load: LoadConsole) =>
                         `The bundle signing key ${secret.name} ${error.message}; overwrite it with the key hot-updater keys generate makes.`,
                       )
                     : undefined;
+          if (refusal === undefined) {
+            console.error(
+              "The vault could not open a bundle signing key:",
+              error,
+            );
+          }
           throw error;
         }
         return key.publicKey;

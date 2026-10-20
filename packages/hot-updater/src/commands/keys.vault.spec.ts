@@ -154,7 +154,8 @@ describe("hot-updater keys generate --vault", () => {
         "The vault already holds a secret named ota-key, and keys generate --vault never replaces one",
       ),
     );
-    await expect(fs.readdir(path.join(directory, "keys"))).resolves.toEqual([]);
+    // The keys directory this run made is gone with the key.
+    await expect(fs.readdir(directory)).resolves.toEqual([]);
   });
 
   it("keeps an existing public key, storing nothing", async () => {
