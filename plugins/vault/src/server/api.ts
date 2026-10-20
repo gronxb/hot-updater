@@ -862,9 +862,14 @@ export const createVaultApi = ({
         limit: PAGE_SIZE,
         ...(cursor === undefined ? {} : { cursor }),
       });
-      const live = page.rows.find(
-        (row) => isSecretRow(row) && row.deleted_at_ms === null,
-      );
+      // The first live one: removed secrets stay as tombstones.
+      let live: (typeof page.rows)[number] | undefined;
+      for (const row of page.rows) {
+        if (isSecretRow(row) && row.deleted_at_ms === null) {
+          live = row;
+          break;
+        }
+      }
       if (live !== undefined) {
         const row = await db.findOne("secret_versions", {
           secret_id: live.id,
