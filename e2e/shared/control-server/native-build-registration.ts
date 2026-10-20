@@ -48,10 +48,12 @@ export const NATIVE_BUILD_CHANNEL_PREFIX = "e2e-native-build-";
 /**
  * The channel an E2E app binary registers under: its own. One registration
  * then serves every run of that binary, whose bytes are the same, and the
- * newest registration of another binary never shadows it.
+ * newest registration of another binary never shadows it. It is named by the
+ * ID's build time, the part the built-in suffix leaves unique, which keeps
+ * it short to type on the device.
  */
 export const nativeBuildChannel = (minBundleId: string): string =>
-  `${NATIVE_BUILD_CHANNEL_PREFIX}${minBundleId}`;
+  `${NATIVE_BUILD_CHANNEL_PREFIX}${minBundleId.slice(0, 13).replace("-", "")}`;
 
 const sha256 = (bytes: Uint8Array): string =>
   createHash("sha256").update(bytes).digest("hex");
