@@ -71,12 +71,13 @@ console shows of it.
 ## Issue vault tokens
 
 The **Tokens** tab issues, lists, and revokes vault tokens. A token the
-console issues reads the values of the secrets in its scope, named by secret
-or by kind, and expires after 30 days, 90 days, a year, or never. Bundle
-signing keys are not offered: the routes below never return their values.
+console issues reads values, writes them, or both, for the secrets in its
+scope, named by secret or by kind, and expires after 30 days, 90 days, a
+year, or never. Bundle signing keys are offered only with **Write values**:
+the routes below never return their values, so reading reaches none.
 [`hot-updater secrets token create`](/docs/guides/secrets#issue-a-vault-token)
-issues tokens that sign or write. Every user the console signs in can manage
-secrets and tokens.
+issues the same tokens from the CLI. Every user the console signs in can
+manage secrets and tokens.
 
 The token shows once, with the console's address, as two CI variables. CI
 sends the token to the routes below:

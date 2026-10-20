@@ -2,6 +2,7 @@ import type {
   VaultSecretKind,
   VaultSecretValues,
   VaultToken,
+  VaultTokenAction,
 } from "@hot-updater/server/plugins";
 
 /**
@@ -16,6 +17,35 @@ export const VAULT_SECRET_KIND_IDS = [
   "deploy-credentials",
   "generic",
 ] as const satisfies readonly VaultSecretKind[];
+
+/** How the console offers one token action. */
+export interface VaultTokenActionUi {
+  readonly label: string;
+  /** Whether it applies to bundle signing keys, which reading never returns. */
+  readonly reachesSigningKeys: boolean;
+}
+
+/**
+ * What the console offers for each token action the vault defines. It is
+ * keyed by the vault's action type, so a new action fails to compile until
+ * it is described here, and a spec keeps the keys equal to the vault's
+ * list. Null marks an action the console does not serve yet, which it
+ * never offers: `sign` waits for the console's signing route. `write` may
+ * store a bundle signing key, such as one `hot-updater keys generate` made,
+ * which reading never returns.
+ */
+export const vaultTokenActions: Readonly<
+  Record<VaultTokenAction, VaultTokenActionUi | null>
+> = {
+  read: { label: "Read values", reachesSigningKeys: false },
+  sign: null,
+  write: { label: "Write values", reachesSigningKeys: true },
+};
+
+/** The actions a token the console issues may take, in the vault's order. */
+export const OFFERED_TOKEN_ACTIONS = (
+  Object.keys(vaultTokenActions) as VaultTokenAction[]
+).filter((action) => vaultTokenActions[action] !== null);
 
 /** A value's limit in UTF-8 JSON bytes, as the vault enforces it. */
 export const VAULT_VALUE_LIMIT_BYTES = 64 * 1024;

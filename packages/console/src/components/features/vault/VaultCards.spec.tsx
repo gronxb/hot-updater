@@ -665,7 +665,7 @@ describe("TokensCard", () => {
     expect(
       within(screen.getByRole("row", { name: /Past/ })).getByText("Expired"),
     ).toBeDefined();
-    // A token the CLI issued to write, such as for hot-updater secrets put.
+    // A token that writes, such as for hot-updater secrets put.
     expect(
       within(screen.getByRole("row", { name: /Uploader/ })).getAllByText(
         "Read · Write",
@@ -740,6 +740,52 @@ describe("TokensCard", () => {
     fireEvent.click(screen.getAllByRole("button", { name: "Issue token" })[0]!);
 
     expect(screen.queryByDisplayValue(plaintext)).toBeNull();
+  });
+
+  it("offers bundle signing keys only while write is chosen, and issues a token that writes", async () => {
+    issueMutation.mutateAsync.mockResolvedValue({
+      token: `hu_vault_${"w".repeat(43)}`,
+      metadata: token,
+    });
+    const signingKey = {
+      ...keystore,
+      id: `sec-${"e".repeat(22)}`,
+      name: "ota-key",
+      kind: "bundle-signing-key" as const,
+    };
+    render(<TokensCard secrets={[keystore, signingKey]} tokens={loaded([])} />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Issue token" })[0]!);
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Key upload" },
+    });
+    expect(screen.queryByRole("button", { name: "ota-key" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Write values" }));
+    fireEvent.click(screen.getByRole("button", { name: "ota-key" }));
+    fireEvent.click(screen.getByRole("button", { name: "release-keystore" }));
+
+    // Without write, the signing key leaves the pickers and the scope.
+    fireEvent.click(screen.getByRole("button", { name: "Write values" }));
+    expect(screen.queryByRole("button", { name: "ota-key" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Write values" }));
+    fireEvent.click(screen.getByRole("button", { name: "ota-key" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read values" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Issue token",
+      }),
+    );
+
+    await waitFor(() => {
+      expect(issueMutation.mutateAsync).toHaveBeenCalledWith({
+        name: "Key upload",
+        scope: {
+          secrets: { names: ["release-keystore", "ota-key"] },
+          actions: ["write"],
+        },
+        expiresAtMs: expect.any(Number),
+      });
+    });
   });
 
   it("asks for a scope before it issues", () => {

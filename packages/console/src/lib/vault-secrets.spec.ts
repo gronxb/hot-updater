@@ -4,6 +4,7 @@ import {
   parseVaultSecretValue,
   VAULT_MAX_VALUE_BYTES,
   VAULT_SECRET_KINDS,
+  VAULT_TOKEN_ACTIONS,
 } from "@hot-updater/server/plugins";
 import { describe, expect, it } from "vitest";
 
@@ -11,9 +12,11 @@ import {
   ascKeyIdFromFileName,
   buildVaultValue,
   fileToBase64,
+  OFFERED_TOKEN_ACTIONS,
   VAULT_SECRET_KIND_IDS,
   VAULT_VALUE_LIMIT_BYTES,
   vaultSecretKinds,
+  vaultTokenActions,
   vaultTokenState,
 } from "./vault-secrets";
 
@@ -26,6 +29,14 @@ describe("vault secrets in the console", () => {
       [...VAULT_SECRET_KINDS].sort(),
     );
     expect(VAULT_VALUE_LIMIT_BYTES).toBe(VAULT_MAX_VALUE_BYTES);
+  });
+
+  it("describes every token action the vault defines, offering only those it serves", () => {
+    expect(Object.keys(vaultTokenActions).sort()).toEqual(
+      [...VAULT_TOKEN_ACTIONS].sort(),
+    );
+    // The console serves no signing route yet.
+    expect(OFFERED_TOKEN_ACTIONS).toEqual(["read", "write"]);
   });
 
   it("builds a value the vault takes from each kind's fields", () => {

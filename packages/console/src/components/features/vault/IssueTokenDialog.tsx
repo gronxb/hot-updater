@@ -1,4 +1,8 @@
-import type { VaultSecret, VaultSecretKind } from "@hot-updater/server/plugins";
+import type {
+  VaultSecret,
+  VaultSecretKind,
+  VaultTokenAction,
+} from "@hot-updater/server/plugins";
 import {
   AlertTriangle,
   Check,
@@ -41,7 +45,12 @@ import {
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { useIssueVaultTokenMutation } from "@/lib/vault-api";
-import { VAULT_SECRET_KIND_IDS, vaultSecretKinds } from "@/lib/vault-secrets";
+import {
+  OFFERED_TOKEN_ACTIONS,
+  VAULT_SECRET_KIND_IDS,
+  vaultSecretKinds,
+  vaultTokenActions,
+} from "@/lib/vault-secrets";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -55,12 +64,15 @@ const EXPIRY_OPTIONS = {
 type Expiry = keyof typeof EXPIRY_OPTIONS;
 
 /**
- * The kinds a read token can reach: the vault never returns a bundle signing
- * key's value, so a scope naming one would read nothing.
+ * Whether one of `actions` applies to bundle signing keys: the vault never
+ * returns one's value, so with reading alone a scope naming one reaches
+ * nothing, and the pickers leave them out until an action such as writing
+ * is chosen.
  */
-const READABLE_KINDS = VAULT_SECRET_KIND_IDS.filter(
-  (kind) => kind !== "bundle-signing-key",
-);
+const reachesSigningKeys = (actions: readonly VaultTokenAction[]) =>
+  actions.some(
+    (action) => vaultTokenActions[action]?.reachesSigningKeys === true,
+  );
 
 /** A multi-select chip: checked and tinted while pressed, so the state never rests on shade alone. */
 function ScopeToggle({
@@ -152,10 +164,38 @@ function IssueTokenForm({
   const [name, setName] = useState("");
   const [names, setNames] = useState<string[]>([]);
   const [kinds, setKinds] = useState<VaultSecretKind[]>([]);
+  const [actions, setActions] = useState<VaultTokenAction[]>(
+    OFFERED_TOKEN_ACTIONS.includes("read") ? ["read"] : [],
+  );
   const [expiry, setExpiry] = useState<Expiry>("90");
   const [submitted, setSubmitted] = useState(false);
 
-  const readable = secrets.filter(({ kind }) => kind !== "bundle-signing-key");
+  const signingKeysReachable = reachesSigningKeys(actions);
+  const readable = secrets.filter(
+    ({ kind }) => signingKeysReachable || kind !== "bundle-signing-key",
+  );
+  const scopeKinds = VAULT_SECRET_KIND_IDS.filter(
+    (kind) => signingKeysReachable || kind !== "bundle-signing-key",
+  );
+  const chooseActions = (next: VaultTokenAction[]) => {
+    setActions(next);
+    // Signing keys leave the pickers with the last action that reaches them,
+    // and so leave the scope.
+    if (!reachesSigningKeys(next)) {
+      setKinds((chosen) =>
+        chosen.filter((kind) => kind !== "bundle-signing-key"),
+      );
+      setNames((chosen) =>
+        chosen.filter((chosenName) =>
+          secrets.some(
+            (secret) =>
+              secret.name === chosenName &&
+              secret.kind !== "bundle-signing-key",
+          ),
+        ),
+      );
+    }
+  };
   const trimmedName = name.trim();
   const errors = {
     name:
@@ -168,6 +208,7 @@ function IssueTokenForm({
       names.length + kinds.length === 0
         ? "Choose at least one secret or kind."
         : undefined,
+    actions: actions.length === 0 ? "Choose at least one action." : undefined,
   };
   const invalid = Object.values(errors).some((error) => error !== undefined);
   const shown = (message: string | undefined) =>
@@ -185,9 +226,7 @@ function IssueTokenForm({
             ...(names.length > 0 ? { names } : {}),
             ...(kinds.length > 0 ? { kinds } : {}),
           },
-          // CI reads values; hot-updater secrets token create issues tokens
-          // that write, which the CLI's secrets put sends.
-          actions: ["read"],
+          actions,
         },
         ...(expiry === "never"
           ? {}
@@ -207,8 +246,8 @@ function IssueTokenForm({
       <DialogHeader>
         <DialogTitle>Issue vault token</DialogTitle>
         <DialogDescription>
-          CI reads the secrets in the token's scope from this console, and
-          nothing else.
+          The token reaches the secrets in its scope from this console, for the
+          actions you choose, and nothing else.
         </DialogDescription>
       </DialogHeader>
       <form noValidate onSubmit={handleSubmit}>
@@ -226,6 +265,33 @@ function IssueTokenForm({
             />
             <FieldError>{shown(errors.name)}</FieldError>
           </Field>
+
+          {OFFERED_TOKEN_ACTIONS.length > 1 ? (
+            <FieldSet data-invalid={shown(errors.actions) ? true : undefined}>
+              <FieldLegend variant="label">Actions</FieldLegend>
+              <ToggleGroup
+                aria-label="Actions"
+                multiple
+                onValueChange={(values) =>
+                  chooseActions(values as VaultTokenAction[])
+                }
+                spacing={1}
+                value={actions}
+                variant="outline"
+              >
+                {OFFERED_TOKEN_ACTIONS.map((action) => (
+                  <ScopeToggle
+                    className="min-h-11 px-2.5 sm:min-h-8"
+                    key={action}
+                    value={action}
+                  >
+                    {vaultTokenActions[action]?.label ?? action}
+                  </ScopeToggle>
+                ))}
+              </ToggleGroup>
+              <FieldError>{shown(errors.actions)}</FieldError>
+            </FieldSet>
+          ) : null}
 
           <FieldSet data-invalid={shown(errors.scope) ? true : undefined}>
             <FieldLegend variant="label">Secrets</FieldLegend>
@@ -270,7 +336,7 @@ function IssueTokenForm({
                   value={kinds}
                   variant="outline"
                 >
-                  {READABLE_KINDS.map((kind) => (
+                  {scopeKinds.map((kind) => (
                     <ScopeToggle
                       className="min-h-11 px-2.5 sm:min-h-8"
                       key={kind}
