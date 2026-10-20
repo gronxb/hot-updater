@@ -125,23 +125,51 @@ export interface VaultSecret {
   readonly updatedAtMs: number;
 }
 
+/** Whether the vault can seal and open values, and why not. */
+export type VaultStatus =
+  | { readonly locked: false }
+  | { readonly locked: true; readonly message: string };
+
 /** `hotUpdater.api.vault`. */
 export interface VaultApi {
+  /**
+   * Whether the master key is set, well formed, and the one the stored
+   * secrets were sealed with, so `put` and `reveal` can run. It opens the
+   * first live secret's value to tell: one page of secrets and one version,
+   * unless removed secrets fill whole pages, and nothing without a key. The
+   * Console asks before it offers to store a secret.
+   */
+  status(): Promise<VaultStatus>;
   /** Every secret but removed ones, by name, without values. */
   list(): Promise<readonly VaultSecret[]>;
   /**
    * Stores `value` as the next version of the secret `name`, creating it,
    * or bringing back a removed one, as needed. `metadata` replaces the
-   * secret's when given. Throws `VaultLockedError` without a master key.
+   * secret's when given. Throws `VaultLockedError` without a master key,
+   * and `VaultConflictError` when `expectedVersion` no longer holds.
    */
   put(input: {
     readonly name: string;
     readonly kind: VaultSecretKind;
     readonly value: unknown;
     readonly metadata?: Readonly<Record<string, unknown>>;
+    /**
+     * The version the caller saw, checked in the write's transaction: 0 for
+     * a name no secret has, so adding never replaces one, or a secret's
+     * current version, so an overwrite never replaces a newer one or brings
+     * back a removed one.
+     */
+    readonly expectedVersion?: number;
   }): Promise<VaultSecret>;
-  /** Removes a secret and deletes its values; null when there is none. */
-  remove(input: { readonly id: string }): Promise<VaultSecret | null>;
+  /**
+   * Removes a secret and deletes its values; null when there is none.
+   * Throws `VaultConflictError` when it is no longer at `expectedVersion`,
+   * the version the caller saw, so a rotation since then is not deleted.
+   */
+  remove(input: {
+    readonly id: string;
+    readonly expectedVersion?: number;
+  }): Promise<VaultSecret | null>;
   /**
    * The current value of a secret. Throws `VaultNotFoundError` when there is
    * no such secret, or it is no longer at `version`, `VaultLockedError`
@@ -193,6 +221,11 @@ export interface VaultApi {
 /** An argument the vault refuses, such as an unknown kind. */
 export class VaultInputError extends TypeError {
   override readonly name = "VaultInputError";
+}
+
+/** A secret is no longer at the version a write expected. */
+export class VaultConflictError extends Error {
+  override readonly name = "VaultConflictError";
 }
 
 /** No secret has the id, or it was removed. */
@@ -519,10 +552,27 @@ export const createVaultApi = ({
     readonly plaintext: Uint8Array<ArrayBuffer>;
     readonly metadata: Readonly<Record<string, DatabaseJson>> | undefined;
     readonly key: VaultMasterKey;
+    readonly expectedVersion: number | undefined;
   }) =>
     db.transaction(async (tx) => {
       const at = now();
       const existing = await tx.findOne("secrets", { name: input.name });
+      const current =
+        existing !== null && existing.deleted_at_ms === null
+          ? existing.current_version
+          : 0;
+      if (
+        input.expectedVersion !== undefined &&
+        input.expectedVersion !== current
+      ) {
+        throw new VaultConflictError(
+          input.expectedVersion === 0
+            ? `A secret is already named "${input.name}".`
+            : current === 0
+              ? `No secret is named "${input.name}" anymore.`
+              : `The secret "${input.name}" is at version ${current} now, not ${input.expectedVersion}.`,
+        );
+      }
       if (
         existing !== null &&
         existing.deleted_at_ms === null &&
@@ -582,6 +632,70 @@ export const createVaultApi = ({
     });
 
   return Object.freeze({
+    async status() {
+      let key: VaultMasterKey;
+      try {
+        key = await masterKey();
+      } catch (error) {
+        if (error instanceof VaultLockedError) {
+          return { locked: true, message: error.message } as const;
+        }
+        throw error;
+      }
+      // A well-formed key that did not seal the stored secrets opens none
+      // of them, and writing with it would split the vault across two keys.
+      // The first live secret by name: removed ones stay as tombstones.
+      let secret: SecretRow | undefined;
+      let cursor: string | undefined;
+      do {
+        const page = await db.findMany("secrets", {
+          index: "byName",
+          where: {},
+          limit: PAGE_SIZE,
+          ...(cursor === undefined ? {} : { cursor }),
+        });
+        for (const row of page.rows) {
+          if (row.deleted_at_ms === null) {
+            secret = row;
+            break;
+          }
+        }
+        cursor = page.next;
+      } while (secret === undefined && cursor !== undefined);
+      if (secret === undefined) return { locked: false } as const;
+      const sealed = await db.findOne("secret_versions", {
+        secret_id: secret.id,
+        version: secret.current_version,
+      });
+      // Removed since it was listed, or never stored: nothing proves the key.
+      if (sealed === null) {
+        return {
+          locked: true,
+          message: `The vault is locked: the secret "${secret.name}" has no stored value to check ${VAULT_MASTER_KEY_ENV} against. Check again.`,
+        } as const;
+      }
+      try {
+        await open({
+          masterKey: key,
+          secretId: secret.id,
+          version: secret.current_version,
+          sealed,
+        });
+        return { locked: false } as const;
+      } catch (error) {
+        if (
+          error instanceof VaultIntegrityError ||
+          error instanceof VaultLockedError
+        ) {
+          return {
+            locked: true,
+            message: `The vault is locked: ${VAULT_MASTER_KEY_ENV} is not the key the vault's secrets were saved with.`,
+          } as const;
+        }
+        throw error;
+      }
+    },
+
     async list() {
       const secrets: VaultSecret[] = [];
       let cursor: string | undefined;
@@ -600,8 +714,17 @@ export const createVaultApi = ({
       return Object.freeze(secrets);
     },
 
-    async put({ name, kind, value, metadata }) {
+    async put({ name, kind, value, metadata, expectedVersion }) {
+      if (
+        expectedVersion !== undefined &&
+        (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0)
+      ) {
+        throw new VaultInputError(
+          "A put's expectedVersion is 0 or a secret's version.",
+        );
+      }
       const input = {
+        expectedVersion,
         name: normalizeName(name),
         kind: normalizeKind(kind),
         plaintext: encodeValue(value),
@@ -627,10 +750,18 @@ export const createVaultApi = ({
       }
     },
 
-    remove: ({ id }) =>
+    remove: ({ id, expectedVersion }) =>
       db.transaction(async (tx) => {
         const row = await tx.findOne("secrets", { id });
         if (row === null || row.deleted_at_ms !== null) return null;
+        if (
+          expectedVersion !== undefined &&
+          row.current_version !== expectedVersion
+        ) {
+          throw new VaultConflictError(
+            `The secret "${row.name}" is at version ${row.current_version} now, not ${expectedVersion}.`,
+          );
+        }
         // Only the kept window holds versions; deleting them deletes the values.
         const first = Math.max(
           1,

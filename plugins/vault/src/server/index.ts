@@ -14,11 +14,13 @@ export {
   type VaultApi,
   type VaultAuditAction,
   type VaultAuditEntry,
+  VaultConflictError,
   VaultInputError,
   VaultNotFoundError,
   type VaultOptions,
   type VaultSecret,
   type VaultSecretKind,
+  type VaultStatus,
   type VaultToken,
   type VaultTokenAction,
   type VaultTokenScope,
@@ -30,6 +32,12 @@ export {
   VaultLockedError,
 } from "./crypto";
 export { vaultSchema, type VaultSchema } from "./schema";
+export {
+  parseVaultSecretValue,
+  type VaultSecretValue,
+  type VaultSecretValues,
+  vaultSecretMetadata,
+} from "./values";
 
 /**
  * Vault: signing and deploy credentials, stored in the database only as
