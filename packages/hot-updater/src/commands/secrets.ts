@@ -496,6 +496,13 @@ export const handleSecretsImport = async (
       return;
     }
 
+    // The file must still hold what was read, or a value changed since
+    // would be removed with only its old one stored.
+    if ((await readEnvFile(file)) !== content) {
+      throw new Error(
+        `${file} changed since it was read: run hot-updater secrets import again.`,
+      );
+    }
     const secret = await client.put({
       name,
       kind: "deploy-credentials",

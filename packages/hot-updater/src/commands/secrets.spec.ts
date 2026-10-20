@@ -601,6 +601,31 @@ describe("hot-updater secrets import", () => {
     );
   });
 
+  it("stores nothing when the file changes while it asks", async () => {
+    const requests = importConsole();
+    const file = await writeEnvFile(["HOT_UPDATER_S3_REGION=us-east-1"]);
+    const { p } = await import("@hot-updater/cli-tools");
+    const tty = process.stdin.isTTY;
+    process.stdin.isTTY = true;
+    vi.mocked(p.confirm).mockImplementationOnce(async () => {
+      await fs.writeFile(file, "HOT_UPDATER_S3_REGION=eu-west-1");
+      return true;
+    });
+    try {
+      await handleSecretsImport(file);
+    } finally {
+      process.stdin.isTTY = tty;
+    }
+
+    expect(log.error).toHaveBeenCalledWith(
+      `${file} changed since it was read: run hot-updater secrets import again.`,
+    );
+    expect(requests.map(({ method }) => method)).toEqual(["GET"]);
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(
+      "HOT_UPDATER_S3_REGION=eu-west-1",
+    );
+  });
+
   it("keeps the file when the Console refuses the write", async () => {
     mockConsole((request) =>
       request.method === "GET"
