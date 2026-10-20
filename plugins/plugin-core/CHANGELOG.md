@@ -1,5 +1,11 @@
 # @hot-updater/plugin-core
 
+## 1.1.1
+
+### Patch Changes
+
+- @hot-updater/protocol@1.1.1
+
 ## 1.1.0
 
 ### Minor Changes
