@@ -56,7 +56,8 @@ export const usePutVaultSecretMutation = () => {
       readonly value: unknown;
       readonly expectedVersion: number;
     }) => putVaultSecretRpc({ data: input }),
-    onSuccess: async () => {
+    // A refused write may mean the list is stale, such as a version conflict.
+    onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: vaultQueryKeys.secrets });
     },
   });
@@ -69,7 +70,7 @@ export const useRemoveVaultSecretMutation = () => {
       removeVaultSecretRpc({
         data: { id: secret.id, expectedVersion: secret.version },
       }),
-    onSuccess: async () => {
+    onSettled: async () => {
       await queryClient.invalidateQueries({ queryKey: vaultQueryKeys.secrets });
     },
   });

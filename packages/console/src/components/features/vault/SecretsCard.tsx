@@ -186,11 +186,16 @@ export function SecretsCard({
     readonly refetch: () => unknown;
   };
 }) {
-  // `undefined` while closed, `null` to add one, a secret to overwrite it.
-  const [editing, setEditing] = useState<VaultSecret | null | undefined>(
-    undefined,
-  );
-  const [deleting, setDeleting] = useState<VaultSecret | null>(null);
+  // `undefined` while closed, `null` to add one, an id to overwrite it. The
+  // dialogs read the secret from the list, so after a write is refused and
+  // the list reloads, a retry uses its current version, and a secret
+  // deleted meanwhile closes its dialog.
+  const [editing, setEditing] = useState<string | null | undefined>(undefined);
+  const [deleting, setDeleting] = useState<string | null>(null);
+  const secretOf = (id: string | null | undefined) =>
+    id ? secrets.data?.find((secret) => secret.id === id) : undefined;
+  const editingSecret = secretOf(editing);
+  const deletingSecret = secretOf(deleting) ?? null;
   // Writes wait for the vault to say it holds a key.
   const locked = status.data?.locked !== false;
   // Adding checks names against the list, so it waits for one.
@@ -370,7 +375,7 @@ export function SecretsCard({
                             aria-label={`Overwrite ${secret.name}`}
                             className="min-h-11 sm:min-h-7"
                             disabled={locked}
-                            onClick={() => setEditing(secret)}
+                            onClick={() => setEditing(secret.id)}
                             size="sm"
                             variant="ghost"
                           >
@@ -380,7 +385,7 @@ export function SecretsCard({
                           <Button
                             aria-label={`Delete ${secret.name}`}
                             className="min-h-11 sm:min-h-7"
-                            onClick={() => setDeleting(secret)}
+                            onClick={() => setDeleting(secret.id)}
                             size="sm"
                             variant="ghost"
                           >
@@ -402,12 +407,12 @@ export function SecretsCard({
         onOpenChange={(open) => {
           if (!open) setEditing(undefined);
         }}
-        open={editing !== undefined}
-        secret={editing ?? undefined}
+        open={editing === null || editingSecret !== undefined}
+        secret={editingSecret}
       />
       <DeleteSecretDialog
         onOpenChange={() => setDeleting(null)}
-        secret={deleting}
+        secret={deletingSecret}
       />
     </Card>
   );

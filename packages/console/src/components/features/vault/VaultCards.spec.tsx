@@ -437,6 +437,28 @@ describe("SecretsCard", () => {
     );
   });
 
+  it("follows the reloaded list after a refused write", () => {
+    const { rerender } = render(
+      <SecretsCard secrets={loaded([keystore])} status={unlocked} />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Overwrite release-keystore" }),
+    );
+    expect(screen.getByText(/Saves version 4/)).toBeDefined();
+    // Someone rotated it: the list reloads after the refused write.
+    rerender(
+      <SecretsCard
+        secrets={loaded([{ ...keystore, version: 5 }])}
+        status={unlocked}
+      />,
+    );
+    expect(screen.getByText(/Saves version 6/)).toBeDefined();
+    // Someone deleted it: the dialog closes.
+    rerender(<SecretsCard secrets={loaded([])} status={unlocked} />);
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
   it("deletes a secret after confirmation", async () => {
     removeMutation.mutateAsync.mockResolvedValue(keystore);
     render(<SecretsCard secrets={loaded([keystore])} status={unlocked} />);
