@@ -153,8 +153,15 @@ export interface VaultApi {
      */
     readonly expectedVersion?: number;
   }): Promise<VaultSecret>;
-  /** Removes a secret and deletes its values; null when there is none. */
-  remove(input: { readonly id: string }): Promise<VaultSecret | null>;
+  /**
+   * Removes a secret and deletes its values; null when there is none.
+   * Throws `VaultConflictError` when it is no longer at `expectedVersion`,
+   * the version the caller saw, so a rotation since then is not deleted.
+   */
+  remove(input: {
+    readonly id: string;
+    readonly expectedVersion?: number;
+  }): Promise<VaultSecret | null>;
   /**
    * The current value of a secret. Throws `VaultNotFoundError` when there is
    * no such secret, or it is no longer at `version`, `VaultLockedError`
@@ -682,10 +689,18 @@ export const createVaultApi = ({
       }
     },
 
-    remove: ({ id }) =>
+    remove: ({ id, expectedVersion }) =>
       db.transaction(async (tx) => {
         const row = await tx.findOne("secrets", { id });
         if (row === null || row.deleted_at_ms !== null) return null;
+        if (
+          expectedVersion !== undefined &&
+          row.current_version !== expectedVersion
+        ) {
+          throw new VaultConflictError(
+            `The secret "${row.name}" is at version ${row.current_version} now, not ${expectedVersion}.`,
+          );
+        }
         // Only the kept window holds versions; deleting them deletes the values.
         const first = Math.max(
           1,

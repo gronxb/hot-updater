@@ -197,7 +197,10 @@ describe("vault", () => {
     await expect(
       api.put({ name: "n", kind: "generic", value: "c", expectedVersion: 1 }),
     ).resolves.toMatchObject({ version: 2 });
-    await api.remove({ id: secret!.id });
+    await expect(
+      api.remove({ id: secret!.id, expectedVersion: 1 }),
+    ).rejects.toThrow('The secret "n" is at version 2 now, not 1.');
+    await api.remove({ id: secret!.id, expectedVersion: 2 });
     await expect(
       api.put({ name: "n", kind: "generic", value: "d", expectedVersion: 2 }),
     ).rejects.toThrow('No secret is named "n" anymore.');

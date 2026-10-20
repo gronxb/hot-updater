@@ -154,7 +154,9 @@ describe("vault RPC", () => {
     await expect(
       putVaultSecretRpc({ data: { ...input, expectedVersion: 1 } }),
     ).rejects.toThrow("is at version 2 now, not 1");
-    await removeVaultSecretRpc({ data: { id: saved.id } });
+    await removeVaultSecretRpc({
+      data: { id: saved.id, expectedVersion: 2 },
+    });
     await expect(
       putVaultSecretRpc({ data: { ...input, expectedVersion: 2 } }),
     ).rejects.toThrow('No secret is named "deploy" anymore.');
@@ -238,7 +240,7 @@ describe("vault RPC", () => {
       }),
     ).resolves.toMatchObject({ token: expect.stringMatching(/^hu_vault_/u) });
     await expect(
-      removeVaultSecretRpc({ data: { id: stored.id } }),
+      removeVaultSecretRpc({ data: { id: stored.id, expectedVersion: 1 } }),
     ).resolves.toMatchObject({ id: stored.id });
   });
 
@@ -248,7 +250,7 @@ describe("vault RPC", () => {
     await expect(getVaultStatusRpc()).resolves.toEqual({ locked: false });
   });
 
-  it("deletes a secret by id", async () => {
+  it("deletes a secret by id at the version the page showed", async () => {
     console_({ masterKey: MASTER_KEY });
     const saved = await putVaultSecretRpc({
       data: {
@@ -259,15 +261,21 @@ describe("vault RPC", () => {
       },
     });
 
+    // A page that showed another version deletes nothing.
     await expect(
-      removeVaultSecretRpc({ data: { id: saved.id } }),
+      removeVaultSecretRpc({ data: { id: saved.id, expectedVersion: 2 } }),
+    ).rejects.toThrow("is at version 1 now, not 2");
+    await expect(
+      removeVaultSecretRpc({ data: { id: saved.id, expectedVersion: 1 } }),
     ).resolves.toMatchObject({ id: saved.id });
     await expect(listVaultSecretsRpc()).resolves.toEqual([]);
     await expect(
-      removeVaultSecretRpc({ data: { id: saved.id } }),
+      removeVaultSecretRpc({ data: { id: saved.id, expectedVersion: 1 } }),
     ).rejects.toThrow("already deleted");
     await expect(
-      removeVaultSecretRpc({ data: { id: "tok-aaaaaaaaaaaaaaaaaaaaaa" } }),
+      removeVaultSecretRpc({
+        data: { id: "tok-aaaaaaaaaaaaaaaaaaaaaa", expectedVersion: 1 },
+      }),
     ).rejects.toThrow("Invalid secret id.");
   });
 

@@ -401,7 +401,7 @@ describe("SecretsCard", () => {
     );
     fireEvent.click(screen.getByRole("button", { name: "Delete secret" }));
 
-    expect(removeMutation.mutateAsync).toHaveBeenCalledWith(keystore.id);
+    expect(removeMutation.mutateAsync).toHaveBeenCalledWith(keystore);
     await waitFor(() => {
       expect(screen.queryByRole("alertdialog")).toBeNull();
     });

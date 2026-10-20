@@ -29,6 +29,21 @@ const parseId =
     return { id };
   };
 
+/** A version the page showed: 0 for none, or a secret's version. */
+const parseVersion = (input: unknown): number => {
+  const version = field(input, "expectedVersion");
+  if (
+    typeof version !== "number" ||
+    !Number.isSafeInteger(version) ||
+    version < 0
+  ) {
+    throw new TypeError(
+      "A secret's expected version is 0 for a new one, or the version the page showed.",
+    );
+  }
+  return version;
+};
+
 const parsePut = (
   input: unknown,
 ): {
@@ -39,21 +54,12 @@ const parsePut = (
 } => {
   const name = field(input, "name");
   const kind = field(input, "kind");
-  const expectedVersion = field(input, "expectedVersion");
+  const expectedVersion = parseVersion(input);
   if (typeof name !== "string") {
     throw new TypeError("A secret's name must be a string.");
   }
   if (!VAULT_SECRET_KIND_IDS.includes(kind as VaultSecretKind)) {
     throw new TypeError("Unknown secret kind.");
-  }
-  if (
-    typeof expectedVersion !== "number" ||
-    !Number.isSafeInteger(expectedVersion) ||
-    expectedVersion < 0
-  ) {
-    throw new TypeError(
-      "A secret's expected version is 0 for a new one, or the version it overwrites.",
-    );
   }
   return {
     name,
@@ -133,11 +139,15 @@ export const putVaultSecretRpc = createServerFn({ method: "POST" })
     });
   });
 
+/** Deletes the secret at the version the page showed, so a rotation since is kept. */
 export const removeVaultSecretRpc = createServerFn({ method: "POST" })
   .middleware([consoleAccess])
-  .validator(parseId("sec", "secret"))
+  .validator((input: unknown) => ({
+    ...parseId("sec", "secret")(input),
+    expectedVersion: parseVersion(input),
+  }))
   .handler(async ({ data }): Promise<VaultSecret> => {
-    const removed = await (await vaultApi()).remove({ id: data.id });
+    const removed = await (await vaultApi()).remove(data);
     if (removed === null) throw new Error("The secret was already deleted.");
     return removed;
   });

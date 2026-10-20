@@ -126,7 +126,7 @@ function DeleteSecretDialog({
     event.preventDefault();
     if (secret === null) return;
     try {
-      await remove.mutateAsync(secret.id);
+      await remove.mutateAsync(secret);
       onOpenChange(false);
       toast.success(`${secret.name} deleted`);
     } catch (error) {

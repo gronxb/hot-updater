@@ -65,7 +65,10 @@ export const usePutVaultSecretMutation = () => {
 export const useRemoveVaultSecretMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (id: string) => removeVaultSecretRpc({ data: { id } }),
+    mutationFn: (secret: { readonly id: string; readonly version: number }) =>
+      removeVaultSecretRpc({
+        data: { id: secret.id, expectedVersion: secret.version },
+      }),
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: vaultQueryKeys.secrets });
     },
