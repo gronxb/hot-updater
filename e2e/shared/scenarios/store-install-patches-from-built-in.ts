@@ -125,6 +125,7 @@ export const storeInstallPatchesFromBuiltInScenario: ScenarioDefinition = {
       {
         archiveRequests: 0,
         currentBundleId: "$nativeBuildMinBundleId",
+        fileRequests: 0,
         patchRequests: 1,
         targetBundleId: "$firstOtaBundleId",
       },

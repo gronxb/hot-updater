@@ -38,6 +38,7 @@ export const storeInstallBuiltInMismatchDownloadsScenario: ScenarioDefinition =
         {
           archiveRequests: 0,
           currentBundleId: "$nativeBuildMinBundleId",
+          fileRequests: 1,
           patchRequests: 0,
           targetBundleId: "$firstOtaBundleId",
         },
