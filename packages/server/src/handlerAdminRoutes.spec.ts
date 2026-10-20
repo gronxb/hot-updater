@@ -257,6 +257,48 @@ describe("admin API protocol 2 routes", () => {
     expect(registerNativeBuild).toHaveBeenCalledTimes(1);
   });
 
+  it.each([" production", "a".repeat(256)])(
+    "refuses the native build channel %j, as a bad request",
+    async (channel) => {
+      const api = createApi();
+      await expect(
+        routes.findNativeBuild!(
+          {},
+          new Request(
+            `${BASE}/native-builds/latest?platform=ios&channel=${encodeURIComponent(channel)}&fingerprintHash=f`,
+          ),
+          api,
+        ),
+      ).rejects.toBeInstanceOf(HandlerBadRequestError);
+      await expect(
+        routes.registerNativeBuild!(
+          {},
+          post("/native-builds", {
+            id: "01900000-0000-7000-8000-000000000002",
+            platform: "ios",
+            channel,
+            fingerprintHash: "f",
+            appVersion: null,
+            minBundleId: "01900000-0000-7000-8000-000000000001",
+            gitCommitHash: null,
+            artifact: {
+              kind: "ipa",
+              storageUri: "s3://bucket/App.ipa",
+              byteSize: 1,
+            },
+            embeddedBundle: {
+              manifestStorageUri: "s3://bucket/manifest.json",
+              manifestFileHash: "hash",
+              assetBaseStorageUri: "s3://bucket/assets",
+            },
+          }),
+          api,
+        ),
+      ).rejects.toBeInstanceOf(HandlerBadRequestError);
+      await expect(api.core.listChannels()).resolves.toEqual([]);
+    },
+  );
+
   it("refuses a fingerprint core cannot key, as a bad request", async () => {
     await expect(
       routes.findNativeBuild!(

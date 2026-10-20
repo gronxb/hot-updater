@@ -255,6 +255,12 @@ describe("registerNativeBuild", () => {
     vi.spyOn(harness.core, "registerNativeBuild").mockImplementationOnce(
       async (registration) => {
         await register(registration);
+        // Another build of the scope lands before the CLI checks its own.
+        await register({
+          ...registration,
+          id: "01ff0000-0000-7000-8000-000000000001",
+          minBundleId: "019b0000-0000-7000-8000-020000000001",
+        });
         throw new Error("response lost");
       },
     );
@@ -262,14 +268,11 @@ describe("registerNativeBuild", () => {
     await expect(
       registerNativeBuild(android({ artifactPath })),
     ).rejects.toThrow("response lost");
-    const build = await harness.core.findNativeBuild({
-      platform: "android",
-      channel: "production",
-      fingerprintHash: "fingerprint-a",
-      appVersion: null,
-    });
+    const ours = (await harness.core.listNativeBuilds({ limit: 10 })).find(
+      ({ min_bundle_id }) => min_bundle_id === MIN_BUNDLE_ID,
+    );
     expect(
-      storage.objects.has(`native-builds/android/${build!.id}/app-release.apk`),
+      storage.objects.has(`native-builds/android/${ours!.id}/app-release.apk`),
     ).toBe(true);
   });
 });

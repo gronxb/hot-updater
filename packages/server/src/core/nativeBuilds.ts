@@ -44,21 +44,20 @@ const pick = (row: Readonly<Record<string, unknown>>): NativeBuildRow => ({
  * index finds the newest build of either.
  */
 export const nativeBuildScopeKey = (scope: NativeBuildScope): string => {
-  const channelKey = encodeChannelKey(scope.channel);
-  if (scope.fingerprintHash === null) {
-    return `${createReleaseCatalogScopeKey({
-      channelKey,
-      platform: scope.platform,
-      strategy: "APP_VERSION",
-    })}:${encodeURIComponent(scope.appVersion)}`;
-  }
   try {
-    return createReleaseCatalogScopeKey({
-      channelKey,
-      fingerprintHash: scope.fingerprintHash,
-      platform: scope.platform,
-      strategy: "FINGERPRINT",
-    });
+    const channelKey = encodeChannelKey(scope.channel);
+    return scope.fingerprintHash === null
+      ? `${createReleaseCatalogScopeKey({
+          channelKey,
+          platform: scope.platform,
+          strategy: "APP_VERSION",
+        })}:${encodeURIComponent(scope.appVersion)}`
+      : createReleaseCatalogScopeKey({
+          channelKey,
+          fingerprintHash: scope.fingerprintHash,
+          platform: scope.platform,
+          strategy: "FINGERPRINT",
+        });
   } catch (error) {
     throw new NativeBuildInputError(
       `Invalid native build scope: ${error instanceof Error ? error.message : String(error)}.`,
@@ -116,6 +115,8 @@ export const createNativeBuildApi = (
     if (problem !== null) {
       throw new NativeBuildInputError(`Invalid native build: ${problem}.`);
     }
+    // The scope key checks the channel before it names a channel row.
+    const scopeKey = nativeBuildScopeKey(registration);
     const channel = (
       await insertChannel(db, {
         id: `channel:${encodeChannelKey(registration.channel)}`,
@@ -125,7 +126,7 @@ export const createNativeBuildApi = (
     const { embeddedBundle } = registration;
     const row: NativeBuildRow = {
       id: registration.id,
-      scope_key: nativeBuildScopeKey(registration),
+      scope_key: scopeKey,
       platform: registration.platform,
       channel_id: channel.id,
       fingerprint_hash: registration.fingerprintHash,

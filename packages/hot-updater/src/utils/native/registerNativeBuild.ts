@@ -48,8 +48,9 @@ const removeUnregisteredArtifact = async (
   registration: NativeBuildRegistration,
 ) => {
   try {
-    const stored = await core.findNativeBuild(registration);
-    if (stored?.id === registration.id || storage.delete === undefined) return;
+    // Only this registration writes its built-in bundle's row.
+    const committed = await core.getBundle(registration.minBundleId);
+    if (committed !== null || storage.delete === undefined) return;
     await storage.delete({ storageUri: registration.artifact.storageUri });
   } catch {
     p.log.warn(
