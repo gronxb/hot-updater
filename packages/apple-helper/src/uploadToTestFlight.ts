@@ -24,6 +24,8 @@ const TOKEN_REUSE_SECONDS = 10 * 60;
 
 /** The parts of an `.ipa` sent at once. */
 const UPLOAD_CONCURRENCY = 4;
+/** Attempts to commit the uploaded `.ipa`. */
+const COMMIT_ATTEMPTS = 3;
 /** Attempts per part: a part is a plain PUT, safe to repeat. */
 const UPLOAD_ATTEMPTS = 3;
 
@@ -134,6 +136,16 @@ const describeDetails = (details: readonly StateDetail[]) =>
     (detail) =>
       `${detail.description ?? "(no description)"}${detail.code ? ` (${detail.code})` : ""}`,
   );
+
+/**
+ * Whether a request may succeed when sent again: a server error, a rate
+ * limit, or a network failure, which fetch rejects with a TypeError. A
+ * refused key or request is not.
+ */
+const isRetryable = (error: unknown) =>
+  error instanceof AppStoreConnectError
+    ? error.status >= 500 || error.status === 429
+    : error instanceof TypeError;
 
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
@@ -374,10 +386,17 @@ export const uploadToTestFlight = async ({
   p.log.info(
     `Uploading ${ipaName} (version ${info.shortVersion}, build ${info.bundleVersion}) to App Store Connect`,
   );
+  // An unfinished upload would keep the build number reserved.
+  const removeUpload = () =>
+    request(
+      "Removing the build upload",
+      "DELETE",
+      `/v1/buildUploads/${buildUploadId}`,
+    ).catch(() => undefined);
+
+  let fileId: string;
   try {
-    const {
-      data: { id: fileId, attributes },
-    } = await request<{
+    const { data } = await request<{
       data: {
         id: string;
         attributes?: { uploadOperations?: UploadOperation[] };
@@ -396,33 +415,63 @@ export const uploadToTestFlight = async ({
         },
       },
     });
-    const operations = attributes?.uploadOperations ?? [];
+    fileId = data.id;
+    const operations = data.attributes?.uploadOperations ?? [];
     if (operations.length === 0) {
       throw new Error("App Store Connect returned no upload operations.");
     }
 
     await uploadParts({ ipaPath, operations, fetch });
-
-    await request(
-      "Committing the .ipa upload",
-      "PATCH",
-      `/v1/buildUploadFiles/${fileId}`,
-      {
-        data: {
-          type: "buildUploadFiles",
-          id: fileId,
-          attributes: { uploaded: true },
-        },
-      },
-    );
   } catch (error) {
-    // An unfinished upload would keep the build number reserved.
-    await request(
-      "Removing the build upload",
-      "DELETE",
-      `/v1/buildUploads/${buildUploadId}`,
-    ).catch(() => undefined);
+    await removeUpload();
     throw error;
+  }
+
+  // A commit App Store Connect may have applied is never undone: an
+  // unanswered one is checked against the file's state, then sent again.
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await request(
+        "Committing the .ipa upload",
+        "PATCH",
+        `/v1/buildUploadFiles/${fileId}`,
+        {
+          data: {
+            type: "buildUploadFiles",
+            id: fileId,
+            attributes: { uploaded: true },
+          },
+        },
+      );
+      break;
+    } catch (error) {
+      if (!isRetryable(error)) {
+        // App Store Connect refused the commit, so nothing is processing.
+        await removeUpload();
+        throw error;
+      }
+      const fileState = await request<{
+        data: {
+          attributes?: { assetDeliveryState?: { state?: string } };
+        };
+      }>(
+        "Reading the .ipa upload",
+        "GET",
+        `/v1/buildUploadFiles/${fileId}?fields[buildUploadFiles]=assetDeliveryState`,
+      )
+        .then(({ data }) => data.attributes?.assetDeliveryState?.state)
+        .catch(() => undefined);
+      if (fileState && fileState !== "AWAITING_UPLOAD") {
+        break;
+      }
+      if (attempt === COMMIT_ATTEMPTS) {
+        throw new Error(
+          `App Store Connect did not confirm the upload of build ${info.bundleVersion}: ${(error as Error).message} Check the build in TestFlight before you upload it again: ${testFlightUrl}`,
+          { cause: error },
+        );
+      }
+      await sleep(1_000 * attempt);
+    }
   }
 
   const deadline = Date.now() + processingTimeoutMs;
@@ -439,13 +488,7 @@ export const uploadToTestFlight = async ({
       "GET",
       `/v1/buildUploads/${buildUploadId}`,
     ).catch((error: unknown) => {
-      // Only a server error, a rate limit, or a network failure (which
-      // fetch rejects with a TypeError) is retried: a refused key is not.
-      const retryable =
-        error instanceof AppStoreConnectError
-          ? error.status >= 500 || error.status === 429
-          : error instanceof TypeError;
-      if (!retryable) {
+      if (!isRetryable(error)) {
         throw error;
       }
       lastError = error;

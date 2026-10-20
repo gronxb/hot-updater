@@ -100,6 +100,7 @@ const createRecordingFetch = (routes: Record<string, Reply | Reply[]>) => {
   return { fetch: fetch as unknown as typeof globalThis.fetch, requests };
 };
 
+const FILE_STATE_URL = `${API}/v1/buildUploadFiles/file-1?fields[buildUploadFiles]=assetDeliveryState`;
 const PART_URL_1 = "https://upload.example.com/part-1?signature=abc";
 const PART_URL_2 = "https://upload.example.com/part-2?signature=def";
 
@@ -449,6 +450,109 @@ describe("uploadToTestFlight", () => {
       url: `${API}/v1/buildUploads/upload-1`,
     });
     expect(requests.some((request) => request.method === "PATCH")).toBe(false);
+  });
+
+  it("keeps an upload whose unanswered commit App Store Connect applied", async () => {
+    const routes = successRoutes();
+    routes[`PATCH ${API}/v1/buildUploadFiles/file-1`] = { status: 503 };
+    routes[`GET ${FILE_STATE_URL}`] = {
+      json: {
+        data: {
+          attributes: { assetDeliveryState: { state: "UPLOAD_COMPLETE" } },
+        },
+      },
+    };
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).resolves.toMatchObject({ state: "COMPLETE" });
+    expect(requests.some((request) => request.method === "DELETE")).toBe(false);
+    expect(
+      requests.filter((request) => request.method === "PATCH"),
+    ).toHaveLength(1);
+  });
+
+  it("commits again when App Store Connect still awaits the upload", async () => {
+    const routes = successRoutes();
+    routes[`PATCH ${API}/v1/buildUploadFiles/file-1`] = [
+      { status: 503 },
+      { json: { data: { id: "file-1", type: "buildUploadFiles" } } },
+    ];
+    routes[`GET ${FILE_STATE_URL}`] = {
+      json: {
+        data: {
+          attributes: { assetDeliveryState: { state: "AWAITING_UPLOAD" } },
+        },
+      },
+    };
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).resolves.toMatchObject({ state: "COMPLETE" });
+    expect(
+      requests.filter((request) => request.method === "PATCH"),
+    ).toHaveLength(2);
+  });
+
+  it("removes the upload when App Store Connect refuses the commit", async () => {
+    const routes = successRoutes();
+    routes[`PATCH ${API}/v1/buildUploadFiles/file-1`] = {
+      status: 409,
+      json: {
+        errors: [{ status: "409", detail: "The file is not complete." }],
+      },
+    };
+    routes[`DELETE ${API}/v1/buildUploads/upload-1`] = { status: 204 };
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).rejects.toThrow(
+      "Committing the .ipa upload failed (HTTP 409): The file is not complete.",
+    );
+    expect(requests.at(-1)).toMatchObject({
+      method: "DELETE",
+      url: `${API}/v1/buildUploads/upload-1`,
+    });
+  });
+
+  it("never removes an upload whose commit it cannot confirm", async () => {
+    const routes = successRoutes();
+    routes[`PATCH ${API}/v1/buildUploadFiles/file-1`] = { status: 503 };
+    routes[`GET ${FILE_STATE_URL}`] = { status: 503 };
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).rejects.toThrow(
+      "App Store Connect did not confirm the upload of build 42: Committing the .ipa upload failed (HTTP 503). Check the build in TestFlight before you upload it again: https://appstoreconnect.apple.com/apps/123/testflight/ios",
+    );
+    expect(
+      requests.filter((request) => request.method === "PATCH"),
+    ).toHaveLength(3);
+    expect(requests.some((request) => request.method === "DELETE")).toBe(false);
   });
 
   it("names the build number App Store Connect already has", async () => {
