@@ -747,8 +747,7 @@ class BundleFileStorageService(
             "appVersion"
         }
 
-    private fun getKnownLaunchBundleId(metadata: BundleMetadata): String =
-        getCurrentVerifiedBundleId(metadata) ?: minBundleIdProvider()
+    private fun getKnownLaunchBundleId(metadata: BundleMetadata): String = getCurrentVerifiedBundleId(metadata) ?: minBundleIdProvider()
 
     private fun createInitialMetadata(): BundleMetadata = BundleMetadata()
 
