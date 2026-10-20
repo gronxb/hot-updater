@@ -67,7 +67,7 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
   switch (build.artifact_kind) {
     case "apk":
       return (
-        <div className="flex flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-3">
           <ApkQrCode build={build} />
           <p className="text-xs text-muted-foreground">On an emulator:</p>
           <CopyableText
@@ -78,7 +78,7 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
       );
     case "app":
       return (
-        <div className="flex flex-col gap-2">
+        <div className="flex min-w-0 flex-col gap-2">
           <p className="text-xs text-muted-foreground">
             Download the archive, then install it on the booted simulator:
           </p>
@@ -148,14 +148,16 @@ export function InstallBuildDialog({
             <InstallSteps build={build} />
             <a
               className={buttonVariants({
-                className: "min-h-11 w-full sm:min-h-8",
+                className: "min-h-11 w-full min-w-0 sm:min-h-8",
                 variant: build.artifact_kind === "apk" ? "outline" : "default",
               })}
               download
               href={nativeBuildDownloadPath(build.id)}
             >
               <Download data-icon="inline-start" />
-              Download {nativeBuildFileName(build)}
+              <span className="truncate">
+                Download {nativeBuildFileName(build)}
+              </span>
             </a>
           </>
         ) : query.isLoading ? (
