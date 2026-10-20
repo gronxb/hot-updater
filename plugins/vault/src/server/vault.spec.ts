@@ -269,10 +269,9 @@ describe("vault", () => {
       locked: true,
       message: expect.stringContaining("32 bytes in base64"),
     });
-    // Without a keys row, it also looks for a version under `default` and
-    // for a live secret.
+    // Without a keys row, it also reads the secrets for stored versions.
     expect(findOne).toHaveBeenCalledTimes(2);
-    expect(findMany).toHaveBeenCalledTimes(4);
+    expect(findMany).toHaveBeenCalledTimes(2);
     // An empty vault takes any well-formed key.
     await expect(api.status()).resolves.toEqual({ locked: false });
     vi.stubEnv("HOT_UPDATER_VAULT_MASTER_KEY", MASTER_KEY);

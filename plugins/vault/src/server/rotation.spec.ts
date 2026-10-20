@@ -434,6 +434,44 @@ describe("vault master keys", () => {
     });
   });
 
+  it("needs every key a vault without a keys row has versions under", async () => {
+    const { console, db } = start();
+    const a = console({ masterKey: KEY_A });
+    const old = await a.put({ name: "old", kind: "generic", value: "A" });
+    const rotating = console({ masterKeys: `next:${KEY_B},default:${KEY_A}` });
+    const fresh = await rotating.put({
+      name: "new",
+      kind: "generic",
+      value: "B",
+    });
+    // Deleted midway through the rotation: versions under two kids.
+    await db.transaction(async (tx) => {
+      const row = await tx.findOne("secrets", { id: ".master-keys" });
+      if (row !== null) await tx.delete("secrets", row);
+    });
+
+    // Holding one of them is not enough to start the checks again.
+    const newOnly = console({ masterKeys: `next:${KEY_B}` });
+    await expect(newOnly.status()).resolves.toMatchObject({
+      locked: true,
+      knownKeys: ["next", "default"],
+      message: expect.stringContaining('master key "default"'),
+    });
+    await expect(
+      newOnly.put({ name: "other", kind: "generic", value: "x" }),
+    ).rejects.toThrow(VaultLockedError);
+
+    await expect(rotating.keys()).resolves.toMatchObject({ remaining: 1 });
+    await expect(rotating.rewrap()).resolves.toEqual({
+      rewrapped: 1,
+      remaining: 0,
+    });
+    await expect(newOnly.reveal({ id: old.id, actor: "t" })).resolves.toBe("A");
+    await expect(newOnly.reveal({ id: fresh.id, actor: "t" })).resolves.toBe(
+      "B",
+    );
+  });
+
   it("forgets an old key with nothing under it, once every secret was removed", async () => {
     const { console } = start();
     const a = console({ masterKey: KEY_A });
