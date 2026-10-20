@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import {
+  CREDENTIAL_ENV_NAMES,
   getCwd,
   makeEnv,
   p,
@@ -377,6 +378,17 @@ const LOCAL_VARIABLES: ReadonlySet<string> = new Set([
   "HOT_UPDATER_VAULT_MASTER_KEYS",
 ]);
 
+/**
+ * The native build credentials' environment variables, by the kind of
+ * secret that holds them: the credential resolver reads them from the
+ * environment or that typed secret, never from deploy-credentials.
+ */
+const NATIVE_CREDENTIAL_KINDS: ReadonlyMap<string, VaultSecretKind> = new Map(
+  Object.entries(CREDENTIAL_ENV_NAMES).flatMap(([kind, fields]) =>
+    fields.flat().map((name) => [name, kind as VaultSecretKind] as const),
+  ),
+);
+
 const readEnvFile = async (file: string): Promise<string> => {
   try {
     const filePath = path.resolve(getCwd(), file);
@@ -405,6 +417,9 @@ const lineKeysOf = (content: string) =>
       (line) => line !== "" && !line.startsWith("#") && line.includes("="),
     )
     .map((line) => line.slice(0, line.indexOf("=")).trim());
+
+const aKind = (kind: VaultSecretKind) =>
+  `${/^[aeiou]/u.test(kind) ? "an" : "a"} ${kind}`;
 
 const names = (variables: readonly string[]) =>
   variables.length === 0 ? ui.muted("(none)") : variables.join(", ");
@@ -438,10 +453,24 @@ export const handleSecretsImport = async (
     }
     // No prototype: a variable may be named like an Object member.
     const value: Record<string, string> = Object.create(null);
+    const nativeCredentials = new Map<VaultSecretKind, string[]>();
     for (const [variable, entry] of Object.entries(env)) {
-      if (!LOCAL_VARIABLES.has(variable) && entry !== "") {
+      const kind = NATIVE_CREDENTIAL_KINDS.get(variable);
+      if (kind !== undefined) {
+        if (entry !== "") {
+          nativeCredentials.set(kind, [
+            ...(nativeCredentials.get(kind) ?? []),
+            variable,
+          ]);
+        }
+      } else if (!LOCAL_VARIABLES.has(variable) && entry !== "") {
         value[variable] = entry;
       }
+    }
+    for (const [kind, variables] of nativeCredentials) {
+      p.log.warn(
+        `${variables.join(", ")} ${variables.length === 1 ? "is" : "are"} a native build's ${kind} credential, which builds read from the environment or ${aKind(kind)} secret, not deploy-credentials: ${variables.length === 1 ? "it stays" : "they stay"} in ${file}. Store ${variables.length === 1 ? "it" : "them"} with hot-updater secrets put <name> --kind ${kind}, then remove ${variables.length === 1 ? "it" : "them"} from ${file}.`,
+      );
     }
     const moved = Object.keys(value);
     const kept = Object.keys(env).filter(
