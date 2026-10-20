@@ -272,3 +272,33 @@ export const readBuiltApp = async ({
     await fs.promises.rm(directory, { recursive: true, force: true });
   }
 };
+
+/**
+ * The application ID of the built `.apk` or `.aab`, the package name Google
+ * Play files it under, with the suffixes flavors and build types add.
+ * undefined without aapt2.
+ */
+export const readBuiltPackageName = async ({
+  artifactPath,
+  androidProjectPath,
+}: {
+  artifactPath: string;
+  androidProjectPath: string;
+}): Promise<string | undefined> => {
+  const aapt2 = findAapt2(androidProjectPath);
+  if (!aapt2) {
+    return undefined;
+  }
+  const directory = await fs.promises.mkdtemp(
+    path.join(os.tmpdir(), "android-helper-"),
+  );
+  try {
+    const apkPath = artifactPath.endsWith(".aab")
+      ? await writeBaseModuleApk(artifactPath, directory)
+      : artifactPath;
+    const { stdout } = await execa(aapt2, ["dump", "packagename", apkPath]);
+    return stdout.trim() || undefined;
+  } finally {
+    await fs.promises.rm(directory, { recursive: true, force: true });
+  }
+};
