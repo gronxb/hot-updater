@@ -97,6 +97,7 @@ import {
 import { p } from "@hot-updater/cli-tools";
 
 import { createNativeBuild } from "@/utils/native/createNativeBuild";
+import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
 
 import { buildIosNative } from "./buildNative";
 
@@ -134,6 +135,11 @@ describe("build:ios --upload testflight", () => {
       ipaPath: "/out/export/App.ipa",
       apiKey: ascApiKey,
     });
+    // --register loads the vault's deploy credentials with the config; the
+    // upload's App Store Connect key comes from the credential resolver.
+    expect(prepareNativeBuild).toHaveBeenCalledWith(
+      expect.objectContaining({ credentials: true }),
+    );
   });
 
   it("uploads nothing without --upload", async () => {
@@ -141,6 +147,10 @@ describe("build:ios --upload testflight", () => {
 
     expect(events).toEqual(["prebuild", "build", "dispose"]);
     expect(resolveTestFlightUploadKey).not.toHaveBeenCalled();
+    // Without --register the config loads with no vault credentials.
+    expect(prepareNativeBuild).toHaveBeenCalledWith(
+      expect.objectContaining({ credentials: false }),
+    );
   });
 
   it("refuses a scheme TestFlight would not take before the prebuild", async () => {
