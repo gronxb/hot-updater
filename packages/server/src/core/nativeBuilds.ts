@@ -17,6 +17,9 @@ import { insertChannel, type CoreTransaction } from "./writes";
 
 const ARTIFACT_KINDS = new Set(["apk", "aab", "ipa", "app"]);
 
+/** `native_builds.scope_key`'s bound in core's schema. */
+const SCOPE_KEY_MAX_LENGTH = 2048;
+
 /** A native build or scope core cannot store or look up: the caller's input. */
 export class NativeBuildInputError extends TypeError {
   override readonly name = "NativeBuildInputError";
@@ -44,25 +47,33 @@ const pick = (row: Readonly<Record<string, unknown>>): NativeBuildRow => ({
  * index finds the newest build of either.
  */
 export const nativeBuildScopeKey = (scope: NativeBuildScope): string => {
+  let scopeKey: string;
   try {
     const channelKey = encodeChannelKey(scope.channel);
-    return scope.fingerprintHash === null
-      ? `${createReleaseCatalogScopeKey({
-          channelKey,
-          platform: scope.platform,
-          strategy: "APP_VERSION",
-        })}:${encodeURIComponent(scope.appVersion)}`
-      : createReleaseCatalogScopeKey({
-          channelKey,
-          fingerprintHash: scope.fingerprintHash,
-          platform: scope.platform,
-          strategy: "FINGERPRINT",
-        });
+    scopeKey =
+      scope.fingerprintHash === null
+        ? `${createReleaseCatalogScopeKey({
+            channelKey,
+            platform: scope.platform,
+            strategy: "APP_VERSION",
+          })}:${encodeURIComponent(scope.appVersion)}`
+        : createReleaseCatalogScopeKey({
+            channelKey,
+            fingerprintHash: scope.fingerprintHash,
+            platform: scope.platform,
+            strategy: "FINGERPRINT",
+          });
   } catch (error) {
     throw new NativeBuildInputError(
       `Invalid native build scope: ${error instanceof Error ? error.message : String(error)}.`,
     );
   }
+  if (scopeKey.length > SCOPE_KEY_MAX_LENGTH) {
+    throw new NativeBuildInputError(
+      `Invalid native build scope: its key is longer than ${SCOPE_KEY_MAX_LENGTH} characters; shorten the channel or app version.`,
+    );
+  }
+  return scopeKey;
 };
 
 /** Whether `bundleId` is a native build's built-in bundle: one unique read. */

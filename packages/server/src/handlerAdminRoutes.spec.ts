@@ -257,6 +257,18 @@ describe("admin API protocol 2 routes", () => {
     expect(registerNativeBuild).toHaveBeenCalledTimes(1);
   });
 
+  it("refuses an app version whose scope key overflows, as a bad request", async () => {
+    await expect(
+      routes.findNativeBuild!(
+        {},
+        new Request(
+          `${BASE}/native-builds/latest?platform=ios&channel=production&appVersion=${encodeURIComponent("한".repeat(300))}`,
+        ),
+        createApi(),
+      ),
+    ).rejects.toThrow("longer than 2048 characters");
+  });
+
   it.each([" production", "a".repeat(256)])(
     "refuses the native build channel %j, as a bad request",
     async (channel) => {
