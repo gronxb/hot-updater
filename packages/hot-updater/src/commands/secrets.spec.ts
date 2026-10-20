@@ -475,6 +475,7 @@ describe("hot-updater secrets import", () => {
       `HOT_UPDATER_CONSOLE_URL=${CONSOLE_URL}`,
       `HOT_UPDATER_VAULT_TOKEN=${TOKEN}`,
       "HOT_UPDATER_VAULT_MASTER_KEY=master-key-stays",
+      "HOT_UPDATER_VAULT_MASTER_KEYS=kid2:new,kid1:old",
     ]);
 
     await handleSecretsImport(file, { yes: true });
@@ -514,6 +515,7 @@ describe("hot-updater secrets import", () => {
         `HOT_UPDATER_CONSOLE_URL=${CONSOLE_URL}`,
         `HOT_UPDATER_VAULT_TOKEN=${TOKEN}`,
         "HOT_UPDATER_VAULT_MASTER_KEY=master-key-stays",
+        "HOT_UPDATER_VAULT_MASTER_KEYS=kid2:new,kid1:old",
       ].join("\n"),
     );
     const printed = messages().join("\n");

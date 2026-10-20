@@ -361,8 +361,8 @@ export const DEFAULT_IMPORT_SECRET_NAME = "deploy-credentials";
 /**
  * The variables `secrets import` leaves in the file: the connection the
  * CLI reaches the vault with, init's choices, the app's client API key,
- * which ships in the app and is no vault secret, and the master key a
- * Console opens the vault with, which never goes into it.
+ * which ships in the app and is no vault secret, and the master keys a
+ * Console opens the vault with, which never go into it.
  */
 const LOCAL_VARIABLES: ReadonlySet<string> = new Set([
   VAULT_CONNECTION_ENV_NAMES.url,
@@ -372,7 +372,9 @@ const LOCAL_VARIABLES: ReadonlySet<string> = new Set([
   "HOT_UPDATER_INIT_PROVIDER",
   // apiKeys()'s client credential, as init provisions it.
   "HOT_UPDATER_API_KEY",
+  // The master keys a Console opens the vault with, one or a rotation list.
   "HOT_UPDATER_VAULT_MASTER_KEY",
+  "HOT_UPDATER_VAULT_MASTER_KEYS",
 ]);
 
 const readEnvFile = async (file: string): Promise<string> => {
