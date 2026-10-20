@@ -874,7 +874,9 @@ export const createVaultApi = ({
       }
       if (kept.length > 0) {
         for (const row of await db.findByKeys("secret_versions", kept)) {
-          if (row !== null) sealed[row.kid] ??= row;
+          if (row !== null && !Object.hasOwn(sealed, row.kid)) {
+            sealed[row.kid] = row;
+          }
         }
       }
       cursor = page.next;
@@ -889,7 +891,7 @@ export const createVaultApi = ({
   const seedKeys = async (keyring: VaultKeyring) => {
     const sealed = await findSealed();
     await checkSealed(keyring, sealed);
-    return keyring.keys.filter(({ kid }) => sealed[kid] !== undefined);
+    return keyring.keys.filter(({ kid }) => Object.hasOwn(sealed, kid));
   };
 
   /** The checks a new keys row starts with: the seeds' and the active key's. */
@@ -900,7 +902,10 @@ export const createVaultApi = ({
   ): Promise<KeyChecks> => {
     const next: Record<string, KeyCheck> = { ...checks };
     for (const key of keys) {
-      next[key.kid] ??= await sealKeyCheck(key, at);
+      // Own properties only: a kid such as "constructor" is inherited.
+      if (!Object.hasOwn(next, key.kid)) {
+        next[key.kid] = await sealKeyCheck(key, at);
+      }
     }
     return next;
   };
@@ -1132,7 +1137,7 @@ export const createVaultApi = ({
         }
         const checks = keyChecksOf(row);
         await checkKeyring(keyring, checks);
-        if (checks[active.kid] !== undefined) return row;
+        if (Object.hasOwn(checks, active.kid)) return row;
         const at = now();
         const set = {
           current_version: row.current_version + 1,

@@ -83,6 +83,24 @@ describe("vault master keys", () => {
     ).resolves.toMatchObject({ keys: [{ kid: "default" }] });
   });
 
+  it("records a check for a kid named like an object property", async () => {
+    const { console } = start();
+    const own = console({ masterKeys: `constructor:${KEY_A}` });
+    await own.put({ name: "s1", kind: "generic", value: "v1" });
+
+    const other = console({ masterKeys: `constructor:${KEY_B}` });
+    await expect(other.status()).resolves.toMatchObject({
+      locked: true,
+      message: expect.stringContaining('the master key "constructor"'),
+    });
+    await expect(
+      other.put({ name: "s2", kind: "generic", value: "x" }),
+    ).rejects.toThrow(VaultLockedError);
+    await expect(own.keys()).resolves.toMatchObject({
+      keys: [{ kid: "constructor", known: true, versions: 1 }],
+    });
+  });
+
   it("takes the options' keys over the environment's", async () => {
     const { console } = start();
     vi.stubEnv("HOT_UPDATER_VAULT_MASTER_KEYS", "broken");
