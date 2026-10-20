@@ -14,11 +14,13 @@ import type {
   HotUpdaterCoreApi,
   ReleaseCatalogRow,
   ReleaseRow,
+  StorageAdapter,
 } from "@hot-updater/plugin-core";
 import type { InsightsModel } from "@hot-updater/plugin-insights/server";
 import type { RemoteConfigApi } from "@hot-updater/plugin-remote-config/server";
 import type { Bundle } from "@hot-updater/protocol";
 
+import { BUILT_IN_MIN_BUNDLE_ID_SUFFIX } from "../built-in-bundle-id.ts";
 import {
   ConsoleInsightsQaError,
   readObservedInsightsEvent,
@@ -34,6 +36,7 @@ import {
   PAX_LONG_ASSET_REQUIRE_PATH,
 } from "../pax-long-path-fixture.ts";
 import { importPublished, publishedBin } from "../published.ts";
+import { nativeAppPath, parseE2eTrack } from "../tracks.ts";
 import {
   advanceAndroidRestartWait,
   hasNativeRestartEvidenceAfterMarker,
@@ -65,9 +68,14 @@ import {
   type FairFileLock,
 } from "./fair-file-lock.ts";
 import {
+  deleteChannelReleases,
   getFixtureResetChannels as resolveFixtureResetChannels,
   resetFixtureReleases,
 } from "./fixture-release-reset.ts";
+import {
+  NATIVE_BUILD_CHANNEL_PREFIX,
+  registerInstalledNativeBuild,
+} from "./native-build-registration.ts";
 import { inferPatchAssetPathFromStorageUri } from "./patch-storage-path.ts";
 import { resetProviderAfterReady } from "./provider-reset-retry.ts";
 import { buildReleaseCatalogUrl } from "./release-catalog-url.ts";
@@ -99,9 +107,10 @@ const {
 } = await importPublished<typeof import("@hot-updater/protocol")>(
   "@hot-updater/protocol",
 );
-const { createUUIDv7After, rowToBundle } = await importPublished<
-  typeof import("@hot-updater/plugin-core")
->("@hot-updater/plugin-core");
+const { assertStorageOperations, createUUIDv7After, rowToBundle } =
+  await importPublished<typeof import("@hot-updater/plugin-core")>(
+    "@hot-updater/plugin-core",
+  );
 const { assembleServer, loadConfig } = await importPublished<
   typeof import("@hot-updater/cli-tools")
 >("@hot-updater/cli-tools");
@@ -237,7 +246,6 @@ const WIDGET_ENTRY_FILE = "index.widget.js";
 const WIDGET_CHANNEL = "widget";
 const HOT_UPDATER_ENV_FILE = path.join(EXAMPLE_DIR, ".env.hotupdater");
 const HOT_UPDATER_CONFIG_FILE = path.join(EXAMPLE_DIR, "hot-updater.config.ts");
-const BUILT_IN_MIN_BUNDLE_ID_SUFFIX = "7000-8000-000000000000";
 const SIGNING_PRIVATE_KEY_RELATIVE_PATH = "keys/private-key.pem";
 const EMPTY_CRASH_HISTORY = {
   bundles: [],
@@ -516,7 +524,10 @@ const channelNamespace =
   process.env.HOT_UPDATER_E2E_CHANNEL_NAMESPACE?.trim() || null;
 
 function getFixtureChannel(channel: string) {
-  return channelNamespace ? `${channelNamespace}-${channel}` : channel;
+  // A native build's channel is its binary's own across jobs.
+  return channelNamespace && !channel.startsWith(NATIVE_BUILD_CHANNEL_PREFIX)
+    ? `${channelNamespace}-${channel}`
+    : channel;
 }
 
 function getFixtureResetChannels() {
@@ -1398,11 +1409,12 @@ async function waitForFile(filePath: string, attempts = 360) {
   throw new Error(`Timed out waiting for ${filePath}`);
 }
 
-/** The server the example's config describes: its database, core on it, and the plugins it runs. */
+/** The server the example's config describes: its database, core on it, the plugins it runs, and its storage. */
 type ConfiguredServer = {
   readonly core: HotUpdaterCoreApi;
   readonly database: ConfiguredDatabase;
   readonly plugins: readonly AnyHotUpdaterPlugin[];
+  readonly storage: StorageAdapter | undefined;
 };
 
 async function withConfiguredDatabase<T>(
@@ -1413,7 +1425,7 @@ async function withConfiguredDatabase<T>(
   try {
     process.chdir(fixtureSession.exampleDir);
     return await withHotUpdaterControlEnv(async () => {
-      const { database, plugins } = await loadConfig(null);
+      const { database, plugins, storage } = await loadConfig(null);
       if (database === undefined) {
         throw new Error(
           "The example's hot-updater.config.ts sets no database.",
@@ -1427,6 +1439,7 @@ async function withConfiguredDatabase<T>(
           core: assembleServer({ database }).core,
           database,
           plugins,
+          storage,
         });
       } finally {
         await database.dispose?.();
@@ -7175,6 +7188,106 @@ async function resetRemoteBundles() {
   return {};
 }
 
+/**
+ * Registers the installed app binary as a native build, as `hot-updater
+ * build:* --register` registers a release build, unless an earlier run of
+ * the same binary did. Its channel is the binary's own, so this deletes the
+ * releases a failed earlier run left there.
+ */
+async function registerNativeBuildFixture(input: { appVersion: string }) {
+  const platform = fixtureSession.platform;
+  const artifactPath = nativeAppPath(
+    parseE2eTrack(process.env.HOT_UPDATER_E2E_TRACK),
+    platform,
+    REPO_DIR,
+    process.env,
+  );
+  const nativeBuild = await withConfiguredDatabase(
+    async ({ core, storage }) => {
+      if (storage === undefined) {
+        throw new Error("The example's hot-updater.config.ts sets no storage.");
+      }
+      assertStorageOperations(storage, ["put"]);
+      const registered = await registerInstalledNativeBuild({
+        core,
+        storage,
+        platform,
+        artifactPath,
+        appVersion: input.appVersion,
+      });
+      await deleteChannelReleases({
+        core,
+        channels: [registered.channel],
+        platform,
+      });
+      return registered;
+    },
+  );
+  logE2eFixture("native build registered", {
+    artifactPath,
+    ...nativeBuild,
+    platform,
+  });
+  return {
+    nativeBuildChannel: nativeBuild.channel,
+    nativeBuildMinBundleId: nativeBuild.minBundleId,
+    nativeBuildRegistered: nativeBuild.registered,
+  };
+}
+
+/** Deletes the releases of a native build's channel. */
+async function resetNativeBuildChannel(input: { channel: string }) {
+  if (!input.channel.startsWith(NATIVE_BUILD_CHANNEL_PREFIX)) {
+    throw new Error(`${input.channel} is no native build's channel.`);
+  }
+  const clearedReleaseIds = await withConfiguredDatabase(({ core }) =>
+    deleteChannelReleases({
+      core,
+      channels: [input.channel],
+      platform: fixtureSession.platform,
+    }),
+  );
+  logE2eFixture("native build channel reset", {
+    channel: input.channel,
+    clearedReleaseIds,
+    platform: fixtureSession.platform,
+  });
+  return {};
+}
+
+/**
+ * Gives a bundle's patch from `baseBundleId` a base file hash no file has:
+ * what a device sees when its built-in bundle is not the bytes the native
+ * build registered, such as after store processing rewrote them.
+ */
+async function mismatchPatchBaseFileHash(input: {
+  baseBundleId: string;
+  bundleId: string;
+}) {
+  const bundle = await fetchProviderBundleById(input.bundleId);
+  const patches = getBundlePatches(bundle);
+  if (!patches.some((patch) => patch.baseBundleId === input.baseBundleId)) {
+    throw createEndpointError("The bundle has no patch from this base", {
+      ...input,
+      observedBaseBundleIds: patches.map((patch) => patch.baseBundleId),
+    });
+  }
+  await withConfiguredDatabase(({ core }) =>
+    core.updateBundle(input.bundleId, {
+      patches: patches.map((patch) =>
+        patch.baseBundleId === input.baseBundleId
+          ? { ...patch, baseFileHash: "0".repeat(64) }
+          : patch,
+      ),
+    }),
+  );
+  logE2eFixture("patch base file hash mismatched", {
+    ...input,
+    platform: fixtureSession.platform,
+  });
+  return {};
+}
+
 async function resetLocalAppState() {
   resetE2eScreenState();
   fixtureSession.observedInsightsEvents = [];
@@ -7536,6 +7649,14 @@ export function startResetRemoteBundlesJob() {
   return createJob(() => resetRemoteBundles());
 }
 
+export function startRegisterNativeBuildJob(input: { appVersion: string }) {
+  return createJob(() => registerNativeBuildFixture(input));
+}
+
+export function startResetNativeBuildChannelJob(input: { channel: string }) {
+  return createJob(() => resetNativeBuildChannel(input));
+}
+
 export function startSetNativeCheckJob(input: {
   strategy: "appVersion" | "fingerprint";
   requestTimeoutMs?: number;
@@ -7672,6 +7793,13 @@ export async function handleResetRemoteBundles() {
 
 export async function handleResetLocalAppState() {
   return resetLocalAppState();
+}
+
+export async function handleMismatchPatchBaseFileHash(args: {
+  baseBundleId: string;
+  bundleId: string;
+}) {
+  return mismatchPatchBaseFileHash(args);
 }
 
 export async function handleAssertBundlePatchBases(args: {

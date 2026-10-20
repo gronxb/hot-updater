@@ -188,6 +188,14 @@ device downloads it, and no update check changes. The bundle totals leave it
 out, a release of it and its deletion are refused, `hot-updater doctor --fix`
 keeps it, and `storage prune` keeps its files and the artifact.
 
+`hot-updater deploy` uses it as a Hermes patch base: it adds the built-in
+bundle of the newest registered build of the deploy's channel, platform, and
+fingerprint or exact app version to the patch bases, so a fresh install's first
+OTA downloads a `.bsdiff` patch instead of the complete Hermes bundle. The app
+checks its packaged Hermes file against the hash registered from the artifact
+before it patches, and downloads the complete file when they differ. See
+[Bundle Diffing](/docs/guides/bundle-diffing#first-ota-update).
+
 A Debug build loads its JavaScript from Metro and has no built-in bundle, so
 `--register` refuses it. A self-hosted server reached through
 `standaloneRepository` needs the native build routes of this release's
