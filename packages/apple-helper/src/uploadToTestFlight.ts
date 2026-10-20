@@ -147,6 +147,20 @@ const isRetryable = (error: unknown) =>
     ? error.status >= 500 || error.status === 429
     : error instanceof TypeError;
 
+/** Runs `request`, again after a retryable failure, up to the attempts. */
+const retrying = async <T>(request: () => Promise<T>): Promise<T> => {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await request();
+    } catch (error) {
+      if (!isRetryable(error) || attempt === COMMIT_ATTEMPTS) {
+        throw error;
+      }
+      await sleep(1_000 * attempt);
+    }
+  }
+};
+
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
@@ -380,21 +394,23 @@ export const uploadToTestFlight = async ({
 
   // The reservation this run created, which an unanswered request may have
   // made: found by its version and build number while it awaits the file.
+  // A failed lookup is retried, never read as no reservation.
   const findReservation = () =>
-    request<{ data: { id: string }[] }>(
-      "Finding the build upload",
-      "GET",
-      `/v1/apps/${app.id}/buildUploads?${new URLSearchParams({
-        "filter[cfBundleShortVersionString]": info.shortVersion,
-        "filter[cfBundleVersion]": info.bundleVersion,
-        "filter[platform]": "IOS",
-        "filter[state]": "AWAITING_UPLOAD",
-      })}`,
-    )
-      .then(({ data }) => data[0]?.id)
-      .catch(() => undefined);
+    retrying(() =>
+      request<{ data: { id: string }[] }>(
+        "Finding the build upload",
+        "GET",
+        `/v1/apps/${app.id}/buildUploads?${new URLSearchParams({
+          "filter[cfBundleShortVersionString]": info.shortVersion,
+          "filter[cfBundleVersion]": info.bundleVersion,
+          "filter[platform]": "IOS",
+          "filter[state]": "AWAITING_UPLOAD",
+        })}`,
+      ),
+    ).then(({ data }) => data[0]?.id);
 
   let buildUploadId: string | undefined;
+  let unanswered = false;
   for (let attempt = 1; buildUploadId === undefined; attempt++) {
     try {
       ({
@@ -421,6 +437,11 @@ export const uploadToTestFlight = async ({
         error.status === 409 &&
         error.errors.some((apiError) => apiError.code === DUPLICATE_ERROR_CODE)
       ) {
+        // After an unanswered create, the duplicate may be this run's own.
+        buildUploadId = unanswered ? await findReservation() : undefined;
+        if (buildUploadId !== undefined) {
+          break;
+        }
         throw new Error(
           `App Store Connect already has build ${info.bundleVersion} of version ${info.shortVersion}. Each build of a version needs a new build number (CFBundleVersion).`,
           { cause: error },
@@ -430,6 +451,7 @@ export const uploadToTestFlight = async ({
         throw error;
       }
       // App Store Connect may have made the reservation it did not answer.
+      unanswered = true;
       buildUploadId = await findReservation();
       if (buildUploadId === undefined) {
         if (attempt === COMMIT_ATTEMPTS) {
@@ -454,6 +476,10 @@ export const uploadToTestFlight = async ({
         );
         return;
       } catch (error) {
+        // An earlier attempt removed it, though its answer was lost.
+        if (error instanceof AppStoreConnectError && error.status === 404) {
+          return;
+        }
         if (!isRetryable(error) || attempt === COMMIT_ATTEMPTS) {
           p.log.warn(
             `App Store Connect kept the unfinished build upload ${buildUploadId}, which reserves build ${info.bundleVersion} of version ${info.shortVersion}: ${(error as Error).message} Upload with a new build number (CFBundleVersion).`,

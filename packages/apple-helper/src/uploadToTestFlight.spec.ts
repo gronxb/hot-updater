@@ -733,6 +733,60 @@ describe("uploadToTestFlight", () => {
     );
   });
 
+  it("adopts its own reservation when the create sent again is a duplicate", async () => {
+    const routes = successRoutes();
+    routes[`POST ${API}/v1/buildUploads`] = [
+      { status: 503 },
+      {
+        status: 409,
+        json: {
+          errors: [
+            { status: "409", code: "ENTITY_ERROR.ATTRIBUTE.INVALID.DUPLICATE" },
+          ],
+        },
+      },
+    ];
+    // The first lookup fails, then finds nothing yet, then the reservation.
+    routes[`GET ${RESERVATIONS_URL}`] = [
+      { status: 503 },
+      { json: { data: [] } },
+      { json: { data: [{ id: "upload-1" }] } },
+    ];
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).resolves.toMatchObject({ buildUploadId: "upload-1" });
+    expect(
+      requests.filter((request) => request.url === RESERVATIONS_URL),
+    ).toHaveLength(3);
+  });
+
+  it("takes a 404 from an upload removal sent again as removed", async () => {
+    const routes = successRoutes();
+    routes[`PUT ${PART_URL_2}`] = { status: 403 };
+    routes[`DELETE ${API}/v1/buildUploads/upload-1`] = [
+      { status: 503 },
+      { status: 404, json: { errors: [{ status: "404", code: "NOT_FOUND" }] } },
+    ];
+    const { fetch } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).rejects.toThrow("Uploading part 2 of 2 failed: HTTP 403.");
+    expect(p.log.warn).not.toHaveBeenCalled();
+  });
+
   it("names the build number App Store Connect already has", async () => {
     const routes = successRoutes();
     routes[`POST ${API}/v1/buildUploads`] = {
