@@ -63,6 +63,8 @@ const expectedScenarioModuleFiles = [
   "slow-old-artifact-after-newer-install.ts",
   "stale-catalog-after-newer-generation.ts",
   "startup-hang-recovery.ts",
+  "store-install-built-in-mismatch-downloads.ts",
+  "store-install-patches-from-built-in.ts",
   "target-cohorts-only.ts",
   "target-cohorts-rollout-interaction.ts",
   "targeted-cohort-switchback.ts",

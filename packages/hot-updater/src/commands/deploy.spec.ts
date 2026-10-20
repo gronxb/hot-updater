@@ -1732,6 +1732,194 @@ describe("deploy rollout wiring", () => {
     );
   });
 
+  /** Registers an iOS native build of the production channel. */
+  const registerNativeBuild = (
+    minBundleId: string,
+    scope:
+      | { fingerprintHash: string; appVersion: null }
+      | { fingerprintHash: null; appVersion: string },
+  ) =>
+    databaseHarness.core.registerNativeBuild({
+      id: "01900000-0000-7000-8000-00000000b001",
+      platform: "ios",
+      channel: "production",
+      ...scope,
+      minBundleId,
+      gitCommitHash: null,
+      artifact: {
+        kind: "ipa",
+        storageUri: "storage://native-builds/ios/b001/App.ipa",
+        byteSize: 1_024,
+      },
+      embeddedBundle: {
+        manifestStorageUri: `storage://artifacts/${minBundleId}/manifest.json`,
+        manifestFileHash: "built-in-manifest-hash",
+        assetBaseStorageUri: "storage://assets",
+      },
+    });
+
+  const deployByFingerprint = async () => {
+    const fingerprint = { hash: "fingerprint-hash", sources: [] };
+    vi.mocked(nativeFingerprint).mockResolvedValueOnce(
+      fingerprint as unknown as Awaited<ReturnType<typeof nativeFingerprint>>,
+    );
+    vi.mocked(readLocalFingerprint).mockResolvedValueOnce({
+      android: fingerprint,
+      ios: fingerprint,
+    } as unknown as Awaited<ReturnType<typeof readLocalFingerprint>>);
+    vi.mocked(isFingerprintEquals).mockReturnValueOnce(true);
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+    });
+  };
+
+  it("adds the registered native build's built-in bundle as a patch base", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 1,
+      },
+      updateStrategy: "fingerprint",
+    });
+    await mockGetBundlesWithFixtures([
+      {
+        bundle: { id: fixtureBundleId(121) },
+        release: { fingerprintHash: "fingerprint-hash" },
+      },
+    ]);
+    await registerNativeBuild(fixtureBundleId(100), {
+      fingerprintHash: "fingerprint-hash",
+      appVersion: null,
+    });
+
+    await deployByFingerprint();
+
+    // Beside the released bases, outside their limit.
+    expect(
+      mockServer.createBundleDiff.mock.calls.map(([ids, , options]) => [
+        ids.baseBundleId,
+        options,
+      ]),
+    ).toEqual([
+      [fixtureBundleId(121), { makePrimary: true }],
+      [fixtureBundleId(100), { makePrimary: false }],
+    ]);
+  });
+
+  it("finds a built-in bundle by the exact app version its build compiled in", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 3,
+      },
+      updateStrategy: "appVersion",
+    });
+    await mockGetBundlesWithFixtures([]);
+    await registerNativeBuild(fixtureBundleId(100), {
+      fingerprintHash: null,
+      appVersion: "1.0.0",
+    });
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.0.0",
+    });
+
+    expect(mockServer.createBundleDiff).toHaveBeenCalledOnce();
+    expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
+      {
+        baseBundleId: fixtureBundleId(100),
+        bundleId: DEPLOY_BUNDLE_ID,
+      },
+      {
+        core: harnessDatabase.core,
+        storageAdapter: mockStorageAdapter,
+      },
+      {
+        makePrimary: true,
+      },
+    );
+  });
+
+  it("leaves out a built-in bundle newer than the deployed bundle", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 3,
+      },
+      updateStrategy: "fingerprint",
+    });
+    await mockGetBundlesWithFixtures([]);
+    await registerNativeBuild(fixtureBundleId(200), {
+      fingerprintHash: "fingerprint-hash",
+      appVersion: null,
+    });
+
+    await deployByFingerprint();
+
+    expect(mockServer.createBundleDiff).not.toHaveBeenCalled();
+  });
+
+  const deployWithFailingNativeBuildLookup = async (error: Error) => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 1,
+      },
+      updateStrategy: "fingerprint",
+    });
+    await mockGetBundlesWithFixtures([
+      {
+        bundle: { id: fixtureBundleId(121) },
+        release: { fingerprintHash: "fingerprint-hash" },
+      },
+    ]);
+    const findNativeBuild = vi
+      .spyOn(databaseHarness.core, "findNativeBuild")
+      .mockRejectedValueOnce(error);
+    try {
+      await deployByFingerprint();
+    } finally {
+      findNativeBuild.mockRestore();
+    }
+    expect(
+      mockServer.createBundleDiff.mock.calls.map(([ids]) => ids.baseBundleId),
+    ).toEqual([fixtureBundleId(121)]);
+  };
+
+  it("finds no built-in bundle on a server without the native build routes", async () => {
+    // A self-hosted server without them answers 404: it holds none.
+    await deployWithFailingNativeBuildLookup(
+      Object.assign(new Error("no native build route"), { status: 404 }),
+    );
+
+    expect(mockCli.p.log.warn).not.toHaveBeenCalledWith(
+      expect.stringContaining("Partial update skipped"),
+    );
+  });
+
+  it("keeps the released patch bases when the built-in bundle lookup fails", async () => {
+    await deployWithFailingNativeBuildLookup(new Error("database unavailable"));
+
+    expect(mockCli.p.log.warn).toHaveBeenCalledWith(
+      "Partial update skipped for file built-in: database unavailable",
+    );
+  });
+
   it("scans past incompatible appVersion patch bases to find an older compatible base", async () => {
     mockCli.loadConfig.mockResolvedValue({
       build: async () => mockBuildAdapter,
