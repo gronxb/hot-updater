@@ -110,7 +110,7 @@ const RSA_ENCRYPTION_OID = [
 /**
  * The modulus size of the PKCS#1 `RSAPrivateKey` filling `bytes` from `at`
  * to `end`, or null: a two-prime key is version 0 and eight integers,
- * modulus, exponents, primes, and CRT values, and nothing else.
+ * modulus, exponents, primes, and CRT values, that agree with each other.
  */
 const rsaModulusBits = (
   bytes: Uint8Array,
@@ -126,18 +126,39 @@ const rsaModulusBits = (
     integers.push(element);
     next = element.end;
   }
-  const [version, modulus] = integers;
+  // Each integer is non-negative: no sign bit on its first byte.
   if (
     integers.length !== 9 ||
-    version!.end - version!.start !== 1 ||
-    bytes[version!.start] !== 0
+    integers.some(({ start }) => bytes[start]! >= 0x80)
   ) {
     return null;
   }
-  let first = modulus!.start;
-  while (first < modulus!.end && bytes[first] === 0) first += 1;
-  if (first === modulus!.end) return null;
-  return (modulus!.end - first) * 8 - Math.clz32(bytes[first]!) + 24;
+  const [version, n, e, d, p, q, dp, dq, qi] = integers.map(({ start, end }) =>
+    BigInt(
+      `0x${Array.from(bytes.subarray(start, end), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("")}`,
+    ),
+  ) as [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint];
+  // The values agree as an RSA key's do, so the public half is the private
+  // half's: a public exponent of at least 3, n = pq, and the exponents and
+  // CRT values derived from them.
+  if (
+    version !== 0n ||
+    e < 3n ||
+    e % 2n === 0n ||
+    p <= 1n ||
+    q <= 1n ||
+    p * q !== n ||
+    (d * e) % (p - 1n) !== 1n ||
+    (d * e) % (q - 1n) !== 1n ||
+    dp !== d % (p - 1n) ||
+    dq !== d % (q - 1n) ||
+    (qi * q) % p !== 1n
+  ) {
+    return null;
+  }
+  return n.toString(2).length;
 };
 
 /**
