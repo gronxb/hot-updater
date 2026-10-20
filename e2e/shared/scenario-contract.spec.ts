@@ -96,6 +96,8 @@ const defaultScenarioNames = [
   "bspatch-consecutive-diff-ota",
   "bspatch-disabled-chain-rollback",
   "bspatch-manifest-diff-fallback",
+  "store-install-patches-from-built-in",
+  "store-install-built-in-mismatch-downloads",
   "runtime-channel-switch-reset",
   "numeric-cohort-rollout",
   "target-cohorts-only",
@@ -291,7 +293,7 @@ describe("E2E scenario contract", () => {
 
     expect(scenarios).toEqual(defaultScenarioNames);
     expect(listScenarioNames()).toEqual(defaultScenarioNames);
-    expect(new Set(listScenarioNames()).size).toBe(33);
+    expect(new Set(listScenarioNames()).size).toBe(35);
   });
 
   it("runs every default scenario a native app shell can host in the brownfield suite", () => {
@@ -301,6 +303,10 @@ describe("E2E scenario contract", () => {
       "headless-launch-keeps-staged-bundle",
       "force-update-auto-reload",
       "skipped-force-update-propagates",
+      // A host app embeds React Native's bundle in a framework, not as a
+      // native build `build:*` registers.
+      "store-install-patches-from-built-in",
+      "store-install-built-in-mismatch-downloads",
     ]);
 
     expect(listSuiteNames()).toEqual(["default", "brownfield"]);

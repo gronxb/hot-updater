@@ -139,6 +139,9 @@ npx hot-updater channel set <channel>
 # Build a release app, and register it with the config's database and storage
 npx hot-updater build:android --scheme release --register
 
+# Build an .ipa and upload it to TestFlight with the scheme's App Store Connect API key
+npx hot-updater build:ios --scheme release --upload testflight
+
 # Build an .aab and release it to Google Play's internal track with the vault's play-service-account
 npx hot-updater build:android --scheme release --upload play-internal
 

@@ -20,6 +20,7 @@ import {
   platformCommandOption,
   playUploadCommandOption,
   portCommandOption,
+  testFlightUploadCommandOption,
 } from "@/commandOptions";
 import { handleAgentInfra } from "@/commands/agent/infra";
 import { handleAppVersion } from "@/commands/appVersion";
@@ -402,7 +403,7 @@ secretsTokenCommand
   )
   .requiredOption(
     "--actions <actions>",
-    "what the token may do, comma-separated: read, write",
+    "what the token may do, comma-separated: read, sign, write",
     commaList,
   )
   .option(
@@ -861,6 +862,10 @@ keysCommand
     },
     4096,
   )
+  .option(
+    "--vault [name]",
+    "store the private key in the Console's vault as a bundle-signing-key of this name (default: bundle-signing-key) instead of writing it, with HOT_UPDATER_CONSOLE_URL and a HOT_UPDATER_VAULT_TOKEN that may write it",
+  )
   .action(keysGenerate);
 
 keysCommand
@@ -1062,6 +1067,7 @@ program
   .addOption(interactiveCommandOption)
   .addOption(nativeBuildSchemeCommandOption)
   .addOption(nativeBuildRegisterCommandOption)
+  .addOption(testFlightUploadCommandOption)
   .action(async (options: BuildNativeOptions) => {
     await buildIosNative(options);
   });

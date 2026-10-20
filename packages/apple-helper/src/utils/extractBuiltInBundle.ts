@@ -3,6 +3,8 @@ import path from "path";
 
 import { execa } from "execa";
 
+import { escapeUnzipPattern } from "./escapeUnzipPattern";
+
 /** The file React Native's Xcode build phase writes into the `.app`. */
 const BUILT_IN_BUNDLE = "main.jsbundle";
 
@@ -39,7 +41,7 @@ export const extractBuiltInBundle = async ({
       `${path.basename(artifactPath)} has no Payload/<App>.app/${BUILT_IN_BUNDLE}.`,
     );
   }
-  await execa("unzip", ["-p", artifactPath, entry], {
+  await execa("unzip", ["-p", artifactPath, escapeUnzipPattern(entry)], {
     stdout: { file: outputPath },
   });
 };

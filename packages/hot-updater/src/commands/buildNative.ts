@@ -6,7 +6,12 @@ import {
   resolvePlayUploadServiceAccount,
   uploadToPlay,
 } from "@hot-updater/android-helper";
-import { buildIos } from "@hot-updater/apple-helper";
+import {
+  assertTestFlightExportOptions,
+  buildIos,
+  resolveTestFlightUploadKey,
+  uploadToTestFlight,
+} from "@hot-updater/apple-helper";
 import {
   createMinBundleId,
   type Credentials,
@@ -35,7 +40,7 @@ import { ui } from "../utils/cli-ui";
  */
 export type BuildNativeOptions = NativeBuildOptions & {
   register?: boolean;
-  upload?: "play-internal";
+  upload?: "testflight" | "play-internal";
 };
 
 const buildNativeInternal = async ({
@@ -52,15 +57,23 @@ const buildNativeInternal = async ({
     // Signing and upload credentials are resolved only by a build that uses
     // them, and their temporary files are deleted once it finishes.
     return await withCredentialResolver(async (credentials) => {
+      let ascApiKey: Credentials["asc-api-key"] | undefined;
       let serviceAccount: Credentials["play-service-account"] | undefined;
       const preparedConfig = await prepareNativeBuild({
         ...options,
         platform,
         operation: "build",
         // A scheme the store would refuse, or a missing upload credential,
-        // fails before the prebuild and the build. The service account
-        // stays in memory.
-        beforePrebuild: async ({ scheme, androidScheme }) => {
+        // fails before the prebuild and the build. The scheme's signing key
+        // is the same item, resolved once, and a service account stays in
+        // memory.
+        beforePrebuild: async ({ scheme, iosScheme, androidScheme }) => {
+          if (upload === "testflight") {
+            const request = await reportUploadFailure(async () =>
+              resolveTestFlightUploadKey({ scheme, iosScheme: iosScheme! }),
+            );
+            ascApiKey = await credentials.resolve(request);
+          }
           if (upload === "play-internal") {
             const request = await reportUploadFailure(async () =>
               resolvePlayUploadServiceAccount({
@@ -83,6 +96,12 @@ const buildNativeInternal = async ({
         androidSchemeConfig,
         iosSchemeConfig,
       } = preparedConfig;
+      if (ascApiKey) {
+        // The prebuild may write the export options, which it reads.
+        await reportUploadFailure(() =>
+          assertTestFlightExportOptions(iosSchemeConfig!),
+        );
+      }
 
       const minBundleId = createMinBundleId(platform);
 
@@ -136,6 +155,26 @@ const buildNativeInternal = async ({
         ].join("\n"),
       );
       if (register) await registerNativeBuild(result);
+      const apiKey = ascApiKey;
+      if (apiKey) {
+        const { state, testFlightUrl } = await reportUploadFailure(
+          () =>
+            uploadToTestFlight({
+              ipaPath: result.artifactPath,
+              apiKey,
+            }),
+          `The build stays at ${result.artifactPath}.`,
+        );
+        if (state === "COMPLETE") {
+          p.log.success(
+            ui.line([
+              "Uploaded to",
+              ui.platform("TestFlight"),
+              ui.path(testFlightUrl),
+            ]),
+          );
+        }
+      }
       const playServiceAccount = serviceAccount;
       if (playServiceAccount) {
         const { versionCode, status } = await reportUploadFailure(

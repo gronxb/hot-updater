@@ -15,6 +15,7 @@ import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as InstallationsRouteImport } from './routes/installations'
 import { Route as RemoteConfigRouteImport } from './routes/remote-config'
 import { Route as VaultRouteImport } from './routes/vault'
+import { Route as HotUpdaterSigningRouteImport } from './routes/[_]hot-updater/signing'
 import { Route as InsightsDistributionRouteImport } from './routes/insights_.distribution'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as HotUpdaterVaultV1ResolveRouteImport } from './routes/[_]hot-updater/vault/v1/resolve'
@@ -50,6 +51,11 @@ const RemoteConfigRoute = RemoteConfigRouteImport.update({
 const VaultRoute = VaultRouteImport.update({
   id: '/vault',
   path: '/vault',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const HotUpdaterSigningRoute = HotUpdaterSigningRouteImport.update({
+  id: '/_hot-updater/signing',
+  path: '/_hot-updater/signing',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InsightsDistributionRoute = InsightsDistributionRouteImport.update({
@@ -94,6 +100,7 @@ export interface FileRoutesByFullPath {
   '/installations': typeof InstallationsRoute
   '/remote-config': typeof RemoteConfigRoute
   '/vault': typeof VaultRoute
+  '/_hot-updater/signing': typeof HotUpdaterSigningRoute
   '/insights/distribution': typeof InsightsDistributionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
@@ -108,6 +115,7 @@ export interface FileRoutesByTo {
   '/installations': typeof InstallationsRoute
   '/remote-config': typeof RemoteConfigRoute
   '/vault': typeof VaultRoute
+  '/_hot-updater/signing': typeof HotUpdaterSigningRoute
   '/insights/distribution': typeof InsightsDistributionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
@@ -123,6 +131,7 @@ export interface FileRoutesById {
   '/installations': typeof InstallationsRoute
   '/remote-config': typeof RemoteConfigRoute
   '/vault': typeof VaultRoute
+  '/_hot-updater/signing': typeof HotUpdaterSigningRoute
   '/insights_/distribution': typeof InsightsDistributionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
@@ -139,6 +148,7 @@ export interface FileRouteTypes {
     | '/installations'
     | '/remote-config'
     | '/vault'
+    | '/_hot-updater/signing'
     | '/insights/distribution'
     | '/api/auth/$'
     | '/_hot-updater/vault/v1/resolve'
@@ -153,6 +163,7 @@ export interface FileRouteTypes {
     | '/installations'
     | '/remote-config'
     | '/vault'
+    | '/_hot-updater/signing'
     | '/insights/distribution'
     | '/api/auth/$'
     | '/_hot-updater/vault/v1/resolve'
@@ -167,6 +178,7 @@ export interface FileRouteTypes {
     | '/installations'
     | '/remote-config'
     | '/vault'
+    | '/_hot-updater/signing'
     | '/insights_/distribution'
     | '/api/auth/$'
     | '/_hot-updater/vault/v1/resolve'
@@ -182,6 +194,7 @@ export interface RootRouteChildren {
   InstallationsRoute: typeof InstallationsRoute
   RemoteConfigRoute: typeof RemoteConfigRoute
   VaultRoute: typeof VaultRoute
+  HotUpdaterSigningRoute: typeof HotUpdaterSigningRoute
   InsightsDistributionRoute: typeof InsightsDistributionRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   HotUpdaterVaultV1ResolveRoute: typeof HotUpdaterVaultV1ResolveRoute
@@ -231,6 +244,13 @@ declare module '@tanstack/react-router' {
       path: '/vault'
       fullPath: '/vault'
       preLoaderRoute: typeof VaultRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_hot-updater/signing': {
+      id: '/_hot-updater/signing'
+      path: '/_hot-updater/signing'
+      fullPath: '/_hot-updater/signing'
+      preLoaderRoute: typeof HotUpdaterSigningRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/insights_/distribution': {
@@ -299,6 +319,7 @@ const rootRouteChildren: RootRouteChildren = {
   InstallationsRoute: InstallationsRoute,
   RemoteConfigRoute: RemoteConfigRoute,
   VaultRoute: VaultRoute,
+  HotUpdaterSigningRoute: HotUpdaterSigningRoute,
   InsightsDistributionRoute: InsightsDistributionRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   HotUpdaterVaultV1ResolveRoute: HotUpdaterVaultV1ResolveRoute,
