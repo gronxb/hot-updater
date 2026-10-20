@@ -250,6 +250,17 @@ describe("vault", () => {
     expect(findOne).toHaveBeenCalledTimes(2);
   });
 
+  it("is locked when the secret it checks has no stored value", async () => {
+    const { api, db } = start();
+    await api.put({ name: "a", kind: "generic", value: 1 });
+    vi.spyOn(db, "findOne").mockResolvedValueOnce(null);
+
+    await expect(api.status()).resolves.toEqual({
+      locked: true,
+      message: expect.stringContaining('the secret "a" has no stored value'),
+    });
+  });
+
   it("checks the key against a live secret, past removed ones", async () => {
     const { api, with: withOptions } = start();
     const first = await api.put({ name: "a", kind: "generic", value: 1 });

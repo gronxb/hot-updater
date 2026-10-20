@@ -49,6 +49,7 @@ import {
 } from "./vault-rpc";
 
 const MASTER_KEY = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
+const OTHER_KEY = btoa(String.fromCharCode(...new Uint8Array(32).fill(9)));
 
 const base64 = (text: string) =>
   btoa(String.fromCharCode(...new TextEncoder().encode(text)));
@@ -242,6 +243,36 @@ describe("vault RPC", () => {
     await expect(
       removeVaultSecretRpc({ data: { id: stored.id, expectedVersion: 1 } }),
     ).resolves.toMatchObject({ id: stored.id });
+  });
+
+  it("refuses a write under a key that did not seal the stored secrets", async () => {
+    const adapter = createMemoryAdapter();
+    const { api } = databaseRuntime({ name: "memory", adapter }, [
+      vault({ masterKey: MASTER_KEY }),
+    ]);
+    await api.vault.put({
+      name: "generic",
+      kind: "generic",
+      value: { A: "1" },
+    });
+    // A redeploy swapped in another well-formed key.
+    mocks.prepare.mockResolvedValue({
+      runtime: databaseRuntime({ name: "memory", adapter }, [
+        vault({ masterKey: OTHER_KEY }),
+      ]).runtime,
+    });
+
+    await expect(
+      putVaultSecretRpc({
+        data: {
+          name: "other",
+          kind: "generic",
+          value: { B: "2" },
+          expectedVersion: 0,
+        },
+      }),
+    ).rejects.toThrow("is not the key the vault's secrets were saved with");
+    await expect(api.vault.list()).resolves.toHaveLength(1);
   });
 
   it("is unlocked with a master key", async () => {

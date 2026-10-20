@@ -660,7 +660,13 @@ export const createVaultApi = ({
         secret_id: secret.id,
         version: secret.current_version,
       });
-      if (sealed === null) return { locked: false } as const;
+      // Removed since it was listed, or never stored: nothing proves the key.
+      if (sealed === null) {
+        return {
+          locked: true,
+          message: `The vault is locked: the secret "${secret.name}" has no stored value to check ${VAULT_MASTER_KEY_ENV} against. Check again.`,
+        } as const;
+      }
       try {
         await open({
           masterKey: key,

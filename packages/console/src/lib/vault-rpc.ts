@@ -129,6 +129,11 @@ export const putVaultSecretRpc = createServerFn({ method: "POST" })
     const vault = await vaultApi();
     const { parseVaultSecretValue, vaultSecretMetadata } =
       await import("@hot-updater/server/plugins");
+    // A redeploy may have swapped the key since the page checked it: a
+    // well-formed key that did not seal the stored secrets would split the
+    // vault across two keys, so every write checks it first.
+    const status = await vault.status();
+    if (status.locked) throw new Error(status.message);
     const value = parseVaultSecretValue(data.kind, data.value);
     return vault.put({
       name: data.name,
