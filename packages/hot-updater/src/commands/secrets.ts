@@ -302,7 +302,8 @@ export const handleSecretsPut = async (
 /**
  * `secrets env -- <command>`: runs `command` with the variables of the
  * `deploy-credentials` and `generic` secrets the token reaches, each one
- * already set in the environment kept as it is, and exits with its code.
+ * already set (not empty) in the environment kept as it is, and exits with
+ * its code.
  */
 export const handleSecretsEnv = async (
   command: readonly string[],
@@ -313,7 +314,12 @@ export const handleSecretsEnv = async (
       throw new Error("Pass the command to run after --.");
     }
     const variables = await resolveVaultVariables(client);
-    const env = { ...variables, ...process.env };
+    // A variable set in the environment wins; an empty one counts as unset,
+    // as vaultEnv reads it.
+    const env: NodeJS.ProcessEnv = { ...process.env };
+    for (const [name, value] of Object.entries(variables)) {
+      if (!env[name]?.trim()) env[name] = value;
+    }
     const outcome = await new Promise<{
       code: number | null;
       signal: NodeJS.Signals | null;

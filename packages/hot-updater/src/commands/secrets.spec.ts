@@ -406,9 +406,11 @@ describe("hot-updater secrets env", () => {
           },
     );
 
-  it("runs the command with the vault's variables, the environment's own winning", async () => {
+  it("runs the command with the vault's variables, the environment's own non-empty ones winning", async () => {
     const requests = variablesConsole();
     vi.stubEnv("KEPT", "env-kept");
+    // Empty counts as unset, as vaultEnv reads it.
+    vi.stubEnv("FROM_VAULT", "");
 
     await handleSecretsEnv([
       process.execPath,

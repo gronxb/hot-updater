@@ -385,7 +385,9 @@ const writeOf = async (
  *   secret has the name, and so is replacing a secret the scope does not
  *   reach. A secret of another kind under the name is a 409.
  * - Each write, and each one the scope refuses, is in the audit log before the
- *   response is sent.
+ *   response is sent. The allowed entry follows the write, so it records only
+ *   a version that exists; if the entry fails, the response is a 500 though
+ *   the version was stored.
  */
 export const putVaultSecret = (
   request: Request,
