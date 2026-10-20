@@ -73,8 +73,8 @@ const isMachO = async (file: string): Promise<boolean> => {
 
 /**
  * The MIN_BUNDLE_ID an E2E build compiled in, read from its code: the
- * APK's dex files, or the `.app`'s Mach-O files. A cached binary carries
- * no other record of it.
+ * dex files of an `.apk` or an `.aab`, or the `.app`'s Mach-O files. A
+ * cached binary carries no other record of it.
  */
 export async function readArtifactMinBundleId(
   artifactPath: string,
@@ -91,7 +91,13 @@ export async function readArtifactMinBundleId(
   if (platform === "android") {
     const { stdout } = await execFileAsync(
       "unzip",
-      ["-p", artifactPath, "classes*.dex"],
+      [
+        "-p",
+        artifactPath,
+        path.extname(artifactPath) === ".aab"
+          ? "base/dex/classes*.dex"
+          : "classes*.dex",
+      ],
       { encoding: "buffer", maxBuffer: 1024 * 1024 * 1024 },
     );
     collect(stdout);
@@ -298,7 +304,12 @@ export async function registerInstalledNativeBuild({
         minBundleId,
         gitCommitHash: null,
         artifact: {
-          kind: platform === "ios" ? "app" : "apk",
+          kind:
+            platform === "ios"
+              ? "app"
+              : path.extname(artifactPath) === ".aab"
+                ? "aab"
+                : "apk",
           storageUri: artifactUpload.storageUri,
           byteSize: artifactUpload.byteSize,
         },

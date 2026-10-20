@@ -22,24 +22,27 @@ afterEach(async () => {
   }
 });
 
-/** An APK as the E2E build packs one: its code and its built-in bundle. */
-const createApk = async (bundle: string, minBundleId = MIN_BUNDLE_ID) => {
+/**
+ * An APK as the E2E build packs one, its code and its built-in bundle, or
+ * an AAB, which keeps both under `base/`.
+ */
+const createApk = async (bundle: string, kind: "apk" | "aab" = "apk") => {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), "hu-e2e-apk-"));
   roots.push(root);
+  const base = kind === "aab" ? "base/" : "";
+  const dex = `${base}${kind === "aab" ? "dex/" : ""}classes.dex`;
+  const builtIn = `${base}assets/index.android.bundle`;
+  await fs.mkdir(path.dirname(path.join(root, dex)), { recursive: true });
   await fs.writeFile(
-    path.join(root, "classes.dex"),
-    `dex\n035\0${minBundleId}\0other strings`,
+    path.join(root, dex),
+    `dex\n035\0${MIN_BUNDLE_ID}\0other strings`,
   );
-  await fs.mkdir(path.join(root, "assets"));
-  await fs.writeFile(path.join(root, "assets/index.android.bundle"), bundle);
-  execFileSync(
-    "zip",
-    ["-q", "-X", "app.apk", "classes.dex", "assets/index.android.bundle"],
-    {
-      cwd: root,
-    },
-  );
-  return path.join(root, "app.apk");
+  await fs.mkdir(path.dirname(path.join(root, builtIn)), { recursive: true });
+  await fs.writeFile(path.join(root, builtIn), bundle);
+  execFileSync("zip", ["-q", "-X", `app.${kind}`, dex, builtIn], {
+    cwd: root,
+  });
+  return path.join(root, `app.${kind}`);
 };
 
 const createStorage = () => {
@@ -65,6 +68,29 @@ describe("registering the installed E2E app as a native build", () => {
     await expect(
       readArtifactMinBundleId(await createApk("bundle"), "android"),
     ).resolves.toBe(MIN_BUNDLE_ID);
+    await expect(
+      readArtifactMinBundleId(await createApk("bundle", "aab"), "android"),
+    ).resolves.toBe(MIN_BUNDLE_ID);
+  });
+
+  it("registers an AAB as an aab artifact", async () => {
+    const { core } = createMemoryCore();
+    await registerInstalledNativeBuild({
+      core,
+      storage: createStorage().storage,
+      platform: "android",
+      artifactPath: await createApk("bundle", "aab"),
+      appVersion: "1.0",
+    });
+
+    await expect(
+      core.findNativeBuild({
+        platform: "android",
+        channel: nativeBuildChannel(MIN_BUNDLE_ID),
+        fingerprintHash: null,
+        appVersion: "1.0",
+      }),
+    ).resolves.toMatchObject({ artifact_kind: "aab" });
   });
 
   it("registers a binary once, under its own channel, and checks it after", async () => {
