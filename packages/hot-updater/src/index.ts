@@ -332,9 +332,7 @@ const commaList = (value: string, previous: string[] = []): string[] => [
 
 const secretsCommand = program
   .command("secrets")
-  .description(
-    "Store and list the Console vault's secrets, and manage vault tokens",
-  );
+  .description("Manage the Console vault's secrets and vault tokens");
 
 secretsCommand
   .command("list")

@@ -1,3 +1,8 @@
+import {
+  parseVaultSecretValue,
+  type VaultSecretValues,
+} from "@hot-updater/server/plugins";
+
 import type { CredentialSource, SourcedCredential } from "./credentialResolver";
 import { registerSecretValue } from "./secretMasking";
 import {
@@ -67,18 +72,20 @@ const aKind = (kind: string) =>
 /** The base64 file of a vault value's field, as bytes. */
 const fileOf = (value: string): Buffer => Buffer.from(value, "base64");
 
-/** The field of a vault value, a non-empty string, or a thrown error. */
-const fieldOf = (secret: ResolvedVaultSecret, field: string): string => {
-  const value =
-    typeof secret.value === "object" && secret.value !== null
-      ? (secret.value as Record<string, unknown>)[field]
-      : undefined;
-  if (typeof value !== "string" || value.length === 0) {
+/** A resolved secret's value in its kind's shape, or a thrown error naming it. */
+const valueOf = <
+  TKind extends "asc-api-key" | "android-keystore" | "play-service-account",
+>(
+  secret: ResolvedVaultSecret,
+  kind: TKind,
+): VaultSecretValues[TKind] => {
+  try {
+    return parseVaultSecretValue(kind, secret.value);
+  } catch (error) {
     throw new Error(
-      `The vault's ${secret.name} has no ${field}: store it again in the Console or with hot-updater secrets put.`,
+      `The vault's ${secret.name} is not a valid ${kind}: ${(error as Error).message} Store it again in the Console or with hot-updater secrets put.`,
     );
   }
-  return value;
 };
 
 /**
@@ -92,8 +99,7 @@ const toCredential = async (
 ): Promise<SourcedCredential> => {
   switch (secret.kind) {
     case "asc-api-key": {
-      const p8 = fieldOf(secret, "p8");
-      const keyId = fieldOf(secret, "keyId");
+      const { p8, keyId, issuerId } = valueOf(secret, "asc-api-key");
       registerSecretValue(p8);
       return {
         kind: "asc-api-key",
@@ -103,12 +109,15 @@ const toCredential = async (
             fileOf(p8).toString("utf-8"),
           ),
           keyId,
-          issuerId: fieldOf(secret, "issuerId"),
+          issuerId,
         },
       };
     }
     case "android-keystore": {
-      const keystore = fieldOf(secret, "keystore");
+      const { keystore, storePassword, keyAlias, keyPassword } = valueOf(
+        secret,
+        "android-keystore",
+      );
       registerSecretValue(keystore);
       return {
         kind: "android-keystore",
@@ -117,14 +126,14 @@ const toCredential = async (
             `${secret.name}.keystore`,
             fileOf(keystore),
           ),
-          storePassword: fieldOf(secret, "storePassword"),
-          keyAlias: fieldOf(secret, "keyAlias"),
-          keyPassword: fieldOf(secret, "keyPassword"),
+          storePassword,
+          keyAlias,
+          keyPassword,
         },
       };
     }
     case "play-service-account": {
-      const serviceAccount = fieldOf(secret, "serviceAccount");
+      const { serviceAccount } = valueOf(secret, "play-service-account");
       registerSecretValue(serviceAccount);
       return {
         kind: "play-service-account",

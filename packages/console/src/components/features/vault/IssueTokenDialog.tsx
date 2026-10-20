@@ -185,7 +185,8 @@ function IssueTokenForm({
             ...(names.length > 0 ? { names } : {}),
             ...(kinds.length > 0 ? { kinds } : {}),
           },
-          // Reading values is the one action the console serves tokens.
+          // CI reads values; hot-updater secrets token create issues tokens
+          // that write, which the CLI's secrets put sends.
           actions: ["read"],
         },
         ...(expiry === "never"

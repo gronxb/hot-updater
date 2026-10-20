@@ -1,11 +1,17 @@
 import {
   authorizeVaultToken,
+  parseVaultSecretValue,
+  VAULT_SECRET_KINDS,
   type VaultApi,
   type VaultAuditEntry,
+  VaultConflictError,
+  VaultInputError,
   VaultIntegrityError,
   VaultLockedError,
   VaultNotFoundError,
   type VaultSecret,
+  type VaultSecretKind,
+  vaultSecretMetadata,
   type VaultToken,
 } from "@hot-updater/server/plugins";
 
@@ -20,10 +26,11 @@ import type { ConsoleRuntime } from "./runtime.server";
  * `{ error: { code, message } }`:
  * - 401 `unauthorized`: no token, or one that is unknown, revoked, or expired;
  * - 403 `forbidden`: the token's scope does not allow the request;
- * - 400 `invalid_request`: the body is not what the route takes;
+ * - 400 `invalid_request`: the name or body is not what the route takes;
  * - 404 `vault_unavailable`: this console serves no vault;
  * - 405 `method_not_allowed`: the route takes another method;
- * - 409 `conflict`: secrets kept changing while a resolve read them;
+ * - 409 `conflict`: secrets kept changing while a resolve read them, or a
+ *   write met a secret of another kind, or a newer version;
  * - 503 `vault_locked`: the console has no master key to open values with.
  */
 
@@ -127,7 +134,7 @@ const serve = async (respond: () => Promise<Response>) => {
 };
 
 /** A method the route does not take, with the one it does in `Allow`. */
-export const vaultMethodNotAllowed = (allow: "GET" | "POST") =>
+export const vaultMethodNotAllowed = (allow: "GET" | "POST" | "PUT") =>
   failure(405, "method_not_allowed", `This route takes ${allow}.`, {
     Allow: allow,
   });
@@ -334,4 +341,154 @@ export const resolveVaultSecrets = (request: Request, load: LoadConsole) =>
       "conflict",
       "The secrets changed while they were read; send the request again.",
     );
+  });
+
+/** A kind with its article, such as "an asc-api-key". */
+const aKind = (kind: string) =>
+  `${/^[aeiou]/u.test(kind) ? "an" : "a"} ${kind}`;
+
+/** The `{ kind, value }` a write body holds, or undefined when it is malformed. */
+const writeOf = async (
+  request: Request,
+): Promise<
+  { readonly kind: VaultSecretKind; readonly value: unknown } | undefined
+> => {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    return undefined;
+  }
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    return undefined;
+  }
+  const kind = Reflect.get(body, "kind");
+  if (!VAULT_SECRET_KINDS.includes(kind as VaultSecretKind)) return undefined;
+  return { kind: kind as VaultSecretKind, value: Reflect.get(body, "value") };
+};
+
+/**
+ * `PUT /_hot-updater/vault/v1/secrets/:name` with `{ kind, value }`: stores
+ * `value` as the secret's next version, creating the secret when no secret
+ * has the name, for a token whose scope allows `write` on it, by its name or
+ * its kind, and on the secret it replaces. The console seals the value with
+ * its master key, so plaintext reaches it only over this request, and
+ * answers with the secret's metadata, never a value:
+ * `201 { secret }` for a new secret, `200 { secret }` for a new version.
+ *
+ * - `value` is the kind's shape, as the console's Vault page stores it,
+ *   files in base64; the console derives the secret's metadata from it.
+ * - `write` reads nothing back, and a `bundle-signing-key` may be written,
+ *   such as one `hot-updater keys generate` made, though it is never
+ *   resolved.
+ * - A name or kind outside the scope is refused with 403, whether or not a
+ *   secret has the name, and so is replacing a secret the scope does not
+ *   reach. A secret of another kind under the name is a 409.
+ * - Each write, and each one the scope refuses, is in the audit log before the
+ *   response is sent.
+ */
+export const putVaultSecret = (
+  request: Request,
+  name: string,
+  load: LoadConsole,
+) =>
+  serve(async () => {
+    const opened = await openVault(request, load);
+    if (opened instanceof Response) return opened;
+    const { vault, token } = opened;
+    if (!NAME_PATTERN.test(name)) {
+      return failure(
+        400,
+        "invalid_request",
+        "A secret name is 1-64 letters, digits, dots, dashes, or underscores, starting with a letter or digit.",
+      );
+    }
+    const write = await writeOf(request);
+    if (write === undefined) {
+      return failure(
+        400,
+        "invalid_request",
+        `Send { "kind", "value" }, with kind one of ${VAULT_SECRET_KINDS.join(", ")}.`,
+      );
+    }
+    const context = { ...requestContext(request), name };
+    const existing = (await vault.list()).find(
+      (secret) => secret.name === name,
+    );
+    const audit = (outcome: VaultAuditEntry["outcome"], secretId?: string) =>
+      vault.recordAudit({
+        entries: [
+          {
+            actor: token.id,
+            action: "write",
+            ...(secretId === undefined ? {} : { secretId }),
+            outcome,
+            context,
+          },
+        ],
+      });
+
+    if (
+      !authorizeVaultToken(token, {
+        action: "write",
+        secret: { name, kind: write.kind },
+      }) ||
+      (existing !== undefined &&
+        !authorizeVaultToken(token, { action: "write", secret: existing }))
+    ) {
+      await audit("denied", existing?.id);
+      return forbidden(
+        token.scope.actions.includes("write")
+          ? `The vault token's scope does not allow writing ${name} as ${write.kind}.`
+          : "The vault token's scope does not allow write.",
+      );
+    }
+    if (existing !== undefined && existing.kind !== write.kind) {
+      return failure(
+        409,
+        "conflict",
+        `The secret "${name}" is ${aKind(existing.kind)}; remove it in the console before storing ${aKind(write.kind)} under its name.`,
+      );
+    }
+
+    let value: unknown;
+    try {
+      value = parseVaultSecretValue(write.kind, write.value);
+    } catch (error) {
+      if (error instanceof VaultInputError) {
+        return failure(400, "invalid_request", error.message);
+      }
+      throw error;
+    }
+    // A key that did not seal the stored secrets would split the vault.
+    const status = await vault.status();
+    if (status.locked) return failure(503, "vault_locked", status.message);
+
+    let secret: VaultSecret;
+    try {
+      secret = await vault.put({
+        name,
+        kind: write.kind,
+        value,
+        metadata: vaultSecretMetadata(write.kind, value as never),
+        expectedVersion: existing?.version ?? 0,
+      });
+    } catch (error) {
+      if (error instanceof VaultConflictError) {
+        return failure(
+          409,
+          "conflict",
+          `${error.message} Send the request again to store the next version.`,
+        );
+      }
+      if (error instanceof VaultLockedError) {
+        return failure(503, "vault_locked", error.message);
+      }
+      if (error instanceof VaultInputError) {
+        return failure(400, "invalid_request", error.message);
+      }
+      throw error;
+    }
+    await audit("allowed", secret.id);
+    return json(existing === undefined ? 201 : 200, { secret });
   });

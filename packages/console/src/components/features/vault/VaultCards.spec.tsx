@@ -638,6 +638,12 @@ describe("TokensCard", () => {
             name: "Far",
             expiresAtMs: Number.MAX_SAFE_INTEGER,
           },
+          {
+            ...token,
+            id: `tok-${"g".repeat(22)}`,
+            name: "Uploader",
+            scope: { ...token.scope, actions: ["read", "write"] },
+          },
         ])}
       />,
     );
@@ -659,6 +665,12 @@ describe("TokensCard", () => {
     expect(
       within(screen.getByRole("row", { name: /Past/ })).getByText("Expired"),
     ).toBeDefined();
+    // A token the CLI issued to write, such as for hot-updater secrets put.
+    expect(
+      within(screen.getByRole("row", { name: /Uploader/ })).getAllByText(
+        "Read · Write",
+      ).length,
+    ).toBeGreaterThan(0);
     // An expiry beyond what Date holds still renders, with its revoke.
     const far = screen.getByRole("row", { name: /Far/ });
     expect(within(far).getAllByText("Far future").length).toBeGreaterThan(0);

@@ -39,6 +39,7 @@ const VALUES = {
     },
   },
   "deploy-env": { kind: "deploy-credentials", value: { AWS_KEY: "x" } },
+  "broken-asc": { kind: "asc-api-key", value: { keyId: "ABC123" } },
 } as const;
 
 /** A Console that resolves `VALUES`, and the requests it received. */
@@ -183,7 +184,7 @@ describe("the vault as the credential resolver's default source", () => {
     );
   });
 
-  it("refuses a secret of another kind, and a name the vault does not have", async () => {
+  it("refuses a secret of another kind or shape, and a name the vault does not have", async () => {
     mockConsole();
     const resolver = createCredentialResolver({ env: CONNECTION });
 
@@ -191,6 +192,11 @@ describe("the vault as the credential resolver's default source", () => {
       resolver.resolve({ kind: "android-keystore", name: "deploy-env" }),
     ).rejects.toThrow(
       "The vault's deploy-env is a deploy-credentials, not an android-keystore.",
+    );
+    await expect(
+      resolver.resolve({ kind: "asc-api-key", name: "broken-asc" }),
+    ).rejects.toThrow(
+      "The vault's broken-asc is not a valid asc-api-key: A secret of kind asc-api-key needs p8.",
     );
     await expect(
       resolver.resolve({ kind: "asc-api-key", name: "widget-asc" }),
