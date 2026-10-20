@@ -180,6 +180,7 @@ const keysGenerateInVault = async (
   let createdDir: string | undefined;
   let publicKeyFile: Awaited<ReturnType<typeof fs.open>> | undefined;
   let publicKeyOpened = false;
+  // Stored, or possibly stored: the public key then stays for the app.
   let stored = false;
   try {
     const client = connectVault(
@@ -226,9 +227,19 @@ const keysGenerateInVault = async (
           `The vault already holds a secret named ${name}, and keys generate --vault never replaces one: installed apps reject bundles signed by a new key. Pass another name to --vault, or replace the key on purpose with hot-updater secrets put ${name} --kind bundle-signing-key --private-key <file>.`,
         );
       }
-      throw error;
+      // Only a refusal proves nothing was stored; a lost or unreadable
+      // answer may follow a stored key, which keeps its public key.
+      const refused =
+        error instanceof VaultRequestError &&
+        error.status !== undefined &&
+        error.status >= 400 &&
+        error.status < 500;
+      if (refused) throw error;
+      stored = true;
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)} The Console may have stored the private key as ${name}, so ${publicKeyPath} is kept: if hot-updater secrets list shows ${name}, this is its public key.`,
+      );
     }
-    stored = true;
     spinner.stop("Keys generated");
     spinning = false;
 
@@ -260,7 +271,7 @@ const keysGenerateInVault = async (
       ]),
     );
   } catch (error) {
-    if (spinning) spinner.error("The private key was not stored");
+    if (spinning) spinner.error("The keys were not generated");
     await publicKeyFile?.close().catch(() => {});
     // Once the private key is stored, its public key stays for the app.
     if (publicKeyOpened && !stored) {

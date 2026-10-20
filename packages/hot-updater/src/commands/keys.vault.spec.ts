@@ -166,14 +166,40 @@ describe("hot-updater keys generate --vault", () => {
     await expect(fs.readdir(directory)).resolves.toEqual([]);
   });
 
-  it("removes the public key when the Console cannot be reached", async () => {
-    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("ECONNREFUSED"));
+  it("keeps the public key when the Console's answer is lost, as the key may be stored", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("ECONNRESET"));
 
     await keysGenerate({ keySize: 2048, vault: true });
 
     expect(process.exitCode).toBe(1);
     expect(log.error).toHaveBeenCalledWith(
-      expect.stringContaining("Could not reach the Console"),
+      expect.stringContaining(
+        "The Console may have stored the private key as bundle-signing-key",
+      ),
+    );
+    await expect(
+      fs.readFile(path.join(directory, "keys", "public-key.pem"), "utf8"),
+    ).resolves.toContain("-----BEGIN PUBLIC KEY-----");
+  });
+
+  it("removes the public key when the Console refuses the write", async () => {
+    mockConsole(() =>
+      Response.json(
+        {
+          error: {
+            code: "forbidden",
+            message: "The vault token's scope does not allow write.",
+          },
+        },
+        { status: 403 },
+      ),
+    );
+
+    await keysGenerate({ keySize: 2048, vault: true });
+
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      expect.stringContaining("does not allow write"),
     );
     await expect(fs.readdir(directory)).resolves.toEqual([]);
   });
