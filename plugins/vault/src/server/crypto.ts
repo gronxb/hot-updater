@@ -102,6 +102,14 @@ export interface VaultKeyring {
 const trimmed = (value: string | undefined) =>
   value === undefined || value.trim().length === 0 ? undefined : value.trim();
 
+/** Whether two encodings, such as padded base64 and base64url, are one key. */
+const sameKey = (left: string, right: string) => {
+  const a = base64ToBytes(left.trim());
+  const b = base64ToBytes(right.trim());
+  if (a === null || b === null) return left.trim() === right.trim();
+  return a.length === b.length && a.every((byte, index) => byte === b[index]);
+};
+
 /**
  * The master keys of `HOT_UPDATER_VAULT_MASTER_KEYS` (`keys`, `kid:key`
  * pairs) and `HOT_UPDATER_VAULT_MASTER_KEY` (`key`, the key `default`), in
@@ -145,7 +153,7 @@ export const importKeyring = async (input: {
     const listedDefault = entries.find((entry) => entry.kid === DEFAULT_KID);
     if (listedDefault === undefined) {
       entries.push({ kid: DEFAULT_KID, encoded: single, from: names.key });
-    } else if (listedDefault.encoded.trim() !== single) {
+    } else if (!sameKey(listedDefault.encoded, single)) {
       throw new VaultLockedError(
         `${names.keys} lists a master key "${DEFAULT_KID}" other than ${names.key}; remove one of them.`,
       );

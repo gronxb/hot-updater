@@ -74,6 +74,15 @@ describe("vault master keys", () => {
     ).rejects.toThrow("HOT_UPDATER_VAULT_MASTER_KEYS lists");
   });
 
+  it("takes one key in two encodings as the same default", async () => {
+    const urlSafe = KEY_B.replaceAll("+", "-")
+      .replaceAll("/", "_")
+      .replace(/=+$/u, "");
+    await expect(
+      importKeyring({ keys: `default:${urlSafe}`, key: KEY_B }),
+    ).resolves.toMatchObject({ keys: [{ kid: "default" }] });
+  });
+
   it("takes the options' keys over the environment's", async () => {
     const { console } = start();
     vi.stubEnv("HOT_UPDATER_VAULT_MASTER_KEYS", "broken");
@@ -344,6 +353,56 @@ describe("vault master keys", () => {
       keys: [{ kid: "next", active: true, held: true, versions: 5 }],
       remaining: 0,
     });
+  });
+
+  it("checks a vault without a keys row against its stored versions, and starts the row", async () => {
+    const { console, db } = start();
+    const a = console({ masterKey: KEY_A });
+    const stored = await a.put({ name: "s1", kind: "generic", value: "v1" });
+    // A vault sealed before it kept key checks, or whose row was deleted.
+    const dropKeysRow = () =>
+      db.transaction(async (tx) => {
+        const row = await tx.findOne("secrets", { id: ".master-keys" });
+        if (row !== null) await tx.delete("secrets", row);
+      });
+    await dropKeysRow();
+
+    const other = console({ masterKey: KEY_C });
+    await expect(other.status()).resolves.toMatchObject({
+      locked: true,
+      knownKeys: ["default"],
+    });
+    await expect(
+      other.put({ name: "s2", kind: "generic", value: "x" }),
+    ).rejects.toThrow(VaultLockedError);
+    await expect(
+      console({ masterKeys: `next:${KEY_B}` }).put({
+        name: "s2",
+        kind: "generic",
+        value: "x",
+      }),
+    ).rejects.toThrow('saved under the master key "default"');
+    await expect(a.status()).resolves.toEqual({ locked: false });
+
+    // Rotating starts the row from the key that opens what is stored.
+    const rotating = console({ masterKeys: `next:${KEY_B},default:${KEY_A}` });
+    await expect(rotating.keys()).resolves.toMatchObject({ remaining: 1 });
+    await expect(rotating.rewrap()).resolves.toEqual({
+      rewrapped: 1,
+      remaining: 0,
+    });
+    const after = console({ masterKeys: `next:${KEY_B}` });
+    await expect(after.reveal({ id: stored.id, actor: "t" })).resolves.toBe(
+      "v1",
+    );
+    await expect(a.status()).resolves.toMatchObject({ locked: true });
+
+    // A write starts it too, with the stored versions' key.
+    await dropKeysRow();
+    await after.put({ name: "s3", kind: "generic", value: "v3" });
+    await expect(console({ masterKey: KEY_C }).status()).resolves.toMatchObject(
+      { locked: true, knownKeys: ["next"] },
+    );
   });
 
   it("refuses a rewrap without a key or with a batch out of range", async () => {

@@ -253,7 +253,7 @@ describe("vault", () => {
     ).rejects.toThrow(VaultInputError);
   });
 
-  it("tells whether it is locked, and which keys the vault knows, in one read", async () => {
+  it("tells whether it is locked, and which keys the vault knows", async () => {
     const { api, with: withOptions, db } = start();
     const findOne = vi.spyOn(db, "findOne");
     const findMany = vi.spyOn(db, "findMany");
@@ -269,8 +269,9 @@ describe("vault", () => {
       locked: true,
       message: expect.stringContaining("32 bytes in base64"),
     });
+    // Without a keys row, it also looks for a version under `default`.
     expect(findOne).toHaveBeenCalledTimes(2);
-    expect(findMany).not.toHaveBeenCalled();
+    expect(findMany).toHaveBeenCalledTimes(2);
     // An empty vault takes any well-formed key.
     await expect(api.status()).resolves.toEqual({ locked: false });
     vi.stubEnv("HOT_UPDATER_VAULT_MASTER_KEY", MASTER_KEY);

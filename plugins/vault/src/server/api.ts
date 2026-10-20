@@ -428,19 +428,61 @@ const quoteKids = (kids: readonly string[]) =>
  * the Console holds one of them. So Consoles with different keys never
  * seal into one vault, even an empty one.
  */
-const checkKeyring = async (keyring: VaultKeyring, checks: KeyChecks) => {
+const checkKeyring = (keyring: VaultKeyring, checks: KeyChecks) =>
+  checkKeys(keyring, Object.keys(checks), (key) =>
+    opensKeyCheck(key, checks[key.kid]!),
+  );
+
+/**
+ * `checkKeyring` for a vault without a keys row, against a stored version
+ * under each kid instead of its check: the key must unwrap its data key.
+ */
+const checkSealed = (
+  keyring: VaultKeyring,
+  sealed: Readonly<Record<string, SealedRow>>,
+) =>
+  checkKeys(keyring, Object.keys(sealed), (key) =>
+    unwraps(key, sealed[key.kid]!),
+  );
+
+/** A stored version, as much of it as unwrapping its data key reads. */
+type SealedRow = {
+  readonly secret_id: string;
+  readonly version: number;
+  readonly wrapped_dek: string;
+};
+
+const unwraps = async (key: VaultMasterKey, row: SealedRow) => {
+  try {
+    await rewrapDataKey({
+      from: key,
+      to: key,
+      secretId: row.secret_id,
+      version: row.version,
+      wrappedDek: row.wrapped_dek,
+    });
+    return true;
+  } catch (error) {
+    if (error instanceof VaultIntegrityError) return false;
+    throw error;
+  }
+};
+
+const checkKeys = async (
+  keyring: VaultKeyring,
+  known: readonly string[],
+  opens: (key: VaultMasterKey) => Promise<boolean>,
+) => {
   let held = false;
   for (const key of keyring.keys) {
-    const check = checks[key.kid];
-    if (check === undefined) continue;
-    if (!(await opensKeyCheck(key, check))) {
+    if (!known.includes(key.kid)) continue;
+    if (!(await opens(key))) {
       throw new VaultLockedError(
         `The vault is locked: the master key "${key.kid}" in ${VAULT_MASTER_KEY_ENV} or ${VAULT_MASTER_KEYS_ENV} is not the key the vault's secrets were saved with as "${key.kid}". Restore that key where the Console runs.`,
       );
     }
     held = true;
   }
-  const known = Object.keys(checks);
   if (!held && known.length > 0) {
     // Only the key `default` can come from the single-key variable.
     const where =
@@ -452,6 +494,9 @@ const checkKeyring = async (keyring: VaultKeyring, checks: KeyChecks) => {
     );
   }
 };
+
+/** A write found no keys row: it reruns once the stored versions are checked. */
+class KeysRowMissing extends Error {}
 
 const normalizeName = (name: unknown): string => {
   if (typeof name !== "string" || !NAME_PATTERN.test(name)) {
@@ -783,12 +828,62 @@ export const createVaultApi = ({
     return count;
   };
 
+  /**
+   * A stored version under each of `kids`, one read each, for a vault
+   * without a keys row: one sealed before vaults kept key checks, or whose
+   * row was deleted. Such versions are its keys' only evidence.
+   */
+  const findSealed = async (kids: readonly string[]) => {
+    const sealed: Record<string, SealedRow> = {};
+    for (const kid of kids) {
+      const [row] = (
+        await db.findMany("secret_versions", {
+          index: "byKid",
+          where: { kid },
+          limit: 1,
+        })
+      ).rows;
+      if (row !== undefined) sealed[kid] = row;
+    }
+    return sealed;
+  };
+
+  /** The Console's kids and `default`, the kid of vaults before key checks. */
+  const sealedKids = (keyring: VaultKeyring | undefined) => [
+    ...new Set([...(keyring?.keys.map(({ kid }) => kid) ?? []), DEFAULT_KID]),
+  ];
+
+  /**
+   * The keys a vault without a keys row records first: those that unwrap
+   * its stored versions. Throws `VaultLockedError` as `status` reports.
+   */
+  const seedKeys = async (keyring: VaultKeyring) => {
+    const sealed = await findSealed(sealedKids(keyring));
+    await checkSealed(keyring, sealed);
+    return keyring.keys.filter(({ kid }) => sealed[kid] !== undefined);
+  };
+
+  /** The checks a new keys row starts with: the seeds' and the active key's. */
+  const sealChecks = async (
+    checks: KeyChecks,
+    keys: readonly VaultMasterKey[],
+    at: number,
+  ): Promise<KeyChecks> => {
+    const next: Record<string, KeyCheck> = { ...checks };
+    for (const key of keys) {
+      next[key.kid] ??= await sealKeyCheck(key, at);
+    }
+    return next;
+  };
+
   const write = (input: {
     readonly name: string;
     readonly kind: VaultSecretKind;
     readonly plaintext: Uint8Array<ArrayBuffer>;
     readonly metadata: Readonly<Record<string, DatabaseJson>> | undefined;
     readonly keyring: VaultKeyring;
+    /** The keys a missing keys row starts with, once checked. */
+    readonly seeds?: readonly VaultMasterKey[];
     readonly expectedVersion: number | undefined;
     readonly audit: AuditRow | undefined;
   }) =>
@@ -798,13 +893,17 @@ export const createVaultApi = ({
       // Every write checks the keys and bumps the keys row, so a rewrap
       // that forgets a key it found empty notices a write under it since.
       const keysRow = await tx.findOne("secrets", { id: KEYS_ROW_ID });
+      if (keysRow === null && input.seeds === undefined) {
+        throw new KeysRowMissing();
+      }
       const checks = keyChecksOf(keysRow);
       await checkKeyring(input.keyring, checks);
       const keysMetadata = {
-        checks:
-          checks[active.kid] === undefined
-            ? { ...checks, [active.kid]: await sealKeyCheck(active, at) }
-            : checks,
+        checks: await sealChecks(
+          checks,
+          keysRow === null ? [...(input.seeds ?? []), active] : [active],
+          at,
+        ),
       };
       if (keysRow === null) {
         tx.create("secrets", {
@@ -911,19 +1010,30 @@ export const createVaultApi = ({
         if (!(error instanceof VaultLockedError)) throw error;
         keyring = error;
       }
-      const checks = keyChecksOf(
-        await db.findOne("secrets", { id: KEYS_ROW_ID }),
-      );
+      const keysRow = await db.findOne("secrets", { id: KEYS_ROW_ID });
+      const checks = keyChecksOf(keysRow);
+      // Without a keys row, stored versions stand in for the checks.
+      const sealed =
+        keysRow === null
+          ? await findSealed(
+              sealedKids(
+                keyring instanceof VaultLockedError ? undefined : keyring,
+              ),
+            )
+          : {};
       try {
         if (keyring instanceof VaultLockedError) throw keyring;
-        await checkKeyring(keyring, checks);
+        if (keysRow === null) await checkSealed(keyring, sealed);
+        else await checkKeyring(keyring, checks);
         return { locked: false } as const;
       } catch (error) {
         if (!(error instanceof VaultLockedError)) throw error;
         return Object.freeze({
           locked: true,
           message: error.message,
-          knownKeys: Object.freeze(Object.keys(checks)),
+          knownKeys: Object.freeze(
+            Object.keys(keysRow === null ? sealed : checks),
+          ),
         } as const);
       }
     },
@@ -935,14 +1045,13 @@ export const createVaultApi = ({
       } catch (error) {
         if (!(error instanceof VaultLockedError)) throw error;
       }
-      const checks = keyChecksOf(
-        await db.findOne("secrets", { id: KEYS_ROW_ID }),
-      );
+      const keysRow = await db.findOne("secrets", { id: KEYS_ROW_ID });
+      const known =
+        keysRow === null
+          ? Object.keys(await findSealed([DEFAULT_KID]))
+          : Object.keys(keyChecksOf(keysRow));
       const kids = [
-        ...new Set([
-          ...(keyring?.keys.map(({ kid }) => kid) ?? []),
-          ...Object.keys(checks),
-        ]),
+        ...new Set([...(keyring?.keys.map(({ kid }) => kid) ?? []), ...known]),
       ];
       const counts = await Promise.all(kids.map(countVersions));
       const keys = kids.map((kid, index) => ({
@@ -973,9 +1082,31 @@ export const createVaultApi = ({
       const { active } = keyring;
       // The active key's check goes in first, so forgetting the others
       // leaves the vault one key it knows.
+      // A vault without a keys row starts one from its stored versions.
+      const seeds =
+        (await db.findOne("secrets", { id: KEYS_ROW_ID })) === null
+          ? await seedKeys(keyring)
+          : undefined;
       const before = await db.transaction(async (tx) => {
         const row = await tx.findOne("secrets", { id: KEYS_ROW_ID });
-        if (row === null) return null;
+        if (row === null) {
+          if (seeds === undefined || seeds.length === 0) return null;
+          const at = now();
+          const created = {
+            id: KEYS_ROW_ID,
+            name: KEYS_ROW_ID,
+            kind: "master-keys",
+            current_version: 1,
+            metadata: {
+              checks: await sealChecks({}, [...seeds, active], at),
+            },
+            created_at_ms: at,
+            updated_at_ms: at,
+            deleted_at_ms: null,
+          };
+          tx.create("secrets", created);
+          return created;
+        }
         const checks = keyChecksOf(row);
         await checkKeyring(keyring, checks);
         if (checks[active.kid] !== undefined) return row;
@@ -1091,7 +1222,7 @@ export const createVaultApi = ({
           "A put's expectedVersion is 0 or a secret's version.",
         );
       }
-      const input = {
+      let input: Parameters<typeof write>[0] = {
         expectedVersion,
         // The secret's id is set in the write, once it is known.
         audit:
@@ -1109,6 +1240,12 @@ export const createVaultApi = ({
         try {
           return await write(input);
         } catch (error) {
+          // No keys row yet: check the key against what is stored first.
+          if (error instanceof KeysRowMissing) {
+            input = { ...input, seeds: await seedKeys(input.keyring) };
+            attempt -= 1;
+            continue;
+          }
           // Another put took the name, or the version, first: this one
           // becomes the next version.
           if (
