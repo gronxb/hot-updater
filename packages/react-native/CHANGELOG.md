@@ -1,5 +1,14 @@
 # @hot-updater/react-native
 
+## 1.1.1
+
+### Patch Changes
+
+- f6da9a9: Android builds again with Kotlin 2.2, which React Native 0.87 and later use: Kotlin 2.2 no longer lets the library read a root view's tag as a property.
+- @hot-updater/protocol@1.1.1
+  - @hot-updater/plugin-insights@1.1.1
+  - @hot-updater/plugin-remote-config@1.1.1
+
 ## 1.1.0
 
 ### Minor Changes
