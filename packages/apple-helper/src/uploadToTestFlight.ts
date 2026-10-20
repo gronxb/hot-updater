@@ -167,21 +167,33 @@ const retryDelayMs = (response: Response | Error, attempt: number) => {
     : 1_000 * attempt;
 };
 
-/** Runs `run` over `items`, at most `concurrency` at a time. */
+/**
+ * Runs `run` over `items`, at most `concurrency` at a time. After the first
+ * failure no item starts, and it throws that failure once every running item
+ * has settled, so nothing is still sending when the caller cleans up.
+ */
 const runConcurrently = async <T>(
   items: readonly T[],
   concurrency: number,
   run: (item: T, index: number) => Promise<void>,
 ) => {
   let next = 0;
+  let failure: { error: unknown } | undefined;
   await Promise.all(
     Array.from({ length: Math.min(concurrency, items.length) }, async () => {
-      while (next < items.length) {
+      while (!failure && next < items.length) {
         const index = next++;
-        await run(items[index]!, index);
+        try {
+          await run(items[index]!, index);
+        } catch (error) {
+          failure ??= { error };
+        }
       }
     }),
   );
+  if (failure) {
+    throw failure.error;
+  }
 };
 
 /** The export methods whose `.ipa` App Store Connect accepts. */

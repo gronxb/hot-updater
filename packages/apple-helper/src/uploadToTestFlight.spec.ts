@@ -639,6 +639,62 @@ describe("uploadToTestFlight", () => {
     ).toHaveLength(2);
   });
 
+  it("lets the parts in flight settle, and starts no other, before it removes the upload", async () => {
+    const routes = successRoutes();
+    const operations = Array.from({ length: 6 }, (_, index) => ({
+      method: "PUT",
+      url: `https://upload.example.com/part-${index + 1}`,
+      offset: index * 3,
+      length: 3,
+    }));
+    routes[`POST ${API}/v1/buildUploadFiles`] = {
+      status: 201,
+      json: {
+        data: { id: "file-1", attributes: { uploadOperations: operations } },
+      },
+    };
+    routes[`DELETE ${API}/v1/buildUploads/upload-1`] = { status: 204 };
+    const settled: string[] = [];
+    const { fetch: recording, requests } = createRecordingFetch(routes);
+    const fetch = (async (
+      input: string | URL | Request,
+      init?: RequestInit,
+    ) => {
+      const url = String(input);
+      if (url === "https://upload.example.com/part-1") {
+        return new Response(null, { status: 403 });
+      }
+      if (url.startsWith("https://upload.example.com/")) {
+        // The other parts in flight answer after part 1 failed.
+        await new Promise((resolve) => setTimeout(resolve, 20));
+        settled.push(url);
+        return new Response(null, { status: 200 });
+      }
+      if (init?.method === "DELETE") {
+        settled.push("DELETE");
+      }
+      return recording(input, init);
+    }) as typeof globalThis.fetch;
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).rejects.toThrow("Uploading part 1 of 6 failed: HTTP 403.");
+
+    // Parts 2-4 were in flight with part 1; parts 5 and 6 never started.
+    expect(settled).toEqual([
+      "https://upload.example.com/part-2",
+      "https://upload.example.com/part-3",
+      "https://upload.example.com/part-4",
+      "DELETE",
+    ]);
+    expect(requests.at(-1)).toMatchObject({ method: "DELETE" });
+  });
+
   it("names the build number App Store Connect already has", async () => {
     const routes = successRoutes();
     routes[`POST ${API}/v1/buildUploads`] = {
