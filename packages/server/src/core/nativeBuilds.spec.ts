@@ -212,6 +212,29 @@ describe("the native build registry", () => {
     await expect(
       core.registerNativeBuild(registration(1, { appVersion: "1.0.0" })),
     ).rejects.toThrow("exactly one of fingerprintHash and appVersion");
+    await expect(
+      core.registerNativeBuild(
+        registration(1, {
+          platform: "android",
+          artifact: {
+            kind: "ipa",
+            storageUri: "storage://App.ipa",
+            byteSize: 1,
+          },
+        }),
+      ),
+    ).rejects.toThrow("artifact.kind of an android build must be apk or aab");
+    await expect(
+      core.registerNativeBuild(
+        registration(1, {
+          artifact: {
+            kind: "aab",
+            storageUri: "storage://app.aab",
+            byteSize: 1,
+          },
+        }),
+      ),
+    ).rejects.toThrow("artifact.kind of an ios build must be ipa or app");
     await expect(core.listNativeBuilds({ limit: 10 })).resolves.toEqual([]);
   });
 

@@ -15,7 +15,11 @@ import {
 import { after, type CoreDatabase } from "./reads";
 import { insertChannel, type CoreTransaction } from "./writes";
 
-const ARTIFACT_KINDS = new Set(["apk", "aab", "ipa", "app"]);
+/** The artifacts each platform's build produces. */
+const ARTIFACT_KINDS = {
+  android: ["apk", "aab"],
+  ios: ["ipa", "app"],
+} as const satisfies Record<NativeBuildRow["platform"], readonly string[]>;
 
 /** `native_builds.scope_key`'s bound in core's schema. */
 const SCOPE_KEY_MAX_LENGTH = 2048;
@@ -104,8 +108,9 @@ const problemOf = ({
   if ((fingerprintHash === null) === (appVersion === null)) {
     return "exactly one of fingerprintHash and appVersion is required";
   }
-  if (!ARTIFACT_KINDS.has(artifact.kind)) {
-    return "artifact.kind must be apk, aab, ipa, or app";
+  const kinds: readonly string[] = ARTIFACT_KINDS[platform];
+  if (!kinds.includes(artifact.kind)) {
+    return `artifact.kind of an ${platform} build must be ${kinds.join(" or ")}`;
   }
   if (!Number.isSafeInteger(artifact.byteSize) || artifact.byteSize < 0) {
     return "artifact.byteSize must be a byte count";
