@@ -340,6 +340,61 @@ describe("vault master keys", () => {
     await expect(a.status()).resolves.toMatchObject({ locked: true });
   });
 
+  it("keeps a key another Console's rewrap moves versions into while this one counts it empty", async () => {
+    const { console, db } = start();
+    const a = console({ masterKey: KEY_A });
+    await a.put({ name: "s1", kind: "generic", value: "v1" });
+    await a.put({ name: "s2", kind: "generic", value: "v2" });
+    const next = console({ masterKeys: `next:${KEY_B},default:${KEY_A}` });
+    // The vault knows "next" with nothing under it yet.
+    const draft = await next.put({
+      name: "draft",
+      kind: "generic",
+      value: "x",
+    });
+    await next.remove({ id: draft.id });
+
+    // During a rolling deployment, the old Console rewraps too: right after
+    // it counts "next" empty, the new Console moves one version into "next"
+    // and, with one left under "default", forgets nothing.
+    const findMany = db.findMany.bind(db);
+    let moved = false;
+    vi.spyOn(db, "findMany").mockImplementation(async (model, options) => {
+      const page = await findMany(model, options as never);
+      if (
+        !moved &&
+        model === "secret_versions" &&
+        (options as { readonly where: { readonly kid?: string } }).where.kid ===
+          "next" &&
+        page.rows.length === 0
+      ) {
+        moved = true;
+        await expect(next.rewrap({ batch: 1 })).resolves.toEqual({
+          rewrapped: 1,
+          remaining: 1,
+        });
+      }
+      return page as never;
+    });
+    await a.rewrap().catch(() => undefined);
+    expect(moved).toBe(true);
+    vi.mocked(db.findMany).mockRestore();
+
+    // The vault still knows "next", which holds a version now.
+    const after = console({ masterKeys: `next:${KEY_B}` });
+    await expect(after.status()).resolves.toEqual({ locked: false });
+    const [underNext] = (
+      await db.findMany("secret_versions", {
+        index: "byKid",
+        where: { kid: "next" },
+        limit: 1,
+      })
+    ).rows;
+    await expect(
+      after.reveal({ id: underNext!.secret_id, actor: "t" }),
+    ).resolves.toMatch(/^v[12]$/u);
+  });
+
   it("rewraps while new versions are written and old ones pruned", async () => {
     const { console } = start();
     const a = console({ masterKey: KEY_A });

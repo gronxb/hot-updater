@@ -1165,12 +1165,26 @@ export const createVaultApi = ({
           });
           for (const listed of page.rows) {
             const moved = await db.transaction(async (tx) => {
+              const keysRow = await tx.findOne("secrets", { id: KEYS_ROW_ID });
               const row = await tx.findOne("secret_versions", {
                 secret_id: listed.secret_id,
                 version: listed.version,
               });
               // Removed, pruned, or rewrapped since the page was read.
-              if (row === null || row.kid !== kid) return false;
+              if (keysRow === null || row === null || row.kid !== kid) {
+                return false;
+              }
+              // A move bumps the keys row as a write does, so a rewrap on
+              // another Console that counted the active kid empty keeps it,
+              // and the active key's check comes back if one forgot it.
+              const at = now();
+              tx.update("secrets", keysRow, {
+                current_version: keysRow.current_version + 1,
+                metadata: {
+                  checks: await sealChecks(keyChecksOf(keysRow), [active], at),
+                },
+                updated_at_ms: at,
+              });
               tx.update(
                 "secret_versions",
                 row,
@@ -1196,9 +1210,13 @@ export const createVaultApi = ({
       if (empty.length > 0) {
         await db.transaction(async (tx) => {
           const row = await tx.findOne("secrets", { id: KEYS_ROW_ID });
-          // A put since this rewrap began bumped the row: it may have sealed
-          // under a key counted empty, so the next rewrap decides.
-          if (row === null || row.current_version !== before.current_version) {
+          // A put or another rewrap since this one began bumped the row
+          // beyond this one's own moves: it may have sealed under a key
+          // counted empty, so the next rewrap decides.
+          if (
+            row === null ||
+            row.current_version !== before.current_version + rewrapped
+          ) {
             return;
           }
           const checks = { ...keyChecksOf(row) };
