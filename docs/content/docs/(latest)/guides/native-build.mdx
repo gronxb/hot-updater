@@ -108,6 +108,7 @@ and never asks the console for it.
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Android keystore          | `HOT_UPDATER_ANDROID_KEYSTORE_PATH` (or `HOT_UPDATER_ANDROID_KEYSTORE_BASE64`), `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD`, `HOT_UPDATER_ANDROID_KEY_ALIAS`, `HOT_UPDATER_ANDROID_KEY_PASSWORD` |
 | App Store Connect API key | `HOT_UPDATER_ASC_KEY_PATH` (or `HOT_UPDATER_ASC_KEY`, the `.p8` contents), `HOT_UPDATER_ASC_KEY_ID`, `HOT_UPDATER_ASC_ISSUER_ID`                                                             |
+| Play service account      | `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` (or `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`, the JSON key file's contents), for [`--upload play-internal`](#upload-to-google-play)                   |
 
 The CLI writes a keystore or key given as contents to a temporary file that
 only your user can read, and deletes it when the build ends. It masks passwords
@@ -250,6 +251,51 @@ stays at its output path. A build that App Store Connect is still processing
 after 30 minutes appears in TestFlight once processing finishes, at the URL
 the CLI prints.
 
+## Upload to Google Play
+
+Add `--upload play-internal` to upload the `.aab` to Google Play and release
+it to the internal testing track:
+
+```package-install
+npx hot-updater build:android --scheme release --upload play-internal
+```
+
+The upload authenticates with the vault's `play-service-account` secret, the
+JSON key file of a Google Cloud service account.
+`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` (or
+`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`, the file's contents) overrides it.
+The CLI resolves it before the build adapter's prebuild (such as
+`expo prebuild`) and the build, so a missing one fails before either runs, and
+keeps it in memory: it writes the service account to no file.
+
+Before the prebuild, the CLI also refuses a scheme whose build Google Play
+would not take as a release: an `.apk` scheme (`aab: false`) and a variant whose name
+ends in `Debug`.
+
+After the build, and after `--register` when you pass both, the CLI:
+
+1. Reads the application ID from the `.aab`'s manifest with `aapt2`, with the
+   suffixes flavors and build types add, or else uses the scheme's
+   `applicationId`.
+2. Opens an edit with the Google Play Developer API and uploads the `.aab`.
+3. Releases the bundle's version code to the `internal` track and commits the
+   edit. When any step fails, it deletes the edit, so nothing is released.
+
+Set up the app once in Play Console:
+
+- Create the app and upload its first `.aab` there: the API releases the
+  builds after it.
+- Invite the service account's email under Users and permissions, with
+  permission to release to testing tracks, and enable the Google Play Android
+  Developer API in the service account's Google Cloud project.
+
+Google Play takes each version code once: raise `versionCode` for every build
+you upload. On an app Play Console has not published yet, Google Play takes
+only draft releases, so the internal release is a draft that you roll out in
+Play Console. When the app's state requires it, the CLI commits without
+sending the changes for review, and you send them for review in Play Console.
+When an upload fails, the build stays at its output path.
+
 ## Run on a device
 
 ```package-install
@@ -268,12 +314,13 @@ device build signs with the scheme's `signing.ascApiKey` when it sets one.
 
 ## Command options
 
-| Option                    | Commands      | Description                                                  |
-| ------------------------- | ------------- | ------------------------------------------------------------ |
-| `-s, --scheme <scheme>`   | all           | The `nativeBuild` scheme to build                            |
-| `-i, --interactive`       | all           | Choose the scheme, and with `run:*` the device               |
-| `-o, --output-path <dir>` | `build:*`     | Where to copy the build output                               |
-| `--register`              | `build:*`     | Register the release build, its artifact and built-in bundle |
-| `--upload testflight`     | `build:ios`   | Upload the `.ipa` to App Store Connect for TestFlight        |
-| `-d, --device [device]`   | `run:*`       | The device name or ID to run on                              |
-| `--port <port>`           | `run:android` | The Metro port the device reaches with `adb reverse`         |
+| Option                    | Commands        | Description                                                  |
+| ------------------------- | --------------- | ------------------------------------------------------------ |
+| `-s, --scheme <scheme>`   | all             | The `nativeBuild` scheme to build                            |
+| `-i, --interactive`       | all             | Choose the scheme, and with `run:*` the device               |
+| `-o, --output-path <dir>` | `build:*`       | Where to copy the build output                               |
+| `--register`              | `build:*`       | Register the release build, its artifact and built-in bundle |
+| `--upload testflight`     | `build:ios`     | Upload the `.ipa` to App Store Connect for TestFlight        |
+| `--upload play-internal`  | `build:android` | Upload the `.aab` to Google Play's internal testing track    |
+| `-d, --device [device]`   | `run:*`         | The device name or ID to run on                              |
+| `--port <port>`           | `run:android`   | The Metro port the device reaches with `adb reverse`         |

@@ -18,6 +18,7 @@ import {
   nativeBuildRegisterCommandOption,
   nativeBuildSchemeCommandOption,
   platformCommandOption,
+  playUploadCommandOption,
   portCommandOption,
   testFlightUploadCommandOption,
 } from "@/commandOptions";
@@ -1077,6 +1078,7 @@ program
   .addOption(interactiveCommandOption)
   .addOption(nativeBuildSchemeCommandOption)
   .addOption(nativeBuildRegisterCommandOption)
+  .addOption(playUploadCommandOption)
   .action(async (options: BuildNativeOptions) => {
     await buildAndroidNative(options);
   });

@@ -894,6 +894,49 @@ describe("PUT /_hot-updater/vault/v1/secrets/:name", () => {
     );
   });
 
+  it("tells the vault's errors by name, from a copy of the plugin other than the console's", async () => {
+    const { load, issue, secrets } = await start();
+    const { runtime } = await load(new Request("https://console.example.com"));
+    const api = runtime.apis.vault!;
+    // The errors of a vault loaded from the project's own node_modules.
+    const foreign = (name: string, message: string) =>
+      Object.assign(new Error(message), { name });
+    const copied: LoadConsole = async () => ({
+      runtime: {
+        ...runtime,
+        apis: {
+          ...runtime.apis,
+          vault: {
+            ...api,
+            reveal: async () => {
+              throw foreign("VaultLockedError", "The vault is locked: no key.");
+            },
+            put: async () => {
+              throw foreign("VaultConflictError", "Version 2 now.");
+            },
+          },
+        },
+      },
+    });
+    const token = await issue({
+      secrets: { names: [secrets.keystore.name, "widget-asc"] },
+      actions: ["read", "write"],
+    });
+
+    const resolved = await resolve(copied, token, {
+      names: [secrets.keystore.name],
+    });
+    expect(resolved.status).toBe(503);
+    await expect(resolved.json()).resolves.toMatchObject({
+      error: { code: "vault_locked" },
+    });
+    const written = await put(copied, token, "widget-asc", {
+      kind: "asc-api-key",
+      value: ASC_VALUE,
+    });
+    expect(written.status).toBe(409);
+  });
+
   it("answers 503 when the console's master key did not seal the stored secrets", async () => {
     const other = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
     const { load, issue } = await start({ masterKey: other });

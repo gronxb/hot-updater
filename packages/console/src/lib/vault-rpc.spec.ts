@@ -39,6 +39,7 @@ vi.mock("@tanstack/react-start", () => ({
 vi.mock("./server/config.server", () => ({ prepareConfig: mocks.prepare }));
 
 import {
+  getVaultKeysRpc,
   getVaultStatusRpc,
   issueVaultTokenRpc,
   listVaultSecretsRpc,
@@ -46,6 +47,7 @@ import {
   putVaultSecretRpc,
   removeVaultSecretRpc,
   revokeVaultTokenRpc,
+  rewrapVaultRpc,
 } from "./vault-rpc";
 
 const MASTER_KEY = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
@@ -90,6 +92,57 @@ const console_ = (options: { readonly masterKey?: string } = {}) => {
 afterEach(() => vi.resetAllMocks());
 
 describe("vault RPC", () => {
+  it("rotates the master key: lists the keys, rewraps, and opens with the new key alone", async () => {
+    const adapter = createMemoryAdapter();
+    const open = (options: Parameters<typeof vault>[0]) => {
+      const opened = databaseRuntime({ name: "memory", adapter }, [
+        vault(options),
+      ]);
+      mocks.prepare.mockResolvedValue({ runtime: opened.runtime });
+      return opened.api.vault;
+    };
+    open({ masterKey: MASTER_KEY });
+    const saved = await putVaultSecretRpc({
+      data: {
+        name: "release-keystore",
+        kind: "android-keystore",
+        value: KEYSTORE,
+        expectedVersion: 0,
+      },
+    });
+
+    open({ masterKeys: `next:${OTHER_KEY},default:${MASTER_KEY}` });
+    await expect(getVaultKeysRpc()).resolves.toEqual({
+      keys: [
+        { kid: "next", active: true, held: true, known: false, versions: 0 },
+        { kid: "default", active: false, held: true, known: true, versions: 1 },
+      ],
+      remaining: 1,
+    });
+    await expect(rewrapVaultRpc()).resolves.toEqual({
+      rewrapped: 1,
+      remaining: 0,
+    });
+
+    const rotated = open({ masterKeys: `next:${OTHER_KEY}` });
+    await expect(getVaultStatusRpc()).resolves.toEqual({ locked: false });
+    await expect(
+      rotated.reveal({ id: saved.id, actor: "spec" }),
+    ).resolves.toEqual(KEYSTORE);
+    // The old key alone is refused now, even for a write.
+    open({ masterKey: MASTER_KEY });
+    await expect(
+      putVaultSecretRpc({
+        data: {
+          name: "other",
+          kind: "generic",
+          value: { A: "1" },
+          expectedVersion: 0,
+        },
+      }),
+    ).rejects.toThrow('saved under the master key "next"');
+  });
+
   it("stores a secret write-only: the list and the reply carry its metadata, never its value", async () => {
     const { api } = console_({ masterKey: MASTER_KEY });
 
@@ -221,6 +274,7 @@ describe("vault RPC", () => {
     await expect(getVaultStatusRpc()).resolves.toEqual({
       locked: true,
       message: expect.stringContaining("HOT_UPDATER_VAULT_MASTER_KEY"),
+      knownKeys: ["default"],
     });
     await expect(
       putVaultSecretRpc({

@@ -8,7 +8,7 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
-import { type MouseEvent, useState } from "react";
+import { Fragment, type MouseEvent, useState } from "react";
 import { toast } from "sonner";
 
 import {
@@ -79,19 +79,20 @@ const lockedReason = (message: string) => {
 
 /**
  * Why the console cannot store secrets, and what fixes it: a new key only
- * for a vault known to be empty; otherwise the key the stored secrets were
- * sealed with, which no new key opens.
+ * for a vault that has sealed nothing; otherwise the keys it was sealed
+ * with, which no new key opens.
  */
-function VaultLockedAlert({
+export function VaultLockedAlert({
   message,
-  empty,
+  knownKeys,
   onCheckAgain,
 }: {
   readonly message: string;
-  /** Whether the vault holds no secrets: true only once the list says so. */
-  readonly empty: boolean;
+  /** The kids the vault was sealed under; none while any key would do. */
+  readonly knownKeys: readonly string[];
   readonly onCheckAgain: () => Promise<unknown>;
 }) {
+  const empty = knownKeys.length === 0;
   const [checking, setChecking] = useState(false);
   const copyCommand = async () => {
     try {
@@ -117,9 +118,15 @@ function VaultLockedAlert({
         <p>{lockedReason(message)}</p>
         {!empty ? (
           <p>
-            Restore the master key the vault's secrets were saved with and
-            redeploy the console: a new key can't open them. Listing, deleting,
-            and tokens keep working.
+            Restore the master key the vault's secrets were saved with (
+            {knownKeys.map((kid, index) => (
+              <Fragment key={kid}>
+                {index === 0 ? null : ", "}
+                <code className="font-mono">{kid}</code>
+              </Fragment>
+            ))}
+            ) and redeploy the console: a new key can't open them. Listing,
+            deleting, and tokens keep working.
           </p>
         ) : (
           <p>
@@ -129,7 +136,8 @@ function VaultLockedAlert({
           </p>
         )}
       </AlertDescription>
-      <AlertAction className="flex flex-wrap gap-1">
+      {/* Below the text, which a long reason would run under. */}
+      <div className="col-start-2 mt-2 flex flex-wrap gap-1">
         {!empty ? null : (
           <Button
             className="min-h-11 sm:min-h-6"
@@ -154,7 +162,7 @@ function VaultLockedAlert({
           />
           {checking ? "Checking…" : "Check again"}
         </Button>
-      </AlertAction>
+      </div>
     </Alert>
   );
 }
@@ -274,7 +282,7 @@ export function SecretsCard({
         {status.data?.locked === true ? (
           <div className="border-b p-4">
             <VaultLockedAlert
-              empty={secrets.data?.length === 0}
+              knownKeys={status.data.knownKeys}
               message={status.data.message}
               onCheckAgain={async () => status.refetch()}
             />

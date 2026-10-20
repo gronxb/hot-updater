@@ -51,7 +51,7 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
   - Its only subpaths are the built-in adapters (`./adapters/{kysely,drizzle,prisma,mongodb}`) and the built-in plugins (`./plugins`).
   - Tooling reads a server definition only through its public read-only properties.
 - `hot-updater/plugins` re-exports the official `apiKeys`, `insights`, `remoteConfig`, and `vault` factories for `hot-updater.config.ts`. Server and hosted Console code imports `@hot-updater/server/plugins` instead of depending on the CLI package.
-- `@hot-updater/plugin-vault` adds tables and `hotUpdater.api.vault`, and no endpoints: the Console serves the vault's routes and holds its master key (`HOT_UPDATER_VAULT_MASTER_KEY`), so `vault()` goes only in the plugins of `hot-updater.config.ts` and `console.config.ts`. Managed server runtimes bundle it through `@hot-updater/server/plugins` but never run it.
+- `@hot-updater/plugin-vault` adds tables and `hotUpdater.api.vault`, and no endpoints: the Console serves the vault's routes and holds its master keys (`HOT_UPDATER_VAULT_MASTER_KEY`, or `HOT_UPDATER_VAULT_MASTER_KEYS` while they rotate), and only the Console rewraps them, so `vault()` goes only in the plugins of `hot-updater.config.ts` and `console.config.ts`. Managed server runtimes bundle it through `@hot-updater/server/plugins` but never run it.
 - `@hot-updater/vercel` re-exports `postgres` from `@hot-updater/postgres`, the managed Vercel database, so a Vercel project's config imports and installs one package.
 - `@hot-updater/react-native` is the app SDK. Apps import everything from its root, including the built-in `insights` and `remoteConfig` clients. It has no subpaths.
   - It imports `@hot-updater/protocol` and the Insights and Remote Config clients, never plugin-core or server.
@@ -154,6 +154,9 @@ npx hot-updater build:android --scheme release --register
 
 # Build an .ipa and upload it to TestFlight with the scheme's App Store Connect API key
 npx hot-updater build:ios --scheme release --upload testflight
+
+# Build an .aab and release it to Google Play's internal track with the vault's play-service-account
+npx hot-updater build:android --scheme release --upload play-internal
 
 # Manage client API keys through apiKeys(): the config's, or a server file's
 npx hot-updater api-key create --name <name>

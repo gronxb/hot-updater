@@ -8,11 +8,6 @@ import {
   VAULT_SECRET_KINDS,
   type VaultApi,
   type VaultAuditEntry,
-  VaultConflictError,
-  VaultInputError,
-  VaultIntegrityError,
-  VaultLockedError,
-  VaultNotFoundError,
   type VaultSecret,
   type VaultSecretKind,
   vaultSecretMetadata,
@@ -25,6 +20,22 @@ import {
   openBundleSigningKey,
 } from "./bundleSigningKey";
 import type { ConsoleRuntime } from "./runtime.server";
+
+/**
+ * Whether `error` is the vault's error `name`. Told by name, not class: the
+ * vault in the console's config can be another copy of the package than
+ * the one the console bundles, such as a config `hot-updater console`
+ * loads from the project, whose classes are not these.
+ */
+const isVaultError = (
+  error: unknown,
+  name:
+    | "VaultConflictError"
+    | "VaultInputError"
+    | "VaultIntegrityError"
+    | "VaultLockedError"
+    | "VaultNotFoundError",
+): error is Error => error instanceof Error && error.name === name;
 
 /**
  * The vault's HTTP routes, which the console serves under
@@ -40,7 +51,8 @@ import type { ConsoleRuntime } from "./runtime.server";
  * - 405 `method_not_allowed`: the route takes another method;
  * - 409 `conflict`: secrets kept changing while a resolve read them, or a
  *   write met a secret of another kind, or a newer version;
- * - 503 `vault_locked`: the console has no master key to open values with.
+ * - 503 `vault_locked`: the console has no master key to open values with,
+ *   or its master keys are not the vault's.
  *
  * The console also signs bundles at `/_hot-updater/signing`, the remote
  * signing protocol, for a vault token sent as its signing token: see
@@ -321,11 +333,11 @@ export const resolveVaultSecrets = (request: Request, load: LoadConsole) =>
         );
       } catch (error) {
         // Rotated, removed, or replaced since the list.
-        if (error instanceof VaultNotFoundError) continue;
-        if (error instanceof VaultLockedError) {
+        if (isVaultError(error, "VaultNotFoundError")) continue;
+        if (isVaultError(error, "VaultLockedError")) {
           return failure(503, "vault_locked", error.message);
         }
-        if (error instanceof VaultIntegrityError) {
+        if (isVaultError(error, "VaultIntegrityError")) {
           return integrityFailure(error);
         }
         throw error;
@@ -514,15 +526,11 @@ export const putVaultSecret = (
     try {
       value = parseVaultSecretValue(write.kind, write.value);
     } catch (error) {
-      if (error instanceof VaultInputError) {
+      if (isVaultError(error, "VaultInputError")) {
         return failure(400, "invalid_request", error.message);
       }
       throw error;
     }
-    // A key that did not seal the stored secrets would split the vault.
-    const status = await vault.status();
-    if (status.locked) return failure(503, "vault_locked", status.message);
-
     let secret: VaultSecret;
     try {
       secret = await vault.put({
@@ -535,7 +543,7 @@ export const putVaultSecret = (
         audit: { actor: token.id, context },
       });
     } catch (error) {
-      if (error instanceof VaultConflictError) {
+      if (isVaultError(error, "VaultConflictError")) {
         return failure(
           409,
           "conflict",
@@ -544,10 +552,10 @@ export const putVaultSecret = (
             : `${error.message} Read it again before you store the next version.`,
         );
       }
-      if (error instanceof VaultLockedError) {
+      if (isVaultError(error, "VaultLockedError")) {
         return failure(503, "vault_locked", error.message);
       }
-      if (error instanceof VaultInputError) {
+      if (isVaultError(error, "VaultInputError")) {
         return failure(400, "invalid_request", error.message);
       }
       throw error;
@@ -662,24 +670,23 @@ export const serveVaultSigning = (request: Request, load: LoadConsole) =>
             }),
           );
         } catch (error) {
-          refusal =
-            error instanceof VaultLockedError
-              ? failure(503, "vault_locked", error.message)
-              : error instanceof VaultNotFoundError
-                ? failure(
-                    409,
-                    "conflict",
-                    `The bundle signing key ${secret.name} changed while the console opened it; send the request again.`,
-                  )
-                : error instanceof VaultIntegrityError
-                  ? integrityFailure(error)
-                  : error instanceof BundleSigningKeyError
-                    ? failure(
-                        500,
-                        "invalid_signing_key",
-                        `The bundle signing key ${secret.name} ${error.message}; overwrite it with the key hot-updater keys generate makes.`,
-                      )
-                    : undefined;
+          refusal = isVaultError(error, "VaultLockedError")
+            ? failure(503, "vault_locked", error.message)
+            : isVaultError(error, "VaultNotFoundError")
+              ? failure(
+                  409,
+                  "conflict",
+                  `The bundle signing key ${secret.name} changed while the console opened it; send the request again.`,
+                )
+              : isVaultError(error, "VaultIntegrityError")
+                ? integrityFailure(error)
+                : error instanceof BundleSigningKeyError
+                  ? failure(
+                      500,
+                      "invalid_signing_key",
+                      `The bundle signing key ${secret.name} ${error.message}; overwrite it with the key hot-updater keys generate makes.`,
+                    )
+                  : undefined;
           if (refusal === undefined) {
             console.error(
               "The vault could not open a bundle signing key:",

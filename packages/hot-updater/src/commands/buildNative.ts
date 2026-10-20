@@ -1,4 +1,11 @@
-import { buildAndroid } from "@hot-updater/android-helper";
+import path from "path";
+
+import {
+  buildAndroid,
+  readBuiltPackageName,
+  resolvePlayUploadServiceAccount,
+  uploadToPlay,
+} from "@hot-updater/android-helper";
 import {
   assertTestFlightExportOptions,
   buildIos,
@@ -8,6 +15,7 @@ import {
 import {
   createMinBundleId,
   type Credentials,
+  getCwd,
   CredentialUnavailableError,
   p,
   withCredentialResolver,
@@ -32,7 +40,7 @@ import { ui } from "../utils/cli-ui";
  */
 export type BuildNativeOptions = NativeBuildOptions & {
   register?: boolean;
-  upload?: "testflight";
+  upload?: "testflight" | "play-internal";
 };
 
 const buildNativeInternal = async ({
@@ -50,6 +58,7 @@ const buildNativeInternal = async ({
     // them, and their temporary files are deleted once it finishes.
     return await withCredentialResolver(async (credentials) => {
       let ascApiKey: Credentials["asc-api-key"] | undefined;
+      let serviceAccount: Credentials["play-service-account"] | undefined;
       const preparedConfig = await prepareNativeBuild({
         ...options,
         platform,
@@ -57,13 +66,23 @@ const buildNativeInternal = async ({
         credentials: register,
         // A scheme the store would refuse, or a missing upload credential,
         // fails before the prebuild and the build. The scheme's signing key
-        // is the same item, resolved once.
-        beforePrebuild: async ({ scheme, iosScheme }) => {
+        // is the same item, resolved once, and a service account stays in
+        // memory.
+        beforePrebuild: async ({ scheme, iosScheme, androidScheme }) => {
           if (upload === "testflight") {
             const request = await reportUploadFailure(async () =>
               resolveTestFlightUploadKey({ scheme, iosScheme: iosScheme! }),
             );
             ascApiKey = await credentials.resolve(request);
+          }
+          if (upload === "play-internal") {
+            const request = await reportUploadFailure(async () =>
+              resolvePlayUploadServiceAccount({
+                scheme,
+                androidScheme: androidScheme!,
+              }),
+            );
+            serviceAccount = await credentials.resolve(request);
           }
         },
       });
@@ -156,6 +175,30 @@ const buildNativeInternal = async ({
             ]),
           );
         }
+      }
+      const playServiceAccount = serviceAccount;
+      if (playServiceAccount) {
+        const { versionCode, status } = await reportUploadFailure(
+          async () =>
+            uploadToPlay({
+              aabPath: result.artifactPath,
+              // The artifact's, with the suffixes flavors and build types add.
+              packageName:
+                (await readBuiltPackageName({
+                  artifactPath: result.artifactPath,
+                  androidProjectPath: path.join(getCwd(), "android"),
+                })) ?? androidSchemeConfig!.applicationId,
+              serviceAccount: playServiceAccount,
+            }),
+          `The build stays at ${result.artifactPath}.`,
+        );
+        p.log.success(
+          ui.line([
+            status === "draft" ? "Uploaded as a draft to" : "Uploaded to",
+            ui.platform("Google Play internal testing"),
+            ui.muted(`version code ${versionCode}`),
+          ]),
+        );
       }
       return result;
     });
