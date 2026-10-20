@@ -695,6 +695,44 @@ describe("uploadToTestFlight", () => {
     expect(requests.at(-1)).toMatchObject({ method: "DELETE" });
   });
 
+  it("removes the upload again when the removal is rate limited, and names one it could not remove", async () => {
+    const routes = successRoutes();
+    routes[`PUT ${PART_URL_2}`] = { status: 403 };
+    routes[`DELETE ${API}/v1/buildUploads/upload-1`] = [
+      { status: 429 },
+      { status: 204 },
+    ];
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).rejects.toThrow("Uploading part 2 of 2 failed: HTTP 403.");
+    expect(
+      requests.filter((request) => request.method === "DELETE"),
+    ).toHaveLength(2);
+    expect(p.log.warn).not.toHaveBeenCalled();
+
+    routes[`DELETE ${API}/v1/buildUploads/upload-1`] = { status: 403 };
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).rejects.toThrow("Uploading part 2 of 2 failed: HTTP 403.");
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "App Store Connect kept the unfinished build upload upload-1, which reserves build 42 of version 1.2.0:",
+      ),
+    );
+  });
+
   it("names the build number App Store Connect already has", async () => {
     const routes = successRoutes();
     routes[`POST ${API}/v1/buildUploads`] = {

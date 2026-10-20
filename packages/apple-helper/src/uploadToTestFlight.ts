@@ -444,12 +444,26 @@ export const uploadToTestFlight = async ({
     `Uploading ${ipaName} (version ${info.shortVersion}, build ${info.bundleVersion}) to App Store Connect`,
   );
   // An unfinished upload would keep the build number reserved.
-  const removeUpload = () =>
-    request(
-      "Removing the build upload",
-      "DELETE",
-      `/v1/buildUploads/${buildUploadId}`,
-    ).catch(() => undefined);
+  const removeUpload = async () => {
+    for (let attempt = 1; ; attempt++) {
+      try {
+        await request(
+          "Removing the build upload",
+          "DELETE",
+          `/v1/buildUploads/${buildUploadId}`,
+        );
+        return;
+      } catch (error) {
+        if (!isRetryable(error) || attempt === COMMIT_ATTEMPTS) {
+          p.log.warn(
+            `App Store Connect kept the unfinished build upload ${buildUploadId}, which reserves build ${info.bundleVersion} of version ${info.shortVersion}: ${(error as Error).message} Upload with a new build number (CFBundleVersion).`,
+          );
+          return;
+        }
+        await sleep(1_000 * attempt);
+      }
+    }
+  };
 
   let fileId: string;
   try {
