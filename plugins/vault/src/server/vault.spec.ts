@@ -210,12 +210,11 @@ describe("vault", () => {
     ).rejects.toThrow(VaultInputError);
   });
 
-  it("tells whether it is locked without reading the database", async () => {
+  it("tells whether it is locked, reading nothing without a key", async () => {
     const { api, with: withOptions, db } = start();
     const findOne = vi.spyOn(db, "findOne");
     const findMany = vi.spyOn(db, "findMany");
 
-    await expect(api.status()).resolves.toEqual({ locked: false });
     await expect(withOptions({}).status()).resolves.toEqual({
       locked: true,
       message: expect.stringContaining("HOT_UPDATER_VAULT_MASTER_KEY"),
@@ -226,10 +225,29 @@ describe("vault", () => {
       locked: true,
       message: expect.stringContaining("32 bytes in base64"),
     });
-    vi.stubEnv("HOT_UPDATER_VAULT_MASTER_KEY", MASTER_KEY);
-    await expect(withOptions({}).status()).resolves.toEqual({ locked: false });
     expect(findOne).not.toHaveBeenCalled();
     expect(findMany).not.toHaveBeenCalled();
+    // An empty vault takes any well-formed key.
+    await expect(api.status()).resolves.toEqual({ locked: false });
+    vi.stubEnv("HOT_UPDATER_VAULT_MASTER_KEY", MASTER_KEY);
+    await expect(withOptions({}).status()).resolves.toEqual({ locked: false });
+  });
+
+  it("is locked under a well-formed key that did not seal the secrets, reading two rows", async () => {
+    const { api, with: withOptions, db } = start();
+    await api.put({ name: "a", kind: "generic", value: 1 });
+    const findOne = vi.spyOn(db, "findOne");
+    const findMany = vi.spyOn(db, "findMany");
+
+    await expect(api.status()).resolves.toEqual({ locked: false });
+    await expect(
+      withOptions({ masterKey: OTHER_KEY }).status(),
+    ).resolves.toEqual({
+      locked: true,
+      message: expect.stringContaining("is not the key the vault's secrets"),
+    });
+    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(findOne).toHaveBeenCalledTimes(2);
   });
 
   it("reads the master key from HOT_UPDATER_VAULT_MASTER_KEY when it is not given", async () => {

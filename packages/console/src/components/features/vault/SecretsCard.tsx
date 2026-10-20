@@ -178,6 +178,9 @@ function DeleteSecretDialog({
       toast.error(
         error instanceof Error ? error.message : "Unable to delete the secret",
       );
+      // The secret may have changed since it was confirmed, such as a newer
+      // version: confirming again starts from its row.
+      onOpenChange(false);
     }
   };
   return (
@@ -192,7 +195,9 @@ function DeleteSecretDialog({
           <AlertDialogMedia>
             <Trash2 />
           </AlertDialogMedia>
-          <AlertDialogTitle>Delete {secret?.name}?</AlertDialogTitle>
+          <AlertDialogTitle>
+            Delete {secret?.name} (version {secret?.version})?
+          </AlertDialogTitle>
           <AlertDialogDescription>
             Its values are deleted with every kept version. CI builds that
             resolve it fail until you add it again.
@@ -232,15 +237,18 @@ export function SecretsCard({
   };
 }) {
   // `undefined` while closed, `null` to add one, an id to overwrite it. The
-  // dialogs read the secret from the list, so after a write is refused and
-  // the list reloads, a retry uses its current version, and a secret
-  // deleted meanwhile closes its dialog.
+  // overwrite dialog reads the secret from the list, and says which version
+  // it saves, so after a write is refused and the list reloads, a retry
+  // uses the current version, and a secret deleted meanwhile closes it.
   const [editing, setEditing] = useState<string | null | undefined>(undefined);
-  const [deleting, setDeleting] = useState<string | null>(null);
+  // The secret as the user confirmed it: a delete names that version, and
+  // the dialog closes if the secret leaves the list.
+  const [deleting, setDeleting] = useState<VaultSecret | null>(null);
   const secretOf = (id: string | null | undefined) =>
     id ? secrets.data?.find((secret) => secret.id === id) : undefined;
   const editingSecret = secretOf(editing);
-  const deletingSecret = secretOf(deleting) ?? null;
+  const deletingSecret =
+    deleting !== null && secretOf(deleting.id) !== undefined ? deleting : null;
   // Writes wait for the vault to say it holds a key.
   const locked = status.data?.locked !== false;
   // Adding checks names against the list, so it waits for one.
@@ -434,7 +442,7 @@ export function SecretsCard({
                           <Button
                             aria-label={`Delete ${secret.name}`}
                             className="min-h-11 sm:min-h-7"
-                            onClick={() => setDeleting(secret.id)}
+                            onClick={() => setDeleting(secret)}
                             size="sm"
                             variant="ghost"
                           >

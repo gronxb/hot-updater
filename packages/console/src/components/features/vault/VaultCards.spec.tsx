@@ -542,6 +542,37 @@ describe("SecretsCard", () => {
     expect(screen.queryByRole("dialog")).toBeNull();
   });
 
+  it("closes a delete confirmation that was refused, deleting nothing newer", async () => {
+    removeMutation.mutateAsync.mockRejectedValue(
+      new Error('The secret "release-keystore" is at version 4 now, not 3.'),
+    );
+    const { rerender } = render(
+      <SecretsCard secrets={loaded([keystore])} status={unlocked} />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Delete release-keystore" }),
+    );
+    expect(screen.getByText(/version 3/)).toBeDefined();
+    rerender(
+      <SecretsCard
+        secrets={loaded([{ ...keystore, version: 4 }])}
+        status={unlocked}
+      />,
+    );
+    // The confirmation still names the version the user saw.
+    expect(screen.getByText(/version 3/)).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Delete secret" }));
+
+    expect(removeMutation.mutateAsync).toHaveBeenCalledWith(keystore);
+    await waitFor(() => {
+      expect(screen.queryByRole("alertdialog")).toBeNull();
+    });
+    expect(toastError).toHaveBeenCalledWith(
+      'The secret "release-keystore" is at version 4 now, not 3.',
+    );
+  });
+
   it("deletes a secret after confirmation", async () => {
     removeMutation.mutateAsync.mockResolvedValue(keystore);
     render(<SecretsCard secrets={loaded([keystore])} status={unlocked} />);

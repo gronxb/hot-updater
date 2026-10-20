@@ -127,9 +127,10 @@ export type VaultStatus =
 /** `hotUpdater.api.vault`. */
 export interface VaultApi {
   /**
-   * Whether a master key is set and well formed, so `put` and `reveal` can
-   * run. It reads nothing, so the Console asks before it offers to store a
-   * secret.
+   * Whether the master key is set, well formed, and the one the stored
+   * secrets were sealed with, so `put` and `reveal` can run. It opens one
+   * stored value to tell, reading at most two rows and nothing without a
+   * key, so the Console asks before it offers to store a secret.
    */
   status(): Promise<VaultStatus>;
   /** Every secret but removed ones, by name, without values. */
@@ -624,12 +625,45 @@ export const createVaultApi = ({
 
   return Object.freeze({
     async status() {
+      let key: VaultMasterKey;
       try {
-        await masterKey();
-        return { locked: false } as const;
+        key = await masterKey();
       } catch (error) {
         if (error instanceof VaultLockedError) {
           return { locked: true, message: error.message } as const;
+        }
+        throw error;
+      }
+      // A well-formed key that did not seal the stored secrets opens none
+      // of them, and writing with it would split the vault across two keys.
+      const [secret] = (
+        await db.findMany("secrets", { index: "byName", where: {}, limit: 1 })
+      ).rows;
+      if (secret === undefined || secret.deleted_at_ms !== null) {
+        return { locked: false } as const;
+      }
+      const sealed = await db.findOne("secret_versions", {
+        secret_id: secret.id,
+        version: secret.current_version,
+      });
+      if (sealed === null) return { locked: false } as const;
+      try {
+        await open({
+          masterKey: key,
+          secretId: secret.id,
+          version: secret.current_version,
+          sealed,
+        });
+        return { locked: false } as const;
+      } catch (error) {
+        if (
+          error instanceof VaultIntegrityError ||
+          error instanceof VaultLockedError
+        ) {
+          return {
+            locked: true,
+            message: `The vault is locked: ${VAULT_MASTER_KEY_ENV} is not the key the vault's secrets were saved with.`,
+          } as const;
         }
         throw error;
       }
