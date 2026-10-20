@@ -60,7 +60,8 @@ internal class HotUpdaterRecoveryAttribution(
             } else {
                 rootViewsIn(decorView).map { rootView ->
                     val runtime = runCatching { rootView.currentReactContext }.getOrNull()
-                    HotUpdaterDecorRoots.Root(rootView.rootViewTag, runCatching { runtime?.sourceURL }.getOrNull(), runtime)
+                    // A call, not `rootViewTag`: React Native 0.88 declares it in the Kotlin `ReactRoot`.
+                    HotUpdaterDecorRoots.Root(rootView.getRootViewTag(), runCatching { runtime?.sourceURL }.getOrNull(), runtime)
                 }
             }
         }
