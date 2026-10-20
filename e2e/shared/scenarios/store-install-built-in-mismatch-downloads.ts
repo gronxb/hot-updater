@@ -24,16 +24,20 @@ export const storeInstallBuiltInMismatchDownloadsScenario: ScenarioDefinition =
           ),
       });
       await app.control(
-        "assert the file was downloaded instead of patched",
+        "assert the bundle was installed from its manifest",
         "/e2e/assert-manifest-diff-applied",
         {
+          // The device log keeps the patch from the same built-in bundle an
+          // earlier scenario applied; the transfers below tell them apart.
+          allowBsdiff: true,
           bundleId: "$firstOtaBundleId",
           previousBundleId: "$nativeBuildMinBundleId",
         },
       );
-      // The device checks the base before it fetches the patch.
+      // The device checks the base before it fetches the patch, so it
+      // downloads the complete file and never the patch.
       await app.control(
-        "assert the patch was never downloaded",
+        "assert the file was downloaded instead of the patch",
         "/e2e/assert-bundle-artifact-transfers",
         {
           archiveRequests: 0,
