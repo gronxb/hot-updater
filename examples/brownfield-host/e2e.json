@@ -1,0 +1,27 @@
+{
+  "app": "../v0.85.0",
+  "ios": {
+    "podEnv": { "RCT_USE_PREBUILT_RNCORE": "1", "RCT_USE_RN_DEP": "1" }
+  },
+  "fingerprintExtraSources": {
+    "ios": [
+      "ios/HotUpdaterExampleBrownfield/**/*.swift",
+      "ios/HotUpdaterExample.xcodeproj/project.pbxproj"
+    ],
+    "android": [
+      "android/brownfieldlib/src/**/*.kt",
+      "android/brownfieldlib/build.gradle.kts"
+    ]
+  },
+  "brownfield": {
+    "ios": {
+      "frameworkScheme": "HotUpdaterExampleBrownfield",
+      "hostProject": "HotUpdaterExampleHost.xcodeproj",
+      "hostScheme": "HotUpdaterExampleHost"
+    },
+    "android": {
+      "libraryTask": ":brownfieldlib:publishMavenAarPublicationToBrownfieldE2eRepository",
+      "libraryBuildDir": "brownfieldlib/build"
+    }
+  }
+}
