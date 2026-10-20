@@ -159,13 +159,23 @@ const isRetryable = (error: unknown) =>
     ? isRetryableStatus(error.status)
     : error instanceof TypeError;
 
-/** Runs `request`, again after a retryable failure, up to the attempts. */
-const retrying = async <T>(request: () => Promise<T>): Promise<T> => {
+/** Whether App Store Connect refused a request for its rate limit only. */
+const isRateLimited = (error: unknown) =>
+  error instanceof AppStoreConnectError && error.status === 429;
+
+/**
+ * Runs `request`, again after a failure `retryable` accepts, up to the
+ * attempts.
+ */
+const retrying = async <T>(
+  request: () => Promise<T>,
+  retryable: (error: unknown) => boolean = isRetryable,
+): Promise<T> => {
   for (let attempt = 1; ; attempt++) {
     try {
       return await request();
     } catch (error) {
-      if (!isRetryable(error) || attempt === COMMIT_ATTEMPTS) {
+      if (!retryable(error) || attempt === COMMIT_ATTEMPTS) {
         throw error;
       }
       await sleep(retryDelayMs(error, attempt));
@@ -532,25 +542,33 @@ export const uploadToTestFlight = async ({
 
   let fileId: string;
   try {
-    const { data } = await request<{
-      data: {
-        id: string;
-        attributes?: { uploadOperations?: UploadOperation[] };
-      };
-    }>("Reserving the .ipa upload", "POST", "/v1/buildUploadFiles", {
-      data: {
-        type: "buildUploadFiles",
-        attributes: {
-          assetType: "ASSET",
-          fileName: ipaName,
-          fileSize,
-          uti: "com.apple.ipa",
-        },
-        relationships: {
-          buildUpload: { data: { type: "buildUploads", id: buildUploadId } },
-        },
-      },
-    });
+    // Only a rate limit is retried: another failure may have made the
+    // reservation, and a second one would not be this upload's.
+    const { data } = await retrying(
+      () =>
+        request<{
+          data: {
+            id: string;
+            attributes?: { uploadOperations?: UploadOperation[] };
+          };
+        }>("Reserving the .ipa upload", "POST", "/v1/buildUploadFiles", {
+          data: {
+            type: "buildUploadFiles",
+            attributes: {
+              assetType: "ASSET",
+              fileName: ipaName,
+              fileSize,
+              uti: "com.apple.ipa",
+            },
+            relationships: {
+              buildUpload: {
+                data: { type: "buildUploads", id: buildUploadId },
+              },
+            },
+          },
+        }),
+      isRateLimited,
+    );
     fileId = data.id;
     const operations = data.attributes?.uploadOperations ?? [];
     if (operations.length === 0) {

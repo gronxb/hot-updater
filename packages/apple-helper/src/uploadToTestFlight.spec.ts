@@ -926,6 +926,49 @@ describe("uploadToTestFlight", () => {
     expect(Date.now() - started).toBeGreaterThanOrEqual(900);
   });
 
+  it("reserves the file again after a rate limit, and not after a server error", async () => {
+    const routes = successRoutes();
+    const reservation = successRoutes()[
+      `POST ${API}/v1/buildUploadFiles`
+    ] as Reply;
+    routes[`POST ${API}/v1/buildUploadFiles`] = [
+      { status: 429, headers: { "retry-after": "0" } },
+      reservation,
+    ];
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).resolves.toMatchObject({ state: "COMPLETE" });
+    expect(
+      requests.filter(
+        (request) => request.url === `${API}/v1/buildUploadFiles`,
+      ),
+    ).toHaveLength(2);
+
+    routes[`POST ${API}/v1/buildUploadFiles`] = { status: 503 };
+    routes[`DELETE ${API}/v1/buildUploads/upload-1`] = { status: 204 };
+    const second = createRecordingFetch(routes);
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch: second.fetch,
+        pollIntervalMs: 0,
+      }),
+    ).rejects.toThrow("Reserving the .ipa upload failed (HTTP 503).");
+    expect(
+      second.requests.filter(
+        (request) => request.url === `${API}/v1/buildUploadFiles`,
+      ),
+    ).toHaveLength(1);
+  });
+
   it("names the build number App Store Connect already has", async () => {
     const routes = successRoutes();
     routes[`POST ${API}/v1/buildUploads`] = {
