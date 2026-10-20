@@ -60,8 +60,12 @@ export type NativeBuildPage = {
   after?: string;
 };
 
-/** How often an open install QR reads its download URL again, which expires. */
-const DOWNLOAD_URL_REFRESH_MS = 5 * 60_000;
+/**
+ * How often an open install QR reads its download URL again. Storage gives
+ * no lifetime with the URL, and adapters let it be configured down to
+ * minutes, so the QR never shows one older than this.
+ */
+const DOWNLOAD_URL_REFRESH_MS = 30_000;
 
 export type ReleaseFilters = {
   /** One of the filter sets the release indexes serve; none lists every release. */

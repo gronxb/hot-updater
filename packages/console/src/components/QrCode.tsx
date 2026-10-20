@@ -4,9 +4,9 @@ import { encode } from "uqr";
 import { cn } from "@/lib/utils";
 
 /**
- * A QR code of `value`, drawn as one SVG path. Phone cameras read dark
- * modules on a light ground, so the code keeps its own two colors in both
- * themes instead of the theme's tokens.
+ * A QR code of `value`, drawn as one SVG path with the standard four-module
+ * quiet zone. Phone cameras read dark modules on a light ground, so the code
+ * keeps its own two colors in both themes instead of the theme's tokens.
  */
 export function QrCode({
   value,
@@ -19,7 +19,7 @@ export function QrCode({
   readonly className?: string;
 }) {
   const { size, path } = useMemo(() => {
-    const { data, size } = encode(value, { ecc: "M", border: 2 });
+    const { data, size } = encode(value, { ecc: "M", border: 4 });
     let path = "";
     data.forEach((row, y) =>
       row.forEach((dark, x) => {

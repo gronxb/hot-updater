@@ -125,8 +125,9 @@ link too.
 A download goes through `/api/native-builds/<build id>/download`, which
 redirects to the storage's download URL each time, so the Console link never
 expires. The APK QR code holds the storage's download URL itself, so a phone
-downloads it without signing in to the Console; the open dialog reads a new
-URL every five minutes, before one expires. A storage with no download URL
+downloads it without signing in to the Console. Storage doesn't say how long
+that URL lasts, so the open dialog reads a new one every 30 seconds; keep a
+storage's signed URL lifetime above that. A storage with no download URL
 serves the artifact through the Console, and the QR code holds the Console's
 download link.
 
