@@ -221,6 +221,10 @@ describe("SecretsCard", () => {
     );
 
     expect(screen.getByText("The vault is locked")).toBeDefined();
+    // Secrets exist: only their own key opens them.
+    expect(screen.getByText(/Restore the master key/)).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Copy command" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Check again" })).toBeDefined();
     expect(
       (screen.getByRole("button", { name: "Add secret" }) as HTMLButtonElement)
         .disabled,
@@ -567,6 +571,12 @@ describe("TokensCard", () => {
             name: "Past",
             expiresAtMs: 1,
           },
+          {
+            ...token,
+            id: `tok-${"f".repeat(22)}`,
+            name: "Far",
+            expiresAtMs: Number.MAX_SAFE_INTEGER,
+          },
         ])}
       />,
     );
@@ -587,6 +597,12 @@ describe("TokensCard", () => {
     ).toBeDefined();
     expect(
       within(screen.getByRole("row", { name: /Past/ })).getByText("Expired"),
+    ).toBeDefined();
+    // An expiry beyond what Date holds still renders, with its revoke.
+    const far = screen.getByRole("row", { name: /Far/ });
+    expect(within(far).getAllByText("Far future").length).toBeGreaterThan(0);
+    expect(
+      within(far).getByRole("button", { name: "Revoke Far" }),
     ).toBeDefined();
   });
 

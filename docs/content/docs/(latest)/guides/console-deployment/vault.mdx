@@ -44,6 +44,8 @@ versions of each secret, and a value holds up to 64 KB of JSON.
 
 Without `HOT_UPDATER_VAULT_MASTER_KEY`, the page shows the vault as locked
 and offers no add or overwrite. Listing, deleting, and tokens keep working.
+Once secrets exist, only the key they were saved with opens them: restore
+that key rather than generating a new one.
 A database without the vault's tables shows the console's migration notice
 with the command that adds them.
 

@@ -20,12 +20,16 @@ export const vaultQueryKeys = {
   tokens: ["vault", "tokens"] as const,
 };
 
-/** Whether the console holds a master key; it changes only with a redeploy. */
+/**
+ * Whether the console holds a master key. It changes only with a redeploy,
+ * so it reads nothing from the database and is checked again after a while,
+ * when asked, and after a refused write.
+ */
 export const useVaultStatusQuery = () =>
   useQuery({
     queryKey: vaultQueryKeys.status,
     queryFn: () => getVaultStatusRpc(),
-    staleTime: Infinity,
+    staleTime: 5 * 60_000,
   });
 
 /** The secrets without values, read once a visit unless a write changes them. */
@@ -56,9 +60,15 @@ export const usePutVaultSecretMutation = () => {
       readonly value: unknown;
       readonly expectedVersion: number;
     }) => putVaultSecretRpc({ data: input }),
-    // A refused write may mean the list is stale, such as a version conflict.
-    onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: vaultQueryKeys.secrets });
+    // A refused write may mean the list is stale, such as a version
+    // conflict, or that a redeploy removed the master key.
+    onSettled: async (_data, error) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: vaultQueryKeys.secrets }),
+        error === null
+          ? undefined
+          : queryClient.invalidateQueries({ queryKey: vaultQueryKeys.status }),
+      ]);
     },
   });
 };

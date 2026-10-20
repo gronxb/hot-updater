@@ -44,7 +44,15 @@ import { vaultSecretKinds, vaultTokenState } from "@/lib/vault-secrets";
 
 import { IssueTokenDialog } from "./IssueTokenDialog";
 
-const formatDate = (ms: number) => new Date(ms).toISOString().slice(0, 10);
+/** A time as a date, inside a `time` element when a `Date` can hold it. */
+function DateText({ ms }: { readonly ms: number }) {
+  const date = new Date(ms);
+  // The vault takes any safe integer, beyond the dates `Date` holds.
+  if (Number.isNaN(date.getTime())) return <>Far future</>;
+  return (
+    <time dateTime={date.toISOString()}>{date.toISOString().slice(0, 10)}</time>
+  );
+}
 
 const ACTION_LABELS = { read: "Read", sign: "Sign" } as const;
 
@@ -266,11 +274,7 @@ export function TokensCard({
                     token.expiresAtMs === null ? (
                       "Never"
                     ) : (
-                      <time
-                        dateTime={new Date(token.expiresAtMs).toISOString()}
-                      >
-                        {formatDate(token.expiresAtMs)}
-                      </time>
+                      <DateText ms={token.expiresAtMs} />
                     );
                   return (
                     <TableRow
@@ -291,7 +295,7 @@ export function TokensCard({
                             <TokenScope token={token} />
                             <p className="mt-1 text-xs text-muted-foreground">
                               Expires {expires} · created{" "}
-                              {formatDate(token.createdAtMs)}
+                              <DateText ms={token.createdAtMs} />
                             </p>
                           </div>
                         </div>
@@ -303,11 +307,7 @@ export function TokensCard({
                         {expires}
                       </TableCell>
                       <TableCell className="hidden py-3 align-top text-xs text-muted-foreground md:table-cell">
-                        <time
-                          dateTime={new Date(token.createdAtMs).toISOString()}
-                        >
-                          {formatDate(token.createdAtMs)}
-                        </time>
+                        <DateText ms={token.createdAtMs} />
                       </TableCell>
                       <TableCell className="py-3 text-right align-top">
                         {state === "active" ? (

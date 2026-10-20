@@ -77,8 +77,21 @@ const lockedReason = (message: string) => {
   return reason.charAt(0).toUpperCase() + reason.slice(1);
 };
 
-/** Why the console cannot store secrets, and the variable that fixes it. */
-function VaultLockedAlert({ message }: { readonly message: string }) {
+/**
+ * Why the console cannot store secrets, and what fixes it: a new key for an
+ * empty vault, or the key the stored secrets were sealed with, which no new
+ * key opens.
+ */
+function VaultLockedAlert({
+  message,
+  hasSecrets,
+  onCheckAgain,
+}: {
+  readonly message: string;
+  readonly hasSecrets: boolean;
+  readonly onCheckAgain: () => Promise<unknown>;
+}) {
+  const [checking, setChecking] = useState(false);
   const copyCommand = async () => {
     try {
       await navigator.clipboard.writeText(MASTER_KEY_COMMAND);
@@ -87,27 +100,58 @@ function VaultLockedAlert({ message }: { readonly message: string }) {
       toast.error("Could not copy the command");
     }
   };
+  const checkAgain = async () => {
+    setChecking(true);
+    try {
+      await onCheckAgain();
+    } finally {
+      setChecking(false);
+    }
+  };
   return (
     <Alert>
       <LockKeyhole />
       <AlertTitle>The vault is locked</AlertTitle>
       <AlertDescription>
         <p>{lockedReason(message)}</p>
-        <p>
-          Generate a key with{" "}
-          <code className="font-mono">{MASTER_KEY_COMMAND}</code> and redeploy
-          the console. Listing, deleting, and tokens keep working.
-        </p>
+        {hasSecrets ? (
+          <p>
+            Restore the master key these secrets were saved with and redeploy
+            the console: a new key can't open them. Listing, deleting, and
+            tokens keep working.
+          </p>
+        ) : (
+          <p>
+            Generate a key with{" "}
+            <code className="font-mono">{MASTER_KEY_COMMAND}</code> and redeploy
+            the console. Listing, deleting, and tokens keep working.
+          </p>
+        )}
       </AlertDescription>
-      <AlertAction>
+      <AlertAction className="flex flex-wrap gap-1">
+        {hasSecrets ? null : (
+          <Button
+            className="min-h-11 sm:min-h-6"
+            onClick={() => void copyCommand()}
+            size="xs"
+            variant="outline"
+          >
+            <Copy data-icon="inline-start" />
+            Copy command
+          </Button>
+        )}
         <Button
           className="min-h-11 sm:min-h-6"
-          onClick={() => void copyCommand()}
+          disabled={checking}
+          onClick={() => void checkAgain()}
           size="xs"
           variant="outline"
         >
-          <Copy data-icon="inline-start" />
-          Copy command
+          <RefreshCw
+            className={checking ? "motion-safe:animate-spin" : undefined}
+            data-icon="inline-start"
+          />
+          {checking ? "Checking…" : "Check again"}
         </Button>
       </AlertAction>
     </Alert>
@@ -220,7 +264,11 @@ export function SecretsCard({
       <CardContent className="p-0">
         {status.data?.locked === true ? (
           <div className="border-b p-4">
-            <VaultLockedAlert message={status.data.message} />
+            <VaultLockedAlert
+              hasSecrets={(secrets.data?.length ?? 0) > 0}
+              message={status.data.message}
+              onCheckAgain={async () => status.refetch()}
+            />
           </div>
         ) : status.isError ? (
           <div className="border-b p-4">
