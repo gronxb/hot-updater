@@ -322,7 +322,9 @@ export const uploadToPlay = async ({
 
 /**
  * Commits the edit, again while Google is still processing the bundle, and
- * with `changesNotSentForReview` when the app's state asks for it.
+ * with `changesNotSentForReview` when the app's state asks for it. An
+ * unanswered commit is reported as unconfirmed, since Google may have
+ * applied it.
  */
 const commit = async ({
   request,
@@ -353,7 +355,18 @@ const commit = async ({
       }
       return;
     } catch (error) {
-      if (!(error instanceof GooglePlayError) || error.status !== 400) {
+      if (
+        !(error instanceof GooglePlayError) ||
+        error.status >= 500 ||
+        error.status === 429
+      ) {
+        // Google may have applied a commit it did not answer.
+        throw new Error(
+          `Google Play did not confirm the release: ${error instanceof Error ? error.message : String(error)} Check internal testing in Play Console before you upload this version code again.`,
+          { cause: error },
+        );
+      }
+      if (error.status !== 400) {
         throw error;
       }
       if (

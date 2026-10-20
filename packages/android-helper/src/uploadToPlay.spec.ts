@@ -408,6 +408,17 @@ describe("uploadToPlay", () => {
     );
   });
 
+  it("reports a commit Google did not answer as unconfirmed", async () => {
+    const routes = successRoutes();
+    routes[`POST ${EDIT}:commit`] = { status: 503 };
+    routes[`DELETE ${EDIT}`] = { status: 204 };
+    const { fetch } = createRecordingFetch(routes);
+
+    await expect(upload(fetch)).rejects.toThrow(
+      "Google Play did not confirm the release: Committing the Google Play edit failed (HTTP 503). Check internal testing in Play Console before you upload this version code again.",
+    );
+  });
+
   it("releases a draft on an app Play Console has not published", async () => {
     const routes = successRoutes();
     routes[`PUT ${EDIT}/tracks/internal`] = [
