@@ -9,6 +9,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   VAULT_KEPT_VERSIONS,
   VAULT_MAX_VALUE_BYTES,
+  VaultConflictError,
   VaultInputError,
   VaultNotFoundError,
 } from "./api";
@@ -170,6 +171,106 @@ describe("vault", () => {
       id: secret.id,
     });
     await expect(locked.list()).resolves.toEqual([]);
+  });
+
+  it("writes only at the version a caller expects", async () => {
+    const { api } = start();
+    const add = (value: string) =>
+      api.put({ name: "n", kind: "generic", value, expectedVersion: 0 });
+
+    // Two adds under one name: one stores, the other refuses instead of
+    // becoming its next version.
+    const added = await Promise.allSettled([add("a"), add("b")]);
+    expect(added.map(({ status }) => status).sort()).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    expect(added.find(({ status }) => status === "rejected")).toMatchObject({
+      reason: expect.any(VaultConflictError),
+    });
+    const [secret] = await api.list();
+    expect(secret?.version).toBe(1);
+
+    await expect(
+      api.put({ name: "n", kind: "generic", value: "c", expectedVersion: 2 }),
+    ).rejects.toThrow('The secret "n" is at version 1 now, not 2.');
+    await expect(
+      api.put({ name: "n", kind: "generic", value: "c", expectedVersion: 1 }),
+    ).resolves.toMatchObject({ version: 2 });
+    await expect(
+      api.remove({ id: secret!.id, expectedVersion: 1 }),
+    ).rejects.toThrow('The secret "n" is at version 2 now, not 1.');
+    await api.remove({ id: secret!.id, expectedVersion: 2 });
+    await expect(
+      api.put({ name: "n", kind: "generic", value: "d", expectedVersion: 2 }),
+    ).rejects.toThrow('No secret is named "n" anymore.');
+    await expect(api.list()).resolves.toEqual([]);
+    await expect(
+      api.put({ name: "n", kind: "generic", value: "d", expectedVersion: -1 }),
+    ).rejects.toThrow(VaultInputError);
+  });
+
+  it("tells whether it is locked, reading nothing without a key", async () => {
+    const { api, with: withOptions, db } = start();
+    const findOne = vi.spyOn(db, "findOne");
+    const findMany = vi.spyOn(db, "findMany");
+
+    await expect(withOptions({}).status()).resolves.toEqual({
+      locked: true,
+      message: expect.stringContaining("HOT_UPDATER_VAULT_MASTER_KEY"),
+    });
+    await expect(
+      withOptions({ masterKey: btoa("short") }).status(),
+    ).resolves.toEqual({
+      locked: true,
+      message: expect.stringContaining("32 bytes in base64"),
+    });
+    expect(findOne).not.toHaveBeenCalled();
+    expect(findMany).not.toHaveBeenCalled();
+    // An empty vault takes any well-formed key.
+    await expect(api.status()).resolves.toEqual({ locked: false });
+    vi.stubEnv("HOT_UPDATER_VAULT_MASTER_KEY", MASTER_KEY);
+    await expect(withOptions({}).status()).resolves.toEqual({ locked: false });
+  });
+
+  it("is locked under a well-formed key that did not seal the secrets, reading two rows", async () => {
+    const { api, with: withOptions, db } = start();
+    await api.put({ name: "a", kind: "generic", value: 1 });
+    const findOne = vi.spyOn(db, "findOne");
+    const findMany = vi.spyOn(db, "findMany");
+
+    await expect(api.status()).resolves.toEqual({ locked: false });
+    await expect(
+      withOptions({ masterKey: OTHER_KEY }).status(),
+    ).resolves.toEqual({
+      locked: true,
+      message: expect.stringContaining("is not the key the vault's secrets"),
+    });
+    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(findOne).toHaveBeenCalledTimes(2);
+  });
+
+  it("is locked when the secret it checks has no stored value", async () => {
+    const { api, db } = start();
+    await api.put({ name: "a", kind: "generic", value: 1 });
+    vi.spyOn(db, "findOne").mockResolvedValueOnce(null);
+
+    await expect(api.status()).resolves.toEqual({
+      locked: true,
+      message: expect.stringContaining('the secret "a" has no stored value'),
+    });
+  });
+
+  it("checks the key against a live secret, past removed ones", async () => {
+    const { api, with: withOptions } = start();
+    const first = await api.put({ name: "a", kind: "generic", value: 1 });
+    await api.put({ name: "b", kind: "generic", value: 2 });
+    await api.remove({ id: first.id });
+
+    await expect(
+      withOptions({ masterKey: OTHER_KEY }).status(),
+    ).resolves.toMatchObject({ locked: true });
+    await expect(api.status()).resolves.toEqual({ locked: false });
   });
 
   it("reads the master key from HOT_UPDATER_VAULT_MASTER_KEY when it is not given", async () => {
