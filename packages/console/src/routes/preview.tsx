@@ -1,3 +1,4 @@
+import { assertCanonicalChannelName } from "@hot-updater/protocol";
 import { createFileRoute } from "@tanstack/react-router";
 
 import {
@@ -8,12 +9,24 @@ import {
 const text = (value: unknown) =>
   typeof value === "string" && value.length > 0 ? value : undefined;
 
+/** A channel name a channel link can carry, or undefined. */
+const channelName = (value: unknown) => {
+  const channel = text(value);
+  if (channel === undefined) return undefined;
+  try {
+    assertCanonicalChannelName(channel);
+    return channel;
+  } catch {
+    return undefined;
+  }
+};
+
 export const Route = createFileRoute("/preview")({
   component: PreviewRoute,
   validateSearch: (search: Record<string, unknown>): PreviewSearch => {
     const values = {
       build: text(search.build),
-      channel: text(search.channel),
+      channel: channelName(search.channel),
       before: text(search.before),
       after: text(search.after),
     };

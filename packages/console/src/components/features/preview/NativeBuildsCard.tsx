@@ -67,6 +67,7 @@ function CommitCell({ hash }: { readonly hash: string | null }) {
 export function NativeBuildsCard({
   builds,
   channelName,
+  paged,
   onInstall,
   onPage,
 }: {
@@ -78,6 +79,8 @@ export function NativeBuildsCard({
     readonly refetch: () => unknown;
   };
   readonly channelName: (channelId: string) => string;
+  /** Whether the list shows a page other than the newest. */
+  readonly paged: boolean;
   readonly onInstall: (build: NativeBuildRow) => void;
   readonly onPage: (page: { before?: string; after?: string }) => void;
 }) {
@@ -179,29 +182,41 @@ export function NativeBuildsCard({
                     <div className="mx-auto flex max-w-sm flex-col items-center gap-2 whitespace-normal">
                       <HardDriveDownload className="size-5" />
                       <p className="font-medium text-foreground">
-                        {previous === undefined
-                          ? "No native builds"
-                          : "No older native builds"}
+                        {paged ? "No more native builds" : "No native builds"}
                       </p>
-                      <p>
-                        Register a release build with{" "}
-                        <code className="font-mono text-xs">
-                          hot-updater build:android --register
-                        </code>{" "}
-                        or <code className="font-mono text-xs">build:ios</code>.
-                      </p>
-                      <a
-                        className={buttonVariants({
-                          className: "mt-1 min-h-11 sm:min-h-8",
-                          variant: "outline",
-                        })}
-                        href={NATIVE_BUILD_GUIDE_URL}
-                        rel="noreferrer"
-                        target="_blank"
-                      >
-                        Native build guide
-                        <ArrowUpRight data-icon="inline-end" />
-                      </a>
+                      {paged ? (
+                        <Button
+                          className="mt-1 min-h-11 sm:min-h-8"
+                          onClick={() => onPage({})}
+                          variant="outline"
+                        >
+                          Show the newest builds
+                        </Button>
+                      ) : (
+                        <>
+                          <p>
+                            Register a release build with{" "}
+                            <code className="font-mono text-xs">
+                              hot-updater build:android --register
+                            </code>{" "}
+                            or{" "}
+                            <code className="font-mono text-xs">build:ios</code>
+                            .
+                          </p>
+                          <a
+                            className={buttonVariants({
+                              className: "mt-1 min-h-11 sm:min-h-8",
+                              variant: "outline",
+                            })}
+                            href={NATIVE_BUILD_GUIDE_URL}
+                            rel="noreferrer"
+                            target="_blank"
+                          >
+                            Native build guide
+                            <ArrowUpRight data-icon="inline-end" />
+                          </a>
+                        </>
+                      )}
                     </div>
                   </TableCell>
                 </TableRow>

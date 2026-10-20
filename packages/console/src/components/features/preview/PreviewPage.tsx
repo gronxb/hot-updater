@@ -70,6 +70,7 @@ export function PreviewPage({
           <NativeBuildsCard
             builds={builds}
             channelName={channelName}
+            paged={before !== undefined || after !== undefined}
             onInstall={(row: NativeBuildRow) =>
               onSearchChange({ ...search, build: row.id })
             }

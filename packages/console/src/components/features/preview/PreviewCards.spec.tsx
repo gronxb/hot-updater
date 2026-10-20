@@ -72,6 +72,7 @@ describe("NativeBuildsCard", () => {
       <NativeBuildsCard
         builds={builds([row], { next: row.id })}
         channelName={channelName}
+        paged={false}
         onInstall={onInstall}
         onPage={vi.fn()}
       />,
@@ -97,6 +98,7 @@ describe("NativeBuildsCard", () => {
       <NativeBuildsCard
         builds={builds([])}
         channelName={channelName}
+        paged={false}
         onInstall={vi.fn()}
         onPage={vi.fn()}
       />,
@@ -109,6 +111,25 @@ describe("NativeBuildsCard", () => {
       "href",
       "https://hot-updater.dev/docs/guides/native-build#register-a-build",
     );
+  });
+
+  it("leads an empty older page back to the newest builds", () => {
+    const onPage = vi.fn();
+    render(
+      <NativeBuildsCard
+        builds={builds([])}
+        channelName={channelName}
+        paged
+        onInstall={vi.fn()}
+        onPage={onPage}
+      />,
+    );
+
+    expect(screen.getByText("No more native builds")).toBeTruthy();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show the newest builds" }),
+    );
+    expect(onPage).toHaveBeenCalledWith({});
   });
 });
 
