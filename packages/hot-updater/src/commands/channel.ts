@@ -116,7 +116,7 @@ export const handleChannelDelete = (
       }
       if (!result.deleted) {
         p.log.error(
-          `The ${channel} channel is kept: a native build embeds it as its default channel, or a bundle was deployed to it meanwhile. Register preview native builds on a shared channel, such as preview, so pull request channels hold only bundles.`,
+          `The ${channel} channel is kept: a native build embeds it as its default channel, or a bundle was deployed to it meanwhile. A channel a native build embeds can't be deleted, so register preview builds on one shared channel and deploy each pull request to its own.`,
         );
         process.exitCode = 1;
         return;
