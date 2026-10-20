@@ -196,16 +196,43 @@ export function azureBlobStorage(
         }
       }
     },
-    async put({ key, body, contentType }) {
+    async put({ key, body, contentLength, contentType }) {
       const storageKey = getStorageKey(key);
-      // Bundles fit in memory, as the CLI that uploads them builds them there.
-      const bytes = new Uint8Array(await new Response(body).arrayBuffer());
-      await container.getBlockBlobClient(storageKey).uploadData(bytes, {
+      const options = {
         blobHTTPHeaders: {
           blobContentType: contentType,
           blobCacheControl: "max-age=31536000",
         },
-      });
+      };
+      const blob = container.getBlockBlobClient(storageKey);
+      if (contentLength === undefined) {
+        await blob.uploadData(
+          new Uint8Array(await new Response(body).arrayBuffer()),
+          options,
+        );
+      } else {
+        // One Put Blob, streamed, so a native build artifact never sits in
+        // memory, and concurrent puts of one key never mix their blocks.
+        const { Readable } = await import("node:stream");
+        const source = Readable.fromWeb(
+          body as import("node:stream/web").ReadableStream<Uint8Array>,
+        );
+        // The request does not watch its body: a body that fails aborts it.
+        const aborted = new AbortController();
+        let failure: unknown;
+        source.once("error", (error) => {
+          failure = error;
+          aborted.abort(error);
+        });
+        try {
+          await blob.upload(source, contentLength, {
+            ...options,
+            abortSignal: aborted.signal,
+          });
+        } catch (error) {
+          throw failure ?? error;
+        }
+      }
       return {
         storageUri: createStorageUri({
           bucket: containerName,

@@ -3,3 +3,4 @@ export { runAndroid } from "./runAndroid";
 export type { AndroidNativeRunOptions } from "./types";
 export type { EnrichedNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
 export { enrichNativeBuildAndroidScheme } from "./utils/enrichNativeBuildAndroidScheme";
+export { extractBuiltInBundle } from "./utils/extractBuiltInBundle";

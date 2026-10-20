@@ -7,7 +7,6 @@ import {
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
 import { banner, p } from "@hot-updater/cli-tools";
-import type { NativeBuildOptions } from "@hot-updater/plugin-core";
 import isPortReachable from "is-port-reachable";
 import { normalizeRange } from "verkit";
 
@@ -15,13 +14,18 @@ import {
   deviceCommandOption,
   interactiveCommandOption,
   nativeBuildOutputCommandOption,
+  nativeBuildRegisterCommandOption,
   nativeBuildSchemeCommandOption,
   platformCommandOption,
   portCommandOption,
 } from "@/commandOptions";
 import { handleAgentInfra } from "@/commands/agent/infra";
 import { handleAppVersion } from "@/commands/appVersion";
-import { buildAndroidNative, buildIosNative } from "@/commands/buildNative";
+import {
+  buildAndroidNative,
+  type BuildNativeOptions,
+  buildIosNative,
+} from "@/commands/buildNative";
 import { getConsolePort, openConsole } from "@/commands/console";
 import {
   type DeployOptions,
@@ -922,7 +926,8 @@ program
   .addOption(nativeBuildOutputCommandOption)
   .addOption(interactiveCommandOption)
   .addOption(nativeBuildSchemeCommandOption)
-  .action(async (options: Omit<NativeBuildOptions, "platform">) => {
+  .addOption(nativeBuildRegisterCommandOption)
+  .action(async (options: BuildNativeOptions) => {
     await buildAndroidNative(options);
   });
 
@@ -932,7 +937,8 @@ program
   .addOption(nativeBuildOutputCommandOption)
   .addOption(interactiveCommandOption)
   .addOption(nativeBuildSchemeCommandOption)
-  .action(async (options: Omit<NativeBuildOptions, "platform">) => {
+  .addOption(nativeBuildRegisterCommandOption)
+  .action(async (options: BuildNativeOptions) => {
     await buildIosNative(options);
   });
 

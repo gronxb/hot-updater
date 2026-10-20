@@ -9,6 +9,8 @@ export type {
   DeployReleasePolicy,
   HotUpdaterCoreApi,
   KeysetInput,
+  NativeBuildRegistration,
+  NativeBuildScope,
   ReleaseFilter,
   ReleaseTarget,
   StoredBundleDeployment,

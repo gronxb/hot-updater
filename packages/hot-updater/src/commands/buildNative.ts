@@ -14,16 +14,20 @@ import {
   type NativeBuildResult,
 } from "@/utils/native/createNativeBuild";
 import { prepareNativeBuild } from "@/utils/native/prepareNativeBuild";
+import { registerNativeBuild } from "@/utils/native/registerNativeBuild";
 import { printBanner } from "@/utils/printBanner";
 import { getChannel } from "@/utils/setChannel";
 
 import { ui } from "../utils/cli-ui";
 
+/** `build:android` and `build:ios`: `register` also registers the build. */
+export type BuildNativeOptions = NativeBuildOptions & { register?: boolean };
+
 const buildNativeInternal = async ({
-  options,
+  options: { register = false, ...options },
   platform,
 }: {
-  options: NativeBuildOptions;
+  options: BuildNativeOptions;
   platform: Platform;
 }): Promise<NativeBuildResult> => {
   printBanner();
@@ -103,6 +107,7 @@ const buildNativeInternal = async ({
         summarizeNativeBuild(result),
       ].join("\n"),
     );
+    if (register) await registerNativeBuild(result);
     return result;
   } catch (e) {
     return catchError(e);
@@ -142,13 +147,13 @@ const catchError = (e: unknown): never => {
 };
 
 export const buildAndroidNative = async (
-  options: NativeBuildOptions,
+  options: BuildNativeOptions,
 ): Promise<NativeBuildResult> => {
   return buildNativeInternal({ options, platform: "android" });
 };
 
 export const buildIosNative = async (
-  options: NativeBuildOptions,
+  options: BuildNativeOptions,
 ): Promise<NativeBuildResult> => {
   return buildNativeInternal({ options, platform: "ios" });
 };

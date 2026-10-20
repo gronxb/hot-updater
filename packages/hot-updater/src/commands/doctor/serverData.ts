@@ -65,6 +65,26 @@ const listArtifactIds = async (core: HotUpdaterCoreApi): Promise<string[]> => {
   }
 };
 
+/**
+ * Every native build's built-in bundle: an artifact record no release uses,
+ * which stays as long as its build.
+ */
+const listBuiltInBundleIds = async (
+  core: HotUpdaterCoreApi,
+): Promise<Set<string>> => {
+  const ids = new Set<string>();
+  for (let after: string | undefined; ; ) {
+    const page = await core.listNativeBuilds({
+      limit: RELEASE_PAGE,
+      order: "asc",
+      ...(after === undefined ? {} : { after }),
+    });
+    for (const build of page) ids.add(build.min_bundle_id);
+    if (page.length < RELEASE_PAGE) return ids;
+    after = page.at(-1)!.id;
+  }
+};
+
 /** Every release's scope, and every artifact a release uses. */
 const scanReleases = async (core: HotUpdaterCoreApi) => {
   const scopeKeys = new Set<string>();
@@ -197,9 +217,10 @@ const checkReleaseCatalogs = async (
 
 /**
  * The server's release catalogs, each against a rebuild from its releases,
- * and its artifact records against the releases that use them. Bundles are
- * listed before releases, so a deploy that lands between the two reads adds
- * a release for no artifact this check already holds.
+ * and its artifact records against the releases and native builds that use
+ * them. Bundles are listed before releases and native builds, so a deploy or
+ * a registration that lands between the reads adds a release or a build for
+ * no artifact this check already holds.
  */
 export const checkServerData = async (
   core: HotUpdaterCoreApi,
@@ -226,7 +247,15 @@ export const checkServerData = async (
   if (artifactIds instanceof Error) {
     return { releaseCatalogs, artifacts: artifactsUnchecked(artifactIds) };
   }
-  const unreferenced = artifactIds.filter((id) => !releases.bundleIds.has(id));
+  let builtIn: Set<string>;
+  try {
+    builtIn = await listBuiltInBundleIds(core);
+  } catch (error) {
+    return { releaseCatalogs, artifacts: artifactsUnchecked(error) };
+  }
+  const unreferenced = artifactIds.filter(
+    (id) => !releases.bundleIds.has(id) && !builtIn.has(id),
+  );
   return {
     releaseCatalogs,
     artifacts: {

@@ -42,5 +42,6 @@ export async function resetDecisionFixtures() {
     prisma.bundles.deleteMany(),
     prisma.channels.deleteMany(),
     prisma.bundle_totals.deleteMany(),
+    prisma.native_builds.deleteMany(),
   ]);
 }
