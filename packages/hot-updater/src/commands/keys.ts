@@ -8,6 +8,8 @@ import {
   getCwd,
   loadConfig,
   p,
+  registerSecretValue,
+  VaultRequestError,
 } from "@hot-updater/cli-tools";
 
 import { ui } from "../utils/cli-ui";
@@ -20,6 +22,7 @@ import {
   getPrivateKeyGitignorePath,
   saveKeyPair,
 } from "../utils/signing";
+import { connectVault } from "../vaultEnv";
 
 export const ANDROID_KEY = "com.hotupdater.PUBLIC_KEY";
 export const IOS_KEY = "HOT_UPDATER_PUBLIC_KEY";
@@ -73,11 +76,19 @@ const getTrustAnchorChange = (
 export interface KeysGenerateOptions {
   output?: string;
   keySize?: 2048 | 4096;
+  /**
+   * Stores the private key in the Console's vault as a `bundle-signing-key`
+   * of this name, or `bundle-signing-key` for `true`, instead of writing it.
+   */
+  vault?: string | true;
 }
+
+/** The secret `keys generate --vault` stores the private key as, by default. */
+const DEFAULT_VAULT_KEY_NAME = "bundle-signing-key";
 
 /**
  * Generate RSA key pair for code signing.
- * Usage: npx hot-updater keys:generate [--output ./keys] [--key-size 4096]
+ * Usage: npx hot-updater keys:generate [--output ./keys] [--key-size 4096] [--vault [name]]
  */
 export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
   const cwd = getCwd();
@@ -88,6 +99,14 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
     : path.join(cwd, "keys");
 
   const keySize = options.keySize ?? 4096;
+  if (options.vault !== undefined) {
+    await keysGenerateInVault(
+      options.vault === true ? DEFAULT_VAULT_KEY_NAME : options.vault,
+      outputDir,
+      keySize,
+    );
+    return;
+  }
 
   const spinner = p.spinner();
   spinner.start(`Generating ${keySize}-bit RSA keys`);
@@ -137,6 +156,133 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
     spinner.error("Failed to generate keys");
     p.log.error((error as Error).message);
     process.exit(1);
+  }
+};
+
+/**
+ * `keys generate --vault`: generates a key pair, stores the private key in
+ * the Console's vault through its write route, and writes only the public
+ * key. The private key is never written to disk or printed, and the vault
+ * signs with it at `/_hot-updater/signing` for a token whose scope allows
+ * `sign`. A secret already under the name is never replaced: replacing a
+ * signing key is a trust-anchor change, which `hot-updater secrets put`
+ * makes deliberately.
+ */
+const keysGenerateInVault = async (
+  name: string,
+  outputDir: string,
+  keySize: 2048 | 4096,
+) => {
+  const publicKeyPath = path.join(outputDir, "public-key.pem");
+  const spinner = p.spinner();
+  let spinning = false;
+  // The first directory this run made, removed with the key when it fails.
+  let createdDir: string | undefined;
+  let publicKeyFile: Awaited<ReturnType<typeof fs.open>> | undefined;
+  let publicKeyOpened = false;
+  // Stored, or possibly stored: the public key then stays for the app.
+  let stored = false;
+  try {
+    const client = await connectVault(
+      `hot-updater keys generate --vault stores the private key as ${name}`,
+    );
+    createdDir = await fs.mkdir(outputDir, { recursive: true });
+    try {
+      publicKeyFile = await fs.open(publicKeyPath, "wx", 0o644);
+      publicKeyOpened = true;
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "EEXIST") {
+        throw new Error(
+          `${publicKeyPath} already exists. Move it before generating a new key pair.`,
+        );
+      }
+      throw error;
+    }
+
+    spinner.start(`Generating ${keySize}-bit RSA keys`);
+    spinning = true;
+    const keyPair = await generateKeyPair(keySize);
+    const privateKey = Buffer.from(keyPair.privateKey).toString("base64");
+    // Masked before it is sent, so no failure can print it.
+    registerSecretValue(keyPair.privateKey);
+    registerSecretValue(privateKey);
+    // The public key is on disk before the private key is stored, so a
+    // stored key always has its trust anchor.
+    await publicKeyFile.writeFile(keyPair.publicKey);
+    await publicKeyFile.sync();
+    await publicKeyFile.close();
+    publicKeyFile = undefined;
+    spinner.message("Storing the private key in the Console's vault");
+    let secret: Awaited<ReturnType<typeof client.put>>;
+    try {
+      secret = await client.put({
+        name,
+        kind: "bundle-signing-key",
+        value: { privateKey },
+        expectedVersion: 0,
+      });
+    } catch (error) {
+      if (error instanceof VaultRequestError && error.status === 409) {
+        throw new Error(
+          `The vault already holds a secret named ${name}, and keys generate --vault never replaces one: installed apps reject bundles signed by a new key. Pass another name to --vault, or replace the key on purpose with hot-updater secrets put ${name} --kind bundle-signing-key --private-key <file>.`,
+        );
+      }
+      // Only a refusal proves nothing was stored; a lost or unreadable
+      // answer may follow a stored key, which keeps its public key.
+      const refused =
+        error instanceof VaultRequestError &&
+        error.status !== undefined &&
+        error.status >= 400 &&
+        error.status < 500;
+      if (refused) throw error;
+      stored = true;
+      throw new Error(
+        `${error instanceof Error ? error.message : String(error)} The Console may have stored the private key as ${name}, so ${publicKeyPath} is kept: if hot-updater secrets list shows ${name}, this is its public key.`,
+      );
+    }
+    stored = true;
+    spinner.stop("Keys generated");
+    spinning = false;
+
+    p.log.message(
+      ui.block("Keys", [
+        ui.kv(
+          "Private",
+          `${secret.name} in the vault of ${client.url} (${ui.version(`v${secret.version}`)})`,
+        ),
+        ui.kv("Public", ui.path(publicKeyPath)),
+      ]),
+    );
+    p.log.message(
+      ui.block("Config", [
+        ui.kv(
+          "Code",
+          ui.code(
+            `import { remoteSigning } from "hot-updater/signing";\n\nsigning: remoteSigning({\n  endpoint: "${client.url}",\n}),`,
+          ),
+        ),
+        ui.kv(
+          "Token",
+          ui.command(
+            `hot-updater secrets token create --name <ci> --secrets ${secret.name} --actions sign`,
+          ),
+        ),
+        ui.kv("Env", "HOT_UPDATER_SIGNING_TOKEN=<the sign token>"),
+        ui.kv("Run", ui.command("hot-updater keys export-public")),
+      ]),
+    );
+  } catch (error) {
+    if (spinning) spinner.error("The keys were not generated");
+    await publicKeyFile?.close().catch(() => {});
+    // Once the private key is stored, its public key stays for the app.
+    if (publicKeyOpened && !stored) {
+      await fs.rm(publicKeyPath, { force: true });
+    }
+    if (createdDir !== undefined && !stored) {
+      await fs.rm(createdDir, { force: true, recursive: true });
+    }
+    p.log.error(error instanceof Error ? error.message : String(error));
+    process.exitCode = 1;
   }
 };
 

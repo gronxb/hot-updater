@@ -79,7 +79,8 @@ export interface VaultClient {
     readonly value: unknown;
     /**
      * The version the caller read, 0 for no secret: the Console refuses the
-     * write with 409 `conflict` when the secret has moved on since.
+     * write with 409 `conflict` when the secret is at another version, so 0
+     * stores only a new secret, never replacing one under the name.
      */
     readonly expectedVersion?: number;
   }): Promise<VaultSecretMetadata>;

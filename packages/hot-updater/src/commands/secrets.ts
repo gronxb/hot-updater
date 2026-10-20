@@ -593,7 +593,7 @@ export interface SecretsTokenRevokeOptions extends SecretsTokenCommandOptions {
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /** The actions the Console serves a token, as its Tokens tab offers them. */
-const ISSUED_ACTIONS: readonly VaultTokenAction[] = ["read", "write"];
+const ISSUED_ACTIONS: readonly VaultTokenAction[] = ["read", "sign", "write"];
 
 /**
  * Runs `run` over the vault() the server runs, in process: tokens need no
@@ -671,7 +671,7 @@ export const handleSecretsTokenCreate = async (
   );
   if (unserved.length > 0) {
     p.log.error(
-      `--actions takes ${ISSUED_ACTIONS.join(" and ")}, the actions the Console serves a vault token, not ${unserved.join(", ")}.`,
+      `--actions takes ${ISSUED_ACTIONS.join(", ")}, the actions the Console serves a vault token, not ${unserved.join(", ")}.`,
     );
     process.exitCode = 1;
     return;
@@ -708,7 +708,9 @@ export const handleSecretsTokenCreate = async (
       ]),
     );
     p.log.warn(
-      "Save this token now, such as in CI's HOT_UPDATER_VAULT_TOKEN. It will not be shown again.",
+      issued.metadata.scope.actions.includes("sign")
+        ? "Save this token now, such as in CI's HOT_UPDATER_VAULT_TOKEN, and HOT_UPDATER_SIGNING_TOKEN for remoteSigning. It will not be shown again."
+        : "Save this token now, such as in CI's HOT_UPDATER_VAULT_TOKEN. It will not be shown again.",
     );
   });
 };

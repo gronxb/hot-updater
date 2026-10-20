@@ -7,7 +7,8 @@ icon: KeyRound
 ## Turn on the vault
 
 The console serves the vault of `vault()`, Hot Updater's vault plugin, at
-`/_hot-updater/vault/v1/`. It needs three things:
+`/_hot-updater/vault/v1/`, and signs bundles with the vault's bundle signing
+keys at `/_hot-updater/signing`. It needs three things:
 
 - `vault()` in the `plugins` of `console.config.ts`, imported from
   `@hot-updater/server/plugins`, and in the `plugins` of
@@ -55,14 +56,14 @@ with the command that adds them.
 Each kind's value, as the resolve route returns it. Files are their bytes in
 base64:
 
-| Kind                   | Value                                                                                     |
-| ---------------------- | ----------------------------------------------------------------------------------------- |
-| `asc-api-key`          | `{ p8, keyId, issuerId }`, the App Store Connect API key's `.p8` file and its ids         |
-| `android-keystore`     | `{ keystore, storePassword, keyAlias, keyPassword }`                                      |
-| `play-service-account` | `{ serviceAccount }`, the service account's JSON key file                                 |
-| `bundle-signing-key`   | `{ privateKey }`, the RSA private key in PEM, which the resolve route never returns       |
-| `deploy-credentials`   | Environment variable names and their values, such as `{ "HOT_UPDATER_S3_SECRET": "..." }` |
-| `generic`              | Environment variable names and their values                                               |
+| Kind                   | Value                                                                                                                                         |
+| ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| `asc-api-key`          | `{ p8, keyId, issuerId }`, the App Store Connect API key's `.p8` file and its ids                                                             |
+| `android-keystore`     | `{ keystore, storePassword, keyAlias, keyPassword }`                                                                                          |
+| `play-service-account` | `{ serviceAccount }`, the service account's JSON key file                                                                                     |
+| `bundle-signing-key`   | `{ privateKey }`, an unencrypted RSA private key of 2048, 3072, or 4096 bits in PEM (PKCS#8 or PKCS#1), which the resolve route never returns |
+| `deploy-credentials`   | Environment variable names and their values, such as `{ "HOT_UPDATER_S3_SECRET": "..." }`                                                     |
+| `generic`              | Environment variable names and their values                                                                                                   |
 
 `parseVaultSecretValue(kind, value)` from `@hot-updater/server/plugins` checks
 a value's shape, and `vaultSecretMetadata(kind, value)` returns what the
@@ -71,10 +72,11 @@ console shows of it.
 ## Issue vault tokens
 
 The **Tokens** tab issues, lists, and revokes vault tokens. A token the
-console issues reads values, writes them, or both, for the secrets in its
-scope, named by secret or by kind, and expires after 30 days, 90 days, a
-year, or never. Bundle signing keys are offered only with **Write values**:
-the routes below never return their values, so reading reaches none.
+console issues reads values, signs bundles, writes values, or any of them,
+for the secrets in its scope, named by secret or by kind, and expires after
+30 days, 90 days, a year, or never. Bundle signing keys are offered only with
+**Sign bundles** or **Write values**: the routes below never return their
+values, so reading reaches none, and signing reaches nothing else.
 [`hot-updater secrets token create`](/docs/guides/secrets#issue-a-vault-token)
 issues the same tokens from the CLI. Every user the console signs in can
 manage secrets and tokens.
@@ -86,6 +88,9 @@ sends the token to the routes below:
 HOT_UPDATER_CONSOLE_URL=https://console.example.com
 HOT_UPDATER_VAULT_TOKEN=hu_vault_...
 ```
+
+A token that signs also shows as `HOT_UPDATER_SIGNING_TOKEN`, the signing
+token `remoteSigning` sends to [the signing route](#sign-bundles).
 
 The list shows each token's prefix, scope, expiry, and creation date.
 Revoking one refuses its next request.
@@ -170,9 +175,7 @@ must allow `read` on each:
 has the name. `value` is the kind's shape from the table above, files in
 base64. The console encrypts it with its master key and answers with the
 secret's metadata, never its value: `201 { "secret" }` for a new secret, or
-`200 { "secret" }` for a new version. An optional `expectedVersion`, the
-version the writer read or `0` for no secret, makes the write a `409` when
-the secret has changed since.
+`200 { "secret" }` for a new version.
 
 ```json
 {
@@ -190,23 +193,51 @@ the secret has changed since.
   secret the write replaces. Anything else refuses the request with 403,
   whether or not a secret has the name.
 - `write` never returns a value. A `bundle-signing-key` can be written, such
-  as one `hot-updater keys generate` made, and is still never resolved.
-- A secret of another kind under the name, or a secret that changed during
-  the request, is a 409.
+  as one `hot-updater keys generate --vault` made, and is still never
+  resolved.
+- An optional `"expectedVersion"` stores the value only while the secret is at
+  that version, and `0` only when no secret has the name, as
+  `hot-updater keys generate --vault` and `hot-updater secrets import` send.
+- A secret of another kind under the name, a secret at another version than
+  `expectedVersion`, or a secret that changed during the request, is a 409.
 - Each write, and each one the scope refuses, is written to the vault's audit
   log before the response is sent.
+
+## Sign bundles
+
+`GET` and `POST /_hot-updater/signing` serve the
+[remote signing protocol](/docs/guides/signing/remote) of `remoteSigning`
+from `hot-updater/signing` with a `bundle-signing-key` from the vault. A
+deploy sends a vault token as the protocol's signing token,
+`x-hot-updater-signing-token`, which `remoteSigning` reads from
+`HOT_UPDATER_SIGNING_TOKEN`.
+[Sign with the Console vault](/docs/guides/signing/remote#sign-with-the-console-vault)
+sets it up.
+
+- The token's scope must allow `sign` on exactly one bundle signing key, the
+  key the console signs with. Scope a sign token by name to pick one key
+  among several, such as one per app.
+- The token is verified, and the key chosen, before the key is opened. `GET`
+  returns the key's public key, and `POST` signs one 32-byte message.
+- Each signature, and each verified token whose scope reaches no single key,
+  is written to the vault's audit log before the response is sent. Public key
+  requests are not logged.
+- Refusals use the codes below. A request the protocol itself refuses, such
+  as a malformed body, answers `{ "error" }` with 400 or 405.
 
 ## Errors
 
 Refusals are `{ "error": { "code", "message" } }`:
 
-| Status | Code                | Cause                                                                                                                                                           |
-| ------ | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 400    | `invalid_request`   | The resolve body is not `{ "names": [...] }` with 1 to 100 secret names, or a write's name, kind, or value is not one the vault takes                           |
-| 401    | `unauthorized`      | No token, or a token that is unknown, revoked, or expired                                                                                                       |
-| 403    | `forbidden`         | The scope does not allow `read` or `write`, a name is out of scope, or a resolved name is a `bundle-signing-key`                                                |
-| 404    | `vault_unavailable` | The console runs without `vault()`, or over `standaloneRepository(...)`                                                                                         |
-| 409    | `conflict`          | The named secrets kept changing while the console read them, a write met a secret of another kind, or the secret changed during a write; send the request again |
-| 503    | `vault_locked`      | `HOT_UPDATER_VAULT_MASTER_KEY` is not set where the console runs, or for a write, it is not the key the stored secrets were saved with                          |
+| Status | Code                  | Cause                                                                                                                                                                                                                        |
+| ------ | --------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 400    | `invalid_request`     | The resolve body is not `{ "names": [...] }` with 1 to 100 secret names, or a write's name, kind, or value is not one the vault takes                                                                                        |
+| 401    | `unauthorized`        | No token, or a token that is unknown, revoked, or expired. For signing, no `x-hot-updater-signing-token`                                                                                                                     |
+| 403    | `forbidden`           | The scope does not allow `read`, `write`, or `sign`, a name is out of scope, a resolved name is a `bundle-signing-key`, or a sign token reaches no bundle signing key or several                                             |
+| 404    | `vault_unavailable`   | The console runs without `vault()`, or over `standaloneRepository(...)`                                                                                                                                                      |
+| 409    | `conflict`            | The named secrets kept changing while the console read them, a write met a secret of another kind or another version than its `expectedVersion`, or the secret changed during a write or a signature; send the request again |
+| 500    | `invalid_signing_key` | The bundle signing key is not an unencrypted RSA private key of 2048, 3072, or 4096 bits                                                                                                                                     |
+| 503    | `vault_locked`        | `HOT_UPDATER_VAULT_MASTER_KEY` is not set where the console runs, or for a write, it is not the key the stored secrets were saved with                                                                                       |
 
-A 401 also carries `WWW-Authenticate: Bearer realm="hot-updater-vault"`.
+A 401 from the vault routes also carries
+`WWW-Authenticate: Bearer realm="hot-updater-vault"`.

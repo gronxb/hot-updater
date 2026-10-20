@@ -43,6 +43,10 @@ output directory for an intentional rotation. Keep the private file out of
 Git, EAS build inputs, artifacts, caches, and logs. Commit the public file and
 reference it from the Expo app plugin when using Expo.
 
+To keep the private key off every machine, `keys generate --vault` stores it
+in your Console's vault instead of writing it, and the Console signs with it:
+see [Sign with the Console vault](/docs/guides/signing/remote#sign-with-the-console-vault).
+
 ## Keep the Public Key with the Project
 
 Newly generated keys inside the project add only the private-key path to

@@ -1,5 +1,11 @@
 export { buildIos } from "./buildIos";
 export { runIos } from "./runIos";
+export {
+  assertTestFlightExportOptions,
+  resolveTestFlightUploadKey,
+  type UploadToTestFlightResult,
+  uploadToTestFlight,
+} from "./uploadToTestFlight";
 export type {
   AppleDevice,
   AppleDeviceType,
