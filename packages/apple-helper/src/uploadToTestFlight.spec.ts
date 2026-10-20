@@ -122,6 +122,7 @@ const appsUrl = `${API}/v1/apps?${new URLSearchParams({
 })}`;
 
 const successRoutes = (): Record<string, Reply | Reply[]> => ({
+  [`GET ${RESERVATIONS_URL}`]: { json: { data: [] } },
   [`GET ${appsUrl}`]: {
     json: {
       data: [
@@ -271,6 +272,7 @@ describe("uploadToTestFlight", () => {
     });
     expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
       `GET ${appsUrl}`,
+      `GET ${RESERVATIONS_URL}`,
       `POST ${API}/v1/buildUploads`,
       `POST ${API}/v1/buildUploadFiles`,
       `PUT ${PART_URL_1}`,
@@ -279,7 +281,7 @@ describe("uploadToTestFlight", () => {
       `GET ${API}/v1/buildUploads/upload-1`,
       `GET ${API}/v1/buildUploads/upload-1`,
     ]);
-    expect(requests[1]!.body).toEqual({
+    expect(requests[2]!.body).toEqual({
       data: {
         type: "buildUploads",
         attributes: {
@@ -290,7 +292,7 @@ describe("uploadToTestFlight", () => {
         relationships: { app: { data: { type: "apps", id: "123" } } },
       },
     });
-    expect(requests[2]!.body).toEqual({
+    expect(requests[3]!.body).toEqual({
       data: {
         type: "buildUploadFiles",
         attributes: {
@@ -304,7 +306,7 @@ describe("uploadToTestFlight", () => {
         },
       },
     });
-    expect(requests[5]!.body).toEqual({
+    expect(requests[6]!.body).toEqual({
       data: {
         type: "buildUploadFiles",
         id: "file-1",
@@ -594,9 +596,10 @@ describe("uploadToTestFlight", () => {
   it("adopts the reservation an unanswered create made", async () => {
     const routes = successRoutes();
     routes[`POST ${API}/v1/buildUploads`] = { status: 503 };
-    routes[`GET ${RESERVATIONS_URL}`] = {
-      json: { data: [{ id: "upload-1" }] },
-    };
+    routes[`GET ${RESERVATIONS_URL}`] = [
+      { json: { data: [] } },
+      { json: { data: [{ id: "upload-1" }] } },
+    ];
     const { fetch, requests } = createRecordingFetch(routes);
 
     await expect(
@@ -608,13 +611,56 @@ describe("uploadToTestFlight", () => {
       }),
     ).resolves.toMatchObject({ buildUploadId: "upload-1", state: "COMPLETE" });
     expect(
-      requests.map(({ method, url }) => `${method} ${url}`).slice(0, 4),
+      requests.map(({ method, url }) => `${method} ${url}`).slice(0, 5),
     ).toEqual([
       `GET ${appsUrl}`,
+      `GET ${RESERVATIONS_URL}`,
       `POST ${API}/v1/buildUploads`,
       `GET ${RESERVATIONS_URL}`,
       `POST ${API}/v1/buildUploadFiles`,
     ]);
+  });
+
+  it("never adopts a reservation that existed before its create", async () => {
+    const routes = successRoutes();
+    routes[`POST ${API}/v1/buildUploads`] = [
+      { status: 503 },
+      { status: 201, json: { data: { id: "upload-1", type: "buildUploads" } } },
+    ];
+    routes[`GET ${RESERVATIONS_URL}`] = {
+      json: { data: [{ id: "another-run" }] },
+    };
+    const { fetch } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).resolves.toMatchObject({ buildUploadId: "upload-1" });
+  });
+
+  it("refuses to pick among several new reservations", async () => {
+    const routes = successRoutes();
+    routes[`POST ${API}/v1/buildUploads`] = { status: 503 };
+    routes[`GET ${RESERVATIONS_URL}`] = [
+      { json: { data: [] } },
+      { json: { data: [{ id: "upload-1" }, { id: "another-run" }] } },
+    ];
+    const { fetch } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).rejects.toThrow(
+      "App Store Connect has 2 new reservations of build 42 of version 1.2.0, so this upload cannot tell its own.",
+    );
   });
 
   it("creates the build upload again when an unanswered create made none", async () => {
@@ -747,9 +793,11 @@ describe("uploadToTestFlight", () => {
         },
       },
     ];
-    // The first lookup fails, then finds nothing yet, then the reservation.
+    // Before the create: a failed lookup, then none. After the unanswered
+    // create: none yet. After the duplicate: the reservation it made.
     routes[`GET ${RESERVATIONS_URL}`] = [
       { status: 503 },
+      { json: { data: [] } },
       { json: { data: [] } },
       { json: { data: [{ id: "upload-1" }] } },
     ];
@@ -765,7 +813,7 @@ describe("uploadToTestFlight", () => {
     ).resolves.toMatchObject({ buildUploadId: "upload-1" });
     expect(
       requests.filter((request) => request.url === RESERVATIONS_URL),
-    ).toHaveLength(3);
+    ).toHaveLength(4);
   });
 
   it("takes a 404 from an upload removal sent again as removed", async () => {
@@ -883,9 +931,10 @@ describe("uploadToTestFlight", () => {
         pollIntervalMs: 0,
       }),
     ).resolves.toMatchObject({ buildUploadId: "upload-1" });
-    expect(requests.some((request) => request.url === RESERVATIONS_URL)).toBe(
-      false,
-    );
+    // Only the lookup before the first create.
+    expect(
+      requests.filter((request) => request.url === RESERVATIONS_URL),
+    ).toHaveLength(1);
   });
 
   it("finds the app again after a rate limit", async () => {
@@ -995,7 +1044,7 @@ describe("uploadToTestFlight", () => {
     ).rejects.toThrow(
       "App Store Connect already has build 42 of version 1.2.0. Each build of a version needs a new build number (CFBundleVersion).",
     );
-    expect(requests).toHaveLength(2);
+    expect(requests).toHaveLength(3);
   });
 
   it("refuses a bundle ID the key cannot see", async () => {

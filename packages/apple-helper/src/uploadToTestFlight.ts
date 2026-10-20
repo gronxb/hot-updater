@@ -437,10 +437,9 @@ export const uploadToTestFlight = async ({
   }
   const testFlightUrl = `https://appstoreconnect.apple.com/apps/${app.id}/testflight/ios`;
 
-  // The reservation this run created, which an unanswered request may have
-  // made: found by its version and build number while it awaits the file.
-  // A failed lookup is retried, never read as no reservation.
-  const findReservation = () =>
+  // The reservations of this version and build number awaiting a file. A
+  // failed lookup is retried, never read as none.
+  const listReservations = () =>
     retrying(() =>
       request<{ data: { id: string }[] }>(
         "Finding the build upload",
@@ -452,7 +451,24 @@ export const uploadToTestFlight = async ({
           "filter[state]": "AWAITING_UPLOAD",
         })}`,
       ),
-    ).then(({ data }) => data[0]?.id);
+    ).then(({ data }) => data.map(({ id }) => id));
+  // Those that exist before this run creates one belong to another run.
+  const othersReservations = new Set(await listReservations());
+  /**
+   * The reservation an unanswered create of this run made: one that did not
+   * exist before it. Several are another run's as well, so none is taken.
+   */
+  const findReservation = async () => {
+    const made = (await listReservations()).filter(
+      (id) => !othersReservations.has(id),
+    );
+    if (made.length > 1) {
+      throw new Error(
+        `App Store Connect has ${made.length} new reservations of build ${info.bundleVersion} of version ${info.shortVersion}, so this upload cannot tell its own. Upload with a new build number (CFBundleVersion).`,
+      );
+    }
+    return made[0];
+  };
 
   let buildUploadId: string | undefined;
   let unanswered = false;
