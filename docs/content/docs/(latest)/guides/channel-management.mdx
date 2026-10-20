@@ -184,6 +184,20 @@ npx hot-updater deploy -p <"ios" | "android"> -c "<channel>"
 Replace `<channel>` with your target channel name, for example `dev`, `staging`,
 or `production`.
 
+## Delete a Channel
+
+Delete a channel with its bundles, such as a closed pull request's preview
+channel:
+
+```package-install
+npx hot-updater channel delete <channel>
+```
+
+The command disables and deletes each bundle in the channel, then the
+channel. Add `--yes` to skip the confirmation in CI. A channel a native build
+embeds as its default channel is kept. See
+[Preview Builds](/docs/guides/preview-builds#clean-up-a-closed-pull-request).
+
 ## Check the Current Channel
 
 Use `hotUpdater.getChannel()` in your UI to confirm that the app is using the

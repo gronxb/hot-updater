@@ -1,9 +1,14 @@
-import { p } from "@hot-updater/cli-tools";
+import { loadConfig, p } from "@hot-updater/cli-tools";
+import type { ReleaseRow } from "@hot-updater/plugin-core";
 
 import { warnIfExpoCNG } from "@/utils/expoDetection";
+import { loadServer } from "@/utils/loadServer";
 import { setChannel } from "@/utils/setChannel";
 
 import { ui } from "../utils/cli-ui";
+import { printBanner } from "../utils/printBanner";
+import { withPublicBundleErrors } from "../utils/publicBundleError";
+import { confirmMutation, safeDispose } from "./release";
 
 export const handleSetChannel = async (channel: string) => {
   warnIfExpoCNG();
@@ -31,3 +36,97 @@ export const handleSetChannel = async (channel: string) => {
 
   p.log.warn("Rebuild native app after changing channel.");
 };
+
+const PAGE = 100;
+
+/**
+ * Deletes a channel with its bundles, as when a pull request's preview
+ * channel closes: each bundle is disabled and deleted, then the channel.
+ * A missing channel deletes nothing and succeeds, so the cleanup can run
+ * again. A native build that embeds the channel keeps it: its bundles are
+ * deleted, the channel is not, and the command fails.
+ */
+export const handleChannelDelete = (
+  channel: string,
+  options: { readonly json?: boolean; readonly yes?: boolean },
+) =>
+  withPublicBundleErrors(async () => {
+    if (!options.json) printBanner();
+    const server = await loadServer(await loadConfig(null));
+    try {
+      const core = server.core;
+      const row = await core.findChannelByName(channel);
+      if (row === null) {
+        if (options.json) {
+          console.log(
+            JSON.stringify({ channel, deleted: false, reason: "not_found" }),
+          );
+        } else {
+          p.log.info(
+            ui.line(["No channel named", ui.channel(channel), "to delete."]),
+          );
+        }
+        return;
+      }
+
+      const releases: ReleaseRow[] = [];
+      for (const platform of ["ios", "android"] as const) {
+        for (let after: string | undefined; ; ) {
+          const page = await core.listReleases({
+            filter: { kind: "channelPlatform", channelId: row.id, platform },
+            limit: PAGE,
+            ...(after === undefined ? {} : { after }),
+          });
+          releases.push(...page);
+          if (page.length < PAGE) break;
+          after = page.at(-1)!.id;
+        }
+      }
+
+      await confirmMutation(
+        `Delete the ${channel} channel and its ${releases.length} bundle${releases.length === 1 ? "" : "s"}?`,
+        options.yes,
+      );
+      for (const release of releases) {
+        if (release.enabled) {
+          await core.updateReleasePolicy({
+            expectedRevision: release.revision,
+            patch: { enabled: false },
+            releaseId: release.id,
+          });
+        }
+        // Core deletes the artifact with the last bundle on it, so a bundle
+        // promoted to another channel keeps its files.
+        await core.deleteRelease({ releaseId: release.id });
+      }
+      const result = await core.deleteChannel(row.id);
+      const deletedBundleIds = releases.map(({ id }) => id);
+
+      if (options.json) {
+        console.log(
+          JSON.stringify({ channel, ...result, deletedBundleIds }, null, 2),
+        );
+      } else {
+        console.log(
+          ui.block(result.deleted ? "Channel deleted" : "Bundles deleted", [
+            ui.kv("Channel", ui.channel(channel)),
+            ui.kv("Bundles", String(deletedBundleIds.length)),
+          ]),
+        );
+      }
+      if (!result.deleted) {
+        p.log.error(
+          `The ${channel} channel is kept: a native build embeds it as its default channel, or a bundle was deployed to it meanwhile. Register preview native builds on a shared channel, such as preview, so pull request channels hold only bundles.`,
+        );
+        process.exitCode = 1;
+        return;
+      }
+      if (!options.json && deletedBundleIds.length > 0) {
+        p.log.info(
+          "The stored files stay until `hot-updater storage prune` deletes them.",
+        );
+      }
+    } finally {
+      await safeDispose(server);
+    }
+  });

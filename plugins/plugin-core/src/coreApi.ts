@@ -165,6 +165,8 @@ export interface HotUpdaterCoreApi {
   listReleaseCatalogs(input: KeysetInput): Promise<ReleaseCatalogRow[]>;
   listChannels(): Promise<ChannelRow[]>;
   findChannelByName(name: string): Promise<ChannelRow | null>;
+  /** A native build by ID: one read of its key. */
+  getNativeBuild(id: string): Promise<NativeBuildRow | null>;
   /** The newest native build of a scope: one read of its index. */
   findNativeBuild(scope: NativeBuildScope): Promise<NativeBuildRow | null>;
   /** One page of native builds, by ID: oldest or newest first. */

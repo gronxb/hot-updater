@@ -563,6 +563,11 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     });
   }),
 
+  getNativeBuild: onCore(async (core, _request, params) => {
+    const build = await core.getNativeBuild(requireRouteParam(params, "id"));
+    return build === null ? notFound() : json({ data: build });
+  }),
+
   listNativeBuilds: onCore(async (core, request) => {
     const input = keyset(new URL(request.url));
     return page(await core.listNativeBuilds(input), input, ({ id }) => id);
@@ -639,5 +644,6 @@ export const ADMIN_ROUTES: readonly {
   },
   { method: "POST", path: "/native-builds", handler: "registerNativeBuild" },
   { method: "GET", path: "/native-builds/latest", handler: "findNativeBuild" },
+  { method: "GET", path: "/native-builds/:id", handler: "getNativeBuild" },
   { method: "GET", path: "/native-builds", handler: "listNativeBuilds" },
 ];

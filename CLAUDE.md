@@ -135,6 +135,9 @@ npx hot-updater fingerprint create
 # Set the native default channel
 npx hot-updater channel set <channel>
 
+# Delete a channel and its bundles, such as a closed pull request's
+npx hot-updater channel delete <channel> --yes
+
 # Build a release app, and register it with the config's database and storage
 npx hot-updater build:android --scheme release --register
 

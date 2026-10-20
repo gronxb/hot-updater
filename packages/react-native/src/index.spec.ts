@@ -557,4 +557,123 @@ describe("HotUpdater client initialization", () => {
     expect(hotUpdater.getMinBundleId()).toBe("min-bundle-id");
     expect(hotUpdater).not.toHaveProperty("setUser");
   });
+
+  describe("openChannelLink", () => {
+    const link = "myapp://hot-updater/channel/pr-12";
+    const options = {
+      updateStrategy: "fingerprint" as const,
+      defaultChannels: ["preview"],
+    };
+    const open = async (url = link) => {
+      const HotUpdater = await importHotUpdater();
+      return HotUpdater.init({
+        baseURL: "https://updates.example.com",
+      }).openChannelLink(url, options);
+    };
+    const update = () => {
+      const updateBundle = vi.fn(async () => true);
+      mocks.checkForUpdate.mockResolvedValueOnce({ updateBundle } as never);
+      return updateBundle;
+    };
+
+    beforeEach(() => {
+      mocks.getDefaultChannel.mockReturnValue("preview");
+      mocks.getChannel.mockReturnValue("preview");
+      mocks.isChannelSwitched.mockReturnValue(false);
+      mocks.resetChannel.mockResolvedValue(true as never);
+    });
+
+    afterEach(() => {
+      mocks.getDefaultChannel.mockReturnValue("production");
+      mocks.getChannel.mockReturnValue("production");
+      mocks.isChannelSwitched.mockReturnValue(false);
+    });
+
+    it("passes any other URL back untouched", async () => {
+      await expect(open("myapp://settings")).resolves.toEqual({
+        status: "NOT_CHANNEL_LINK",
+      });
+      expect(mocks.checkForUpdate).not.toHaveBeenCalled();
+    });
+
+    it("ignores links in a build whose default channel is not listed", async () => {
+      mocks.getDefaultChannel.mockReturnValue("production");
+      mocks.getChannel.mockReturnValue("production");
+
+      await expect(open()).resolves.toEqual({
+        status: "IGNORED",
+        channel: "pr-12",
+      });
+      expect(mocks.checkForUpdate).not.toHaveBeenCalled();
+      expect(mocks.resetChannel).not.toHaveBeenCalled();
+    });
+
+    it("installs the channel's bundle and reloads", async () => {
+      const updateBundle = update();
+
+      await expect(open()).resolves.toEqual({
+        status: "SWITCHED",
+        channel: "pr-12",
+      });
+      expect(mocks.resetChannel).not.toHaveBeenCalled();
+      expect(mocks.checkForUpdate).toHaveBeenCalledWith(
+        expect.objectContaining({
+          channel: "pr-12",
+          updateStrategy: "fingerprint",
+        }),
+      );
+      expect(updateBundle).toHaveBeenCalledTimes(1);
+      expect(mocks.reload).toHaveBeenCalledTimes(1);
+    });
+
+    it("resets a switch to another channel before checking", async () => {
+      mocks.isChannelSwitched.mockReturnValue(true);
+      mocks.getChannel.mockReturnValue("pr-11");
+      update();
+
+      await expect(open()).resolves.toMatchObject({ status: "SWITCHED" });
+      expect(mocks.resetChannel.mock.invocationCallOrder[0]).toBeLessThan(
+        mocks.checkForUpdate.mock.invocationCallOrder[0]!,
+      );
+    });
+
+    it("checks the switched channel again without a reset", async () => {
+      mocks.isChannelSwitched.mockReturnValue(true);
+      mocks.getChannel.mockReturnValue("pr-12");
+
+      await expect(open()).resolves.toEqual({
+        status: "NO_UPDATE",
+        channel: "pr-12",
+      });
+      expect(mocks.resetChannel).not.toHaveBeenCalled();
+      expect(mocks.reload).not.toHaveBeenCalled();
+    });
+
+    it("leaves a switch for a link to the default channel", async () => {
+      mocks.isChannelSwitched.mockReturnValue(true);
+      mocks.getChannel.mockReturnValue("pr-12");
+
+      await expect(
+        open("myapp://hot-updater/channel/preview"),
+      ).resolves.toEqual({ status: "NO_UPDATE", channel: "preview" });
+      expect(mocks.resetChannel).toHaveBeenCalledTimes(1);
+      // The default channel is checked as the app checks it, with no switch.
+      expect(mocks.checkForUpdate).toHaveBeenCalledWith(
+        expect.not.objectContaining({ channel: expect.anything() }),
+      );
+      // The reset restored the built-in bundle, so the app starts it.
+      expect(mocks.reload).toHaveBeenCalledTimes(1);
+    });
+
+    it("refuses to check another channel when the reset fails", async () => {
+      mocks.isChannelSwitched.mockReturnValue(true);
+      mocks.getChannel.mockReturnValue("pr-11");
+      mocks.resetChannel.mockResolvedValue(false as never);
+
+      await expect(open()).rejects.toThrow(
+        'Could not leave the "pr-11" channel to open "pr-12".',
+      );
+      expect(mocks.checkForUpdate).not.toHaveBeenCalled();
+    });
+  });
 });

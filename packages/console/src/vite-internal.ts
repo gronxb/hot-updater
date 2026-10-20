@@ -148,7 +148,10 @@ const createConsoleModulesPlugin = (mode: ConsoleModuleMode): Plugin => {
             "    database: config.database,",
             "    storage: config.storage,",
             "    plugins: config.plugins,",
-            "    console: { gitUrl: config.console.gitUrl },",
+            "    console: {",
+            "      gitUrl: config.console.gitUrl,",
+            "      channelLinkPrefix: config.console.channelLinkPrefix,",
+            "    },",
             "  };",
             "};",
           ].join("\n");

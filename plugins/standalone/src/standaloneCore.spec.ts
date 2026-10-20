@@ -165,8 +165,27 @@ describe("createStandaloneCoreApi", () => {
         {} as Parameters<typeof core.registerNativeBuild>[0],
       ),
     ).rejects.toThrow(upgrade);
-    // Such a server holds no native builds, so doctor's scan finds none.
+    // Such a server holds no native builds, so doctor's scan finds none,
+    // and the Console finds no build by ID.
     await expect(core.listNativeBuilds({ limit: 10 })).resolves.toEqual([]);
+    await expect(core.getNativeBuild("build-1")).resolves.toBeNull();
+  });
+
+  it("reads a native build by ID, and an unknown ID as null", async () => {
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/native-builds/:id`, ({ params }) =>
+        params.id === "build-1"
+          ? HttpResponse.json({ data: { id: "build-1" } })
+          : new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(core.getNativeBuild("build-1")).resolves.toEqual({
+      id: "build-1",
+    });
+    await expect(core.getNativeBuild("build-2")).resolves.toBeNull();
   });
 
   it("finds a native build by scope, and reads a scope without one as null", async () => {

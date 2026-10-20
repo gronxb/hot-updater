@@ -1,3 +1,5 @@
+import { parseChannelLink } from "@hot-updater/protocol";
+
 import { createLaunchReporter, type LaunchReporter } from "./appReady";
 import {
   type CheckForUpdateOptions,
@@ -5,6 +7,7 @@ import {
   reportUpdateError,
 } from "./checkForUpdate";
 import type { ClientPluginApis, HotUpdaterClientPlugin } from "./clientPlugin";
+import { HotUpdaterError } from "./error";
 import { createHttpClient, type HotUpdaterHttpClient } from "./httpClient";
 import type { HotUpdaterInitOptions } from "./init.types";
 import {
@@ -314,6 +317,36 @@ const nativeMethods = {
   clearCrashHistory,
 };
 
+/** How `hotUpdater.openChannelLink` checks the channel a link names. */
+export interface ChannelLinkOptions extends Pick<
+  CheckForUpdateOptions,
+  "requestHeaders" | "requestTimeout"
+> {
+  /** The update strategy the app's update checks use. */
+  updateStrategy: CheckForUpdateOptions["updateStrategy"];
+  /**
+   * The build-time default channels whose builds open channel links, such
+   * as `["preview"]`. A build with another default channel, such as a
+   * production build, ignores every link, whatever bundle it runs: an OTA
+   * update cannot change the default channel a binary embeds.
+   */
+  defaultChannels: readonly string[];
+}
+
+/**
+ * What `hotUpdater.openChannelLink` did with a URL. When it switches, the
+ * app reloads into the channel's bundle before the result is read.
+ */
+export type ChannelLinkResult =
+  /** The URL is no channel link: route it as the app routes other links. */
+  | { readonly status: "NOT_CHANNEL_LINK" }
+  /** This build's default channel is not in `defaultChannels`. */
+  | { readonly status: "IGNORED"; readonly channel: string }
+  /** The channel has no bundle for this build, so nothing changed. */
+  | { readonly status: "NO_UPDATE"; readonly channel: string }
+  /** The channel's bundle is installed, and the app reloads into it. */
+  | { readonly status: "SWITCHED"; readonly channel: string };
+
 /** What an instance's own methods use: its server, settings, and launch. */
 interface InstanceConfig {
   readonly client: HotUpdaterHttpClient;
@@ -445,6 +478,58 @@ const createConfiguredMethods = (config: InstanceConfig) => {
         });
       }
       return true;
+    },
+
+    /**
+     * Opens a channel link, `<scheme>://hot-updater/channel/<channel>`,
+     * such as the QR code the Console shows for a pull request's channel:
+     * it checks the channel with `checkForUpdate({ channel })`, installs its
+     * bundle with `updateBundle()`, and reloads. A device already switched
+     * to another channel calls `resetChannel()` first, and a link to the
+     * build's default channel leaves the switch. Only builds whose default
+     * channel is in `defaultChannels` open links, so production builds
+     * ignore them. Pass every URL the app opens: any other URL resolves
+     * with `NOT_CHANNEL_LINK`.
+     *
+     * @example
+     * ```ts
+     * Linking.addEventListener("url", ({ url }) => {
+     *   void hotUpdater.openChannelLink(url, {
+     *     updateStrategy: "fingerprint",
+     *     defaultChannels: ["preview"],
+     *   });
+     * });
+     * ```
+     */
+    openChannelLink: async (
+      url: string,
+      { defaultChannels, ...options }: ChannelLinkOptions,
+    ): Promise<ChannelLinkResult> => {
+      const channel = parseChannelLink(url);
+      if (channel === null) return { status: "NOT_CHANNEL_LINK" };
+      const defaultChannel = getDefaultChannel();
+      if (!defaultChannels.includes(defaultChannel)) {
+        return { status: "IGNORED", channel };
+      }
+      // A switched device checks another channel only from its default one.
+      const reset = isChannelSwitched() && getChannel() !== channel;
+      if (reset && !(await nativeMethods.resetChannel())) {
+        throw new HotUpdaterError(
+          `Could not leave the "${getChannel()}" channel to open "${channel}".`,
+        );
+      }
+      const updateInfo = await check({
+        ...options,
+        ...(channel === defaultChannel ? {} : { channel }),
+      });
+      if (updateInfo !== null && (await updateInfo.updateBundle())) {
+        await reload();
+        return { status: "SWITCHED", channel };
+      }
+      // The reset restored the built-in bundle: start it, as the reset left
+      // the channel the running bundle came from.
+      if (reset) await reload();
+      return { status: "NO_UPDATE", channel };
     },
 
     /**

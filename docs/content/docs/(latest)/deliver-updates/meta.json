@@ -8,6 +8,7 @@
     "../guides/channel-management",
     "../guides/native-build",
     "../guides/runtime-channel-switch",
+    "../guides/preview-builds",
     "../guides/rollout-cohorts",
     "../guides/remote-config",
     "../guides/update-strategies",
