@@ -179,6 +179,8 @@ const keysGenerateInVault = async (
   // The first directory this run made, removed with the key when it fails.
   let createdDir: string | undefined;
   let publicKeyFile: Awaited<ReturnType<typeof fs.open>> | undefined;
+  let publicKeyOpened = false;
+  let stored = false;
   try {
     const client = connectVault(
       `hot-updater keys generate --vault stores the private key as ${name}`,
@@ -186,6 +188,7 @@ const keysGenerateInVault = async (
     createdDir = await fs.mkdir(outputDir, { recursive: true });
     try {
       publicKeyFile = await fs.open(publicKeyPath, "wx", 0o644);
+      publicKeyOpened = true;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code === "EEXIST") {
         throw new Error(
@@ -202,6 +205,12 @@ const keysGenerateInVault = async (
     // Masked before it is sent, so no failure can print it.
     registerSecretValue(keyPair.privateKey);
     registerSecretValue(privateKey);
+    // The public key is on disk before the private key is stored, so a
+    // stored key always has its trust anchor.
+    await publicKeyFile.writeFile(keyPair.publicKey);
+    await publicKeyFile.sync();
+    await publicKeyFile.close();
+    publicKeyFile = undefined;
     spinner.message("Storing the private key in the Console's vault");
     let secret: Awaited<ReturnType<typeof client.put>>;
     try {
@@ -219,9 +228,7 @@ const keysGenerateInVault = async (
       }
       throw error;
     }
-    await publicKeyFile.writeFile(keyPair.publicKey);
-    await publicKeyFile.close();
-    publicKeyFile = undefined;
+    stored = true;
     spinner.stop("Keys generated");
     spinning = false;
 
@@ -254,11 +261,12 @@ const keysGenerateInVault = async (
     );
   } catch (error) {
     if (spinning) spinner.error("The private key was not stored");
-    if (publicKeyFile !== undefined) {
-      await publicKeyFile.close().catch(() => {});
+    await publicKeyFile?.close().catch(() => {});
+    // Once the private key is stored, its public key stays for the app.
+    if (publicKeyOpened && !stored) {
       await fs.rm(publicKeyPath, { force: true });
     }
-    if (createdDir !== undefined) {
+    if (createdDir !== undefined && !stored) {
       await fs.rm(createdDir, { force: true, recursive: true });
     }
     p.log.error(error instanceof Error ? error.message : String(error));

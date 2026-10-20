@@ -1,4 +1,5 @@
 import crypto from "node:crypto";
+import { readFileSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -72,8 +73,14 @@ afterEach(async () => {
 
 describe("hot-updater keys generate --vault", () => {
   it("stores the private key in the vault, writing and printing only the public key", async () => {
-    const writes = mockConsole(() =>
-      Response.json(
+    let publicKeyFirst = false;
+    const writes = mockConsole(() => {
+      // The trust anchor is on disk before the private key is stored.
+      publicKeyFirst = readFileSync(
+        path.join(directory, "keys", "public-key.pem"),
+        "utf8",
+      ).startsWith("-----BEGIN PUBLIC KEY-----");
+      return Response.json(
         {
           secret: {
             id: "sec-1",
@@ -83,12 +90,13 @@ describe("hot-updater keys generate --vault", () => {
           },
         },
         { status: 201 },
-      ),
-    );
+      );
+    });
 
     await keysGenerate({ keySize: 2048, vault: true });
 
     expect(process.exitCode).toBeUndefined();
+    expect(publicKeyFirst).toBe(true);
     expect(writes).toHaveLength(1);
     const [{ url, body }] = writes as [(typeof writes)[number]];
     expect(url).toBe(
@@ -155,6 +163,18 @@ describe("hot-updater keys generate --vault", () => {
       ),
     );
     // The keys directory this run made is gone with the key.
+    await expect(fs.readdir(directory)).resolves.toEqual([]);
+  });
+
+  it("removes the public key when the Console cannot be reached", async () => {
+    vi.spyOn(globalThis, "fetch").mockRejectedValue(new Error("ECONNREFUSED"));
+
+    await keysGenerate({ keySize: 2048, vault: true });
+
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      expect.stringContaining("Could not reach the Console"),
+    );
     await expect(fs.readdir(directory)).resolves.toEqual([]);
   });
 

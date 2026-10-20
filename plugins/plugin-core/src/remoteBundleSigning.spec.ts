@@ -410,6 +410,16 @@ describe("portable bundle signing handler", () => {
       token: () => true,
     });
     expect(unavailable?.status).toBe(503);
+
+    // A verifier that cannot decide fails closed, before any key is read.
+    const publicKey = vi.fn(async () => keys.publicKey);
+    const undecided = await callHandler(request("GET"), {
+      publicKey,
+      token: () => Promise.reject(new Error("store unavailable")),
+    });
+    expect(undecided?.status).toBe(503);
+    expect(undecided?.headers.get("cache-control")).toBe("private, no-store");
+    expect(publicKey).not.toHaveBeenCalled();
   });
 
   it.each([

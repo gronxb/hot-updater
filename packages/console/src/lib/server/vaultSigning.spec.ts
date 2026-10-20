@@ -377,6 +377,27 @@ describe("GET and POST /_hot-updater/signing", () => {
     }
   });
 
+  it("answers the vault's 500 when the console fails while it checks the token", async () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await request(
+      async () => {
+        throw new Error("database unavailable");
+      },
+      signingToken(`hu_vault_${"A".repeat(43)}`),
+    );
+
+    expect(response.status).toBe(500);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "internal",
+        message: "The vault could not serve the request.",
+      },
+    });
+    expect(errors).toHaveBeenCalled();
+    errors.mockRestore();
+  });
+
   it("answers the protocol's 405 for another method once the token is accepted", async () => {
     const { load, issue } = await start();
 

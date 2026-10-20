@@ -592,50 +592,63 @@ export const serveVaultSigning = (request: Request, load: LoadConsole) =>
       | undefined;
     let key: BundleSigningKey | undefined;
 
+    // A failure no refusal names is logged, and answered as the vault's 500.
+    const failClosed = <T>(run: () => Promise<T>) =>
+      run().catch((error: unknown) => {
+        console.error("The vault could not serve a signing request:", error);
+        refusal = failure(
+          500,
+          "internal",
+          "The vault could not serve the request.",
+        );
+        throw error;
+      });
+
     const response = await createBundleSigningHandler({
       request,
-      token: async (token) => {
-        const opened = await openVaultWith(request, token, load, (message) =>
-          failure(401, "unauthorized", message),
-        );
-        if (opened instanceof Response) {
-          refusal = opened;
-          return false;
-        }
-        const { vault } = opened;
-        const keys = (await vault.list()).filter(
-          (secret) =>
-            secret.kind === "bundle-signing-key" &&
-            authorizeVaultToken(opened.token, { action: "sign", secret }),
-        );
-        if (keys.length !== 1) {
-          await vault.recordAudit({
-            entries: [
-              {
-                actor: opened.token.id,
-                action: "sign",
-                outcome: "denied",
-                context: {
-                  ...context,
-                  ...(keys.length > 1
-                    ? { names: keys.map(({ name }) => name) }
-                    : {}),
-                },
-              },
-            ],
-          });
-          refusal = forbidden(
-            keys.length > 1
-              ? `The vault token may sign with ${keys.map(({ name }) => name).join(", ")}: scope a sign token to one bundle-signing-key by name, the key the console signs with.`
-              : opened.token.scope.actions.includes("sign")
-                ? "The vault token's scope allows sign on no bundle-signing-key."
-                : "The vault token's scope does not allow sign.",
+      token: (token) =>
+        failClosed(async () => {
+          const opened = await openVaultWith(request, token, load, (message) =>
+            failure(401, "unauthorized", message),
           );
-          return false;
-        }
-        signer = { vault, token: opened.token, secret: keys[0]! };
-        return true;
-      },
+          if (opened instanceof Response) {
+            refusal = opened;
+            return false;
+          }
+          const { vault } = opened;
+          const keys = (await vault.list()).filter(
+            (secret) =>
+              secret.kind === "bundle-signing-key" &&
+              authorizeVaultToken(opened.token, { action: "sign", secret }),
+          );
+          if (keys.length !== 1) {
+            await vault.recordAudit({
+              entries: [
+                {
+                  actor: opened.token.id,
+                  action: "sign",
+                  outcome: "denied",
+                  context: {
+                    ...context,
+                    ...(keys.length > 1
+                      ? { names: keys.map(({ name }) => name) }
+                      : {}),
+                  },
+                },
+              ],
+            });
+            refusal = forbidden(
+              keys.length > 1
+                ? `The vault token may sign with ${keys.map(({ name }) => name).join(", ")}: scope a sign token to one bundle-signing-key by name, the key the console signs with.`
+                : opened.token.scope.actions.includes("sign")
+                  ? "The vault token's scope allows sign on no bundle-signing-key."
+                  : "The vault token's scope does not allow sign.",
+            );
+            return false;
+          }
+          signer = { vault, token: opened.token, secret: keys[0]! };
+          return true;
+        }),
       publicKey: async () => {
         const { vault, token, secret } = signer!;
         try {

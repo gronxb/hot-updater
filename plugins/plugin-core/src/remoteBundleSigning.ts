@@ -488,13 +488,19 @@ export const createBundleSigningHandler = async ({
   }
 
   const presented = request.headers.get(REMOTE_BUNDLE_SIGNING_TOKEN_HEADER);
-  const accepted =
-    typeof token === "function"
-      ? presented !== null &&
-        presented.length > 0 &&
-        isTokenSized(presented) &&
-        (await token(presented)) === true
-      : await tokensMatch(token, presented);
+  let accepted: boolean;
+  try {
+    accepted =
+      typeof token === "function"
+        ? presented !== null &&
+          presented.length > 0 &&
+          isTokenSized(presented) &&
+          (await token(presented)) === true
+        : await tokensMatch(token, presented);
+  } catch {
+    // A verifier that cannot decide, such as one whose store is down.
+    return jsonResponse({ error: "Signing service unavailable" }, 503);
+  }
   if (!accepted) {
     return jsonResponse({ error: "Unauthorized" }, 401);
   }
