@@ -7,6 +7,8 @@ import {
   makeEnv,
   p,
   parseLoadedEnv,
+  readLoadedHotUpdaterEnv,
+  readVaultConnection,
   registerSecretValue,
   resolveVaultVariables,
   VAULT_CONNECTION_ENV_NAMES,
@@ -461,6 +463,13 @@ export const handleSecretsImport = async (
       `hot-updater secrets import stores ${file}'s variables`,
       env,
     );
+    // Config loads find the connection only in the environment or the
+    // project's .env.hotupdater, before the config runs.
+    if (!readVaultConnection(await readLoadedHotUpdaterEnv(getCwd())).ok) {
+      p.log.warn(
+        `Commands that load hot-updater.config.ts read ${VAULT_CONNECTION_ENV_NAMES.url} and ${VAULT_CONNECTION_ENV_NAMES.token} from the environment or .env.hotupdater, where they are not set: set them there to deploy with the imported variables.`,
+      );
+    }
     const listed = await client.list();
     const existing = listed.find((secret) => secret.name === name);
     const elsewhere = listed.flatMap((secret) =>
@@ -508,6 +517,12 @@ export const handleSecretsImport = async (
       kind: "deploy-credentials",
       value,
     });
+    // Again after the write: a value changed meanwhile stays in the file.
+    if ((await readEnvFile(file)) !== content) {
+      throw new Error(
+        `${file} changed while ${secret.name} v${secret.version} was stored from what it held before, so nothing was removed from it: run hot-updater secrets import again.`,
+      );
+    }
     const rewritten = await makeEnv({}, path.resolve(getCwd(), file), {
       removeKeys: moved,
     });

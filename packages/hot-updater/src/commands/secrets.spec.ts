@@ -626,6 +626,47 @@ describe("hot-updater secrets import", () => {
     );
   });
 
+  it("removes nothing when the file changes while the vault stores it", async () => {
+    let file = "";
+    const requests = mockConsole(async (request) => {
+      if (request.method === "GET") return { secrets: [] };
+      await fs.writeFile(file, "HOT_UPDATER_S3_REGION=eu-west-1");
+      return { secret: { ...DEPLOY, version: 3 } };
+    });
+    file = await writeEnvFile(["HOT_UPDATER_S3_REGION=us-east-1"]);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(log.error).toHaveBeenCalledWith(
+      `${file} changed while deploy-credentials v3 was stored from what it held before, so nothing was removed from it: run hot-updater secrets import again.`,
+    );
+    expect(requests.map(({ method }) => method)).toEqual(["GET", "PUT"]);
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(
+      "HOT_UPDATER_S3_REGION=eu-west-1",
+    );
+  });
+
+  it("warns when config loads cannot find the connection the imported file holds", async () => {
+    importConsole();
+    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", undefined);
+    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", undefined);
+    const file = path.join(directory, ".env.ci");
+    await fs.writeFile(
+      file,
+      [
+        `HOT_UPDATER_CONSOLE_URL=${CONSOLE_URL}`,
+        `HOT_UPDATER_VAULT_TOKEN=${TOKEN}`,
+        "HOT_UPDATER_S3_REGION=us-east-1",
+      ].join("\n"),
+    );
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(log.warn).toHaveBeenCalledWith(
+      "Commands that load hot-updater.config.ts read HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN from the environment or .env.hotupdater, where they are not set: set them there to deploy with the imported variables.",
+    );
+  });
+
   it("keeps the file when the Console refuses the write", async () => {
     mockConsole((request) =>
       request.method === "GET"
