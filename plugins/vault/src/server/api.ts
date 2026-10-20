@@ -835,9 +835,10 @@ export const createVaultApi = ({
   };
 
   /**
-   * A stored version under each of `kids`, one read each, for a vault
-   * without a keys row: one sealed before vaults kept key checks, or whose
-   * row was deleted. Such versions are its keys' only evidence.
+   * A stored version under each of `kids`, one read each, and the first
+   * live secret's, for a vault without a keys row: one sealed before
+   * vaults kept key checks, or whose row was deleted. Such versions are its
+   * keys' only evidence.
    */
   const findSealed = async (kids: readonly string[]) => {
     const sealed: Record<string, SealedRow> = {};
@@ -851,6 +852,29 @@ export const createVaultApi = ({
       ).rows;
       if (row !== undefined) sealed[kid] = row;
     }
+    // `byKid` lists no kids it is not asked for: a live secret's current
+    // version names the kid it is sealed under, whichever it is.
+    let cursor: string | undefined;
+    do {
+      const page = await db.findMany("secrets", {
+        index: "byName",
+        where: {},
+        limit: PAGE_SIZE,
+        ...(cursor === undefined ? {} : { cursor }),
+      });
+      const live = page.rows.find(
+        (row) => isSecretRow(row) && row.deleted_at_ms === null,
+      );
+      if (live !== undefined) {
+        const row = await db.findOne("secret_versions", {
+          secret_id: live.id,
+          version: live.current_version,
+        });
+        if (row !== null) sealed[row.kid] ??= row;
+        break;
+      }
+      cursor = page.next;
+    } while (cursor !== undefined);
     return sealed;
   };
 

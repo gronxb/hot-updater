@@ -414,12 +414,24 @@ describe("vault master keys", () => {
     );
     await expect(a.status()).resolves.toMatchObject({ locked: true });
 
-    // A write starts it too, with the stored versions' key.
+    // A kid neither configured nor `default` is found through a live
+    // secret, so an unrelated key is refused rather than taken.
     await dropKeysRow();
+    const unrelated = console({ masterKey: KEY_C });
+    await expect(unrelated.status()).resolves.toMatchObject({
+      locked: true,
+      knownKeys: ["next"],
+    });
+    await expect(
+      unrelated.put({ name: "s3", kind: "generic", value: "x" }),
+    ).rejects.toThrow('saved under the master key "next"');
+
+    // A write starts it too, with the stored versions' key.
     await after.put({ name: "s3", kind: "generic", value: "v3" });
-    await expect(console({ masterKey: KEY_C }).status()).resolves.toMatchObject(
-      { locked: true, knownKeys: ["next"] },
-    );
+    await expect(unrelated.status()).resolves.toMatchObject({
+      locked: true,
+      knownKeys: ["next"],
+    });
   });
 
   it("forgets an old key with nothing under it, once every secret was removed", async () => {
