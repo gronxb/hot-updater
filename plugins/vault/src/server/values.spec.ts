@@ -131,8 +131,16 @@ describe("parseVaultSecretValue", () => {
     }).privateKey.export({ format: "der", type: "pkcs8" });
     der[der.indexOf(Buffer.from([0x02, 0x01, 0x00]))! + 2] = 2;
     const versionTwo = `-----BEGIN PRIVATE KEY-----\n${der.toString("base64")}\n-----END PRIVATE KEY-----\n`;
+    // A valid key's PrivateKeyInfo with a 0x00 byte after its key.
+    const valid = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+    }).privateKey.export({ format: "der", type: "pkcs8" });
+    const trailing = Buffer.concat([valid, Buffer.from([0x00])]);
+    trailing.writeUInt16BE(valid.readUInt16BE(2) + 1, 2);
+    const trailingByte = `-----BEGIN PRIVATE KEY-----\n${trailing.toString("base64")}\n-----END PRIVATE KEY-----\n`;
     for (const pem of [
       versionTwo,
+      trailingByte,
       pkcs8(generateKeyPairSync("rsa", { modulusLength: 1024 }).privateKey),
       pkcs8(generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey),
       pkcs8(generateKeyPairSync("ed25519").privateKey),

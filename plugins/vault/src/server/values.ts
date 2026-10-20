@@ -193,10 +193,11 @@ const isSigningKeyPem = (text: string): boolean => {
     ) {
       return false;
     }
-    // Version 0, the algorithm's parameters absent or NULL, attributes
-    // optional after the key, and nothing after the structure.
+    // Version 0, the algorithm's parameters absent or NULL, and after the
+    // key only its optional [0] attributes, then nothing.
     const parameters =
       oid.end < algorithm!.end ? derElement(der, oid.end) : null;
+    const attributes = key.end < info!.end ? derElement(der, key.end) : null;
     if (
       version!.end - version!.start !== 1 ||
       der[version!.start] !== 0 ||
@@ -204,6 +205,8 @@ const isSigningKeyPem = (text: string): boolean => {
         (parameters.tag !== 0x05 ||
           parameters.start !== parameters.end ||
           parameters.end !== algorithm!.end)) ||
+      (key.end < info!.end &&
+        (attributes?.tag !== 0xa0 || attributes.end !== info!.end)) ||
       info!.end !== der.length
     ) {
       return false;
