@@ -53,12 +53,12 @@ export default defineConfig({
       release: {
         packageName: "com.example.app",
         // An .aab by default; aab: false builds an .apk.
-        signing: { keystore: "release-keystore" },
+        signing: { keystore: "vault:release-keystore" },
       },
       previewApk: {
         packageName: "com.example.app",
         aab: false,
-        signing: { keystore: "release-keystore" },
+        signing: { keystore: "vault:release-keystore" },
       },
     },
     ios: {
@@ -66,7 +66,7 @@ export default defineConfig({
         bundleIdentifier: "com.example.app",
         scheme: "ExampleApp",
         installPods: true,
-        signing: { ascApiKey: "asc-api-key" },
+        signing: { ascApiKey: "vault:asc-api-key" },
       },
       simulator: {
         bundleIdentifier: "com.example.app",

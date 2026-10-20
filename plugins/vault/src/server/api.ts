@@ -40,10 +40,13 @@ export const VAULT_MAX_VALUE_BYTES = 64 * 1024;
 export const VAULT_KEPT_VERSIONS = 5;
 
 /**
- * What a token may do with the secrets in its scope: `read` their values, or
- * `sign` with them, which the Console's remote signing serves.
+ * What a token may do with the secrets in its scope: `read` their values,
+ * `sign` with them, which the Console's remote signing serves, or `write`
+ * new values, which the Console seals with its master key. `write` reads
+ * nothing back: a token that may only write learns a secret's metadata,
+ * never its value.
  */
-export const VAULT_TOKEN_ACTIONS = ["read", "sign"] as const;
+export const VAULT_TOKEN_ACTIONS = ["read", "sign", "write"] as const;
 
 export type VaultTokenAction = (typeof VAULT_TOKEN_ACTIONS)[number];
 
@@ -73,8 +76,11 @@ export interface VaultToken {
   readonly revokedAtMs: number | null;
 }
 
-/** What an audit entry records: a list of secrets, or a read of their values. */
-export const VAULT_AUDIT_ACTIONS = ["list", "read"] as const;
+/**
+ * What an audit entry records: a list of secrets, a read of their values, or
+ * a write of a new value.
+ */
+export const VAULT_AUDIT_ACTIONS = ["list", "read", "write"] as const;
 
 export type VaultAuditAction = (typeof VAULT_AUDIT_ACTIONS)[number];
 
@@ -463,7 +469,8 @@ const toToken = (row: TokenRow): VaultToken =>
 /**
  * Whether a token may take `action` on `secret`: the action is in its scope,
  * and so is the secret, by name or by kind. `sign` is checked against the
- * signing key's secret like `read`. It checks only the scope; pass a token
+ * signing key's secret like `read`, and `write` against the secret a write
+ * stores, by its new name and kind. It checks only the scope; pass a token
  * `verifyToken` just returned, which has checked revocation and expiry.
  */
 export const authorizeVaultToken = (
