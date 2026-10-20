@@ -265,9 +265,9 @@ export const setupCoreAdminTestSuite = (options: {
       expect((await adminJson(`/native-builds/${newest.id}`)).data).toEqual(
         newest,
       );
-      const missing = await admin(`/native-builds/${bundleRow("863").id}`);
-      expect(missing.status).toBe(404);
-      await missing.text();
+      expect(
+        (await adminJson(`/native-builds/${bundleRow("863").id}`)).data,
+      ).toBeNull();
       expect(again.status).toBe(409);
       expect(await again.json()).toMatchObject({ code: "NATIVE_BUILD_EXISTS" });
       expect(refusedDelete.status).toBe(409);

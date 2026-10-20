@@ -290,9 +290,10 @@ export const createStandaloneCoreApi = (
     listChannels: () => list<ChannelRow>("/channels", {}),
     findChannelByName: (name) =>
       call<ChannelRow>("GET", "/channels", { query: { name } }),
-    // A server without the native build routes holds no native builds.
     getNativeBuild: (id) =>
-      call<NativeBuildRow>("GET", `/native-builds/${encode(id)}`),
+      call<NativeBuildRow>("GET", `/native-builds/${encode(id)}`, {
+        requiredRoute: "native build",
+      }),
     findNativeBuild: (scope) =>
       call<NativeBuildRow>("GET", "/native-builds/latest", {
         query: nativeBuildScopeParams(scope),

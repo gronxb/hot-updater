@@ -563,10 +563,13 @@ export const createAdminRouteHandlers = (): Record<string, RouteHandler> => ({
     });
   }),
 
-  getNativeBuild: onCore(async (core, _request, params) => {
-    const build = await core.getNativeBuild(requireRouteParam(params, "id"));
-    return build === null ? notFound() : json({ data: build });
-  }),
+  // An unknown ID answers 200 with null data, as a scope without a build
+  // does, so a 404 means a server without the route.
+  getNativeBuild: onCore(async (core, _request, params) =>
+    json({
+      data: await core.getNativeBuild(requireRouteParam(params, "id")),
+    }),
+  ),
 
   listNativeBuilds: onCore(async (core, request) => {
     const input = keyset(new URL(request.url));
