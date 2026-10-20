@@ -208,7 +208,9 @@ lists it in TestFlight:
 npx hot-updater build:ios --scheme release --upload testflight
 ```
 
-The upload authenticates with an App Store Connect API key: the scheme's
+The upload authenticates with an App Store Connect team API key, which has a
+key ID and an issuer ID (App Store Connect → Users and Access → Integrations →
+Team Keys), with the Admin, App Manager, or Developer role: the scheme's
 `signing.ascApiKey`, or else the vault's `asc-api-key` secret. The
 `HOT_UPDATER_ASC_KEY*` environment variables in
 [Provide signing credentials](#provide-signing-credentials) override it. The
