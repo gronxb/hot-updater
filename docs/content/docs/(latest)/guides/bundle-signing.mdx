@@ -25,6 +25,7 @@ key is non-exportable and the deploy process submits only a message to sign.
 | [AWS KMS](/docs/guides/signing/aws-kms)                   | Hardened production | Non-exportable AWS KMS key                        |
 | [Google Cloud KMS](/docs/guides/signing/google-cloud-kms) | Hardened production | Non-exportable Google Cloud KMS key               |
 | [Remote endpoint](/docs/guides/signing/remote)            | Service-dependent   | Defined by the compatible signing service         |
+| [Console vault](/docs/guides/signing/remote#sign-with-the-console-vault) | Self-hosted Console | Key sealed in your database, opened only by the Console |
 
 Local PEM signing is the normal industry baseline used by systems such as Expo
 and CodePush when the deploy environment protects the private key. KMS signing
@@ -237,11 +238,15 @@ it with unsigned bundles.
 
 ## Console
 
-Configure signing and manage keys through the Hot Updater CLI or your signing
-provider. Local and hosted Consoles do not inspect signing configuration or
-manage signing keys. A hosted Console does not need signing credentials or
-permission to sign. The deploy command verifies provider and signature health
-inside the trusted signing environment.
+Configure signing through the Hot Updater CLI or your signing provider. A
+Console does not inspect signing configuration. A Console running
+[`vault()`](/docs/guides/console-deployment/vault) can hold a bundle signing
+key and sign with it at `/_hot-updater/signing`, which `remoteSigning`
+reaches with a vault token: see
+[Sign with the Console vault](/docs/guides/signing/remote#sign-with-the-console-vault).
+Otherwise a Console needs no signing credentials or permission to sign. The
+deploy command verifies provider and signature health inside the trusted
+signing environment.
 
 ## Configuration States
 

@@ -81,17 +81,16 @@ const file = (
   return { base64, bytes };
 };
 
-/** A file field whose text must contain a PEM private key. */
+/** A file field whose text must contain a PEM private key, by `pattern`. */
 const pemFile = (
   kind: VaultSecretKind,
   fields: Record<string, unknown>,
   field: string,
   what: string,
+  pattern = /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----/u,
 ) => {
   const { base64, bytes } = file(kind, fields, field);
-  if (
-    !/-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----/u.test(decodeText(bytes) ?? "")
-  ) {
+  if (!pattern.test(decodeText(bytes) ?? "")) {
     throw new VaultInputError(
       `A secret of kind ${kind} has ${field} as ${what}.`,
     );
@@ -168,7 +167,9 @@ const parsers: {
         "bundle-signing-key",
         fields,
         "privateKey",
-        "a private key in PEM, such as hot-updater keys generate writes",
+        "an unencrypted RSA private key in PEM, such as hot-updater keys generate writes",
+        // PKCS#8 or PKCS#1, which the Console signs with: not encrypted, not EC.
+        /-----BEGIN (?:RSA )?PRIVATE KEY-----/u,
       ),
     };
   },

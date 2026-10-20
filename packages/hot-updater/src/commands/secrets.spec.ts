@@ -217,16 +217,41 @@ describe("hot-updater secrets token, in process without a master key", () => {
     await expect(vaultOf().listTokens()).resolves.toEqual([]);
   });
 
+  it("issues a sign token for the Console's remote signing, naming HOT_UPDATER_SIGNING_TOKEN", async () => {
+    await handleSecretsTokenCreate({
+      name: "ci-sign",
+      secrets: ["bundle-signing-key"],
+      actions: ["sign"],
+    });
+
+    expect(process.exitCode).toBeUndefined();
+    const token = /Token:\s+(hu_vault_\S+)/u.exec(messages().join("\n"))?.[1];
+    await expect(
+      vaultOf().verifyToken({ token: token! }),
+    ).resolves.toMatchObject({
+      ok: true,
+      token: {
+        scope: {
+          secrets: { names: ["bundle-signing-key"] },
+          actions: ["sign"],
+        },
+      },
+    });
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.stringContaining("HOT_UPDATER_SIGNING_TOKEN for remoteSigning"),
+    );
+  });
+
   it("issues only the actions the Console serves, opening no database otherwise", async () => {
     await handleSecretsTokenCreate({
       name: "ci",
       kinds: ["bundle-signing-key"],
-      actions: ["sign"],
+      actions: ["register"],
     });
 
     expect(process.exitCode).toBe(1);
     expect(log.error).toHaveBeenCalledWith(
-      "--actions takes read and write, the actions the Console serves a vault token, not sign.",
+      "--actions takes read, sign, write, the actions the Console serves a vault token, not register.",
     );
     expect(loadConfig).not.toHaveBeenCalled();
   });

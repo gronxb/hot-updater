@@ -607,6 +607,50 @@ describe("PUT /_hot-updater/vault/v1/secrets/:name", () => {
     ).resolves.toEqual(value);
   });
 
+  it("stores only at the version a write expects: 0 never replaces a secret", async () => {
+    const { load, issue, vault: api, secrets } = await start();
+    const token = await issue({
+      secrets: { kinds: ["bundle-signing-key"] },
+      actions: ["write"],
+    });
+    const value = {
+      privateKey: base64(
+        "-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----\n",
+      ),
+    };
+
+    const replacing = await put(load, token, "ota-signing", {
+      kind: "bundle-signing-key",
+      value,
+      expectedVersion: 0,
+    });
+    expect(replacing.status).toBe(409);
+    await expect(replacing.json()).resolves.toEqual({
+      error: {
+        code: "conflict",
+        message:
+          'The secret "ota-signing" is at version 1, and the write expected no secret under its name.',
+      },
+    });
+    await expect(
+      api.reveal({ id: secrets.signing.id, actor: "spec" }),
+    ).resolves.toBe("-----BEGIN RSA PRIVATE KEY-----");
+
+    const created = await put(load, token, "widget-signing", {
+      kind: "bundle-signing-key",
+      value,
+      expectedVersion: 0,
+    });
+    expect(created.status).toBe(201);
+
+    const malformed = await put(load, token, "widget-signing", {
+      kind: "bundle-signing-key",
+      value,
+      expectedVersion: -1,
+    });
+    expect(malformed.status).toBe(400);
+  });
+
   it("never reads a value back with write: a write-only token lists metadata and resolves nothing", async () => {
     const { load, issue } = await start();
     const token = await issue({

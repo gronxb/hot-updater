@@ -46,6 +46,7 @@ import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { useIssueVaultTokenMutation } from "@/lib/vault-api";
 import {
+  actionsReachKind,
   OFFERED_TOKEN_ACTIONS,
   VAULT_SECRET_KIND_IDS,
   vaultSecretKinds,
@@ -62,17 +63,6 @@ const EXPIRY_OPTIONS = {
 } as const;
 
 type Expiry = keyof typeof EXPIRY_OPTIONS;
-
-/**
- * Whether one of `actions` applies to bundle signing keys: the vault never
- * returns one's value, so with reading alone a scope naming one reaches
- * nothing, and the pickers leave them out until an action such as writing
- * is chosen.
- */
-const reachesSigningKeys = (actions: readonly VaultTokenAction[]) =>
-  actions.some(
-    (action) => vaultTokenActions[action]?.reachesSigningKeys === true,
-  );
 
 /** A multi-select chip: checked and tinted while pressed, so the state never rests on shade alone. */
 function ScopeToggle({
@@ -97,9 +87,12 @@ function ScopeToggle({
   );
 }
 
-/** The two variables CI sets to reach this console's vault. */
-export const vaultCiSnippet = (origin: string, token: string) =>
-  `HOT_UPDATER_CONSOLE_URL=${origin}\nHOT_UPDATER_VAULT_TOKEN=${token}`;
+/**
+ * The two variables CI sets to reach this console's vault, and for a token
+ * that signs, the signing token `remoteSigning` sends.
+ */
+export const vaultCiSnippet = (origin: string, token: string, signs = false) =>
+  `HOT_UPDATER_CONSOLE_URL=${origin}\nHOT_UPDATER_VAULT_TOKEN=${token}${signs ? `\nHOT_UPDATER_SIGNING_TOKEN=${token}` : ""}`;
 
 const copy = async (text: string, what: string) => {
   try {
@@ -123,7 +116,10 @@ export function IssueTokenDialog({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
-  const [issued, setIssued] = useState<string | null>(null);
+  const [issued, setIssued] = useState<{
+    readonly token: string;
+    readonly signs: boolean;
+  } | null>(null);
   return (
     <Dialog
       open={open}
@@ -144,7 +140,8 @@ export function IssueTokenDialog({
               onOpenChange(false);
               setIssued(null);
             }}
-            token={issued}
+            signs={issued.signs}
+            token={issued.token}
           />
         )}
       </DialogContent>
@@ -157,7 +154,10 @@ function IssueTokenForm({
   onIssued,
 }: {
   readonly secrets: readonly VaultSecret[];
-  readonly onIssued: (token: string) => void;
+  readonly onIssued: (issued: {
+    readonly token: string;
+    readonly signs: boolean;
+  }) => void;
 }) {
   const id = useId();
   const issue = useIssueVaultTokenMutation();
@@ -170,31 +170,25 @@ function IssueTokenForm({
   const [expiry, setExpiry] = useState<Expiry>("90");
   const [submitted, setSubmitted] = useState(false);
 
-  const signingKeysReachable = reachesSigningKeys(actions);
-  const readable = secrets.filter(
-    ({ kind }) => signingKeysReachable || kind !== "bundle-signing-key",
+  const reachable = secrets.filter(({ kind }) =>
+    actionsReachKind(actions, kind),
   );
-  const scopeKinds = VAULT_SECRET_KIND_IDS.filter(
-    (kind) => signingKeysReachable || kind !== "bundle-signing-key",
+  const scopeKinds = VAULT_SECRET_KIND_IDS.filter((kind) =>
+    actionsReachKind(actions, kind),
   );
   const chooseActions = (next: VaultTokenAction[]) => {
     setActions(next);
-    // Signing keys leave the pickers with the last action that reaches them,
-    // and so leave the scope.
-    if (!reachesSigningKeys(next)) {
-      setKinds((chosen) =>
-        chosen.filter((kind) => kind !== "bundle-signing-key"),
-      );
-      setNames((chosen) =>
-        chosen.filter((chosenName) =>
-          secrets.some(
-            (secret) =>
-              secret.name === chosenName &&
-              secret.kind !== "bundle-signing-key",
-          ),
+    // A secret or kind leaves the pickers with the last action that reaches
+    // it, such as signing keys without sign or write, and so leaves the scope.
+    setKinds((chosen) => chosen.filter((kind) => actionsReachKind(next, kind)));
+    setNames((chosen) =>
+      chosen.filter((chosenName) =>
+        secrets.some(
+          (secret) =>
+            secret.name === chosenName && actionsReachKind(next, secret.kind),
         ),
-      );
-    }
+      ),
+    );
   };
   const trimmedName = name.trim();
   const errors = {
@@ -232,7 +226,7 @@ function IssueTokenForm({
           ? {}
           : { expiresAtMs: Date.now() + Number(expiry) * DAY_MS }),
       });
-      onIssued(result.token);
+      onIssued({ token: result.token, signs: actions.includes("sign") });
       toast.success("Vault token issued");
     } catch (error) {
       toast.error(
@@ -299,7 +293,7 @@ function IssueTokenForm({
               A kind covers every secret of it, including ones added later.
             </FieldDescription>
             <div className="flex flex-col gap-3">
-              {readable.length > 0 ? (
+              {reachable.length > 0 ? (
                 <div className="flex flex-col gap-1.5">
                   <p className="text-xs text-muted-foreground">By name</p>
                   <ToggleGroup
@@ -311,7 +305,7 @@ function IssueTokenForm({
                     value={names}
                     variant="outline"
                   >
-                    {readable.map((secret) => (
+                    {reachable.map((secret) => (
                       <ScopeToggle
                         className="min-h-11 px-2.5 font-mono sm:min-h-8"
                         key={secret.id}
@@ -402,13 +396,15 @@ function IssueTokenForm({
 
 function IssuedToken({
   token,
+  signs,
   onDone,
 }: {
   readonly token: string;
+  readonly signs: boolean;
   readonly onDone: () => void;
 }) {
   const id = useId();
-  const snippet = vaultCiSnippet(window.location.origin, token);
+  const snippet = vaultCiSnippet(window.location.origin, token, signs);
   return (
     <>
       <DialogHeader>
@@ -461,8 +457,9 @@ function IssuedToken({
             {snippet}
           </pre>
           <FieldDescription>
-            Store both as CI secrets: the console's address and the token its
-            vault routes take as a Bearer token.
+            {signs
+              ? "Store them as CI secrets: the console's address, the token its vault routes take as a Bearer token, and the same token as the signing token remoteSigning sends to this console."
+              : "Store both as CI secrets: the console's address and the token its vault routes take as a Bearer token."}
           </FieldDescription>
         </Field>
         <Alert>

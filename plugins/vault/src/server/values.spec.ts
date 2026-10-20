@@ -109,6 +109,17 @@ describe("parseVaultSecretValue", () => {
 
     expect(value).toEqual({ privateKey });
     expect(vaultSecretMetadata("bundle-signing-key", value)).toEqual({});
+    for (const label of ["ENCRYPTED PRIVATE KEY", "EC PRIVATE KEY"]) {
+      expect(() =>
+        parseVaultSecretValue("bundle-signing-key", {
+          privateKey: base64(
+            `-----BEGIN ${label}-----\nMIIE\n-----END ${label}-----\n`,
+          ),
+        }),
+      ).toThrow(
+        "A secret of kind bundle-signing-key has privateKey as an unencrypted RSA private key in PEM",
+      );
+    }
   });
 
   it("takes key/value secrets by environment variable name and shows the names", () => {

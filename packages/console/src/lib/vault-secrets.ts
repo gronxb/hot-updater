@@ -21,25 +21,48 @@ export const VAULT_SECRET_KIND_IDS = [
 /** How the console offers one token action. */
 export interface VaultTokenActionUi {
   readonly label: string;
-  /** Whether it applies to bundle signing keys, which reading never returns. */
-  readonly reachesSigningKeys: boolean;
+  /**
+   * The secrets it applies to: reading never returns a bundle signing key,
+   * signing uses only those, and writing stores any secret.
+   */
+  readonly reaches: "values" | "signing-keys" | "all";
 }
 
 /**
  * What the console offers for each token action the vault defines. It is
  * keyed by the vault's action type, so a new action fails to compile until
  * it is described here, and a spec keeps the keys equal to the vault's
- * list. Null marks an action the console does not serve yet, which it
- * never offers: `sign` waits for the console's signing route. `write` may
- * store a bundle signing key, such as one `hot-updater keys generate` made,
- * which reading never returns.
+ * list. Null marks an action the console does not serve, which it never
+ * offers. `sign` signs bundles at the console's `/_hot-updater/signing`
+ * with a bundle signing key, and `write` may store one, such as one
+ * `hot-updater keys generate --vault` made, which reading never returns.
  */
 export const vaultTokenActions: Readonly<
   Record<VaultTokenAction, VaultTokenActionUi | null>
 > = {
-  read: { label: "Read values", reachesSigningKeys: false },
-  sign: null,
-  write: { label: "Write values", reachesSigningKeys: true },
+  read: { label: "Read values", reaches: "values" },
+  sign: { label: "Sign bundles", reaches: "signing-keys" },
+  write: { label: "Write values", reaches: "all" },
+};
+
+/**
+ * Whether a token taking `actions` reaches secrets of `kind`. Without an
+ * action chosen, every kind but bundle signing keys, as reading reaches.
+ */
+export const actionsReachKind = (
+  actions: readonly VaultTokenAction[],
+  kind: VaultSecretKind,
+): boolean => {
+  const signingKey = kind === "bundle-signing-key";
+  if (actions.length === 0) return !signingKey;
+  return actions.some((action) => {
+    const reaches = vaultTokenActions[action]?.reaches;
+    return (
+      reaches === "all" ||
+      (reaches === "signing-keys" && signingKey) ||
+      (reaches === "values" && !signingKey)
+    );
+  });
 };
 
 /** The actions a token the console issues may take, in the vault's order. */

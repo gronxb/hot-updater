@@ -12,6 +12,7 @@ import {
   ascKeyIdFromFileName,
   buildVaultValue,
   fileToBase64,
+  actionsReachKind,
   OFFERED_TOKEN_ACTIONS,
   VAULT_SECRET_KIND_IDS,
   VAULT_VALUE_LIMIT_BYTES,
@@ -35,8 +36,18 @@ describe("vault secrets in the console", () => {
     expect(Object.keys(vaultTokenActions).sort()).toEqual(
       [...VAULT_TOKEN_ACTIONS].sort(),
     );
-    // The console serves no signing route yet.
-    expect(OFFERED_TOKEN_ACTIONS).toEqual(["read", "write"]);
+    expect(OFFERED_TOKEN_ACTIONS).toEqual(["read", "sign", "write"]);
+  });
+
+  it("reaches signing keys only with sign or write, and only them with sign", () => {
+    expect(actionsReachKind(["read"], "bundle-signing-key")).toBe(false);
+    expect(actionsReachKind(["read"], "asc-api-key")).toBe(true);
+    expect(actionsReachKind(["sign"], "bundle-signing-key")).toBe(true);
+    expect(actionsReachKind(["sign"], "asc-api-key")).toBe(false);
+    expect(actionsReachKind(["write"], "bundle-signing-key")).toBe(true);
+    expect(actionsReachKind(["read", "sign"], "asc-api-key")).toBe(true);
+    expect(actionsReachKind([], "asc-api-key")).toBe(true);
+    expect(actionsReachKind([], "bundle-signing-key")).toBe(false);
   });
 
   it("builds a value the vault takes from each kind's fields", () => {
