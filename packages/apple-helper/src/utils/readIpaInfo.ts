@@ -4,6 +4,7 @@ import path from "path";
 import { execa } from "execa";
 
 import { createRandomTmpDir } from "./createRandomTmpDir";
+import { escapeUnzipPattern } from "./escapeUnzipPattern";
 
 /** What App Store Connect files an `.ipa` under, from its app's Info.plist. */
 export interface IpaInfo {
@@ -40,7 +41,7 @@ export const readIpaInfo = async (ipaPath: string): Promise<IpaInfo> => {
   const directory = await createRandomTmpDir();
   try {
     const infoPlist = path.join(directory, "Info.plist");
-    await execa("unzip", ["-p", ipaPath, entry], {
+    await execa("unzip", ["-p", ipaPath, escapeUnzipPattern(entry)], {
       stdout: { file: infoPlist },
     });
     const info = {} as IpaInfo;
