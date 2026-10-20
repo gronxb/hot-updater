@@ -62,7 +62,7 @@ describe("vault tokens", () => {
       name: "  ci-ios  ",
       scope: {
         secrets: { names: ["asc-api-key", "asc-api-key"] },
-        actions: ["read", "sign", "read"],
+        actions: ["read", "sign", "write", "read"],
       },
       expiresAtMs: 10_000,
     });
@@ -74,7 +74,7 @@ describe("vault tokens", () => {
       prefix: token.slice(0, 13),
       scope: {
         secrets: { names: ["asc-api-key"], kinds: [] },
-        actions: ["read", "sign"],
+        actions: ["read", "sign", "write"],
       },
       expiresAtMs: 10_000,
       createdAtMs: 1_000,
@@ -223,7 +223,10 @@ describe("vault tokens", () => {
       "the register action",
       { secrets: { names: ["play"] }, actions: ["read", "register"] },
     ],
-    ["an unknown action", { secrets: { names: ["play"] }, actions: ["write"] }],
+    [
+      "an unknown action",
+      { secrets: { names: ["play"] }, actions: ["delete"] },
+    ],
     [
       "an apps scope",
       { secrets: { names: ["play"] }, actions: ["read"], apps: ["widget"] },
@@ -315,6 +318,35 @@ describe("authorizeVaultToken", () => {
     ).toBe(false);
   });
 
+  it("allows write only on the secrets its scope reaches, and no read with it", async () => {
+    const token = await issue({
+      secrets: { names: ["release-keystore"], kinds: ["bundle-signing-key"] },
+      actions: ["write"],
+    });
+
+    expect(
+      authorizeVaultToken(token, { action: "write", secret: RELEASE_KEYSTORE }),
+    ).toBe(true);
+    // A signing key can be written, such as hot-updater keys generate uploads.
+    expect(
+      authorizeVaultToken(token, {
+        action: "write",
+        secret: { name: "ota-key", kind: "bundle-signing-key" },
+      }),
+    ).toBe(true);
+    expect(
+      authorizeVaultToken(token, {
+        action: "write",
+        secret: { name: "widget-keystore", kind: "android-keystore" },
+      }),
+    ).toBe(false);
+    for (const action of ["read", "sign"] as const) {
+      expect(
+        authorizeVaultToken(token, { action, secret: RELEASE_KEYSTORE }),
+      ).toBe(false);
+    }
+  });
+
   it("allows a secret named or of a listed kind", async () => {
     const token = await issue({
       secrets: { names: ["play"], kinds: ["asc-api-key"] },
@@ -363,7 +395,7 @@ describe("authorizeVaultToken", () => {
       { secrets: { names: "release-keystore" }, actions: "read" },
       { secrets: { names: ["release-keystore"] }, actions: ["read", 1] },
       { secrets: { names: ["release-keystore", null] }, actions: ["read"] },
-      { secrets: { names: ["release-keystore"] }, actions: ["read", "write"] },
+      { secrets: { names: ["release-keystore"] }, actions: ["read", "delete"] },
       {
         secrets: { names: ["release-keystore"], kinds: ["ssh-key"] },
         actions: ["read"],

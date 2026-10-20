@@ -14,11 +14,13 @@ import { Route as ApiKeysRouteImport } from './routes/api-keys'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as InstallationsRouteImport } from './routes/installations'
 import { Route as RemoteConfigRouteImport } from './routes/remote-config'
+import { Route as VaultRouteImport } from './routes/vault'
 import { Route as InsightsDistributionRouteImport } from './routes/insights_.distribution'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as HotUpdaterVaultV1ResolveRouteImport } from './routes/[_]hot-updater/vault/v1/resolve'
 import { Route as HotUpdaterVaultV1SecretsRouteImport } from './routes/[_]hot-updater/vault/v1/secrets'
 import { Route as ApiBundlesBundleIdDownloadRouteImport } from './routes/api/bundles/$bundleId/download'
+import { Route as HotUpdaterVaultV1SecretsNameRouteImport } from './routes/[_]hot-updater/vault/v1/secrets.$name'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -43,6 +45,11 @@ const InstallationsRoute = InstallationsRouteImport.update({
 const RemoteConfigRoute = RemoteConfigRouteImport.update({
   id: '/remote-config',
   path: '/remote-config',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const VaultRoute = VaultRouteImport.update({
+  id: '/vault',
+  path: '/vault',
   getParentRoute: () => rootRouteImport,
 } as any)
 const InsightsDistributionRoute = InsightsDistributionRouteImport.update({
@@ -73,6 +80,12 @@ const ApiBundlesBundleIdDownloadRoute =
     path: '/api/bundles/$bundleId/download',
     getParentRoute: () => rootRouteImport,
   } as any)
+const HotUpdaterVaultV1SecretsNameRoute =
+  HotUpdaterVaultV1SecretsNameRouteImport.update({
+    id: '/$name',
+    path: '/$name',
+    getParentRoute: () => HotUpdaterVaultV1SecretsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -80,11 +93,13 @@ export interface FileRoutesByFullPath {
   '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
   '/remote-config': typeof RemoteConfigRoute
+  '/vault': typeof VaultRoute
   '/insights/distribution': typeof InsightsDistributionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
-  '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRoute
+  '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRouteWithChildren
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
+  '/_hot-updater/vault/v1/secrets/$name': typeof HotUpdaterVaultV1SecretsNameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -92,11 +107,13 @@ export interface FileRoutesByTo {
   '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
   '/remote-config': typeof RemoteConfigRoute
+  '/vault': typeof VaultRoute
   '/insights/distribution': typeof InsightsDistributionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
-  '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRoute
+  '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRouteWithChildren
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
+  '/_hot-updater/vault/v1/secrets/$name': typeof HotUpdaterVaultV1SecretsNameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -105,11 +122,13 @@ export interface FileRoutesById {
   '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
   '/remote-config': typeof RemoteConfigRoute
+  '/vault': typeof VaultRoute
   '/insights_/distribution': typeof InsightsDistributionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
-  '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRoute
+  '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRouteWithChildren
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
+  '/_hot-updater/vault/v1/secrets/$name': typeof HotUpdaterVaultV1SecretsNameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -119,11 +138,13 @@ export interface FileRouteTypes {
     | '/insights'
     | '/installations'
     | '/remote-config'
+    | '/vault'
     | '/insights/distribution'
     | '/api/auth/$'
     | '/_hot-updater/vault/v1/resolve'
     | '/_hot-updater/vault/v1/secrets'
     | '/api/bundles/$bundleId/download'
+    | '/_hot-updater/vault/v1/secrets/$name'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -131,11 +152,13 @@ export interface FileRouteTypes {
     | '/insights'
     | '/installations'
     | '/remote-config'
+    | '/vault'
     | '/insights/distribution'
     | '/api/auth/$'
     | '/_hot-updater/vault/v1/resolve'
     | '/_hot-updater/vault/v1/secrets'
     | '/api/bundles/$bundleId/download'
+    | '/_hot-updater/vault/v1/secrets/$name'
   id:
     | '__root__'
     | '/'
@@ -143,11 +166,13 @@ export interface FileRouteTypes {
     | '/insights'
     | '/installations'
     | '/remote-config'
+    | '/vault'
     | '/insights_/distribution'
     | '/api/auth/$'
     | '/_hot-updater/vault/v1/resolve'
     | '/_hot-updater/vault/v1/secrets'
     | '/api/bundles/$bundleId/download'
+    | '/_hot-updater/vault/v1/secrets/$name'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -156,10 +181,11 @@ export interface RootRouteChildren {
   InsightsRoute: typeof InsightsRoute
   InstallationsRoute: typeof InstallationsRoute
   RemoteConfigRoute: typeof RemoteConfigRoute
+  VaultRoute: typeof VaultRoute
   InsightsDistributionRoute: typeof InsightsDistributionRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   HotUpdaterVaultV1ResolveRoute: typeof HotUpdaterVaultV1ResolveRoute
-  HotUpdaterVaultV1SecretsRoute: typeof HotUpdaterVaultV1SecretsRoute
+  HotUpdaterVaultV1SecretsRoute: typeof HotUpdaterVaultV1SecretsRouteWithChildren
   ApiBundlesBundleIdDownloadRoute: typeof ApiBundlesBundleIdDownloadRoute
 }
 
@@ -200,6 +226,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof RemoteConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/vault': {
+      id: '/vault'
+      path: '/vault'
+      fullPath: '/vault'
+      preLoaderRoute: typeof VaultRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/insights_/distribution': {
       id: '/insights_/distribution'
       path: '/insights/distribution'
@@ -235,8 +268,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiBundlesBundleIdDownloadRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_hot-updater/vault/v1/secrets/$name': {
+      id: '/_hot-updater/vault/v1/secrets/$name'
+      path: '/$name'
+      fullPath: '/_hot-updater/vault/v1/secrets/$name'
+      preLoaderRoute: typeof HotUpdaterVaultV1SecretsNameRouteImport
+      parentRoute: typeof HotUpdaterVaultV1SecretsRoute
+    }
   }
 }
+
+interface HotUpdaterVaultV1SecretsRouteChildren {
+  HotUpdaterVaultV1SecretsNameRoute: typeof HotUpdaterVaultV1SecretsNameRoute
+}
+
+const HotUpdaterVaultV1SecretsRouteChildren: HotUpdaterVaultV1SecretsRouteChildren =
+  {
+    HotUpdaterVaultV1SecretsNameRoute: HotUpdaterVaultV1SecretsNameRoute,
+  }
+
+const HotUpdaterVaultV1SecretsRouteWithChildren =
+  HotUpdaterVaultV1SecretsRoute._addFileChildren(
+    HotUpdaterVaultV1SecretsRouteChildren,
+  )
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -244,10 +298,11 @@ const rootRouteChildren: RootRouteChildren = {
   InsightsRoute: InsightsRoute,
   InstallationsRoute: InstallationsRoute,
   RemoteConfigRoute: RemoteConfigRoute,
+  VaultRoute: VaultRoute,
   InsightsDistributionRoute: InsightsDistributionRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   HotUpdaterVaultV1ResolveRoute: HotUpdaterVaultV1ResolveRoute,
-  HotUpdaterVaultV1SecretsRoute: HotUpdaterVaultV1SecretsRoute,
+  HotUpdaterVaultV1SecretsRoute: HotUpdaterVaultV1SecretsRouteWithChildren,
   ApiBundlesBundleIdDownloadRoute: ApiBundlesBundleIdDownloadRoute,
 }
 export const routeTree = rootRouteImport

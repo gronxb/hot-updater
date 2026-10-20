@@ -1,5 +1,18 @@
 # hot-updater
 
+## 1.1.1
+
+### Patch Changes
+
+- @hot-updater/android-helper@1.1.1
+  - @hot-updater/apple-helper@1.1.1
+  - @hot-updater/bsdiff@1.1.1
+  - @hot-updater/cli-tools@1.1.1
+  - @hot-updater/console@1.1.1
+  - @hot-updater/protocol@1.1.1
+  - @hot-updater/server@1.1.1
+  - @hot-updater/plugin-core@1.1.1
+
 ## 1.1.0
 
 ### Minor Changes

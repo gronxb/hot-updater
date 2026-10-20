@@ -57,6 +57,13 @@ describe("vault audit log", () => {
           outcome: "denied",
           context: { name: "asc-api-key" },
         },
+        {
+          actor: "tok-ci",
+          action: "write",
+          secretId: "sec-keystore",
+          outcome: "allowed",
+          context: { name: "release-keystore" },
+        },
       ],
     });
 
@@ -100,6 +107,15 @@ describe("vault audit log", () => {
         outcome: "denied",
         context: { name: "asc-api-key" },
       },
+      {
+        id: expect.stringMatching(/^aud-/u),
+        at_ms: 5_000,
+        actor: "tok-ci",
+        action: "write",
+        secret_id: "sec-keystore",
+        outcome: "allowed",
+        context: { name: "release-keystore" },
+      },
     ]);
   });
 
@@ -107,7 +123,7 @@ describe("vault audit log", () => {
     const { api, db } = start();
     for (const entry of [
       { actor: "", action: "read", outcome: "allowed" },
-      { actor: "tok-ci", action: "write", outcome: "allowed" },
+      { actor: "tok-ci", action: "remove", outcome: "allowed" },
       { actor: "tok-ci", action: "read", outcome: "maybe" },
       {
         actor: "tok-ci",

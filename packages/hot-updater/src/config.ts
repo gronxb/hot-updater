@@ -14,3 +14,5 @@ export {
   generateFingerprints,
   readLocalFingerprint,
 } from "./utils/fingerprint";
+
+export { vaultEnv } from "./vaultEnv";

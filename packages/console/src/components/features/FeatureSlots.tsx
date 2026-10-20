@@ -10,6 +10,7 @@ import { useConsoleFeatures } from "@/lib/console-features-api";
 import { apiKeysFeatureUi } from "./api-keys/apiKeysFeatureUi";
 import { insightsFeatureUi } from "./insights/insightsFeatureUi";
 import { remoteConfigFeatureUi } from "./remote-config/remoteConfigFeatureUi";
+import { vaultFeatureUi } from "./vault/vaultFeatureUi";
 
 /** A release, as the Bundles page and the release editor hand it to slots. */
 export interface ReleaseSlotInput {
@@ -62,6 +63,7 @@ const consoleFeatureUi: ConsoleFeatureUiRegistry = {
   ...insightsFeatureUi,
   ...apiKeysFeatureUi,
   ...remoteConfigFeatureUi,
+  ...vaultFeatureUi,
 };
 
 const featureIds = Object.keys(consoleFeatures) as ConsoleFeature[];

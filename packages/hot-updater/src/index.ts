@@ -7,6 +7,7 @@ import {
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
 import { banner, p } from "@hot-updater/cli-tools";
+import { VAULT_SECRET_KINDS } from "@hot-updater/server/plugins";
 import isPortReachable from "is-port-reachable";
 import { normalizeRange } from "verkit";
 
@@ -79,6 +80,14 @@ import {
   handleRemoteConfigShow,
   handleRemoteConfigVersions,
 } from "./commands/remoteConfig";
+import {
+  handleSecretsEnv,
+  handleSecretsList,
+  handleSecretsPut,
+  handleSecretsTokenCreate,
+  handleSecretsTokenList,
+  handleSecretsTokenRevoke,
+} from "./commands/secrets";
 import {
   DEFAULT_STORAGE_PRUNE_PROTECTION_MS,
   handleStoragePrune,
@@ -311,6 +320,119 @@ const integerFrom =
     }
     return n;
   };
+
+/** A comma-separated option, which may also repeat. */
+const commaList = (value: string, previous: string[] = []): string[] => [
+  ...previous,
+  ...value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean),
+];
+
+const secretsCommand = program
+  .command("secrets")
+  .description("Manage the Console vault's secrets and vault tokens");
+
+secretsCommand
+  .command("list")
+  .description("List the secrets the vault token reaches, without values")
+  .option("--json", "output secret metadata as JSON")
+  .action((options: { json?: boolean }) => handleSecretsList(options));
+
+secretsCommand
+  .command("put")
+  .description("Store a secret's next version, which the Console encrypts")
+  .argument("<name>", "the secret's name, such as release-keystore")
+  .argument(
+    "[variables...]",
+    "deploy-credentials and generic: NAME to copy a variable from the environment, or NAME=value, which stays in your shell history",
+  )
+  .addOption(
+    new Option("--kind <kind>", "what the secret holds")
+      .choices(VAULT_SECRET_KINDS)
+      .makeOptionMandatory(),
+  )
+  .option("--p8 <file>", "asc-api-key: the .p8 key file")
+  .option("--key-id <id>", "asc-api-key: the key ID")
+  .option("--issuer-id <id>", "asc-api-key: the issuer ID")
+  .option(
+    "--keystore <file>",
+    "android-keystore: the keystore file; its passwords come from HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD and HOT_UPDATER_ANDROID_KEY_PASSWORD, or a prompt",
+  )
+  .option("--key-alias <alias>", "android-keystore: the key's alias")
+  .option(
+    "--service-account <file>",
+    "play-service-account: the service account's JSON key file",
+  )
+  .option(
+    "--private-key <file>",
+    "bundle-signing-key: the private key PEM, such as hot-updater keys generate writes",
+  )
+  .action((name: string, variables: string[], options) =>
+    handleSecretsPut(name, { ...options, variables }),
+  );
+
+secretsCommand
+  .command("env")
+  .description(
+    "Run a command with the variables of the vault's deploy-credentials and generic secrets",
+  )
+  .argument("<command...>", "the command and its arguments, after --")
+  .action((command: string[]) => handleSecretsEnv(command));
+
+const secretsTokenCommand = secretsCommand
+  .command("token")
+  .description("Issue, list, and revoke vault tokens");
+
+secretsTokenCommand
+  .command("create")
+  .description("Issue a vault token, such as for CI's HOT_UPDATER_VAULT_TOKEN")
+  .requiredOption("--name <name>", "name used to identify the token")
+  .option(
+    "--secrets <names>",
+    "the secrets the token reaches, comma-separated",
+    commaList,
+  )
+  .option(
+    "--kinds <kinds>",
+    `the kinds of secrets the token reaches, comma-separated: ${VAULT_SECRET_KINDS.join(", ")}`,
+    commaList,
+  )
+  .requiredOption(
+    "--actions <actions>",
+    "what the token may do, comma-separated: read, write",
+    commaList,
+  )
+  .option(
+    "--expires-in-days <days>",
+    "days until the token expires (default: never)",
+    integerFrom(1),
+  )
+  .argument("[serverPath]", SERVER_PATH_HELP)
+  .action((serverPath: string | undefined, options) =>
+    handleSecretsTokenCreate({ ...options, serverPath }),
+  );
+
+secretsTokenCommand
+  .command("list")
+  .description("List vault tokens, without their plaintext")
+  .option("--json", "output token metadata as JSON")
+  .argument("[serverPath]", SERVER_PATH_HELP)
+  .action((serverPath: string | undefined, options: { json?: boolean }) =>
+    handleSecretsTokenList({ ...options, serverPath }),
+  );
+
+secretsTokenCommand
+  .command("revoke")
+  .description("Revoke a vault token")
+  .argument("<id>", "vault token id")
+  .argument("[serverPath]", SERVER_PATH_HELP)
+  .option("-y, --yes", "skip confirmation prompt")
+  .action(
+    (id: string, serverPath: string | undefined, options: { yes?: boolean }) =>
+      handleSecretsTokenRevoke(id, { ...options, serverPath }),
+  );
 
 const remoteConfigCommand = program
   .command("remote-config")
