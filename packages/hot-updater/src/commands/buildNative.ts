@@ -5,8 +5,8 @@ import {
   uploadToTestFlight,
 } from "@hot-updater/apple-helper";
 import {
-  type CredentialRequest,
   createMinBundleId,
+  type Credentials,
   CredentialUnavailableError,
   p,
   withCredentialResolver,
@@ -42,51 +42,51 @@ const buildNativeInternal = async ({
   platform: Platform;
 }): Promise<NativeBuildResult> => {
   printBanner();
-  const preparedConfig = await prepareNativeBuild({
-    ...options,
-    platform,
-    operation: "build",
-  });
-  if (!preparedConfig) {
-    p.log.error("preparing native build failed");
-    process.exit(1);
-  }
-  const {
-    buildAdapter,
-    outputPath,
-    scheme,
-    target,
-    androidSchemeConfig,
-    iosSchemeConfig,
-  } = preparedConfig;
-
   const platformName = platform === "android" ? "Android" : "iOS";
 
   try {
-    // A scheme the store would refuse fails before it builds.
-    let testFlightKey: CredentialRequest<"asc-api-key"> | undefined;
-    if (upload === "testflight") {
-      testFlightKey = await reportUploadFailure(() =>
-        resolveTestFlightUploadKey(iosSchemeConfig!),
-      );
-    }
-
-    const minBundleId = createMinBundleId(platform);
-
-    p.log.info(
-      ui.line([
-        "Building",
-        ui.platform(platformName),
-        ui.muted(buildAdapter.name),
-      ]),
-    );
-    // Signing credentials are resolved only by a build that signs with
+    // Signing and upload credentials are resolved only by a build that uses
     // them, and their temporary files are deleted once it finishes.
     return await withCredentialResolver(async (credentials) => {
-      // The upload key is resolved before the build, so a missing one fails
-      // before the build starts. The scheme's signing key is the same item.
-      const ascApiKey =
-        testFlightKey && (await credentials.resolve(testFlightKey));
+      let ascApiKey: Credentials["asc-api-key"] | undefined;
+      const preparedConfig = await prepareNativeBuild({
+        ...options,
+        platform,
+        operation: "build",
+        // A scheme the store would refuse, or a missing upload credential,
+        // fails before the prebuild and the build. The scheme's signing key
+        // is the same item, resolved once.
+        beforePrebuild: async ({ iosSchemeConfig }) => {
+          if (upload === "testflight") {
+            const request = await reportUploadFailure(() =>
+              resolveTestFlightUploadKey(iosSchemeConfig!),
+            );
+            ascApiKey = await credentials.resolve(request);
+          }
+        },
+      });
+      if (!preparedConfig) {
+        p.log.error("preparing native build failed");
+        process.exit(1);
+      }
+      const {
+        buildAdapter,
+        outputPath,
+        scheme,
+        target,
+        androidSchemeConfig,
+        iosSchemeConfig,
+      } = preparedConfig;
+
+      const minBundleId = createMinBundleId(platform);
+
+      p.log.info(
+        ui.line([
+          "Building",
+          ui.platform(platformName),
+          ui.muted(buildAdapter.name),
+        ]),
+      );
       const result = await createNativeBuild({
         platform,
         scheme,
@@ -130,12 +130,13 @@ const buildNativeInternal = async ({
         ].join("\n"),
       );
       if (register) await registerNativeBuild(result);
-      if (ascApiKey) {
+      const apiKey = ascApiKey;
+      if (apiKey) {
         const { state, testFlightUrl } = await reportUploadFailure(
           () =>
             uploadToTestFlight({
               ipaPath: result.artifactPath,
-              apiKey: ascApiKey,
+              apiKey,
             }),
           `The build stays at ${result.artifactPath}.`,
         );

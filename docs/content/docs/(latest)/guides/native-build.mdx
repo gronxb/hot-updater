@@ -212,12 +212,13 @@ The upload authenticates with an App Store Connect API key: the scheme's
 `signing.ascApiKey`, or else the vault's `asc-api-key` secret. The
 `HOT_UPDATER_ASC_KEY*` environment variables in
 [Provide signing credentials](#provide-signing-credentials) override it. The
-CLI resolves the key before the build starts, so a missing key fails before
-the build does, and deletes the key's temporary file when the upload ends.
+CLI resolves the key before the build adapter's prebuild (such as
+`expo prebuild`) and the build, so a missing key fails before either runs, and
+deletes the key's temporary file when the upload ends.
 Certificates and provisioning profiles stay with the build's signing.
 
-Before it builds, the CLI refuses a scheme whose build App Store Connect
-would not take: a simulator scheme, a configuration whose name ends in
+Before the prebuild, the CLI also refuses a scheme whose build App Store
+Connect would not take: a simulator scheme, a configuration whose name ends in
 `Debug`, an `exportOptionsPlist` whose `method` is not `app-store-connect`
 (or `app-store`), and a scheme with neither `signing.ascApiKey` nor an
 `exportOptionsPlist`, which only archives.

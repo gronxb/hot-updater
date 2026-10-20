@@ -112,6 +112,42 @@ describe("prepareNativeBuild", () => {
     });
   });
 
+  it("hands the scheme to beforePrebuild before the adapter's prebuild, which a failing check skips", async () => {
+    const beforePrebuild = vi.fn(async () => {
+      calls.push("beforePrebuild");
+    });
+
+    await prepareNativeBuild({
+      platform: "ios",
+      scheme: "release",
+      interactive: false,
+      operation: "build",
+      beforePrebuild,
+    });
+
+    expect(beforePrebuild).toHaveBeenCalledWith({
+      iosSchemeConfig: expect.objectContaining({
+        scheme: "App",
+        configuration: "Release",
+        hotUpdaterSchemeName: "release",
+      }),
+    });
+    expect(calls).toEqual(["beforePrebuild", "prebuild"]);
+
+    await expect(
+      prepareNativeBuild({
+        platform: "ios",
+        scheme: "release",
+        interactive: false,
+        operation: "build",
+        beforePrebuild: async () => {
+          throw new Error("TestFlight takes an .ipa");
+        },
+      }),
+    ).rejects.toThrow("TestFlight takes an .ipa");
+    expect(buildAdapter.nativeBuild.prebuild).toHaveBeenCalledTimes(1);
+  });
+
   it("refuses an iOS device scheme it cannot export as an .ipa, before the adapter's prebuild", async () => {
     vi.mocked(loadConfig).mockResolvedValue({
       updateStrategy: "appVersion",

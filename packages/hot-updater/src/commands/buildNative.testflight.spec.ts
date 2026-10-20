@@ -43,16 +43,21 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("@/utils/setChannel", () => ({ getChannel: vi.fn() }));
 vi.mock("@/utils/native/prepareNativeBuild", () => ({
-  prepareNativeBuild: vi.fn(async () => ({
-    buildAdapter: { name: "bare" },
-    outputPath: "/out",
-    scheme: "release",
-    target: { fingerprintHash: "fp", appVersion: null },
-    iosSchemeConfig: {
+  prepareNativeBuild: vi.fn(async (options) => {
+    const iosSchemeConfig = {
       configuration: "Release",
       signing: { ascApiKey: "vault:asc-api-key" },
-    } as unknown as EnrichedNativeBuildIosScheme,
-  })),
+    } as unknown as EnrichedNativeBuildIosScheme;
+    await options.beforePrebuild?.({ iosSchemeConfig });
+    events.push("prebuild");
+    return {
+      buildAdapter: { name: "bare" },
+      outputPath: "/out",
+      scheme: "release",
+      target: { fingerprintHash: "fp", appVersion: null },
+      iosSchemeConfig,
+    };
+  }),
 }));
 vi.mock("@/utils/native/createNativeBuild", () => ({
   createNativeBuild: vi.fn(async () => {
@@ -91,7 +96,7 @@ beforeEach(() => {
 });
 
 describe("build:ios --upload testflight", () => {
-  it("checks the scheme and resolves the key before building, then registers and uploads", async () => {
+  it("checks the scheme and resolves the key before the prebuild, then builds, registers and uploads", async () => {
     await buildIosNative({
       interactive: false,
       scheme: "release",
@@ -102,6 +107,7 @@ describe("build:ios --upload testflight", () => {
     expect(events).toEqual([
       "check scheme",
       "resolve asc-api-key",
+      "prebuild",
       "build",
       "register",
       "upload",
@@ -115,11 +121,11 @@ describe("build:ios --upload testflight", () => {
   it("uploads nothing without --upload", async () => {
     await buildIosNative({ interactive: false, scheme: "release" });
 
-    expect(events).toEqual(["build"]);
+    expect(events).toEqual(["prebuild", "build"]);
     expect(resolveTestFlightUploadKey).not.toHaveBeenCalled();
   });
 
-  it("refuses a scheme TestFlight would not take before it builds", async () => {
+  it("refuses a scheme TestFlight would not take before the prebuild", async () => {
     vi.mocked(resolveTestFlightUploadKey).mockRejectedValueOnce(
       new Error(
         "TestFlight takes an .ipa, and the scheme release builds a simulator .app.",
@@ -141,6 +147,7 @@ describe("build:ios --upload testflight", () => {
       "TestFlight takes an .ipa, and the scheme release builds a simulator .app.",
     );
     expect(exit).toHaveBeenCalledWith(1);
+    expect(events).not.toContain("prebuild");
     expect(createNativeBuild).not.toHaveBeenCalled();
     exit.mockRestore();
   });

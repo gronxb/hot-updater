@@ -460,8 +460,8 @@ export const uploadToTestFlight = async ({
 
 /**
  * Sends each part App Store Connect asked for: the bytes at its offset, with
- * only the headers it lists, since the URLs are presigned and take no
- * App Store Connect token.
+ * only the headers it lists, since the URLs are presigned: another header,
+ * or the App Store Connect token, would break their signature.
  */
 const uploadParts = async ({
   ipaPath,
@@ -490,9 +490,7 @@ const uploadParts = async ({
             `${path.basename(ipaPath)} changed while it was uploading.`,
           );
         }
-        const headers: Record<string, string> = {
-          "Content-Type": "application/octet-stream",
-        };
+        const headers: Record<string, string> = {};
         for (const { name, value } of operation.requestHeaders ?? []) {
           headers[name] = value;
         }

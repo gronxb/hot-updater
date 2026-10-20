@@ -404,10 +404,7 @@ describe("uploadToTestFlight", () => {
       {
         method: "PUT",
         url: PART_URL_2,
-        headers: {
-          "Content-Type": "application/octet-stream",
-          "x-amz-meta-part": "2",
-        },
+        headers: { "x-amz-meta-part": "2" },
         body: IPA_BYTES.subarray(12, 20).toString(),
       },
     ]);
