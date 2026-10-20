@@ -80,6 +80,8 @@ export const makeEnv = async (
   options?: {
     readonly preserveKeys?: readonly string[];
     readonly removeKeys?: readonly string[];
+    /** Rewrites only a file that holds exactly this, else throws. */
+    readonly expectedContent?: string;
   },
 ): Promise<string> => {
   try {
@@ -95,6 +97,14 @@ export const makeEnv = async (
         }
         throw error;
       });
+    if (
+      options?.expectedContent !== undefined &&
+      existingContent !== options.expectedContent
+    ) {
+      throw new Error(
+        `${filePath} changed since it was read, so it was not rewritten.`,
+      );
+    }
     const lines = existingContent ? existingContent.split("\n") : [];
     const processedKeys = new Set<string>();
     const updatedLines: string[] = [];

@@ -517,15 +517,21 @@ export const handleSecretsImport = async (
       kind: "deploy-credentials",
       value,
     });
-    // Again after the write: a value changed meanwhile stays in the file.
-    if ((await readEnvFile(file)) !== content) {
+    // Rewritten only while it holds what was read: a value changed during
+    // the write stays in the file.
+    let rewritten: string;
+    try {
+      rewritten = await makeEnv({}, path.resolve(getCwd(), file), {
+        removeKeys: moved,
+        expectedContent: content,
+      });
+    } catch (error) {
+      if ((await readEnvFile(file)) === content) throw error;
       throw new Error(
         `${file} changed while ${secret.name} v${secret.version} was stored from what it held before, so nothing was removed from it: run hot-updater secrets import again.`,
+        { cause: error },
       );
     }
-    const rewritten = await makeEnv({}, path.resolve(getCwd(), file), {
-      removeKeys: moved,
-    });
     const left = moved.filter(
       (variable) => variable in parseLoadedEnv(rewritten),
     );
