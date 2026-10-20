@@ -613,12 +613,11 @@ describe("hot-updater secrets import", () => {
 
     await handleSecretsImport(file, { yes: true });
 
-    expect(requests.at(-1)?.body).toMatchObject({
+    expect(requests.at(-1)?.body).toEqual({
+      kind: "deploy-credentials",
+      expectedVersion: 0,
       value: { HOT_UPDATER_S3_REGION: "us-east-1" },
     });
-    expect(
-      Object.keys((requests.at(-1)?.body as { value: object }).value),
-    ).toEqual(["HOT_UPDATER_S3_REGION"]);
     expect(log.warn).toHaveBeenCalledWith(
       `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD, HOT_UPDATER_ANDROID_KEY_PASSWORD are a native build's android-keystore credential, which builds read from the environment or an android-keystore secret, not deploy-credentials: they stay in ${file}. Store them with hot-updater secrets put <name> --kind android-keystore, then remove them from ${file}.`,
     );
