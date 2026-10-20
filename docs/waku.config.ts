@@ -7,6 +7,11 @@ import { llmsTxtPlugin } from "./plugins/llms-txt-plugin";
 import * as MdxConfig from "./source.config.js";
 
 export default defineConfig({
+  // Waku picks its Vercel adapter from the same variable; other deploys keep
+  // Waku's default adapter.
+  ...(process.env.VERCEL
+    ? { unstable_adapter: "/plugins/vercel-adapter.ts" }
+    : {}),
   vite: {
     plugins: [
       tailwindcss(),
