@@ -458,7 +458,7 @@ function IssuedToken({
           </pre>
           <FieldDescription>
             {signs
-              ? "Store them as CI secrets: the console's address, the token its vault routes take as a Bearer token, and the same token as the signing token remoteSigning sends to this console."
+              ? "Store them as CI secrets: the console's address, and the token, which the vault routes take as a Bearer token and remoteSigning sends as its signing token."
               : "Store both as CI secrets: the console's address and the token its vault routes take as a Bearer token."}
           </FieldDescription>
         </Field>
