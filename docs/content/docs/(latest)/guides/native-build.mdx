@@ -219,9 +219,10 @@ Certificates and provisioning profiles stay with the build's signing.
 
 Before the prebuild, the CLI also refuses a scheme whose build App Store
 Connect would not take: a simulator scheme, a configuration whose name ends in
-`Debug`, an `exportOptionsPlist` whose `method` is not `app-store-connect`
-(or `app-store`), and a scheme with neither `signing.ascApiKey` nor an
-`exportOptionsPlist`, which only archives.
+`Debug`, and a scheme with neither `signing.ascApiKey` nor an
+`exportOptionsPlist`, which only archives. After the prebuild, which may write
+the `exportOptionsPlist`, and before the build, it refuses one whose `method`
+is not `app-store-connect` (or `app-store`).
 
 After the build, and after `--register` when you pass both, the CLI:
 

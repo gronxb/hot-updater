@@ -9,6 +9,7 @@ import {
   parseVaultReference,
   registerSecretValue,
 } from "@hot-updater/cli-tools";
+import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 import { execa } from "execa";
 
 import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
@@ -159,48 +160,66 @@ const APP_STORE_EXPORT_METHODS = new Set(["app-store", "app-store-connect"]);
 
 /**
  * The App Store Connect API key a scheme's `.ipa` uploads with: the
- * `signing.ascApiKey` it signs with, or else the `asc-api-key` item. Throws
- * for a scheme whose build App Store Connect would not take: a simulator
- * `.app`, an `.xcarchive` it cannot export, a Debug configuration, which
- * loads its JavaScript from Metro, or export options of another method.
+ * `signing.ascApiKey` it signs with, or else the `asc-api-key` item. It reads
+ * only the config, before the native projects are written, and throws for a
+ * scheme whose build App Store Connect would not take: a simulator `.app`,
+ * an `.xcarchive` it cannot export, or a Debug configuration, which loads
+ * its JavaScript from Metro.
  */
-export const resolveTestFlightUploadKey = async (
-  schemeConfig: EnrichedNativeBuildIosScheme,
-): Promise<CredentialRequest<"asc-api-key">> => {
-  const scheme = schemeConfig.hotUpdaterSchemeName;
-  if (schemeConfig.simulator) {
+export const resolveTestFlightUploadKey = ({
+  scheme,
+  iosScheme,
+}: {
+  /** The scheme's name. */
+  scheme: string;
+  iosScheme: NativeBuildIosScheme;
+}): CredentialRequest<"asc-api-key"> => {
+  if (iosScheme.simulator) {
     throw new Error(
       `TestFlight takes an .ipa, and the scheme ${scheme} builds a simulator .app.`,
     );
   }
-  if (/debug$/i.test(schemeConfig.configuration)) {
+  const configuration = iosScheme.configuration ?? "Release";
+  if (/debug$/i.test(configuration)) {
     throw new Error(
-      `TestFlight takes a release build, and the scheme ${scheme} builds the ${schemeConfig.configuration} configuration, which loads its JavaScript from Metro.`,
+      `TestFlight takes a release build, and the scheme ${scheme} builds the ${configuration} configuration, which loads its JavaScript from Metro.`,
     );
   }
-  if (schemeConfig.exportOptionsPlist) {
-    const { stdout, exitCode } = await execa(
-      "plutil",
-      ["-extract", "method", "raw", "-o", "-", schemeConfig.exportOptionsPlist],
-      { reject: false },
-    );
-    const method = exitCode === 0 ? stdout.trim() : "";
-    if (!APP_STORE_EXPORT_METHODS.has(method)) {
-      throw new Error(
-        `TestFlight takes an .ipa exported for App Store Connect, and the scheme ${scheme}'s exportOptionsPlist exports with the method ${method || "(none)"}. Set its method to app-store-connect.`,
-      );
-    }
-  } else if (!schemeConfig.signing) {
+  if (!iosScheme.exportOptionsPlist && !iosScheme.signing) {
     throw new Error(
       `The scheme ${scheme} archives without exporting an .ipa. Set signing.ascApiKey, or an exportOptionsPlist with the method app-store-connect.`,
     );
   }
   return {
     kind: "asc-api-key",
-    name: schemeConfig.signing
-      ? parseVaultReference(schemeConfig.signing.ascApiKey, "signing.ascApiKey")
+    name: iosScheme.signing
+      ? parseVaultReference(iosScheme.signing.ascApiKey, "signing.ascApiKey")
       : "asc-api-key",
   };
+};
+
+/**
+ * Throws when the scheme's `exportOptionsPlist` exports with another method
+ * than App Store Connect's, whose `.ipa` App Store Connect refuses. It reads
+ * the file, which an adapter's prebuild may write, so it runs after it.
+ */
+export const assertTestFlightExportOptions = async (
+  schemeConfig: EnrichedNativeBuildIosScheme,
+): Promise<void> => {
+  if (!schemeConfig.exportOptionsPlist) {
+    return;
+  }
+  const { stdout, exitCode } = await execa(
+    "plutil",
+    ["-extract", "method", "raw", "-o", "-", schemeConfig.exportOptionsPlist],
+    { reject: false },
+  );
+  const method = exitCode === 0 ? stdout.trim() : "";
+  if (!APP_STORE_EXPORT_METHODS.has(method)) {
+    throw new Error(
+      `TestFlight takes an .ipa exported for App Store Connect, and the scheme ${schemeConfig.hotUpdaterSchemeName}'s exportOptionsPlist exports with the method ${method || "(none)"}. Set its method to app-store-connect.`,
+    );
+  }
 };
 
 export interface UploadToTestFlightResult {

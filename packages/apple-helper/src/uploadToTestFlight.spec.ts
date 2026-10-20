@@ -35,8 +35,10 @@ import {
   createVaultCredentialSource,
   p,
 } from "@hot-updater/cli-tools";
+import type { NativeBuildIosScheme } from "@hot-updater/plugin-core";
 
 import {
+  assertTestFlightExportOptions,
   createAppStoreConnectToken,
   resolveTestFlightUploadKey,
   uploadToTestFlight,
@@ -622,26 +624,81 @@ const scheme = (
   ...overrides,
 });
 
+const iosScheme = (
+  overrides: Partial<NativeBuildIosScheme> = {},
+): { scheme: string; iosScheme: NativeBuildIosScheme } => ({
+  scheme: "release",
+  iosScheme: {
+    bundleIdentifier: "com.example.app",
+    scheme: "App",
+    ...overrides,
+  },
+});
+
 describe("resolveTestFlightUploadKey", () => {
-  it("uploads with the key the scheme signs with", async () => {
-    await expect(
+  it("uploads with the key the scheme signs with", () => {
+    expect(
       resolveTestFlightUploadKey(
-        scheme({ signing: { ascApiKey: "vault:team-asc-key" } }),
+        iosScheme({ signing: { ascApiKey: "vault:team-asc-key" } }),
       ),
-    ).resolves.toEqual({ kind: "asc-api-key", name: "team-asc-key" });
+    ).toEqual({ kind: "asc-api-key", name: "team-asc-key" });
   });
 
-  it("uploads with the asc-api-key item for a scheme that exports for App Store Connect itself", async () => {
+  it("uploads with the asc-api-key item for a scheme with its own export options", () => {
+    expect(
+      resolveTestFlightUploadKey(
+        iosScheme({ exportOptionsPlist: "ExportOptions.plist" }),
+      ),
+    ).toEqual({ kind: "asc-api-key", name: "asc-api-key" });
+    // The file may not exist until the adapter's prebuild writes it.
+    expect(execa).not.toHaveBeenCalled();
+  });
+
+  it("refuses a simulator scheme", () => {
+    expect(() =>
+      resolveTestFlightUploadKey(
+        iosScheme({
+          simulator: true,
+          signing: { ascApiKey: "vault:asc-api-key" },
+        }),
+      ),
+    ).toThrow(
+      "TestFlight takes an .ipa, and the scheme release builds a simulator .app.",
+    );
+  });
+
+  it("refuses a Debug configuration", () => {
+    expect(() =>
+      resolveTestFlightUploadKey(
+        iosScheme({
+          configuration: "StagingDebug",
+          signing: { ascApiKey: "vault:asc-api-key" },
+        }),
+      ),
+    ).toThrow(
+      "TestFlight takes a release build, and the scheme release builds the StagingDebug configuration, which loads its JavaScript from Metro.",
+    );
+  });
+
+  it("refuses a scheme that only archives", () => {
+    expect(() => resolveTestFlightUploadKey(iosScheme())).toThrow(
+      "The scheme release archives without exporting an .ipa. Set signing.ascApiKey, or an exportOptionsPlist with the method app-store-connect.",
+    );
+  });
+});
+
+describe("assertTestFlightExportOptions", () => {
+  it("accepts export options for App Store Connect", async () => {
     vi.mocked(execa).mockResolvedValueOnce({
       stdout: "app-store-connect\n",
       exitCode: 0,
     } as never);
 
     await expect(
-      resolveTestFlightUploadKey(
+      assertTestFlightExportOptions(
         scheme({ exportOptionsPlist: "/project/ExportOptions.plist" }),
       ),
-    ).resolves.toEqual({ kind: "asc-api-key", name: "asc-api-key" });
+    ).resolves.toBeUndefined();
     expect(execa).toHaveBeenCalledWith(
       "plutil",
       ["-extract", "method", "raw", "-o", "-", "/project/ExportOptions.plist"],
@@ -656,7 +713,7 @@ describe("resolveTestFlightUploadKey", () => {
     } as never);
 
     await expect(
-      resolveTestFlightUploadKey(
+      assertTestFlightExportOptions(
         scheme({ exportOptionsPlist: "/project/ExportOptions.plist" }),
       ),
     ).rejects.toThrow(
@@ -664,35 +721,10 @@ describe("resolveTestFlightUploadKey", () => {
     );
   });
 
-  it("refuses a simulator scheme", async () => {
-    await expect(
-      resolveTestFlightUploadKey(
-        scheme({
-          simulator: true,
-          signing: { ascApiKey: "vault:asc-api-key" },
-        }),
-      ),
-    ).rejects.toThrow(
-      "TestFlight takes an .ipa, and the scheme release builds a simulator .app.",
+  it("reads nothing for a scheme that exports with the API key", async () => {
+    await assertTestFlightExportOptions(
+      scheme({ signing: { ascApiKey: "vault:asc-api-key" } }),
     );
-  });
-
-  it("refuses a Debug configuration", async () => {
-    await expect(
-      resolveTestFlightUploadKey(
-        scheme({
-          configuration: "StagingDebug",
-          signing: { ascApiKey: "vault:asc-api-key" },
-        }),
-      ),
-    ).rejects.toThrow(
-      "TestFlight takes a release build, and the scheme release builds the StagingDebug configuration, which loads its JavaScript from Metro.",
-    );
-  });
-
-  it("refuses a scheme that only archives", async () => {
-    await expect(resolveTestFlightUploadKey(scheme())).rejects.toThrow(
-      "The scheme release archives without exporting an .ipa. Set signing.ascApiKey, or an exportOptionsPlist with the method app-store-connect.",
-    );
+    expect(execa).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,6 @@
 import { buildAndroid } from "@hot-updater/android-helper";
 import {
+  assertTestFlightExportOptions,
   buildIos,
   resolveTestFlightUploadKey,
   uploadToTestFlight,
@@ -56,10 +57,10 @@ const buildNativeInternal = async ({
         // A scheme the store would refuse, or a missing upload credential,
         // fails before the prebuild and the build. The scheme's signing key
         // is the same item, resolved once.
-        beforePrebuild: async ({ iosSchemeConfig }) => {
+        beforePrebuild: async ({ scheme, iosScheme }) => {
           if (upload === "testflight") {
-            const request = await reportUploadFailure(() =>
-              resolveTestFlightUploadKey(iosSchemeConfig!),
+            const request = await reportUploadFailure(async () =>
+              resolveTestFlightUploadKey({ scheme, iosScheme: iosScheme! }),
             );
             ascApiKey = await credentials.resolve(request);
           }
@@ -76,6 +77,12 @@ const buildNativeInternal = async ({
         androidSchemeConfig,
         iosSchemeConfig,
       } = preparedConfig;
+      if (ascApiKey) {
+        // The prebuild may write the export options, which it reads.
+        await reportUploadFailure(() =>
+          assertTestFlightExportOptions(iosSchemeConfig!),
+        );
+      }
 
       const minBundleId = createMinBundleId(platform);
 

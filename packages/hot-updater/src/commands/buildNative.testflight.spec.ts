@@ -10,8 +10,11 @@ const ascApiKey = {
 };
 
 vi.mock("@hot-updater/apple-helper", () => ({
+  assertTestFlightExportOptions: vi.fn(async () => {
+    events.push("check export options");
+  }),
   buildIos: vi.fn(),
-  resolveTestFlightUploadKey: vi.fn(async () => {
+  resolveTestFlightUploadKey: vi.fn(() => {
     events.push("check scheme");
     return { kind: "asc-api-key", name: "asc-api-key" };
   }),
@@ -52,7 +55,10 @@ vi.mock("@/utils/native/prepareNativeBuild", () => ({
       configuration: "Release",
       signing: { ascApiKey: "vault:asc-api-key" },
     } as unknown as EnrichedNativeBuildIosScheme;
-    await options.beforePrebuild?.({ iosSchemeConfig });
+    await options.beforePrebuild?.({
+      scheme: "release",
+      iosScheme: { configuration: "Release" },
+    });
     events.push("prebuild");
     return {
       buildAdapter: { name: "bare" },
@@ -118,6 +124,7 @@ describe("build:ios --upload testflight", () => {
       "check scheme",
       "resolve asc-api-key",
       "prebuild",
+      "check export options",
       "build",
       "register",
       "upload",
@@ -137,11 +144,11 @@ describe("build:ios --upload testflight", () => {
   });
 
   it("refuses a scheme TestFlight would not take before the prebuild", async () => {
-    vi.mocked(resolveTestFlightUploadKey).mockRejectedValueOnce(
-      new Error(
+    vi.mocked(resolveTestFlightUploadKey).mockImplementationOnce(() => {
+      throw new Error(
         "TestFlight takes an .ipa, and the scheme release builds a simulator .app.",
-      ),
-    );
+      );
+    });
     const exit = mockExit();
 
     await expect(
