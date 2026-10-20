@@ -420,6 +420,22 @@ const uploadBundle = async ({
 
     let offset = 0;
     let failures = 0;
+    /**
+     * Resumes at the offset Google confirms. Progress starts a new retry
+     * budget; an attempt that keeps nothing counts against it.
+     */
+    const resumeAt = (confirmed: number, reason: string) => {
+      if (confirmed > offset) {
+        offset = confirmed;
+        failures = 0;
+        return;
+      }
+      offset = confirmed;
+      if (++failures === CHUNK_ATTEMPTS) {
+        throw new Error(`Uploading the .aab failed: ${reason}.`);
+      }
+    };
+
     for (;;) {
       const end = Math.min(offset + CHUNK_SIZE, size);
       const body = Buffer.alloc(end - offset);
@@ -440,21 +456,10 @@ const uploadBundle = async ({
         return readVersionCode(response);
       }
       if (!(response instanceof Error) && response.status === 308) {
-        const confirmed = confirmedOffset(response);
-        if (confirmed > offset) {
-          offset = confirmed;
-          failures = 0;
-          continue;
+        resumeAt(confirmedOffset(response), "Google kept none of a chunk");
+        if (failures > 0) {
+          await sleep(1_000 * failures);
         }
-        // Google kept nothing of the chunk: a failed attempt, resumed where
-        // it confirms.
-        offset = confirmed;
-        if (++failures === CHUNK_ATTEMPTS) {
-          throw new Error(
-            "Uploading the .aab failed: Google kept none of a chunk.",
-          );
-        }
-        await sleep(1_000 * failures);
         continue;
       }
       if (
@@ -468,13 +473,9 @@ const uploadBundle = async ({
           await readApiMessage(response),
         );
       }
-      if (++failures === CHUNK_ATTEMPTS) {
-        throw new Error(
-          `Uploading the .aab failed: ${response instanceof Error ? response.message : `HTTP ${response.status}`}.`,
-        );
-      }
-      await sleep(1_000 * failures);
-      // Ask Google how much it received, then resume there.
+      await sleep(1_000 * (failures + 1));
+      // Ask Google how much it received, which may be all of it, before
+      // counting the attempt as failed.
       const status = await fetch(location, {
         method: "PUT",
         headers: { "Content-Range": `bytes */${size}` },
@@ -482,9 +483,12 @@ const uploadBundle = async ({
       if (status?.ok) {
         return readVersionCode(status);
       }
-      if (status?.status === 308) {
-        offset = confirmedOffset(status);
-      }
+      resumeAt(
+        status?.status === 308 ? confirmedOffset(status) : offset,
+        response instanceof Error
+          ? response.message
+          : `HTTP ${response.status}`,
+      );
     }
   } finally {
     await file.close();
@@ -500,9 +504,12 @@ const readVersionCode = async (response: Response): Promise<number> => {
   return versionCode;
 };
 
-/** The next offset of a `308 Resume Incomplete`: past its `Range`, if any. */
+/**
+ * The next offset of a `308 Resume Incomplete`: past its `Range`, which
+ * Google sends as `bytes=0-<last>` or `0-<last>`, and 0 without one.
+ */
 const confirmedOffset = (response: Response) => {
-  const range = response.headers.get("range")?.match(/^bytes=0-(\d+)$/);
+  const range = response.headers.get("range")?.match(/^(?:bytes=)?0-(\d+)$/);
   return range ? Number(range[1]) + 1 : 0;
 };
 

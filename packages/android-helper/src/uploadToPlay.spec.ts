@@ -305,6 +305,44 @@ describe("uploadToPlay", () => {
     expect(chunks[2]!.body).toBe(AAB_BYTES.subarray(10).toString());
   });
 
+  it("returns the bundle a status query reports complete after the last failed attempt", async () => {
+    const routes = successRoutes();
+    routes[`PUT ${LOCATION}`] = [
+      { status: 503 },
+      // Each offset query: Google has nothing yet, then all of it.
+      { status: 308 },
+      { status: 503 },
+      { status: 308 },
+      { status: 503 },
+      { json: { versionCode: 42 } },
+    ];
+    const { fetch } = createRecordingFetch(routes);
+
+    await expect(upload(fetch)).resolves.toMatchObject({ versionCode: 42 });
+  });
+
+  it("reads a status Range without the bytes= prefix", async () => {
+    const routes = successRoutes();
+    routes[`PUT ${LOCATION}`] = [
+      { status: 503 },
+      { status: 308, headers: { range: "0-9" } },
+      { json: { versionCode: 42 } },
+    ];
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await upload(fetch);
+
+    expect(
+      requests
+        .filter((request) => request.url === LOCATION)
+        .map((request) => request.headers["Content-Range"]),
+    ).toEqual([
+      `bytes 0-${AAB_BYTES.length - 1}/${AAB_BYTES.length}`,
+      `bytes */${AAB_BYTES.length}`,
+      `bytes 10-${AAB_BYTES.length - 1}/${AAB_BYTES.length}`,
+    ]);
+  });
+
   it("gives up on a chunk Google keeps none of", async () => {
     const routes = successRoutes();
     // A 308 without Range: Google committed no bytes.
