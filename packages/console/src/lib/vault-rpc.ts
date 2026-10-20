@@ -1,4 +1,6 @@
 import type {
+  VaultMasterKeys,
+  VaultRewrapResult,
   VaultSecret,
   VaultSecretKind,
   VaultStatus,
@@ -102,10 +104,23 @@ const vaultApi = async () => {
   return requireFeature(runtime, "vault");
 };
 
-/** Whether the console holds a master key to store secrets with; reads nothing. */
+/** Whether the console holds the vault's master keys to store secrets with: one read. */
 export const getVaultStatusRpc = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
   .handler(async (): Promise<VaultStatus> => (await vaultApi()).status());
+
+/** The master keys, with the stored versions under each. */
+export const getVaultKeysRpc = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
+  .handler(async (): Promise<VaultMasterKeys> => (await vaultApi()).keys());
+
+/**
+ * Moves one batch of stored versions to the active master key; the page
+ * calls it until none remain, showing the count as it falls.
+ */
+export const rewrapVaultRpc = createServerFn({ method: "POST" })
+  .middleware([consoleAccess])
+  .handler(async (): Promise<VaultRewrapResult> => (await vaultApi()).rewrap());
 
 export const listVaultSecretsRpc = createServerFn({ method: "GET" })
   .middleware([consoleAccess])
@@ -120,7 +135,8 @@ export const listVaultSecretsRpc = createServerFn({ method: "GET" })
  * someone else stored under the name, and an overwrite never replaces a
  * newer version or brings back a deleted secret. The value must be its
  * kind's shape, and the secret's metadata is what the value shows without
- * its secrets, so the console never sends a value back.
+ * its secrets, so the console never sends a value back. The vault refuses
+ * a master key that is not its own in the same transaction.
  */
 export const putVaultSecretRpc = createServerFn({ method: "POST" })
   .middleware([consoleAccess])
@@ -129,11 +145,6 @@ export const putVaultSecretRpc = createServerFn({ method: "POST" })
     const vault = await vaultApi();
     const { parseVaultSecretValue, vaultSecretMetadata } =
       await import("@hot-updater/server/plugins");
-    // A redeploy may have swapped the key since the page checked it: a
-    // well-formed key that did not seal the stored secrets would split the
-    // vault across two keys, so every write checks it first.
-    const status = await vault.status();
-    if (status.locked) throw new Error(status.message);
     const value = parseVaultSecretValue(data.kind, data.value);
     return vault.put({
       name: data.name,

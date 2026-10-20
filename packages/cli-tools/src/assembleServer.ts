@@ -59,11 +59,12 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
 /**
- * The plugins' APIs as the CLI uses them: the vault's `reveal` refuses with
- * `VaultLockedError`, even where `HOT_UPDATER_VAULT_MASTER_KEY` is set or
- * the definition passes `vault({ masterKey })`. Secrets are decrypted only
- * in the Console, which serves them to vault tokens; the CLI still lists
- * them and manages tokens.
+ * The plugins' APIs as the CLI uses them: the vault's `reveal` and
+ * `rewrap` refuse with `VaultLockedError`, even where the master keys are
+ * set or the definition passes `vault({ masterKey })`. Secrets are
+ * decrypted, and their data keys unwrapped, only in the Console, which
+ * serves them to vault tokens and rewraps them on its Vault page; the CLI
+ * still lists them and manages tokens.
  */
 export const lockVaultReveal = <T extends Readonly<Record<string, unknown>>>(
   api: T,
@@ -76,9 +77,15 @@ export const lockVaultReveal = <T extends Readonly<Record<string, unknown>>>(
         "The CLI does not reveal vault secrets: the Console decrypts them, and serves them at /_hot-updater/vault/v1/resolve to a vault token.",
       ),
     );
+  const rewrap = () =>
+    Promise.reject(
+      new VaultLockedError(
+        "The CLI does not rewrap the vault: only the Console holds its master keys. Rewrap on the Console's Vault page, under Master keys.",
+      ),
+    );
   return Object.freeze({
     ...api,
-    vault: Object.freeze({ ...vault, reveal }),
+    vault: Object.freeze({ ...vault, reveal, rewrap }),
   });
 };
 

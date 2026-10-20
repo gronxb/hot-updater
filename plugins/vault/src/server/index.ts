@@ -9,6 +9,7 @@ export {
   VAULT_AUDIT_ACTIONS,
   VAULT_KEPT_VERSIONS,
   VAULT_MAX_VALUE_BYTES,
+  VAULT_REWRAP_BATCH,
   VAULT_SECRET_KINDS,
   VAULT_TOKEN_ACTIONS,
   type VaultApi,
@@ -16,8 +17,11 @@ export {
   type VaultAuditEntry,
   VaultConflictError,
   VaultInputError,
+  type VaultMasterKeys,
+  type VaultMasterKeyStatus,
   VaultNotFoundError,
   type VaultOptions,
+  type VaultRewrapResult,
   type VaultSecret,
   type VaultSecretKind,
   type VaultStatus,
@@ -28,6 +32,7 @@ export {
 } from "./api";
 export {
   VAULT_MASTER_KEY_ENV,
+  VAULT_MASTER_KEYS_ENV,
   VaultIntegrityError,
   VaultLockedError,
 } from "./crypto";

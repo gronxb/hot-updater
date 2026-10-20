@@ -5,11 +5,15 @@ import {
 } from "@hot-updater/plugin-core";
 
 import {
-  importMasterKey,
+  DEFAULT_KID,
+  importKeyring,
   open,
+  rewrapDataKey,
   seal,
   VAULT_MASTER_KEY_ENV,
+  VAULT_MASTER_KEYS_ENV,
   VaultIntegrityError,
+  type VaultKeyring,
   VaultLockedError,
   type VaultMasterKey,
 } from "./crypto";
@@ -128,25 +132,79 @@ export interface VaultSecret {
 /** Whether the vault can seal and open values, and why not. */
 export type VaultStatus =
   | { readonly locked: false }
-  | { readonly locked: true; readonly message: string };
+  | {
+      readonly locked: true;
+      readonly message: string;
+      /**
+       * The master keys the vault was sealed under, by kid: only they open
+       * it. None while it has sealed nothing, when any new key would do.
+       */
+      readonly knownKeys: readonly string[];
+    };
+
+/** One master key: the vault's, the Console's, or both. */
+export interface VaultMasterKeyStatus {
+  readonly kid: string;
+  /** The key new values are sealed with: the Console's first. */
+  readonly active: boolean;
+  /** Whether the Console holds the key, so it opens what is sealed under it. */
+  readonly held: boolean;
+  /** Stored versions whose data keys this key wraps. */
+  readonly versions: number;
+}
+
+/** The master keys, and how far a rotation to the active one has come. */
+export interface VaultMasterKeys {
+  /** The Console's keys in order, then the others the vault knows. */
+  readonly keys: readonly VaultMasterKeyStatus[];
+  /** Versions under a key other than the active one, which `rewrap` moves. */
+  readonly remaining: number;
+}
+
+/** The versions rewrapped in this batch, and those still under another key. */
+export interface VaultRewrapResult {
+  readonly rewrapped: number;
+  readonly remaining: number;
+}
+
+/** The versions `rewrap` moves at most per call, unless given. */
+export const VAULT_REWRAP_BATCH = 100;
+const MAX_REWRAP_BATCH = 1000;
 
 /** `hotUpdater.api.vault`. */
 export interface VaultApi {
   /**
-   * Whether the master key is set, well formed, and the one the stored
-   * secrets were sealed with, so `put` and `reveal` can run. It opens the
-   * first live secret's value to tell: one page of secrets and one version,
-   * unless removed secrets fill whole pages, and nothing without a key. The
-   * Console asks before it offers to store a secret.
+   * Whether the master keys are set, well formed, and the vault's, so `put`
+   * can run: each key the vault knows opens the check value the vault keeps
+   * for it, and unless the vault is new, the Console holds at least one of
+   * them. One read. The Console asks before it offers to store a secret,
+   * and `put` checks the same in its transaction.
    */
   status(): Promise<VaultStatus>;
+  /**
+   * The master keys the Console holds and the vault knows, with the stored
+   * versions under each, counted page by page through the `byKid` index.
+   * It opens nothing.
+   */
+  keys(): Promise<VaultMasterKeys>;
+  /**
+   * Moves up to `batch` stored versions (100 by default) to the active
+   * master key: each data key is unwrapped with its own key and wrapped
+   * again with the active one, and the value's ciphertext stays as it is.
+   * Once no version is left under a key, the vault forgets that key, so a
+   * Console that holds only it is locked. Call it until `remaining` is 0;
+   * versions under a key the Console does not hold stay where they are.
+   * Throws `VaultLockedError` as `put` does.
+   */
+  rewrap(input?: { readonly batch?: number }): Promise<VaultRewrapResult>;
   /** Every secret but removed ones, by name, without values. */
   list(): Promise<readonly VaultSecret[]>;
   /**
    * Stores `value` as the next version of the secret `name`, creating it,
    * or bringing back a removed one, as needed. `metadata` replaces the
-   * secret's when given. Throws `VaultLockedError` without a master key,
-   * and `VaultConflictError` when `expectedVersion` no longer holds.
+   * secret's when given. Throws `VaultLockedError` without a master key, or
+   * with one the vault would not open with (see `status`), and
+   * `VaultConflictError` when `expectedVersion` no longer holds.
    */
   put(input: {
     readonly name: string;
@@ -241,12 +299,21 @@ export class VaultNotFoundError extends Error {
 
 export interface VaultOptions {
   /**
-   * The master key, 32 bytes in base64. Defaults to the
-   * `HOT_UPDATER_VAULT_MASTER_KEY` environment variable when the vault seals
-   * or opens a value. Without one, `list` and `remove` work, and `put` and
-   * `reveal` throw `VaultLockedError`.
+   * The master key, 32 bytes in base64, whose kid is `default`. Without
+   * `masterKey` or `masterKeys`, the vault reads the
+   * `HOT_UPDATER_VAULT_MASTER_KEY` and `HOT_UPDATER_VAULT_MASTER_KEYS`
+   * environment variables when it seals or opens a value. Without a key,
+   * `list` and `remove` work, and `put` and `reveal` throw
+   * `VaultLockedError`.
    */
   readonly masterKey?: string;
+  /**
+   * Master keys while they rotate, as `kid:key` pairs separated by commas,
+   * such as `"2026-10:<new key>,default:<old key>"`: the first seals new
+   * values, and every one opens what was sealed under it. With `masterKey`
+   * too, that key follows them as `default`.
+   */
+  readonly masterKeys?: string;
 }
 
 const readEnv = (name: string): string | undefined =>
@@ -256,25 +323,134 @@ const readEnv = (name: string): string | undefined =>
     }
   ).process?.env?.[name];
 
-/** Resolves the master key on each use, so a vault without one still lists. */
-const masterKeyResolver = (options: VaultOptions) => {
+/**
+ * Resolves the master keys on each use, so a vault without one still lists:
+ * the options' when either is given, otherwise the environment's.
+ */
+const keyringResolver = (options: VaultOptions) => {
   let cached:
-    | { readonly encoded: string; readonly key: Promise<VaultMasterKey> }
+    | { readonly encoded: string; readonly keyring: Promise<VaultKeyring> }
     | undefined;
-  return (): Promise<VaultMasterKey> => {
-    const encoded = options.masterKey ?? readEnv(VAULT_MASTER_KEY_ENV);
-    if (encoded === undefined || encoded.trim().length === 0) {
-      return Promise.reject(
-        new VaultLockedError(
-          `The vault is locked: set ${VAULT_MASTER_KEY_ENV} where the Console runs to seal and reveal secrets.`,
-        ),
+  return (): Promise<VaultKeyring> => {
+    const fromOptions =
+      options.masterKey !== undefined || options.masterKeys !== undefined;
+    const input = fromOptions
+      ? {
+          keys: options.masterKeys,
+          key: options.masterKey,
+          names: {
+            keys: "vault({ masterKeys })",
+            key: "vault({ masterKey })",
+          },
+        }
+      : {
+          keys: readEnv(VAULT_MASTER_KEYS_ENV),
+          key: readEnv(VAULT_MASTER_KEY_ENV),
+        };
+    const encoded = JSON.stringify([fromOptions, input.keys, input.key]);
+    if (cached?.encoded !== encoded) {
+      cached = {
+        encoded,
+        keyring: importKeyring(input).then((keyring) => {
+          if (keyring !== null) return keyring;
+          throw new VaultLockedError(
+            `The vault is locked: set ${VAULT_MASTER_KEY_ENV} where the Console runs to seal and reveal secrets.`,
+          );
+        }),
+      };
+    }
+    return cached.keyring;
+  };
+};
+
+/**
+ * The row of `secrets` that holds a check value per master key the vault
+ * knows: a constant sealed under that key. Its id and name are outside the
+ * names a secret takes, so no secret lists, reveals, or replaces it, and
+ * it is read by its id, one read.
+ */
+const KEYS_ROW_ID = ".master-keys";
+const KEY_CHECK = "hot-updater-vault/key-check";
+
+type KeyCheck = {
+  readonly wrapped_dek: string;
+  readonly iv: string;
+  readonly ciphertext: string;
+  readonly created_at_ms: number;
+};
+type KeyChecks = Readonly<Record<string, KeyCheck>>;
+
+const keyChecksOf = (row: { readonly metadata: DatabaseJson } | null) => {
+  const checks =
+    row !== null && isPlainObject(row.metadata)
+      ? row.metadata.checks
+      : undefined;
+  return (isPlainObject(checks) ? checks : {}) as KeyChecks;
+};
+
+/** Each kid's check binds its kid, so it does not open as another kid's. */
+const keyCheckId = (kid: string) => `${KEYS_ROW_ID}/${kid}`;
+
+const sealKeyCheck = async (
+  key: VaultMasterKey,
+  at: number,
+): Promise<KeyCheck> => {
+  const { wrapped_dek, iv, ciphertext } = await seal({
+    masterKey: key,
+    secretId: keyCheckId(key.kid),
+    version: 0,
+    plaintext: new TextEncoder().encode(KEY_CHECK),
+  });
+  return { wrapped_dek, iv, ciphertext, created_at_ms: at };
+};
+
+const opensKeyCheck = async (key: VaultMasterKey, check: KeyCheck) => {
+  try {
+    const plaintext = await open({
+      masterKey: key,
+      secretId: keyCheckId(key.kid),
+      version: 0,
+      sealed: { kid: key.kid, ...check },
+    });
+    return new TextDecoder().decode(plaintext) === KEY_CHECK;
+  } catch (error) {
+    if (error instanceof VaultIntegrityError) return false;
+    throw error;
+  }
+};
+
+const quoteKids = (kids: readonly string[]) =>
+  kids.map((kid) => `"${kid}"`).join(", ");
+
+/**
+ * Throws `VaultLockedError` unless the Console's keys are the vault's: each
+ * one the vault knows opens its check, and unless the vault knows none yet,
+ * the Console holds one of them. So Consoles with different keys never
+ * seal into one vault, even an empty one.
+ */
+const checkKeyring = async (keyring: VaultKeyring, checks: KeyChecks) => {
+  let held = false;
+  for (const key of keyring.keys) {
+    const check = checks[key.kid];
+    if (check === undefined) continue;
+    if (!(await opensKeyCheck(key, check))) {
+      throw new VaultLockedError(
+        `The vault is locked: the master key "${key.kid}" in ${VAULT_MASTER_KEY_ENV} or ${VAULT_MASTER_KEYS_ENV} is not the key the vault's secrets were saved with as "${key.kid}". Restore that key where the Console runs.`,
       );
     }
-    if (cached?.encoded !== encoded) {
-      cached = { encoded, key: importMasterKey(encoded) };
-    }
-    return cached.key;
-  };
+    held = true;
+  }
+  const known = Object.keys(checks);
+  if (!held && known.length > 0) {
+    // Only the key `default` can come from the single-key variable.
+    const where =
+      known.length === 1 && known[0] === DEFAULT_KID
+        ? `Set it in ${VAULT_MASTER_KEY_ENV}, or after the new key in ${VAULT_MASTER_KEYS_ENV} to rotate to the new one.`
+        : `List it in ${VAULT_MASTER_KEYS_ENV} as ${known.map((kid) => `"${kid}:<key>"`).join(" or ")}, after the new key to rotate to the new one.`;
+    throw new VaultLockedError(
+      `The vault is locked: its secrets are saved under the master key ${quoteKids(known)}, which the Console does not hold. ${where}`,
+    );
+  }
 };
 
 const normalizeName = (name: unknown): string => {
@@ -529,6 +705,11 @@ export const authorizeVaultToken = (
   );
 };
 
+/** The keys row read where a secret is: no secret has its id. */
+const isSecretRow = <T extends { readonly id: string }>(
+  row: T | null,
+): row is T => row !== null && row.id !== KEYS_ROW_ID;
+
 const toSecret = (row: SecretRow): VaultSecret =>
   Object.freeze({
     id: row.id,
@@ -583,19 +764,66 @@ export const createVaultApi = ({
   readonly now: () => number;
   readonly options?: VaultOptions;
 }): VaultApi => {
-  const masterKey = masterKeyResolver(options);
+  const keyringOf = keyringResolver(options);
+
+  /** The stored versions under one master key, a page at a time. */
+  const countVersions = async (kid: string) => {
+    let count = 0;
+    let cursor: string | undefined;
+    do {
+      const page = await db.findMany("secret_versions", {
+        index: "byKid",
+        where: { kid },
+        limit: PAGE_SIZE,
+        ...(cursor === undefined ? {} : { cursor }),
+      });
+      count += page.rows.length;
+      cursor = page.next;
+    } while (cursor !== undefined);
+    return count;
+  };
 
   const write = (input: {
     readonly name: string;
     readonly kind: VaultSecretKind;
     readonly plaintext: Uint8Array<ArrayBuffer>;
     readonly metadata: Readonly<Record<string, DatabaseJson>> | undefined;
-    readonly key: VaultMasterKey;
+    readonly keyring: VaultKeyring;
     readonly expectedVersion: number | undefined;
     readonly audit: AuditRow | undefined;
   }) =>
     db.transaction(async (tx) => {
       const at = now();
+      const { active } = input.keyring;
+      // Every write checks the keys and bumps the keys row, so a rewrap
+      // that forgets a key it found empty notices a write under it since.
+      const keysRow = await tx.findOne("secrets", { id: KEYS_ROW_ID });
+      const checks = keyChecksOf(keysRow);
+      await checkKeyring(input.keyring, checks);
+      const keysMetadata = {
+        checks:
+          checks[active.kid] === undefined
+            ? { ...checks, [active.kid]: await sealKeyCheck(active, at) }
+            : checks,
+      };
+      if (keysRow === null) {
+        tx.create("secrets", {
+          id: KEYS_ROW_ID,
+          name: KEYS_ROW_ID,
+          kind: "master-keys",
+          current_version: 1,
+          metadata: keysMetadata,
+          created_at_ms: at,
+          updated_at_ms: at,
+          deleted_at_ms: null,
+        });
+      } else {
+        tx.update("secrets", keysRow, {
+          current_version: keysRow.current_version + 1,
+          metadata: keysMetadata,
+          updated_at_ms: at,
+        });
+      }
       const existing = await tx.findOne("secrets", { name: input.name });
       const current =
         existing !== null && existing.deleted_at_ms === null
@@ -631,7 +859,7 @@ export const createVaultApi = ({
         secret_id: id,
         version,
         ...(await seal({
-          masterKey: input.key,
+          masterKey: active,
           secretId: id,
           version,
           plaintext: input.plaintext,
@@ -676,67 +904,162 @@ export const createVaultApi = ({
 
   return Object.freeze({
     async status() {
-      let key: VaultMasterKey;
+      let keyring: VaultKeyring | VaultLockedError;
       try {
-        key = await masterKey();
+        keyring = await keyringOf();
       } catch (error) {
-        if (error instanceof VaultLockedError) {
-          return { locked: true, message: error.message } as const;
-        }
-        throw error;
+        if (!(error instanceof VaultLockedError)) throw error;
+        keyring = error;
       }
-      // A well-formed key that did not seal the stored secrets opens none
-      // of them, and writing with it would split the vault across two keys.
-      // The first live secret by name: removed ones stay as tombstones.
-      let secret: SecretRow | undefined;
-      let cursor: string | undefined;
-      do {
-        const page = await db.findMany("secrets", {
-          index: "byName",
-          where: {},
-          limit: PAGE_SIZE,
-          ...(cursor === undefined ? {} : { cursor }),
-        });
-        for (const row of page.rows) {
-          if (row.deleted_at_ms === null) {
-            secret = row;
-            break;
-          }
-        }
-        cursor = page.next;
-      } while (secret === undefined && cursor !== undefined);
-      if (secret === undefined) return { locked: false } as const;
-      const sealed = await db.findOne("secret_versions", {
-        secret_id: secret.id,
-        version: secret.current_version,
-      });
-      // Removed since it was listed, or never stored: nothing proves the key.
-      if (sealed === null) {
-        return {
-          locked: true,
-          message: `The vault is locked: the secret "${secret.name}" has no stored value to check ${VAULT_MASTER_KEY_ENV} against. Check again.`,
-        } as const;
-      }
+      const checks = keyChecksOf(
+        await db.findOne("secrets", { id: KEYS_ROW_ID }),
+      );
       try {
-        await open({
-          masterKey: key,
-          secretId: secret.id,
-          version: secret.current_version,
-          sealed,
-        });
+        if (keyring instanceof VaultLockedError) throw keyring;
+        await checkKeyring(keyring, checks);
         return { locked: false } as const;
       } catch (error) {
-        if (
-          error instanceof VaultIntegrityError ||
-          error instanceof VaultLockedError
-        ) {
-          return {
-            locked: true,
-            message: `The vault is locked: ${VAULT_MASTER_KEY_ENV} is not the key the vault's secrets were saved with.`,
-          } as const;
-        }
-        throw error;
+        if (!(error instanceof VaultLockedError)) throw error;
+        return Object.freeze({
+          locked: true,
+          message: error.message,
+          knownKeys: Object.freeze(Object.keys(checks)),
+        } as const);
       }
+    },
+
+    async keys() {
+      let keyring: VaultKeyring | undefined;
+      try {
+        keyring = await keyringOf();
+      } catch (error) {
+        if (!(error instanceof VaultLockedError)) throw error;
+      }
+      const checks = keyChecksOf(
+        await db.findOne("secrets", { id: KEYS_ROW_ID }),
+      );
+      const kids = [
+        ...new Set([
+          ...(keyring?.keys.map(({ kid }) => kid) ?? []),
+          ...Object.keys(checks),
+        ]),
+      ];
+      const counts = await Promise.all(kids.map(countVersions));
+      const keys = kids.map((kid, index) => ({
+        kid,
+        active: keyring?.active.kid === kid,
+        held: keyring?.keys.some((key) => key.kid === kid) ?? false,
+        versions: counts[index] ?? 0,
+      }));
+      return Object.freeze({
+        keys: Object.freeze(keys),
+        remaining: keys
+          .filter(({ active }) => !active)
+          .reduce((sum, { versions }) => sum + versions, 0),
+      });
+    },
+
+    async rewrap({ batch = VAULT_REWRAP_BATCH } = {}) {
+      if (
+        !Number.isSafeInteger(batch) ||
+        batch < 1 ||
+        batch > MAX_REWRAP_BATCH
+      ) {
+        throw new VaultInputError(
+          `A rewrap's batch is 1-${MAX_REWRAP_BATCH} versions.`,
+        );
+      }
+      const keyring = await keyringOf();
+      const { active } = keyring;
+      // The active key's check goes in first, so forgetting the others
+      // leaves the vault one key it knows.
+      const before = await db.transaction(async (tx) => {
+        const row = await tx.findOne("secrets", { id: KEYS_ROW_ID });
+        if (row === null) return null;
+        const checks = keyChecksOf(row);
+        await checkKeyring(keyring, checks);
+        if (checks[active.kid] !== undefined) return row;
+        const at = now();
+        const set = {
+          current_version: row.current_version + 1,
+          metadata: {
+            checks: { ...checks, [active.kid]: await sealKeyCheck(active, at) },
+          },
+          updated_at_ms: at,
+        };
+        tx.update("secrets", row, set);
+        return { ...row, ...set };
+      });
+      // Nothing was ever stored.
+      if (before === null) return { rewrapped: 0, remaining: 0 };
+
+      const others = Object.keys(keyChecksOf(before)).filter(
+        (kid) => kid !== active.kid,
+      );
+      let rewrapped = 0;
+      for (const kid of others) {
+        const from = keyring.keys.find((key) => key.kid === kid);
+        // Versions under a key the Console does not hold stay, and count.
+        if (from === undefined) continue;
+        let cursor: string | undefined;
+        while (rewrapped < batch) {
+          const page = await db.findMany("secret_versions", {
+            index: "byKid",
+            where: { kid },
+            limit: Math.min(PAGE_SIZE, batch - rewrapped),
+            ...(cursor === undefined ? {} : { cursor }),
+          });
+          for (const listed of page.rows) {
+            const moved = await db.transaction(async (tx) => {
+              const row = await tx.findOne("secret_versions", {
+                secret_id: listed.secret_id,
+                version: listed.version,
+              });
+              // Removed, pruned, or rewrapped since the page was read.
+              if (row === null || row.kid !== kid) return false;
+              tx.update(
+                "secret_versions",
+                row,
+                await rewrapDataKey({
+                  from,
+                  to: active,
+                  secretId: row.secret_id,
+                  version: row.version,
+                  wrappedDek: row.wrapped_dek,
+                }),
+              );
+              return true;
+            });
+            if (moved) rewrapped += 1;
+          }
+          cursor = page.next;
+          if (cursor === undefined) break;
+        }
+      }
+
+      const counts = await Promise.all(others.map(countVersions));
+      const empty = others.filter((_, index) => counts[index] === 0);
+      if (empty.length > 0) {
+        await db.transaction(async (tx) => {
+          const row = await tx.findOne("secrets", { id: KEYS_ROW_ID });
+          // A put since this rewrap began bumped the row: it may have sealed
+          // under a key counted empty, so the next rewrap decides.
+          if (row === null || row.current_version !== before.current_version) {
+            return;
+          }
+          const checks = { ...keyChecksOf(row) };
+          for (const kid of empty) delete checks[kid];
+          tx.update("secrets", row, {
+            current_version: row.current_version + 1,
+            metadata: { checks },
+            updated_at_ms: now(),
+          });
+        });
+      }
+      return {
+        rewrapped,
+        remaining: counts.reduce((sum, count) => sum + count, 0),
+      };
     },
 
     async list() {
@@ -750,7 +1073,9 @@ export const createVaultApi = ({
           ...(cursor === undefined ? {} : { cursor }),
         });
         for (const row of page.rows) {
-          if (row.deleted_at_ms === null) secrets.push(toSecret(row));
+          if (isSecretRow(row) && row.deleted_at_ms === null) {
+            secrets.push(toSecret(row));
+          }
         }
         cursor = page.next;
       } while (cursor !== undefined);
@@ -778,7 +1103,7 @@ export const createVaultApi = ({
         plaintext: encodeValue(value),
         metadata:
           metadata === undefined ? undefined : normalizeMetadata(metadata),
-        key: await masterKey(),
+        keyring: await keyringOf(),
       };
       for (let attempt = 1; ; attempt += 1) {
         try {
@@ -801,7 +1126,7 @@ export const createVaultApi = ({
     remove: ({ id, expectedVersion }) =>
       db.transaction(async (tx) => {
         const row = await tx.findOne("secrets", { id });
-        if (row === null || row.deleted_at_ms !== null) return null;
+        if (!isSecretRow(row) || row.deleted_at_ms !== null) return null;
         if (
           expectedVersion !== undefined &&
           row.current_version !== expectedVersion
@@ -828,9 +1153,9 @@ export const createVaultApi = ({
       }),
 
     async reveal({ id, version }) {
-      const key = await masterKey();
+      const keyring = await keyringOf();
       const row = await db.findOne("secrets", { id });
-      if (row === null || row.deleted_at_ms !== null) {
+      if (!isSecretRow(row) || row.deleted_at_ms !== null) {
         throw new VaultNotFoundError(`No secret has the id "${id}".`);
       }
       if (version !== undefined && row.current_version !== version) {
@@ -849,6 +1174,12 @@ export const createVaultApi = ({
       if (sealed === null) {
         throw new VaultIntegrityError(
           `The secret "${row.name}" has no version ${row.current_version}.`,
+        );
+      }
+      const key = keyring.keys.find(({ kid }) => kid === sealed.kid);
+      if (key === undefined) {
+        throw new VaultLockedError(
+          `The secret "${row.name}" is sealed under the master key "${sealed.kid}", which the Console does not hold. List it in ${VAULT_MASTER_KEYS_ENV} as "${sealed.kid}:<key>" after the active key, and rewrap the vault before removing it.`,
         );
       }
       const plaintext = await open({

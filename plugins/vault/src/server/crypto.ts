@@ -9,8 +9,18 @@
 /** The environment variable that holds the master key, 32 bytes in base64. */
 export const VAULT_MASTER_KEY_ENV = "HOT_UPDATER_VAULT_MASTER_KEY";
 
-/** The key id stored with versions sealed under the one master key. */
+/**
+ * The environment variable that holds several master keys while they
+ * rotate, as `kid:key` pairs separated by commas. The first seals new
+ * values, and every one opens the values sealed under it.
+ */
+export const VAULT_MASTER_KEYS_ENV = "HOT_UPDATER_VAULT_MASTER_KEYS";
+
+/** The key id of the one master key `HOT_UPDATER_VAULT_MASTER_KEY` holds. */
 export const DEFAULT_KID = "default";
+
+/** A key id: what `secret_versions.kid` holds, up to 32 characters. */
+const KID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,31}$/u;
 
 const IV_BYTES = 12;
 const KEY_BYTES = 32;
@@ -80,6 +90,82 @@ export const importMasterKey = async (
     );
   }
   return { kid, key: await importAesKey(raw) };
+};
+
+/** The master keys a vault holds: the first seals, every one opens. */
+export interface VaultKeyring {
+  readonly active: VaultMasterKey;
+  /** Every key, the active one first, as configured. */
+  readonly keys: readonly VaultMasterKey[];
+}
+
+const trimmed = (value: string | undefined) =>
+  value === undefined || value.trim().length === 0 ? undefined : value.trim();
+
+/**
+ * The master keys of `HOT_UPDATER_VAULT_MASTER_KEYS` (`keys`, `kid:key`
+ * pairs) and `HOT_UPDATER_VAULT_MASTER_KEY` (`key`, the key `default`), in
+ * that order, or null when neither is set. Both may be set while a single
+ * key rotates out: the listed keys come first, and a `default` listed in
+ * both must be the same key. Throws `VaultLockedError` naming what is
+ * malformed.
+ */
+export const importKeyring = async (input: {
+  readonly keys: string | undefined;
+  readonly key: string | undefined;
+  /** How the error messages name the two, such as the environment variables. */
+  readonly names?: { readonly keys: string; readonly key: string };
+}): Promise<VaultKeyring | null> => {
+  const names = input.names ?? {
+    keys: VAULT_MASTER_KEYS_ENV,
+    key: VAULT_MASTER_KEY_ENV,
+  };
+  const entries: { kid: string; encoded: string; from: string }[] = [];
+  const listed = trimmed(input.keys);
+  if (listed !== undefined) {
+    for (const entry of listed.split(",")) {
+      const pair = entry.trim();
+      const at = pair.indexOf(":");
+      const kid = at < 0 ? "" : pair.slice(0, at).trim();
+      if (!KID_PATTERN.test(kid)) {
+        throw new VaultLockedError(
+          `${names.keys} lists master keys as kid:key pairs separated by commas, such as "2026-10:<openssl rand -base64 32>,default:<the old key>"; a kid is 1-32 letters, digits, dots, dashes, or underscores, starting with a letter or digit.`,
+        );
+      }
+      if (entries.some((other) => other.kid === kid)) {
+        throw new VaultLockedError(
+          `${names.keys} lists the master key "${kid}" twice; each kid names one key.`,
+        );
+      }
+      entries.push({ kid, encoded: pair.slice(at + 1), from: names.keys });
+    }
+  }
+  const single = trimmed(input.key);
+  if (single !== undefined) {
+    const listedDefault = entries.find((entry) => entry.kid === DEFAULT_KID);
+    if (listedDefault === undefined) {
+      entries.push({ kid: DEFAULT_KID, encoded: single, from: names.key });
+    } else if (listedDefault.encoded.trim() !== single) {
+      throw new VaultLockedError(
+        `${names.keys} lists a master key "${DEFAULT_KID}" other than ${names.key}; remove one of them.`,
+      );
+    }
+  }
+  const [first] = entries;
+  if (first === undefined) return null;
+  const keys = await Promise.all(
+    entries.map(async ({ kid, encoded, from }) => {
+      try {
+        return await importMasterKey(encoded, kid);
+      } catch (error) {
+        if (!(error instanceof VaultLockedError)) throw error;
+        throw new VaultLockedError(
+          `${from}: the master key "${kid}" must be ${KEY_BYTES} bytes in base64, such as the output of \`openssl rand -base64 32\`.`,
+        );
+      }
+    }),
+  );
+  return { active: keys[0]!, keys };
 };
 
 /** One sealed version, as `secret_versions` stores it. */
@@ -178,6 +264,59 @@ export const open = async (input: {
     throw new VaultIntegrityError(
       `Version ${input.version} of this secret did not decrypt: it was altered or moved from another row, or the master key is not the one that sealed it.`,
     );
+  } finally {
+    dek?.fill(0);
+  }
+};
+
+/**
+ * The data key of one sealed version, unwrapped with the master key `from`
+ * and wrapped again with `to`. The value's ciphertext stays as it is.
+ * Throws `VaultIntegrityError` when `from` does not unwrap it.
+ */
+export const rewrapDataKey = async (input: {
+  readonly from: VaultMasterKey;
+  readonly to: VaultMasterKey;
+  readonly secretId: string;
+  readonly version: number;
+  readonly wrappedDek: string;
+}): Promise<Pick<SealedValue, "kid" | "wrapped_dek">> => {
+  const additionalData = vaultAad(input.secretId, input.version);
+  const wrappedDek = base64ToBytes(input.wrappedDek);
+  if (wrappedDek === null || wrappedDek.byteLength <= IV_BYTES) {
+    throw new VaultIntegrityError(
+      `Version ${input.version} of this secret is not a sealed value.`,
+    );
+  }
+  let dek: Uint8Array<ArrayBuffer> | undefined;
+  try {
+    try {
+      dek = new Uint8Array(
+        await crypto.subtle.decrypt(
+          {
+            name: "AES-GCM",
+            iv: wrappedDek.subarray(0, IV_BYTES),
+            additionalData,
+          },
+          input.from.key,
+          wrappedDek.subarray(IV_BYTES),
+        ),
+      );
+    } catch {
+      throw new VaultIntegrityError(
+        `Version ${input.version} of this secret did not unwrap under master key "${input.from.kid}": it was altered, or "${input.from.kid}" is not the key that sealed it.`,
+      );
+    }
+    const wrapIv = randomBytes(IV_BYTES);
+    const wrapped = await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv: wrapIv, additionalData },
+      input.to.key,
+      dek,
+    );
+    const rewrapped = new Uint8Array(IV_BYTES + wrapped.byteLength);
+    rewrapped.set(wrapIv);
+    rewrapped.set(new Uint8Array(wrapped), IV_BYTES);
+    return { kid: input.to.kid, wrapped_dek: bytesToBase64Url(rewrapped) };
   } finally {
     dek?.fill(0);
   }

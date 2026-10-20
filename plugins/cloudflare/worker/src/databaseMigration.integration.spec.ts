@@ -176,6 +176,36 @@ it("seals and reveals a vault secret on the Workers runtime from the initialized
   await expect(api.list()).resolves.toEqual([secret]);
 });
 
+it("rotates the vault's master key on the Workers runtime: rewraps, then opens with the new key alone", async () => {
+  const keyOf = (byte: number) =>
+    btoa(String.fromCharCode(...new Uint8Array(32).fill(byte)));
+  const open = (options: Parameters<typeof vault>[0]) =>
+    createHotUpdater({
+      database: d1Database(env.DB),
+      storage: createReleaseCatalogTestStorage(),
+      plugins: [vault(options)],
+      clientAccess: "public",
+    }).api.vault;
+  const before = open({ masterKey: keyOf(7) });
+  const secret = await before.put({
+    name: "rotated",
+    kind: "generic",
+    value: { A: "1" },
+  });
+
+  const rotating = open({ masterKeys: `next:${keyOf(8)},default:${keyOf(7)}` });
+  let result = await rotating.rewrap({ batch: 1 });
+  while (result.remaining > 0) result = await rotating.rewrap({ batch: 1 });
+
+  const after = open({ masterKeys: `next:${keyOf(8)}` });
+  await expect(after.status()).resolves.toEqual({ locked: false });
+  await expect(after.reveal({ id: secret.id, actor: "test" })).resolves.toEqual(
+    { A: "1" },
+  );
+  await expect(after.keys()).resolves.toMatchObject({ remaining: 0 });
+  await expect(before.status()).resolves.toMatchObject({ locked: true });
+});
+
 it("publishes a Remote Config template and serves it from the initialized D1 schema", async () => {
   const api = createHotUpdater({
     database: d1Database(env.DB),
