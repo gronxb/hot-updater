@@ -1,0 +1,43 @@
+{
+  "name": "@examples/react-native-v88",
+  "version": "0.0.1",
+  "private": true,
+  "scripts": {
+    "android": "react-native run-android",
+    "ios": "react-native run-ios",
+    "lint": "eslint .",
+    "start": "react-native start"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.25.2",
+    "@babel/preset-env": "^7.25.3",
+    "@babel/runtime": "^7.25.0",
+    "@hot-updater/bare": "workspace:*",
+    "@hot-updater/react-native": "workspace:*",
+    "@hot-updater/supabase": "workspace:*",
+    "@react-native-community/cli": "20.2.0",
+    "@react-native-community/cli-platform-android": "20.2.0",
+    "@react-native-community/cli-platform-ios": "20.2.0",
+    "@react-native/babel-preset": "0.88.0",
+    "@react-native/codegen": "0.88.0",
+    "@react-native/eslint-config": "0.88.0",
+    "@react-native/gradle-plugin": "0.88.0",
+    "@react-native/metro-config": "0.88.0",
+    "@react-native/typescript-config": "0.88.0",
+    "@rnx-kit/metro-config": "^2.0.1",
+    "@rnx-kit/metro-resolver-symlinks": "^0.2.1",
+    "@types/node": "catalog:",
+    "@types/react": "^19.2.0",
+    "eslint": "^8.19.0",
+    "hermes-compiler": "260318099.0.4",
+    "hot-updater": "workspace:*",
+    "prettier": "2.8.8",
+    "react": "19.3.0",
+    "react-native": "0.88.0",
+    "react-native-safe-area-context": "^5.10.1",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  },
+  "engines": {
+    "node": ">=22.11.0"
+  }
+}

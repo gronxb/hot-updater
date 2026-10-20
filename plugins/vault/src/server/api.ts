@@ -40,10 +40,13 @@ export const VAULT_MAX_VALUE_BYTES = 64 * 1024;
 export const VAULT_KEPT_VERSIONS = 5;
 
 /**
- * What a token may do with the secrets in its scope: `read` their values, or
- * `sign` with them, which the Console's remote signing serves.
+ * What a token may do with the secrets in its scope: `read` their values,
+ * `sign` with them, which the Console's remote signing serves, or `write`
+ * new values, which the Console seals with its master key. `write` reads
+ * nothing back: a token that may only write learns a secret's metadata,
+ * never its value.
  */
-export const VAULT_TOKEN_ACTIONS = ["read", "sign"] as const;
+export const VAULT_TOKEN_ACTIONS = ["read", "sign", "write"] as const;
 
 export type VaultTokenAction = (typeof VAULT_TOKEN_ACTIONS)[number];
 
@@ -73,8 +76,11 @@ export interface VaultToken {
   readonly revokedAtMs: number | null;
 }
 
-/** What an audit entry records: a list of secrets, or a read of their values. */
-export const VAULT_AUDIT_ACTIONS = ["list", "read"] as const;
+/**
+ * What an audit entry records: a list of secrets, a read of their values, or
+ * a write of a new value.
+ */
+export const VAULT_AUDIT_ACTIONS = ["list", "read", "write"] as const;
 
 export type VaultAuditAction = (typeof VAULT_AUDIT_ACTIONS)[number];
 
@@ -154,6 +160,12 @@ export interface VaultApi {
      * back a removed one.
      */
     readonly expectedVersion?: number;
+    /**
+     * Who writes, recorded as an allowed `write` of the secret in the audit
+     * log in the write's own transaction, so the log holds an entry exactly
+     * when the version is stored.
+     */
+    readonly audit?: Pick<VaultAuditEntry, "actor" | "context">;
   }): Promise<VaultSecret>;
   /**
    * Removes a secret and deletes its values; null when there is none.
@@ -496,7 +508,8 @@ const toToken = (row: TokenRow): VaultToken =>
 /**
  * Whether a token may take `action` on `secret`: the action is in its scope,
  * and so is the secret, by name or by kind. `sign` is checked against the
- * signing key's secret like `read`. It checks only the scope; pass a token
+ * signing key's secret like `read`, and `write` against the secret a write
+ * stores, by its new name and kind. It checks only the scope; pass a token
  * `verifyToken` just returned, which has checked revocation and expiry.
  */
 export const authorizeVaultToken = (
@@ -527,6 +540,39 @@ const toSecret = (row: SecretRow): VaultSecret =>
     updatedAtMs: row.updated_at_ms,
   });
 
+type AuditRow = {
+  readonly id: string;
+  readonly actor: string;
+  readonly action: VaultAuditAction;
+  readonly secret_id: string | null;
+  readonly outcome: VaultAuditEntry["outcome"];
+  readonly context: Readonly<Record<string, DatabaseJson>>;
+};
+
+/** An audit entry as its row, without its time, or a thrown `VaultInputError`. */
+const toAuditRow = (entry: VaultAuditEntry): AuditRow => {
+  if (
+    !VAULT_AUDIT_ACTIONS.includes(entry.action) ||
+    (entry.outcome !== "allowed" && entry.outcome !== "denied") ||
+    typeof entry.actor !== "string" ||
+    entry.actor.length === 0 ||
+    entry.actor.length > 255
+  ) {
+    throw new VaultInputError(
+      `An audit entry has an actor of 1-255 characters, an action of ${VAULT_AUDIT_ACTIONS.join(", ")}, and an outcome of allowed or denied.`,
+    );
+  }
+  return {
+    id: randomId("aud"),
+    actor: entry.actor,
+    action: entry.action,
+    secret_id: entry.secretId ?? null,
+    outcome: entry.outcome,
+    context:
+      entry.context === undefined ? {} : normalizeAuditContext(entry.context),
+  };
+};
+
 /** The vault's API over its tables. */
 export const createVaultApi = ({
   db,
@@ -546,6 +592,7 @@ export const createVaultApi = ({
     readonly metadata: Readonly<Record<string, DatabaseJson>> | undefined;
     readonly key: VaultMasterKey;
     readonly expectedVersion: number | undefined;
+    readonly audit: AuditRow | undefined;
   }) =>
     db.transaction(async (tx) => {
       const at = now();
@@ -577,6 +624,9 @@ export const createVaultApi = ({
       }
       const id = existing?.id ?? randomId("sec");
       const version = (existing?.current_version ?? 0) + 1;
+      if (input.audit !== undefined) {
+        tx.create("audit", { ...input.audit, secret_id: id, at_ms: at });
+      }
       tx.create("secret_versions", {
         secret_id: id,
         version,
@@ -707,7 +757,7 @@ export const createVaultApi = ({
       return Object.freeze(secrets);
     },
 
-    async put({ name, kind, value, metadata, expectedVersion }) {
+    async put({ name, kind, value, metadata, expectedVersion, audit }) {
       if (
         expectedVersion !== undefined &&
         (!Number.isSafeInteger(expectedVersion) || expectedVersion < 0)
@@ -718,6 +768,11 @@ export const createVaultApi = ({
       }
       const input = {
         expectedVersion,
+        // The secret's id is set in the write, once it is known.
+        audit:
+          audit === undefined
+            ? undefined
+            : toAuditRow({ ...audit, action: "write", outcome: "allowed" }),
         name: normalizeName(name),
         kind: normalizeKind(kind),
         plaintext: encodeValue(value),
@@ -887,30 +942,7 @@ export const createVaultApi = ({
     },
 
     async recordAudit({ entries }) {
-      const rows = entries.map((entry) => {
-        if (
-          !VAULT_AUDIT_ACTIONS.includes(entry.action) ||
-          (entry.outcome !== "allowed" && entry.outcome !== "denied") ||
-          typeof entry.actor !== "string" ||
-          entry.actor.length === 0 ||
-          entry.actor.length > 255
-        ) {
-          throw new VaultInputError(
-            `An audit entry has an actor of 1-255 characters, an action of ${VAULT_AUDIT_ACTIONS.join(", ")}, and an outcome of allowed or denied.`,
-          );
-        }
-        return {
-          id: randomId("aud"),
-          actor: entry.actor,
-          action: entry.action,
-          secret_id: entry.secretId ?? null,
-          outcome: entry.outcome,
-          context:
-            entry.context === undefined
-              ? {}
-              : normalizeAuditContext(entry.context),
-        };
-      });
+      const rows = entries.map(toAuditRow);
       if (rows.length === 0) return;
       const at = now();
       await db.transaction(async (tx) => {

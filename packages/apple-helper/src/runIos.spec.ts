@@ -1,7 +1,10 @@
 import type { CredentialResolver } from "@hot-updater/cli-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@hot-updater/cli-tools", () => ({
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  parseVaultReference: (
+    await importOriginal<typeof import("@hot-updater/cli-tools")>()
+  ).parseVaultReference,
   getCwd: () => "/app",
   p: { log: { info: vi.fn(), error: vi.fn() }, outro: vi.fn() },
 }));
@@ -38,7 +41,7 @@ const schemeConfig: EnrichedNativeBuildIosScheme = {
   destination: [],
   simulator: false,
   hotUpdaterSchemeName: "release",
-  signing: { ascApiKey: "asc-api-key" },
+  signing: { ascApiKey: "vault:asc-api-key" },
 };
 
 const device = (type: AppleDevice["type"]): AppleDevice => ({

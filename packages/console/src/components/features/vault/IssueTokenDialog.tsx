@@ -64,17 +64,15 @@ const EXPIRY_OPTIONS = {
 type Expiry = keyof typeof EXPIRY_OPTIONS;
 
 /**
- * Whether an offered action applies to bundle signing keys: the vault never
+ * Whether one of `actions` applies to bundle signing keys: the vault never
  * returns one's value, so with reading alone a scope naming one reaches
- * nothing, and the pickers leave them out.
+ * nothing, and the pickers leave them out until an action such as writing
+ * is chosen.
  */
-const SIGNING_KEYS_REACHABLE = OFFERED_TOKEN_ACTIONS.some(
-  (action) => vaultTokenActions[action]?.reachesSigningKeys === true,
-);
-
-const SCOPE_KINDS = VAULT_SECRET_KIND_IDS.filter(
-  (kind) => SIGNING_KEYS_REACHABLE || kind !== "bundle-signing-key",
-);
+const reachesSigningKeys = (actions: readonly VaultTokenAction[]) =>
+  actions.some(
+    (action) => vaultTokenActions[action]?.reachesSigningKeys === true,
+  );
 
 /** A multi-select chip: checked and tinted while pressed, so the state never rests on shade alone. */
 function ScopeToggle({
@@ -172,9 +170,32 @@ function IssueTokenForm({
   const [expiry, setExpiry] = useState<Expiry>("90");
   const [submitted, setSubmitted] = useState(false);
 
+  const signingKeysReachable = reachesSigningKeys(actions);
   const readable = secrets.filter(
-    ({ kind }) => SIGNING_KEYS_REACHABLE || kind !== "bundle-signing-key",
+    ({ kind }) => signingKeysReachable || kind !== "bundle-signing-key",
   );
+  const scopeKinds = VAULT_SECRET_KIND_IDS.filter(
+    (kind) => signingKeysReachable || kind !== "bundle-signing-key",
+  );
+  const chooseActions = (next: VaultTokenAction[]) => {
+    setActions(next);
+    // Signing keys leave the pickers with the last action that reaches them,
+    // and so leave the scope.
+    if (!reachesSigningKeys(next)) {
+      setKinds((chosen) =>
+        chosen.filter((kind) => kind !== "bundle-signing-key"),
+      );
+      setNames((chosen) =>
+        chosen.filter((chosenName) =>
+          secrets.some(
+            (secret) =>
+              secret.name === chosenName &&
+              secret.kind !== "bundle-signing-key",
+          ),
+        ),
+      );
+    }
+  };
   const trimmedName = name.trim();
   const errors = {
     name:
@@ -225,8 +246,8 @@ function IssueTokenForm({
       <DialogHeader>
         <DialogTitle>Issue vault token</DialogTitle>
         <DialogDescription>
-          CI reads the secrets in the token's scope from this console, and
-          nothing else.
+          The token reaches the secrets in its scope from this console, for the
+          actions you choose, and nothing else.
         </DialogDescription>
       </DialogHeader>
       <form noValidate onSubmit={handleSubmit}>
@@ -244,6 +265,33 @@ function IssueTokenForm({
             />
             <FieldError>{shown(errors.name)}</FieldError>
           </Field>
+
+          {OFFERED_TOKEN_ACTIONS.length > 1 ? (
+            <FieldSet data-invalid={shown(errors.actions) ? true : undefined}>
+              <FieldLegend variant="label">Actions</FieldLegend>
+              <ToggleGroup
+                aria-label="Actions"
+                multiple
+                onValueChange={(values) =>
+                  chooseActions(values as VaultTokenAction[])
+                }
+                spacing={1}
+                value={actions}
+                variant="outline"
+              >
+                {OFFERED_TOKEN_ACTIONS.map((action) => (
+                  <ScopeToggle
+                    className="min-h-11 px-2.5 sm:min-h-8"
+                    key={action}
+                    value={action}
+                  >
+                    {vaultTokenActions[action]?.label ?? action}
+                  </ScopeToggle>
+                ))}
+              </ToggleGroup>
+              <FieldError>{shown(errors.actions)}</FieldError>
+            </FieldSet>
+          ) : null}
 
           <FieldSet data-invalid={shown(errors.scope) ? true : undefined}>
             <FieldLegend variant="label">Secrets</FieldLegend>
@@ -288,7 +336,7 @@ function IssueTokenForm({
                   value={kinds}
                   variant="outline"
                 >
-                  {SCOPE_KINDS.map((kind) => (
+                  {scopeKinds.map((kind) => (
                     <ScopeToggle
                       className="min-h-11 px-2.5 sm:min-h-8"
                       key={kind}
@@ -302,33 +350,6 @@ function IssueTokenForm({
             </div>
             <FieldError>{shown(errors.scope)}</FieldError>
           </FieldSet>
-
-          {OFFERED_TOKEN_ACTIONS.length > 1 ? (
-            <FieldSet data-invalid={shown(errors.actions) ? true : undefined}>
-              <FieldLegend variant="label">Actions</FieldLegend>
-              <ToggleGroup
-                aria-label="Actions"
-                multiple
-                onValueChange={(values) =>
-                  setActions(values as VaultTokenAction[])
-                }
-                spacing={1}
-                value={actions}
-                variant="outline"
-              >
-                {OFFERED_TOKEN_ACTIONS.map((action) => (
-                  <ScopeToggle
-                    className="min-h-11 px-2.5 sm:min-h-8"
-                    key={action}
-                    value={action}
-                  >
-                    {vaultTokenActions[action]?.label ?? action}
-                  </ScopeToggle>
-                ))}
-              </ToggleGroup>
-              <FieldError>{shown(errors.actions)}</FieldError>
-            </FieldSet>
-          ) : null}
 
           <Field>
             <FieldLabel htmlFor={`${id}-expiry`}>Expires</FieldLabel>

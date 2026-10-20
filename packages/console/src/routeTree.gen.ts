@@ -22,6 +22,7 @@ import { Route as HotUpdaterVaultV1ResolveRouteImport } from './routes/[_]hot-up
 import { Route as HotUpdaterVaultV1SecretsRouteImport } from './routes/[_]hot-updater/vault/v1/secrets'
 import { Route as ApiBundlesBundleIdDownloadRouteImport } from './routes/api/bundles/$bundleId/download'
 import { Route as ApiNativeBuildsBuildIdDownloadRouteImport } from './routes/api/native-builds/$buildId/download'
+import { Route as HotUpdaterVaultV1SecretsNameRouteImport } from './routes/[_]hot-updater/vault/v1/secrets.$name'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -92,6 +93,12 @@ const ApiNativeBuildsBuildIdDownloadRoute =
     path: '/api/native-builds/$buildId/download',
     getParentRoute: () => rootRouteImport,
   } as any)
+const HotUpdaterVaultV1SecretsNameRoute =
+  HotUpdaterVaultV1SecretsNameRouteImport.update({
+    id: '/$name',
+    path: '/$name',
+    getParentRoute: () => HotUpdaterVaultV1SecretsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -104,9 +111,10 @@ export interface FileRoutesByFullPath {
   '/insights/distribution': typeof InsightsDistributionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
-  '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRoute
+  '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRouteWithChildren
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
   '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
+  '/_hot-updater/vault/v1/secrets/$name': typeof HotUpdaterVaultV1SecretsNameRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -119,9 +127,10 @@ export interface FileRoutesByTo {
   '/insights/distribution': typeof InsightsDistributionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
-  '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRoute
+  '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRouteWithChildren
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
   '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
+  '/_hot-updater/vault/v1/secrets/$name': typeof HotUpdaterVaultV1SecretsNameRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -135,9 +144,10 @@ export interface FileRoutesById {
   '/insights_/distribution': typeof InsightsDistributionRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
-  '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRoute
+  '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRouteWithChildren
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
   '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
+  '/_hot-updater/vault/v1/secrets/$name': typeof HotUpdaterVaultV1SecretsNameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -155,6 +165,7 @@ export interface FileRouteTypes {
     | '/_hot-updater/vault/v1/secrets'
     | '/api/bundles/$bundleId/download'
     | '/api/native-builds/$buildId/download'
+    | '/_hot-updater/vault/v1/secrets/$name'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -170,6 +181,7 @@ export interface FileRouteTypes {
     | '/_hot-updater/vault/v1/secrets'
     | '/api/bundles/$bundleId/download'
     | '/api/native-builds/$buildId/download'
+    | '/_hot-updater/vault/v1/secrets/$name'
   id:
     | '__root__'
     | '/'
@@ -185,6 +197,7 @@ export interface FileRouteTypes {
     | '/_hot-updater/vault/v1/secrets'
     | '/api/bundles/$bundleId/download'
     | '/api/native-builds/$buildId/download'
+    | '/_hot-updater/vault/v1/secrets/$name'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -198,7 +211,7 @@ export interface RootRouteChildren {
   InsightsDistributionRoute: typeof InsightsDistributionRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   HotUpdaterVaultV1ResolveRoute: typeof HotUpdaterVaultV1ResolveRoute
-  HotUpdaterVaultV1SecretsRoute: typeof HotUpdaterVaultV1SecretsRoute
+  HotUpdaterVaultV1SecretsRoute: typeof HotUpdaterVaultV1SecretsRouteWithChildren
   ApiBundlesBundleIdDownloadRoute: typeof ApiBundlesBundleIdDownloadRoute
   ApiNativeBuildsBuildIdDownloadRoute: typeof ApiNativeBuildsBuildIdDownloadRoute
 }
@@ -296,8 +309,29 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiNativeBuildsBuildIdDownloadRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_hot-updater/vault/v1/secrets/$name': {
+      id: '/_hot-updater/vault/v1/secrets/$name'
+      path: '/$name'
+      fullPath: '/_hot-updater/vault/v1/secrets/$name'
+      preLoaderRoute: typeof HotUpdaterVaultV1SecretsNameRouteImport
+      parentRoute: typeof HotUpdaterVaultV1SecretsRoute
+    }
   }
 }
+
+interface HotUpdaterVaultV1SecretsRouteChildren {
+  HotUpdaterVaultV1SecretsNameRoute: typeof HotUpdaterVaultV1SecretsNameRoute
+}
+
+const HotUpdaterVaultV1SecretsRouteChildren: HotUpdaterVaultV1SecretsRouteChildren =
+  {
+    HotUpdaterVaultV1SecretsNameRoute: HotUpdaterVaultV1SecretsNameRoute,
+  }
+
+const HotUpdaterVaultV1SecretsRouteWithChildren =
+  HotUpdaterVaultV1SecretsRoute._addFileChildren(
+    HotUpdaterVaultV1SecretsRouteChildren,
+  )
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -310,7 +344,7 @@ const rootRouteChildren: RootRouteChildren = {
   InsightsDistributionRoute: InsightsDistributionRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   HotUpdaterVaultV1ResolveRoute: HotUpdaterVaultV1ResolveRoute,
-  HotUpdaterVaultV1SecretsRoute: HotUpdaterVaultV1SecretsRoute,
+  HotUpdaterVaultV1SecretsRoute: HotUpdaterVaultV1SecretsRouteWithChildren,
   ApiBundlesBundleIdDownloadRoute: ApiBundlesBundleIdDownloadRoute,
   ApiNativeBuildsBuildIdDownloadRoute: ApiNativeBuildsBuildIdDownloadRoute,
 }

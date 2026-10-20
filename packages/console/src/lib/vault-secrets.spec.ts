@@ -36,7 +36,7 @@ describe("vault secrets in the console", () => {
       [...VAULT_TOKEN_ACTIONS].sort(),
     );
     // The console serves no signing route yet.
-    expect(OFFERED_TOKEN_ACTIONS).toEqual(["read"]);
+    expect(OFFERED_TOKEN_ACTIONS).toEqual(["read", "write"]);
   });
 
   it("builds a value the vault takes from each kind's fields", () => {

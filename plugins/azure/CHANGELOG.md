@@ -1,5 +1,14 @@
 # @hot-updater/azure
 
+## 1.1.1
+
+### Patch Changes
+
+- @hot-updater/cli-tools@1.1.1
+  - @hot-updater/protocol@1.1.1
+  - @hot-updater/server@1.1.1
+  - @hot-updater/plugin-core@1.1.1
+
 ## 1.1.0
 
 ### Patch Changes

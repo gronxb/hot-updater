@@ -53,12 +53,12 @@ export default defineConfig({
       release: {
         packageName: "com.example.app",
         // An .aab by default; aab: false builds an .apk.
-        signing: { keystore: "release-keystore" },
+        signing: { keystore: "vault:release-keystore" },
       },
       previewApk: {
         packageName: "com.example.app",
         aab: false,
-        signing: { keystore: "release-keystore" },
+        signing: { keystore: "vault:release-keystore" },
       },
     },
     ios: {
@@ -66,7 +66,7 @@ export default defineConfig({
         bundleIdentifier: "com.example.app",
         scheme: "ExampleApp",
         installPods: true,
-        signing: { ascApiKey: "asc-api-key" },
+        signing: { ascApiKey: "vault:asc-api-key" },
       },
       simulator: {
         bundleIdentifier: "com.example.app",
@@ -89,12 +89,20 @@ needs `signing.ascApiKey`, which exports for App Store Connect, or an
 
 ## Provide signing credentials
 
-`signing` names a credential the CLI resolves while it builds. The build
-resolves it only when it signs: a Debug variant keeps the debug keystore, and a
-simulator build signs nothing. A scheme without `signing` keeps the project's
-own signing settings.
+`signing` names a secret in the
+[console's vault](/docs/guides/console-deployment/vault) as `vault:<name>`,
+which the CLI resolves while it builds. The build resolves it only when it
+signs: a Debug variant keeps the debug keystore, and a simulator build signs
+nothing. A scheme without `signing` keeps the project's own signing settings.
 
-Set these environment variables to provide the credentials:
+The CLI reaches the vault with `HOT_UPDATER_CONSOLE_URL` and
+`HOT_UPDATER_VAULT_TOKEN`, a token whose scope allows `read` on the secret.
+[Secrets in the CLI](/docs/guides/secrets) covers storing secrets and
+issuing tokens.
+
+These environment variables override the vault for one credential: when any
+of a credential's variables is set, the build reads that credential from them
+and never asks the console for it.
 
 | Credential      | Environment variables                                                                                                                                   |
 | --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |

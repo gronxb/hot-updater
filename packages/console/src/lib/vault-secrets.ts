@@ -30,13 +30,16 @@ export interface VaultTokenActionUi {
  * keyed by the vault's action type, so a new action fails to compile until
  * it is described here, and a spec keeps the keys equal to the vault's
  * list. Null marks an action the console does not serve yet, which it
- * never offers: `sign` waits for the console's signing route.
+ * never offers: `sign` waits for the console's signing route. `write` may
+ * store a bundle signing key, such as one `hot-updater keys generate` made,
+ * which reading never returns.
  */
 export const vaultTokenActions: Readonly<
   Record<VaultTokenAction, VaultTokenActionUi | null>
 > = {
   read: { label: "Read values", reachesSigningKeys: false },
   sign: null,
+  write: { label: "Write values", reachesSigningKeys: true },
 };
 
 /** The actions a token the console issues may take, in the vault's order. */

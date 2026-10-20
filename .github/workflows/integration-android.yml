@@ -4,9 +4,11 @@ on:
       - main
     paths:
       - "packages/react-native/android/**"
+      - "examples/v0.88.0/**"
   pull_request:
     paths:
       - "packages/react-native/android/**"
+      - "examples/v0.88.0/**"
 
 name: Android Integration
 
@@ -48,6 +50,29 @@ jobs:
 
       - name: Build Android
         run: cd examples/v0.76.1-new-arch/android && ./gradlew assembleDebug --build-cache && cd ../..
+        env:
+          HOT_UPDATER_CHANNEL: dev
+
+  build-latest:
+    runs-on: ubuntu-latest
+    # The newest React Native, on the Kotlin compiler its template pins.
+    name: Build Android (React Native 0.88)
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
+      - name: Setup pnpm
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b
+      - name: Setup Node.js
+        uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+      - run: pnpm install
+
+      - name: Library Build
+        run: pnpm build
+
+      - name: Build Android
+        run: cd examples/v0.88.0/android && ./gradlew assembleDebug --build-cache && cd ../..
         env:
           HOT_UPDATER_CHANNEL: dev
 
