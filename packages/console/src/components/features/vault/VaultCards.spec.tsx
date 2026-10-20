@@ -871,14 +871,16 @@ describe("MasterKeysCard", () => {
       readonly kid: string;
       readonly active?: boolean;
       readonly held?: boolean;
+      readonly known?: boolean;
       readonly versions: number;
     }[],
   ) => {
     const entries = keys.map(
-      ({ kid, active = false, held = true, versions }) => ({
+      ({ kid, active = false, held = true, known = true, versions }) => ({
         kid,
         active,
         held,
+        known,
         versions,
       }),
     );
@@ -935,7 +937,7 @@ describe("MasterKeysCard", () => {
       <MasterKeysCard
         keys={keysOf([
           { kid: "next", active: true, versions: 152 },
-          { kid: "default", versions: 0 },
+          { kid: "default", known: false, versions: 0 },
         ])}
         status={unlocked}
       />,
@@ -944,6 +946,30 @@ describe("MasterKeysCard", () => {
     expect(screen.getByText("Every version uses next")).toBeDefined();
     expect(screen.getByText("Unused")).toBeDefined();
     expect(screen.queryByRole("button", { name: /Rewrap/ })).toBeNull();
+  });
+
+  it("finishes a rotation with nothing to move while the vault still knows the old key", async () => {
+    rewrapMutation.mutateAsync.mockResolvedValue({
+      rewrapped: 0,
+      remaining: 0,
+    });
+    render(
+      <MasterKeysCard
+        keys={keysOf([
+          { kid: "next", active: true, known: false, versions: 0 },
+          { kid: "default", versions: 0 },
+        ])}
+        status={unlocked}
+      />,
+    );
+
+    expect(screen.getByText("Finish the rotation to next")).toBeDefined();
+    expect(screen.queryByText(/Every version uses/)).toBeNull();
+    expect(screen.getByText("Rotating out")).toBeDefined();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Finish rotation" }));
+    });
+    expect(rewrapMutation.mutateAsync).toHaveBeenCalledOnce();
   });
 
   it("names the keys the console lacks, and rewraps nothing it cannot open", () => {

@@ -257,7 +257,9 @@ under the new key.
    down until none are left. CI keeps resolving secrets while it runs, and
    writes during it are sealed under the new key.
 4. When every version is under the new key, the vault forgets the old one,
-   and the page says which keys can leave the environment. Remove them and
+   and the page says which keys can leave the environment. When nothing is
+   stored under the old key, such as after every secret was deleted,
+   **Finish rotation** does the same without moving anything. Remove them and
    redeploy:
 
    ```bash
@@ -272,7 +274,8 @@ again.
 
 Rewrapping needs the master keys, so only the console runs it. The CLI never
 rewraps, as it never reveals a value. Over the database,
-`hotUpdater.api.vault.keys()` returns the same per-key counts, and
+`hotUpdater.api.vault.keys()` returns the same per-key counts, with whether
+the vault still knows each key, and
 `rewrap({ batch })` moves one batch and returns `{ rewrapped, remaining }`.
 
 A vault whose key is lost cannot be opened or rotated. To start over with a

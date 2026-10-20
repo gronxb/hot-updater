@@ -59,7 +59,8 @@ function KidList({ kids }: { readonly kids: readonly string[] }) {
 function KeyRole({ entry }: { readonly entry: VaultMasterKeyStatus }) {
   if (entry.active) return <Badge variant="secondary">Active</Badge>;
   if (!entry.held) return <Badge variant="warning">Not in this console</Badge>;
-  return entry.versions > 0 ? (
+  // Still known to the vault: a rewrap moves its versions and forgets it.
+  return entry.known ? (
     <Badge variant="outline">Rotating out</Badge>
   ) : (
     <Badge className="text-muted-foreground" variant="outline">
@@ -101,10 +102,16 @@ export function MasterKeysCard({
     .filter((entry) => entry.held)
     .reduce((sum, entry) => sum + entry.versions, 0);
   const stranded = others.filter((entry) => !entry.held && entry.versions > 0);
-  const unused = others.filter((entry) => entry.held && entry.versions === 0);
+  // Known to the vault with nothing under it, such as after every secret
+  // was deleted: a rewrap only has to forget it.
+  const forgettable = others.filter(
+    (entry) => entry.known && entry.versions === 0,
+  );
+  const unused = others.filter((entry) => entry.held && !entry.known);
   const locked = status.data?.locked === true;
+  const pending = movable > 0 || forgettable.length > 0;
   const canRewrap =
-    !locked && active !== undefined && movable > 0 && !rewrap.isPending;
+    !locked && active !== undefined && pending && !rewrap.isPending;
 
   const runRewrap = async () => {
     const from = keys.data?.remaining ?? 0;
@@ -143,7 +150,7 @@ export function MasterKeysCard({
           <h2>Master keys</h2>
         </CardTitle>
         {/* Offered only while some version can move. */}
-        {movable === 0 && !rewrap.isPending ? null : (
+        {!pending && !rewrap.isPending ? null : (
           <Button
             className="min-h-11 sm:min-h-8"
             disabled={!canRewrap}
@@ -159,7 +166,7 @@ export function MasterKeysCard({
               ? "Rewrapping…"
               : movable > 0
                 ? `Rewrap ${versionsText(movable)}`
-                : "Rewrap"}
+                : "Finish rotation"}
           </Button>
         )}
       </CardHeader>
@@ -218,6 +225,23 @@ export function MasterKeysCard({
                 Rewrap seals their data keys again under{" "}
                 <code className="font-mono">{active?.kid}</code>. Values are not
                 decrypted, and CI keeps resolving them while it runs.
+              </AlertDescription>
+            </Alert>
+          </div>
+        ) : forgettable.length > 0 ? (
+          <div className="border-b p-4">
+            <Alert>
+              <RotateCw />
+              <AlertTitle>Finish the rotation to {active?.kid}</AlertTitle>
+              <AlertDescription>
+                No version uses{" "}
+                <KidList kids={forgettable.map(({ kid }) => kid)} />, but the
+                vault still accepts only{" "}
+                {forgettable.length === 1 ? "that key" : "those keys"}. Finish
+                the rotation so it records{" "}
+                <code className="font-mono">{active?.kid}</code> and forgets{" "}
+                {forgettable.length === 1 ? "it" : "them"}, before removing{" "}
+                {forgettable.length === 1 ? "it" : "them"} from the environment.
               </AlertDescription>
             </Alert>
           </div>

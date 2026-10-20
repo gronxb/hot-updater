@@ -149,6 +149,12 @@ export interface VaultMasterKeyStatus {
   readonly active: boolean;
   /** Whether the Console holds the key, so it opens what is sealed under it. */
   readonly held: boolean;
+  /**
+   * Whether the vault knows the key: it keeps a check for it, so only this
+   * key is accepted under its kid. `rewrap` forgets an older key once no
+   * version is left under it, even when none ever was.
+   */
+  readonly known: boolean;
   /** Stored versions whose data keys this key wraps. */
   readonly versions: number;
 }
@@ -1058,6 +1064,7 @@ export const createVaultApi = ({
         kid,
         active: keyring?.active.kid === kid,
         held: keyring?.keys.some((key) => key.kid === kid) ?? false,
+        known: known.includes(kid),
         versions: counts[index] ?? 0,
       }));
       return Object.freeze({

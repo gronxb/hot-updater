@@ -82,7 +82,9 @@ export function VaultPage({
                 value="keys"
               >
                 Master keys
-                {keys.data === undefined || keys.data.remaining === 0 ? null : (
+                {keys.data?.keys.some(
+                  ({ active, known }) => !active && known,
+                ) !== true ? null : (
                   <span className="size-1.5 rounded-full bg-warning">
                     <span className="sr-only">Rotation pending</span>
                   </span>

@@ -114,8 +114,8 @@ describe("vault RPC", () => {
     open({ masterKeys: `next:${OTHER_KEY},default:${MASTER_KEY}` });
     await expect(getVaultKeysRpc()).resolves.toEqual({
       keys: [
-        { kid: "next", active: true, held: true, versions: 0 },
-        { kid: "default", active: false, held: true, versions: 1 },
+        { kid: "next", active: true, held: true, known: false, versions: 0 },
+        { kid: "default", active: false, held: true, known: true, versions: 1 },
       ],
       remaining: 1,
     });

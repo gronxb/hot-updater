@@ -131,8 +131,8 @@ describe("vault master keys", () => {
     );
     await expect(rotating.keys()).resolves.toEqual({
       keys: [
-        { kid: "next", active: true, held: true, versions: 1 },
-        { kid: "default", active: false, held: true, versions: 1 },
+        { kid: "next", active: true, held: true, known: true, versions: 1 },
+        { kid: "default", active: false, held: true, known: true, versions: 1 },
       ],
       remaining: 1,
     });
@@ -175,8 +175,15 @@ describe("vault master keys", () => {
     });
     await expect(rotating.keys()).resolves.toEqual({
       keys: [
-        { kid: "next", active: true, held: true, versions: 6 },
-        { kid: "default", active: false, held: true, versions: 0 },
+        { kid: "next", active: true, held: true, known: true, versions: 6 },
+        // Forgotten by the vault: it can leave the environment.
+        {
+          kid: "default",
+          active: false,
+          held: true,
+          known: false,
+          versions: 0,
+        },
       ],
       remaining: 0,
     });
@@ -201,7 +208,9 @@ describe("vault master keys", () => {
     );
     expect(values).toEqual(["v1c", "v2", "v3", "v4"]);
     await expect(after.keys()).resolves.toEqual({
-      keys: [{ kid: "next", active: true, held: true, versions: 6 }],
+      keys: [
+        { kid: "next", active: true, held: true, known: true, versions: 6 },
+      ],
       remaining: 0,
     });
 
@@ -257,10 +266,16 @@ describe("vault master keys", () => {
     await expect(c.rewrap()).resolves.toEqual({ rewrapped: 1, remaining: 1 });
     await expect(c.keys()).resolves.toEqual({
       keys: [
-        { kid: "c", active: true, held: true, versions: 1 },
+        { kid: "c", active: true, held: true, known: true, versions: 1 },
         // Forgotten by the vault, still configured: nothing under it.
-        { kid: "b", active: false, held: true, versions: 0 },
-        { kid: "default", active: false, held: false, versions: 1 },
+        { kid: "b", active: false, held: true, known: false, versions: 0 },
+        {
+          kid: "default",
+          active: false,
+          held: false,
+          known: true,
+          versions: 1,
+        },
       ],
       remaining: 1,
     });
@@ -350,7 +365,9 @@ describe("vault master keys", () => {
       "v7",
     );
     await expect(after.keys()).resolves.toEqual({
-      keys: [{ kid: "next", active: true, held: true, versions: 5 }],
+      keys: [
+        { kid: "next", active: true, held: true, known: true, versions: 5 },
+      ],
       remaining: 0,
     });
   });
@@ -403,6 +420,31 @@ describe("vault master keys", () => {
     await expect(console({ masterKey: KEY_C }).status()).resolves.toMatchObject(
       { locked: true, knownKeys: ["next"] },
     );
+  });
+
+  it("forgets an old key with nothing under it, once every secret was removed", async () => {
+    const { console } = start();
+    const a = console({ masterKey: KEY_A });
+    const stored = await a.put({ name: "s1", kind: "generic", value: "v1" });
+    await a.remove({ id: stored.id });
+
+    const rotating = console({ masterKeys: `next:${KEY_B},default:${KEY_A}` });
+    // Nothing to move, but the vault still knows only the old key.
+    await expect(rotating.keys()).resolves.toEqual({
+      keys: [
+        { kid: "next", active: true, held: true, known: false, versions: 0 },
+        { kid: "default", active: false, held: true, known: true, versions: 0 },
+      ],
+      remaining: 0,
+    });
+    await expect(rotating.rewrap()).resolves.toEqual({
+      rewrapped: 0,
+      remaining: 0,
+    });
+    await expect(
+      console({ masterKeys: `next:${KEY_B}` }).status(),
+    ).resolves.toEqual({ locked: false });
+    await expect(a.status()).resolves.toMatchObject({ locked: true });
   });
 
   it("refuses a rewrap without a key or with a batch out of range", async () => {
