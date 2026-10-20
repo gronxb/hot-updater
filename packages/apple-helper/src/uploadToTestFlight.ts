@@ -437,39 +437,10 @@ export const uploadToTestFlight = async ({
   }
   const testFlightUrl = `https://appstoreconnect.apple.com/apps/${app.id}/testflight/ios`;
 
-  // The reservations of this version and build number awaiting a file. A
-  // failed lookup is retried, never read as none.
-  const listReservations = () =>
-    retrying(() =>
-      request<{ data: { id: string }[] }>(
-        "Finding the build upload",
-        "GET",
-        `/v1/apps/${app.id}/buildUploads?${new URLSearchParams({
-          "filter[cfBundleShortVersionString]": info.shortVersion,
-          "filter[cfBundleVersion]": info.bundleVersion,
-          "filter[platform]": "IOS",
-          "filter[state]": "AWAITING_UPLOAD",
-        })}`,
-      ),
-    ).then(({ data }) => data.map(({ id }) => id));
-  // Those that exist before this run creates one belong to another run.
-  const othersReservations = new Set(await listReservations());
-  /**
-   * The reservation an unanswered create of this run made: one that did not
-   * exist before it. Several are another run's as well, so none is taken.
-   */
-  const findReservation = async () => {
-    const made = (await listReservations()).filter(
-      (id) => !othersReservations.has(id),
-    );
-    if (made.length > 1) {
-      throw new Error(
-        `App Store Connect has ${made.length} new reservations of build ${info.bundleVersion} of version ${info.shortVersion}, so this upload cannot tell its own. Upload with a new build number (CFBundleVersion).`,
-      );
-    }
-    return made[0];
-  };
-
+  // A create App Store Connect did not answer is sent again. The API has no
+  // way to tell which reservation a request made, so a duplicate after an
+  // unanswered create may be this upload's own: the upload never adopts,
+  // uploads into, or removes a reservation it cannot show is its own.
   let buildUploadId: string | undefined;
   let unanswered = false;
   for (let attempt = 1; buildUploadId === undefined; attempt++) {
@@ -498,32 +469,21 @@ export const uploadToTestFlight = async ({
         error.status === 409 &&
         error.errors.some((apiError) => apiError.code === DUPLICATE_ERROR_CODE)
       ) {
-        // After an unanswered create, the duplicate may be this run's own.
-        buildUploadId = unanswered ? await findReservation() : undefined;
-        if (buildUploadId !== undefined) {
-          break;
-        }
         throw new Error(
-          `App Store Connect already has build ${info.bundleVersion} of version ${info.shortVersion}. Each build of a version needs a new build number (CFBundleVersion).`,
+          unanswered
+            ? `App Store Connect already has build ${info.bundleVersion} of version ${info.shortVersion}, which a request of this upload it did not answer may have reserved. Upload with a new build number (CFBundleVersion).`
+            : `App Store Connect already has build ${info.bundleVersion} of version ${info.shortVersion}. Each build of a version needs a new build number (CFBundleVersion).`,
           { cause: error },
         );
       }
-      if (!isRetryable(error)) {
+      if (!isRetryable(error) || attempt === COMMIT_ATTEMPTS) {
         throw error;
       }
-      // A rate limit refused the create; a timeout, a server error or a
-      // lost answer may have made the reservation it did not answer, which
-      // only then is looked up.
-      if (!(error instanceof AppStoreConnectError && error.status === 429)) {
+      // A rate limit refused the create; anything else may have made it.
+      if (!isRateLimited(error)) {
         unanswered = true;
-        buildUploadId = await findReservation();
       }
-      if (buildUploadId === undefined) {
-        if (attempt === COMMIT_ATTEMPTS) {
-          throw error;
-        }
-        await sleep(retryDelayMs(error, attempt));
-      }
+      await sleep(retryDelayMs(error, attempt));
     }
   }
 
