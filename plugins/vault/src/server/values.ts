@@ -193,8 +193,21 @@ const isSigningKeyPem = (text: string): boolean => {
     ) {
       return false;
     }
-    // Attributes may follow the key; nothing may follow the structure.
-    if (info!.end !== der.length) return false;
+    // Version 0, the algorithm's parameters absent or NULL, attributes
+    // optional after the key, and nothing after the structure.
+    const parameters =
+      oid.end < algorithm!.end ? derElement(der, oid.end) : null;
+    if (
+      version!.end - version!.start !== 1 ||
+      der[version!.start] !== 0 ||
+      (parameters !== null &&
+        (parameters.tag !== 0x05 ||
+          parameters.start !== parameters.end ||
+          parameters.end !== algorithm!.end)) ||
+      info!.end !== der.length
+    ) {
+      return false;
+    }
     rsaKey = key;
   }
   return [2048, 3072, 4096].includes(

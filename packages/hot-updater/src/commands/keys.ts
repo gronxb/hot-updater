@@ -240,6 +240,7 @@ const keysGenerateInVault = async (
         `${error instanceof Error ? error.message : String(error)} The Console may have stored the private key as ${name}, so ${publicKeyPath} is kept: if hot-updater secrets list shows ${name}, this is its public key.`,
       );
     }
+    stored = true;
     spinner.stop("Keys generated");
     spinning = false;
 

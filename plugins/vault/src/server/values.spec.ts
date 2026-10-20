@@ -125,7 +125,14 @@ describe("parseVaultSecretValue", () => {
   it("refuses a bundle signing key the Console cannot sign with", () => {
     const pkcs8 = (key: KeyObject) =>
       key.export({ format: "pem", type: "pkcs8" }).toString();
+    // A PKCS#8 key whose PrivateKeyInfo version is 2, not 0.
+    const der = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+    }).privateKey.export({ format: "der", type: "pkcs8" });
+    der[der.indexOf(Buffer.from([0x02, 0x01, 0x00]))! + 2] = 2;
+    const versionTwo = `-----BEGIN PRIVATE KEY-----\n${der.toString("base64")}\n-----END PRIVATE KEY-----\n`;
     for (const pem of [
+      versionTwo,
       pkcs8(generateKeyPairSync("rsa", { modulusLength: 1024 }).privateKey),
       pkcs8(generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey),
       pkcs8(generateKeyPairSync("ed25519").privateKey),
