@@ -107,16 +107,37 @@ const RSA_ENCRYPTION_OID = [
   0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
 ];
 
-/** The modulus size of a PKCS#1 `RSAPrivateKey` at `at`, or null. */
-const rsaModulusBits = (bytes: Uint8Array, at: number): number | null => {
+/**
+ * The modulus size of the PKCS#1 `RSAPrivateKey` filling `bytes` from `at`
+ * to `end`, or null: a two-prime key is version 0 and eight integers,
+ * modulus, exponents, primes, and CRT values, and nothing else.
+ */
+const rsaModulusBits = (
+  bytes: Uint8Array,
+  at: number,
+  end: number,
+): number | null => {
   const key = derElement(bytes, at);
-  const version = key?.tag === 0x30 ? derElement(bytes, key.start) : null;
-  const modulus = version?.tag === 0x02 ? derElement(bytes, version.end) : null;
-  if (modulus?.tag !== 0x02) return null;
-  let start = modulus.start;
-  while (start < modulus.end && bytes[start] === 0) start += 1;
-  if (start === modulus.end) return null;
-  return (modulus.end - start) * 8 - Math.clz32(bytes[start]!) + 24;
+  if (key?.tag !== 0x30 || key.end !== end) return null;
+  const integers: { start: number; end: number }[] = [];
+  for (let next = key.start; next < key.end; ) {
+    const element = derElement(bytes, next);
+    if (element?.tag !== 0x02 || element.end === element.start) return null;
+    integers.push(element);
+    next = element.end;
+  }
+  const [version, modulus] = integers;
+  if (
+    integers.length !== 9 ||
+    version!.end - version!.start !== 1 ||
+    bytes[version!.start] !== 0
+  ) {
+    return null;
+  }
+  let first = modulus!.start;
+  while (first < modulus!.end && bytes[first] === 0) first += 1;
+  if (first === modulus!.end) return null;
+  return (modulus!.end - first) * 8 - Math.clz32(bytes[first]!) + 24;
 };
 
 /**
@@ -131,7 +152,7 @@ const isSigningKeyPem = (text: string): boolean => {
     );
   const der = match ? base64ToBytes(match[2]!.replaceAll(/\s/gu, "")) : null;
   if (!match || !der) return false;
-  let rsaKeyAt = 0;
+  let rsaKey = { start: 0, end: der.length };
   if (match[1] === undefined) {
     // PrivateKeyInfo: version, the algorithm, and the key in an octet string.
     const info = derElement(der, 0);
@@ -151,9 +172,13 @@ const isSigningKeyPem = (text: string): boolean => {
     ) {
       return false;
     }
-    rsaKeyAt = key.start;
+    // Attributes may follow the key; nothing may follow the structure.
+    if (info!.end !== der.length) return false;
+    rsaKey = key;
   }
-  return [2048, 3072, 4096].includes(rsaModulusBits(der, rsaKeyAt) ?? 0);
+  return [2048, 3072, 4096].includes(
+    rsaModulusBits(der, rsaKey.start, rsaKey.end) ?? 0,
+  );
 };
 
 /** A file field whose text must contain a PEM private key, by `accepts`. */

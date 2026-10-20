@@ -138,6 +138,22 @@ describe("parseVaultSecretValue", () => {
         })
         .toString(),
       "-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----\n",
+      // A PKCS#1 sequence of only the version and a 2048-bit modulus.
+      `-----BEGIN RSA PRIVATE KEY-----\n${Buffer.from([
+        0x30,
+        0x82,
+        0x01,
+        0x08,
+        0x02,
+        0x01,
+        0x00,
+        0x02,
+        0x82,
+        0x01,
+        0x01,
+        0x00,
+        ...Array.from({ length: 256 }, () => 0xff),
+      ]).toString("base64")}\n-----END RSA PRIVATE KEY-----\n`,
     ]) {
       expect(() =>
         parseVaultSecretValue("bundle-signing-key", {
