@@ -70,7 +70,7 @@ describe("vaultEnv", () => {
     const deploy = vaultEnv(["S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"]);
     expect(fetch).not.toHaveBeenCalled();
 
-    await expect(deploy()).resolves.toEqual(VALUES.aws);
+    await expect(deploy()).resolves.toEqual(VALUES["aws"]);
     expect(requests).toEqual([
       { method: "GET", body: undefined },
       { method: "POST", body: { names: ["aws"] } },

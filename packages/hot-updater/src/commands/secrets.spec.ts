@@ -167,10 +167,13 @@ describe("hot-updater secrets token, in process without a master key", () => {
       },
     });
     expect(
-      authorizeVaultToken((verified as { token: never }).token, {
-        action: "write",
-        secret: { name: "asc-api-key", kind: "asc-api-key" },
-      }),
+      authorizeVaultToken(
+        (verified as Extract<typeof verified, { ok: true }>).token,
+        {
+          action: "write",
+          secret: { name: "asc-api-key", kind: "asc-api-key" },
+        },
+      ),
     ).toBe(true);
     expect(log.warn).toHaveBeenCalledWith(
       expect.stringContaining("It will not be shown again."),

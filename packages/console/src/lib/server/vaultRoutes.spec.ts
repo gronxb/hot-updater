@@ -721,7 +721,9 @@ describe("PUT /_hot-updater/vault/v1/secrets/:name", () => {
     await expect(response.json()).resolves.toEqual({
       error: {
         code: "conflict",
-        message: expect.stringContaining("is an android-keystore; remove it in the console before storing a generic"),
+        message: expect.stringContaining(
+          "is an android-keystore; remove it in the console before storing a generic",
+        ),
       },
     });
   });

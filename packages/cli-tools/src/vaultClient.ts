@@ -108,17 +108,31 @@ export const readVaultConnection = (
   return { ok: true, connection: { url, token } };
 };
 
-/** The Console's URL without a trailing slash, or a thrown error. */
+const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
+
+/**
+ * The Console's URL without a trailing slash, or a thrown error. The token
+ * and the values it reaches travel over HTTPS, or plain HTTP only to this
+ * machine, such as a Console on localhost.
+ */
 const consoleUrlOf = (url: string): string => {
-  let parsed: URL;
+  let parsed: URL | undefined;
   try {
     parsed = new URL(url);
   } catch {
-    parsed = new URL("invalid:");
+    parsed = undefined;
   }
-  if (parsed.protocol !== "https:" && parsed.protocol !== "http:") {
+  if (
+    parsed === undefined ||
+    (parsed.protocol !== "https:" && parsed.protocol !== "http:")
+  ) {
     throw new VaultRequestError(
       `${VAULT_CONNECTION_ENV_NAMES.url} is the Console's URL, such as https://console.example.com, and "${url}" is not one.`,
+    );
+  }
+  if (parsed.protocol === "http:" && !LOOPBACK_HOSTS.has(parsed.hostname)) {
+    throw new VaultRequestError(
+      `${VAULT_CONNECTION_ENV_NAMES.url} is ${parsed.origin}, and the vault token and secrets travel only over HTTPS, or HTTP to localhost: use the Console's https:// URL.`,
     );
   }
   return parsed.href.replace(/\/+$/u, "");

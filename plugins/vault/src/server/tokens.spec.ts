@@ -223,7 +223,10 @@ describe("vault tokens", () => {
       "the register action",
       { secrets: { names: ["play"] }, actions: ["read", "register"] },
     ],
-    ["an unknown action", { secrets: { names: ["play"] }, actions: ["delete"] }],
+    [
+      "an unknown action",
+      { secrets: { names: ["play"] }, actions: ["delete"] },
+    ],
     [
       "an apps scope",
       { secrets: { names: ["play"] }, actions: ["read"], apps: ["widget"] },
