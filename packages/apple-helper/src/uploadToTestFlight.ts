@@ -67,8 +67,15 @@ interface BuildUploadState {
 export class AppStoreConnectError extends Error {
   readonly status: number;
   readonly errors: readonly ApiError[];
+  /** The answer's `Retry-After` header, for a rate limit. */
+  readonly retryAfter: string | null;
 
-  constructor(action: string, status: number, errors: readonly ApiError[]) {
+  constructor(
+    action: string,
+    status: number,
+    errors: readonly ApiError[],
+    retryAfter: string | null = null,
+  ) {
     const details = errors
       .map((error) => error.detail ?? error.title ?? error.code)
       .filter(Boolean);
@@ -78,6 +85,7 @@ export class AppStoreConnectError extends Error {
     this.name = "AppStoreConnectError";
     this.status = status;
     this.errors = errors;
+    this.retryAfter = retryAfter;
   }
 }
 
@@ -137,14 +145,18 @@ const describeDetails = (details: readonly StateDetail[]) =>
       `${detail.description ?? "(no description)"}${detail.code ? ` (${detail.code})` : ""}`,
   );
 
+/** Answers a request may outlive: a timeout, a rate limit, a server error. */
+const isRetryableStatus = (status: number) =>
+  status === 408 || status === 429 || status >= 500;
+
 /**
- * Whether a request may succeed when sent again: a server error, a rate
- * limit, or a network failure, which fetch rejects with a TypeError. A
- * refused key or request is not.
+ * Whether a request may succeed when sent again: a retryable answer, or a
+ * network failure, which fetch rejects with a TypeError. A refused key or
+ * request is not.
  */
 const isRetryable = (error: unknown) =>
   error instanceof AppStoreConnectError
-    ? error.status >= 500 || error.status === 429
+    ? isRetryableStatus(error.status)
     : error instanceof TypeError;
 
 /** Runs `request`, again after a retryable failure, up to the attempts. */
@@ -156,7 +168,7 @@ const retrying = async <T>(request: () => Promise<T>): Promise<T> => {
       if (!isRetryable(error) || attempt === COMMIT_ATTEMPTS) {
         throw error;
       }
-      await sleep(1_000 * attempt);
+      await sleep(retryDelayMs(error, attempt));
     }
   }
 };
@@ -164,21 +176,41 @@ const retrying = async <T>(request: () => Promise<T>): Promise<T> => {
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
-/** The longest `Retry-After` honored, so a wait stays bounded. */
-const MAX_RETRY_AFTER_MS = 60_000;
+/** The longest wait before a retry, so a run stays bounded. */
+const MAX_RETRY_DELAY_MS = 60_000;
+/**
+ * The first wait after a rate limit without `Retry-After`: App Store Connect
+ * limits a key per rolling hour, so a retry within seconds meets it again.
+ */
+const RATE_LIMIT_DELAY_MS = 15_000;
 
 /**
- * How long to wait before sending a part again: the `Retry-After` seconds a
- * rate-limited answer asks for, within a bound, or a growing backoff.
+ * How long to wait before sending a request again after `failure`, an
+ * answer or the error it raised: the `Retry-After` seconds it asks for, a
+ * longer backoff for a rate limit without one, and else a growing backoff,
+ * all within a bound.
  */
-const retryDelayMs = (response: Response | Error, attempt: number) => {
-  const header =
-    response instanceof Error ? null : response.headers.get("retry-after");
-  const retryAfter =
-    header === null || header.trim() === "" ? Number.NaN : Number(header);
-  return Number.isFinite(retryAfter) && retryAfter >= 0
-    ? Math.min(retryAfter * 1_000, MAX_RETRY_AFTER_MS)
-    : 1_000 * attempt;
+const retryDelayMs = (failure: unknown, attempt: number) => {
+  const { status, retryAfter } =
+    failure instanceof Response
+      ? {
+          status: failure.status,
+          retryAfter: failure.headers.get("retry-after"),
+        }
+      : failure instanceof AppStoreConnectError
+        ? failure
+        : { status: 0, retryAfter: null };
+  const seconds =
+    retryAfter === null || retryAfter.trim() === ""
+      ? Number.NaN
+      : Number(retryAfter);
+  const delay =
+    Number.isFinite(seconds) && seconds >= 0
+      ? seconds * 1_000
+      : status === 429
+        ? RATE_LIMIT_DELAY_MS * attempt
+        : 1_000 * attempt;
+  return Math.min(delay, MAX_RETRY_DELAY_MS);
 };
 
 /**
@@ -356,6 +388,7 @@ export const uploadToTestFlight = async ({
         action,
         response.status,
         await readApiErrors(response),
+        response.headers.get("retry-after"),
       );
       if (response.status === 401) {
         throw new Error(
@@ -457,7 +490,7 @@ export const uploadToTestFlight = async ({
         if (attempt === COMMIT_ATTEMPTS) {
           throw error;
         }
-        await sleep(1_000 * attempt);
+        await sleep(retryDelayMs(error, attempt));
       }
     }
   }
@@ -486,7 +519,7 @@ export const uploadToTestFlight = async ({
           );
           return;
         }
-        await sleep(1_000 * attempt);
+        await sleep(retryDelayMs(error, attempt));
       }
     }
   };
@@ -525,7 +558,9 @@ export const uploadToTestFlight = async ({
   }
 
   // A commit App Store Connect may have applied is never undone: an
-  // unanswered one is checked against the file's state, then sent again.
+  // unanswered one is checked against the file's state, then sent again,
+  // and the upload is removed only when no commit may have taken.
+  let commitUnanswered = false;
   for (let attempt = 1; ; attempt++) {
     try {
       await request(
@@ -542,19 +577,31 @@ export const uploadToTestFlight = async ({
       );
       break;
     } catch (error) {
+      const unconfirmed = () =>
+        new Error(
+          `App Store Connect did not confirm the upload of build ${info.bundleVersion}: ${(error as Error).message} Check the build in TestFlight before you upload it again: ${testFlightUrl}`,
+          { cause: error },
+        );
       if (!isRetryable(error)) {
+        // After an unanswered commit, a refusal may mean it took.
+        if (commitUnanswered) {
+          throw unconfirmed();
+        }
         // App Store Connect refused the commit, so nothing is processing.
         await removeUpload();
         throw error;
       }
-      const fileState = await request<{
-        data: {
-          attributes?: { assetDeliveryState?: { state?: string } };
-        };
-      }>(
-        "Reading the .ipa upload",
-        "GET",
-        `/v1/buildUploadFiles/${fileId}?fields[buildUploadFiles]=assetDeliveryState`,
+      commitUnanswered = true;
+      const fileState = await retrying(() =>
+        request<{
+          data: {
+            attributes?: { assetDeliveryState?: { state?: string } };
+          };
+        }>(
+          "Reading the .ipa upload",
+          "GET",
+          `/v1/buildUploadFiles/${fileId}?fields[buildUploadFiles]=assetDeliveryState`,
+        ),
       )
         .then(({ data }) => data.attributes?.assetDeliveryState?.state)
         .catch(() => undefined);
@@ -562,12 +609,9 @@ export const uploadToTestFlight = async ({
         break;
       }
       if (attempt === COMMIT_ATTEMPTS) {
-        throw new Error(
-          `App Store Connect did not confirm the upload of build ${info.bundleVersion}: ${(error as Error).message} Check the build in TestFlight before you upload it again: ${testFlightUrl}`,
-          { cause: error },
-        );
+        throw unconfirmed();
       }
-      await sleep(1_000 * attempt);
+      await sleep(retryDelayMs(error, attempt));
     }
   }
 
@@ -681,9 +725,7 @@ const uploadParts = async ({
             return;
           }
           const retryable =
-            response instanceof Error ||
-            response.status >= 500 ||
-            response.status === 429;
+            response instanceof Error || isRetryableStatus(response.status);
           if (!retryable || attempt === UPLOAD_ATTEMPTS) {
             throw new Error(
               `Uploading part ${index + 1} of ${operations.length} failed: ${

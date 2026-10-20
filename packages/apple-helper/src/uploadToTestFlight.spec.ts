@@ -699,7 +699,7 @@ describe("uploadToTestFlight", () => {
     const routes = successRoutes();
     routes[`PUT ${PART_URL_2}`] = { status: 403 };
     routes[`DELETE ${API}/v1/buildUploads/upload-1`] = [
-      { status: 429 },
+      { status: 429, headers: { "retry-after": "0" } },
       { status: 204 },
     ];
     const { fetch, requests } = createRecordingFetch(routes);
@@ -785,6 +785,82 @@ describe("uploadToTestFlight", () => {
       }),
     ).rejects.toThrow("Uploading part 2 of 2 failed: HTTP 403.");
     expect(p.log.warn).not.toHaveBeenCalled();
+  });
+
+  it("never removes an upload after an unanswered commit, even when the next commit is refused", async () => {
+    const routes = successRoutes();
+    routes[`PATCH ${API}/v1/buildUploadFiles/file-1`] = [
+      { status: 503 },
+      {
+        status: 409,
+        json: {
+          errors: [{ status: "409", detail: "The upload is processing." }],
+        },
+      },
+    ];
+    // The state read is rate limited throughout, so the commit stays unknown.
+    routes[`GET ${FILE_STATE_URL}`] = {
+      status: 429,
+      headers: { "retry-after": "0" },
+    };
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).rejects.toThrow(
+      "App Store Connect did not confirm the upload of build 42: Committing the .ipa upload failed (HTTP 409): The upload is processing.",
+    );
+    expect(requests.some((request) => request.method === "DELETE")).toBe(false);
+  });
+
+  it("waits the Retry-After a rate-limited commit asks for", async () => {
+    const routes = successRoutes();
+    routes[`PATCH ${API}/v1/buildUploadFiles/file-1`] = [
+      { status: 429, headers: { "retry-after": "1" } },
+      { json: { data: { id: "file-1", type: "buildUploadFiles" } } },
+    ];
+    routes[`GET ${FILE_STATE_URL}`] = {
+      json: {
+        data: {
+          attributes: { assetDeliveryState: { state: "AWAITING_UPLOAD" } },
+        },
+      },
+    };
+    const { fetch } = createRecordingFetch(routes);
+    const started = Date.now();
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).resolves.toMatchObject({ state: "COMPLETE" });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(900);
+  });
+
+  it("sends a part that timed out again", async () => {
+    const routes = successRoutes();
+    routes[`PUT ${PART_URL_1}`] = [{ status: 408 }, { status: 200 }];
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).resolves.toMatchObject({ state: "COMPLETE" });
+    expect(
+      requests.filter((request) => request.url === PART_URL_1),
+    ).toHaveLength(2);
   });
 
   it("names the build number App Store Connect already has", async () => {
