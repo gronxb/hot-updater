@@ -467,7 +467,7 @@ export const handleSecretsImport = async (
     // project's .env.hotupdater, before the config runs.
     if (!readVaultConnection(await readLoadedHotUpdaterEnv(getCwd())).ok) {
       p.log.warn(
-        `Commands that load hot-updater.config.ts read ${VAULT_CONNECTION_ENV_NAMES.url} and ${VAULT_CONNECTION_ENV_NAMES.token} from the environment or .env.hotupdater, where they are not set: set them there to deploy with the imported variables.`,
+        `Commands that use the config's database, storage, or signing read ${VAULT_CONNECTION_ENV_NAMES.url} and ${VAULT_CONNECTION_ENV_NAMES.token} from the environment or .env.hotupdater, where they are not set: set them there to deploy with the imported variables.`,
       );
     }
     const listed = await client.list();
@@ -550,7 +550,7 @@ export const handleSecretsImport = async (
       ]),
     );
     p.log.info(
-      `Commands that load hot-updater.config.ts now read these variables from the vault's ${name} while ${VAULT_CONNECTION_ENV_NAMES.url} and ${VAULT_CONNECTION_ENV_NAMES.token} are set, with a vault token that reads ${name}.`,
+      `Commands that use the config's database, storage, or signing, such as deploy, now read these variables from the vault's ${name} while ${VAULT_CONNECTION_ENV_NAMES.url} and ${VAULT_CONNECTION_ENV_NAMES.token} are set, with a vault token that reads ${name}.`,
     );
   });
 };

@@ -38,6 +38,17 @@ describe("firebaseStorage", () => {
   const createStorage = () =>
     firebaseStorage({ projectId: "project", storageBucket: "updates" });
 
+  it("opens the bucket on first use, so a config loads without its settings", async () => {
+    const storage = createStorage();
+    expect(getStorage).not.toHaveBeenCalled();
+    file.exists.mockResolvedValue([true]);
+
+    await storage.exists({ storageUri: "gs://updates/key" });
+    await storage.exists({ storageUri: "gs://updates/key" });
+
+    expect(getStorage).toHaveBeenCalledTimes(1);
+  });
+
   it("returns downloaded bytes as a Web Response", async () => {
     file.download.mockResolvedValue([Buffer.from("manifest")]);
     file.getMetadata.mockResolvedValue([

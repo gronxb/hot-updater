@@ -167,19 +167,35 @@ export const awsKmsSigning = ({
   keyId,
   region,
 }: AwsKmsSigningOptions): BundleSigningAdapter => {
-  if (!keyId.trim()) {
-    throw new Error("AWS KMS signing key ID is required.");
-  }
-  if (!region.trim()) {
-    throw new Error("AWS KMS signing region is required.");
-  }
-  const resolvedKeyId = keyId.trim();
-  const resolvedRegion = region.trim();
-  const resolvedEndpoint = resolveEndpoint(endpoint);
+  // Checked on first use, so a config loads without its settings.
+  let settings:
+    | {
+        readonly keyId: string;
+        readonly region: string;
+        readonly endpoint: ReturnType<typeof resolveEndpoint>;
+      }
+    | undefined;
+  const resolveSettings = () => {
+    if (settings) return settings;
+    if (!keyId?.trim()) {
+      throw new Error("AWS KMS signing key ID is required.");
+    }
+    if (!region?.trim()) {
+      throw new Error("AWS KMS signing region is required.");
+    }
+    settings = {
+      keyId: keyId.trim(),
+      region: region.trim(),
+      endpoint: resolveEndpoint(endpoint),
+    };
+    return settings;
+  };
 
   let runtimePromise: Promise<AwsKmsRuntime> | undefined;
   const resolveRuntime = () => {
     if (runtimePromise) return runtimePromise;
+    const { endpoint: resolvedEndpoint, region: resolvedRegion } =
+      resolveSettings();
     runtimePromise = loadAwsKmsSdk()
       .then((sdk) => ({
         client: new sdk.KMSClient({
@@ -199,6 +215,7 @@ export const awsKmsSigning = ({
   let resolvedKeyPromise: Promise<ResolvedAwsKmsKey> | undefined;
   const resolveKey = () => {
     if (resolvedKeyPromise) return resolvedKeyPromise;
+    const { keyId: resolvedKeyId } = resolveSettings();
     resolvedKeyPromise = resolveRuntime()
       .then((runtime) => loadPublicKey(runtime, resolvedKeyId))
       .catch((error) => {

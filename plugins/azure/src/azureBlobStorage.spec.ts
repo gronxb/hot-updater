@@ -2,6 +2,19 @@ import { describe, expect, it } from "vitest";
 
 import { azureBlobStorage } from "./azureBlobStorage";
 
+describe("azureBlobStorage", () => {
+  it("connects on first use, so a config loads without the connection string", async () => {
+    const storage = azureBlobStorage({
+      connectionString: undefined as never,
+      containerName: "bundles",
+    });
+
+    await expect(
+      storage.exists({ storageUri: "azure-blob://bundles/key" }),
+    ).rejects.toThrow();
+  });
+});
+
 describe("azureBlobStorage download URLs", () => {
   it("refuses to hand devices a SAS connection string's own token", async () => {
     const storage = azureBlobStorage({

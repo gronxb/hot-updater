@@ -192,6 +192,7 @@ describe("loadConfig", () => {
       const { loadPlatformConfigs } = await import("./loadConfig");
       const [ios, android] = await loadPlatformConfigs(["ios", "android"], {
         channel: "production",
+        credentials: true,
       });
 
       expect(ios!.config.storage).toMatchObject({ secret: "from-the-vault" });
@@ -200,6 +201,39 @@ describe("loadConfig", () => {
       });
       // Once per process: a list and a resolve.
       expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("reaches no Console unless the command asks for credentials, even with the connection set", async () => {
+    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", undefined);
+    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", undefined);
+    vi.stubEnv("HU_SPEC_S3_SECRET", undefined);
+    const fetch = vi.spyOn(globalThis, "fetch");
+    await writeProjectFile(
+      projectRoot,
+      ".env.hotupdater",
+      [
+        "HOT_UPDATER_CONSOLE_URL=http://localhost:3000",
+        `HOT_UPDATER_VAULT_TOKEN=hu_vault_${"L".repeat(43)}`,
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      'export default { storage: { name: "s3Storage", protocol: "s3", secret: process.env.HU_SPEC_S3_SECRET } };\n',
+    );
+
+    try {
+      const { loadConfig, loadPlatformConfigs } = await import("./loadConfig");
+      // As fingerprints, native builds, and the Expo config plugin load it.
+      const config = await loadConfig(null);
+      await loadConfig({ platform: "ios", channel: "production" });
+      await loadPlatformConfigs(["ios", "android"], { channel: "production" });
+
+      expect(config.storage).toMatchObject({ secret: undefined });
+      expect(fetch).not.toHaveBeenCalled();
     } finally {
       vi.unstubAllEnvs();
     }
@@ -300,6 +334,7 @@ describe("loadConfig", () => {
       const { loadPlatformConfigs } = await import("./loadConfig");
       const [ios, android] = await loadPlatformConfigs(["ios", "android"], {
         channel: "production",
+        credentials: true,
       });
 
       expect(Reflect.get(globalThis, "__HOT_UPDATER_TEST_LOADS__")).toBe(1);

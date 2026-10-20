@@ -31,8 +31,12 @@ export const firebaseStorage = (
 ): StorageAdapterWith<
   "put" | "get" | "getDownloadUrl" | "exists" | "delete"
 > => {
-  const app = getApps().length ? getApp() : initializeApp(config);
-  const bucket = getStorage(app).bucket(config.storageBucket);
+  // Opened on first use, so a config loads without the bucket's settings.
+  let opened: ReturnType<ReturnType<typeof getStorage>["bucket"]> | undefined;
+  const bucket = () =>
+    (opened ??= getStorage(
+      getApps().length ? getApp() : initializeApp(config),
+    ).bucket(config.storageBucket));
   const getStorageKey = createStorageKeyBuilder(config.basePath);
   /**
    * Signed URLs by object. Without a private key, as in Cloud Functions, each
@@ -46,7 +50,7 @@ export const firebaseStorage = (
   >();
   const signUrl = async (key: string) => {
     const expiresAt = Date.now() + (config.signedUrlExpiresIn ?? 3600) * 1000;
-    const [url] = await bucket.file(key).getSignedUrl({
+    const [url] = await bucket().file(key).getSignedUrl({
       action: "read",
       expires: expiresAt,
     });
@@ -97,12 +101,14 @@ export const firebaseStorage = (
         Readable.fromWeb(
           body as import("node:stream/web").ReadableStream<Uint8Array>,
         ),
-        bucket.file(storageKey).createWriteStream({
-          metadata: {
-            contentType,
-            cacheControl: "public, max-age=31536000, immutable",
-          },
-        }),
+        bucket()
+          .file(storageKey)
+          .createWriteStream({
+            metadata: {
+              contentType,
+              cacheControl: "public, max-age=31536000, immutable",
+            },
+          }),
       );
       return {
         storageUri: createStorageUri({
@@ -115,7 +121,7 @@ export const firebaseStorage = (
     async get({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       try {
-        const file = bucket.file(key);
+        const file = bucket().file(key);
         const [[body], [metadata]] = await Promise.all([
           file.download(),
           file.getMetadata(),
@@ -154,12 +160,12 @@ export const firebaseStorage = (
     },
     async exists({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
-      const [exists] = await bucket.file(key).exists();
+      const [exists] = await bucket().file(key).exists();
       return { exists };
     },
     async delete({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
-      await bucket.file(key).delete({ ignoreNotFound: true });
+      await bucket().file(key).delete({ ignoreNotFound: true });
       return { deleted: true };
     },
   });

@@ -64,7 +64,7 @@ export const openPluginServer = async (
   if (serverPath?.trim()) {
     return fromDefinition(await loadHotUpdater(serverPath, { cwd }));
   }
-  const config = await loadConfig(null);
+  const config = await loadConfig(null, { credentials: true });
   if (config.database !== undefined) {
     const server = await loadServer(config);
     return {

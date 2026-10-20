@@ -12,6 +12,12 @@ afterEach(() => server.resetHandlers());
 afterAll(() => server.close());
 
 describe("standaloneRepository", () => {
+  it("reads baseUrl on the first request, so a config loads without it", () => {
+    expect(() =>
+      standaloneRepository({ baseUrl: undefined as never }),
+    ).not.toThrow();
+  });
+
   it("is a remote database: core over admin API protocol 2 and fetchAdmin", () => {
     const repository = standaloneRepository({ baseUrl: BASE_URL });
 

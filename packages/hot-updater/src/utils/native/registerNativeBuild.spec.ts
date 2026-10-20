@@ -112,6 +112,9 @@ describe("registerNativeBuild", () => {
 
     const row = await registerNativeBuild(android({ artifactPath }));
 
+    // --register writes through the database and storage: credentials load.
+    expect(loadConfig).toHaveBeenCalledWith(null, { credentials: true });
+
     expect(extractAndroid).toHaveBeenCalledWith({
       artifactPath,
       outputPath: expect.stringMatching(/index\.android\.bundle$/u),

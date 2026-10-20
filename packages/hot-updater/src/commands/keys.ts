@@ -281,7 +281,7 @@ export const keysExportPublic = async (
 ) => {
   const cwd = getCwd();
 
-  const config = await loadConfig(null);
+  const config = await loadConfig(null, { credentials: true });
   try {
     if (!config.signing) {
       throw new Error(

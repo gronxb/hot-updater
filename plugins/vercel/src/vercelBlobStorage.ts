@@ -127,7 +127,9 @@ export const vercelBlobStorage = (
   config: VercelBlobStorageConfig,
 ): StorageAdapterWith<VercelBlobStorageOperations> => {
   const { token } = config;
-  const storeId = storeIdOf(token);
+  // Read on first use, so a config loads without the token.
+  let store: string | undefined;
+  const storeId = () => (store ??= storeIdOf(token));
   const normalizedBasePath = config.basePath?.replace(/^\/+|\/+$/g, "") ?? "";
   const getStorageKey = createStorageKeyBuilder(normalizedBasePath);
   const expiresIn = config.signedUrlExpiresIn ?? 3600;
@@ -165,9 +167,9 @@ export const vercelBlobStorage = (
 
   const parseAndValidate = (storageUri: string) => {
     const parsed = parseStorageUri(storageUri, PROTOCOL);
-    if (parsed.bucket !== storeId) {
+    if (parsed.bucket !== storeId()) {
       throw new Error(
-        `Blob store mismatch: expected "${storeId}", but found "${parsed.bucket}".`,
+        `Blob store mismatch: expected "${storeId()}", but found "${parsed.bucket}".`,
       );
     }
     return parsed;
@@ -193,7 +195,7 @@ export const vercelBlobStorage = (
       const storageKey = getStorageKey(key);
       const storageUri = createStorageUri({
         protocol: PROTOCOL,
-        bucket: storeId,
+        bucket: storeId(),
         key: storageKey,
       });
       await put(toPathname(storageKey), body, {
@@ -273,7 +275,7 @@ export const vercelBlobStorage = (
           try {
             storageUri = createStorageUri({
               protocol: PROTOCOL,
-              bucket: storeId,
+              bucket: storeId(),
               key,
             });
           } catch {

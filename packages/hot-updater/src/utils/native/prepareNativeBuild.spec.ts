@@ -110,6 +110,10 @@ describe("prepareNativeBuild", () => {
         "release",
       ),
     });
+    // build:* without --register: no vault credentials, so no Console.
+    expect(vi.mocked(loadConfig).mock.calls).toEqual([
+      [{ platform: "ios", channel: "" }],
+    ]);
   });
 
   it("refuses an iOS device scheme it cannot export as an .ipa, before the adapter's prebuild", async () => {

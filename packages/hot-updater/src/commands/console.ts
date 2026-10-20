@@ -89,7 +89,7 @@ export const getConsolePort = async (config?: ConfigResponse) => {
     return config.console.port;
   }
 
-  const $config = await loadConfig(null);
+  const $config = await loadConfig(null, { credentials: true });
   return $config.console.port;
 };
 

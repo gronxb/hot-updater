@@ -40,7 +40,10 @@ export const createPatch = async (options: PatchOptions) => {
   }
 
   const server = await loadServer(
-    await loadConfig({ channel: options.channel, platform }),
+    await loadConfig(
+      { channel: options.channel, platform },
+      { credentials: true },
+    ),
   );
   try {
     const storageAdapter = server.storage;

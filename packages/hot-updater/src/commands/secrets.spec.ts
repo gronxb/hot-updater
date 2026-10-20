@@ -663,7 +663,7 @@ describe("hot-updater secrets import", () => {
     await handleSecretsImport(file, { yes: true });
 
     expect(log.warn).toHaveBeenCalledWith(
-      "Commands that load hot-updater.config.ts read HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN from the environment or .env.hotupdater, where they are not set: set them there to deploy with the imported variables.",
+      "Commands that use the config's database, storage, or signing read HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN from the environment or .env.hotupdater, where they are not set: set them there to deploy with the imported variables.",
     );
   });
 

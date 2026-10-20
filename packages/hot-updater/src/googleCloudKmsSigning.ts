@@ -151,14 +151,15 @@ const loadPublicKey = async (
 export const googleCloudKmsSigning = ({
   keyVersion,
 }: GoogleCloudKmsSigningOptions): BundleSigningAdapter => {
-  if (!KEY_VERSION_PATTERN.test(keyVersion)) {
-    throw new Error(
-      "Google Cloud KMS signing requires a version-pinned key resource name.",
-    );
-  }
   let clientPromise: Promise<GoogleCloudKmsClient> | undefined;
   const resolveClient = () => {
     if (clientPromise) return clientPromise;
+    // Checked on first use, so a config loads without the key's name.
+    if (!KEY_VERSION_PATTERN.test(keyVersion ?? "")) {
+      throw new Error(
+        "Google Cloud KMS signing requires a version-pinned key resource name.",
+      );
+    }
     clientPromise = loadGoogleCloudKmsSdk()
       .then((sdk) => new sdk.KeyManagementServiceClient())
       .catch((error) => {
