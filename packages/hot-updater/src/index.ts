@@ -401,7 +401,7 @@ secretsTokenCommand
   )
   .requiredOption(
     "--actions <actions>",
-    "what the token may do, comma-separated: read, sign, write",
+    "what the token may do, comma-separated: read, write",
     commaList,
   )
   .option(

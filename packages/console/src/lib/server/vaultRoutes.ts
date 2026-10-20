@@ -384,10 +384,8 @@ const writeOf = async (
  * - A name or kind outside the scope is refused with 403, whether or not a
  *   secret has the name, and so is replacing a secret the scope does not
  *   reach. A secret of another kind under the name is a 409.
- * - Each write, and each one the scope refuses, is in the audit log before the
- *   response is sent. The allowed entry follows the write, so it records only
- *   a version that exists; if the entry fails, the response is a 500 though
- *   the version was stored.
+ * - Each write is in the audit log in the write's own transaction, and each
+ *   one the scope refuses before the response is sent.
  */
 export const putVaultSecret = (
   request: Request,
@@ -417,19 +415,6 @@ export const putVaultSecret = (
     const existing = (await vault.list()).find(
       (secret) => secret.name === name,
     );
-    const audit = (outcome: VaultAuditEntry["outcome"], secretId?: string) =>
-      vault.recordAudit({
-        entries: [
-          {
-            actor: token.id,
-            action: "write",
-            ...(secretId === undefined ? {} : { secretId }),
-            outcome,
-            context,
-          },
-        ],
-      });
-
     if (
       !authorizeVaultToken(token, {
         action: "write",
@@ -438,7 +423,17 @@ export const putVaultSecret = (
       (existing !== undefined &&
         !authorizeVaultToken(token, { action: "write", secret: existing }))
     ) {
-      await audit("denied", existing?.id);
+      await vault.recordAudit({
+        entries: [
+          {
+            actor: token.id,
+            action: "write",
+            ...(existing === undefined ? {} : { secretId: existing.id }),
+            outcome: "denied",
+            context,
+          },
+        ],
+      });
       return forbidden(
         token.scope.actions.includes("write")
           ? `The vault token's scope does not allow writing ${name} as ${write.kind}.`
@@ -474,6 +469,8 @@ export const putVaultSecret = (
         value,
         metadata: vaultSecretMetadata(write.kind, value as never),
         expectedVersion: existing?.version ?? 0,
+        // In the write's transaction: logged exactly when it is stored.
+        audit: { actor: token.id, context },
       });
     } catch (error) {
       if (error instanceof VaultConflictError) {
@@ -491,6 +488,5 @@ export const putVaultSecret = (
       }
       throw error;
     }
-    await audit("allowed", secret.id);
     return json(existing === undefined ? 201 : 200, { secret });
   });

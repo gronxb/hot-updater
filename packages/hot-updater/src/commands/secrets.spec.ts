@@ -217,6 +217,20 @@ describe("hot-updater secrets token, in process without a master key", () => {
     await expect(vaultOf().listTokens()).resolves.toEqual([]);
   });
 
+  it("issues only the actions the Console serves, opening no database otherwise", async () => {
+    await handleSecretsTokenCreate({
+      name: "ci",
+      kinds: ["bundle-signing-key"],
+      actions: ["sign"],
+    });
+
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      "--actions takes read and write, the actions the Console serves a vault token, not sign.",
+    );
+    expect(loadConfig).not.toHaveBeenCalled();
+  });
+
   it("says to add vault() when the config lists none", async () => {
     configure({ database, plugins: [apiKeys()] });
 

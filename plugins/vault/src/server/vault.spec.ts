@@ -49,6 +49,49 @@ describe("vault", () => {
     vi.unstubAllEnvs();
   });
 
+  it("records a put's audit entry in the write's transaction, and none for a refused put", async () => {
+    const { api, db } = start();
+    const auditRows = async () =>
+      (await db.findMany("audit", { index: "byTime", where: {}, limit: 10 }))
+        .rows;
+
+    const secret = await api.put({
+      name: "n",
+      kind: "generic",
+      value: { A: "1" },
+      expectedVersion: 0,
+      audit: { actor: "tok-ci", context: { name: "n" } },
+    });
+    expect(await auditRows()).toEqual([
+      expect.objectContaining({
+        actor: "tok-ci",
+        action: "write",
+        secret_id: secret.id,
+        outcome: "allowed",
+        context: { name: "n" },
+      }),
+    ]);
+
+    await expect(
+      api.put({
+        name: "n",
+        kind: "generic",
+        value: { A: "2" },
+        expectedVersion: 0,
+        audit: { actor: "tok-ci" },
+      }),
+    ).rejects.toBeInstanceOf(VaultConflictError);
+    await expect(
+      api.put({
+        name: "n",
+        kind: "generic",
+        value: { A: "2" },
+        audit: { actor: "" },
+      }),
+    ).rejects.toBeInstanceOf(VaultInputError);
+    expect(await auditRows()).toHaveLength(1);
+  });
+
   it("seals a value and reveals it, storing only ciphertext", async () => {
     const { api, db } = start();
 
