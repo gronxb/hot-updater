@@ -19,7 +19,9 @@ keys at `/_hot-updater/signing`. It needs three things:
   a self-hosted one from `hot-updater db migrate` or `db generate`.
 - `HOT_UPDATER_VAULT_MASTER_KEY` in the console's **runtime** environment: 32
   random bytes in base64, from `openssl rand -base64 32`. Keep it out of the
-  environment that holds your database credentials and out of CI.
+  environment that holds your database credentials and out of CI;
+  [`hot-updater doctor`](/docs/guides/doctor#check-the-vaults-master-key)
+  warns about an env file that holds both.
 
 The console is the only place secrets are decrypted and encrypted. The CLI
 reads and stores secrets through the routes below with a vault token, and
@@ -48,8 +50,11 @@ versions of each secret, and a value holds up to 64 KB of JSON.
 
 Without `HOT_UPDATER_VAULT_MASTER_KEY`, the page shows the vault as locked
 and offers no add or overwrite. Listing, deleting, and tokens keep working.
-Once secrets exist, only the key they were saved with opens them: restore
-that key rather than generating a new one.
+The first secret a console stores ties the vault to its key: the vault keeps
+a check value sealed under it. From then on, a console with another key is
+locked, even once every secret is deleted, so two consoles with different keys
+never write into one vault. Restore the vault's key rather than generating a
+new one, or [rotate](#rotate-the-master-key) to a new one.
 A database without the vault's tables shows the console's migration notice
 with the command that adds them.
 
@@ -225,6 +230,59 @@ sets it up.
 - Refusals use the codes below. A request the protocol itself refuses, such
   as a malformed body, answers `{ "error" }` with 400 or 405.
 
+## Rotate the master key
+
+Rotation moves the vault to a new master key without decrypting any value.
+Each stored version keeps its ciphertext; only its data key is wrapped again
+under the new key.
+
+1. Generate a key with `openssl rand -base64 32`, and give it a key ID: 1-32
+   letters, digits, dots, dashes, or underscores, such as `2026-10`.
+2. In the console's runtime environment, list it first in
+   `HOT_UPDATER_VAULT_MASTER_KEYS`, as `kid:key` pairs separated by commas.
+   The first key seals new values, and every listed key opens what was sealed
+   under it. The key in `HOT_UPDATER_VAULT_MASTER_KEY` is the key ID
+   `default`, so either list it as well:
+
+   ```bash
+   HOT_UPDATER_VAULT_MASTER_KEYS="2026-10:<new key>,default:<current key>"
+   ```
+
+   or keep `HOT_UPDATER_VAULT_MASTER_KEY` beside a list of the new key alone:
+   when both are set, it follows the listed keys as `default`. Redeploy the
+   console. A key ID listed twice, or a `default` in both that is not the same
+   key, locks the vault with a message that names the variable.
+3. Open **Vault → Master keys**. It lists each key with the stored versions
+   under it. **Rewrap** moves them to the new key in batches of 100 and counts
+   down until none are left. CI keeps resolving secrets while it runs, and
+   writes during it are sealed under the new key.
+4. When every version is under the new key, the vault forgets the old one,
+   and the page says which keys can leave the environment. When nothing is
+   stored under the old key, such as after every secret was deleted,
+   **Finish rotation** does the same without moving anything. Remove them and
+   redeploy:
+
+   ```bash
+   HOT_UPDATER_VAULT_MASTER_KEYS="2026-10:<new key>"
+   ```
+
+Every console that serves the vault needs the new key before the old one is
+removed. A console that still holds only the old key is locked once the vault
+forgets it. Versions under a key the console does not hold stay where they
+are, and the page names that key, so add it after the new one and rewrap
+again.
+
+Rewrapping needs the master keys, so only the console runs it. The CLI never
+rewraps, as it never reveals a value. Over the database,
+`hotUpdater.api.vault.keys()` returns the same per-key counts, with whether
+the vault still knows each key, and
+`rewrap({ batch })` moves one batch and returns `{ rewrapped, remaining }`.
+
+A vault whose key is lost cannot be opened or rotated. To start over with a
+new key, delete the vault's rows from `vault_secrets` and
+`vault_secret_versions`, including the `.master-keys` row that holds the key
+checks, and store the secrets again.
+
 ## Errors
 
 Refusals are `{ "error": { "code", "message" } }`:
@@ -237,7 +295,7 @@ Refusals are `{ "error": { "code", "message" } }`:
 | 404 | `vault_unavailable` | The console runs without `vault()`, or over `standaloneRepository(...)` |
 | 409 | `conflict` | The named secrets kept changing while the console read them, a write met a secret of another kind or another version than its `expectedVersion`, or the secret changed during a write or a signature; send the request again |
 | 500 | `invalid_signing_key` | The bundle signing key is not an unencrypted RSA private key of 2048, 3072, or 4096 bits |
-| 503 | `vault_locked` | `HOT_UPDATER_VAULT_MASTER_KEY` is not set where the console runs, or for a write, it is not the key the stored secrets were saved with |
+| 503 | `vault_locked` | No master key is set where the console runs, the master keys are malformed, a value was sealed under a key the console does not hold, or for a write, the console's keys are not the vault's |
 
 A 401 from the vault routes also carries
 `WWW-Authenticate: Bearer realm="hot-updater-vault"`.

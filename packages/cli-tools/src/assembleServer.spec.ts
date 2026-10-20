@@ -131,7 +131,7 @@ describe("assembleServer", () => {
     ).toThrow(HotUpdaterConfigError);
   });
 
-  it("never reveals a vault secret, even with the master key in the env or the definition", async () => {
+  it("never reveals or rewraps a vault secret, even with the master key in the env or the definition", async () => {
     const masterKey = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
     vi.stubEnv("HOT_UPDATER_VAULT_MASTER_KEY", masterKey);
     try {
@@ -159,6 +159,9 @@ describe("assembleServer", () => {
         await expect(
           locked.reveal({ id: secret.id, actor: "cli" }),
         ).rejects.toBeInstanceOf(VaultLockedError);
+        await expect(locked.rewrap()).rejects.toThrow(
+          "The CLI does not rewrap the vault",
+        );
       }
     } finally {
       vi.unstubAllEnvs();

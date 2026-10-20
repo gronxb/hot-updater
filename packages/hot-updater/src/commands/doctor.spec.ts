@@ -455,6 +455,39 @@ describe("doctor", () => {
     expect(result).toBe(true);
   });
 
+  it("warns, without failing, when an env file keeps the vault's master key beside database credentials", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    await writeFile(
+      path.join(cwd, ".env.hotupdater"),
+      "HOT_UPDATER_VAULT_MASTER_KEY=key\nHOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY=role\n",
+    );
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: { dependencies: { "hot-updater": "^0.18.2" } },
+      path: path.join(cwd, "package.json"),
+    });
+
+    const result = await doctor();
+
+    expect(result).toEqual({
+      success: true,
+      details: expect.objectContaining({
+        vault: {
+          issues: [
+            expect.objectContaining({
+              type: "warning",
+              code: "VAULT_MASTER_KEY_WITH_DATABASE_CREDENTIALS",
+              source: ".env.hotupdater",
+              masterKeys: ["HOT_UPDATER_VAULT_MASTER_KEY"],
+              credentials: ["HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY"],
+            }),
+          ],
+        },
+      }),
+    });
+  });
+
   it("prints machine-readable JSON without prompting", async () => {
     mockReadPackageUp.mockResolvedValue({
       packageJson: {

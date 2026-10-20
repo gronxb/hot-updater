@@ -253,7 +253,7 @@ describe("vault", () => {
     ).rejects.toThrow(VaultInputError);
   });
 
-  it("tells whether it is locked, reading nothing without a key", async () => {
+  it("tells whether it is locked, and which keys the vault knows", async () => {
     const { api, with: withOptions, db } = start();
     const findOne = vi.spyOn(db, "findOne");
     const findMany = vi.spyOn(db, "findMany");
@@ -261,22 +261,33 @@ describe("vault", () => {
     await expect(withOptions({}).status()).resolves.toEqual({
       locked: true,
       message: expect.stringContaining("HOT_UPDATER_VAULT_MASTER_KEY"),
+      knownKeys: [],
     });
     await expect(
       withOptions({ masterKey: btoa("short") }).status(),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       locked: true,
       message: expect.stringContaining("32 bytes in base64"),
     });
-    expect(findOne).not.toHaveBeenCalled();
-    expect(findMany).not.toHaveBeenCalled();
+    // Without a keys row, it also reads the secrets for stored versions.
+    expect(findOne).toHaveBeenCalledTimes(2);
+    expect(findMany).toHaveBeenCalledTimes(2);
     // An empty vault takes any well-formed key.
     await expect(api.status()).resolves.toEqual({ locked: false });
     vi.stubEnv("HOT_UPDATER_VAULT_MASTER_KEY", MASTER_KEY);
     await expect(withOptions({}).status()).resolves.toEqual({ locked: false });
+
+    // Once it sealed a value, only its key opens it.
+    await api.put({ name: "a", kind: "generic", value: 1 });
+    vi.unstubAllEnvs();
+    await expect(withOptions({}).status()).resolves.toEqual({
+      locked: true,
+      message: expect.stringContaining("HOT_UPDATER_VAULT_MASTER_KEY"),
+      knownKeys: ["default"],
+    });
   });
 
-  it("is locked under a well-formed key that did not seal the secrets, reading two rows", async () => {
+  it("is locked under a well-formed key that did not seal the secrets, reading one row", async () => {
     const { api, with: withOptions, db } = start();
     await api.put({ name: "a", kind: "generic", value: 1 });
     const findOne = vi.spyOn(db, "findOne");
@@ -285,34 +296,68 @@ describe("vault", () => {
     await expect(api.status()).resolves.toEqual({ locked: false });
     await expect(
       withOptions({ masterKey: OTHER_KEY }).status(),
-    ).resolves.toEqual({
+    ).resolves.toMatchObject({
       locked: true,
-      message: expect.stringContaining("is not the key the vault's secrets"),
+      message: expect.stringContaining(
+        'the master key "default" in HOT_UPDATER_VAULT_MASTER_KEY or HOT_UPDATER_VAULT_MASTER_KEYS is not the key',
+      ),
     });
-    expect(findMany).toHaveBeenCalledTimes(2);
+    expect(findMany).not.toHaveBeenCalled();
     expect(findOne).toHaveBeenCalledTimes(2);
   });
 
-  it("is locked when the secret it checks has no stored value", async () => {
-    const { api, db } = start();
-    await api.put({ name: "a", kind: "generic", value: 1 });
-    vi.spyOn(db, "findOne").mockResolvedValueOnce(null);
-
-    await expect(api.status()).resolves.toEqual({
-      locked: true,
-      message: expect.stringContaining('the secret "a" has no stored value'),
-    });
-  });
-
-  it("checks the key against a live secret, past removed ones", async () => {
+  it("stays locked to its first key once every secret is removed", async () => {
     const { api, with: withOptions } = start();
     const first = await api.put({ name: "a", kind: "generic", value: 1 });
-    await api.put({ name: "b", kind: "generic", value: 2 });
     await api.remove({ id: first.id });
+    await expect(api.list()).resolves.toEqual([]);
 
+    const other = withOptions({ masterKey: OTHER_KEY });
+    await expect(other.status()).resolves.toMatchObject({ locked: true });
     await expect(
-      withOptions({ masterKey: OTHER_KEY }).status(),
-    ).resolves.toMatchObject({ locked: true });
+      other.put({ name: "b", kind: "generic", value: 2 }),
+    ).rejects.toThrow(VaultLockedError);
+    await expect(
+      api.put({ name: "b", kind: "generic", value: 2 }),
+    ).resolves.toMatchObject({ version: 1 });
+  });
+
+  it("lets one of two Consoles with different keys seal into an empty vault, and locks the other", async () => {
+    const { api, with: withOptions } = start();
+    const other = withOptions({ masterKey: OTHER_KEY });
+
+    const results = await Promise.allSettled([
+      api.put({ name: "a", kind: "generic", value: "a" }),
+      other.put({ name: "b", kind: "generic", value: "b" }),
+    ]);
+    expect(results.map(({ status }) => status).sort()).toEqual([
+      "fulfilled",
+      "rejected",
+    ]);
+    expect(results.find(({ status }) => status === "rejected")).toMatchObject({
+      reason: expect.any(VaultLockedError),
+    });
+    const winner = results[0].status === "fulfilled" ? api : other;
+    const loser = winner === api ? other : api;
+    const [secret] = await winner.list();
+    await expect(
+      winner.reveal({ id: secret!.id, actor: "test" }),
+    ).resolves.toBeTypeOf("string");
+    await expect(loser.status()).resolves.toMatchObject({ locked: true });
+  });
+
+  it("keeps its master key checks out of the secrets it lists, reveals, and removes", async () => {
+    const { api } = start();
+    await api.put({ name: "a", kind: "generic", value: 1 });
+
+    expect((await api.list()).map(({ name }) => name)).toEqual(["a"]);
+    await expect(
+      api.reveal({ id: ".master-keys", actor: "test" }),
+    ).rejects.toBeInstanceOf(VaultNotFoundError);
+    await expect(api.remove({ id: ".master-keys" })).resolves.toBeNull();
+    await expect(
+      api.put({ name: ".master-keys", kind: "generic", value: 1 }),
+    ).rejects.toBeInstanceOf(VaultInputError);
     await expect(api.status()).resolves.toEqual({ locked: false });
   });
 

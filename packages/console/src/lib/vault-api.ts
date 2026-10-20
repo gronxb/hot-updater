@@ -2,9 +2,15 @@ import type {
   VaultSecretKind,
   VaultTokenScope,
 } from "@hot-updater/server/plugins";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import {
+  getVaultKeysRpc,
   getVaultStatusRpc,
   issueVaultTokenRpc,
   listVaultSecretsRpc,
@@ -12,12 +18,14 @@ import {
   putVaultSecretRpc,
   removeVaultSecretRpc,
   revokeVaultTokenRpc,
+  rewrapVaultRpc,
 } from "./vault-rpc";
 
 export const vaultQueryKeys = {
   status: ["vault", "status"] as const,
   secrets: ["vault", "secrets"] as const,
   tokens: ["vault", "tokens"] as const,
+  keys: ["vault", "keys"] as const,
 };
 
 /**
@@ -51,6 +59,50 @@ export const useVaultTokensQuery = ({
     enabled,
   });
 
+/** The master keys and the versions under each, read once their tab opens. */
+export const useVaultKeysQuery = ({
+  enabled = true,
+}: { readonly enabled?: boolean } = {}) =>
+  useQuery({
+    queryKey: vaultQueryKeys.keys,
+    queryFn: () => getVaultKeysRpc(),
+    staleTime: 5 * 60_000,
+    placeholderData: keepPreviousData,
+    enabled,
+  });
+
+/**
+ * Rewraps batch after batch until no version is left under another key,
+ * or the rest are under keys the console does not hold. Each batch's
+ * count reaches `onProgress`, so the page counts down.
+ */
+export const useRewrapVaultMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      onProgress,
+    }: {
+      readonly onProgress: (remaining: number) => void;
+    }) => {
+      let rewrapped = 0;
+      for (;;) {
+        const batch = await rewrapVaultRpc();
+        rewrapped += batch.rewrapped;
+        onProgress(batch.remaining);
+        if (batch.remaining === 0 || batch.rewrapped === 0) {
+          return { rewrapped, remaining: batch.remaining };
+        }
+      }
+    },
+    onSettled: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: vaultQueryKeys.keys }),
+        queryClient.invalidateQueries({ queryKey: vaultQueryKeys.status }),
+      ]);
+    },
+  });
+};
+
 export const usePutVaultSecretMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
@@ -65,6 +117,8 @@ export const usePutVaultSecretMutation = () => {
     onSettled: async (_data, error) => {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: vaultQueryKeys.secrets }),
+        // A write adds a version under the active key.
+        queryClient.invalidateQueries({ queryKey: vaultQueryKeys.keys }),
         error === null
           ? undefined
           : queryClient.invalidateQueries({ queryKey: vaultQueryKeys.status }),
@@ -81,7 +135,10 @@ export const useRemoveVaultSecretMutation = () => {
         data: { id: secret.id, expectedVersion: secret.version },
       }),
     onSettled: async () => {
-      await queryClient.invalidateQueries({ queryKey: vaultQueryKeys.secrets });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: vaultQueryKeys.secrets }),
+        queryClient.invalidateQueries({ queryKey: vaultQueryKeys.keys }),
+      ]);
     },
   });
 };
