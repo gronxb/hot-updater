@@ -18,7 +18,11 @@ describe("extractBuiltInBundle", () => {
     await fs.promises.rm(dir, { recursive: true, force: true });
   });
 
-  const artifact = async (name: string, entries: Record<string, string>) => {
+  const artifact = async (
+    name: string,
+    entries: Record<string, string | Uint8Array>,
+    compression: "STORE" | "DEFLATE" = "DEFLATE",
+  ) => {
     const zip = new JSZip();
     for (const [entry, contents] of Object.entries(entries)) {
       zip.file(entry, contents);
@@ -26,7 +30,7 @@ describe("extractBuiltInBundle", () => {
     const artifactPath = path.join(dir, name);
     await fs.promises.writeFile(
       artifactPath,
-      await zip.generateAsync({ type: "uint8array" }),
+      await zip.generateAsync({ type: "uint8array", compression }),
     );
     return artifactPath;
   };
@@ -47,6 +51,30 @@ describe("extractBuiltInBundle", () => {
       "hermes bytecode",
     );
   });
+
+  it.each(["STORE", "DEFLATE"] as const)(
+    "streams a large %s entry byte for byte",
+    async (compression) => {
+      const bytes = new Uint8Array(3 * 1024 * 1024);
+      for (let i = 0; i < bytes.length; i += 1) bytes[i] = (i * 31) % 251;
+      const artifactPath = await artifact(
+        "app-release.apk",
+        {
+          "AndroidManifest.xml": "manifest",
+          "assets/index.android.bundle": bytes,
+          "res/raw/zzz.bin": "after the bundle",
+        },
+        compression,
+      );
+      const outputPath = path.join(dir, "out", "index.android.bundle");
+
+      await extractBuiltInBundle({ artifactPath, outputPath });
+
+      expect(
+        Buffer.compare(await fs.promises.readFile(outputPath), bytes),
+      ).toBe(0);
+    },
+  );
 
   it("names the entry a build without a bundle lacks", async () => {
     const artifactPath = await artifact("app-release.aab", {
