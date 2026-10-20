@@ -555,6 +555,24 @@ describe("uploadToTestFlight", () => {
     ).resolves.toMatchObject({ state: "COMPLETE" });
   });
 
+  it("fails a timeout in which App Store Connect never reported the build's state", async () => {
+    const routes = successRoutes();
+    routes[`GET ${API}/v1/buildUploads/upload-1`] = { status: 503 };
+    const { fetch } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+        processingTimeoutMs: 0,
+      }),
+    ).rejects.toThrow(
+      "App Store Connect reported no state for build 42: Reading the build upload failed (HTTP 503). Check the build in TestFlight: https://appstoreconnect.apple.com/apps/123/testflight/ios",
+    );
+  });
+
   it("stops waiting when App Store Connect refuses the key while it processes", async () => {
     const routes = successRoutes();
     routes[`GET ${API}/v1/buildUploads/upload-1`] = [
