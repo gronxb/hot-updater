@@ -686,12 +686,13 @@ describe("uploadToTestFlight", () => {
     ).rejects.toThrow("Uploading part 1 of 6 failed: HTTP 403.");
 
     // Parts 2-4 were in flight with part 1; parts 5 and 6 never started.
-    expect(settled).toEqual([
+    expect(settled).toHaveLength(4);
+    expect(settled.slice(0, 3).sort()).toEqual([
       "https://upload.example.com/part-2",
       "https://upload.example.com/part-3",
       "https://upload.example.com/part-4",
-      "DELETE",
     ]);
+    expect(settled[3]).toBe("DELETE");
     expect(requests.at(-1)).toMatchObject({ method: "DELETE" });
   });
 
@@ -861,6 +862,68 @@ describe("uploadToTestFlight", () => {
     expect(
       requests.filter((request) => request.url === PART_URL_1),
     ).toHaveLength(2);
+  });
+
+  it("retries a rate-limited create without adopting another run's reservation", async () => {
+    const routes = successRoutes();
+    routes[`POST ${API}/v1/buildUploads`] = [
+      { status: 429, headers: { "retry-after": "0" } },
+      { status: 201, json: { data: { id: "upload-1", type: "buildUploads" } } },
+    ];
+    routes[`GET ${RESERVATIONS_URL}`] = {
+      json: { data: [{ id: "someone-else" }] },
+    };
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).resolves.toMatchObject({ buildUploadId: "upload-1" });
+    expect(requests.some((request) => request.url === RESERVATIONS_URL)).toBe(
+      false,
+    );
+  });
+
+  it("finds the app again after a rate limit", async () => {
+    const routes = successRoutes();
+    routes[`GET ${appsUrl}`] = [
+      { status: 429, headers: { "retry-after": "0" } },
+      successRoutes()[`GET ${appsUrl}`] as Reply,
+    ];
+    const { fetch } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).resolves.toMatchObject({ appId: "123" });
+  });
+
+  it("waits the Retry-After of a rate-limited state read before reading again", async () => {
+    const routes = successRoutes();
+    routes[`GET ${API}/v1/buildUploads/upload-1`] = [
+      { status: 429, headers: { "retry-after": "1" } },
+      { json: { data: { attributes: { state: { state: "COMPLETE" } } } } },
+    ];
+    const { fetch } = createRecordingFetch(routes);
+    const started = Date.now();
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).resolves.toMatchObject({ state: "COMPLETE" });
+    expect(Date.now() - started).toBeGreaterThanOrEqual(900);
   });
 
   it("names the build number App Store Connect already has", async () => {

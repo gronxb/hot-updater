@@ -407,15 +407,17 @@ export const uploadToTestFlight = async ({
     return (response.status === 204 ? undefined : await response.json()) as T;
   };
 
-  const { data: apps } = await request<{
-    data: { id: string; attributes?: { bundleId?: string } }[];
-  }>(
-    "Finding the App Store Connect app",
-    "GET",
-    `/v1/apps?${new URLSearchParams({
-      "filter[bundleId]": info.bundleId,
-      "fields[apps]": "bundleId",
-    })}`,
+  const { data: apps } = await retrying(() =>
+    request<{
+      data: { id: string; attributes?: { bundleId?: string } }[];
+    }>(
+      "Finding the App Store Connect app",
+      "GET",
+      `/v1/apps?${new URLSearchParams({
+        "filter[bundleId]": info.bundleId,
+        "fields[apps]": "bundleId",
+      })}`,
+    ),
   );
   const app = apps.find((app) => app.attributes?.bundleId === info.bundleId);
   if (!app) {
@@ -483,9 +485,13 @@ export const uploadToTestFlight = async ({
       if (!isRetryable(error)) {
         throw error;
       }
-      // App Store Connect may have made the reservation it did not answer.
-      unanswered = true;
-      buildUploadId = await findReservation();
+      // A rate limit refused the create; a timeout, a server error or a
+      // lost answer may have made the reservation it did not answer, which
+      // only then is looked up.
+      if (!(error instanceof AppStoreConnectError && error.status === 429)) {
+        unanswered = true;
+        buildUploadId = await findReservation();
+      }
       if (buildUploadId === undefined) {
         if (attempt === COMMIT_ATTEMPTS) {
           throw error;
@@ -620,8 +626,9 @@ export const uploadToTestFlight = async ({
   // failed read: a timeout without it is a failure.
   let reportedProcessing = false;
   let lastError: unknown;
-  for (;;) {
+  for (let failedReads = 0; ; ) {
     // The build is uploaded: a failed read is retried until the deadline.
+    let readError: unknown;
     const read = await request<{
       data: { attributes?: { state?: BuildUploadState } };
     }>(
@@ -632,9 +639,10 @@ export const uploadToTestFlight = async ({
       if (!isRetryable(error)) {
         throw error;
       }
-      lastError = error;
+      lastError = readError = error;
       return undefined;
     });
+    failedReads = read ? 0 : failedReads + 1;
     const state = read ? (read.data.attributes?.state ?? {}) : {};
     // AWAITING_UPLOAD only waits for the file, which the commit sent.
     if (state.state === "PROCESSING") {
@@ -658,7 +666,12 @@ export const uploadToTestFlight = async ({
           testFlightUrl,
         };
       }
-      await sleep(pollIntervalMs);
+      // A rate-limited read waits as long as App Store Connect asks.
+      await sleep(
+        readError === undefined
+          ? pollIntervalMs
+          : Math.max(pollIntervalMs, retryDelayMs(readError, failedReads)),
+      );
       continue;
     }
 
