@@ -351,7 +351,12 @@ const aKind = (kind: string) =>
 const writeOf = async (
   request: Request,
 ): Promise<
-  { readonly kind: VaultSecretKind; readonly value: unknown } | undefined
+  | {
+      readonly kind: VaultSecretKind;
+      readonly value: unknown;
+      readonly expectedVersion?: number;
+    }
+  | undefined
 > => {
   let body: unknown;
   try {
@@ -364,7 +369,20 @@ const writeOf = async (
   }
   const kind = Reflect.get(body, "kind");
   if (!VAULT_SECRET_KINDS.includes(kind as VaultSecretKind)) return undefined;
-  return { kind: kind as VaultSecretKind, value: Reflect.get(body, "value") };
+  const expectedVersion: unknown = Reflect.get(body, "expectedVersion");
+  if (
+    expectedVersion !== undefined &&
+    (!Number.isSafeInteger(expectedVersion) || (expectedVersion as number) < 0)
+  ) {
+    return undefined;
+  }
+  return {
+    kind: kind as VaultSecretKind,
+    value: Reflect.get(body, "value"),
+    ...(expectedVersion === undefined
+      ? {}
+      : { expectedVersion: expectedVersion as number }),
+  };
 };
 
 /**
@@ -386,6 +404,8 @@ const writeOf = async (
  *   reach. A secret of another kind under the name is a 409.
  * - Each write is in the audit log in the write's own transaction, and each
  *   one the scope refuses before the response is sent.
+ * - An optional `expectedVersion`, the version the writer read (0 for none),
+ *   is a 409 when the secret moved on since.
  */
 export const putVaultSecret = (
   request: Request,
@@ -408,7 +428,7 @@ export const putVaultSecret = (
       return failure(
         400,
         "invalid_request",
-        `Send { "kind", "value" }, with kind one of ${VAULT_SECRET_KINDS.join(", ")}.`,
+        `Send { "kind", "value" }, with kind one of ${VAULT_SECRET_KINDS.join(", ")}, and an optional expectedVersion, 0 or the version read.`,
       );
     }
     const context = { ...requestContext(request), name };
@@ -468,7 +488,7 @@ export const putVaultSecret = (
         kind: write.kind,
         value,
         metadata: vaultSecretMetadata(write.kind, value as never),
-        expectedVersion: existing?.version ?? 0,
+        expectedVersion: write.expectedVersion ?? existing?.version ?? 0,
         // In the write's transaction: logged exactly when it is stored.
         audit: { actor: token.id, context },
       });
@@ -477,7 +497,9 @@ export const putVaultSecret = (
         return failure(
           409,
           "conflict",
-          `${error.message} Send the request again to store the next version.`,
+          write.expectedVersion === undefined
+            ? `${error.message} Send the request again to store the next version.`
+            : `${error.message} Read it again before you store the next version.`,
         );
       }
       if (error instanceof VaultLockedError) {

@@ -2,8 +2,5 @@
   "title": "Create a Plugin",
   "description": "Write server and client plugins.",
   "icon": "Plug",
-  "pages": [
-    "../custom/server-plugins",
-    "../react-native-api/client-plugins"
-  ]
+  "pages": ["../custom/server-plugins", "../react-native-api/client-plugins"]
 }

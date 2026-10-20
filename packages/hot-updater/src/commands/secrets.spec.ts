@@ -468,6 +468,7 @@ describe("hot-updater secrets import", () => {
         auth: `Bearer ${TOKEN}`,
         body: {
           kind: "deploy-credentials",
+          expectedVersion: 0,
           value: {
             HOT_UPDATER_S3_BUCKET_NAME: "bundles",
             HOT_UPDATER_S3_REGION: "us-east-1",
@@ -509,6 +510,7 @@ describe("hot-updater secrets import", () => {
 
     expect(requests.at(-1)?.body).toEqual({
       kind: "deploy-credentials",
+      expectedVersion: 0,
       value: {
         HOT_UPDATER_S3_REGION: "us-east-1",
         HOT_UPDATER_S3_SECRET_ACCESS_KEY: "quoted # kept",
@@ -664,6 +666,35 @@ describe("hot-updater secrets import", () => {
 
     expect(log.warn).toHaveBeenCalledWith(
       "Commands that use the config's database, storage, or signing read HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN from the environment or .env.hotupdater, where they are not set: set them there to deploy with the imported variables.",
+    );
+  });
+
+  it("writes over the version it listed, keeping the file when another write moved the secret on", async () => {
+    const requests = mockConsole((request) =>
+      request.method === "GET"
+        ? { secrets: [DEPLOY] }
+        : Response.json(
+            {
+              error: {
+                code: "conflict",
+                message:
+                  'The secret "deploy-credentials" is at version 2 now, not 1. Read it again before you store the next version.',
+              },
+            },
+            { status: 409 },
+          ),
+    );
+    const file = await writeEnvFile(["HOT_UPDATER_S3_REGION=us-east-1"]);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(requests.at(-1)?.body).toMatchObject({ expectedVersion: 1 });
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      expect.stringContaining("is at version 2 now, not 1"),
+    );
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(
+      "HOT_UPDATER_S3_REGION=us-east-1",
     );
   });
 

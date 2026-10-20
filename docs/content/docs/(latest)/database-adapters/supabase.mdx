@@ -103,7 +103,8 @@ if (existsSync(".env.hotupdater")) {
 
 export default defineConfig({
   // ... build, storage, plugins, and updateStrategy
-  database: supabaseDatabase({ // [!code ++]
+  database: supabaseDatabase({
+    // [!code ++]
     supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!, // [!code ++]
     supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!, // [!code ++]
   }), // [!code ++]
@@ -122,7 +123,8 @@ import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 import { supabaseDatabase } from "@hot-updater/supabase/edge"; // [!code ++]
 
 export const hotUpdater = createHotUpdater({
-  database: supabaseDatabase({ // [!code ++]
+  database: supabaseDatabase({
+    // [!code ++]
     supabaseUrl: Deno.env.get("SUPABASE_URL")!, // [!code ++]
     supabaseServiceRoleKey: Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, // [!code ++]
   }), // [!code ++]

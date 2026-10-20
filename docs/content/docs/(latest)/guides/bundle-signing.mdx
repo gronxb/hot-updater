@@ -123,11 +123,11 @@ Reference the public file in the Expo app config:
         "@hot-updater/expo",
         {
           "channel": "production",
-          "publicKeyPath": "./keys/public-key.pem" // [!code ++]
-        }
-      ]
-    ]
-  }
+          "publicKeyPath": "./keys/public-key.pem", // [!code ++]
+        },
+      ],
+    ],
+  },
 }
 ```
 
@@ -245,10 +245,10 @@ inside the trusted signing environment.
 
 ## Configuration States
 
-| `signing` config                        | Native public key     | Result                        |
-| -------------------------------------- | --------------------- | ----------------------------- |
-| Omitted or local `enabled: false`       | Not present           | Normal unsigned updates       |
-| Omitted or local `enabled: false`       | Present               | Updates rejected              |
+| `signing` config                         | Native public key     | Result                        |
+| ---------------------------------------- | --------------------- | ----------------------------- |
+| Omitted or local `enabled: false`        | Not present           | Normal unsigned updates       |
+| Omitted or local `enabled: false`        | Present               | Updates rejected              |
 | Local `enabled: true` or signing adapter | Present and matching  | Signed updates verified       |
 | Local `enabled: true` or signing adapter | Missing or mismatched | Deployment or update rejected |
 

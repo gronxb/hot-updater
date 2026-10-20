@@ -39,7 +39,8 @@ import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   // ... build, storage, plugins, and updateStrategy
-  database: postgres({ // [!code ++]
+  database: postgres({
+    // [!code ++]
     connectionString: process.env.DATABASE_URL!, // [!code ++]
   }), // [!code ++]
 });

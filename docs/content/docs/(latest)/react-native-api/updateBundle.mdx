@@ -38,18 +38,18 @@ async function stageAppUpdate() {
 Most apps should not construct these parameters. The selected update helper
 supplies them after resolving the artifact endpoint.
 
-| Parameter | Type | Required | Description |
-| --- | --- | --- | --- |
-| `bundleId` | `string` | Yes | Target artifact ID. |
-| `status` | `"UPDATE" \| "ROLLBACK"` | Yes | Transition direction. |
-| `manifestUrl` | `string` | Yes | Target manifest URL. |
-| `manifestFileHash` | `string` | Yes | SHA256 hash or `sig:<base64_signature>` for the manifest. |
-| `archiveUrl` | `string \| null` | No | Full `tar.br` archive URL; integrity and sizes come from the verified manifest. |
-| `assets` | `Record<string, ArtifactAsset>` | Yes | Without `filesUrl`, the original descriptor for every target file, with optional Hermes patches. With `filesUrl`, only the Hermes patch, as `{ [path]: { patch } }`. |
-| `filesUrl` | `string \| null` | No | Where native `POST`s the paths of the files it downloads one by one, for their URLs. |
-| `requestHeaders` | `Record<string, string> \| null` | No | Headers for the `filesUrl` request, such as the client API key. |
-| `channel` | `string` | No | Channel committed with the staged selection. |
-| `selection` | `object \| null` | No | Release Catalog selection receipt. |
+| Parameter          | Type                             | Required | Description                                                                                                                                                          |
+| ------------------ | -------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `bundleId`         | `string`                         | Yes      | Target artifact ID.                                                                                                                                                  |
+| `status`           | `"UPDATE" \| "ROLLBACK"`         | Yes      | Transition direction.                                                                                                                                                |
+| `manifestUrl`      | `string`                         | Yes      | Target manifest URL.                                                                                                                                                 |
+| `manifestFileHash` | `string`                         | Yes      | SHA256 hash or `sig:<base64_signature>` for the manifest.                                                                                                            |
+| `archiveUrl`       | `string \| null`                 | No       | Full `tar.br` archive URL; integrity and sizes come from the verified manifest.                                                                                      |
+| `assets`           | `Record<string, ArtifactAsset>`  | Yes      | Without `filesUrl`, the original descriptor for every target file, with optional Hermes patches. With `filesUrl`, only the Hermes patch, as `{ [path]: { patch } }`. |
+| `filesUrl`         | `string \| null`                 | No       | Where native `POST`s the paths of the files it downloads one by one, for their URLs.                                                                                 |
+| `requestHeaders`   | `Record<string, string> \| null` | No       | Headers for the `filesUrl` request, such as the client API key.                                                                                                      |
+| `channel`          | `string`                         | No       | Channel committed with the staged selection.                                                                                                                         |
+| `selection`        | `object \| null`                 | No       | Release Catalog selection receipt.                                                                                                                                   |
 
 The runtime downloads and verifies the manifest, then reuses matching current
 OTA or built-in files. On Android, a release build re-encodes PNGs (AAPT2's

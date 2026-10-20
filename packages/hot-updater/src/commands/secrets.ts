@@ -512,10 +512,13 @@ export const handleSecretsImport = async (
         `${file} changed since it was read: run hot-updater secrets import again.`,
       );
     }
+    // Refused when another write moved the secret on since it was listed,
+    // whose variables this version would drop unseen.
     const secret = await client.put({
       name,
       kind: "deploy-credentials",
       value,
+      expectedVersion: existing?.version ?? 0,
     });
     // Rewritten only while it holds what was read: a value changed during
     // the write stays in the file.

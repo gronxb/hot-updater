@@ -50,9 +50,11 @@ import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   // ... build, database, plugins, and updateStrategy
-  storage: s3Storage({ // [!code ++]
+  storage: s3Storage({
+    // [!code ++]
     region: "us-east-1", // [!code ++]
-    credentials: { // [!code ++]
+    credentials: {
+      // [!code ++]
       accessKeyId: process.env.AWS_ACCESS_KEY_ID!, // [!code ++]
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
     }, // [!code ++]
@@ -91,7 +93,8 @@ import { cloudFrontDownloadUrl, s3Storage } from "@hot-updater/aws"; // [!code +
 const storage = s3Storage({
   region: process.env.AWS_REGION!,
   bucketName: process.env.AWS_S3_BUNDLES_BUCKET!,
-  getDownloadUrl: cloudFrontDownloadUrl({ // [!code ++]
+  getDownloadUrl: cloudFrontDownloadUrl({
+    // [!code ++]
     publicBaseUrl: "https://updates.example.com", // [!code ++]
     keyPairId: process.env.CLOUDFRONT_KEY_PAIR_ID!, // [!code ++]
     ssmRegion: process.env.AWS_REGION!, // [!code ++]
@@ -139,9 +142,11 @@ import { apiKeys, insights } from "@hot-updater/server/plugins";
 const hotUpdater = createHotUpdater({
   database,
   plugins: [insights(), apiKeys()],
-  storage: s3Storage({ // [!code ++]
+  storage: s3Storage({
+    // [!code ++]
     region: process.env.AWS_REGION!, // [!code ++]
-    credentials: { // [!code ++]
+    credentials: {
+      // [!code ++]
       accessKeyId: process.env.AWS_ACCESS_KEY_ID!, // [!code ++]
       secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!, // [!code ++]
     }, // [!code ++]

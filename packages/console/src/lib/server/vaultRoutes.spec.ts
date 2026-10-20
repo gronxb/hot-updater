@@ -758,6 +758,45 @@ describe("PUT /_hot-updater/vault/v1/secrets/:name", () => {
     });
   });
 
+  it("answers 409 when the secret moved on from the expectedVersion the writer read", async () => {
+    const { load, vault: api, issue } = await start();
+    const token = await issue({
+      secrets: { names: ["deploy"] },
+      actions: ["write"],
+    });
+    await api.put({ name: "deploy", kind: "generic", value: { A: "1" } });
+
+    const stale = await put(load, token, "deploy", {
+      kind: "generic",
+      value: { B: "2" },
+      expectedVersion: 0,
+    });
+    expect(stale.status).toBe(409);
+    await expect(stale.json()).resolves.toMatchObject({
+      error: {
+        code: "conflict",
+        message: expect.stringContaining("Read it again"),
+      },
+    });
+
+    const current = await put(load, token, "deploy", {
+      kind: "generic",
+      value: { B: "2" },
+      expectedVersion: 1,
+    });
+    expect(current.status).toBe(200);
+    await expect(current.json()).resolves.toMatchObject({
+      secret: { name: "deploy", version: 2 },
+    });
+
+    const invalid = await put(load, token, "deploy", {
+      kind: "generic",
+      value: { B: "2" },
+      expectedVersion: -1,
+    });
+    expect(invalid.status).toBe(400);
+  });
+
   it("refuses a bad name, body, or value with 400", async () => {
     const { load, issue } = await start();
     const token = await issue({

@@ -20,7 +20,8 @@ export default defineConfig({
   signing: {
     enabled: true,
     privateKeyPath:
-      process.env.HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH ?? "./keys/private-key.pem",
+      process.env.HOT_UPDATER_SIGNING_PRIVATE_KEY_PATH ??
+      "./keys/private-key.pem",
   },
   // ...other config
 });

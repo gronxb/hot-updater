@@ -16,15 +16,15 @@ storage, framework and hosting in an existing backend.
 
 ## Choose a path
 
-| Path | Resources | Use it when | Catalog delivery |
-| --- | --- | --- | --- |
-| [Cloudflare](/docs/managed/cloudflare) | D1, R2, Worker | You want the supplied Worker deployment or already use Cloudflare. | Shared cache in front of Worker execution. |
-| [Supabase](/docs/managed/supabase) | Postgres, Storage, Edge Function | You want the supplied Supabase deployment or already operate a Supabase project. | Direct Edge Function URL; each check invokes the Function. |
-| [Firebase](/docs/managed/firebase) | Firestore, Storage, Function | You want the supplied Firebase deployment or already operate a Firebase project. | Direct Function URL; each check invokes the Function. |
-| [Vercel](/docs/managed/vercel) | Postgres, Blob, Function | You want the supplied Vercel deployment or already use Vercel. | Vercel's CDN caches each catalog per API key in front of the Function. |
-| [Azure](/docs/managed/azure) | Cosmos DB, Blob Storage, Function App | You want the supplied Azure deployment or already use an Azure subscription. | Direct Function App URL; each check invokes the Function. |
-| [AWS](/docs/managed/aws) | DynamoDB, S3, Lambda@Edge, CloudFront | You want the supplied AWS deployment and use AWS accounts and IAM. | CloudFront shared catalog cache. |
-| [Custom server](/docs/custom/overview) | Your database, storage and host | You need to use your own ORM, server framework or deployment process. | Depends on your hosting and cache configuration. |
+| Path                                   | Resources                             | Use it when                                                                      | Catalog delivery                                                       |
+| -------------------------------------- | ------------------------------------- | -------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| [Cloudflare](/docs/managed/cloudflare) | D1, R2, Worker                        | You want the supplied Worker deployment or already use Cloudflare.               | Shared cache in front of Worker execution.                             |
+| [Supabase](/docs/managed/supabase)     | Postgres, Storage, Edge Function      | You want the supplied Supabase deployment or already operate a Supabase project. | Direct Edge Function URL; each check invokes the Function.             |
+| [Firebase](/docs/managed/firebase)     | Firestore, Storage, Function          | You want the supplied Firebase deployment or already operate a Firebase project. | Direct Function URL; each check invokes the Function.                  |
+| [Vercel](/docs/managed/vercel)         | Postgres, Blob, Function              | You want the supplied Vercel deployment or already use Vercel.                   | Vercel's CDN caches each catalog per API key in front of the Function. |
+| [Azure](/docs/managed/azure)           | Cosmos DB, Blob Storage, Function App | You want the supplied Azure deployment or already use an Azure subscription.     | Direct Function App URL; each check invokes the Function.              |
+| [AWS](/docs/managed/aws)               | DynamoDB, S3, Lambda@Edge, CloudFront | You want the supplied AWS deployment and use AWS accounts and IAM.               | CloudFront shared catalog cache.                                       |
+| [Custom server](/docs/custom/overview) | Your database, storage and host       | You need to use your own ORM, server framework or deployment process.            | Depends on your hosting and cache configuration.                       |
 
 All paths use the same Release Catalog protocol. A provider preset runs the
 official server plugins, Insights, API keys, and Remote Config; a custom server

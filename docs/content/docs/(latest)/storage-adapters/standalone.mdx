@@ -61,10 +61,12 @@ export default defineConfig({
       Authorization: `Bearer ${adminToken}`,
     },
   }),
-  storage: standaloneStorage({ // [!code ++]
+  storage: standaloneStorage({
+    // [!code ++]
     baseUrl: "https://storage.example.com/hot-updater", // [!code ++]
     protocol: "s3", // [!code ++]
-    commonHeaders: { // [!code ++]
+    commonHeaders: {
+      // [!code ++]
       Authorization: `Bearer ${storageToken}`, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]

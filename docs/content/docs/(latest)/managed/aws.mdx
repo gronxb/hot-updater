@@ -198,12 +198,12 @@ React Native app.
 
 After provisioning, record these outputs for [Set up your app](/docs/get-started/app-setup):
 
-| Output | Value |
-| --- | --- |
-| Client base URL | `https://<your-cloudfront-distribution-url>` |
-| Client request header | `x-api-key` |
-| Client API key | The saved `HOT_UPDATER_API_KEY` in your ignored `.env.hotupdater` |
-| Deploy configuration | `hot-updater.config.ts` and the selected provider resources |
+| Output                | Value                                                             |
+| --------------------- | ----------------------------------------------------------------- |
+| Client base URL       | `https://<your-cloudfront-distribution-url>`                      |
+| Client request header | `x-api-key`                                                       |
+| Client API key        | The saved `HOT_UPDATER_API_KEY` in your ignored `.env.hotupdater` |
+| Deploy configuration  | `hot-updater.config.ts` and the selected provider resources       |
 
 Use the actual URL returned by deployment. Configure the SDK and native bundle
 loader through [Set up your app](/docs/get-started/app-setup), using the selected
@@ -216,10 +216,9 @@ credentials stay in the deploy environment.
   Insights ingestion, and Remote Config fetches require `x-api-key:
   $HOT_UPDATER_API_KEY`, using a key registered or created during init.
   Internally, the server runs the `insights()`, `apiKeys()`, and
-  `remoteConfig()` plugins; only
-  `handlers.client` is mounted. API keys do not authorize Insights query
-  routes, and bundle management endpoints are not mounted on the public
-  function URL.
+  `remoteConfig()` plugins; only `handlers.client` is mounted. API keys do not
+  authorize Insights query routes, and bundle management endpoints are not
+  mounted on the public function URL.
 </Callout>
 
 ## Generated configuration and operations
@@ -266,7 +265,8 @@ export default defineConfig({
   database: dynamoDB({
     ...awsOptions,
     tableName: process.env.HOT_UPDATER_DYNAMODB_TABLE_NAME!,
-    cloudfrontDistributionId: process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
+    cloudfrontDistributionId:
+      process.env.HOT_UPDATER_CLOUDFRONT_DISTRIBUTION_ID!,
   }),
   plugins: [apiKeys(), insights(), remoteConfig()],
   updateStrategy: "appVersion", // or "fingerprint"
@@ -344,6 +344,7 @@ For server templates to apply with your own deployment tooling, use
 
    Doctor checks the public `/version` endpoint. It does not prove an
    authenticated update download or application.
+
 3. Complete [Test an OTA update](/docs/get-started/test-ota) on a release build.
    Verify that the app downloads and runs the changed code, then survives a restart.
 

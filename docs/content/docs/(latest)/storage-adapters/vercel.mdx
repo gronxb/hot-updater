@@ -42,7 +42,8 @@ import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   // ... build, database, plugins, and updateStrategy
-  storage: vercelBlobStorage({ // [!code ++]
+  storage: vercelBlobStorage({
+    // [!code ++]
     token: process.env.BLOB_READ_WRITE_TOKEN!, // [!code ++]
     basePath: "bundles", // Optional // [!code ++]
   }), // [!code ++]

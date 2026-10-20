@@ -64,12 +64,12 @@ the app's root mounts.
 
 `checkForUpdate` accepts these parameters:
 
-| Parameter        | Type                              | Required | Description                                                 |
-| ---------------- | --------------------------------- | -------- | ----------------------------------------------------------- |
-| `updateStrategy` | `"appVersion"` \| `"fingerprint"` | ✅       | Update detection strategy for this check.                   |
-| `channel`        | `string`                          | ❌       | Channel to check. Defaults to the currently active channel. |
-| `requestHeaders` | `Record<string, string>`          | ❌       | Optional headers to include in the update request.          |
-| `requestTimeout` | `number`                          | ❌       | Request timeout in milliseconds (default: 5000).            |
+| Parameter        | Type                              | Required | Description                                                       |
+| ---------------- | --------------------------------- | -------- | ----------------------------------------------------------------- |
+| `updateStrategy` | `"appVersion"` \| `"fingerprint"` | ✅       | Update detection strategy for this check.                         |
+| `channel`        | `string`                          | ❌       | Channel to check. Defaults to the currently active channel.       |
+| `requestHeaders` | `Record<string, string>`          | ❌       | Optional headers to include in the update request.                |
+| `requestTimeout` | `number`                          | ❌       | Request timeout in milliseconds (default: 5000).                  |
 | `onError`        | `(error: Error) => void`          | ❌       | Called when a check fails, including failures that return `null`. |
 
 The update source is always from `HotUpdater.init()`; it cannot be overridden
@@ -110,17 +110,17 @@ When a transition is selected, the result includes its ID from the console,
 status, message, and an `updateBundle()` helper. The helper resolves the
 artifact lazily when needed.
 
-| Result field | Type | Meaning |
-| --- | --- | --- |
-| `id` | `string` | Selected update ID shown in the Console. |
-| `status` | `"UPDATE" \| "ROLLBACK"` | Selected transition direction. |
-| `shouldForceUpdate` | `boolean` | Whether the caller should apply the transition immediately, including an update that skips a forced bundle; the helper does not reload. |
-| `message` | `string \| null` | Release message. |
-| `rolloutCohortCount` | `number` | Numeric cohort count selected by the Release policy. |
-| `targetCohorts` | `string[]` | Explicit cohort targets in that policy. |
-| `releaseId` | `string \| null \| undefined` | Release identifier when present. |
-| `transitionKind` | `"INSTALL" \| "ADOPT_RELEASE" \| "USE_BUILTIN" \| undefined` | How the selected transition will be applied. |
-| `updateBundle` | `() => Promise<boolean>` | Stage or commit this selection; resolves with whether it succeeded. |
+| Result field         | Type                                                         | Meaning                                                                                                                                 |
+| -------------------- | ------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`                 | `string`                                                     | Selected update ID shown in the Console.                                                                                                |
+| `status`             | `"UPDATE" \| "ROLLBACK"`                                     | Selected transition direction.                                                                                                          |
+| `shouldForceUpdate`  | `boolean`                                                    | Whether the caller should apply the transition immediately, including an update that skips a forced bundle; the helper does not reload. |
+| `message`            | `string \| null`                                             | Release message.                                                                                                                        |
+| `rolloutCohortCount` | `number`                                                     | Numeric cohort count selected by the Release policy.                                                                                    |
+| `targetCohorts`      | `string[]`                                                   | Explicit cohort targets in that policy.                                                                                                 |
+| `releaseId`          | `string \| null \| undefined`                                | Release identifier when present.                                                                                                        |
+| `transitionKind`     | `"INSTALL" \| "ADOPT_RELEASE" \| "USE_BUILTIN" \| undefined` | How the selected transition will be applied.                                                                                            |
+| `updateBundle`       | `() => Promise<boolean>`                                     | Stage or commit this selection; resolves with whether it succeeded.                                                                     |
 
 A different Release can reference the same artifact. `ADOPT_RELEASE` commits
 that policy selection without downloading the artifact. It does not force a
