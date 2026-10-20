@@ -4,6 +4,7 @@ import path from "node:path";
 import { type CredentialFiles, createCredentialFiles } from "./credentialFiles";
 import { getHotUpdaterEnvValue } from "./hotUpdaterEnv";
 import { registerSecretValue } from "./secretMasking";
+import { createVaultCredentialSource } from "./vaultCredentialSource";
 
 export type { CredentialFiles } from "./credentialFiles";
 
@@ -316,20 +317,25 @@ export interface CreateCredentialResolverOptions {
    * `getHotUpdaterEnvValue`.
    */
   readonly env?: Readonly<Record<string, string>>;
-  /** Where to find an item no environment override sets. */
+  /**
+   * Where to find an item no environment override sets. Defaults to the
+   * Console's vault, which `HOT_UPDATER_CONSOLE_URL` and
+   * `HOT_UPDATER_VAULT_TOKEN` connect to.
+   */
   readonly source?: CredentialSource;
 }
 
 /**
  * Resolves each item from its environment overrides when any is set, and
- * otherwise from `source`, so overrides never reach the source. Without a
- * source, or when the source fails, the error names the environment
- * variables that can provide the item instead. Values are never written to
- * disk except as 0600 temporary files, and every secret is masked in logs.
+ * otherwise from `source`, the Console's vault by default, so overrides
+ * never reach the vault. When the source fails, such as when the Console is
+ * not reached, the error names the environment variables that can provide
+ * the item instead. Nothing is cached, values are never written to disk
+ * except as 0600 temporary files, and every secret is masked in logs.
  */
 export const createCredentialResolver = ({
   env = {},
-  source,
+  source = createVaultCredentialSource({ env }),
 }: CreateCredentialResolverOptions = {}): CredentialResolver => {
   const files = createCredentialFiles();
   const resolved = new Map<string, Promise<unknown>>();
@@ -359,13 +365,6 @@ export const createCredentialResolver = ({
     }
 
     const replacement = describeFields(fields);
-    if (!source) {
-      throw new CredentialUnavailableError(
-        kind,
-        `No ${kind} credential is configured. Set ${replacement}.`,
-      );
-    }
-
     let credential: Credentials[TKind];
     try {
       credential = readSourcedCredential(

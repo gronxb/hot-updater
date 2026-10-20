@@ -23,6 +23,7 @@ import { createConsoleRuntime } from "./runtime.server";
 import {
   type LoadConsole,
   listVaultSecrets,
+  putVaultSecret,
   resolveVaultSecrets,
   vaultMethodNotAllowed,
 } from "./vaultRoutes";
@@ -141,6 +142,28 @@ const resolve = (
     load,
   );
 
+const put = (
+  load: LoadConsole,
+  token: string | undefined,
+  name: string,
+  body: unknown,
+) =>
+  putVaultSecret(
+    new Request(
+      `https://console.example.com/_hot-updater/vault/v1/secrets/${encodeURIComponent(name)}`,
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+          ...(token === undefined ? {} : { authorization: `Bearer ${token}` }),
+        },
+        body: typeof body === "string" ? body : JSON.stringify(body),
+      },
+    ),
+    name,
+    load,
+  );
+
 const bearer = (token: string) => ({ authorization: `Bearer ${token}` });
 
 const READ_KEYSTORE: VaultTokenScope = {
@@ -161,6 +184,7 @@ describe("vault routes: authentication", () => {
       await list(load, { cookie: "better-auth.session_token=session" }),
       await list(load, { authorization: "Basic dXNlcjpwYXNz" }),
       await resolve(load, undefined, { names: ["release-keystore"] }),
+      await put(load, undefined, "release-keystore", {}),
     ]) {
       expect(response.status).toBe(401);
       expect(response.headers.get("cache-control")).toBe("no-store");
@@ -195,6 +219,7 @@ describe("vault routes: authentication", () => {
       for (const response of [
         await list(load, bearer(token)),
         await resolve(load, token, { names: ["release-keystore"] }),
+        await put(load, token, "release-keystore", {}),
       ]) {
         expect(response.status).toBe(401);
         expect(response.headers.get("cache-control")).toBe("no-store");
@@ -502,6 +527,309 @@ describe("POST /_hot-updater/vault/v1/resolve", () => {
   });
 });
 
+const base64 = (text: string) => btoa(text);
+const P8 =
+  "-----BEGIN PRIVATE KEY-----\nMIGTAgEAMBMGByqGSM49AgEGCCqGSM49writeRouteSpecKey\n-----END PRIVATE KEY-----\n";
+const ASC_VALUE = { p8: base64(P8), keyId: "KEY1", issuerId: "issuer-1" };
+const SIGNING_PEM =
+  "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAAwriteRouteSigningKey\n-----END PRIVATE KEY-----\n";
+
+describe("PUT /_hot-updater/vault/v1/secrets/:name", () => {
+  it("stores a new secret sealed with the console's master key, answering only its metadata", async () => {
+    const { load, issue, vault: api, audit } = await start();
+    const token = await issue({
+      secrets: { names: ["widget-asc"] },
+      actions: ["write"],
+    });
+
+    const response = await put(load, token, "widget-asc", {
+      kind: "asc-api-key",
+      value: ASC_VALUE,
+    });
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    const body = await response.json();
+    expect(body).toEqual({
+      secret: {
+        id: expect.stringMatching(/^sec-/u),
+        name: "widget-asc",
+        kind: "asc-api-key",
+        version: 1,
+        metadata: { keyId: "KEY1", issuerId: "issuer-1" },
+        createdAtMs: expect.any(Number),
+        updatedAtMs: expect.any(Number),
+      },
+    });
+    expect(JSON.stringify(body)).not.toContain(ASC_VALUE.p8);
+    // Sealed under the master key the console holds, and opened with it.
+    await expect(
+      api.reveal({ id: body.secret.id, actor: "spec" }),
+    ).resolves.toEqual(ASC_VALUE);
+    await expect(audit()).resolves.toEqual([
+      expect.objectContaining({
+        action: "write",
+        outcome: "allowed",
+        secret_id: body.secret.id,
+        context: { name: "widget-asc" },
+      }),
+    ]);
+  });
+
+  it("stores the next version of a secret the scope reaches by kind", async () => {
+    const { load, issue, vault: api, secrets } = await start();
+    const token = await issue({
+      secrets: { kinds: ["android-keystore"] },
+      actions: ["write"],
+    });
+    const value = {
+      keystore: base64("keystore-bytes"),
+      storePassword: " store pass ",
+      keyAlias: "upload",
+      keyPassword: "key-pass",
+    };
+
+    const response = await put(load, token, "release-keystore", {
+      kind: "android-keystore",
+      value,
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      secret: {
+        id: secrets.keystore.id,
+        version: 2,
+        metadata: { keyAlias: "upload" },
+      },
+    });
+    await expect(
+      api.reveal({ id: secrets.keystore.id, actor: "spec" }),
+    ).resolves.toEqual(value);
+  });
+
+  it("never reads a value back with write: a write-only token lists metadata and resolves nothing", async () => {
+    const { load, issue } = await start();
+    const token = await issue({
+      secrets: { names: ["release-keystore"] },
+      actions: ["write"],
+    });
+
+    const resolved = await resolve(load, token, {
+      names: ["release-keystore"],
+    });
+    expect(resolved.status).toBe(403);
+    expect(JSON.stringify(await resolved.json())).not.toContain(
+      KEYSTORE.storePassword,
+    );
+
+    const listed = await list(load, bearer(token));
+    expect(listed.status).toBe(200);
+    const body = await listed.json();
+    expect(body).toEqual({
+      secrets: [expect.objectContaining({ name: "release-keystore" })],
+    });
+    expect(body.secrets[0]).not.toHaveProperty("value");
+  });
+
+  it("writes a bundle-signing-key, which is still never resolved", async () => {
+    const { load, issue } = await start();
+    const token = await issue({
+      secrets: { kinds: ["bundle-signing-key"] },
+      actions: ["read", "write"],
+    });
+
+    const response = await put(load, token, "ota-key", {
+      kind: "bundle-signing-key",
+      value: { privateKey: base64(SIGNING_PEM) },
+    });
+    expect(response.status).toBe(201);
+
+    const resolved = await resolve(load, token, { names: ["ota-key"] });
+    expect(resolved.status).toBe(403);
+    expect(JSON.stringify(await resolved.json())).not.toContain("PRIVATE KEY");
+  });
+
+  it("refuses with 403 a name or kind out of scope, or replacing a secret out of scope, whether or not it exists", async () => {
+    const { load, issue, vault: api, secrets, audit } = await start();
+    const token = await issue({
+      secrets: { kinds: ["generic"] },
+      actions: ["write"],
+    });
+
+    for (const [name, kind, value] of [
+      // A generic under the name of an asc-api-key the scope does not reach.
+      ["asc-api-key", "generic", { A: "1" }],
+      ["new-asc", "asc-api-key", ASC_VALUE],
+    ] as const) {
+      const response = await put(load, token, name, { kind, value });
+      expect(response.status).toBe(403);
+      await expect(response.json()).resolves.toEqual({
+        error: {
+          code: "forbidden",
+          message: `The vault token's scope does not allow writing ${name} as ${kind}.`,
+        },
+      });
+    }
+    // The asc-api-key is as it was.
+    await expect(
+      api.reveal({ id: secrets.asc.id, actor: "spec" }),
+    ).resolves.toEqual(ASC_KEY);
+    await expect(audit()).resolves.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          action: "write",
+          outcome: "denied",
+          secret_id: secrets.asc.id,
+          context: { name: "asc-api-key" },
+        }),
+        expect.objectContaining({
+          action: "write",
+          outcome: "denied",
+          secret_id: null,
+          context: { name: "new-asc" },
+        }),
+      ]),
+    );
+
+    const readOnly = await issue(READ_KEYSTORE);
+    const refused = await put(load, readOnly, "release-keystore", {
+      kind: "android-keystore",
+      value: {},
+    });
+    expect(refused.status).toBe(403);
+    await expect(refused.json()).resolves.toEqual({
+      error: {
+        code: "forbidden",
+        message: "The vault token's scope does not allow write.",
+      },
+    });
+  });
+
+  it("answers 409 for a secret of another kind under the name", async () => {
+    const { load, issue } = await start();
+    const token = await issue({
+      secrets: { names: ["release-keystore"] },
+      actions: ["write"],
+    });
+
+    const response = await put(load, token, "release-keystore", {
+      kind: "generic",
+      value: { A: "1" },
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "conflict",
+        message: expect.stringContaining(
+          "is an android-keystore; remove it in the console before storing a generic",
+        ),
+      },
+    });
+  });
+
+  it("answers 409 when the secret changes between the list and the write", async () => {
+    const { loadChanging, vault: api, issue } = await start();
+    const token = await issue({
+      secrets: { names: ["release-keystore"] },
+      actions: ["write"],
+    });
+    const load = loadChanging(async () => {
+      await api.put({
+        name: "release-keystore",
+        kind: "android-keystore",
+        value: { storePassword: "rotated" },
+      });
+    });
+
+    const response = await put(load, token, "release-keystore", {
+      kind: "android-keystore",
+      value: {
+        keystore: base64("keystore-bytes"),
+        storePassword: "a",
+        keyAlias: "b",
+        keyPassword: "c",
+      },
+    });
+
+    expect(response.status).toBe(409);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "conflict" },
+    });
+  });
+
+  it("refuses a bad name, body, or value with 400", async () => {
+    const { load, issue } = await start();
+    const token = await issue({
+      secrets: { kinds: ["asc-api-key"] },
+      actions: ["write"],
+    });
+
+    for (const [name, body, message] of [
+      ["../etc", { kind: "asc-api-key", value: ASC_VALUE }, "secret name"],
+      ["asc", "not json", "kind"],
+      ["asc", { kind: "ssh-key", value: {} }, "kind"],
+      [
+        "asc",
+        { kind: "asc-api-key", value: { ...ASC_VALUE, issuerId: "" } },
+        "needs issuerId",
+      ],
+    ] as const) {
+      const response = await put(load, token, name, body);
+      expect(response.status).toBe(400);
+      await expect(response.json()).resolves.toEqual({
+        error: {
+          code: "invalid_request",
+          message: expect.stringContaining(message),
+        },
+      });
+    }
+  });
+
+  it("answers 503 when the console has no master key, writing nothing", async () => {
+    const { load, issue, vault: api } = await start({ masterKey: null });
+    const token = await issue({
+      secrets: { names: ["widget-asc"] },
+      actions: ["write"],
+    });
+
+    const response = await put(load, token, "widget-asc", {
+      kind: "asc-api-key",
+      value: ASC_VALUE,
+    });
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toEqual({
+      error: {
+        code: "vault_locked",
+        message: expect.stringContaining("HOT_UPDATER_VAULT_MASTER_KEY"),
+      },
+    });
+    expect((await api.list()).map((secret) => secret.name)).not.toContain(
+      "widget-asc",
+    );
+  });
+
+  it("answers 503 when the console's master key did not seal the stored secrets", async () => {
+    const other = btoa(String.fromCharCode(...new Uint8Array(32).fill(7)));
+    const { load, issue } = await start({ masterKey: other });
+    const token = await issue({
+      secrets: { names: ["widget-asc"] },
+      actions: ["write"],
+    });
+
+    const response = await put(load, token, "widget-asc", {
+      kind: "asc-api-key",
+      value: ASC_VALUE,
+    });
+
+    expect(response.status).toBe(503);
+    await expect(response.json()).resolves.toMatchObject({
+      error: { code: "vault_locked" },
+    });
+  });
+});
+
 describe("vault routes where the console serves no vault", () => {
   it("says what to change for a console over a self-hosted server", async () => {
     const fetchAdmin = vi.fn<RemoteDatabase["fetchAdmin"]>();
@@ -519,6 +847,7 @@ describe("vault routes where the console serves no vault", () => {
     for (const response of [
       await list(load, bearer(token)),
       await resolve(load, token, { names: ["release-keystore"] }),
+      await put(load, token, "release-keystore", {}),
     ]) {
       expect(response.status).toBe(404);
       expect(response.headers.get("cache-control")).toBe("no-store");
@@ -561,14 +890,20 @@ describe("vault routes where the console serves no vault", () => {
 });
 
 describe("vault routes for another method", () => {
-  it("answers 405 with the method the route takes", async () => {
-    const response = vaultMethodNotAllowed("POST");
+  it.each(["POST", "PUT"] as const)(
+    "answers 405 with the method the route takes, %s",
+    async (allow) => {
+      const response = vaultMethodNotAllowed(allow);
 
-    expect(response.status).toBe(405);
-    expect(response.headers.get("allow")).toBe("POST");
-    expect(response.headers.get("cache-control")).toBe("no-store");
-    await expect(response.json()).resolves.toEqual({
-      error: { code: "method_not_allowed", message: "This route takes POST." },
-    });
-  });
+      expect(response.status).toBe(405);
+      expect(response.headers.get("allow")).toBe(allow);
+      expect(response.headers.get("cache-control")).toBe("no-store");
+      await expect(response.json()).resolves.toEqual({
+        error: {
+          code: "method_not_allowed",
+          message: `This route takes ${allow}.`,
+        },
+      });
+    },
+  );
 });

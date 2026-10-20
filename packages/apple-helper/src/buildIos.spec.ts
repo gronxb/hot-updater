@@ -7,13 +7,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 let root: string;
 
-vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
-  createMinBundleId: (
-    await importOriginal<typeof import("@hot-updater/cli-tools")>()
-  ).createMinBundleId,
-  getCwd: () => root,
-  p: { log: { success: vi.fn(), warn: vi.fn(), error: vi.fn() } },
-}));
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
+  const { createMinBundleId, parseVaultReference } =
+    await importOriginal<typeof import("@hot-updater/cli-tools")>();
+  return {
+    createMinBundleId,
+    parseVaultReference,
+    getCwd: () => root,
+    p: { log: { success: vi.fn(), warn: vi.fn(), error: vi.fn() } },
+  };
+});
 vi.mock("./utils/readBuiltApp", () => ({
   readBuiltApp: vi.fn(async (appPath: string) => ({
     appVersion: "2.0.0",
@@ -108,7 +111,7 @@ describe("buildIos", () => {
     const { buildDirectory, buildArtifactPath, builtApp } = await buildIos({
       schemeConfig: scheme({
         simulator: true,
-        signing: { ascApiKey: "asc-api-key" },
+        signing: { ascApiKey: "vault:asc-api-key" },
       }),
       minBundleId: MIN_BUNDLE_ID,
       credentials,
@@ -169,7 +172,7 @@ describe("buildIos", () => {
     const credentials = ascKeyResolver();
 
     const { buildArtifactPath } = await buildIos({
-      schemeConfig: scheme({ signing: { ascApiKey: "app-store-key" } }),
+      schemeConfig: scheme({ signing: { ascApiKey: "vault:app-store-key" } }),
       minBundleId: MIN_BUNDLE_ID,
       credentials,
     });

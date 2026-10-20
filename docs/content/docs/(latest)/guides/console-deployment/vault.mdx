@@ -20,10 +20,12 @@ The console serves the vault of `vault()`, Hot Updater's vault plugin, at
   random bytes in base64, from `openssl rand -base64 32`. Keep it out of the
   environment that holds your database credentials and out of CI.
 
-The console is the only place secrets are decrypted. The CLI lists secrets and
-issues and revokes tokens over the database, but refuses to reveal a value,
+The console is the only place secrets are decrypted and encrypted. The CLI
+reads and stores secrets through the routes below with a vault token, and
+issues and revokes tokens over the database. It never opens a value itself,
 even where the master key is set or a server definition passes
-`vault({ masterKey })`.
+`vault({ masterKey })`. [Secrets in the CLI](/docs/guides/secrets) covers its
+commands.
 
 A console whose `database` is `standaloneRepository(...)` serves no vault: the
 secrets live in the server's database, which only a console over that database
@@ -34,8 +36,9 @@ opens. Its vault routes answer `404 vault_unavailable`.
 **Vault** in the console's sidebar lists the secrets by name, kind, version,
 and last update, with what each shows without its values, such as a key ID or
 a keystore's alias. **Add secret** picks a kind and asks for its files and
-fields. A new secret is named after its kind, which is the name the CLI looks
-up unless your config names another secret, such as `widget-keystore`.
+fields. A new secret is named after its kind, and a config references it by
+name, such as `vault:asc-api-key`, or `vault:widget-keystore` for a second
+keystore.
 
 Values are write-only. The console never shows or copies a stored value:
 **Overwrite** stores a new version from values you enter again, and
@@ -68,10 +71,13 @@ console shows of it.
 ## Issue vault tokens
 
 The **Tokens** tab issues, lists, and revokes vault tokens. A token the
-console issues reads the values of the secrets in its scope, named by secret
-or by kind, and expires after 30 days, 90 days, a year, or never. Bundle
-signing keys are not offered: the routes below never return their values.
-Every user the console signs in can manage secrets and tokens.
+console issues reads values, writes them, or both, for the secrets in its
+scope, named by secret or by kind, and expires after 30 days, 90 days, a
+year, or never. Bundle signing keys are offered only with **Write values**:
+the routes below never return their values, so reading reaches none.
+[`hot-updater secrets token create`](/docs/guides/secrets#issue-a-vault-token)
+issues the same tokens from the CLI. Every user the console signs in can
+manage secrets and tokens.
 
 The token shows once, with the console's address, as two CI variables. CI
 sends the token to the routes below:
@@ -101,7 +107,8 @@ such as a CI run URL, is kept in the audit log. Every response is
 ## List secrets
 
 `GET /_hot-updater/vault/v1/secrets` returns the secrets the token's scope
-reaches, for any of its actions, without values:
+reaches, for any of its actions, without values. A token that only writes
+lists metadata this way and reads no value:
 
 ```json
 {
@@ -156,17 +163,48 @@ must allow `read` on each:
 - Each value read and each refused name is written to the vault's audit log
   before the response is sent.
 
+## Write a secret
+
+`PUT /_hot-updater/vault/v1/secrets/:name` with `{ "kind", "value" }` stores
+`value` as the secret's next version, or creates the secret when no secret
+has the name. `value` is the kind's shape from the table above, files in
+base64. The console encrypts it with its master key and answers with the
+secret's metadata, never its value: `201 { "secret" }` for a new secret, or
+`200 { "secret" }` for a new version.
+
+```json
+{
+  "kind": "android-keystore",
+  "value": {
+    "keystore": "/u3+7QAAAAIAAAAB...",
+    "storePassword": "...",
+    "keyAlias": "upload",
+    "keyPassword": "..."
+  }
+}
+```
+
+- The token's scope must allow `write` on the name or the kind, and on the
+  secret the write replaces. Anything else refuses the request with 403,
+  whether or not a secret has the name.
+- `write` never returns a value. A `bundle-signing-key` can be written, such
+  as one `hot-updater keys generate` made, and is still never resolved.
+- A secret of another kind under the name, or a secret that changed during
+  the request, is a 409.
+- Each write, and each one the scope refuses, is written to the vault's audit
+  log before the response is sent.
+
 ## Errors
 
 Refusals are `{ "error": { "code", "message" } }`:
 
 | Status | Code | Cause |
 | --- | --- | --- |
-| 400 | `invalid_request` | The resolve body is not `{ "names": [...] }` with 1 to 100 secret names |
+| 400 | `invalid_request` | The resolve body is not `{ "names": [...] }` with 1 to 100 secret names, or a write's name, kind, or value is not one the vault takes |
 | 401 | `unauthorized` | No token, or a token that is unknown, revoked, or expired |
-| 403 | `forbidden` | The scope does not allow `read`, a name is out of scope, or a name is a `bundle-signing-key` |
+| 403 | `forbidden` | The scope does not allow `read` or `write`, a name is out of scope, or a resolved name is a `bundle-signing-key` |
 | 404 | `vault_unavailable` | The console runs without `vault()`, or over `standaloneRepository(...)` |
-| 409 | `conflict` | The named secrets kept changing while the console read them; send the request again |
-| 503 | `vault_locked` | `HOT_UPDATER_VAULT_MASTER_KEY` is not set where the console runs |
+| 409 | `conflict` | The named secrets kept changing while the console read them, a write met a secret of another kind, or the secret changed during a write; send the request again |
+| 503 | `vault_locked` | `HOT_UPDATER_VAULT_MASTER_KEY` is not set where the console runs, or for a write, it is not the key the stored secrets were saved with |
 
 A 401 also carries `WWW-Authenticate: Bearer realm="hot-updater-vault"`.

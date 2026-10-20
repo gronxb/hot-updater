@@ -1,13 +1,16 @@
 import type { CredentialResolver } from "@hot-updater/cli-tools";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
-  createMinBundleId: (
-    await importOriginal<typeof import("@hot-updater/cli-tools")>()
-  ).createMinBundleId,
-  getCwd: () => "/app",
-  p: { log: { info: vi.fn() } },
-}));
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
+  const { createMinBundleId, parseVaultReference } =
+    await importOriginal<typeof import("@hot-updater/cli-tools")>();
+  return {
+    createMinBundleId,
+    parseVaultReference,
+    getCwd: () => "/app",
+    p: { log: { info: vi.fn() } },
+  };
+});
 vi.mock("./utils/readBuiltApp", () => ({
   readBuiltApp: vi.fn(async () => ({ appVersion: "1.0", channel: "beta" })),
 }));
@@ -78,7 +81,7 @@ describe("buildAndroid", () => {
     await buildAndroid({
       schemeConfig: scheme({
         aab: true,
-        signing: { keystore: "release-keystore" },
+        signing: { keystore: "vault:release-keystore" },
       }),
       minBundleId: MIN_BUNDLE_ID,
       credentials,
@@ -118,7 +121,7 @@ describe("buildAndroid", () => {
       await buildAndroid({
         schemeConfig: scheme({
           variant,
-          signing: { keystore: "release-keystore" },
+          signing: { keystore: "vault:release-keystore" },
         }),
         minBundleId: MIN_BUNDLE_ID,
         credentials,

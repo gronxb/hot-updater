@@ -54,7 +54,11 @@ function DateText({ ms }: { readonly ms: number }) {
   );
 }
 
-const ACTION_LABELS = { read: "Read", sign: "Sign" } as const;
+const ACTION_LABELS = {
+  read: "Read",
+  sign: "Sign",
+  write: "Write",
+} as const satisfies Record<VaultToken["scope"]["actions"][number], string>;
 
 /** The secrets and actions a token reaches, as badges and a line of text. */
 function TokenScope({ token }: { readonly token: VaultToken }) {

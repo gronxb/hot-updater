@@ -172,6 +172,40 @@ describe("CLI commands", () => {
     expect(help("api-key", "revoke")).toContain("-y, --yes");
   });
 
+  it("manages the Console vault with the core secrets command, without --app", () => {
+    expect(help()).toMatch(
+      /^\s+secrets\s+Manage the Console vault's secrets and vault tokens$/m,
+    );
+    const secrets = help("secrets");
+    expect(secrets).toMatch(/^\s+list \[options\]\s/m);
+    expect(secrets).toMatch(/^\s+put \[options\] <name> \[variables\.\.\.\]/m);
+    expect(secrets).toMatch(/^\s+env <command\.\.\.>/m);
+    expect(secrets).toMatch(
+      /^\s+token\s+Issue, list, and revoke vault tokens$/m,
+    );
+    const token = help("secrets", "token");
+    expect(token).toMatch(/^\s+create \[options\] \[serverPath\]/m);
+    expect(token).toMatch(/^\s+list \[options\] \[serverPath\]/m);
+    expect(token).toMatch(/^\s+revoke \[options\] <id> \[serverPath\]/m);
+    for (const command of [
+      ["secrets", "list"],
+      ["secrets", "put"],
+      ["secrets", "env"],
+      ["secrets", "token", "create"],
+    ]) {
+      expect(help(...command)).not.toContain("--app");
+    }
+    const put = help("secrets", "put").replace(/\s+/gu, " ");
+    expect(put).toContain('choices: "asc-api-key", "android-keystore"');
+    expect(put).toContain("HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD");
+
+    const missing = run("secrets", "put", "release-keystore");
+    expect(missing.status).toBe(1);
+    expect(missing.stderr).toContain(
+      "required option '--kind <kind>' not specified",
+    );
+  });
+
   it("manages Remote Config with remote-config, by version number", () => {
     expect(help()).toMatch(
       /^\s+remote-config\s+Show, publish, and roll back Remote Config templates$/m,

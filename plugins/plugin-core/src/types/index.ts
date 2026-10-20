@@ -137,14 +137,14 @@ export interface NativeBuildAndroidScheme {
 
   /**
    * Signs a release variant with a keystore the CLI resolves: `keystore` is
-   * the name of an `android-keystore` credential, which the
-   * `HOT_UPDATER_ANDROID_KEYSTORE_*` environment variables override. Debug
-   * variants keep the debug keystore and resolve nothing. Without it, the
-   * variant's own `signingConfig` signs.
+   * `vault:<name>`, an `android-keystore` secret in the Console's vault,
+   * which the `HOT_UPDATER_ANDROID_KEYSTORE_*` environment variables
+   * override. Debug variants keep the debug keystore and resolve nothing.
+   * Without it, the variant's own `signingConfig` signs.
    *
-   * @example { keystore: "release-keystore" }
+   * @example { keystore: "vault:release-keystore" }
    */
-  signing?: { keystore: string };
+  signing?: { keystore: `vault:${string}` };
 }
 
 export type IosBuildDestination =
@@ -263,14 +263,15 @@ export interface NativeBuildIosScheme {
 
   /**
    * Signs a device build with automatic signing, authenticated by an App
-   * Store Connect API key the CLI resolves: `ascApiKey` is the name of an
-   * `asc-api-key` credential, which the `HOT_UPDATER_ASC_KEY*` environment
-   * variables override. Simulator builds resolve nothing. Without it, the
-   * project's signing settings and Xcode's accounts sign.
+   * Store Connect API key the CLI resolves: `ascApiKey` is `vault:<name>`,
+   * an `asc-api-key` secret in the Console's vault, which the
+   * `HOT_UPDATER_ASC_KEY*` environment variables override. Simulator builds
+   * resolve nothing. Without it, the project's signing settings and Xcode's
+   * accounts sign.
    *
-   * @example { ascApiKey: "asc-api-key" }
+   * @example { ascApiKey: "vault:asc-api-key" }
    */
-  signing?: { ascApiKey: string };
+  signing?: { ascApiKey: `vault:${string}` };
 }
 
 export interface PlatformConfig {
