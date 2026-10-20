@@ -255,13 +255,14 @@ describe("doctor's schema check", () => {
   });
 
   it("reports core's stale schema first, and --fix migrates core and the plugins", async () => {
-    await storeSetting("schema.core", "0.9.0");
+    // What a database the previous minor release migrated records.
+    await storeSetting("schema.core", "1.0.0");
     serverProject(database());
 
     await expect(doctor()).resolves.toMatchObject({
       details: {
         schema: {
-          settings: [{ key: "schema.core", expected: "1.0.0", found: "0.9.0" }],
+          settings: [{ key: "schema.core", expected: "1.2.0", found: "1.0.0" }],
         },
       },
     });
@@ -269,6 +270,8 @@ describe("doctor's schema check", () => {
       success: true,
       details: { fixes: [{ repair: "schema", status: "applied" }] },
     });
+    const [row] = await adapter.get(SETTINGS_TABLE, [["schema.core"]]);
+    expect(row?.["value"]).toBe("1.2.0");
   });
 
   it("refuses to move a schema a newer release migrated back", async () => {
@@ -285,7 +288,7 @@ describe("doctor's schema check", () => {
               code: "SCHEMA_NEWER_THAN_CLI",
               fixability: "blocked",
               message:
-                'The database was migrated by a newer hot-updater: schema.core is "9.0.0", expected "1.0.0".',
+                'The database was migrated by a newer hot-updater: schema.core is "9.0.0", expected "1.2.0".',
             },
           ],
         },
@@ -305,7 +308,7 @@ describe("doctor's schema check", () => {
       success: false,
       details: {
         schema: {
-          settings: [{ key: "schema.core", expected: "1.0.0", found: "9.0.0" }],
+          settings: [{ key: "schema.core", expected: "1.2.0", found: "9.0.0" }],
           issues: [{ code: "SCHEMA_NEWER_THAN_CLI" }],
         },
         fixes: [],

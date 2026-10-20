@@ -140,4 +140,72 @@ describe("createStandaloneCoreApi", () => {
     await expect(refusal).rejects.toBeInstanceOf(ReleaseManagementError);
     await expect(refusal).rejects.toMatchObject({ code: "VERSION_CONFLICT" });
   });
+
+  it("asks for a server upgrade when the server has no native build routes", async () => {
+    server.use(
+      version(2),
+      http.all(
+        `${BASE_URL}/native-builds*`,
+        () => new HttpResponse(null, { status: 404 }),
+      ),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+    const upgrade = `The server at ${BASE_URL} has no native build route`;
+
+    await expect(
+      core.findNativeBuild({
+        platform: "ios",
+        channel: "production",
+        fingerprintHash: "fingerprint",
+        appVersion: null,
+      }),
+    ).rejects.toThrow(upgrade);
+    await expect(
+      core.registerNativeBuild(
+        {} as Parameters<typeof core.registerNativeBuild>[0],
+      ),
+    ).rejects.toThrow(upgrade);
+    // Such a server holds no native builds, so doctor's scan finds none.
+    await expect(core.listNativeBuilds({ limit: 10 })).resolves.toEqual([]);
+  });
+
+  it("finds a native build by scope, and reads a scope without one as null", async () => {
+    const queries: Record<string, string>[] = [];
+    server.use(
+      version(2),
+      http.get(`${BASE_URL}/native-builds/latest`, ({ request }) => {
+        const query = Object.fromEntries(new URL(request.url).searchParams);
+        queries.push(query);
+        return HttpResponse.json({
+          data: query.appVersion === undefined ? { id: "build-1" } : null,
+        });
+      }),
+    );
+    const core = createStandaloneCoreApi({ baseUrl: BASE_URL });
+
+    await expect(
+      core.findNativeBuild({
+        platform: "ios",
+        channel: "production",
+        fingerprintHash: "fingerprint",
+        appVersion: null,
+      }),
+    ).resolves.toEqual({ id: "build-1" });
+    await expect(
+      core.findNativeBuild({
+        platform: "android",
+        channel: "beta",
+        fingerprintHash: null,
+        appVersion: "1.0.0",
+      }),
+    ).resolves.toBeNull();
+    expect(queries).toEqual([
+      {
+        platform: "ios",
+        channel: "production",
+        fingerprintHash: "fingerprint",
+      },
+      { platform: "android", channel: "beta", appVersion: "1.0.0" },
+    ]);
+  });
 });

@@ -18,6 +18,8 @@ export type {
   DatabaseBundleMetadata,
   DatabaseJsonObject,
   DatabaseJsonValue,
+  NativeBuildArtifactKind,
+  NativeBuildRow,
   ReleaseCatalogRow,
   ReleaseRow,
 } from "./databaseRows";

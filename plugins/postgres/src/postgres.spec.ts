@@ -130,7 +130,7 @@ describe("postgres plugin schema", () => {
           )
         ).rows,
       ).toEqual([
-        { key: "schema.core", value: "1.0.0" },
+        { key: "schema.core", value: "1.2.0" },
         { key: "schema.engine", value: "1" },
       ]);
     } finally {

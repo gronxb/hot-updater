@@ -23,6 +23,11 @@ export const nativeBuildOutputCommandOption = new Option(
   "the path where the artifacts will be generated",
 );
 
+export const nativeBuildRegisterCommandOption = new Option(
+  "--register",
+  "register the release build, its artifact and built-in bundle, with the database and storage in hot-updater.config.ts",
+).default(false);
+
 export const deviceCommandOption = new Option(
   "-d, --device [deviceName | deviceId]",
   "specify the ADB device name or use default",

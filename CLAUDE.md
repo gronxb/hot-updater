@@ -135,6 +135,9 @@ npx hot-updater fingerprint create
 # Set the native default channel
 npx hot-updater channel set <channel>
 
+# Build a release app, and register it with the config's database and storage
+npx hot-updater build:android --scheme release --register
+
 # Manage client API keys through apiKeys(): the config's, or a server file's
 npx hot-updater api-key create --name <name>
 npx hot-updater api-key list src/hotUpdater.ts

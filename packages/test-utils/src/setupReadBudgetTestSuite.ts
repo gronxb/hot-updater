@@ -280,6 +280,12 @@ const scopeKey = createReleaseCatalogScopeKey({
   platform: "ios",
   strategy: "APP_VERSION",
 });
+const nativeBuildScope = {
+  platform: "ios",
+  channel: "production",
+  fingerprintHash: "native-fingerprint",
+  appVersion: null,
+} as const;
 const bundleEvents = {
   kind: "bundle",
   platform: "ios",
@@ -340,6 +346,26 @@ const seed = async (database: MeasuredDatabase) => {
   await deploy(bundleOf("202", "android"));
   await deploy(bundleOf("091"), "staging");
   await deploy(bundleOf("092"), "staging");
+  // Two native builds of one scope, whose built-in bundles sort before every
+  // deployed one and stay out of the bundle totals.
+  for (const suffix of ["011", "012"]) {
+    await core.registerNativeBuild({
+      ...nativeBuildScope,
+      id: createBundleFixture(`8${suffix}`).id,
+      minBundleId: createBundleFixture(suffix).id,
+      gitCommitHash: null,
+      artifact: {
+        kind: "ipa",
+        storageUri: `storage://read-budgets/native-builds/${suffix}/App.ipa`,
+        byteSize: 1_000,
+      },
+      embeddedBundle: {
+        manifestStorageUri: `storage://bundles/${suffix}/manifest.json`,
+        manifestFileHash: `manifest-hash-${suffix}`,
+        assetBaseStorageUri: "storage://read-budgets/assets",
+      },
+    });
+  }
   const { apiKey } = await api.apiKeys.create({ name: "Read budgets" });
   const { token: vaultToken } = await api.vault.issueToken({
     name: "Read budgets",
@@ -595,6 +621,16 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     engine: { calls: 1, rows: 1 },
   }),
   budget({
+    api: "native build by scope: byScope descending, limit 1",
+    read: ({ core }) => core.findNativeBuild(nativeBuildScope),
+    adapter: reads(0, 0, 1, 1),
+    engine: { calls: 1, rows: 1 },
+    check: (build) =>
+      expect(build).toMatchObject({
+        min_bundle_id: createBundleFixture("012").id,
+      }),
+  }),
+  budget({
     api: "channel by name: 1 read",
     read: ({ core }) => core.findChannelByName("staging"),
     adapter: reads(0, 0, 1, 1),
@@ -838,10 +874,12 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     writes: 1,
   }),
   budget({
-    api: "channel delete: 1 read and 1 write",
+    api: "channel delete: the channel, its native builds under it, and 1 write",
+    // The channel, then again as the root of its native build range, which
+    // is empty.
     read: ({ core, nightlyId }) => core.deleteChannel(nightlyId),
-    adapter: reads(1, 1, 0, 0),
-    engine: { calls: 1, rows: 1 },
+    adapter: reads(2, 2, 1, 0),
+    engine: { calls: 3, rows: 2 },
     writes: 1,
     check: (result) => expect(result).toEqual({ deleted: true }),
   }),

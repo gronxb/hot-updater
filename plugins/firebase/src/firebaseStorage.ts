@@ -88,13 +88,22 @@ export const firebaseStorage = (
     protocol: "gs",
     async put({ key, body, contentType }) {
       const storageKey = getStorageKey(key);
-      const bytes = new Uint8Array(await new Response(body).arrayBuffer());
-      await bucket.file(storageKey).save(bytes, {
-        metadata: {
-          contentType,
-          cacheControl: "public, max-age=31536000, immutable",
-        },
-      });
+      // Streamed, so a native build artifact never sits in memory.
+      const [{ Readable }, { pipeline }] = await Promise.all([
+        import("node:stream"),
+        import("node:stream/promises"),
+      ]);
+      await pipeline(
+        Readable.fromWeb(
+          body as import("node:stream/web").ReadableStream<Uint8Array>,
+        ),
+        bucket.file(storageKey).createWriteStream({
+          metadata: {
+            contentType,
+            cacheControl: "public, max-age=31536000, immutable",
+          },
+        }),
+      );
       return {
         storageUri: createStorageUri({
           bucket: config.storageBucket,

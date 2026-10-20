@@ -151,7 +151,7 @@ describe("kyselyAdapter migrations and fence", () => {
         pending.operations.filter(({ type }) => type === "create-table"),
       ).toHaveLength(coreSchema.tables.length);
       await pending.execute();
-      await expect(migrator.getVersion()).resolves.toBe("1.0.0");
+      await expect(migrator.getVersion()).resolves.toBe("1.2.0");
       await expect(migrator.migrateToLatest()).resolves.toMatchObject({
         operations: [],
       });

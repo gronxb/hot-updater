@@ -8,3 +8,7 @@ export type {
 } from "./types";
 export type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
 export { enrichNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
+export {
+  archiveAppBundle,
+  extractBuiltInBundle,
+} from "./utils/extractBuiltInBundle";

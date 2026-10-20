@@ -234,10 +234,11 @@ describe("areVersionsCompatible", () => {
 });
 
 describe("infrastructure version helpers", () => {
-  it("resolves generation 1 as the only infrastructure target", () => {
+  it("resolves the newest infrastructure target a release reaches", () => {
     expect(getRequiredInfrastructureVersion("0.36.0")).toBe("1.0.0");
     expect(getRequiredInfrastructureVersion("1.0.0")).toBe("1.0.0");
-    expect(getRequiredInfrastructureVersion("1.2.0")).toBe("1.0.0");
+    expect(getRequiredInfrastructureVersion("1.1.5")).toBe("1.0.0");
+    expect(getRequiredInfrastructureVersion("1.2.0")).toBe("1.2.0");
   });
 
   it("resolves generation 1 as the only server runtime target", () => {
