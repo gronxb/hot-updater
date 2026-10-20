@@ -128,9 +128,10 @@ export type VaultStatus =
 export interface VaultApi {
   /**
    * Whether the master key is set, well formed, and the one the stored
-   * secrets were sealed with, so `put` and `reveal` can run. It opens one
-   * stored value to tell, reading at most two rows and nothing without a
-   * key, so the Console asks before it offers to store a secret.
+   * secrets were sealed with, so `put` and `reveal` can run. It opens the
+   * first live secret's value to tell: one page of secrets and one version,
+   * unless removed secrets fill whole pages, and nothing without a key. The
+   * Console asks before it offers to store a secret.
    */
   status(): Promise<VaultStatus>;
   /** Every secret but removed ones, by name, without values. */
@@ -636,12 +637,20 @@ export const createVaultApi = ({
       }
       // A well-formed key that did not seal the stored secrets opens none
       // of them, and writing with it would split the vault across two keys.
-      const [secret] = (
-        await db.findMany("secrets", { index: "byName", where: {}, limit: 1 })
-      ).rows;
-      if (secret === undefined || secret.deleted_at_ms !== null) {
-        return { locked: false } as const;
-      }
+      // The first live secret by name: removed ones stay as tombstones.
+      let secret: SecretRow | undefined;
+      let cursor: string | undefined;
+      do {
+        const page = await db.findMany("secrets", {
+          index: "byName",
+          where: {},
+          limit: PAGE_SIZE,
+          ...(cursor === undefined ? {} : { cursor }),
+        });
+        secret = page.rows.find((row) => row.deleted_at_ms === null);
+        cursor = page.next;
+      } while (secret === undefined && cursor !== undefined);
+      if (secret === undefined) return { locked: false } as const;
       const sealed = await db.findOne("secret_versions", {
         secret_id: secret.id,
         version: secret.current_version,

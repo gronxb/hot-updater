@@ -250,6 +250,18 @@ describe("vault", () => {
     expect(findOne).toHaveBeenCalledTimes(2);
   });
 
+  it("checks the key against a live secret, past removed ones", async () => {
+    const { api, with: withOptions } = start();
+    const first = await api.put({ name: "a", kind: "generic", value: 1 });
+    await api.put({ name: "b", kind: "generic", value: 2 });
+    await api.remove({ id: first.id });
+
+    await expect(
+      withOptions({ masterKey: OTHER_KEY }).status(),
+    ).resolves.toMatchObject({ locked: true });
+    await expect(api.status()).resolves.toEqual({ locked: false });
+  });
+
   it("reads the master key from HOT_UPDATER_VAULT_MASTER_KEY when it is not given", async () => {
     const { with: withOptions } = start();
     const fromEnv = withOptions({});
