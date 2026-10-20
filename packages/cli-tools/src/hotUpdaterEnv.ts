@@ -20,7 +20,10 @@ const unquoteEnvValue = (value: string) => {
   return hasMatchingQuotes ? trimmed.slice(1, -1) : trimmed;
 };
 
-const parseEnv = (content: string): Readonly<Record<string, string>> => {
+/** The variables of a `.env.hotupdater`-style file's content, as the CLI reads it. */
+export const parseHotUpdaterEnv = (
+  content: string,
+): Readonly<Record<string, string>> => {
   const env: Record<string, string> = {};
 
   for (const line of content.split("\n")) {
@@ -58,7 +61,7 @@ const readEnvFile = async (
     throw error;
   }
 
-  return parseEnv(content);
+  return parseHotUpdaterEnv(content);
 };
 
 export type HotUpdaterInitEnv = {
@@ -97,13 +100,6 @@ export const readHotUpdaterInitEnv = async (
     inputEnv,
     managedEnv: savedEnv,
   };
-};
-
-export const readHotUpdaterEnv = async (
-  cwd: string,
-): Promise<Readonly<Record<string, string>>> => {
-  const { managedEnv } = await readHotUpdaterInitEnv(cwd);
-  return managedEnv;
 };
 
 export const getHotUpdaterEnvValue = (

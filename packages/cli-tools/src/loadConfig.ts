@@ -14,6 +14,7 @@ import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
 
 import { getCwd } from "./cwd.js";
 import { normalizeSigningConfig } from "./localBundleSigning.js";
+import { loadVaultDeployCredentials } from "./vaultVariables.js";
 
 export type HotUpdaterConfigOptions = {
   platform: Platform;
@@ -166,8 +167,12 @@ const getConfigLoaderOptions = (): LoadConfigOptions<ConfigFileExport> => {
   };
 };
 
-/** Each load runs the config file again, which creates its adapters again. */
+/**
+ * Each load runs the config file again, which creates its adapters again,
+ * after the vault's deploy credentials are in `process.env`.
+ */
 const loadConfigFile = async (): Promise<ConfigFileExport | undefined> => {
+  await loadVaultDeployCredentials(getCwd());
   const { config } = await loadUnconfig<ConfigFileExport>(
     getConfigLoaderOptions(),
   );

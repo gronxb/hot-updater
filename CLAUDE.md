@@ -65,7 +65,8 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
 - A CLI command exists only for a user workflow. Checks belong in `hot-updater doctor`, which repairs what it can with `--fix`.
   - Plugins add no CLI commands. `PluginCli` holds only `clientCredential` and `clientPlugin`, the metadata init, doctor, and the agent scaffold read.
   - `hot-updater api-key create|list|revoke` is a built-in command over the config's `database` and `plugins`, or the server file a server project passes as its last argument.
-  - `hot-updater secrets` is a built-in command for the Console's vault: `list`, `put`, and `env` go through the Console's `/_hot-updater/vault/v1/` routes with `HOT_UPDATER_CONSOLE_URL` and `HOT_UPDATER_VAULT_TOKEN`, and `token create|list|revoke` runs in process like `api-key`, without a master key. The CLI never decrypts a secret.
+  - `hot-updater secrets` is a built-in command for the Console's vault: `list`, `put`, `env`, and `import` go through the Console's `/_hot-updater/vault/v1/` routes with `HOT_UPDATER_CONSOLE_URL` and `HOT_UPDATER_VAULT_TOKEN`, and `token create|list|revoke` runs in process like `api-key`, without a master key. The CLI never decrypts a secret.
+  - The connection variables are written with `makeEnv` and read with `getHotUpdaterEnvValue`, from the environment or `.env.hotupdater`. While both are set, cli-tools' `loadConfig` sets the variables of the `deploy-credentials` secrets the token reaches in `process.env` before it loads `hot-updater.config.ts` (`loadVaultDeployCredentials`), so `secrets import` leaves only those two in `.env.hotupdater` and configs keep reading `process.env`.
 
 ### Reference Projects
 When working on helper packages, reference these external projects:
@@ -147,6 +148,7 @@ npx hot-updater api-key list src/hotUpdater.ts
 npx hot-updater secrets token create --name ci --secrets asc-api-key --actions read
 npx hot-updater secrets put asc-api-key --kind asc-api-key --p8 ./AuthKey.p8 --key-id <id> --issuer-id <id>
 npx hot-updater secrets env -- <command>
+npx hot-updater secrets import .env.hotupdater
 
 # Migrate a server's database (in the server project)
 npx hot-updater db migrate src/hotUpdater.ts

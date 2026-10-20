@@ -180,6 +180,7 @@ describe("CLI commands", () => {
     expect(secrets).toMatch(/^\s+list \[options\]\s/m);
     expect(secrets).toMatch(/^\s+put \[options\] <name> \[variables\.\.\.\]/m);
     expect(secrets).toMatch(/^\s+env <command\.\.\.>/m);
+    expect(secrets).toMatch(/^\s+import \[options\] \[file\]/m);
     expect(secrets).toMatch(
       /^\s+token\s+Issue, list, and revoke vault tokens$/m,
     );
@@ -191,6 +192,7 @@ describe("CLI commands", () => {
       ["secrets", "list"],
       ["secrets", "put"],
       ["secrets", "env"],
+      ["secrets", "import"],
       ["secrets", "token", "create"],
     ]) {
       expect(help(...command)).not.toContain("--app");
@@ -198,6 +200,10 @@ describe("CLI commands", () => {
     const put = help("secrets", "put").replace(/\s+/gu, " ");
     expect(put).toContain('choices: "asc-api-key", "android-keystore"');
     expect(put).toContain("HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD");
+    const importHelp = help("secrets", "import").replace(/\s+/gu, " ");
+    expect(importHelp).toContain('(default: ".env.hotupdater")');
+    expect(importHelp).toContain("--name <name> the deploy-credentials secret");
+    expect(importHelp).toContain("-y, --yes");
 
     const missing = run("secrets", "put", "release-keystore");
     expect(missing.status).toBe(1);

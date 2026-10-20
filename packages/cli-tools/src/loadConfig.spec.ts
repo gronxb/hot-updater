@@ -136,6 +136,75 @@ describe("loadConfig", () => {
     }
   });
 
+  it("sets the vault's deploy credentials in process.env before the config reads them, when .env.hotupdater holds only the connection", async () => {
+    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", undefined);
+    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", undefined);
+    vi.stubEnv("HU_SPEC_S3_SECRET", "");
+    const fetch = vi
+      .spyOn(globalThis, "fetch")
+      .mockImplementation(async (input, init) => {
+        const request = new Request(input, init);
+        expect(request.headers.get("authorization")).toBe(
+          `Bearer hu_vault_${"L".repeat(43)}`,
+        );
+        if (request.method === "GET") {
+          return Response.json({
+            secrets: [
+              {
+                id: "sec-1",
+                name: "deploy-credentials",
+                kind: "deploy-credentials",
+                version: 1,
+                metadata: { variables: ["HU_SPEC_S3_SECRET"] },
+                createdAtMs: 0,
+                updatedAtMs: 0,
+              },
+            ],
+          });
+        }
+        return Response.json({
+          secrets: [
+            {
+              name: "deploy-credentials",
+              kind: "deploy-credentials",
+              version: 1,
+              value: { HU_SPEC_S3_SECRET: "from-the-vault" },
+            },
+          ],
+          errors: [],
+        });
+      });
+    await writeProjectFile(
+      projectRoot,
+      ".env.hotupdater",
+      [
+        "HOT_UPDATER_CONSOLE_URL=http://localhost:3000",
+        `HOT_UPDATER_VAULT_TOKEN=hu_vault_${"L".repeat(43)}`,
+      ].join("\n"),
+    );
+    await writeProjectFile(
+      projectRoot,
+      "hot-updater.config.ts",
+      'export default { storage: { name: "s3Storage", protocol: "s3", secret: process.env.HU_SPEC_S3_SECRET } };\n',
+    );
+
+    try {
+      const { loadPlatformConfigs } = await import("./loadConfig");
+      const [ios, android] = await loadPlatformConfigs(["ios", "android"], {
+        channel: "production",
+      });
+
+      expect(ios!.config.storage).toMatchObject({ secret: "from-the-vault" });
+      expect(android!.config.storage).toMatchObject({
+        secret: "from-the-vault",
+      });
+      // Once per process: a list and a resolve.
+      expect(fetch).toHaveBeenCalledTimes(2);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("allows disabling the local CLI cache", async () => {
     await writeProjectFile(
       projectRoot,

@@ -3,9 +3,15 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import {
+  getCwd,
+  makeEnv,
   p,
+  parseHotUpdaterEnv,
   registerSecretValue,
+  resolveVaultVariables,
+  VAULT_CONNECTION_ENV_NAMES,
   type VaultClient,
+  vaultSecretVariables,
   type VaultSecretMetadata,
 } from "@hot-updater/cli-tools";
 import {
@@ -19,7 +25,7 @@ import {
 import { printBanner } from "@/utils/printBanner";
 
 import { ui } from "../utils/cli-ui";
-import { connectVault, resolveVaultVariables } from "../vaultEnv";
+import { connectVault } from "../vaultEnv";
 import {
   confirmAction,
   requirePlugin,
@@ -47,7 +53,7 @@ const reportFailure = async (run: () => Promise<void>) => {
 const withConsoleVault = (
   wanted: string,
   run: (client: VaultClient) => Promise<void>,
-) => reportFailure(() => run(connectVault(wanted)));
+) => reportFailure(async () => run(await connectVault(wanted)));
 
 const formatSecrets = (secrets: readonly VaultSecretMetadata[]): string => {
   if (secrets.length === 0) return ui.muted("(no secrets)");
@@ -333,6 +339,152 @@ export const handleSecretsEnv = async (
       return;
     }
     process.exitCode = outcome.code ?? 1;
+  });
+};
+
+export interface SecretsImportOptions {
+  /** The deploy-credentials secret to store the variables in. */
+  readonly name?: string;
+  /** Skips the confirmation prompt. */
+  readonly yes?: boolean;
+}
+
+/** The secret `secrets import` stores in unless `--name` says otherwise. */
+export const DEFAULT_IMPORT_SECRET_NAME = "deploy-credentials";
+
+/**
+ * The variables `secrets import` leaves in the file: the connection the
+ * CLI reaches the vault with, init's choices, the app's client API key,
+ * which ships in the app and is no vault secret, and the master key a
+ * Console opens the vault with, which never goes into it.
+ */
+const LOCAL_VARIABLES: ReadonlySet<string> = new Set([
+  VAULT_CONNECTION_ENV_NAMES.url,
+  VAULT_CONNECTION_ENV_NAMES.token,
+  // init's choices, which a later init reads from the file.
+  "HOT_UPDATER_INIT_BUILD",
+  "HOT_UPDATER_INIT_PROVIDER",
+  // apiKeys()'s client credential, as init provisions it.
+  "HOT_UPDATER_API_KEY",
+  "HOT_UPDATER_VAULT_MASTER_KEY",
+]);
+
+const readEnvFile = async (file: string): Promise<string> => {
+  try {
+    return await fs.readFile(path.resolve(getCwd(), file), "utf-8");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+      throw new Error(`${file} does not exist.`);
+    }
+    throw error;
+  }
+};
+
+const names = (variables: readonly string[]) =>
+  variables.length === 0 ? ui.muted("(none)") : variables.join(", ");
+
+/**
+ * `secrets import [file]`: stores every variable of an env file, such as
+ * `.env.hotupdater`, as one `deploy-credentials` secret through the
+ * Console, then removes those variables from the file, keeping only
+ * `LOCAL_VARIABLES`. Commands that load `hot-updater.config.ts` set the
+ * secret's variables in `process.env` again while the two connection
+ * variables are set. The token needs `write` on the secret.
+ */
+export const handleSecretsImport = async (
+  file = ".env.hotupdater",
+  options: SecretsImportOptions = {},
+): Promise<void> => {
+  printBanner();
+  await reportFailure(async () => {
+    const name = options.name ?? DEFAULT_IMPORT_SECRET_NAME;
+    const env = parseHotUpdaterEnv(await readEnvFile(file));
+    const invalid = Object.keys(env).filter(
+      (variable) => !ENV_NAME_PATTERN.test(variable),
+    );
+    if (invalid.length > 0) {
+      throw new Error(
+        `${file} sets ${invalid.map((variable) => `"${variable}"`).join(", ")}, which ${invalid.length === 1 ? "is" : "are"} no variable name: letters, digits, and underscores, not starting with a digit.`,
+      );
+    }
+    const value: Record<string, string> = {};
+    for (const [variable, entry] of Object.entries(env)) {
+      if (!LOCAL_VARIABLES.has(variable) && entry !== "") {
+        value[variable] = entry;
+      }
+    }
+    const moved = Object.keys(value);
+    const kept = Object.keys(env).filter((variable) => !(variable in value));
+    if (moved.length === 0) {
+      p.log.message(
+        ui.block(`${file} holds no variables to move`, [
+          ui.kv("Kept", names(kept)),
+        ]),
+      );
+      return;
+    }
+    // Masked before anything is sent, so no failure can print them.
+    for (const entry of Object.values(value)) registerSecretValue(entry);
+
+    // The file's own connection variables reach the vault, as they will
+    // once it holds nothing else.
+    const client = await connectVault(
+      `hot-updater secrets import stores ${file}'s variables`,
+      env,
+    );
+    const listed = await client.list();
+    const existing = listed.find((secret) => secret.name === name);
+    const elsewhere = listed.flatMap((secret) =>
+      secret.name !== name &&
+      (secret.kind === "deploy-credentials" || secret.kind === "generic")
+        ? vaultSecretVariables(secret)
+            .filter((variable) => variable in value)
+            .map((variable) => `${variable} (${secret.name})`)
+        : [],
+    );
+    if (elsewhere.length > 0) {
+      throw new Error(
+        `The vault's other secrets already set ${elsewhere.join(", ")}: a variable is kept in one secret. Remove ${elsewhere.length === 1 ? "it" : "them"} there, or from ${file}, first.`,
+      );
+    }
+    const dropped =
+      existing === undefined
+        ? []
+        : vaultSecretVariables(existing).filter(
+            (variable) => !(variable in value),
+          );
+    if (dropped.length > 0) {
+      p.log.warn(
+        `${name} v${existing!.version} also sets ${dropped.join(", ")}, which ${file} does not: the new version replaces it whole, without ${dropped.length === 1 ? "it" : "them"}.`,
+      );
+    }
+    if (
+      !(await confirmAction(
+        `Store ${moved.length} variable${moved.length === 1 ? "" : "s"} from ${file} as the vault's ${name}, and remove ${moved.length === 1 ? "it" : "them"} from ${file}?`,
+        options.yes,
+      ))
+    ) {
+      return;
+    }
+
+    const secret = await client.put({
+      name,
+      kind: "deploy-credentials",
+      value,
+    });
+    await makeEnv({}, path.resolve(getCwd(), file), { removeKeys: moved });
+    p.log.message(
+      ui.block("Variables moved to the vault", [
+        ui.kv("Secret", secret.name),
+        ui.kv("Kind", secret.kind),
+        ui.kv("Version", ui.version(`v${secret.version}`)),
+        ui.kv("Moved", moved.join(", ")),
+        ui.kv("Kept", names(kept)),
+      ]),
+    );
+    p.log.info(
+      `Commands that load hot-updater.config.ts now read these variables from the vault's ${name} while ${VAULT_CONNECTION_ENV_NAMES.url} and ${VAULT_CONNECTION_ENV_NAMES.token} are set, with a vault token that reads ${name}.`,
+    );
   });
 };
 

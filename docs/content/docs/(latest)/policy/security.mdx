@@ -54,7 +54,10 @@ public client access; follow its [access policy setup](/docs/custom/api-key-auth
 
 ## Keep private configuration out of the app
 
-Keep local provider credentials in `.env.hotupdater` and out of version control.
+Keep local provider credentials in `.env.hotupdater` and out of version control,
+or move them into the console's vault with
+[`hot-updater secrets import`](/docs/guides/secrets#move-envhotupdater-into-the-vault),
+which leaves only the console's URL and a vault token on the machine.
 Use your CI or provider's private credential storage for automated operations.
 The [agent infrastructure workflow](/docs/guides/agent-infrastructure) uses
 provider login and local credential sources; credentials do not belong in chat.

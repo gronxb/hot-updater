@@ -25,6 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   handleSecretsEnv,
+  handleSecretsImport,
   handleSecretsList,
   handleSecretsPut,
   handleSecretsTokenCreate,
@@ -35,6 +36,7 @@ import {
 const { log, printBanner } = vi.hoisted(() => ({
   log: {
     error: vi.fn(),
+    info: vi.fn(),
     message: vi.fn(),
     warn: vi.fn(),
   },
@@ -390,6 +392,208 @@ describe("hot-updater secrets list and put, through the Console", () => {
     expect(log.error).toHaveBeenCalledWith(
       "hot-updater secrets list reads from the Console's vault, and HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN are not set. Set HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN to reach the vault.",
     );
+  });
+});
+
+describe("hot-updater secrets import", () => {
+  const DEPLOY = {
+    id: "sec-2",
+    name: "deploy-credentials",
+    kind: "deploy-credentials",
+    version: 1,
+    metadata: { variables: ["HOT_UPDATER_OLD_ONLY", "HOT_UPDATER_S3_REGION"] },
+    createdAtMs: 1_790_000_000_000,
+    updatedAtMs: 1_790_000_000_000,
+  };
+  const S3_SECRET = "s3-import-secret/with+chars";
+
+  const writeEnvFile = async (lines: readonly string[]) => {
+    const file = path.join(directory, ".env.hotupdater");
+    await fs.writeFile(file, lines.join("\n"));
+    return file;
+  };
+
+  /** A Console listing `listed` and storing what it is sent as the next version. */
+  const importConsole = (listed: readonly unknown[] = []) =>
+    mockConsole((request) =>
+      request.method === "GET"
+        ? { secrets: listed }
+        : request
+            .clone()
+            .json()
+            .then((body: { kind: string; value: Record<string, string> }) => ({
+              secret: {
+                ...DEPLOY,
+                kind: body.kind,
+                version: 2,
+                metadata: { variables: Object.keys(body.value).sort() },
+              },
+            })),
+    );
+
+  it("stores the file's variables as one deploy-credentials secret and keeps only the connection, init's choices, the client API key, and the master key", async () => {
+    const requests = importConsole();
+    // Only the file connects: nothing else will be left to.
+    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", undefined);
+    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", undefined);
+    const file = await writeEnvFile([
+      "HOT_UPDATER_INIT_BUILD=bare",
+      "HOT_UPDATER_INIT_PROVIDER=aws",
+      "HOT_UPDATER_API_KEY=client-key-ships-in-the-app",
+      "# The bucket",
+      "HOT_UPDATER_S3_BUCKET_NAME=bundles",
+      "HOT_UPDATER_S3_REGION=us-east-1",
+      `HOT_UPDATER_S3_SECRET_ACCESS_KEY=${JSON.stringify(S3_SECRET)}`,
+      "HOT_UPDATER_AWS_PROFILE=",
+      "",
+      "# The vault",
+      `HOT_UPDATER_CONSOLE_URL=${CONSOLE_URL}`,
+      `HOT_UPDATER_VAULT_TOKEN=${TOKEN}`,
+      "HOT_UPDATER_VAULT_MASTER_KEY=master-key-stays",
+    ]);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(process.exitCode).toBeUndefined();
+    expect(requests).toEqual([
+      {
+        method: "GET",
+        url: `${CONSOLE_URL}/_hot-updater/vault/v1/secrets`,
+        auth: `Bearer ${TOKEN}`,
+        body: undefined,
+      },
+      {
+        method: "PUT",
+        url: `${CONSOLE_URL}/_hot-updater/vault/v1/secrets/deploy-credentials`,
+        auth: `Bearer ${TOKEN}`,
+        body: {
+          kind: "deploy-credentials",
+          value: {
+            HOT_UPDATER_S3_BUCKET_NAME: "bundles",
+            HOT_UPDATER_S3_REGION: "us-east-1",
+            HOT_UPDATER_S3_SECRET_ACCESS_KEY: S3_SECRET,
+          },
+        },
+      },
+    ]);
+    // An empty variable holds nothing to move, and stays.
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(
+      [
+        "HOT_UPDATER_INIT_BUILD=bare",
+        "HOT_UPDATER_INIT_PROVIDER=aws",
+        "HOT_UPDATER_API_KEY=client-key-ships-in-the-app",
+        "HOT_UPDATER_AWS_PROFILE=",
+        "",
+        "# The vault",
+        `HOT_UPDATER_CONSOLE_URL=${CONSOLE_URL}`,
+        `HOT_UPDATER_VAULT_TOKEN=${TOKEN}`,
+        "HOT_UPDATER_VAULT_MASTER_KEY=master-key-stays",
+      ].join("\n"),
+    );
+    const printed = messages().join("\n");
+    expect(printed).toContain(
+      "HOT_UPDATER_S3_BUCKET_NAME, HOT_UPDATER_S3_REGION, HOT_UPDATER_S3_SECRET_ACCESS_KEY",
+    );
+    expect(printed).not.toContain(S3_SECRET);
+    expect(maskSecretValues(`key ${S3_SECRET}`)).not.toContain(S3_SECRET);
+  });
+
+  it("says what a new version drops from the secret it replaces", async () => {
+    importConsole([DEPLOY]);
+    const file = await writeEnvFile(["HOT_UPDATER_S3_REGION=eu-west-1"]);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(log.warn).toHaveBeenCalledWith(
+      `deploy-credentials v1 also sets HOT_UPDATER_OLD_ONLY, which ${file} does not: the new version replaces it whole, without it.`,
+    );
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe("");
+  });
+
+  it("stores in the secret --name names", async () => {
+    const requests = importConsole();
+    const file = await writeEnvFile(["WIDGET_TOKEN=abc"]);
+
+    await handleSecretsImport(file, { name: "widget-deploy", yes: true });
+
+    expect(requests.at(-1)?.url).toBe(
+      `${CONSOLE_URL}/_hot-updater/vault/v1/secrets/widget-deploy`,
+    );
+  });
+
+  it("refuses a variable another secret sets, leaving the file as it was", async () => {
+    const requests = importConsole([
+      { ...DEPLOY, id: "sec-3", name: "shared", kind: "generic" },
+    ]);
+    const lines = ["HOT_UPDATER_S3_REGION=us-east-1", "OTHER=1"];
+    const file = await writeEnvFile(lines);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      `The vault's other secrets already set HOT_UPDATER_S3_REGION (shared): a variable is kept in one secret. Remove it there, or from ${file}, first.`,
+    );
+    expect(requests.map(({ method }) => method)).toEqual(["GET"]);
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(lines.join("\n"));
+  });
+
+  it("asks before it moves anything, and needs -y without a terminal", async () => {
+    const requests = importConsole();
+    const file = await writeEnvFile(["HOT_UPDATER_S3_REGION=us-east-1"]);
+
+    await handleSecretsImport(file);
+
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      `Store 1 variable from ${file} as the vault's deploy-credentials, and remove it from ${file}? Re-run with -y in a non-interactive shell.`,
+    );
+    expect(requests.map(({ method }) => method)).toEqual(["GET"]);
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(
+      "HOT_UPDATER_S3_REGION=us-east-1",
+    );
+  });
+
+  it("keeps the file when the Console refuses the write", async () => {
+    mockConsole((request) =>
+      request.method === "GET"
+        ? { secrets: [] }
+        : Response.json(
+            { error: { code: "forbidden", message: "no write" } },
+            { status: 403 },
+          ),
+    );
+    const file = await writeEnvFile(["HOT_UPDATER_S3_REGION=us-east-1"]);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      `The Console at ${CONSOLE_URL} refused the request: no write`,
+    );
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(
+      "HOT_UPDATER_S3_REGION=us-east-1",
+    );
+  });
+
+  it("reaches nothing when the file holds only what stays, or does not exist", async () => {
+    const requests = importConsole();
+    const file = await writeEnvFile([`HOT_UPDATER_CONSOLE_URL=${CONSOLE_URL}`]);
+
+    await handleSecretsImport(file, { yes: true });
+    expect(process.exitCode).toBeUndefined();
+    expect(messages().join("\n")).toContain(
+      `${file} holds no variables to move`,
+    );
+
+    await handleSecretsImport(path.join(directory, "missing.env"), {
+      yes: true,
+    });
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      `${path.join(directory, "missing.env")} does not exist.`,
+    );
+    expect(requests).toEqual([]);
   });
 });
 
