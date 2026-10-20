@@ -116,7 +116,6 @@ export const keysGenerate = async (options: KeysGenerateOptions = {}) => {
     await saveKeyPair(keyPair, outputDir);
 
     spinner.stop("Keys generated");
-    spinning = false;
 
     // The public key is safe to commit and is required by native builds.
     const privateKeyGitignorePath = getPrivateKeyGitignorePath(cwd, outputDir);
