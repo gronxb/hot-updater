@@ -25,6 +25,7 @@ import {
   handleLaunchHeadlessTask,
   handleLaunchStartupHang,
   handleLaunchUninstrumentedApp,
+  handleMismatchPatchBaseFileHash,
   handlePrepareAppLaunch,
   handleProxyRemoteAssetRequest,
   handleProxyState,
@@ -49,6 +50,8 @@ import {
   startEnableWidgetJob,
   startWaitForCrashMarkerJob,
   startPatchReleaseJob,
+  startRegisterNativeBuildJob,
+  startResetNativeBuildChannelJob,
   startResetRemoteBundlesJob,
   startSeedCrashedBundleFrontierJob,
   startWaitForAndroidRestartJob,
@@ -95,6 +98,45 @@ app.post("/e2e/jobs/bootstrap", async (c) => {
 
 app.post("/e2e/jobs/reset-remote-bundles", async (c) => {
   return c.json({ jobId: startResetRemoteBundlesJob() });
+});
+
+app.post("/e2e/jobs/register-native-build", async (c) => {
+  const payload = (await c.req.json()) as { appVersion?: unknown };
+  if (typeof payload.appVersion !== "string" || !payload.appVersion) {
+    return c.json({ error: "appVersion is required" }, 400);
+  }
+  return c.json({
+    jobId: startRegisterNativeBuildJob({ appVersion: payload.appVersion }),
+  });
+});
+
+app.post("/e2e/jobs/reset-native-build-channel", async (c) => {
+  const payload = (await c.req.json()) as { channel?: unknown };
+  if (typeof payload.channel !== "string" || !payload.channel) {
+    return c.json({ error: "channel is required" }, 400);
+  }
+  return c.json({
+    jobId: startResetNativeBuildChannelJob({ channel: payload.channel }),
+  });
+});
+
+app.post("/e2e/mismatch-patch-base-file-hash", async (c) => {
+  const payload = (await c.req.json()) as {
+    baseBundleId?: unknown;
+    bundleId?: unknown;
+  };
+  if (
+    typeof payload.baseBundleId !== "string" ||
+    typeof payload.bundleId !== "string"
+  ) {
+    return c.json({ error: "baseBundleId and bundleId are required" }, 400);
+  }
+  return c.json(
+    await handleMismatchPatchBaseFileHash({
+      baseBundleId: payload.baseBundleId,
+      bundleId: payload.bundleId,
+    }),
+  );
 });
 
 app.get("/e2e/runtime-config", (c) => {

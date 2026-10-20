@@ -14,6 +14,8 @@ import {
 import type {
   ConfiguredDatabase,
   HotUpdaterCoreApi,
+  NativeBuildRow,
+  NativeBuildScope,
   Platform,
   ReleaseCatalogMutationResult,
   StorageAdapter,
@@ -218,6 +220,66 @@ const getPatchBaseBundleIds = async ({
   return core.findBaseBundleIds(candidateKey, bundleId, maxBaseBundles);
 };
 
+/**
+ * The built-in bundle of the newest native build registered for the
+ * deploy's channel and platform, with its fingerprint or exact app version,
+ * so a store install's first OTA arrives as a patch. Registration took its
+ * file from the build's artifact, so the patch is made against the bytes
+ * the build ships. One indexed read.
+ */
+const getBuiltInBaseBundleId = async ({
+  bundleId,
+  channel,
+  core,
+  platform,
+  target,
+}: {
+  bundleId: string;
+  channel: string;
+  core: HotUpdaterCoreApi;
+  platform: Platform;
+  target: {
+    appVersion: string | null;
+    fingerprintHash: string | null;
+  };
+}): Promise<string | null> => {
+  let scope: NativeBuildScope;
+  if (target.fingerprintHash !== null) {
+    scope = {
+      platform,
+      channel,
+      fingerprintHash: target.fingerprintHash,
+      appVersion: null,
+    };
+  } else if (target.appVersion !== null) {
+    scope = {
+      platform,
+      channel,
+      fingerprintHash: null,
+      appVersion: target.appVersion,
+    };
+  } else {
+    return null;
+  }
+  let nativeBuild: NativeBuildRow | null;
+  try {
+    nativeBuild = await core.findNativeBuild(scope);
+  } catch (error) {
+    // A self-hosted server without the native build routes answers 404: it
+    // holds no native builds.
+    if ((error as { status?: unknown } | null)?.status === 404) return null;
+    throw error;
+  }
+  // A build made after this bundle runs it or a newer one.
+  if (
+    nativeBuild === null ||
+    nativeBuild.min_bundle_id.localeCompare(bundleId) >= 0
+  ) {
+    return null;
+  }
+  return nativeBuild.min_bundle_id;
+};
+
 const createAutoPatches = async ({
   bundleId,
   channel,
@@ -238,7 +300,7 @@ const createAutoPatches = async ({
     fingerprintHash: string | null;
   };
 }) => {
-  const baseBundleIds = await getPatchBaseBundleIds({
+  const releasedBaseBundleIds = await getPatchBaseBundleIds({
     bundleId,
     channel,
     core,
@@ -247,6 +309,26 @@ const createAutoPatches = async ({
     target,
   });
   const failures: { baseBundleId: string; message: string }[] = [];
+  let builtInBaseBundleId: string | null = null;
+  try {
+    builtInBaseBundleId = await getBuiltInBaseBundleId({
+      bundleId,
+      channel,
+      core,
+      platform,
+      target,
+    });
+  } catch (error) {
+    failures.push({
+      baseBundleId: "built-in",
+      message: error instanceof Error ? error.message : "Unknown patch error",
+    });
+  }
+  // No release publishes a built-in bundle, so the catalog never names it.
+  const baseBundleIds =
+    builtInBaseBundleId === null
+      ? releasedBaseBundleIds
+      : [...releasedBaseBundleIds, builtInBaseBundleId];
   let createdCount = 0;
 
   for (const baseBundleId of baseBundleIds) {

@@ -10,6 +10,7 @@ import { describe, expect, it } from "vitest";
 import { createNativeBuildPlan, parseNativeBuildArgs } from "./build.ts";
 
 const deviceId = "12345678-1234-1234-1234-1234567890AB";
+const minBundleId = "019a0b1c-2d3e-7000-8000-000000000000";
 const otherDeviceId = "ABCDEFAB-1234-1234-1234-1234567890AB";
 
 describe("native Release builds", () => {
@@ -19,6 +20,7 @@ describe("native Release builds", () => {
         { platform: "android", track: "brownfield", dryRun: false },
         "/checkout",
         { HOT_UPDATER_E2E_ANDROID_ARCHITECTURES: "arm64-v8a" },
+        minBundleId,
       ),
     ).toEqual([
       {
@@ -34,7 +36,7 @@ describe("native Release builds", () => {
           ":brownfieldlib:publishMavenAarPublicationToBrownfieldE2eRepository",
           "-Pkotlin.compiler.execution.strategy=in-process",
           "-PreactNativeArchitectures=arm64-v8a",
-          "-PMIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000",
+          `-PMIN_BUNDLE_ID=${minBundleId}`,
         ],
         cwd: "/checkout/examples/v0.85.0/android",
         env: { NODE_ENV: "production", BABEL_ENV: "production" },
@@ -58,6 +60,7 @@ describe("native Release builds", () => {
       { platform: "ios", track: "brownfield", deviceId, dryRun: false },
       "/checkout",
       { HOT_UPDATER_E2E_IOS_DERIVED_DATA_PATH: "/derived" },
+      minBundleId,
     );
     expect(install!.cwd).toBe("/checkout/examples/v0.85.0/ios");
     expect(pods!.args).toEqual(["exec", "pod", "install"]);
@@ -73,7 +76,7 @@ describe("native Release builds", () => {
         "--build-folder",
         "/derived/framework",
         "--extra-params",
-        "HOT_UPDATER_MIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000",
+        `HOT_UPDATER_MIN_BUNDLE_ID=${minBundleId}`,
       ],
       cwd: "/checkout/examples/v0.85.0",
       env: { NODE_ENV: "production", BABEL_ENV: "production" },
@@ -118,6 +121,7 @@ describe("native Release builds", () => {
       { platform: "android", track: "greenfield", dryRun: false },
       "/checkout with spaces",
       { HOT_UPDATER_E2E_ANDROID_ARCHITECTURES: "arm64-v8a" },
+      minBundleId,
     );
     expect(command).toEqual({
       command: "./gradlew",
@@ -127,7 +131,7 @@ describe("native Release builds", () => {
         "-Pkotlin.compiler.execution.strategy=in-process",
         "-PreactNativeArchitectures=arm64-v8a",
         "-PHOT_UPDATER_E2E_DEBUGGABLE=true",
-        "-PMIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000",
+        `-PMIN_BUNDLE_ID=${minBundleId}`,
       ],
       cwd: "/checkout with spaces/examples/v0.85.0/android",
       env: { NODE_ENV: "production", BABEL_ENV: "production" },
@@ -150,6 +154,7 @@ describe("native Release builds", () => {
       { platform: "ios", track: "greenfield", deviceId, dryRun: false },
       "/checkout",
       { HOT_UPDATER_E2E_DEVICE_ID: otherDeviceId },
+      minBundleId,
     );
     expect(install).toEqual({
       command: "bundle",
@@ -185,7 +190,7 @@ describe("native Release builds", () => {
       "-derivedDataPath",
       "build",
       "-quiet",
-      "HOT_UPDATER_MIN_BUNDLE_ID=00000000-0000-7000-8000-000000000000",
+      `HOT_UPDATER_MIN_BUNDLE_ID=${minBundleId}`,
     ]);
     expect(xcode.cwd).toBe(pods.cwd);
   });
@@ -212,7 +217,12 @@ describe("native Release builds", () => {
     expect(xcode.args).toContain("generic/platform=iOS Simulator");
     expect(() =>
       createNativeBuildPlan(
-        { platform: "ios", track: "greenfield", deviceId: "iPhone 16", dryRun: false },
+        {
+          platform: "ios",
+          track: "greenfield",
+          deviceId: "iPhone 16",
+          dryRun: false,
+        },
         "/checkout",
         {},
       ),
@@ -273,10 +283,12 @@ describe("native Release builds", () => {
     await fs.mkdir(bin);
     await fs.copyFile(source, script);
     await fs.mkdir(path.join(root, "e2e/shared"), { recursive: true });
-    await fs.copyFile(
-      fileURLToPath(new URL("../shared/tracks.ts", import.meta.url)),
-      path.join(root, "e2e/shared/tracks.ts"),
-    );
+    for (const shared of ["tracks.ts", "built-in-bundle-id.ts"]) {
+      await fs.copyFile(
+        fileURLToPath(new URL(`../shared/${shared}`, import.meta.url)),
+        path.join(root, "e2e/shared", shared),
+      );
+    }
     const compiler = `
       const fs = require('node:fs');
       process.on('SIGTERM', () => {});
