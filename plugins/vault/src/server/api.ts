@@ -647,7 +647,12 @@ export const createVaultApi = ({
           limit: PAGE_SIZE,
           ...(cursor === undefined ? {} : { cursor }),
         });
-        secret = page.rows.find((row) => row.deleted_at_ms === null);
+        for (const row of page.rows) {
+          if (row.deleted_at_ms === null) {
+            secret = row;
+            break;
+          }
+        }
         cursor = page.next;
       } while (secret === undefined && cursor !== undefined);
       if (secret === undefined) return { locked: false } as const;
