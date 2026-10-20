@@ -430,14 +430,17 @@ export const handleSecretsImport = async (
         `${file} sets ${invalid.map((variable) => `"${variable}"`).join(", ")}, which ${invalid.length === 1 ? "is" : "are"} no variable name: letters, digits, and underscores, not starting with a digit.`,
       );
     }
-    const value: Record<string, string> = {};
+    // No prototype: a variable may be named like an Object member.
+    const value: Record<string, string> = Object.create(null);
     for (const [variable, entry] of Object.entries(env)) {
       if (!LOCAL_VARIABLES.has(variable) && entry !== "") {
         value[variable] = entry;
       }
     }
     const moved = Object.keys(value);
-    const kept = Object.keys(env).filter((variable) => !(variable in value));
+    const kept = Object.keys(env).filter(
+      (variable) => !Object.hasOwn(value, variable),
+    );
     if (moved.length === 0) {
       p.log.message(
         ui.block(`${file} holds no variables to move`, [
@@ -484,7 +487,7 @@ export const handleSecretsImport = async (
       secret.name !== name &&
       (secret.kind === "deploy-credentials" || secret.kind === "generic")
         ? vaultSecretVariables(secret)
-            .filter((variable) => variable in value)
+            .filter((variable) => Object.hasOwn(value, variable))
             .map((variable) => `${variable} (${secret.name})`)
         : [],
     );
@@ -497,7 +500,7 @@ export const handleSecretsImport = async (
       existing === undefined
         ? []
         : vaultSecretVariables(existing).filter(
-            (variable) => !(variable in value),
+            (variable) => !Object.hasOwn(value, variable),
           );
     if (dropped.length > 0) {
       p.log.warn(
@@ -543,8 +546,8 @@ export const handleSecretsImport = async (
         { cause: error },
       );
     }
-    const left = moved.filter(
-      (variable) => variable in parseLoadedEnv(rewritten),
+    const left = moved.filter((variable) =>
+      Object.hasOwn(parseLoadedEnv(rewritten), variable),
     );
     if (left.length > 0) {
       throw new Error(

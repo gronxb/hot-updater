@@ -27,7 +27,11 @@ import {
   type BuildNativeOptions,
   buildIosNative,
 } from "@/commands/buildNative";
-import { getConsolePort, openConsole } from "@/commands/console";
+import {
+  getConsolePort,
+  loadConsoleCredentials,
+  openConsole,
+} from "@/commands/console";
 import {
   type DeployOptions,
   deploy,
@@ -995,6 +999,7 @@ program
     printBanner();
 
     const port = await getConsolePort();
+    await loadConsoleCredentials(port);
 
     if (await isPortReachable(port, { host: "127.0.0.1" })) {
       p.log.error(`Port ${port} is already in use.`);

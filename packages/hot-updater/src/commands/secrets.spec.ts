@@ -559,6 +559,22 @@ describe("hot-updater secrets import", () => {
     await expect(fs.readFile(file, "utf-8")).resolves.toBe("");
   });
 
+  it("warns about an existing variable named like an Object member that the file does not set", async () => {
+    importConsole([
+      {
+        ...DEPLOY,
+        metadata: { variables: ["HOT_UPDATER_S3_REGION", "toString"] },
+      },
+    ]);
+    const file = await writeEnvFile(["HOT_UPDATER_S3_REGION=eu-west-1"]);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(log.warn).toHaveBeenCalledWith(
+      `deploy-credentials v1 also sets toString, which ${file} does not: the new version replaces it whole, without it.`,
+    );
+  });
+
   it("stores in the secret --name names", async () => {
     const requests = importConsole();
     const file = await writeEnvFile(["WIDGET_TOKEN=abc"]);
