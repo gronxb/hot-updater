@@ -236,6 +236,12 @@ describe("the native build registry", () => {
         }),
       ),
     ).rejects.toThrow("artifact.kind of an ios build must be ipa or app");
+    await expect(
+      core.registerNativeBuild(
+        registration(1, { gitCommitHash: "a".repeat(256) }),
+      ),
+    ).rejects.toThrow("gitCommitHash must be at most 255 characters");
+    await expect(core.listChannels()).resolves.toEqual([]);
     await expect(core.listNativeBuilds({ limit: 10 })).resolves.toEqual([]);
   });
 

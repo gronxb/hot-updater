@@ -24,6 +24,9 @@ const ARTIFACT_KINDS = {
 /** `native_builds.scope_key`'s bound in core's schema. */
 const SCOPE_KEY_MAX_LENGTH = 2048;
 
+/** The `git_commit_hash` bound of `bundles` and `native_builds`. */
+const GIT_COMMIT_HASH_MAX_LENGTH = 255;
+
 /** A native build or scope core cannot store or look up: the caller's input. */
 export class NativeBuildInputError extends TypeError {
   override readonly name = "NativeBuildInputError";
@@ -94,6 +97,7 @@ const problemOf = ({
   channel,
   fingerprintHash,
   appVersion,
+  gitCommitHash,
   artifact,
 }: NativeBuildRegistration): string | null => {
   if (!isUUIDv7(id)) return "id must be a UUIDv7";
@@ -105,6 +109,12 @@ const problemOf = ({
     return "platform must be ios or android";
   }
   if (channel.trim().length === 0) return "channel is required";
+  if (
+    gitCommitHash !== null &&
+    gitCommitHash.length > GIT_COMMIT_HASH_MAX_LENGTH
+  ) {
+    return `gitCommitHash must be at most ${GIT_COMMIT_HASH_MAX_LENGTH} characters`;
+  }
   if ((fingerprintHash === null) === (appVersion === null)) {
     return "exactly one of fingerprintHash and appVersion is required";
   }
