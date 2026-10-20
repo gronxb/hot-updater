@@ -78,17 +78,18 @@ const lockedReason = (message: string) => {
 };
 
 /**
- * Why the console cannot store secrets, and what fixes it: a new key for an
- * empty vault, or the key the stored secrets were sealed with, which no new
- * key opens.
+ * Why the console cannot store secrets, and what fixes it: a new key only
+ * for a vault known to be empty; otherwise the key the stored secrets were
+ * sealed with, which no new key opens.
  */
 function VaultLockedAlert({
   message,
-  hasSecrets,
+  empty,
   onCheckAgain,
 }: {
   readonly message: string;
-  readonly hasSecrets: boolean;
+  /** Whether the vault holds no secrets: true only once the list says so. */
+  readonly empty: boolean;
   readonly onCheckAgain: () => Promise<unknown>;
 }) {
   const [checking, setChecking] = useState(false);
@@ -114,11 +115,11 @@ function VaultLockedAlert({
       <AlertTitle>The vault is locked</AlertTitle>
       <AlertDescription>
         <p>{lockedReason(message)}</p>
-        {hasSecrets ? (
+        {!empty ? (
           <p>
-            Restore the master key these secrets were saved with and redeploy
-            the console: a new key can't open them. Listing, deleting, and
-            tokens keep working.
+            Restore the master key the vault's secrets were saved with and
+            redeploy the console: a new key can't open them. Listing, deleting,
+            and tokens keep working.
           </p>
         ) : (
           <p>
@@ -129,7 +130,7 @@ function VaultLockedAlert({
         )}
       </AlertDescription>
       <AlertAction className="flex flex-wrap gap-1">
-        {hasSecrets ? null : (
+        {!empty ? null : (
           <Button
             className="min-h-11 sm:min-h-6"
             onClick={() => void copyCommand()}
@@ -265,7 +266,7 @@ export function SecretsCard({
         {status.data?.locked === true ? (
           <div className="border-b p-4">
             <VaultLockedAlert
-              hasSecrets={(secrets.data?.length ?? 0) > 0}
+              empty={secrets.data?.length === 0}
               message={status.data.message}
               onCheckAgain={async () => status.refetch()}
             />

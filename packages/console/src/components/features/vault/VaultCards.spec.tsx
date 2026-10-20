@@ -245,6 +245,25 @@ describe("SecretsCard", () => {
     ).toBe(false);
   });
 
+  it("offers a new master key only for a vault known to be empty", () => {
+    const locked = {
+      data: { locked: true as const, message: "The vault is locked: no key." },
+      isError: false,
+      refetch: vi.fn(),
+    };
+    const { rerender } = render(
+      <SecretsCard
+        secrets={{ ...loaded([]), data: undefined, isError: true }}
+        status={locked}
+      />,
+    );
+    expect(screen.getByText(/Restore the master key/)).toBeDefined();
+    expect(screen.queryByRole("button", { name: "Copy command" })).toBeNull();
+
+    rerender(<SecretsCard secrets={loaded([])} status={locked} />);
+    expect(screen.getByRole("button", { name: "Copy command" })).toBeDefined();
+  });
+
   it("offers a retry instead of a silent lock when the key check fails", () => {
     const status = { data: undefined, isError: true, refetch: vi.fn() };
     render(<SecretsCard secrets={loaded([keystore])} status={status} />);
