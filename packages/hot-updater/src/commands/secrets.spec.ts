@@ -3,7 +3,11 @@ import os from "node:os";
 import path from "node:path";
 import { stripVTControlCharacters } from "node:util";
 
-import { assembleServer, loadConfig } from "@hot-updater/cli-tools";
+import {
+  assembleServer,
+  loadConfig,
+  maskSecretValues,
+} from "@hot-updater/cli-tools";
 import {
   type AnyHotUpdaterPlugin,
   createMemoryAdapter,
@@ -318,6 +322,11 @@ describe("hot-updater secrets list and put, through the Console", () => {
         AWS_SECRET_ACCESS_KEY: "from-env",
       },
     });
+
+    // The version stays readable in the masked output, though 1 is a value.
+    vi.mocked(log.message).mockClear();
+    await handleSecretsPut("deploy", { kind: "generic", variables: ["A=1"] });
+    expect(maskSecretValues(messages().join("\n"))).toMatch(/Version:\s+v1/u);
   });
 
   it("refuses another kind's flags, sending nothing", async () => {

@@ -291,7 +291,8 @@ export const handleSecretsPut = async (
         ui.block("Secret stored", [
           ui.kv("Name", secret.name),
           ui.kv("Kind", secret.kind),
-          ui.kv("Version", ui.version(String(secret.version))),
+          // As v1: a short value just stored, such as 1, is masked alone.
+          ui.kv("Version", ui.version(`v${secret.version}`)),
         ]),
       );
     },
