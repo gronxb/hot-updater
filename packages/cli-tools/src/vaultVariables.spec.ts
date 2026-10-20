@@ -4,11 +4,10 @@ import path from "node:path";
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { maskSecretValues } from "./secretMasking";
-import {
-  loadVaultDeployCredentials,
-  VaultDeployCredentialsError,
-} from "./vaultVariables";
+// Fresh per test: the module keeps what each load set in process.env.
+let maskSecretValues: typeof import("./secretMasking").maskSecretValues;
+let loadVaultDeployCredentials: typeof import("./vaultVariables").loadVaultDeployCredentials;
+let VaultDeployCredentialsError: typeof import("./vaultVariables").VaultDeployCredentialsError;
 
 const CONSOLE_URL = "https://console.example.com";
 const TOKEN = `hu_vault_${"D".repeat(43)}`;
@@ -61,6 +60,10 @@ const writeEnvFile = (lines: readonly string[]) =>
   fs.writeFile(path.join(cwd, ".env.hotupdater"), lines.join("\n"));
 
 beforeEach(async () => {
+  vi.resetModules();
+  ({ maskSecretValues } = await import("./secretMasking"));
+  ({ loadVaultDeployCredentials, VaultDeployCredentialsError } =
+    await import("./vaultVariables"));
   // Each directory loads once per process, so each test has its own.
   cwd = await fs.mkdtemp(path.join(os.tmpdir(), "hot-updater-vault-vars-"));
   // Unset: an empty one would hide .env.hotupdater's.
@@ -115,6 +118,71 @@ describe("loadVaultDeployCredentials", () => {
     expect(maskSecretValues("key deploy-spec-secret")).not.toContain(
       "deploy-spec-secret",
     );
+  });
+
+  it("sets each directory's own credentials, restoring what another directory's load set", async () => {
+    const other = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-vault-vars-"),
+    );
+    const otherToken = `hu_vault_${"O".repeat(43)}`;
+    const requests: string[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const request = new Request(input, init);
+      const mine = request.headers.get("authorization") === `Bearer ${TOKEN}`;
+      requests.push(`${mine ? "cwd" : "other"} ${request.method}`);
+      const [listed, value] = mine
+        ? [
+            ["SPEC_S3_ACCESS_KEY_ID", "SPEC_S3_SECRET_ACCESS_KEY"],
+            VALUES["deploy"],
+          ]
+        : [["SPEC_S3_ACCESS_KEY_ID"], { SPEC_S3_ACCESS_KEY_ID: "AKIAOTHER" }];
+      return request.method === "GET"
+        ? Response.json({
+            secrets: [secret("deploy", "deploy-credentials", listed!)],
+          })
+        : Response.json({
+            secrets: [
+              { name: "deploy", kind: "deploy-credentials", version: 1, value },
+            ],
+            errors: [],
+          });
+    });
+    vi.stubEnv("SPEC_S3_SECRET_ACCESS_KEY", undefined);
+    try {
+      await writeEnvFile([
+        `HOT_UPDATER_CONSOLE_URL=${CONSOLE_URL}`,
+        `HOT_UPDATER_VAULT_TOKEN=${TOKEN}`,
+      ]);
+      await fs.writeFile(
+        path.join(other, ".env.hotupdater"),
+        [
+          `HOT_UPDATER_CONSOLE_URL=${CONSOLE_URL}`,
+          `HOT_UPDATER_VAULT_TOKEN=${otherToken}`,
+        ].join("\n"),
+      );
+
+      await loadVaultDeployCredentials(cwd);
+      expect(process.env["SPEC_S3_ACCESS_KEY_ID"]).toBe("AKIADEPLOYSPEC");
+
+      await loadVaultDeployCredentials(other);
+      // Not the first directory's: its own, and nothing it does not hold.
+      expect(process.env["SPEC_S3_ACCESS_KEY_ID"]).toBe("AKIAOTHER");
+      expect(process.env["SPEC_S3_SECRET_ACCESS_KEY"]).toBeUndefined();
+
+      await loadVaultDeployCredentials(cwd);
+      expect(process.env["SPEC_S3_ACCESS_KEY_ID"]).toBe("AKIADEPLOYSPEC");
+      expect(process.env["SPEC_S3_SECRET_ACCESS_KEY"]).toBe(
+        "deploy-spec-secret",
+      );
+      expect(requests).toEqual([
+        "cwd GET",
+        "cwd POST",
+        "other GET",
+        "other POST",
+      ]);
+    } finally {
+      await fs.rm(other, { recursive: true, force: true });
+    }
   });
 
   it("only lists when the token reaches no deploy-credentials secret", async () => {

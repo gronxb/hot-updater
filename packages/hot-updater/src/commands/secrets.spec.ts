@@ -498,6 +498,53 @@ describe("hot-updater secrets import", () => {
     expect(maskSecretValues(`key ${S3_SECRET}`)).not.toContain(S3_SECRET);
   });
 
+  it("reads values as process.loadEnvFile does, inline comments and quotes included", async () => {
+    const requests = importConsole();
+    const file = await writeEnvFile([
+      "HOT_UPDATER_S3_REGION=us-east-1 # the bucket's region",
+      "HOT_UPDATER_S3_SECRET_ACCESS_KEY='quoted # kept'",
+    ]);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(requests.at(-1)?.body).toEqual({
+      kind: "deploy-credentials",
+      value: {
+        HOT_UPDATER_S3_REGION: "us-east-1",
+        HOT_UPDATER_S3_SECRET_ACCESS_KEY: "quoted # kept",
+      },
+    });
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe("");
+  });
+
+  it("sends nothing when a line it moves could not be removed", async () => {
+    const requests = importConsole();
+    const multiline = [
+      "HOT_UPDATER_S3_REGION=us-east-1",
+      'SERVICE_ACCOUNT="first',
+      'second"',
+    ];
+    const file = await writeEnvFile(multiline);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(log.error).toHaveBeenCalledWith(
+      `SERVICE_ACCOUNT in ${file} spans several lines, which the file keeps in one: store it with hot-updater secrets put, then remove it from ${file}.`,
+    );
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(
+      multiline.join("\n"),
+    );
+
+    await writeEnvFile(["export HOT_UPDATER_S3_REGION=us-east-1"]);
+    await handleSecretsImport(file, { yes: true });
+
+    expect(log.error).toHaveBeenCalledWith(
+      `${file} sets HOT_UPDATER_S3_REGION in a form the import cannot remove, such as export NAME=value: write it as NAME=value.`,
+    );
+    expect(requests).toEqual([]);
+    expect(process.exitCode).toBe(1);
+  });
+
   it("says what a new version drops from the secret it replaces", async () => {
     importConsole([DEPLOY]);
     const file = await writeEnvFile(["HOT_UPDATER_S3_REGION=eu-west-1"]);

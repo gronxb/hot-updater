@@ -1,12 +1,12 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
+import { parseEnv } from "node:util";
 
 import {
   getCwd,
   makeEnv,
   p,
-  parseHotUpdaterEnv,
   registerSecretValue,
   resolveVaultVariables,
   VAULT_CONNECTION_ENV_NAMES,
@@ -380,6 +380,16 @@ const readEnvFile = async (file: string): Promise<string> => {
   }
 };
 
+/** The variable each `NAME=value` line sets, as makeEnv finds the lines it removes. */
+const lineKeysOf = (content: string) =>
+  content
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(
+      (line) => line !== "" && !line.startsWith("#") && line.includes("="),
+    )
+    .map((line) => line.slice(0, line.indexOf("=")).trim());
+
 const names = (variables: readonly string[]) =>
   variables.length === 0 ? ui.muted("(none)") : variables.join(", ");
 
@@ -398,7 +408,10 @@ export const handleSecretsImport = async (
   printBanner();
   await reportFailure(async () => {
     const name = options.name ?? DEFAULT_IMPORT_SECRET_NAME;
-    const env = parseHotUpdaterEnv(await readEnvFile(file));
+    const content = await readEnvFile(file);
+    // As process.loadEnvFile reads it for the config: inline comments and
+    // quoted values included.
+    const env = parseEnv(content);
     const invalid = Object.keys(env).filter(
       (variable) => !ENV_NAME_PATTERN.test(variable),
     );
@@ -422,6 +435,22 @@ export const handleSecretsImport = async (
         ]),
       );
       return;
+    }
+    // Nothing is sent unless the file can lose each line it moves.
+    const multiline = moved.filter((variable) =>
+      /[\r\n]/u.test(value[variable]!),
+    );
+    if (multiline.length > 0) {
+      throw new Error(
+        `${multiline.join(", ")} in ${file} ${multiline.length === 1 ? "spans" : "span"} several lines, which the file keeps in one: store ${multiline.length === 1 ? "it" : "them"} with hot-updater secrets put, then remove ${multiline.length === 1 ? "it" : "them"} from ${file}.`,
+      );
+    }
+    const lineKeys = new Set(lineKeysOf(content));
+    const unremovable = moved.filter((variable) => !lineKeys.has(variable));
+    if (unremovable.length > 0) {
+      throw new Error(
+        `${file} sets ${unremovable.join(", ")} in a form the import cannot remove, such as export NAME=value: write ${unremovable.length === 1 ? "it" : "them"} as NAME=value.`,
+      );
     }
     // Masked before anything is sent, so no failure can print them.
     for (const entry of Object.values(value)) registerSecretValue(entry);
@@ -472,7 +501,15 @@ export const handleSecretsImport = async (
       kind: "deploy-credentials",
       value,
     });
-    await makeEnv({}, path.resolve(getCwd(), file), { removeKeys: moved });
+    const rewritten = await makeEnv({}, path.resolve(getCwd(), file), {
+      removeKeys: moved,
+    });
+    const left = moved.filter((variable) => variable in parseEnv(rewritten));
+    if (left.length > 0) {
+      throw new Error(
+        `${secret.name} v${secret.version} holds ${file}'s variables, and ${file} still sets ${left.join(", ")}: remove ${left.length === 1 ? "it" : "them"} by hand.`,
+      );
+    }
     p.log.message(
       ui.block("Variables moved to the vault", [
         ui.kv("Secret", secret.name),

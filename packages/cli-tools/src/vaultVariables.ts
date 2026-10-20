@@ -120,7 +120,32 @@ export class VaultDeployCredentialsError extends Error {
   }
 }
 
-const loaded = new Map<string, Promise<void>>();
+/** Each directory's deploy credentials, resolved once per process. */
+const resolved = new Map<string, Promise<Readonly<Record<string, string>>>>();
+/** What the last load replaced in `process.env`, to restore before the next. */
+const replaced = new Map<string, string | undefined>();
+
+const resolveDeployCredentials = async (
+  cwd: string,
+): Promise<Readonly<Record<string, string>>> => {
+  const { managedEnv } = await readHotUpdaterInitEnv(cwd);
+  const read = readVaultConnection(managedEnv);
+  if (!read.ok) return {};
+  try {
+    return await resolveVaultVariables(createVaultClient(read.connection), {
+      kinds: ["deploy-credentials"],
+      // Set, not empty, in the environment or the file.
+      except: (name) =>
+        getHotUpdaterEnvValue({}, name) !== undefined ||
+        Boolean(managedEnv[name]?.trim()),
+    });
+  } catch (error) {
+    throw new VaultDeployCredentialsError(
+      `${(error as Error).message} hot-updater.config.ts reads the vault's deploy-credentials while ${VAULT_CONNECTION_ENV_NAMES.url} and ${VAULT_CONNECTION_ENV_NAMES.token} are set; set the variables it needs in the environment or .env.hotupdater to load it without the Console.`,
+      { cause: error },
+    );
+  }
+};
 
 /**
  * Sets the variables of the vault's `deploy-credentials` secrets in
@@ -129,36 +154,22 @@ const loaded = new Map<string, Promise<void>>();
  * the environment or in `cwd`'s `.env.hotupdater`. A config then reads them
  * from `process.env` as it reads `.env.hotupdater`'s, and a variable set in
  * either wins and never reaches the Console. Once per directory and process:
- * a list, and a resolve when a variable is wanted. A Console that cannot
- * answer fails the load, naming it.
+ * a list, and a resolve when a variable is wanted. Each load first restores
+ * what the last one set, so a directory never reads another's credentials.
+ * A Console that cannot answer fails the load, naming it.
  */
-export const loadVaultDeployCredentials = (cwd = getCwd()): Promise<void> => {
-  const pending =
-    loaded.get(cwd) ??
-    (async () => {
-      const { managedEnv } = await readHotUpdaterInitEnv(cwd);
-      const read = readVaultConnection(managedEnv);
-      if (!read.ok) return;
-      let variables: Record<string, string>;
-      try {
-        variables = await resolveVaultVariables(
-          createVaultClient(read.connection),
-          {
-            kinds: ["deploy-credentials"],
-            // Set, not empty, in the environment or the file.
-            except: (name) =>
-              getHotUpdaterEnvValue({}, name) !== undefined ||
-              Boolean(managedEnv[name]?.trim()),
-          },
-        );
-      } catch (error) {
-        throw new VaultDeployCredentialsError(
-          `${(error as Error).message} hot-updater.config.ts reads the vault's deploy-credentials while ${VAULT_CONNECTION_ENV_NAMES.url} and ${VAULT_CONNECTION_ENV_NAMES.token} are set; set the variables it needs in the environment or .env.hotupdater to load it without the Console.`,
-          { cause: error },
-        );
-      }
-      Object.assign(process.env, variables);
-    })();
-  loaded.set(cwd, pending);
-  return pending;
+export const loadVaultDeployCredentials = async (
+  cwd = getCwd(),
+): Promise<void> => {
+  for (const [name, original] of replaced) {
+    if (original === undefined) delete process.env[name];
+    else process.env[name] = original;
+  }
+  replaced.clear();
+  const pending = resolved.get(cwd) ?? resolveDeployCredentials(cwd);
+  resolved.set(cwd, pending);
+  for (const [name, value] of Object.entries(await pending)) {
+    replaced.set(name, process.env[name]);
+    process.env[name] = value;
+  }
 };
