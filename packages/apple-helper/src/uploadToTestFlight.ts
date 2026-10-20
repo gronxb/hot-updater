@@ -532,9 +532,9 @@ export const uploadToTestFlight = async ({
   }
 
   const deadline = Date.now() + processingTimeoutMs;
-  // Whether App Store Connect reported the build in progress, and the last
-  // failed read: a timeout without a reported state is a failure.
-  let reportedInProgress = false;
+  // Whether App Store Connect reported the build processing, and the last
+  // failed read: a timeout without it is a failure.
+  let reportedProcessing = false;
   let lastError: unknown;
   for (;;) {
     // The build is uploaded: a failed read is retried until the deadline.
@@ -552,14 +552,15 @@ export const uploadToTestFlight = async ({
       return undefined;
     });
     const state = read ? (read.data.attributes?.state ?? {}) : {};
-    if (state.state && IN_PROGRESS_STATES.has(state.state)) {
-      reportedInProgress = true;
+    // AWAITING_UPLOAD only waits for the file, which the commit sent.
+    if (state.state === "PROCESSING") {
+      reportedProcessing = true;
     }
     if (!state.state || IN_PROGRESS_STATES.has(state.state)) {
       if (Date.now() >= deadline) {
-        if (!reportedInProgress) {
+        if (!reportedProcessing) {
           throw new Error(
-            `App Store Connect reported no state for build ${info.bundleVersion}${lastError instanceof Error ? `: ${lastError.message}` : "."} Check the build in TestFlight: ${testFlightUrl}`,
+            `App Store Connect did not report build ${info.bundleVersion} processing${lastError instanceof Error ? `: ${lastError.message}` : state.state ? ` (${state.state}).` : "."} Check the build in TestFlight: ${testFlightUrl}`,
             { cause: lastError },
           );
         }
