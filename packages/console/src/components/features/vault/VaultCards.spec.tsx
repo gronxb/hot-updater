@@ -287,6 +287,58 @@ describe("SecretsCard", () => {
     expect(putMutation.mutateAsync).not.toHaveBeenCalled();
   });
 
+  it("replaces a key ID it filled in, and keeps one the user typed", async () => {
+    render(<SecretsCard secrets={loaded([])} status={unlocked} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Add secret" })[0]!);
+    const input = screen.getByLabelText("Private key (.p8)");
+
+    fireEvent.change(input, {
+      target: { files: [new File([P8], "AuthKey_FIRST.p8")] },
+    });
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("FIRST")).toBeDefined();
+    });
+    fireEvent.change(input, {
+      target: { files: [new File([P8], "AuthKey_SECOND.p8")] },
+    });
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("SECOND")).toBeDefined();
+    });
+    fireEvent.change(screen.getByLabelText("Key ID"), {
+      target: { value: "TYPED" },
+    });
+    fireEvent.change(input, {
+      target: { files: [new File([P8], "AuthKey_THIRD.p8")] },
+    });
+    await waitFor(() => {
+      expect(screen.getByText("AuthKey_THIRD.p8")).toBeDefined();
+    });
+    expect(screen.getByDisplayValue("TYPED")).toBeDefined();
+  });
+
+  it("saves nothing of the previous file while its replacement is read", async () => {
+    render(<SecretsCard secrets={loaded([])} status={unlocked} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Add secret" })[0]!);
+    const input = screen.getByLabelText("Private key (.p8)");
+    fireEvent.change(input, {
+      target: { files: [new File([P8], "AuthKey_FIRST.p8")] },
+    });
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("FIRST")).toBeDefined();
+    });
+    fireEvent.change(screen.getByLabelText("Issuer ID"), {
+      target: { value: "issuer" },
+    });
+    const pending = new File([P8], "AuthKey_SECOND.p8");
+    pending.arrayBuffer = () => new Promise(() => {});
+
+    fireEvent.change(input, { target: { files: [pending] } });
+    fireEvent.click(screen.getByRole("button", { name: "Save secret" }));
+
+    expect(screen.getByText("Choose the private key (.p8).")).toBeDefined();
+    expect(putMutation.mutateAsync).not.toHaveBeenCalled();
+  });
+
   it("keeps the last file chosen when an earlier read finishes later", async () => {
     putMutation.mutateAsync.mockResolvedValue({
       name: "asc-api-key",

@@ -127,6 +127,9 @@ function SecretForm({
   // The file last chosen for each field: a read that finishes after another
   // choice, or a kind change, is dropped.
   const chosen = useRef<Partial<Record<string, File>>>({});
+  // The key ID the last .p8 file name filled in: a new file replaces it,
+  // and leaves one the user typed alone.
+  const filledKeyId = useRef<string | undefined>(undefined);
   const [submitted, setSubmitted] = useState(false);
 
   const kindUi = vaultSecretKinds[kind];
@@ -192,6 +195,7 @@ function SecretForm({
     setFields({});
     setFiles({});
     chosen.current = {};
+    filledKeyId.current = undefined;
     setVariables(variablesOf(undefined));
     setSubmitted(false);
   };
@@ -206,22 +210,23 @@ function SecretForm({
       ...current,
       [field.key]: { name: file.name, size: file.size },
     }));
-    if (file.size > MAX_FILE_BYTES) {
-      setFields((current) => ({ ...current, [field.key]: "" }));
-      return;
-    }
+    // The previous file's bytes leave at once, so nothing saves them under
+    // this file's name while it is read.
+    setFields((current) => ({ ...current, [field.key]: "" }));
+    if (file.size > MAX_FILE_BYTES) return;
     const base64 = await fileToBase64(file);
     if (chosen.current[field.key] !== file) return;
+    // AuthKey_<key ID>.p8 names its key ID.
+    const keyId =
+      kind === "asc-api-key" ? ascKeyIdFromFileName(file.name) : undefined;
     setFields((current) => {
-      const keyId = ascKeyIdFromFileName(file.name);
-      return {
-        ...current,
-        [field.key]: base64,
-        // AuthKey_<key ID>.p8 names its key ID.
-        ...(kind === "asc-api-key" && !current.keyId?.trim() && keyId
-          ? { keyId }
-          : {}),
-      };
+      const typed =
+        current.keyId?.trim() && current.keyId !== filledKeyId.current;
+      if (keyId === undefined || typed) {
+        return { ...current, [field.key]: base64 };
+      }
+      filledKeyId.current = keyId;
+      return { ...current, [field.key]: base64, keyId };
     });
   };
 
