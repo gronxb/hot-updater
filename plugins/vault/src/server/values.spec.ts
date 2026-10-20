@@ -1,3 +1,5 @@
+import { generateKeyPairSync, type KeyObject } from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import { VaultInputError } from "./api";
@@ -101,23 +103,48 @@ describe("parseVaultSecretValue", () => {
     ).toThrow(VaultInputError);
   });
 
-  it("takes a bundle signing key in PEM and shows nothing of it", () => {
-    const privateKey = base64(
-      "-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----\n",
-    );
-    const value = parseVaultSecretValue("bundle-signing-key", { privateKey });
+  it("takes an RSA bundle signing key in PEM, PKCS#8 or PKCS#1, and shows nothing of it", () => {
+    for (const [modulusLength, type] of [
+      [2048, "pkcs8"],
+      [3072, "pkcs1"],
+      [4096, "pkcs8"],
+    ] as const) {
+      const privateKey = base64(
+        generateKeyPairSync("rsa", { modulusLength })
+          .privateKey.export({ format: "pem", type })
+          .toString(),
+      );
+      const value = parseVaultSecretValue("bundle-signing-key", {
+        privateKey,
+      });
+      expect(value).toEqual({ privateKey });
+      expect(vaultSecretMetadata("bundle-signing-key", value)).toEqual({});
+    }
+  });
 
-    expect(value).toEqual({ privateKey });
-    expect(vaultSecretMetadata("bundle-signing-key", value)).toEqual({});
-    for (const label of ["ENCRYPTED PRIVATE KEY", "EC PRIVATE KEY"]) {
+  it("refuses a bundle signing key the Console cannot sign with", () => {
+    const pkcs8 = (key: KeyObject) =>
+      key.export({ format: "pem", type: "pkcs8" }).toString();
+    for (const pem of [
+      pkcs8(generateKeyPairSync("rsa", { modulusLength: 1024 }).privateKey),
+      pkcs8(generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey),
+      pkcs8(generateKeyPairSync("ed25519").privateKey),
+      generateKeyPairSync("rsa", { modulusLength: 2048 })
+        .privateKey.export({
+          format: "pem",
+          type: "pkcs8",
+          cipher: "aes-256-cbc",
+          passphrase: "secret",
+        })
+        .toString(),
+      "-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----\n",
+    ]) {
       expect(() =>
         parseVaultSecretValue("bundle-signing-key", {
-          privateKey: base64(
-            `-----BEGIN ${label}-----\nMIIE\n-----END ${label}-----\n`,
-          ),
+          privateKey: base64(pem),
         }),
       ).toThrow(
-        "A secret of kind bundle-signing-key has privateKey as an unencrypted RSA private key in PEM",
+        "A secret of kind bundle-signing-key has privateKey as an unencrypted RSA private key of 2048, 3072, or 4096 bits in PEM",
       );
     }
   });

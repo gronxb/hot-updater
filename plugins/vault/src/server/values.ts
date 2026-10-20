@@ -81,16 +81,92 @@ const file = (
   return { base64, bytes };
 };
 
-/** A file field whose text must contain a PEM private key, by `pattern`. */
+/** One DER element of `bytes` at `at`: its tag and where its contents lie. */
+const derElement = (bytes: Uint8Array, at: number) => {
+  const tag = bytes[at];
+  let length = bytes[at + 1];
+  let start = at + 2;
+  if (tag === undefined || length === undefined) return null;
+  if (length & 0x80) {
+    const octets = length & 0x7f;
+    if (octets === 0 || octets > 4) return null;
+    length = 0;
+    for (let index = 0; index < octets; index += 1) {
+      const octet = bytes[start + index];
+      if (octet === undefined) return null;
+      length = length * 256 + octet;
+    }
+    start += octets;
+  }
+  const end = start + length;
+  return end > bytes.length ? null : { tag, start, end };
+};
+
+/** `rsaEncryption`, the algorithm of an RSA key in PKCS#8. */
+const RSA_ENCRYPTION_OID = [
+  0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
+];
+
+/** The modulus size of a PKCS#1 `RSAPrivateKey` at `at`, or null. */
+const rsaModulusBits = (bytes: Uint8Array, at: number): number | null => {
+  const key = derElement(bytes, at);
+  const version = key?.tag === 0x30 ? derElement(bytes, key.start) : null;
+  const modulus = version?.tag === 0x02 ? derElement(bytes, version.end) : null;
+  if (modulus?.tag !== 0x02) return null;
+  let start = modulus.start;
+  while (start < modulus.end && bytes[start] === 0) start += 1;
+  if (start === modulus.end) return null;
+  return (modulus.end - start) * 8 - Math.clz32(bytes[start]!) + 24;
+};
+
+/**
+ * Whether `text` holds an unencrypted RSA private key of 2048, 3072, or
+ * 4096 bits in PEM, PKCS#8 or PKCS#1, the keys the Console signs bundles
+ * with; an encrypted, EC, or Ed25519 key is refused when it is stored.
+ */
+const isSigningKeyPem = (text: string): boolean => {
+  const match =
+    /-----BEGIN (RSA )?PRIVATE KEY-----([A-Za-z0-9+/=\s]+)-----END \1?PRIVATE KEY-----/u.exec(
+      text,
+    );
+  const der = match ? base64ToBytes(match[2]!.replaceAll(/\s/gu, "")) : null;
+  if (!match || !der) return false;
+  let rsaKeyAt = 0;
+  if (match[1] === undefined) {
+    // PrivateKeyInfo: version, the algorithm, and the key in an octet string.
+    const info = derElement(der, 0);
+    const version = info?.tag === 0x30 ? derElement(der, info.start) : null;
+    const algorithm =
+      version?.tag === 0x02 ? derElement(der, version.end) : null;
+    const oid =
+      algorithm?.tag === 0x30 ? derElement(der, algorithm.start) : null;
+    const key = algorithm ? derElement(der, algorithm.end) : null;
+    if (
+      oid?.tag !== 0x06 ||
+      key?.tag !== 0x04 ||
+      oid.end - oid.start !== RSA_ENCRYPTION_OID.length ||
+      !RSA_ENCRYPTION_OID.every(
+        (octet, index) => der[oid.start + index] === octet,
+      )
+    ) {
+      return false;
+    }
+    rsaKeyAt = key.start;
+  }
+  return [2048, 3072, 4096].includes(rsaModulusBits(der, rsaKeyAt) ?? 0);
+};
+
+/** A file field whose text must contain a PEM private key, by `accepts`. */
 const pemFile = (
   kind: VaultSecretKind,
   fields: Record<string, unknown>,
   field: string,
   what: string,
-  pattern = /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----/u,
+  accepts = (text: string) =>
+    /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----/u.test(text),
 ) => {
   const { base64, bytes } = file(kind, fields, field);
-  if (!pattern.test(decodeText(bytes) ?? "")) {
+  if (!accepts(decodeText(bytes) ?? "")) {
     throw new VaultInputError(
       `A secret of kind ${kind} has ${field} as ${what}.`,
     );
@@ -167,9 +243,8 @@ const parsers: {
         "bundle-signing-key",
         fields,
         "privateKey",
-        "an unencrypted RSA private key in PEM, such as hot-updater keys generate writes",
-        // PKCS#8 or PKCS#1, which the Console signs with: not encrypted, not EC.
-        /-----BEGIN (?:RSA )?PRIVATE KEY-----/u,
+        "an unencrypted RSA private key of 2048, 3072, or 4096 bits in PEM, such as hot-updater keys generate writes",
+        isSigningKeyPem,
       ),
     };
   },
