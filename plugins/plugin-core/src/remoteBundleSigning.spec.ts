@@ -302,12 +302,12 @@ describe("portable bundle signing handler", () => {
 
   const callHandler = (
     input: Request,
-    overrides: Partial<{
-      endpointPath: string;
-      publicKey: string;
-      sign: (input: Uint8Array) => Uint8Array | Promise<Uint8Array>;
-      token: string;
-    }> = {},
+    overrides: Partial<
+      Pick<
+        Parameters<typeof createBundleSigningHandler>[0],
+        "endpointPath" | "publicKey" | "sign" | "token"
+      >
+    > = {},
   ) =>
     createBundleSigningHandler({
       endpointPath: ENDPOINT_PATH,
@@ -346,6 +346,80 @@ describe("portable bundle signing handler", () => {
       request("GET", undefined, { token: "wrong-token" }),
     );
     expect(wrong?.status).toBe(401);
+  });
+
+  it("accepts a token verifier and resolves the public key only after it accepts", async () => {
+    const verify = vi.fn(async (presented: string) => presented === TOKEN);
+    const publicKey = vi.fn(async () => keys.publicKey);
+
+    const refused = await callHandler(
+      request("GET", undefined, { token: "wrong-token" }),
+      { publicKey, token: verify },
+    );
+    expect(refused?.status).toBe(401);
+    expect(verify).toHaveBeenCalledWith("wrong-token");
+    expect(publicKey).not.toHaveBeenCalled();
+
+    const missing = await callHandler(
+      new Request(`https://updates.example.com${ENDPOINT_PATH}`),
+      { publicKey, token: verify },
+    );
+    expect(missing?.status).toBe(401);
+    expect(verify).toHaveBeenCalledTimes(1);
+
+    const oversized = await callHandler(
+      request("GET", undefined, { token: "t".repeat(4 * 1024 + 1) }),
+      { publicKey, token: verify },
+    );
+    expect(oversized?.status).toBe(401);
+    expect(verify).toHaveBeenCalledTimes(1);
+
+    const accepted = await callHandler(request("GET"), {
+      publicKey,
+      token: verify,
+    });
+    expect(accepted?.status).toBe(200);
+    expect(await accepted?.json()).toEqual(metadata());
+    expect(publicKey).toHaveBeenCalledTimes(1);
+  });
+
+  it("signs through a verifier and a lazy public key, and fails closed when the key cannot load", async () => {
+    const plugin = remoteSigning({
+      endpoint: ENDPOINT,
+      fetch: vi.fn<typeof globalThis.fetch>(
+        async (input, init) =>
+          (await createBundleSigningHandler({
+            endpointPath: ENDPOINT_PATH,
+            publicKey: async () => keys.publicKey,
+            request: new Request(input, init),
+            sign: (value) =>
+              signWithPrivateKey("RSA-SHA256", value, keys.privateKey),
+            token: (presented) => presented === TOKEN,
+          })) ?? new Response("not found", { status: 404 }),
+      ),
+      signingToken: TOKEN,
+    });
+    await expect(plugin.sign({ message })).resolves.toEqual({
+      signature: new Uint8Array(
+        signWithPrivateKey("RSA-SHA256", message, keys.privateKey),
+      ),
+    });
+
+    const unavailable = await callHandler(request("GET"), {
+      publicKey: () => Promise.reject(new Error("locked")),
+      token: () => true,
+    });
+    expect(unavailable?.status).toBe(503);
+
+    // A verifier that cannot decide fails closed, before any key is read.
+    const publicKey = vi.fn(async () => keys.publicKey);
+    const undecided = await callHandler(request("GET"), {
+      publicKey,
+      token: () => Promise.reject(new Error("store unavailable")),
+    });
+    expect(undecided?.status).toBe(503);
+    expect(undecided?.headers.get("cache-control")).toBe("private, no-store");
+    expect(publicKey).not.toHaveBeenCalled();
   });
 
   it.each([

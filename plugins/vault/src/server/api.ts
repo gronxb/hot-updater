@@ -77,10 +77,10 @@ export interface VaultToken {
 }
 
 /**
- * What an audit entry records: a list of secrets, a read of their values, or
- * a write of a new value.
+ * What an audit entry records: a list of secrets, a read of their values, a
+ * write of a new value, or a signature made with a bundle signing key.
  */
-export const VAULT_AUDIT_ACTIONS = ["list", "read", "write"] as const;
+export const VAULT_AUDIT_ACTIONS = ["list", "read", "write", "sign"] as const;
 
 export type VaultAuditAction = (typeof VAULT_AUDIT_ACTIONS)[number];
 

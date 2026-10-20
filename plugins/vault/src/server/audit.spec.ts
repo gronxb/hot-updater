@@ -64,6 +64,13 @@ describe("vault audit log", () => {
           outcome: "allowed",
           context: { name: "release-keystore" },
         },
+        {
+          actor: "tok-ci",
+          action: "sign",
+          secretId: "sec-signing",
+          outcome: "allowed",
+          context: { name: "bundle-signing-key" },
+        },
       ],
     });
 
@@ -106,6 +113,15 @@ describe("vault audit log", () => {
         secret_id: null,
         outcome: "denied",
         context: { name: "asc-api-key" },
+      },
+      {
+        id: expect.stringMatching(/^aud-/u),
+        at_ms: 5_000,
+        actor: "tok-ci",
+        action: "sign",
+        secret_id: "sec-signing",
+        outcome: "allowed",
+        context: { name: "bundle-signing-key" },
       },
       {
         id: expect.stringMatching(/^aud-/u),

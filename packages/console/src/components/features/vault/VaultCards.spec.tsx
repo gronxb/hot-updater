@@ -705,7 +705,6 @@ describe("TokensCard", () => {
       target: { value: " GitHub Actions " },
     });
     fireEvent.click(screen.getByRole("button", { name: "release-keystore" }));
-    expect(screen.queryByRole("button", { name: "Sign bundles" })).toBeNull();
     // A read token never reaches a bundle signing key, by kind or by name.
     expect(
       screen.queryByRole("button", { name: "Bundle signing key" }),
@@ -786,6 +785,55 @@ describe("TokensCard", () => {
         expiresAtMs: expect.any(Number),
       });
     });
+  });
+
+  it("issues a sign token for the console's signing keys only, with the signing token variable", async () => {
+    const plaintext = `hu_vault_${"s".repeat(43)}`;
+    issueMutation.mutateAsync.mockResolvedValue({
+      token: plaintext,
+      metadata: token,
+    });
+    const signingKey = {
+      ...keystore,
+      id: `sec-${"e".repeat(22)}`,
+      name: "ota-key",
+      kind: "bundle-signing-key" as const,
+    };
+    render(<TokensCard secrets={[keystore, signingKey]} tokens={loaded([])} />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Issue token" })[0]!);
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Release signing" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "release-keystore" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign bundles" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read values" }));
+    // Signing reaches only bundle signing keys: the keystore left the scope.
+    expect(
+      screen.queryByRole("button", { name: "release-keystore" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Android keystore" }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "ota-key" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Issue token",
+      }),
+    );
+
+    expect(await screen.findByDisplayValue(plaintext)).toBeDefined();
+    expect(issueMutation.mutateAsync).toHaveBeenCalledWith({
+      name: "Release signing",
+      scope: { secrets: { names: ["ota-key"] }, actions: ["sign"] },
+      expiresAtMs: expect.any(Number),
+    });
+    expect(
+      screen.getByText(
+        `HOT_UPDATER_CONSOLE_URL=${window.location.origin} HOT_UPDATER_VAULT_TOKEN=${plaintext} HOT_UPDATER_SIGNING_TOKEN=${plaintext}`,
+        { normalizer: (text) => text.replace(/\s+/gu, " ").trim() },
+      ),
+    ).toBeDefined();
   });
 
   it("asks for a scope before it issues", () => {
