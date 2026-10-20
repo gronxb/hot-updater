@@ -35,6 +35,8 @@ import { skippedForceUpdatePropagatesScenario } from "./scenarios/skipped-force-
 import { slowOldArtifactAfterNewerInstallScenario } from "./scenarios/slow-old-artifact-after-newer-install.ts";
 import { staleCatalogAfterNewerGenerationScenario } from "./scenarios/stale-catalog-after-newer-generation.ts";
 import { startupHangRecoveryScenario } from "./scenarios/startup-hang-recovery.ts";
+import { storeInstallBuiltInMismatchDownloadsScenario } from "./scenarios/store-install-built-in-mismatch-downloads.ts";
+import { storeInstallPatchesFromBuiltInScenario } from "./scenarios/store-install-patches-from-built-in.ts";
 import { targetCohortsOnlyScenario } from "./scenarios/target-cohorts-only.ts";
 import { targetCohortsRolloutInteractionScenario } from "./scenarios/target-cohorts-rollout-interaction.ts";
 import { targetedCohortSwitchbackScenario } from "./scenarios/targeted-cohort-switchback.ts";
@@ -57,6 +59,8 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   bspatchConsecutiveDiffOtaScenario,
   bspatchDisabledChainRollbackScenario,
   bspatchManifestDiffFallbackScenario,
+  storeInstallPatchesFromBuiltInScenario,
+  storeInstallBuiltInMismatchDownloadsScenario,
   runtimeChannelSwitchResetScenario,
   numericCohortRolloutScenario,
   targetCohortsOnlyScenario,
