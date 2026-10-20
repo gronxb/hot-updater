@@ -100,15 +100,22 @@ export const readHotUpdaterInitEnv = async (
   };
 };
 
+/** `key`'s own value in `record`, never a member such as `__proto__`. */
+const ownValue = (
+  record: Readonly<Record<string, string | undefined>>,
+  key: string,
+): string | undefined => (Object.hasOwn(record, key) ? record[key] : undefined);
+
 export const getHotUpdaterEnvValue = (
   env: Readonly<Record<string, string>>,
   key: string,
 ) => {
-  if (process.env[key] !== undefined) {
-    return process.env[key]?.trim() || undefined;
+  const fromProcess = ownValue(process.env, key);
+  if (fromProcess !== undefined) {
+    return fromProcess.trim() || undefined;
   }
 
-  return env[key]?.trim() || undefined;
+  return ownValue(env, key)?.trim() || undefined;
 };
 
 /**

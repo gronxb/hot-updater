@@ -324,9 +324,13 @@ export const handleSecretsEnv = async (
     const variables = await resolveVaultVariables(client);
     // A variable set in the environment wins; an empty one counts as unset,
     // as vaultEnv reads it.
-    const env: NodeJS.ProcessEnv = { ...process.env };
+    // No prototype: a variable may be named __proto__.
+    const env: NodeJS.ProcessEnv = Object.assign(
+      Object.create(null),
+      process.env,
+    );
     for (const [name, value] of Object.entries(variables)) {
-      if (!env[name]?.trim()) env[name] = value;
+      if (!(Object.hasOwn(env, name) && env[name]?.trim())) env[name] = value;
     }
     const outcome = await new Promise<{
       code: number | null;

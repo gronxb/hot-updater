@@ -57,7 +57,8 @@ export const vaultEnv = <const TName extends string>(
 ): (() => Promise<Readonly<Record<TName, string>>>) => {
   const wanted = [...new Set(names)];
   return async () => {
-    const variables: Record<string, string> = {};
+    // No prototype: a variable may be named __proto__.
+    const variables: Record<string, string> = Object.create(null);
     const fromVault: string[] = [];
     for (const name of wanted) {
       const value = getHotUpdaterEnvValue({}, name);

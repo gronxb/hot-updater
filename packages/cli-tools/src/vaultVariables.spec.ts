@@ -204,6 +204,31 @@ describe("loadVaultDeployCredentials", () => {
     ]);
   });
 
+  it("sets a variable named __proto__ like any other", async () => {
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const request = new Request(input, init);
+      return new Response(
+        request.method === "GET"
+          ? JSON.stringify({
+              secrets: [secret("deploy", "deploy-credentials", ["__proto__"])],
+            })
+          : '{"secrets":[{"name":"deploy","kind":"deploy-credentials","version":1,"value":{"__proto__":"proto-value"}}],"errors":[]}',
+        { headers: { "content-type": "application/json" } },
+      );
+    });
+    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", CONSOLE_URL);
+    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", TOKEN);
+
+    try {
+      await loadVaultDeployCredentials(cwd);
+
+      expect(Object.hasOwn(process.env, "__proto__")).toBe(true);
+      expect(process.env["__proto__"]).toBe("proto-value");
+    } finally {
+      delete process.env["__proto__"];
+    }
+  });
+
   it("only lists when the token reaches no deploy-credentials secret", async () => {
     const requests = mockConsole([secret("scripts", "generic", ["X"])]);
     vi.stubEnv("HOT_UPDATER_CONSOLE_URL", CONSOLE_URL);

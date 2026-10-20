@@ -96,7 +96,8 @@ export const resolveVaultVariables = async (
         : {}) as Record<string, unknown>,
     ]),
   );
-  const variables: Record<string, string> = {};
+  // No prototype: a variable may be named __proto__.
+  const variables: Record<string, string> = Object.create(null);
   for (const name of wanted) {
     const secretName = holders.get(name)![0]!;
     const value = values.get(secretName)?.[name];
@@ -140,7 +141,7 @@ const resolveDeployCredentials = async (
       // Set, not empty, in the environment or the file.
       except: (name) =>
         getHotUpdaterEnvValue({}, name) !== undefined ||
-        Boolean(fileEnv[name]?.trim()),
+        Boolean(Object.hasOwn(fileEnv, name) && fileEnv[name]?.trim()),
     });
   } catch (error) {
     throw new VaultDeployCredentialsError(
