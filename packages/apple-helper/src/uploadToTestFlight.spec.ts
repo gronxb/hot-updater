@@ -55,7 +55,11 @@ type Recorded = {
   body: unknown;
 };
 
-type Reply = { status?: number; json?: unknown };
+type Reply = {
+  status?: number;
+  json?: unknown;
+  headers?: Record<string, string>;
+};
 
 /**
  * A fetch that records every request and answers from `routes`, keyed by
@@ -93,7 +97,7 @@ const createRecordingFetch = (routes: Record<string, Reply | Reply[]>) => {
         status === 204 || reply.json === undefined
           ? null
           : JSON.stringify(reply.json),
-        { status },
+        { status, headers: reply.headers },
       );
     },
   );
@@ -427,6 +431,27 @@ describe("uploadToTestFlight", () => {
 
     expect(
       requests.filter((request) => request.url === PART_URL_2),
+    ).toHaveLength(2);
+  });
+
+  it("sends a rate-limited part again after the Retry-After it asks for", async () => {
+    const routes = successRoutes();
+    routes[`PUT ${PART_URL_1}`] = [
+      { status: 429, headers: { "retry-after": "0" } },
+      { status: 200 },
+    ];
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).resolves.toMatchObject({ state: "COMPLETE" });
+    expect(
+      requests.filter((request) => request.url === PART_URL_1),
     ).toHaveLength(2);
   });
 

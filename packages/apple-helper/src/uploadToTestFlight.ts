@@ -150,6 +150,23 @@ const isRetryable = (error: unknown) =>
 const sleep = (ms: number) =>
   new Promise<void>((resolve) => setTimeout(resolve, ms));
 
+/** The longest `Retry-After` honored, so a wait stays bounded. */
+const MAX_RETRY_AFTER_MS = 60_000;
+
+/**
+ * How long to wait before sending a part again: the `Retry-After` seconds a
+ * rate-limited answer asks for, within a bound, or a growing backoff.
+ */
+const retryDelayMs = (response: Response | Error, attempt: number) => {
+  const retryAfter =
+    response instanceof Error
+      ? Number.NaN
+      : Number(response.headers.get("retry-after"));
+  return Number.isFinite(retryAfter) && retryAfter >= 0
+    ? Math.min(retryAfter * 1_000, MAX_RETRY_AFTER_MS)
+    : 1_000 * attempt;
+};
+
 /** Runs `run` over `items`, at most `concurrency` at a time. */
 const runConcurrently = async <T>(
   items: readonly T[],
@@ -582,7 +599,10 @@ const uploadParts = async ({
           if (!(response instanceof Error) && response.ok) {
             return;
           }
-          const retryable = response instanceof Error || response.status >= 500;
+          const retryable =
+            response instanceof Error ||
+            response.status >= 500 ||
+            response.status === 429;
           if (!retryable || attempt === UPLOAD_ATTEMPTS) {
             throw new Error(
               `Uploading part ${index + 1} of ${operations.length} failed: ${
@@ -592,7 +612,7 @@ const uploadParts = async ({
               }.`,
             );
           }
-          await sleep(1_000 * attempt);
+          await sleep(retryDelayMs(response, attempt));
         }
       },
     );
