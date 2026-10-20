@@ -22,15 +22,19 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   getCwd: () => "/project",
   p: { log: { info: vi.fn(), success: vi.fn(), error: vi.fn() } },
-  withCredentialResolver: vi.fn(async (run) =>
-    run({
-      resolve: vi.fn(async (request) => {
-        events.push(`resolve ${request.name}`);
-        return serviceAccount;
-      }),
-      dispose: vi.fn(),
-    }),
-  ),
+  withCredentialResolver: vi.fn(async (run) => {
+    try {
+      return await run({
+        resolve: vi.fn(async (request) => {
+          events.push(`resolve ${request.name}`);
+          return serviceAccount;
+        }),
+        dispose: vi.fn(),
+      });
+    } finally {
+      events.push("dispose");
+    }
+  }),
 }));
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("@/utils/setChannel", () => ({ getChannel: vi.fn() }));
@@ -93,6 +97,7 @@ beforeEach(() => {
 
 const mockExit = () =>
   vi.spyOn(process, "exit").mockImplementation((() => {
+    events.push("exit");
     throw new Error("exit");
   }) as never);
 
@@ -112,6 +117,7 @@ describe("build:android --upload play-internal", () => {
       "build",
       "register",
       "upload",
+      "dispose",
     ]);
     expect(readBuiltPackageName).toHaveBeenCalledWith({
       artifactPath: AAB,
@@ -141,7 +147,7 @@ describe("build:android --upload play-internal", () => {
   it("uploads nothing without --upload", async () => {
     await buildAndroidNative({ interactive: false, scheme: "release" });
 
-    expect(events).toEqual(["prebuild", "build"]);
+    expect(events).toEqual(["prebuild", "build", "dispose"]);
     expect(resolvePlayUploadServiceAccount).not.toHaveBeenCalled();
   });
 
@@ -188,6 +194,8 @@ describe("build:android --upload play-internal", () => {
     expect(p.log.error).toHaveBeenCalledWith(
       `Google Play already has this .aab's version code. Raise versionCode for every build you upload.\nThe build stays at ${AAB}.`,
     );
+    // The resolver deletes its temporary files before the process exits.
+    expect(events.slice(-2)).toEqual(["dispose", "exit"]);
     exit.mockRestore();
   });
 });
