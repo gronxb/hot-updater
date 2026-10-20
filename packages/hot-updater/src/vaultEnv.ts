@@ -2,7 +2,7 @@ import {
   createVaultClient,
   getCwd,
   getHotUpdaterEnvValue,
-  readHotUpdaterInitEnv,
+  readLoadedHotUpdaterEnv,
   readVaultConnection,
   resolveVaultVariables,
   VAULT_CONNECTION_ENV_NAMES,
@@ -18,7 +18,7 @@ export const connectVault = async (
   env?: Readonly<Record<string, string>>,
 ): Promise<VaultClient> => {
   const read = readVaultConnection(
-    env ?? (await readHotUpdaterInitEnv(getCwd())).managedEnv,
+    env ?? (await readLoadedHotUpdaterEnv(getCwd())),
   );
   if (!read.ok) {
     throw new Error(

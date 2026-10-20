@@ -1,7 +1,10 @@
 import type { VaultSecretKind } from "@hot-updater/server/plugins";
 
 import { getCwd } from "./cwd";
-import { getHotUpdaterEnvValue, readHotUpdaterInitEnv } from "./hotUpdaterEnv";
+import {
+  getHotUpdaterEnvValue,
+  readLoadedHotUpdaterEnv,
+} from "./hotUpdaterEnv";
 import { registerSecretValue } from "./secretMasking";
 import {
   createVaultClient,
@@ -128,8 +131,8 @@ const replaced = new Map<string, string | undefined>();
 const resolveDeployCredentials = async (
   cwd: string,
 ): Promise<Readonly<Record<string, string>>> => {
-  const { managedEnv } = await readHotUpdaterInitEnv(cwd);
-  const read = readVaultConnection(managedEnv);
+  const fileEnv = await readLoadedHotUpdaterEnv(cwd);
+  const read = readVaultConnection(fileEnv);
   if (!read.ok) return {};
   try {
     return await resolveVaultVariables(createVaultClient(read.connection), {
@@ -137,7 +140,7 @@ const resolveDeployCredentials = async (
       // Set, not empty, in the environment or the file.
       except: (name) =>
         getHotUpdaterEnvValue({}, name) !== undefined ||
-        Boolean(managedEnv[name]?.trim()),
+        Boolean(fileEnv[name]?.trim()),
     });
   } catch (error) {
     throw new VaultDeployCredentialsError(

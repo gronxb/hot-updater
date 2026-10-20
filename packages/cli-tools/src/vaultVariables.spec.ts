@@ -185,6 +185,25 @@ describe("loadVaultDeployCredentials", () => {
     }
   });
 
+  it("reads the connection from .env.hotupdater as process.loadEnvFile does", async () => {
+    const auth: (string | null)[] = [];
+    vi.spyOn(globalThis, "fetch").mockImplementation(async (input, init) => {
+      const request = new Request(input, init);
+      auth.push(`${request.url} ${request.headers.get("authorization")}`);
+      return Response.json({ secrets: [] });
+    });
+    await writeEnvFile([
+      `export HOT_UPDATER_CONSOLE_URL=${CONSOLE_URL}`,
+      `HOT_UPDATER_VAULT_TOKEN=${TOKEN} # the local token`,
+    ]);
+
+    await loadVaultDeployCredentials(cwd);
+
+    expect(auth).toEqual([
+      `${CONSOLE_URL}/_hot-updater/vault/v1/secrets Bearer ${TOKEN}`,
+    ]);
+  });
+
   it("only lists when the token reaches no deploy-credentials secret", async () => {
     const requests = mockConsole([secret("scripts", "generic", ["X"])]);
     vi.stubEnv("HOT_UPDATER_CONSOLE_URL", CONSOLE_URL);

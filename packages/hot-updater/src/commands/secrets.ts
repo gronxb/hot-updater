@@ -1,12 +1,12 @@
 import { spawn } from "node:child_process";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { parseEnv } from "node:util";
 
 import {
   getCwd,
   makeEnv,
   p,
+  parseLoadedEnv,
   registerSecretValue,
   resolveVaultVariables,
   VAULT_CONNECTION_ENV_NAMES,
@@ -411,11 +411,7 @@ export const handleSecretsImport = async (
     const content = await readEnvFile(file);
     // As process.loadEnvFile reads it for the config: inline comments and
     // quoted values included.
-    const env = Object.fromEntries(
-      Object.entries(parseEnv(content)).filter(
-        (entry): entry is [string, string] => entry[1] !== undefined,
-      ),
-    );
+    const env = parseLoadedEnv(content);
     const invalid = Object.keys(env).filter(
       (variable) => !ENV_NAME_PATTERN.test(variable),
     );
@@ -508,7 +504,9 @@ export const handleSecretsImport = async (
     const rewritten = await makeEnv({}, path.resolve(getCwd(), file), {
       removeKeys: moved,
     });
-    const left = moved.filter((variable) => variable in parseEnv(rewritten));
+    const left = moved.filter(
+      (variable) => variable in parseLoadedEnv(rewritten),
+    );
     if (left.length > 0) {
       throw new Error(
         `${secret.name} v${secret.version} holds ${file}'s variables, and ${file} still sets ${left.join(", ")}: remove ${left.length === 1 ? "it" : "them"} by hand.`,
