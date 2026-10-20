@@ -2624,9 +2624,10 @@ struct BundleFileStorageServiceTests {
                 "index.ios.bundle": ChangedAssetDescriptor(
                     fileUrl: bundleURL,
                     fileHash: try #require(sha256(files["index.ios.bundle"]!, in: root)),
+                    // For the built-in bundle, which runs: the patch counts.
                     patch: BsdiffPatchDescriptor(
                         algorithm: "bsdiff",
-                        baseBundleId: "unavailable-base",
+                        baseBundleId: "builtin-bundle",
                         baseFileHash: String(repeating: "0", count: 64),
                         patchFileHash: String(repeating: "1", count: 64),
                         patchUrl: URL(string: "https://example.com/index.ios.bundle.patch")!,
@@ -3017,18 +3018,135 @@ struct BundleFileStorageServiceTests {
         let downloads = MappingDownloadService(contents: [manifestURL: manifest, archiveURL: archive])
         let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
             builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
-        // The archive is smaller than either patch, so no patch is tried.
+        // The archive is smaller than either patch for the running built-in
+        // bundle, so no patch is tried.
         let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
             manifestHash: try #require(sha256(manifest, in: root)), archiveURL: archiveURL,
             assets: Dictionary(uniqueKeysWithValues: try files.map { path, data in
                 (path, ChangedAssetDescriptor(
                     fileUrl: URL(string: "https://example.com/files/\(path)")!,
                     fileHash: try #require(sha256(data, in: root)),
-                    patch: BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: "base",
+                    patch: BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: "builtin-bundle",
                         baseFileHash: String(repeating: "0", count: 64),
                         patchFileHash: String(repeating: "1", count: 64),
                         patchUrl: URL(string: "https://example.com/patches/\(path)")!,
                         byteSize: 4096)
+                ))
+            }))
+
+        #expect((try? result.get()) == UpdateDelivery(method: .archive, patchFallback: false))
+        #expect(downloads.requestedURLs == [manifestURL, archiveURL])
+    }
+
+    @Test
+    func withNoOtaBundleAPatchForTheBuiltInBundleAppliesToItsPackagedFile() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let fixture = try makeBuiltInPatchFixture(in: root)
+        let downloads = MappingDownloadService(contents: fixture.responses)
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: ["index.ios.bundle": fixture.base]),
+            builtInBundleId: builtInPatchBaseBundleId)
+
+        let result = updateBundle(service, bundleId: "target", manifestURL: fixture.manifestURL,
+            manifestHash: fixture.manifestHash, assets: fixture.assets)
+
+        #expect((try? result.get()) == UpdateDelivery(method: .patch, patchFallback: false))
+        #expect(downloads.requestedURLs == [fixture.manifestURL, fixture.patchURL])
+        #expect(try Data(contentsOf: root.appendingPathComponent("bundle-store/target/index.ios.bundle"))
+            == fixture.target)
+    }
+
+    @Test
+    func aBuiltInBundleWhosePackagedBytesDifferDownloadsTheFileInstead() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let fixture = try makeBuiltInPatchFixture(in: root)
+        let downloads = MappingDownloadService(contents: fixture.responses)
+        // Store processing rewrote the packaged file the patch was made from.
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(
+                contents: ["index.ios.bundle": Data("console.log(\"store-processed\");\n".utf8)]),
+            builtInBundleId: builtInPatchBaseBundleId)
+
+        let result = updateBundle(service, bundleId: "target", manifestURL: fixture.manifestURL,
+            manifestHash: fixture.manifestHash, assets: fixture.assets)
+
+        #expect((try? result.get()) == UpdateDelivery(method: .manifest, patchFallback: true))
+        #expect(downloads.requestedURLs == [fixture.manifestURL, fixture.fileURL])
+        #expect(try Data(contentsOf: root.appendingPathComponent("bundle-store/target/index.ios.bundle"))
+            == fixture.target)
+    }
+
+    @Test
+    func aPatchForTheBuiltInBundleIsNotAttemptedWhileAnOtaBundleRunsOrInADebugBuild() throws {
+        let otaRoot = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(otaRoot) }
+        // "base" runs, and the patch is for the built-in bundle.
+        let otaFixture = try makePatchFixture(in: otaRoot)
+        let builtInFixture = try makeBuiltInPatchFixture(in: otaRoot)
+        let otaDownloads = MappingDownloadService(contents: builtInFixture.responses)
+        let otaService = makeStorageService(documentsDirectory: otaRoot, preferences: otaFixture.preferences,
+            downloadService: otaDownloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: ["index.ios.bundle": builtInFixture.base]),
+            builtInBundleId: builtInPatchBaseBundleId)
+        let otaResult = updateBundle(otaService, bundleId: "target", manifestURL: builtInFixture.manifestURL,
+            manifestHash: builtInFixture.manifestHash, assets: builtInFixture.assets)
+        #expect((try? otaResult.get()) == UpdateDelivery(method: .manifest, patchFallback: false))
+        #expect(otaDownloads.requestedURLs == [builtInFixture.manifestURL, builtInFixture.fileURL])
+
+        // A Debug build reports the nil UUID, and has no built-in bundle.
+        let debugRoot = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(debugRoot) }
+        let nilUUID = "00000000-0000-0000-0000-000000000000"
+        let debugFixture = try makeBuiltInPatchFixture(in: debugRoot, baseBundleId: nilUUID)
+        let debugDownloads = MappingDownloadService(contents: debugFixture.responses)
+        let debugService = makeStorageService(documentsDirectory: debugRoot, downloadService: debugDownloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: ["index.ios.bundle": debugFixture.base]),
+            builtInBundleId: nilUUID)
+        let debugResult = updateBundle(debugService, bundleId: "target", manifestURL: debugFixture.manifestURL,
+            manifestHash: debugFixture.manifestHash, assets: debugFixture.assets)
+        #expect((try? debugResult.get()) == UpdateDelivery(method: .manifest, patchFallback: false))
+        #expect(debugDownloads.requestedURLs == [debugFixture.manifestURL, debugFixture.fileURL])
+    }
+
+    @Test
+    func theArchiveChoiceLeavesOutAPatchThisDeviceCannotApply() throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let files = [
+            "index.ios.bundle": Data("original one".utf8),
+            "assets/image.png": Data("original two".utf8),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 1
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let downloads = MappingDownloadService(contents: [manifestURL: manifest, archiveURL: archive])
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: [:]))
+        // A tiny patch, but for a bundle this device does not run.
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)), archiveURL: archiveURL,
+            assets: Dictionary(uniqueKeysWithValues: try files.map { path, data in
+                (path, ChangedAssetDescriptor(
+                    fileUrl: URL(string: "https://example.com/files/\(path)")!,
+                    fileHash: try #require(sha256(data, in: root)),
+                    patch: path == "index.ios.bundle"
+                        ? BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: "other-base",
+                            baseFileHash: String(repeating: "0", count: 64),
+                            patchFileHash: String(repeating: "1", count: 64),
+                            patchUrl: URL(string: "https://example.com/index.ios.bundle.bsdiff")!,
+                            byteSize: 1)
+                        : nil
                 ))
             }))
 
@@ -4242,6 +4360,54 @@ private func makePatchFixture(
             fileHash: targetHash,
             patch: BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: "base", baseFileHash: baseHash,
                 patchFileHash: try #require(sha256(patchBytes, in: root)), patchUrl: patchURL)
+        )]
+    )
+}
+
+private let builtInPatchBaseBundleId = "0190a1b2-c3d4-7000-8000-000000000000"
+
+private struct BuiltInPatchFixture {
+    let manifest: Data
+    let manifestHash: String
+    let manifestURL = URL(string: "https://example.com/manifest.json")!
+    let fileURL = URL(string: "https://example.com/index.ios.bundle")!
+    let patchURL = URL(string: "https://example.com/index.ios.bundle.bsdiff")!
+    /// The built-in bundle's file the patch was made from.
+    let base: Data
+    let patch: Data
+    let target: Data
+    let assets: [String: ChangedAssetDescriptor]
+
+    var responses: [URL: Data] {
+        [manifestURL: manifest, patchURL: patch, fileURL: target]
+    }
+}
+
+/// No OTA bundle, and a "target" whose bundle file has a working patch
+/// against the built-in bundle's file.
+private func makeBuiltInPatchFixture(
+    in root: URL,
+    baseBundleId: String = builtInPatchBaseBundleId
+) throws -> BuiltInPatchFixture {
+    let baseBytes = Data("console.log(\"base bundle\");\n".utf8)
+    let targetBytes = Data("console.log(\"patched bundle\");\n".utf8)
+    let patchBytes = try #require(Data(base64Encoded: bsdiffPatchFixtureBase64))
+    let targetHash = try #require(sha256(targetBytes, in: root))
+    let manifest = try makeManifestData(bundleId: "target", assets: ["index.ios.bundle": targetHash])
+    return BuiltInPatchFixture(
+        manifest: manifest,
+        manifestHash: try #require(sha256(manifest, in: root)),
+        base: baseBytes,
+        patch: patchBytes,
+        target: targetBytes,
+        assets: ["index.ios.bundle": ChangedAssetDescriptor(
+            fileUrl: URL(string: "https://example.com/index.ios.bundle")!,
+            fileHash: targetHash,
+            // The packaged file's hash, recorded when its native build was registered.
+            patch: BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: baseBundleId,
+                baseFileHash: try #require(sha256(baseBytes, in: root)),
+                patchFileHash: try #require(sha256(patchBytes, in: root)),
+                patchUrl: URL(string: "https://example.com/index.ios.bundle.bsdiff")!)
         )]
     )
 }
