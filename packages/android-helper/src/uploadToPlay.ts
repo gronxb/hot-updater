@@ -440,8 +440,21 @@ const uploadBundle = async ({
         return readVersionCode(response);
       }
       if (!(response instanceof Error) && response.status === 308) {
-        offset = confirmedOffset(response);
-        failures = 0;
+        const confirmed = confirmedOffset(response);
+        if (confirmed > offset) {
+          offset = confirmed;
+          failures = 0;
+          continue;
+        }
+        // Google kept nothing of the chunk: a failed attempt, resumed where
+        // it confirms.
+        offset = confirmed;
+        if (++failures === CHUNK_ATTEMPTS) {
+          throw new Error(
+            "Uploading the .aab failed: Google kept none of a chunk.",
+          );
+        }
+        await sleep(1_000 * failures);
         continue;
       }
       if (

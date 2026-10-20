@@ -305,6 +305,22 @@ describe("uploadToPlay", () => {
     expect(chunks[2]!.body).toBe(AAB_BYTES.subarray(10).toString());
   });
 
+  it("gives up on a chunk Google keeps none of", async () => {
+    const routes = successRoutes();
+    // A 308 without Range: Google committed no bytes.
+    routes[`PUT ${LOCATION}`] = { status: 308 };
+    routes[`DELETE ${EDIT}`] = { status: 204 };
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(upload(fetch)).rejects.toThrow(
+      "Uploading the .aab failed: Google kept none of a chunk.",
+    );
+    expect(requests.filter((request) => request.url === LOCATION)).toHaveLength(
+      3,
+    );
+    expect(requests.at(-1)).toMatchObject({ method: "DELETE", url: EDIT });
+  });
+
   it("commits again while Google is still processing the bundle", async () => {
     const routes = successRoutes();
     routes[`POST ${EDIT}:commit`] = [
