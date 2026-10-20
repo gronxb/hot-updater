@@ -38,7 +38,7 @@ describe("firebaseStorage", () => {
   const createStorage = () =>
     firebaseStorage({ projectId: "project", storageBucket: "updates" });
 
-  it("opens the bucket on first use, so a config loads without its settings", async () => {
+  it("binds its app when created and opens the bucket on first use, so a config loads without its settings", async () => {
     const storage = createStorage();
     expect(getStorage).not.toHaveBeenCalled();
     file.exists.mockResolvedValue([true]);

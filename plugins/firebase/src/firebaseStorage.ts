@@ -31,12 +31,12 @@ export const firebaseStorage = (
 ): StorageAdapterWith<
   "put" | "get" | "getDownloadUrl" | "exists" | "delete"
 > => {
-  // Opened on first use, so a config loads without the bucket's settings.
+  // The app is bound now, as the first adapter binds the default one; the
+  // bucket opens on first use, so a config loads without its settings.
+  const app = getApps().length ? getApp() : initializeApp(config);
   let opened: ReturnType<ReturnType<typeof getStorage>["bucket"]> | undefined;
   const bucket = () =>
-    (opened ??= getStorage(
-      getApps().length ? getApp() : initializeApp(config),
-    ).bucket(config.storageBucket));
+    (opened ??= getStorage(app).bucket(config.storageBucket));
   const getStorageKey = createStorageKeyBuilder(config.basePath);
   /**
    * Signed URLs by object. Without a private key, as in Cloud Functions, each
