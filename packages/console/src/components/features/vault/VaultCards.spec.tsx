@@ -287,7 +287,7 @@ describe("SecretsCard", () => {
     expect(putMutation.mutateAsync).not.toHaveBeenCalled();
   });
 
-  it("replaces a key ID it filled in, and keeps one the user typed", async () => {
+  it("replaces or clears a key ID it filled in, and keeps one the user typed", async () => {
     render(<SecretsCard secrets={loaded([])} status={unlocked} />);
     fireEvent.click(screen.getAllByRole("button", { name: "Add secret" })[0]!);
     const input = screen.getByLabelText("Private key (.p8)");
@@ -303,6 +303,14 @@ describe("SecretsCard", () => {
     });
     await waitFor(() => {
       expect(screen.getByDisplayValue("SECOND")).toBeDefined();
+    });
+    fireEvent.change(input, {
+      target: { files: [new File([P8], "key.p8")] },
+    });
+    await waitFor(() => {
+      expect((screen.getByLabelText("Key ID") as HTMLInputElement).value).toBe(
+        "",
+      );
     });
     fireEvent.change(screen.getByLabelText("Key ID"), {
       target: { value: "TYPED" },

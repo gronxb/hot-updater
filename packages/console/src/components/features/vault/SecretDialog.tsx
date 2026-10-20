@@ -216,17 +216,17 @@ function SecretForm({
     if (file.size > MAX_FILE_BYTES) return;
     const base64 = await fileToBase64(file);
     if (chosen.current[field.key] !== file) return;
-    // AuthKey_<key ID>.p8 names its key ID.
-    const keyId =
-      kind === "asc-api-key" ? ascKeyIdFromFileName(file.name) : undefined;
+    // AuthKey_<key ID>.p8 names its key ID; another name clears the one an
+    // earlier file filled in.
+    const keyId = ascKeyIdFromFileName(file.name);
     setFields((current) => {
       const typed =
         current.keyId?.trim() && current.keyId !== filledKeyId.current;
-      if (keyId === undefined || typed) {
+      if (kind !== "asc-api-key" || typed) {
         return { ...current, [field.key]: base64 };
       }
       filledKeyId.current = keyId;
-      return { ...current, [field.key]: base64, keyId };
+      return { ...current, [field.key]: base64, keyId: keyId ?? "" };
     });
   };
 
