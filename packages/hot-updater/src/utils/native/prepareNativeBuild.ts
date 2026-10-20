@@ -36,6 +36,12 @@ import { resolveNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import type { NativeBuildTarget } from "./createNativeBuild";
 
+/** The scheme of the platform built, with its defaults filled in. */
+export type NativeBuildSchemeConfigs = {
+  androidSchemeConfig?: EnrichedNativeBuildAndroidScheme;
+  iosSchemeConfig?: EnrichedNativeBuildIosScheme;
+};
+
 type PreparedNativeBuildConfig = {
   outputPath: string;
   config: ConfigResponse;
@@ -51,6 +57,12 @@ export async function prepareNativeBuild(
     platform: Platform;
     /** `build` exports an iOS device build as an `.ipa`; `run` installs the `.app`. */
     operation: "build" | "run";
+    /**
+     * Runs on the scheme before the adapter's prebuild writes the native
+     * projects, so a check that fails, such as a store upload's, changes
+     * nothing.
+     */
+    beforePrebuild?: (schemeConfigs: NativeBuildSchemeConfigs) => Promise<void>;
   },
 ): Promise<PreparedNativeBuildConfig | null> {
   const cwd = getCwd();
@@ -112,6 +124,22 @@ export async function prepareNativeBuild(
     );
     return null;
   }
+
+  const schemeConfigs: NativeBuildSchemeConfigs =
+    platform === "ios"
+      ? {
+          iosSchemeConfig: await enrichNativeBuildIosScheme({
+            scheme: config.nativeBuild.ios[scheme]!,
+            hotUpdaterSchemeName: scheme,
+          }),
+        }
+      : {
+          androidSchemeConfig: await enrichNativeBuildAndroidScheme({
+            schemeConfig: config.nativeBuild.android[scheme]!,
+            hotUpdaterSchemeName: scheme,
+          }),
+        };
+  await options.beforePrebuild?.(schemeConfigs);
 
   // The adapter's prebuild writes the native projects, such as Expo's
   // `expo prebuild`, so it runs before anything reads them.
@@ -201,31 +229,12 @@ export async function prepareNativeBuild(
     ? artifactResultStorePath
     : path.join(cwd, artifactResultStorePath);
 
-  if (platform === "ios") {
-    return {
-      outputPath: resolvedOutputPath,
-      config,
-      buildAdapter,
-      scheme,
-      target,
-      iosSchemeConfig: await enrichNativeBuildIosScheme({
-        scheme: config.nativeBuild.ios[scheme]!,
-        hotUpdaterSchemeName: scheme,
-      }),
-    };
-  } else if (platform === "android") {
-    return {
-      outputPath: resolvedOutputPath,
-      config,
-      buildAdapter,
-      scheme,
-      target,
-      androidSchemeConfig: await enrichNativeBuildAndroidScheme({
-        schemeConfig: config.nativeBuild.android[scheme]!,
-        hotUpdaterSchemeName: scheme,
-      }),
-    };
-  }
-
-  return null;
+  return {
+    outputPath: resolvedOutputPath,
+    config,
+    buildAdapter,
+    scheme,
+    target,
+    ...schemeConfigs,
+  };
 }

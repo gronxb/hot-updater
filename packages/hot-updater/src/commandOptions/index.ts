@@ -28,6 +28,11 @@ export const nativeBuildRegisterCommandOption = new Option(
   "register the release build, its artifact and built-in bundle, with the database and storage in hot-updater.config.ts",
 ).default(false);
 
+export const playUploadCommandOption = new Option(
+  "--upload <destination>",
+  "upload the .aab to a store: play-internal releases it to Google Play's internal testing track with the play-service-account secret",
+).choices(["play-internal"]);
+
 export const deviceCommandOption = new Option(
   "-d, --device [deviceName | deviceId]",
   "specify the ADB device name or use default",

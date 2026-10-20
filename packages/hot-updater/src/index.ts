@@ -18,6 +18,7 @@ import {
   nativeBuildRegisterCommandOption,
   nativeBuildSchemeCommandOption,
   platformCommandOption,
+  playUploadCommandOption,
   portCommandOption,
 } from "@/commandOptions";
 import { handleAgentInfra } from "@/commands/agent/infra";
@@ -1049,6 +1050,7 @@ program
   .addOption(interactiveCommandOption)
   .addOption(nativeBuildSchemeCommandOption)
   .addOption(nativeBuildRegisterCommandOption)
+  .addOption(playUploadCommandOption)
   .action(async (options: BuildNativeOptions) => {
     await buildAndroidNative(options);
   });

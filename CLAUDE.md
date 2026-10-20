@@ -139,6 +139,9 @@ npx hot-updater channel set <channel>
 # Build a release app, and register it with the config's database and storage
 npx hot-updater build:android --scheme release --register
 
+# Build an .aab and release it to Google Play's internal track with the vault's play-service-account
+npx hot-updater build:android --scheme release --upload play-internal
+
 # Manage client API keys through apiKeys(): the config's, or a server file's
 npx hot-updater api-key create --name <name>
 npx hot-updater api-key list src/hotUpdater.ts
