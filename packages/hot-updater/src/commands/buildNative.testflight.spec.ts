@@ -30,15 +30,19 @@ vi.mock("@hot-updater/android-helper", () => ({ buildAndroid: vi.fn() }));
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
   p: { log: { info: vi.fn(), success: vi.fn(), error: vi.fn() } },
-  withCredentialResolver: vi.fn(async (run) =>
-    run({
-      resolve: vi.fn(async (request) => {
-        events.push(`resolve ${request.name}`);
-        return ascApiKey;
-      }),
-      dispose: vi.fn(),
-    }),
-  ),
+  withCredentialResolver: vi.fn(async (run) => {
+    try {
+      return await run({
+        resolve: vi.fn(async (request) => {
+          events.push(`resolve ${request.name}`);
+          return ascApiKey;
+        }),
+        dispose: vi.fn(),
+      });
+    } finally {
+      events.push("dispose");
+    }
+  }),
 }));
 vi.mock("@/utils/printBanner", () => ({ printBanner: vi.fn() }));
 vi.mock("@/utils/setChannel", () => ({ getChannel: vi.fn() }));
@@ -95,6 +99,12 @@ beforeEach(() => {
   events.length = 0;
 });
 
+const mockExit = () =>
+  vi.spyOn(process, "exit").mockImplementation((() => {
+    events.push("exit");
+    throw new Error("exit");
+  }) as never);
+
 describe("build:ios --upload testflight", () => {
   it("checks the scheme and resolves the key before the prebuild, then builds, registers and uploads", async () => {
     await buildIosNative({
@@ -111,6 +121,7 @@ describe("build:ios --upload testflight", () => {
       "build",
       "register",
       "upload",
+      "dispose",
     ]);
     expect(uploadToTestFlight).toHaveBeenCalledWith({
       ipaPath: "/out/export/App.ipa",
@@ -121,7 +132,7 @@ describe("build:ios --upload testflight", () => {
   it("uploads nothing without --upload", async () => {
     await buildIosNative({ interactive: false, scheme: "release" });
 
-    expect(events).toEqual(["prebuild", "build"]);
+    expect(events).toEqual(["prebuild", "build", "dispose"]);
     expect(resolveTestFlightUploadKey).not.toHaveBeenCalled();
   });
 
@@ -131,9 +142,7 @@ describe("build:ios --upload testflight", () => {
         "TestFlight takes an .ipa, and the scheme release builds a simulator .app.",
       ),
     );
-    const exit = vi.spyOn(process, "exit").mockImplementation((() => {
-      throw new Error("exit");
-    }) as never);
+    const exit = mockExit();
 
     await expect(
       buildIosNative({
@@ -158,9 +167,7 @@ describe("build:ios --upload testflight", () => {
         "App Store Connect already has build 42 of version 1.2.0. Each build of a version needs a new build number (CFBundleVersion).",
       ),
     );
-    const exit = vi.spyOn(process, "exit").mockImplementation((() => {
-      throw new Error("exit");
-    }) as never);
+    const exit = mockExit();
 
     await expect(
       buildIosNative({
@@ -173,6 +180,8 @@ describe("build:ios --upload testflight", () => {
     expect(p.log.error).toHaveBeenCalledWith(
       "App Store Connect already has build 42 of version 1.2.0. Each build of a version needs a new build number (CFBundleVersion).\nThe build stays at /out/export/App.ipa.",
     );
+    // The resolver deletes its temporary files before the process exits.
+    expect(events.slice(-2)).toEqual(["dispose", "exit"]);
     exit.mockRestore();
   });
 });

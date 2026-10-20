@@ -66,8 +66,7 @@ const buildNativeInternal = async ({
         },
       });
       if (!preparedConfig) {
-        p.log.error("preparing native build failed");
-        process.exit(1);
+        throw new NativeBuildFailure("preparing native build failed");
       }
       const {
         buildAdapter,
@@ -177,8 +176,14 @@ const summarizeNativeBuild = (result: NativeBuildResult): string => {
 };
 
 /**
- * Runs a store upload step, reporting its failure by its message, which
- * names what the store refused, and exiting.
+ * A failure reported by its message alone, thrown so the credential
+ * resolver deletes its temporary files before the process exits.
+ */
+class NativeBuildFailure extends Error {}
+
+/**
+ * Runs a store upload step, whose failure names what the store refused,
+ * with `note` after it.
  */
 const reportUploadFailure = async <T>(
   run: () => Promise<T>,
@@ -187,19 +192,22 @@ const reportUploadFailure = async <T>(
   try {
     return await run();
   } catch (e) {
-    p.log.error(
+    throw new NativeBuildFailure(
       [e instanceof Error ? e.message : String(e), note]
         .filter(Boolean)
         .join("\n"),
+      { cause: e },
     );
-    process.exit(1);
   }
 };
 
 const catchError = (e: unknown): never => {
   if (e instanceof ExecaError) {
     console.error(e);
-  } else if (e instanceof CredentialUnavailableError) {
+  } else if (
+    e instanceof CredentialUnavailableError ||
+    e instanceof NativeBuildFailure
+  ) {
     p.log.error(e.message);
   } else if (e instanceof Error) {
     p.log.error(e.stack ?? e.message);
