@@ -249,7 +249,8 @@ archive, and ZIP and `tar.gz` archives are not supported.
 
 With at least two files left to download, the client compares the archive's
 bytes with the per-file transfer, counting the patches it can apply: those from
-the bundle it runs. When every target file
+the bundle it runs, and from the built-in bundle only once its packaged file
+matches the patch's base. When every target file
 needs downloading and no patch is offered, it also allows the archive's TAR
 framing and padding, which saves many requests for a complete bundle whose
 files compress poorly. Otherwise the archive must be smaller. Missing or

@@ -564,6 +564,39 @@ class BundleFileStorageService: BundleStorageService {
         return (patchDirectory as NSString).appendingPathComponent("\(safeName).bsdiff")
     }
 
+    /// Copies, with no OTA bundle installed, the packaged file each built-in
+    /// patch was made from, when its bytes are the patch's base: store
+    /// processing may have changed them. Only these patches are priced and
+    /// applied; the others fall back to their files.
+    private func prepareBuiltInPatchBases(
+        downloads: [String: ChangedAssetDescriptor],
+        currentBundleId: String?,
+        tempDirectory: String
+    ) -> [String: String] {
+        guard currentBundleId == nil else { return [:] }
+        var bases: [String: String] = [:]
+        for (assetPath, descriptor) in downloads {
+            guard let patch = descriptor.patch,
+                  isPatchForRunningBundle(patch, currentBundleId: nil) else {
+                continue
+            }
+            let basePath = patchBaseTempPath(
+                tempDirectory: tempDirectory,
+                assetPath: assetPath
+            )
+            if builtInAssetResolver.copyIfMatches(
+                assetPath: assetPath,
+                expectedHash: patch.baseFileHash,
+                destination: basePath
+            ) {
+                bases[assetPath] = basePath
+            } else {
+                try? fileSystem.removeItem(atPath: basePath)
+            }
+        }
+        return bases
+    }
+
     /// Where the built-in bundle's file is copied to serve as a patch's base.
     private func patchBaseTempPath(
         tempDirectory: String,
@@ -641,6 +674,7 @@ class BundleFileStorageService: BundleStorageService {
         changedAsset: ChangedAssetDescriptor,
         currentBundleId: String?,
         currentBundleDir: String?,
+        builtInBasePath: String?,
         destinationPath: String,
         expectedHash: String,
         tempDirectory: String,
@@ -655,20 +689,9 @@ class BundleFileStorageService: BundleStorageService {
 
         let sourcePath: String
         if currentBundleId == nil {
-            sourcePath = patchBaseTempPath(
-                tempDirectory: tempDirectory,
-                assetPath: assetPath
-            )
-            // The packaged file is the base only when its bytes are the ones
-            // the patch was made from: store processing may have changed them.
-            guard builtInAssetResolver.copyIfMatches(
-                assetPath: assetPath,
-                expectedHash: patch.baseFileHash,
-                destination: sourcePath
-            ) else {
-                try? self.fileSystem.removeItem(atPath: sourcePath)
-                return false
-            }
+            // Copied and checked before the plan priced the patch.
+            guard let builtInBasePath else { return false }
+            sourcePath = builtInBasePath
         } else {
             guard let currentBundleDir else { return false }
             do {
@@ -1213,7 +1236,8 @@ class BundleFileStorageService: BundleStorageService {
         archiveUrl: URL?,
         downloads: [String: ChangedAssetDescriptor],
         assets: [String: ParsedManifestAsset],
-        currentBundleId: String?
+        currentBundleId: String?,
+        builtInPatchBases: [String: String]
     ) -> Bool {
         guard downloads.count >= 2,
               archive != nil,
@@ -1231,7 +1255,9 @@ class BundleFileStorageService: BundleStorageService {
             let plannedByteSize: Int64
             // Only a patch this device applies saves bytes.
             if let patch = descriptor.patch,
-               isPatchForRunningBundle(patch, currentBundleId: currentBundleId) {
+               currentBundleId == nil
+                ? builtInPatchBases[path] != nil
+                : isPatchForRunningBundle(patch, currentBundleId: currentBundleId) {
                 hasOfferedPatch = true
                 guard let patchByteSize = patch.byteSize,
                       patchByteSize >= 0,
@@ -2270,6 +2296,7 @@ class BundleFileStorageService: BundleStorageService {
         changedAsset: ChangedAssetDescriptor,
         currentBundleId: String?,
         currentBundleDir: String?,
+        builtInBasePath: String?,
         destinationPath: String,
         tempDirectory: String,
         progressFile: UpdateProgressPayload.DiffProgressFileSnapshot,
@@ -2282,6 +2309,7 @@ class BundleFileStorageService: BundleStorageService {
             changedAsset: changedAsset,
             currentBundleId: currentBundleId,
             currentBundleDir: currentBundleDir,
+            builtInBasePath: builtInBasePath,
             destinationPath: destinationPath,
             expectedHash: expectedHash,
             tempDirectory: tempDirectory,
@@ -2892,12 +2920,18 @@ class BundleFileStorageService: BundleStorageService {
             // The archive is chosen before any patch is tried, so only the
             // per-file install can fall back from a patch.
             var patchFallbacks = false
+            let builtInPatchBases = prepareBuiltInPatchBases(
+                downloads: downloads,
+                currentBundleId: currentBundleId,
+                tempDirectory: tempDirectory
+            )
             if shouldUseArchive(
                 archive: targetManifest.archive,
                 archiveUrl: archiveUrl,
                 downloads: downloads,
                 assets: targetManifest.assets,
-                currentBundleId: currentBundleId
+                currentBundleId: currentBundleId,
+                builtInPatchBases: builtInPatchBases
             ), let archive = targetManifest.archive, let archiveUrl {
                 do {
                     diffFiles = try UpdateFailureError.during(.storage, resource: .archive) {
@@ -2951,6 +2985,7 @@ class BundleFileStorageService: BundleStorageService {
                             let outcome = try self.downloadManifestAsset(
                                 assetPath: assetPath, expectedAsset: expectedAsset, changedAsset: descriptor,
                                 currentBundleId: currentBundleId, currentBundleDir: currentBundleDir,
+                                builtInBasePath: builtInPatchBases[assetPath],
                                 destinationPath: destinationPath, tempDirectory: workerTemp, progressFile: progressFile,
                                 progressHandler: { payload in
                                     progressLock.lock()

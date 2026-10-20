@@ -426,6 +426,31 @@ class BundleFileStorageService(
         return File(patchDir, "$safeName.bsdiff")
     }
 
+    /**
+     * Copies, with no OTA bundle installed, the packaged file each built-in
+     * patch was made from, when its bytes are the patch's base: store
+     * processing may have changed them. Only these patches are priced and
+     * applied; the others fall back to their files.
+     */
+    private fun prepareBuiltInPatchBases(
+        downloads: Map<String, ChangedAssetDescriptor>,
+        currentBundleId: String?,
+        tempDir: File,
+    ): Map<String, File> {
+        if (currentBundleId != null) return emptyMap()
+        return buildMap {
+            for ((assetPath, descriptor) in downloads) {
+                val patch = descriptor.patch?.takeIf { isPatchForRunningBundle(it, null) } ?: continue
+                val baseFile = patchBaseTempFile(tempDir, assetPath)
+                if (builtInAssetResolver.copyIfMatches(assetPath, patch.baseFileHash, baseFile)) {
+                    put(assetPath, baseFile)
+                } else {
+                    baseFile.delete()
+                }
+            }
+        }
+    }
+
     /** Where the built-in bundle's file is copied to serve as a patch's base. */
     private fun patchBaseTempFile(
         tempDir: File,
@@ -532,6 +557,7 @@ class BundleFileStorageService(
         changedAsset: ChangedAssetDescriptor,
         currentBundleId: String?,
         activeBundleDir: File?,
+        builtInBaseFile: File?,
         targetFile: File,
         expectedHash: String,
         tempDir: File,
@@ -544,16 +570,10 @@ class BundleFileStorageService(
         }
 
         // The patch targets the running bundle, so from here a miss is a fallback.
-        val builtInBaseFile = if (currentBundleId == null) patchBaseTempFile(tempDir, assetPath) else null
         val sourceFile: File
-        if (builtInBaseFile != null) {
-            // The packaged file is the base only when its bytes are the ones
-            // the patch was made from: store processing may have changed them.
-            if (!builtInAssetResolver.copyIfMatches(assetPath, patch.baseFileHash, builtInBaseFile)) {
-                builtInBaseFile.delete()
-                return PatchOutcome.FAILED
-            }
-            sourceFile = builtInBaseFile
+        if (currentBundleId == null) {
+            // Copied and checked before the plan priced the patch.
+            sourceFile = builtInBaseFile ?: return PatchOutcome.FAILED
         } else {
             val sourceDir = activeBundleDir ?: return PatchOutcome.FAILED
             sourceFile = RelativePathResolver.resolveInside(sourceDir, assetPath) ?: return PatchOutcome.FAILED
@@ -1947,6 +1967,7 @@ class BundleFileStorageService(
         changedAsset: ChangedAssetDescriptor,
         currentBundleId: String?,
         activeBundleDir: File?,
+        builtInBaseFile: File?,
         targetFile: File,
         tempDir: File,
         progressFile: DiffProgressFileSnapshot,
@@ -1960,6 +1981,7 @@ class BundleFileStorageService(
                 changedAsset = changedAsset,
                 currentBundleId = currentBundleId,
                 activeBundleDir = activeBundleDir,
+                builtInBaseFile = builtInBaseFile,
                 targetFile = targetFile,
                 expectedHash = expectedHash,
                 tempDir = tempDir,
@@ -2142,6 +2164,7 @@ class BundleFileStorageService(
         downloads: Map<String, ChangedAssetDescriptor>,
         archiveUrl: String?,
         currentBundleId: String?,
+        builtInPatchBases: Map<String, File>,
     ): ParsedArchive? {
         if (archiveUrl.isNullOrBlank() || downloads.size < 2) return null
         val archive = manifest.archive ?: return null
@@ -2149,8 +2172,14 @@ class BundleFileStorageService(
 
         // Only a patch this device applies saves bytes.
         val applicablePatches =
-            downloads.mapValues { (_, descriptor) ->
-                descriptor.patch?.takeIf { isPatchForRunningBundle(it, currentBundleId) }
+            downloads.mapValues { (assetPath, descriptor) ->
+                descriptor.patch?.takeIf {
+                    if (currentBundleId == null) {
+                        assetPath in builtInPatchBases
+                    } else {
+                        isPatchForRunningBundle(it, currentBundleId)
+                    }
+                }
             }
         var individualBytes = 0L
         for ((assetPath, patch) in applicablePatches) {
@@ -2458,7 +2487,11 @@ class BundleFileStorageService(
                     }
                     downloads
                 }
-            val selectedArchive = selectArchive(targetManifest, downloads, archiveUrl, currentBundleId)
+            val builtInPatchBases =
+                updateStep(UpdateFailureStage.INSTALL, UpdateFailureResource.FILE) {
+                    prepareBuiltInPatchBases(downloads, currentBundleId, tempDir)
+                }
+            val selectedArchive = selectArchive(targetManifest, downloads, archiveUrl, currentBundleId, builtInPatchBases)
             val archiveProgress =
                 if (selectedArchive != null) {
                     updateStep(UpdateFailureStage.DOWNLOAD, UpdateFailureResource.ARCHIVE) {
@@ -2507,6 +2540,7 @@ class BundleFileStorageService(
                                                 changedAsset = downloads.getValue(path),
                                                 currentBundleId = currentBundleId,
                                                 activeBundleDir = activeBundleDir,
+                                                builtInBaseFile = builtInPatchBases[path],
                                                 targetFile =
                                                     RelativePathResolver.resolveInside(tmpDir, path)
                                                         ?: throw HotUpdaterException.invalidBundle(),

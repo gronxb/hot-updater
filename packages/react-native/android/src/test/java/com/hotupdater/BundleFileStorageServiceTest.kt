@@ -2327,12 +2327,13 @@ class BundleFileStorageServiceTest {
                         mapOf(MANIFEST_URL to manifest.toByteArray()) +
                             contents.mapKeys { "https://example.com/${it.key}" }.mapValues { it.value.toByteArray() },
                     )
-                // The patches are for the built-in bundle, which runs: they count.
+                // The patches are for the built-in bundle, which runs and is
+                // their base: they count.
                 val service =
                     createService(
                         root,
                         downloadService = downloads,
-                        builtInAssetResolver = MappingBuiltInAssetResolver(emptyMap()),
+                        builtInAssetResolver = PatchBaseBuiltInAssetResolver(baseFileHash = "a"),
                         minBundleId = MIN_BUNDLE_ID,
                     )
 
@@ -2704,6 +2705,72 @@ class BundleFileStorageServiceTest {
 
             assertEquals(UpdateBundleResult(BundleDelivery.ARCHIVE, patchFallback = false), result)
             assertEquals(listOf(MANIFEST_URL, ARCHIVE_URL), downloads.calls)
+        }
+
+    @Test
+    fun `the archive choice prices a built-in patch only when the packaged file is its base`() =
+        runBlocking {
+            suspend fun install(packagedContent: String): Pair<UpdateBundleResult, List<String>> {
+                val root = temporaryFolder.newFolder()
+                val archiveBytes = Base64.getDecoder().decode(TarBrArchiveExtractorTest.VALID)
+                val contents = mapOf("assets/image.png" to "image", "index.android.bundle" to "bundle")
+                val hashes = contents.mapValues { sha256(root, it.value) }
+                val manifest =
+                    manifestJson(
+                        bundleId = "target",
+                        assets = hashes,
+                        byteSizes = contents.mapValues { it.value.length.toLong() },
+                        downloadByteSizes = mapOf("assets/image.png" to 50, "index.android.bundle" to 55),
+                        archive = archiveJson(root, archiveBytes, tarByteSize = 3072),
+                    )
+                val downloads =
+                    BinaryMappingDownloadService(
+                        mapOf(MANIFEST_URL to manifest.toByteArray(), ARCHIVE_URL to archiveBytes) +
+                            contents.mapKeys { "https://example.com/${it.key}" }.mapValues { it.value.toByteArray() },
+                    )
+                val builtInPatch =
+                    BsdiffPatchDescriptor(
+                        algorithm = "bsdiff",
+                        baseBundleId = MIN_BUNDLE_ID,
+                        baseFileHash = sha256(root, BASE_CONTENT),
+                        patchFileHash = sha256(root, "patch"),
+                        patchUrl = PATCH_URL,
+                        byteSize = 1,
+                    )
+                val result =
+                    createService(
+                        root,
+                        downloadService = downloads,
+                        builtInAssetResolver = MappingBuiltInAssetResolver(mapOf("index.android.bundle" to packagedContent)),
+                        minBundleId = MIN_BUNDLE_ID,
+                    ).updateBundle(
+                        bundleId = "target",
+                        manifestUrl = MANIFEST_URL,
+                        manifestFileHash = sha256(root, manifest),
+                        assets =
+                            hashes.mapValues { (path, hash) ->
+                                ChangedAssetDescriptor(
+                                    "https://example.com/$path",
+                                    hash,
+                                    patch = builtInPatch.takeIf { path == "index.android.bundle" },
+                                )
+                            },
+                        archiveUrl = ARCHIVE_URL,
+                        progressCallback = {},
+                    )
+                return result to downloads.calls
+            }
+
+            // Store processing rewrote the packaged file: the patch would
+            // fall back to the whole file, so the archive is cheaper.
+            val (rewritten, rewrittenCalls) = install("console.log(\"store-processed\");\n")
+            assertEquals(UpdateBundleResult(BundleDelivery.ARCHIVE, patchFallback = false), rewritten)
+            assertEquals(listOf(MANIFEST_URL, ARCHIVE_URL), rewrittenCalls)
+
+            // The packaged file is the patch's base: the tiny patch wins.
+            val (_, matchingCalls) = install(BASE_CONTENT)
+            assertTrue(PATCH_URL in matchingCalls)
+            assertFalse(ARCHIVE_URL in matchingCalls)
         }
 
     /**
@@ -3513,6 +3580,22 @@ class BundleFileStorageServiceTest {
                 .getInstance("SHA-256")
                 .digest(packaged.toByteArray())
                 .joinToString("") { "%02x".format(it) }
+        }
+    }
+
+    /** Packaged files that are the base of every patch made from [baseFileHash], and of nothing else. */
+    private class PatchBaseBuiltInAssetResolver(
+        private val baseFileHash: String,
+    ) : BuiltInAssetResolver {
+        override fun copyIfMatches(
+            assetPath: String,
+            expectedHash: String,
+            destination: File,
+        ): Boolean {
+            if (expectedHash != baseFileHash) return false
+            destination.parentFile?.mkdirs()
+            destination.writeText("packaged $assetPath")
+            return true
         }
     }
 

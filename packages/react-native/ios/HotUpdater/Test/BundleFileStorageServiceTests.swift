@@ -2613,7 +2613,10 @@ struct BundleFileStorageServiceTests {
             bundleURL: files["index.ios.bundle"]!,
             imageURL: files["assets/image.png"]!,
         ])
-        let service = makeStorageService(documentsDirectory: root, downloadService: downloads)
+        // The packaged file is the patch's base.
+        let packagedBase = Data("packaged base".utf8)
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: ["index.ios.bundle": packagedBase]))
         let result = updateBundle(
             service,
             bundleId: "target",
@@ -2628,7 +2631,7 @@ struct BundleFileStorageServiceTests {
                     patch: BsdiffPatchDescriptor(
                         algorithm: "bsdiff",
                         baseBundleId: "builtin-bundle",
-                        baseFileHash: String(repeating: "0", count: 64),
+                        baseFileHash: try #require(sha256(packagedBase, in: root)),
                         patchFileHash: String(repeating: "1", count: 64),
                         patchUrl: URL(string: "https://example.com/index.ios.bundle.patch")!,
                         byteSize: patchByteSize
@@ -2642,7 +2645,12 @@ struct BundleFileStorageServiceTests {
         )
         if case .failure(let error) = result { Issue.record("per-file install failed: \(error)") }
         #expect(downloads.requestedURLs.contains(archiveURL) == false)
-        #expect(Set(downloads.requestedURLs.dropFirst()) == Set([bundleURL, imageURL]))
+        // The patch is tried, and its file comes when the patch cannot.
+        #expect(Set(downloads.requestedURLs.dropFirst()) == Set([
+            bundleURL,
+            imageURL,
+            URL(string: "https://example.com/index.ios.bundle.patch")!,
+        ]))
     }
 
     @Test
@@ -3152,6 +3160,65 @@ struct BundleFileStorageServiceTests {
 
         #expect((try? result.get()) == UpdateDelivery(method: .archive, patchFallback: false))
         #expect(downloads.requestedURLs == [manifestURL, archiveURL])
+    }
+
+    @Test(arguments: [false, true])
+    func theArchiveChoicePricesABuiltInPatchOnlyWhenThePackagedFileIsItsBase(packagedIsBase: Bool) throws {
+        let root = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(root) }
+        let files = [
+            "index.ios.bundle": Data("original one".utf8),
+            "assets/image.png": Data("original two".utf8),
+        ]
+        let tar = try makeTar(files: files)
+        let archive = try brotliCompress(tar)
+        let manifest = try makeArchiveManifestData(
+            bundleId: "target",
+            files: files,
+            archiveHash: try #require(sha256(archive, in: root)),
+            archiveByteSize: archive.count,
+            tarByteSize: tar.count,
+            originalDownloadByteSize: 1
+        )
+        let manifestURL = URL(string: "https://example.com/manifest.json")!
+        let archiveURL = URL(string: "https://example.com/bundle.tar.br")!
+        let fileURLs = Dictionary(uniqueKeysWithValues: files.keys.map {
+            ($0, URL(string: "https://example.com/files/\($0)")!)
+        })
+        var responses = [manifestURL: manifest, archiveURL: archive]
+        for (path, data) in files { responses[fileURLs[path]!] = data }
+        let downloads = MappingDownloadService(contents: responses)
+        let baseBytes = Data("console.log(\"base bundle\");\n".utf8)
+        // Store processing may have rewritten the packaged file.
+        let packaged = packagedIsBase ? baseBytes : Data("console.log(\"store-processed\");\n".utf8)
+        let service = makeStorageService(documentsDirectory: root, downloadService: downloads,
+            builtInAssetResolver: MappingBuiltInAssetResolver(contents: ["index.ios.bundle": packaged]),
+            builtInBundleId: builtInPatchBaseBundleId)
+        let result = updateBundle(service, bundleId: "target", manifestURL: manifestURL,
+            manifestHash: try #require(sha256(manifest, in: root)), archiveURL: archiveURL,
+            assets: Dictionary(uniqueKeysWithValues: try files.map { path, data in
+                (path, ChangedAssetDescriptor(
+                    fileUrl: fileURLs[path]!,
+                    fileHash: try #require(sha256(data, in: root)),
+                    patch: path == "index.ios.bundle"
+                        ? BsdiffPatchDescriptor(algorithm: "bsdiff", baseBundleId: builtInPatchBaseBundleId,
+                            baseFileHash: try #require(sha256(baseBytes, in: root)),
+                            patchFileHash: String(repeating: "1", count: 64),
+                            patchUrl: URL(string: "https://example.com/index.ios.bundle.bsdiff")!,
+                            byteSize: 1)
+                        : nil
+                ))
+            }))
+
+        #expect(result.failureError == nil)
+        if packagedIsBase {
+            // The tiny patch wins over the archive.
+            #expect(downloads.requestedURLs.contains(archiveURL) == false)
+        } else {
+            // The patch would fall back to the whole file: the archive is cheaper.
+            #expect((try? result.get()) == UpdateDelivery(method: .archive, patchFallback: false))
+            #expect(downloads.requestedURLs == [manifestURL, archiveURL])
+        }
     }
 
     @Test
