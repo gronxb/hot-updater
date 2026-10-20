@@ -94,6 +94,9 @@ export function SecretDialog({
         {open ? (
           <SecretForm
             existingNames={existingNames}
+            // A secret removed and stored again under its name, as another
+            // kind, starts a new form for its fields.
+            key={secret === undefined ? "new" : `${secret.id}:${secret.kind}`}
             onDone={() => onOpenChange(false)}
             secret={secret}
           />

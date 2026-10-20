@@ -537,6 +537,17 @@ describe("SecretsCard", () => {
       />,
     );
     expect(screen.getByText(/Saves version 6/)).toBeDefined();
+    // Someone stored it again as another kind: the form follows the kind.
+    rerender(
+      <SecretsCard
+        secrets={loaded([
+          { ...keystore, kind: "generic", version: 6, metadata: {} },
+        ])}
+        status={unlocked}
+      />,
+    );
+    expect(screen.getByText("Variables")).toBeDefined();
+    expect(screen.queryByLabelText("Keystore file")).toBeNull();
     // Someone deleted it: the dialog closes.
     rerender(<SecretsCard secrets={loaded([])} status={unlocked} />);
     expect(screen.queryByRole("dialog")).toBeNull();
