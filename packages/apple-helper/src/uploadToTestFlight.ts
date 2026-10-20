@@ -1,0 +1,526 @@
+import crypto from "crypto";
+import fs from "fs";
+import path from "path";
+
+import {
+  type CredentialRequest,
+  type Credentials,
+  p,
+  parseVaultReference,
+  registerSecretValue,
+} from "@hot-updater/cli-tools";
+import { execa } from "execa";
+
+import type { EnrichedNativeBuildIosScheme } from "./utils/enrichNativeBuildIosScheme";
+import { readIpaInfo } from "./utils/readIpaInfo";
+
+const API_URL = "https://api.appstoreconnect.apple.com";
+
+/** Apple accepts tokens that expire within 20 minutes. */
+const TOKEN_LIFETIME_SECONDS = 20 * 60;
+/** A token is replaced well before it expires, so no request carries a stale one. */
+const TOKEN_REUSE_SECONDS = 10 * 60;
+
+/** The parts of an `.ipa` sent at once. */
+const UPLOAD_CONCURRENCY = 4;
+/** Attempts per part: a part is a plain PUT, safe to repeat. */
+const UPLOAD_ATTEMPTS = 3;
+
+const IN_PROGRESS_STATES = new Set(["AWAITING_UPLOAD", "PROCESSING"]);
+
+/** The error App Store Connect answers with when a build number is taken. */
+const DUPLICATE_ERROR_CODE = "ENTITY_ERROR.ATTRIBUTE.INVALID.DUPLICATE";
+
+type AppStoreConnectApiKey = Credentials["asc-api-key"];
+
+interface ApiError {
+  readonly status?: string;
+  readonly code?: string;
+  readonly title?: string;
+  readonly detail?: string;
+}
+
+interface StateDetail {
+  readonly code?: string;
+  readonly description?: string;
+}
+
+interface UploadOperation {
+  readonly method: string;
+  readonly url: string;
+  readonly offset: number;
+  readonly length: number;
+  readonly requestHeaders?: readonly { name: string; value: string }[];
+}
+
+interface BuildUploadState {
+  readonly state?: string;
+  readonly errors?: readonly StateDetail[];
+  readonly warnings?: readonly StateDetail[];
+  readonly infos?: readonly StateDetail[];
+}
+
+/** An App Store Connect API request that failed, with the errors it answered. */
+export class AppStoreConnectError extends Error {
+  readonly status: number;
+  readonly errors: readonly ApiError[];
+
+  constructor(action: string, status: number, errors: readonly ApiError[]) {
+    const details = errors
+      .map((error) => error.detail ?? error.title ?? error.code)
+      .filter(Boolean);
+    super(
+      `${action} failed (HTTP ${status})${details.length > 0 ? `: ${details.join(" ")}` : "."}`,
+    );
+    this.name = "AppStoreConnectError";
+    this.status = status;
+    this.errors = errors;
+  }
+}
+
+/**
+ * An App Store Connect API token: an ES256 JWT, whose signature JWS encodes
+ * as the raw 64-byte r || s, not the DER Node signs by default.
+ */
+export const createAppStoreConnectToken = ({
+  privateKey,
+  keyId,
+  issuerId,
+  issuedAtSeconds = Math.floor(Date.now() / 1000),
+}: {
+  privateKey: crypto.KeyObject;
+  keyId: string;
+  issuerId: string;
+  issuedAtSeconds?: number;
+}): string => {
+  const encode = (value: object) =>
+    Buffer.from(JSON.stringify(value)).toString("base64url");
+  const signingInput = `${encode({ alg: "ES256", kid: keyId, typ: "JWT" })}.${encode(
+    {
+      iss: issuerId,
+      iat: issuedAtSeconds,
+      exp: issuedAtSeconds + TOKEN_LIFETIME_SECONDS,
+      aud: "appstoreconnect-v1",
+    },
+  )}`;
+  const signature = crypto.sign("sha256", Buffer.from(signingInput), {
+    key: privateKey,
+    dsaEncoding: "ieee-p1363",
+  });
+  return `${signingInput}.${signature.toString("base64url")}`;
+};
+
+const readPrivateKey = async (keyPath: string) => {
+  try {
+    return crypto.createPrivateKey(
+      await fs.promises.readFile(keyPath, "utf-8"),
+    );
+  } catch {
+    // The key's contents are not echoed.
+    throw new Error("The App Store Connect API key is not a .p8 private key.");
+  }
+};
+
+const readApiErrors = async (response: Response): Promise<ApiError[]> => {
+  const body = (await response.json().catch(() => undefined)) as
+    | { errors?: unknown }
+    | undefined;
+  return Array.isArray(body?.errors) ? (body.errors as ApiError[]) : [];
+};
+
+const describeDetails = (details: readonly StateDetail[]) =>
+  details.map(
+    (detail) =>
+      `${detail.description ?? "(no description)"}${detail.code ? ` (${detail.code})` : ""}`,
+  );
+
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/** Runs `run` over `items`, at most `concurrency` at a time. */
+const runConcurrently = async <T>(
+  items: readonly T[],
+  concurrency: number,
+  run: (item: T, index: number) => Promise<void>,
+) => {
+  let next = 0;
+  await Promise.all(
+    Array.from({ length: Math.min(concurrency, items.length) }, async () => {
+      while (next < items.length) {
+        const index = next++;
+        await run(items[index]!, index);
+      }
+    }),
+  );
+};
+
+/** The export methods whose `.ipa` App Store Connect accepts. */
+const APP_STORE_EXPORT_METHODS = new Set(["app-store", "app-store-connect"]);
+
+/**
+ * The App Store Connect API key a scheme's `.ipa` uploads with: the
+ * `signing.ascApiKey` it signs with, or else the `asc-api-key` item. Throws
+ * for a scheme whose build App Store Connect would not take: a simulator
+ * `.app`, an `.xcarchive` it cannot export, a Debug configuration, which
+ * loads its JavaScript from Metro, or export options of another method.
+ */
+export const resolveTestFlightUploadKey = async (
+  schemeConfig: EnrichedNativeBuildIosScheme,
+): Promise<CredentialRequest<"asc-api-key">> => {
+  const scheme = schemeConfig.hotUpdaterSchemeName;
+  if (schemeConfig.simulator) {
+    throw new Error(
+      `TestFlight takes an .ipa, and the scheme ${scheme} builds a simulator .app.`,
+    );
+  }
+  if (/debug$/i.test(schemeConfig.configuration)) {
+    throw new Error(
+      `TestFlight takes a release build, and the scheme ${scheme} builds the ${schemeConfig.configuration} configuration, which loads its JavaScript from Metro.`,
+    );
+  }
+  if (schemeConfig.exportOptionsPlist) {
+    const { stdout, exitCode } = await execa(
+      "plutil",
+      ["-extract", "method", "raw", "-o", "-", schemeConfig.exportOptionsPlist],
+      { reject: false },
+    );
+    const method = exitCode === 0 ? stdout.trim() : "";
+    if (!APP_STORE_EXPORT_METHODS.has(method)) {
+      throw new Error(
+        `TestFlight takes an .ipa exported for App Store Connect, and the scheme ${scheme}'s exportOptionsPlist exports with the method ${method || "(none)"}. Set its method to app-store-connect.`,
+      );
+    }
+  } else if (!schemeConfig.signing) {
+    throw new Error(
+      `The scheme ${scheme} archives without exporting an .ipa. Set signing.ascApiKey, or an exportOptionsPlist with the method app-store-connect.`,
+    );
+  }
+  return {
+    kind: "asc-api-key",
+    name: schemeConfig.signing
+      ? parseVaultReference(schemeConfig.signing.ascApiKey, "signing.ascApiKey")
+      : "asc-api-key",
+  };
+};
+
+export interface UploadToTestFlightResult {
+  /** The App Store Connect app the build went to. */
+  appId: string;
+  buildUploadId: string;
+  /**
+   * `COMPLETE` once App Store Connect accepted the build, or `PROCESSING`
+   * when it was still processing it after `processingTimeoutMs`.
+   */
+  state: "COMPLETE" | "PROCESSING";
+  /** The app's TestFlight page, where the build appears once processed. */
+  testFlightUrl: string;
+}
+
+/**
+ * Uploads an `.ipa` to App Store Connect, which lists it in TestFlight, with
+ * the App Store Connect API's build uploads: it finds the app by the
+ * `.ipa`'s bundle ID, reserves the build's version and build number, sends
+ * the file in the parts App Store Connect asks for, commits it, and waits
+ * for App Store Connect to accept or reject the build.
+ */
+export const uploadToTestFlight = async ({
+  ipaPath,
+  apiKey,
+  fetch = globalThis.fetch,
+  pollIntervalMs = 5_000,
+  processingTimeoutMs = 30 * 60_000,
+}: {
+  ipaPath: string;
+  apiKey: AppStoreConnectApiKey;
+  fetch?: typeof globalThis.fetch;
+  /** How often to check whether App Store Connect accepted the build. */
+  pollIntervalMs?: number;
+  /** How long to wait for App Store Connect to accept the build. */
+  processingTimeoutMs?: number;
+}): Promise<UploadToTestFlightResult> => {
+  const ipaName = path.basename(ipaPath);
+  const [info, privateKey, { size: fileSize }] = await Promise.all([
+    readIpaInfo(ipaPath),
+    readPrivateKey(apiKey.keyPath),
+    fs.promises.stat(ipaPath),
+  ]);
+
+  let token: { value: string; issuedAtSeconds: number } | undefined;
+  const authorization = () => {
+    const now = Math.floor(Date.now() / 1000);
+    if (!token || now - token.issuedAtSeconds >= TOKEN_REUSE_SECONDS) {
+      token = {
+        value: createAppStoreConnectToken({
+          privateKey,
+          keyId: apiKey.keyId,
+          issuerId: apiKey.issuerId,
+          issuedAtSeconds: now,
+        }),
+        issuedAtSeconds: now,
+      };
+      registerSecretValue(token.value);
+    }
+    return `Bearer ${token.value}`;
+  };
+
+  const request = async <T>(
+    action: string,
+    method: string,
+    pathname: string,
+    body?: object,
+  ): Promise<T> => {
+    const response = await fetch(`${API_URL}${pathname}`, {
+      method,
+      headers: {
+        Authorization: authorization(),
+        ...(body ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    if (!response.ok) {
+      const error = new AppStoreConnectError(
+        action,
+        response.status,
+        await readApiErrors(response),
+      );
+      if (response.status === 401) {
+        throw new Error(
+          "App Store Connect refused the API key: check its key ID and issuer ID, and that the key is not revoked.",
+          { cause: error },
+        );
+      }
+      if (response.status === 403) {
+        throw new Error(
+          `${error.message} An API key with the Admin, App Manager, or Developer role uploads builds.`,
+          { cause: error },
+        );
+      }
+      throw error;
+    }
+    return (response.status === 204 ? undefined : await response.json()) as T;
+  };
+
+  const { data: apps } = await request<{
+    data: { id: string; attributes?: { bundleId?: string } }[];
+  }>(
+    "Finding the App Store Connect app",
+    "GET",
+    `/v1/apps?${new URLSearchParams({
+      "filter[bundleId]": info.bundleId,
+      "fields[apps]": "bundleId",
+    })}`,
+  );
+  const app = apps.find((app) => app.attributes?.bundleId === info.bundleId);
+  if (!app) {
+    throw new Error(
+      `App Store Connect has no app with the bundle ID ${info.bundleId} that this API key can see. Create the app in App Store Connect, or use a key of its team.`,
+    );
+  }
+  const testFlightUrl = `https://appstoreconnect.apple.com/apps/${app.id}/testflight/ios`;
+
+  let buildUploadId: string;
+  try {
+    ({
+      data: { id: buildUploadId },
+    } = await request<{ data: { id: string } }>(
+      "Creating the build upload",
+      "POST",
+      "/v1/buildUploads",
+      {
+        data: {
+          type: "buildUploads",
+          attributes: {
+            platform: "IOS",
+            cfBundleShortVersionString: info.shortVersion,
+            cfBundleVersion: info.bundleVersion,
+          },
+          relationships: { app: { data: { type: "apps", id: app.id } } },
+        },
+      },
+    ));
+  } catch (error) {
+    if (
+      error instanceof AppStoreConnectError &&
+      error.status === 409 &&
+      error.errors.some((apiError) => apiError.code === DUPLICATE_ERROR_CODE)
+    ) {
+      throw new Error(
+        `App Store Connect already has build ${info.bundleVersion} of version ${info.shortVersion}. Each build of a version needs a new build number (CFBundleVersion).`,
+        { cause: error },
+      );
+    }
+    throw error;
+  }
+
+  p.log.info(
+    `Uploading ${ipaName} (version ${info.shortVersion}, build ${info.bundleVersion}) to App Store Connect`,
+  );
+  try {
+    const {
+      data: { id: fileId, attributes },
+    } = await request<{
+      data: {
+        id: string;
+        attributes?: { uploadOperations?: UploadOperation[] };
+      };
+    }>("Reserving the .ipa upload", "POST", "/v1/buildUploadFiles", {
+      data: {
+        type: "buildUploadFiles",
+        attributes: {
+          assetType: "ASSET",
+          fileName: ipaName,
+          fileSize,
+          uti: "com.apple.ipa",
+        },
+        relationships: {
+          buildUpload: { data: { type: "buildUploads", id: buildUploadId } },
+        },
+      },
+    });
+    const operations = attributes?.uploadOperations ?? [];
+    if (operations.length === 0) {
+      throw new Error("App Store Connect returned no upload operations.");
+    }
+
+    await uploadParts({ ipaPath, operations, fetch });
+
+    await request(
+      "Committing the .ipa upload",
+      "PATCH",
+      `/v1/buildUploadFiles/${fileId}`,
+      {
+        data: {
+          type: "buildUploadFiles",
+          id: fileId,
+          attributes: { uploaded: true },
+        },
+      },
+    );
+  } catch (error) {
+    // An unfinished upload would keep the build number reserved.
+    await request(
+      "Removing the build upload",
+      "DELETE",
+      `/v1/buildUploads/${buildUploadId}`,
+    ).catch(() => undefined);
+    throw error;
+  }
+
+  const deadline = Date.now() + processingTimeoutMs;
+  for (;;) {
+    // The build is uploaded: a failed read is retried until the deadline.
+    const read = await request<{
+      data: { attributes?: { state?: BuildUploadState } };
+    }>(
+      "Reading the build upload",
+      "GET",
+      `/v1/buildUploads/${buildUploadId}`,
+    ).catch((error: unknown) => {
+      if (
+        error instanceof AppStoreConnectError &&
+        error.status < 500 &&
+        error.status !== 429
+      ) {
+        throw error;
+      }
+      return undefined;
+    });
+    const state = read ? (read.data.attributes?.state ?? {}) : {};
+    if (!state.state || IN_PROGRESS_STATES.has(state.state)) {
+      if (Date.now() >= deadline) {
+        p.log.warn(
+          `App Store Connect is still processing build ${info.bundleVersion}. It appears in TestFlight once processing finishes: ${testFlightUrl}`,
+        );
+        return {
+          appId: app.id,
+          buildUploadId,
+          state: "PROCESSING",
+          testFlightUrl,
+        };
+      }
+      await sleep(pollIntervalMs);
+      continue;
+    }
+
+    for (const warning of describeDetails(state.warnings ?? [])) {
+      p.log.warn(warning);
+    }
+    if (state.state !== "COMPLETE") {
+      const errors = describeDetails(state.errors ?? []);
+      throw new Error(
+        [
+          `App Store Connect rejected build ${info.bundleVersion} of version ${info.shortVersion} (${state.state}).`,
+          ...errors.map((error) => `- ${error}`),
+        ].join("\n"),
+      );
+    }
+    return { appId: app.id, buildUploadId, state: "COMPLETE", testFlightUrl };
+  }
+};
+
+/**
+ * Sends each part App Store Connect asked for: the bytes at its offset, with
+ * only the headers it lists, since the URLs are presigned and take no
+ * App Store Connect token.
+ */
+const uploadParts = async ({
+  ipaPath,
+  operations,
+  fetch,
+}: {
+  ipaPath: string;
+  operations: readonly UploadOperation[];
+  fetch: typeof globalThis.fetch;
+}) => {
+  const file = await fs.promises.open(ipaPath, "r");
+  try {
+    await runConcurrently(
+      operations,
+      UPLOAD_CONCURRENCY,
+      async (operation, index) => {
+        const body = Buffer.alloc(operation.length);
+        const { bytesRead } = await file.read(
+          body,
+          0,
+          operation.length,
+          operation.offset,
+        );
+        if (bytesRead !== operation.length) {
+          throw new Error(
+            `${path.basename(ipaPath)} changed while it was uploading.`,
+          );
+        }
+        const headers: Record<string, string> = {
+          "Content-Type": "application/octet-stream",
+        };
+        for (const { name, value } of operation.requestHeaders ?? []) {
+          headers[name] = value;
+        }
+
+        for (let attempt = 1; ; attempt++) {
+          const response = await fetch(operation.url, {
+            method: operation.method,
+            headers,
+            body,
+          }).catch((error: unknown) => error as Error);
+          if (!(response instanceof Error) && response.ok) {
+            return;
+          }
+          const retryable = response instanceof Error || response.status >= 500;
+          if (!retryable || attempt === UPLOAD_ATTEMPTS) {
+            throw new Error(
+              `Uploading part ${index + 1} of ${operations.length} failed: ${
+                response instanceof Error
+                  ? response.message
+                  : `HTTP ${response.status}`
+              }.`,
+            );
+          }
+          await sleep(1_000 * attempt);
+        }
+      },
+    );
+  } finally {
+    await file.close();
+  }
+};

@@ -199,6 +199,45 @@ Every official storage adapter streams the artifact to storage except
 Supabase project's Storage upload file size limit, 50 MB on the Free plan,
 caps the artifact size.
 
+## Upload to TestFlight
+
+Add `--upload testflight` to upload the `.ipa` to App Store Connect, which
+lists it in TestFlight:
+
+```package-install
+npx hot-updater build:ios --scheme release --upload testflight
+```
+
+The upload authenticates with an App Store Connect API key: the scheme's
+`signing.ascApiKey`, or else the vault's `asc-api-key` secret. The
+`HOT_UPDATER_ASC_KEY*` environment variables in
+[Provide signing credentials](#provide-signing-credentials) override it. The
+CLI resolves the key before the build starts, so a missing key fails before
+the build does, and deletes the key's temporary file when the upload ends.
+Certificates and provisioning profiles stay with the build's signing.
+
+Before it builds, the CLI refuses a scheme whose build App Store Connect
+would not take: a simulator scheme, a configuration whose name ends in
+`Debug`, an `exportOptionsPlist` whose `method` is not `app-store-connect`
+(or `app-store`), and a scheme with neither `signing.ascApiKey` nor an
+`exportOptionsPlist`, which only archives.
+
+After the build, and after `--register` when you pass both, the CLI:
+
+1. Reads the bundle ID, version (`CFBundleShortVersionString`) and build
+   number (`CFBundleVersion`) from the `.ipa`'s `Info.plist`.
+2. Finds the App Store Connect app with that bundle ID. Create the app in
+   App Store Connect first; the key must belong to its team.
+3. Uploads the `.ipa` with the App Store Connect API's build uploads.
+4. Waits up to 30 minutes for App Store Connect to accept the build, and
+   prints the warnings and errors it reports.
+
+App Store Connect takes each build number once per version: raise
+`CFBundleVersion` for every build you upload. When an upload fails, the build
+stays at its output path. A build that App Store Connect is still processing
+after 30 minutes appears in TestFlight once processing finishes, at the URL
+the CLI prints.
+
 ## Run on a device
 
 ```package-install
@@ -223,5 +262,6 @@ device build signs with the scheme's `signing.ascApiKey` when it sets one.
 | `-i, --interactive`       | all                 | Choose the scheme, and with `run:*` the device  |
 | `-o, --output-path <dir>` | `build:*`           | Where to copy the build output                  |
 | `--register`              | `build:*`           | Register the release build, its artifact and built-in bundle |
+| `--upload testflight`     | `build:ios`         | Upload the `.ipa` to App Store Connect for TestFlight |
 | `-d, --device [device]`   | `run:*`             | The device name or ID to run on                 |
 | `--port <port>`           | `run:android`       | The Metro port the device reaches with `adb reverse` |

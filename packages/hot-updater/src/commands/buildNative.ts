@@ -1,6 +1,11 @@
 import { buildAndroid } from "@hot-updater/android-helper";
-import { buildIos } from "@hot-updater/apple-helper";
 import {
+  buildIos,
+  resolveTestFlightUploadKey,
+  uploadToTestFlight,
+} from "@hot-updater/apple-helper";
+import {
+  type CredentialRequest,
   createMinBundleId,
   CredentialUnavailableError,
   p,
@@ -20,11 +25,17 @@ import { getChannel } from "@/utils/setChannel";
 
 import { ui } from "../utils/cli-ui";
 
-/** `build:android` and `build:ios`: `register` also registers the build. */
-export type BuildNativeOptions = NativeBuildOptions & { register?: boolean };
+/**
+ * `build:android` and `build:ios`: `register` also registers the build, and
+ * `upload` uploads it to a store.
+ */
+export type BuildNativeOptions = NativeBuildOptions & {
+  register?: boolean;
+  upload?: "testflight";
+};
 
 const buildNativeInternal = async ({
-  options: { register = false, ...options },
+  options: { register = false, upload, ...options },
   platform,
 }: {
   options: BuildNativeOptions;
@@ -52,6 +63,14 @@ const buildNativeInternal = async ({
   const platformName = platform === "android" ? "Android" : "iOS";
 
   try {
+    // A scheme the store would refuse fails before it builds.
+    let testFlightKey: CredentialRequest<"asc-api-key"> | undefined;
+    if (upload === "testflight") {
+      testFlightKey = await reportUploadFailure(() =>
+        resolveTestFlightUploadKey(iosSchemeConfig!),
+      );
+    }
+
     const minBundleId = createMinBundleId(platform);
 
     p.log.info(
@@ -63,8 +82,12 @@ const buildNativeInternal = async ({
     );
     // Signing credentials are resolved only by a build that signs with
     // them, and their temporary files are deleted once it finishes.
-    const result = await withCredentialResolver((credentials) =>
-      createNativeBuild({
+    return await withCredentialResolver(async (credentials) => {
+      // The upload key is resolved before the build, so a missing one fails
+      // before the build starts. The scheme's signing key is the same item.
+      const ascApiKey =
+        testFlightKey && (await credentials.resolve(testFlightKey));
+      const result = await createNativeBuild({
         platform,
         scheme,
         minBundleId,
@@ -95,20 +118,39 @@ const buildNativeInternal = async ({
                   minBundleId,
                   credentials,
                 }),
-      }),
-    );
-    p.log.success(
-      [
-        ui.line([
-          "Built",
-          ui.platform(platformName),
-          ui.muted(buildAdapter.name),
-        ]),
-        summarizeNativeBuild(result),
-      ].join("\n"),
-    );
-    if (register) await registerNativeBuild(result);
-    return result;
+      });
+      p.log.success(
+        [
+          ui.line([
+            "Built",
+            ui.platform(platformName),
+            ui.muted(buildAdapter.name),
+          ]),
+          summarizeNativeBuild(result),
+        ].join("\n"),
+      );
+      if (register) await registerNativeBuild(result);
+      if (ascApiKey) {
+        const { state, testFlightUrl } = await reportUploadFailure(
+          () =>
+            uploadToTestFlight({
+              ipaPath: result.artifactPath,
+              apiKey: ascApiKey,
+            }),
+          `The build stays at ${result.artifactPath}.`,
+        );
+        if (state === "COMPLETE") {
+          p.log.success(
+            ui.line([
+              "Uploaded to",
+              ui.platform("TestFlight"),
+              ui.path(testFlightUrl),
+            ]),
+          );
+        }
+      }
+      return result;
+    });
   } catch (e) {
     return catchError(e);
   }
@@ -131,6 +173,26 @@ const summarizeNativeBuild = (result: NativeBuildResult): string => {
         `    ${ui.muted(`${label}:`.padEnd(labelWidth))} ${value}`,
     )
     .join("\n");
+};
+
+/**
+ * Runs a store upload step, reporting its failure by its message, which
+ * names what the store refused, and exiting.
+ */
+const reportUploadFailure = async <T>(
+  run: () => Promise<T>,
+  note?: string,
+): Promise<T> => {
+  try {
+    return await run();
+  } catch (e) {
+    p.log.error(
+      [e instanceof Error ? e.message : String(e), note]
+        .filter(Boolean)
+        .join("\n"),
+    );
+    process.exit(1);
+  }
 };
 
 const catchError = (e: unknown): never => {
