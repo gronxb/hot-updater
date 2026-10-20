@@ -164,7 +164,8 @@ const channels = defineTable(
  * in each scope: a platform, a channel, and the fingerprint or app version
  * the build compiled in. `min_bundle_id` names the build's built-in bundle,
  * a `bundles` row no release publishes. Its references keep no counters, so
- * adding this table changes no existing one.
+ * adding this table changes no existing one; a channel with builds is
+ * refused deletion through `byChannel`.
  */
 const nativeBuilds = defineTable(
   {
@@ -193,6 +194,13 @@ const nativeBuilds = defineTable(
     key: ["id"],
     indexes: {
       byScope: { eq: ["scope_key"], sort: ["id"] },
+      // Rooted at the channel, so deleting a channel reads its builds under
+      // the channel row a registration bumps.
+      byChannel: {
+        eq: ["channel_id"],
+        sort: ["id"],
+        root: { model: "channels" },
+      },
       all: { eq: [], sort: ["id"] },
     },
   },

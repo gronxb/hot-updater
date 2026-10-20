@@ -1,5 +1,6 @@
 import {
   createMemoryAdapter,
+  type DatabaseAdapter,
   DatabaseConstraintError,
   DatabaseRowReferencedError,
   type NativeBuildRegistration,
@@ -265,6 +266,60 @@ describe("the native build registry", () => {
     await expect(
       core.listReleases({ filter: { kind: "all" }, limit: 10 }),
     ).resolves.toEqual([]);
+  });
+
+  it("keeps a channel its native builds use from deletion", async () => {
+    const core = setup();
+    await core.registerNativeBuild(registration(1, { channel: "beta" }));
+    const beta = await core.findChannelByName("beta");
+
+    await expect(core.deleteChannel(beta!.id)).resolves.toEqual({
+      deleted: false,
+      reason: "not_empty",
+    });
+    const unused = await core.ensureChannel("unused");
+    await expect(core.deleteChannel(unused.id)).resolves.toEqual({
+      deleted: true,
+    });
+  });
+
+  it("ensures the channel again when it is deleted between ensuring it and the registration", async () => {
+    const memory = createMemoryAdapter();
+    const direct = createInProcessCoreApi(memory);
+    let raced = false;
+    const adapter: DatabaseAdapter = {
+      ...memory,
+      write: async (ops) => {
+        if (
+          !raced &&
+          ops.some(
+            (op) => op.type === "insert" && op.table.name === "native_builds",
+          )
+        ) {
+          raced = true;
+          const channel = await direct.findChannelByName("production");
+          await direct.deleteChannel(channel!.id);
+        }
+        return memory.write(ops);
+      },
+    };
+    const core = createInProcessCoreApi(adapter);
+
+    const build = await core.registerNativeBuild(registration(1));
+
+    expect(raced).toBe(true);
+    await expect(core.findChannelByName("production")).resolves.toEqual({
+      id: build.channel_id,
+      name: "production",
+    });
+    await expect(
+      core.findNativeBuild({
+        platform: "ios",
+        channel: "production",
+        fingerprintHash: "fingerprint-a",
+        appVersion: null,
+      }),
+    ).resolves.toEqual(build);
   });
 
   it("lists builds by ID, a page at a time", async () => {

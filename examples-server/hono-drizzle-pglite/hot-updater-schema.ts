@@ -125,6 +125,7 @@ export const native_builds = pgTable("native_builds", {
 }, (table) => [
   primaryKey({ columns: [table["id"]] }),
   index("native_builds_byScope").on(table["scope_key"], table["id"]),
+  index("native_builds_byChannel").on(table["channel_id"], table["id"]),
   uniqueIndex("native_builds_min_bundle_id").on(table["min_bundle_id"]),
 ]);
 

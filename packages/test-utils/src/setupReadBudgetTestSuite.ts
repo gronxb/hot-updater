@@ -845,10 +845,12 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     writes: 1,
   }),
   budget({
-    api: "channel delete: 1 read and 1 write",
+    api: "channel delete: the channel, its native builds under it, and 1 write",
+    // The channel, then again as the root of its native build range, which
+    // is empty.
     read: ({ core, nightlyId }) => core.deleteChannel(nightlyId),
-    adapter: reads(1, 1, 0, 0),
-    engine: { calls: 1, rows: 1 },
+    adapter: reads(2, 2, 1, 0),
+    engine: { calls: 3, rows: 2 },
     writes: 1,
     check: (result) => expect(result).toEqual({ deleted: true }),
   }),

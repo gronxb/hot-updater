@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS "hot_updater_v1_native_builds" ("id" varchar(36) COLL
 
 CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byScope" ON "hot_updater_v1_native_builds" ("scope_key", "id");
 
+CREATE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_byChannel" ON "hot_updater_v1_native_builds" ("channel_id", "id");
+
 CREATE UNIQUE INDEX IF NOT EXISTS "hot_updater_v1_native_builds_min_bundle_id" ON "hot_updater_v1_native_builds" ("min_bundle_id");
 
 CREATE TABLE IF NOT EXISTS "hot_updater_v1_vault_secrets" ("id" varchar(64) COLLATE "C" NOT NULL, "name" varchar(64) COLLATE "C" NOT NULL, "kind" varchar(32) COLLATE "C" NOT NULL, "current_version" bigint NOT NULL, "metadata" jsonb NOT NULL, "created_at_ms" bigint NOT NULL, "updated_at_ms" bigint NOT NULL, "deleted_at_ms" bigint, "_v" bigint NOT NULL DEFAULT 0, PRIMARY KEY ("id"));

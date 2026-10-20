@@ -4,6 +4,8 @@ CREATE TABLE IF NOT EXISTS "native_builds" ("id" TEXT NOT NULL, "scope_key" TEXT
 
 CREATE INDEX IF NOT EXISTS "native_builds_byScope" ON "native_builds" ("scope_key", "id");
 
+CREATE INDEX IF NOT EXISTS "native_builds_byChannel" ON "native_builds" ("channel_id", "id");
+
 CREATE UNIQUE INDEX IF NOT EXISTS "native_builds_min_bundle_id" ON "native_builds" ("min_bundle_id");
 
 CREATE TABLE IF NOT EXISTS "vault_secrets" ("id" TEXT NOT NULL, "name" TEXT NOT NULL, "kind" TEXT NOT NULL, "current_version" INTEGER NOT NULL, "metadata" TEXT NOT NULL, "created_at_ms" INTEGER NOT NULL, "updated_at_ms" INTEGER NOT NULL, "deleted_at_ms" INTEGER, "_v" INTEGER NOT NULL DEFAULT 0, PRIMARY KEY ("id"));

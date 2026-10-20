@@ -128,6 +128,7 @@ model native_builds {
   hu_v BigInt @default(0) @map("_v")
   @@id([id])
   @@index([scope_key, id], map: "native_builds_byScope")
+  @@index([channel_id, id], map: "native_builds_byChannel")
   @@unique([min_bundle_id], map: "native_builds_min_bundle_id")
 }
 model bundle_events {

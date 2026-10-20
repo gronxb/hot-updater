@@ -145,7 +145,7 @@ export const insertChannel = async (
   }
 };
 
-/** Deletes a channel no release uses: 1 read + 1 write. */
+/** Deletes a channel no release or native build uses: 1 read, 1 query, 1 write. */
 export const deleteChannel = (
   db: CoreDatabase,
   id: string,
@@ -156,6 +156,13 @@ export const deleteChannel = (
     if ((row._refs_releases_channel_id ?? 0) > 0) {
       return { deleted: false, reason: "not_empty" };
     }
+    // Native builds keep no counter on their channel: one indexed read.
+    const { rows: builds } = await tx.findMany("native_builds", {
+      index: "byChannel",
+      where: { channel_id: id },
+      limit: 1,
+    });
+    if (builds.length > 0) return { deleted: false, reason: "not_empty" };
     await tx.delete("channels", row);
     return { deleted: true };
   });

@@ -133,18 +133,13 @@ export const createNativeBuildApi = (
     }
     // The scope key checks the channel before it names a channel row.
     const scopeKey = nativeBuildScopeKey(registration);
-    const channel = (
-      await insertChannel(db, {
-        id: `channel:${encodeChannelKey(registration.channel)}`,
-        name: registration.channel,
-      })
-    ).row;
+    const channelId = `channel:${encodeChannelKey(registration.channel)}`;
     const { embeddedBundle } = registration;
     const row: NativeBuildRow = {
       id: registration.id,
       scope_key: scopeKey,
       platform: registration.platform,
-      channel_id: channel.id,
+      channel_id: channelId,
       fingerprint_hash: registration.fingerprintHash,
       app_version: registration.appVersion,
       min_bundle_id: registration.minBundleId,
@@ -154,29 +149,40 @@ export const createNativeBuildApi = (
       git_commit_hash: registration.gitCommitHash,
       created_at_ms: now(),
     };
-    try {
-      await db.transaction(async (tx) => {
-        // The built-in bundle is no OTA bundle, so the bundle totals leave
-        // it out: `deleteBundles` refuses it, so they never count it back.
-        tx.create("bundles", {
-          id: registration.minBundleId,
-          platform: registration.platform,
-          git_commit_hash: registration.gitCommitHash,
-          metadata: embeddedBundle.metadata ?? {},
-          manifest_storage_uri: embeddedBundle.manifestStorageUri,
-          manifest_file_hash: embeddedBundle.manifestFileHash,
-          asset_base_storage_uri: embeddedBundle.assetBaseStorageUri,
+    // A channel deleted between ensuring it and the write refuses the write
+    // through `byChannel`'s root, so it runs again and ensures it anew.
+    for (let attempt = 1; ; attempt += 1) {
+      await insertChannel(db, { id: channelId, name: registration.channel });
+      try {
+        await db.transaction(async (tx) => {
+          // The built-in bundle is no OTA bundle, so the bundle totals leave
+          // it out: `deleteBundles` refuses it, so they never count it back.
+          tx.create("bundles", {
+            id: registration.minBundleId,
+            platform: registration.platform,
+            git_commit_hash: registration.gitCommitHash,
+            metadata: embeddedBundle.metadata ?? {},
+            manifest_storage_uri: embeddedBundle.manifestStorageUri,
+            manifest_file_hash: embeddedBundle.manifestFileHash,
+            asset_base_storage_uri: embeddedBundle.assetBaseStorageUri,
+          });
+          tx.create("native_builds", row);
         });
-        tx.create("native_builds", row);
-      });
-    } catch (error) {
-      if (
-        error instanceof DatabaseConstraintError &&
-        (error.reason === "exists" || error.reason === "unique")
-      ) {
-        throw new DatabaseConstraintError(error.reason, "native_builds");
+        break;
+      } catch (error) {
+        if (!(error instanceof DatabaseConstraintError)) throw error;
+        if (error.reason === "exists" || error.reason === "unique") {
+          throw new DatabaseConstraintError(error.reason, "native_builds");
+        }
+        if (
+          attempt < 3 &&
+          error.reason === "not_found" &&
+          error.model === "channels"
+        ) {
+          continue;
+        }
+        throw error;
       }
-      throw error;
     }
     return row;
   },
