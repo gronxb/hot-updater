@@ -4,6 +4,7 @@ import path from "path";
 import {
   isServerDefinition,
   loadConfig,
+  loadVaultDeployCredentials,
   p,
   type ServerDefinition,
   serverDefinitionOf,
@@ -44,6 +45,12 @@ const DEFAULT_CONFIG_BASENAMES = [
 interface LoadHotUpdaterOptions {
   cwd?: string;
   allowGeneratedSchemaPlaceholder?: boolean;
+  /**
+   * The command uses the definition's database or storage: the vault's
+   * deploy credentials go into `process.env` before it runs, as
+   * `loadConfig(..., { credentials: true })` loads them.
+   */
+  credentials?: boolean;
 }
 
 /** The default config paths that exist, in the order the loader tries them. */
@@ -147,10 +154,9 @@ export async function loadHotUpdater(
   configPath: string,
   options: LoadHotUpdaterOptions = {},
 ): Promise<LoadHotUpdaterResult> {
-  const absoluteConfigPath = resolveConfigPath(
-    configPath,
-    options.cwd ?? process.cwd(),
-  );
+  const cwd = options.cwd ?? process.cwd();
+  if (options.credentials) await loadVaultDeployCredentials(cwd);
+  const absoluteConfigPath = resolveConfigPath(configPath, cwd);
 
   // Verify config file exists
   if (!existsSync(absoluteConfigPath)) {

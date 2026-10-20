@@ -62,7 +62,9 @@ export const openPluginServer = async (
 ): Promise<PluginServer> => {
   const cwd = process.cwd();
   if (serverPath?.trim()) {
-    return fromDefinition(await loadHotUpdater(serverPath, { cwd }));
+    return fromDefinition(
+      await loadHotUpdater(serverPath, { cwd, credentials: true }),
+    );
   }
   const config = await loadConfig(null, { credentials: true });
   if (config.database !== undefined) {
@@ -79,7 +81,7 @@ export const openPluginServer = async (
     };
   }
   if (findDefaultConfigPaths(cwd).length > 0) {
-    return fromDefinition(await loadHotUpdater("", { cwd }));
+    return fromDefinition(await loadHotUpdater("", { cwd, credentials: true }));
   }
   throw new Error(
     "Set database and plugins in hot-updater.config.ts, or pass the path to your server definition, such as src/hotUpdater.ts.",

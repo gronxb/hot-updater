@@ -720,6 +720,21 @@ describe("hot-updater secrets import", () => {
     );
   });
 
+  it("refuses a file that is not a regular file before anything is sent", async () => {
+    const requests = importConsole();
+    const target = await writeEnvFile(["HOT_UPDATER_S3_REGION=us-east-1"]);
+    const link = path.join(directory, ".env.link");
+    await fs.symlink(target, link);
+
+    await handleSecretsImport(link, { yes: true });
+
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      `${link} is not a regular file, which the import rewrites: import the file it points to.`,
+    );
+    expect(requests).toEqual([]);
+  });
+
   it("reaches nothing when the file holds only what stays, or does not exist", async () => {
     const requests = importConsole();
     const file = await writeEnvFile([`HOT_UPDATER_CONSOLE_URL=${CONSOLE_URL}`]);

@@ -373,7 +373,15 @@ const LOCAL_VARIABLES: ReadonlySet<string> = new Set([
 
 const readEnvFile = async (file: string): Promise<string> => {
   try {
-    return await fs.readFile(path.resolve(getCwd(), file), "utf-8");
+    const filePath = path.resolve(getCwd(), file);
+    // makeEnv rewrites only a regular file: anything else fails first.
+    const target = await fs.lstat(filePath);
+    if (target.isSymbolicLink() || !target.isFile()) {
+      throw new Error(
+        `${file} is not a regular file, which the import rewrites: import the file it points to.`,
+      );
+    }
+    return await fs.readFile(filePath, "utf-8");
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === "ENOENT") {
       throw new Error(`${file} does not exist.`);
