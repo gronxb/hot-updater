@@ -1,5 +1,6 @@
 import type { VaultSecret, VaultToken } from "@hot-updater/server/plugins";
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -284,6 +285,50 @@ describe("SecretsCard", () => {
     ).toBeDefined();
     fireEvent.click(screen.getByRole("button", { name: "Save secret" }));
     expect(putMutation.mutateAsync).not.toHaveBeenCalled();
+  });
+
+  it("keeps the last file chosen when an earlier read finishes later", async () => {
+    putMutation.mutateAsync.mockResolvedValue({
+      name: "asc-api-key",
+      version: 1,
+    });
+    render(<SecretsCard secrets={loaded([])} status={unlocked} />);
+    fireEvent.click(screen.getAllByRole("button", { name: "Add secret" })[0]!);
+    let finishFirst: (buffer: ArrayBuffer) => void = () => {};
+    const first = new File([P8], "AuthKey_FIRST.p8");
+    first.arrayBuffer = () =>
+      new Promise((resolve) => {
+        finishFirst = resolve;
+      });
+    const second = new File([P8.replace("MIGT", "MIGS")], "AuthKey_SECOND.p8");
+    const input = screen.getByLabelText("Private key (.p8)");
+
+    fireEvent.change(input, { target: { files: [first] } });
+    fireEvent.change(input, { target: { files: [second] } });
+    await waitFor(() => {
+      expect(screen.getByDisplayValue("SECOND")).toBeDefined();
+    });
+    finishFirst(new TextEncoder().encode(P8).buffer as ArrayBuffer);
+    // Let the late read finish before saving.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+    fireEvent.change(screen.getByLabelText("Issuer ID"), {
+      target: { value: "issuer" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save secret" }));
+
+    await waitFor(() => {
+      expect(putMutation.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          value: {
+            p8: base64(P8.replace("MIGT", "MIGS")),
+            keyId: "SECOND",
+            issuerId: "issuer",
+          },
+        }),
+      );
+    });
   });
 
   it("adds an App Store Connect key from its file, named after its kind", async () => {

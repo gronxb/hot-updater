@@ -1,6 +1,6 @@
 import type { VaultSecret, VaultSecretKind } from "@hot-updater/server/plugins";
 import { FileUp, Loader2, Plus, Save, Trash2 } from "lucide-react";
-import { type FormEvent, useId, useState } from "react";
+import { type FormEvent, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
@@ -124,6 +124,9 @@ function SecretForm({
     Record<string, { readonly name: string; readonly size: number }>
   >({});
   const [variables, setVariables] = useState(() => variablesOf(secret));
+  // The file last chosen for each field: a read that finishes after another
+  // choice, or a kind change, is dropped.
+  const chosen = useRef<Partial<Record<string, File>>>({});
   const [submitted, setSubmitted] = useState(false);
 
   const kindUi = vaultSecretKinds[kind];
@@ -188,6 +191,7 @@ function SecretForm({
     setKind(next);
     setFields({});
     setFiles({});
+    chosen.current = {};
     setVariables(variablesOf(undefined));
     setSubmitted(false);
   };
@@ -197,6 +201,7 @@ function SecretForm({
     file: File | undefined,
   ) => {
     if (file === undefined) return;
+    chosen.current[field.key] = file;
     setFiles((current) => ({
       ...current,
       [field.key]: { name: file.name, size: file.size },
@@ -206,6 +211,7 @@ function SecretForm({
       return;
     }
     const base64 = await fileToBase64(file);
+    if (chosen.current[field.key] !== file) return;
     setFields((current) => {
       const keyId = ascKeyIdFromFileName(file.name);
       return {
