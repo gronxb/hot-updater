@@ -539,7 +539,10 @@ export const createCoreOperations = (
         const { patches, ...fields } = update;
         const next = { ...rowToBundle(toBundleRow(current)), ...fields, id };
         const { id: _id, ...set } = bundleToRow(next);
-        updateBundle(tx, current, set);
+        // Only a platform change moves totals, and a built-in bundle has none.
+        const counted =
+          set.platform === current.platform || !(await isBuiltInBundle(tx, id));
+        updateBundle(tx, current, set, { counted });
         if (patches !== undefined) {
           await replaceBundlePatches(
             tx,

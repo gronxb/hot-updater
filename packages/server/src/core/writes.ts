@@ -30,13 +30,22 @@ export const insertBundle = (tx: CoreTransaction, row: BundleRow): void => {
   countBundle(tx, row.platform, 1);
 };
 
+/**
+ * Updates a bundle; a platform change moves it between platform totals,
+ * except for a native build's built-in bundle, which they never count.
+ */
 export const updateBundle = (
   tx: CoreTransaction,
   current: StoredBundle,
   set: BundleRowUpdate,
+  { counted = true }: { readonly counted?: boolean } = {},
 ): void => {
   tx.update("bundles", current, set);
-  if (set.platform !== undefined && set.platform !== current.platform) {
+  if (
+    counted &&
+    set.platform !== undefined &&
+    set.platform !== current.platform
+  ) {
     countBundle(tx, current.platform, -1);
     countBundle(tx, set.platform, 1);
   }

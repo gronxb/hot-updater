@@ -328,6 +328,20 @@ describe("the native build registry", () => {
     ).resolves.toEqual(build);
   });
 
+  it("keeps a built-in bundle out of the totals when its platform changes", async () => {
+    const core = setup();
+    await core.registerNativeBuild(registration(1));
+
+    await core.updateBundle(minBundleId(1), { platform: "android" });
+
+    await expect(core.getBundle(minBundleId(1))).resolves.toMatchObject({
+      bundle: { platform: "android" },
+    });
+    await expect(core.countBundles("ios")).resolves.toBe(0);
+    await expect(core.countBundles("android")).resolves.toBe(0);
+    await expect(core.countBundles()).resolves.toBe(0);
+  });
+
   it("lists builds by ID, a page at a time", async () => {
     const core = setup();
     for (const n of [1, 2, 3]) await core.registerNativeBuild(registration(n));
