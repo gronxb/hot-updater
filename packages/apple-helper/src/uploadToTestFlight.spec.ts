@@ -104,6 +104,14 @@ const createRecordingFetch = (routes: Record<string, Reply | Reply[]>) => {
   return { fetch: fetch as unknown as typeof globalThis.fetch, requests };
 };
 
+const RESERVATIONS_URL = `${API}/v1/apps/123/buildUploads?${new URLSearchParams(
+  {
+    "filter[cfBundleShortVersionString]": "1.2.0",
+    "filter[cfBundleVersion]": "42",
+    "filter[platform]": "IOS",
+    "filter[state]": "AWAITING_UPLOAD",
+  },
+)}`;
 const FILE_STATE_URL = `${API}/v1/buildUploadFiles/file-1?fields[buildUploadFiles]=assetDeliveryState`;
 const PART_URL_1 = "https://upload.example.com/part-1?signature=abc";
 const PART_URL_2 = "https://upload.example.com/part-2?signature=def";
@@ -421,6 +429,7 @@ describe("uploadToTestFlight", () => {
     const routes = successRoutes();
     routes[`PUT ${PART_URL_2}`] = [{ status: 503 }, { status: 200 }];
     const { fetch, requests } = createRecordingFetch(routes);
+    const started = Date.now();
 
     await uploadToTestFlight({
       ipaPath,
@@ -432,6 +441,8 @@ describe("uploadToTestFlight", () => {
     expect(
       requests.filter((request) => request.url === PART_URL_2),
     ).toHaveLength(2);
+    // Without Retry-After, the part waits the backoff before it goes again.
+    expect(Date.now() - started).toBeGreaterThanOrEqual(900);
   });
 
   it("sends a rate-limited part again after the Retry-After it asks for", async () => {
@@ -578,6 +589,54 @@ describe("uploadToTestFlight", () => {
       requests.filter((request) => request.method === "PATCH"),
     ).toHaveLength(3);
     expect(requests.some((request) => request.method === "DELETE")).toBe(false);
+  });
+
+  it("adopts the reservation an unanswered create made", async () => {
+    const routes = successRoutes();
+    routes[`POST ${API}/v1/buildUploads`] = { status: 503 };
+    routes[`GET ${RESERVATIONS_URL}`] = {
+      json: { data: [{ id: "upload-1" }] },
+    };
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).resolves.toMatchObject({ buildUploadId: "upload-1", state: "COMPLETE" });
+    expect(
+      requests.map(({ method, url }) => `${method} ${url}`).slice(0, 4),
+    ).toEqual([
+      `GET ${appsUrl}`,
+      `POST ${API}/v1/buildUploads`,
+      `GET ${RESERVATIONS_URL}`,
+      `POST ${API}/v1/buildUploadFiles`,
+    ]);
+  });
+
+  it("creates the build upload again when an unanswered create made none", async () => {
+    const routes = successRoutes();
+    routes[`POST ${API}/v1/buildUploads`] = [
+      { status: 503 },
+      { status: 201, json: { data: { id: "upload-1", type: "buildUploads" } } },
+    ];
+    routes[`GET ${RESERVATIONS_URL}`] = { json: { data: [] } };
+    const { fetch, requests } = createRecordingFetch(routes);
+
+    await expect(
+      uploadToTestFlight({
+        ipaPath,
+        apiKey: apiKey(),
+        fetch,
+        pollIntervalMs: 0,
+      }),
+    ).resolves.toMatchObject({ buildUploadId: "upload-1" });
+    expect(
+      requests.filter((request) => request.url === `${API}/v1/buildUploads`),
+    ).toHaveLength(2);
   });
 
   it("names the build number App Store Connect already has", async () => {

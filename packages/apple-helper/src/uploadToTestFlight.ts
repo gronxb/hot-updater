@@ -24,7 +24,7 @@ const TOKEN_REUSE_SECONDS = 10 * 60;
 
 /** The parts of an `.ipa` sent at once. */
 const UPLOAD_CONCURRENCY = 4;
-/** Attempts to commit the uploaded `.ipa`. */
+/** Attempts to create the build upload and to commit the uploaded `.ipa`. */
 const COMMIT_ATTEMPTS = 3;
 /** Attempts per part: a part is a plain PUT, safe to repeat. */
 const UPLOAD_ATTEMPTS = 3;
@@ -158,10 +158,10 @@ const MAX_RETRY_AFTER_MS = 60_000;
  * rate-limited answer asks for, within a bound, or a growing backoff.
  */
 const retryDelayMs = (response: Response | Error, attempt: number) => {
+  const header =
+    response instanceof Error ? null : response.headers.get("retry-after");
   const retryAfter =
-    response instanceof Error
-      ? Number.NaN
-      : Number(response.headers.get("retry-after"));
+    header === null || header.trim() === "" ? Number.NaN : Number(header);
   return Number.isFinite(retryAfter) && retryAfter >= 0
     ? Math.min(retryAfter * 1_000, MAX_RETRY_AFTER_MS)
     : 1_000 * attempt;
@@ -366,38 +366,66 @@ export const uploadToTestFlight = async ({
   }
   const testFlightUrl = `https://appstoreconnect.apple.com/apps/${app.id}/testflight/ios`;
 
-  let buildUploadId: string;
-  try {
-    ({
-      data: { id: buildUploadId },
-    } = await request<{ data: { id: string } }>(
-      "Creating the build upload",
-      "POST",
-      "/v1/buildUploads",
-      {
-        data: {
-          type: "buildUploads",
-          attributes: {
-            platform: "IOS",
-            cfBundleShortVersionString: info.shortVersion,
-            cfBundleVersion: info.bundleVersion,
+  // The reservation this run created, which an unanswered request may have
+  // made: found by its version and build number while it awaits the file.
+  const findReservation = () =>
+    request<{ data: { id: string }[] }>(
+      "Finding the build upload",
+      "GET",
+      `/v1/apps/${app.id}/buildUploads?${new URLSearchParams({
+        "filter[cfBundleShortVersionString]": info.shortVersion,
+        "filter[cfBundleVersion]": info.bundleVersion,
+        "filter[platform]": "IOS",
+        "filter[state]": "AWAITING_UPLOAD",
+      })}`,
+    )
+      .then(({ data }) => data[0]?.id)
+      .catch(() => undefined);
+
+  let buildUploadId: string | undefined;
+  for (let attempt = 1; buildUploadId === undefined; attempt++) {
+    try {
+      ({
+        data: { id: buildUploadId },
+      } = await request<{ data: { id: string } }>(
+        "Creating the build upload",
+        "POST",
+        "/v1/buildUploads",
+        {
+          data: {
+            type: "buildUploads",
+            attributes: {
+              platform: "IOS",
+              cfBundleShortVersionString: info.shortVersion,
+              cfBundleVersion: info.bundleVersion,
+            },
+            relationships: { app: { data: { type: "apps", id: app.id } } },
           },
-          relationships: { app: { data: { type: "apps", id: app.id } } },
         },
-      },
-    ));
-  } catch (error) {
-    if (
-      error instanceof AppStoreConnectError &&
-      error.status === 409 &&
-      error.errors.some((apiError) => apiError.code === DUPLICATE_ERROR_CODE)
-    ) {
-      throw new Error(
-        `App Store Connect already has build ${info.bundleVersion} of version ${info.shortVersion}. Each build of a version needs a new build number (CFBundleVersion).`,
-        { cause: error },
-      );
+      ));
+    } catch (error) {
+      if (
+        error instanceof AppStoreConnectError &&
+        error.status === 409 &&
+        error.errors.some((apiError) => apiError.code === DUPLICATE_ERROR_CODE)
+      ) {
+        throw new Error(
+          `App Store Connect already has build ${info.bundleVersion} of version ${info.shortVersion}. Each build of a version needs a new build number (CFBundleVersion).`,
+          { cause: error },
+        );
+      }
+      if (!isRetryable(error)) {
+        throw error;
+      }
+      // App Store Connect may have made the reservation it did not answer.
+      buildUploadId = await findReservation();
+      if (buildUploadId === undefined) {
+        if (attempt === COMMIT_ATTEMPTS) {
+          throw error;
+        }
+        await sleep(1_000 * attempt);
+      }
     }
-    throw error;
   }
 
   p.log.info(
