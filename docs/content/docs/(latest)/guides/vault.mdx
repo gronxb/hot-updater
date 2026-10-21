@@ -384,7 +384,7 @@ jobs:
       - run: npx --no-install hot-updater build:android --scheme release --register --upload play-internal
 ```
 
-Each command resolves its credentials in one or two requests to the console,
+Each command reads its credentials from the console when it needs them,
 writes the files it signs with as temporary files only the runner's user can
 read, and deletes them when it ends. Every resolved value, and the token, is
 masked in the job's log. When the console is unreachable or refuses the token,
