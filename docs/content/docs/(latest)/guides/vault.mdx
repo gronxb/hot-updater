@@ -192,7 +192,8 @@ your shell or `.env.hotupdater`, then store each credential:
 | The bundle signing key your app already embeds                    | `npx hot-updater secrets put bundle-signing-key --kind bundle-signing-key --private-key keys/private-key.pem`                                                                                                        |
 | App Store Connect API key, Android keystore, Play service account | [`npx hot-updater secrets put <name> --kind <kind>`](/docs/guides/secrets#store-a-secret), such as `secrets put asc-api-key --kind asc-api-key --p8 ./AuthKey_ABC123.p8 --key-id ABC123 --issuer-id <id>`, with the kind's options |
 
-Revoke the setup token when you are done.
+Revoke the setup token when you are done, and give each machine and CI job
+a token of its own, as the next steps do.
 
 </Tab>
 </Tabs>
@@ -390,9 +391,16 @@ masked in the job's log. When the console is unreachable or refuses the token,
 the command fails at once and names the console's URL.
 
 The same variables run these commands on your machine. `secrets import` left
-the two connection variables in `.env.hotupdater`; with `remoteSigning`, also
-set `HOT_UPDATER_SIGNING_TOKEN` to a token that signs, as the workflow does:
-`remoteSigning` reads only that variable.
+the two connection variables in `.env.hotupdater`, with the setup token you
+revoke afterwards. Issue a token for your machine as you issued `ci-ota`, and
+set it in `.env.hotupdater` as both `HOT_UPDATER_VAULT_TOKEN` and
+`HOT_UPDATER_SIGNING_TOKEN`, since `remoteSigning` reads only the latter:
+
+```bash title=".env.hotupdater"
+HOT_UPDATER_CONSOLE_URL=https://console.example.com
+HOT_UPDATER_VAULT_TOKEN=hu_vault_...
+HOT_UPDATER_SIGNING_TOKEN=hu_vault_...
+```
 
 </Step>
 </Steps>
