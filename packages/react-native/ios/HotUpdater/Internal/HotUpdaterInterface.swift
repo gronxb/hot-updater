@@ -37,6 +37,20 @@ final class HotUpdaterNativeUpdatesAdapter: NSObject, HotUpdaterNativeUpdatesInt
         HotUpdaterNativeUpdateBridge.resetChannel(impl: impl as! HotUpdaterImpl, resolver: resolve, rejecter: reject)
     }
 
+    func resetChannelIfSelectionCurrent(
+        withImpl impl: HotUpdaterImplInterface,
+        params: [AnyHashable: Any]?,
+        resolver resolve: @escaping RCTPromiseResolveBlock,
+        rejecter reject: @escaping RCTPromiseRejectBlock
+    ) {
+        HotUpdaterNativeUpdateBridge.resetChannelIfSelectionCurrent(
+            impl: impl as! HotUpdaterImpl,
+            params: params,
+            resolver: resolve,
+            rejecter: reject
+        )
+    }
+
     func takeEvents(withImpl impl: HotUpdaterImplInterface) -> String? {
         HotUpdaterNativeUpdateBridge.takeEvents(impl: impl as! HotUpdaterImpl)
     }
