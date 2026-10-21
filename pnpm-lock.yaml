@@ -718,6 +718,12 @@ importers:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
 
+  examples/e2e-app:
+    dependencies:
+      '@hot-updater/protocol':
+        specifier: workspace:*
+        version: link:../../packages/protocol
+
   examples/expo-52:
     devDependencies:
       '@babel/core':
@@ -1212,6 +1218,9 @@ importers:
       '@callstack/repack':
         specifier: ^5.2.5
         version: 5.2.5(@babel/core@7.26.0)(@rspack/core@1.7.11(@swc/helpers@0.5.23))(esbuild@0.28.1)(react-native@0.85.2(@babel/core@7.26.0)(@react-native-community/cli@20.1.0(@typescript/typescript6@6.0.2))(@react-native/jest-preset@0.85.2(@babel/core@7.26.0)(react@19.2.3))(@react-native/metro-config@0.85.2(@babel/core@7.26.0))(@types/react@19.2.15)(react@19.2.3))(tslib@2.8.1)(webpack@5.107.2(esbuild@0.28.1))
+      '@examples/e2e-app':
+        specifier: workspace:*
+        version: link:../e2e-app
       '@expo/fingerprint':
         specifier: ^0.15.4
         version: 0.15.5
@@ -1308,9 +1317,6 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@^7.0.2
         version: typescript@7.0.2
-      e2e-launch-arguments:
-        specifier: link:modules/e2e-launch-arguments
-        version: link:modules/e2e-launch-arguments
       eslint:
         specifier: ^8.19.0
         version: 8.57.1
@@ -20773,18 +20779,6 @@ packages:
       utf-8-validate:
         optional: true
 
-  ws@8.21.0:
-    resolution: {integrity: sha512-Vsp28b7DRcimFQvrqu2Wek3z1iYxDCWqHYB8Qsnk/S4RfaCQzPGPyBNuVjJV3cd6UiKtUtp6sNM77gWvzcCH+g==}
-    engines: {node: '>=10.0.0'}
-    peerDependencies:
-      bufferutil: ^4.0.1
-      utf-8-validate: '>=5.0.2'
-    peerDependenciesMeta:
-      bufferutil:
-        optional: true
-      utf-8-validate:
-        optional: true
-
   ws@8.21.3:
     resolution: {integrity: sha512-201TZ/kPWxoPr/OKWjquZR1SWKXcvxdH+e1xrx89b3YbmzLMFCLfnaG1HFIgWzJOEWZ7MvpK++odZufgYR50Rw==}
     engines: {node: '>=10.0.0'}
@@ -24467,7 +24461,7 @@ snapshots:
       text-table: 0.2.0
       url-join: 4.0.0
       wrap-ansi: 7.0.0
-      ws: 8.21.0
+      ws: 8.21.3
     transitivePeerDependencies:
       - '@react-native/babel-preset'
       - bluebird
@@ -24550,7 +24544,7 @@ snapshots:
       undici: 6.26.0
       unique-string: 2.0.0
       wrap-ansi: 7.0.0
-      ws: 8.21.0
+      ws: 8.21.3
     transitivePeerDependencies:
       - bufferutil
       - encoding
@@ -30932,7 +30926,7 @@ snapshots:
 
   '@tanstack/devtools-event-bus@0.4.1':
     dependencies:
-      ws: 8.21.0
+      ws: 8.21.3
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -45846,8 +45840,6 @@ snapshots:
   ws@8.18.0: {}
 
   ws@8.20.1: {}
-
-  ws@8.21.0: {}
 
   ws@8.21.3: {}
 

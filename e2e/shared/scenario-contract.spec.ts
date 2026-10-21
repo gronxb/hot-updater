@@ -30,52 +30,52 @@ const exampleE2eAppPatchSurfacePath = path.join(
 );
 const exampleE2eAppRuntimePath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/runtime.ts",
+  "examples/e2e-app/src/e2eApp/runtime.ts",
 );
 const exampleE2eAppComponentsPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/components.tsx",
+  "examples/e2e-app/src/e2eApp/components.tsx",
 );
 const exampleE2eAppActionButtonScreenPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/action-button-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/action-button-screen.tsx",
 );
 const exampleE2eAppInstallCurrentScreenPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/install-current-channel-update-action-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/install-current-channel-update-action-screen.tsx",
 );
 const exampleE2eAppInstallRuntimeScreenPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/install-runtime-channel-update-action-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/install-runtime-channel-update-action-screen.tsx",
 );
 const exampleE2eAppApplyCohortInputScreenPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/apply-cohort-input-action-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/apply-cohort-input-action-screen.tsx",
 );
 const exampleE2eAppSetCohortQaScreenPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/set-cohort-qa-action-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/set-cohort-qa-action-screen.tsx",
 );
 const exampleE2eAppRestoreInitialCohortScreenPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/restore-initial-cohort-action-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/restore-initial-cohort-action-screen.tsx",
 );
 const exampleE2eAppResetRuntimeChannelScreenPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/reset-runtime-channel-action-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/reset-runtime-channel-action-screen.tsx",
 );
 const exampleE2eAppUseRuntimePath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/useE2eRuntime.ts",
+  "examples/e2e-app/src/e2eApp/useE2eRuntime.ts",
 );
 const exampleE2eAppResultScreenPaths = [
-  "examples/v0.85.0/src/e2eApp/screens/channel-action-result-screen.tsx",
-  "examples/v0.85.0/src/e2eApp/screens/update-action-result-screen.tsx",
-  "examples/v0.85.0/src/e2eApp/screens/cohort-action-result-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/channel-action-result-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/update-action-result-screen.tsx",
+  "examples/e2e-app/src/e2eApp/screens/cohort-action-result-screen.tsx",
 ].map((screenPath) => path.join(repoDir, screenPath));
 const runtimeConfigPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eRuntimeConfig.ts",
+  "examples/e2e-app/src/e2eRuntimeConfig.ts",
 );
 const androidDownloadServicePath = path.join(
   repoDir,

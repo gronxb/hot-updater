@@ -94,6 +94,12 @@ directory:
   and the Gradle task that publishes the library. The installed binary is then
   the host's.
 
+Every target runs the same app, [`@examples/e2e-app`](../examples/e2e-app):
+a target app adds `@examples/e2e-app` as a dependency, registers it in
+`index.js`, keeps `App.tsx`, `src/e2eApp/patchSurface.ts` and the `src/test`
+assets the control server rewrites, and resolves the package's imports from
+itself in its bundler config.
+
 Without `--target`, a run uses `HOT_UPDATER_E2E_TARGET`, then the example the
 bot wrote the provider env file into (`HOT_UPDATER_E2E_ENV_TARGET_RELATIVE_DIR`)
 when it is a target, then `v0.85.0`. `--track brownfield` selects the

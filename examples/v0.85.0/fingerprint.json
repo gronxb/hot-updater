@@ -1,7 +1,7 @@
 {
   "ios": {
     "engine": "hot-updater/interface@1",
-    "hash": "ea472e2231256899c3e6fc357e0ada5a7e5976a3df36b6909ea15199ba6dc3f9",
+    "hash": "2bfe96073743fa28283d218fba6c2a10e430da36943193556ed2818257e47771",
     "sources": [
       {
         "type": "contents",
@@ -76,7 +76,7 @@
       },
       {
         "type": "file",
-        "filePath": "modules/e2e-launch-arguments/e2e-launch-arguments.podspec",
+        "filePath": "../e2e-app/e2e-launch-arguments.podspec",
         "reasons": [
           "local-dependency-native"
         ],
@@ -84,17 +84,33 @@
       },
       {
         "type": "file",
-        "filePath": "modules/e2e-launch-arguments/ios/E2ELaunchArguments.m",
+        "filePath": "../e2e-app/ios/E2ELaunchArguments.m",
         "reasons": [
           "local-dependency-native"
         ],
         "hash": "1ae8724766420d5b4d1fc994f5921f6e2d298444d3d9c3296d4a647fe54ae9df"
+      },
+      {
+        "type": "file",
+        "filePath": "ios/HotUpdaterExample.xcodeproj/project.pbxproj",
+        "reasons": [
+          "extra-source"
+        ],
+        "hash": "fd1c691c3b6b4a898ccad231da1dde602085d9e66324af87d8dab81942a22b92"
+      },
+      {
+        "type": "file",
+        "filePath": "ios/HotUpdaterExampleBrownfield/HotUpdaterExampleBrownfield.swift",
+        "reasons": [
+          "extra-source"
+        ],
+        "hash": "5c407889a5de505f78060d29c8c2bc7c7b557edad1659cb6a748a14d2d66a1a8"
       }
     ]
   },
   "android": {
     "engine": "hot-updater/interface@1",
-    "hash": "8681de8b88a8db15b82606b413e333ea11cb5626e35ee7242db528ed5a7e73d3",
+    "hash": "f0f7dd0aea610afc40b326fee332466a0942d2eae7d6dd56588214a5ba86a4e7",
     "sources": [
       {
         "type": "contents",
@@ -187,7 +203,7 @@
       },
       {
         "type": "file",
-        "filePath": "modules/e2e-launch-arguments/android/build.gradle",
+        "filePath": "../e2e-app/android/build.gradle",
         "reasons": [
           "local-dependency-native"
         ],
@@ -195,7 +211,7 @@
       },
       {
         "type": "file",
-        "filePath": "modules/e2e-launch-arguments/android/src/main/java/com/hotupdaterexample/launcharguments/E2ELaunchArgumentsModule.java",
+        "filePath": "../e2e-app/android/src/main/java/com/hotupdaterexample/launcharguments/E2ELaunchArgumentsModule.java",
         "reasons": [
           "local-dependency-native"
         ],
@@ -203,15 +219,49 @@
       },
       {
         "type": "file",
-        "filePath": "modules/e2e-launch-arguments/android/src/main/java/com/hotupdaterexample/launcharguments/E2ELaunchArgumentsPackage.java",
+        "filePath": "../e2e-app/android/src/main/java/com/hotupdaterexample/launcharguments/E2ELaunchArgumentsPackage.java",
         "reasons": [
           "local-dependency-native"
         ],
         "hash": "5d8c4307d2ae122aedb504f1bd6cfea83cb734257f283b7e563c3f64eb7fafd5"
+      },
+      {
+        "type": "file",
+        "filePath": "android/brownfieldlib/build.gradle.kts",
+        "reasons": [
+          "extra-source"
+        ],
+        "hash": "5320652d50d8215f63af89badba9c790917bddf2e77fdfea9a952fa517df84f1"
+      },
+      {
+        "type": "file",
+        "filePath": "android/brownfieldlib/src/main/java/com/hotupdaterexample/brownfield/HotUpdaterWidgetHost.kt",
+        "reasons": [
+          "extra-source"
+        ],
+        "hash": "2eddd151c68191f683a07a1ddc542f236523098132c4204392c2fe5c8fb40b7f"
+      },
+      {
+        "type": "file",
+        "filePath": "android/brownfieldlib/src/main/java/com/hotupdaterexample/brownfield/ReactNativeHostManager.kt",
+        "reasons": [
+          "extra-source"
+        ],
+        "hash": "42c379557ebc88852c790c070c28d94abddf7ae008fcc4ca4fbbb774d962dd66"
       }
     ]
   },
   "inputs": {
-    "adapter": "bare"
+    "adapter": "bare",
+    "extraSources": {
+      "ios": [
+        "ios/HotUpdaterExampleBrownfield/**/*.swift",
+        "ios/HotUpdaterExample.xcodeproj/project.pbxproj"
+      ],
+      "android": [
+        "android/brownfieldlib/src/**/*.kt",
+        "android/brownfieldlib/build.gradle.kts"
+      ]
+    }
   }
 }

@@ -26,7 +26,7 @@ const { createRequire } = require("node:module");
 const appDir = path.resolve("examples/v0.85.0");
 const appRequire = createRequire(path.join(appDir, "package.json"));
 const loader = appRequire("@callstack/repack/babel-swc-loader").default;
-const filename = path.join(appDir, "src/e2eApp/routes/apply-cohort-input-action-route.tsx");
+const filename = path.resolve("examples/e2e-app/src/e2eApp/routes/apply-cohort-input-action-route.tsx");
 const reactDir = path.dirname(appRequire.resolve("react/package.json"));
 loader.call({
   cacheable() {},

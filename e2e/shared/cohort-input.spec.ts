@@ -27,7 +27,7 @@ function fixture() {
   const code = transformFileSync(
     fileURLToPath(
       new URL(
-        "../../examples/v0.85.0/src/e2eApp/useE2eRuntime.ts",
+        "../../examples/e2e-app/src/e2eApp/useE2eRuntime.ts",
         import.meta.url,
       ),
     ),

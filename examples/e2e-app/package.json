@@ -1,0 +1,20 @@
+{
+  "name": "@examples/e2e-app",
+  "version": "0.0.0",
+  "private": true,
+  "description": "The app the E2E scenarios drive, shared by every E2E target in examples/ (see e2e/README.md#targets).",
+  "main": "src/index.ts",
+  "react-native": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts",
+    "./build-config": "./build-config.cjs",
+    "./config": "./config.ts",
+    "./jest-resolver": "./jest-resolver.cjs",
+    "./metro": "./metro.cjs",
+    "./rspack": "./rspack.cjs",
+    "./package.json": "./package.json"
+  },
+  "dependencies": {
+    "@hot-updater/protocol": "workspace:*"
+  }
+}

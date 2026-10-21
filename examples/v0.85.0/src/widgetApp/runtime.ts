@@ -1,7 +1,9 @@
 import { HotUpdater } from "@hot-updater/react-native";
 
-import { HOT_UPDATER_API_KEY } from "../e2eBuildConfig";
-import { resolveHotUpdaterBaseURL } from "../e2eRuntimeConfig";
+import {
+  HOT_UPDATER_API_KEY,
+  resolveHotUpdaterBaseURL,
+} from "@examples/e2e-app/config";
 
 // The same server as the example. The native module of this runtime works on
 // the instance whose bundle it runs, `widget`, so the channel, bundle, and

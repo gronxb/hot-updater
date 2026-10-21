@@ -1,11 +1,13 @@
-import './e2e-build-config.cjs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import * as Repack from '@callstack/repack';
+import { writeE2eBuildConfig } from '@examples/e2e-app/build-config';
+import { withE2eAppResolve } from '@examples/e2e-app/rspack';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const appNodeModules = path.join(__dirname, 'node_modules');
+writeE2eBuildConfig(__dirname);
 const resolveOptions = Repack.getResolveOptions();
 
 const runtimeAliases = {
@@ -25,13 +27,16 @@ const runtimeAliases = {
 export default Repack.defineRspackConfig({
   context: __dirname,
   entry: './index.js',
-  resolve: {
-    ...resolveOptions,
-    alias: {
-      ...(resolveOptions.alias ?? {}),
-      ...runtimeAliases,
+  resolve: withE2eAppResolve(
+    {
+      ...resolveOptions,
+      alias: {
+        ...(resolveOptions.alias ?? {}),
+        ...runtimeAliases,
+      },
     },
-  },
+    __dirname,
+  ),
   module: {
     rules: [
       {
