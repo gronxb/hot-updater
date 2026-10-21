@@ -184,7 +184,9 @@ export function useNativeBuildDownloadUrlQuery(id: string, enabled: boolean) {
     queryFn: () => getNativeBuildDownloadUrl({ data: { id } }),
     enabled,
     staleTime: DOWNLOAD_URL_REFRESH_MS,
-    refetchInterval: DOWNLOAD_URL_REFRESH_MS,
+    // A storage without download URLs has none to refresh.
+    refetchInterval: (query) =>
+      query.state.data?.url === null ? false : DOWNLOAD_URL_REFRESH_MS,
   });
 }
 

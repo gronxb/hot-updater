@@ -28,14 +28,19 @@ import { CopyableText } from "./CopyableText";
 /** A phone scans the storage URL, which needs no console sign-in. */
 function ApkQrCode({ build }: { readonly build: NativeBuildRow }) {
   const downloadUrl = useNativeBuildDownloadUrlQuery(build.id, true);
-  // A storage without download URLs serves the build through the console,
-  // which a phone reaches signed in to it.
-  const url =
-    downloadUrl.data === undefined
-      ? undefined
-      : (downloadUrl.data.url ??
-        new URL(nativeBuildDownloadPath(build.id), window.location.origin)
-          .href);
+  const url = downloadUrl.data?.url;
+
+  // A storage without download URLs serves the build only through the
+  // console, which a phone that scans isn't signed in to.
+  if (url === null) {
+    return (
+      <p className="text-xs text-muted-foreground">
+        This storage gives no download link a phone can open without signing in,
+        so there is no QR code. Download the APK below, or open this page on the
+        phone signed in to the console.
+      </p>
+    );
+  }
 
   return (
     <div className="flex flex-col items-center gap-2">

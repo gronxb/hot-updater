@@ -128,8 +128,9 @@ expires. The APK QR code holds the storage's download URL itself, so a phone
 downloads it without signing in to the Console. Storage doesn't say how long
 that URL lasts, so the open dialog reads a new one every 30 seconds; keep a
 storage's signed URL lifetime above that. A storage with no download URL
-serves the artifact through the Console, and the QR code holds the Console's
-download link.
+serves the artifact only through the Console, which a phone that scans isn't
+signed in to, so the dialog shows no QR code: download the APK, or open the
+Console on the phone.
 
 ## Deploy a pull request's bundle
 

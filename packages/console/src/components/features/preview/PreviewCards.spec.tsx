@@ -161,6 +161,26 @@ describe("InstallBuildDialog", () => {
     );
   });
 
+  it("shows no QR code when the storage has no download URL a phone can open", () => {
+    const row = build();
+    buildQuery.mockReturnValue({ data: row, isLoading: false });
+    downloadUrlQuery.mockReturnValue({ data: { url: null } });
+    render(
+      <InstallBuildDialog
+        buildId={row.id}
+        channelName={channelName}
+        listed={row}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByRole("img")).toBeNull();
+    expect(screen.getByText(/there is no QR code/)).toBeTruthy();
+    expect(
+      screen.getByRole("link", { name: /Download app-release.apk/ }),
+    ).toBeTruthy();
+  });
+
   it("gives a simulator app its install command and reads no download URL", () => {
     const row = build({
       platform: "ios",
