@@ -117,14 +117,24 @@ describe("handleNativeBuildFind", () => {
       fingerprintHash: "fingerprint-a",
       appVersion: null,
     });
+    loadConfig.mockImplementation(async (loadedFor: unknown) => ({
+      updateStrategy: "fingerprint",
+      nativeBuild,
+      loadedFor,
+    }));
     const { handleNativeBuildFind } = await import("./nativeBuild");
 
     await handleNativeBuildFind({ platform: "android", json: true });
 
-    // As the native build loads it, with the vault's credentials.
+    // The scheme and target as the native build loads them, and the
+    // registry as registration loads it, with the vault's credentials.
     expect(loadConfig).toHaveBeenCalledWith(
       { platform: "android", channel: "" },
       { credentials: true },
+    );
+    expect(loadConfig).toHaveBeenCalledWith(null, { credentials: true });
+    expect(loadServer).toHaveBeenCalledWith(
+      expect.objectContaining({ loadedFor: null }),
     );
     expect(generateFingerprint).toHaveBeenCalledWith("android");
     expect(output()).toEqual({

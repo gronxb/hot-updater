@@ -19,7 +19,7 @@ every pull request:
 3. It comments on the pull request: each platform's install link in the
    Console, the bundle, and the QR code of the channel link, which switches
    an installed preview build to the pull request's bundle. It edits the same
-   comment on every push.
+   comment on every push, and never another author's.
 4. When the pull request closes, it deletes the channel and its bundles.
 
 The workflow needs two secrets: the Console's URL and a vault token. The

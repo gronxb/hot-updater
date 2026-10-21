@@ -45,7 +45,7 @@ export const handleNativeBuildFind = async (
 ) => {
   if (!options.json) printBanner();
   try {
-    // As the native build loads it.
+    // The scheme and the target as the native build loads them.
     const config = await loadConfig(
       { platform: options.platform, channel: "" },
       { credentials: true },
@@ -64,7 +64,10 @@ export const handleNativeBuildFind = async (
         ? undefined
         : schemeArtifactKind(config, options.platform, options.scheme);
 
-    const server = await loadServer(config);
+    // The registry `build:* --register` writes to.
+    const server = await loadServer(
+      await loadConfig(null, { credentials: true }),
+    );
     let nativeBuild: NativeBuildRow | null;
     try {
       nativeBuild = await server.core.findNativeBuild(scope);

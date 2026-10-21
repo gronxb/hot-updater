@@ -452,6 +452,8 @@ describe("runAction preview", () => {
       token: "t",
     };
     github.fetch
+      // GITHUB_TOKEN can't read GET /user.
+      .mockResolvedValueOnce(new Response("", { status: 403 }))
       .mockResolvedValueOnce(Response.json([]))
       .mockResolvedValueOnce(Response.json({ id: 5 }, { status: 201 }));
     const { deps: d, outputs } = deps(fake.cli, {
@@ -493,8 +495,15 @@ describe("runAction cleanup", () => {
       token: "t",
     };
     github.fetch
+      .mockResolvedValueOnce(new Response("", { status: 403 }))
       .mockResolvedValueOnce(
-        Response.json([{ id: 9, body: `${COMMENT_MARKER}\n\n### Preview` }]),
+        Response.json([
+          {
+            id: 9,
+            body: `${COMMENT_MARKER}\n\n### Preview`,
+            user: { login: "github-actions[bot]", type: "Bot" },
+          },
+        ]),
       )
       .mockResolvedValueOnce(Response.json({ id: 9 }));
     const { deps: d, outputs } = deps(fake.cli, {
@@ -526,7 +535,9 @@ describe("runAction cleanup", () => {
       repository: "o/r",
       token: "t",
     };
-    github.fetch.mockResolvedValueOnce(Response.json([]));
+    github.fetch
+      .mockResolvedValueOnce(new Response("", { status: 403 }))
+      .mockResolvedValueOnce(Response.json([]));
     const { deps: d, outputs } = deps(fake.cli, {
       github: github as unknown as Parameters<typeof runAction>[0]["github"],
     });
@@ -538,7 +549,10 @@ describe("runAction cleanup", () => {
     );
 
     expect(outputs["comment-body"]).toContain("is already deleted");
-    expect(github.fetch).toHaveBeenCalledTimes(1);
+    expect(github.fetch).toHaveBeenCalledTimes(2);
+    expect(
+      github.fetch.mock.calls.map(([, init]) => init?.method ?? "GET"),
+    ).toEqual(["GET", "GET"]);
   });
 
   it("fails when a native build embeds the channel, after saying so", async () => {

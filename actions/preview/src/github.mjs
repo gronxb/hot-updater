@@ -43,22 +43,49 @@ const request = async (github, url, init = {}) => {
 const nextPage = (link) => /<([^>]+)>;\s*rel="next"/.exec(link ?? "")?.[1];
 
 /**
- * The action's comment on the pull request: the first one whose body starts
- * with the marker. A comment that quotes it starts with `>`.
+ * Who the token comments as: a personal access token's user, which
+ * `GET /user` names, or for `GITHUB_TOKEN` and other app tokens, which it
+ * refuses, a bot.
+ *
+ * @param {GitHubContext} github
+ * @returns {Promise<{ login: string } | { type: "Bot" }>}
+ */
+const tokenAuthor = async (github) => {
+  try {
+    const response = await request(github, `${github.apiUrl}/user`);
+    const { login } = /** @type {{ login: string }} */ (await response.json());
+    return { login };
+  } catch {
+    return { type: "Bot" };
+  }
+};
+
+/**
+ * The action's comment on the pull request: the first one by the token's
+ * author whose body starts with the marker. Another author's comment, even
+ * one that starts with the marker or quotes it, is never edited.
  *
  * @param {GitHubContext} github
  * @param {number} issueNumber
  * @returns {Promise<{ id: number } | null>}
  */
 export const findComment = async (github, issueNumber) => {
+  const author = await tokenAuthor(github);
   /** @type {string | undefined} */
   let url = `${github.apiUrl}/repos/${github.repository}/issues/${issueNumber}/comments?per_page=100`;
   while (url !== undefined) {
     const response = await request(github, url);
-    const comments = /** @type {{ id: number, body?: string }[]} */ (
-      await response.json()
+    const comments =
+      /** @type {{ id: number, body?: string, user?: { login?: string, type?: string } }[]} */ (
+        await response.json()
+      );
+    const found = comments.find(
+      ({ body, user }) =>
+        body?.startsWith(COMMENT_MARKER) &&
+        ("login" in author
+          ? user?.login === author.login
+          : user?.type === "Bot"),
     );
-    const found = comments.find(({ body }) => body?.startsWith(COMMENT_MARKER));
     if (found) return { id: found.id };
     url = nextPage(response.headers.get("link"));
   }
