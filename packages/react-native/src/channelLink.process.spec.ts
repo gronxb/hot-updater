@@ -80,6 +80,7 @@ vi.mock("react-native", () => ({
 vi.mock("./specs/NativeHotUpdater", () => ({ default: device.native }));
 vi.mock("./checkForUpdate", () => ({
   checkForUpdate: device.checkForUpdate,
+  isChannelLeave: () => false,
   reportUpdateError: vi.fn(),
 }));
 vi.mock("./httpClient", () => ({ createHttpClient: () => ({}) }));

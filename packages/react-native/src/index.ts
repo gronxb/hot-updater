@@ -4,6 +4,7 @@ import { createLaunchReporter, type LaunchReporter } from "./appReady";
 import {
   type CheckForUpdateOptions,
   checkForUpdate,
+  isChannelLeave,
   reportUpdateError,
 } from "./checkForUpdate";
 import type { ClientPluginApis, HotUpdaterClientPlugin } from "./clientPlugin";
@@ -564,9 +565,10 @@ const createConfiguredMethods = (config: InstanceConfig) => {
           if (checkError !== undefined) throw checkError;
           changed = updateInfo !== null && (await updateInfo.updateBundle());
           if (updateInfo !== null && !changed) unclaim();
-          // A rollback to the built-in bundle runs nothing of the channel, as
-          // when the switched channel holds nothing for this build any more.
-          switched = changed && updateInfo?.transitionKind !== "USE_BUILTIN";
+          // Leaving a switched channel that holds nothing for this build any
+          // more selects nothing in it; any other applied selection switches.
+          switched =
+            changed && !(updateInfo !== null && isChannelLeave(updateInfo));
         } catch (error) {
           unclaim();
           // The reset already left the channel the running bundle came from:

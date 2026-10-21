@@ -504,6 +504,16 @@ async function checkForReleaseCatalogUpdate(input: {
  */
 let lastLeftKey: string | null = null;
 
+/** The results that leave a switched channel, rather than select in one. */
+const channelLeaves = new WeakSet<CheckForUpdateResult>();
+
+/**
+ * Whether `result` leaves a switched channel that holds nothing for the
+ * build, which applies no selection of that channel.
+ */
+export const isChannelLeave = (result: CheckForUpdateResult): boolean =>
+  channelLeaves.has(result);
+
 /** A channel leave in flight, which another result of the same target joins. */
 let pendingLeave: {
   readonly key: string;
@@ -557,7 +567,7 @@ function leaveSwitchedChannel(
     guard.catalogHash,
     guard.selectionContextHash,
   ]);
-  return {
+  const result: CheckForUpdateResult = {
     id: input.minimumReleaseId,
     message: null,
     releaseId: null,
@@ -581,6 +591,8 @@ function leaveSwitchedChannel(
       }
     },
   };
+  channelLeaves.add(result);
+  return result;
 
   async function leave(): Promise<boolean> {
     resetProgress();

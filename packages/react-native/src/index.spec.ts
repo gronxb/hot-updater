@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
     checkForUpdate: vi.fn(async () => null),
     startRuntime: vi.fn(),
     claimLaunchURL: vi.fn((_url: string) => true),
+    isChannelLeave: vi.fn((_result: unknown) => false),
     releaseLaunchURL: vi.fn(),
     clearCrashHistory: vi.fn(() => true),
     createHttpClient: vi.fn(
@@ -64,6 +65,7 @@ vi.mock("./httpClient", () => ({
 
 vi.mock("./checkForUpdate", () => ({
   checkForUpdate: mocks.checkForUpdate,
+  isChannelLeave: mocks.isChannelLeave,
   reportUpdateError: mocks.reportUpdateError,
 }));
 
@@ -827,11 +829,28 @@ describe("HotUpdater client initialization", () => {
         updateBundle,
       } as never);
 
+      mocks.isChannelLeave.mockReturnValueOnce(true);
+
       await expect(open()).resolves.toEqual({
         status: "NO_UPDATE",
         channel: "pr-12",
       });
       expect(updateBundle).toHaveBeenCalledTimes(1);
+      expect(mocks.reload).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports a built-in selection of the linked channel as a switch", async () => {
+      const updateBundle = vi.fn(async () => true);
+      mocks.checkForUpdate.mockResolvedValueOnce({
+        status: "ROLLBACK",
+        transitionKind: "USE_BUILTIN",
+        updateBundle,
+      } as never);
+
+      await expect(open()).resolves.toEqual({
+        status: "SWITCHED",
+        channel: "pr-12",
+      });
       expect(mocks.reload).toHaveBeenCalledTimes(1);
     });
 

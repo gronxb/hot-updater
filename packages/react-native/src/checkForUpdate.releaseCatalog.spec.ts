@@ -1245,6 +1245,8 @@ describe("checkForUpdate Release catalog protocol", () => {
         status: "ROLLBACK",
         transitionKind: "USE_BUILTIN",
       });
+      const { isChannelLeave } = await import("./checkForUpdate");
+      expect(isChannelLeave(result!)).toBe(true);
       // The check itself changes nothing.
       expect(mocks.resetChannelIfSelectionCurrent).not.toHaveBeenCalled();
       await expect(result?.updateBundle()).resolves.toBe(true);
@@ -1455,6 +1457,8 @@ describe("checkForUpdate Release catalog protocol", () => {
       await result?.updateBundle();
 
       expect(result).toMatchObject({ transitionKind: "USE_BUILTIN" });
+      const { isChannelLeave } = await import("./checkForUpdate");
+      expect(isChannelLeave(result!)).toBe(false);
       expect(mocks.commitReleaseSelection).toHaveBeenCalledTimes(1);
       expect(mocks.resetChannelIfSelectionCurrent).not.toHaveBeenCalled();
     });
