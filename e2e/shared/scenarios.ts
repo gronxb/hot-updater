@@ -42,6 +42,7 @@ import { targetCohortsRolloutInteractionScenario } from "./scenarios/target-coho
 import { targetedCohortSwitchbackScenario } from "./scenarios/targeted-cohort-switchback.ts";
 import { tenCrashHistorySafeBundleScenario } from "./scenarios/ten-crash-history-safe-bundle.ts";
 import type { ScenarioDefinition } from "./scenarios/types.ts";
+import { vaultSignedOtaScenario } from "./scenarios/vault-signed-ota.ts";
 
 export type {
   ScenarioDefinition,
@@ -84,6 +85,7 @@ const registeredScenarios: readonly ScenarioDefinition[] = [
   runtimeChannelCrashRestoreScenario,
   tenCrashHistorySafeBundleScenario,
   remoteConfigFetchActivateScenario,
+  vaultSignedOtaScenario,
   brownfieldNativeRequiredUpdateScenario,
   brownfieldNativeMinorUpdateScenario,
   brownfieldInstancesUpdateIndependentlyScenario,

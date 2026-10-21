@@ -87,7 +87,9 @@ the hierarchical `protocol://bucket/encoded/slash/key` storage URIs correctly.
 
 List the same server plugins in `plugins` as the server's
 `createHotUpdater({ plugins })`, and change the config whenever the server adds
-or drops one. The CLI and the Console learn the server's plugins from it:
+or drops one. Only `vault()` is listed here and in `console.config.ts`
+without the server: see [Set up the vault](/docs/guides/vault). The CLI and
+the Console learn the server's plugins from it:
 
 - [`hot-updater doctor`](/docs/guides/doctor#check-client-plugins) checks that
   the app adds the client plugins they name.
