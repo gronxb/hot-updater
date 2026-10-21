@@ -70,6 +70,7 @@ const expectedScenarioModuleFiles = [
   "targeted-cohort-switchback.ts",
   "ten-crash-history-safe-bundle.ts",
   "types.ts",
+  "vault-signed-ota.ts",
 ] as const;
 
 function trackedE2eFiles(): readonly string[] {

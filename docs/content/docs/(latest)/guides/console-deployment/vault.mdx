@@ -8,20 +8,10 @@ icon: KeyRound
 
 The console serves the vault of `vault()`, Hot Updater's vault plugin, at
 `/_hot-updater/vault/v1/`, and signs bundles with the vault's bundle signing
-keys at `/_hot-updater/signing`. It needs three things:
-
-- `vault()` in the `plugins` of `console.config.ts`, imported from
-  `@hot-updater/server/plugins`, and in the `plugins` of
-  `hot-updater.config.ts`, from `hot-updater/plugins`. Your server does not run
-  it.
-- The vault's tables in your database. A managed database gets them from
-  [`hot-updater doctor --fix`](/docs/guides/doctor#check-the-database-schema);
-  a self-hosted one from `hot-updater db migrate` or `db generate`.
-- `HOT_UPDATER_VAULT_MASTER_KEY` in the console's **runtime** environment: 32
-  random bytes in base64, from `openssl rand -base64 32`. Keep it out of the
-  environment that holds your database credentials and out of CI;
-  [`hot-updater doctor`](/docs/guides/doctor#check-the-vaults-master-key)
-  warns about an env file that holds both.
+keys at `/_hot-updater/signing`. [Set up the vault](/docs/guides/vault) walks
+through turning it on: the master key in the console's runtime environment,
+`vault()` in `console.config.ts` and `hot-updater.config.ts` but not in your
+server, the vault's tables, the secrets, and CI's tokens.
 
 The console is the only place secrets are decrypted and encrypted. The CLI
 reads and stores secrets through the routes below with a vault token, and

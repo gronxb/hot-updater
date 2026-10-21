@@ -73,8 +73,10 @@ with the console host's own credentials, and the
 Azure, Cloudflare, Firebase, Supabase, and Vercel managed servers run
 `apiKeys()`, `insights()`, and `remoteConfig()`. Import those factories from
 `@hot-updater/server/plugins` in the Console configuration. Read credentials from the console
-host's runtime environment variables, and leave mobile build adapters and
-signing private keys in the app project.
+host's runtime environment variables, and leave mobile build adapters in the
+app project. To keep signing, store, and deploy credentials in the console,
+add `vault()`, which your server doesn't run, and a master key: see
+[Set up the vault](/docs/guides/vault).
 
 Install your chosen
 [database adapter](/docs/concepts/plugin-system#database-adapter) and
