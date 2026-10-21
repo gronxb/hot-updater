@@ -330,7 +330,10 @@ export const remoteSigning = ({
   if (typeof fetchImplementation !== "function") {
     throw new Error("Remote bundle signing requires fetch.");
   }
-  const normalizedEndpoint = normalizeEndpoint(endpoint);
+  // Checked on first use, so a config loads without the endpoint.
+  let normalizedEndpoint: string | undefined;
+  const endpointUrl = () =>
+    (normalizedEndpoint ??= normalizeEndpoint(endpoint));
   let resolvedKey: Promise<ResolvedPublicKey> | undefined;
   const resolveToken = async () => {
     const token =
@@ -347,12 +350,10 @@ export const remoteSigning = ({
 
   const getResolvedKey = () => {
     if (resolvedKey) return resolvedKey;
-    resolvedKey = remoteRequest(
-      fetchImplementation,
-      normalizedEndpoint,
-      resolveToken,
-      { method: "GET" },
-    )
+    const url = endpointUrl();
+    resolvedKey = remoteRequest(fetchImplementation, url, resolveToken, {
+      method: "GET",
+    })
       .then(parseMetadata)
       .catch(() => {
         resolvedKey = undefined;
@@ -382,7 +383,7 @@ export const remoteSigning = ({
       try {
         value = await remoteRequest(
           fetchImplementation,
-          normalizedEndpoint,
+          endpointUrl(),
           resolveToken,
           {
             body: JSON.stringify({

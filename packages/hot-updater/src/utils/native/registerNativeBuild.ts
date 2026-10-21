@@ -75,7 +75,9 @@ export const registerNativeBuild = async (
       "A debug build has no built-in bundle to register: it loads its JavaScript from Metro. Build a release variant or configuration to register it.",
     );
   }
-  const server = await loadServer(await loadConfig(null));
+  const server = await loadServer(
+    await loadConfig(null, { credentials: true }),
+  );
   const workDir = await fs.promises.mkdtemp(
     path.join(os.tmpdir(), "hot-updater-native-build-"),
   );

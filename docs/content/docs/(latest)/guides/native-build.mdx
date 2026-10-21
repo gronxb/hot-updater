@@ -10,13 +10,13 @@ icon: Hammer
 from a scheme in `hot-updater.config.ts`. Each build compiles in the values
 that select its OTA updates, and prints them with the artifact:
 
-| Value         | What the build compiles in                                                                         |
-| ------------- | -------------------------------------------------------------------------------------------------- |
-| Artifact      | The `.apk`, `.aab`, `.ipa` or simulator `.app`, copied to the output path                          |
-| Min bundle ID | The ID of the bundle built into the app, which only newer bundles replace (the nil UUID in Debug)  |
+| Value         | What the build compiles in                                                                          |
+| ------------- | --------------------------------------------------------------------------------------------------- |
+| Artifact      | The `.apk`, `.aab`, `.ipa` or simulator `.app`, copied to the output path                           |
+| Min bundle ID | The ID of the bundle built into the app, which only newer bundles replace (the nil UUID in Debug)   |
 | Fingerprint   | The native fingerprint, with the [fingerprint strategy](/docs/guides/update-strategies/fingerprint) |
 | App version   | The native app version, with the [app version strategy](/docs/guides/update-strategies/app-version) |
-| Channel       | The default channel that [`channel set`](/docs/guides/channel-management) wrote                    |
+| Channel       | The default channel that [`channel set`](/docs/guides/channel-management) wrote                     |
 
 The build reads the app version and channel from the artifact it built, so
 the values a flavor, build type, `versionNameSuffix`, `xcconfig` or
@@ -104,11 +104,11 @@ These environment variables override the vault for one credential: when any
 of a credential's variables is set, the build reads that credential from them
 and never asks the console for it.
 
-| Credential      | Environment variables                                                                                                                                   |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Android keystore | `HOT_UPDATER_ANDROID_KEYSTORE_PATH` (or `HOT_UPDATER_ANDROID_KEYSTORE_BASE64`), `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD`, `HOT_UPDATER_ANDROID_KEY_ALIAS`, `HOT_UPDATER_ANDROID_KEY_PASSWORD` |
-| App Store Connect API key | `HOT_UPDATER_ASC_KEY_PATH` (or `HOT_UPDATER_ASC_KEY`, the `.p8` contents), `HOT_UPDATER_ASC_KEY_ID`, `HOT_UPDATER_ASC_ISSUER_ID`                  |
-| Play service account | `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` (or `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`, the JSON key file's contents), for [`--upload play-internal`](#upload-to-google-play) |
+| Credential                | Environment variables                                                                                                                                                                        |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Android keystore          | `HOT_UPDATER_ANDROID_KEYSTORE_PATH` (or `HOT_UPDATER_ANDROID_KEYSTORE_BASE64`), `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD`, `HOT_UPDATER_ANDROID_KEY_ALIAS`, `HOT_UPDATER_ANDROID_KEY_PASSWORD` |
+| App Store Connect API key | `HOT_UPDATER_ASC_KEY_PATH` (or `HOT_UPDATER_ASC_KEY`, the `.p8` contents), `HOT_UPDATER_ASC_KEY_ID`, `HOT_UPDATER_ASC_ISSUER_ID`                                                             |
+| Play service account      | `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` (or `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`, the JSON key file's contents), for [`--upload play-internal`](#upload-to-google-play)                   |
 
 The CLI writes a keystore or key given as contents to a temporary file that
 only your user can read, and deletes it when the build ends. It masks passwords
@@ -314,13 +314,13 @@ device build signs with the scheme's `signing.ascApiKey` when it sets one.
 
 ## Command options
 
-| Option                    | Commands            | Description                                     |
-| ------------------------- | ------------------- | ----------------------------------------------- |
-| `-s, --scheme <scheme>`   | all                 | The `nativeBuild` scheme to build               |
-| `-i, --interactive`       | all                 | Choose the scheme, and with `run:*` the device  |
-| `-o, --output-path <dir>` | `build:*`           | Where to copy the build output                  |
-| `--register`              | `build:*`           | Register the release build, its artifact and built-in bundle |
-| `--upload testflight`     | `build:ios`         | Upload the `.ipa` to App Store Connect for TestFlight |
-| `--upload play-internal`  | `build:android`     | Upload the `.aab` to Google Play's internal testing track |
-| `-d, --device [device]`   | `run:*`             | The device name or ID to run on                 |
-| `--port <port>`           | `run:android`       | The Metro port the device reaches with `adb reverse` |
+| Option                    | Commands        | Description                                                  |
+| ------------------------- | --------------- | ------------------------------------------------------------ |
+| `-s, --scheme <scheme>`   | all             | The `nativeBuild` scheme to build                            |
+| `-i, --interactive`       | all             | Choose the scheme, and with `run:*` the device               |
+| `-o, --output-path <dir>` | `build:*`       | Where to copy the build output                               |
+| `--register`              | `build:*`       | Register the release build, its artifact and built-in bundle |
+| `--upload testflight`     | `build:ios`     | Upload the `.ipa` to App Store Connect for TestFlight        |
+| `--upload play-internal`  | `build:android` | Upload the `.aab` to Google Play's internal testing track    |
+| `-d, --device [device]`   | `run:*`         | The device name or ID to run on                              |
+| `--port <port>`           | `run:android`   | The Metro port the device reaches with `adb reverse`         |

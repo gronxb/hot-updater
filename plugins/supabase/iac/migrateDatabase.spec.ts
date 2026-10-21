@@ -13,7 +13,10 @@ vi.mock("./supabaseCli", async (importOriginal) => ({
 }));
 vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
   ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
-  readHotUpdaterEnv: vi.fn(async () => mocks.managedEnv),
+  readHotUpdaterInitEnv: vi.fn(async () => ({
+    env: {},
+    managedEnv: mocks.managedEnv,
+  })),
 }));
 
 import { migrateDatabase } from "./index";

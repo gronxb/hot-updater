@@ -183,7 +183,7 @@ const keysGenerateInVault = async (
   // Stored, or possibly stored: the public key then stays for the app.
   let stored = false;
   try {
-    const client = connectVault(
+    const client = await connectVault(
       `hot-updater keys generate --vault stores the private key as ${name}`,
     );
     createdDir = await fs.mkdir(outputDir, { recursive: true });
@@ -427,7 +427,7 @@ export const keysExportPublic = async (
 ) => {
   const cwd = getCwd();
 
-  const config = await loadConfig(null);
+  const config = await loadConfig(null, { credentials: true });
   try {
     if (!config.signing) {
       throw new Error(

@@ -78,7 +78,8 @@ export interface VaultClient {
     readonly kind: VaultSecretKind;
     readonly value: unknown;
     /**
-     * The version the secret must be at, refused with a 409 otherwise: 0
+     * The version the caller read, 0 for no secret: the Console refuses the
+     * write with 409 `conflict` when the secret is at another version, so 0
      * stores only a new secret, never replacing one under the name.
      */
     readonly expectedVersion?: number;

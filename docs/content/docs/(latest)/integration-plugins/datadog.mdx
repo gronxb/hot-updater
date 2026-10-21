@@ -4,7 +4,7 @@ description: "The `withDatadog()` plugin for hot-updater enables automatic sourc
 icon: datadog
 ---
 
-import { Tabs, Tab } from 'fumadocs-ui/components/tabs';
+import { Tabs, Tab } from "fumadocs-ui/components/tabs";
 
 ## Prerequisites
 
@@ -81,13 +81,15 @@ if (existsSync(".env.hotupdater")) {
 }
 
 export default defineConfig({
-  build: withDatadog( // [!code ++]
+  build: withDatadog(
+    // [!code ++]
     bare({
       enableHermes: false, // or true, depending if you want to use it
       // Required for sourcemap upload
       sourcemap: true, // [!code ++]
     }),
-    { // [!code ++]
+    {
+      // [!code ++]
       // Sort sourcemaps for the same version by this build number.
       buildNumber: "build number", // [!code ++]
       // Match this OTA bundle's runtime SDK version.
@@ -99,6 +101,7 @@ export default defineConfig({
   // .. your other config
 });
 ```
+
 </Tab>
 <Tab value="Expo">
 
@@ -114,12 +117,14 @@ if (existsSync(".env.hotupdater")) {
 }
 
 export default defineConfig({
-  build: withDatadog( // [!code ++]
+  build: withDatadog(
+    // [!code ++]
     expo({
       // Required for sourcemap upload
       sourcemap: true, // [!code ++]
     }),
-    { // [!code ++]
+    {
+      // [!code ++]
       // Sort sourcemaps for the same version by this build number.
       buildNumber: "build number", // [!code ++]
       // Match this OTA bundle's runtime SDK version.
@@ -131,6 +136,7 @@ export default defineConfig({
   // .. your other config
 });
 ```
+
 </Tab>
 
 <Tab value="Rock">
@@ -147,12 +153,14 @@ if (existsSync(".env.hotupdater")) {
 }
 
 export default defineConfig({
-  build: withDatadog( // [!code ++]
+  build: withDatadog(
+    // [!code ++]
     rock({
       // Required for sourcemap upload
       sourcemap: true, // [!code ++]
     }),
-    { // [!code ++]
+    {
+      // [!code ++]
       // Sort sourcemaps for the same version by this build number.
       buildNumber: "build number", // [!code ++]
       // Match this OTA bundle's runtime SDK version.
@@ -174,8 +182,8 @@ With a [managed provider](/docs/get-started/choose-provider#set-up-a-provider-pr
 database, and plugins in `hot-updater.config.ts`.
 
 <Callout title="Automatic Upload">
-`withDatadog()` uploads the selected bundle and its sourcemap to Datadog during
-`hot-updater deploy`.
+  `withDatadog()` uploads the selected bundle and its sourcemap to Datadog
+  during `hot-updater deploy`.
 </Callout>
 
 ## Step 2: Deploy

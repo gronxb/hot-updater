@@ -74,7 +74,8 @@ if (existsSync(".env.hotupdater")) {
 
 export default defineConfig({
   // ... build, database, plugins, and updateStrategy
-  storage: azureBlobStorage({ // [!code ++]
+  storage: azureBlobStorage({
+    // [!code ++]
     connectionString: process.env.HOT_UPDATER_AZURE_STORAGE_CONNECTION_STRING!, // [!code ++]
     containerName: "hot-updater", // [!code ++]
   }), // [!code ++]

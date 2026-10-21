@@ -166,11 +166,13 @@ describe("googleCloudKmsSigning", () => {
   });
 
   it("rejects invalid configuration and message sizes before loading the SDK", async () => {
-    expect(() =>
-      googleCloudKmsSigning({
-        keyVersion: "projects/p/locations/global/keyRings/r/cryptoKeys/k",
-      }),
-    ).toThrow("version-pinned key resource name");
+    // Created without a check, so a config loads before the name is set.
+    const unpinned = googleCloudKmsSigning({
+      keyVersion: "projects/p/locations/global/keyRings/r/cryptoKeys/k",
+    });
+    await expect(unpinned.getPublicKey()).rejects.toThrow(
+      "version-pinned key resource name",
+    );
 
     const provider = googleCloudKmsSigning({ keyVersion });
     await expect(

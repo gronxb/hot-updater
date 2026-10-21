@@ -133,14 +133,14 @@ server runs already takes.
 `defineTable(fields, { key, derived?, indexes?, retention? })` declares a
 table. Each field has a `type` and these options:
 
-| Option | Meaning |
-| --- | --- |
-| `type` | `string`, `integer` (safe integers), `number`, `boolean`, or `json`. |
-| `required: false` | The field stores null and may be omitted on create. Fields are required by default. |
-| `maxLength` | Strings: the column length on PostgreSQL and MySQL. A MySQL key or index must fit 3,072 bytes at 4 per character, so give indexed strings a length. |
-| `ascii: true` | Strings that hold only ASCII: MySQL stores them in single bytes, which fits longer keys. |
-| `unique: true` | Adds a unique index named after the field. `findOne` can look a row up by it. |
-| `references` | `{ model, onDelete }`: a reference to a row of a table in the same plugin. |
+| Option            | Meaning                                                                                                                                             |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `type`            | `string`, `integer` (safe integers), `number`, `boolean`, or `json`.                                                                                |
+| `required: false` | The field stores null and may be omitted on create. Fields are required by default.                                                                 |
+| `maxLength`       | Strings: the column length on PostgreSQL and MySQL. A MySQL key or index must fit 3,072 bytes at 4 per character, so give indexed strings a length. |
+| `ascii: true`     | Strings that hold only ASCII: MySQL stores them in single bytes, which fits longer keys.                                                            |
+| `unique: true`    | Adds a unique index named after the field. `findOne` can look a row up by it.                                                                       |
+| `references`      | `{ model, onDelete }`: a reference to a row of a table in the same plugin.                                                                          |
 
 `key` lists the fields that identify a row; they cannot be optional or `json`.
 
@@ -161,11 +161,11 @@ uses a multi-valued `bundle_ref` for its bundle filters.
 A reference targets a single-key table of the same plugin, and the field has
 that key's type. `onDelete` decides what deleting the parent does:
 
-| `onDelete` | Deleting a parent that has children | Writing a child |
-| --- | --- | --- |
-| `restrict` | Refused with `DatabaseConstraintError` `referenced`. | The parent must exist. |
-| `cascade` | Deletes the children first, in the same transaction. Needs an index whose `eq` is exactly the reference field. | The parent must exist. |
-| `none` | Allowed; children keep the value. | Not checked. |
+| `onDelete` | Deleting a parent that has children                                                                            | Writing a child        |
+| ---------- | -------------------------------------------------------------------------------------------------------------- | ---------------------- |
+| `restrict` | Refused with `DatabaseConstraintError` `referenced`.                                                           | The parent must exist. |
+| `cascade`  | Deletes the children first, in the same transaction. Needs an index whose `eq` is exactly the reference field. | The parent must exist. |
+| `none`     | Allowed; children keep the value.                                                                              | Not checked.           |
 
 For `restrict` and `cascade`, the parent row keeps a count of its children in
 the column `_refs_<child table>_<field>`, which reads return, for example
@@ -177,11 +177,11 @@ the column `_refs_<child table>_<field>`, which reads return, for example
 declares rows of metrics keyed by their identity fields. `key` lists every
 identity field in declaration order. Each metric is one of:
 
-| Metric | Behavior |
-| --- | --- |
-| `counters` | Blind increments: a change never reads the row, so concurrent writers do not conflict. |
-| `gauges` | Read, merged, and written back per shard row under a guard. A gauge that would go below zero reruns the transaction, which fails if it stays negative. A row whose counters and gauges all reach zero is deleted. |
-| `distinct` | HyperLogLog sketches of unique values, merged register by register. Sketches need an aggregate of their own. |
+| Metric     | Behavior                                                                                                                                                                                                          |
+| ---------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `counters` | Blind increments: a change never reads the row, so concurrent writers do not conflict.                                                                                                                            |
+| `gauges`   | Read, merged, and written back per shard row under a guard. A gauge that would go below zero reruns the transaction, which fails if it stays negative. A row whose counters and gauges all reach zero is deleted. |
+| `distinct` | HyperLogLog sketches of unique values, merged register by register. Sketches need an aggregate of their own.                                                                                                      |
 
 `shards` (1–64, default 1) stores each logical row as up to that many rows, so
 concurrent writers spread out. Reads with `findAggregates` return logical rows:
@@ -234,11 +234,11 @@ const events = defineTable(
 Each backend deletes expired rows with its cheapest mechanism, with no
 scheduler:
 
-| Backend | How expired rows go |
-| --- | --- |
-| DynamoDB | Every item of the row, its index copies included, carries `_ttl` (epoch seconds), and the table's TTL deletes them at no write cost, usually within two days of expiry. |
-| Firestore | Every document of the row carries `expireAt`, and the collection's TTL policy deletes them, usually within a day of expiry. |
-| MongoDB | Every document of the row carries `_expireAt`, a Date, and the collection's TTL index deletes it, usually within a minute of expiry. |
+| Backend                                 | How expired rows go                                                                                                                                                                                                                                                                                                                                       |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| DynamoDB                                | Every item of the row, its index copies included, carries `_ttl` (epoch seconds), and the table's TTL deletes them at no write cost, usually within two days of expiry.                                                                                                                                                                                   |
+| Firestore                               | Every document of the row carries `expireAt`, and the collection's TTL policy deletes them, usually within a day of expiry.                                                                                                                                                                                                                               |
+| MongoDB                                 | Every document of the row carries `_expireAt`, a Date, and the collection's TTL index deletes it, usually within a minute of expiry.                                                                                                                                                                                                                      |
 | PostgreSQL, MySQL, SQLite, D1, Supabase | During writes: the write that takes the hourly lease in the settings table first deletes up to 500 expired rows a table, oldest first, in one or two statements over an index that starts with the retention field (the adapter creates one when none does). Other servers skip; while a pass still finds a full batch, the next one runs a minute later. |
 
 Until then an expired row may still be read, so a read that must not return
@@ -556,12 +556,12 @@ root row, as a child needs its parent.
 
 `transaction` throws these errors from `@hot-updater/plugin-core`:
 
-| Error | When |
-| --- | --- |
-| `DatabaseConstraintError` | The current state confirms a constraint. `reason`, a `ConstraintReason`, is `exists` (the key exists), `unique` (another row holds a unique value), `not_found` (a referenced parent or root row is missing), `referenced` (a `restrict` reference blocks a delete), or `too_large` (more than the database commits atomically, such as DynamoDB's 100 items). `model` names the table. |
-| `DatabaseConflictError` | Rows it read kept changing through every attempt. |
-| `DatabaseAmbiguousCommitError` | The write may or may not have committed. It is never rerun. |
-| `DatabaseTransactionError` | The handle was misused, or a gauge stayed below zero. |
+| Error                          | When                                                                                                                                                                                                                                                                                                                                                                                    |
+| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `DatabaseConstraintError`      | The current state confirms a constraint. `reason`, a `ConstraintReason`, is `exists` (the key exists), `unique` (another row holds a unique value), `not_found` (a referenced parent or root row is missing), `referenced` (a `restrict` reference blocks a delete), or `too_large` (more than the database commits atomically, such as DynamoDB's 100 items). `model` names the table. |
+| `DatabaseConflictError`        | Rows it read kept changing through every attempt.                                                                                                                                                                                                                                                                                                                                       |
+| `DatabaseAmbiguousCommitError` | The write may or may not have committed. It is never rerun.                                                                                                                                                                                                                                                                                                                             |
+| `DatabaseTransactionError`     | The handle was misused, or a gauge stayed below zero.                                                                                                                                                                                                                                                                                                                                   |
 
 ## Read through declared indexes
 
@@ -577,14 +577,14 @@ Outside transactions, `db` reads rows without their version column:
 There is no count, offset, or free-form filter. Declare an index for each
 query, and keep counts in an aggregate. A page read takes:
 
-| Option | Meaning |
-| --- | --- |
-| `index` | A declared index of the model. |
-| `where` | A value for each `eq` field, and no other field. `{}` for `eq: []`. |
-| `range` | Optional `gt` or `gte`, and `lt` or `lte`, on the first order field, or on a prefix of the order fields as a tuple. |
-| `order` | `"asc"` (default) or `"desc"`. |
-| `limit` | 1–500 rows. |
-| `cursor` | The previous page's `next`. |
+| Option   | Meaning                                                                                                             |
+| -------- | ------------------------------------------------------------------------------------------------------------------- |
+| `index`  | A declared index of the model.                                                                                      |
+| `where`  | A value for each `eq` field, and no other field. `{}` for `eq: []`.                                                 |
+| `range`  | Optional `gt` or `gte`, and `lt` or `lte`, on the first order field, or on a prefix of the order fields as a tuple. |
+| `order`  | `"asc"` (default) or `"desc"`.                                                                                      |
+| `limit`  | 1–500 rows.                                                                                                         |
+| `cursor` | The previous page's `next`.                                                                                         |
 
 A page has `next` only when it is full, so the page after a full last page is
 empty. A cursor resumes only the read that produced it; with another model,
@@ -613,16 +613,16 @@ not match its index throws `DatabaseQueryError`; most such reads, such as
 `init`'s `core` reads bundles, Releases, Release Catalogs, and channels on the
 same engine, each through a declared index or key. Plugins never write core.
 
-| Method | Returns |
-| --- | --- |
-| `getBundle(id)` | A bundle, its patches, and how many patches start from it. |
-| `listBundles({ limit, order?, after?, platform? })` | One page of bundles with their patches. |
-| `countBundles(platform?)` | The bundle total, from one counter row. |
-| `listPatchesFromBase(baseBundleId, { limit, order?, after? })` | One page of the patches that start from a bundle. |
-| `getRelease(id)`, `listReleases({ filter, limit, order?, after? })` | Releases, through the index the filter names. |
-| `latestReleaseId(scopeKey)` | A scope's newest Release id. |
-| `getReleaseCatalog(request)`, `getReleaseCatalogRow(scopeKey)`, `listReleaseCatalogs({ limit, order?, after? })` | Compiled Release Catalogs: the update check's answer for a platform, channel, and app version or fingerprint, or the stored rows. |
-| `listChannels()`, `findChannelByName(name)` | Channels. |
+| Method                                                                                                                                         | Returns                                                                                                                                                          |
+| ---------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `getBundle(id)`                                                                                                                                | A bundle, its patches, and how many patches start from it.                                                                                                       |
+| `listBundles({ limit, order?, after?, platform? })`                                                                                            | One page of bundles with their patches.                                                                                                                          |
+| `countBundles(platform?)`                                                                                                                      | The bundle total, from one counter row.                                                                                                                          |
+| `listPatchesFromBase(baseBundleId, { limit, order?, after? })`                                                                                 | One page of the patches that start from a bundle.                                                                                                                |
+| `getRelease(id)`, `listReleases({ filter, limit, order?, after? })`                                                                            | Releases, through the index the filter names.                                                                                                                    |
+| `latestReleaseId(scopeKey)`                                                                                                                    | A scope's newest Release id.                                                                                                                                     |
+| `getReleaseCatalog(request)`, `getReleaseCatalogRow(scopeKey)`, `listReleaseCatalogs({ limit, order?, after? })`                               | Compiled Release Catalogs: the update check's answer for a platform, channel, and app version or fingerprint, or the stored rows.                                |
+| `listChannels()`, `findChannelByName(name)`                                                                                                    | Channels.                                                                                                                                                        |
 | `getArtifactInfo(targetBundleId, currentBundleId, 2)`, `getArtifactFiles(bundleId, paths)`, `findBaseBundleIds(candidateKey, bundleId, limit)` | Artifact resolution, the URLs of the files a device downloads, and auto-patch bases. `getArtifactInfo(…, 1)` answers the legacy protocol 1, with a URL per file. |
 
 `after` is the last key of the previous page. Call `core` outside
@@ -797,13 +797,13 @@ first of:
 npx hot-updater db migrate src/hotUpdater.ts
 ```
 
-| Database | The plugin's tables |
-| --- | --- |
-| Kysely, `postgres`, MongoDB, a [custom adapter](/docs/database-adapters/custom-database) | `db migrate` creates them. With Kysely, `db generate` writes the SQL for review first. |
-| Drizzle, Prisma | `db generate` adds them to the schema file. Apply it with Drizzle Kit or Prisma, then run `db migrate` for the settings rows. |
-| D1 | `db generate` writes a D1 migration to `migrations`; apply it with `wrangler d1 migrations apply`. `db migrate` applies the same schema through the Cloudflare API. |
-| Supabase | `db generate` writes a migration to `supabase/migrations` that also lets the apply RPC reach the tables; apply it with `supabase db push`. |
-| DynamoDB, Firestore | Nothing to create: every table is a key prefix in the one table or collection. `db migrate` writes the settings row. |
+| Database                                                                                 | The plugin's tables                                                                                                                                                 |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Kysely, `postgres`, MongoDB, a [custom adapter](/docs/database-adapters/custom-database) | `db migrate` creates them. With Kysely, `db generate` writes the SQL for review first.                                                                              |
+| Drizzle, Prisma                                                                          | `db generate` adds them to the schema file. Apply it with Drizzle Kit or Prisma, then run `db migrate` for the settings rows.                                       |
+| D1                                                                                       | `db generate` writes a D1 migration to `migrations`; apply it with `wrangler d1 migrations apply`. `db migrate` applies the same schema through the Cloudflare API. |
+| Supabase                                                                                 | `db generate` writes a migration to `supabase/migrations` that also lets the apply RPC reach the tables; apply it with `supabase db push`.                          |
+| DynamoDB, Firestore                                                                      | Nothing to create: every table is a key prefix in the one table or collection. `db migrate` writes the settings row.                                                |
 
 A D1 or Supabase server runs in a Worker or an Edge Function, which the CLI
 cannot load. Point the commands at a Node module that passes the same

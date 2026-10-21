@@ -30,7 +30,8 @@ export class ServerConfigError extends Error {
 export const loadServer = async (
   config?: Pick<ConfigResponse, "database" | "storage" | "plugins">,
 ): Promise<LoadedServer> => {
-  const { database, storage, plugins } = config ?? (await loadConfig(null));
+  const { database, storage, plugins } =
+    config ?? (await loadConfig(null, { credentials: true }));
   if (database === undefined) {
     throw new ServerConfigError(
       "Set database in hot-updater.config.ts: the database your server runs on, such as d1Database(...), or standaloneRepository({ baseUrl }) to reach a self-hosted server through its admin API.",

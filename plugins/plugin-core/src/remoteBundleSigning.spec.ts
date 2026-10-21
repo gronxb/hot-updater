@@ -161,14 +161,26 @@ describe("remote bundle signing client", () => {
     "https://signer.example.com/a/../b",
     "https://signer.example.com/a/%2e%2e/b",
     "https://signer.example.com/a/%2f/b",
-  ])("rejects unsafe endpoints without reflecting them: %s", (endpoint) => {
-    expect(() =>
-      remoteSigning({
+  ])(
+    "rejects unsafe endpoints without reflecting them: %s",
+    async (endpoint) => {
+      const fetch = vi.fn<typeof globalThis.fetch>();
+      // Created without a check, so a config loads without the endpoint.
+      const signer = remoteSigning({
         endpoint,
+        fetch,
         signingToken: () => TOKEN,
-      }),
-    ).toThrow("Remote bundle signing requires a valid endpoint.");
-  });
+      });
+
+      await expect(signer.getPublicKey()).rejects.toThrow(
+        "Remote bundle signing requires a valid endpoint.",
+      );
+      await expect(
+        signer.sign({ message: new Uint8Array(32) }),
+      ).rejects.toThrow("Remote bundle signing requires a valid endpoint.");
+      expect(fetch).not.toHaveBeenCalled();
+    },
+  );
 
   it("allows HTTP only for exact loopback hosts", () => {
     expect(() =>

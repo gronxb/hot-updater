@@ -59,9 +59,11 @@ export default defineConfig({
     },
     bucketName: process.env.R2_BUCKET_NAME!,
   }),
-  database: standaloneRepository({ // [!code ++]
+  database: standaloneRepository({
+    // [!code ++]
     baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
-    commonHeaders: { // [!code ++]
+    commonHeaders: {
+      // [!code ++]
       Authorization: `Bearer ${adminToken}`, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]

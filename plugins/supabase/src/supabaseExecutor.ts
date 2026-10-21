@@ -39,11 +39,17 @@ const withCode = (error: { code?: string; message: string }) =>
 
 /**
  * The SQL core's executor over Supabase: every statement goes through the
- * apply RPC, and a write is one RPC call, so one transaction.
+ * apply RPC, and a write is one RPC call, so one transaction. `client` may
+ * be what creates the client, called on the first statement.
  */
-export const supabaseExecutor = (client: SupabaseClient): SqlExecutor => {
+export const supabaseExecutor = (
+  client: SupabaseClient | (() => SupabaseClient),
+): SqlExecutor => {
+  let created: SupabaseClient | undefined;
+  const clientOf = () =>
+    typeof client === "function" ? (created ??= client()) : client;
   const apply = async (statements: readonly SqlStatement[]) => {
-    const { data, error } = await client.rpc(SUPABASE_APPLY_FUNCTION, {
+    const { data, error } = await clientOf().rpc(SUPABASE_APPLY_FUNCTION, {
       p_statements: statements.map(toApplyStatement),
     });
     if (error) throw withCode(error);

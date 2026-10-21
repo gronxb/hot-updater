@@ -39,3 +39,4 @@ export * from "./transformTemplate";
 export * from "./vaultClient";
 export * from "./vaultCredentialSource";
 export * from "./vaultReference";
+export * from "./vaultVariables";

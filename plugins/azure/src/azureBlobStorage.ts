@@ -74,8 +74,10 @@ export function azureBlobStorage(
   config: AzureBlobStorageConfig,
 ): StorageAdapterWith<AzureBlobStorageOperations> {
   const { containerName, basePath, getDownloadUrl } = config;
-  const service = serviceOf(config);
-  const container = service.getContainerClient(containerName);
+  // Created on first use, so a config loads without the connection.
+  let client: BlobServiceClient | undefined;
+  const service = () => (client ??= serviceOf(config));
+  const container = () => service().getContainerClient(containerName);
   const normalizedBasePath = basePath?.replace(/^\/+|\/+$/g, "") ?? "";
   const getStorageKey = createStorageKeyBuilder(normalizedBasePath);
 
@@ -122,7 +124,7 @@ export function azureBlobStorage(
   const delegationKey = () => {
     const now = Date.now();
     if (delegation === undefined || delegation.renewAt <= now) {
-      const key = service.getUserDelegationKey(
+      const key = service().getUserDelegationKey(
         new Date(now - 5 * 60 * 1000),
         new Date(now + DELEGATION_KEY_LIFETIME_MS),
       );
@@ -139,7 +141,7 @@ export function azureBlobStorage(
   };
 
   const signedUrl = async (key: string) => {
-    const blob = container.getBlobClient(key);
+    const blob = container().getBlobClient(key);
     const expiresOn = new Date(Date.now() + SAS_EXPIRES_IN_MS);
     const permissions = BlobSASPermissions.parse("r");
     if (blob.credential instanceof StorageSharedKeyCredential) {
@@ -165,7 +167,7 @@ export function azureBlobStorage(
     protocol: PROTOCOL,
     async listObjects(prefix) {
       const objects: StorageObject[] = [];
-      for await (const blob of container.listBlobsFlat({
+      for await (const blob of container().listBlobsFlat({
         prefix: getListPrefix(prefix),
       })) {
         const storageUri = getListedStorageUri(blob.name);
@@ -185,9 +187,9 @@ export function azureBlobStorage(
       for (let offset = 0; offset < keys.length; offset += 256) {
         const batch = keys.slice(offset, offset + 256);
         if (batch.length === 0) continue;
-        const response = await container
+        const response = await container()
           .getBlobBatchClient()
-          .deleteBlobs(batch.map((key) => container.getBlobClient(key)));
+          .deleteBlobs(batch.map((key) => container().getBlobClient(key)));
         const failed = response.subResponses.filter(
           ({ status }) => status >= 300 && status !== 404,
         );
@@ -204,7 +206,7 @@ export function azureBlobStorage(
           blobCacheControl: "max-age=31536000",
         },
       };
-      const blob = container.getBlockBlobClient(storageKey);
+      const blob = container().getBlockBlobClient(storageKey);
       if (contentLength === undefined) {
         await blob.uploadData(
           new Uint8Array(await new Response(body).arrayBuffer()),
@@ -244,7 +246,7 @@ export function azureBlobStorage(
     async get({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
       try {
-        const download = await container.getBlobClient(key).download();
+        const download = await container().getBlobClient(key).download();
         const body = download.readableStreamBody;
         if (body === undefined) return { response: null };
         const headers = new Headers();
@@ -275,11 +277,11 @@ export function azureBlobStorage(
     },
     async exists({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
-      return { exists: await container.getBlobClient(key).exists() };
+      return { exists: await container().getBlobClient(key).exists() };
     },
     async delete({ storageUri }) {
       const { key } = parseAndValidate(storageUri);
-      await container.getBlobClient(key).deleteIfExists();
+      await container().getBlobClient(key).deleteIfExists();
       return { deleted: true };
     },
   });

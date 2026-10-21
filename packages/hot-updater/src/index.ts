@@ -6,7 +6,7 @@ import {
 } from "@commander-js/extra-typings";
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
-import { banner, p } from "@hot-updater/cli-tools";
+import { banner, p, VaultDeployCredentialsError } from "@hot-updater/cli-tools";
 import { VAULT_SECRET_KINDS } from "@hot-updater/server/plugins";
 import isPortReachable from "is-port-reachable";
 import { normalizeRange } from "verkit";
@@ -29,7 +29,11 @@ import {
   type BuildNativeOptions,
   buildIosNative,
 } from "@/commands/buildNative";
-import { getConsolePort, openConsole } from "@/commands/console";
+import {
+  getConsolePort,
+  loadConsoleCredentials,
+  openConsole,
+} from "@/commands/console";
 import {
   type DeployOptions,
   deploy,
@@ -83,7 +87,9 @@ import {
   handleRemoteConfigVersions,
 } from "./commands/remoteConfig";
 import {
+  DEFAULT_IMPORT_SECRET_NAME,
   handleSecretsEnv,
+  handleSecretsImport,
   handleSecretsList,
   handleSecretsPut,
   handleSecretsTokenCreate,
@@ -382,6 +388,22 @@ secretsCommand
   )
   .argument("<command...>", "the command and its arguments, after --")
   .action((command: string[]) => handleSecretsEnv(command));
+
+secretsCommand
+  .command("import")
+  .description(
+    "Move an env file's variables into the vault as a deploy-credentials secret, keeping only the connection variables in the file",
+  )
+  .argument("[file]", "the env file to move", ".env.hotupdater")
+  .option(
+    "--name <name>",
+    "the deploy-credentials secret to store them in",
+    DEFAULT_IMPORT_SECRET_NAME,
+  )
+  .option("-y, --yes", "skip confirmation prompt")
+  .action((file: string, options: { name: string; yes?: boolean }) =>
+    handleSecretsImport(file, options),
+  );
 
 const secretsTokenCommand = secretsCommand
   .command("token")
@@ -983,6 +1005,7 @@ program
     printBanner();
 
     const port = await getConsolePort();
+    await loadConsoleCredentials(port);
 
     if (await isPortReachable(port, { host: "127.0.0.1" })) {
       p.log.error(`Port ${port} is already in use.`);
@@ -1104,4 +1127,13 @@ program.hook("preAction", (_command, actionCommand) => {
   ensureNoConflicts();
 });
 
-program.parse(process.argv);
+program.parseAsync(process.argv).catch((error: unknown) => {
+  // The vault's deploy credentials failed before the config loaded: the
+  // message names the Console and what to set instead.
+  if (error instanceof VaultDeployCredentialsError) {
+    p.log.error(error.message);
+    process.exitCode = 1;
+    return;
+  }
+  throw error;
+});

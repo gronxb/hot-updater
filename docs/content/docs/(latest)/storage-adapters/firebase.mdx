@@ -78,7 +78,8 @@ const credential = applicationDefault();
 
 export default defineConfig({
   // ... build, database, plugins, and updateStrategy
-  storage: firebaseStorage({ // [!code ++]
+  storage: firebaseStorage({
+    // [!code ++]
     projectId: process.env.FIREBASE_PROJECT_ID!, // [!code ++]
     storageBucket: process.env.FIREBASE_STORAGE_BUCKET!, // [!code ++]
     credential, // [!code ++]

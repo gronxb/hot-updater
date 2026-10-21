@@ -91,10 +91,10 @@ describe("createPatch", () => {
       platform: "ios",
     });
 
-    expect(mockCli.loadConfig).toHaveBeenCalledWith({
-      channel: "production",
-      platform: "ios",
-    });
+    expect(mockCli.loadConfig).toHaveBeenCalledWith(
+      { channel: "production", platform: "ios" },
+      { credentials: true },
+    );
     const [rendered, title] = mockCli.p.note.mock.calls[0]!;
     const summary = stripVTControlCharacters(String(rendered));
     expect(title).toBe("Patch");

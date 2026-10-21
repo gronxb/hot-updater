@@ -320,6 +320,7 @@ describe("hot-updater api-key over a server definition", () => {
 
     expect(loadHotUpdater).toHaveBeenCalledWith("server/hotUpdater.ts", {
       cwd: process.cwd(),
+      credentials: true,
     });
     expect(loadConfig).not.toHaveBeenCalled();
     await expect(
@@ -358,7 +359,10 @@ describe("hot-updater api-key over a server definition", () => {
 
     await handleApiKeyList({ json: true });
 
-    expect(loadHotUpdater).toHaveBeenCalledWith("", { cwd: process.cwd() });
+    expect(loadHotUpdater).toHaveBeenCalledWith("", {
+      cwd: process.cwd(),
+      credentials: true,
+    });
     expect(JSON.parse(String(output.mock.calls[0]?.[0]))).toEqual([]);
     expect(loaded.dispose).toHaveBeenCalledOnce();
   });

@@ -16,13 +16,13 @@ backend, use the matching integration below and keep its established tooling.
 
 ## Architecture
 
-| Part                    | Runs in                            | Responsibility                                                                                                         |
-| ----------------------- | ---------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Part                    | Runs in                            | Responsibility                                                                                                          |
+| ----------------------- | ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `hot-updater.config.ts` | React Native project or deploy job | Build bundles, upload artifacts and send management requests through `standaloneRepository`, with the server's plugins. |
-| `createHotUpdater`      | Server project                     | Compile Release Catalogs and serve client and admin handlers using a direct database provider.                         |
-| Database adapter        | Server project                     | Persist canonical rows, prepare the schema and commit changes atomically.                                              |
-| Server plugins          | Server project                     | Add Insights, API keys, or your own tables, APIs and routes to `createHotUpdater`.                                     |
-| Storage adapter         | Deploy job and server              | Upload artifacts and resolve their stored locations for downloads.                                                     |
+| `createHotUpdater`      | Server project                     | Compile Release Catalogs and serve client and admin handlers using a direct database provider.                          |
+| Database adapter        | Server project                     | Persist canonical rows, prepare the schema and commit changes atomically.                                               |
+| Server plugins          | Server project                     | Add Insights, API keys, or your own tables, APIs and routes to `createHotUpdater`.                                      |
+| Storage adapter         | Deploy job and server              | Upload artifacts and resolve their stored locations for downloads.                                                      |
 
 Pass database and storage adapter objects directly to `createHotUpdater` and
 `defineConfig`. Provider factories such as `dynamoDB(options)` return those
@@ -69,10 +69,10 @@ require a client key for Release Catalogs, artifact resolution, Insights
 ingestion and plugin client routes, or explicitly set `clientAccess: "public"`.
 `createHotUpdater` refuses a configuration with neither or both.
 
-| Handler           | Routes and access                                                                                                                                                                                       |
-| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Handler           | Routes and access                                                                                                                                                                                                 |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `handlers.client` | Public `/version`; Release Catalogs, artifacts, `POST /events` and plugin client routes follow the client policy. Devices download artifacts from the URLs the storage adapter returns, not through this handler. |
-| `handlers.admin`  | Bundle, Release, catalog and Channel routes, Insights queries and plugin admin routes. Your framework authenticates every request before mounting this handler.                                         |
+| `handlers.admin`  | Bundle, Release, catalog and Channel routes, Insights queries and plugin admin routes. Your framework authenticates every request before mounting this handler.                                                   |
 
 Insights runs as the `insights()` plugin. React Native apps report to it when
 their `HotUpdater.init` options list the

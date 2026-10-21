@@ -19,12 +19,12 @@ baseline when the deploy environment protects that key. When your threat model
 requires stronger custody, prefer a remote signing service where the private
 key is non-exportable and the deploy process submits only a message to sign.
 
-| Signer                                                    | Use case            | Custody                                           |
-| --------------------------------------------------------- | ------------------- | ------------------------------------------------- |
-| [Local PEM](/docs/guides/signing/local)                   | Standard baseline   | Exportable key managed by your deploy environment |
-| [AWS KMS](/docs/guides/signing/aws-kms)                   | Hardened production | Non-exportable AWS KMS key                        |
-| [Google Cloud KMS](/docs/guides/signing/google-cloud-kms) | Hardened production | Non-exportable Google Cloud KMS key               |
-| [Remote endpoint](/docs/guides/signing/remote)            | Service-dependent   | Defined by the compatible signing service         |
+| Signer                                                                   | Use case            | Custody                                                 |
+| ------------------------------------------------------------------------ | ------------------- | ------------------------------------------------------- |
+| [Local PEM](/docs/guides/signing/local)                                  | Standard baseline   | Exportable key managed by your deploy environment       |
+| [AWS KMS](/docs/guides/signing/aws-kms)                                  | Hardened production | Non-exportable AWS KMS key                              |
+| [Google Cloud KMS](/docs/guides/signing/google-cloud-kms)                | Hardened production | Non-exportable Google Cloud KMS key                     |
+| [Remote endpoint](/docs/guides/signing/remote)                           | Service-dependent   | Defined by the compatible signing service               |
 | [Console vault](/docs/guides/signing/remote#sign-with-the-console-vault) | Self-hosted Console | Key sealed in your database, opened only by the Console |
 
 Local PEM signing is the normal industry baseline used by systems such as Expo
@@ -124,11 +124,11 @@ Reference the public file in the Expo app config:
         "@hot-updater/expo",
         {
           "channel": "production",
-          "publicKeyPath": "./keys/public-key.pem" // [!code ++]
-        }
-      ]
-    ]
-  }
+          "publicKeyPath": "./keys/public-key.pem", // [!code ++]
+        },
+      ],
+    ],
+  },
 }
 ```
 
@@ -250,10 +250,10 @@ signing environment.
 
 ## Configuration States
 
-| `signing` config                        | Native public key     | Result                        |
-| -------------------------------------- | --------------------- | ----------------------------- |
-| Omitted or local `enabled: false`       | Not present           | Normal unsigned updates       |
-| Omitted or local `enabled: false`       | Present               | Updates rejected              |
+| `signing` config                         | Native public key     | Result                        |
+| ---------------------------------------- | --------------------- | ----------------------------- |
+| Omitted or local `enabled: false`        | Not present           | Normal unsigned updates       |
+| Omitted or local `enabled: false`        | Present               | Updates rejected              |
 | Local `enabled: true` or signing adapter | Present and matching  | Signed updates verified       |
 | Local `enabled: true` or signing adapter | Missing or mismatched | Deployment or update rejected |
 

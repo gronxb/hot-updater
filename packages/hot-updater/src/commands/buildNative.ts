@@ -63,6 +63,7 @@ const buildNativeInternal = async ({
         ...options,
         platform,
         operation: "build",
+        credentials: register,
         // A scheme the store would refuse, or a missing upload credential,
         // fails before the prebuild and the build. The scheme's signing key
         // is the same item, resolved once, and a service account stays in

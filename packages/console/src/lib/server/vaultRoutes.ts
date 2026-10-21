@@ -547,7 +547,9 @@ export const putVaultSecret = (
         return failure(
           409,
           "conflict",
-          `${error.message} Send the request again to store the next version.`,
+          write.expectedVersion === undefined
+            ? `${error.message} Send the request again to store the next version.`
+            : `${error.message} Read it again before you store the next version.`,
         );
       }
       if (isVaultError(error, "VaultLockedError")) {

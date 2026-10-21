@@ -1119,6 +1119,7 @@ export const deploy = async (options: DeployOptions): Promise<void> => {
   // same adapters, which the checks below compare.
   const platformConfigs = await loadPlatformConfigs(platforms, {
     channel: options.channel,
+    credentials: true,
   });
   const firstPlatformConfig = platformConfigs[0];
   if (!firstPlatformConfig) {

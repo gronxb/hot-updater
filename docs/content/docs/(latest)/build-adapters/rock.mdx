@@ -14,24 +14,25 @@ npm install @hot-updater/rock --save-dev
 
 ```typescript
 interface RockAdapterConfig {
-  outDir?: string;      // Output directory (default: "dist")
-  entryFile?: string;   // Entry file (default: "index.js")
-  sourcemap?: boolean;  // Generate sourcemaps (default: false)
-  hermes?: boolean;     // Use Hermes compiler (default: true)
+  outDir?: string; // Output directory (default: "dist")
+  entryFile?: string; // Entry file (default: "index.js")
+  sourcemap?: boolean; // Generate sourcemaps (default: false)
+  hermes?: boolean; // Use Hermes compiler (default: true)
 }
 ```
 
 ## Usage
 
 ```typescript title="hot-updater.config.ts"
-import { rock } from '@hot-updater/rock'; // [!code ++]
-import { defineConfig } from 'hot-updater';
+import { rock } from "@hot-updater/rock"; // [!code ++]
+import { defineConfig } from "hot-updater";
 
 export default defineConfig({
-  build: rock({ // [!code ++]
+  build: rock({
+    // [!code ++]
     hermes: true, // [!code ++]
-    entryFile: 'index.js', // [!code ++]
-    sourcemap: false // [!code ++]
+    entryFile: "index.js", // [!code ++]
+    sourcemap: false, // [!code ++]
   }), // [!code ++]
   // ... other config
 });

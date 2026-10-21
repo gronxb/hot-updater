@@ -135,7 +135,8 @@ if (!adminToken) {
   throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
-app.use( // [!code ++]
+app.use(
+  // [!code ++]
   "/hot-updater/admin/*", // [!code ++]
   bearerAuth({ token: adminToken }), // [!code ++]
 ); // [!code ++]
@@ -262,9 +263,9 @@ export default defineConfig({
 
 <Callout type="warn">
   The CLI `storage` adapter must match one entry in the server's
-  `createHotUpdater({ storage })` list, and `plugins` must list the server's
-  plugins. Both use `s3Storage`, `insights()`, and `apiKeys()` here; see
-  [CLI Configuration](/docs/custom/cli-configuration#mirror-the-server).
+  `createHotUpdater({storage})` list, and `plugins` must list the server's
+  plugins. Both use `s3Storage`, `insights()`, and `apiKeys()` here; see [CLI
+  Configuration](/docs/custom/cli-configuration#mirror-the-server).
 </Callout>
 
 ## React Native setup
@@ -277,12 +278,12 @@ a mobile release binary permits cleartext HTTP.
 Then follow [Set up your app](/docs/get-started/app-setup) to configure the SDK
 and native bundle loaders with these values:
 
-| Setting | Value |
-| --- | --- |
-| Client base URL | Your reachable HTTPS endpoint ending in `/hot-updater` |
-| Client header | `x-api-key` |
-| Client API key | The key created by `api-key create` above |
-| CLI/admin URL | `http://localhost:3000/hot-updater/admin`; keep its bearer token out of the app |
+| Setting         | Value                                                                           |
+| --------------- | ------------------------------------------------------------------------------- |
+| Client base URL | Your reachable HTTPS endpoint ending in `/hot-updater`                          |
+| Client header   | `x-api-key`                                                                     |
+| Client API key  | The key created by `api-key create` above                                       |
+| CLI/admin URL   | `http://localhost:3000/hot-updater/admin`; keep its bearer token out of the app |
 
 For local connectivity checks, the Android Emulator reaches the host at
 `10.0.2.2` and the iOS Simulator on the same Mac can use `localhost`. This only
@@ -300,7 +301,9 @@ export const hotUpdater = createHotUpdater({
   plugins: [insights(), apiKeys()], // [!code --]
   plugins: [insights()], // [!code ++]
   clientAccess: "public", // [!code ++]
-  storage: s3Storage({ /* ... */ }),
+  storage: s3Storage({
+    /* ... */
+  }),
 });
 ```
 

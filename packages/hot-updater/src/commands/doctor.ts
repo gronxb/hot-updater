@@ -538,7 +538,7 @@ async function checkNativeStatus({
     fs.existsSync(path.join(cwd, "android"));
 
   if (!hasNativeDirectories) {
-    const config = await loadConfig(null);
+    const config = await loadConfig(null, { credentials: true });
     const buildAdapter = await config.build({ cwd });
     const getNativeSigningPublicKey =
       buildAdapter.nativeBuild?.getBundleSigningPublicKey;
@@ -582,7 +582,7 @@ async function checkNativeStatus({
     };
   }
 
-  const config = await loadConfig(null);
+  const config = await loadConfig(null, { credentials: true });
   const localFingerprint = await readLocalFingerprintFile(cwd);
   const requireFingerprint = config.updateStrategy === "fingerprint";
   const expectedSigningPublicKey =

@@ -35,9 +35,7 @@ import type { CosmosClientOptions } from "@azure/cosmos";
 type CosmosDatabaseConfig = CosmosClientOptions & {
   databaseId?: string; // defaults to "hot-updater"
   containerId?: string; // The one container it uses; defaults to "hot_updater_v1"
-  aggregateBatching?:
-    | { mode?: "log" | "memory"; windowMs?: number }
-    | false; // default: {}, see Batched Insights totals
+  aggregateBatching?: { mode?: "log" | "memory"; windowMs?: number } | false; // default: {}, see Batched Insights totals
 };
 ```
 
@@ -162,7 +160,8 @@ if (existsSync(".env.hotupdater")) {
 
 export default defineConfig({
   // ... build, storage, plugins, and updateStrategy
-  database: cosmosDatabase({ // [!code ++]
+  database: cosmosDatabase({
+    // [!code ++]
     connectionString: process.env.HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING!, // [!code ++]
   }), // [!code ++]
 });
@@ -178,7 +177,8 @@ import { createHotUpdater } from "@hot-updater/server";
 import { apiKeys, insights, remoteConfig } from "@hot-updater/server/plugins";
 
 export const hotUpdater = createHotUpdater({
-  database: cosmosDatabase({ // [!code ++]
+  database: cosmosDatabase({
+    // [!code ++]
     connectionString: process.env.HOT_UPDATER_AZURE_COSMOS_CONNECTION_STRING!, // [!code ++]
   }), // [!code ++]
   storage, // The adapter hot-updater.config.ts uploads with, such as azureBlobStorage(...).

@@ -1,10 +1,63 @@
+import {
+  loadConfig,
+  loadVaultDeployCredentials,
+  p,
+} from "@hot-updater/cli-tools";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  getConsolePort,
   getConsoleServerEnv,
   isConsoleServerReady,
+  loadConsoleCredentials,
   waitForConsoleReady,
 } from "./console";
+
+vi.mock("@hot-updater/cli-tools", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@hot-updater/cli-tools")>()),
+  loadConfig: vi.fn(),
+  loadVaultDeployCredentials: vi.fn(),
+  readLoadedHotUpdaterEnv: vi.fn(async () => ({})),
+  p: { log: { warn: vi.fn() } },
+}));
+
+describe("the console's credentials", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.clearAllMocks();
+  });
+
+  it("reads the port without vault credentials", async () => {
+    vi.mocked(loadConfig).mockResolvedValue({
+      console: { port: 1422 },
+    } as never);
+
+    await expect(getConsolePort()).resolves.toBe(1422);
+    expect(vi.mocked(loadConfig).mock.calls).toEqual([[null]]);
+  });
+
+  it("loads them from another Console for the server to inherit", async () => {
+    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", "https://console.example.com");
+    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", `hu_vault_${"C".repeat(43)}`);
+
+    await loadConsoleCredentials(1422);
+
+    expect(loadVaultDeployCredentials).toHaveBeenCalledTimes(1);
+    expect(p.log.warn).not.toHaveBeenCalled();
+  });
+
+  it("does not ask the console it starts, which cannot answer yet", async () => {
+    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", "http://localhost:1422");
+    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", `hu_vault_${"C".repeat(43)}`);
+
+    await loadConsoleCredentials(1422);
+
+    expect(loadVaultDeployCredentials).not.toHaveBeenCalled();
+    expect(p.log.warn).toHaveBeenCalledWith(
+      expect.stringContaining("is this console (http://localhost:1422)"),
+    );
+  });
+});
 
 describe("getConsoleServerEnv", () => {
   it.each([
