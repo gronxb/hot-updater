@@ -182,6 +182,12 @@ describe("handleChannelDelete", () => {
     await expect(
       databaseHarness.core.findChannelByName("pr-12"),
     ).resolves.not.toBeNull();
+    // stdout stays one JSON document, which says why.
+    expect(log.error).not.toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+
+    process.exitCode = undefined;
+    await handleChannelDelete("pr-12", { yes: true });
     expect(log.error).toHaveBeenCalledWith(
       expect.stringContaining("a native build embeds it"),
     );
