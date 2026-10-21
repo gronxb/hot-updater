@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createMemoryCore } from "../memory-core.ts";
 import {
+  assertDependenciesInCheckout,
   nativeBuildChannel,
   readArtifactMinBundleId,
   registerInstalledNativeBuild,
@@ -148,6 +149,72 @@ describe("registering the installed E2E app as a native build", () => {
     await register("first bytes");
     await expect(register("other bytes")).rejects.toThrow(
       `Built-in bundle ${MIN_BUNDLE_ID} is registered with other bytes`,
+    );
+  });
+});
+
+describe("the checkout an OTA is built in", () => {
+  /** A pnpm checkout: an app whose react-native links into the root store. */
+  const createCheckout = async () => {
+    const parent = await fs.mkdtemp(path.join(os.tmpdir(), "hu-e2e-checkout-"));
+    roots.push(parent);
+    const checkout = path.join(parent, "repo");
+    const store = path.join(
+      checkout,
+      "node_modules/.pnpm/react-native@0.85.0/node_modules/react-native",
+    );
+    await fs.mkdir(store, { recursive: true });
+    await fs.writeFile(path.join(store, "package.json"), "{}");
+    await fs.mkdir(path.join(checkout, "app/node_modules"), {
+      recursive: true,
+    });
+    await fs.symlink(
+      "../../node_modules/.pnpm/react-native@0.85.0/node_modules/react-native",
+      path.join(checkout, "app/node_modules/react-native"),
+    );
+    return checkout;
+  };
+
+  it("accepts another checkout of the app that installed its own dependencies", async () => {
+    const built = await createCheckout();
+    const deployedParent = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hu-e2e-other-checkout-"),
+    );
+    roots.push(deployedParent);
+    // The same tree at another path, as another CI job checks it out.
+    const deployed = path.join(deployedParent, "elsewhere");
+    execFileSync("cp", ["-R", built, deployed]);
+
+    for (const checkout of [built, deployed]) {
+      await expect(
+        assertDependenciesInCheckout({
+          checkoutDir: checkout,
+          projectDir: path.join(checkout, "app"),
+        }),
+      ).resolves.toBeUndefined();
+    }
+  });
+
+  it("refuses a checkout whose dependencies live in another one", async () => {
+    const built = await createCheckout();
+    const deployed = await createCheckout();
+    // node_modules shared from the checkout that built the native app.
+    await fs.rm(path.join(deployed, "node_modules"), {
+      recursive: true,
+      force: true,
+    });
+    await fs.symlink(
+      path.join(built, "node_modules"),
+      path.join(deployed, "node_modules"),
+    );
+
+    await expect(
+      assertDependenciesInCheckout({
+        checkoutDir: deployed,
+        projectDir: path.join(deployed, "app"),
+      }),
+    ).rejects.toThrow(
+      `resolves react-native to ${await fs.realpath(path.join(built, "node_modules/.pnpm/react-native@0.85.0/node_modules/react-native"))}, outside the checkout ${await fs.realpath(deployed)}`,
     );
   });
 });

@@ -73,6 +73,7 @@ import {
   resetFixtureReleases,
 } from "./fixture-release-reset.ts";
 import {
+  assertDependenciesInCheckout,
   NATIVE_BUILD_CHANNEL_PREFIX,
   registerInstalledNativeBuild,
 } from "./native-build-registration.ts";
@@ -7195,6 +7196,10 @@ async function resetRemoteBundles() {
  * releases a failed earlier run left there.
  */
 async function registerNativeBuildFixture(input: { appVersion: string }) {
+  await assertDependenciesInCheckout({
+    checkoutDir: REPO_DIR,
+    projectDir: EXAMPLE_DIR,
+  });
   const platform = fixtureSession.platform;
   const artifactPath = nativeAppPath(
     parseE2eTrack(process.env.HOT_UPDATER_E2E_TRACK),
