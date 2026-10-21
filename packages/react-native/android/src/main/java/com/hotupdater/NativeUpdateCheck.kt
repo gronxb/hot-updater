@@ -55,6 +55,8 @@ internal class HotUpdaterImplUpdateCheckState(
 
     override suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean = impl.commitReleaseSelection(selection)
 
+    override suspend fun resetChannel(): Boolean = impl.resetChannel()
+
     override suspend fun updateBundle(
         request: StageBundleRequest,
         onProgress: (Double) -> Unit,

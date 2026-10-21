@@ -1166,6 +1166,7 @@ final class NativeUpdateChecker {
                 currentBundleId: currentBundleId,
                 minimumReleaseId: minimumReleaseId,
                 currentChannel: currentChannel,
+                isSwitched: isSwitched,
                 targetChannel: targetChannel,
                 explicitChannel: explicitChannel,
                 cohort: cohort,
@@ -1201,6 +1202,7 @@ final class NativeUpdateChecker {
         currentBundleId: String,
         minimumReleaseId: String,
         currentChannel: String,
+        isSwitched: Bool,
         targetChannel: String,
         explicitChannel: String?,
         cohort: String,
@@ -1225,13 +1227,25 @@ final class NativeUpdateChecker {
         )
         let strategyPath = strategy == .fingerprint ? "fingerprint" : "app-version"
         let catalogURL = "\(baseURL)/release-catalogs/\(strategyPath)/ios/\(channelKey)/\(Self.encodeURIComponent(strategyValue))"
-        // The server says this scope has no catalog yet: no update, not a failure.
-        guard let catalog = try await fetchReleaseCatalog(
+        let fetchedCatalog = try await fetchReleaseCatalog(
             baseURL: baseURL,
             url: catalogURL,
             expectedScope: expectedScope,
             options: options
-        ) else {
+        )
+        // The switched channel holds nothing for this build, as a deleted
+        // channel does: its scope answers a catalog without releases, or none.
+        if isSwitched, targetChannel == currentChannel,
+           fetchedCatalog.map({ $0.releases.isEmpty && $0.rollbackReleases.isEmpty }) ?? true {
+            return leaveSwitchedChannel(
+                options: options,
+                currentBundleId: currentBundleId,
+                minimumReleaseId: minimumReleaseId,
+                channel: currentChannel
+            )
+        }
+        // The server says this scope has no catalog yet: no update, not a failure.
+        guard let catalog = fetchedCatalog else {
             return nil
         }
         let catalogId = catalog.catalogId
@@ -1485,6 +1499,76 @@ final class NativeUpdateChecker {
             checker: self,
             install: updateBundleForSelection,
             isSelectionCurrent: { [host] in host.isReleaseSelectionCurrent(guardParams) }
+        )
+    }
+
+    /// Leaves a switched channel that holds nothing for this build, such as a
+    /// deleted one, as checkForUpdate.ts does: a rollback to the built-in
+    /// bundle whose staging also clears the runtime channel, so the next check
+    /// reads the build's default channel. The check itself resets nothing,
+    /// since the reset removes the running bundle's files.
+    private func leaveSwitchedChannel(
+        options: NativeCheckRequest,
+        currentBundleId: String,
+        minimumReleaseId: String,
+        channel: String
+    ) -> HotUpdaterUpdate {
+        let runsBuiltIn = currentBundleId.jsEquals(minimumReleaseId)
+        let errorScope = ErrorScope(
+            channel: channel,
+            bundleId: currentBundleId,
+            updateStrategy: options.updateStrategy,
+            targetBundleId: minimumReleaseId,
+            targetReleaseId: nil
+        )
+        let install = { [self] (_: @escaping (Double) -> Void) async throws -> Bool in
+            do {
+                // A device that left or changed the channel meanwhile keeps it.
+                guard host.channel() == channel else {
+                    throw NativeUpdateCheckError.staleReleaseCatalog
+                }
+                // The staging holds the gate, as `resetChannel()` waits for.
+                let reset = await host.resetChannel()
+                if reset { NativeUpdateEvents.remove(name: "onBundleDownloaded", from: host) }
+                return reset
+            } catch {
+                reportUpdateError(error, stage: "download", resource: "artifact", scope: errorScope)
+                throw error
+            }
+        }
+        let fromReleaseId = runningReleaseId(bundleId: currentBundleId, channel: channel)
+        queueEvent("onUpdateCheck", [
+            "status": "UPDATE_AVAILABLE",
+            "channel": channel,
+            "fromBundleId": currentBundleId,
+            "fromReleaseId": fromReleaseId ?? NSNull(),
+            "toBundleId": minimumReleaseId,
+            "toReleaseId": NSNull(),
+            "transitionKind": "USE_BUILTIN",
+            "updateStatus": "ROLLBACK",
+            "shouldForceUpdate": !runsBuiltIn,
+            "updateStrategy": options.updateStrategy.name,
+        ])
+        return HotUpdaterUpdate(
+            id: minimumReleaseId,
+            releaseId: nil,
+            status: .rollback,
+            shouldForceUpdate: !runsBuiltIn,
+            message: nil,
+            rolloutCohortCount: 1000,
+            targetCohorts: [],
+            bundleId: minimumReleaseId,
+            transitionKind: "USE_BUILTIN",
+            runsCurrentBundle: runsBuiltIn,
+            targetKey: Self.jsonKey(["LEAVE_CHANNEL", channel, minimumReleaseId]),
+            checker: self,
+            install: install,
+            // Current while the device is still switched to the channel, and
+            // once the staging left it.
+            isSelectionCurrent: { [host] in
+                let current = host.channel()
+                return current == channel || current == host.defaultChannel()
+            }
         )
     }
 

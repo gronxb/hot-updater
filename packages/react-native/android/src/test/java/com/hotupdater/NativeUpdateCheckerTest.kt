@@ -116,6 +116,14 @@ class NativeUpdateCheckerTest {
             return true
         }
 
+        val resets = AtomicInteger()
+
+        override suspend fun resetChannel(): Boolean {
+            resets.incrementAndGet()
+            channelName = defaultChannelName
+            return true
+        }
+
         override suspend fun updateBundle(
             request: StageBundleRequest,
             onProgress: (Double) -> Unit,
@@ -195,11 +203,12 @@ class NativeUpdateCheckerTest {
     private fun catalog(
         releases: List<JSONObject>,
         generation: Long = 1,
+        channel: String = "production",
     ): String =
         JSONObject()
             .put("schemaVersion", 1)
             .put("catalogId", CATALOG_ID)
-            .put("scopeKey", SCOPE_KEY)
+            .put("scopeKey", "v1:app-version:android:${ReleaseCatalogs.encodeChannelKey(channel)}")
             .put("generation", generation)
             .put("catalogHash", CATALOG_HASH)
             .put("fallbackPolicy", "BUILTIN_IF_ACTIVE_INELIGIBLE")
@@ -261,6 +270,130 @@ class NativeUpdateCheckerTest {
     private fun minorCatalog() = catalog(listOf(release(RELEASE_B, BUNDLE_B)))
 
     private fun elapsedMillis(since: Long) = (System.nanoTime() - since) / 1_000_000
+
+    private val prCatalogUrl =
+        "$BASE_URL/release-catalogs/app-version/android/${ReleaseCatalogs.encodeChannelKey("pr-2")}/1.2.0"
+
+    private fun switchedToPr(state: FakeState) {
+        state.channelName = "pr-2"
+        state.launchedBundleId = BUNDLE_A
+    }
+
+    @Test
+    fun `a switched channel with an empty catalog is left on staging`() =
+        runBlocking {
+            val state = FakeState().also(::switchedToPr)
+            // What the server answers for a deleted channel's scope.
+            val transport =
+                FakeTransport { request ->
+                    if (request.url == prCatalogUrl) {
+                        ok(catalog(emptyList(), generation = 3, channel = "pr-2"))
+                    } else {
+                        UpdateCheckResponse(404, "Not Found", emptyMap(), "")
+                    }
+                }
+            val checker = NativeUpdateChecker(state, transport)
+
+            val update = checker.checkForUpdate(OPTIONS)!!
+
+            assertEquals(prCatalogUrl, transport.requests.first().url)
+            assertEquals(MIN_BUNDLE_ID, update.id)
+            assertNull(update.releaseId)
+            assertEquals(HotUpdaterUpdateStatus.ROLLBACK, update.status)
+            assertEquals("USE_BUILTIN", update.transitionKind)
+            assertTrue(update.shouldForceUpdate)
+            // The check itself changes nothing.
+            assertEquals(0, state.resets.get())
+
+            assertTrue(update.updateBundle())
+
+            assertEquals(1, state.resets.get())
+            assertEquals("production", state.getChannel())
+            // Nothing is selected inside the channel it leaves.
+            assertTrue(state.committed.isEmpty())
+            assertEquals(0, state.stageCount.get())
+        }
+
+    @Test
+    fun `a switched channel without a catalog is left on staging`() =
+        runBlocking {
+            val state = FakeState().apply { channelName = "pr-2" }
+            val transport =
+                FakeTransport { UpdateCheckResponse(404, "Not Found", mapOf("X-Hot-Updater-Catalog" to "none"), "") }
+            val checker = NativeUpdateChecker(state, transport)
+
+            val update = checker.checkForUpdate(OPTIONS)!!
+
+            assertEquals("USE_BUILTIN", update.transitionKind)
+            // The device already runs the built-in bundle: nothing to reload.
+            assertFalse(update.shouldForceUpdate)
+            assertTrue(update.updateBundle())
+            assertEquals(1, state.resets.get())
+        }
+
+    @Test
+    fun `a channel the device left before staging is kept`() =
+        runBlocking {
+            val state = FakeState().also(::switchedToPr)
+            val transport = FakeTransport { ok(catalog(emptyList(), generation = 3, channel = "pr-2")) }
+            val checker = NativeUpdateChecker(state, transport)
+            val update = checker.checkForUpdate(OPTIONS)!!
+            state.channelName = "pr-3"
+
+            assertThrows(StaleReleaseCatalogException::class.java) { runBlocking { update.updateBundle() } }
+            assertEquals(0, state.resets.get())
+        }
+
+    @Test
+    fun `the default channel emptied rolls back without a reset`() =
+        runBlocking {
+            val active =
+                PersistedSelection(
+                    kind = "BUNDLE",
+                    releaseId = RELEASE_A,
+                    bundleId = BUNDLE_A,
+                    catalogId = CATALOG_ID,
+                    scopeKey = SCOPE_KEY,
+                    generation = 1,
+                    catalogHash = CATALOG_HASH,
+                    channel = "production",
+                    selectionContextHash = "previous",
+                )
+            val state =
+                FakeState().apply {
+                    launchedBundleId = BUNDLE_A
+                    activeSelection = active
+                    stableSelection = active
+                }
+            val checker = NativeUpdateChecker(state, FakeTransport(routes(catalog(emptyList(), generation = 3))))
+
+            val update = checker.checkForUpdate(OPTIONS)!!
+
+            assertEquals("USE_BUILTIN", update.transitionKind)
+            assertTrue(update.updateBundle())
+            assertEquals(1, state.committed.size)
+            assertEquals(0, state.resets.get())
+        }
+
+    @Test
+    fun `a switched channel with releases keeps the switch`() =
+        runBlocking {
+            val state = FakeState().apply { channelName = "pr-2" }
+            val transport =
+                FakeTransport { request ->
+                    when {
+                        request.url == prCatalogUrl -> ok(catalog(listOf(release(RELEASE_B, BUNDLE_B)), channel = "pr-2"))
+                        request.url == ARTIFACT_URL -> ok(artifact())
+                        else -> UpdateCheckResponse(404, "Not Found", emptyMap(), "")
+                    }
+                }
+            val checker = NativeUpdateChecker(state, transport)
+
+            val update = checker.checkForUpdate(OPTIONS)!!
+
+            assertEquals("INSTALL", update.transitionKind)
+            assertEquals(0, state.resets.get())
+        }
 
     @Test
     fun `no catalog for the scope is no update, reported as unchanged`() =

@@ -384,6 +384,105 @@ struct NativeUpdateCheckTests {
         #expect(host.events().isEmpty)
     }
 
+    // MARK: A switched channel that holds nothing for this build
+
+    @Test
+    func aSwitchedChannelWithAnEmptyCatalogIsLeftOnStaging() async throws {
+        let host = FakeUpdateHost()
+        host.channelValue = "pr-2"
+        host.bundleIdValue = bundle1
+        // What the server answers for a deleted channel's scope.
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(generation: 3, releases: [], channel: "pr-2")
+        )
+        let checker = makeChecker(host, transport)
+
+        let update = try #require(try await checker.checkForUpdate(options()))
+
+        #expect(transport.requests.first?.url.path.contains(try encodeChannelKey("pr-2")) == true)
+        #expect(update.id == builtInBundleId)
+        #expect(update.releaseId == nil)
+        #expect(update.status == .rollback)
+        #expect(update.transitionKind == "USE_BUILTIN")
+        #expect(update.shouldForceUpdate == true)
+        // The check itself changes nothing.
+        #expect(host.resetCalls == 0)
+
+        #expect(try await update.updateBundle())
+
+        #expect(host.resetCalls == 1)
+        // Nothing is selected inside the channel it leaves.
+        #expect(host.committedParams.isEmpty)
+        #expect(host.stagedParams.isEmpty)
+    }
+
+    @Test
+    func aSwitchedChannelWithoutACatalogIsLeftOnStaging() async throws {
+        let host = FakeUpdateHost()
+        host.channelValue = "pr-2"
+        let transport = FakeUpdateTransport { _, _ in
+            NativeUpdateResponse(status: 404, headers: ["x-hot-updater-catalog": "none"], body: "")
+        }
+        let checker = makeChecker(host, transport)
+
+        let update = try #require(try await checker.checkForUpdate(options()))
+
+        #expect(update.transitionKind == "USE_BUILTIN")
+        // The device already runs the built-in bundle: nothing to reload.
+        #expect(update.shouldForceUpdate == false)
+        #expect(try await update.updateBundle())
+        #expect(host.resetCalls == 1)
+    }
+
+    @Test
+    func aChannelTheDeviceLeftBeforeStagingIsKept() async throws {
+        let host = FakeUpdateHost()
+        host.channelValue = "pr-2"
+        host.bundleIdValue = bundle1
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(generation: 3, releases: [], channel: "pr-2")
+        )
+        let checker = makeChecker(host, transport)
+        let update = try #require(try await checker.checkForUpdate(options()))
+        host.channelValue = "pr-3"
+
+        await #expect(throws: NativeUpdateCheckError.self) { _ = try await update.updateBundle() }
+        #expect(host.resetCalls == 0)
+    }
+
+    @Test
+    func theDefaultChannelEmptiedRollsBackWithoutAReset() async throws {
+        let host = FakeUpdateHost()
+        host.bundleIdValue = bundle1
+        host.active = receipt(release1, bundle1, generation: 1)
+        host.stable = host.active
+        let transport = FakeUpdateTransport.serving(catalog: catalog(generation: 3, releases: []))
+        let checker = makeChecker(host, transport)
+
+        let update = try #require(try await checker.checkForUpdate(options()))
+
+        #expect(update.transitionKind == "USE_BUILTIN")
+        #expect(try await update.updateBundle())
+        #expect(host.committedParams.count == 1)
+        #expect(host.resetCalls == 0)
+    }
+
+    @Test
+    func aSwitchedChannelWithReleasesKeepsTheSwitch() async throws {
+        let host = FakeUpdateHost()
+        host.channelValue = "pr-2"
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(releases: [descriptor(release2, bundle2)], channel: "pr-2")
+        )
+        let checker = makeChecker(host, transport)
+
+        let update = try #require(try await checker.checkForUpdate(options()))
+
+        #expect(update.transitionKind == "INSTALL")
+        #expect(try await update.updateBundle())
+        #expect(host.resetCalls == 0)
+    }
+
     // MARK: Checks and stagings
 
     @Test
@@ -1095,11 +1194,11 @@ private func descriptor(
     ]
 }
 
-private func catalog(generation: Int = 1, releases: [[String: Any]]) -> String {
+private func catalog(generation: Int = 1, releases: [[String: Any]], channel: String = "production") -> String {
     let object: [String: Any] = [
         "schemaVersion": 1,
         "catalogId": catalogId,
-        "scopeKey": scopeKey,
+        "scopeKey": "v1:app-version:ios:\(try! encodeChannelKey(channel))",
         "generation": generation,
         "catalogHash": catalogHash,
         "fallbackPolicy": "BUILTIN_IF_ACTIVE_INELIGIBLE",
