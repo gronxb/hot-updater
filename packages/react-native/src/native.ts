@@ -512,12 +512,71 @@ export const getAppVersion = (): string | null => {
 };
 
 /**
+ * When the SDK last asked native to reload, in epoch milliseconds: a runtime
+ * that starts soon after it continues the same app process.
+ */
+const RELOAD_REQUESTED_AT_KEY = "sdk/channel-link/reload-requested-at";
+/** The launch URL this app process already opened as a channel link. */
+const OPENED_LAUNCH_URL_KEY = "sdk/channel-link/opened-launch-url";
+/** How long after a reload request a starting runtime counts as its reload. */
+const RELOAD_START_WINDOW_MS = 60_000;
+
+let runtimeStarted = false;
+
+/**
+ * Reads, once per JavaScript runtime, whether it is a reload the SDK asked
+ * for. A runtime that is not starts a new app process, whose launch URL no
+ * channel link opened yet. The store is native and outlives a reload, which
+ * on iOS replaces the runtime in the same process.
+ */
+export const startRuntime = (): void => {
+  if (runtimeStarted) return;
+  runtimeStarted = true;
+  try {
+    const requestedAt = Number(getStorageItem(RELOAD_REQUESTED_AT_KEY) ?? NaN);
+    const elapsed = Date.now() - requestedAt;
+    if (!Number.isNaN(requestedAt)) {
+      setStorageItem(RELOAD_REQUESTED_AT_KEY, null);
+    }
+    const continuesProcess = elapsed >= 0 && elapsed < RELOAD_START_WINDOW_MS;
+    if (!continuesProcess && getStorageItem(OPENED_LAUNCH_URL_KEY) !== null) {
+      setStorageItem(OPENED_LAUNCH_URL_KEY, null);
+    }
+  } catch {
+    // Without the store, every launch URL opens, as before.
+  }
+};
+
+/**
+ * Claims the app process's launch URL for a channel link: true the first
+ * time, false once a runtime of this process opened it. React Native returns
+ * the launch URL from `Linking.getInitialURL()` again after an in-place
+ * reload, so without the claim each reload would open it again.
+ */
+export const claimLaunchURL = (url: string): boolean => {
+  startRuntime();
+  try {
+    if (getStorageItem(OPENED_LAUNCH_URL_KEY) === url) return false;
+    setStorageItem(OPENED_LAUNCH_URL_KEY, url);
+  } catch {
+    // Without the store, every launch URL opens, as before.
+  }
+  return true;
+};
+
+/**
  * Restarts the app so it loads the current bundle.
  *
  * Android restarts the app process cold, so no native module can reach the
  * JavaScript runtime while it is replaced. iOS reloads React Native in place.
  */
 export const reload = async () => {
+  startRuntime();
+  try {
+    setStorageItem(RELOAD_REQUESTED_AT_KEY, String(Date.now()));
+  } catch {
+    // The next runtime then counts as a new process.
+  }
   if (Platform.OS === "android") {
     // An older native build's reload() reloads in place on Android.
     await HotUpdaterNative.reloadProcess();

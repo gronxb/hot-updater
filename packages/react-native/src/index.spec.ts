@@ -13,6 +13,8 @@ const mocks = vi.hoisted(() => {
   return {
     addListener: vi.fn(() => () => {}),
     checkForUpdate: vi.fn(async () => null),
+    startRuntime: vi.fn(),
+    claimLaunchURL: vi.fn((_url: string) => true),
     clearCrashHistory: vi.fn(() => true),
     createHttpClient: vi.fn(
       (
@@ -99,6 +101,8 @@ vi.mock("./native", () => ({
   resetChannel: mocks.resetChannel,
   setCohort: mocks.setCohort,
   stageBundle: mocks.stageBundle,
+  startRuntime: mocks.startRuntime,
+  claimLaunchURL: mocks.claimLaunchURL,
 }));
 
 const importHotUpdater = async () => (await import("./index")).HotUpdater;
@@ -711,6 +715,68 @@ describe("HotUpdater client initialization", () => {
 
       await expect(open()).rejects.toThrow("offline");
       expect(mocks.reload).not.toHaveBeenCalled();
+    });
+
+    it("opens a launch link once per app process", async () => {
+      update();
+      mocks.claimLaunchURL.mockReturnValueOnce(false);
+      const HotUpdater = await importHotUpdater();
+      const hotUpdater = HotUpdater.init({
+        baseURL: "https://updates.example.com",
+      });
+
+      await expect(
+        hotUpdater.openChannelLink(link, { ...options, initial: true }),
+      ).resolves.toEqual({ status: "ALREADY_OPENED", channel: "pr-12" });
+      expect(mocks.claimLaunchURL).toHaveBeenCalledWith(link);
+      expect(mocks.checkForUpdate).not.toHaveBeenCalled();
+      expect(mocks.reload).not.toHaveBeenCalled();
+
+      // The first claim of a process opens it.
+      await expect(
+        hotUpdater.openChannelLink(link, { ...options, initial: true }),
+      ).resolves.toEqual({ status: "SWITCHED", channel: "pr-12" });
+    });
+
+    it("never consults the launch link for a link the app opens while running", async () => {
+      update();
+      mocks.claimLaunchURL.mockReturnValue(false);
+
+      await expect(open()).resolves.toEqual({
+        status: "SWITCHED",
+        channel: "pr-12",
+      });
+      expect(mocks.claimLaunchURL).not.toHaveBeenCalled();
+      mocks.claimLaunchURL.mockReturnValue(true);
+    });
+
+    it("claims only channel links", async () => {
+      const HotUpdater = await importHotUpdater();
+
+      await expect(
+        HotUpdater.init({
+          baseURL: "https://updates.example.com",
+        }).openChannelLink("myapp://settings", { ...options, initial: true }),
+      ).resolves.toEqual({ status: "NOT_CHANNEL_LINK" });
+      expect(mocks.claimLaunchURL).not.toHaveBeenCalled();
+    });
+
+    it("reports leaving an emptied switched channel as no update, and starts the built-in bundle", async () => {
+      mocks.isChannelSwitched.mockReturnValue(true);
+      mocks.getChannel.mockReturnValue("pr-12");
+      const updateBundle = vi.fn(async () => true);
+      mocks.checkForUpdate.mockResolvedValueOnce({
+        status: "ROLLBACK",
+        transitionKind: "USE_BUILTIN",
+        updateBundle,
+      } as never);
+
+      await expect(open()).resolves.toEqual({
+        status: "NO_UPDATE",
+        channel: "pr-12",
+      });
+      expect(updateBundle).toHaveBeenCalledTimes(1);
+      expect(mocks.reload).toHaveBeenCalledTimes(1);
     });
 
     it("refuses to check another channel when the reset fails", async () => {

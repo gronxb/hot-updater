@@ -34,6 +34,7 @@ import {
   getCrashHistory,
   isReleaseSelectionCurrent,
   isChannelSwitched,
+  resetChannel,
   stageBundle,
   supportsArtifactFiles,
 } from "./native";
@@ -214,9 +215,19 @@ async function checkForReleaseCatalogUpdate(input: {
     requestTimeout: options.requestTimeout,
     updateStrategy: options.updateStrategy,
   });
+  if (catalog !== null) validateCatalog(catalog, expectedScope);
+  // The switched channel holds nothing for this build, as a deleted channel
+  // does: its scope answers a catalog without releases, or none.
+  if (
+    input.isSwitched &&
+    input.targetChannel === input.currentChannel &&
+    (catalog === null ||
+      (catalog.releases.length === 0 && catalog.rollbackReleases.length === 0))
+  ) {
+    return leaveSwitchedChannel(input);
+  }
   // The server says this scope has no catalog yet: no update, not a failure.
   if (catalog === null) return null;
-  validateCatalog(catalog, expectedScope);
   const catalogId = catalog.catalogId;
   const scopeKey = catalog.scopeKey;
 
@@ -475,6 +486,74 @@ async function checkForReleaseCatalogUpdate(input: {
     targetCohorts: release?.targetCohorts ? [...release.targetCohorts] : [],
     transitionKind,
     updateBundle: updateBundleForSelection,
+  };
+}
+
+/**
+ * Leaves a switched channel that holds nothing for this build, such as a
+ * deleted one: a rollback to the built-in bundle whose update also clears
+ * the runtime channel with `resetChannel()`, so the next check reads the
+ * build's default channel. A check never resets by itself, since the reset
+ * removes the running bundle's files.
+ */
+function leaveSwitchedChannel(input: {
+  readonly options: InternalCheckForUpdateOptions;
+  readonly currentBundleId: string;
+  readonly currentChannel: string;
+  readonly minimumReleaseId: string;
+}): CheckForUpdateResult {
+  const { options } = input;
+  const shouldForceUpdate = input.currentBundleId !== input.minimumReleaseId;
+  const errorScope = {
+    bundleId: input.currentBundleId,
+    channel: input.currentChannel,
+    targetBundleId: input.minimumReleaseId,
+    targetReleaseId: null,
+    updateStrategy: options.updateStrategy,
+  };
+  options.emit("onUpdateCheck", () => ({
+    status: "UPDATE_AVAILABLE",
+    channel: input.currentChannel,
+    fromBundleId: input.currentBundleId,
+    fromReleaseId: getRunningReleaseId(
+      input.currentBundleId,
+      input.currentChannel,
+    ),
+    toBundleId: input.minimumReleaseId,
+    toReleaseId: null,
+    transitionKind: "USE_BUILTIN",
+    updateStatus: "ROLLBACK",
+    shouldForceUpdate,
+    updateStrategy: options.updateStrategy,
+  }));
+  return {
+    id: input.minimumReleaseId,
+    message: null,
+    releaseId: null,
+    rolloutCohortCount: 1000,
+    shouldForceUpdate,
+    status: "ROLLBACK",
+    targetCohorts: [],
+    transitionKind: "USE_BUILTIN",
+    updateBundle: async () => {
+      resetProgress();
+      try {
+        // A device that left or changed the channel meanwhile keeps it.
+        if (!isChannelSwitched() || getChannel() !== input.currentChannel) {
+          throw new StaleReleaseCatalogError();
+        }
+        return await resetChannel();
+      } catch (error) {
+        reportUpdateError(
+          options.emit,
+          error,
+          "download",
+          "artifact",
+          errorScope,
+        );
+        throw error;
+      }
+    },
   };
 }
 

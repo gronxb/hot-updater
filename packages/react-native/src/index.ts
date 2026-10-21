@@ -33,6 +33,8 @@ import {
   resetChannel,
   setCohort,
   stageBundle,
+  startRuntime,
+  claimLaunchURL,
   type UpdateParams,
 } from "./native";
 import { replayNativeUpdateEvents } from "./nativeUpdateEvents";
@@ -331,6 +333,14 @@ export interface ChannelLinkOptions extends Pick<
    * update cannot change the default channel a binary embeds.
    */
   defaultChannels: readonly string[];
+  /**
+   * Set for the URL `Linking.getInitialURL()` returns. React Native returns
+   * the app's launch URL again after an in-place reload, as iOS reloads, so
+   * an app process opens its launch link once: later calls resolve with
+   * `ALREADY_OPENED`. Leave it unset for the URLs of `Linking`'s `url`
+   * events, which the app opens while it runs.
+   */
+  initial?: boolean;
 }
 
 /**
@@ -345,7 +355,12 @@ export type ChannelLinkResult =
   /** The channel has no bundle for this build, so nothing changed. */
   | { readonly status: "NO_UPDATE"; readonly channel: string }
   /** The channel's bundle is installed, and the app reloads into it. */
-  | { readonly status: "SWITCHED"; readonly channel: string };
+  | { readonly status: "SWITCHED"; readonly channel: string }
+  /**
+   * The app process already opened this launch link, which React Native
+   * returned again after a reload, so nothing changed.
+   */
+  | { readonly status: "ALREADY_OPENED"; readonly channel: string };
 
 /** What an instance's own methods use: its server, settings, and launch. */
 interface InstanceConfig {
@@ -506,10 +521,13 @@ const createConfiguredMethods = (config: InstanceConfig) => {
      */
     openChannelLink: async (
       url: string,
-      { defaultChannels, ...options }: ChannelLinkOptions,
+      { defaultChannels, initial = false, ...options }: ChannelLinkOptions,
     ): Promise<ChannelLinkResult> => {
       const channel = parseChannelLink(url);
       if (channel === null) return { status: "NOT_CHANNEL_LINK" };
+      if (initial && !claimLaunchURL(url)) {
+        return { status: "ALREADY_OPENED", channel };
+      }
       const defaultChannel = getDefaultChannel();
       if (!defaultChannels.includes(defaultChannel)) {
         return { status: "IGNORED", channel };
@@ -522,6 +540,7 @@ const createConfiguredMethods = (config: InstanceConfig) => {
         );
       }
       let switched = false;
+      let changed = false;
       try {
         // `checkForUpdate` reports a failed check as no update, through
         // `onError`: keep its error, so a failed check rejects instead.
@@ -535,7 +554,10 @@ const createConfiguredMethods = (config: InstanceConfig) => {
           },
         });
         if (checkError !== undefined) throw checkError;
-        switched = updateInfo !== null && (await updateInfo.updateBundle());
+        changed = updateInfo !== null && (await updateInfo.updateBundle());
+        // A rollback to the built-in bundle runs nothing of the channel, as
+        // when the switched channel holds nothing for this build any more.
+        switched = changed && updateInfo?.transitionKind !== "USE_BUILTIN";
       } catch (error) {
         // The reset already left the channel the running bundle came from:
         // start the restored bundle before reporting the failure.
@@ -543,7 +565,7 @@ const createConfiguredMethods = (config: InstanceConfig) => {
         throw error;
       }
       // After a reset without an update, this starts the restored bundle.
-      if (switched || reset) await reload();
+      if (changed || reset) await reload();
       return { status: switched ? "SWITCHED" : "NO_UPDATE", channel };
     },
 
@@ -618,6 +640,7 @@ export const HotUpdater = {
       onNotifyAppReady,
     } = options;
     if (!baseURL) throw createMissingNetworkConfigError();
+    startRuntime();
 
     const host = createAppPluginHost();
     const launch = createLaunchReporter(host);
