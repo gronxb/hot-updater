@@ -529,62 +529,58 @@ const createConfiguredMethods = (config: InstanceConfig) => {
       if (initial && !claimLaunchURL(url)) {
         return { status: "ALREADY_OPENED", channel };
       }
-      const defaultChannel = getDefaultChannel();
-      if (!defaultChannels.includes(defaultChannel)) {
-        return { status: "IGNORED", channel };
-      }
-      // A switched device checks another channel only from its default one.
-      const reset = isChannelSwitched() && getChannel() !== channel;
-      // A launch link that failed to open opens again on a retry.
+      // A launch link that failed to open, or whose update could not be
+      // applied, opens again on a retry. An error path that reloads gives it
+      // back first: on iOS the reload replaces this runtime.
       const unclaim = () => {
         if (initial) releaseLaunchURL(url);
       };
-      if (reset) {
-        let resetDone = false;
-        try {
-          resetDone = await nativeMethods.resetChannel();
-        } catch (error) {
-          unclaim();
-          throw error;
+      try {
+        const defaultChannel = getDefaultChannel();
+        if (!defaultChannels.includes(defaultChannel)) {
+          return { status: "IGNORED", channel };
         }
-        if (!resetDone) {
-          unclaim();
+        // A switched device checks another channel only from its default one.
+        const reset = isChannelSwitched() && getChannel() !== channel;
+        if (reset && !(await nativeMethods.resetChannel())) {
           throw new HotUpdaterError(
             `Could not leave the "${getChannel()}" channel to open "${channel}".`,
           );
         }
-      }
-      let switched = false;
-      let changed = false;
-      try {
-        // `checkForUpdate` reports a failed check as no update, through
-        // `onError`: keep its error, so a failed check rejects instead.
-        let checkError: unknown;
-        const updateInfo = await check({
-          ...options,
-          ...(channel === defaultChannel ? {} : { channel }),
-          onError: (error) => {
-            checkError ??= error;
-            config.onError?.(error);
-          },
-        });
-        if (checkError !== undefined) throw checkError;
-        changed = updateInfo !== null && (await updateInfo.updateBundle());
-        // An update that could not be applied leaves the launch link to retry.
-        if (updateInfo !== null && !changed) unclaim();
-        // A rollback to the built-in bundle runs nothing of the channel, as
-        // when the switched channel holds nothing for this build any more.
-        switched = changed && updateInfo?.transitionKind !== "USE_BUILTIN";
+        let switched = false;
+        let changed = false;
+        try {
+          // `checkForUpdate` reports a failed check as no update, through
+          // `onError`: keep its error, so a failed check rejects instead.
+          let checkError: unknown;
+          const updateInfo = await check({
+            ...options,
+            ...(channel === defaultChannel ? {} : { channel }),
+            onError: (error) => {
+              checkError ??= error;
+              config.onError?.(error);
+            },
+          });
+          if (checkError !== undefined) throw checkError;
+          changed = updateInfo !== null && (await updateInfo.updateBundle());
+          if (updateInfo !== null && !changed) unclaim();
+          // A rollback to the built-in bundle runs nothing of the channel, as
+          // when the switched channel holds nothing for this build any more.
+          switched = changed && updateInfo?.transitionKind !== "USE_BUILTIN";
+        } catch (error) {
+          unclaim();
+          // The reset already left the channel the running bundle came from:
+          // start the restored bundle before reporting the failure.
+          if (reset) await reload();
+          throw error;
+        }
+        // After a reset without an update, this starts the restored bundle.
+        if (changed || reset) await reload();
+        return { status: switched ? "SWITCHED" : "NO_UPDATE", channel };
       } catch (error) {
         unclaim();
-        // The reset already left the channel the running bundle came from:
-        // start the restored bundle before reporting the failure.
-        if (reset) await reload();
         throw error;
       }
-      // After a reset without an update, this starts the restored bundle.
-      if (changed || reset) await reload();
-      return { status: switched ? "SWITCHED" : "NO_UPDATE", channel };
     },
 
     /**

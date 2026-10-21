@@ -771,6 +771,19 @@ describe("HotUpdater client initialization", () => {
       expect(mocks.releaseLaunchURL).toHaveBeenCalledWith(link);
     });
 
+    it("gives the launch link back when the reload into the channel rejects", async () => {
+      update();
+      mocks.reload.mockRejectedValueOnce(new Error("restart failed"));
+      const HotUpdater = await importHotUpdater();
+
+      await expect(
+        HotUpdater.init({
+          baseURL: "https://updates.example.com",
+        }).openChannelLink(link, { ...options, initial: true }),
+      ).rejects.toThrow("restart failed");
+      expect(mocks.releaseLaunchURL).toHaveBeenCalledWith(link);
+    });
+
     it("keeps the launch link claimed when it opened", async () => {
       update();
       const HotUpdater = await importHotUpdater();
