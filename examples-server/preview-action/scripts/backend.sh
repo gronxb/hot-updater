@@ -16,9 +16,11 @@ bucket="preview-bundles"
 docker rm -f "$prefix-pg" "$prefix-minio" >/dev/null 2>&1 || true
 docker run -d --name "$prefix-pg" -p "127.0.0.1:$pg_port:5432" \
   -e POSTGRES_PASSWORD="$pg_password" postgres:16-alpine >/dev/null
+# MinIO no longer publishes images: Silo is the maintained fork the other
+# example servers use, with the same MINIO_* variables and routes.
 docker run -d --name "$prefix-minio" -p "127.0.0.1:$minio_port:9000" \
   -e MINIO_ROOT_USER="$minio_user" -e MINIO_ROOT_PASSWORD="$minio_password" \
-  quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z server /data >/dev/null
+  pgsty/silo:RELEASE.2026-09-16T00-00-00Z server /data >/dev/null
 
 for _ in $(seq 60); do
   if docker exec "$prefix-pg" pg_isready -U postgres >/dev/null 2>&1 &&

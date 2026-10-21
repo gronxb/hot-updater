@@ -151,7 +151,9 @@ so a build it makes embeds the preview channel. Then, for each platform:
 1. `hot-updater native-build find -p <platform> -c <preview-channel> -s <scheme> --json`
    prints the newest registered build that a build of the project would
    match: the same fingerprint, from the config's fingerprint inputs, or with
-   the `appVersion` strategy, the version of the app the scheme builds.
+   the `appVersion` strategy, the version of the app the scheme builds, and
+   the kind of artifact the scheme builds, so a Simulator scheme never reuses
+   an `.ipa`, nor an APK scheme an `.aab`.
 2. With no build, `hot-updater build:<platform> --scheme <scheme> --register`
    builds and registers one. With one, the action skips the native build and
    runs `hot-updater fingerprint create`, since a committed

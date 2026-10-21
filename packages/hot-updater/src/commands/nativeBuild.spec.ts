@@ -62,7 +62,8 @@ const register = (
 
 const nativeBuild = {
   android: {
-    releaseApk: { packageName: "com.example", variant: "Release" },
+    releaseApk: { packageName: "com.example", variant: "Release", aab: false },
+    releaseAab: { packageName: "com.example", variant: "Release" },
   },
   ios: {
     simulator: {
@@ -71,8 +72,17 @@ const nativeBuild = {
       configuration: "Release",
       simulator: true,
     },
+    device: {
+      scheme: "Example",
+      bundleIdentifier: "com.example",
+      configuration: "Release",
+      exportOptionsPlist: "ExportOptions.plist",
+    },
   },
 };
+
+const prebuild = vi.fn();
+const build = vi.fn(async () => ({ nativeBuild: { prebuild } }));
 
 const output = () =>
   JSON.parse(String(vi.mocked(console.log).mock.calls.at(-1)?.[0]));
@@ -111,8 +121,11 @@ describe("handleNativeBuildFind", () => {
 
     await handleNativeBuildFind({ platform: "android", json: true });
 
-    // The config's database may read its credentials from the vault.
-    expect(loadConfig).toHaveBeenCalledWith(null, { credentials: true });
+    // As the native build loads it, with the vault's credentials.
+    expect(loadConfig).toHaveBeenCalledWith(
+      { platform: "android", channel: "" },
+      { credentials: true },
+    );
     expect(generateFingerprint).toHaveBeenCalledWith("android");
     expect(output()).toEqual({
       platform: "android",
@@ -216,7 +229,11 @@ describe("handleNativeBuildFind", () => {
   });
 
   it("matches the version of the app the scheme builds with the appVersion strategy", async () => {
-    loadConfig.mockResolvedValue({ updateStrategy: "appVersion", nativeBuild });
+    loadConfig.mockResolvedValue({
+      updateStrategy: "appVersion",
+      nativeBuild,
+      build,
+    });
     resolveNativeAppVersion.mockResolvedValue({
       version: "2.1.0",
       candidates: [],
@@ -255,8 +272,70 @@ describe("handleNativeBuildFind", () => {
     });
   });
 
+  it("runs the adapter's prebuild before reading the app version, as a build does", async () => {
+    loadConfig.mockResolvedValue({
+      updateStrategy: "appVersion",
+      nativeBuild,
+      build,
+    });
+    resolveNativeAppVersion.mockImplementation(async () => {
+      expect(prebuild).toHaveBeenCalledWith({ platform: "ios" });
+      return { version: "2.1.0", candidates: [] };
+    });
+    const { handleNativeBuildFind } = await import("./nativeBuild");
+
+    await handleNativeBuildFind({ platform: "ios", json: true });
+
+    expect(resolveNativeAppVersion).toHaveBeenCalled();
+    expect(output().appVersion).toBe("2.1.0");
+  });
+
+  it.each([
+    ["an APK scheme", "android", "releaseAab", "apk"],
+    ["a Simulator scheme", "ios", "device", "app"],
+  ] as const)(
+    "prints no build when the newest is not the artifact %s's counterpart builds",
+    async (_, platform, scheme, kind) => {
+      await databaseHarness.core.registerNativeBuild({
+        platform,
+        channel: "preview",
+        fingerprintHash: "fingerprint-a",
+        appVersion: null,
+        id: "01900000-0000-7000-8000-00000000b001",
+        minBundleId: "01900000-0000-7000-8000-00000000a001",
+        gitCommitHash: null,
+        artifact: {
+          kind,
+          storageUri: `storage://native-builds/${platform}/b001/artifact`,
+          byteSize: 1_024,
+        },
+        embeddedBundle: {
+          manifestStorageUri: "storage://artifacts/a001/manifest.json",
+          manifestFileHash: "manifest-hash-1",
+          assetBaseStorageUri: "storage://artifacts/a001/assets",
+        },
+      } as NativeBuildRegistration);
+      const { handleNativeBuildFind } = await import("./nativeBuild");
+
+      await handleNativeBuildFind({ platform, scheme, json: true });
+      expect(output().nativeBuild).toBeNull();
+
+      // The scheme that builds that kind reuses it.
+      await handleNativeBuildFind({
+        platform,
+        scheme: platform === "android" ? "releaseApk" : "simulator",
+        json: true,
+      });
+      expect(output().nativeBuild).toMatchObject({ artifact_kind: kind });
+    },
+  );
+
   it("fails before reading the registry when the project builds several app versions and no scheme picks one", async () => {
-    loadConfig.mockResolvedValue({ updateStrategy: "appVersion", nativeBuild });
+    loadConfig.mockResolvedValue({
+      updateStrategy: "appVersion",
+      nativeBuild,
+      build,
+    });
     resolveNativeAppVersion.mockResolvedValue({
       version: null,
       candidates: [
