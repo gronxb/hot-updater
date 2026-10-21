@@ -36,6 +36,7 @@ import {
 } from "@/utils/version/appVersionCandidates";
 import { resolveNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
+import { nativeBuildAppVersionScope } from "./appVersionScope";
 import type { NativeBuildTarget } from "./createNativeBuild";
 
 /** The scheme built, as `nativeBuild` in hot-updater.config.ts sets it. */
@@ -190,19 +191,10 @@ export async function prepareNativeBuild(
 
     const iosScheme = config.nativeBuild.ios[scheme];
     const androidScheme = config.nativeBuild.android[scheme];
-    // The scheme names the app built, for projects that build several.
-    const resolved = await resolveNativeAppVersion(platform, {
-      ios: iosScheme && {
-        scheme: iosScheme.scheme,
-        bundleIdentifier: iosScheme.bundleIdentifier,
-        configuration: iosScheme.configuration,
-      },
-      android: androidScheme && {
-        variant: androidScheme.variant,
-        applicationId: androidScheme.applicationId ?? androidScheme.packageName,
-        appModuleName: androidScheme.appModuleName,
-      },
-    });
+    const resolved = await resolveNativeAppVersion(
+      platform,
+      nativeBuildAppVersionScope(config, scheme),
+    );
     const appVersion = resolved.version;
 
     s.stop(`App Version(${platform}): ${appVersion}`);

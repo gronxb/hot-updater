@@ -1,0 +1,587 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { COMMENT_MARKER } from "./comment.mjs";
+import { parseInputs, parseJsonOutput, runAction } from "./preview.mjs";
+
+const event = {
+  action: "synchronize",
+  number: 12,
+  title: "Fix the header",
+  headSha: "0123456789abcdef",
+};
+
+const env = (overrides: Record<string, string> = {}) => ({
+  INPUT_CONSOLE_URL: "https://console.example.com",
+  INPUT_VAULT_TOKEN: "hu_vault_token",
+  INPUT_PLATFORMS: "android",
+  INPUT_ANDROID_SCHEME: "releaseApk",
+  INPUT_IOS_SCHEME: "simulator",
+  INPUT_COMMENT: "false",
+  ...overrides,
+});
+
+type Build = {
+  id: string;
+  platform: string;
+  channel: string;
+  fingerprintHash: string | null;
+  appVersion: string | null;
+  kind: string;
+};
+
+/**
+ * The project's CLI over a registry and a channel's bundles, as the commands
+ * the action runs answer: `build:*` registers a build of the project's
+ * target, `deploy` deploys a bundle of it.
+ */
+const fakeCli = ({
+  target = { fingerprintHash: "fp-a", appVersion: null },
+  builds = [] as Build[],
+  builtChannel,
+  channelDelete = {
+    code: 0,
+    json: {
+      channel: "pr-12",
+      deleted: true,
+      deletedBundleIds: ["b1", "b2"],
+    } as Record<string, unknown>,
+  },
+}: {
+  target?: { fingerprintHash: string | null; appVersion: string | null };
+  builds?: Build[];
+  /** The channel a build embeds, when it isn't the one set. */
+  builtChannel?: string;
+  channelDelete?: { code: number; json: Record<string, unknown> };
+} = {}) => {
+  const calls: string[] = [];
+  const releases: { id: string; channel: string; platform: string }[] = [];
+  let channel = "production";
+  let counter = 0;
+  const cli = vi.fn(async (args: string[], options?: { capture?: boolean }) => {
+    calls.push(args.join(" "));
+    const [command, sub] = args;
+    const flag = (name: string) => args[args.indexOf(name) + 1]!;
+    if (command === "channel" && sub === "set") {
+      channel = args[2]!;
+      return { code: 0, stdout: "" };
+    }
+    if (command === "native-build" && sub === "find") {
+      const scope = {
+        platform: flag("-p"),
+        channel: flag("-c"),
+        ...target,
+      };
+      const found =
+        builds
+          .filter(
+            (build) =>
+              build.platform === scope.platform &&
+              build.channel === scope.channel &&
+              build.fingerprintHash === scope.fingerprintHash &&
+              build.appVersion === scope.appVersion,
+          )
+          .at(-1) ?? null;
+      return {
+        code: 0,
+        // A config that logs while it loads.
+        stdout: `loading config\n${JSON.stringify(
+          {
+            ...scope,
+            nativeBuild: found && { id: found.id, artifact_kind: found.kind },
+          },
+          null,
+          2,
+        )}\n`,
+      };
+    }
+    if (command?.startsWith("build:")) {
+      const platform = command.slice("build:".length);
+      builds.push({
+        id: `build-${++counter}`,
+        platform,
+        channel: builtChannel ?? channel,
+        ...target,
+        kind: platform === "android" ? "apk" : "app",
+      });
+      return { code: 0, stdout: "" };
+    }
+    if (command === "deploy") {
+      releases.push({
+        id: `bundle-${++counter}`,
+        channel: flag("-c"),
+        platform: flag("-p"),
+      });
+      return { code: 0, stdout: "" };
+    }
+    if (command === "bundle" && sub === "list") {
+      const rows = releases
+        .filter(
+          (release) =>
+            release.channel === flag("-c") && release.platform === flag("-p"),
+        )
+        .reverse()
+        .map(({ id }) => ({
+          id,
+          fingerprint_hash: target.fingerprintHash,
+          target_app_version: target.appVersion,
+        }));
+      return { code: 0, stdout: JSON.stringify(rows, null, 2) };
+    }
+    if (command === "channel" && sub === "delete") {
+      return {
+        code: channelDelete.code,
+        stdout: JSON.stringify(channelDelete.json, null, 2),
+      };
+    }
+    if (command === "fingerprint" && sub === "create") {
+      return { code: 0, stdout: "" };
+    }
+    throw new Error(`unexpected command ${args.join(" ")} ${options}`);
+  });
+  return { cli, calls, builds, releases };
+};
+
+const deps = (
+  cli: ReturnType<typeof fakeCli>["cli"],
+  overrides: Partial<Parameters<typeof runAction>[0]> = {},
+) => {
+  const outputs: Record<string, string> = {};
+  const value = {
+    cli,
+    fetch: vi.fn(
+      async () =>
+        new Response(null, {
+          status: 200,
+          headers: {
+            "x-hot-updater-channel-link": "myapp://hot-updater/channel/pr-12",
+          },
+        }),
+    ) as unknown as typeof fetch,
+    github: null,
+    setOutput: (name: string, output: string) => {
+      outputs[name] = output;
+    },
+    log: {
+      info: vi.fn(),
+      notice: vi.fn(),
+      group: <T>(_: string, run: () => Promise<T>) => run(),
+    },
+    ...overrides,
+  };
+  return { deps: value, outputs };
+};
+
+describe("runAction preview", () => {
+  it("builds and registers a native build when none has the project's fingerprint, then deploys to the pull request's channel", async () => {
+    const fake = fakeCli();
+    const { deps: d, outputs } = deps(fake.cli);
+
+    await runAction(d, env(), event);
+
+    expect(fake.calls).toEqual([
+      "channel set preview",
+      "native-build find -p android -c preview -s releaseApk --json",
+      "build:android --scheme releaseApk --register",
+      "native-build find -p android -c preview -s releaseApk --json",
+      "deploy -p android -c pr-12 -m #12 Fix the header",
+      "bundle list -c pr-12 -p android --limit 1 --json",
+    ]);
+    expect(JSON.parse(outputs["previews"]!)).toEqual([
+      {
+        platform: "android",
+        target: { fingerprintHash: "fp-a", appVersion: null },
+        nativeBuild: { id: "build-1", artifactKind: "apk" },
+        built: true,
+        bundleId: "bundle-2",
+      },
+    ]);
+    expect(outputs["comment-body"]).toContain(
+      "[Install](https://console.example.com/preview?build=build-1) · built for this commit",
+    );
+  });
+
+  it("deploys only the bundle when a native build has the project's fingerprint on the preview channel", async () => {
+    const fake = fakeCli({
+      builds: [
+        {
+          id: "build-0",
+          platform: "android",
+          channel: "preview",
+          fingerprintHash: "fp-a",
+          appVersion: null,
+          kind: "apk",
+        },
+      ],
+    });
+    const { deps: d, outputs } = deps(fake.cli);
+
+    await runAction(d, env(), event);
+
+    expect(fake.calls).toEqual([
+      "channel set preview",
+      "native-build find -p android -c preview -s releaseApk --json",
+      // fingerprint.json may be older than the project.
+      "fingerprint create",
+      "deploy -p android -c pr-12 -m #12 Fix the header",
+      "bundle list -c pr-12 -p android --limit 1 --json",
+    ]);
+    expect(fake.calls.some((call) => call.startsWith("build:"))).toBe(false);
+    expect(JSON.parse(outputs["previews"]!)[0]).toMatchObject({
+      nativeBuild: { id: "build-0" },
+      built: false,
+    });
+    expect(outputs["comment-body"]).toContain(
+      "[Install](https://console.example.com/preview?build=build-0) · reused",
+    );
+  });
+
+  it.each([
+    ["another fingerprint", { channel: "preview", fingerprintHash: "fp-b" }],
+    ["another channel", { channel: "production", fingerprintHash: "fp-a" }],
+  ])("builds again when the registered build has %s", async (_, build) => {
+    const fake = fakeCli({
+      builds: [
+        {
+          id: "build-0",
+          platform: "android",
+          appVersion: null,
+          kind: "apk",
+          ...build,
+        },
+      ],
+    });
+    const { deps: d } = deps(fake.cli);
+
+    await runAction(d, env(), event);
+
+    expect(fake.calls).toContain(
+      "build:android --scheme releaseApk --register",
+    );
+  });
+
+  it("deploys to the app version of the build with the appVersion strategy, without rewriting fingerprint.json", async () => {
+    const fake = fakeCli({
+      target: { fingerprintHash: null, appVersion: "1.4.0" },
+      builds: [
+        {
+          id: "build-0",
+          platform: "android",
+          channel: "preview",
+          fingerprintHash: null,
+          appVersion: "1.4.0",
+          kind: "apk",
+        },
+      ],
+    });
+    const { deps: d } = deps(fake.cli);
+
+    await runAction(d, env(), event);
+
+    expect(fake.calls).toEqual([
+      "channel set preview",
+      "native-build find -p android -c preview -s releaseApk --json",
+      "deploy -p android -c pr-12 -m #12 Fix the header -t 1.4.0",
+      "bundle list -c pr-12 -p android --limit 1 --json",
+    ]);
+  });
+
+  it("fails without deploying when the registered build matches nothing, as when the build embeds another channel", async () => {
+    const fake = fakeCli({ builtChannel: "production" });
+    const { deps: d } = deps(fake.cli);
+
+    await expect(runAction(d, env(), event)).rejects.toThrow(
+      "build:android registered a native build, but none on preview has fingerprint fp-a",
+    );
+    expect(fake.calls.some((call) => call.startsWith("deploy"))).toBe(false);
+  });
+
+  it("fails when the deployed bundle targets another fingerprint than the build", async () => {
+    const fake = fakeCli({
+      builds: [
+        {
+          id: "build-0",
+          platform: "android",
+          channel: "preview",
+          fingerprintHash: "fp-a",
+          appVersion: null,
+          kind: "apk",
+        },
+      ],
+    });
+    const cli = vi.fn(
+      async (args: string[], options?: { capture?: boolean }) => {
+        const result = await fake.cli(args, options);
+        return args[0] === "bundle"
+          ? {
+              code: 0,
+              stdout: JSON.stringify([
+                {
+                  id: "bundle-9",
+                  fingerprint_hash: "fp-z",
+                  target_app_version: null,
+                },
+              ]),
+            }
+          : result;
+      },
+    );
+    const { deps: d } = deps(cli);
+
+    await expect(runAction(d, env(), event)).rejects.toThrow(
+      "The android bundle bundle-9 targets fp-z, but the native build has fingerprint fp-a.",
+    );
+  });
+
+  it("fails when the deployed bundle targets another app version than the build", async () => {
+    const fake = fakeCli({
+      target: { fingerprintHash: null, appVersion: "1.4.0" },
+      builds: [
+        {
+          id: "build-0",
+          platform: "android",
+          channel: "preview",
+          fingerprintHash: null,
+          appVersion: "1.4.0",
+          kind: "apk",
+        },
+      ],
+    });
+    const cli = vi.fn(
+      async (args: string[], options?: { capture?: boolean }) => {
+        const result = await fake.cli(args, options);
+        return args[0] === "bundle"
+          ? {
+              code: 0,
+              stdout: JSON.stringify([
+                {
+                  id: "bundle-9",
+                  fingerprint_hash: null,
+                  target_app_version: "1.x.x",
+                },
+              ]),
+            }
+          : result;
+      },
+    );
+    const { deps: d } = deps(cli);
+
+    await expect(runAction(d, env(), event)).rejects.toThrow(
+      "The android bundle bundle-9 targets 1.x.x, but the native build has app version 1.4.0.",
+    );
+  });
+
+  it("previews each platform in order, in one comment", async () => {
+    const fake = fakeCli();
+    const { deps: d, outputs } = deps(fake.cli);
+
+    await runAction(d, env({ INPUT_PLATFORMS: "android, ios" }), event);
+
+    expect(fake.calls.filter((call) => call.startsWith("build:"))).toEqual([
+      "build:android --scheme releaseApk --register",
+      "build:ios --scheme simulator --register",
+    ]);
+    expect(outputs["comment-body"]).toContain("| Android |");
+    expect(outputs["comment-body"]).toContain("| iOS Simulator |");
+  });
+
+  it("writes the comment without a QR code when the Console serves none", async () => {
+    const fake = fakeCli();
+    const { deps: d, outputs } = deps(fake.cli, {
+      fetch: vi.fn(
+        async () => new Response("no prefix", { status: 404 }),
+      ) as unknown as typeof fetch,
+    });
+
+    await runAction(d, env(), event);
+
+    expect(d.fetch).toHaveBeenCalledWith(
+      "https://console.example.com/_hot-updater/preview/channel-qr?channel=pr-12",
+      { method: "HEAD" },
+    );
+    expect(outputs["comment-body"]).not.toContain("<img");
+    expect(d.log.notice).toHaveBeenCalledWith(
+      expect.stringContaining("console.channelLinkPrefix"),
+    );
+  });
+
+  it("writes the comment to the pull request", async () => {
+    const fake = fakeCli();
+    const github = {
+      fetch: vi.fn(),
+      apiUrl: "https://api.github.com",
+      repository: "o/r",
+      token: "t",
+    };
+    github.fetch
+      .mockResolvedValueOnce(Response.json([]))
+      .mockResolvedValueOnce(Response.json({ id: 5 }, { status: 201 }));
+    const { deps: d, outputs } = deps(fake.cli, {
+      github: github as unknown as Parameters<typeof runAction>[0]["github"],
+    });
+
+    await runAction(d, env({ INPUT_COMMENT: "true" }), event);
+
+    expect(github.fetch).toHaveBeenLastCalledWith(
+      "https://api.github.com/repos/o/r/issues/12/comments",
+      expect.objectContaining({
+        method: "POST",
+        body: JSON.stringify({ body: outputs["comment-body"] }),
+      }),
+    );
+  });
+
+  it("skips everything without a vault token, as for a pull request from a fork", async () => {
+    const fake = fakeCli();
+    const { deps: d } = deps(fake.cli);
+
+    await expect(
+      runAction(d, env({ INPUT_VAULT_TOKEN: "" }), event),
+    ).resolves.toEqual({ skipped: true });
+    expect(fake.cli).not.toHaveBeenCalled();
+    expect(d.log.notice).toHaveBeenCalled();
+  });
+});
+
+describe("runAction cleanup", () => {
+  const closed = { ...event, action: "closed" };
+
+  it("deletes the closed pull request's channel and edits its comment", async () => {
+    const fake = fakeCli();
+    const github = {
+      fetch: vi.fn(),
+      apiUrl: "https://api.github.com",
+      repository: "o/r",
+      token: "t",
+    };
+    github.fetch
+      .mockResolvedValueOnce(
+        Response.json([{ id: 9, body: `${COMMENT_MARKER}\n\n### Preview` }]),
+      )
+      .mockResolvedValueOnce(Response.json({ id: 9 }));
+    const { deps: d, outputs } = deps(fake.cli, {
+      github: github as unknown as Parameters<typeof runAction>[0]["github"],
+    });
+
+    await runAction(d, env({ INPUT_COMMENT: "true" }), closed);
+
+    expect(fake.calls).toEqual(["channel delete pr-12 --yes --json"]);
+    expect(outputs["comment-body"]).toContain(
+      "its channel `pr-12` and its 2 bundles are deleted.",
+    );
+    expect(github.fetch).toHaveBeenLastCalledWith(
+      "https://api.github.com/repos/o/r/issues/comments/9",
+      expect.objectContaining({ method: "PATCH" }),
+    );
+  });
+
+  it("needs no scheme, and comments nothing on a pull request it never previewed", async () => {
+    const fake = fakeCli({
+      channelDelete: {
+        code: 0,
+        json: { channel: "pr-12", deleted: false, reason: "not_found" },
+      },
+    });
+    const github = {
+      fetch: vi.fn(),
+      apiUrl: "https://api.github.com",
+      repository: "o/r",
+      token: "t",
+    };
+    github.fetch.mockResolvedValueOnce(Response.json([]));
+    const { deps: d, outputs } = deps(fake.cli, {
+      github: github as unknown as Parameters<typeof runAction>[0]["github"],
+    });
+
+    await runAction(
+      d,
+      env({ INPUT_COMMENT: "true", INPUT_ANDROID_SCHEME: "" }),
+      closed,
+    );
+
+    expect(outputs["comment-body"]).toContain("is already deleted");
+    expect(github.fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it("fails when a native build embeds the channel, after saying so", async () => {
+    const fake = fakeCli({
+      channelDelete: {
+        code: 1,
+        json: { channel: "pr-12", deleted: false, deletedBundleIds: ["b1"] },
+      },
+    });
+    const { deps: d, outputs } = deps(fake.cli);
+
+    await expect(runAction(d, env(), closed)).rejects.toThrow(
+      "The pr-12 channel is kept: a native build embeds it.",
+    );
+    expect(outputs["comment-body"]).toContain(
+      "is kept, because a native build embeds it",
+    );
+  });
+
+  it("fails when the delete fails for another reason", async () => {
+    const fake = fakeCli({
+      channelDelete: { code: 1, json: { channel: "pr-12", deleted: true } },
+    });
+    const { deps: d } = deps(fake.cli);
+
+    await expect(runAction(d, env(), closed)).rejects.toThrow("exited with 1");
+  });
+
+  it("runs on mode cleanup for an open pull request", async () => {
+    const fake = fakeCli();
+    const { deps: d } = deps(fake.cli);
+
+    await runAction(d, env({ INPUT_MODE: "cleanup" }), event);
+
+    expect(fake.calls).toEqual(["channel delete pr-12 --yes --json"]);
+  });
+});
+
+describe("parseInputs", () => {
+  it("defaults to Android, the preview channel, and the pull request's own channel", () => {
+    expect(parseInputs(env(), event)).toEqual({
+      consoleUrl: "https://console.example.com",
+      platforms: ["android"],
+      schemes: { android: "releaseApk", ios: "simulator" },
+      previewChannel: "preview",
+      channel: "pr-12",
+      credit: true,
+      comment: false,
+      mode: "preview",
+    });
+  });
+
+  it.each([
+    [{ INPUT_PLATFORMS: "web" }, "platforms takes android and ios, not web."],
+    [{ INPUT_CONSOLE_URL: "" }, "console-url is required."],
+    [{ INPUT_CONSOLE_URL: "console.example.com" }, "console-url must be"],
+    [{ INPUT_CREDIT: "no" }, "credit must be true or false."],
+    [{ INPUT_MODE: "deploy" }, "mode must be auto, preview, or cleanup."],
+    [{ INPUT_ANDROID_SCHEME: "" }, "android-scheme is required"],
+    [
+      { INPUT_CHANNEL: "preview" },
+      "channel and preview-channel are both preview",
+    ],
+  ])("refuses %j", (overrides, message) => {
+    expect(() => parseInputs(env(overrides), event)).toThrow(message);
+  });
+
+  it("turns the credit line off", () => {
+    expect(parseInputs(env({ INPUT_CREDIT: "false" }), event).credit).toBe(
+      false,
+    );
+  });
+});
+
+describe("parseJsonOutput", () => {
+  it("reads JSON after lines a config printed", () => {
+    expect(parseJsonOutput('[config] {not json\n{\n  "a": 1\n}\n')).toEqual({
+      a: 1,
+    });
+  });
+
+  it("fails on output with no JSON", () => {
+    expect(() => parseJsonOutput("nothing")).toThrow("Expected JSON output");
+  });
+});

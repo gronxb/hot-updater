@@ -1,0 +1,154 @@
+on:
+  pull_request:
+    paths:
+      - "actions/preview/**"
+      - "examples-server/preview-action/**"
+      - "examples/v0.85.0/**"
+      - "packages/hot-updater/src/commands/channel.ts"
+      - "packages/hot-updater/src/commands/nativeBuild.ts"
+      - "packages/hot-updater/src/commands/buildNative.ts"
+      - "packages/hot-updater/src/utils/native/**"
+      - "packages/console/src/lib/server/channelLinkQr.ts"
+      - ".github/workflows/preview-action.yml"
+
+name: Preview Action
+
+permissions:
+  contents: read
+
+concurrency:
+  group: preview-action-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+# The preview action (actions/preview) on examples/v0.85.0's Android release
+# APK, against a Console with the vault, Postgres, and MinIO started in the
+# job. The action gets only the Console's URL and a read+sign vault token,
+# and comments nothing: each proof step reads Postgres and MinIO itself and
+# checks the comment the run rendered against them. The runs, in order:
+# no native build (build and register), the same fingerprint (deploy only),
+# a changed native input (build again), and the closed pull request's
+# cleanup. iOS Simulator builds are checked on macOS outside CI.
+jobs:
+  android:
+    name: Preview action (Android)
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    env:
+      PROOF_CHANNEL: pr-${{ github.event.pull_request.number }}
+      PROOF_PREVIEW_CHANNEL: preview
+      PROOF_PLATFORM: android
+      PROOF_STATE: /tmp/preview-proof-state.json
+      # The example's release build is debuggable, which skips lintVitalRelease,
+      # and builds one ABI.
+      ORG_GRADLE_PROJECT_HOT_UPDATER_E2E_DEBUGGABLE: "true"
+      ORG_GRADLE_PROJECT_reactNativeArchitectures: x86_64
+    steps:
+      - uses: actions/checkout@f43a0e5ff2bd294095638e18286ca9a3d1956744
+      - name: Setup pnpm
+        uses: pnpm/action-setup@eae0cfeb286e66ffb5155f1a79b90583a127a68b
+      - name: Setup Node.js
+        uses: actions/setup-node@3235b876344d2a9aa001b8d1453c930bba69e610
+        with:
+          node-version-file: .node-version
+          cache: "pnpm"
+      - run: pnpm install
+      - name: Build
+        run: pnpm build
+
+      - name: Start Postgres and MinIO
+        run: bash examples-server/preview-action/scripts/backend.sh > "$RUNNER_TEMP/backend.env"
+      - name: Seed the vault and start the Console
+        id: seed
+        run: |
+          set -a; . "$RUNNER_TEMP/backend.env"; set +a
+          bash examples-server/preview-action/scripts/seed.sh 3800 "$RUNNER_TEMP/logs" > "$RUNNER_TEMP/seed.env"
+          token="$(grep '^PREVIEW_VAULT_TOKEN=' "$RUNNER_TEMP/seed.env" | cut -d= -f2-)"
+          echo "::add-mask::$token"
+          echo "token=$token" >> "$GITHUB_OUTPUT"
+          echo "console-url=http://127.0.0.1:3800" >> "$GITHUB_OUTPUT"
+      - name: Check that only the two connection values reach the action
+        run: |
+          test ! -e examples/v0.85.0/.env.hotupdater
+          if env | grep -E '^HOT_UPDATER_' | cut -d= -f1 | grep .; then
+            echo "The job's environment sets the variables above."
+            exit 1
+          fi
+
+      - name: Preview without a native build
+        id: first
+        uses: ./actions/preview
+        with:
+          console-url: ${{ steps.seed.outputs.console-url }}
+          vault-token: ${{ steps.seed.outputs.token }}
+          android-scheme: releaseApk
+          working-directory: examples/v0.85.0
+          comment: false
+      - name: Check the build, the registration, and the bundle
+        env:
+          PROOF_COMMENT: ${{ steps.first.outputs.comment-body }}
+          HOT_UPDATER_CONSOLE_URL: ${{ steps.seed.outputs.console-url }}
+        run: |
+          set -a; . "$RUNNER_TEMP/backend.env"; set +a
+          node examples-server/preview-action/proof.ts built
+
+      - name: Preview with the same fingerprint
+        id: second
+        uses: ./actions/preview
+        with:
+          console-url: ${{ steps.seed.outputs.console-url }}
+          vault-token: ${{ steps.seed.outputs.token }}
+          android-scheme: releaseApk
+          working-directory: examples/v0.85.0
+          comment: false
+      - name: Check that only the bundle was deployed
+        env:
+          PROOF_COMMENT: ${{ steps.second.outputs.comment-body }}
+          HOT_UPDATER_CONSOLE_URL: ${{ steps.seed.outputs.console-url }}
+        run: |
+          set -a; . "$RUNNER_TEMP/backend.env"; set +a
+          node examples-server/preview-action/proof.ts reused
+
+      - name: Change a native input
+        run: echo "// The preview action's proof changes the fingerprint." >> examples/v0.85.0/android/brownfieldlib/build.gradle.kts
+      - name: Preview with a new fingerprint
+        id: third
+        uses: ./actions/preview
+        with:
+          console-url: ${{ steps.seed.outputs.console-url }}
+          vault-token: ${{ steps.seed.outputs.token }}
+          android-scheme: releaseApk
+          working-directory: examples/v0.85.0
+          comment: false
+      - name: Check the second build
+        env:
+          PROOF_COMMENT: ${{ steps.third.outputs.comment-body }}
+          HOT_UPDATER_CONSOLE_URL: ${{ steps.seed.outputs.console-url }}
+        run: |
+          set -a; . "$RUNNER_TEMP/backend.env"; set +a
+          node examples-server/preview-action/proof.ts rebuilt
+
+      - name: Clean up as the pull request closes
+        id: closed
+        uses: ./actions/preview
+        with:
+          console-url: ${{ steps.seed.outputs.console-url }}
+          vault-token: ${{ steps.seed.outputs.token }}
+          working-directory: examples/v0.85.0
+          mode: cleanup
+          comment: false
+      - name: Check that the channel is deleted
+        env:
+          PROOF_COMMENT: ${{ steps.closed.outputs.comment-body }}
+          HOT_UPDATER_CONSOLE_URL: ${{ steps.seed.outputs.console-url }}
+        run: |
+          set -a; . "$RUNNER_TEMP/backend.env"; set +a
+          node examples-server/preview-action/proof.ts closed
+
+      - name: Print the Console's and the seed's logs
+        if: failure()
+        run: |
+          for log in "$RUNNER_TEMP"/logs/*.log; do
+            echo "::group::$log"
+            sed -E 's/hu_vault_[A-Za-z0-9_-]+/hu_vault_***/g' "$log"
+            echo "::endgroup::"
+          done

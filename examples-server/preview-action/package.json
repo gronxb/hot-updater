@@ -1,0 +1,27 @@
+{
+  "name": "@examples-server/preview-action",
+  "private": true,
+  "description": "The Postgres and MinIO backend, Console, and app config the preview action's CI proof runs examples/v0.85.0 on",
+  "engines": {
+    "node": ">=20.19.0"
+  },
+  "type": "module",
+  "scripts": {
+    "test:type": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@aws-sdk/client-s3": "catalog:aws",
+    "@hot-updater/aws": "workspace:*",
+    "@hot-updater/bare": "workspace:*",
+    "@hot-updater/server": "workspace:*",
+    "hot-updater": "workspace:*",
+    "kysely": "catalog:db",
+    "pg": "catalog:db"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.17",
+    "@types/pg": "^8.11.10",
+    "@typescript/native": "npm:typescript@^7.0.2",
+    "typescript": "npm:@typescript/typescript6@^6.0.2"
+  }
+}

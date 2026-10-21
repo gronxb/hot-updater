@@ -18,6 +18,7 @@ import { Route as RemoteConfigRouteImport } from './routes/remote-config'
 import { Route as VaultRouteImport } from './routes/vault'
 import { Route as HotUpdaterSigningRouteImport } from './routes/[_]hot-updater/signing'
 import { Route as InsightsDistributionRouteImport } from './routes/insights_.distribution'
+import { Route as HotUpdaterPreviewChannelQrRouteImport } from './routes/[_]hot-updater/preview/channel-qr'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as HotUpdaterVaultV1ResolveRouteImport } from './routes/[_]hot-updater/vault/v1/resolve'
 import { Route as HotUpdaterVaultV1SecretsRouteImport } from './routes/[_]hot-updater/vault/v1/secrets'
@@ -70,6 +71,12 @@ const InsightsDistributionRoute = InsightsDistributionRouteImport.update({
   path: '/insights/distribution',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HotUpdaterPreviewChannelQrRoute =
+  HotUpdaterPreviewChannelQrRouteImport.update({
+    id: '/_hot-updater/preview/channel-qr',
+    path: '/_hot-updater/preview/channel-qr',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   id: '/api/auth/$',
   path: '/api/auth/$',
@@ -116,6 +123,7 @@ export interface FileRoutesByFullPath {
   '/vault': typeof VaultRoute
   '/_hot-updater/signing': typeof HotUpdaterSigningRoute
   '/insights/distribution': typeof InsightsDistributionRoute
+  '/_hot-updater/preview/channel-qr': typeof HotUpdaterPreviewChannelQrRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
   '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRouteWithChildren
@@ -133,6 +141,7 @@ export interface FileRoutesByTo {
   '/vault': typeof VaultRoute
   '/_hot-updater/signing': typeof HotUpdaterSigningRoute
   '/insights/distribution': typeof InsightsDistributionRoute
+  '/_hot-updater/preview/channel-qr': typeof HotUpdaterPreviewChannelQrRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
   '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRouteWithChildren
@@ -151,6 +160,7 @@ export interface FileRoutesById {
   '/vault': typeof VaultRoute
   '/_hot-updater/signing': typeof HotUpdaterSigningRoute
   '/insights_/distribution': typeof InsightsDistributionRoute
+  '/_hot-updater/preview/channel-qr': typeof HotUpdaterPreviewChannelQrRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
   '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRouteWithChildren
@@ -170,6 +180,7 @@ export interface FileRouteTypes {
     | '/vault'
     | '/_hot-updater/signing'
     | '/insights/distribution'
+    | '/_hot-updater/preview/channel-qr'
     | '/api/auth/$'
     | '/_hot-updater/vault/v1/resolve'
     | '/_hot-updater/vault/v1/secrets'
@@ -187,6 +198,7 @@ export interface FileRouteTypes {
     | '/vault'
     | '/_hot-updater/signing'
     | '/insights/distribution'
+    | '/_hot-updater/preview/channel-qr'
     | '/api/auth/$'
     | '/_hot-updater/vault/v1/resolve'
     | '/_hot-updater/vault/v1/secrets'
@@ -204,6 +216,7 @@ export interface FileRouteTypes {
     | '/vault'
     | '/_hot-updater/signing'
     | '/insights_/distribution'
+    | '/_hot-updater/preview/channel-qr'
     | '/api/auth/$'
     | '/_hot-updater/vault/v1/resolve'
     | '/_hot-updater/vault/v1/secrets'
@@ -222,6 +235,7 @@ export interface RootRouteChildren {
   VaultRoute: typeof VaultRoute
   HotUpdaterSigningRoute: typeof HotUpdaterSigningRoute
   InsightsDistributionRoute: typeof InsightsDistributionRoute
+  HotUpdaterPreviewChannelQrRoute: typeof HotUpdaterPreviewChannelQrRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   HotUpdaterVaultV1ResolveRoute: typeof HotUpdaterVaultV1ResolveRoute
   HotUpdaterVaultV1SecretsRoute: typeof HotUpdaterVaultV1SecretsRouteWithChildren
@@ -294,6 +308,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof InsightsDistributionRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_hot-updater/preview/channel-qr': {
+      id: '/_hot-updater/preview/channel-qr'
+      path: '/_hot-updater/preview/channel-qr'
+      fullPath: '/_hot-updater/preview/channel-qr'
+      preLoaderRoute: typeof HotUpdaterPreviewChannelQrRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/auth/$': {
       id: '/api/auth/$'
       path: '/api/auth/$'
@@ -363,6 +384,7 @@ const rootRouteChildren: RootRouteChildren = {
   VaultRoute: VaultRoute,
   HotUpdaterSigningRoute: HotUpdaterSigningRoute,
   InsightsDistributionRoute: InsightsDistributionRoute,
+  HotUpdaterPreviewChannelQrRoute: HotUpdaterPreviewChannelQrRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   HotUpdaterVaultV1ResolveRoute: HotUpdaterVaultV1ResolveRoute,
   HotUpdaterVaultV1SecretsRoute: HotUpdaterVaultV1SecretsRouteWithChildren,
