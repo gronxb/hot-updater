@@ -63,13 +63,18 @@ import { hotUpdater } from "./hotUpdater";
 
 const openLink = async (url: string | null) => {
   if (url === null) return;
-  const result = await hotUpdater.openChannelLink(url, {
-    updateStrategy: "fingerprint",
-    // Builds whose default channel is "preview" open channel links.
-    defaultChannels: ["preview"],
-  });
-  if (result.status === "NOT_CHANNEL_LINK") {
-    // Route the URL as the app routes its other links.
+  try {
+    const result = await hotUpdater.openChannelLink(url, {
+      updateStrategy: "fingerprint",
+      // Builds whose default channel is "preview" open channel links.
+      defaultChannels: ["preview"],
+    });
+    if (result.status === "NOT_CHANNEL_LINK") {
+      // Route the URL as the app routes its other links.
+    }
+  } catch (error) {
+    // The check or the download failed, such as offline.
+    console.warn("Couldn't open the channel", error);
   }
 };
 

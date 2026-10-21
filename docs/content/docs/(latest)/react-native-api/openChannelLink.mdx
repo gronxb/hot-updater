@@ -16,12 +16,17 @@ import { Linking } from "react-native";
 import { hotUpdater } from "./hotUpdater";
 
 Linking.addEventListener("url", async ({ url }) => {
-  const result = await hotUpdater.openChannelLink(url, {
-    updateStrategy: "fingerprint",
-    defaultChannels: ["preview"],
-  });
-  if (result.status === "NOT_CHANNEL_LINK") {
-    // Route the URL as the app routes its other links.
+  try {
+    const result = await hotUpdater.openChannelLink(url, {
+      updateStrategy: "fingerprint",
+      defaultChannels: ["preview"],
+    });
+    if (result.status === "NOT_CHANNEL_LINK") {
+      // Route the URL as the app routes its other links.
+    }
+  } catch (error) {
+    // The check or the download failed, such as offline.
+    console.warn("Couldn't open the channel", error);
   }
 });
 ```

@@ -494,10 +494,13 @@ const createConfiguredMethods = (config: InstanceConfig) => {
      * @example
      * ```ts
      * Linking.addEventListener("url", ({ url }) => {
-     *   void hotUpdater.openChannelLink(url, {
-     *     updateStrategy: "fingerprint",
-     *     defaultChannels: ["preview"],
-     *   });
+     *   hotUpdater
+     *     .openChannelLink(url, {
+     *       updateStrategy: "fingerprint",
+     *       defaultChannels: ["preview"],
+     *     })
+     *     // A failed check or download rejects.
+     *     .catch((error) => console.warn("Couldn't open the channel", error));
      * });
      * ```
      */
