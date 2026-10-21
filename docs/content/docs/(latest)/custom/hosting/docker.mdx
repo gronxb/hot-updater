@@ -39,8 +39,8 @@ project-root layout under `dist`:
 {
   "type": "commonjs", // [!code ++]
   "scripts": {
-    "build": "tsc" // [!code ++]
-  }
+    "build": "tsc", // [!code ++]
+  },
 }
 ```
 
@@ -53,9 +53,9 @@ project-root layout under `dist`:
     "outDir": "dist",
     "skipLibCheck": true,
     "strict": true,
-    "target": "ES2022"
+    "target": "ES2022",
   },
-  "include": ["src", "hot-updater-schema.ts"] // [!code ++]
+  "include": ["src", "hot-updater-schema.ts"], // [!code ++]
 }
 ```
 
@@ -129,12 +129,12 @@ serve({ fetch: app.fetch, port }, (info) => {
 ```
 
 <Callout type="warn">
-When using Hono `mount()`, update-check routes such as
-`/hot-updater/release-catalogs/*` and `/hot-updater/artifacts/*` are usually
-exposed for React Native clients, but that is a deployment choice.
-`/hot-updater/version` is always mounted for diagnostics. The specific admin
-middleware and mount must be registered before the broader client mount. Omit
-both to deploy a client-only server.
+  When using Hono `mount()`, update-check routes such as
+  `/hot-updater/release-catalogs/*` and `/hot-updater/artifacts/*` are usually
+  exposed for React Native clients, but that is a deployment choice.
+  `/hot-updater/version` is always mounted for diagnostics. The specific admin
+  middleware and mount must be registered before the broader client mount. Omit
+  both to deploy a client-only server.
 </Callout>
 
 ## Schema generation

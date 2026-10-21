@@ -1,3 +1,5 @@
+import { generateKeyPairSync, type KeyObject } from "node:crypto";
+
 import { describe, expect, it } from "vitest";
 
 import { VaultInputError } from "./api";
@@ -101,14 +103,98 @@ describe("parseVaultSecretValue", () => {
     ).toThrow(VaultInputError);
   });
 
-  it("takes a bundle signing key in PEM and shows nothing of it", () => {
-    const privateKey = base64(
-      "-----BEGIN RSA PRIVATE KEY-----\nMIIE\n-----END RSA PRIVATE KEY-----\n",
-    );
-    const value = parseVaultSecretValue("bundle-signing-key", { privateKey });
+  it("takes an RSA bundle signing key in PEM, PKCS#8 or PKCS#1, and shows nothing of it", () => {
+    for (const [modulusLength, type] of [
+      [2048, "pkcs8"],
+      [3072, "pkcs1"],
+      [4096, "pkcs8"],
+    ] as const) {
+      const privateKey = base64(
+        generateKeyPairSync("rsa", { modulusLength })
+          .privateKey.export({ format: "pem", type })
+          .toString(),
+      );
+      const value = parseVaultSecretValue("bundle-signing-key", {
+        privateKey,
+      });
+      expect(value).toEqual({ privateKey });
+      expect(vaultSecretMetadata("bundle-signing-key", value)).toEqual({});
+    }
+  });
 
-    expect(value).toEqual({ privateKey });
-    expect(vaultSecretMetadata("bundle-signing-key", value)).toEqual({});
+  it("refuses a bundle signing key the Console cannot sign with", () => {
+    const pkcs8 = (key: KeyObject) =>
+      key.export({ format: "pem", type: "pkcs8" }).toString();
+    // A PKCS#8 key whose PrivateKeyInfo version is 2, not 0.
+    const der = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+    }).privateKey.export({ format: "der", type: "pkcs8" });
+    der[der.indexOf(Buffer.from([0x02, 0x01, 0x00]))! + 2] = 2;
+    const versionTwo = `-----BEGIN PRIVATE KEY-----\n${der.toString("base64")}\n-----END PRIVATE KEY-----\n`;
+    // A valid key's PrivateKeyInfo with a 0x00 byte after its key.
+    const valid = generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+    }).privateKey.export({ format: "der", type: "pkcs8" });
+    const trailing = Buffer.concat([valid, Buffer.from([0x00])]);
+    trailing.writeUInt16BE(valid.readUInt16BE(2) + 1, 2);
+    const trailingByte = `-----BEGIN PRIVATE KEY-----\n${trailing.toString("base64")}\n-----END PRIVATE KEY-----\n`;
+    for (const pem of [
+      versionTwo,
+      trailingByte,
+      pkcs8(generateKeyPairSync("rsa", { modulusLength: 1024 }).privateKey),
+      pkcs8(generateKeyPairSync("ec", { namedCurve: "P-256" }).privateKey),
+      pkcs8(generateKeyPairSync("ed25519").privateKey),
+      generateKeyPairSync("rsa", { modulusLength: 2048 })
+        .privateKey.export({
+          format: "pem",
+          type: "pkcs8",
+          cipher: "aes-256-cbc",
+          passphrase: "secret",
+        })
+        .toString(),
+      "-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----\n",
+      // A 2048-bit modulus with every other value 1, such as e = 1.
+      `-----BEGIN RSA PRIVATE KEY-----\n${Buffer.from([
+        0x30,
+        0x82,
+        0x01,
+        0x1d,
+        0x02,
+        0x01,
+        0x00,
+        0x02,
+        0x82,
+        0x01,
+        0x01,
+        0x00,
+        ...Array.from({ length: 256 }, () => 0xff),
+        ...Array.from({ length: 7 }, () => [0x02, 0x01, 0x01]).flat(),
+      ]).toString("base64")}\n-----END RSA PRIVATE KEY-----\n`,
+      // A PKCS#1 sequence of only the version and a 2048-bit modulus.
+      `-----BEGIN RSA PRIVATE KEY-----\n${Buffer.from([
+        0x30,
+        0x82,
+        0x01,
+        0x08,
+        0x02,
+        0x01,
+        0x00,
+        0x02,
+        0x82,
+        0x01,
+        0x01,
+        0x00,
+        ...Array.from({ length: 256 }, () => 0xff),
+      ]).toString("base64")}\n-----END RSA PRIVATE KEY-----\n`,
+    ]) {
+      expect(() =>
+        parseVaultSecretValue("bundle-signing-key", {
+          privateKey: base64(pem),
+        }),
+      ).toThrow(
+        "A secret of kind bundle-signing-key has privateKey as an unencrypted RSA private key of 2048, 3072, or 4096 bits in PEM",
+      );
+    }
   });
 
   it("takes key/value secrets by environment variable name and shows the names", () => {

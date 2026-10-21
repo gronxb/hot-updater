@@ -11,6 +11,7 @@ import {
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { MasterKeysCard } from "./MasterKeysCard";
 import { SecretsCard } from "./SecretsCard";
 import { TokensCard } from "./TokensCard";
 
@@ -19,9 +20,11 @@ const {
   removeMutation,
   issueMutation,
   revokeMutation,
+  rewrapMutation,
   toastError,
   toastSuccess,
 } = vi.hoisted(() => ({
+  rewrapMutation: { isPending: false, mutateAsync: vi.fn() },
   putMutation: { isPending: false, mutateAsync: vi.fn() },
   removeMutation: { isPending: false, mutateAsync: vi.fn() },
   issueMutation: { isPending: false, mutateAsync: vi.fn() },
@@ -39,6 +42,7 @@ vi.mock("@/lib/vault-api", () => ({
   useRemoveVaultSecretMutation: () => removeMutation,
   useIssueVaultTokenMutation: () => issueMutation,
   useRevokeVaultTokenMutation: () => revokeMutation,
+  useRewrapVaultMutation: () => rewrapMutation,
 }));
 
 vi.mock("@/components/ui/dialog", async () => {
@@ -181,6 +185,7 @@ beforeEach(() => {
     removeMutation,
     issueMutation,
     revokeMutation,
+    rewrapMutation,
   ]) {
     mutation.isPending = false;
     mutation.mutateAsync.mockReset();
@@ -213,6 +218,7 @@ describe("SecretsCard", () => {
             locked: true,
             message:
               "The vault is locked: set HOT_UPDATER_VAULT_MASTER_KEY where the Console runs to seal and reveal secrets.",
+            knownKeys: ["default"],
           },
           isError: false,
           refetch: vi.fn(),
@@ -223,6 +229,7 @@ describe("SecretsCard", () => {
     expect(screen.getByText("The vault is locked")).toBeDefined();
     // Secrets exist: only their own key opens them.
     expect(screen.getByText(/Restore the master key/)).toBeDefined();
+    expect(screen.getByText("default")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Copy command" })).toBeNull();
     expect(screen.getByRole("button", { name: "Check again" })).toBeDefined();
     expect(
@@ -245,22 +252,24 @@ describe("SecretsCard", () => {
     ).toBe(false);
   });
 
-  it("offers a new master key only for a vault known to be empty", () => {
-    const locked = {
-      data: { locked: true as const, message: "The vault is locked: no key." },
+  it("offers a new master key only for a vault that sealed nothing", () => {
+    const lockedWith = (knownKeys: readonly string[]) => ({
+      data: {
+        locked: true as const,
+        message: "The vault is locked: no key.",
+        knownKeys,
+      },
       isError: false,
       refetch: vi.fn(),
-    };
+    });
+    // Every secret was removed, but the vault keeps the key it sealed with.
     const { rerender } = render(
-      <SecretsCard
-        secrets={{ ...loaded([]), data: undefined, isError: true }}
-        status={locked}
-      />,
+      <SecretsCard secrets={loaded([])} status={lockedWith(["default"])} />,
     );
     expect(screen.getByText(/Restore the master key/)).toBeDefined();
     expect(screen.queryByRole("button", { name: "Copy command" })).toBeNull();
 
-    rerender(<SecretsCard secrets={loaded([])} status={locked} />);
+    rerender(<SecretsCard secrets={loaded([])} status={lockedWith([])} />);
     expect(screen.getByRole("button", { name: "Copy command" })).toBeDefined();
   });
 
@@ -705,7 +714,6 @@ describe("TokensCard", () => {
       target: { value: " GitHub Actions " },
     });
     fireEvent.click(screen.getByRole("button", { name: "release-keystore" }));
-    expect(screen.queryByRole("button", { name: "Sign bundles" })).toBeNull();
     // A read token never reaches a bundle signing key, by kind or by name.
     expect(
       screen.queryByRole("button", { name: "Bundle signing key" }),
@@ -788,6 +796,55 @@ describe("TokensCard", () => {
     });
   });
 
+  it("issues a sign token for the console's signing keys only, with the signing token variable", async () => {
+    const plaintext = `hu_vault_${"s".repeat(43)}`;
+    issueMutation.mutateAsync.mockResolvedValue({
+      token: plaintext,
+      metadata: token,
+    });
+    const signingKey = {
+      ...keystore,
+      id: `sec-${"e".repeat(22)}`,
+      name: "ota-key",
+      kind: "bundle-signing-key" as const,
+    };
+    render(<TokensCard secrets={[keystore, signingKey]} tokens={loaded([])} />);
+
+    fireEvent.click(screen.getAllByRole("button", { name: "Issue token" })[0]!);
+    fireEvent.change(screen.getByLabelText("Name"), {
+      target: { value: "Release signing" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "release-keystore" }));
+    fireEvent.click(screen.getByRole("button", { name: "Sign bundles" }));
+    fireEvent.click(screen.getByRole("button", { name: "Read values" }));
+    // Signing reaches only bundle signing keys: the keystore left the scope.
+    expect(
+      screen.queryByRole("button", { name: "release-keystore" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Android keystore" }),
+    ).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "ota-key" }));
+    fireEvent.click(
+      within(screen.getByRole("dialog")).getByRole("button", {
+        name: "Issue token",
+      }),
+    );
+
+    expect(await screen.findByDisplayValue(plaintext)).toBeDefined();
+    expect(issueMutation.mutateAsync).toHaveBeenCalledWith({
+      name: "Release signing",
+      scope: { secrets: { names: ["ota-key"] }, actions: ["sign"] },
+      expiresAtMs: expect.any(Number),
+    });
+    expect(
+      screen.getByText(
+        `HOT_UPDATER_CONSOLE_URL=${window.location.origin} HOT_UPDATER_VAULT_TOKEN=${plaintext} HOT_UPDATER_SIGNING_TOKEN=${plaintext}`,
+        { normalizer: (text) => text.replace(/\s+/gu, " ").trim() },
+      ),
+    ).toBeDefined();
+  });
+
   it("asks for a scope before it issues", () => {
     render(<TokensCard secrets={[]} tokens={loaded([])} />);
 
@@ -805,5 +862,173 @@ describe("TokensCard", () => {
       screen.getByText("Choose at least one secret or kind."),
     ).toBeDefined();
     expect(issueMutation.mutateAsync).not.toHaveBeenCalled();
+  });
+});
+
+describe("MasterKeysCard", () => {
+  const keysOf = (
+    keys: {
+      readonly kid: string;
+      readonly active?: boolean;
+      readonly held?: boolean;
+      readonly known?: boolean;
+      readonly versions: number;
+    }[],
+  ) => {
+    const entries = keys.map(
+      ({ kid, active = false, held = true, known = true, versions }) => ({
+        kid,
+        active,
+        held,
+        known,
+        versions,
+      }),
+    );
+    return {
+      data: {
+        keys: entries,
+        remaining: entries
+          .filter(({ active }) => !active)
+          .reduce((sum, { versions }) => sum + versions, 0),
+      },
+      isError: false,
+      isLoading: false,
+      refetch: vi.fn(),
+    };
+  };
+
+  it("rewraps the versions under older keys, counting down to none", async () => {
+    let report: ((remaining: number) => void) | undefined;
+    let finish: ((value: unknown) => void) | undefined;
+    rewrapMutation.mutateAsync.mockImplementation(
+      ({ onProgress }: { onProgress: (remaining: number) => void }) => {
+        report = onProgress;
+        return new Promise((resolve) => {
+          finish = resolve;
+        });
+      },
+    );
+    render(
+      <MasterKeysCard
+        keys={keysOf([
+          { kid: "next", active: true, versions: 2 },
+          { kid: "default", versions: 150 },
+        ])}
+        status={unlocked}
+      />,
+    );
+
+    expect(screen.getByText("Rotating out")).toBeDefined();
+    expect(
+      screen.getByText("150 versions still use an older key"),
+    ).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Rewrap 150 versions" }),
+    );
+    expect(rewrapMutation.mutateAsync).toHaveBeenCalledOnce();
+    act(() => report?.(50));
+    expect(screen.getByText("50 versions")).toBeDefined();
+    await act(async () => finish?.({ rewrapped: 150, remaining: 0 }));
+    expect(toastSuccess).toHaveBeenCalledWith("Rewrapped 150 versions");
+  });
+
+  it("says which keys can leave the environment once nothing is under them", () => {
+    render(
+      <MasterKeysCard
+        keys={keysOf([
+          { kid: "next", active: true, versions: 152 },
+          { kid: "default", known: false, versions: 0 },
+        ])}
+        status={unlocked}
+      />,
+    );
+
+    expect(screen.getByText("Every version uses next")).toBeDefined();
+    expect(screen.getByText("Unused")).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Rewrap/ })).toBeNull();
+  });
+
+  it("finishes a rotation with nothing to move while the vault still knows the old key", async () => {
+    rewrapMutation.mutateAsync.mockResolvedValue({
+      rewrapped: 0,
+      remaining: 0,
+    });
+    render(
+      <MasterKeysCard
+        keys={keysOf([
+          { kid: "next", active: true, known: false, versions: 0 },
+          { kid: "default", versions: 0 },
+        ])}
+        status={unlocked}
+      />,
+    );
+
+    expect(screen.getByText("Finish the rotation to next")).toBeDefined();
+    expect(screen.queryByText(/Every version uses/)).toBeNull();
+    expect(screen.getByText("Rotating out")).toBeDefined();
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "Finish rotation" }));
+    });
+    expect(rewrapMutation.mutateAsync).toHaveBeenCalledOnce();
+  });
+
+  it("names the keys the console lacks, and rewraps nothing it cannot open", () => {
+    render(
+      <MasterKeysCard
+        keys={keysOf([
+          { kid: "next", active: true, versions: 1 },
+          { kid: "default", held: false, versions: 3 },
+        ])}
+        status={unlocked}
+      />,
+    );
+
+    expect(
+      screen.getByText("Some versions need a key this console lacks"),
+    ).toBeDefined();
+    expect(screen.getByText("Not in this console")).toBeDefined();
+    expect(screen.queryByRole("button", { name: /Rewrap/ })).toBeNull();
+  });
+
+  it("shows how to start a rotation with one key, and the lock instead of a rewrap", () => {
+    const { rerender } = render(
+      <MasterKeysCard
+        keys={keysOf([{ kid: "default", active: true, versions: 4 }])}
+        status={unlocked}
+      />,
+    );
+    expect(
+      screen.getByText(
+        'HOT_UPDATER_VAULT_MASTER_KEYS="new:<key>,default:<current key>"',
+      ),
+    ).toBeDefined();
+    expect(
+      screen.getByRole("button", { name: "Copy key command" }),
+    ).toBeDefined();
+
+    rerender(
+      <MasterKeysCard
+        keys={keysOf([
+          { kid: "next", active: true, versions: 0 },
+          { kid: "default", versions: 4 },
+        ])}
+        status={{
+          data: {
+            locked: true,
+            message: "The vault is locked: wrong key.",
+            knownKeys: ["default"],
+          },
+          refetch: vi.fn(),
+        }}
+      />,
+    );
+    expect(screen.getByText("The vault is locked")).toBeDefined();
+    expect(
+      (
+        screen.getByRole("button", {
+          name: "Rewrap 4 versions",
+        }) as HTMLButtonElement
+      ).disabled,
+    ).toBe(true);
   });
 });

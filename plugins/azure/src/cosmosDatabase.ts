@@ -53,15 +53,19 @@ const adapterOf = (config: CosmosDatabaseConfig) => {
       `cosmosDatabase reads with strong consistency; consistencyLevel "${String(connection.consistencyLevel)}" is weaker.`,
     );
   }
-  const client = new CosmosClient(connection);
+  // Created on the first request, so a config loads without the connection.
+  let client: CosmosClient | undefined;
   const store = createCosmosStore({
-    client,
+    client: () => (client ??= new CosmosClient(connection)),
     databaseId,
     containerId,
     // What every migration path checks a reused container against.
     engine: currentCosmosEngine(),
   });
-  return { client, adapter: createKvAdapter({ store }) };
+  return {
+    dispose: () => client?.dispose(),
+    adapter: createKvAdapter({ store }),
+  };
 };
 
 /**
@@ -75,10 +79,8 @@ export const migrateCosmosDatabase = (
   config: CosmosDatabaseConfig,
   plugins: readonly PluginTables[] = [],
 ) => {
-  const { client, adapter } = adapterOf(config);
-  return migrateCoreSchema(adapter, "cosmosDatabase", plugins).finally(() =>
-    client.dispose(),
-  );
+  const { dispose, adapter } = adapterOf(config);
+  return migrateCoreSchema(adapter, "cosmosDatabase", plugins).finally(dispose);
 };
 
 /**
@@ -90,7 +92,7 @@ export const migrateCosmosDatabase = (
 export const cosmosDatabase = (
   config: CosmosDatabaseConfig,
 ): EngineDatabase => {
-  const { client, adapter } = adapterOf(config);
+  const { dispose, adapter } = adapterOf(config);
   return {
     ...createEngineDatabase({
       name: "cosmosDatabase",
@@ -99,7 +101,7 @@ export const cosmosDatabase = (
     }),
     async dispose() {
       await adapter.dispose?.();
-      client.dispose();
+      dispose();
     },
   };
 };

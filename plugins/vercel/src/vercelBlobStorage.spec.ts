@@ -33,10 +33,16 @@ beforeEach(() => {
 });
 
 describe("vercelBlobStorage", () => {
-  it("rejects a token that is not a store's read-write token", () => {
-    expect(() => vercelBlobStorage({ token: "vercel_blob_client_x" })).toThrow(
-      "read-write token",
-    );
+  it("rejects a token that is not a store's read-write token when it is first used", async () => {
+    // Created without the token, so a config loads before it is set.
+    const storage = vercelBlobStorage({ token: "vercel_blob_client_x" });
+    expect(() =>
+      vercelBlobStorage({ token: undefined as never }),
+    ).not.toThrow();
+
+    await expect(
+      storage.exists({ storageUri: "vercel-blob://store/key" }),
+    ).rejects.toThrow("read-write token");
   });
 
   it("rejects a download URL lifetime beyond Vercel's seven days", () => {

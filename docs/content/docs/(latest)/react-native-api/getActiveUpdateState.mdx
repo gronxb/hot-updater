@@ -40,11 +40,11 @@ type ActiveUpdateState = {
 getActiveUpdateState(): Promise<ActiveUpdateState>
 ```
 
-| Field | Meaning |
-| --- | --- |
-| `activeSelection` | The selected transition, including an update staged for a later runtime start. It may be `null` before a selection is recorded. |
-| `stableSelection` | The retained stable selection used by native recovery, when present. It may be `null` even when the app is healthy. |
-| `verificationPending` | Whether native state marks a transition as awaiting verification. |
+| Field                 | Meaning                                                                                                                         |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `activeSelection`     | The selected transition, including an update staged for a later runtime start. It may be `null` before a selection is recorded. |
+| `stableSelection`     | The retained stable selection used by native recovery, when present. It may be `null` even when the app is healthy.             |
+| `verificationPending` | Whether native state marks a transition as awaiting verification.                                                               |
 
 A selection's `releaseId` identifies delivery policy and matches the Console's
 update ID when present. For `kind: "BUNDLE"`, `bundleId` is the artifact ID.
@@ -56,11 +56,11 @@ reload, acknowledge readiness, or subscribe to changes. Read it again when you
 need a fresh snapshot.
 
 <Callout type="info">
-`activeSelection` and [`getBundleId()`](/docs/react-native-api/getBundleId) can
-change after staging and before reload. They do not prove that the selected
-code is already running. Use the app-ready result and
-[Insights reports](/docs/guides/insights#verify-reporting) when verifying an
-applied update.
+  `activeSelection` and [`getBundleId()`](/docs/react-native-api/getBundleId)
+  can change after staging and before reload. They do not prove that the
+  selected code is already running. Use the app-ready result and [Insights
+  reports](/docs/guides/insights#verify-reporting) when verifying an applied
+  update.
 </Callout>
 
 ## Related

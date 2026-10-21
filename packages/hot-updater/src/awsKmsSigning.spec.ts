@@ -147,27 +147,24 @@ describe("awsKmsSigning", () => {
     ).rejects.toThrow("AWS KMS returned an unverifiable bundle signature.");
   });
 
-  it("rejects invalid configuration and unsafe custom endpoints", () => {
+  it("rejects invalid configuration and unsafe custom endpoints on first use", async () => {
+    // Created without a check, so a config loads before its settings are set.
     expect(() =>
+      awsKmsSigning({ keyId: undefined as never, region: undefined as never }),
+    ).not.toThrow();
+    await expect(
       awsKmsSigning({
         keyId: canonicalKeyId,
         region: " ",
-      }),
-    ).toThrow("region is required");
-    expect(() =>
+      }).getPublicKey(),
+    ).rejects.toThrow("region is required");
+    await expect(
       awsKmsSigning({
         endpoint: "http://kms.example.com",
         keyId: canonicalKeyId,
         region: "us-east-1",
-      }),
-    ).toThrow("must use HTTPS or an HTTP loopback URL");
-    expect(() =>
-      awsKmsSigning({
-        endpoint: "http://127.0.0.1:4566",
-        keyId: canonicalKeyId,
-        region: "us-east-1",
-      }),
-    ).not.toThrow();
+      }).getPublicKey(),
+    ).rejects.toThrow("must use HTTPS or an HTTP loopback URL");
     expect(mocks.clientConstructor).not.toHaveBeenCalled();
   });
 

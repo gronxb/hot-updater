@@ -110,6 +110,62 @@ describe("prepareNativeBuild", () => {
         "release",
       ),
     });
+    // build:* without --register: no vault credentials, so no Console.
+    expect(vi.mocked(loadConfig).mock.calls).toEqual([
+      [{ platform: "ios", channel: "" }, { credentials: false }],
+    ]);
+  });
+
+  it("loads the vault's credentials before the first config load of a build it registers", async () => {
+    vi.mocked(resolveNativeAppVersion).mockResolvedValueOnce({
+      version: "1.0.0",
+    } as Awaited<ReturnType<typeof resolveNativeAppVersion>>);
+
+    await prepareNativeBuild({
+      platform: "ios",
+      scheme: "release",
+      interactive: false,
+      operation: "build",
+      credentials: true,
+    });
+
+    // Firebase's adapters bind the default app on the first load.
+    expect(vi.mocked(loadConfig).mock.calls).toEqual([
+      [{ platform: "ios", channel: "" }, { credentials: true }],
+    ]);
+  });
+
+  it("hands the scheme to beforePrebuild before the adapter's prebuild, which a failing check skips", async () => {
+    const beforePrebuild = vi.fn(async () => {
+      calls.push("beforePrebuild");
+    });
+
+    await prepareNativeBuild({
+      platform: "ios",
+      scheme: "release",
+      interactive: false,
+      operation: "build",
+      beforePrebuild,
+    });
+
+    expect(beforePrebuild).toHaveBeenCalledWith({
+      scheme: "release",
+      iosScheme: { scheme: "App", simulator: true },
+    });
+    expect(calls).toEqual(["beforePrebuild", "prebuild"]);
+
+    await expect(
+      prepareNativeBuild({
+        platform: "ios",
+        scheme: "release",
+        interactive: false,
+        operation: "build",
+        beforePrebuild: async () => {
+          throw new Error("TestFlight takes an .ipa");
+        },
+      }),
+    ).rejects.toThrow("TestFlight takes an .ipa");
+    expect(buildAdapter.nativeBuild.prebuild).toHaveBeenCalledTimes(1);
   });
 
   it("refuses an iOS device scheme it cannot export as an .ipa, before the adapter's prebuild", async () => {

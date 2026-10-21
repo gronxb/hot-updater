@@ -1,5 +1,7 @@
 // @vitest-environment node
 
+import { generateKeyPairSync } from "node:crypto";
+
 import { mockStorage } from "@hot-updater/mock";
 import {
   type AnyHotUpdaterPlugin,
@@ -531,8 +533,9 @@ const base64 = (text: string) => btoa(text);
 const P8 =
   "-----BEGIN PRIVATE KEY-----\nMIGTAgEAMBMGByqGSM49AgEGCCqGSM49writeRouteSpecKey\n-----END PRIVATE KEY-----\n";
 const ASC_VALUE = { p8: base64(P8), keyId: "KEY1", issuerId: "issuer-1" };
-const SIGNING_PEM =
-  "-----BEGIN PRIVATE KEY-----\nMIIEvQIBADANBgkqhkiG9w0BAQEFAAwriteRouteSigningKey\n-----END PRIVATE KEY-----\n";
+const SIGNING_PEM = generateKeyPairSync("rsa", { modulusLength: 2048 })
+  .privateKey.export({ format: "pem", type: "pkcs8" })
+  .toString();
 
 describe("PUT /_hot-updater/vault/v1/secrets/:name", () => {
   it("stores a new secret sealed with the console's master key, answering only its metadata", async () => {
@@ -605,6 +608,46 @@ describe("PUT /_hot-updater/vault/v1/secrets/:name", () => {
     await expect(
       api.reveal({ id: secrets.keystore.id, actor: "spec" }),
     ).resolves.toEqual(value);
+  });
+
+  it("stores only at the version a write expects: 0 never replaces a secret", async () => {
+    const { load, issue, vault: api, secrets } = await start();
+    const token = await issue({
+      secrets: { kinds: ["bundle-signing-key"] },
+      actions: ["write"],
+    });
+    const value = { privateKey: base64(SIGNING_PEM) };
+
+    const replacing = await put(load, token, "ota-signing", {
+      kind: "bundle-signing-key",
+      value,
+      expectedVersion: 0,
+    });
+    expect(replacing.status).toBe(409);
+    await expect(replacing.json()).resolves.toEqual({
+      error: {
+        code: "conflict",
+        message:
+          'The secret "ota-signing" is at version 1, and the write expected no secret under its name.',
+      },
+    });
+    await expect(
+      api.reveal({ id: secrets.signing.id, actor: "spec" }),
+    ).resolves.toBe("-----BEGIN RSA PRIVATE KEY-----");
+
+    const created = await put(load, token, "widget-signing", {
+      kind: "bundle-signing-key",
+      value,
+      expectedVersion: 0,
+    });
+    expect(created.status).toBe(201);
+
+    const malformed = await put(load, token, "widget-signing", {
+      kind: "bundle-signing-key",
+      value,
+      expectedVersion: -1,
+    });
+    expect(malformed.status).toBe(400);
   });
 
   it("never reads a value back with write: a write-only token lists metadata and resolves nothing", async () => {
@@ -758,6 +801,47 @@ describe("PUT /_hot-updater/vault/v1/secrets/:name", () => {
     });
   });
 
+  it("answers 409 when the secret moved on from the expectedVersion the writer read", async () => {
+    const { load, vault: api, issue } = await start();
+    const token = await issue({
+      secrets: { names: ["deploy"] },
+      actions: ["write"],
+    });
+    await api.put({ name: "deploy", kind: "generic", value: { A: "1" } });
+
+    const stale = await put(load, token, "deploy", {
+      kind: "generic",
+      value: { B: "2" },
+      expectedVersion: 0,
+    });
+    expect(stale.status).toBe(409);
+    await expect(stale.json()).resolves.toMatchObject({
+      error: {
+        code: "conflict",
+        message: expect.stringContaining(
+          "is at version 1, and the write expected no secret under its name",
+        ),
+      },
+    });
+
+    const current = await put(load, token, "deploy", {
+      kind: "generic",
+      value: { B: "2" },
+      expectedVersion: 1,
+    });
+    expect(current.status).toBe(200);
+    await expect(current.json()).resolves.toMatchObject({
+      secret: { name: "deploy", version: 2 },
+    });
+
+    const invalid = await put(load, token, "deploy", {
+      kind: "generic",
+      value: { B: "2" },
+      expectedVersion: -1,
+    });
+    expect(invalid.status).toBe(400);
+  });
+
   it("refuses a bad name, body, or value with 400", async () => {
     const { load, issue } = await start();
     const token = await issue({
@@ -808,6 +892,49 @@ describe("PUT /_hot-updater/vault/v1/secrets/:name", () => {
     expect((await api.list()).map((secret) => secret.name)).not.toContain(
       "widget-asc",
     );
+  });
+
+  it("tells the vault's errors by name, from a copy of the plugin other than the console's", async () => {
+    const { load, issue, secrets } = await start();
+    const { runtime } = await load(new Request("https://console.example.com"));
+    const api = runtime.apis.vault!;
+    // The errors of a vault loaded from the project's own node_modules.
+    const foreign = (name: string, message: string) =>
+      Object.assign(new Error(message), { name });
+    const copied: LoadConsole = async () => ({
+      runtime: {
+        ...runtime,
+        apis: {
+          ...runtime.apis,
+          vault: {
+            ...api,
+            reveal: async () => {
+              throw foreign("VaultLockedError", "The vault is locked: no key.");
+            },
+            put: async () => {
+              throw foreign("VaultConflictError", "Version 2 now.");
+            },
+          },
+        },
+      },
+    });
+    const token = await issue({
+      secrets: { names: [secrets.keystore.name, "widget-asc"] },
+      actions: ["read", "write"],
+    });
+
+    const resolved = await resolve(copied, token, {
+      names: [secrets.keystore.name],
+    });
+    expect(resolved.status).toBe(503);
+    await expect(resolved.json()).resolves.toMatchObject({
+      error: { code: "vault_locked" },
+    });
+    const written = await put(copied, token, "widget-asc", {
+      kind: "asc-api-key",
+      value: ASC_VALUE,
+    });
+    expect(written.status).toBe(409);
   });
 
   it("answers 503 when the console's master key did not seal the stored secrets", async () => {

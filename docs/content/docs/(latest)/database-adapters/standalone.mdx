@@ -44,9 +44,11 @@ if (!adminToken) {
 export default defineConfig({
   build, // Your existing build adapter
   storage, // Your existing storage adapter
-  database: standaloneRepository({ // [!code ++]
+  database: standaloneRepository({
+    // [!code ++]
     baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
-    commonHeaders: { // [!code ++]
+    commonHeaders: {
+      // [!code ++]
       Authorization: `Bearer ${adminToken}`, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]
@@ -104,7 +106,8 @@ if (!adminToken) {
 
 database: standaloneRepository({
   baseUrl: "http://localhost:3000/hot-updater/admin",
-  commonHeaders: { // [!code ++]
+  commonHeaders: {
+    // [!code ++]
     Authorization: `Bearer ${adminToken}`, // [!code ++]
   }, // [!code ++]
 });
@@ -156,33 +159,33 @@ runs, sorted:
 The types are exported from `@hot-updater/plugin-core`. A successful JSON
 response wraps its result in `data`.
 
-| Method   | Route                                   | Request                                             | Success response                                        |
-| -------- | --------------------------------------- | --------------------------------------------------- | ------------------------------------------------------- |
-| `GET`    | `/bundles`                              | Page, `platform`, `total=true`                      | `BundleDetail[]`, with `next` and `total`               |
-| `GET`    | `/bundles/:id`                          |                                                     | `BundleDetail`, or `404`                                |
-| `PATCH`  | `/bundles/:id`                          | The Bundle fields to change                         | `204`                                                   |
-| `POST`   | `/bundles/delete`                       | `{ ids: string[] }`                                 | `204`                                                   |
-| `GET`    | `/bundles/:id/children`                 | Page                                                | `BundlePatchRow[]` whose base is the Bundle             |
-| `GET`    | `/bundles/count`                        | `platform`                                          | How many Bundles: all, or one platform's                |
-| `GET`    | `/bundles/child-counts`                 | `ids=<bundle id>,...` (1–100)                       | Each base Bundle's child count, by ID                   |
-| `GET`    | `/base-candidates/:candidateKey`        | `before=<bundle id>`, `limit` (1–100, default 3)    | Auto-patch base Bundle IDs                              |
-| `POST`   | `/releases`                             | `{ deployments: Deployment[] }`                     | `201`, `ReleaseCatalogMutationResult[]`                 |
-| `GET`    | `/releases`                             | Page and one filter set                             | `ReleaseRow[]`                                          |
-| `GET`    | `/releases/:id`                         |                                                     | `ReleaseRow`, or `404`                                  |
-| `PATCH`  | `/releases/:id`                         | `{ patch, expectedRevision? }`                      | `ReleaseCatalogMutationResult`                          |
-| `POST`   | `/releases/:id/preflight`               | `{ patch, expectedRevision? }`                      | `ReleaseCatalogMutationPreflight`                       |
-| `POST`   | `/releases/:id/promote`                 | `{ targetChannel, action?, expectedRevision? }`     | `PromoteReleaseResult`                                  |
-| `DELETE` | `/releases/:id`                         | `confirm=<release id>`, optional `expectedRevision` | `ReleaseCatalogMutationResult`                          |
-| `GET`    | `/release-catalogs`                     | Page                                                | `ReleaseCatalogRow[]`                                   |
-| `GET`    | `/release-catalogs/:scopeKey`           |                                                     | `ReleaseCatalogRow`, or `404`                           |
-| `POST`   | `/release-catalogs/:scopeKey/rebuild`   |                                                     | `ReleaseCatalogRebuildResult`                           |
-| `POST`   | `/release-catalogs/:scopeKey/preflight` |                                                     | `ReleaseCatalogRebuildPreflight`                        |
-| `GET`    | `/channels`                             | Optional `name`                                     | `ChannelRow[]`, or the `ChannelRow` for `name` or `404` |
-| `POST`   | `/channels`                             | `{ name }`                                          | The `ChannelRow` of that name, created when missing     |
-| `DELETE` | `/channels/:id`                         |                                                     | `204`                                                   |
-| `POST`   | `/native-builds`                        | `NativeBuildRegistration`                           | `201`, `NativeBuildRow`                                 |
-| `GET`    | `/native-builds/latest`                 | `platform`, `channel`, and `fingerprintHash` or `appVersion` | The newest `NativeBuildRow` of that scope, or `null` |
-| `GET`    | `/native-builds`                        | Page                                                | `NativeBuildRow[]`                                      |
+| Method   | Route                                   | Request                                                      | Success response                                        |
+| -------- | --------------------------------------- | ------------------------------------------------------------ | ------------------------------------------------------- |
+| `GET`    | `/bundles`                              | Page, `platform`, `total=true`                               | `BundleDetail[]`, with `next` and `total`               |
+| `GET`    | `/bundles/:id`                          |                                                              | `BundleDetail`, or `404`                                |
+| `PATCH`  | `/bundles/:id`                          | The Bundle fields to change                                  | `204`                                                   |
+| `POST`   | `/bundles/delete`                       | `{ ids: string[] }`                                          | `204`                                                   |
+| `GET`    | `/bundles/:id/children`                 | Page                                                         | `BundlePatchRow[]` whose base is the Bundle             |
+| `GET`    | `/bundles/count`                        | `platform`                                                   | How many Bundles: all, or one platform's                |
+| `GET`    | `/bundles/child-counts`                 | `ids=<bundle id>,...` (1–100)                                | Each base Bundle's child count, by ID                   |
+| `GET`    | `/base-candidates/:candidateKey`        | `before=<bundle id>`, `limit` (1–100, default 3)             | Auto-patch base Bundle IDs                              |
+| `POST`   | `/releases`                             | `{ deployments: Deployment[] }`                              | `201`, `ReleaseCatalogMutationResult[]`                 |
+| `GET`    | `/releases`                             | Page and one filter set                                      | `ReleaseRow[]`                                          |
+| `GET`    | `/releases/:id`                         |                                                              | `ReleaseRow`, or `404`                                  |
+| `PATCH`  | `/releases/:id`                         | `{ patch, expectedRevision? }`                               | `ReleaseCatalogMutationResult`                          |
+| `POST`   | `/releases/:id/preflight`               | `{ patch, expectedRevision? }`                               | `ReleaseCatalogMutationPreflight`                       |
+| `POST`   | `/releases/:id/promote`                 | `{ targetChannel, action?, expectedRevision? }`              | `PromoteReleaseResult`                                  |
+| `DELETE` | `/releases/:id`                         | `confirm=<release id>`, optional `expectedRevision`          | `ReleaseCatalogMutationResult`                          |
+| `GET`    | `/release-catalogs`                     | Page                                                         | `ReleaseCatalogRow[]`                                   |
+| `GET`    | `/release-catalogs/:scopeKey`           |                                                              | `ReleaseCatalogRow`, or `404`                           |
+| `POST`   | `/release-catalogs/:scopeKey/rebuild`   |                                                              | `ReleaseCatalogRebuildResult`                           |
+| `POST`   | `/release-catalogs/:scopeKey/preflight` |                                                              | `ReleaseCatalogRebuildPreflight`                        |
+| `GET`    | `/channels`                             | Optional `name`                                              | `ChannelRow[]`, or the `ChannelRow` for `name` or `404` |
+| `POST`   | `/channels`                             | `{ name }`                                                   | The `ChannelRow` of that name, created when missing     |
+| `DELETE` | `/channels/:id`                         |                                                              | `204`                                                   |
+| `POST`   | `/native-builds`                        | `NativeBuildRegistration`                                    | `201`, `NativeBuildRow`                                 |
+| `GET`    | `/native-builds/latest`                 | `platform`, `channel`, and `fingerprintHash` or `appVersion` | The newest `NativeBuildRow` of that scope, or `null`    |
+| `GET`    | `/native-builds`                        | Page                                                         | `NativeBuildRow[]`                                      |
 
 `PATCH /releases/:id` takes a `ReleasePolicyPatch`. `promote` copies a Bundle
 Release into `targetChannel`; `action: "move"` also disables the source.
@@ -314,15 +317,15 @@ opt-in; there is no built-in admin authenticator.
 
 <Callout type="warn">
   Through `standaloneRepository`, the Console manages Bundles, Releases,
-  Channels and Remote Config, and reads the server's Insights overview,
-  events, installations, update failures and retention periods; the CLI's
+  Channels and Remote Config, and reads the server's Insights overview, events,
+  installations, update failures and retention periods; the CLI's
   `remote-config` and `insights` commands use the same routes. The Console
-  cannot show usage or Release activity, and it does not manage the server's
-  API keys; manage them with
-  [`hot-updater api-key`](/docs/custom/api-key-authentication) against the
-  server's `createHotUpdater` module. A hosted Console must protect its browser
-  session separately and keep the admin bearer token in server-side
-  `commonHeaders`. Do not put that token in browser or React Native code.
+  cannot show usage or Release activity, and it does not manage the server's API
+  keys; manage them with [`hot-updater
+  api-key`](/docs/custom/api-key-authentication) against the server's
+  `createHotUpdater` module. A hosted Console must protect its browser session
+  separately and keep the admin bearer token in server-side `commonHeaders`. Do
+  not put that token in browser or React Native code.
 </Callout>
 
 ## Next steps

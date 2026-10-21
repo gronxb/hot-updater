@@ -78,6 +78,34 @@ describe("createVaultClient", () => {
     });
   });
 
+  it("sends the version a write expects, such as 0 for a new secret only", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () =>
+      Response.json(
+        { error: { code: "conflict", message: "The secret is at version 1." } },
+        { status: 409 },
+      ),
+    );
+    const client = createVaultClient({
+      url: "https://console.example.com",
+      token: TOKEN,
+      fetch,
+    });
+
+    await expect(
+      client.put({
+        name: "ota-key",
+        kind: "bundle-signing-key",
+        value: { privateKey: "LS0t" },
+        expectedVersion: 0,
+      }),
+    ).rejects.toMatchObject({ status: 409, code: "conflict" });
+    expect(JSON.parse(String(fetch.mock.calls[0]![1]?.body))).toEqual({
+      kind: "bundle-signing-key",
+      value: { privateKey: "LS0t" },
+      expectedVersion: 0,
+    });
+  });
+
   it("says when the URL serves no vault", async () => {
     const client = createVaultClient({
       url: "https://example.com",

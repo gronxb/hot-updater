@@ -6,7 +6,7 @@ import {
 } from "@commander-js/extra-typings";
 import type { AndroidNativeRunOptions } from "@hot-updater/android-helper";
 import type { IosNativeRunOptions } from "@hot-updater/apple-helper";
-import { banner, p } from "@hot-updater/cli-tools";
+import { banner, p, VaultDeployCredentialsError } from "@hot-updater/cli-tools";
 import { VAULT_SECRET_KINDS } from "@hot-updater/server/plugins";
 import isPortReachable from "is-port-reachable";
 import { normalizeRange } from "verkit";
@@ -18,7 +18,9 @@ import {
   nativeBuildRegisterCommandOption,
   nativeBuildSchemeCommandOption,
   platformCommandOption,
+  playUploadCommandOption,
   portCommandOption,
+  testFlightUploadCommandOption,
 } from "@/commandOptions";
 import { handleAgentInfra } from "@/commands/agent/infra";
 import { handleAppVersion } from "@/commands/appVersion";
@@ -27,7 +29,11 @@ import {
   type BuildNativeOptions,
   buildIosNative,
 } from "@/commands/buildNative";
-import { getConsolePort, openConsole } from "@/commands/console";
+import {
+  getConsolePort,
+  loadConsoleCredentials,
+  openConsole,
+} from "@/commands/console";
 import {
   type DeployOptions,
   deploy,
@@ -81,7 +87,9 @@ import {
   handleRemoteConfigVersions,
 } from "./commands/remoteConfig";
 import {
+  DEFAULT_IMPORT_SECRET_NAME,
   handleSecretsEnv,
+  handleSecretsImport,
   handleSecretsList,
   handleSecretsPut,
   handleSecretsTokenCreate,
@@ -393,6 +401,22 @@ secretsCommand
   .argument("<command...>", "the command and its arguments, after --")
   .action((command: string[]) => handleSecretsEnv(command));
 
+secretsCommand
+  .command("import")
+  .description(
+    "Move an env file's variables into the vault as a deploy-credentials secret, keeping only the connection variables in the file",
+  )
+  .argument("[file]", "the env file to move", ".env.hotupdater")
+  .option(
+    "--name <name>",
+    "the deploy-credentials secret to store them in",
+    DEFAULT_IMPORT_SECRET_NAME,
+  )
+  .option("-y, --yes", "skip confirmation prompt")
+  .action((file: string, options: { name: string; yes?: boolean }) =>
+    handleSecretsImport(file, options),
+  );
+
 const secretsTokenCommand = secretsCommand
   .command("token")
   .description("Issue, list, and revoke vault tokens");
@@ -413,7 +437,7 @@ secretsTokenCommand
   )
   .requiredOption(
     "--actions <actions>",
-    "what the token may do, comma-separated: read, write",
+    "what the token may do, comma-separated: read, sign, write",
     commaList,
   )
   .option(
@@ -872,6 +896,10 @@ keysCommand
     },
     4096,
   )
+  .option(
+    "--vault [name]",
+    "store the private key in the Console's vault as a bundle-signing-key of this name (default: bundle-signing-key) instead of writing it, with HOT_UPDATER_CONSOLE_URL and a HOT_UPDATER_VAULT_TOKEN that may write it",
+  )
   .action(keysGenerate);
 
 keysCommand
@@ -989,6 +1017,7 @@ program
     printBanner();
 
     const port = await getConsolePort();
+    await loadConsoleCredentials(port);
 
     if (await isPortReachable(port, { host: "127.0.0.1" })) {
       p.log.error(`Port ${port} is already in use.`);
@@ -1061,6 +1090,7 @@ program
   .addOption(interactiveCommandOption)
   .addOption(nativeBuildSchemeCommandOption)
   .addOption(nativeBuildRegisterCommandOption)
+  .addOption(playUploadCommandOption)
   .action(async (options: BuildNativeOptions) => {
     await buildAndroidNative(options);
   });
@@ -1072,6 +1102,7 @@ program
   .addOption(interactiveCommandOption)
   .addOption(nativeBuildSchemeCommandOption)
   .addOption(nativeBuildRegisterCommandOption)
+  .addOption(testFlightUploadCommandOption)
   .action(async (options: BuildNativeOptions) => {
     await buildIosNative(options);
   });
@@ -1108,4 +1139,13 @@ program.hook("preAction", (_command, actionCommand) => {
   ensureNoConflicts();
 });
 
-program.parse(process.argv);
+program.parseAsync(process.argv).catch((error: unknown) => {
+  // The vault's deploy credentials failed before the config loaded: the
+  // message names the Console and what to set instead.
+  if (error instanceof VaultDeployCredentialsError) {
+    p.log.error(error.message);
+    process.exitCode = 1;
+    return;
+  }
+  throw error;
+});

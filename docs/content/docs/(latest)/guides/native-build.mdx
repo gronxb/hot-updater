@@ -10,13 +10,13 @@ icon: Hammer
 from a scheme in `hot-updater.config.ts`. Each build compiles in the values
 that select its OTA updates, and prints them with the artifact:
 
-| Value         | What the build compiles in                                                                         |
-| ------------- | -------------------------------------------------------------------------------------------------- |
-| Artifact      | The `.apk`, `.aab`, `.ipa` or simulator `.app`, copied to the output path                          |
-| Min bundle ID | The ID of the bundle built into the app, which only newer bundles replace (the nil UUID in Debug)  |
+| Value         | What the build compiles in                                                                          |
+| ------------- | --------------------------------------------------------------------------------------------------- |
+| Artifact      | The `.apk`, `.aab`, `.ipa` or simulator `.app`, copied to the output path                           |
+| Min bundle ID | The ID of the bundle built into the app, which only newer bundles replace (the nil UUID in Debug)   |
 | Fingerprint   | The native fingerprint, with the [fingerprint strategy](/docs/guides/update-strategies/fingerprint) |
 | App version   | The native app version, with the [app version strategy](/docs/guides/update-strategies/app-version) |
-| Channel       | The default channel that [`channel set`](/docs/guides/channel-management) wrote                    |
+| Channel       | The default channel that [`channel set`](/docs/guides/channel-management) wrote                     |
 
 The build reads the app version and channel from the artifact it built, so
 the values a flavor, build type, `versionNameSuffix`, `xcconfig` or
@@ -104,10 +104,11 @@ These environment variables override the vault for one credential: when any
 of a credential's variables is set, the build reads that credential from them
 and never asks the console for it.
 
-| Credential      | Environment variables                                                                                                                                   |
-| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Android keystore | `HOT_UPDATER_ANDROID_KEYSTORE_PATH` (or `HOT_UPDATER_ANDROID_KEYSTORE_BASE64`), `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD`, `HOT_UPDATER_ANDROID_KEY_ALIAS`, `HOT_UPDATER_ANDROID_KEY_PASSWORD` |
-| App Store Connect API key | `HOT_UPDATER_ASC_KEY_PATH` (or `HOT_UPDATER_ASC_KEY`, the `.p8` contents), `HOT_UPDATER_ASC_KEY_ID`, `HOT_UPDATER_ASC_ISSUER_ID`                  |
+| Credential                | Environment variables                                                                                                                                                                        |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Android keystore          | `HOT_UPDATER_ANDROID_KEYSTORE_PATH` (or `HOT_UPDATER_ANDROID_KEYSTORE_BASE64`), `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD`, `HOT_UPDATER_ANDROID_KEY_ALIAS`, `HOT_UPDATER_ANDROID_KEY_PASSWORD` |
+| App Store Connect API key | `HOT_UPDATER_ASC_KEY_PATH` (or `HOT_UPDATER_ASC_KEY`, the `.p8` contents), `HOT_UPDATER_ASC_KEY_ID`, `HOT_UPDATER_ASC_ISSUER_ID`                                                             |
+| Play service account      | `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` (or `HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`, the JSON key file's contents), for [`--upload play-internal`](#upload-to-google-play)                   |
 
 The CLI writes a keystore or key given as contents to a temporary file that
 only your user can read, and deletes it when the build ends. It masks passwords
@@ -191,6 +192,14 @@ device downloads it, and no update check changes. The bundle totals leave it
 out, a release of it and its deletion are refused, `hot-updater doctor --fix`
 keeps it, and `storage prune` keeps its files and the artifact.
 
+`hot-updater deploy` uses it as a Hermes patch base: it adds the built-in
+bundle of the newest registered build of the deploy's channel, platform, and
+fingerprint or exact app version to the patch bases, so a fresh install's first
+OTA downloads a `.bsdiff` patch instead of the complete Hermes bundle. The app
+checks its packaged Hermes file against the hash registered from the artifact
+before it patches, and downloads the complete file when they differ. See
+[Bundle Diffing](/docs/guides/bundle-diffing#first-ota-update).
+
 A Debug build loads its JavaScript from Metro and has no built-in bundle, so
 `--register` refuses it. A self-hosted server reached through
 `standaloneRepository` needs the native build routes of this release's
@@ -201,6 +210,94 @@ Every official storage adapter streams the artifact to storage except
 `standaloneStorage`, which reads it into memory to post it to your server. A
 Supabase project's Storage upload file size limit, 50 MB on the Free plan,
 caps the artifact size.
+
+## Upload to TestFlight
+
+Add `--upload testflight` to upload the `.ipa` to App Store Connect, which
+lists it in TestFlight:
+
+```package-install
+npx hot-updater build:ios --scheme release --upload testflight
+```
+
+The upload authenticates with an App Store Connect team API key, which has a
+key ID and an issuer ID (App Store Connect → Users and Access → Integrations →
+Team Keys), with the Admin, App Manager, or Developer role: the scheme's
+`signing.ascApiKey`, or else the vault's `asc-api-key` secret. The
+`HOT_UPDATER_ASC_KEY*` environment variables in
+[Provide signing credentials](#provide-signing-credentials) override it. The
+CLI resolves the key before the build adapter's prebuild (such as
+`expo prebuild`) and the build, so a missing key fails before either runs, and
+deletes the key's temporary file when the upload ends.
+Certificates and provisioning profiles stay with the build's signing.
+
+Before the prebuild, the CLI also refuses a scheme whose build App Store
+Connect would not take: a simulator scheme, a configuration whose name ends in
+`Debug`, and a scheme with neither `signing.ascApiKey` nor an
+`exportOptionsPlist`, which only archives. After the prebuild, which may write
+the `exportOptionsPlist`, and before the build, it refuses one whose `method`
+is not `app-store-connect` (or `app-store`).
+
+After the build, and after `--register` when you pass both, the CLI:
+
+1. Reads the bundle ID, version (`CFBundleShortVersionString`) and build
+   number (`CFBundleVersion`) from the `.ipa`'s `Info.plist`.
+2. Finds the App Store Connect app with that bundle ID. Create the app in
+   App Store Connect first; the key must belong to its team.
+3. Uploads the `.ipa` with the App Store Connect API's build uploads.
+4. Waits up to 30 minutes for App Store Connect to accept the build, and
+   prints the warnings and errors it reports.
+
+App Store Connect takes each build number once per version: raise
+`CFBundleVersion` for every build you upload. When an upload fails, the build
+stays at its output path. A build that App Store Connect is still processing
+after 30 minutes appears in TestFlight once processing finishes, at the URL
+the CLI prints.
+
+## Upload to Google Play
+
+Add `--upload play-internal` to upload the `.aab` to Google Play and release
+it to the internal testing track:
+
+```package-install
+npx hot-updater build:android --scheme release --upload play-internal
+```
+
+The upload authenticates with the vault's `play-service-account` secret, the
+JSON key file of a Google Cloud service account.
+`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_PATH` (or
+`HOT_UPDATER_PLAY_SERVICE_ACCOUNT_JSON`, the file's contents) overrides it.
+The CLI resolves it before the build adapter's prebuild (such as
+`expo prebuild`) and the build, so a missing one fails before either runs, and
+keeps it in memory: it writes the service account to no file.
+
+Before the prebuild, the CLI also refuses a scheme whose build Google Play
+would not take as a release: an `.apk` scheme (`aab: false`) and a variant whose name
+ends in `Debug`.
+
+After the build, and after `--register` when you pass both, the CLI:
+
+1. Reads the application ID from the `.aab`'s manifest with `aapt2`, with the
+   suffixes flavors and build types add, or else uses the scheme's
+   `applicationId`.
+2. Opens an edit with the Google Play Developer API and uploads the `.aab`.
+3. Releases the bundle's version code to the `internal` track and commits the
+   edit. When any step fails, it deletes the edit, so nothing is released.
+
+Set up the app once in Play Console:
+
+- Create the app and upload its first `.aab` there: the API releases the
+  builds after it.
+- Invite the service account's email under Users and permissions, with
+  permission to release to testing tracks, and enable the Google Play Android
+  Developer API in the service account's Google Cloud project.
+
+Google Play takes each version code once: raise `versionCode` for every build
+you upload. On an app Play Console has not published yet, Google Play takes
+only draft releases, so the internal release is a draft that you roll out in
+Play Console. When the app's state requires it, the CLI commits without
+sending the changes for review, and you send them for review in Play Console.
+When an upload fails, the build stays at its output path.
 
 ## Run on a device
 
@@ -220,11 +317,13 @@ device build signs with the scheme's `signing.ascApiKey` when it sets one.
 
 ## Command options
 
-| Option                    | Commands            | Description                                     |
-| ------------------------- | ------------------- | ----------------------------------------------- |
-| `-s, --scheme <scheme>`   | all                 | The `nativeBuild` scheme to build               |
-| `-i, --interactive`       | all                 | Choose the scheme, and with `run:*` the device  |
-| `-o, --output-path <dir>` | `build:*`           | Where to copy the build output                  |
-| `--register`              | `build:*`           | Register the release build, its artifact and built-in bundle |
-| `-d, --device [device]`   | `run:*`             | The device name or ID to run on                 |
-| `--port <port>`           | `run:android`       | The Metro port the device reaches with `adb reverse` |
+| Option                    | Commands        | Description                                                  |
+| ------------------------- | --------------- | ------------------------------------------------------------ |
+| `-s, --scheme <scheme>`   | all             | The `nativeBuild` scheme to build                            |
+| `-i, --interactive`       | all             | Choose the scheme, and with `run:*` the device               |
+| `-o, --output-path <dir>` | `build:*`       | Where to copy the build output                               |
+| `--register`              | `build:*`       | Register the release build, its artifact and built-in bundle |
+| `--upload testflight`     | `build:ios`     | Upload the `.ipa` to App Store Connect for TestFlight        |
+| `--upload play-internal`  | `build:android` | Upload the `.aab` to Google Play's internal testing track    |
+| `-d, --device [device]`   | `run:*`         | The device name or ID to run on                              |
+| `--port <port>`           | `run:android`   | The Metro port the device reaches with `adb reverse`         |

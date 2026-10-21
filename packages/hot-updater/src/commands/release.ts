@@ -228,7 +228,9 @@ const listReleases = async (
 
 export const handleReleaseList = async (options: ReleaseListOptions = {}) => {
   if (!options.json) printBanner();
-  const server = await loadServer(await loadConfig(null));
+  const server = await loadServer(
+    await loadConfig(null, { credentials: true }),
+  );
   try {
     const core = server.core;
     const channels = await channelNames(core);
@@ -255,7 +257,9 @@ export const handleReleaseShow = async (
   options: { readonly json?: boolean } = {},
 ) => {
   if (!options.json) printBanner();
-  const server = await loadServer(await loadConfig(null));
+  const server = await loadServer(
+    await loadConfig(null, { credentials: true }),
+  );
   try {
     const core = server.core;
     const [release, channels] = await Promise.all([
@@ -319,7 +323,9 @@ export const handleReleaseUpdate = async (
   // A dry run saves nothing, so it needs no confirmation.
   if (!options.dryRun)
     await confirmMutation("Update this bundle?", options.yes);
-  const server = await loadServer(await loadConfig(null));
+  const server = await loadServer(
+    await loadConfig(null, { credentials: true }),
+  );
   try {
     const core = server.core;
     const target = {
@@ -357,7 +363,9 @@ export const handleReleaseEnablement = async (
   },
 ) => {
   if (!options.json) printBanner();
-  const server = await loadServer(await loadConfig(null));
+  const server = await loadServer(
+    await loadConfig(null, { credentials: true }),
+  );
   try {
     const core = server.core;
     let expectedRevision = options.expectedRevision;
@@ -434,7 +442,9 @@ export const handleReleaseDelete = async (
     `Permanently delete disabled bundle ${releaseId}?`,
     options.yes,
   );
-  const server = await loadServer(await loadConfig(null));
+  const server = await loadServer(
+    await loadConfig(null, { credentials: true }),
+  );
   try {
     const core = server.core;
     // Core deletes the artifact with the last bundle on it.

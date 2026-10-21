@@ -1,4 +1,5 @@
 import fs from "fs/promises";
+import { parseEnv as parseNodeEnv } from "node:util";
 import path from "path";
 
 import { InitEnvFileError } from "./initOptions";
@@ -99,20 +100,50 @@ export const readHotUpdaterInitEnv = async (
   };
 };
 
-export const readHotUpdaterEnv = async (
-  cwd: string,
-): Promise<Readonly<Record<string, string>>> => {
-  const { managedEnv } = await readHotUpdaterInitEnv(cwd);
-  return managedEnv;
-};
+/** `key`'s own value in `record`, never a member such as `__proto__`. */
+const ownValue = (
+  record: Readonly<Record<string, string | undefined>>,
+  key: string,
+): string | undefined => (Object.hasOwn(record, key) ? record[key] : undefined);
 
 export const getHotUpdaterEnvValue = (
   env: Readonly<Record<string, string>>,
   key: string,
 ) => {
-  if (process.env[key] !== undefined) {
-    return process.env[key]?.trim() || undefined;
+  const fromProcess = ownValue(process.env, key);
+  if (fromProcess !== undefined) {
+    return fromProcess.trim() || undefined;
   }
 
-  return env[key]?.trim() || undefined;
+  return ownValue(env, key)?.trim() || undefined;
+};
+
+/**
+ * An env file's variables as `process.loadEnvFile` sets them, the way
+ * `hot-updater.config.ts` loads `.env.hotupdater`: inline comments, quotes,
+ * and `export` prefixes included.
+ */
+export const parseLoadedEnv = (
+  content: string,
+): Readonly<Record<string, string>> =>
+  Object.fromEntries(
+    Object.entries(parseNodeEnv(content)).filter(
+      (entry): entry is [string, string] => entry[1] !== undefined,
+    ),
+  );
+
+/** `cwd`'s `.env.hotupdater` as the config loads it; empty when there is none. */
+export const readLoadedHotUpdaterEnv = async (
+  cwd: string,
+): Promise<Readonly<Record<string, string>>> => {
+  try {
+    return parseLoadedEnv(
+      await fs.readFile(path.resolve(cwd, HOT_UPDATER_ENV_PATH), "utf-8"),
+    );
+  } catch (error) {
+    if (error instanceof Error && "code" in error && error.code === "ENOENT") {
+      return {};
+    }
+    throw error;
+  }
 };

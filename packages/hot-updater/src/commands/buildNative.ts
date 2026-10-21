@@ -1,7 +1,21 @@
-import { buildAndroid } from "@hot-updater/android-helper";
-import { buildIos } from "@hot-updater/apple-helper";
+import path from "path";
+
+import {
+  buildAndroid,
+  readBuiltPackageName,
+  resolvePlayUploadServiceAccount,
+  uploadToPlay,
+} from "@hot-updater/android-helper";
+import {
+  assertTestFlightExportOptions,
+  buildIos,
+  resolveTestFlightUploadKey,
+  uploadToTestFlight,
+} from "@hot-updater/apple-helper";
 import {
   createMinBundleId,
+  type Credentials,
+  getCwd,
   CredentialUnavailableError,
   p,
   withCredentialResolver,
@@ -20,51 +34,86 @@ import { getChannel } from "@/utils/setChannel";
 
 import { ui } from "../utils/cli-ui";
 
-/** `build:android` and `build:ios`: `register` also registers the build. */
-export type BuildNativeOptions = NativeBuildOptions & { register?: boolean };
+/**
+ * `build:android` and `build:ios`: `register` also registers the build, and
+ * `upload` uploads it to a store.
+ */
+export type BuildNativeOptions = NativeBuildOptions & {
+  register?: boolean;
+  upload?: "testflight" | "play-internal";
+};
 
 const buildNativeInternal = async ({
-  options: { register = false, ...options },
+  options: { register = false, upload, ...options },
   platform,
 }: {
   options: BuildNativeOptions;
   platform: Platform;
 }): Promise<NativeBuildResult> => {
   printBanner();
-  const preparedConfig = await prepareNativeBuild({
-    ...options,
-    platform,
-    operation: "build",
-  });
-  if (!preparedConfig) {
-    p.log.error("preparing native build failed");
-    process.exit(1);
-  }
-  const {
-    buildAdapter,
-    outputPath,
-    scheme,
-    target,
-    androidSchemeConfig,
-    iosSchemeConfig,
-  } = preparedConfig;
-
   const platformName = platform === "android" ? "Android" : "iOS";
 
   try {
-    const minBundleId = createMinBundleId(platform);
-
-    p.log.info(
-      ui.line([
-        "Building",
-        ui.platform(platformName),
-        ui.muted(buildAdapter.name),
-      ]),
-    );
-    // Signing credentials are resolved only by a build that signs with
+    // Signing and upload credentials are resolved only by a build that uses
     // them, and their temporary files are deleted once it finishes.
-    const result = await withCredentialResolver((credentials) =>
-      createNativeBuild({
+    return await withCredentialResolver(async (credentials) => {
+      let ascApiKey: Credentials["asc-api-key"] | undefined;
+      let serviceAccount: Credentials["play-service-account"] | undefined;
+      const preparedConfig = await prepareNativeBuild({
+        ...options,
+        platform,
+        operation: "build",
+        credentials: register,
+        // A scheme the store would refuse, or a missing upload credential,
+        // fails before the prebuild and the build. The scheme's signing key
+        // is the same item, resolved once, and a service account stays in
+        // memory.
+        beforePrebuild: async ({ scheme, iosScheme, androidScheme }) => {
+          if (upload === "testflight") {
+            const request = await reportUploadFailure(async () =>
+              resolveTestFlightUploadKey({ scheme, iosScheme: iosScheme! }),
+            );
+            ascApiKey = await credentials.resolve(request);
+          }
+          if (upload === "play-internal") {
+            const request = await reportUploadFailure(async () =>
+              resolvePlayUploadServiceAccount({
+                scheme,
+                androidScheme: androidScheme!,
+              }),
+            );
+            serviceAccount = await credentials.resolve(request);
+          }
+        },
+      });
+      if (!preparedConfig) {
+        throw new NativeBuildFailure("preparing native build failed");
+      }
+      const {
+        buildAdapter,
+        outputPath,
+        scheme,
+        target,
+        androidSchemeConfig,
+        iosSchemeConfig,
+      } = preparedConfig;
+      if (ascApiKey) {
+        // The prebuild may write the export options, which it reads.
+        await reportUploadFailure(() =>
+          assertTestFlightExportOptions(iosSchemeConfig!),
+        );
+      }
+
+      const minBundleId = createMinBundleId(platform);
+
+      p.log.info(
+        ui.line([
+          "Building",
+          ui.platform(platformName),
+          ui.muted(buildAdapter.name),
+        ]),
+      );
+      const result = await createNativeBuild({
         platform,
         scheme,
         minBundleId,
@@ -95,20 +144,64 @@ const buildNativeInternal = async ({
                   minBundleId,
                   credentials,
                 }),
-      }),
-    );
-    p.log.success(
-      [
-        ui.line([
-          "Built",
-          ui.platform(platformName),
-          ui.muted(buildAdapter.name),
-        ]),
-        summarizeNativeBuild(result),
-      ].join("\n"),
-    );
-    if (register) await registerNativeBuild(result);
-    return result;
+      });
+      p.log.success(
+        [
+          ui.line([
+            "Built",
+            ui.platform(platformName),
+            ui.muted(buildAdapter.name),
+          ]),
+          summarizeNativeBuild(result),
+        ].join("\n"),
+      );
+      if (register) await registerNativeBuild(result);
+      const apiKey = ascApiKey;
+      if (apiKey) {
+        const { state, testFlightUrl } = await reportUploadFailure(
+          () =>
+            uploadToTestFlight({
+              ipaPath: result.artifactPath,
+              apiKey,
+            }),
+          `The build stays at ${result.artifactPath}.`,
+        );
+        if (state === "COMPLETE") {
+          p.log.success(
+            ui.line([
+              "Uploaded to",
+              ui.platform("TestFlight"),
+              ui.path(testFlightUrl),
+            ]),
+          );
+        }
+      }
+      const playServiceAccount = serviceAccount;
+      if (playServiceAccount) {
+        const { versionCode, status } = await reportUploadFailure(
+          async () =>
+            uploadToPlay({
+              aabPath: result.artifactPath,
+              // The artifact's, with the suffixes flavors and build types add.
+              packageName:
+                (await readBuiltPackageName({
+                  artifactPath: result.artifactPath,
+                  androidProjectPath: path.join(getCwd(), "android"),
+                })) ?? androidSchemeConfig!.applicationId,
+              serviceAccount: playServiceAccount,
+            }),
+          `The build stays at ${result.artifactPath}.`,
+        );
+        p.log.success(
+          ui.line([
+            status === "draft" ? "Uploaded as a draft to" : "Uploaded to",
+            ui.platform("Google Play internal testing"),
+            ui.muted(`version code ${versionCode}`),
+          ]),
+        );
+      }
+      return result;
+    });
   } catch (e) {
     return catchError(e);
   }
@@ -133,10 +226,39 @@ const summarizeNativeBuild = (result: NativeBuildResult): string => {
     .join("\n");
 };
 
+/**
+ * A failure reported by its message alone, thrown so the credential
+ * resolver deletes its temporary files before the process exits.
+ */
+class NativeBuildFailure extends Error {}
+
+/**
+ * Runs a store upload step, whose failure names what the store refused,
+ * with `note` after it.
+ */
+const reportUploadFailure = async <T>(
+  run: () => Promise<T>,
+  note?: string,
+): Promise<T> => {
+  try {
+    return await run();
+  } catch (e) {
+    throw new NativeBuildFailure(
+      [e instanceof Error ? e.message : String(e), note]
+        .filter(Boolean)
+        .join("\n"),
+      { cause: e },
+    );
+  }
+};
+
 const catchError = (e: unknown): never => {
   if (e instanceof ExecaError) {
     console.error(e);
-  } else if (e instanceof CredentialUnavailableError) {
+  } else if (
+    e instanceof CredentialUnavailableError ||
+    e instanceof NativeBuildFailure
+  ) {
     p.log.error(e.message);
   } else if (e instanceof Error) {
     p.log.error(e.stack ?? e.message);

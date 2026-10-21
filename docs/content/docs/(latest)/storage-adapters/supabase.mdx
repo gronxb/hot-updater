@@ -39,7 +39,8 @@ import { defineConfig } from "hot-updater";
 
 export default defineConfig({
   // ... build, database, plugins, and updateStrategy
-  storage: supabaseStorage({ // [!code ++]
+  storage: supabaseStorage({
+    // [!code ++]
     supabaseUrl: process.env.SUPABASE_URL!, // [!code ++]
     supabaseServiceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY!, // [!code ++]
     bucketName: "hot-updater-bundles", // [!code ++]

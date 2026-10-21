@@ -24,7 +24,8 @@ export const supabaseDatabase = (
   config: SupabaseDatabaseConfig,
 ): EngineDatabase => {
   const { migrations: _migrations, ...adapter } = createSqlAdapter({
-    executor: supabaseExecutor(
+    // Created on the first query, so a config loads without the key.
+    executor: supabaseExecutor(() =>
       createClient(config.supabaseUrl, resolveSupabaseServiceRoleKey(config)),
     ),
     tablePrefix: SUPABASE_TABLE_PREFIX,

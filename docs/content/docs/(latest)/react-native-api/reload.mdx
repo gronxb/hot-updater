@@ -24,7 +24,7 @@ async function syncUpdate() {
   const didUpdate = await updateInfo.updateBundle();
 
   if (didUpdate && updateInfo.shouldForceUpdate) {
-    await hotUpdater.reload();  // [!code hl]
+    await hotUpdater.reload(); // [!code hl]
   }
 }
 ```

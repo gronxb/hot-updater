@@ -45,7 +45,8 @@ if (!adminToken) {
   throw new Error("HOT_UPDATER_ADMIN_TOKEN is required");
 }
 
-app.use( // [!code ++]
+app.use(
+  // [!code ++]
   "/hot-updater/admin/*", // [!code ++]
   bearerAuth({ token: adminToken }), // [!code ++]
 ); // [!code ++]
@@ -81,9 +82,11 @@ if (!adminToken) {
 
 export default defineConfig({
   // ... build, storage, plugins, and updateStrategy
-  database: standaloneRepository({ // [!code ++]
+  database: standaloneRepository({
+    // [!code ++]
     baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
-    commonHeaders: { // [!code ++]
+    commonHeaders: {
+      // [!code ++]
       Authorization: `Bearer ${adminToken}`, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]

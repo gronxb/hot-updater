@@ -18,7 +18,6 @@ import {
   printAppSetup,
   provisionClientCredential,
   type ProvisionedClientCredential,
-  readHotUpdaterEnv,
   readHotUpdaterInitEnv,
   type RunInitOptions,
   resolvePackageVersion,
@@ -1203,7 +1202,7 @@ export const migrateDatabase: MigrateManagedDatabase = ({
         skip: `The project ref is not in supabaseUrl ${target.supabaseUrl}. Push the package's migrations with \`supabase db push\` linked to the project.`,
       };
     }
-    const managedEnv = await readHotUpdaterEnv(cwd);
+    const { managedEnv } = await readHotUpdaterInitEnv(cwd);
     const inputs = resolveSupabaseInitInputs(managedEnv, { managedEnv });
     const accessToken = nonInteractive
       ? inputs.accessToken

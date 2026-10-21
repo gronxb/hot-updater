@@ -25,6 +25,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   handleSecretsEnv,
+  handleSecretsImport,
   handleSecretsList,
   handleSecretsPut,
   handleSecretsTokenCreate,
@@ -35,6 +36,7 @@ import {
 const { log, printBanner } = vi.hoisted(() => ({
   log: {
     error: vi.fn(),
+    info: vi.fn(),
     message: vi.fn(),
     warn: vi.fn(),
   },
@@ -217,16 +219,41 @@ describe("hot-updater secrets token, in process without a master key", () => {
     await expect(vaultOf().listTokens()).resolves.toEqual([]);
   });
 
+  it("issues a sign token for the Console's remote signing, naming HOT_UPDATER_SIGNING_TOKEN", async () => {
+    await handleSecretsTokenCreate({
+      name: "ci-sign",
+      secrets: ["bundle-signing-key"],
+      actions: ["sign"],
+    });
+
+    expect(process.exitCode).toBeUndefined();
+    const token = /Token:\s+(hu_vault_\S+)/u.exec(messages().join("\n"))?.[1];
+    await expect(
+      vaultOf().verifyToken({ token: token! }),
+    ).resolves.toMatchObject({
+      ok: true,
+      token: {
+        scope: {
+          secrets: { names: ["bundle-signing-key"] },
+          actions: ["sign"],
+        },
+      },
+    });
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.stringContaining("HOT_UPDATER_SIGNING_TOKEN for remoteSigning"),
+    );
+  });
+
   it("issues only the actions the Console serves, opening no database otherwise", async () => {
     await handleSecretsTokenCreate({
       name: "ci",
       kinds: ["bundle-signing-key"],
-      actions: ["sign"],
+      actions: ["register"],
     });
 
     expect(process.exitCode).toBe(1);
     expect(log.error).toHaveBeenCalledWith(
-      "--actions takes read and write, the actions the Console serves a vault token, not sign.",
+      "--actions takes read, sign, write, the actions the Console serves a vault token, not register.",
     );
     expect(loadConfig).not.toHaveBeenCalled();
   });
@@ -390,6 +417,418 @@ describe("hot-updater secrets list and put, through the Console", () => {
     expect(log.error).toHaveBeenCalledWith(
       "hot-updater secrets list reads from the Console's vault, and HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN are not set. Set HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN to reach the vault.",
     );
+  });
+});
+
+describe("hot-updater secrets import", () => {
+  const DEPLOY = {
+    id: "sec-2",
+    name: "deploy-credentials",
+    kind: "deploy-credentials",
+    version: 1,
+    metadata: { variables: ["HOT_UPDATER_OLD_ONLY", "HOT_UPDATER_S3_REGION"] },
+    createdAtMs: 1_790_000_000_000,
+    updatedAtMs: 1_790_000_000_000,
+  };
+  const S3_SECRET = "s3-import-secret/with+chars";
+
+  const writeEnvFile = async (lines: readonly string[]) => {
+    const file = path.join(directory, ".env.hotupdater");
+    await fs.writeFile(file, lines.join("\n"));
+    return file;
+  };
+
+  /** A Console listing `listed` and storing what it is sent as the next version. */
+  const importConsole = (listed: readonly unknown[] = []) =>
+    mockConsole((request) =>
+      request.method === "GET"
+        ? { secrets: listed }
+        : request
+            .clone()
+            .json()
+            .then((body: { kind: string; value: Record<string, string> }) => ({
+              secret: {
+                ...DEPLOY,
+                kind: body.kind,
+                version: 2,
+                metadata: { variables: Object.keys(body.value).sort() },
+              },
+            })),
+    );
+
+  it("stores the file's variables as one deploy-credentials secret and keeps only the connection, init's choices, the client API key, and the master key", async () => {
+    const requests = importConsole();
+    // Only the file connects: nothing else will be left to.
+    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", undefined);
+    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", undefined);
+    const file = await writeEnvFile([
+      "HOT_UPDATER_INIT_BUILD=bare",
+      "HOT_UPDATER_INIT_PROVIDER=aws",
+      "HOT_UPDATER_API_KEY=client-key-ships-in-the-app",
+      "# The bucket",
+      "HOT_UPDATER_S3_BUCKET_NAME=bundles",
+      "HOT_UPDATER_S3_REGION=us-east-1",
+      `HOT_UPDATER_S3_SECRET_ACCESS_KEY=${JSON.stringify(S3_SECRET)}`,
+      "HOT_UPDATER_AWS_PROFILE=",
+      "",
+      "# The vault",
+      `HOT_UPDATER_CONSOLE_URL=${CONSOLE_URL}`,
+      `HOT_UPDATER_VAULT_TOKEN=${TOKEN}`,
+      "HOT_UPDATER_VAULT_MASTER_KEY=master-key-stays",
+      "HOT_UPDATER_VAULT_MASTER_KEYS=kid2:new,kid1:old",
+    ]);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(process.exitCode).toBeUndefined();
+    expect(requests).toEqual([
+      {
+        method: "GET",
+        url: `${CONSOLE_URL}/_hot-updater/vault/v1/secrets`,
+        auth: `Bearer ${TOKEN}`,
+        body: undefined,
+      },
+      {
+        method: "PUT",
+        url: `${CONSOLE_URL}/_hot-updater/vault/v1/secrets/deploy-credentials`,
+        auth: `Bearer ${TOKEN}`,
+        body: {
+          kind: "deploy-credentials",
+          expectedVersion: 0,
+          value: {
+            HOT_UPDATER_S3_BUCKET_NAME: "bundles",
+            HOT_UPDATER_S3_REGION: "us-east-1",
+            HOT_UPDATER_S3_SECRET_ACCESS_KEY: S3_SECRET,
+          },
+        },
+      },
+    ]);
+    // An empty variable holds nothing to move, and stays.
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(
+      [
+        "HOT_UPDATER_INIT_BUILD=bare",
+        "HOT_UPDATER_INIT_PROVIDER=aws",
+        "HOT_UPDATER_API_KEY=client-key-ships-in-the-app",
+        "HOT_UPDATER_AWS_PROFILE=",
+        "",
+        "# The vault",
+        `HOT_UPDATER_CONSOLE_URL=${CONSOLE_URL}`,
+        `HOT_UPDATER_VAULT_TOKEN=${TOKEN}`,
+        "HOT_UPDATER_VAULT_MASTER_KEY=master-key-stays",
+        "HOT_UPDATER_VAULT_MASTER_KEYS=kid2:new,kid1:old",
+      ].join("\n"),
+    );
+    const printed = messages().join("\n");
+    expect(printed).toContain(
+      "HOT_UPDATER_S3_BUCKET_NAME, HOT_UPDATER_S3_REGION, HOT_UPDATER_S3_SECRET_ACCESS_KEY",
+    );
+    expect(printed).not.toContain(S3_SECRET);
+    expect(maskSecretValues(`key ${S3_SECRET}`)).not.toContain(S3_SECRET);
+  });
+
+  it("reads values as process.loadEnvFile does, inline comments and quotes included", async () => {
+    const requests = importConsole();
+    const file = await writeEnvFile([
+      "HOT_UPDATER_S3_REGION=us-east-1 # the bucket's region",
+      "HOT_UPDATER_S3_SECRET_ACCESS_KEY='quoted # kept'",
+    ]);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(requests.at(-1)?.body).toEqual({
+      kind: "deploy-credentials",
+      expectedVersion: 0,
+      value: {
+        HOT_UPDATER_S3_REGION: "us-east-1",
+        HOT_UPDATER_S3_SECRET_ACCESS_KEY: "quoted # kept",
+      },
+    });
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe("");
+  });
+
+  it("sends nothing when a line it moves could not be removed", async () => {
+    const requests = importConsole();
+    const multiline = [
+      "HOT_UPDATER_S3_REGION=us-east-1",
+      'SERVICE_ACCOUNT="first',
+      'second"',
+    ];
+    const file = await writeEnvFile(multiline);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(log.error).toHaveBeenCalledWith(
+      `SERVICE_ACCOUNT in ${file} spans several lines, which the file keeps in one: store it with hot-updater secrets put, then remove it from ${file}.`,
+    );
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(
+      multiline.join("\n"),
+    );
+
+    await writeEnvFile(["export HOT_UPDATER_S3_REGION=us-east-1"]);
+    await handleSecretsImport(file, { yes: true });
+
+    expect(log.error).toHaveBeenCalledWith(
+      `${file} sets HOT_UPDATER_S3_REGION in a form the import cannot remove, such as export NAME=value: write it as NAME=value.`,
+    );
+    expect(requests).toEqual([]);
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("says what a new version drops from the secret it replaces", async () => {
+    importConsole([DEPLOY]);
+    const file = await writeEnvFile(["HOT_UPDATER_S3_REGION=eu-west-1"]);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(log.warn).toHaveBeenCalledWith(
+      `deploy-credentials v1 also sets HOT_UPDATER_OLD_ONLY, which ${file} does not: the new version replaces it whole, without it.`,
+    );
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe("");
+  });
+
+  it("warns about an existing variable named like an Object member that the file does not set", async () => {
+    importConsole([
+      {
+        ...DEPLOY,
+        metadata: { variables: ["HOT_UPDATER_S3_REGION", "toString"] },
+      },
+    ]);
+    const file = await writeEnvFile(["HOT_UPDATER_S3_REGION=eu-west-1"]);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(log.warn).toHaveBeenCalledWith(
+      `deploy-credentials v1 also sets toString, which ${file} does not: the new version replaces it whole, without it.`,
+    );
+  });
+
+  it("keeps native build credentials in the file, for a typed secret", async () => {
+    const requests = importConsole();
+    const file = await writeEnvFile([
+      "HOT_UPDATER_S3_REGION=us-east-1",
+      "HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD=store-pass",
+      "HOT_UPDATER_ANDROID_KEY_PASSWORD=key-pass",
+      "HOT_UPDATER_ASC_KEY_ID=ABC123",
+    ]);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(requests.at(-1)?.body).toEqual({
+      kind: "deploy-credentials",
+      expectedVersion: 0,
+      value: { HOT_UPDATER_S3_REGION: "us-east-1" },
+    });
+    expect(log.warn).toHaveBeenCalledWith(
+      `HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD, HOT_UPDATER_ANDROID_KEY_PASSWORD are a native build's android-keystore credential, which builds read from the environment or an android-keystore secret, not deploy-credentials: they stay in ${file}. Store them with hot-updater secrets put <name> --kind android-keystore, then remove them from ${file}.`,
+    );
+    expect(log.warn).toHaveBeenCalledWith(
+      expect.stringContaining(
+        "HOT_UPDATER_ASC_KEY_ID is a native build's asc-api-key credential",
+      ),
+    );
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(
+      [
+        "HOT_UPDATER_ANDROID_KEYSTORE_PASSWORD=store-pass",
+        "HOT_UPDATER_ANDROID_KEY_PASSWORD=key-pass",
+        "HOT_UPDATER_ASC_KEY_ID=ABC123",
+      ].join("\n"),
+    );
+  });
+
+  it("stores in the secret --name names", async () => {
+    const requests = importConsole();
+    const file = await writeEnvFile(["WIDGET_TOKEN=abc"]);
+
+    await handleSecretsImport(file, { name: "widget-deploy", yes: true });
+
+    expect(requests.at(-1)?.url).toBe(
+      `${CONSOLE_URL}/_hot-updater/vault/v1/secrets/widget-deploy`,
+    );
+  });
+
+  it("refuses a variable another secret sets, leaving the file as it was", async () => {
+    const requests = importConsole([
+      { ...DEPLOY, id: "sec-3", name: "shared", kind: "generic" },
+    ]);
+    const lines = ["HOT_UPDATER_S3_REGION=us-east-1", "OTHER=1"];
+    const file = await writeEnvFile(lines);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      `The vault's other secrets already set HOT_UPDATER_S3_REGION (shared): a variable is kept in one secret. Remove it there, or from ${file}, first.`,
+    );
+    expect(requests.map(({ method }) => method)).toEqual(["GET"]);
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(lines.join("\n"));
+  });
+
+  it("asks before it moves anything, and needs -y without a terminal", async () => {
+    const requests = importConsole();
+    const file = await writeEnvFile(["HOT_UPDATER_S3_REGION=us-east-1"]);
+
+    await handleSecretsImport(file);
+
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      `Store 1 variable from ${file} as the vault's deploy-credentials, and remove it from ${file}? Re-run with -y in a non-interactive shell.`,
+    );
+    expect(requests.map(({ method }) => method)).toEqual(["GET"]);
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(
+      "HOT_UPDATER_S3_REGION=us-east-1",
+    );
+  });
+
+  it("stores nothing when the file changes while it asks", async () => {
+    const requests = importConsole();
+    const file = await writeEnvFile(["HOT_UPDATER_S3_REGION=us-east-1"]);
+    const { p } = await import("@hot-updater/cli-tools");
+    const tty = process.stdin.isTTY;
+    process.stdin.isTTY = true;
+    vi.mocked(p.confirm).mockImplementationOnce(async () => {
+      await fs.writeFile(file, "HOT_UPDATER_S3_REGION=eu-west-1");
+      return true;
+    });
+    try {
+      await handleSecretsImport(file);
+    } finally {
+      process.stdin.isTTY = tty;
+    }
+
+    expect(log.error).toHaveBeenCalledWith(
+      `${file} changed since it was read: run hot-updater secrets import again.`,
+    );
+    expect(requests.map(({ method }) => method)).toEqual(["GET"]);
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(
+      "HOT_UPDATER_S3_REGION=eu-west-1",
+    );
+  });
+
+  it("removes nothing when the file changes while the vault stores it", async () => {
+    let file = "";
+    const requests = mockConsole(async (request) => {
+      if (request.method === "GET") return { secrets: [] };
+      await fs.writeFile(file, "HOT_UPDATER_S3_REGION=eu-west-1");
+      return { secret: { ...DEPLOY, version: 3 } };
+    });
+    file = await writeEnvFile(["HOT_UPDATER_S3_REGION=us-east-1"]);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(log.error).toHaveBeenCalledWith(
+      `${file} changed while deploy-credentials v3 was stored from what it held before, so nothing was removed from it: run hot-updater secrets import again.`,
+    );
+    expect(requests.map(({ method }) => method)).toEqual(["GET", "PUT"]);
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(
+      "HOT_UPDATER_S3_REGION=eu-west-1",
+    );
+  });
+
+  it("warns when config loads cannot find the connection the imported file holds", async () => {
+    importConsole();
+    vi.stubEnv("HOT_UPDATER_CONSOLE_URL", undefined);
+    vi.stubEnv("HOT_UPDATER_VAULT_TOKEN", undefined);
+    const file = path.join(directory, ".env.ci");
+    await fs.writeFile(
+      file,
+      [
+        `HOT_UPDATER_CONSOLE_URL=${CONSOLE_URL}`,
+        `HOT_UPDATER_VAULT_TOKEN=${TOKEN}`,
+        "HOT_UPDATER_S3_REGION=us-east-1",
+      ].join("\n"),
+    );
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(log.warn).toHaveBeenCalledWith(
+      "Commands that use the config's database, storage, or signing read HOT_UPDATER_CONSOLE_URL and HOT_UPDATER_VAULT_TOKEN from the environment or .env.hotupdater, where they are not set: set them there to deploy with the imported variables.",
+    );
+  });
+
+  it("writes over the version it listed, keeping the file when another write moved the secret on", async () => {
+    const requests = mockConsole((request) =>
+      request.method === "GET"
+        ? { secrets: [DEPLOY] }
+        : Response.json(
+            {
+              error: {
+                code: "conflict",
+                message:
+                  'The secret "deploy-credentials" is at version 2 now, not 1. Read it again before you store the next version.',
+              },
+            },
+            { status: 409 },
+          ),
+    );
+    const file = await writeEnvFile(["HOT_UPDATER_S3_REGION=us-east-1"]);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(requests.at(-1)?.body).toMatchObject({ expectedVersion: 1 });
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      expect.stringContaining("is at version 2 now, not 1"),
+    );
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(
+      "HOT_UPDATER_S3_REGION=us-east-1",
+    );
+  });
+
+  it("keeps the file when the Console refuses the write", async () => {
+    mockConsole((request) =>
+      request.method === "GET"
+        ? { secrets: [] }
+        : Response.json(
+            { error: { code: "forbidden", message: "no write" } },
+            { status: 403 },
+          ),
+    );
+    const file = await writeEnvFile(["HOT_UPDATER_S3_REGION=us-east-1"]);
+
+    await handleSecretsImport(file, { yes: true });
+
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      `The Console at ${CONSOLE_URL} refused the request: no write`,
+    );
+    await expect(fs.readFile(file, "utf-8")).resolves.toBe(
+      "HOT_UPDATER_S3_REGION=us-east-1",
+    );
+  });
+
+  it("refuses a file that is not a regular file before anything is sent", async () => {
+    const requests = importConsole();
+    const target = await writeEnvFile(["HOT_UPDATER_S3_REGION=us-east-1"]);
+    const link = path.join(directory, ".env.link");
+    await fs.symlink(target, link);
+
+    await handleSecretsImport(link, { yes: true });
+
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      `${link} is not a regular file, which the import rewrites: import the file it points to.`,
+    );
+    expect(requests).toEqual([]);
+  });
+
+  it("reaches nothing when the file holds only what stays, or does not exist", async () => {
+    const requests = importConsole();
+    const file = await writeEnvFile([`HOT_UPDATER_CONSOLE_URL=${CONSOLE_URL}`]);
+
+    await handleSecretsImport(file, { yes: true });
+    expect(process.exitCode).toBeUndefined();
+    expect(messages().join("\n")).toContain(
+      `${file} holds no variables to move`,
+    );
+
+    await handleSecretsImport(path.join(directory, "missing.env"), {
+      yes: true,
+    });
+    expect(process.exitCode).toBe(1);
+    expect(log.error).toHaveBeenCalledWith(
+      `${path.join(directory, "missing.env")} does not exist.`,
+    );
+    expect(requests).toEqual([]);
   });
 });
 

@@ -19,6 +19,8 @@ import {
 } from "@hot-updater/cli-tools";
 import type {
   BuildAdapter,
+  NativeBuildAndroidScheme,
+  NativeBuildIosScheme,
   NativeBuildOptions,
   Platform,
 } from "@hot-updater/plugin-core";
@@ -36,6 +38,14 @@ import { resolveNativeAppVersion } from "@/utils/version/getNativeAppVersion";
 
 import type { NativeBuildTarget } from "./createNativeBuild";
 
+/** The scheme built, as `nativeBuild` in hot-updater.config.ts sets it. */
+export type NativeBuildSchemeOptions = {
+  /** The scheme's name. */
+  scheme: string;
+  androidScheme?: NativeBuildAndroidScheme;
+  iosScheme?: NativeBuildIosScheme;
+};
+
 type PreparedNativeBuildConfig = {
   outputPath: string;
   config: ConfigResponse;
@@ -51,6 +61,19 @@ export async function prepareNativeBuild(
     platform: Platform;
     /** `build` exports an iOS device build as an `.ipa`; `run` installs the `.app`. */
     operation: "build" | "run";
+    /**
+     * Runs on the scheme, as the config sets it, before the adapter's
+     * prebuild writes the native projects, so a check that fails, such as a
+     * store upload's, changes nothing.
+     */
+    beforePrebuild?: (scheme: NativeBuildSchemeOptions) => Promise<void>;
+    /**
+     * The build is registered, through the config's database and storage:
+     * the vault's deploy credentials load before the config's first load,
+     * since some adapters, such as Firebase's, bind process-wide state when
+     * they are created.
+     */
+    credentials?: boolean;
   },
 ): Promise<PreparedNativeBuildConfig | null> {
   const cwd = getCwd();
@@ -61,7 +84,10 @@ export async function prepareNativeBuild(
     return null;
   }
 
-  const config = await loadConfig({ platform, channel: "" });
+  const config = await loadConfig(
+    { platform, channel: "" },
+    { credentials: options.credentials ?? false },
+  );
   if (!config) {
     p.log.error("No config found. Please run `hot-updater init` first.");
     return null;
@@ -112,6 +138,12 @@ export async function prepareNativeBuild(
     );
     return null;
   }
+
+  await options.beforePrebuild?.(
+    platform === "ios"
+      ? { scheme, iosScheme: config.nativeBuild.ios[scheme]! }
+      : { scheme, androidScheme: config.nativeBuild.android[scheme]! },
+  );
 
   // The adapter's prebuild writes the native projects, such as Expo's
   // `expo prebuild`, so it runs before anything reads them.

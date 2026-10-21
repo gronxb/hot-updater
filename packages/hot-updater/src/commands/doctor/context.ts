@@ -36,7 +36,7 @@ export const createDoctorContext = (
     cwd,
     nonInteractive,
     server: () =>
-      (server ??= loadConfig(null).then((config) =>
+      (server ??= loadConfig(null, { credentials: true }).then((config) =>
         config.database === undefined ? null : loadServer(config),
       )),
     fingerprints: () => (fingerprints ??= generateFingerprints()),

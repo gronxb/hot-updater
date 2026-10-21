@@ -141,8 +141,14 @@ interface ReadBudgetApiKeys {
   }): Promise<{ readonly apiKey: string }>;
 }
 
-/** The `vault()` token API the budgets call, typed here, so test-utils needs no peer on its package. */
+/** The `vault()` API the budgets call, typed here, so test-utils needs no peer on its package. */
 interface ReadBudgetVault {
+  put(input: {
+    readonly name: string;
+    readonly kind: string;
+    readonly value: unknown;
+  }): Promise<unknown>;
+  status(): Promise<{ readonly locked: boolean }>;
   issueToken(input: {
     readonly name: string;
     readonly scope: {
@@ -308,7 +314,7 @@ const storage: MeasuredDatabaseStorage = {
 };
 
 /**
- * Core's bundles, releases, channels, a client API key, a vault token, and 26 Insights
+ * Core's bundles, releases, channels, a client API key, a vault secret and token, and 26 Insights
  * events: installs 1–24 ten minutes apart from T0, then install 1 again two
  * days later, back on bundle-a and then on bundle-b; and the day of history
  * before T0, as a production database holds, so a read that scans beyond its
@@ -367,6 +373,7 @@ const seed = async (database: MeasuredDatabase) => {
     });
   }
   const { apiKey } = await api.apiKeys.create({ name: "Read budgets" });
+  await api.vault.put({ name: "read-budgets", kind: "generic", value: {} });
   const { token: vaultToken } = await api.vault.issueToken({
     name: "Read budgets",
     scope: { secrets: { kinds: ["bundle-signing-key"] }, actions: ["sign"] },
@@ -490,6 +497,14 @@ const READ_BUDGETS: readonly ReadBudget[] = [
     adapter: reads(0, 0, 1, 1),
     engine: { calls: 1, rows: 1 },
     check: (verified) => expect(verified).toMatchObject({ ok: true }),
+  }),
+  budget({
+    // The Console checks its master keys before it offers or stores a write.
+    api: "vault status: 1 point read of the master key checks",
+    read: ({ vault }) => vault.status(),
+    adapter: reads(1, 1, 0, 0),
+    engine: { calls: 1, rows: 1 },
+    check: (status) => expect(status).toEqual({ locked: false }),
   }),
   budget({
     // The fetch's first read on this server; later ones within five seconds
@@ -939,7 +954,13 @@ export const setupReadBudgetTestSuite = (
       // The server's built-in plugins, whose reads have budgets.
       const { insights, apiKeys, remoteConfig, vault } =
         await import("@hot-updater/server/plugins");
-      const plugins = [insights(), apiKeys(), remoteConfig(), vault()];
+      const plugins = [
+        insights(),
+        apiKeys(),
+        remoteConfig(),
+        // A key of its own, so the budgets do not depend on the environment.
+        vault({ masterKey: btoa(String.fromCharCode(...new Uint8Array(32))) }),
+      ];
       created = await options.createAdapter({
         tables: [...toolingTargetOf(plugins).schema.tables, SETTINGS_TABLE],
         nativePageSize: NATIVE_PAGE_SIZE,

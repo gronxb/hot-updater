@@ -81,17 +81,154 @@ const file = (
   return { base64, bytes };
 };
 
-/** A file field whose text must contain a PEM private key. */
+/** One DER element of `bytes` at `at`: its tag and where its contents lie. */
+const derElement = (bytes: Uint8Array, at: number) => {
+  const tag = bytes[at];
+  let length = bytes[at + 1];
+  let start = at + 2;
+  if (tag === undefined || length === undefined) return null;
+  if (length & 0x80) {
+    const octets = length & 0x7f;
+    if (octets === 0 || octets > 4) return null;
+    length = 0;
+    for (let index = 0; index < octets; index += 1) {
+      const octet = bytes[start + index];
+      if (octet === undefined) return null;
+      length = length * 256 + octet;
+    }
+    start += octets;
+  }
+  const end = start + length;
+  return end > bytes.length ? null : { tag, start, end };
+};
+
+/** `rsaEncryption`, the algorithm of an RSA key in PKCS#8. */
+const RSA_ENCRYPTION_OID = [
+  0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x01, 0x01, 0x01,
+];
+
+/**
+ * The modulus size of the PKCS#1 `RSAPrivateKey` filling `bytes` from `at`
+ * to `end`, or null: a two-prime key is version 0 and eight integers,
+ * modulus, exponents, primes, and CRT values, that agree with each other.
+ */
+const rsaModulusBits = (
+  bytes: Uint8Array,
+  at: number,
+  end: number,
+): number | null => {
+  const key = derElement(bytes, at);
+  if (key?.tag !== 0x30 || key.end !== end) return null;
+  const integers: { start: number; end: number }[] = [];
+  for (let next = key.start; next < key.end; ) {
+    const element = derElement(bytes, next);
+    if (element?.tag !== 0x02 || element.end === element.start) return null;
+    integers.push(element);
+    next = element.end;
+  }
+  // Each integer is non-negative: no sign bit on its first byte.
+  if (
+    integers.length !== 9 ||
+    integers.some(({ start }) => bytes[start]! >= 0x80)
+  ) {
+    return null;
+  }
+  const [version, n, e, d, p, q, dp, dq, qi] = integers.map(({ start, end }) =>
+    BigInt(
+      `0x${Array.from(bytes.subarray(start, end), (byte) =>
+        byte.toString(16).padStart(2, "0"),
+      ).join("")}`,
+    ),
+  ) as [bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint, bigint];
+  // The values agree as an RSA key's do, so the public half is the private
+  // half's: a public exponent of at least 3, n = pq, and the exponents and
+  // CRT values derived from them.
+  if (
+    version !== 0n ||
+    e < 3n ||
+    e % 2n === 0n ||
+    p <= 1n ||
+    q <= 1n ||
+    p * q !== n ||
+    (d * e) % (p - 1n) !== 1n ||
+    (d * e) % (q - 1n) !== 1n ||
+    dp !== d % (p - 1n) ||
+    dq !== d % (q - 1n) ||
+    (qi * q) % p !== 1n
+  ) {
+    return null;
+  }
+  return n.toString(2).length;
+};
+
+/**
+ * Whether `text` holds an unencrypted RSA private key of 2048, 3072, or
+ * 4096 bits in PEM, PKCS#8 or PKCS#1, the keys the Console signs bundles
+ * with; an encrypted, EC, or Ed25519 key is refused when it is stored.
+ */
+const isSigningKeyPem = (text: string): boolean => {
+  const match =
+    /-----BEGIN (RSA )?PRIVATE KEY-----([A-Za-z0-9+/=\s]+)-----END \1?PRIVATE KEY-----/u.exec(
+      text,
+    );
+  const der = match ? base64ToBytes(match[2]!.replaceAll(/\s/gu, "")) : null;
+  if (!match || !der) return false;
+  let rsaKey = { start: 0, end: der.length };
+  if (match[1] === undefined) {
+    // PrivateKeyInfo: version, the algorithm, and the key in an octet string.
+    const info = derElement(der, 0);
+    const version = info?.tag === 0x30 ? derElement(der, info.start) : null;
+    const algorithm =
+      version?.tag === 0x02 ? derElement(der, version.end) : null;
+    const oid =
+      algorithm?.tag === 0x30 ? derElement(der, algorithm.start) : null;
+    const key = algorithm ? derElement(der, algorithm.end) : null;
+    if (
+      oid?.tag !== 0x06 ||
+      key?.tag !== 0x04 ||
+      oid.end - oid.start !== RSA_ENCRYPTION_OID.length ||
+      !RSA_ENCRYPTION_OID.every(
+        (octet, index) => der[oid.start + index] === octet,
+      )
+    ) {
+      return false;
+    }
+    // Version 0, the algorithm's parameters absent or NULL, and after the
+    // key only its optional [0] attributes, then nothing.
+    const parameters =
+      oid.end < algorithm!.end ? derElement(der, oid.end) : null;
+    const attributes = key.end < info!.end ? derElement(der, key.end) : null;
+    if (
+      version!.end - version!.start !== 1 ||
+      der[version!.start] !== 0 ||
+      (parameters !== null &&
+        (parameters.tag !== 0x05 ||
+          parameters.start !== parameters.end ||
+          parameters.end !== algorithm!.end)) ||
+      (key.end < info!.end &&
+        (attributes?.tag !== 0xa0 || attributes.end !== info!.end)) ||
+      info!.end !== der.length
+    ) {
+      return false;
+    }
+    rsaKey = key;
+  }
+  return [2048, 3072, 4096].includes(
+    rsaModulusBits(der, rsaKey.start, rsaKey.end) ?? 0,
+  );
+};
+
+/** A file field whose text must contain a PEM private key, by `accepts`. */
 const pemFile = (
   kind: VaultSecretKind,
   fields: Record<string, unknown>,
   field: string,
   what: string,
+  accepts = (text: string) =>
+    /-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----/u.test(text),
 ) => {
   const { base64, bytes } = file(kind, fields, field);
-  if (
-    !/-----BEGIN (?:[A-Z]+ )?PRIVATE KEY-----/u.test(decodeText(bytes) ?? "")
-  ) {
+  if (!accepts(decodeText(bytes) ?? "")) {
     throw new VaultInputError(
       `A secret of kind ${kind} has ${field} as ${what}.`,
     );
@@ -168,7 +305,8 @@ const parsers: {
         "bundle-signing-key",
         fields,
         "privateKey",
-        "a private key in PEM, such as hot-updater keys generate writes",
+        "an unencrypted RSA private key of 2048, 3072, or 4096 bits in PEM, such as hot-updater keys generate writes",
+        isSigningKeyPem,
       ),
     };
   },

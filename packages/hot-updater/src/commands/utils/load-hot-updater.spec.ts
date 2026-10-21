@@ -8,6 +8,7 @@ import { loadHotUpdater } from "./load-hot-updater";
 
 const mockCli = vi.hoisted(() => ({
   loadConfig: vi.fn(async (): Promise<Record<string, unknown>> => ({})),
+  loadVaultDeployCredentials: vi.fn(async (_cwd: string) => {}),
   log: {
     error: vi.fn(),
     info: vi.fn(),
@@ -23,6 +24,7 @@ vi.mock("@hot-updater/cli-tools", async (importOriginal) => {
     colors,
     isServerDefinition,
     loadConfig: mockCli.loadConfig,
+    loadVaultDeployCredentials: mockCli.loadVaultDeployCredentials,
     p: {
       log: mockCli.log,
     },
@@ -203,10 +205,41 @@ describe("loadHotUpdater", () => {
       const loaded = await loadHotUpdater("hotUpdater.ts", { cwd: projectDir });
       expect(loaded.adapterName).toBe("kysely");
       expect(mockCli.loadConfig).not.toHaveBeenCalled();
+      // Without credentials, the vault is never asked.
+      expect(mockCli.loadVaultDeployCredentials).not.toHaveBeenCalled();
     } finally {
       delete process.env["HOT_UPDATER_TEST_ADAPTER"];
       mockCli.loadConfig.mockReset();
       mockCli.loadConfig.mockResolvedValue({});
+      await rm(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("sets the vault's deploy credentials before a definition whose database the command uses", async () => {
+    const projectDir = await mkdtemp(
+      path.join(tmpdir(), "hot-updater-named-server-"),
+    );
+    await writeFile(
+      path.join(projectDir, "hotUpdater.ts"),
+      definitionSource("process.env.HOT_UPDATER_TEST_ADAPTER"),
+      "utf-8",
+    );
+    mockCli.loadVaultDeployCredentials.mockImplementationOnce(async () => {
+      process.env["HOT_UPDATER_TEST_ADAPTER"] = "from-the-vault";
+    });
+
+    try {
+      const loaded = await loadHotUpdater("hotUpdater.ts", {
+        cwd: projectDir,
+        credentials: true,
+      });
+      expect(mockCli.loadVaultDeployCredentials).toHaveBeenCalledWith(
+        projectDir,
+      );
+      expect(loaded.adapterName).toBe("from-the-vault");
+    } finally {
+      delete process.env["HOT_UPDATER_TEST_ADAPTER"];
+      mockCli.loadVaultDeployCredentials.mockClear();
       await rm(projectDir, { recursive: true, force: true });
     }
   });

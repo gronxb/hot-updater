@@ -47,10 +47,18 @@ export interface RemoteSigningOptions {
 export interface BundleSigningHandlerOptions {
   /** Exact request pathname. Defaults to the root managed signing path. */
   readonly endpointPath?: string;
-  readonly publicKey: string;
+  /**
+   * The SPKI public key in PEM, or a function that returns it, called only
+   * once the token is accepted, such as for a key chosen by the token.
+   */
+  readonly publicKey: string | (() => string | Promise<string>);
   readonly request: Request;
   readonly sign: (message: Uint8Array) => Uint8Array | Promise<Uint8Array>;
-  readonly token: string;
+  /**
+   * The dedicated signing token, or a function that accepts or refuses the
+   * token a request presents, such as one that looks it up in a store.
+   */
+  readonly token: string | ((presented: string) => boolean | Promise<boolean>);
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -322,7 +330,10 @@ export const remoteSigning = ({
   if (typeof fetchImplementation !== "function") {
     throw new Error("Remote bundle signing requires fetch.");
   }
-  const normalizedEndpoint = normalizeEndpoint(endpoint);
+  // Checked on first use, so a config loads without the endpoint.
+  let normalizedEndpoint: string | undefined;
+  const endpointUrl = () =>
+    (normalizedEndpoint ??= normalizeEndpoint(endpoint));
   let resolvedKey: Promise<ResolvedPublicKey> | undefined;
   const resolveToken = async () => {
     const token =
@@ -339,12 +350,10 @@ export const remoteSigning = ({
 
   const getResolvedKey = () => {
     if (resolvedKey) return resolvedKey;
-    resolvedKey = remoteRequest(
-      fetchImplementation,
-      normalizedEndpoint,
-      resolveToken,
-      { method: "GET" },
-    )
+    const url = endpointUrl();
+    resolvedKey = remoteRequest(fetchImplementation, url, resolveToken, {
+      method: "GET",
+    })
       .then(parseMetadata)
       .catch(() => {
         resolvedKey = undefined;
@@ -374,7 +383,7 @@ export const remoteSigning = ({
       try {
         value = await remoteRequest(
           fetchImplementation,
-          normalizedEndpoint,
+          endpointUrl(),
           resolveToken,
           {
             body: JSON.stringify({
@@ -439,12 +448,15 @@ const jsonResponse = (
     status,
   });
 
+const isTokenSized = (value: string) =>
+  new TextEncoder().encode(value).byteLength <= TOKEN_BYTES_LIMIT;
+
 const tokensMatch = async (expected: string, actual: string | null) => {
   if (
     !expected ||
     actual === null ||
-    new TextEncoder().encode(expected).byteLength > TOKEN_BYTES_LIMIT ||
-    new TextEncoder().encode(actual).byteLength > TOKEN_BYTES_LIMIT
+    !isTokenSized(expected) ||
+    !isTokenSized(actual)
   ) {
     return false;
   }
@@ -476,12 +488,21 @@ export const createBundleSigningHandler = async ({
     return jsonResponse({ error: "Bad request" }, 400);
   }
 
-  if (
-    !(await tokensMatch(
-      token,
-      request.headers.get(REMOTE_BUNDLE_SIGNING_TOKEN_HEADER),
-    ))
-  ) {
+  const presented = request.headers.get(REMOTE_BUNDLE_SIGNING_TOKEN_HEADER);
+  let accepted: boolean;
+  try {
+    accepted =
+      typeof token === "function"
+        ? presented !== null &&
+          presented.length > 0 &&
+          isTokenSized(presented) &&
+          (await token(presented)) === true
+        : await tokensMatch(token, presented);
+  } catch {
+    // A verifier that cannot decide, such as one whose store is down.
+    return jsonResponse({ error: "Signing service unavailable" }, 503);
+  }
+  if (!accepted) {
     return jsonResponse({ error: "Unauthorized" }, 401);
   }
   if (request.method !== "GET" && request.method !== "POST") {
@@ -492,7 +513,9 @@ export const createBundleSigningHandler = async ({
 
   let resolved: ResolvedPublicKey;
   try {
-    resolved = await canonicalizePublicKey(publicKey);
+    resolved = await canonicalizePublicKey(
+      typeof publicKey === "function" ? await publicKey() : publicKey,
+    );
   } catch {
     return jsonResponse({ error: "Signing service unavailable" }, 503);
   }

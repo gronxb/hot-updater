@@ -18,8 +18,9 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 export const createStandaloneHttp = (config: StandaloneRepositoryConfig) => {
-  const baseUrl = config.baseUrl.replace(/\/+$/, "");
-  const buildUrl = (path: string): string => `${baseUrl}${path}`;
+  // Read on the first request, so a config loads without the URL.
+  const buildUrl = (path: string): string =>
+    `${config.baseUrl.replace(/\/+$/, "")}${path}`;
   const headers = (routeHeaders?: Readonly<Record<string, string>>) => ({
     "Content-Type": "application/json",
     ...config.commonHeaders,

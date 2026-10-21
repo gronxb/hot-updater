@@ -46,13 +46,13 @@ to specify the desired app behavior and outcome.
 
 ## What the agent should complete
 
-| Phase | Evidence to report |
-| --- | --- |
-| Inspect and install | App workspace, build system, provider and resolved package versions |
-| Provision infrastructure | Actual resource identifiers, deployed base URL, passing scaffold/infrastructure doctor results and remaining checks outside their scope |
-| Connect the app | Top-level init, explicit check/download/reload flow, native loading, client key, matching strategy/channel and signing key when enabled |
-| Test OTA | Release app launch, visible JavaScript and asset changes after application, matching deployment ID and rollback result |
-| Observe and hand off | Ready-to-copy HotUpdater.init configuration with the verified base URL, registered client x-api-key and Insights plugin; received Insights reports when the app runs that plugin; remaining store/native release steps and any specific blockers |
+| Phase                    | Evidence to report                                                                                                                                                                                                                               |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Inspect and install      | App workspace, build system, provider and resolved package versions                                                                                                                                                                              |
+| Provision infrastructure | Actual resource identifiers, deployed base URL, passing scaffold/infrastructure doctor results and remaining checks outside their scope                                                                                                          |
+| Connect the app          | Top-level init, explicit check/download/reload flow, native loading, client key, matching strategy/channel and signing key when enabled                                                                                                          |
+| Test OTA                 | Release app launch, visible JavaScript and asset changes after application, matching deployment ID and rollback result                                                                                                                           |
+| Observe and hand off     | Ready-to-copy HotUpdater.init configuration with the verified base URL, registered client x-api-key and Insights plugin; received Insights reports when the app runs that plugin; remaining store/native release steps and any specific blockers |
 
 The agent uses [doctor's scoped checks](/docs/guides/doctor#verify-infrastructure-scaffolding)
 as completion gates: `scaffold` after filling deployment inputs, then

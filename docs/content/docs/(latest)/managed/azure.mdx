@@ -157,12 +157,12 @@ in the React Native app.
 
 After provisioning, record these outputs for [Set up your app](/docs/get-started/app-setup):
 
-| Output | Value |
-| --- | --- |
-| Client base URL | `https://<Function App default host name>` |
-| Client request header | `x-api-key` |
-| Client API key | The saved `HOT_UPDATER_API_KEY` in your ignored `.env.hotupdater` |
-| Deploy configuration | `hot-updater.config.ts` and the selected provider resources |
+| Output                | Value                                                             |
+| --------------------- | ----------------------------------------------------------------- |
+| Client base URL       | `https://<Function App default host name>`                        |
+| Client request header | `x-api-key`                                                       |
+| Client API key        | The saved `HOT_UPDATER_API_KEY` in your ignored `.env.hotupdater` |
+| Deploy configuration  | `hot-updater.config.ts` and the selected provider resources       |
 
 Use the actual URL init prints. Configure the SDK and native bundle loader
 through [Set up your app](/docs/get-started/app-setup), using the selected
@@ -175,8 +175,8 @@ credentials stay in the deploy environment.
   Insights ingestion, and Remote Config fetches require `x-api-key:
   $HOT_UPDATER_API_KEY`. Internally, the Function runs the `insights()`,
   `apiKeys()`, and `remoteConfig()` plugins and mounts only `handlers.client`.
-  Admin routes, including Insights queries and Remote Config publishing, are
-  not mounted on the public Function URL.
+  Admin routes, including Insights queries and Remote Config publishing, are not
+  mounted on the public Function URL.
 </Callout>
 
 ## Generated configuration and operations
@@ -281,6 +281,7 @@ For server templates to apply with your own deployment tooling, use
 
    Doctor checks the public `/version` endpoint. It does not prove an
    authenticated update download or application.
+
 3. Complete [Test an OTA update](/docs/get-started/test-ota) on a release build.
    Verify that the app downloads and runs the changed code, then survives a restart.
 

@@ -8,6 +8,11 @@ const connection = {
 };
 
 describe("cosmosDatabase", () => {
+  it("creates its client on the first request, so a config loads without the connection", async () => {
+    const database = cosmosDatabase({ connectionString: undefined as never });
+    await database.dispose?.();
+  });
+
   it("refuses a client consistency weaker than the strong reads it plans writes from", () => {
     expect(() =>
       cosmosDatabase({

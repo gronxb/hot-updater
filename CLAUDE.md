@@ -9,7 +9,9 @@ Hot Updater is a self-hostable OTA (Over-The-Air) update solution for React Nati
 ## Key Architecture
 
 ### Adapters and Plugins
+
 An adapter fills one slot of a config (`build`, `storage`, `database`, `signing`); a plugin is an entry of a `plugins` list. `plugins/plugin-core/` (`@hot-updater/plugin-core`) is the public kit both are written against (the adapter contracts, the storage engine with its KV and SQL kits, and `definePlugin`), and the docs' overview (`docs/content/docs/(latest)/concepts/plugin-system.mdx`) describes how to write each one:
+
 - **Build Adapters**: Handle bundling and the native fingerprint (Metro, Expo, Rock) - located in `plugins/bare/`, `plugins/expo/`, `plugins/rock/`. Bare and Rock fingerprint the native interface with cli-tools' `createInterfaceFingerprint` through `nativeBuild.fingerprint`; Expo, and any adapter without one, uses `@expo/fingerprint`
 - **Storage Adapters**: Handle bundle storage (AWS S3, Cloudflare R2, Supabase Storage, Firebase Storage, Vercel Blob, Azure Blob Storage) - located in `plugins/aws/`, `plugins/cloudflare/`, `plugins/supabase/`, `plugins/firebase/`, `plugins/vercel/`, `plugins/azure/`, `plugins/standalone/`
 - **Database Adapters**: Handle metadata storage on one storage engine (Cloudflare D1, Supabase, DynamoDB, Firestore, Cosmos DB, PostgreSQL) - use the same directories as storage and build on plugin-core's database kit; the built-in Kysely, Drizzle, Prisma, and MongoDB adapters live in `packages/server/src/adapters/` (`@hot-updater/server/adapters/*`)
@@ -19,6 +21,7 @@ An adapter fills one slot of a config (`build`, `storage`, `database`, `signing`
 - **Client Plugins**: Run in the React Native app with `defineClientPlugin` from `@hot-updater/protocol` (`packages/protocol/src/clientPlugin.ts`, beside the reference host `createPluginHost`) - the official `insights()` and `remoteConfig()` clients are `plugins/insights/src/client/` and `plugins/remote-config/src/client/`, exported from the root of `@hot-updater/react-native`; a client plugin reaches the server only through its context's `fetch`, on the `baseURL` and headers of `HotUpdater.init`, and its `setup` returns `{ hooks, api }`, where `api` is `hotUpdater.<id>` on the instance `HotUpdater.init` returns
 
 ### Core Packages
+
 - `packages/protocol/`: `@hot-updater/protocol`, what crosses the device boundary (shared formats, pure computations, the client plugin contract and host)
 - `packages/server/`: `@hot-updater/server`, the server runtime (`createHotUpdater`) with its built-in adapters and plugins
 - `plugins/plugin-core/`: `@hot-updater/plugin-core`, the public kit for adapter and server plugin authors
@@ -31,6 +34,7 @@ An adapter fills one slot of a config (`build`, `storage`, `database`, `signing`
 - `packages/apple-helper/`: iOS/macOS native build utilities and device management
 
 ### Package Boundaries
+
 Every export belongs to exactly one package. `scripts/ci/check-package-boundaries.mjs` (run by `pnpm lint`) and oxlint enforce these rules, so moving a boundary means deliberately editing them and this section.
 
 - `@hot-updater/protocol` is the device-safe, zero-dependency package for what crosses a boundary:
@@ -38,6 +42,7 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
   - the device-side contract between a host and its extensions: `defineClientPlugin` and the reference host `createPluginHost`.
 
   It runs anywhere: Hermes, Node, Workers, Deno.
+
 - `@hot-updater/plugin-core` is the public kit for third-party adapter and server plugin authors, like `@better-auth/core` or `@nuxt/kit`.
   - Its root holds only what the docs teach or what an adapter implements, each name with the reason in its JSDoc.
   - It runs wherever the server runs, and the app never imports it.
@@ -46,7 +51,7 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
   - Its only subpaths are the built-in adapters (`./adapters/{kysely,drizzle,prisma,mongodb}`) and the built-in plugins (`./plugins`).
   - Tooling reads a server definition only through its public read-only properties.
 - `hot-updater/plugins` re-exports the official `apiKeys`, `insights`, `remoteConfig`, and `vault` factories for `hot-updater.config.ts`. Server and hosted Console code imports `@hot-updater/server/plugins` instead of depending on the CLI package.
-- `@hot-updater/plugin-vault` adds tables and `hotUpdater.api.vault`, and no endpoints: the Console serves the vault's routes and holds its master key (`HOT_UPDATER_VAULT_MASTER_KEY`), so `vault()` goes only in the plugins of `hot-updater.config.ts` and `console.config.ts`. Managed server runtimes bundle it through `@hot-updater/server/plugins` but never run it.
+- `@hot-updater/plugin-vault` adds tables and `hotUpdater.api.vault`, and no endpoints: the Console serves the vault's routes and holds its master keys (`HOT_UPDATER_VAULT_MASTER_KEY`, or `HOT_UPDATER_VAULT_MASTER_KEYS` while they rotate), and only the Console rewraps them, so `vault()` goes only in the plugins of `hot-updater.config.ts` and `console.config.ts`. Managed server runtimes bundle it through `@hot-updater/server/plugins` but never run it.
 - `@hot-updater/vercel` re-exports `postgres` from `@hot-updater/postgres`, the managed Vercel database, so a Vercel project's config imports and installs one package.
 - `@hot-updater/react-native` is the app SDK. Apps import everything from its root, including the built-in `insights` and `remoteConfig` clients. It has no subpaths.
   - It imports `@hot-updater/protocol` and the Insights and Remote Config clients, never plugin-core or server.
@@ -65,15 +70,20 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
 - A CLI command exists only for a user workflow. Checks belong in `hot-updater doctor`, which repairs what it can with `--fix`.
   - Plugins add no CLI commands. `PluginCli` holds only `clientCredential` and `clientPlugin`, the metadata init, doctor, and the agent scaffold read.
   - `hot-updater api-key create|list|revoke` is a built-in command over the config's `database` and `plugins`, or the server file a server project passes as its last argument.
-  - `hot-updater secrets` is a built-in command for the Console's vault: `list`, `put`, and `env` go through the Console's `/_hot-updater/vault/v1/` routes with `HOT_UPDATER_CONSOLE_URL` and `HOT_UPDATER_VAULT_TOKEN`, and `token create|list|revoke` runs in process like `api-key`, without a master key. The CLI never decrypts a secret.
+  - `hot-updater secrets` is a built-in command for the Console's vault: `list`, `put`, `env`, and `import` go through the Console's `/_hot-updater/vault/v1/` routes with `HOT_UPDATER_CONSOLE_URL` and `HOT_UPDATER_VAULT_TOKEN`, and `token create|list|revoke` runs in process like `api-key`, without a master key. The CLI never decrypts a secret.
+  - The connection variables are written with `makeEnv` and read with `getHotUpdaterEnvValue`, from the environment or `.env.hotupdater`. While both are set, a `loadConfig(..., { credentials: true })` sets the variables of the `deploy-credentials` secrets the token reaches in `process.env` before it loads `hot-updater.config.ts` (`loadVaultDeployCredentials`), so `secrets import` leaves only those two in `.env.hotupdater` and configs keep reading `process.env`. Only loads whose config feeds the database, storage, or signing pass `credentials: true`; fingerprints, native builds without `--register`, `channel set`, and the Expo config plugin load offline. Adapters and signers check their credentials and create clients on first use, so a config without them still loads.
 
 ### Reference Projects
+
 When working on helper packages, reference these external projects:
+
 - **Android Helper**: Reference `~/Desktop/rnef/packages/platform-android` (can be referred to as "rnef" or "rock" in prompts)
 - **Apple Helper**: Reference `~/Desktop/rnef/packages/platform-apple-helpers` (can be referred to as "rnef" or "rock" in prompts)
 
 ### Configuration
+
 Projects use `hot-updater.config.ts` (`defineConfig()`) for `build`, `storage`, `database`, and `plugins`, plus the deploy settings (`updateStrategy`, `signing`, `fingerprint`, `patch`, `platform`, `nativeBuild`, `console`, `cacheDir`). The config mirrors the server and never names server code:
+
 - `storage` is the one adapter the CLI uploads with, the same adapter as the server's `createHotUpdater({ storage })`;
 - `database` is the server's database adapter, or `standaloneRepository({ baseUrl, commonHeaders })` to reach a self-hosted server's admin API;
 - `plugins` lists the server plugins the server runs. Over a direct database, the CLI assembles core over `database` and `plugins` as `createHotUpdater` does, so the schema fence and retention pruning apply to its writes.
@@ -83,6 +93,7 @@ Plugins are configured in three places: the server's `createHotUpdater({ plugins
 ## Common Commands
 
 ### Development
+
 ```bash
 # Install dependencies
 pnpm install
@@ -104,6 +115,7 @@ pnpm lint
 ```
 
 ### Release Management
+
 ```bash
 # Test release (dry run)
 pnpm release:test
@@ -116,6 +128,7 @@ pnpm publish:all
 ```
 
 ### Hot Updater CLI
+
 ```bash
 # Initialize hot updater in a project
 npx hot-updater init
@@ -142,6 +155,12 @@ npx hot-updater channel delete <channel> --yes
 # Build a release app, and register it with the config's database and storage
 npx hot-updater build:android --scheme release --register
 
+# Build an .ipa and upload it to TestFlight with the scheme's App Store Connect API key
+npx hot-updater build:ios --scheme release --upload testflight
+
+# Build an .aab and release it to Google Play's internal track with the vault's play-service-account
+npx hot-updater build:android --scheme release --upload play-internal
+
 # Manage client API keys through apiKeys(): the config's, or a server file's
 npx hot-updater api-key create --name <name>
 npx hot-updater api-key list src/hotUpdater.ts
@@ -150,6 +169,7 @@ npx hot-updater api-key list src/hotUpdater.ts
 npx hot-updater secrets token create --name ci --secrets asc-api-key --actions read
 npx hot-updater secrets put asc-api-key --kind asc-api-key --p8 ./AuthKey.p8 --key-id <id> --issuer-id <id>
 npx hot-updater secrets env -- <command>
+npx hot-updater secrets import .env.hotupdater
 
 # Migrate a server's database (in the server project)
 npx hot-updater db migrate src/hotUpdater.ts
@@ -158,6 +178,7 @@ npx hot-updater db migrate src/hotUpdater.ts
 ## Development Notes
 
 ### CI/CD Requirements
+
 **IMPORTANT**: All changes must pass the GitHub Actions workflow (`.github/workflows/integraion-typescript.yml`) before being merged. This workflow runs:
 
 1. `pnpm build` - All packages and plugins must build successfully
@@ -166,34 +187,41 @@ npx hot-updater db migrate src/hotUpdater.ts
 4. `pnpm test` - All unit tests must pass
 
 Before committing changes, always run these commands locally to ensure CI will pass:
+
 ```bash
 pnpm build && pnpm test:type && pnpm lint && pnpm test
 ```
 
 ### Code Style
+
 - Uses `oxfmt` and `oxlint` for formatting and linting (see `.oxfmtrc.json` and `.oxlintrc.json`)
 - 2-space indentation, 80 character line width
 - Semicolons required, arrow parentheses always
 
 ### Testing
+
 - Uses Vitest with workspace configuration
 - Cloudflare Workers testing uses `@cloudflare/vitest-pool-workers`
 - Each plugin/package has its own test configuration
 
 ### Build System
+
 - NX workspace with shared build targets
 - TypeScript compilation with `tsdown`
 - Outputs go to `dist/` directories
 
 ### Project Structure
+
 - Monorepo with `packages/` (core functionality) and `plugins/` (provider integrations)
 - Examples in `examples/` showing different React Native versions and configurations
 - Documentation site in `docs/` using Waku and Fumadocs; see `docs/README.md`
 
 ### Native Modules
+
 The React Native package includes native iOS (Swift) and Android (Kotlin) implementations with support for both old and new React Native architectures.
 
 ### OTA Compatibility Between Patches
+
 Patch releases of one minor (such as 1.0.x) may change native code, the server, and the database, but an OTA between any two of them must keep working. An OTA replaces only JavaScript, so with the `appVersion` strategy a patch's JavaScript runs on another patch's native code, older or newer, and both talk to a server from yet another patch.
 
 - App usage does not change in a patch: `HotUpdater.init`, `checkForUpdate`, `updateBundle`, `reload`, and their options keep their signatures and behavior.

@@ -19,6 +19,7 @@ work:
 - The server's database has run the migrations its core and plugins need
 - The server's release catalogs match their Releases
 - Your deployed infrastructure server is not outdated
+- The vault's master key is not kept with your database credentials
 
 With `--fix`, doctor also [repairs](#repair-issues) what it can repair itself.
 
@@ -181,20 +182,39 @@ Import it from the module the warning names and pass it to
 `CLIENT_PLUGINS_UNCHECKED` with the reason, with `fixability` `blocked`: make
 them load, then rerun `doctor`.
 
+## Check the vault's master key
+
+The [vault](/docs/guides/console-deployment/vault) opens every secret with its
+master key, so the key belongs only in the console's runtime environment, apart
+from the database. `doctor` reads the names in each `.env*` file of the
+project, except `.env.example`, `.env.sample`, and `.env.template`, and warns
+`VAULT_MASTER_KEY_WITH_DATABASE_CREDENTIALS` when one sets
+`HOT_UPDATER_VAULT_MASTER_KEY` or `HOT_UPDATER_VAULT_MASTER_KEYS` beside a
+database credential, such as `HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY`,
+`HOT_UPDATER_CLOUDFLARE_API_TOKEN`, or `DATABASE_URL`:
+
+```text
+.env.hotupdater holds the vault's master key (HOT_UPDATER_VAULT_MASTER_KEY) beside database credentials (HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY): whoever reads it opens every secret in the vault.
+```
+
+When no file does, it checks the environment doctor runs in the same way. The
+warning does not fail the run, and its `fixability` is `blocked`: `--fix`
+never moves secrets. Move the master key to the console's deployment.
+
 ## Repair issues
 
 `--fix` runs the repairs doctor can make itself, then checks again. After a
 schema migration, it also runs the release catalog and artifact repairs the
 migrated database reveals:
 
-| Issues | Repair |
-| --- | --- |
-| `SCHEMA_MIGRATION_PENDING` | The migrations the server's database has not run: a managed provider's migration files, or the tables and settings rows its migrator creates |
-| `MISSING_FINGERPRINT_JSON`, `FINGERPRINT_JSON_STALE`, `FINGERPRINT_ENGINE_UNRECORDED` | What `fingerprint create` writes, where it differs: `fingerprint.json` |
-| `FINGERPRINT_JSON_UNUSED` | `fingerprint.json`, deleted to match the configured `updateStrategy` |
-| `MISSING_PUBLIC_KEY`, `PUBLIC_KEY_MISMATCH` | What `keys export-public --yes` writes: the configured signing public key, in the native files |
-| `RELEASE_CATALOG_STALE` | Each stale scope's catalog, rebuilt from its Releases in the server's database |
-| `UNREFERENCED_ARTIFACTS` | The artifact records no Release uses, deleted from the server's database |
+| Issues                                                                                | Repair                                                                                                                                       |
+| ------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `SCHEMA_MIGRATION_PENDING`                                                            | The migrations the server's database has not run: a managed provider's migration files, or the tables and settings rows its migrator creates |
+| `MISSING_FINGERPRINT_JSON`, `FINGERPRINT_JSON_STALE`, `FINGERPRINT_ENGINE_UNRECORDED` | What `fingerprint create` writes, where it differs: `fingerprint.json`                                                                       |
+| `FINGERPRINT_JSON_UNUSED`                                                             | `fingerprint.json`, deleted to match the configured `updateStrategy`                                                                         |
+| `MISSING_PUBLIC_KEY`, `PUBLIC_KEY_MISMATCH`                                           | What `keys export-public --yes` writes: the configured signing public key, in the native files                                               |
+| `RELEASE_CATALOG_STALE`                                                               | Each stale scope's catalog, rebuilt from its Releases in the server's database                                                               |
+| `UNREFERENCED_ARTIFACTS`                                                              | The artifact records no Release uses, deleted from the server's database                                                                     |
 
 ```package-install
 npx hot-updater doctor --fix
@@ -245,10 +265,10 @@ Each native issue includes:
 
 Read `fixability` as the repair prerequisite, within the user's authorized work:
 
-| Fixability | Meaning                                                                                            |
-| ---------- | -------------------------------------------------------------------------------------------------- |
-| `auto`     | The agent may inspect and edit local project files, then rerun doctor.                             |
-| `command`  | The agent may run the listed local command, then rerun doctor.                                     |
+| Fixability | Meaning                                                                  |
+| ---------- | ------------------------------------------------------------------------ |
+| `auto`     | The agent may inspect and edit local project files, then rerun doctor.   |
+| `command`  | The agent may run the listed local command, then rerun doctor.           |
 | `blocked`  | The repair requires external context/access beyond doctor’s local fixes. |
 
 Native wiring, fingerprint creation, and native public key export/removal are
@@ -335,12 +355,12 @@ npx hot-updater doctor --fix
 
 How `--fix` migrates depends on the database:
 
-| Database | What `--fix` runs |
-| --- | --- |
-| Cloudflare D1 that `hot-updater init` created | The Worker's migration files the database has not run, through `d1Database`'s API token, each recorded in `d1_migrations` as `wrangler d1 migrations apply` records it, then the tables of any other plugin in `plugins` |
-| Supabase project that `hot-updater init` created | `supabase db push` of the package's migration files its history lacks. It needs the Supabase access token or CLI login, and the project's database password: `HOT_UPDATER_SUPABASE_DB_PASSWORD` as init saved it for that project, or a prompt |
-| DynamoDB, Firestore, Cosmos DB, PostgreSQL, Kysely, and MongoDB | The missing tables, then the settings rows, as `hot-updater db migrate` creates them |
-| Drizzle and Prisma | Nothing: run `hot-updater db generate`, apply the schema with the ORM, then `hot-updater db migrate` in the server's project |
+| Database                                                        | What `--fix` runs                                                                                                                                                                                                                              |
+| --------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Cloudflare D1 that `hot-updater init` created                   | The Worker's migration files the database has not run, through `d1Database`'s API token, each recorded in `d1_migrations` as `wrangler d1 migrations apply` records it, then the tables of any other plugin in `plugins`                       |
+| Supabase project that `hot-updater init` created                | `supabase db push` of the package's migration files its history lacks. It needs the Supabase access token or CLI login, and the project's database password: `HOT_UPDATER_SUPABASE_DB_PASSWORD` as init saved it for that project, or a prompt |
+| DynamoDB, Firestore, Cosmos DB, PostgreSQL, Kysely, and MongoDB | The missing tables, then the settings rows, as `hot-updater db migrate` creates them                                                                                                                                                           |
+| Drizzle and Prisma                                              | Nothing: run `hot-updater db generate`, apply the schema with the ORM, then `hot-updater db migrate` in the server's project                                                                                                                   |
 
 `--fix` migrates the database or project that `database` in
 `hot-updater.config.ts` names, the one doctor checked. A managed provider's
@@ -484,14 +504,14 @@ then redeploy your server and verify it with doctor.
 
 ## Options
 
-| Option                    | Description                                             |
-| ------------------------- | ------------------------------------------------------- |
-| `--server-base-url <url>` | Server base URL for version checks and scoped live catalog checks. |
-| `--json`                  | Print a machine-readable result for agents and scripts. |
-| `--fix` | Run the repairs doctor can make itself, then check again. Cannot be combined with scoped verification options. |
-| `--scope <scope>` | Require `scaffold` or `infrastructure` verification. |
-| `--infra-dir <directory>` | Exact directory returned by infrastructure scaffolding. |
-| `--platform <platform>` | `ios` or `android` for a live catalog check. |
-| `--channel <channel>` | Actual app channel for a live catalog check. |
-| `--app-version <version>` | App-version catalog target; exclusive with fingerprint. |
-| `--fingerprint <hash>` | Fingerprint catalog target; exclusive with app version. |
+| Option                    | Description                                                                                                    |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------- |
+| `--server-base-url <url>` | Server base URL for version checks and scoped live catalog checks.                                             |
+| `--json`                  | Print a machine-readable result for agents and scripts.                                                        |
+| `--fix`                   | Run the repairs doctor can make itself, then check again. Cannot be combined with scoped verification options. |
+| `--scope <scope>`         | Require `scaffold` or `infrastructure` verification.                                                           |
+| `--infra-dir <directory>` | Exact directory returned by infrastructure scaffolding.                                                        |
+| `--platform <platform>`   | `ios` or `android` for a live catalog check.                                                                   |
+| `--channel <channel>`     | Actual app channel for a live catalog check.                                                                   |
+| `--app-version <version>` | App-version catalog target; exclusive with fingerprint.                                                        |
+| `--fingerprint <hash>`    | Fingerprint catalog target; exclusive with app version.                                                        |

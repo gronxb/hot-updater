@@ -77,6 +77,12 @@ export interface VaultClient {
     readonly name: string;
     readonly kind: VaultSecretKind;
     readonly value: unknown;
+    /**
+     * The version the caller read, 0 for no secret: the Console refuses the
+     * write with 409 `conflict` when the secret is at another version, so 0
+     * stores only a new secret, never replacing one under the name.
+     */
+    readonly expectedVersion?: number;
   }): Promise<VaultSecretMetadata>;
 }
 
@@ -280,14 +286,18 @@ export const createVaultClient = ({
       return { secrets, missing };
     },
 
-    async put({ name, kind, value }) {
+    async put({ name, kind, value, expectedVersion }) {
       if (!VAULT_NAME_PATTERN.test(name)) {
         throw new VaultRequestError(
           `A vault secret's name is 1-64 letters, digits, dots, dashes, or underscores, and "${name}" is not.`,
         );
       }
       const route = `/secrets/${encodeURIComponent(name)}`;
-      const { secret } = await request("PUT", route, { kind, value });
+      const { secret } = await request("PUT", route, {
+        kind,
+        value,
+        ...(expectedVersion === undefined ? {} : { expectedVersion }),
+      });
       if (!isRecord(secret) || typeof secret.name !== "string") {
         throw malformed(route);
       }

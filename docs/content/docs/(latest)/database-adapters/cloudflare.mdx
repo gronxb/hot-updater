@@ -109,7 +109,8 @@ if (existsSync(".env.hotupdater")) {
 
 export default defineConfig({
   // ... build, storage, plugins, and updateStrategy
-  database: d1Database({ // [!code ++]
+  database: d1Database({
+    // [!code ++]
     databaseId: process.env.HOT_UPDATER_CLOUDFLARE_D1_DATABASE_ID!, // [!code ++]
     accountId: process.env.HOT_UPDATER_CLOUDFLARE_ACCOUNT_ID!, // [!code ++]
     cloudflareApiToken: process.env.HOT_UPDATER_CLOUDFLARE_API_TOKEN!, // [!code ++]

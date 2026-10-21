@@ -51,8 +51,10 @@ if (!adminToken) {
 
 const adminApp = new Elysia() // [!code ++]
   .use(bearer()) // [!code ++]
-  .onBeforeHandle(({ bearer }) => { // [!code ++]
-    if (bearer !== adminToken) { // [!code ++]
+  .onBeforeHandle(({ bearer }) => {
+    // [!code ++]
+    if (bearer !== adminToken) {
+      // [!code ++]
       return new Response("Unauthorized", { status: 401 }); // [!code ++]
     } // [!code ++]
   }) // [!code ++]
@@ -87,9 +89,11 @@ if (!adminToken) {
 
 export default defineConfig({
   // ... build, storage, plugins, and updateStrategy
-  database: standaloneRepository({ // [!code ++]
+  database: standaloneRepository({
+    // [!code ++]
     baseUrl: "http://localhost:3000/hot-updater/admin", // [!code ++]
-    commonHeaders: { // [!code ++]
+    commonHeaders: {
+      // [!code ++]
       Authorization: `Bearer ${adminToken}`, // [!code ++]
     }, // [!code ++]
   }), // [!code ++]

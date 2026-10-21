@@ -14,6 +14,7 @@ import { type LoadConfigOptions, loadConfig as loadUnconfig } from "unconfig";
 
 import { getCwd } from "./cwd.js";
 import { normalizeSigningConfig } from "./localBundleSigning.js";
+import { loadVaultDeployCredentials } from "./vaultVariables.js";
 
 export type HotUpdaterConfigOptions = {
   platform: Platform;
@@ -166,8 +167,22 @@ const getConfigLoaderOptions = (): LoadConfigOptions<ConfigFileExport> => {
   };
 };
 
+export interface LoadConfigCredentials {
+  /**
+   * The command uses the config's database, storage, or signing: before the
+   * file runs, the vault's deploy credentials go into `process.env` when
+   * `HOT_UPDATER_CONSOLE_URL` and `HOT_UPDATER_VAULT_TOKEN` are set, and a
+   * Console that cannot answer fails the load. Without it, loading reaches
+   * no network, as fingerprints and native builds need.
+   */
+  readonly credentials?: boolean;
+}
+
 /** Each load runs the config file again, which creates its adapters again. */
-const loadConfigFile = async (): Promise<ConfigFileExport | undefined> => {
+const loadConfigFile = async ({
+  credentials = false,
+}: LoadConfigCredentials): Promise<ConfigFileExport | undefined> => {
+  if (credentials) await loadVaultDeployCredentials(getCwd());
   const { config } = await loadUnconfig<ConfigFileExport>(
     getConfigLoaderOptions(),
   );
@@ -182,8 +197,9 @@ const configFor = async (
 
 export const loadConfig = async (
   options: HotUpdaterConfigOptions,
+  load: LoadConfigCredentials = {},
 ): Promise<ConfigResponse> =>
-  resolveConfig(await configFor(await loadConfigFile(), options));
+  resolveConfig(await configFor(await loadConfigFile(load), options));
 
 /**
  * hot-updater.config for each of `platforms`, with the file loaded once. A
@@ -193,11 +209,14 @@ export const loadConfig = async (
  */
 export const loadPlatformConfigs = async <TPlatform extends Platform>(
   platforms: readonly TPlatform[],
-  { channel }: { readonly channel: string },
+  {
+    channel,
+    credentials,
+  }: { readonly channel: string } & LoadConfigCredentials,
 ): Promise<
   { readonly platform: TPlatform; readonly config: ConfigResponse }[]
 > => {
-  const source = await loadConfigFile();
+  const source = await loadConfigFile({ credentials });
   const configs: { platform: TPlatform; config: ConfigResponse }[] = [];
   for (const platform of platforms) {
     configs.push({

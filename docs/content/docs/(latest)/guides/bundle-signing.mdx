@@ -19,12 +19,13 @@ baseline when the deploy environment protects that key. When your threat model
 requires stronger custody, prefer a remote signing service where the private
 key is non-exportable and the deploy process submits only a message to sign.
 
-| Signer                                                    | Use case            | Custody                                           |
-| --------------------------------------------------------- | ------------------- | ------------------------------------------------- |
-| [Local PEM](/docs/guides/signing/local)                   | Standard baseline   | Exportable key managed by your deploy environment |
-| [AWS KMS](/docs/guides/signing/aws-kms)                   | Hardened production | Non-exportable AWS KMS key                        |
-| [Google Cloud KMS](/docs/guides/signing/google-cloud-kms) | Hardened production | Non-exportable Google Cloud KMS key               |
-| [Remote endpoint](/docs/guides/signing/remote)            | Service-dependent   | Defined by the compatible signing service         |
+| Signer                                                                   | Use case            | Custody                                                 |
+| ------------------------------------------------------------------------ | ------------------- | ------------------------------------------------------- |
+| [Local PEM](/docs/guides/signing/local)                                  | Standard baseline   | Exportable key managed by your deploy environment       |
+| [AWS KMS](/docs/guides/signing/aws-kms)                                  | Hardened production | Non-exportable AWS KMS key                              |
+| [Google Cloud KMS](/docs/guides/signing/google-cloud-kms)                | Hardened production | Non-exportable Google Cloud KMS key                     |
+| [Remote endpoint](/docs/guides/signing/remote)                           | Service-dependent   | Defined by the compatible signing service               |
+| [Console vault](/docs/guides/signing/remote#sign-with-the-console-vault) | Self-hosted Console | Key sealed in your database, opened only by the Console |
 
 Local PEM signing is the normal industry baseline used by systems such as Expo
 and CodePush when the deploy environment protects the private key. KMS signing
@@ -123,11 +124,11 @@ Reference the public file in the Expo app config:
         "@hot-updater/expo",
         {
           "channel": "production",
-          "publicKeyPath": "./keys/public-key.pem" // [!code ++]
-        }
-      ]
-    ]
-  }
+          "publicKeyPath": "./keys/public-key.pem", // [!code ++]
+        },
+      ],
+    ],
+  },
 }
 ```
 
@@ -237,18 +238,22 @@ it with unsigned bundles.
 
 ## Console
 
-Configure signing and manage keys through the Hot Updater CLI or your signing
-provider. Local and hosted Consoles do not inspect signing configuration or
-manage signing keys. A hosted Console does not need signing credentials or
-permission to sign. The deploy command verifies provider and signature health
-inside the trusted signing environment.
+Configure signing through the Hot Updater CLI or your signing provider. A
+Console does not inspect signing configuration. A Console running
+[`vault()`](/docs/guides/console-deployment/vault) can hold a bundle signing
+key and sign with it at `/_hot-updater/signing`, which `remoteSigning`
+reaches with a vault token: see
+[Sign with the Console vault](/docs/guides/signing/remote#sign-with-the-console-vault).
+Otherwise a Console needs no signing credentials or permission to sign. The
+deploy command verifies provider and signature health inside the trusted
+signing environment.
 
 ## Configuration States
 
-| `signing` config                        | Native public key     | Result                        |
-| -------------------------------------- | --------------------- | ----------------------------- |
-| Omitted or local `enabled: false`       | Not present           | Normal unsigned updates       |
-| Omitted or local `enabled: false`       | Present               | Updates rejected              |
+| `signing` config                         | Native public key     | Result                        |
+| ---------------------------------------- | --------------------- | ----------------------------- |
+| Omitted or local `enabled: false`        | Not present           | Normal unsigned updates       |
+| Omitted or local `enabled: false`        | Present               | Updates rejected              |
 | Local `enabled: true` or signing adapter | Present and matching  | Signed updates verified       |
 | Local `enabled: true` or signing adapter | Missing or mismatched | Deployment or update rejected |
 
