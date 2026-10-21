@@ -356,6 +356,23 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `leaves from different catalogs never join`() =
+        runBlocking {
+            val state = FakeState().also(::switchedToPr)
+            var generation = 3L
+            val transport = FakeTransport { ok(catalog(emptyList(), generation = generation, channel = "pr-2")) }
+            val checker = NativeUpdateChecker(state, transport)
+
+            val first = checker.checkForUpdate(OPTIONS)!!
+            val again = checker.checkForUpdate(OPTIONS)!!
+            generation = 4L
+            val newer = checker.checkForUpdate(OPTIONS)!!
+
+            assertEquals(first.targetKey, again.targetKey)
+            assertNotEquals(first.targetKey, newer.targetKey)
+        }
+
+    @Test
     fun `the default channel emptied rolls back without a reset`() =
         runBlocking {
             val active =

@@ -464,6 +464,30 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func leavesFromDifferentCatalogsNeverJoin() async throws {
+        let host = FakeUpdateHost()
+        host.channelValue = "pr-2"
+        host.bundleIdValue = bundle1
+        var generation = 3
+        let transport = FakeUpdateTransport { _, _ in
+            NativeUpdateResponse(
+                status: 200,
+                headers: [:],
+                body: catalog(generation: generation, releases: [], channel: "pr-2")
+            )
+        }
+        let checker = makeChecker(host, transport)
+
+        let first = try #require(try await checker.checkForUpdate(options()))
+        let again = try #require(try await checker.checkForUpdate(options()))
+        generation = 4
+        let newer = try #require(try await checker.checkForUpdate(options()))
+
+        #expect(first.targetKey == again.targetKey)
+        #expect(first.targetKey != newer.targetKey)
+    }
+
+    @Test
     func theDefaultChannelEmptiedRollsBackWithoutAReset() async throws {
         let host = FakeUpdateHost()
         host.bundleIdValue = bundle1

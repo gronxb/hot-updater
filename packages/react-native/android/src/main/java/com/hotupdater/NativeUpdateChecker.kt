@@ -822,11 +822,17 @@ internal class NativeUpdateChecker(
                 targetCohorts = emptyList(),
                 transitionKind = "USE_BUILTIN",
                 runsCurrentBundle = runsBuiltIn,
+                // With the catalog's freshness guard, as ordinary selections, so a
+                // leave from an older catalog never joins a current one's staging.
                 targetKey =
                     JSONArray()
                         .put("LEAVE_CHANNEL")
                         .put(channel)
                         .put(input.minimumReleaseId)
+                        .put(guard.catalogId)
+                        .put(guard.generation)
+                        .put(guard.catalogHash)
+                        .put(guard.selectionContextHash)
                         .toString(),
                 install = { _ ->
                     try {

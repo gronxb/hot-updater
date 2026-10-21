@@ -1564,7 +1564,13 @@ final class NativeUpdateChecker {
             bundleId: minimumReleaseId,
             transitionKind: "USE_BUILTIN",
             runsCurrentBundle: runsBuiltIn,
-            targetKey: Self.jsonKey(["LEAVE_CHANNEL", channel, minimumReleaseId]),
+            // With the catalog's freshness guard, as ordinary selections, so a
+            // leave from an older catalog never joins a current one's staging.
+            targetKey: Self.jsonKey([
+                "LEAVE_CHANNEL", channel, minimumReleaseId,
+                guardParams["catalogId"] ?? NSNull(), guardParams["generation"] ?? NSNull(),
+                guardParams["catalogHash"] ?? NSNull(), guardParams["selectionContextHash"] ?? NSNull(),
+            ]),
             checker: self,
             install: install,
             // Current while the device is still switched to the channel and
