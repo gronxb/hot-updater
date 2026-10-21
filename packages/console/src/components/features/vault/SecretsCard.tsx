@@ -59,6 +59,13 @@ export const secretDetails = ({ kind, metadata }: VaultSecret): string => {
       return text("keyAlias") ? `Alias ${text("keyAlias")}` : "";
     case "play-service-account":
       return text("clientEmail") ?? "";
+    case "bundle-signing-key": {
+      const sha256 = text("publicKeySha256");
+      const bits =
+        typeof metadata.bits === "number" ? `RSA ${metadata.bits} · ` : "";
+      // Its first 16 hex digits, as a fingerprint is compared.
+      return sha256 ? `${bits}SHA-256 ${sha256.slice(0, 16)}…` : "";
+    }
     case "deploy-credentials":
     case "generic": {
       const variables = Array.isArray(metadata.variables)
@@ -118,15 +125,17 @@ export function VaultLockedAlert({
         <p>{lockedReason(message)}</p>
         {!empty ? (
           <p>
-            Restore the master key the vault's secrets were saved with (
+            Redeploy the console with the{" "}
+            {knownKeys.length === 1 ? "key" : "keys"} the vault's secrets were
+            saved with (
             {knownKeys.map((kid, index) => (
               <Fragment key={kid}>
                 {index === 0 ? null : ", "}
                 <code className="font-mono">{kid}</code>
               </Fragment>
             ))}
-            ) and redeploy the console: a new key can't open them. Listing,
-            deleting, and tokens keep working.
+            ): a new key can't open them. Listing, deleting, and tokens keep
+            working.
           </p>
         ) : (
           <p>
@@ -261,7 +270,6 @@ export function SecretsCard({
   const locked = status.data?.locked !== false;
   // Adding checks names against the list, so it waits for one.
   const canAdd = !locked && secrets.data !== undefined && !secrets.isError;
-  const names = (secrets.data ?? []).map(({ name }) => name);
 
   return (
     <Card className="overflow-hidden shadow-sm">
@@ -468,12 +476,12 @@ export function SecretsCard({
         )}
       </CardContent>
       <SecretDialog
-        existingNames={names}
         onOpenChange={(open) => {
           if (!open) setEditing(undefined);
         }}
         open={editing === null || editingSecret !== undefined}
         secret={editingSecret}
+        secrets={secrets.data ?? []}
       />
       <DeleteSecretDialog
         onOpenChange={() => setDeleting(null)}

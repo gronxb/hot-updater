@@ -129,7 +129,7 @@ describe("vaultEnv", () => {
       `No deploy-credentials or generic secret the vault token reaches at ${CONSOLE_URL} sets MISSING.`,
     );
     await expect(vaultEnv(["S3_ACCESS_KEY_ID"])()).rejects.toThrow(
-      'S3_ACCESS_KEY_ID is set by the vault\'s secrets "aws", "r2": keep it in one of them.',
+      `S3_ACCESS_KEY_ID is set by more than one secret the vault token at ${CONSOLE_URL} reaches: "aws" (deploy-credentials), "r2" (deploy-credentials). Keep it in one of them: store the others again without S3_ACCESS_KEY_ID with hot-updater secrets put, or delete them in the Console's Vault page.`,
     );
   });
 });

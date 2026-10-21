@@ -1,6 +1,11 @@
 // @vitest-environment node
 
-import { generateKeyPairSync } from "node:crypto";
+import {
+  createHash,
+  createPrivateKey,
+  createPublicKey,
+  generateKeyPairSync,
+} from "node:crypto";
 
 import { mockStorage } from "@hot-updater/mock";
 import {
@@ -17,6 +22,7 @@ import {
   apiKeys,
   type VaultApi,
   vault,
+  type VaultSecret,
   type VaultTokenScope,
 } from "@hot-updater/server/plugins";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -686,6 +692,34 @@ describe("PUT /_hot-updater/vault/v1/secrets/:name", () => {
       value: { privateKey: base64(SIGNING_PEM) },
     });
     expect(response.status).toBe(201);
+    // Its public key's SHA-256, as node:crypto computes it from the PEM.
+    const spki = createPublicKey(SIGNING_PEM).export({
+      format: "der",
+      type: "spki",
+    });
+    expect(((await response.json()) as { secret: VaultSecret }).secret).toEqual(
+      expect.objectContaining({
+        metadata: {
+          bits: 2048,
+          publicKeySha256: createHash("sha256").update(spki).digest("hex"),
+        },
+      }),
+    );
+
+    // A PKCS#1 key, as openssl genrsa writes, is the same key.
+    const pkcs1 = createPrivateKey(SIGNING_PEM)
+      .export({ format: "pem", type: "pkcs1" })
+      .toString();
+    const again = await put(load, token, "ota-key-pkcs1", {
+      kind: "bundle-signing-key",
+      value: { privateKey: base64(pkcs1) },
+    });
+    expect(
+      ((await again.json()) as { secret: VaultSecret }).secret.metadata,
+    ).toEqual({
+      bits: 2048,
+      publicKeySha256: createHash("sha256").update(spki).digest("hex"),
+    });
 
     const resolved = await resolve(load, token, { names: ["ota-key"] });
     expect(resolved.status).toBe(403);

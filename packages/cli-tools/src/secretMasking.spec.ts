@@ -53,6 +53,28 @@ describe("registerSecretValue", () => {
     );
   });
 
+  it("masks a short value only as a whole token, never inside a URL", () => {
+    for (const value of ["1", "0", "127", "3941", "v1"]) {
+      registerSecretValue(value);
+    }
+
+    expect(
+      maskSecretValues(
+        "The Console at http://127.0.0.1:3941 answered 409 for 1.2.0-beta.1",
+      ),
+    ).toBe(
+      "The Console at http://127.0.0.1:3941 answered 409 for 1.2.0-beta.1",
+    );
+    expect(maskSecretValues("user@127 /tmp/0/a v1-final")).toBe(
+      "user@127 /tmp/0/a v1-final",
+    );
+    expect(
+      maskSecretValues('X=1 {"X":"0"} `3941` (127), v1; set to 1. port 3941'),
+    ).toBe(
+      'X=******** {"X":"********"} `********` (********), ********; set to ********. port ********',
+    );
+  });
+
   it("does not mask the short lines of a multi-line value", () => {
     registerSecretValue('{\n  "private_key": "maskJsonPrivateKey"\n}');
 
