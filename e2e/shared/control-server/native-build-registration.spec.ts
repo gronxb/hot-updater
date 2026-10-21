@@ -208,13 +208,20 @@ describe("the checkout an OTA is built in", () => {
       path.join(deployed, "node_modules"),
     );
 
+    const dependency = await fs.realpath(
+      path.join(
+        built,
+        "node_modules/.pnpm/react-native@0.85.0/node_modules/react-native",
+      ),
+    );
+    const checkout = await fs.realpath(deployed);
     await expect(
       assertDependenciesInCheckout({
         checkoutDir: deployed,
         projectDir: path.join(deployed, "app"),
       }),
     ).rejects.toThrow(
-      `resolves react-native to ${await fs.realpath(path.join(built, "node_modules/.pnpm/react-native@0.85.0/node_modules/react-native"))}, outside the checkout ${await fs.realpath(deployed)}`,
+      `resolves react-native to ${dependency}, outside the checkout ${checkout}`,
     );
   });
 });
