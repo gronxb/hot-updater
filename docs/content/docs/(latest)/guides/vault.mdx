@@ -189,7 +189,7 @@ your shell or `.env.hotupdater`, then store each credential:
 | Deploy credentials, the variables of `.env.hotupdater`            | [`npx hot-updater secrets import`](/docs/guides/secrets#move-envhotupdater-into-the-vault), which leaves only the two connection variables in the file                                                               |
 | A new bundle signing key                                          | [`npx hot-updater keys generate --vault`](/docs/guides/signing/remote#sign-with-the-console-vault), which writes only `keys/public-key.pem`. Embed it, and release the native app before its first signed OTA update |
 | The bundle signing key your app already embeds                    | `npx hot-updater secrets put bundle-signing-key --kind bundle-signing-key --private-key keys/private-key.pem`                                                                                                        |
-| App Store Connect API key, Android keystore, Play service account | [`npx hot-updater secrets put`](/docs/guides/secrets#store-a-secret) with `--kind asc-api-key`, `android-keystore`, or `play-service-account`                                                                        |
+| App Store Connect API key, Android keystore, Play service account | [`npx hot-updater secrets put <name> --kind <kind>`](/docs/guides/secrets#store-a-secret), such as `secrets put asc-api-key --kind asc-api-key --p8 ./AuthKey_ABC123.p8 --key-id ABC123 --issuer-id <id>`, with the kind's options |
 
 Revoke the setup token when you are done.
 

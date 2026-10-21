@@ -7632,28 +7632,33 @@ async function startVaultConsoleFixture(signal?: AbortSignal) {
       };
     },
   );
-  vaultConsole = await startVaultConsole({
-    cliPath: HOT_UPDATER_CLI_PATH,
-    consoleServerPath: publishedConsoleServer(),
-    envFileSource,
-    privateKeyPath,
-    projectDir: VAULT_CONSOLE_PROJECT_DIR,
-    workDir,
-    run: (args, options) =>
-      runLoggedCommand("node", args, {
-        cwd: options.cwd,
-        env: options.env,
-        logPath: path.join(workDir, `${options.logName}.log`),
-        signal,
-      }),
-  });
-  // The vault holds the key now; the console signs with it.
-  await fsPromises.rm(privateKeyPath, { force: true });
+  let started: VaultConsole;
+  try {
+    started = await startVaultConsole({
+      cliPath: HOT_UPDATER_CLI_PATH,
+      consoleServerPath: publishedConsoleServer(),
+      envFileSource,
+      privateKeyPath,
+      projectDir: VAULT_CONSOLE_PROJECT_DIR,
+      workDir,
+      run: (args, options) =>
+        runLoggedCommand("node", args, {
+          cwd: options.cwd,
+          env: options.env,
+          logPath: path.join(workDir, `${options.logName}.log`),
+          signal,
+        }),
+    });
+  } finally {
+    // The vault holds the key now; the console signs with it.
+    await fsPromises.rm(privateKeyPath, { force: true });
+  }
+  vaultConsole = started;
   logE2eFixture("vault console started", {
-    url: vaultConsole.url,
+    url: started.url,
     workDir: path.relative(REPO_DIR, workDir),
   });
-  return { consoleUrl: vaultConsole.url };
+  return { consoleUrl: started.url };
 }
 
 async function stopVaultConsoleFixture() {
@@ -7710,9 +7715,17 @@ async function withVaultDeployInputs(
       false,
     );
   } finally {
-    await fsPromises.rename(privateKeyAside, privateKeyPath);
-    await fsPromises.writeFile(fixtureSession.envSourceFile, envSource);
-    await fsPromises.writeFile(fixtureSession.configSourceFile, configSource);
+    // Each input is restored even when another fails to, so no later deploy
+    // of this checkout runs on the vault's inputs.
+    const restored = await Promise.allSettled([
+      fsPromises.rename(privateKeyAside, privateKeyPath),
+      fsPromises.writeFile(fixtureSession.envSourceFile, envSource),
+      fsPromises.writeFile(fixtureSession.configSourceFile, configSource),
+    ]);
+    const failed = restored.find(
+      (result): result is PromiseRejectedResult => result.status === "rejected",
+    );
+    if (failed) throw failed.reason;
   }
 }
 
