@@ -6047,7 +6047,11 @@ async function resetCheckoutInputs() {
       fixtureSession.appSourceFile,
     );
   }
-  if (!fixtureSession.widgetAppBackupPath) {
+  // Only a brownfield target's app has the widget runtime.
+  if (
+    !fixtureSession.widgetAppBackupPath &&
+    currentE2eTarget().kind === "brownfield"
+  ) {
     fixtureSession.widgetAppBackupPath = await backupFile(
       fixtureSession.widgetAppSourceFile,
     );
@@ -6088,13 +6092,15 @@ async function resetCheckoutInputs() {
     safeBundleIds: [],
   });
   // The widget's embedded bundle shows the same marker as the example's.
-  await applyAppScenario({
-    bundleProfile: "default",
-    marker: fixtureSession.initialMarker,
-    mode: "reset",
-    safeBundleIds: [],
-    sourceFile: fixtureSession.widgetAppSourceFile,
-  });
+  if (currentE2eTarget().kind === "brownfield") {
+    await applyAppScenario({
+      bundleProfile: "default",
+      marker: fixtureSession.initialMarker,
+      mode: "reset",
+      safeBundleIds: [],
+      sourceFile: fixtureSession.widgetAppSourceFile,
+    });
+  }
 }
 
 async function bootstrap(signal?: AbortSignal) {
