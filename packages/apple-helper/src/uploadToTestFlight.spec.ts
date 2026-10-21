@@ -261,12 +261,17 @@ describe("uploadToTestFlight", () => {
       testFlightUrl:
         "https://appstoreconnect.apple.com/apps/123/testflight/ios",
     });
-    expect(requests.map(({ method, url }) => `${method} ${url}`)).toEqual([
+    const sent = requests.map(({ method, url }) => `${method} ${url}`);
+    // The parts go out at once, so they finish in either order.
+    expect([
+      ...sent.slice(0, 3),
+      ...sent.slice(3, 5).sort(),
+      ...sent.slice(5),
+    ]).toEqual([
       `GET ${appsUrl}`,
       `POST ${API}/v1/buildUploads`,
       `POST ${API}/v1/buildUploadFiles`,
-      `PUT ${PART_URL_1}`,
-      `PUT ${PART_URL_2}`,
+      ...[`PUT ${PART_URL_1}`, `PUT ${PART_URL_2}`].sort(),
       `PATCH ${API}/v1/buildUploadFiles/file-1`,
       `GET ${API}/v1/buildUploads/upload-1`,
       `GET ${API}/v1/buildUploads/upload-1`,
