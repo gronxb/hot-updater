@@ -379,6 +379,9 @@ protocol NativeUpdateHost: NativeUpdateEventStorage {
         progress: @escaping (Double) -> Void
     ) async throws -> Any?
     func resetChannel() async -> Bool
+    /// Resets the channel only while the Release selection `guardParams`
+    /// names is current, in one step with the catalog checks.
+    func resetChannelIfSelectionCurrent(_ guardParams: [String: Any]) async -> Bool
     func releaseCatalogCache(_ partition: String) -> String?
     func setReleaseCatalogCache(_ partition: String, value: String) -> Bool
     func removeReleaseCatalogCache(_ partition: String)
@@ -1526,15 +1529,18 @@ final class NativeUpdateChecker {
         )
         let install = { [self] (_: @escaping (Double) -> Void) async throws -> Bool in
             do {
-                // A device that left or changed the channel, or saw a newer
-                // catalog of it, meanwhile keeps it.
-                guard host.channel() == channel, host.isReleaseSelectionCurrent(guardParams) else {
+                // A device that left or changed the channel meanwhile keeps it.
+                guard host.channel() == channel else {
                     throw NativeUpdateCheckError.staleReleaseCatalog
                 }
-                // The staging holds the gate, as `resetChannel()` waits for.
-                let reset = await host.resetChannel()
-                if reset { NativeUpdateEvents.remove(name: "onBundleDownloaded", from: host) }
-                return reset
+                // The staging holds the gate, as `resetChannel()` waits for;
+                // native checks the catalog again in the same step as the
+                // reset, so a newer one accepted meanwhile keeps the channel.
+                guard await host.resetChannelIfSelectionCurrent(guardParams) else {
+                    throw NativeUpdateCheckError.staleReleaseCatalog
+                }
+                NativeUpdateEvents.remove(name: "onBundleDownloaded", from: host)
+                return true
             } catch {
                 reportUpdateError(error, stage: "download", resource: "artifact", scope: errorScope)
                 throw error

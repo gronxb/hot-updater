@@ -1621,6 +1621,12 @@ private final class FakeUpdateHost: MemoryEventStorage, NativeUpdateHost, @unche
         return true
     }
 
+    func resetChannelIfSelectionCurrent(_ guardParams: [String: Any]) async -> Bool {
+        guard isReleaseSelectionCurrent(guardParams) else { return false }
+        recordReset()
+        return true
+    }
+
     private func recordCommit(_ params: [String: Any]) {
         lock.lock()
         defer { lock.unlock() }

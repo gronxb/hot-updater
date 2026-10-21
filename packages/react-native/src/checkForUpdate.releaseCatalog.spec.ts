@@ -50,6 +50,7 @@ const mocks = vi.hoisted(() => {
     isChannelSwitched: vi.fn(() => false),
     isReleaseSelectionCurrent: vi.fn(() => true),
     resetChannel: vi.fn(),
+    resetChannelIfSelectionCurrent: vi.fn(),
     supportsArtifactFiles: vi.fn(() => true),
     stageBundle: vi.fn(
       async (): Promise<{
@@ -1209,7 +1210,7 @@ describe("checkForUpdate Release catalog protocol", () => {
     };
 
     beforeEach(() => {
-      mocks.resetChannel.mockResolvedValue(true as never);
+      mocks.resetChannelIfSelectionCurrent.mockResolvedValue(true as never);
     });
 
     afterEach(() => {
@@ -1245,9 +1246,18 @@ describe("checkForUpdate Release catalog protocol", () => {
         transitionKind: "USE_BUILTIN",
       });
       // The check itself changes nothing.
-      expect(mocks.resetChannel).not.toHaveBeenCalled();
+      expect(mocks.resetChannelIfSelectionCurrent).not.toHaveBeenCalled();
       await expect(result?.updateBundle()).resolves.toBe(true);
-      expect(mocks.resetChannel).toHaveBeenCalledTimes(1);
+      // Native resets only while the accepted empty catalog is current.
+      expect(mocks.resetChannelIfSelectionCurrent).toHaveBeenCalledWith({
+        catalogId: CATALOG_ID,
+        catalogHash: CATALOG_HASH,
+        channel: PR_CHANNEL,
+        generation: 3,
+        scopeKey: PR_SCOPE_KEY,
+        selectionContextHash: expect.any(String),
+      });
+      expect(mocks.resetChannelIfSelectionCurrent).toHaveBeenCalledTimes(1);
       // Nothing is selected inside the channel it leaves.
       expect(mocks.commitReleaseSelection).not.toHaveBeenCalled();
       expect(mocks.stageBundle).not.toHaveBeenCalled();
@@ -1256,7 +1266,7 @@ describe("checkForUpdate Release catalog protocol", () => {
 
     it("lets another result of the same check target count the leave as done", async () => {
       switchToPr();
-      mocks.resetChannel.mockImplementation(async () => {
+      mocks.resetChannelIfSelectionCurrent.mockImplementation(async () => {
         mocks.isChannelSwitched.mockReturnValue(false);
         mocks.getChannel.mockReturnValue(CHANNEL);
         return true as never;
@@ -1275,7 +1285,7 @@ describe("checkForUpdate Release catalog protocol", () => {
 
       await expect(first?.updateBundle()).resolves.toBe(true);
       await expect(second?.updateBundle()).resolves.toBe(true);
-      expect(mocks.resetChannel).toHaveBeenCalledTimes(1);
+      expect(mocks.resetChannelIfSelectionCurrent).toHaveBeenCalledTimes(1);
     });
 
     it("stays when its scope answers no catalog, which proves nothing", async () => {
@@ -1287,7 +1297,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       await expect(
         checkForUpdate({ emit, client, updateStrategy: "appVersion" }),
       ).resolves.toBeNull();
-      expect(mocks.resetChannel).not.toHaveBeenCalled();
+      expect(mocks.resetChannelIfSelectionCurrent).not.toHaveBeenCalled();
     });
 
     it("stays when the empty catalog is stale", async () => {
@@ -1299,7 +1309,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       await expect(
         checkForUpdate({ emit, client, updateStrategy: "appVersion" }),
       ).resolves.toBeNull();
-      expect(mocks.resetChannel).not.toHaveBeenCalled();
+      expect(mocks.resetChannelIfSelectionCurrent).not.toHaveBeenCalled();
     });
 
     it("stays when a newer catalog arrived before the update", async () => {
@@ -1311,13 +1321,18 @@ describe("checkForUpdate Release catalog protocol", () => {
         client,
         updateStrategy: "appVersion",
       });
-      mocks.isReleaseSelectionCurrent.mockReturnValue(false);
+      // Native finds the catalog stale in the step that would reset.
+      mocks.resetChannelIfSelectionCurrent.mockResolvedValueOnce(
+        false as never,
+      );
 
       const { StaleReleaseCatalogError } = await import("./error");
       await expect(result?.updateBundle()).rejects.toBeInstanceOf(
         StaleReleaseCatalogError,
       );
-      expect(mocks.resetChannel).not.toHaveBeenCalled();
+      expect(mocks.resetChannelIfSelectionCurrent).toHaveBeenCalledWith(
+        expect.objectContaining({ generation: 3, scopeKey: PR_SCOPE_KEY }),
+      );
     });
 
     it("needs no reload when the device already runs the built-in bundle", async () => {
@@ -1337,7 +1352,7 @@ describe("checkForUpdate Release catalog protocol", () => {
         transitionKind: "USE_BUILTIN",
       });
       await result?.updateBundle();
-      expect(mocks.resetChannel).toHaveBeenCalledTimes(1);
+      expect(mocks.resetChannelIfSelectionCurrent).toHaveBeenCalledTimes(1);
     });
 
     it("keeps a channel the device left or changed before the update", async () => {
@@ -1355,7 +1370,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       await expect(result?.updateBundle()).rejects.toBeInstanceOf(
         StaleReleaseCatalogError,
       );
-      expect(mocks.resetChannel).not.toHaveBeenCalled();
+      expect(mocks.resetChannelIfSelectionCurrent).not.toHaveBeenCalled();
     });
 
     it("stays on a switched channel whose releases exclude this device", async () => {
@@ -1386,7 +1401,7 @@ describe("checkForUpdate Release catalog protocol", () => {
       });
       await result?.updateBundle();
 
-      expect(mocks.resetChannel).not.toHaveBeenCalled();
+      expect(mocks.resetChannelIfSelectionCurrent).not.toHaveBeenCalled();
     });
 
     it("rolls back on the default channel without resetting it", async () => {
@@ -1412,7 +1427,7 @@ describe("checkForUpdate Release catalog protocol", () => {
 
       expect(result).toMatchObject({ transitionKind: "USE_BUILTIN" });
       expect(mocks.commitReleaseSelection).toHaveBeenCalledTimes(1);
-      expect(mocks.resetChannel).not.toHaveBeenCalled();
+      expect(mocks.resetChannelIfSelectionCurrent).not.toHaveBeenCalled();
     });
 
     it("leaves an explicit check of an empty channel unchanged", async () => {
@@ -1435,7 +1450,7 @@ describe("checkForUpdate Release catalog protocol", () => {
           updateStrategy: "appVersion",
         }),
       ).resolves.toBeNull();
-      expect(mocks.resetChannel).not.toHaveBeenCalled();
+      expect(mocks.resetChannelIfSelectionCurrent).not.toHaveBeenCalled();
     });
   });
 });

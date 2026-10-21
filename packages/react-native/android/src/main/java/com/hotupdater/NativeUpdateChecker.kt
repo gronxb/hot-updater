@@ -109,8 +109,12 @@ internal interface UpdateCheckState {
 
     suspend fun commitReleaseSelection(selection: PersistedSelection): Boolean
 
-    /** Clears the runtime channel and restores the built-in bundle, as `resetChannel` does. */
-    suspend fun resetChannel(): Boolean
+    /**
+     * Clears the runtime channel and restores the built-in bundle, as
+     * `resetChannel` does, only while the Release selection [guard] names is
+     * current: one step with the catalog checks.
+     */
+    suspend fun resetChannelIfSelectionCurrent(guard: ReleaseSelectionGuard): Boolean
 
     /** Stages a bundle, reporting its download progress from 0 to 1. */
     suspend fun updateBundle(
@@ -854,18 +858,16 @@ internal class NativeUpdateChecker(
                             if (lastLeftTargetKey == targetKey && state.getChannel() == state.getDefaultChannel()) {
                                 return@withLock true
                             }
-                            // A device that left or changed the channel, or saw a newer
-                            // catalog of it, meanwhile keeps it.
-                            if (state.getChannel() != channel || !state.isReleaseSelectionCurrent(guard)) {
+                            // A device that left or changed the channel meanwhile keeps it;
+                            // native checks the catalog again in the same step as the reset,
+                            // so a newer one accepted meanwhile keeps it too.
+                            if (state.getChannel() != channel || !state.resetChannelIfSelectionCurrent(guard)) {
                                 throw StaleReleaseCatalogException()
                             }
                             lastCommittedTargetKey = null
-                            state.resetChannel().also { reset ->
-                                if (reset) {
-                                    lastLeftTargetKey = targetKey
-                                    events.remove("onBundleDownloaded")
-                                }
-                            }
+                            lastLeftTargetKey = targetKey
+                            events.remove("onBundleDownloaded")
+                            true
                         }
                     } catch (error: CancellationException) {
                         throw error

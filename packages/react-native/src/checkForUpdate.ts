@@ -34,7 +34,7 @@ import {
   getCrashHistory,
   isReleaseSelectionCurrent,
   isChannelSwitched,
-  resetChannel,
+  resetChannelIfSelectionCurrent,
   stageBundle,
   supportsArtifactFiles,
 } from "./native";
@@ -566,18 +566,18 @@ function leaveSwitchedChannel(
       if (lastLeftKey === leaveKey && !isChannelSwitched()) return true;
       resetProgress();
       try {
-        // A device that left or changed the channel, or saw a newer catalog
-        // of it, meanwhile keeps it.
+        // A device that left or changed the channel meanwhile keeps it; a
+        // newer catalog of it accepted meanwhile keeps it too, checked again
+        // in the same native step as the reset.
         if (
           !isChannelSwitched() ||
           getChannel() !== input.currentChannel ||
-          !isReleaseSelectionCurrent(guard)
+          !(await resetChannelIfSelectionCurrent(guard))
         ) {
           throw new StaleReleaseCatalogError();
         }
-        const left = await resetChannel();
-        if (left) lastLeftKey = leaveKey;
-        return left;
+        lastLeftKey = leaveKey;
+        return true;
       } catch (error) {
         reportUpdateError(
           options.emit,

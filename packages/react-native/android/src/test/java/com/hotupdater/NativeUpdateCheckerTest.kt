@@ -118,7 +118,8 @@ class NativeUpdateCheckerTest {
 
         val resets = AtomicInteger()
 
-        override suspend fun resetChannel(): Boolean {
+        override suspend fun resetChannelIfSelectionCurrent(guard: ReleaseSelectionGuard): Boolean {
+            if (!isReleaseSelectionCurrent(guard)) return false
             resets.incrementAndGet()
             channelName = defaultChannelName
             return true

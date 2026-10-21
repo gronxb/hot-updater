@@ -1257,6 +1257,45 @@ struct BundleFileStorageServiceTests {
     }
 
     @Test
+    func aGuardedChannelResetKeepsTheChannelForAStaleSelection() throws {
+        let workingDirectory = try makeWorkingDirectory()
+        defer { cleanupWorkingDirectory(workingDirectory) }
+        let service = makeStorageService(documentsDirectory: workingDirectory)
+        let accept = { (generation: Int64, context: String) in
+            service.acceptReleaseCatalog(
+                catalogId: "project-a",
+                scopeKey: "scope-pr-2",
+                generation: generation,
+                catalogHash: "hash-\(generation)",
+                channel: "pr-2",
+                selectionContextHash: context
+            )
+        }
+        let reset = { (generation: Int64, context: String) in
+            service.resetChannelIfSelectionCurrent(
+                catalogId: "project-a",
+                scopeKey: "scope-pr-2",
+                generation: generation,
+                catalogHash: "hash-\(generation)",
+                channel: "pr-2",
+                selectionContextHash: context
+            )
+        }
+        #expect(accept(3, "context-3"))
+        // A newer catalog of the channel arrives before the leave.
+        #expect(accept(4, "context-4"))
+
+        #expect(try reset(3, "context-3").get() == false)
+        // Nothing was reset: the newer catalog's selection still stages.
+        let kept = try #require(loadMetadata(documentsDirectory: workingDirectory))
+        #expect(kept.currentSelectionContexts["project-a|scope-pr-2"] != nil)
+
+        #expect(try reset(4, "context-4").get())
+        let cleared = try #require(loadMetadata(documentsDirectory: workingDirectory))
+        #expect(cleared.currentSelectionContexts.isEmpty)
+    }
+
+    @Test
     func catalogHighWaterRejectsReplayAndSurvivesChannelReset() throws {
         let workingDirectory = try makeWorkingDirectory()
         defer { cleanupWorkingDirectory(workingDirectory) }
