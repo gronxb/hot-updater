@@ -15,6 +15,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useNativeBuildDownloadUrlQuery, useNativeBuildQuery } from "@/lib/api";
 import {
+  apkInstallCommand,
   formatByteSize,
   nativeBuildArtifacts,
   nativeBuildDownloadPath,
@@ -77,7 +78,7 @@ function InstallSteps({ build }: { readonly build: NativeBuildRow }) {
           <p className="text-xs text-muted-foreground">On an emulator:</p>
           <CopyableText
             label="the install command"
-            value={`adb install -r "${nativeBuildFileName(build)}"`}
+            value={apkInstallCommand(build)}
           />
         </div>
       );

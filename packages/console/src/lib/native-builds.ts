@@ -3,6 +3,8 @@ import type {
   NativeBuildRow,
 } from "@hot-updater/plugin-core";
 
+import { shellQuote } from "./shell";
+
 /** How each artifact installs, as the Console's install dialog shows it. */
 export const nativeBuildArtifacts: Record<
   NativeBuildArtifactKind,
@@ -58,5 +60,9 @@ export const formatByteSize = (bytes: number): string => {
 export const simulatorInstallCommand = (build: NativeBuildRow) => {
   const archive = nativeBuildFileName(build);
   const app = archive.replace(/\.zip$/, "");
-  return `unzip -o "${archive}" && xcrun simctl install booted "${app}"`;
+  return `unzip -o ${shellQuote(archive)} && xcrun simctl install booted ${shellQuote(app)}`;
 };
+
+/** The command that installs a downloaded APK on an Android device or emulator. */
+export const apkInstallCommand = (build: NativeBuildRow) =>
+  `adb install -r ${shellQuote(nativeBuildFileName(build))}`;

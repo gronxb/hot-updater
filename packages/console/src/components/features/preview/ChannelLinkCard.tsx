@@ -22,6 +22,7 @@ import {
 } from "@/components/ui/empty";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
+import { androidOpenLinkCommand, iosOpenLinkCommand } from "@/lib/shell";
 
 import { CopyableText } from "./CopyableText";
 
@@ -197,14 +198,14 @@ export function ChannelLinkCard({
                   </p>
                   <CopyableText
                     label="the Android command"
-                    value={`adb shell am start -a android.intent.action.VIEW -d "${link}"`}
+                    value={androidOpenLinkCommand(link)}
                   />
                   <p className="pt-2 text-xs text-muted-foreground">
                     On the booted iOS Simulator:
                   </p>
                   <CopyableText
                     label="the iOS Simulator command"
-                    value={`xcrun simctl openurl booted "${link}"`}
+                    value={iosOpenLinkCommand(link)}
                   />
                 </div>
               )}

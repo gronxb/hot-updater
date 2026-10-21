@@ -200,7 +200,7 @@ describe("InstallBuildDialog", () => {
 
     expect(
       screen.getByText(
-        'unzip -o "HotUpdaterExample.app.zip" && xcrun simctl install booted "HotUpdaterExample.app"',
+        "unzip -o HotUpdaterExample.app.zip && xcrun simctl install booted HotUpdaterExample.app",
       ),
     ).toBeTruthy();
     expect(downloadUrlQuery).not.toHaveBeenCalled();
@@ -248,7 +248,7 @@ describe("ChannelLinkCard", () => {
     ).toHaveProperty("href", "myapp://hot-updater/channel/pr-12");
     expect(
       screen.getByText(
-        'xcrun simctl openurl booted "myapp://hot-updater/channel/pr-12"',
+        "xcrun simctl openurl booted myapp://hot-updater/channel/pr-12",
       ),
     ).toBeTruthy();
   });
