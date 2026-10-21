@@ -44,6 +44,10 @@ the [Console's vault](/docs/guides/console-deployment/vault).
   for each previewed platform: a Release APK for Android, signed with a
   `vault:` keystore, and a scheme with `simulator: true` for iOS, which builds
   a Simulator `.app` that needs no signing.
+- The registry tells native builds apart by platform, channel, and
+  fingerprint or app version, not by scheme. A project that previews several
+  apps, such as flavors with their own application IDs, gives each app its
+  own `preview-channel` and runs the action once per app.
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";
