@@ -1,3 +1,9 @@
+import type { DatabaseJson } from "@hot-updater/plugin-core";
+import {
+  type VaultSecretKind,
+  vaultSecretMetadata,
+} from "@hot-updater/server/plugins";
+
 /**
  * A vault `bundle-signing-key` opened for signing with WebCrypto alone, so
  * the console signs on every runtime it deploys to, Workers included.
@@ -5,6 +11,14 @@
 export interface BundleSigningKey {
   /** The SPKI public key in PEM, which `createBundleSigningHandler` serves. */
   readonly publicKey: string;
+  /**
+   * The SHA-256 of the public key's SPKI DER, in hex: what
+   * `openssl pkey -pubin -in public-key.pem -outform DER | openssl dgst -sha256`
+   * prints for the key's public half.
+   */
+  readonly publicKeySha256: string;
+  /** The RSA modulus length: 2048, 3072, or 4096. */
+  readonly bits: number;
   /** RSA PKCS#1 v1.5 with SHA-256 over `message`, the bundle signing protocol. */
   sign(message: Uint8Array): Promise<Uint8Array>;
 }
@@ -107,12 +121,15 @@ export const openBundleSigningKey = async (
     true,
     ["verify"],
   );
-  const spki = bytesToBase64(
-    new Uint8Array(await crypto.subtle.exportKey("spki", publicKey)),
-  );
-  const lines = spki.match(/.{1,64}/gu) ?? [];
+  const der = new Uint8Array(await crypto.subtle.exportKey("spki", publicKey));
+  const lines = bytesToBase64(der).match(/.{1,64}/gu) ?? [];
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", der));
   return {
     publicKey: `-----BEGIN PUBLIC KEY-----\n${lines.join("\n")}\n-----END PUBLIC KEY-----\n`,
+    publicKeySha256: Array.from(digest, (byte) =>
+      byte.toString(16).padStart(2, "0"),
+    ).join(""),
+    bits: modulusLength,
     sign: async (message) =>
       new Uint8Array(
         await crypto.subtle.sign(
@@ -122,4 +139,20 @@ export const openBundleSigningKey = async (
         ),
       ),
   };
+};
+
+/**
+ * What a secret's value shows without its secrets, as the console stores it
+ * in the secret's metadata: the vault's per-kind fields, and for a bundle
+ * signing key its size and public key's SHA-256, so the Vault page tells
+ * keys apart and a user can match one to their `public-key.pem`.
+ */
+export const vaultSecretMetadataOf = async (
+  kind: VaultSecretKind,
+  value: unknown,
+): Promise<Record<string, DatabaseJson>> => {
+  const metadata = vaultSecretMetadata(kind, value as never);
+  if (kind !== "bundle-signing-key") return metadata;
+  const { bits, publicKeySha256 } = await openBundleSigningKey(value);
+  return { ...metadata, bits, publicKeySha256 };
 };

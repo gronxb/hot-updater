@@ -10,7 +10,6 @@ import {
   type VaultAuditEntry,
   type VaultSecret,
   type VaultSecretKind,
-  vaultSecretMetadata,
   type VaultToken,
 } from "@hot-updater/server/plugins";
 
@@ -18,6 +17,7 @@ import {
   type BundleSigningKey,
   BundleSigningKeyError,
   openBundleSigningKey,
+  vaultSecretMetadataOf,
 } from "./bundleSigningKey";
 import type { ConsoleRuntime } from "./runtime.server";
 
@@ -531,13 +531,14 @@ export const putVaultSecret = (
       }
       throw error;
     }
+    const metadata = await vaultSecretMetadataOf(write.kind, value);
     let secret: VaultSecret;
     try {
       secret = await vault.put({
         name,
         kind: write.kind,
         value,
-        metadata: vaultSecretMetadata(write.kind, value as never),
+        metadata,
         expectedVersion: write.expectedVersion ?? existing?.version ?? 0,
         // In the write's transaction: logged exactly when it is stored.
         audit: { actor: token.id, context },

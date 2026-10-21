@@ -76,7 +76,7 @@ export async function runGradle({
 
   p.log.info(`Run Gradle Settings: 
 Project    ${androidProjectPath}
-App Moudle ${appModuleName}
+App Module ${appModuleName}
 Tasks      ${tasks.join(", ")}
 Args       ${gradleArgs.join(" ")}
 `);

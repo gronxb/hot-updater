@@ -359,8 +359,8 @@ const keyringResolver = (options: VaultOptions) => {
         encoded,
         keyring: importKeyring(input).then((keyring) => {
           if (keyring !== null) return keyring;
-          throw new VaultLockedError(
-            `The vault is locked: set ${VAULT_MASTER_KEY_ENV} where the Console runs to seal and reveal secrets.`,
+          throw new NoMasterKeyError(
+            `The vault is locked: set ${VAULT_MASTER_KEY_ENV}, or ${VAULT_MASTER_KEYS_ENV} for named keys, where the Console runs to seal and reveal secrets.`,
           );
         }),
       };
@@ -368,6 +368,13 @@ const keyringResolver = (options: VaultOptions) => {
     return cached.keyring;
   };
 };
+
+/**
+ * The Console holds no master key at all. Where the vault knows its keys,
+ * the error names them instead, as `notHeld` does: after a rotation the
+ * single-key variable is not where the vault's key goes.
+ */
+class NoMasterKeyError extends VaultLockedError {}
 
 /**
  * The row of `secrets` that holds a check value per master key the vault
@@ -824,7 +831,24 @@ export const createVaultApi = ({
   readonly now: () => number;
   readonly options?: VaultOptions;
 }): VaultApi => {
-  const keyringOf = keyringResolver(options);
+  const resolveKeyring = keyringResolver(options);
+  /**
+   * The Console's keys; without any, a locked error naming the keys the
+   * vault knows, read only then: its keys row, or without one its stored
+   * versions, as `status` reads them.
+   */
+  const keyringOf = async () => {
+    try {
+      return await resolveKeyring();
+    } catch (error) {
+      if (!(error instanceof NoMasterKeyError)) throw error;
+      const keysRow = await db.findOne("secrets", { id: KEYS_ROW_ID });
+      const known = Object.keys(
+        keysRow === null ? await findSealed() : keyChecksOf(keysRow),
+      );
+      throw known.length > 0 ? notHeld(known) : error;
+    }
+  };
 
   /** The stored versions under one master key, a page at a time. */
   const countVersions = async (kid: string) => {
@@ -1039,7 +1063,7 @@ export const createVaultApi = ({
     async status() {
       let keyring: VaultKeyring | VaultLockedError;
       try {
-        keyring = await keyringOf();
+        keyring = await resolveKeyring();
       } catch (error) {
         if (!(error instanceof VaultLockedError)) throw error;
         keyring = error;
@@ -1048,7 +1072,11 @@ export const createVaultApi = ({
       const checks = keyChecksOf(keysRow);
       // Without a keys row, stored versions stand in for the checks.
       const sealed = keysRow === null ? await findSealed() : {};
+      const known = Object.keys(keysRow === null ? sealed : checks);
       try {
+        if (keyring instanceof NoMasterKeyError && known.length > 0) {
+          throw notHeld(known);
+        }
         if (keyring instanceof VaultLockedError) throw keyring;
         if (keysRow === null) await checkSealed(keyring, sealed);
         else await checkKeyring(keyring, checks);
@@ -1058,9 +1086,7 @@ export const createVaultApi = ({
         return Object.freeze({
           locked: true,
           message: error.message,
-          knownKeys: Object.freeze(
-            Object.keys(keysRow === null ? sealed : checks),
-          ),
+          knownKeys: Object.freeze(known),
         } as const);
       }
     },
@@ -1068,7 +1094,7 @@ export const createVaultApi = ({
     async keys() {
       let keyring: VaultKeyring | undefined;
       try {
-        keyring = await keyringOf();
+        keyring = await resolveKeyring();
       } catch (error) {
         if (!(error instanceof VaultLockedError)) throw error;
       }

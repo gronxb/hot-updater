@@ -274,6 +274,29 @@ const PUBLIC_FIELDS = new Set(["keyId", "issuerId", "keyAlias"]);
 /** The file fields whose contents are text, such as a PEM. */
 const TEXT_FILE_FIELDS = new Set(["p8", "serviceAccount", "privateKey"]);
 
+const VARIABLE_KINDS: ReadonlySet<VaultSecretKind> = new Set([
+  "deploy-credentials",
+  "generic",
+]);
+
+/**
+ * The variables of `variables` that another key/value secret of `secrets`
+ * already sets, as `NAME (secret, kind)`: a command whose vault token
+ * reaches both secrets refuses such a variable.
+ */
+const variablesSetElsewhere = (
+  secrets: readonly VaultSecretMetadata[],
+  name: string,
+  variables: readonly string[],
+): string[] =>
+  secrets.flatMap((secret) =>
+    secret.name !== name && VARIABLE_KINDS.has(secret.kind)
+      ? vaultSecretVariables(secret)
+          .filter((variable) => variables.includes(variable))
+          .map((variable) => `${variable} (${secret.name}, ${secret.kind})`)
+      : [],
+  );
+
 /**
  * `secrets put`: stores a secret's next version through the Console, which
  * seals it with its master key; the token's scope must allow `write` on it.
@@ -293,6 +316,20 @@ export const handleSecretsPut = async (
         registerSecretValue(entry);
         if (TEXT_FILE_FIELDS.has(field)) {
           registerSecretValue(Buffer.from(entry, "base64").toString("utf-8"));
+        }
+      }
+      if (VARIABLE_KINDS.has(options.kind)) {
+        // Only a warning: secrets behind separately scoped tokens, such as
+        // one per environment, may set the same variable.
+        const elsewhere = variablesSetElsewhere(
+          await client.list().catch(() => []),
+          name,
+          Object.keys(value),
+        );
+        if (elsewhere.length > 0) {
+          p.log.warn(
+            `The vault's other secrets already set ${elsewhere.join(", ")}. A command whose vault token reaches both refuses ${elsewhere.length === 1 ? "it" : "them"}: keep each variable in one secret.`,
+          );
         }
       }
       const secret = await client.put({ name, kind: options.kind, value });
@@ -518,14 +555,7 @@ export const handleSecretsImport = async (
     }
     const listed = await client.list();
     const existing = listed.find((secret) => secret.name === name);
-    const elsewhere = listed.flatMap((secret) =>
-      secret.name !== name &&
-      (secret.kind === "deploy-credentials" || secret.kind === "generic")
-        ? vaultSecretVariables(secret)
-            .filter((variable) => Object.hasOwn(value, variable))
-            .map((variable) => `${variable} (${secret.name})`)
-        : [],
-    );
+    const elsewhere = variablesSetElsewhere(listed, name, Object.keys(value));
     if (elsewhere.length > 0) {
       throw new Error(
         `The vault's other secrets already set ${elsewhere.join(", ")}: a variable is kept in one secret. Remove ${elsewhere.length === 1 ? "it" : "them"} there, or from ${file}, first.`,

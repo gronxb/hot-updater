@@ -570,6 +570,74 @@ describe("vault master keys", () => {
     await expect(a.status()).resolves.toMatchObject({ locked: true });
   });
 
+  it("names the keys a vault was saved with when the Console holds none", async () => {
+    vi.stubEnv("HOT_UPDATER_VAULT_MASTER_KEYS", "");
+    vi.stubEnv("HOT_UPDATER_VAULT_MASTER_KEY", "");
+    const { console, db } = start();
+    const empty = console({});
+    await expect(empty.status()).resolves.toEqual({
+      locked: true,
+      message:
+        "The vault is locked: set HOT_UPDATER_VAULT_MASTER_KEY, or HOT_UPDATER_VAULT_MASTER_KEYS for named keys, where the Console runs to seal and reveal secrets.",
+      knownKeys: [],
+    });
+
+    const rotated = await console({ masterKeys: `2026-10:${KEY_B}` }).put({
+      name: "deploy",
+      kind: "generic",
+      value: "v",
+    });
+    const named =
+      'The vault is locked: its secrets are saved under the master key "2026-10", which the Console does not hold. List it in HOT_UPDATER_VAULT_MASTER_KEYS as "2026-10:<key>", after the new key to rotate to the new one.';
+    await expect(empty.status()).resolves.toEqual({
+      locked: true,
+      message: named,
+      knownKeys: ["2026-10"],
+    });
+    // Writes, reveals, and rewraps say the same, as the Console routes'
+    // 503 does, and keep the name the routes match.
+    for (const refused of [
+      empty.put({ name: "other", kind: "generic", value: "x" }),
+      empty.reveal({ id: rotated.id, actor: "tok-ci" }),
+      empty.rewrap(),
+    ]) {
+      await expect(refused).rejects.toMatchObject({
+        name: "VaultLockedError",
+        message: named,
+      });
+    }
+
+    // A vault without a keys row names the kids its versions use.
+    await db.transaction(async (tx) => {
+      const row = await tx.findOne("secrets", { id: ".master-keys" });
+      if (row !== null) await tx.delete("secrets", row);
+    });
+    await expect(empty.status()).resolves.toMatchObject({
+      message: named,
+      knownKeys: ["2026-10"],
+    });
+    for (const refused of [
+      empty.put({ name: "other", kind: "generic", value: "x" }),
+      empty.reveal({ id: rotated.id, actor: "tok-ci" }),
+      empty.rewrap(),
+    ]) {
+      await expect(refused).rejects.toMatchObject({ message: named });
+    }
+
+    // A vault on the single key still points at its variable.
+    const single = start().console;
+    await single({ masterKey: KEY_A }).put({
+      name: "deploy",
+      kind: "generic",
+      value: "v",
+    });
+    await expect(single({}).status()).resolves.toMatchObject({
+      message: expect.stringContaining(
+        'master key "default", which the Console does not hold. Set it in HOT_UPDATER_VAULT_MASTER_KEY',
+      ),
+    });
+  });
+
   it("refuses a rewrap without a key or with a batch out of range", async () => {
     const { console } = start();
     await expect(console({}).rewrap()).rejects.toThrow(VaultLockedError);

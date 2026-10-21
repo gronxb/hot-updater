@@ -30,9 +30,6 @@ export const vaultSecretVariables = (
     : [];
 };
 
-const quoted = (names: readonly string[]) =>
-  names.map((name) => `"${name}"`).join(", ");
-
 export interface ResolveVaultVariablesOptions {
   /** The variables to resolve; without it, every one the secrets list but those `except` keeps out. */
   readonly names?: readonly string[];
@@ -67,6 +64,7 @@ export const resolveVaultVariables = async (
       holders.set(variable, [...(holders.get(variable) ?? []), secret.name]);
     }
   }
+  const kindOf = new Map(secrets.map((secret) => [secret.name, secret.kind]));
   const wanted = names ?? [...holders.keys()].filter((name) => !except(name));
   const missing = wanted.filter((name) => !holders.has(name));
   if (missing.length > 0) {
@@ -78,7 +76,7 @@ export const resolveVaultVariables = async (
     const from = holders.get(name)!;
     if (from.length > 1) {
       throw new Error(
-        `${name} is set by the vault's secrets ${quoted(from)}: keep it in one of them.`,
+        `${name} is set by more than one secret the vault token at ${client.url} reaches: ${from.map((secret) => `"${secret}" (${kindOf.get(secret)})`).join(", ")}. Keep it in one of them: store the others again without ${name} with hot-updater secrets put, or delete them in the Console's Vault page.`,
       );
     }
   }

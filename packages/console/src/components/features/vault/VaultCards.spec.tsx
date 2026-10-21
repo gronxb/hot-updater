@@ -209,6 +209,40 @@ describe("SecretsCard", () => {
     ).toBeNull();
   });
 
+  it("shows a bundle signing key's size and fingerprint", () => {
+    const sha256 = "0123456789abcdef".repeat(4);
+    render(
+      <SecretsCard
+        secrets={loaded<VaultSecret>([
+          {
+            ...keystore,
+            name: "ota-key",
+            kind: "bundle-signing-key",
+            metadata: { bits: 2048, publicKeySha256: sha256 },
+          },
+          {
+            ...keystore,
+            id: `sec-${"o".repeat(22)}`,
+            name: "older-key",
+            kind: "bundle-signing-key",
+            metadata: {},
+          },
+        ])}
+        status={unlocked}
+      />,
+    );
+
+    expect(
+      within(screen.getByRole("row", { name: /ota-key/ })).getByText(
+        "RSA 2048 · SHA-256 0123456789abcdef…",
+      ),
+    ).toBeDefined();
+    // Stored before the console derived it: nothing to show.
+    expect(
+      within(screen.getByRole("row", { name: /older-key/ })).getByText("—"),
+    ).toBeDefined();
+  });
+
   it("shows the locked state and offers no write while the console has no master key", () => {
     render(
       <SecretsCard
@@ -217,7 +251,7 @@ describe("SecretsCard", () => {
           data: {
             locked: true,
             message:
-              "The vault is locked: set HOT_UPDATER_VAULT_MASTER_KEY where the Console runs to seal and reveal secrets.",
+              'The vault is locked: its secrets are saved under the master key "default", which the Console does not hold. Set it in HOT_UPDATER_VAULT_MASTER_KEY, or after the new key in HOT_UPDATER_VAULT_MASTER_KEYS to rotate to the new one.',
             knownKeys: ["default"],
           },
           isError: false,
@@ -228,7 +262,7 @@ describe("SecretsCard", () => {
 
     expect(screen.getByText("The vault is locked")).toBeDefined();
     // Secrets exist: only their own key opens them.
-    expect(screen.getByText(/Restore the master key/)).toBeDefined();
+    expect(screen.getByText(/Redeploy the console with the key/)).toBeDefined();
     expect(screen.getByText("default")).toBeDefined();
     expect(screen.queryByRole("button", { name: "Copy command" })).toBeNull();
     expect(screen.getByRole("button", { name: "Check again" })).toBeDefined();
@@ -266,7 +300,7 @@ describe("SecretsCard", () => {
     const { rerender } = render(
       <SecretsCard secrets={loaded([])} status={lockedWith(["default"])} />,
     );
-    expect(screen.getByText(/Restore the master key/)).toBeDefined();
+    expect(screen.getByText(/Redeploy the console with the key/)).toBeDefined();
     expect(screen.queryByRole("button", { name: "Copy command" })).toBeNull();
 
     rerender(<SecretsCard secrets={loaded([])} status={lockedWith([])} />);
@@ -529,6 +563,67 @@ describe("SecretsCard", () => {
     );
   });
 
+  it("warns, without refusing, about a variable another secret sets", async () => {
+    putMutation.mutateAsync.mockResolvedValue({ name: "prod", version: 2 });
+    const prod: VaultSecret = {
+      ...keystore,
+      id: `sec-${"p".repeat(22)}`,
+      name: "prod",
+      kind: "deploy-credentials",
+      version: 1,
+      metadata: { variables: ["S3_REGION"] },
+    };
+    render(
+      <SecretsCard
+        secrets={loaded([
+          prod,
+          {
+            ...prod,
+            id: `sec-${"s".repeat(22)}`,
+            name: "staging",
+            kind: "generic",
+            metadata: { variables: ["S3_REGION", "S3_BUCKET"] },
+          },
+        ])}
+        status={unlocked}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Overwrite prod" }));
+    const dialog = screen.getByRole("dialog");
+    const warning = within(dialog).getByText(
+      "Already set by another secret",
+    ).parentElement!;
+    expect(warning.textContent).toContain("S3_REGION is in staging (Generic");
+    expect(warning.textContent).not.toContain("S3_BUCKET");
+
+    fireEvent.change(within(dialog).getByLabelText("Variable 1 value"), {
+      target: { value: "us-east-1" },
+    });
+    fireEvent.click(
+      within(dialog).getByRole("button", { name: "Save new version" }),
+    );
+    await waitFor(() => {
+      expect(putMutation.mutateAsync).toHaveBeenCalledWith(
+        expect.objectContaining({
+          name: "prod",
+          value: { S3_REGION: "us-east-1" },
+        }),
+      );
+    });
+
+    // Renamed away from the other secret's variables, the warning goes.
+    cleanup();
+    render(
+      <SecretsCard
+        secrets={loaded([{ ...prod, metadata: { variables: ["OTHER"] } }])}
+        status={unlocked}
+      />,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Overwrite prod" }));
+    expect(screen.queryByText("Already set by another secret")).toBeNull();
+  });
+
   it("follows the reloaded list after a refused write", () => {
     const { rerender } = render(
       <SecretsCard secrets={loaded([keystore])} status={unlocked} />,
@@ -668,12 +763,21 @@ describe("TokensCard", () => {
     expect(
       within(row).getByRole("button", { name: "Revoke GitHub Actions" }),
     ).toBeDefined();
+    // Revoked and expired tokens are folded away until asked for.
+    expect(screen.queryByRole("row", { name: /Old/ })).toBeNull();
+    expect(screen.queryByRole("row", { name: /Past/ })).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show 2 revoked or expired tokens" }),
+    );
     expect(
       within(screen.getByRole("row", { name: /Old/ })).getByText("Revoked"),
     ).toBeDefined();
     expect(
       within(screen.getByRole("row", { name: /Past/ })).getByText("Expired"),
     ).toBeDefined();
+    expect(
+      within(screen.getByRole("row", { name: /Old/ })).queryByRole("button"),
+    ).toBeNull();
     // A token that writes, such as for hot-updater secrets put.
     expect(
       within(screen.getByRole("row", { name: /Uploader/ })).getAllByText(
@@ -686,6 +790,26 @@ describe("TokensCard", () => {
     expect(
       within(far).getByRole("button", { name: "Revoke Far" }),
     ).toBeDefined();
+  });
+
+  it("says no token is active while only revoked ones are folded away", () => {
+    render(
+      <TokensCard
+        secrets={[keystore]}
+        tokens={loaded([{ ...token, revokedAtMs: 1 }])}
+      />,
+    );
+
+    expect(screen.getByText("No active vault tokens.")).toBeDefined();
+    expect(screen.queryByText("No vault tokens")).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Show 1 revoked or expired token" }),
+    );
+    expect(screen.getByRole("row", { name: /GitHub Actions/ })).toBeDefined();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Hide revoked and expired tokens" }),
+    );
+    expect(screen.queryByRole("row", { name: /GitHub Actions/ })).toBeNull();
   });
 
   it("issues a token, shows it once with the CI variables, and forgets it", async () => {

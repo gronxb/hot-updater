@@ -27,8 +27,9 @@ opens. Its vault routes answer `404 vault_unavailable`.
 ## Manage secrets
 
 **Vault** in the console's sidebar lists the secrets by name, kind, version,
-and last update, with what each shows without its values, such as a key ID or
-a keystore's alias. **Add secret** picks a kind and asks for its files and
+and last update, with what each shows without its values, such as a key ID,
+a keystore's alias, or a bundle signing key's size and the start of its public
+key's SHA-256. **Add secret** picks a kind and asks for its files and
 fields. A new secret is named after its kind, and a config references it by
 name, such as `vault:asc-api-key`, or `vault:widget-keystore` for a second
 keystore.
@@ -38,8 +39,9 @@ Values are write-only. The console never shows or copies a stored value:
 **Delete** removes the secret with its values. The vault keeps the last five
 versions of each secret, and a value holds up to 64 KB of JSON.
 
-Without `HOT_UPDATER_VAULT_MASTER_KEY`, the page shows the vault as locked
-and offers no add or overwrite. Listing, deleting, and tokens keep working.
+Without a master key, `HOT_UPDATER_VAULT_MASTER_KEY` or, after a rotation,
+`HOT_UPDATER_VAULT_MASTER_KEYS`, the page shows the vault as locked, names the
+keys its secrets were saved with, and offers no add or overwrite. Listing, deleting, and tokens keep working.
 The first secret a console stores ties the vault to its key: the vault keeps
 a check value sealed under it. From then on, a console with another key is
 locked, even once every secret is deleted, so two consoles with different keys
@@ -62,7 +64,13 @@ base64:
 
 `parseVaultSecretValue(kind, value)` from `@hot-updater/server/plugins` checks
 a value's shape, and `vaultSecretMetadata(kind, value)` returns what the
-console shows of it.
+console shows of it. For a bundle signing key, the console also stores
+`bits` and `publicKeySha256`, the SHA-256 of its public key, which this
+prints for the `public-key.pem` your app ships:
+
+```bash
+openssl pkey -pubin -in keys/public-key.pem -outform DER | openssl dgst -sha256
+```
 
 ## Issue vault tokens
 

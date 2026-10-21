@@ -1,12 +1,23 @@
 const SECRET_MASK = "********";
 
 /**
- * A value shorter than this is masked only where it stands alone, so a
+ * A value shorter than this is masked only where it is a whole token, so a
  * keystore password `a` masks `-Ppassword=a` but leaves `Gradle failed`
- * readable. The lines of a multi-line value are registered only from this
- * length: masking the `{` line of a JSON file would redact every brace.
+ * readable, and a value `1` leaves `http://127.0.0.1:3941` whole. The lines
+ * of a multi-line value are registered only from this length: masking the
+ * `{` line of a JSON file would redact every brace.
  */
 const MIN_SUBSTRING_SECRET_LENGTH = 6;
+
+/**
+ * What separates the tokens a short value must be whole: whitespace, quotes,
+ * `=`, `&`, `|`, brackets, commas, and semicolons. Characters such as `.`,
+ * `:`, `/`, `-`, and `@` join a run into one token, as in a URL or a version,
+ * except a `.`, `:`, `!`, or `?` that ends a sentence.
+ */
+const TOKEN_SEPARATOR = "\\s\"'`=&|,;()[\\]{}<>";
+const SHORT_SECRET_BEFORE = `(?<=^|[${TOKEN_SEPARATOR}])`;
+const SHORT_SECRET_AFTER = `(?=$|[${TOKEN_SEPARATOR}]|[.:!?](?:$|[${TOKEN_SEPARATOR}]))`;
 
 const PEM_ARMOR_LINE = /^-----(BEGIN|END) [A-Z0-9 ]+-----$/;
 
@@ -47,9 +58,9 @@ export const registerSecretValue = (value: string) => {
   shortSecretPattern =
     shortSecretValues.size > 0
       ? new RegExp(
-          `(?<![A-Za-z0-9])(?:${longestFirst(shortSecretValues)
+          `${SHORT_SECRET_BEFORE}(?:${longestFirst(shortSecretValues)
             .map(escapeRegExp)
-            .join("|")})(?![A-Za-z0-9])`,
+            .join("|")})${SHORT_SECRET_AFTER}`,
           "g",
         )
       : undefined;

@@ -19,7 +19,12 @@ describe("consoleFeatures", () => {
         remote: false,
       },
       apiKeys: { plugin: "apiKeys", label: "API keys", remote: false },
-      vault: { plugin: "vault", label: "Vault", remote: false },
+      vault: {
+        plugin: "vault",
+        label: "Vault",
+        remote: false,
+        guide: "/docs/guides/console-deployment/vault#turn-on-the-vault",
+      },
       remoteConfig: {
         plugin: "remoteConfig",
         label: "Remote Config",
