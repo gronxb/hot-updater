@@ -1,17 +1,26 @@
 #import "AppDelegate.h"
 #import <HotUpdater/HotUpdater.h>
 #import <React/RCTBundleURLProvider.h>
+#import <React/RCTLinkingManager.h>
 
 @implementation AppDelegate
 
 - (BOOL)application:(UIApplication *)application didFinishLaunchingWithOptions:(NSDictionary *)launchOptions
 {
   self.moduleName = @"HotUpdaterExample";
-  // You can add your custom initial props in the dictionary below.
-  // They will be passed down to the ViewController used by React Native.
-  self.initialProps = @{};
+  // E2E: a silent push launches the app in the background. Like React Native
+  // Firebase, tell the root so it renders nothing for that launch.
+  self.initialProps = @{@"isHeadless" : @(application.applicationState == UIApplicationStateBackground)};
 
   return [super application:application didFinishLaunchingWithOptions:launchOptions];
+}
+
+// E2E: the scenarios drive the app through hotupdaterexample:// links.
+- (BOOL)application:(UIApplication *)application
+            openURL:(NSURL *)url
+            options:(NSDictionary<UIApplicationOpenURLOptionsKey, id> *)options
+{
+  return [RCTLinkingManager application:application openURL:url options:options];
 }
 
 - (NSURL *)sourceURLForBridge:(RCTBridge *)bridge

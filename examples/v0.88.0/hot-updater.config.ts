@@ -1,51 +1,35 @@
-import { existsSync } from "node:fs";
-
+import { s3Storage } from "@hot-updater/aws";
 import { bare } from "@hot-updater/bare";
-import { supabaseDatabase, supabaseStorage } from "@hot-updater/supabase";
+import { insights, remoteConfig } from "@hot-updater/server/plugins";
+import { standaloneRepository } from "@hot-updater/standalone";
 import { defineConfig } from "hot-updater";
-import { apiKeys, insights, remoteConfig } from "hot-updater/plugins";
 
-const envFilePath =
-  process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH ?? ".env.hotupdater";
-if (existsSync(envFilePath)) {
-  process.loadEnvFile(envFilePath);
-}
+process.loadEnvFile(process.env.HOT_UPDATER_E2E_ENV_TARGET_PATH ?? ".env.hotupdater");
 
 export default defineConfig({
-  nativeBuild: {
-    ios: {
-      release: {
-        bundleIdentifier: "org.reactjs.native.example.HotUpdaterExample",
-        scheme: "HotUpdaterExample",
-        configuration: "Release",
-        installPods: true,
-      },
-    },
-    android: {
-      releaseApk: { packageName: "com.hotupdaterexample", aab: false },
-    },
-  },
   build: bare({ enableHermes: true, resetCache: false }),
-  storage: supabaseStorage({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
-    bucketName: process.env.HOT_UPDATER_SUPABASE_BUCKET_NAME!,
+  storage: s3Storage({
+    region: process.env.AWS_REGION!,
+    endpoint: process.env.AWS_S3_ENDPOINT!,
+    credentials: {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID!,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY!,
+    },
+    bucketName: process.env.AWS_S3_METADATA_BUCKET!,
+    basePath: process.env.HOT_UPDATER_E2E_PROVIDER_NAMESPACE,
+    forcePathStyle: true,
   }),
-  database: supabaseDatabase({
-    supabaseUrl: process.env.HOT_UPDATER_SUPABASE_URL!,
-    supabaseServiceRoleKey: process.env.HOT_UPDATER_SUPABASE_SERVICE_ROLE_KEY!,
+  database: standaloneRepository({
+    baseUrl: process.env.HOT_UPDATER_CONTROL_BASE_URL! + "/admin",
+    commonHeaders: { Authorization: "Bearer " + process.env.HOT_UPDATER_ADMIN_TOKEN! },
   }),
-  plugins: [apiKeys(), insights(), remoteConfig()],
-  fingerprint: { debug: true },
-  /* E2E_AUTO_PATCH_CONFIG_START */
-  patch: {
-    enabled: true,
-    maxBaseBundles: 2,
+  plugins: [insights(), remoteConfig()],
+  fingerprint: {
+    debug: true,
+    extraSources: {"ios":[],"android":[]},
   },
+  /* E2E_AUTO_PATCH_CONFIG_START */
   /* E2E_AUTO_PATCH_CONFIG_END */
   updateStrategy: "appVersion",
-  signing: {
-    enabled: true,
-    privateKeyPath: "./keys/private-key.pem",
-  },
+  signing: { enabled: true, privateKeyPath: "./keys/private-key.pem" },
 });
