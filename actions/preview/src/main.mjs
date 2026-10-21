@@ -101,8 +101,10 @@ const cli = (args, { capture = false } = {}) =>
     });
     let stdout = "";
     child.stdout?.setEncoding("utf8");
+    // Captured output goes to the log too, such as a build's.
     child.stdout?.on("data", (chunk) => {
       stdout += chunk;
+      process.stdout.write(chunk);
     });
     child.on("error", reject);
     child.on("close", (code) => {

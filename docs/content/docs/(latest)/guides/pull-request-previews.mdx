@@ -155,14 +155,19 @@ so a build it makes embeds the preview channel. Then, for each platform:
    the `appVersion` strategy, the version of the app the scheme builds, and
    the kind of artifact the scheme builds, so a Simulator scheme never reuses
    an `.ipa`, nor an APK scheme an `.aab`.
-2. With no build, `hot-updater build:<platform> --scheme <scheme> --register`
-   builds and registers one. With one, the action skips the native build and
-   runs `hot-updater fingerprint create`, since a committed
-   `fingerprint.json` can be older than the project.
+2. With no build, `hot-updater build:<platform> --scheme <scheme> --register --json`
+   builds and registers one, and prints what its artifact embeds: the
+   channel, and the fingerprint or app version. With one, the action skips
+   the native build and runs `hot-updater fingerprint create`, since a
+   committed `fingerprint.json` can be older than the project.
 3. `hot-updater deploy -p <platform> -c <channel>` deploys the bundle, with
    the build's app version as its target with the `appVersion` strategy.
    The action checks that the bundle targets the build's fingerprint or app
    version.
+
+A scheme that sets the app version at build time, such as in an `xcconfig`,
+builds a version the project doesn't declare, so its preview builds again on
+every run.
 
 When the pull request closes, `hot-updater channel delete <channel> --yes`
 deletes the channel and its bundles, and the comment says so. The preview

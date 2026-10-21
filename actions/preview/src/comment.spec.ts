@@ -127,6 +127,27 @@ xcrun simctl openurl booted myapp://hot-updater/channel/pr-12
     expect(body).not.toContain("Fingerprint");
   });
 
+  it("names both targets when the platforms use different strategies", () => {
+    const body = renderPreviewComment({
+      consoleUrl: "https://console.example.com",
+      channel: "pr-12",
+      previewChannel: "preview",
+      previews: [
+        android,
+        { ...ios, target: { fingerprintHash: null, appVersion: "1.4.0" } },
+      ],
+      channelLink: null,
+      headSha: "0123456789abcdef",
+      credit: true,
+    });
+
+    expect(body).toContain(
+      "| Platform | Native build | Fingerprint or app version | Bundle |",
+    );
+    expect(body).toContain("| `8681de8b88a8` |");
+    expect(body).toContain("| `1.4.0` |");
+  });
+
   it("encodes a channel name in the links, and quotes it in the commands", () => {
     const body = renderPreviewComment({
       consoleUrl: "https://console.example.com",

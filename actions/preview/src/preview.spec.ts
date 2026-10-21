@@ -38,6 +38,7 @@ const fakeCli = ({
   target = { fingerprintHash: "fp-a", appVersion: null },
   builds = [] as Build[],
   builtChannel,
+  builtTarget,
   channelDelete = {
     code: 0,
     json: {
@@ -51,10 +52,17 @@ const fakeCli = ({
   builds?: Build[];
   /** The channel a build embeds, when it isn't the one set. */
   builtChannel?: string;
+  /** What a build's artifact embeds, when it isn't the project's target. */
+  builtTarget?: { fingerprintHash: string | null; appVersion: string | null };
   channelDelete?: { code: number; json: Record<string, unknown> };
 } = {}) => {
   const calls: string[] = [];
-  const releases: { id: string; channel: string; platform: string }[] = [];
+  const releases: {
+    id: string;
+    channel: string;
+    platform: string;
+    targetAppVersion: string | null;
+  }[] = [];
   let channel = "production";
   let counter = 0;
   const cli = vi.fn(async (args: string[], options?: { capture?: boolean }) => {
@@ -96,20 +104,33 @@ const fakeCli = ({
     }
     if (command?.startsWith("build:")) {
       const platform = command.slice("build:".length);
-      builds.push({
+      const build = {
         id: `build-${++counter}`,
         platform,
         channel: builtChannel ?? channel,
-        ...target,
+        ...(builtTarget ?? target),
         kind: platform === "android" ? "apk" : "app",
-      });
-      return { code: 0, stdout: "" };
+      };
+      builds.push(build);
+      return {
+        code: 0,
+        // The build's own output, then the JSON line.
+        stdout: `[CXX1100] building\n{ not json\n${JSON.stringify({
+          build: {
+            channel: build.channel,
+            fingerprintHash: build.fingerprintHash,
+            appVersion: build.appVersion,
+          },
+          nativeBuild: { id: build.id, artifact_kind: build.kind },
+        })}\n`,
+      };
     }
     if (command === "deploy") {
       releases.push({
         id: `bundle-${++counter}`,
         channel: flag("-c"),
         platform: flag("-p"),
+        targetAppVersion: args.includes("-t") ? flag("-t") : null,
       });
       return { code: 0, stdout: "" };
     }
@@ -120,10 +141,10 @@ const fakeCli = ({
             release.channel === flag("-c") && release.platform === flag("-p"),
         )
         .reverse()
-        .map(({ id }) => ({
+        .map(({ id, targetAppVersion }) => ({
           id,
-          fingerprint_hash: target.fingerprintHash,
-          target_app_version: target.appVersion,
+          fingerprint_hash: (builtTarget ?? target).fingerprintHash,
+          target_app_version: targetAppVersion,
         }));
       return { code: 0, stdout: JSON.stringify(rows, null, 2) };
     }
@@ -181,8 +202,7 @@ describe("runAction preview", () => {
     expect(fake.calls).toEqual([
       "channel set preview",
       "native-build find -p android -c preview -s releaseApk --json",
-      "build:android --scheme releaseApk --register",
-      "native-build find -p android -c preview -s releaseApk --json",
+      "build:android --scheme releaseApk --register --json",
       "deploy -p android -c pr-12 -m #12 Fix the header",
       "bundle list -c pr-12 -p android --limit 1 --json",
     ]);
@@ -255,7 +275,7 @@ describe("runAction preview", () => {
     await runAction(d, env(), event);
 
     expect(fake.calls).toContain(
-      "build:android --scheme releaseApk --register",
+      "build:android --scheme releaseApk --register --json",
     );
   });
 
@@ -285,12 +305,31 @@ describe("runAction preview", () => {
     ]);
   });
 
-  it("fails without deploying when the registered build matches nothing, as when the build embeds another channel", async () => {
+  it("deploys to the version the build's artifact embeds, such as an xcconfig's, not the project's", async () => {
+    const fake = fakeCli({
+      target: { fingerprintHash: null, appVersion: "1.4.0" },
+      builtTarget: { fingerprintHash: null, appVersion: "2.0.0" },
+    });
+    const { deps: d, outputs } = deps(fake.cli);
+
+    await runAction(d, env(), event);
+
+    expect(fake.calls).toContain(
+      "deploy -p android -c pr-12 -m #12 Fix the header -t 2.0.0",
+    );
+    expect(JSON.parse(outputs["previews"]!)[0]).toMatchObject({
+      target: { fingerprintHash: null, appVersion: "2.0.0" },
+      nativeBuild: { id: "build-1" },
+      built: true,
+    });
+  });
+
+  it("fails without deploying when the build embeds another channel than the preview channel", async () => {
     const fake = fakeCli({ builtChannel: "production" });
     const { deps: d } = deps(fake.cli);
 
     await expect(runAction(d, env(), event)).rejects.toThrow(
-      "build:android registered a native build, but none on preview has fingerprint fp-a",
+      "build:android built a native build that embeds the production channel, not preview.",
     );
     expect(fake.calls.some((call) => call.startsWith("deploy"))).toBe(false);
   });
@@ -377,8 +416,8 @@ describe("runAction preview", () => {
     await runAction(d, env({ INPUT_PLATFORMS: "android, ios" }), event);
 
     expect(fake.calls.filter((call) => call.startsWith("build:"))).toEqual([
-      "build:android --scheme releaseApk --register",
-      "build:ios --scheme simulator --register",
+      "build:android --scheme releaseApk --register --json",
+      "build:ios --scheme simulator --register --json",
     ]);
     expect(outputs["comment-body"]).toContain("| Android |");
     expect(outputs["comment-body"]).toContain("| iOS Simulator |");

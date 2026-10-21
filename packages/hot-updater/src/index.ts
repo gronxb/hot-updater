@@ -15,6 +15,7 @@ import {
   deviceCommandOption,
   interactiveCommandOption,
   nativeBuildOutputCommandOption,
+  nativeBuildJsonCommandOption,
   nativeBuildRegisterCommandOption,
   nativeBuildSchemeCommandOption,
   platformCommandOption,
@@ -1116,6 +1117,7 @@ program
   .addOption(interactiveCommandOption)
   .addOption(nativeBuildSchemeCommandOption)
   .addOption(nativeBuildRegisterCommandOption)
+  .addOption(nativeBuildJsonCommandOption)
   .addOption(playUploadCommandOption)
   .action(async (options: BuildNativeOptions) => {
     await buildAndroidNative(options);
@@ -1128,6 +1130,7 @@ program
   .addOption(interactiveCommandOption)
   .addOption(nativeBuildSchemeCommandOption)
   .addOption(nativeBuildRegisterCommandOption)
+  .addOption(nativeBuildJsonCommandOption)
   .addOption(testFlightUploadCommandOption)
   .action(async (options: BuildNativeOptions) => {
     await buildIosNative(options);

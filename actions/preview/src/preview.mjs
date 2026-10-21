@@ -134,20 +134,20 @@ export const parseInputs = (env, event) => {
 };
 
 /**
- * The JSON a `--json` command prints: its whole output, or what follows
- * lines a project's config printed while it loaded.
+ * The JSON a `--json` command prints last: its whole output, or what
+ * follows the lines a project's config or a build printed.
  *
  * @param {string} stdout
  * @returns {unknown}
  */
 export const parseJsonOutput = (stdout) => {
   const lines = stdout.trimEnd().split("\n");
-  for (let start = 0; start < lines.length; start++) {
+  for (let start = lines.length - 1; start >= 0; start--) {
     if (!/^[[{]/.test(lines[start] ?? "")) continue;
     try {
       return JSON.parse(lines.slice(start).join("\n"));
     } catch {
-      // A line of the config's output that looks like JSON.
+      // Inside the JSON, or a line of other output that looks like it.
     }
   }
   throw new Error(`Expected JSON output, got:\n${stdout}`);
@@ -185,11 +185,20 @@ const findNativeBuild = async (deps, inputs, platform) =>
     ])
   );
 
-/** @param {NativeBuildFindResult} scope */
+/** @param {{ fingerprintHash: string | null, appVersion: string | null }} scope */
 const describeTarget = (scope) =>
   scope.fingerprintHash === null
     ? `app version ${scope.appVersion}`
     : `fingerprint ${scope.fingerprintHash}`;
+
+/**
+ * What `build:<platform> --register --json` prints last: the build, with
+ * what its artifact embeds, and its registration.
+ *
+ * @typedef {object} NativeBuildJson
+ * @property {{ channel: string, fingerprintHash: string | null, appVersion: string | null }} build
+ * @property {{ id: string, artifact_kind: import("./comment.mjs").ArtifactKind } | null} nativeBuild
+ */
 
 /**
  * Deploys one platform's bundle to the pull request's channel, after
@@ -203,39 +212,59 @@ const describeTarget = (scope) =>
  * @returns {Promise<PlatformPreview>}
  */
 const previewPlatform = async (deps, inputs, event, platform) => {
-  let found = await findNativeBuild(deps, inputs, platform);
+  const found = await findNativeBuild(deps, inputs, platform);
+  /** @type {{ fingerprintHash: string | null, appVersion: string | null }} */
+  let target = {
+    fingerprintHash: found.fingerprintHash,
+    appVersion: found.appVersion,
+  };
+  /** @type {{ id: string, artifactKind: import("./comment.mjs").ArtifactKind }} */
+  let nativeBuild;
   const built = found.nativeBuild === null;
-  if (built) {
+  if (found.nativeBuild === null) {
     deps.log.info(
       `No ${platform} native build on ${inputs.previewChannel} has ${describeTarget(found)}: building one.`,
     );
-    await deps.cli([
-      `build:${platform}`,
-      "--scheme",
-      /** @type {string} */ (inputs.schemes[platform]),
-      "--register",
-    ]);
-    const registered = await findNativeBuild(deps, inputs, platform);
-    if (registered.nativeBuild === null) {
+    const registered = /** @type {NativeBuildJson} */ (
+      await json(deps, [
+        `build:${platform}`,
+        "--scheme",
+        /** @type {string} */ (inputs.schemes[platform]),
+        "--register",
+        "--json",
+      ])
+    );
+    if (registered.build.channel !== inputs.previewChannel) {
       throw new Error(
-        `build:${platform} registered a native build, but none on ${inputs.previewChannel} has ${describeTarget(registered)}. The build embeds another channel or app version than the project declares: run \`hot-updater channel set ${inputs.previewChannel}\` in a project the action can change, and check the scheme's app version.`,
+        `build:${platform} built a native build that embeds the ${registered.build.channel} channel, not ${inputs.previewChannel}. An Expo project sets it in the @hot-updater/expo config plugin.`,
       );
     }
-    found = registered;
+    if (registered.nativeBuild === null) {
+      throw new Error(`build:${platform} registered no native build.`);
+    }
+    // What the artifact embeds, such as an app version an xcconfig sets.
+    target = {
+      fingerprintHash: registered.build.fingerprintHash,
+      appVersion: registered.build.appVersion,
+    };
+    nativeBuild = {
+      id: registered.nativeBuild.id,
+      artifactKind: registered.nativeBuild.artifact_kind,
+    };
   } else {
     deps.log.info(
-      `Reusing ${platform} native build ${found.nativeBuild?.id}, which has ${describeTarget(found)}.`,
+      `Reusing ${platform} native build ${found.nativeBuild.id}, which has ${describeTarget(found)}.`,
     );
+    nativeBuild = {
+      id: found.nativeBuild.id,
+      artifactKind: found.nativeBuild.artifact_kind,
+    };
     // A committed fingerprint.json can be older than the project, which
     // deploy refuses; the build would have rewritten it.
     if (found.fingerprintHash !== null) {
       await deps.cli(["fingerprint", "create"]);
     }
   }
-  const nativeBuild =
-    /** @type {NonNullable<NativeBuildFindResult["nativeBuild"]>} */ (
-      found.nativeBuild
-    );
 
   await deps.cli([
     "deploy",
@@ -247,7 +276,7 @@ const previewPlatform = async (deps, inputs, event, platform) => {
     `#${event.number} ${event.title}`,
     // The exact version of the build, which deploy would otherwise read from
     // the project without the scheme.
-    ...(found.appVersion === null ? [] : ["-t", found.appVersion]),
+    ...(target.appVersion === null ? [] : ["-t", target.appVersion]),
   ]);
 
   const [release] =
@@ -269,28 +298,16 @@ const previewPlatform = async (deps, inputs, event, platform) => {
   }
   // The bundle reaches the build only with the build's own target.
   if (
-    found.fingerprintHash === null
-      ? release.target_app_version !== found.appVersion
-      : release.fingerprint_hash !== found.fingerprintHash
+    target.fingerprintHash === null
+      ? release.target_app_version !== target.appVersion
+      : release.fingerprint_hash !== target.fingerprintHash
   ) {
     throw new Error(
-      `The ${platform} bundle ${release.id} targets ${release.fingerprint_hash ?? release.target_app_version}, but the native build has ${describeTarget(found)}.`,
+      `The ${platform} bundle ${release.id} targets ${release.fingerprint_hash ?? release.target_app_version}, but the native build has ${describeTarget(target)}.`,
     );
   }
 
-  return {
-    platform,
-    target: {
-      fingerprintHash: found.fingerprintHash,
-      appVersion: found.appVersion,
-    },
-    nativeBuild: {
-      id: nativeBuild.id,
-      artifactKind: nativeBuild.artifact_kind,
-    },
-    built,
-    bundleId: release.id,
-  };
+  return { platform, target, nativeBuild, built, bundleId: release.id };
 };
 
 /**

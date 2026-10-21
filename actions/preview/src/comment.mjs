@@ -98,9 +98,14 @@ export const renderPreviewComment = ({
   headSha,
   credit,
 }) => {
-  const byFingerprint = previews.some(
-    ({ target }) => target.fingerprintHash !== null,
+  const strategies = new Set(
+    previews.map(({ target }) =>
+      target.fingerprintHash === null ? "App version" : "Fingerprint",
+    ),
   );
+  // A config can pick each platform's strategy.
+  const targetHeading =
+    strategies.size === 1 ? [...strategies][0] : "Fingerprint or app version";
   const rows = previews.map(({ target, nativeBuild, built, bundleId }) =>
     [
       platformLabel(nativeBuild.artifactKind),
@@ -139,7 +144,7 @@ export const renderPreviewComment = ({
     COMMENT_MARKER,
     `### Preview on ${code(channel)}`,
     [
-      `| Platform | Native build | ${byFingerprint ? "Fingerprint" : "App version"} | Bundle |`,
+      `| Platform | Native build | ${targetHeading} | Bundle |`,
       "| --- | --- | --- | --- |",
       ...rows.map((row) => `| ${row} |`),
     ].join("\n"),
