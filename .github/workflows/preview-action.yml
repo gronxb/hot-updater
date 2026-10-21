@@ -54,6 +54,12 @@ jobs:
       - run: pnpm install
       - name: Build
         run: pnpm build
+      # The workspace CLI's bin links once its dist exists, so the action's
+      # default `npx --no-install hot-updater` finds it in the example.
+      - name: Link the built CLI
+        run: |
+          pnpm install --frozen-lockfile --offline
+          test -x examples/v0.85.0/node_modules/.bin/hot-updater
 
       - name: Start Postgres and MinIO
         run: bash examples-server/preview-action/scripts/backend.sh > "$RUNNER_TEMP/backend.env"
