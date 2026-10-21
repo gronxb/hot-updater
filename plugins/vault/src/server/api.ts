@@ -834,15 +834,17 @@ export const createVaultApi = ({
   const resolveKeyring = keyringResolver(options);
   /**
    * The Console's keys; without any, a locked error naming the keys the
-   * vault's keys row knows, read only then.
+   * vault knows, read only then: its keys row, or without one its stored
+   * versions, as `status` reads them.
    */
   const keyringOf = async () => {
     try {
       return await resolveKeyring();
     } catch (error) {
       if (!(error instanceof NoMasterKeyError)) throw error;
+      const keysRow = await db.findOne("secrets", { id: KEYS_ROW_ID });
       const known = Object.keys(
-        keyChecksOf(await db.findOne("secrets", { id: KEYS_ROW_ID })),
+        keysRow === null ? await findSealed() : keyChecksOf(keysRow),
       );
       throw known.length > 0 ? notHeld(known) : error;
     }

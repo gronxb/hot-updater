@@ -573,7 +573,7 @@ describe("vault master keys", () => {
   it("names the keys a vault was saved with when the Console holds none", async () => {
     vi.stubEnv("HOT_UPDATER_VAULT_MASTER_KEYS", "");
     vi.stubEnv("HOT_UPDATER_VAULT_MASTER_KEY", "");
-    const { console } = start();
+    const { console, db } = start();
     const empty = console({});
     await expect(empty.status()).resolves.toEqual({
       locked: true,
@@ -605,6 +605,23 @@ describe("vault master keys", () => {
         name: "VaultLockedError",
         message: named,
       });
+    }
+
+    // A vault without a keys row names the kids its versions use.
+    await db.transaction(async (tx) => {
+      const row = await tx.findOne("secrets", { id: ".master-keys" });
+      if (row !== null) await tx.delete("secrets", row);
+    });
+    await expect(empty.status()).resolves.toMatchObject({
+      message: named,
+      knownKeys: ["2026-10"],
+    });
+    for (const refused of [
+      empty.put({ name: "other", kind: "generic", value: "x" }),
+      empty.reveal({ id: rotated.id, actor: "tok-ci" }),
+      empty.rewrap(),
+    ]) {
+      await expect(refused).rejects.toMatchObject({ message: named });
     }
 
     // A vault on the single key still points at its variable.
