@@ -99,6 +99,9 @@ describe("handleChannelDelete", () => {
 
     await handleChannelDelete("pr-12", { json: true, yes: true });
 
+    // The config's database and storage may read credentials from the vault.
+    expect(loadConfig).toHaveBeenCalledWith(null, { credentials: true });
+
     expect(output()).toMatchObject({
       channel: "pr-12",
       deleted: true,
