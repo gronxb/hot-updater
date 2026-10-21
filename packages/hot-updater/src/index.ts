@@ -15,6 +15,7 @@ import {
   deviceCommandOption,
   interactiveCommandOption,
   nativeBuildOutputCommandOption,
+  nativeBuildJsonCommandOption,
   nativeBuildRegisterCommandOption,
   nativeBuildSchemeCommandOption,
   platformCommandOption,
@@ -78,6 +79,7 @@ import {
 } from "./commands/insights";
 import { keysExportPublic, keysGenerate, keysRemove } from "./commands/keys";
 import { migrate } from "./commands/migrate";
+import { handleNativeBuildFind } from "./commands/nativeBuild";
 import { handlePromote } from "./commands/promote";
 import {
   handleRemoteConfigPreview,
@@ -286,6 +288,31 @@ channelCommand
   .option("--json", "output the result as JSON")
   .option("-y, --yes", "skip confirmation prompt")
   .action(handleChannelDelete);
+
+const nativeBuildCommand = program
+  .command("native-build")
+  .description("Query the native build registry");
+
+nativeBuildCommand
+  .command("find")
+  .description(
+    "Find the newest registered native build a build of this project would match, such as before a pull request's preview build",
+  )
+  .addOption(
+    new Option("-p, --platform <platform>", "the build's platform")
+      .choices(["ios", "android"])
+      .makeOptionMandatory(),
+  )
+  .option(
+    "-c, --channel <channel>",
+    "the channel the build embeds (default: the native project's default channel)",
+  )
+  .option(
+    "-s, --scheme <scheme>",
+    "the nativeBuild scheme, whose app's version the build has with the appVersion strategy",
+  )
+  .option("--json", "output the scope and the build, or null, as JSON")
+  .action(handleNativeBuildFind);
 
 const SERVER_PATH_HELP =
   "path to the server definition that exports hotUpdater (default: database and plugins in hot-updater.config.ts, else src/hotUpdater.ts or src/db.ts)";
@@ -1090,6 +1117,7 @@ program
   .addOption(interactiveCommandOption)
   .addOption(nativeBuildSchemeCommandOption)
   .addOption(nativeBuildRegisterCommandOption)
+  .addOption(nativeBuildJsonCommandOption)
   .addOption(playUploadCommandOption)
   .action(async (options: BuildNativeOptions) => {
     await buildAndroidNative(options);
@@ -1102,6 +1130,7 @@ program
   .addOption(interactiveCommandOption)
   .addOption(nativeBuildSchemeCommandOption)
   .addOption(nativeBuildRegisterCommandOption)
+  .addOption(nativeBuildJsonCommandOption)
   .addOption(testFlightUploadCommandOption)
   .action(async (options: BuildNativeOptions) => {
     await buildIosNative(options);

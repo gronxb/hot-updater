@@ -24,6 +24,11 @@ point at any pull request's bundle without rebuilding:
 5. When the pull request closes, `hot-updater channel delete pr-12` deletes
    its channel and bundles.
 
+[Pull Request Previews](/docs/guides/pull-request-previews) runs these
+steps in GitHub Actions: it builds a preview build only when the native code
+changes, deploys each pull request, comments the install link and the
+channel's QR code, and cleans up when the pull request closes.
+
 Only builds whose default channel you list open channel links. A production
 build, with another default channel, ignores them, even when it runs the same
 JavaScript.

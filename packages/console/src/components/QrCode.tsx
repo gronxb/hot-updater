@@ -1,6 +1,6 @@
 import { useMemo } from "react";
-import { encode } from "uqr";
 
+import { qrCodePath } from "@/lib/qr-code";
 import { cn } from "@/lib/utils";
 
 /**
@@ -18,16 +18,7 @@ export function QrCode({
   readonly label: string;
   readonly className?: string;
 }) {
-  const { size, path } = useMemo(() => {
-    const { data, size } = encode(value, { ecc: "M", border: 4 });
-    let path = "";
-    data.forEach((row, y) =>
-      row.forEach((dark, x) => {
-        if (dark) path += `M${x} ${y}h1v1h-1z`;
-      }),
-    );
-    return { size, path };
-  }, [value]);
+  const { size, path } = useMemo(() => qrCodePath(value), [value]);
 
   return (
     <svg

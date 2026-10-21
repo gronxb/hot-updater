@@ -28,6 +28,11 @@ export const nativeBuildRegisterCommandOption = new Option(
   "register the release build, its artifact and built-in bundle, with the database and storage in hot-updater.config.ts",
 ).default(false);
 
+export const nativeBuildJsonCommandOption = new Option(
+  "--json",
+  "print the build, and with --register its registration, as JSON on the last line of the output",
+).default(false);
+
 export const testFlightUploadCommandOption = new Option(
   "--upload <destination>",
   "upload the .ipa to a store: testflight uploads it to App Store Connect with the scheme's App Store Connect API key",

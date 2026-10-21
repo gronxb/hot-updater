@@ -35,16 +35,23 @@ import { getChannel } from "@/utils/setChannel";
 import { ui } from "../utils/cli-ui";
 
 /**
- * `build:android` and `build:ios`: `register` also registers the build, and
- * `upload` uploads it to a store.
+ * `build:android` and `build:ios`: `register` also registers the build,
+ * `upload` uploads it to a store, and `json` prints the result.
  */
 export type BuildNativeOptions = NativeBuildOptions & {
   register?: boolean;
   upload?: "testflight" | "play-internal";
+  /**
+   * Prints `{ build, nativeBuild }` as one line of JSON, the last of the
+   * output: the build, and its registration or null without `register`.
+   * The registration holds what the build's artifact embeds, such as an app
+   * version an xcconfig sets, which the project doesn't declare.
+   */
+  json?: boolean;
 };
 
 const buildNativeInternal = async ({
-  options: { register = false, upload, ...options },
+  options: { register = false, upload, json = false, ...options },
   platform,
 }: {
   options: BuildNativeOptions;
@@ -155,7 +162,7 @@ const buildNativeInternal = async ({
           summarizeNativeBuild(result),
         ].join("\n"),
       );
-      if (register) await registerNativeBuild(result);
+      const registered = register ? await registerNativeBuild(result) : null;
       const apiKey = ascApiKey;
       if (apiKey) {
         const { state, testFlightUrl } = await reportUploadFailure(
@@ -199,6 +206,9 @@ const buildNativeInternal = async ({
             ui.muted(`version code ${versionCode}`),
           ]),
         );
+      }
+      if (json) {
+        console.log(JSON.stringify({ build: result, nativeBuild: registered }));
       }
       return result;
     });

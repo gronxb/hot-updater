@@ -718,6 +718,43 @@ importers:
         specifier: npm:@typescript/typescript6@^6.0.2
         version: '@typescript/typescript6@6.0.2'
 
+  examples-server/preview-action:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: catalog:aws
+        version: 3.1066.0
+      '@hot-updater/aws':
+        specifier: workspace:*
+        version: link:../../plugins/aws
+      '@hot-updater/bare':
+        specifier: workspace:*
+        version: link:../../plugins/bare
+      '@hot-updater/server':
+        specifier: workspace:*
+        version: link:../../packages/server
+      hot-updater:
+        specifier: workspace:*
+        version: link:../../packages/hot-updater
+      kysely:
+        specifier: catalog:db
+        version: 0.28.17
+      pg:
+        specifier: catalog:db
+        version: 8.13.1
+    devDependencies:
+      '@types/node':
+        specifier: ^20.11.17
+        version: 20.19.43
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.20.0
+      '@typescript/native':
+        specifier: npm:typescript@^7.0.2
+        version: typescript@7.0.2
+      typescript:
+        specifier: npm:@typescript/typescript6@^6.0.2
+        version: '@typescript/typescript6@6.0.2'
+
   examples/expo-52:
     devDependencies:
       '@babel/core':

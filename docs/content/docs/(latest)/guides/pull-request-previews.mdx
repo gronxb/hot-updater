@@ -1,0 +1,238 @@
+---
+title: "Pull Request Previews"
+description: "Deploy each pull request's bundle with a GitHub Action, build a preview native build only when the native code changes, and comment the install link and QR code."
+icon: GitPullRequest
+---
+
+import { Callout } from "fumadocs-ui/components/callout";
+
+## Overview
+
+The preview action runs [preview builds](/docs/guides/preview-builds) for
+every pull request:
+
+1. It looks for a registered native build of the project's fingerprint, or
+   app version, on the shared preview channel.
+2. When there is one, it deploys only the pull request's bundle, to the pull
+   request's channel, such as `pr-12`. When there is none, it builds and
+   registers a preview build first.
+3. It comments on the pull request: each platform's install link in the
+   Console, the bundle, and the QR code of the channel link, which switches
+   an installed preview build to the pull request's bundle. It edits the same
+   comment on every push, and never another author's.
+4. When the pull request closes, it deletes the channel and its bundles.
+
+The workflow needs two secrets: the Console's URL and a vault token. The
+deploy credentials, the release keystore, and bundle signing all come from
+the [Console's vault](/docs/guides/console-deployment/vault).
+
+## Prepare the project
+
+- Deploy the Console with [`vault()`](/docs/guides/console-deployment/vault),
+  and set `console.channelLinkPrefix` in its configuration, as
+  [Show channel links in the Console](/docs/guides/preview-builds#show-channel-links-in-the-console)
+  describes. The pull request comment shows the QR code the Console serves
+  for the channel at `/_hot-updater/preview/channel-qr?channel=<channel>`,
+  which takes no sign-in, so GitHub can show it. It holds only the link.
+- Make the app [open channel links](/docs/guides/preview-builds#open-channel-links-in-the-app),
+  with your preview channel, such as `preview`, in `defaultChannels`.
+- Store the deploy credentials in the vault, with
+  [`secrets import`](/docs/guides/secrets#move-envhotupdater-into-the-vault)
+  or `secrets put`, and sign bundles with the vault's key through
+  [`remoteSigning`](/docs/guides/signing/remote#sign-with-the-console-vault).
+- Add a [native build scheme](/docs/guides/native-build#configure-schemes)
+  for each previewed platform: a Release APK for Android, signed with a
+  `vault:` keystore, and a scheme with `simulator: true` for iOS, which builds
+  a Simulator `.app` that needs no signing.
+- The registry tells native builds apart by platform, channel, and
+  fingerprint or app version, not by scheme. A project that previews several
+  apps, such as flavors with their own application IDs, gives each app its
+  own `preview-channel` and runs the action once per app.
+
+```ts title="hot-updater.config.ts"
+import { defineConfig } from "hot-updater";
+import { remoteSigning } from "hot-updater/signing";
+
+export default defineConfig({
+  nativeBuild: {
+    android: {
+      previewApk: {
+        packageName: "com.example.app",
+        aab: false,
+        signing: { keystore: "vault:release-keystore" },
+      },
+    },
+    ios: {
+      previewSimulator: {
+        bundleIdentifier: "com.example.app",
+        scheme: "ExampleApp",
+        configuration: "Release",
+        simulator: true,
+      },
+    },
+  },
+  signing: remoteSigning({ endpoint: "https://console.example.com" }),
+  // ...build, storage, database, plugins with vault()
+});
+```
+
+## Issue the vault token
+
+Issue one token that reads the deploy credentials and the keystore, and
+signs with the bundle signing key:
+
+```package-install
+npx hot-updater secrets token create --name pr-preview --secrets deploy-credentials,release-keystore,bundle-signing-key --actions read,sign
+```
+
+Save the Console's URL as the repository secret `HOT_UPDATER_CONSOLE_URL`,
+and the token as `HOT_UPDATER_VAULT_TOKEN`. The action gives the CLI the
+token as `HOT_UPDATER_VAULT_TOKEN` and as `remoteSigning`'s
+`HOT_UPDATER_SIGNING_TOKEN`.
+
+## Add the workflow
+
+```yaml title=".github/workflows/preview.yml"
+name: Preview
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: preview-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - run: npm ci
+      # The tag of the hot-updater release your project installs.
+      - uses: gronxb/hot-updater/actions/preview@v1.2.0
+        with:
+          console-url: ${{ secrets.HOT_UPDATER_CONSOLE_URL }}
+          vault-token: ${{ secrets.HOT_UPDATER_VAULT_TOKEN }}
+          android-scheme: previewApk
+```
+
+The same job cleans up when the pull request closes.
+
+The action runs on Linux and macOS runners. To preview iOS too, run the job
+on `macos-latest` with both platforms. One
+job previews them in order and writes one comment:
+
+```yaml
+    runs-on: macos-latest
+    steps:
+      # ...the steps above
+      - uses: gronxb/hot-updater/actions/preview@v1.2.0
+        with:
+          console-url: ${{ secrets.HOT_UPDATER_CONSOLE_URL }}
+          vault-token: ${{ secrets.HOT_UPDATER_VAULT_TOKEN }}
+          platforms: android,ios
+          android-scheme: previewApk
+          ios-scheme: previewSimulator
+```
+
+## What each run does
+
+Before anything else, the action runs `hot-updater channel set <preview-channel>`,
+so a build it makes embeds the preview channel. Then, for each platform:
+
+1. `hot-updater native-build find -p <platform> -c <preview-channel> -s <scheme> --json`
+   prints the newest registered build that a build of the project would
+   match: the same fingerprint, from the config's fingerprint inputs, or with
+   the `appVersion` strategy, the version of the app the scheme builds, and
+   the kind of artifact the scheme builds, so a Simulator scheme never reuses
+   an `.ipa`, nor an APK scheme an `.aab`.
+2. With no build, `hot-updater build:<platform> --scheme <scheme> --register --json`
+   builds and registers one, and prints what its artifact embeds: the
+   channel, and the fingerprint or app version. With one, the action skips
+   the native build and runs `hot-updater fingerprint create`, since a
+   committed `fingerprint.json` can be older than the project.
+3. `hot-updater deploy -p <platform> -c <channel>` deploys the bundle, with
+   the build's app version as its target with the `appVersion` strategy.
+   The action checks that the bundle targets the build's fingerprint or app
+   version.
+
+A scheme that sets the app version at build time, such as in an `xcconfig`,
+builds a version the project doesn't declare, so its preview builds again on
+every run.
+
+When the pull request closes, `hot-updater channel delete <channel> --yes`
+deletes the channel and its bundles, and the comment says so. The preview
+builds stay registered for the next pull request.
+
+<Callout type="warn">
+  Keep the preview channel for native builds and pull request channels for
+  bundles. A channel a native build embeds can't be deleted, so the action
+  refuses a `channel` equal to `preview-channel`, and the cleanup fails when
+  a native build embeds the pull request's channel.
+</Callout>
+
+## The comment
+
+The comment has a row per platform: the **Install** link to the build's
+dialog on the Console's **Preview** page, whether this run built it or reused
+it, the fingerprint or app version, and the bundle's ID. An Android APK
+installs by the QR code the dialog shows, and a Simulator app with its
+`xcrun simctl install` command.
+
+Below it, the QR code of the pull request's channel link opens the bundle in
+an installed preview build, with the link and the `adb` and
+`xcrun simctl openurl` commands that open it on an emulator or simulator.
+Without `console.channelLinkPrefix`, the comment links to the Console's
+channel page instead.
+
+The comment ends with "Preview by hot-updater". Set `credit: false` to leave
+it out.
+
+## Inputs
+
+| Input               | Default                        | Description                                                                                                    |
+| ------------------- | ------------------------------ | -------------------------------------------------------------------------------------------------------------- |
+| `console-url`       |                                | The Console's URL                                                                                              |
+| `vault-token`       |                                | A vault token that reads the deploy credentials and the keystore, and signs bundles. Empty skips the action    |
+| `platforms`         | `android`                      | The platforms to preview, comma-separated: `android`, `ios`. iOS needs a macOS runner                           |
+| `android-scheme`    |                                | The `nativeBuild.android` scheme of the preview build. Required to preview Android                             |
+| `ios-scheme`        |                                | The `nativeBuild.ios` scheme of the preview build, a `simulator: true` scheme for a Simulator app               |
+| `preview-channel`   | `preview`                      | The channel preview builds embed, shared by every pull request                                                 |
+| `channel`           | `pr-<number>`                  | The pull request's channel                                                                                     |
+| `credit`            | `true`                         | Whether the comment ends with "Preview by hot-updater"                                                         |
+| `comment`           | `true`                         | Whether to write the comment                                                                                   |
+| `mode`              | `auto`                         | `preview`, `cleanup`, or `auto`: `cleanup` when the pull request closed, else `preview`                         |
+| `working-directory` | `.`                            | The app's directory, with `hot-updater.config.ts`                                                              |
+| `cli`               | `npx --no-install hot-updater` | The command that runs the project's CLI                                                                        |
+| `github-token`      | `github.token`                 | The token that writes the comment                                                                              |
+
+The `comment-body` output holds the comment's Markdown, and `previews` a JSON
+array of each platform's native build ID, whether it was built, and bundle
+ID.
+
+## Pull requests from forks
+
+GitHub gives a pull request from a fork no secrets and a read-only token, so
+the action does nothing for it, and the closed pull request needs no
+cleanup. Don't run the action on `pull_request_target`: it would build the
+fork's code with your vault token.
+
+## Expo
+
+In an Expo project, the native build's prebuild writes the native projects,
+so `channel set` doesn't reach them. Set the preview channel in the
+`@hot-updater/expo` config plugin for the preview job, such as from an
+environment variable your `app.config.ts` reads.

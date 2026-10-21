@@ -27,6 +27,7 @@ const unitInclude = [
   "plugins/**/*.test.ts",
   "examples-server/**/*.spec.ts",
   "examples-server/**/*.test.ts",
+  "actions/**/*.spec.ts",
 ];
 const e2eUnitInclude = ["e2e/**/*.spec.ts", "e2e/**/*.test.ts"];
 const integrationInclude = [
