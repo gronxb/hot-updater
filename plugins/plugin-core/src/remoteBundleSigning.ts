@@ -17,6 +17,27 @@ const BASE64_PATTERN =
 const PUBLIC_KEY_PATTERN =
   /^-----BEGIN PUBLIC KEY-----\s+([A-Za-z\d+/=\s]+)\s+-----END PUBLIC KEY-----$/u;
 
+/**
+ * The name of the errors `remoteSigning` throws with a reason it wrote itself,
+ * which never holds the token or what an upstream library threw. The CLI
+ * shows these, and redacts any other signing adapter error, by this name.
+ */
+const REMOTE_SIGNING_ERROR_NAME = "HotUpdaterRemoteSigningError";
+const ERROR_RESPONSE_BODY_LIMIT = 4 * 1024;
+const ERROR_MESSAGE_LENGTH_LIMIT = 300;
+const MISSING_TOKEN_MESSAGE =
+  "remoteSigning requires signingToken or HOT_UPDATER_SIGNING_TOKEN.";
+
+/** A failure whose reason is safe to show: it names no secret. */
+class RemoteSigningFailure extends Error {}
+
+const remoteSigningError = (summary: string, error?: unknown) => {
+  if (!(error instanceof RemoteSigningFailure)) return new Error(summary);
+  const named = new Error(`${summary} ${error.message}`);
+  named.name = REMOTE_SIGNING_ERROR_NAME;
+  return named;
+};
+
 type Fetch = typeof globalThis.fetch;
 type WebCryptoKey = Awaited<ReturnType<typeof crypto.subtle.importKey>>;
 type HeadersInitializer = ConstructorParameters<typeof Headers>[0];
@@ -165,19 +186,25 @@ const assertSafePath = (path: string) => {
   }
 };
 
+const invalidEndpoint = () => {
+  const error = new Error("Remote bundle signing requires a valid endpoint.");
+  error.name = REMOTE_SIGNING_ERROR_NAME;
+  return error;
+};
+
 const normalizeEndpoint = (endpoint: string) => {
   let url: URL;
   try {
     url = new URL(endpoint);
   } catch {
-    throw new Error("Remote bundle signing requires a valid endpoint.");
+    throw invalidEndpoint();
   }
 
   const rawPath = /^https?:\/\/[^/?#]*(\/[^?#]*)?/iu.exec(endpoint)?.[1] ?? "/";
   try {
     assertSafePath(rawPath);
   } catch {
-    throw new Error("Remote bundle signing requires a valid endpoint.");
+    throw invalidEndpoint();
   }
   const isLoopback =
     url.hostname === "localhost" ||
@@ -190,7 +217,7 @@ const normalizeEndpoint = (endpoint: string) => {
     url.search ||
     url.hash
   ) {
-    throw new Error("Remote bundle signing requires a valid endpoint.");
+    throw invalidEndpoint();
   }
 
   const prefix = url.pathname.replace(/\/+$/u, "");
@@ -305,20 +332,71 @@ const remoteRequest = async (
     throw new Error("missing token");
   }
 
-  const response = await fetchImplementation(endpoint, {
-    ...init,
-    headers: {
-      Accept: "application/json",
-      ...init.headers,
-      [REMOTE_BUNDLE_SIGNING_TOKEN_HEADER]: token,
-    },
-    redirect: "error",
-    signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-  });
+  let response: Response;
+  try {
+    response = await fetchImplementation(endpoint, {
+      ...init,
+      headers: {
+        Accept: "application/json",
+        ...init.headers,
+        [REMOTE_BUNDLE_SIGNING_TOKEN_HEADER]: token,
+      },
+      redirect: "error",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+  } catch {
+    // What fetch threw may quote the request: name only the endpoint.
+    throw new RemoteSigningFailure(`Could not reach ${endpoint}.`);
+  }
   if (response.status !== 200) {
-    throw new Error("invalid status");
+    const refusal = await describeRefusal(response, token);
+    throw new RemoteSigningFailure(
+      `${endpoint} answered ${refusal}${/[.!?]$/u.test(refusal) ? "" : "."}`,
+    );
   }
   return parseJsonBody(response.body, response.headers, RESPONSE_BODY_LIMIT);
+};
+
+/**
+ * A refusal's status, with the `{ error }` or `{ error: { code, message } }`
+ * a signing server answers it with, such as the Console's scope refusals.
+ * The token is masked and the message shortened to one line.
+ */
+const describeRefusal = async (response: Response, token: string) => {
+  let code: unknown;
+  let message: unknown;
+  try {
+    const body = await parseJsonBody(
+      response.body,
+      response.headers,
+      ERROR_RESPONSE_BODY_LIMIT,
+    );
+    const error = isRecord(body) ? body.error : undefined;
+    if (typeof error === "string") {
+      message = error;
+    } else if (isRecord(error)) {
+      code = error.code;
+      message = error.message;
+    }
+  } catch {
+    // A body that is not JSON adds nothing to the status.
+  }
+  const status =
+    typeof code === "string" && /^[a-z][a-z0-9_]{0,63}$/u.test(code)
+      ? `${response.status} ${code}`
+      : String(response.status);
+  if (typeof message !== "string") return status;
+  const text = message
+    .split(token)
+    .join("********")
+    .replace(/\p{Cc}+/gu, " ")
+    .trim();
+  if (!text) return status;
+  return `${status}: ${
+    text.length > ERROR_MESSAGE_LENGTH_LIMIT
+      ? `${text.slice(0, ERROR_MESSAGE_LENGTH_LIMIT)}…`
+      : text
+  }`;
 };
 
 /** Signs through a server implementing the Hot Updater signing protocol. */
@@ -341,9 +419,7 @@ export const remoteSigning = ({
         ? await signingToken()
         : (signingToken ?? process.env.HOT_UPDATER_SIGNING_TOKEN);
     if (!token?.trim()) {
-      throw new Error(
-        "remoteSigning requires signingToken or HOT_UPDATER_SIGNING_TOKEN.",
-      );
+      throw new RemoteSigningFailure(MISSING_TOKEN_MESSAGE);
     }
     return token;
   };
@@ -355,9 +431,12 @@ export const remoteSigning = ({
       method: "GET",
     })
       .then(parseMetadata)
-      .catch(() => {
+      .catch((error: unknown) => {
         resolvedKey = undefined;
-        throw new Error("Failed to load the remote bundle signing public key.");
+        throw remoteSigningError(
+          "Failed to load the remote bundle signing public key.",
+          error,
+        );
       });
     return resolvedKey;
   };
@@ -396,8 +475,11 @@ export const remoteSigning = ({
             method: "POST",
           },
         );
-      } catch {
-        throw new Error("Remote bundle signer failed to sign the message.");
+      } catch (error) {
+        throw remoteSigningError(
+          "Remote bundle signer failed to sign the message.",
+          error,
+        );
       }
 
       if (

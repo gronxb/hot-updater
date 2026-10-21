@@ -1,0 +1,72 @@
+---
+title: "openChannelLink"
+description: "The `hotUpdater.openChannelLink()` function switches a preview build to the channel a channel link names."
+icon: QrCode
+---
+
+## Usage
+
+Pass every URL the app opens to `hotUpdater.openChannelLink()`. A channel link,
+`<prefix>hot-updater/channel/<channel>`, switches a preview build to that
+channel's bundle; any other URL comes back as `NOT_CHANNEL_LINK`.
+
+```tsx
+import { Linking } from "react-native";
+
+import { hotUpdater } from "./hotUpdater";
+
+Linking.addEventListener("url", async ({ url }) => {
+  try {
+    const result = await hotUpdater.openChannelLink(url, {
+      updateStrategy: "fingerprint",
+      defaultChannels: ["preview"],
+    });
+    if (result.status === "NOT_CHANNEL_LINK") {
+      // Route the URL as the app routes its other links.
+    }
+  } catch (error) {
+    // The check or the download failed, such as offline.
+    console.warn("Couldn't open the channel", error);
+  }
+});
+```
+
+See [Preview Builds](/docs/guides/preview-builds) for the Console's channel
+link QR codes and the whole workflow.
+
+## Options
+
+| Option            | Type                          | Description                                                                 |
+| ----------------- | ----------------------------- | --------------------------------------------------------------------------- |
+| `updateStrategy`  | `"fingerprint" \| "appVersion"` | The update strategy the app's update checks use                           |
+| `defaultChannels` | `string[]`                    | The build-time default channels whose builds open channel links             |
+| `requestHeaders`  | `Record<string, string>`      | Headers for the update check, added to the instance's own                   |
+| `requestTimeout`  | `number`                      | The update check's timeout in milliseconds                                  |
+
+## Behavior
+
+- Returns `{ status: "IGNORED" }` without a request when the build's
+  [default channel](/docs/react-native-api/getDefaultChannel) is not in
+  `defaultChannels`, so a production build ignores every link. An OTA update
+  can't change the default channel a binary embeds.
+- Calls [`resetChannel()`](/docs/react-native-api/resetChannel) first when the
+  app is switched to another channel.
+- Checks the channel with
+  [`checkForUpdate({ channel })`](/docs/react-native-api/checkForUpdate),
+  installs its bundle with the returned `updateBundle()`, reloads, and
+  returns `{ status: "SWITCHED" }`.
+- A link to the build's default channel leaves a runtime channel switch, and
+  checks the default channel as `checkForUpdate()` does.
+- Returns `{ status: "NO_UPDATE" }` when the channel has no bundle for the
+  build. When it reset another channel first, it reloads into the built-in
+  bundle.
+- Rejects when the check or the download fails. When it reset another channel
+  first, it reloads into the built-in bundle before rejecting.
+- In a Debug build `checkForUpdate` returns no update, so the result is
+  `NO_UPDATE`.
+
+## Related APIs
+
+- [`hotUpdater.checkForUpdate()`](/docs/react-native-api/checkForUpdate)
+- [`hotUpdater.resetChannel()`](/docs/react-native-api/resetChannel)
+- [`hotUpdater.isChannelSwitched()`](/docs/react-native-api/isChannelSwitched)

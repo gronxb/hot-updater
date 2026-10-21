@@ -13,6 +13,8 @@ Use the console for:
 - Advanced immutable artifact inspection
 - Quick access to git history for updates
 - [Remote Config](#remote-config) parameters, conditions, and versions
+- [Preview builds](/docs/guides/preview-builds): native build downloads and
+  channel link QR codes
 
 <video src={"/docs/console/console.mp4"} controls autoPlay loop muted />
 
@@ -28,10 +30,11 @@ Console configuration does not change bundle delivery settings or artifacts.
 Set console options in `hot-updater.config.ts`, along with its `storage`,
 `database`, and `plugins`:
 
-| Option           | Description                                              | Default |
-| ---------------- | -------------------------------------------------------- | ------- |
-| `console.gitUrl` | Enables commit shortcuts by linking to git commit hashes | -       |
-| `console.port`   | Sets the console server port                             | `1422`  |
+| Option                      | Description                                                                                       | Default |
+| --------------------------- | ------------------------------------------------------------------------------------------------- | ------- |
+| `console.gitUrl`            | Enables commit shortcuts by linking to git commit hashes                                          | -       |
+| `console.channelLinkPrefix` | The app's link prefix, such as `myapp://`, for [channel link](/docs/guides/preview-builds) QR codes | -       |
+| `console.port`              | Sets the console server port                                                                      | `1422`  |
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";

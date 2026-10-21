@@ -185,6 +185,7 @@ response wraps its result in `data`.
 | `DELETE` | `/channels/:id`                         |                                                              | `204`                                                   |
 | `POST`   | `/native-builds`                        | `NativeBuildRegistration`                                    | `201`, `NativeBuildRow`                                 |
 | `GET`    | `/native-builds/latest`                 | `platform`, `channel`, and `fingerprintHash` or `appVersion` | The newest `NativeBuildRow` of that scope, or `null`    |
+| `GET`    | `/native-builds/:id`                    |                                                              | `NativeBuildRow`, or `null`                             |
 | `GET`    | `/native-builds`                        | Page                                                         | `NativeBuildRow[]`                                      |
 
 `PATCH /releases/:id` takes a `ReleasePolicyPatch`. `promote` copies a Bundle

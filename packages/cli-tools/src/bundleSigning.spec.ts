@@ -178,6 +178,55 @@ describe("prepareBundleSigning", () => {
     expect((error as Error).message).not.toContain("PRIVATE KEY CANARY");
   });
 
+  it("shows the reasons remoteSigning names, and redacts every other provider error", async () => {
+    const dir = await createTempDir();
+    const { publicKey } = createKeyPair();
+    const refusal = (message: string) =>
+      Object.assign(new Error(message), {
+        name: "HotUpdaterRemoteSigningError",
+      });
+    const refusing = {
+      name: "remoteSigning",
+      getPublicKey: async () => {
+        throw refusal(
+          "Failed to load the remote bundle signing public key. https://console.example.com/_hot-updater/signing answered 401 unauthorized: The vault token was revoked.",
+        );
+      },
+      sign: async () => ({ signature: new Uint8Array([1]) }),
+    } satisfies BundleSigningAdapter;
+    await expect(prepareBundleSigning(refusing, { cwd: dir })).rejects.toThrow(
+      "Failed to resolve the bundle signing provider public key. Failed to load the remote bundle signing public key. https://console.example.com/_hot-updater/signing answered 401 unauthorized: The vault token was revoked.",
+    );
+
+    const signRefusing = {
+      name: "remoteSigning",
+      getPublicKey: async () => ({ publicKey }),
+      sign: async () => {
+        throw refusal(
+          "Remote bundle signer failed to sign the message. https://console.example.com/_hot-updater/signing answered 503 vault_locked: The vault is locked.",
+        );
+      },
+    } satisfies BundleSigningAdapter;
+    const session = await prepareBundleSigning(signRefusing, { cwd: dir });
+    await expect(session?.signFileHash("ff".repeat(32))).rejects.toThrow(
+      "Bundle signing provider failed to sign the file hash. Remote bundle signer failed to sign the message. https://console.example.com/_hot-updater/signing answered 503 vault_locked: The vault is locked.",
+    );
+
+    const leaking = {
+      name: "test-provider",
+      getPublicKey: async () => {
+        throw new Error("PRIVATE KEY CANARY");
+      },
+      sign: async () => ({ signature: new Uint8Array([1]) }),
+    } satisfies BundleSigningAdapter;
+    const error = await prepareBundleSigning(leaking, { cwd: dir }).catch(
+      (caught: unknown) => caught,
+    );
+    expect((error as Error).message).toBe(
+      "Failed to resolve the bundle signing provider public key.",
+    );
+  });
+
   it("redacts signing provider failures", async () => {
     const dir = await createTempDir();
     const { publicKey } = createKeyPair();

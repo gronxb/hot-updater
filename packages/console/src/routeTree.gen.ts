@@ -13,6 +13,7 @@ import { Route as IndexRouteImport } from './routes/index'
 import { Route as ApiKeysRouteImport } from './routes/api-keys'
 import { Route as InsightsRouteImport } from './routes/insights'
 import { Route as InstallationsRouteImport } from './routes/installations'
+import { Route as PreviewRouteImport } from './routes/preview'
 import { Route as RemoteConfigRouteImport } from './routes/remote-config'
 import { Route as VaultRouteImport } from './routes/vault'
 import { Route as HotUpdaterSigningRouteImport } from './routes/[_]hot-updater/signing'
@@ -21,6 +22,7 @@ import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as HotUpdaterVaultV1ResolveRouteImport } from './routes/[_]hot-updater/vault/v1/resolve'
 import { Route as HotUpdaterVaultV1SecretsRouteImport } from './routes/[_]hot-updater/vault/v1/secrets'
 import { Route as ApiBundlesBundleIdDownloadRouteImport } from './routes/api/bundles/$bundleId/download'
+import { Route as ApiNativeBuildsBuildIdDownloadRouteImport } from './routes/api/native-builds/$buildId/download'
 import { Route as HotUpdaterVaultV1SecretsNameRouteImport } from './routes/[_]hot-updater/vault/v1/secrets.$name'
 
 const IndexRoute = IndexRouteImport.update({
@@ -41,6 +43,11 @@ const InsightsRoute = InsightsRouteImport.update({
 const InstallationsRoute = InstallationsRouteImport.update({
   id: '/installations',
   path: '/installations',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const PreviewRoute = PreviewRouteImport.update({
+  id: '/preview',
+  path: '/preview',
   getParentRoute: () => rootRouteImport,
 } as any)
 const RemoteConfigRoute = RemoteConfigRouteImport.update({
@@ -86,6 +93,12 @@ const ApiBundlesBundleIdDownloadRoute =
     path: '/api/bundles/$bundleId/download',
     getParentRoute: () => rootRouteImport,
   } as any)
+const ApiNativeBuildsBuildIdDownloadRoute =
+  ApiNativeBuildsBuildIdDownloadRouteImport.update({
+    id: '/api/native-builds/$buildId/download',
+    path: '/api/native-builds/$buildId/download',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 const HotUpdaterVaultV1SecretsNameRoute =
   HotUpdaterVaultV1SecretsNameRouteImport.update({
     id: '/$name',
@@ -98,6 +111,7 @@ export interface FileRoutesByFullPath {
   '/api-keys': typeof ApiKeysRoute
   '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
+  '/preview': typeof PreviewRoute
   '/remote-config': typeof RemoteConfigRoute
   '/vault': typeof VaultRoute
   '/_hot-updater/signing': typeof HotUpdaterSigningRoute
@@ -106,6 +120,7 @@ export interface FileRoutesByFullPath {
   '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
   '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRouteWithChildren
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
+  '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
   '/_hot-updater/vault/v1/secrets/$name': typeof HotUpdaterVaultV1SecretsNameRoute
 }
 export interface FileRoutesByTo {
@@ -113,6 +128,7 @@ export interface FileRoutesByTo {
   '/api-keys': typeof ApiKeysRoute
   '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
+  '/preview': typeof PreviewRoute
   '/remote-config': typeof RemoteConfigRoute
   '/vault': typeof VaultRoute
   '/_hot-updater/signing': typeof HotUpdaterSigningRoute
@@ -121,6 +137,7 @@ export interface FileRoutesByTo {
   '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
   '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRouteWithChildren
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
+  '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
   '/_hot-updater/vault/v1/secrets/$name': typeof HotUpdaterVaultV1SecretsNameRoute
 }
 export interface FileRoutesById {
@@ -129,6 +146,7 @@ export interface FileRoutesById {
   '/api-keys': typeof ApiKeysRoute
   '/insights': typeof InsightsRoute
   '/installations': typeof InstallationsRoute
+  '/preview': typeof PreviewRoute
   '/remote-config': typeof RemoteConfigRoute
   '/vault': typeof VaultRoute
   '/_hot-updater/signing': typeof HotUpdaterSigningRoute
@@ -137,6 +155,7 @@ export interface FileRoutesById {
   '/_hot-updater/vault/v1/resolve': typeof HotUpdaterVaultV1ResolveRoute
   '/_hot-updater/vault/v1/secrets': typeof HotUpdaterVaultV1SecretsRouteWithChildren
   '/api/bundles/$bundleId/download': typeof ApiBundlesBundleIdDownloadRoute
+  '/api/native-builds/$buildId/download': typeof ApiNativeBuildsBuildIdDownloadRoute
   '/_hot-updater/vault/v1/secrets/$name': typeof HotUpdaterVaultV1SecretsNameRoute
 }
 export interface FileRouteTypes {
@@ -146,6 +165,7 @@ export interface FileRouteTypes {
     | '/api-keys'
     | '/insights'
     | '/installations'
+    | '/preview'
     | '/remote-config'
     | '/vault'
     | '/_hot-updater/signing'
@@ -154,6 +174,7 @@ export interface FileRouteTypes {
     | '/_hot-updater/vault/v1/resolve'
     | '/_hot-updater/vault/v1/secrets'
     | '/api/bundles/$bundleId/download'
+    | '/api/native-builds/$buildId/download'
     | '/_hot-updater/vault/v1/secrets/$name'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -161,6 +182,7 @@ export interface FileRouteTypes {
     | '/api-keys'
     | '/insights'
     | '/installations'
+    | '/preview'
     | '/remote-config'
     | '/vault'
     | '/_hot-updater/signing'
@@ -169,6 +191,7 @@ export interface FileRouteTypes {
     | '/_hot-updater/vault/v1/resolve'
     | '/_hot-updater/vault/v1/secrets'
     | '/api/bundles/$bundleId/download'
+    | '/api/native-builds/$buildId/download'
     | '/_hot-updater/vault/v1/secrets/$name'
   id:
     | '__root__'
@@ -176,6 +199,7 @@ export interface FileRouteTypes {
     | '/api-keys'
     | '/insights'
     | '/installations'
+    | '/preview'
     | '/remote-config'
     | '/vault'
     | '/_hot-updater/signing'
@@ -184,6 +208,7 @@ export interface FileRouteTypes {
     | '/_hot-updater/vault/v1/resolve'
     | '/_hot-updater/vault/v1/secrets'
     | '/api/bundles/$bundleId/download'
+    | '/api/native-builds/$buildId/download'
     | '/_hot-updater/vault/v1/secrets/$name'
   fileRoutesById: FileRoutesById
 }
@@ -192,6 +217,7 @@ export interface RootRouteChildren {
   ApiKeysRoute: typeof ApiKeysRoute
   InsightsRoute: typeof InsightsRoute
   InstallationsRoute: typeof InstallationsRoute
+  PreviewRoute: typeof PreviewRoute
   RemoteConfigRoute: typeof RemoteConfigRoute
   VaultRoute: typeof VaultRoute
   HotUpdaterSigningRoute: typeof HotUpdaterSigningRoute
@@ -200,6 +226,7 @@ export interface RootRouteChildren {
   HotUpdaterVaultV1ResolveRoute: typeof HotUpdaterVaultV1ResolveRoute
   HotUpdaterVaultV1SecretsRoute: typeof HotUpdaterVaultV1SecretsRouteWithChildren
   ApiBundlesBundleIdDownloadRoute: typeof ApiBundlesBundleIdDownloadRoute
+  ApiNativeBuildsBuildIdDownloadRoute: typeof ApiNativeBuildsBuildIdDownloadRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -230,6 +257,13 @@ declare module '@tanstack/react-router' {
       path: '/installations'
       fullPath: '/installations'
       preLoaderRoute: typeof InstallationsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/preview': {
+      id: '/preview'
+      path: '/preview'
+      fullPath: '/preview'
+      preLoaderRoute: typeof PreviewRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/remote-config': {
@@ -288,6 +322,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiBundlesBundleIdDownloadRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/native-builds/$buildId/download': {
+      id: '/api/native-builds/$buildId/download'
+      path: '/api/native-builds/$buildId/download'
+      fullPath: '/api/native-builds/$buildId/download'
+      preLoaderRoute: typeof ApiNativeBuildsBuildIdDownloadRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/_hot-updater/vault/v1/secrets/$name': {
       id: '/_hot-updater/vault/v1/secrets/$name'
       path: '/$name'
@@ -317,6 +358,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiKeysRoute: ApiKeysRoute,
   InsightsRoute: InsightsRoute,
   InstallationsRoute: InstallationsRoute,
+  PreviewRoute: PreviewRoute,
   RemoteConfigRoute: RemoteConfigRoute,
   VaultRoute: VaultRoute,
   HotUpdaterSigningRoute: HotUpdaterSigningRoute,
@@ -325,6 +367,7 @@ const rootRouteChildren: RootRouteChildren = {
   HotUpdaterVaultV1ResolveRoute: HotUpdaterVaultV1ResolveRoute,
   HotUpdaterVaultV1SecretsRoute: HotUpdaterVaultV1SecretsRouteWithChildren,
   ApiBundlesBundleIdDownloadRoute: ApiBundlesBundleIdDownloadRoute,
+  ApiNativeBuildsBuildIdDownloadRoute: ApiNativeBuildsBuildIdDownloadRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

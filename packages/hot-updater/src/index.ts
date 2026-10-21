@@ -61,7 +61,7 @@ import {
   handleBundleShow,
   handleBundleUpdate,
 } from "./commands/bundle";
-import { handleSetChannel } from "./commands/channel";
+import { handleChannelDelete, handleSetChannel } from "./commands/channel";
 import { handleDoctor } from "./commands/doctor";
 import {
   handleCreateFingerprint,
@@ -265,15 +265,27 @@ fingerprintCommand
   )
   .action(handleFingerprintHash);
 
-program
+const channelCommand = program
   .command("channel")
-  .description("Manage native default channels")
+  .description("Manage channels");
+
+channelCommand
   .command("set")
   .description(
     "Set the native default channel for Android (AndroidManifest.xml) and iOS (Info.plist)",
   )
   .argument("<channel>", "the channel to set")
   .action(handleSetChannel);
+
+channelCommand
+  .command("delete")
+  .description(
+    "Delete a channel and its bundles, such as a closed pull request's",
+  )
+  .argument("<channel>", "the channel to delete")
+  .option("--json", "output the result as JSON")
+  .option("-y, --yes", "skip confirmation prompt")
+  .action(handleChannelDelete);
 
 const SERVER_PATH_HELP =
   "path to the server definition that exports hotUpdater (default: database and plugins in hot-updater.config.ts, else src/hotUpdater.ts or src/db.ts)";

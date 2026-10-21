@@ -37,7 +37,7 @@ export interface ReleaseUpdateOptions {
   readonly yes?: boolean;
 }
 
-const safeDispose = async (database: {
+export const safeDispose = async (database: {
   readonly dispose?: () => Promise<void>;
 }) => {
   try {
@@ -153,7 +153,7 @@ const printUpdatePreview = (
   );
 };
 
-const confirmMutation = async (
+export const confirmMutation = async (
   message: string,
   yes: boolean | undefined,
 ): Promise<void> => {

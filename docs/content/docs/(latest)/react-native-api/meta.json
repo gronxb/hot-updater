@@ -16,6 +16,7 @@
     "getDefaultChannel",
     "isChannelSwitched",
     "resetChannel",
+    "openChannelLink",
     "getCohort",
     "setCohort",
     "---Progress---",

@@ -572,7 +572,16 @@ const deployPlatform = async ({
 
   const [buildAdapter, signingSession] = await Promise.all([
     config.build({ cwd }),
-    prepareBundleSigning(config.signing, { cwd }),
+    prepareBundleSigning(config.signing, { cwd }).catch((error: unknown) => {
+      p.log.error("Signing configuration error:");
+      p.log.error(
+        `  ${error instanceof Error ? error.message : String(error)}`,
+      );
+      p.log.error(
+        "Deployment blocked. Fix the signing configuration and try again.",
+      );
+      return process.exit(1);
+    }),
   ]);
   const getNativeSigningPublicKey =
     buildAdapter.nativeBuild?.getBundleSigningPublicKey;

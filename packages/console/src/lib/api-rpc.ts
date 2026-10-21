@@ -142,7 +142,12 @@ export const getConfig = createServerFn()
   .handler(async () => {
     try {
       const { config } = await prepare();
-      return { console: { gitUrl: config.gitUrl } };
+      return {
+        console: {
+          gitUrl: config.gitUrl,
+          channelLinkPrefix: config.channelLinkPrefix,
+        },
+      };
     } catch (error) {
       console.error("Error during config retrieval:", error);
       throw error;
@@ -241,4 +246,44 @@ export const getBundleChildCounts = createServerFn({ method: "GET" })
       console.error("Error during bundle child count retrieval:", error);
       throw error;
     }
+  });
+
+export const getNativeBuilds = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
+  .validator(
+    (
+      input: { before?: string; after?: string; limit?: number } | undefined,
+    ) => ({
+      ...(input?.before === undefined ? {} : { before: input.before }),
+      ...(input?.after === undefined ? {} : { after: input.after }),
+      limit: pageLimit(input?.limit),
+    }),
+  )
+  .handler(async ({ data }) => {
+    const [{ core }, { listNativeBuilds }] = await Promise.all([
+      prepare(),
+      import("./server/nativeBuilds"),
+    ]);
+    return listNativeBuilds(core, data);
+  });
+
+export const getNativeBuild = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
+  .validator((input: { id: string }) => input)
+  .handler(async ({ data }) => (await prepare()).core.getNativeBuild(data.id));
+
+/**
+ * The URL a phone downloads a build from without the console's sign-in, or
+ * null when the storage gives none: the storage's download URL, resolved
+ * again each time it is read, since it may expire.
+ */
+export const getNativeBuildDownloadUrl = createServerFn({ method: "GET" })
+  .middleware([consoleAccess])
+  .validator((input: { id: string }) => input)
+  .handler(async ({ data }) => {
+    const [deps, { resolveNativeBuildDownloadUrl }] = await Promise.all([
+      prepare(),
+      import("./server/nativeBuilds"),
+    ]);
+    return { url: await resolveNativeBuildDownloadUrl(data.id, deps) };
   });
