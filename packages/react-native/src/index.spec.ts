@@ -688,6 +688,24 @@ describe("HotUpdater client initialization", () => {
       expect(mocks.reload).toHaveBeenCalledTimes(1);
     });
 
+    it("rejects when the check reports its failure as no update", async () => {
+      mocks.isChannelSwitched.mockReturnValue(true);
+      mocks.getChannel.mockReturnValue("pr-11");
+      const failure = new Error("catalog request failed");
+      // The real checkForUpdate catches the failure, calls onError, and
+      // resolves null.
+      mocks.checkForUpdate.mockImplementationOnce((async (input: {
+        onError?: (error: Error) => void;
+      }) => {
+        input.onError?.(failure);
+        return null;
+      }) as never);
+
+      await expect(open()).rejects.toBe(failure);
+      // The reset restored the built-in bundle, so the app starts it.
+      expect(mocks.reload).toHaveBeenCalledTimes(1);
+    });
+
     it("reports a failed check without a reset as it is", async () => {
       mocks.checkForUpdate.mockRejectedValueOnce(new Error("offline"));
 

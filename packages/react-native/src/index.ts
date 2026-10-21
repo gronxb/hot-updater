@@ -520,10 +520,18 @@ const createConfiguredMethods = (config: InstanceConfig) => {
       }
       let switched = false;
       try {
+        // `checkForUpdate` reports a failed check as no update, through
+        // `onError`: keep its error, so a failed check rejects instead.
+        let checkError: unknown;
         const updateInfo = await check({
           ...options,
           ...(channel === defaultChannel ? {} : { channel }),
+          onError: (error) => {
+            checkError ??= error;
+            config.onError?.(error);
+          },
         });
+        if (checkError !== undefined) throw checkError;
         switched = updateInfo !== null && (await updateInfo.updateBundle());
       } catch (error) {
         // The reset already left the channel the running bundle came from:
