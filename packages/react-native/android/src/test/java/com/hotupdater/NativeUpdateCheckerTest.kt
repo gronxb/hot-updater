@@ -370,6 +370,39 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `a duplicate leave keeps what was staged after the leave`() =
+        runBlocking {
+            val state = FakeState().also(::switchedToPr)
+            val transport =
+                FakeTransport { request ->
+                    when (request.url) {
+                        prCatalogUrl -> ok(catalog(emptyList(), generation = 3, channel = "pr-2"))
+                        CATALOG_URL -> ok(minorCatalog())
+                        ARTIFACT_URL -> ok(artifact())
+                        else -> UpdateCheckResponse(404, "Not Found", emptyMap(), "")
+                    }
+                }
+            val checker = NativeUpdateChecker(state, transport)
+            val first = checker.checkForUpdate(OPTIONS)!!
+            val second = checker.checkForUpdate(OPTIONS)!!
+            assertTrue(first.updateBundle())
+            // Back on the default channel, the app stages its update.
+            state.launchedBundleId = null
+            val staged = checker.checkForUpdate(OPTIONS)!!
+            assertEquals("INSTALL", staged.transitionKind)
+            assertTrue(staged.updateBundle())
+            assertTrue(state.queued().any { it.getString("name") == "onBundleDownloaded" })
+
+            assertTrue(second.updateBundle())
+
+            assertEquals(1, state.resets.get())
+            // The download stays reported, and the staged update stays staged.
+            assertTrue(state.queued().any { it.getString("name") == "onBundleDownloaded" })
+            assertTrue(staged.updateBundle())
+            assertEquals(1, state.stageCount.get())
+        }
+
+    @Test
     fun `leaves from different catalogs never join`() =
         runBlocking {
             val state = FakeState().also(::switchedToPr)

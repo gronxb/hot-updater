@@ -845,18 +845,27 @@ internal class NativeUpdateChecker(
                 targetKey = targetKey,
                 install = { _ ->
                     try {
-                        resetChannel {
+                        // Once no check or staging runs, as a reset must; only a real
+                        // reset undoes what was staged.
+                        mutex.withLock {
                             // This leave, from this or another result of the same catalog,
-                            // already happened: calling it again changes nothing.
+                            // already happened: calling it again changes nothing, not even
+                            // what was staged since.
                             if (lastLeftTargetKey == targetKey && state.getChannel() == state.getDefaultChannel()) {
-                                return@resetChannel true
+                                return@withLock true
                             }
                             // A device that left or changed the channel, or saw a newer
                             // catalog of it, meanwhile keeps it.
                             if (state.getChannel() != channel || !state.isReleaseSelectionCurrent(guard)) {
                                 throw StaleReleaseCatalogException()
                             }
-                            state.resetChannel().also { if (it) lastLeftTargetKey = targetKey }
+                            lastCommittedTargetKey = null
+                            state.resetChannel().also { reset ->
+                                if (reset) {
+                                    lastLeftTargetKey = targetKey
+                                    events.remove("onBundleDownloaded")
+                                }
+                            }
                         }
                     } catch (error: CancellationException) {
                         throw error
