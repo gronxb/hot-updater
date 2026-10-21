@@ -123,6 +123,11 @@ export function ChannelLinkCard({
                 ) : (
                   <Combobox
                     items={channels.data ?? []}
+                    // A pull request's channel appears while the page is
+                    // open, so opening the list reads the channels again.
+                    onOpenChange={(open) => {
+                      if (open) void channels.refetch();
+                    }}
                     onValueChange={(value) => {
                       if (value !== null) onChannelChange(value);
                     }}

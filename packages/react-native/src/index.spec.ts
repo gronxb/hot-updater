@@ -665,6 +665,36 @@ describe("HotUpdater client initialization", () => {
       expect(mocks.reload).toHaveBeenCalledTimes(1);
     });
 
+    it("starts the restored bundle when the check after a reset fails", async () => {
+      mocks.isChannelSwitched.mockReturnValue(true);
+      mocks.getChannel.mockReturnValue("pr-11");
+      mocks.checkForUpdate.mockRejectedValueOnce(new Error("offline"));
+
+      await expect(open()).rejects.toThrow("offline");
+      expect(mocks.resetChannel).toHaveBeenCalledTimes(1);
+      expect(mocks.reload).toHaveBeenCalledTimes(1);
+    });
+
+    it("starts the restored bundle when the download after a reset fails", async () => {
+      mocks.isChannelSwitched.mockReturnValue(true);
+      mocks.getChannel.mockReturnValue("pr-11");
+      mocks.checkForUpdate.mockResolvedValueOnce({
+        updateBundle: vi.fn(async () => {
+          throw new Error("download failed");
+        }),
+      } as never);
+
+      await expect(open()).rejects.toThrow("download failed");
+      expect(mocks.reload).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports a failed check without a reset as it is", async () => {
+      mocks.checkForUpdate.mockRejectedValueOnce(new Error("offline"));
+
+      await expect(open()).rejects.toThrow("offline");
+      expect(mocks.reload).not.toHaveBeenCalled();
+    });
+
     it("refuses to check another channel when the reset fails", async () => {
       mocks.isChannelSwitched.mockReturnValue(true);
       mocks.getChannel.mockReturnValue("pr-11");

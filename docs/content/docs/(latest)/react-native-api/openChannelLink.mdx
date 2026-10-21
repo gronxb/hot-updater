@@ -55,6 +55,8 @@ link QR codes and the whole workflow.
 - Returns `{ status: "NO_UPDATE" }` when the channel has no bundle for the
   build. When it reset another channel first, it reloads into the built-in
   bundle.
+- Rejects when the check or the download fails. When it reset another channel
+  first, it reloads into the built-in bundle before rejecting.
 - In a Debug build `checkForUpdate` returns no update, so the result is
   `NO_UPDATE`.
 

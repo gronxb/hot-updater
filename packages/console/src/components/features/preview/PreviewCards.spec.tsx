@@ -233,6 +233,27 @@ describe("ChannelLinkCard", () => {
     ).toBeTruthy();
   });
 
+  it("reads the channels again when the list opens", async () => {
+    const refetch = vi.fn();
+    render(
+      <ChannelLinkCard
+        channel={undefined}
+        channels={{ ...channels, refetch }}
+        onChannelChange={vi.fn()}
+        prefix="myapp://"
+        prefixPending={false}
+      />,
+    );
+
+    const trigger = screen
+      .getByLabelText("Channel")
+      .parentElement?.querySelector("button");
+    if (!trigger) throw new Error("The channel list has no trigger.");
+    fireEvent.click(trigger);
+    expect(await screen.findByRole("option", { name: "pr-12" })).toBeTruthy();
+    expect(refetch).toHaveBeenCalled();
+  });
+
   it("names the config option when the console has no link prefix", () => {
     render(
       <ChannelLinkCard

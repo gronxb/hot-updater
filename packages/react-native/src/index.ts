@@ -518,18 +518,22 @@ const createConfiguredMethods = (config: InstanceConfig) => {
           `Could not leave the "${getChannel()}" channel to open "${channel}".`,
         );
       }
-      const updateInfo = await check({
-        ...options,
-        ...(channel === defaultChannel ? {} : { channel }),
-      });
-      if (updateInfo !== null && (await updateInfo.updateBundle())) {
-        await reload();
-        return { status: "SWITCHED", channel };
+      let switched = false;
+      try {
+        const updateInfo = await check({
+          ...options,
+          ...(channel === defaultChannel ? {} : { channel }),
+        });
+        switched = updateInfo !== null && (await updateInfo.updateBundle());
+      } catch (error) {
+        // The reset already left the channel the running bundle came from:
+        // start the restored bundle before reporting the failure.
+        if (reset) await reload();
+        throw error;
       }
-      // The reset restored the built-in bundle: start it, as the reset left
-      // the channel the running bundle came from.
-      if (reset) await reload();
-      return { status: "NO_UPDATE", channel };
+      // After a reset without an update, this starts the restored bundle.
+      if (switched || reset) await reload();
+      return { status: switched ? "SWITCHED" : "NO_UPDATE", channel };
     },
 
     /**

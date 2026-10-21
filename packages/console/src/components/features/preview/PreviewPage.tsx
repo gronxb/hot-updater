@@ -68,7 +68,12 @@ export function PreviewPage({
       <div className="min-h-0 min-w-0 flex-1 overflow-y-auto bg-muted/5 p-3 sm:p-6">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-4 sm:gap-6">
           <NativeBuildsCard
-            builds={builds}
+            // Refreshing reads the channels too, which name the builds'.
+            builds={{
+              ...builds,
+              refetch: () =>
+                Promise.all([builds.refetch(), channels.refetch()]),
+            }}
             channelName={channelName}
             paged={before !== undefined || after !== undefined}
             onInstall={(row: NativeBuildRow) =>
