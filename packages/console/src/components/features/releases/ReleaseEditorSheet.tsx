@@ -9,6 +9,7 @@ import {
   isValidCohort,
   normalizeCohortValue,
 } from "@hot-updater/protocol";
+import { Link } from "@tanstack/react-router";
 import { AlertTriangle, Download, Plus, X } from "lucide-react";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
@@ -385,6 +386,15 @@ export function ReleaseEditorSheet({
                   <span className="text-xs text-foreground" translate="no">
                     {channelName}
                   </span>
+                  {channelName ? (
+                    <Link
+                      className="text-xs text-muted-foreground underline-offset-4 hover:text-foreground hover:underline"
+                      search={{ channel: channelName }}
+                      to="/preview"
+                    >
+                      Channel link
+                    </Link>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-medium text-muted-foreground">

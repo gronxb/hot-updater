@@ -134,7 +134,10 @@ export const createNativeBuildApi = (
   { now = Date.now }: { readonly now?: () => number } = {},
 ): Pick<
   HotUpdaterCoreApi,
-  "registerNativeBuild" | "findNativeBuild" | "listNativeBuilds"
+  | "registerNativeBuild"
+  | "getNativeBuild"
+  | "findNativeBuild"
+  | "listNativeBuilds"
 > => ({
   async registerNativeBuild(registration) {
     const problem = problemOf(registration);
@@ -195,6 +198,11 @@ export const createNativeBuildApi = (
       }
     }
     return row;
+  },
+
+  async getNativeBuild(id) {
+    const row = await db.findOne("native_builds", { id });
+    return row === null ? null : pick(row);
   },
 
   async findNativeBuild(scope) {

@@ -290,6 +290,10 @@ export const createStandaloneCoreApi = (
     listChannels: () => list<ChannelRow>("/channels", {}),
     findChannelByName: (name) =>
       call<ChannelRow>("GET", "/channels", { query: { name } }),
+    getNativeBuild: (id) =>
+      call<NativeBuildRow>("GET", `/native-builds/${encode(id)}`, {
+        requiredRoute: "native build",
+      }),
     findNativeBuild: (scope) =>
       call<NativeBuildRow>("GET", "/native-builds/latest", {
         query: nativeBuildScopeParams(scope),

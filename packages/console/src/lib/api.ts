@@ -1,4 +1,5 @@
 import type {
+  NativeBuildRow,
   ReleaseFilter,
   ReleasePolicyPatch,
 } from "@hot-updater/plugin-core";
@@ -13,6 +14,9 @@ import {
   getBundleChildren,
   getChannels,
   getConfig,
+  getNativeBuild,
+  getNativeBuildDownloadUrl,
+  getNativeBuilds,
   getRelease,
   getReleaseCatalogDiagnostics,
   getReleases,
@@ -40,7 +44,28 @@ export const queryKeys = {
       ["bundle-children", "counts", ...bundleIds] as const,
   },
   bundle: (bundleId: string) => ["bundle", bundleId] as const,
+  nativeBuilds: {
+    all: ["native-builds"] as const,
+    list: (page: NativeBuildPage) => ["native-builds", page] as const,
+  },
+  nativeBuild: (id: string) => ["native-build", id] as const,
+  nativeBuildDownloadUrl: (id: string) =>
+    ["native-build-download-url", id] as const,
 };
+
+export type NativeBuildPage = {
+  /** Builds older than this id: the next page. */
+  before?: string;
+  /** Builds newer than this id: the previous page. */
+  after?: string;
+};
+
+/**
+ * How often an open install QR reads its download URL again. Storage gives
+ * no lifetime with the URL, and adapters let it be configured down to
+ * minutes, so the QR never shows one older than this.
+ */
+const DOWNLOAD_URL_REFRESH_MS = 30_000;
 
 export type ReleaseFilters = {
   /** One of the filter sets the release indexes serve; none lists every release. */
@@ -122,6 +147,46 @@ export function useBundleChildCountsQuery(bundleIds: string[]) {
       getBundleChildCounts({ data: { bundleIds: normalizedBundleIds } }),
     staleTime: Infinity,
     enabled: normalizedBundleIds.length > 0,
+  });
+}
+
+/** One page of native builds, newest first, kept on screen while the next loads. */
+export function useNativeBuildsQuery(page: NativeBuildPage) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuilds.list(page),
+    queryFn: () => getNativeBuilds({ data: page }),
+    placeholderData: (previousData) => previousData,
+    staleTime: 60_000,
+  });
+}
+
+/** One native build, read only when the list on screen doesn't hold it. */
+export function useNativeBuildQuery(
+  id: string,
+  initialData: NativeBuildRow | undefined,
+) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuild(id),
+    queryFn: () => getNativeBuild({ data: { id } }),
+    enabled: id.length > 0,
+    initialData,
+    staleTime: Infinity,
+  });
+}
+
+/**
+ * The storage URL a phone downloads a build from, read while the install
+ * QR is open and again before it expires.
+ */
+export function useNativeBuildDownloadUrlQuery(id: string, enabled: boolean) {
+  return useQuery({
+    queryKey: queryKeys.nativeBuildDownloadUrl(id),
+    queryFn: () => getNativeBuildDownloadUrl({ data: { id } }),
+    enabled,
+    staleTime: DOWNLOAD_URL_REFRESH_MS,
+    // A storage without download URLs has none to refresh.
+    refetchInterval: (query) =>
+      query.state.data?.url === null ? false : DOWNLOAD_URL_REFRESH_MS,
   });
 }
 
