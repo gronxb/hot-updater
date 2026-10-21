@@ -163,6 +163,12 @@ key with a separate request. SDK retries can add network requests. Account for
 KMS latency, request quotas, availability, and cost. Provider errors fail the
 deployment; Hot Updater does not fall back to an unsigned bundle.
 
+When `remoteSigning` fails, the deploy names the signing URL and the status
+it answered with, the `{ "error" }` or `{ "error": { "code", "message" } }`
+body the service refused with, with the signing token masked, or that
+`HOT_UPDATER_SIGNING_TOKEN` is not set. It prints no other signer's error
+message, which may quote key material.
+
 ## Embed the Public Key and Release the App
 
 Follow the shared steps for [Expo and EAS Build](/docs/guides/bundle-signing#expo-and-eas-build)

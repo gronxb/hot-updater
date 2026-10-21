@@ -21,6 +21,7 @@ export interface NativeCheckIssue {
     | "FINGERPRINT_GENERATION_FAILED"
     | "MISSING_CLIENT_PLUGIN"
     | "CLIENT_PLUGINS_UNCHECKED"
+    | "SIGNING_PUBLIC_KEY_UNAVAILABLE"
     | SigningConfigIssue["code"];
   message: string;
   resolution: string;

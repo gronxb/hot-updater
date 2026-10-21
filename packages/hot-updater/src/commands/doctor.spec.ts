@@ -1317,6 +1317,88 @@ describe("doctor", () => {
     },
   );
 
+  it("warns, instead of a mismatch, when the signer's public key cannot be read", async () => {
+    const cwd = await createTempProject();
+    tempProjects.push(cwd);
+    mockGetCwd.mockReturnValue(cwd);
+    mockReadPackageUp.mockResolvedValue({
+      packageJson: {
+        dependencies: {
+          "hot-updater": "0.31.0",
+          "@hot-updater/react-native": "0.31.0",
+        },
+      },
+      path: path.join(cwd, "package.json"),
+    });
+    const embedded = crypto.generateKeyPairSync("rsa", {
+      modulusLength: 2048,
+      privateKeyEncoding: { format: "pem", type: "pkcs8" },
+      publicKeyEncoding: { format: "pem", type: "spki" },
+    });
+    // What remoteSigning throws where only CI holds HOT_UPDATER_SIGNING_TOKEN.
+    const missingToken = Object.assign(
+      new Error(
+        "Failed to load the remote bundle signing public key. remoteSigning requires signingToken or HOT_UPDATER_SIGNING_TOKEN.",
+      ),
+      { name: "HotUpdaterRemoteSigningError" },
+    );
+    mockLoadConfig.mockResolvedValue(
+      createConfig({
+        signing: {
+          name: "remoteSigning",
+          getPublicKey: vi.fn().mockRejectedValue(missingToken),
+          sign: vi.fn(),
+        },
+        platform: {
+          ios: { infoPlistPaths: ["ios/App/Info.plist"] },
+          android: {
+            androidManifestPaths: ["android/app/src/main/AndroidManifest.xml"],
+          },
+        },
+      }),
+    );
+    await writeInfoPlist(
+      cwd,
+      [
+        "<key>HOT_UPDATER_PUBLIC_KEY</key>",
+        `<string>${embedded.publicKey.trim().replaceAll("\n", "\\n")}</string>`,
+      ].join("\n"),
+    );
+    await writeFile(
+      path.join(cwd, "ios/App/AppDelegate.swift"),
+      "import HotUpdater\nfunc bundleURL() -> URL? { HotUpdater.bundleURL() }\n",
+    );
+    await writeAndroidManifest(
+      cwd,
+      `    <meta-data android:name="com.hotupdater.PUBLIC_KEY" android:value="${embedded.publicKey.trim().replaceAll("\n", "\\n")}" />`,
+    );
+    await writeFile(
+      path.join(
+        cwd,
+        "android/app/src/main/java/com/example/MainApplication.kt",
+      ),
+      "import com.hotupdater.HotUpdater\nval bundle = HotUpdater.getJSBundleFile(applicationContext)\n",
+    );
+
+    const result = await doctor();
+
+    const issues =
+      result === true ? [] : (result.details?.native?.issues ?? []);
+    expect(issues).toContainEqual(
+      expect.objectContaining({
+        code: "SIGNING_PUBLIC_KEY_UNAVAILABLE",
+        type: "warning",
+        fixability: "blocked",
+        message: expect.stringContaining(
+          "remoteSigning requires signingToken or HOT_UPDATER_SIGNING_TOKEN.",
+        ),
+      }),
+    );
+    expect(issues).not.toContainEqual(
+      expect.objectContaining({ code: "PUBLIC_KEY_MISMATCH" }),
+    );
+  });
+
   it("detects an Expo CNG trust anchor that differs from the signer", async () => {
     const cwd = await createTempProject();
     tempProjects.push(cwd);

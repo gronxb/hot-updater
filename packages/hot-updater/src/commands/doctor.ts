@@ -526,6 +526,45 @@ const toNativeIssue = (issue: SigningConfigIssue): NativeCheckIssue => {
   };
 };
 
+/**
+ * The configured signer's public key, or, when doctor cannot read it, such as
+ * a `remoteSigning` token only CI holds, a warning with the reason: the
+ * native public keys are then not compared, rather than reported as a
+ * mismatch whose resolution is a new native release.
+ */
+const readSigningPublicKey = async (
+  config: ConfigResponse,
+  cwd: string,
+): Promise<{
+  publicKey: string | undefined;
+  issues: NativeCheckIssue[];
+}> => {
+  try {
+    return {
+      publicKey:
+        (await getBundleSigningPublicKey(config.signing, { cwd })) ?? undefined,
+      issues: [],
+    };
+  } catch (error) {
+    return {
+      publicKey: undefined,
+      issues: [
+        {
+          type: "warning",
+          platform: "project",
+          code: "SIGNING_PUBLIC_KEY_UNAVAILABLE",
+          message: `The native public keys were not checked against the configured bundle signer: ${
+            error instanceof Error ? error.message : String(error)
+          }`,
+          resolution:
+            "Run doctor where the signer's credentials are set, such as HOT_UPDATER_SIGNING_TOKEN for remoteSigning, to check the native public keys.",
+          fixability: "blocked",
+        },
+      ],
+    };
+  }
+};
+
 async function checkNativeStatus({
   cwd,
   context,
@@ -552,12 +591,10 @@ async function checkNativeStatus({
     const [nativeSigningPublicKey, expectedSigningPublicKey] =
       await Promise.all([
         getNativeSigningPublicKey(),
-        getBundleSigningPublicKey(config.signing, { cwd }).catch(
-          () => "invalid configured bundle signing public key",
-        ),
+        readSigningPublicKey(config, cwd),
       ]);
     const signing = await validateSigningConfig(config, {
-      expectedPublicKey: expectedSigningPublicKey ?? undefined,
+      expectedPublicKey: expectedSigningPublicKey.publicKey,
       nativePublicKey: nativeSigningPublicKey?.publicKey ?? null,
     });
     const localFingerprint =
@@ -570,6 +607,7 @@ async function checkNativeStatus({
         ? { fingerprintJsonPath: localFingerprint.path }
         : {}),
       issues: [
+        ...expectedSigningPublicKey.issues,
         ...signing.issues.map(toNativeIssue),
         ...checkUnusedFingerprintJson(cwd, config.updateStrategy),
         ...(localFingerprint
@@ -585,22 +623,20 @@ async function checkNativeStatus({
   const config = await loadConfig(null, { credentials: true });
   const localFingerprint = await readLocalFingerprintFile(cwd);
   const requireFingerprint = config.updateStrategy === "fingerprint";
-  const expectedSigningPublicKey =
-    (await getBundleSigningPublicKey(config.signing, { cwd }).catch(
-      () => "invalid configured bundle signing public key",
-    )) ?? undefined;
+  const expectedSigningPublicKey = await readSigningPublicKey(config, cwd);
 
   const [ios, android, signing] = await Promise.all([
     checkIosNativeStatus({ cwd, config }),
     checkAndroidNativeStatus({ cwd, config }),
     validateSigningConfig(config, {
-      expectedPublicKey: expectedSigningPublicKey,
+      expectedPublicKey: expectedSigningPublicKey.publicKey,
     }),
   ]);
 
   const issues = [
     ...ios.issues,
     ...android.issues,
+    ...expectedSigningPublicKey.issues,
     ...signing.issues.map(toNativeIssue),
     ...checkUnusedFingerprintJson(cwd, config.updateStrategy),
   ];

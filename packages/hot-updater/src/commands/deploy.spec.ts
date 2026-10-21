@@ -1488,25 +1488,33 @@ describe("deploy rollout wiring", () => {
       signing: mockSigningAdapter,
       updateStrategy: "appVersion",
     });
-    mockCli.prepareBundleSigning.mockRejectedValue(
-      new Error("Failed to resolve the bundle signing provider public key."),
-    );
+    const reason =
+      "Failed to resolve the bundle signing provider public key. https://console.example.com/_hot-updater/signing answered 403 forbidden: The vault token may sign with a, b: scope a sign token to one bundle-signing-key by name.";
+    mockCli.prepareBundleSigning.mockRejectedValue(new Error(reason));
+    const exit = vi.spyOn(process, "exit").mockImplementationOnce(() => {
+      throw new Error("process.exit");
+    });
 
-    await expect(
-      deploy({
-        channel: "production",
-        forceUpdate: false,
-        interactive: false,
-        platform: "ios",
-        targetAppVersion: "1.0.x",
-      }),
-    ).rejects.toThrow(
-      "Failed to resolve the bundle signing provider public key.",
-    );
+    try {
+      await expect(
+        deploy({
+          channel: "production",
+          forceUpdate: false,
+          interactive: false,
+          platform: "ios",
+          targetAppVersion: "1.0.x",
+        }),
+      ).rejects.toThrow("process.exit");
 
-    expect(mockBuildAdapter.build).not.toHaveBeenCalled();
-    expect(mockStorageAdapter.put).not.toHaveBeenCalled();
-    expect(await databaseHarness.releases()).toEqual([]);
+      // The reason is printed, not thrown past the CLI as a stack trace.
+      expect(exit).toHaveBeenCalledWith(1);
+      expect(mockCli.p.log.error).toHaveBeenCalledWith(`  ${reason}`);
+      expect(mockBuildAdapter.build).not.toHaveBeenCalled();
+      expect(mockStorageAdapter.put).not.toHaveBeenCalled();
+      expect(await databaseHarness.releases()).toEqual([]);
+    } finally {
+      exit.mockRestore();
+    }
   });
 
   it("creates automatic partial update paths when patch generation is enabled", async () => {
