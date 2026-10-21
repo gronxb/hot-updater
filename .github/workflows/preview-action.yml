@@ -38,6 +38,9 @@ jobs:
       PROOF_PREVIEW_CHANNEL: preview
       PROOF_PLATFORM: android
       PROOF_STATE: /tmp/preview-proof-state.json
+      # pnpm links the workspace CLI's bin only when its dist exists at
+      # install time, which is before this job builds it.
+      PROOF_CLI: node ../../packages/hot-updater/dist/index.mjs
       # The example's release build is debuggable, which skips lintVitalRelease,
       # and builds one ABI.
       ORG_GRADLE_PROJECT_HOT_UPDATER_E2E_DEBUGGABLE: "true"
@@ -54,12 +57,6 @@ jobs:
       - run: pnpm install
       - name: Build
         run: pnpm build
-      # The workspace CLI's bin links once its dist exists, so the action's
-      # default `npx --no-install hot-updater` finds it in the example.
-      - name: Link the built CLI
-        run: |
-          pnpm install --frozen-lockfile --offline
-          test -x examples/v0.85.0/node_modules/.bin/hot-updater
 
       - name: Start Postgres and MinIO
         run: bash examples-server/preview-action/scripts/backend.sh > "$RUNNER_TEMP/backend.env"
@@ -88,6 +85,7 @@ jobs:
           vault-token: ${{ steps.seed.outputs.token }}
           android-scheme: releaseApk
           working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
           comment: false
       - name: Check the build, the registration, and the bundle
         env:
@@ -105,6 +103,7 @@ jobs:
           vault-token: ${{ steps.seed.outputs.token }}
           android-scheme: releaseApk
           working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
           comment: false
       - name: Check that only the bundle was deployed
         env:
@@ -124,6 +123,7 @@ jobs:
           vault-token: ${{ steps.seed.outputs.token }}
           android-scheme: releaseApk
           working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
           comment: false
       - name: Check the second build
         env:
@@ -140,6 +140,7 @@ jobs:
           console-url: ${{ steps.seed.outputs.console-url }}
           vault-token: ${{ steps.seed.outputs.token }}
           working-directory: examples/v0.85.0
+          cli: ${{ env.PROOF_CLI }}
           mode: cleanup
           comment: false
       - name: Check that the channel is deleted
