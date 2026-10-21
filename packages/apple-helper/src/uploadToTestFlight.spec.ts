@@ -405,7 +405,10 @@ describe("uploadToTestFlight", () => {
         ).toBe(true);
       }
     }
-    const parts = requests.filter((request) => !request.url.startsWith(API));
+    // Parts upload concurrently, so they arrive in either order.
+    const parts = requests
+      .filter((request) => !request.url.startsWith(API))
+      .sort((a, b) => a.url.localeCompare(b.url));
     expect(parts).toEqual([
       {
         method: "PUT",
