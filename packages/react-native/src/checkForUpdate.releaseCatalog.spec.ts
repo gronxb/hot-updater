@@ -1254,6 +1254,30 @@ describe("checkForUpdate Release catalog protocol", () => {
       expect(resolveArtifact).not.toHaveBeenCalled();
     });
 
+    it("lets another result of the same check target count the leave as done", async () => {
+      switchToPr();
+      mocks.resetChannel.mockImplementation(async () => {
+        mocks.isChannelSwitched.mockReturnValue(false);
+        mocks.getChannel.mockReturnValue(CHANNEL);
+        return true as never;
+      });
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const first = await checkForUpdate({
+        emit,
+        client: createClient(deletedChannelCatalog).client,
+        updateStrategy: "appVersion",
+      });
+      const second = await checkForUpdate({
+        emit,
+        client: createClient(deletedChannelCatalog).client,
+        updateStrategy: "appVersion",
+      });
+
+      await expect(first?.updateBundle()).resolves.toBe(true);
+      await expect(second?.updateBundle()).resolves.toBe(true);
+      expect(mocks.resetChannel).toHaveBeenCalledTimes(1);
+    });
+
     it("stays when its scope answers no catalog, which proves nothing", async () => {
       switchToPr();
       const { checkForUpdate } = await import("./checkForUpdate");

@@ -356,6 +356,20 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `another result of the same catalog counts the leave as done`() =
+        runBlocking {
+            val state = FakeState().also(::switchedToPr)
+            val transport = FakeTransport { ok(catalog(emptyList(), generation = 3, channel = "pr-2")) }
+            val checker = NativeUpdateChecker(state, transport)
+            val first = checker.checkForUpdate(OPTIONS)!!
+            val second = checker.checkForUpdate(OPTIONS)!!
+
+            assertTrue(first.updateBundle())
+            assertTrue(second.updateBundle())
+            assertEquals(1, state.resets.get())
+        }
+
+    @Test
     fun `leaves from different catalogs never join`() =
         runBlocking {
             val state = FakeState().also(::switchedToPr)

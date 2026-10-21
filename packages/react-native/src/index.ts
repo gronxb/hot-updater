@@ -539,11 +539,20 @@ const createConfiguredMethods = (config: InstanceConfig) => {
       const unclaim = () => {
         if (initial) releaseLaunchURL(url);
       };
-      if (reset && !(await nativeMethods.resetChannel())) {
-        unclaim();
-        throw new HotUpdaterError(
-          `Could not leave the "${getChannel()}" channel to open "${channel}".`,
-        );
+      if (reset) {
+        let resetDone = false;
+        try {
+          resetDone = await nativeMethods.resetChannel();
+        } catch (error) {
+          unclaim();
+          throw error;
+        }
+        if (!resetDone) {
+          unclaim();
+          throw new HotUpdaterError(
+            `Could not leave the "${getChannel()}" channel to open "${channel}".`,
+          );
+        }
       }
       let switched = false;
       let changed = false;

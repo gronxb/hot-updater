@@ -740,6 +740,23 @@ describe("HotUpdater client initialization", () => {
       ).resolves.toEqual({ status: "SWITCHED", channel: "pr-12" });
     });
 
+    it("gives the launch link back when leaving the other channel rejects", async () => {
+      mocks.isChannelSwitched.mockReturnValue(true);
+      mocks.getChannel.mockReturnValue("pr-11");
+      mocks.resetChannel.mockRejectedValueOnce(
+        new Error("storage reset failed"),
+      );
+      const HotUpdater = await importHotUpdater();
+
+      await expect(
+        HotUpdater.init({
+          baseURL: "https://updates.example.com",
+        }).openChannelLink(link, { ...options, initial: true }),
+      ).rejects.toThrow("storage reset failed");
+      expect(mocks.releaseLaunchURL).toHaveBeenCalledWith(link);
+      expect(mocks.checkForUpdate).not.toHaveBeenCalled();
+    });
+
     it("never consults the launch link for a link the app opens while running", async () => {
       update();
       mocks.claimLaunchURL.mockReturnValue(false);

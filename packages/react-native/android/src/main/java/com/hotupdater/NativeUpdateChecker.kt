@@ -248,6 +248,15 @@ internal class NativeUpdateChecker(
     /** The target the last staging committed, for another retained result of the same target. */
     @Volatile
     private var lastCommittedTargetKey: String? = null
+
+    /**
+     * The last switched-channel leave that reset the device, for another
+     * retained result of the same catalog. Kept apart from
+     * [lastCommittedTargetKey], which a reset clears.
+     */
+    @Volatile
+    private var lastLeftTargetKey: String? = null
+
     private val events =
         NativeUpdateEventQueue(state::getStorageItem, state::setStorageItem, build = {
             NativeUpdateEventQueue.buildOf(state.getAppVersion(), state.getMinBundleId(), requestCohort ?: state.getCohort())
@@ -810,7 +819,18 @@ internal class NativeUpdateChecker(
                 put("updateStrategy", options.updateStrategy.value)
             },
         )
-        var left = false
+        // With the catalog's freshness guard, as ordinary selections, so a
+        // leave from an older catalog never counts as a current one.
+        val targetKey =
+            JSONArray()
+                .put("LEAVE_CHANNEL")
+                .put(channel)
+                .put(input.minimumReleaseId)
+                .put(guard.catalogId)
+                .put(guard.generation)
+                .put(guard.catalogHash)
+                .put(guard.selectionContextHash)
+                .toString()
         val update =
             HotUpdaterUpdate(
                 id = input.minimumReleaseId,
@@ -822,29 +842,21 @@ internal class NativeUpdateChecker(
                 targetCohorts = emptyList(),
                 transitionKind = "USE_BUILTIN",
                 runsCurrentBundle = runsBuiltIn,
-                // With the catalog's freshness guard, as ordinary selections, so a
-                // leave from an older catalog never joins a current one's staging.
-                targetKey =
-                    JSONArray()
-                        .put("LEAVE_CHANNEL")
-                        .put(channel)
-                        .put(input.minimumReleaseId)
-                        .put(guard.catalogId)
-                        .put(guard.generation)
-                        .put(guard.catalogHash)
-                        .put(guard.selectionContextHash)
-                        .toString(),
+                targetKey = targetKey,
                 install = { _ ->
                     try {
                         resetChannel {
-                            // This update already left the channel: calling it again changes nothing.
-                            if (left && state.getChannel() == state.getDefaultChannel()) return@resetChannel true
+                            // This leave, from this or another result of the same catalog,
+                            // already happened: calling it again changes nothing.
+                            if (lastLeftTargetKey == targetKey && state.getChannel() == state.getDefaultChannel()) {
+                                return@resetChannel true
+                            }
                             // A device that left or changed the channel, or saw a newer
                             // catalog of it, meanwhile keeps it.
                             if (state.getChannel() != channel || !state.isReleaseSelectionCurrent(guard)) {
                                 throw StaleReleaseCatalogException()
                             }
-                            state.resetChannel().also { left = it }
+                            state.resetChannel().also { if (it) lastLeftTargetKey = targetKey }
                         }
                     } catch (error: CancellationException) {
                         throw error

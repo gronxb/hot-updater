@@ -499,6 +499,12 @@ async function checkForReleaseCatalogUpdate(input: {
 }
 
 /**
+ * The last channel leave that reset the device, by its channel and catalog
+ * guard: another result of the same check target counts as left too.
+ */
+let lastLeftKey: string | null = null;
+
+/**
  * Leaves a switched channel that holds nothing for this build, such as a
  * deleted one: a rollback to the built-in bundle whose update also clears
  * the runtime channel with `resetChannel()`, so the next check reads the
@@ -538,8 +544,13 @@ function leaveSwitchedChannel(
     shouldForceUpdate,
     updateStrategy: options.updateStrategy,
   }));
-  // This update already left the channel: calling it again changes nothing.
-  let left = false;
+  const leaveKey = JSON.stringify([
+    input.currentChannel,
+    guard.catalogId,
+    guard.generation,
+    guard.catalogHash,
+    guard.selectionContextHash,
+  ]);
   return {
     id: input.minimumReleaseId,
     message: null,
@@ -550,7 +561,9 @@ function leaveSwitchedChannel(
     targetCohorts: [],
     transitionKind: "USE_BUILTIN",
     updateBundle: async () => {
-      if (left && !isChannelSwitched()) return true;
+      // This leave, from this or another result of the same catalog, already
+      // happened: calling it again changes nothing.
+      if (lastLeftKey === leaveKey && !isChannelSwitched()) return true;
       resetProgress();
       try {
         // A device that left or changed the channel, or saw a newer catalog
@@ -562,7 +575,8 @@ function leaveSwitchedChannel(
         ) {
           throw new StaleReleaseCatalogError();
         }
-        left = await resetChannel();
+        const left = await resetChannel();
+        if (left) lastLeftKey = leaveKey;
         return left;
       } catch (error) {
         reportUpdateError(
