@@ -951,6 +951,22 @@ final class NativeUpdateChecker {
     /// The target the last staging committed, for another retained result of
     /// the same target.
     private var lastCommittedTargetKey: String?
+    /// The last switched-channel leave that reset the device, for another
+    /// retained result of the same catalog. Kept apart from the committed
+    /// target, which a later staging replaces.
+    private var lastLeftTargetKeyValue: String?
+    private var lastLeftTargetKey: String? {
+        get {
+            committedTargetLock.lock()
+            defer { committedTargetLock.unlock() }
+            return lastLeftTargetKeyValue
+        }
+        set {
+            committedTargetLock.lock()
+            lastLeftTargetKeyValue = newValue
+            committedTargetLock.unlock()
+        }
+    }
 
     init(
         host: NativeUpdateHost,
@@ -1527,8 +1543,20 @@ final class NativeUpdateChecker {
             targetBundleId: minimumReleaseId,
             targetReleaseId: nil
         )
+        // With the catalog's freshness guard, as ordinary selections, so a
+        // leave from an older catalog never joins a current one's staging.
+        let targetKey = Self.jsonKey([
+            "LEAVE_CHANNEL", channel, minimumReleaseId,
+            guardParams["catalogId"] ?? NSNull(), guardParams["generation"] ?? NSNull(),
+            guardParams["catalogHash"] ?? NSNull(), guardParams["selectionContextHash"] ?? NSNull(),
+        ])
         let install = { [self] (_: @escaping (Double) -> Void) async throws -> Bool in
             do {
+                // This leave, from this or another result of the same catalog,
+                // already happened: calling it again changes nothing.
+                if lastLeftTargetKey == targetKey, host.channel() == host.defaultChannel() {
+                    return true
+                }
                 // A device that left or changed the channel meanwhile keeps it.
                 guard host.channel() == channel else {
                     throw NativeUpdateCheckError.staleReleaseCatalog
@@ -1539,6 +1567,7 @@ final class NativeUpdateChecker {
                 guard await host.resetChannelIfSelectionCurrent(guardParams) else {
                     throw NativeUpdateCheckError.staleReleaseCatalog
                 }
+                lastLeftTargetKey = targetKey
                 NativeUpdateEvents.remove(name: "onBundleDownloaded", from: host)
                 return true
             } catch {
@@ -1570,13 +1599,7 @@ final class NativeUpdateChecker {
             bundleId: minimumReleaseId,
             transitionKind: "USE_BUILTIN",
             runsCurrentBundle: runsBuiltIn,
-            // With the catalog's freshness guard, as ordinary selections, so a
-            // leave from an older catalog never joins a current one's staging.
-            targetKey: Self.jsonKey([
-                "LEAVE_CHANNEL", channel, minimumReleaseId,
-                guardParams["catalogId"] ?? NSNull(), guardParams["generation"] ?? NSNull(),
-                guardParams["catalogHash"] ?? NSNull(), guardParams["selectionContextHash"] ?? NSNull(),
-            ]),
+            targetKey: targetKey,
             checker: self,
             install: install,
             // Current while the device is still switched to the channel and

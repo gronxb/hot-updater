@@ -483,6 +483,40 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func aDuplicateLeaveStillSucceedsAfterALaterStaging() async throws {
+        let host = FakeUpdateHost()
+        host.channelValue = "pr-2"
+        host.bundleIdValue = bundle1
+        let prCatalog = catalog(generation: 3, releases: [], channel: "pr-2")
+        let defaultCatalog = catalog(releases: [descriptor(release2, bundle2)])
+        let transport = FakeUpdateTransport(artifactV2: { _ in
+            NativeUpdateResponse(status: 200, headers: [:], body: artifactV2Body)
+        }) { url, _ in
+            if url.path.contains("/artifacts/v1/") {
+                return NativeUpdateResponse(status: 200, headers: [:], body: artifactBody)
+            }
+            let body = url.path.contains(try! encodeChannelKey("pr-2")) ? prCatalog : defaultCatalog
+            return NativeUpdateResponse(status: 200, headers: [:], body: body)
+        }
+        let checker = makeChecker(host, transport)
+        let first = try #require(try await checker.checkForUpdate(options()))
+        let second = try #require(try await checker.checkForUpdate(options()))
+        #expect(try await first.updateBundle())
+        // Back on the default channel, the app stages its update.
+        host.channelValue = host.defaultChannelValue
+        host.bundleIdValue = nil
+        let staged = try #require(try await checker.checkForUpdate(options()))
+        #expect(staged.transitionKind == "INSTALL")
+        #expect(try await staged.updateBundle())
+        #expect(host.events().contains { $0["name"] as? String == "onBundleDownloaded" })
+
+        #expect(try await second.updateBundle())
+
+        #expect(host.resetCalls == 1)
+        #expect(host.events().contains { $0["name"] as? String == "onBundleDownloaded" })
+    }
+
+    @Test
     func leavesFromDifferentCatalogsNeverJoin() async throws {
         let host = FakeUpdateHost()
         host.channelValue = "pr-2"
