@@ -18,9 +18,13 @@ export const nativeBuildArtifacts: Record<
 export const nativeBuildDownloadPath = (id: string) =>
   `/api/native-builds/${encodeURIComponent(id)}/download`;
 
-/** The artifact's file name, the last segment of its storage URI. */
+/**
+ * The artifact's file name, the last path segment of its storage URI, so a
+ * public URL's query or fragment stays out of it.
+ */
 export const nativeBuildFileName = (build: NativeBuildRow): string => {
-  const segment = build.artifact_storage_uri.split("/").at(-1) ?? "";
+  const path = build.artifact_storage_uri.split(/[?#]/, 1)[0] ?? "";
+  const segment = path.split("/").at(-1) ?? "";
   try {
     return decodeURIComponent(segment);
   } catch {
