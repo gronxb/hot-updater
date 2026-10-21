@@ -369,9 +369,9 @@ function SecretForm({
                       ))}
                     </ul>
                     <p>
-                      The CLI refuses a variable two secrets its vault token
-                      reaches both set. Keep each variable in one secret, or
-                      reach the two with separate tokens.
+                      If one vault token reaches both secrets, the CLI refuses
+                      the variable. Keep each variable in one secret, or reach
+                      the two with separate tokens.
                     </p>
                   </AlertDescription>
                 </Alert>
