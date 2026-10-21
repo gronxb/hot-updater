@@ -188,6 +188,32 @@ async function prepareBuiltInBundle({
   };
 }
 
+/**
+ * Refuses an app whose dependencies really live outside the checkout that
+ * builds its OTA. React Native names an asset by its real path relative to
+ * the project, so a dependency reached through a symlink into another
+ * checkout, such as a node_modules shared from the one that built the
+ * native app, gives the OTA asset paths the native build never packaged,
+ * and its built-in assets are downloaded instead of reused.
+ */
+export async function assertDependenciesInCheckout({
+  checkoutDir,
+  projectDir,
+}: {
+  checkoutDir: string;
+  projectDir: string;
+}): Promise<void> {
+  const checkout = await fs.realpath(checkoutDir);
+  const dependency = await fs.realpath(
+    path.join(projectDir, "node_modules/react-native"),
+  );
+  if (!dependency.startsWith(`${checkout}${path.sep}`)) {
+    throw new Error(
+      `${projectDir} resolves react-native to ${dependency}, outside the checkout ${checkout}. Install the checkout's own dependencies: React Native names assets by their real paths, so the OTA's would not match the native build's.`,
+    );
+  }
+}
+
 export type InstalledNativeBuild = {
   readonly minBundleId: string;
   readonly channel: string;
