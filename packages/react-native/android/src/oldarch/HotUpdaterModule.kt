@@ -558,6 +558,9 @@ class HotUpdaterModule internal constructor(
     override fun getInstallId(): String = getInstance().getInstallId()
 
     @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun getProcessLaunchId(): String = HotUpdaterImpl.processLaunchId
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
     override fun getStorageItem(key: String): String? = getInstance().getStorageItem(key)
 
     @ReactMethod

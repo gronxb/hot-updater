@@ -1288,6 +1288,35 @@ describe("checkForUpdate Release catalog protocol", () => {
       expect(mocks.resetChannelIfSelectionCurrent).toHaveBeenCalledTimes(1);
     });
 
+    it("joins two results of the same catalog left at once", async () => {
+      switchToPr();
+      let finishReset: (value: boolean) => void = () => {};
+      mocks.resetChannelIfSelectionCurrent.mockImplementation(
+        () =>
+          new Promise<boolean>((resolve) => {
+            finishReset = (value) => {
+              mocks.isChannelSwitched.mockReturnValue(false);
+              mocks.getChannel.mockReturnValue(CHANNEL);
+              resolve(value);
+            };
+          }) as never,
+      );
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const check = () =>
+        checkForUpdate({
+          emit,
+          client: createClient(deletedChannelCatalog).client,
+          updateStrategy: "appVersion",
+        });
+      const [first, second] = [await check(), await check()];
+
+      const both = Promise.all([first?.updateBundle(), second?.updateBundle()]);
+      finishReset(true);
+
+      await expect(both).resolves.toEqual([true, true]);
+      expect(mocks.resetChannelIfSelectionCurrent).toHaveBeenCalledTimes(1);
+    });
+
     it("stays when its scope answers no catalog, which proves nothing", async () => {
       switchToPr();
       const { checkForUpdate } = await import("./checkForUpdate");

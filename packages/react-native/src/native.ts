@@ -524,14 +524,55 @@ const RELOAD_START_WINDOW_MS = 60_000;
 let runtimeStarted = false;
 
 /**
+ * The id native gives this app process, which an in-place reload keeps; null
+ * for native from an earlier SDK, which the reload marker stands in for.
+ */
+const processLaunchId = (): string | null => {
+  const native = HotUpdaterNative as Partial<typeof HotUpdaterNative>;
+  if (typeof native.getProcessLaunchId !== "function") return null;
+  try {
+    const id: unknown = native.getProcessLaunchId();
+    return typeof id === "string" && id.length > 0 ? id : null;
+  } catch {
+    return null;
+  }
+};
+
+/** The stored launch URL claim: its URL and, on newer native, its process. */
+const readLaunchClaim = (): {
+  readonly url: string;
+  readonly process?: string;
+} | null => {
+  const value = getStorageItem(OPENED_LAUNCH_URL_KEY);
+  if (value === null) return null;
+  try {
+    const claim: unknown = JSON.parse(value);
+    if (
+      typeof claim === "object" &&
+      claim !== null &&
+      typeof (claim as { url?: unknown }).url === "string" &&
+      typeof (claim as { process?: unknown }).process === "string"
+    ) {
+      return claim as { url: string; process: string };
+    }
+  } catch {
+    // A plain URL, as the reload marker's path stores it.
+  }
+  return { url: value };
+};
+
+/**
  * Reads, once per JavaScript runtime, whether it is a reload the SDK asked
- * for. A runtime that is not starts a new app process, whose launch URL no
- * channel link opened yet. The store is native and outlives a reload, which
- * on iOS replaces the runtime in the same process.
+ * for, on native without a process id. A runtime that is not starts a new app
+ * process, whose launch URL no channel link opened yet. The store is native
+ * and outlives a reload, which on iOS replaces the runtime in the same
+ * process.
  */
 export const startRuntime = (): void => {
   if (runtimeStarted) return;
   runtimeStarted = true;
+  // Native that names its process needs no marker.
+  if (processLaunchId() !== null) return;
   try {
     const requestedAt = Number(getStorageItem(RELOAD_REQUESTED_AT_KEY) ?? NaN);
     const elapsed = Date.now() - requestedAt;
@@ -551,13 +592,22 @@ export const startRuntime = (): void => {
  * Claims the app process's launch URL for a channel link: true the first
  * time, false once a runtime of this process opened it. React Native returns
  * the launch URL from `Linking.getInitialURL()` again after an in-place
- * reload, so without the claim each reload would open it again.
+ * reload, so without the claim each reload would open it again. Native that
+ * names its process ties the claim to it; earlier native relies on the
+ * reload marker.
  */
 export const claimLaunchURL = (url: string): boolean => {
   startRuntime();
+  const process = processLaunchId();
   try {
-    if (getStorageItem(OPENED_LAUNCH_URL_KEY) === url) return false;
-    setStorageItem(OPENED_LAUNCH_URL_KEY, url);
+    const claim = readLaunchClaim();
+    if (process === null) {
+      if (claim?.url === url && claim.process === undefined) return false;
+      setStorageItem(OPENED_LAUNCH_URL_KEY, url);
+    } else {
+      if (claim?.url === url && claim.process === process) return false;
+      setStorageItem(OPENED_LAUNCH_URL_KEY, JSON.stringify({ url, process }));
+    }
   } catch {
     // Without the store, every launch URL opens, as before.
   }
@@ -567,7 +617,7 @@ export const claimLaunchURL = (url: string): boolean => {
 /** Gives back a launch URL claim whose opening failed, so it can be retried. */
 export const releaseLaunchURL = (url: string): void => {
   try {
-    if (getStorageItem(OPENED_LAUNCH_URL_KEY) === url) {
+    if (readLaunchClaim()?.url === url) {
       setStorageItem(OPENED_LAUNCH_URL_KEY, null);
     }
   } catch {
@@ -583,10 +633,13 @@ export const releaseLaunchURL = (url: string): void => {
  */
 export const reload = async () => {
   startRuntime();
-  try {
-    setStorageItem(RELOAD_REQUESTED_AT_KEY, String(Date.now()));
-  } catch {
-    // The next runtime then counts as a new process.
+  // Native that names its process needs no marker for the next runtime.
+  if (processLaunchId() === null) {
+    try {
+      setStorageItem(RELOAD_REQUESTED_AT_KEY, String(Date.now()));
+    } catch {
+      // The next runtime then counts as a new process.
+    }
   }
   if (Platform.OS === "android") {
     // An older native build's reload() reloads in place on Android.

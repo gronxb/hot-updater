@@ -10,6 +10,7 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -135,6 +136,12 @@ class HotUpdaterImpl {
         }
 
     companion object {
+        /**
+         * A random id made once per app process. Android's reload restarts
+         * the process, so each reload has a new one.
+         */
+        val processLaunchId: String = UUID.randomUUID().toString()
+
         private const val TAG = "HotUpdaterImpl"
         internal const val DEFAULT_CHANNEL = "production"
         private const val CHANNEL_STORAGE_KEY = "HotUpdaterChannel"

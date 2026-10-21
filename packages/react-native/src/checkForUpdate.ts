@@ -504,6 +504,12 @@ async function checkForReleaseCatalogUpdate(input: {
  */
 let lastLeftKey: string | null = null;
 
+/** A channel leave in flight, which another result of the same target joins. */
+let pendingLeave: {
+  readonly key: string;
+  readonly promise: Promise<boolean>;
+} | null = null;
+
 /**
  * Leaves a switched channel that holds nothing for this build, such as a
  * deleted one: a rollback to the built-in bundle whose update also clears
@@ -564,32 +570,44 @@ function leaveSwitchedChannel(
       // This leave, from this or another result of the same catalog, already
       // happened: calling it again changes nothing.
       if (lastLeftKey === leaveKey && !isChannelSwitched()) return true;
-      resetProgress();
+      // The same leave in flight: wait for it rather than run it twice.
+      if (pendingLeave?.key === leaveKey) return pendingLeave.promise;
+      const promise = leave();
+      pendingLeave = { key: leaveKey, promise };
       try {
-        // A device that left or changed the channel meanwhile keeps it; a
-        // newer catalog of it accepted meanwhile keeps it too, checked again
-        // in the same native step as the reset.
-        if (
-          !isChannelSwitched() ||
-          getChannel() !== input.currentChannel ||
-          !(await resetChannelIfSelectionCurrent(guard))
-        ) {
-          throw new StaleReleaseCatalogError();
-        }
-        lastLeftKey = leaveKey;
-        return true;
-      } catch (error) {
-        reportUpdateError(
-          options.emit,
-          error,
-          "download",
-          "artifact",
-          errorScope,
-        );
-        throw error;
+        return await promise;
+      } finally {
+        if (pendingLeave?.promise === promise) pendingLeave = null;
       }
     },
   };
+
+  async function leave(): Promise<boolean> {
+    resetProgress();
+    try {
+      // A device that left or changed the channel meanwhile keeps it; a
+      // newer catalog of it accepted meanwhile keeps it too, checked again
+      // in the same native step as the reset.
+      if (
+        !isChannelSwitched() ||
+        getChannel() !== input.currentChannel ||
+        !(await resetChannelIfSelectionCurrent(guard))
+      ) {
+        throw new StaleReleaseCatalogError();
+      }
+      lastLeftKey = leaveKey;
+      return true;
+    } catch (error) {
+      reportUpdateError(
+        options.emit,
+        error,
+        "download",
+        "artifact",
+        errorScope,
+      );
+      throw error;
+    }
+  }
 }
 
 export async function checkForUpdate(

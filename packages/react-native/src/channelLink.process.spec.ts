@@ -14,6 +14,8 @@ const device = vi.hoisted(() => {
     reloads: 0,
     /** The next check fails, as offline. */
     offline: false,
+    /** The app process's id, on native that names it. */
+    process: 1,
   };
   const native = {
     getConstants: () => ({
@@ -120,7 +122,14 @@ const startRuntime = async (launchURL: string | null) => {
   return { hotUpdater, initial };
 };
 
+/** The app process ends; the next runtime starts a new one, later. */
+const newProcess = () => {
+  device.state.process += 1;
+  device.state.now += 10 * 60_000;
+};
+
 beforeEach(() => {
+  device.state.process = 1;
   device.state.store.clear();
   device.state.channel = "preview";
   device.state.reloads = 0;
@@ -133,7 +142,22 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("a launch link across reloads", () => {
+describe.each([
+  ["native from an earlier SDK", false],
+  ["native that names its process", true],
+])("a launch link across reloads, on %s", (_label, namesProcess) => {
+  beforeEach(() => {
+    if (namesProcess) {
+      Reflect.set(
+        device.native,
+        "getProcessLaunchId",
+        () => `process-${device.state.process}`,
+      );
+    } else {
+      Reflect.deleteProperty(device.native, "getProcessLaunchId");
+    }
+  });
+
   it("keeps the channel a link opened later in the process", async () => {
     // Cold launch by the pr-2 link: it switches and reloads.
     const first = await startRuntime(link("pr-2"));
@@ -174,7 +198,7 @@ describe("a launch link across reloads", () => {
 
     // The process ends without another reload request, and later a cold
     // launch by the same link starts a new one.
-    device.state.now += 10 * 60_000;
+    newProcess();
     const relaunched = await startRuntime(link("pr-2"));
 
     expect(relaunched.initial).toEqual({ status: "SWITCHED", channel: "pr-2" });
@@ -188,7 +212,7 @@ describe("a launch link across reloads", () => {
 
     // The reload request is never answered: the process dies, and a cold
     // launch by the pr-2 link comes much later.
-    device.state.now += 10 * 60_000;
+    newProcess();
     const relaunched = await startRuntime(link("pr-2"));
 
     expect(relaunched.initial).toEqual({ status: "SWITCHED", channel: "pr-2" });
@@ -230,4 +254,24 @@ describe("a launch link across reloads", () => {
     expect(retried.initial).toEqual({ status: "SWITCHED", channel: "pr-2" });
     expect(device.state.channel).toBe("pr-2");
   });
+
+  it.runIf(namesProcess)(
+    "opens the launch link in a new process right after an unanswered reload",
+    async () => {
+      const first = await startRuntime(link("pr-2"));
+      expect(first.initial).toMatchObject({ status: "SWITCHED" });
+      await first.hotUpdater.openChannelLink(link("pr-1"), options);
+
+      // The OS ends the app before the reload's runtime starts, and the
+      // tester launches it by the pr-2 link a second later.
+      device.state.process += 1;
+      device.state.now += 1_000;
+      const relaunched = await startRuntime(link("pr-2"));
+
+      expect(relaunched.initial).toEqual({
+        status: "SWITCHED",
+        channel: "pr-2",
+      });
+    },
+  );
 });

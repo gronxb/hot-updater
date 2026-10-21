@@ -44,6 +44,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSArray<NSString *> *)getCrashHistory;
 - (BOOL)clearCrashHistory;
 - (NSString *)getInstallId;
+- (NSString *)getProcessLaunchId;
 - (nullable NSString *)getStorageItem:(NSString *)key;
 - (void)setStorageItem:(NSString *)key value:(nullable NSString *)value;
 - (nullable NSString *)getBaseURL;
