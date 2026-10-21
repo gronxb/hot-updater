@@ -40,7 +40,8 @@ export const resumedBackgroundArchiveDownloadScenario: ScenarioDefinition = {
       },
     );
 
-    // The large asset makes two changed files, so the archive is downloaded.
+    // The large asset and the bundle make at least two changed files, so the
+    // archive is downloaded.
     await app.control(
       "deploy resumed archive Release",
       "/e2e/jobs/deploy-bundle",
@@ -117,11 +118,13 @@ export const resumedBackgroundArchiveDownloadScenario: ScenarioDefinition = {
               patchRequests: 0,
             }
           : {
-              // Android's download fails, so the large asset and a patch of
-              // the bundle are downloaded one by one.
+              // Android's download fails, so each asset the two manifests
+              // differ in is downloaded once, one by one: a patch of the
+              // bundle, the large asset as a file, and raw/keep.xml as a file
+              // when the bundler emits one.
               archiveRequests: 1,
               archiveResumes: 0,
-              fileRequests: 1,
+              fileRequests: "changed-assets",
               maxRequestsPerAsset: 1,
               patchRequests: 1,
             }),

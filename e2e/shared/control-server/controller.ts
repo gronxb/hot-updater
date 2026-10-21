@@ -3972,6 +3972,44 @@ function readManifestAssetPaths(bundleId: string): string[] {
     : [];
 }
 
+const sameSet = (left: readonly string[], right: readonly string[]) =>
+  left.length === right.length &&
+  new Set(left).size === left.length &&
+  right.every((value) => left.includes(value));
+
+/**
+ * The assets whose hash differs between two installed Bundles' signed
+ * manifests: what an update between them must download, whatever the server
+ * selects. Both Bundles stay in the store while the target awaits
+ * verification; a missing manifest fails the assertion.
+ */
+function readChangedManifestAssetPaths(
+  currentBundleId: string | undefined,
+  targetBundleId: string,
+): string[] {
+  if (currentBundleId === undefined) {
+    throw new ProxyAssertionError(
+      "changed-assets needs the current Bundle to compare manifests",
+      { targetBundleId },
+    );
+  }
+  const current = readBundleManifestSnapshot(currentBundleId);
+  const target = readBundleManifestSnapshot(targetBundleId);
+  if (current.value === null || target.value === null) {
+    throw new ProxyAssertionError("A Bundle manifest to compare is missing", {
+      current,
+      target,
+    });
+  }
+  return readManifestAssetPaths(targetBundleId).filter((assetPath) => {
+    const targetHash = getManifestAssetFileHash(target, assetPath);
+    return (
+      targetHash === null ||
+      targetHash !== getManifestAssetFileHash(current, assetPath)
+    );
+  });
+}
+
 function getRemoteTransfer(url: string | null) {
   if (url === null) return { bytes: 0, requests: 0 };
   const pathname = new URL(url).pathname;
@@ -3984,7 +4022,14 @@ export function handleAssertBundleArtifactTransfers(input: {
   archiveResumes?: number;
   /** The Bundle the request came from; any, when omitted, as from built-in. */
   currentBundleId?: string;
-  fileRequests: number;
+  /**
+   * Whole-file asset requests, or `changed-assets`: every asset whose hash
+   * differs between the current and target Bundles' signed manifests, and
+   * no other, was selected and downloaded once, as a file unless patched.
+   * The count then follows the bundler, not the scenario: Metro and Re.Pack
+   * 5.4 also emit raw/keep.xml, which changes with the asset list.
+   */
+  fileRequests: number | "changed-assets";
   /** Artifact protocol v2 files requests; any, when omitted. */
   filesRequests?: number;
   maxRequestsPerAsset?: number;
@@ -4021,6 +4066,29 @@ export function handleAssertBundleArtifactTransfers(input: {
     (total, asset) => total + asset.file.requests,
     0,
   );
+  const changedAssetPaths =
+    input.fileRequests === "changed-assets"
+      ? readChangedManifestAssetPaths(
+          input.currentBundleId,
+          input.targetBundleId,
+        )
+      : null;
+  const expectedFileRequests =
+    changedAssetPaths === null
+      ? input.fileRequests
+      : changedAssetPaths.length - input.patchRequests;
+  const selectsChangedAssets =
+    changedAssetPaths === null ||
+    (sameSet(
+      artifact.assets.map((asset) => asset.path),
+      changedAssetPaths,
+    ) &&
+      sameSet(
+        assets
+          .filter((asset) => asset.file.requests + asset.patch.requests > 0)
+          .map((asset) => asset.path),
+        changedAssetPaths,
+      ));
   const patchRequests = assets.reduce(
     (total, asset) => total + asset.patch.requests,
     0,
@@ -4041,6 +4109,8 @@ export function handleAssertBundleArtifactTransfers(input: {
     archiveFailuresRemaining,
     archiveInterruption,
     assets,
+    changedAssetPaths,
+    expectedFileRequests,
     fileRequests,
     filesRequests: artifact.filesRequests,
     finalFiles,
@@ -4063,7 +4133,8 @@ export function handleAssertBundleArtifactTransfers(input: {
     );
   const matches =
     archive.requests === input.archiveRequests &&
-    fileRequests === input.fileRequests &&
+    fileRequests === expectedFileRequests &&
+    selectsChangedAssets &&
     patchRequests === input.patchRequests &&
     (input.filesRequests === undefined ||
       artifact.filesRequests === input.filesRequests) &&

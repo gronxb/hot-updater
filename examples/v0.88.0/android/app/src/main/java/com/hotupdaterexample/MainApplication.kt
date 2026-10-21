@@ -6,8 +6,10 @@ import com.facebook.react.ReactApplication
 import com.facebook.react.ReactHost
 import com.facebook.react.ReactNativeApplicationEntryPoint.loadReactNative
 import com.facebook.react.defaults.DefaultReactHost.getDefaultReactHost
+import com.hotupdater.HotUpdater
 
 class MainApplication : Application(), ReactApplication {
+  private val isDebugBuildVariant: Boolean = BuildConfig.BUILD_TYPE == "debug"
 
   override val reactHost: ReactHost by lazy {
     getDefaultReactHost(
@@ -17,6 +19,11 @@ class MainApplication : Application(), ReactApplication {
           // Packages that cannot be autolinked yet can be added manually here, for example:
           // add(MyReactNativePackage())
         },
+      // A Release build loads the bundle Hot Updater installed.
+      jsBundleFilePath =
+        if (isDebugBuildVariant) null else HotUpdater.getJSBundleFile(applicationContext),
+      useDevSupport =
+        isDebugBuildVariant && !BuildConfig.HOT_UPDATER_E2E_DISABLE_DEV_SUPPORT,
     )
   }
 

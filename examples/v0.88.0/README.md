@@ -1,8 +1,11 @@
 # React Native 0.88 example
 
-A bare React Native 0.88 app (new architecture, CocoaPods) on Hot Updater.
-The Android Integration workflow builds it, so the library keeps compiling
-against the newest React Native.
+A bare React Native 0.88 app (new architecture, CocoaPods, Metro) on Hot
+Updater. The Android Integration workflow builds it, so the library keeps
+compiling against the newest React Native, and it is an E2E target
+(`pnpm -w e2e -- --target v0.88.0`, see
+[targets](../../e2e/README.md#targets)): it runs the shared
+[`@examples/e2e-app`](../e2e-app).
 
 ## Run
 

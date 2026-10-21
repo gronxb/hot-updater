@@ -581,6 +581,176 @@ describe("E2E remote asset proxy URLs", () => {
     }
   });
 
+  it("expects exactly the assets two signed manifests differ in, whatever the server selects", async () => {
+    const root = await fs.mkdtemp(
+      path.join(os.tmpdir(), "hot-updater-changed-assets-"),
+    );
+    const store = path.join(root, "Documents/bundle-store");
+    const hash = (text: string) =>
+      createHash("sha256").update(text).digest("hex");
+    const manifests = {
+      current: {
+        "main.jsbundle": hash("bundle 1"),
+        "assets/changed.png": hash("changed 1"),
+        "assets/same.png": hash("same"),
+      },
+      // The bundle and changed.png change, new.png is added, same.png stays.
+      target: {
+        "main.jsbundle": hash("bundle 2"),
+        "assets/changed.png": hash("changed 2"),
+        "assets/new.png": hash("new"),
+        "assets/same.png": hash("same"),
+      },
+    };
+    for (const id of ["current", "target", "target-extra"] as const) {
+      const assets = manifests[id === "current" ? "current" : "target"];
+      await fs.mkdir(path.join(store, id), { recursive: true });
+      await fs.writeFile(
+        path.join(store, id, "manifest.json"),
+        JSON.stringify({
+          bundleId: id,
+          assets: Object.fromEntries(
+            Object.entries(assets).map(([key, fileHash]) => [
+              key,
+              { fileHash },
+            ]),
+          ),
+        }),
+      );
+    }
+    await fs.writeFile(
+      path.join(root, "xcrun"),
+      `#!/usr/bin/env node\nprocess.stdout.write(${JSON.stringify(root)});\n`,
+      { mode: 0o755 },
+    );
+    const baseUrl = "https://provider.example.com/hot-updater";
+    const selection = (target: string, paths: string[]) => ({
+      artifactProtocolVersion: 1,
+      assets: Object.fromEntries(
+        paths.map((assetPath) => [
+          assetPath,
+          {
+            file: { url: `/storage/${target}/${assetPath}` },
+            fileHash: "unused",
+            ...(assetPath === "main.jsbundle"
+              ? {
+                  patch: {
+                    algorithm: "bsdiff",
+                    baseBundleId: "current",
+                    patchUrl: `/storage/${target}/main.jsbundle.bsdiff`,
+                  },
+                }
+              : {}),
+          },
+        ]),
+      ),
+      manifestFileHash: "manifest-hash",
+      manifestUrl: `/storage/${target}/manifest.json`,
+    });
+    const changed = ["main.jsbundle", "assets/changed.png", "assets/new.png"];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = new URL(input instanceof Request ? input.url : input);
+        const match =
+          /^\/hot-updater\/artifacts\/v1\/([^/]+)\/from\/current$/.exec(
+            url.pathname,
+          );
+        if (match?.[1] === "target")
+          return Response.json(selection("target", changed));
+        if (match?.[1] === "target-extra") {
+          return Response.json(
+            selection("target-extra", [...changed, "assets/same.png"]),
+          );
+        }
+        return new Response("bytes");
+      }),
+    );
+    vi.resetModules();
+    vi.stubEnv("HOT_UPDATER_E2E_APP_BASE_URL", baseUrl);
+    vi.stubEnv("HOT_UPDATER_E2E_APP_ID", "com.hotupdater.example");
+    vi.stubEnv("HOT_UPDATER_E2E_DEVICE_ID", "test-simulator");
+    vi.stubEnv("HOT_UPDATER_E2E_PLATFORM", "ios");
+    vi.stubEnv("HOT_UPDATER_E2E_RESULTS_DIR", root);
+    vi.stubEnv("PATH", `${root}:${process.env.PATH ?? ""}`);
+    vi.stubEnv("PORT", "3107");
+    try {
+      const controller = await import("./control-server/controller.ts");
+      // One artifact request per target, as the client makes; then the
+      // asset downloads it chooses, each read to the end.
+      const select = async (target: string) => {
+        const payload = (await (
+          await controller.handleProxyUpdateRequest(
+            new Request(
+              `http://localhost:3107/hot-updater/artifacts/v1/${target}/from/current`,
+            ),
+          )
+        ).json()) as {
+          assets: Record<
+            string,
+            { file: { url: string }; patch?: { patchUrl: string } }
+          >;
+        };
+        return async (paths: string[]) => {
+          for (const assetPath of paths) {
+            const asset = payload.assets[assetPath]!;
+            await (
+              await controller.handleProxyRemoteAssetRequest(
+                new Request(asset.patch?.patchUrl ?? asset.file.url),
+              )
+            ).text();
+          }
+        };
+      };
+      const expectation = {
+        archiveRequests: 0,
+        currentBundleId: "current",
+        fileRequests: "changed-assets" as const,
+        maxRequestsPerAsset: 1,
+        patchRequests: 1,
+        targetBundleId: "target",
+      };
+
+      // The client skips new.png: one changed asset is missing.
+      const download = await select("target");
+      await download(["main.jsbundle", "assets/changed.png"]);
+      expect(() =>
+        controller.handleAssertBundleArtifactTransfers(expectation),
+      ).toThrow("Unexpected Bundle artifact transfers");
+
+      await download(["assets/new.png"]);
+      expect(
+        controller.handleAssertBundleArtifactTransfers(expectation),
+      ).toMatchObject({
+        changedAssetPaths: changed,
+        expectedFileRequests: 2,
+        fileRequests: 2,
+        patchRequests: 1,
+      });
+
+      // The server also selects same.png, which no manifest changed. The
+      // client downloads only the changed assets, so only the selection is
+      // wrong.
+      await (await select("target-extra"))(changed);
+      expect(() =>
+        controller.handleAssertBundleArtifactTransfers({
+          ...expectation,
+          targetBundleId: "target-extra",
+        }),
+      ).toThrow("Unexpected Bundle artifact transfers");
+
+      // Without the current Bundle's manifest there is nothing to compare.
+      await fs.rm(path.join(store, "current"), { recursive: true });
+      expect(() =>
+        controller.handleAssertBundleArtifactTransfers(expectation),
+      ).toThrow("A Bundle manifest to compare is missing");
+    } finally {
+      vi.unstubAllEnvs();
+      vi.unstubAllGlobals();
+      await fs.rm(root, { force: true, recursive: true });
+    }
+  }, 30_000);
+
   it("uses the API key for direct and proxied update requests", async () => {
     const resultsDir = await fs.mkdtemp(
       path.join(os.tmpdir(), "hot-updater-api-key-proxy-"),

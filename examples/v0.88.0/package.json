@@ -12,8 +12,12 @@
     "@babel/core": "^7.25.2",
     "@babel/preset-env": "^7.25.3",
     "@babel/runtime": "^7.25.0",
+    "@examples/e2e-app": "workspace:*",
+    "@hot-updater/aws": "workspace:*",
     "@hot-updater/bare": "workspace:*",
     "@hot-updater/react-native": "workspace:*",
+    "@hot-updater/server": "workspace:*",
+    "@hot-updater/standalone": "workspace:*",
     "@hot-updater/supabase": "workspace:*",
     "@react-native-community/cli": "20.2.0",
     "@react-native-community/cli-platform-android": "20.2.0",
@@ -24,6 +28,8 @@
     "@react-native/gradle-plugin": "0.88.0",
     "@react-native/metro-config": "0.88.0",
     "@react-native/typescript-config": "0.88.0",
+    "@react-navigation/native": "^7.3.0",
+    "@react-navigation/native-stack": "^7.17.1",
     "@rnx-kit/metro-config": "^2.0.1",
     "@rnx-kit/metro-resolver-symlinks": "^0.2.1",
     "@types/node": "catalog:",
@@ -35,7 +41,9 @@
     "react": "19.3.0",
     "react-native": "0.88.0",
     "react-native-safe-area-context": "^5.10.1",
-    "typescript": "npm:@typescript/typescript6@^6.0.2"
+    "react-native-screens": "^4.30.0",
+    "typescript": "npm:@typescript/typescript6@^6.0.2",
+    "valtio": "^2.2.0"
   },
   "engines": {
     "node": ">=22.11.0"
