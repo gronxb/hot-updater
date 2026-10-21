@@ -280,6 +280,76 @@ describe("remote bundle signing client", () => {
     ).rejects.toThrow("unverifiable signature");
   });
 
+  it("names a refusal's status and the server's reason, with the token masked", async () => {
+    const SIGNING_URL = `https://updates.example.com${ENDPOINT_PATH}`;
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) =>
+      init?.method === "GET"
+        ? Response.json(
+            {
+              error: {
+                code: "forbidden",
+                message: `The vault token ${TOKEN} may sign with a, b:\nscope it to one key.`,
+              },
+            },
+            { status: 403 },
+          )
+        : Response.json(metadata()),
+    );
+
+    const error = await createPlugin(fetch)
+      .getPublicKey()
+      .catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect((error as Error).name).toBe("HotUpdaterRemoteSigningError");
+    expect((error as Error).message).toBe(
+      `Failed to load the remote bundle signing public key. ${SIGNING_URL} answered 403 forbidden: The vault token ******** may sign with a, b: scope it to one key.`,
+    );
+    expect((error as Error).message).not.toContain(TOKEN);
+  });
+
+  it("names a signing refusal's status", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async (input, init) =>
+      init?.method === "GET"
+        ? Response.json(metadata())
+        : Response.json({ error: "conflict" }, { status: 409 }),
+    );
+
+    await expect(createPlugin(fetch).sign({ message })).rejects.toThrow(
+      `Remote bundle signer failed to sign the message. https://updates.example.com${ENDPOINT_PATH} answered 409: conflict.`,
+    );
+  });
+
+  it("names an unreachable endpoint without what fetch threw", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>(async () => {
+      throw new Error(`connect ECONNREFUSED ${TOKEN}`);
+    });
+
+    const error = await createPlugin(fetch)
+      .getPublicKey()
+      .catch((caught: unknown) => caught);
+
+    expect((error as Error).message).toBe(
+      `Failed to load the remote bundle signing public key. Could not reach https://updates.example.com${ENDPOINT_PATH}.`,
+    );
+  });
+
+  it("names the missing HOT_UPDATER_SIGNING_TOKEN", async () => {
+    vi.stubEnv("HOT_UPDATER_SIGNING_TOKEN", "");
+    const fetch = vi.fn<typeof globalThis.fetch>();
+    const plugin = remoteSigning({ endpoint: ENDPOINT, fetch });
+
+    const error = await plugin
+      .getPublicKey()
+      .catch((caught: unknown) => caught);
+
+    expect((error as Error).name).toBe("HotUpdaterRemoteSigningError");
+    expect((error as Error).message).toBe(
+      "Failed to load the remote bundle signing public key. remoteSigning requires signingToken or HOT_UPDATER_SIGNING_TOKEN.",
+    );
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
   it("does not resolve credentials before an operation and redacts token errors", async () => {
     const resolveToken = vi.fn(() => {
       throw new Error(`missing ${TOKEN}`);
@@ -290,10 +360,13 @@ describe("remote bundle signing client", () => {
       signingToken: resolveToken,
     });
     expect(resolveToken).not.toHaveBeenCalled();
-    await expect(plugin.getPublicKey()).rejects.toThrow(
+    const error = await plugin
+      .getPublicKey()
+      .catch((caught: unknown) => caught);
+    expect((error as Error).message).toBe(
       "Failed to load the remote bundle signing public key.",
     );
-    await expect(plugin.getPublicKey()).rejects.not.toThrow(TOKEN);
+    expect((error as Error).name).toBe("Error");
   });
 });
 

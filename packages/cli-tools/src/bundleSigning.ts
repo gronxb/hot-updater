@@ -66,6 +66,20 @@ export const readBundleSigningPublicKeyFile = async (
   }
 };
 
+/**
+ * `remoteSigning`'s errors with a reason it wrote itself, by name, as it may
+ * come from another copy of plugin-core. Any other signing adapter error is
+ * redacted: it may quote key material.
+ */
+const REMOTE_SIGNING_ERROR_NAME = "HotUpdaterRemoteSigningError";
+
+const signingFailure = (summary: string, error: unknown) =>
+  new Error(
+    error instanceof Error && error.name === REMOTE_SIGNING_ERROR_NAME
+      ? `${summary} ${error.message}`
+      : summary,
+  );
+
 const getProviderPublicKey = async (
   provider: ReturnType<typeof createLocalSigningAdapter>,
   cwd: string,
@@ -76,9 +90,10 @@ const getProviderPublicKey = async (
       throw new Error("invalid result");
     }
     return parseRsaPublicKey(result.publicKey);
-  } catch {
-    throw new Error(
+  } catch (error) {
+    throw signingFailure(
       "Failed to resolve the bundle signing provider public key.",
+      error,
     );
   }
 };
@@ -112,9 +127,10 @@ const createMemoizedSigner = ({
       let signature: Uint8Array;
       try {
         signature = await sign(new Uint8Array(message));
-      } catch {
-        throw new Error(
+      } catch (error) {
+        throw signingFailure(
           "Bundle signing provider failed to sign the file hash.",
+          error,
         );
       }
 

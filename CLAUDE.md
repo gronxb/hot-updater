@@ -63,6 +63,7 @@ Every export belongs to exactly one package. `scripts/ci/check-package-boundarie
 - Dependencies are cut cleanly:
   - No package has an `/internal` entry or a deep import. Every cross-package import uses the other package's public API.
   - A shared convention is implemented in each package and documented here, not imported. An example is the official-plugin brand key `Symbol.for("@hot-updater/server/official-plugin")`.
+  - `remoteSigning` (plugin-core) names the errors whose reason it wrote itself, which never holds the token, `HotUpdaterRemoteSigningError`. cli-tools' bundle signing shows the message of those errors only and redacts every other signing adapter error.
   - The managed D1 and Supabase databases mark the target they reach for their provider's `./init`, which `hot-updater doctor --fix` calls with the config's database: `Symbol.for("@hot-updater/cloudflare/d1-target")` and `Symbol.for("@hot-updater/supabase/project")`.
 - Subpaths are the exception. Add one only to isolate something optional (an adapter's dependency, a built-in plugin, a runtime build), never as a back door.
 - `@hot-updater/cli-tools` depends on `@hot-updater/server` for `assembleServer({ database, storage, plugins })`, which runs `createHotUpdater` over a config's database, storage, and plugins for the CLI, the providers' `./init`, the agent scaffold build, and the E2E controller.
