@@ -241,6 +241,21 @@ interface BundleStorageService {
      * @return true if the reset was successful
      */
     suspend fun resetChannel(): Boolean
+
+    /**
+     * Resets the channel only while the named Release selection is current,
+     * checked and reset in one critical section with the catalog checks, so
+     * a newer catalog accepted meanwhile keeps the channel.
+     * @return false for a stale selection
+     */
+    suspend fun resetChannelIfSelectionCurrent(
+        catalogId: String,
+        scopeKey: String,
+        generation: Long,
+        catalogHash: String,
+        channel: String,
+        selectionContextHash: String,
+    ): Boolean = false
 }
 
 /**
@@ -2789,49 +2804,74 @@ class BundleFileStorageService(
             emptyMap()
         }
 
-    override suspend fun resetChannel(): Boolean =
+    override suspend fun resetChannel(): Boolean = withContext(Dispatchers.IO) { resetChannelBlocking() }
+
+    override suspend fun resetChannelIfSelectionCurrent(
+        catalogId: String,
+        scopeKey: String,
+        generation: Long,
+        catalogHash: String,
+        channel: String,
+        selectionContextHash: String,
+    ): Boolean =
         withContext(Dispatchers.IO) {
-            if (!setBundleURL(null)) {
-                return@withContext false
+            // The catalog checks take the same reentrant monitor, so none
+            // accepts a newer catalog between this check and the reset.
+            synchronized(releaseStateLock) {
+                isReleaseSelectionCurrent(
+                    catalogId = catalogId,
+                    scopeKey = scopeKey,
+                    generation = generation,
+                    catalogHash = catalogHash,
+                    channel = channel,
+                    selectionContextHash = selectionContextHash,
+                ) &&
+                    resetChannelBlocking()
             }
-
-            val clearedMetadata =
-                (loadMetadataOrNull() ?: BundleMetadata()).copy(
-                    isolationKey = isolationKey,
-                    stableBundleId = null,
-                    stagingBundleId = null,
-                    stableSelection = null,
-                    stagingSelection = null,
-                    pendingUpdateStrategy = null,
-                    pendingTransition = null,
-                    verificationPending = false,
-                    launchInProgress = false,
-                    // Selections made before the reset no longer stage; the
-                    // high-water marks stay, so an older catalog is still refused.
-                    currentSelectionContexts = emptyMap(),
-                    updatedAt = System.currentTimeMillis(),
-                )
-
-            if (!saveMetadata(clearedMetadata)) {
-                return@withContext false
-            }
-
-            saveLaunchReport(null)
-
-            getBundleStoreDir().listFiles()?.forEach { file ->
-                if (
-                    file.name == BundleMetadata.METADATA_FILENAME ||
-                    file.name == CrashedHistory.CRASHED_HISTORY_FILENAME ||
-                    file.name == LaunchReport.LAUNCH_REPORT_FILENAME
-                ) {
-                    return@forEach
-                }
-
-                if (file.isDirectory) {
-                    file.deleteRecursively()
-                }
-            }
-
-            true
         }
+
+    private fun resetChannelBlocking(): Boolean {
+        if (!setBundleURL(null)) {
+            return false
+        }
+
+        val clearedMetadata =
+            (loadMetadataOrNull() ?: BundleMetadata()).copy(
+                isolationKey = isolationKey,
+                stableBundleId = null,
+                stagingBundleId = null,
+                stableSelection = null,
+                stagingSelection = null,
+                pendingUpdateStrategy = null,
+                pendingTransition = null,
+                verificationPending = false,
+                launchInProgress = false,
+                // Selections made before the reset no longer stage; the
+                // high-water marks stay, so an older catalog is still refused.
+                currentSelectionContexts = emptyMap(),
+                updatedAt = System.currentTimeMillis(),
+            )
+
+        if (!saveMetadata(clearedMetadata)) {
+            return false
+        }
+
+        saveLaunchReport(null)
+
+        getBundleStoreDir().listFiles()?.forEach { file ->
+            if (
+                file.name == BundleMetadata.METADATA_FILENAME ||
+                file.name == CrashedHistory.CRASHED_HISTORY_FILENAME ||
+                file.name == LaunchReport.LAUNCH_REPORT_FILENAME
+            ) {
+                return@forEach
+            }
+
+            if (file.isDirectory) {
+                file.deleteRecursively()
+            }
+        }
+
+        return true
+    }
 }

@@ -44,6 +44,7 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSArray<NSString *> *)getCrashHistory;
 - (BOOL)clearCrashHistory;
 - (NSString *)getInstallId;
+- (NSString *)getProcessLaunchId;
 - (nullable NSString *)getStorageItem:(NSString *)key;
 - (void)setStorageItem:(NSString *)key value:(nullable NSString *)value;
 - (nullable NSString *)getBaseURL;
@@ -51,6 +52,9 @@ NS_ASSUME_NONNULL_BEGIN
 - (NSDictionary<NSString *, id> *)getManifest;
 - (void)resetLaunchPreparation;
 - (void)resetChannel:(RCTPromiseResolveBlock)resolve rejecter:(RCTPromiseRejectBlock)reject;
+- (void)resetChannelIfSelectionCurrent:(nullable NSDictionary *)params
+                              resolver:(RCTPromiseResolveBlock)resolve
+                              rejecter:(RCTPromiseRejectBlock)reject;
 @end
 
 @protocol HotUpdaterConfigInterface <NSObject>
@@ -68,6 +72,10 @@ NS_ASSUME_NONNULL_BEGIN
 - (void)resetChannelWithImpl:(id<HotUpdaterImplInterface>)impl
                     resolver:(RCTPromiseResolveBlock)resolve
                     rejecter:(RCTPromiseRejectBlock)reject;
+- (void)resetChannelIfSelectionCurrentWithImpl:(id<HotUpdaterImplInterface>)impl
+                                        params:(nullable NSDictionary *)params
+                                      resolver:(RCTPromiseResolveBlock)resolve
+                                      rejecter:(RCTPromiseRejectBlock)reject;
 - (nullable NSString *)takeEventsWithImpl:(id<HotUpdaterImplInterface>)impl;
 - (id<HotUpdaterImplInterface>)implForBundleURL:(nullable NSURL *)bundleURL
     NS_SWIFT_NAME(impl(forBundleURL:));

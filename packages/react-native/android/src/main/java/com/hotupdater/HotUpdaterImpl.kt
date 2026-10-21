@@ -10,6 +10,7 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import java.util.UUID
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -135,6 +136,12 @@ class HotUpdaterImpl {
         }
 
     companion object {
+        /**
+         * A random id made once per app process. Android's reload restarts
+         * the process, so each reload has a new one.
+         */
+        val processLaunchId: String = UUID.randomUUID().toString()
+
         private const val TAG = "HotUpdaterImpl"
         internal const val DEFAULT_CHANNEL = "production"
         private const val CHANNEL_STORAGE_KEY = "HotUpdaterChannel"
@@ -569,6 +576,32 @@ class HotUpdaterImpl {
             // thread, so blocking this one cannot deadlock.
             synchronized(launchPreparationLock) {
                 val success = runBlocking { bundleStorage.resetChannel() }
+                if (success) {
+                    preferences.setItem(CHANNEL_STORAGE_KEY, null)
+                    currentLaunchSelection = null
+                }
+                success
+            }
+        }
+
+    /**
+     * Resets the channel while the Release selection [guard] names is
+     * current, as [resetChannel] does; false for a stale one.
+     */
+    internal suspend fun resetChannelIfSelectionCurrent(guard: ReleaseSelectionGuard): Boolean =
+        withContext(Dispatchers.IO) {
+            synchronized(launchPreparationLock) {
+                val success =
+                    runBlocking {
+                        bundleStorage.resetChannelIfSelectionCurrent(
+                            catalogId = guard.catalogId,
+                            scopeKey = guard.scopeKey,
+                            generation = guard.generation,
+                            catalogHash = guard.catalogHash,
+                            channel = guard.channel,
+                            selectionContextHash = guard.selectionContextHash,
+                        )
+                    }
                 if (success) {
                     preferences.setItem(CHANNEL_STORAGE_KEY, null)
                     currentLaunchSelection = null

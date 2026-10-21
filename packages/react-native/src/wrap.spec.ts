@@ -45,12 +45,16 @@ const mocks = vi.hoisted(() => {
 
 vi.mock("./checkForUpdate", () => ({
   checkForUpdate: mocks.checkForUpdate,
+  isChannelLeave: vi.fn(() => false),
   reportUpdateError: vi.fn(),
 }));
 
 vi.mock("./native", () => ({
   addListener: mocks.addListener,
+  claimLaunchURL: vi.fn(() => true),
+  releaseLaunchURL: vi.fn(),
   clearCrashHistory: vi.fn(),
+  startRuntime: vi.fn(),
   getAppVersion: mocks.getAppVersion,
   getBaseURL: vi.fn(() => null),
   getBundleId: mocks.getBundleId,

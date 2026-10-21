@@ -946,6 +946,65 @@ class BundleFileStorageServiceTest {
         }
 
     @Test
+    fun `a guarded channel reset keeps the channel for a stale selection`() =
+        runBlocking {
+            val rootDir = temporaryFolder.newFolder("guarded-reset")
+            val service = createService(rootDir)
+
+            fun accept(
+                generation: Long,
+                context: String,
+            ) = service.acceptReleaseCatalog(
+                catalogId = "project-a",
+                scopeKey = "scope-pr-2",
+                generation = generation,
+                catalogHash = "hash-$generation",
+                channel = "pr-2",
+                selectionContextHash = context,
+            )
+
+            suspend fun reset(
+                generation: Long,
+                context: String,
+            ) = service.resetChannelIfSelectionCurrent(
+                catalogId = "project-a",
+                scopeKey = "scope-pr-2",
+                generation = generation,
+                catalogHash = "hash-$generation",
+                channel = "pr-2",
+                selectionContextHash = context,
+            )
+            assertTrue(accept(3, "context-3"))
+            // A newer catalog of the channel arrives before the leave.
+            assertTrue(accept(4, "context-4"))
+
+            assertFalse(reset(3, "context-3"))
+            // Nothing was reset: the newer catalog's selection still stages.
+            assertTrue(
+                service.isReleaseSelectionCurrent(
+                    catalogId = "project-a",
+                    scopeKey = "scope-pr-2",
+                    generation = 4,
+                    catalogHash = "hash-4",
+                    channel = "pr-2",
+                    selectionContextHash = "context-4",
+                ),
+            )
+
+            assertTrue(reset(4, "context-4"))
+            assertFalse(
+                service.isReleaseSelectionCurrent(
+                    catalogId = "project-a",
+                    scopeKey = "scope-pr-2",
+                    generation = 4,
+                    catalogHash = "hash-4",
+                    channel = "pr-2",
+                    selectionContextHash = "context-4",
+                ),
+            )
+        }
+
+    @Test
     fun `catalog high water rejects replay and survives channel reset`() =
         runBlocking {
             val rootDir = temporaryFolder.newFolder("release-high-water")

@@ -344,6 +344,14 @@ public protocol BundleStorageService {
      * Restores the original bundle and clears downloaded bundle state.
      */
     func resetChannel() -> Result<Bool, Error>
+
+    /**
+     * Resets the channel only while the named Release selection is current,
+     * checked and reset in one critical section with the catalog checks, so
+     * a newer catalog accepted meanwhile keeps the channel. Success is false
+     * for a stale selection.
+     */
+    func resetChannelIfSelectionCurrent(catalogId: String, scopeKey: String, generation: Int64, catalogHash: String, channel: String, selectionContextHash: String) -> Result<Bool, Error>
 }
 
 public extension BundleStorageService {
@@ -356,6 +364,7 @@ public extension BundleStorageService {
     func getActiveUpdateState() -> [String: Any] { [:] }
     func isReleaseSelectionCurrent(catalogId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Bool { false }
     func commitReleaseSelection(_: PersistedSelection) -> Bool { false }
+    func resetChannelIfSelectionCurrent(catalogId _: String, scopeKey _: String, generation _: Int64, catalogHash _: String, channel _: String, selectionContextHash _: String) -> Result<Bool, Error> { .success(false) }
 }
 
 class BundleFileStorageService: BundleStorageService {
@@ -3288,6 +3297,31 @@ class BundleFileStorageService: BundleStorageService {
 
     func getManifest(forBundleId bundleId: String?) -> ManifestAssets {
         return getBundleMetadataSnapshot(bundleId: bundleId)?.manifest ?? [:]
+    }
+
+    func resetChannelIfSelectionCurrent(
+        catalogId: String,
+        scopeKey: String,
+        generation: Int64,
+        catalogHash: String,
+        channel: String,
+        selectionContextHash: String
+    ) -> Result<Bool, Error> {
+        // The catalog checks take the same recursive lock, so none accepts a
+        // newer catalog between this check and the reset.
+        releaseStateLock.lock()
+        defer { releaseStateLock.unlock() }
+        guard isReleaseSelectionCurrent(
+            catalogId: catalogId,
+            scopeKey: scopeKey,
+            generation: generation,
+            catalogHash: catalogHash,
+            channel: channel,
+            selectionContextHash: selectionContextHash
+        ) else {
+            return .success(false)
+        }
+        return resetChannel()
     }
 
     func resetChannel() -> Result<Bool, Error> {

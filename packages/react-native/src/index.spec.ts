@@ -13,6 +13,10 @@ const mocks = vi.hoisted(() => {
   return {
     addListener: vi.fn(() => () => {}),
     checkForUpdate: vi.fn(async () => null),
+    startRuntime: vi.fn(),
+    claimLaunchURL: vi.fn((_url: string) => true),
+    isChannelLeave: vi.fn((_result: unknown) => false),
+    releaseLaunchURL: vi.fn(),
     clearCrashHistory: vi.fn(() => true),
     createHttpClient: vi.fn(
       (
@@ -61,6 +65,7 @@ vi.mock("./httpClient", () => ({
 
 vi.mock("./checkForUpdate", () => ({
   checkForUpdate: mocks.checkForUpdate,
+  isChannelLeave: mocks.isChannelLeave,
   reportUpdateError: mocks.reportUpdateError,
 }));
 
@@ -99,6 +104,9 @@ vi.mock("./native", () => ({
   resetChannel: mocks.resetChannel,
   setCohort: mocks.setCohort,
   stageBundle: mocks.stageBundle,
+  startRuntime: mocks.startRuntime,
+  claimLaunchURL: mocks.claimLaunchURL,
+  releaseLaunchURL: mocks.releaseLaunchURL,
 }));
 
 const importHotUpdater = async () => (await import("./index")).HotUpdater;
@@ -711,6 +719,139 @@ describe("HotUpdater client initialization", () => {
 
       await expect(open()).rejects.toThrow("offline");
       expect(mocks.reload).not.toHaveBeenCalled();
+    });
+
+    it("opens a launch link once per app process", async () => {
+      update();
+      mocks.claimLaunchURL.mockReturnValueOnce(false);
+      const HotUpdater = await importHotUpdater();
+      const hotUpdater = HotUpdater.init({
+        baseURL: "https://updates.example.com",
+      });
+
+      await expect(
+        hotUpdater.openChannelLink(link, { ...options, initial: true }),
+      ).resolves.toEqual({ status: "ALREADY_OPENED", channel: "pr-12" });
+      expect(mocks.claimLaunchURL).toHaveBeenCalledWith(link);
+      expect(mocks.checkForUpdate).not.toHaveBeenCalled();
+      expect(mocks.reload).not.toHaveBeenCalled();
+
+      // The first claim of a process opens it.
+      await expect(
+        hotUpdater.openChannelLink(link, { ...options, initial: true }),
+      ).resolves.toEqual({ status: "SWITCHED", channel: "pr-12" });
+    });
+
+    it("gives the launch link back when leaving the other channel rejects", async () => {
+      mocks.isChannelSwitched.mockReturnValue(true);
+      mocks.getChannel.mockReturnValue("pr-11");
+      mocks.resetChannel.mockRejectedValueOnce(
+        new Error("storage reset failed"),
+      );
+      const HotUpdater = await importHotUpdater();
+
+      await expect(
+        HotUpdater.init({
+          baseURL: "https://updates.example.com",
+        }).openChannelLink(link, { ...options, initial: true }),
+      ).rejects.toThrow("storage reset failed");
+      expect(mocks.releaseLaunchURL).toHaveBeenCalledWith(link);
+      expect(mocks.checkForUpdate).not.toHaveBeenCalled();
+    });
+
+    it("gives the launch link back when its update could not be applied", async () => {
+      mocks.checkForUpdate.mockResolvedValueOnce({
+        updateBundle: vi.fn(async () => false),
+      } as never);
+      const HotUpdater = await importHotUpdater();
+
+      await expect(
+        HotUpdater.init({
+          baseURL: "https://updates.example.com",
+        }).openChannelLink(link, { ...options, initial: true }),
+      ).resolves.toEqual({ status: "NO_UPDATE", channel: "pr-12" });
+      expect(mocks.releaseLaunchURL).toHaveBeenCalledWith(link);
+    });
+
+    it("gives the launch link back when the reload into the channel rejects", async () => {
+      update();
+      mocks.reload.mockRejectedValueOnce(new Error("restart failed"));
+      const HotUpdater = await importHotUpdater();
+
+      await expect(
+        HotUpdater.init({
+          baseURL: "https://updates.example.com",
+        }).openChannelLink(link, { ...options, initial: true }),
+      ).rejects.toThrow("restart failed");
+      expect(mocks.releaseLaunchURL).toHaveBeenCalledWith(link);
+    });
+
+    it("keeps the launch link claimed when it opened", async () => {
+      update();
+      const HotUpdater = await importHotUpdater();
+
+      await HotUpdater.init({
+        baseURL: "https://updates.example.com",
+      }).openChannelLink(link, { ...options, initial: true });
+      expect(mocks.releaseLaunchURL).not.toHaveBeenCalled();
+    });
+
+    it("never consults the launch link for a link the app opens while running", async () => {
+      update();
+      mocks.claimLaunchURL.mockReturnValue(false);
+
+      await expect(open()).resolves.toEqual({
+        status: "SWITCHED",
+        channel: "pr-12",
+      });
+      expect(mocks.claimLaunchURL).not.toHaveBeenCalled();
+      mocks.claimLaunchURL.mockReturnValue(true);
+    });
+
+    it("claims only channel links", async () => {
+      const HotUpdater = await importHotUpdater();
+
+      await expect(
+        HotUpdater.init({
+          baseURL: "https://updates.example.com",
+        }).openChannelLink("myapp://settings", { ...options, initial: true }),
+      ).resolves.toEqual({ status: "NOT_CHANNEL_LINK" });
+      expect(mocks.claimLaunchURL).not.toHaveBeenCalled();
+    });
+
+    it("reports leaving an emptied switched channel as no update, and starts the built-in bundle", async () => {
+      mocks.isChannelSwitched.mockReturnValue(true);
+      mocks.getChannel.mockReturnValue("pr-12");
+      const updateBundle = vi.fn(async () => true);
+      mocks.checkForUpdate.mockResolvedValueOnce({
+        status: "ROLLBACK",
+        transitionKind: "USE_BUILTIN",
+        updateBundle,
+      } as never);
+
+      mocks.isChannelLeave.mockReturnValueOnce(true);
+
+      await expect(open()).resolves.toEqual({
+        status: "NO_UPDATE",
+        channel: "pr-12",
+      });
+      expect(updateBundle).toHaveBeenCalledTimes(1);
+      expect(mocks.reload).toHaveBeenCalledTimes(1);
+    });
+
+    it("reports a built-in selection of the linked channel as a switch", async () => {
+      const updateBundle = vi.fn(async () => true);
+      mocks.checkForUpdate.mockResolvedValueOnce({
+        status: "ROLLBACK",
+        transitionKind: "USE_BUILTIN",
+        updateBundle,
+      } as never);
+
+      await expect(open()).resolves.toEqual({
+        status: "SWITCHED",
+        channel: "pr-12",
+      });
+      expect(mocks.reload).toHaveBeenCalledTimes(1);
     });
 
     it("refuses to check another channel when the reset fails", async () => {

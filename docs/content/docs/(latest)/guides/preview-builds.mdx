@@ -66,13 +66,15 @@ import { Linking } from "react-native";
 
 import { hotUpdater } from "./hotUpdater";
 
-const openLink = async (url: string | null) => {
+const openLink = async (url: string | null, initial: boolean) => {
   if (url === null) return;
   try {
     const result = await hotUpdater.openChannelLink(url, {
       updateStrategy: "fingerprint",
       // Builds whose default channel is "preview" open channel links.
       defaultChannels: ["preview"],
+      // The launch URL opens once per app process, not again after a reload.
+      initial,
     });
     if (result.status === "NOT_CHANNEL_LINK") {
       // Route the URL as the app routes its other links.
@@ -83,8 +85,8 @@ const openLink = async (url: string | null) => {
   }
 };
 
-void Linking.getInitialURL().then(openLink);
-Linking.addEventListener("url", ({ url }) => void openLink(url));
+void Linking.getInitialURL().then((url) => openLink(url, true));
+Linking.addEventListener("url", ({ url }) => void openLink(url, false));
 ```
 
 `openChannelLink` checks the channel with `checkForUpdate({ channel })`,
@@ -168,3 +170,9 @@ the command deletes the bundles, keeps the channel and its native builds, and
 exits with status 1.
 
 Add `--json` to print the result, with the IDs of the deleted bundles.
+
+A device still switched to the deleted channel leaves it at its next update
+check. The server answers the channel's scope with an empty catalog, so the
+check returns a rollback to the built-in bundle, and applying it also calls
+`resetChannel()`. The check after that reads the build's default channel, such
+as `preview`, again.

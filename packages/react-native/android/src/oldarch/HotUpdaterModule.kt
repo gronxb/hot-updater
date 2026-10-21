@@ -558,6 +558,9 @@ class HotUpdaterModule internal constructor(
     override fun getInstallId(): String = getInstance().getInstallId()
 
     @ReactMethod(isBlockingSynchronousMethod = true)
+    override fun getProcessLaunchId(): String = HotUpdaterImpl.processLaunchId
+
+    @ReactMethod(isBlockingSynchronousMethod = true)
     override fun getStorageItem(key: String): String? = getInstance().getStorageItem(key)
 
     @ReactMethod
@@ -570,6 +573,46 @@ class HotUpdaterModule internal constructor(
 
     @ReactMethod(isBlockingSynchronousMethod = true)
     override fun takeNativeUpdateEvents(): String? = getInstance().takeNativeUpdateEvents()
+
+    @ReactMethod
+    override fun resetChannelIfSelectionCurrent(
+        params: ReadableMap,
+        promise: Promise,
+    ) {
+        val catalogId = params.getString("catalogId")
+        val scopeKey = params.getString("scopeKey")
+        val catalogHash = params.getString("catalogHash")
+        val channel = params.getString("channel")
+        val selectionContextHash = params.getString("selectionContextHash")
+        if (catalogId == null || scopeKey == null || catalogHash == null || channel == null || selectionContextHash == null) {
+            promise.resolve(false)
+            return
+        }
+        val guard =
+            ReleaseSelectionGuard(
+                catalogId = catalogId,
+                scopeKey = scopeKey,
+                generation = params.getDouble("generation").toLong(),
+                catalogHash = catalogHash,
+                channel = channel,
+                selectionContextHash = selectionContextHash,
+            )
+        moduleScope.launch {
+            try {
+                // Waits for a native check or download, as resetChannel does.
+                val name = runtimeInstance.name
+                promise.resolve(
+                    NativeUpdateCheck.resetChannelIfSelectionCurrent(mReactApplicationContext, name, guard) {
+                        runtimeInstance.impl(name)
+                    },
+                )
+            } catch (e: HotUpdaterException) {
+                promise.reject(e.code, e.message)
+            } catch (e: Exception) {
+                promise.reject("UNKNOWN_ERROR", e.message ?: "Failed to reset channel")
+            }
+        }
+    }
 
     @ReactMethod
     override fun resetChannel(promise: Promise) {
