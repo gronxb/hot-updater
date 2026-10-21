@@ -143,14 +143,15 @@ export const putVaultSecretRpc = createServerFn({ method: "POST" })
   .validator(parsePut)
   .handler(async ({ data }): Promise<VaultSecret> => {
     const vault = await vaultApi();
-    const { parseVaultSecretValue, vaultSecretMetadata } =
+    const { parseVaultSecretValue } =
       await import("@hot-updater/server/plugins");
+    const { vaultSecretMetadataOf } = await import("./server/bundleSigningKey");
     const value = parseVaultSecretValue(data.kind, data.value);
     return vault.put({
       name: data.name,
       kind: data.kind,
       value,
-      metadata: vaultSecretMetadata(data.kind, value),
+      metadata: await vaultSecretMetadataOf(data.kind, value),
       expectedVersion: data.expectedVersion,
     });
   });

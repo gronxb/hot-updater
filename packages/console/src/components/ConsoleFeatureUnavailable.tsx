@@ -16,8 +16,9 @@ import {
   useConsoleFeatures,
 } from "@/lib/console-features-api";
 
-export const CONSOLE_DEPLOYMENT_GUIDE_URL =
-  "https://hot-updater.dev/docs/guides/console-deployment";
+const DOCS_URL = "https://hot-updater.dev";
+
+export const CONSOLE_DEPLOYMENT_GUIDE_URL = `${DOCS_URL}/docs/guides/console-deployment`;
 
 /**
  * A feature route's not-found state: the plugin to add, or, for a feature a
@@ -32,7 +33,9 @@ export function ConsoleFeatureUnavailable({
   const remote = useConsoleFeatures().data?.remote === true;
   if (feature === undefined) return <NotFoundPage />;
 
-  const { label, plugin } = consoleFeatures[feature];
+  const entry = consoleFeatures[feature];
+  const { label, plugin } = entry;
+  const guide = "guide" in entry ? entry.guide : undefined;
   const pluginCall = <code className="font-mono">{`${plugin}()`}</code>;
   return (
     <div className="flex h-svh min-h-0 flex-col">
@@ -65,11 +68,15 @@ export function ConsoleFeatureUnavailable({
           <EmptyContent>
             <a
               className={buttonVariants({ variant: "outline" })}
-              href={CONSOLE_DEPLOYMENT_GUIDE_URL}
+              href={
+                guide === undefined
+                  ? CONSOLE_DEPLOYMENT_GUIDE_URL
+                  : `${DOCS_URL}${guide}`
+              }
               rel="noreferrer"
               target="_blank"
             >
-              Console setup guide
+              {guide === undefined ? "Console setup guide" : `${label} guide`}
               <ArrowUpRight aria-hidden="true" data-icon="inline-end" />
             </a>
           </EmptyContent>

@@ -356,7 +356,7 @@ describe("hot-updater secrets list and put, through the Console", () => {
       variables: ["AWS_ACCESS_KEY_ID=AKIA1", "AWS_SECRET_ACCESS_KEY"],
     });
 
-    expect(requests[0]?.body).toEqual({
+    expect(requests.find(({ method }) => method === "PUT")?.body).toEqual({
       kind: "deploy-credentials",
       value: {
         AWS_ACCESS_KEY_ID: "AKIA1",
@@ -368,6 +368,47 @@ describe("hot-updater secrets list and put, through the Console", () => {
     vi.mocked(log.message).mockClear();
     await handleSecretsPut("deploy", { kind: "generic", variables: ["A=1"] });
     expect(maskSecretValues(messages().join("\n"))).toMatch(/Version:\s+v1/u);
+  });
+
+  it("warns, naming the secret, when another secret already sets a variable", async () => {
+    const other = {
+      ...SECRET,
+      id: "sec-9",
+      name: "staging-deploy",
+      kind: "generic",
+      metadata: { variables: ["AWS_REGION", "AWS_ACCESS_KEY_ID"] },
+    };
+    const requests = mockConsole((request) =>
+      request.method === "GET" ? { secrets: [other] } : { secret: SECRET },
+    );
+
+    await handleSecretsPut("deploy", {
+      kind: "deploy-credentials",
+      variables: [
+        "AWS_ACCESS_KEY_ID=AKIA1",
+        "AWS_SECRET_ACCESS_KEY=s3cr3t-key",
+      ],
+    });
+
+    expect(log.warn).toHaveBeenCalledWith(
+      "The vault's other secrets already set AWS_ACCESS_KEY_ID (staging-deploy, generic). A command whose vault token reaches both refuses it: keep each variable in one secret.",
+    );
+    // Stored all the same: per-environment secrets may share a variable.
+    expect(requests.map(({ method }) => method)).toEqual(["GET", "PUT"]);
+    expect(process.exitCode).toBeUndefined();
+
+    // Its own variables, in the secret it replaces, are no conflict.
+    vi.mocked(log.warn).mockClear();
+    mockConsole((request) =>
+      request.method === "GET"
+        ? { secrets: [{ ...other, name: "deploy" }] }
+        : { secret: SECRET },
+    );
+    await handleSecretsPut("deploy", {
+      kind: "deploy-credentials",
+      variables: ["AWS_ACCESS_KEY_ID=AKIA1"],
+    });
+    expect(log.warn).not.toHaveBeenCalled();
   });
 
   it("refuses another kind's flags, sending nothing", async () => {
@@ -657,7 +698,7 @@ describe("hot-updater secrets import", () => {
 
     expect(process.exitCode).toBe(1);
     expect(log.error).toHaveBeenCalledWith(
-      `The vault's other secrets already set HOT_UPDATER_S3_REGION (shared): a variable is kept in one secret. Remove it there, or from ${file}, first.`,
+      `The vault's other secrets already set HOT_UPDATER_S3_REGION (shared, generic): a variable is kept in one secret. Remove it there, or from ${file}, first.`,
     );
     expect(requests.map(({ method }) => method)).toEqual(["GET"]);
     await expect(fs.readFile(file, "utf-8")).resolves.toBe(lines.join("\n"));

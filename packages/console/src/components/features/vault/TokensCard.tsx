@@ -168,7 +168,15 @@ export function TokensCard({
   readonly secrets: readonly VaultSecret[];
 }) {
   const [issuing, setIssuing] = useState(false);
+  // Revoked and expired tokens stay listed for the record, folded away.
+  const [showingInactive, setShowingInactive] = useState(false);
   const now = Date.now();
+  const inactive =
+    tokens.data?.filter((token) => vaultTokenState(token, now) !== "active")
+      .length ?? 0;
+  const shown = showingInactive
+    ? tokens.data
+    : tokens.data?.filter((token) => vaultTokenState(token, now) === "active");
 
   return (
     <Card className="overflow-hidden shadow-sm">
@@ -247,7 +255,16 @@ export function TokensCard({
                     </TableCell>
                   </TableRow>
                 ))
-              ) : tokens.data?.length === 0 ? (
+              ) : shown?.length === 0 && inactive > 0 ? (
+                <TableRow>
+                  <TableCell
+                    className="h-20 text-center text-muted-foreground"
+                    colSpan={5}
+                  >
+                    No active vault tokens.
+                  </TableCell>
+                </TableRow>
+              ) : shown?.length === 0 ? (
                 <TableRow>
                   <TableCell
                     className="h-44 text-center text-muted-foreground"
@@ -272,7 +289,7 @@ export function TokensCard({
                   </TableCell>
                 </TableRow>
               ) : (
-                tokens.data?.map((token) => {
+                shown?.map((token) => {
                   const state = vaultTokenState(token, now);
                   const expires =
                     token.expiresAtMs === null ? (
@@ -317,9 +334,9 @@ export function TokensCard({
                         {state === "active" ? (
                           <RevokeTokenDialog token={token} />
                         ) : (
-                          <Badge variant="outline">
+                          <span className="text-xs">
                             {state === "revoked" ? "Revoked" : "Expired"}
-                          </Badge>
+                          </span>
                         )}
                       </TableCell>
                     </TableRow>
@@ -329,6 +346,21 @@ export function TokensCard({
             </TableBody>
           </Table>
         )}
+        {inactive > 0 && !tokens.isError ? (
+          <div className="border-t px-4 py-2">
+            <Button
+              aria-expanded={showingInactive}
+              className="min-h-11 sm:min-h-7"
+              onClick={() => setShowingInactive((showing) => !showing)}
+              size="sm"
+              variant="ghost"
+            >
+              {showingInactive
+                ? "Hide revoked and expired tokens"
+                : `Show ${inactive} revoked or expired ${inactive === 1 ? "token" : "tokens"}`}
+            </Button>
+          </div>
+        ) : null}
       </CardContent>
       <IssueTokenDialog
         onOpenChange={setIssuing}

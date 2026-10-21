@@ -1,4 +1,5 @@
 import type {
+  VaultSecret,
   VaultSecretKind,
   VaultSecretValues,
   VaultToken,
@@ -224,6 +225,27 @@ export const buildVaultValue = <TKind extends VaultSecretKind>(
     fields.map(({ key }) => [key, input.fields[key] ?? ""]),
   ) as VaultSecretValues[TKind];
 };
+
+/**
+ * The variables of `variables` another key/value secret than `name` already
+ * sets, each with that secret: the CLI refuses a variable two secrets its
+ * vault token reaches both set.
+ */
+export const variablesSetElsewhere = (
+  secrets: readonly VaultSecret[],
+  name: string,
+  variables: readonly string[],
+): { readonly variable: string; readonly secret: VaultSecret }[] =>
+  secrets.flatMap((secret) => {
+    const listed = secret.metadata.variables;
+    return secret.name !== name &&
+      vaultSecretKinds[secret.kind]?.fields === null &&
+      Array.isArray(listed)
+      ? variables
+          .filter((variable) => listed.includes(variable))
+          .map((variable) => ({ variable, secret }))
+      : [];
+  });
 
 /** A secret name, as the vault takes one. */
 export const VAULT_SECRET_NAME_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/u;

@@ -1,8 +1,16 @@
 import type { VaultSecret, VaultSecretKind } from "@hot-updater/server/plugins";
-import { FileUp, Loader2, Plus, Save, Trash2 } from "lucide-react";
+import {
+  AlertTriangle,
+  FileUp,
+  Loader2,
+  Plus,
+  Save,
+  Trash2,
+} from "lucide-react";
 import { type FormEvent, useId, useRef, useState } from "react";
 import { toast } from "sonner";
 
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -43,6 +51,7 @@ import {
   vaultSecretKinds,
   type VaultVariable,
   vaultValueBytes,
+  variablesSetElsewhere,
 } from "@/lib/vault-secrets";
 
 /** A label inside a sentence: "Issuer ID" as "issuer ID", keeping acronyms. */
@@ -79,12 +88,13 @@ interface FormErrors {
  */
 export function SecretDialog({
   secret,
-  existingNames,
+  secrets,
   open,
   onOpenChange,
 }: {
   readonly secret?: VaultSecret;
-  readonly existingNames: readonly string[];
+  /** The vault's secrets, which a new name and its variables are checked against. */
+  readonly secrets: readonly VaultSecret[];
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
@@ -93,12 +103,12 @@ export function SecretDialog({
       <DialogContent className="max-h-[calc(100svh-2rem)] overflow-y-auto sm:max-w-lg">
         {open ? (
           <SecretForm
-            existingNames={existingNames}
             // A secret removed and stored again under its name, as another
             // kind, starts a new form for its fields.
             key={secret === undefined ? "new" : `${secret.id}:${secret.kind}`}
             onDone={() => onOpenChange(false)}
             secret={secret}
+            secrets={secrets}
           />
         ) : null}
       </DialogContent>
@@ -108,11 +118,11 @@ export function SecretDialog({
 
 function SecretForm({
   secret,
-  existingNames,
+  secrets,
   onDone,
 }: {
   readonly secret?: VaultSecret;
-  readonly existingNames: readonly string[];
+  readonly secrets: readonly VaultSecret[];
   readonly onDone: () => void;
 }) {
   const id = useId();
@@ -146,7 +156,7 @@ function SecretForm({
         ? undefined
         : !VAULT_SECRET_NAME_PATTERN.test(secretName)
           ? "Use 1-64 letters, digits, dots, dashes, or underscores, starting with a letter or digit."
-          : existingNames.includes(secretName)
+          : secrets.some(({ name: existing }) => existing === secretName)
             ? `A secret is already named ${secretName}. Overwrite it from its row instead.`
             : undefined,
     fields: Object.fromEntries(
@@ -187,6 +197,12 @@ function SecretForm({
         ? `This is ${formatBytes(bytes)} once encoded; a secret holds up to 64 KB.`
         : undefined,
   };
+  // Not an error: secrets behind separately scoped tokens, such as one per
+  // environment, may set the same variable.
+  const setElsewhere =
+    kindUi.fields === null
+      ? variablesSetElsewhere(secrets, secretName, Object.keys(value))
+      : [];
   const invalid =
     errors.name !== undefined ||
     Object.keys(errors.fields).length > 0 ||
@@ -330,11 +346,37 @@ function SecretForm({
           ) : null}
 
           {kindUi.fields === null ? (
-            <VariablesFieldSet
-              error={shown(errors.variables)}
-              onChange={setVariables}
-              variables={variables}
-            />
+            <>
+              <VariablesFieldSet
+                error={shown(errors.variables)}
+                onChange={setVariables}
+                variables={variables}
+              />
+              {setElsewhere.length > 0 ? (
+                <Alert>
+                  <AlertTriangle />
+                  <AlertTitle>Already set by another secret</AlertTitle>
+                  <AlertDescription>
+                    <ul>
+                      {setElsewhere.map(({ variable, secret: other }) => (
+                        <li key={`${variable}:${other.name}`}>
+                          <code className="font-mono">{variable}</code> is in{" "}
+                          <span className="font-medium text-foreground">
+                            {other.name}
+                          </span>{" "}
+                          ({vaultSecretKinds[other.kind].label})
+                        </li>
+                      ))}
+                    </ul>
+                    <p>
+                      The CLI refuses a variable two secrets its vault token
+                      reaches both set. Keep each variable in one secret, or
+                      reach the two with separate tokens.
+                    </p>
+                  </AlertDescription>
+                </Alert>
+              ) : null}
+            </>
           ) : (
             kindUi.fields.map((field) => {
               const file = files[field.key];
