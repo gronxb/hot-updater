@@ -15,6 +15,7 @@ const mocks = vi.hoisted(() => {
     checkForUpdate: vi.fn(async () => null),
     startRuntime: vi.fn(),
     claimLaunchURL: vi.fn((_url: string) => true),
+    releaseLaunchURL: vi.fn(),
     clearCrashHistory: vi.fn(() => true),
     createHttpClient: vi.fn(
       (
@@ -103,6 +104,7 @@ vi.mock("./native", () => ({
   stageBundle: mocks.stageBundle,
   startRuntime: mocks.startRuntime,
   claimLaunchURL: mocks.claimLaunchURL,
+  releaseLaunchURL: mocks.releaseLaunchURL,
 }));
 
 const importHotUpdater = async () => (await import("./index")).HotUpdater;

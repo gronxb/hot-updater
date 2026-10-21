@@ -215,19 +215,9 @@ async function checkForReleaseCatalogUpdate(input: {
     requestTimeout: options.requestTimeout,
     updateStrategy: options.updateStrategy,
   });
-  if (catalog !== null) validateCatalog(catalog, expectedScope);
-  // The switched channel holds nothing for this build, as a deleted channel
-  // does: its scope answers a catalog without releases, or none.
-  if (
-    input.isSwitched &&
-    input.targetChannel === input.currentChannel &&
-    (catalog === null ||
-      (catalog.releases.length === 0 && catalog.rollbackReleases.length === 0))
-  ) {
-    return leaveSwitchedChannel(input);
-  }
   // The server says this scope has no catalog yet: no update, not a failure.
   if (catalog === null) return null;
+  validateCatalog(catalog, expectedScope);
   const catalogId = catalog.catalogId;
   const scopeKey = catalog.scopeKey;
 
@@ -283,6 +273,25 @@ async function checkForReleaseCatalogUpdate(input: {
     throw new InvalidUpdateResponseError(
       "Rejected a stale or inconsistent Release catalog",
     );
+  }
+  // The switched channel holds nothing for this build any more, as a deleted
+  // channel does: the server answers its scope with an accepted catalog
+  // without releases. A scope without a catalog proves nothing, since a
+  // cache can still answer that for a channel deployed seconds ago.
+  if (
+    input.isSwitched &&
+    input.targetChannel === input.currentChannel &&
+    catalog.releases.length === 0 &&
+    catalog.rollbackReleases.length === 0
+  ) {
+    return leaveSwitchedChannel(input, {
+      catalogId,
+      catalogHash: catalog.catalogHash,
+      channel: input.targetChannel,
+      generation: catalog.generation,
+      scopeKey,
+      selectionContextHash,
+    });
   }
   const stableInTargetScope =
     activeState.stableSelection?.catalogId === catalogId &&
@@ -496,12 +505,15 @@ async function checkForReleaseCatalogUpdate(input: {
  * build's default channel. A check never resets by itself, since the reset
  * removes the running bundle's files.
  */
-function leaveSwitchedChannel(input: {
-  readonly options: InternalCheckForUpdateOptions;
-  readonly currentBundleId: string;
-  readonly currentChannel: string;
-  readonly minimumReleaseId: string;
-}): CheckForUpdateResult {
+function leaveSwitchedChannel(
+  input: {
+    readonly options: InternalCheckForUpdateOptions;
+    readonly currentBundleId: string;
+    readonly currentChannel: string;
+    readonly minimumReleaseId: string;
+  },
+  guard: Parameters<typeof isReleaseSelectionCurrent>[0],
+): CheckForUpdateResult {
   const { options } = input;
   const shouldForceUpdate = input.currentBundleId !== input.minimumReleaseId;
   const errorScope = {
@@ -526,6 +538,8 @@ function leaveSwitchedChannel(input: {
     shouldForceUpdate,
     updateStrategy: options.updateStrategy,
   }));
+  // This update already left the channel: calling it again changes nothing.
+  let left = false;
   return {
     id: input.minimumReleaseId,
     message: null,
@@ -536,13 +550,20 @@ function leaveSwitchedChannel(input: {
     targetCohorts: [],
     transitionKind: "USE_BUILTIN",
     updateBundle: async () => {
+      if (left && !isChannelSwitched()) return true;
       resetProgress();
       try {
-        // A device that left or changed the channel meanwhile keeps it.
-        if (!isChannelSwitched() || getChannel() !== input.currentChannel) {
+        // A device that left or changed the channel, or saw a newer catalog
+        // of it, meanwhile keeps it.
+        if (
+          !isChannelSwitched() ||
+          getChannel() !== input.currentChannel ||
+          !isReleaseSelectionCurrent(guard)
+        ) {
           throw new StaleReleaseCatalogError();
         }
-        return await resetChannel();
+        left = await resetChannel();
+        return left;
       } catch (error) {
         reportUpdateError(
           options.emit,

@@ -12,6 +12,8 @@ const device = vi.hoisted(() => {
     channel: "preview",
     now: 1_000_000,
     reloads: 0,
+    /** The next check fails, as offline. */
+    offline: false,
   };
   const native = {
     getConstants: () => ({
@@ -41,8 +43,17 @@ const device = vi.hoisted(() => {
   };
   // The server: every pull request channel has a bundle for this build, so
   // a check of one installs it and switches the runtime channel to it.
-  const checkForUpdate = async (options: { channel?: string }) =>
-    options.channel === undefined
+  const checkForUpdate = async (options: {
+    channel?: string;
+    onError?: (error: Error) => void;
+  }) => {
+    if (state.offline) {
+      state.offline = false;
+      // As checkForUpdate.ts reports a failed check: onError, then null.
+      options.onError?.(new Error("Network request failed"));
+      return null;
+    }
+    return options.channel === undefined
       ? null
       : {
           status: "UPDATE",
@@ -52,6 +63,7 @@ const device = vi.hoisted(() => {
             return true;
           },
         };
+  };
   return { state, native, checkForUpdate };
 });
 
@@ -112,6 +124,7 @@ beforeEach(() => {
   device.state.store.clear();
   device.state.channel = "preview";
   device.state.reloads = 0;
+  device.state.offline = false;
   device.state.now = 1_000_000;
   vi.spyOn(Date, "now").mockImplementation(() => device.state.now);
 });
@@ -193,6 +206,28 @@ describe("a launch link across reloads", () => {
     await expect(
       again.hotUpdater.openChannelLink(link("pr-2"), options),
     ).resolves.toEqual({ status: "SWITCHED", channel: "pr-2" });
+    expect(device.state.channel).toBe("pr-2");
+  });
+
+  it("opens a launch link again after its opening failed", async () => {
+    // Switched to pr-1 earlier in this process; then a launch by pr-2 fails
+    // offline after leaving pr-1, so the app reloads to the built-in bundle.
+    device.state.channel = "pr-1";
+    device.state.offline = true;
+    const failed = await startRuntime(null);
+    await expect(
+      failed.hotUpdater.openChannelLink(link("pr-2"), {
+        ...options,
+        initial: true,
+      }),
+    ).rejects.toThrow("Network request failed");
+    expect(device.state.reloads).toBe(1);
+
+    // The reload's runtime gets the launch link again, and now opens it.
+    device.state.now += 1_000;
+    const retried = await startRuntime(link("pr-2"));
+
+    expect(retried.initial).toEqual({ status: "SWITCHED", channel: "pr-2" });
     expect(device.state.channel).toBe("pr-2");
   });
 });

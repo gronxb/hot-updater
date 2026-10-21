@@ -35,6 +35,7 @@ import {
   stageBundle,
   startRuntime,
   claimLaunchURL,
+  releaseLaunchURL,
   type UpdateParams,
 } from "./native";
 import { replayNativeUpdateEvents } from "./nativeUpdateEvents";
@@ -534,7 +535,12 @@ const createConfiguredMethods = (config: InstanceConfig) => {
       }
       // A switched device checks another channel only from its default one.
       const reset = isChannelSwitched() && getChannel() !== channel;
+      // A launch link that failed to open opens again on a retry.
+      const unclaim = () => {
+        if (initial) releaseLaunchURL(url);
+      };
       if (reset && !(await nativeMethods.resetChannel())) {
+        unclaim();
         throw new HotUpdaterError(
           `Could not leave the "${getChannel()}" channel to open "${channel}".`,
         );
@@ -559,6 +565,7 @@ const createConfiguredMethods = (config: InstanceConfig) => {
         // when the switched channel holds nothing for this build any more.
         switched = changed && updateInfo?.transitionKind !== "USE_BUILTIN";
       } catch (error) {
+        unclaim();
         // The reset already left the channel the running bundle came from:
         // start the restored bundle before reporting the failure.
         if (reset) await reload();

@@ -564,6 +564,17 @@ export const claimLaunchURL = (url: string): boolean => {
   return true;
 };
 
+/** Gives back a launch URL claim whose opening failed, so it can be retried. */
+export const releaseLaunchURL = (url: string): void => {
+  try {
+    if (getStorageItem(OPENED_LAUNCH_URL_KEY) === url) {
+      setStorageItem(OPENED_LAUNCH_URL_KEY, null);
+    }
+  } catch {
+    // Without the store, nothing was claimed.
+  }
+};
+
 /**
  * Restarts the app so it loads the current bundle.
  *

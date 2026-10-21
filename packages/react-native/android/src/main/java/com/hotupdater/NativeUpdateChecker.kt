@@ -578,20 +578,11 @@ internal class NativeUpdateChecker(
                 requestHeaders = options.requestHeaders,
                 requestTimeoutMillis = options.requestTimeoutMillis,
             )
-        if (catalog != null && !ReleaseCatalogs.hasExpectedScope(catalog.scopeKey, expectedScope)) {
+                // The server says this scope has no catalog yet: no update, not a failure.
+                ?: return null
+        if (!ReleaseCatalogs.hasExpectedScope(catalog.scopeKey, expectedScope)) {
             throw InvalidUpdateResponseException("Received an invalid Release catalog")
         }
-        // The switched channel holds nothing for this build, as a deleted
-        // channel does: its scope answers a catalog without releases, or none.
-        if (
-            input.isSwitched &&
-            input.targetChannel == input.currentChannel &&
-            (catalog == null || (catalog.releases.isEmpty() && catalog.rollbackReleases.isEmpty()))
-        ) {
-            return leaveSwitchedChannel(input)
-        }
-        // The server says this scope has no catalog yet: no update, not a failure.
-        if (catalog == null) return null
         val catalogId = catalog.catalogId
         val scopeKey = catalog.scopeKey
 
@@ -634,6 +625,18 @@ internal class NativeUpdateChecker(
             )
         if (!state.acceptReleaseCatalog(guard)) {
             throw InvalidUpdateResponseException("Rejected a stale or inconsistent Release catalog")
+        }
+        // The switched channel holds nothing for this build any more, as a
+        // deleted channel does: the server answers its scope with an accepted
+        // catalog without releases. A scope without a catalog proves nothing,
+        // since a cache can still answer that for a channel deployed seconds ago.
+        if (
+            input.isSwitched &&
+            input.targetChannel == input.currentChannel &&
+            catalog.releases.isEmpty() &&
+            catalog.rollbackReleases.isEmpty()
+        ) {
+            return leaveSwitchedChannel(input, guard)
         }
         val stableInTargetScope =
             activeState.stableSelection?.takeIf { it.catalogId == catalogId && it.scopeKey == scopeKey }
@@ -778,7 +781,10 @@ internal class NativeUpdateChecker(
      * reads the build's default channel. The check itself resets nothing,
      * since the reset removes the running bundle's files.
      */
-    private fun leaveSwitchedChannel(input: CheckInput): CheckedUpdate {
+    private fun leaveSwitchedChannel(
+        input: CheckInput,
+        guard: ReleaseSelectionGuard,
+    ): CheckedUpdate {
         val options = input.options
         val channel = input.currentChannel
         val runsBuiltIn = input.currentBundleId == input.minimumReleaseId
@@ -804,6 +810,7 @@ internal class NativeUpdateChecker(
                 put("updateStrategy", options.updateStrategy.value)
             },
         )
+        var left = false
         val update =
             HotUpdaterUpdate(
                 id = input.minimumReleaseId,
@@ -819,9 +826,14 @@ internal class NativeUpdateChecker(
                 install = { _ ->
                     try {
                         resetChannel {
-                            // A device that left or changed the channel meanwhile keeps it.
-                            if (state.getChannel() != channel) throw StaleReleaseCatalogException()
-                            state.resetChannel()
+                            // This update already left the channel: calling it again changes nothing.
+                            if (left && state.getChannel() == state.getDefaultChannel()) return@resetChannel true
+                            // A device that left or changed the channel, or saw a newer
+                            // catalog of it, meanwhile keeps it.
+                            if (state.getChannel() != channel || !state.isReleaseSelectionCurrent(guard)) {
+                                throw StaleReleaseCatalogException()
+                            }
+                            state.resetChannel().also { left = it }
                         }
                     } catch (error: CancellationException) {
                         throw error

@@ -417,7 +417,7 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
-    func aSwitchedChannelWithoutACatalogIsLeftOnStaging() async throws {
+    func aSwitchedChannelWithoutACatalogStays() async throws {
         let host = FakeUpdateHost()
         host.channelValue = "pr-2"
         let transport = FakeUpdateTransport { _, _ in
@@ -425,13 +425,26 @@ struct NativeUpdateCheckTests {
         }
         let checker = makeChecker(host, transport)
 
-        let update = try #require(try await checker.checkForUpdate(options()))
+        // A scope without a catalog proves nothing about the channel.
+        #expect(try await checker.checkForUpdate(options()) == nil)
+        #expect(host.resetCalls == 0)
+    }
 
-        #expect(update.transitionKind == "USE_BUILTIN")
-        // The device already runs the built-in bundle: nothing to reload.
-        #expect(update.shouldForceUpdate == false)
-        #expect(try await update.updateBundle())
-        #expect(host.resetCalls == 1)
+    @Test
+    func aSwitchedChannelThatSawANewerCatalogBeforeStagingIsKept() async throws {
+        let host = FakeUpdateHost()
+        host.channelValue = "pr-2"
+        host.bundleIdValue = bundle1
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(generation: 3, releases: [], channel: "pr-2")
+        )
+        let checker = makeChecker(host, transport)
+        let update = try #require(try await checker.checkForUpdate(options()))
+        #expect(host.acceptedGuards.last?["generation"] as? NSNumber == 3)
+        host.isCurrent = false
+
+        await #expect(throws: NativeUpdateCheckError.self) { _ = try await update.updateBundle() }
+        #expect(host.resetCalls == 0)
     }
 
     @Test

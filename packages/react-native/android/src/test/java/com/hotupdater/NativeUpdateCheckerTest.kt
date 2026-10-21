@@ -315,20 +315,31 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
-    fun `a switched channel without a catalog is left on staging`() =
+    fun `a switched channel without a catalog stays`() =
         runBlocking {
             val state = FakeState().apply { channelName = "pr-2" }
             val transport =
                 FakeTransport { UpdateCheckResponse(404, "Not Found", mapOf("X-Hot-Updater-Catalog" to "none"), "") }
             val checker = NativeUpdateChecker(state, transport)
 
-            val update = checker.checkForUpdate(OPTIONS)!!
+            // A scope without a catalog proves nothing about the channel.
+            assertNull(checker.checkForUpdate(OPTIONS))
+            assertEquals(0, state.resets.get())
+        }
 
-            assertEquals("USE_BUILTIN", update.transitionKind)
-            // The device already runs the built-in bundle: nothing to reload.
-            assertFalse(update.shouldForceUpdate)
-            assertTrue(update.updateBundle())
-            assertEquals(1, state.resets.get())
+    @Test
+    fun `a switched channel that saw a newer catalog before staging is kept`() =
+        runBlocking {
+            val state = FakeState().also(::switchedToPr)
+            val transport = FakeTransport { ok(catalog(emptyList(), generation = 3, channel = "pr-2")) }
+            val checker = NativeUpdateChecker(state, transport)
+            val update = checker.checkForUpdate(OPTIONS)!!
+            assertEquals(3L, state.accepted.last().generation)
+            // A newer catalog of the scope was accepted meanwhile.
+            state.accepted.add(state.accepted.last().copy(generation = 4))
+
+            assertThrows(StaleReleaseCatalogException::class.java) { runBlocking { update.updateBundle() } }
+            assertEquals(0, state.resets.get())
         }
 
     @Test

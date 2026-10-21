@@ -1227,25 +1227,13 @@ final class NativeUpdateChecker {
         )
         let strategyPath = strategy == .fingerprint ? "fingerprint" : "app-version"
         let catalogURL = "\(baseURL)/release-catalogs/\(strategyPath)/ios/\(channelKey)/\(Self.encodeURIComponent(strategyValue))"
-        let fetchedCatalog = try await fetchReleaseCatalog(
+        // The server says this scope has no catalog yet: no update, not a failure.
+        guard let catalog = try await fetchReleaseCatalog(
             baseURL: baseURL,
             url: catalogURL,
             expectedScope: expectedScope,
             options: options
-        )
-        // The switched channel holds nothing for this build, as a deleted
-        // channel does: its scope answers a catalog without releases, or none.
-        if isSwitched, targetChannel == currentChannel,
-           fetchedCatalog.map({ $0.releases.isEmpty && $0.rollbackReleases.isEmpty }) ?? true {
-            return leaveSwitchedChannel(
-                options: options,
-                currentBundleId: currentBundleId,
-                minimumReleaseId: minimumReleaseId,
-                channel: currentChannel
-            )
-        }
-        // The server says this scope has no catalog yet: no update, not a failure.
-        guard let catalog = fetchedCatalog else {
+        ) else {
             return nil
         }
         let catalogId = catalog.catalogId
@@ -1288,6 +1276,20 @@ final class NativeUpdateChecker {
         ]
         guard host.acceptReleaseCatalog(guardParams) else {
             throw NativeUpdateCheckError.invalidResponse("Rejected a stale or inconsistent Release catalog")
+        }
+        // The switched channel holds nothing for this build any more, as a
+        // deleted channel does: the server answers its scope with an accepted
+        // catalog without releases. A scope without a catalog proves nothing,
+        // since a cache can still answer that for a channel deployed seconds ago.
+        if isSwitched, targetChannel == currentChannel,
+           catalog.releases.isEmpty, catalog.rollbackReleases.isEmpty {
+            return leaveSwitchedChannel(
+                options: options,
+                currentBundleId: currentBundleId,
+                minimumReleaseId: minimumReleaseId,
+                channel: currentChannel,
+                guardParams: guardParams
+            )
         }
         let stableInTargetScope = stable.flatMap { stable in
             stable.catalogId.jsEquals(catalogId) && stable.scopeKey.jsEquals(scopeKey) ? stable : nil
@@ -1511,7 +1513,8 @@ final class NativeUpdateChecker {
         options: NativeCheckRequest,
         currentBundleId: String,
         minimumReleaseId: String,
-        channel: String
+        channel: String,
+        guardParams: [String: Any]
     ) -> HotUpdaterUpdate {
         let runsBuiltIn = currentBundleId.jsEquals(minimumReleaseId)
         let errorScope = ErrorScope(
@@ -1523,8 +1526,9 @@ final class NativeUpdateChecker {
         )
         let install = { [self] (_: @escaping (Double) -> Void) async throws -> Bool in
             do {
-                // A device that left or changed the channel meanwhile keeps it.
-                guard host.channel() == channel else {
+                // A device that left or changed the channel, or saw a newer
+                // catalog of it, meanwhile keeps it.
+                guard host.channel() == channel, host.isReleaseSelectionCurrent(guardParams) else {
                     throw NativeUpdateCheckError.staleReleaseCatalog
                 }
                 // The staging holds the gate, as `resetChannel()` waits for.
@@ -1563,11 +1567,12 @@ final class NativeUpdateChecker {
             targetKey: Self.jsonKey(["LEAVE_CHANNEL", channel, minimumReleaseId]),
             checker: self,
             install: install,
-            // Current while the device is still switched to the channel, and
-            // once the staging left it.
+            // Current while the device is still switched to the channel and
+            // the catalog is current, and once the staging left it.
             isSelectionCurrent: { [host] in
                 let current = host.channel()
-                return current == channel || current == host.defaultChannel()
+                return current == host.defaultChannel()
+                    || (current == channel && host.isReleaseSelectionCurrent(guardParams))
             }
         )
     }
