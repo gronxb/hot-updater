@@ -47,13 +47,14 @@ environment, beside its [sign-in variables](/docs/guides/console-deployment#set-
 
 | Console host                                             | Where the master key goes                                                                                                                                                                                                                     |
 | -------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| [Docker](/docs/guides/console-deployment/docker)         | `.env.production`, which `docker run --env-file` passes, or a managed container service's runtime secret settings                                                                                                                            |
+| [Docker](/docs/guides/console-deployment/docker)         | Not `.env.production`, which holds the database credentials: a file of its own outside the repository, readable only by the user that starts the container and passed with a second `--env-file`, or a managed container service's runtime secret settings |
 | [Vercel](/docs/guides/console-deployment/vercel)         | An environment variable of the project's Production environment                                                                                                                                                                              |
 | [Netlify](/docs/guides/console-deployment/netlify)       | An environment variable with the **Functions** scope                                                                                                                                                                                          |
 | [Cloudflare](/docs/guides/console-deployment/cloudflare) | A Worker secret in `.secrets.production.json`, or `npx wrangler secret put HOT_UPDATER_VAULT_MASTER_KEY`. The Worker's configuration reads it from its bindings: `vault({ masterKey: env.HOT_UPDATER_VAULT_MASTER_KEY })`, as in the next step |
 
-Keep the master key apart from your database credentials and out of CI:
-whoever holds both opens every secret.
+Keep the master key out of CI and out of any file that holds your database
+credentials: whoever holds both opens every secret. The console's runtime
+needs both, so keep them in separate secret settings or files.
 [`hot-updater doctor`](/docs/guides/doctor#check-the-vaults-master-key) warns
 about an env file that holds both. Keep a copy of the key somewhere only you
 can read, such as a password manager. The vault cannot be opened without it,
@@ -388,8 +389,10 @@ read, and deletes them when it ends. Every resolved value, and the token, is
 masked in the job's log. When the console is unreachable or refuses the token,
 the command fails at once and names the console's URL.
 
-The same two variables run these commands on your machine: keep them in
-`.env.hotupdater`, which `secrets import` left them in.
+The same variables run these commands on your machine. `secrets import` left
+the two connection variables in `.env.hotupdater`; with `remoteSigning`, also
+set `HOT_UPDATER_SIGNING_TOKEN` to a token that signs, as the workflow does:
+`remoteSigning` reads only that variable.
 
 </Step>
 </Steps>
