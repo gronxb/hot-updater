@@ -7700,13 +7700,24 @@ async function withVaultDeployInputs(
     SIGNING_PRIVATE_KEY_RELATIVE_PATH,
   );
   const privateKeyAside = `${privateKeyPath}.e2e-vault`;
-  await fsPromises.writeFile(
-    fixtureSession.configSourceFile,
-    withConsoleSigning(configSource, vault.url),
-  );
-  await fsPromises.writeFile(fixtureSession.envSourceFile, vault.importedEnv);
-  await fsPromises.rename(privateKeyPath, privateKeyAside);
+  // Each input is restored only once changed, and even when another fails
+  // to restore, so no later deploy of this checkout runs on the vault's
+  // inputs.
+  const restores: Array<() => Promise<void>> = [];
   try {
+    restores.push(() =>
+      fsPromises.writeFile(fixtureSession.configSourceFile, configSource),
+    );
+    await fsPromises.writeFile(
+      fixtureSession.configSourceFile,
+      withConsoleSigning(configSource, vault.url),
+    );
+    restores.push(() =>
+      fsPromises.writeFile(fixtureSession.envSourceFile, envSource),
+    );
+    await fsPromises.writeFile(fixtureSession.envSourceFile, vault.importedEnv);
+    await fsPromises.rename(privateKeyPath, privateKeyAside);
+    restores.push(() => fsPromises.rename(privateKeyAside, privateKeyPath));
     return await deploy(
       {
         ...vaultDeployEnv(process.env, envSource, vault),
@@ -7715,13 +7726,9 @@ async function withVaultDeployInputs(
       false,
     );
   } finally {
-    // Each input is restored even when another fails to, so no later deploy
-    // of this checkout runs on the vault's inputs.
-    const restored = await Promise.allSettled([
-      fsPromises.rename(privateKeyAside, privateKeyPath),
-      fsPromises.writeFile(fixtureSession.envSourceFile, envSource),
-      fsPromises.writeFile(fixtureSession.configSourceFile, configSource),
-    ]);
+    const restored = await Promise.allSettled(
+      restores.map((restore) => restore()),
+    );
     const failed = restored.find(
       (result): result is PromiseRejectedResult => result.status === "rejected",
     );
