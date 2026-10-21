@@ -134,6 +134,12 @@ script, run `hot-updater app-version --json`, which prints
 If a required native setting is missing, run the command shown by `doctor`,
 then rebuild the native app.
 
+When `doctor` cannot read the configured signer's public key, such as
+`remoteSigning` where only CI sets `HOT_UPDATER_SIGNING_TOKEN`, it reports the
+warning `SIGNING_PUBLIC_KEY_UNAVAILABLE` with the reason and does not compare
+the native public keys. Run it where the signer's credentials are set to check
+them.
+
 `doctor` does not require a default channel in native files. If
 `HOT_UPDATER_CHANNEL` in iOS `Info.plist` or `com.hotupdater.CHANNEL` in Android
 manifest metadata exists, the command reports it as context only.
