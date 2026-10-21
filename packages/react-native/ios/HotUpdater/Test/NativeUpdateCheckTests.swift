@@ -464,6 +464,25 @@ struct NativeUpdateCheckTests {
     }
 
     @Test
+    func anotherResultOfTheSameCatalogCountsTheLeaveAsDone() async throws {
+        let host = FakeUpdateHost()
+        host.channelValue = "pr-2"
+        host.bundleIdValue = bundle1
+        let transport = FakeUpdateTransport.serving(
+            catalog: catalog(generation: 3, releases: [], channel: "pr-2")
+        )
+        let checker = makeChecker(host, transport)
+        let first = try #require(try await checker.checkForUpdate(options()))
+        let second = try #require(try await checker.checkForUpdate(options()))
+
+        #expect(try await first.updateBundle())
+        // The reset left the channel, as native resetChannel does.
+        host.channelValue = host.defaultChannelValue
+        #expect(try await second.updateBundle())
+        #expect(host.resetCalls == 1)
+    }
+
+    @Test
     func leavesFromDifferentCatalogsNeverJoin() async throws {
         let host = FakeUpdateHost()
         host.channelValue = "pr-2"

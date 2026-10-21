@@ -570,6 +570,8 @@ const createConfiguredMethods = (config: InstanceConfig) => {
         });
         if (checkError !== undefined) throw checkError;
         changed = updateInfo !== null && (await updateInfo.updateBundle());
+        // An update that could not be applied leaves the launch link to retry.
+        if (updateInfo !== null && !changed) unclaim();
         // A rollback to the built-in bundle runs nothing of the channel, as
         // when the switched channel holds nothing for this build any more.
         switched = changed && updateInfo?.transitionKind !== "USE_BUILTIN";

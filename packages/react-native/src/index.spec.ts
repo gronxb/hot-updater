@@ -757,6 +757,30 @@ describe("HotUpdater client initialization", () => {
       expect(mocks.checkForUpdate).not.toHaveBeenCalled();
     });
 
+    it("gives the launch link back when its update could not be applied", async () => {
+      mocks.checkForUpdate.mockResolvedValueOnce({
+        updateBundle: vi.fn(async () => false),
+      } as never);
+      const HotUpdater = await importHotUpdater();
+
+      await expect(
+        HotUpdater.init({
+          baseURL: "https://updates.example.com",
+        }).openChannelLink(link, { ...options, initial: true }),
+      ).resolves.toEqual({ status: "NO_UPDATE", channel: "pr-12" });
+      expect(mocks.releaseLaunchURL).toHaveBeenCalledWith(link);
+    });
+
+    it("keeps the launch link claimed when it opened", async () => {
+      update();
+      const HotUpdater = await importHotUpdater();
+
+      await HotUpdater.init({
+        baseURL: "https://updates.example.com",
+      }).openChannelLink(link, { ...options, initial: true });
+      expect(mocks.releaseLaunchURL).not.toHaveBeenCalled();
+    });
+
     it("never consults the launch link for a link the app opens while running", async () => {
       update();
       mocks.claimLaunchURL.mockReturnValue(false);
