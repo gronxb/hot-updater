@@ -822,7 +822,12 @@ internal class NativeUpdateChecker(
                 targetCohorts = emptyList(),
                 transitionKind = "USE_BUILTIN",
                 runsCurrentBundle = runsBuiltIn,
-                targetKey = JSONArray().put("LEAVE_CHANNEL").put(channel).put(input.minimumReleaseId).toString(),
+                targetKey =
+                    JSONArray()
+                        .put("LEAVE_CHANNEL")
+                        .put(channel)
+                        .put(input.minimumReleaseId)
+                        .toString(),
                 install = { _ ->
                     try {
                         resetChannel {
