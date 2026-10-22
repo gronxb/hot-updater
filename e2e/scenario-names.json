@@ -29,6 +29,8 @@
   "resumed-background-archive-download",
   "republished-crashed-bundle-skipped",
   "crash-then-next-safe-update",
+  "post-content-crash-native-recovery",
+  "post-content-crash-native-rollback",
   "runtime-channel-crash-restore",
   "ten-crash-history-safe-bundle",
   "remote-config-fetch-activate"

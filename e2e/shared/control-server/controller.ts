@@ -41,6 +41,14 @@ import {
   isAndroidRecoveryProcessReady,
 } from "./android-restart-wait.ts";
 import {
+  advanceAppExitWait,
+  describeAppExitWaitFailure,
+  hasPostContentCrashAfterMarker,
+  initialAppExitWaitState,
+  isAppExitProved,
+  POST_CONTENT_CRASH_LOG_PREFIX,
+} from "./app-exit-wait.ts";
+import {
   createArchiveInterruption,
   interruptArchive,
   resumeArchive,
@@ -126,9 +134,22 @@ type JobResult = Record<string, unknown>;
 
 // "slow-start" holds JavaScript before the first render, then renders: a healthy
 // bundle that a user can leave before it shows anything.
-type DeployMode = "crash" | "hang" | "reset" | "slow-start";
+// "crash-after-content" renders, fails its own JavaScript update check, and
+// throws a fatal long after its first content, once main's launch monitoring
+// (first content + 10 s) has ended: only a native check can reach a fix.
+type DeployMode =
+  | "crash"
+  | "crash-after-content"
+  | "hang"
+  | "reset"
+  | "slow-start";
 
 const SLOW_START_HOLD_MS = 30_000;
+// Counted from the bundle's module evaluation, which precedes its first
+// content, so it leaves the 10 s monitoring window a margin on a slow device.
+const POST_CONTENT_CRASH_DELAY_MS = 20_000;
+// From the start of the exit wait, which follows the crash launch.
+const POST_CONTENT_CRASH_EXIT_WAIT_MS = 60_000;
 
 type DeployedBundleRecord = {
   bundleId: string;
@@ -1232,7 +1253,28 @@ async function renderAppScenario({
                 `    const hangUntil = Date.now() + ${mode === "hang" ? 600_000 : SLOW_START_HOLD_MS};`,
                 "    while (Date.now() < hangUntil) {}",
               ]
-            : ['    throw new Error("hot-updater e2e crash bundle");']),
+            : mode === "crash-after-content"
+              ? [
+                  // Its own update check fails, as a bundle whose update flow
+                  // is broken: a fix reaches it only through a native check.
+                  "    const E2E_FETCH = globalThis.fetch;",
+                  "    globalThis.fetch = (input, init) => {",
+                  '      const url = typeof input === "string" ? input : String(input && input.url ? input.url : input);',
+                  '      if (url.includes("/release-catalogs/")) {',
+                  '        return Promise.reject(new Error("hot-updater e2e broken update check"));',
+                  "      }",
+                  "      return E2E_FETCH(input, init);",
+                  "    };",
+                  // A timer's fatal leaves React and promises; the log line
+                  // goes out first, so the exit wait can tell it apart.
+                  "    setTimeout(() => {",
+                  `      console.log(${JSON.stringify(POST_CONTENT_CRASH_LOG_PREFIX)} + E2E_CURRENT_BUNDLE_ID);`,
+                  "      setTimeout(() => {",
+                  '        throw new Error("hot-updater e2e post-content crash bundle");',
+                  "      }, 500);",
+                  `    }, ${POST_CONTENT_CRASH_DELAY_MS});`,
+                ]
+              : ['    throw new Error("hot-updater e2e crash bundle");']),
           "  }",
           `  ${CRASH_GUARD_END}`,
         ].join("\n")
@@ -5879,6 +5921,124 @@ async function waitForCrashMarker(
   );
 }
 
+// A process probe costs more than a store read, so the exit wait probes
+// once a second.
+const APP_EXIT_PROBE_INTERVAL_MS = 1_000;
+
+/**
+ * Waits until `bundleId`'s post-content fatal has ended the app: the line it
+ * logs right before the fatal, from this launch, then a process that stays
+ * stopped. Nothing restarts the app after a crash that main's monitoring no
+ * longer watches, so the scenario starts it again itself.
+ */
+async function waitForAppExit(
+  input: { bundleId: string },
+  signal?: AbortSignal,
+) {
+  const ios = fixtureSession.platform === "ios";
+  const launchLogMarker = ios ? null : androidLaunchLogMarker;
+  if (!ios && !launchLogMarker) {
+    throw new Error("Missing Android launch log marker");
+  }
+  // iOS keeps a JavaScript log line only for a stream that reads it, so the
+  // stream starts with the wait: after the launch, before the delayed fatal.
+  let streamed = "";
+  let streamError: Error | undefined;
+  const stream = ios
+    ? spawn(
+        "xcrun",
+        [
+          "simctl",
+          "spawn",
+          deviceId as string,
+          "log",
+          "stream",
+          "--level",
+          "debug",
+          "--style",
+          "compact",
+          "--predicate",
+          `eventMessage CONTAINS "${POST_CONTENT_CRASH_LOG_PREFIX}"`,
+        ],
+        { stdio: ["ignore", "pipe", "pipe"] },
+      )
+    : null;
+  stream?.on("error", (error) => {
+    streamError = error;
+  });
+  stream?.stdout.on("data", (chunk) => {
+    streamed += chunk.toString();
+  });
+  stream?.stderr.on("data", (chunk) => {
+    streamed += chunk.toString();
+  });
+  const readLogs = () =>
+    ios
+      ? streamed
+      : captureCommand(
+          "adb",
+          [
+            "-s",
+            deviceId as string,
+            "logcat",
+            "-d",
+            "-v",
+            "brief",
+            "HotUpdaterE2E:I",
+            "ReactNativeJS:I",
+            "*:S",
+          ],
+          { allowFailure: true, maxBuffer: 1024 * 1024 },
+        );
+
+  let state = initialAppExitWaitState;
+  let logs = "";
+  const deadline = Date.now() + POST_CONTENT_CRASH_EXIT_WAIT_MS;
+  const logPath = `app-exit-${input.bundleId}-${Date.now()}.log`;
+  try {
+    while (true) {
+      throwIfAborted(signal);
+      if (streamError) throw streamError;
+      logs = readLogs();
+      state = advanceAppExitWait(state, {
+        crashLogged: hasPostContentCrashAfterMarker(
+          logs,
+          launchLogMarker,
+          input.bundleId,
+        ),
+        running: isFixtureAppRunning(),
+      });
+      if (isAppExitProved(state, E2E_STOPPED_OBSERVATIONS_BEFORE_RELAUNCH)) {
+        // An uncaught fatal may leave the system's "app has stopped" dialog.
+        if (!ios) closeAndroidSystemDialogs();
+        logE2eFixture("post-content crash exit observed", {
+          bundleId: input.bundleId,
+          platform: fixtureSession.platform,
+          stoppedObservations: state.stoppedObservations,
+        });
+        return { exitedBundleId: input.bundleId };
+      }
+      if (Date.now() >= deadline) break;
+      await abortableSleep(APP_EXIT_PROBE_INTERVAL_MS, signal);
+    }
+  } finally {
+    stream?.kill();
+    writeResultDiagnosticFile(logPath, logs);
+  }
+  throw createEndpointError(describeAppExitWaitFailure(state, input.bundleId), {
+    ...readCrashRecoveryDiagnostics(
+      "main",
+      createCrashRecoveryArtifactNames({
+        crashedBundleId: input.bundleId,
+        stableBundleId: "app-exit",
+      }),
+    ),
+    logPath,
+    state,
+    waitedMs: POST_CONTENT_CRASH_EXIT_WAIT_MS,
+  });
+}
+
 /**
  * Ends the app if it still runs and starts it again: the instance whose
  * marker asks for a rollback rolls back only at its next start.
@@ -7823,6 +7983,10 @@ export function startWaitForCrashMarkerJob(input: {
   instance: AppInstance;
 }) {
   return createJob((context) => waitForCrashMarker(input, context.signal));
+}
+
+export function startWaitForAppExitJob(input: { bundleId: string }) {
+  return createJob((context) => waitForAppExit(input, context.signal));
 }
 
 export async function handleWaitForCrashRecovery(
