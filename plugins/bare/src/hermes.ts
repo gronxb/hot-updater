@@ -31,7 +31,18 @@ function getHermesOSExe(): string {
     : hermesExecutableName;
 }
 
+/**
+ * Resolves the `hermes-compiler` package the app's react-native depends on.
+ * A react-native that doesn't declare it (before 0.83) bundles its own
+ * hermesc, and any `hermes-compiler` Node resolution reaches from there, such
+ * as one pnpm hoists for another app in the workspace, compiles bytecode its
+ * Hermes runtime refuses to load.
+ */
 function getHermesCompilerPackagePath(reactNativePath: string): string | null {
+  const manifest = JSON.parse(
+    fs.readFileSync(path.join(reactNativePath, "package.json"), "utf8"),
+  ) as { dependencies?: Record<string, string> };
+  if (!manifest.dependencies?.["hermes-compiler"]) return null;
   try {
     return path.dirname(
       require.resolve("hermes-compiler/package.json", {
