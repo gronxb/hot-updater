@@ -11,6 +11,9 @@ Native libraries are pinned to the newest versions that support React Native
 and `react-native-safe-area-context` 5.5.2 (5.10 uses Android Gradle Plugin
 APIs 0.74's does not have).
 
+iOS builds for 15.1: Xcode 27 builds nothing below iOS 15.0, React Native 0.74's
+minimum is 13.4, and the Podfile raises every pod to 15.1.
+
 React Native 0.74's native libraries are aligned to 4 KB pages, so Android E2E
 needs a 4 KB device (`android.pageSize` in `e2e.json`), such as an emulator on
 `system-images;android-35;google_apis;arm64-v8a`. A 16 KB device runs the app
