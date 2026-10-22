@@ -44,6 +44,9 @@ describe("getHermesCommand project resolution", () => {
           name: "react-native",
           version: "0.85.2",
           main: "index.js",
+          ...(selected === "hermes-compiler"
+            ? { dependencies: { "hermes-compiler": "250829098.0.10" } }
+            : {}),
         }),
       );
       await writeFile(path.join(nodeModules, "react-native/index.js"));
@@ -98,6 +101,50 @@ describe("getHermesCommand project resolution", () => {
       expect(result.stdout.trim()).toBe(await fs.realpath(binaries[selected]));
     },
   );
+
+  it("ignores a hermes-compiler that react-native doesn't depend on", async () => {
+    const root = await fs.mkdtemp(path.join(os.tmpdir(), "hermes-hoisted-"));
+    tempDirs.push(root);
+    const cwd = path.join(root, "apps/legacy");
+    const nodeModules = path.join(root, "node_modules");
+    // React Native 0.74 bundles hermesc; another workspace app's
+    // hermes-compiler, hoisted to the root, is reachable from it.
+    await writeFile(
+      path.join(cwd, "node_modules/react-native/package.json"),
+      JSON.stringify({
+        name: "react-native",
+        version: "0.74.7",
+        main: "index.js",
+      }),
+    );
+    await writeFile(path.join(cwd, "node_modules/react-native/index.js"));
+    const bundled = path.join(
+      cwd,
+      "node_modules/react-native/sdks/hermesc",
+      osBin,
+      executable,
+    );
+    await writeFile(bundled);
+    await writeFile(
+      path.join(nodeModules, "hermes-compiler/package.json"),
+      JSON.stringify({ name: "hermes-compiler" }),
+    );
+    await writeFile(
+      path.join(nodeModules, "hermes-compiler/hermesc", osBin, executable),
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        "--input-type=module",
+        "--eval",
+        `import { getHermesCommand } from ${JSON.stringify(new URL("./hermes.ts", import.meta.url).href)}; console.log(await getHermesCommand(${JSON.stringify(cwd)}));`,
+      ],
+      { encoding: "utf8", env: { ...process.env, NODE_PATH: "" } },
+    );
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stdout.trim()).toBe(await fs.realpath(bundled));
+  });
 
   it.each(["hermes-engine", "hermesvm"] as const)(
     "preserves the legacy %s path fallback",
