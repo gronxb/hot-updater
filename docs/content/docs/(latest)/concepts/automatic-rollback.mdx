@@ -94,10 +94,10 @@ already rendered. To recover devices, deploy a fixed
 bundle, or disable the bad Release so the server rolls them back. A device that
 keeps crashing picks it up within two restarts.
 
-The native check uses the server, headers, timeout, and update strategy of
-your app's last update check, which `init` and each check save on the device.
-A device that never ran `init`, for example because the user hasn't accepted
-your privacy terms yet, sends no request. A launch that didn't crash sends
+The native check repeats your app's last update check: each check saves its
+server, headers, timeout, and update strategy on the device. A device that
+never checked, for example because the user hasn't accepted your privacy terms
+yet, sends no request. A launch that didn't crash sends
 none either. A launch without UI waits for the next launch that shows UI.
 
 ## What happens during rollback?

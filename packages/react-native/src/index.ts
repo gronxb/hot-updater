@@ -34,7 +34,6 @@ import {
 } from "./native";
 import { replayNativeUpdateEvents } from "./nativeUpdateEvents";
 import { createAppPluginHost } from "./pluginHost";
-import { refreshRecoveryCheckConfig } from "./recoveryCheckConfig";
 import { hotUpdaterStore } from "./store";
 import { type HotUpdaterWrapOptions, wrap } from "./wrap";
 
@@ -556,7 +555,6 @@ export const HotUpdater = {
     // it up: the first init of the runtime reports them, and a later init
     // gets none because they were reported already.
     replayNativeUpdateEvents(launch.emit);
-    refreshRecoveryCheckConfig({ baseURL, requestHeaders, requestTimeout });
     void launch.read({ onNotifyAppReady, onError });
     return Object.freeze({
       ...instance,
