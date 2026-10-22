@@ -43,6 +43,7 @@ const mocks = vi.hoisted(() => {
     emit: vi.fn(),
     readLaunch: vi.fn(),
     replayNativeUpdateEvents: vi.fn(),
+    refreshRecoveryCheckConfig: vi.fn(),
     reportUpdateError: vi.fn(),
     isChannelSwitched: vi.fn(() => false),
     notifyAppReady: vi.fn(() => ({ status: "UNCHANGED" as const })),
@@ -74,6 +75,10 @@ vi.mock("./appReady", () => ({
 
 vi.mock("./nativeUpdateEvents", () => ({
   replayNativeUpdateEvents: mocks.replayNativeUpdateEvents,
+}));
+
+vi.mock("./recoveryCheckConfig", () => ({
+  refreshRecoveryCheckConfig: mocks.refreshRecoveryCheckConfig,
 }));
 
 vi.mock("./native", () => ({
@@ -262,6 +267,22 @@ describe("HotUpdater client initialization", () => {
     expect(mocks.readLaunch).toHaveBeenCalledExactlyOnceWith({
       onError: undefined,
       onNotifyAppReady: undefined,
+    });
+  });
+
+  it("refreshes the request native checks with after a crash", async () => {
+    const HotUpdater = await importHotUpdater();
+
+    HotUpdater.init({
+      baseURL: "https://updates.example.com",
+      requestHeaders: { "x-api-key": "key" },
+      requestTimeout: 1000,
+    });
+
+    expect(mocks.refreshRecoveryCheckConfig).toHaveBeenCalledExactlyOnceWith({
+      baseURL: "https://updates.example.com",
+      requestHeaders: { "x-api-key": "key" },
+      requestTimeout: 1000,
     });
   });
 

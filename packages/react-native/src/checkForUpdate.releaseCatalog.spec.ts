@@ -50,6 +50,7 @@ const mocks = vi.hoisted(() => {
     isChannelSwitched: vi.fn(() => false),
     isReleaseSelectionCurrent: vi.fn(() => true),
     resetChannel: vi.fn(),
+    setStorageItem: vi.fn(),
     supportsArtifactFiles: vi.fn(() => true),
     stageBundle: vi.fn(
       async (): Promise<{
@@ -102,6 +103,7 @@ const createClient = (catalog = createCatalog()) => {
   };
   const resolveArtifact = vi.fn(async () => artifact);
   const session = {
+    baseURL: "https://updates.example.com/api",
     fetchReleaseCatalog,
     resolveArtifact,
   };
@@ -228,6 +230,47 @@ describe("checkForUpdate Release catalog protocol", () => {
         patchFallback: true,
       },
     ]);
+  });
+
+  it("saves the request native checks with after a crash, before checking", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client, fetchReleaseCatalog } = createClient();
+    mocks.setStorageItem.mockImplementationOnce(() => {
+      expect(fetchReleaseCatalog).not.toHaveBeenCalled();
+    });
+    await checkForUpdate({
+      emit,
+      client,
+      requestHeaders: { "x-api-key": "key" },
+      requestTimeout: 8000,
+      updateStrategy: "fingerprint",
+    }).catch(() => null);
+    expect(mocks.setStorageItem).toHaveBeenCalledWith(
+      "hot-updater/recovery-check-config",
+      JSON.stringify({
+        version: 1,
+        baseURL: "https://updates.example.com/api",
+        requestHeaders: { "x-api-key": "key" },
+        requestTimeoutMs: 8000,
+        updateStrategy: "fingerprint",
+      }),
+    );
+  });
+
+  it("still checks when native can't save the recovery request", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client } = createClient();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    mocks.setStorageItem.mockImplementationOnce(() => {
+      throw new Error("no storage");
+    });
+    const update = await checkForUpdate({
+      emit,
+      client,
+      updateStrategy: "appVersion",
+    });
+    expect(update?.id).toBe(RELEASE_ID);
+    warn.mockRestore();
   });
 
   it.each(["nothing new", "failure"])(

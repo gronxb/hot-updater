@@ -37,6 +37,7 @@ import {
   stageBundle,
   supportsArtifactFiles,
 } from "./native";
+import { saveRecoveryCheckConfig } from "./recoveryCheckConfig";
 import { hotUpdaterStore } from "./store";
 import { classifyUpdateError, InvalidUpdateResponseError } from "./updateError";
 
@@ -182,6 +183,12 @@ async function checkForReleaseCatalogUpdate(input: {
 }): Promise<CheckForUpdateResult | null> {
   const { options } = input;
   const session = await options.client.createSession();
+  saveRecoveryCheckConfig({
+    baseURL: session.baseURL,
+    requestHeaders: options.requestHeaders,
+    requestTimeout: options.requestTimeout,
+    updateStrategy: options.updateStrategy,
+  });
   const channelKey = encodeChannelKey(input.targetChannel);
   const strategy =
     options.updateStrategy === "appVersion" ? "APP_VERSION" : "FINGERPRINT";

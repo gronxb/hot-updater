@@ -83,7 +83,10 @@ protocol HotUpdaterCrashSlotSink: AnyObject {
 /// selected in the foreground, and its fatal before first content reloads it
 /// in-process. A named launch counts as started only once a view of its
 /// runtime is shown, since a runtime warmed up without UI must not be rolled
-/// back at the next start.
+/// back at the next start. After its watch ends, main still writes its marker
+/// on a crash of its own or of the process, without rollback: its next launch
+/// then checks for a fix natively, since this bundle's JavaScript may crash
+/// before it can.
 final class HotUpdaterRecoveryCoordinator {
     /// Native crash markers the signal handler can write, main's included.
     /// More instances than this still roll back an unfinished launch at their
@@ -142,6 +145,19 @@ final class HotUpdaterRecoveryCoordinator {
         fileprivate(set) var isCharged = false
         /// The directory of `markerURL` was created.
         fileprivate var hasMarkerDirectory = false
+
+        /// Whether a crash now writes this launch's marker: while it is
+        /// watched, and for main for the rest of the process once it
+        /// launched, so the next launch knows to check for a fix
+        /// (`HotUpdaterPostCrashUpdateCheck`).
+        fileprivate var recordsCrashes: Bool {
+            isMonitoring || (isMain && generation > 0)
+        }
+        /// The bundle a marker of this launch names: main's selected bundle
+        /// once its watch ended, which cleared `bundleId`.
+        fileprivate var markerBundleId: String? {
+            isMain && !isMonitoring ? selectedBundleId : bundleId
+        }
     }
 
     enum RecoveryRequest: Equatable {
@@ -737,7 +753,8 @@ final class HotUpdaterRecoveryCoordinator {
         !launch.isMain && launch.isMonitoring && launch.isAwaitingContent && !launch.hasResolvedRuntime
     }
 
-    /// Ends the grace period after first content.
+    /// Ends the grace period after first content. Main's crashes are still
+    /// recorded afterwards, without rollback, naming the bundle it runs.
     func finishMonitoring(name: String, generation: Int) {
         withLock {
             guard let launch = launches[name], launch.generation == generation else { return }
@@ -873,7 +890,9 @@ final class HotUpdaterRecoveryCoordinator {
                 writeMarker(launch)
             }
             let claim = attribute(to: owner)
-            if launch.isMonitoring, !markerFirst {
+            // Main's marker is written after its watch ended too, without
+            // rollback.
+            if launch.recordsCrashes, !markerFirst {
                 writeMarker(launch)
             }
             return claim
@@ -1119,7 +1138,7 @@ final class HotUpdaterRecoveryCoordinator {
         charging {
             if let attributedName, let launch = launches[attributedName] {
                 // Not a later launch of the claimed instance.
-                if launch.isMonitoring, launch.generation == attributedGeneration {
+                if launch.recordsCrashes, launch.generation == attributedGeneration {
                     writeMarker(launch)
                 }
                 return
@@ -1191,9 +1210,9 @@ final class HotUpdaterRecoveryCoordinator {
 
     private func chargeUnattributedCrash() {
         for launch in launches.values {
-            // Main writes while it watches its launch, as it always has; a
-            // marker of a verified launch carries `shouldRollback: false`.
-            if launch.isMain ? launch.isMonitoring : launch.crashCountsAgainstLaunch {
+            // Main writes for the whole process once it launched; a marker
+            // of a verified launch carries `shouldRollback: false`.
+            if launch.isMain ? launch.recordsCrashes : launch.crashCountsAgainstLaunch {
                 writeMarker(launch)
             }
         }
@@ -1204,7 +1223,7 @@ final class HotUpdaterRecoveryCoordinator {
     /// `onRollbackCharged` once the charge finishes (`charging`).
     private func writeMarker(_ launch: Launch) {
         HotUpdaterCrashMarker.write(
-            bundleId: launch.bundleId,
+            bundleId: launch.markerBundleId,
             shouldRollback: launch.shouldRollback,
             to: launch.markerURL
         )
@@ -1256,7 +1275,9 @@ final class HotUpdaterRecoveryCoordinator {
         guard let slot = launch.slot else { return }
         let flag = launch.crashCountsAgainstLaunch
         slotFlags[slot] = flag
-        sink.updateSlot(slot, markerPath: launch.markerURL.path, bundleId: launch.bundleId, shouldRollback: flag)
+        // Main's slot writes on any signal, and keeps naming its bundle
+        // after its watch ended.
+        sink.updateSlot(slot, markerPath: launch.markerURL.path, bundleId: launch.markerBundleId, shouldRollback: flag)
         if !launch.hasMarkerDirectory {
             try? FileManager.default.createDirectory(
                 at: launch.markerURL.deletingLastPathComponent(),

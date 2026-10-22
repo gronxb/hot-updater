@@ -229,6 +229,8 @@ the failure rate. App usage and Release health charts stay in the Console.
 - A plain launch is reported at most once per UTC day, unless the channel, app
   version, bundle, Release, or user changed. Downloads, launches of a new
   bundle, and crashes are always reported.
+- A fix that native downloaded after a crash is reported as `UPDATE_DOWNLOADED`
+  by the next `init`, like any other download.
 - Failed reports are retried in the background with the same ID, so the server
   counts each once.
 - A launch report that changes what an installation runs is kept as an event:

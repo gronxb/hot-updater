@@ -253,19 +253,32 @@ internal class HotUpdaterRecoveryManager(
         }
     }
 
-    /** Ends the grace period of the launch of [generation], unless a newer launch started. */
+    /**
+     * Ends the grace period of the launch of [generation], unless a newer
+     * launch started. Main's verified launch stays live for the rest of the
+     * process: a later crash still writes its marker, which never asks to
+     * roll back but tells the next launch to check for a fix natively, since
+     * the bundle's own update check may be what crashes.
+     */
     private fun stopMonitoring(generation: Long) {
         synchronized(lock) {
             if (generation != this.generation) return
             stopTask = null
             releaseRecoveryWatchdog()
-            Log.d(TAG, "Stopping crash monitoring for current launch of $name")
-            launchState.stop()
             contentAppearedCallback = null
             crashOfAnotherInstanceCallback = null
             recoveryRestartCallback = null
             runtimeActivityCallback = null
             chargedCallback = null
+            if (isMain && launchState.hasContentAppeared()) {
+                // The hooks installed on main's host stay, and the native
+                // slot keeps the verified bundle.
+                Log.d(TAG, "Stopping crash monitoring for current launch of $name; later crashes are still recorded")
+                updateNativeLaunchStateLocked()
+                return
+            }
+            Log.d(TAG, "Stopping crash monitoring for current launch of $name")
+            launchState.stop()
             liveManagers.remove(name, this)
             updateNativeLaunchStateLocked()
         }
@@ -689,7 +702,11 @@ internal class HotUpdaterRecoveryManager(
         private val attribution: HotUpdaterRecoveryAttribution
             get() = HotUpdaterRecoveryAttribution.shared
 
-        /** The manager of each instance whose launch is monitored. */
+        /**
+         * The manager of each instance whose launch is monitored, and main's
+         * once its launch is verified, which records crashes until the
+         * process ends ([stopMonitoring]).
+         */
         private val liveManagers = ConcurrentHashMap<String, HotUpdaterRecoveryManager>()
 
         private val signalHandlerLock = Any()

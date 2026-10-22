@@ -149,6 +149,9 @@ private func hotUpdaterGetMinBundleId() -> String {
     private let recoveryManager: HotUpdaterRecoveryManager
     private let releaseCatalogCache: ReleaseCatalogCacheService
     private let keyValueStorage: KeyValueStorageService
+    /// Main only: the native update check of the first launch with UI after
+    /// a crash.
+    private let postCrashUpdateCheck: HotUpdaterPostCrashUpdateCheck?
     // Read by native update checks on other threads while React Native sets it.
     private let launchSelectionLock = NSLock()
     private var launchSelectionValue: LaunchSelection?
@@ -282,6 +285,13 @@ private func hotUpdaterGetMinBundleId() -> String {
         self.recoveryManager = recoveryManager
         self.releaseCatalogCache = releaseCatalogCache
         self.keyValueStorage = keyValueStorage
+        self.postCrashUpdateCheck = environment.isMain
+            ? HotUpdaterPostCrashUpdateCheck(
+                storage: keyValueStorage,
+                whenShown: HotUpdaterImpl.whenAppIsActive,
+                check: HotUpdaterImpl.checkAfterCrash
+            )
+            : nil
         super.init()
         recoveryManager.onRollbackCharged = { [weak self] in
             self?.invalidateLaunchPreparation()
@@ -382,6 +392,11 @@ private func hotUpdaterGetMinBundleId() -> String {
             HotUpdaterMainBundle.shared.note(bundle)
         }
         let bundleURL = prepareLaunchIfNeeded(bundle: bundle).bundleURL
+        // After the launch lock is released: the check reads the launch
+        // through it, and never holds up React Native's start.
+        if environment.isMain, self === HotUpdaterNativeUpdateBridge.sharedImpl {
+            postCrashUpdateCheck?.startIfNeeded()
+        }
         if !environment.isMain, let bundleURL {
             // The runtime started with this URL finds this impl by it.
             HotUpdaterNativeUpdateBridge.router.record(launchURL: bundleURL, name: environment.name)
@@ -995,7 +1010,7 @@ private func hotUpdaterGetMinBundleId() -> String {
             // Settles what the previous process left first, so the check reads the
             // selection, launch state, and crash history this launch will use.
             // Each instance consumes only its own crash marker.
-            bundleStorage.settlePreviousLaunch(pendingRecovery: { self.recoveryManager.consumePendingCrashRecovery() })
+            bundleStorage.settlePreviousLaunch(pendingRecovery: { self.consumePendingCrashRecovery() })
             return bundleStorage.peekLaunchBundleId()
         }
     }
@@ -1054,7 +1069,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         // retry replaces it.
         let (selection, generation, epoch) = launchEpoch.prepareCurrent(
             prepare: {
-                let pendingRecovery = recoveryManager.consumePendingCrashRecovery()
+                let pendingRecovery = consumePendingCrashRecovery()
                 return bundleStorage.prepareLaunch(bundle: bundle, pendingRecovery: pendingRecovery)
             },
             startMonitoring: { selection in
@@ -1082,6 +1097,51 @@ private func hotUpdaterGetMinBundleId() -> String {
         currentLaunchSelection = selection
         currentLaunchSelectionEpoch = epoch
         return selection
+    }
+
+    /// This instance's crash marker; for main, any marker also leaves the
+    /// post-crash update check pending.
+    private func consumePendingCrashRecovery() -> PendingCrashRecovery? {
+        guard let postCrashUpdateCheck else {
+            return recoveryManager.consumePendingCrashRecovery()
+        }
+        return postCrashUpdateCheck.consumeMarker { recoveryManager.consumePendingCrashRecovery() }
+    }
+
+    /// Runs `action` once the app is active: a launch without UI, such as a
+    /// silent push, leaves the post-crash check to a later foreground.
+    private static func whenAppIsActive(_ action: @escaping () -> Void) {
+        DispatchQueue.main.async {
+            if UIApplication.shared.applicationState == .active {
+                action()
+                return
+            }
+            NSLog("[HotUpdaterRecovery] Post-crash update check: skipped until the app becomes active")
+            // Boxed: the observer block may not capture a mutable variable.
+            let registration = HotUpdaterObserverRegistration()
+            registration.token = NotificationCenter.default.addObserver(
+                forName: UIApplication.didBecomeActiveNotification,
+                object: nil,
+                queue: .main
+            ) { _ in
+                guard let token = registration.token else { return }
+                NotificationCenter.default.removeObserver(token)
+                registration.token = nil
+                action()
+            }
+        }
+    }
+
+    /// Main's native check of the current channel, which stages an update it
+    /// finds for the next launch; no reload.
+    private static func checkAfterCrash(
+        _ request: NativeCheckRequest
+    ) async throws -> HotUpdaterPostCrashUpdateCheck.Outcome {
+        let checker = HotUpdaterNativeUpdateBridge.checker(impl: HotUpdaterNativeUpdateBridge.sharedImpl)
+        guard let update = try await checker.checkForUpdate(request) else {
+            return .noUpdate
+        }
+        return try await update.updateBundle() ? .staged(bundleId: update.bundleId) : .superseded
     }
 
     // A background launch, such as a silent push, may never render. Only a
@@ -1130,6 +1190,12 @@ private func hotUpdaterGetMinBundleId() -> String {
         launchStartObservers = []
         launchStartObserversGeneration = nil
     }
+}
+
+/// A one-shot notification observer's token, which its own block removes.
+/// Main thread only.
+private final class HotUpdaterObserverRegistration {
+    var token: NSObjectProtocol?
 }
 
 /// One instance's crash recovery: consumes its marker at launch, watches its

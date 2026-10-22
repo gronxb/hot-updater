@@ -29,6 +29,9 @@ class HotUpdaterImpl {
     private val installIdentity: InstallIdentityService
     private val keyValueStorage: KeyValueStorageService
 
+    // Main's update check at the launch after a crash; null for a named instance.
+    private val postCrashUpdateCheck: PostCrashUpdateCheck?
+
     // Read by native update checks on other threads while React Native sets it.
     @Volatile
     private var currentLaunchSelection: LaunchSelection? = null
@@ -70,6 +73,8 @@ class HotUpdaterImpl {
     /**
      * @param activityStartGate the gate that arms this instance's launch;
      * by default one that waits for a started activity showing one of its views
+     * @param postCrashUpdateCheck main's check after a crash, over its
+     * key-value store; by default one with main's native checker
      */
     internal constructor(
         context: Context,
@@ -77,6 +82,7 @@ class HotUpdaterImpl {
         preferences: PreferencesService,
         environment: HotUpdaterInstanceEnvironment,
         activityStartGate: ActivityStartGate? = null,
+        postCrashUpdateCheck: ((KeyValueStorageService) -> PostCrashUpdateCheck)? = null,
     ) {
         this.context = context.applicationContext
         // An activity started before this process followed activities is
@@ -91,6 +97,12 @@ class HotUpdaterImpl {
             ReleaseCatalogCacheService(environment.releaseCatalogCacheDirectory(this.context))
         this.installIdentity = InstallIdentityService.create(this.context)
         this.keyValueStorage = KeyValueStorageService(environment.keyValueStorageFile(this.context))
+        this.postCrashUpdateCheck =
+            if (environment.isMain) {
+                (postCrashUpdateCheck ?: ::createPostCrashUpdateCheck)(keyValueStorage)
+            } else {
+                null
+            }
     }
 
     /**
@@ -103,13 +115,35 @@ class HotUpdaterImpl {
         context: Context,
         environment: HotUpdaterInstanceEnvironment,
         activityStartGate: ActivityStartGate? = null,
+        postCrashUpdateCheck: ((KeyValueStorageService) -> PostCrashUpdateCheck)? = null,
     ) : this(
         context = context,
         bundleStorage = createBundleStorage(context, environment),
         preferences = createPreferences(context, environment),
         environment = environment,
         activityStartGate = activityStartGate,
+        postCrashUpdateCheck = postCrashUpdateCheck,
     )
+
+    /**
+     * Checks with main's native checker, the one its native API and resetChannel
+     * share, once a started activity of any kind shows UI: a headless launch,
+     * such as a background push, leaves the check for a launch the user sees.
+     * Its gate is created only when a check is due, so a process without one
+     * follows no activities for it.
+     */
+    private fun createPostCrashUpdateCheck(storage: KeyValueStorageService): PostCrashUpdateCheck =
+        PostCrashUpdateCheck(
+            getItem = storage::getItem,
+            setItem = storage::setItem,
+            whenUiShown = { action ->
+                ActivityStartGate(context as? Application, showsReactView = { true }).runWhenActivityStarted(action)
+            },
+            check = { request ->
+                NativeUpdateCheck.checker(context, HotUpdaterInstanceEnvironment.MAIN_NAME) { this }.checkForUpdate(request)
+            },
+            isRestartProcess = { HotUpdaterProcess.isRestartProcess(context) },
+        )
 
     /**
      * Gets the app version
@@ -303,7 +337,10 @@ class HotUpdaterImpl {
         if (HotUpdaterProcess.isRestartProcess(context)) {
             return bundleStorage.getFallbackBundleURL()
         }
-        return prepareLaunchIfNeeded().bundleUrl
+        val bundleUrl = prepareLaunchIfNeeded().bundleUrl
+        // Outside the launch's locks, after any rollback its preparation made.
+        postCrashUpdateCheck?.startIfPending()
+        return bundleUrl
     }
 
     /**
@@ -546,7 +583,7 @@ class HotUpdaterImpl {
                 return@synchronized launchSelection.launchedBundleId
             }
 
-            bundleStorage.settlePreviousLaunch { recoveryManager.consumePendingCrashRecovery() }
+            bundleStorage.settlePreviousLaunch { consumePendingCrashRecovery() }
             bundleStorage.peekLaunchBundleId()
         }
 
@@ -627,8 +664,21 @@ class HotUpdaterImpl {
             current.bundleUrl == next.bundleUrl &&
             (current.shouldRollbackOnCrash || !next.shouldRollbackOnCrash)
 
+    /**
+     * Reads and deletes the crash marker the previous launch left. One that
+     * doesn't ask to roll back means the bundle that crashed runs again, so
+     * main checks for a fix natively once a launch shows UI
+     * ([PostCrashUpdateCheck]); recorded before this launch goes on, as the
+     * marker is already gone. One that asks to roll back is settled locally:
+     * the restored bundle passed its own first content.
+     */
+    private fun consumePendingCrashRecovery(): PendingCrashRecovery? =
+        recoveryManager.consumePendingCrashRecovery()?.also {
+            if (!it.shouldRollback) postCrashUpdateCheck?.markPending()
+        }
+
     private fun selectAndMonitorLaunchLocked(): PreparedLaunch {
-        val pendingRecovery = recoveryManager.consumePendingCrashRecovery()
+        val pendingRecovery = consumePendingCrashRecovery()
         val selection = bundleStorage.prepareLaunch(pendingRecovery)
         monitoredLaunch?.let { (current, launch) ->
             if (!environment.isMain && continuesLaunch(current, selection) && recoveryManager.monitorsLaunch(launch)) {
