@@ -38,7 +38,10 @@ const write = (config: RecoveryCheckConfig) => {
  * resolved, its headers and timeout, and its update strategy, which only a
  * check knows. Only checks save it, so native always repeats a request the
  * app really made, whichever instance made it last, and a device that never
- * checked sends nothing.
+ * checked sends nothing. The channel is left out on purpose: native checks
+ * the device's own channel, the one the crashing bundle came from and its fix
+ * is published to. A check of another channel is a one-off until its update
+ * is applied, and a crash must not switch the device's channel.
  */
 export const saveRecoveryCheckConfig = (input: {
   readonly baseURL: string;
