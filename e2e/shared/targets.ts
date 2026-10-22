@@ -34,6 +34,14 @@ export type E2eTargetManifest = {
     /** Environment for `pod install`, such as React Native's prebuilt core flags. */
     podEnv?: Record<string, string>;
   };
+  android?: {
+    /**
+     * The memory page size, in bytes, the device must use. React Native
+     * before 0.77 ships native libraries aligned to 4 KB, which a 16 KB device
+     * runs only behind a compatibility dialog that covers the app.
+     */
+    pageSize?: 4096 | 16384;
+  };
   /** Native sources the fingerprint hashes beyond the defaults. */
   fingerprintExtraSources?: { ios?: string[]; android?: string[] };
   /**
@@ -67,6 +75,8 @@ export type E2eTarget = {
     /** Where the installed APK builds: the app's, or the host's. */
     projectDir: string;
     apk: string;
+    /** The page size the device must use, when the target needs one. */
+    pageSize?: number;
   };
   fingerprintExtraSources: { ios: string[]; android: string[] };
   brownfield?: E2eTargetManifest["brownfield"] & {
@@ -128,6 +138,9 @@ export function loadE2eTarget(
         nativeDir,
         "android/app/build/outputs/apk/release/app-release.apk",
       ),
+      ...(manifest.android?.pageSize
+        ? { pageSize: manifest.android.pageSize }
+        : {}),
     },
     fingerprintExtraSources: {
       ios: manifest.fingerprintExtraSources?.ios ?? [],

@@ -88,6 +88,12 @@ directory:
   `Gemfile` are the run's.
 - `ios.workspace`, `ios.scheme`, `ios.podEnv`: the Xcode workspace and scheme
   (`HotUpdaterExample` by default) and the environment of `pod install`.
+- `android.pageSize`: the memory page size, in bytes, the Android device must
+  use. React Native before 0.77 ships native libraries aligned to 4 KB, which a
+  16 KB device opens behind a compatibility dialog, so such a target sets
+  `4096` and the run refuses any other device before a scenario starts. On an
+  Apple M4 Mac the Android 37 4 KB image boots without Hypervisor.framework
+  and hangs; Android 35's `google_apis` arm64 image boots.
 - `fingerprintExtraSources`: native sources the local run's fingerprint hashes
   beyond the defaults.
 - `brownfield`: the host apps' Xcode project and scheme, the framework scheme,

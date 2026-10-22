@@ -40,6 +40,9 @@ vi.mock("./agent-device-daemon.ts", () => ({
 vi.mock("./android-reverse.ts", () => ({
   acquireAndroidReverses: mocked.acquireReverse,
 }));
+vi.mock("./android-page-size.ts", () => ({
+  assertAndroidPageSize: vi.fn(async () => {}),
+}));
 
 import { runMobile } from "./run.ts";
 
