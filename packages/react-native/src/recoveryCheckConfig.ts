@@ -73,8 +73,10 @@ export const saveRecoveryCheckConfig = (input: {
 /**
  * Updates the saved request with what `HotUpdater.init` configures, so a
  * bundle that changed its server or API key and crashes before its first
- * check is still checked with its own. A baseURL function resolves only in a
- * check, so the saved one stays until then. Nothing is saved before a check
+ * check is still checked with its own. Its headers replace the saved ones,
+ * never merge: a header the bundle no longer sends, such as another server's
+ * credential, must not reach its server. A baseURL function resolves only in
+ * a check, so the saved server stays until then. Nothing is saved before a check
  * has saved its update strategy. Like checks, a development build saves
  * nothing.
  */
@@ -92,7 +94,7 @@ export const refreshRecoveryCheckConfig = (input: {
     ...(typeof input.baseURL === "string" && input.baseURL
       ? { baseURL: input.baseURL.replace(/\/+$/, "") }
       : {}),
-    requestHeaders: { ...saved.requestHeaders, ...input.requestHeaders },
+    requestHeaders: { ...input.requestHeaders },
     ...(input.requestTimeout !== undefined
       ? { requestTimeoutMs: input.requestTimeout }
       : {}),

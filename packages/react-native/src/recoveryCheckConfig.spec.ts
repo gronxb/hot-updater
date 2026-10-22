@@ -65,10 +65,23 @@ describe("recovery check config", () => {
     expect(saved()).toEqual({
       version: 1,
       baseURL: "https://new.example.com",
-      requestHeaders: { "x-api-key": "new", "x-check": "kept" },
+      requestHeaders: { "x-api-key": "new" },
       requestTimeoutMs: 7000,
       updateStrategy: "fingerprint",
     });
+  });
+
+  it("drops the previous server's headers when init moves to another server", async () => {
+    const { refreshRecoveryCheckConfig, saveRecoveryCheckConfig } =
+      await import("./recoveryCheckConfig");
+    saveRecoveryCheckConfig({
+      baseURL: "https://a.example.com",
+      requestHeaders: { Authorization: "Bearer a" },
+      updateStrategy: "appVersion",
+    });
+    refreshRecoveryCheckConfig({ baseURL: "https://b.example.com" });
+    expect(saved().baseURL).toBe("https://b.example.com");
+    expect(saved().requestHeaders).toEqual({});
   });
 
   it("keeps the saved server when init's baseURL is a function", async () => {
