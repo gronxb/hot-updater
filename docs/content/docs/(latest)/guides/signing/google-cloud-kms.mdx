@@ -40,9 +40,8 @@ gcloud kms keys versions get-public-key 1 \
 npm install '@google-cloud/kms@^6.0.0' --save-dev
 ```
 
-`@google-cloud/kms` 6 requires Node.js 22 or later. This requirement applies
-only to deploy environments that use `googleCloudKmsSigning`; the other signing
-options retain Hot Updater's Node.js 20.19 baseline.
+`@google-cloud/kms` 6 requires Node.js 22 or later, which Hot Updater's own
+Node.js requirement already meets.
 
 ```ts title="hot-updater.config.ts"
 import { defineConfig } from "hot-updater";

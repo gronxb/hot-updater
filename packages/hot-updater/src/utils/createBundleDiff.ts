@@ -12,6 +12,7 @@ import type {
 import {
   createBundleStorageKey,
   getManifestAssetDownloadPath,
+  isContentAddressedAssetFileHash,
   resolveManifestAssetStorageUri,
   rowToBundle,
 } from "@hot-updater/plugin-core";
@@ -22,11 +23,14 @@ import {
   getManifestStorageUri,
 } from "@hot-updater/protocol";
 
+import { extractSignature } from "../signedHashUtils";
+
 type BundleManifest = {
   bundleId: string;
   assets: Record<
     string,
     {
+      byteSize?: unknown;
       downloadByteSize?: unknown;
       downloadFileHash?: unknown;
       fileHash: string;
@@ -44,6 +48,8 @@ export interface CreateBundleDiffDependencies {
   /** Core's API: assembled over the config's database, or a self-hosted server's admin API. */
   core: Pick<HotUpdaterCoreApi, "getBundle" | "updateBundle">;
   storageAdapter: StorageAdapterWith<"get" | "put" | "delete"> | null;
+  /** The configured signer's public key (PEM), which verifies signed manifests. */
+  signingPublicKey?: string | null;
 }
 
 export interface CreateBundleDiffOptions {
@@ -52,6 +58,61 @@ export interface CreateBundleDiffOptions {
 
 const HBC_ASSET_PATH_RE = /\.bundle$/;
 const decompressBrotli = promisify(brotliDecompress);
+
+const sha256 = (bytes: Uint8Array) =>
+  crypto.createHash("sha256").update(bytes).digest("hex");
+
+/**
+ * Throws unless the manifest bytes match the bundle's `manifestFileHash`: its
+ * SHA-256, or for a signed bundle an RSA-SHA256 signature over that hash. The
+ * bundle comes from the database, so the manifest's asset hashes are trusted
+ * only once this passes.
+ */
+const verifyManifestBytes = (
+  bundle: Bundle,
+  bytes: Uint8Array,
+  signingPublicKey: string | null,
+) => {
+  const digest = crypto.createHash("sha256").update(bytes).digest();
+  const signature = extractSignature(bundle.manifestFileHash);
+  if (signature === null) {
+    if (digest.toString("hex") !== bundle.manifestFileHash) {
+      throw new Error(
+        `Manifest of bundle ${bundle.id} does not match its hash`,
+      );
+    }
+    return;
+  }
+  if (!signingPublicKey) {
+    throw new Error(
+      `Manifest of bundle ${bundle.id} is signed; configure signing to verify it`,
+    );
+  }
+  if (
+    !crypto.verify(
+      "RSA-SHA256",
+      digest,
+      signingPublicKey,
+      Buffer.from(signature, "base64"),
+    )
+  ) {
+    throw new Error(
+      `Manifest of bundle ${bundle.id} does not match its signature`,
+    );
+  }
+};
+
+/** Throws unless `bytes` hash to `expectedHash`, the manifest's SHA-256. */
+const verifyAssetBytes = (
+  bytes: Uint8Array,
+  expectedHash: string,
+  storageUri: string,
+) => {
+  if (sha256(bytes) !== expectedHash) {
+    throw new Error(`Storage object does not match its hash: ${storageUri}`);
+  }
+  return bytes;
+};
 
 const isBundleManifest = (value: unknown): value is BundleManifest => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -132,6 +193,7 @@ async function downloadStorageBytes(
 async function fetchManifest(
   bundle: Bundle,
   storageAdapter: StorageAdapterWith<"get" | "put" | "delete"> | null,
+  signingPublicKey: string | null,
 ): Promise<BundleManifest> {
   const manifestStorageUri = getManifestStorageUri(bundle);
   if (!manifestStorageUri) {
@@ -142,6 +204,7 @@ async function fetchManifest(
     manifestStorageUri,
     storageAdapter,
   );
+  verifyManifestBytes(bundle, manifestBytes, signingPublicKey);
 
   const payload: unknown = JSON.parse(new TextDecoder().decode(manifestBytes));
   if (!isBundleManifest(payload)) {
@@ -186,6 +249,11 @@ async function fetchAssetBytes(
 
   const downloadPath = getManifestAssetDownloadPath(assetPath);
   if (downloadPath !== assetPath) {
+    if (!isContentAddressedAssetFileHash(asset.downloadFileHash)) {
+      throw new Error(
+        `Asset ${assetPath} has no download hash for its compressed object`,
+      );
+    }
     const compressedAssetStorageUri = resolveManifestAssetStorageUri({
       assetBaseStorageUri,
       assetPath: downloadPath,
@@ -205,7 +273,21 @@ async function fetchAssetBytes(
     }
 
     if (compressedBytes) {
-      return new Uint8Array(await decompressBrotli(compressedBytes));
+      // Only the bytes deploy uploaded reach the Brotli decoder.
+      verifyAssetBytes(
+        compressedBytes,
+        asset.downloadFileHash,
+        compressedAssetStorageUri,
+      );
+      const bytes = new Uint8Array(
+        await decompressBrotli(
+          compressedBytes,
+          typeof asset.byteSize === "number"
+            ? { maxOutputLength: Math.max(asset.byteSize, 1) }
+            : {},
+        ),
+      );
+      return verifyAssetBytes(bytes, asset.fileHash, compressedAssetStorageUri);
     }
   }
 
@@ -214,7 +296,11 @@ async function fetchAssetBytes(
     assetPath,
     fileHash: asset.fileHash,
   });
-  return downloadStorageBytes(assetStorageUri, storageAdapter);
+  return verifyAssetBytes(
+    await downloadStorageBytes(assetStorageUri, storageAdapter),
+    asset.fileHash,
+    assetStorageUri,
+  );
 }
 
 function buildNextPatchState({
@@ -242,6 +328,7 @@ export async function createBundleDiff(
   options: CreateBundleDiffOptions = {},
 ) {
   const { core } = deps;
+  const signingPublicKey = deps.signingPublicKey ?? null;
 
   if (!deps.storageAdapter) {
     throw new Error("Storage adapter is not configured");
@@ -270,8 +357,8 @@ export async function createBundleDiff(
   }
 
   const [baseManifest, targetManifest] = await Promise.all([
-    fetchManifest(baseBundle, deps.storageAdapter),
-    fetchManifest(targetBundle, deps.storageAdapter),
+    fetchManifest(baseBundle, deps.storageAdapter, signingPublicKey),
+    fetchManifest(targetBundle, deps.storageAdapter, signingPublicKey),
   ]);
 
   const baseAssetPath = resolveHbcAssetPath(baseManifest);
@@ -308,10 +395,7 @@ export async function createBundleDiff(
   ]);
 
   const patchBytes = await hdiff(baseBytes, targetBytes);
-  const patchFileHash = crypto
-    .createHash("sha256")
-    .update(patchBytes)
-    .digest("hex");
+  const patchFileHash = sha256(patchBytes);
   const patchFilename = `${path.posix.basename(targetAssetPath)}.bsdiff`;
   const previousPatch = getBundlePatch(targetBundle, baseBundle.id);
 

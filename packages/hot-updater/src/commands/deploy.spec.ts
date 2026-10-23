@@ -1543,6 +1543,7 @@ describe("deploy rollout wiring", () => {
       },
       {
         core: harnessDatabase.core,
+        signingPublicKey: null,
         storageAdapter: mockStorageAdapter,
       },
       {
@@ -1557,6 +1558,7 @@ describe("deploy rollout wiring", () => {
       },
       {
         core: harnessDatabase.core,
+        signingPublicKey: null,
         storageAdapter: mockStorageAdapter,
       },
       {
@@ -1597,6 +1599,54 @@ describe("deploy rollout wiring", () => {
       },
       {
         core: harnessDatabase.core,
+        signingPublicKey: null,
+        storageAdapter: mockStorageAdapter,
+      },
+      {
+        makePrimary: true,
+      },
+    );
+  });
+
+  it("verifies automatic patch bases with the signer's public key", async () => {
+    mockCli.loadConfig.mockResolvedValue({
+      build: async () => mockBuildAdapter,
+      fingerprint: {},
+      patch: {
+        enabled: true,
+        maxBaseBundles: 1,
+      },
+      signing: mockSigningAdapter,
+      updateStrategy: "appVersion",
+    });
+    mockCli.prepareBundleSigning.mockResolvedValue({
+      name: "local-file",
+      publicKey: "public-key",
+      signFileHash: vi.fn(async () => "signature"),
+    });
+    await mockGetBundlesWithFixtures([
+      {
+        bundle: { id: fixtureBundleId(122) },
+        release: { targetAppVersion: "1.1.0" },
+      },
+    ]);
+
+    await deploy({
+      channel: "production",
+      forceUpdate: false,
+      interactive: false,
+      platform: "ios",
+      targetAppVersion: "1.1",
+    });
+
+    expect(mockServer.createBundleDiff).toHaveBeenCalledWith(
+      {
+        baseBundleId: fixtureBundleId(122),
+        bundleId: DEPLOY_BUNDLE_ID,
+      },
+      {
+        core: harnessDatabase.core,
+        signingPublicKey: "public-key",
         storageAdapter: mockStorageAdapter,
       },
       {
@@ -1721,6 +1771,7 @@ describe("deploy rollout wiring", () => {
       },
       {
         core: harnessDatabase.core,
+        signingPublicKey: null,
         storageAdapter: mockStorageAdapter,
       },
       {
@@ -1765,6 +1816,7 @@ describe("deploy rollout wiring", () => {
       },
       {
         core: harnessDatabase.core,
+        signingPublicKey: null,
         storageAdapter: mockStorageAdapter,
       },
       {
