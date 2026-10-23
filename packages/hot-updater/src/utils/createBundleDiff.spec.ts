@@ -294,20 +294,14 @@ describe("createBundleDiff", () => {
       [
         baseBundle.manifestStorageUri!,
         JSON.stringify({
-          assets: {
-            "index.ios.bundle": { fileHash: baseAsset.manifestEntry.fileHash },
-          },
+          assets: { "index.ios.bundle": baseAsset.manifestEntry },
           bundleId: baseBundle.id,
         }),
       ],
       [
         targetBundle.manifestStorageUri!,
         JSON.stringify({
-          assets: {
-            "index.ios.bundle": {
-              fileHash: targetAsset.manifestEntry.fileHash,
-            },
-          },
+          assets: { "index.ios.bundle": targetAsset.manifestEntry },
           bundleId: targetBundle.id,
         }),
       ],
@@ -511,20 +505,14 @@ describe("createBundleDiff", () => {
       [
         baseBundle.manifestStorageUri!,
         JSON.stringify({
-          assets: {
-            "index.ios.bundle": { fileHash: baseAsset.manifestEntry.fileHash },
-          },
+          assets: { "index.ios.bundle": baseAsset.manifestEntry },
           bundleId: baseBundle.id,
         }),
       ],
       [
         targetBundle.manifestStorageUri!,
         JSON.stringify({
-          assets: {
-            "index.ios.bundle": {
-              fileHash: targetAsset.manifestEntry.fileHash,
-            },
-          },
+          assets: { "index.ios.bundle": targetAsset.manifestEntry },
           bundleId: targetBundle.id,
         }),
       ],
@@ -563,5 +551,47 @@ describe("createBundleDiff", () => {
       `Storage object does not match its hash: https://storage.example.com/releases${baseAsset.originalPath}`,
     );
     expect(upload).not.toHaveBeenCalled();
+  });
+  it("rejects a Hermes bundle without a download hash before downloading it", async () => {
+    const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
+    const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
+    const baseAsset = createAsset([1, 2, 3]);
+    const targetAsset = createAsset([1, 9, 3]);
+    const { downloadFileHash: _, ...entryWithoutDownloadHash } =
+      baseAsset.manifestEntry;
+    const core = await createCore([baseBundle, targetBundle]);
+    const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
+      async ({ key }) => ({ storageUri: `s3://test-bucket/${key}` }),
+    );
+    stubStorageFetch([
+      {
+        bundle: baseBundle,
+        asset: {
+          ...baseAsset,
+          manifestEntry: entryWithoutDownloadHash as Asset["manifestEntry"],
+        },
+      },
+      { bundle: targetBundle, asset: targetAsset },
+    ]);
+
+    try {
+      await expect(
+        createBundleDiff(
+          { baseBundleId: baseBundle.id, bundleId: targetBundle.id },
+          { core, storageAdapter: createStorageAdapter(upload) },
+        ),
+      ).rejects.toThrow(
+        "Asset index.ios.bundle has no download hash for its compressed object",
+      );
+      const requested = vi
+        .mocked(fetch)
+        .mock.calls.map(([input]) => String(input));
+      expect(
+        requested.some((url) => url.endsWith(baseAsset.compressedPath)),
+      ).toBe(false);
+      expect(upload).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });

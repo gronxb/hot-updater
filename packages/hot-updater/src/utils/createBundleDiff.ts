@@ -203,6 +203,11 @@ async function fetchAssetBytes(
 
   const downloadPath = getManifestAssetDownloadPath(assetPath);
   if (downloadPath !== assetPath) {
+    if (!isContentAddressedAssetFileHash(asset.downloadFileHash)) {
+      throw new Error(
+        `Asset ${assetPath} has no download hash for its compressed object`,
+      );
+    }
     const compressedAssetStorageUri = resolveManifestAssetStorageUri({
       assetBaseStorageUri,
       assetPath: downloadPath,
@@ -223,11 +228,6 @@ async function fetchAssetBytes(
 
     if (compressedBytes) {
       // Only the bytes deploy uploaded reach the Brotli decoder.
-      if (!isContentAddressedAssetFileHash(asset.downloadFileHash)) {
-        throw new Error(
-          `Asset ${assetPath} has no download hash for its compressed object`,
-        );
-      }
       verifyAssetBytes(
         compressedBytes,
         asset.downloadFileHash,
