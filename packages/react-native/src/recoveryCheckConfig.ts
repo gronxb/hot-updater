@@ -34,6 +34,14 @@ const write = (config: RecoveryCheckConfig) => {
 };
 
 /**
+ * The headers as the request sent them: `Headers` lowercases names and
+ * joins two spellings of one name, as the catalog request did, so native
+ * repeats the same values instead of picking one of the spellings.
+ */
+const sentHeaders = (headers: Record<string, string> | undefined) =>
+  Object.fromEntries(new Headers(headers).entries());
+
+/**
  * Saves the request of an update check the server answered: the server it
  * resolved, its headers and timeout, and its update strategy, which only a
  * check knows. Only answered checks save it, so native always repeats a
@@ -53,7 +61,7 @@ export const saveRecoveryCheckConfig = (input: {
   write({
     version: 1,
     baseURL: input.baseURL,
-    requestHeaders: { ...input.requestHeaders },
+    requestHeaders: sentHeaders(input.requestHeaders),
     requestTimeoutMs: input.requestTimeout ?? DEFAULT_REQUEST_TIMEOUT_MS,
     updateStrategy: input.updateStrategy,
   });

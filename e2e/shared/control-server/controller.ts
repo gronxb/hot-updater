@@ -654,6 +654,60 @@ async function waitForArtifactRelease() {
 let bootstrapJobId: string | null = null;
 let androidLaunchLogMarker: string | null = null;
 
+/**
+ * The iOS launch's post-content crash line, read from launch time: the
+ * simulator keeps a JavaScript log line only for a stream that reads it, and
+ * a slow run can reach the delayed fatal before the exit wait starts.
+ */
+type IosLaunchLogStream = {
+  readonly process: ReturnType<typeof spawn>;
+  output: string;
+  error: Error | undefined;
+};
+let iosLaunchLogStream: IosLaunchLogStream | null = null;
+
+function startIosLaunchLogStream(): IosLaunchLogStream {
+  const child = spawn(
+    "xcrun",
+    [
+      "simctl",
+      "spawn",
+      deviceId as string,
+      "log",
+      "stream",
+      "--level",
+      "debug",
+      "--style",
+      "compact",
+      "--predicate",
+      `eventMessage CONTAINS "${POST_CONTENT_CRASH_LOG_PREFIX}"`,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  const stream: IosLaunchLogStream = {
+    process: child,
+    output: "",
+    error: undefined,
+  };
+  child.on("error", (error) => {
+    stream.error = error;
+  });
+  child.stdout?.on("data", (chunk) => {
+    stream.output += chunk.toString();
+  });
+  child.stderr?.on("data", (chunk) => {
+    stream.output += chunk.toString();
+  });
+  return stream;
+}
+
+function stopIosLaunchLogStream() {
+  iosLaunchLogStream?.process.kill();
+  iosLaunchLogStream = null;
+}
+
+process.once("exit", stopIosLaunchLogStream);
+
 function throwIfAborted(signal?: AbortSignal) {
   signal?.throwIfAborted();
 }
@@ -5940,41 +5994,15 @@ async function waitForAppExit(
   if (!ios && !launchLogMarker) {
     throw new Error("Missing Android launch log marker");
   }
-  // iOS keeps a JavaScript log line only for a stream that reads it, so the
-  // stream starts with the wait: after the launch, before the delayed fatal.
-  let streamed = "";
-  let streamError: Error | undefined;
-  const stream = ios
-    ? spawn(
-        "xcrun",
-        [
-          "simctl",
-          "spawn",
-          deviceId as string,
-          "log",
-          "stream",
-          "--level",
-          "debug",
-          "--style",
-          "compact",
-          "--predicate",
-          `eventMessage CONTAINS "${POST_CONTENT_CRASH_LOG_PREFIX}"`,
-        ],
-        { stdio: ["ignore", "pipe", "pipe"] },
-      )
-    : null;
-  stream?.on("error", (error) => {
-    streamError = error;
-  });
-  stream?.stdout.on("data", (chunk) => {
-    streamed += chunk.toString();
-  });
-  stream?.stderr.on("data", (chunk) => {
-    streamed += chunk.toString();
-  });
+  // iOS reads the stream the launch started; a launch this server didn't
+  // prepare gets one from now.
+  if (ios && !iosLaunchLogStream) {
+    iosLaunchLogStream = startIosLaunchLogStream();
+  }
+  const stream = ios ? iosLaunchLogStream : null;
   const readLogs = () =>
-    ios
-      ? streamed
+    stream
+      ? stream.output
       : captureCommand(
           "adb",
           [
@@ -5998,7 +6026,7 @@ async function waitForAppExit(
   try {
     while (true) {
       throwIfAborted(signal);
-      if (streamError) throw streamError;
+      if (stream?.error) throw stream.error;
       logs = readLogs();
       state = advanceAppExitWait(state, {
         crashLogged: hasPostContentCrashAfterMarker(
@@ -6022,7 +6050,7 @@ async function waitForAppExit(
       await abortableSleep(APP_EXIT_PROBE_INTERVAL_MS, signal);
     }
   } finally {
-    stream?.kill();
+    if (stream) stopIosLaunchLogStream();
     writeResultDiagnosticFile(logPath, logs);
   }
   throw createEndpointError(describeAppExitWaitFailure(state, input.bundleId), {
@@ -6147,6 +6175,9 @@ async function prepareAppLaunch() {
       { allowFailure: true },
     );
     await sleep(E2E_POLL_INTERVAL_MS);
+    // Only this launch's lines count, as Android's launch marker bounds its.
+    stopIosLaunchLogStream();
+    iosLaunchLogStream = startIosLaunchLogStream();
     return prepareE2eStartupCheck();
   }
 

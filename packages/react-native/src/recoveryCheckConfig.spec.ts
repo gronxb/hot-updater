@@ -32,6 +32,23 @@ describe("recovery check config", () => {
     });
   });
 
+  it("saves the headers as the request sent them", async () => {
+    const { saveRecoveryCheckConfig } = await import("./recoveryCheckConfig");
+    saveRecoveryCheckConfig({
+      baseURL: "https://updates.example.com",
+      // An init header and a check header that differ only in case.
+      requestHeaders: { Authorization: "Bearer a", authorization: "Bearer b" },
+      updateStrategy: "appVersion",
+    });
+    const sent = new Headers({
+      Authorization: "Bearer a",
+      authorization: "Bearer b",
+    });
+    expect(saved().requestHeaders).toEqual({
+      authorization: sent.get("authorization"),
+    });
+  });
+
   it("replaces the previous check's request, headers included", async () => {
     const { saveRecoveryCheckConfig } = await import("./recoveryCheckConfig");
     saveRecoveryCheckConfig({

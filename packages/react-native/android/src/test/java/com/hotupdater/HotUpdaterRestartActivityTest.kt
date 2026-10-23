@@ -4,66 +4,43 @@ import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class HotUpdaterRestartActivityTest {
-    /** A clock and a queue of posted checks, run in order. */
-    private class Scheduler {
+    /** A clock that only sleeping moves. */
+    private class Clock {
         var now = 0L
-        val posted = ArrayDeque<Pair<Long, () -> Unit>>()
+        var sleeps = 0
 
-        fun post(
-            delayMs: Long,
-            action: () -> Unit,
-        ) {
-            posted.addLast(delayMs to action)
-        }
-
-        fun runAll() {
-            while (posted.isNotEmpty()) {
-                val (delayMs, action) = posted.removeFirst()
-                now += delayMs
-                action()
-            }
+        fun sleep(ms: Long) {
+            now += ms
+            sleeps += 1
         }
     }
 
     @Test
     fun `relaunches at once when the old process is already gone`() {
-        val scheduler = Scheduler()
-        var relaunches = 0
+        val clock = Clock()
 
-        HotUpdaterRestartActivity.awaitProcessExit({ false }, scheduler::post, { scheduler.now }) { relaunches += 1 }
+        HotUpdaterRestartActivity.awaitProcessExit({ false }, clock::sleep, { clock.now })
 
-        assertEquals(1, relaunches)
-        assertEquals(0, scheduler.posted.size)
+        assertEquals(0, clock.sleeps)
     }
 
     @Test
-    fun `relaunches only once the old process is gone`() {
-        val scheduler = Scheduler()
+    fun `waits until the old process is gone`() {
+        val clock = Clock()
         var alive = 3
-        var relaunchedAt = -1L
 
-        HotUpdaterRestartActivity.awaitProcessExit({ alive-- > 0 }, scheduler::post, { scheduler.now }) {
-            relaunchedAt = scheduler.now
-        }
-        assertEquals(-1L, relaunchedAt)
+        HotUpdaterRestartActivity.awaitProcessExit({ alive-- > 0 }, clock::sleep, { clock.now })
 
-        scheduler.runAll()
-        assertEquals(75L, relaunchedAt)
+        assertEquals(3, clock.sleeps)
+        assertEquals(75L, clock.now)
     }
 
     @Test
     fun `relaunches anyway when the old process outlives the wait`() {
-        val scheduler = Scheduler()
-        var relaunches = 0
-        var relaunchedAt = -1L
+        val clock = Clock()
 
-        HotUpdaterRestartActivity.awaitProcessExit({ true }, scheduler::post, { scheduler.now }) {
-            relaunches += 1
-            relaunchedAt = scheduler.now
-        }
-        scheduler.runAll()
+        HotUpdaterRestartActivity.awaitProcessExit({ true }, clock::sleep, { clock.now })
 
-        assertEquals(1, relaunches)
-        assertEquals(HotUpdaterRestartActivity.PROCESS_EXIT_TIMEOUT_MS, relaunchedAt)
+        assertEquals(HotUpdaterRestartActivity.PROCESS_EXIT_TIMEOUT_MS, clock.now)
     }
 }

@@ -33,22 +33,22 @@ class HotUpdaterRestartActivity : Activity() {
 
         // The kill is asynchronous. An activity started while the system still
         // has the old process registered is handed to it and lost with it
-        // ("removed with pending start"), which leaves the app closed. This
-        // activity stays shown meanwhile, so the start is still allowed.
-        val handler = Handler(Looper.getMainLooper())
+        // ("removed with pending start"), which leaves the app closed. The wait
+        // stays in onCreate: a Theme.NoDisplay activity must finish before
+        // onResume, and once finished this process may no longer start one.
         awaitProcessExit(
             isAlive = { targetPid > 0 && isProcessRegistered(targetPid) },
-            post = { delayMs, action -> handler.postDelayed(action, delayMs) },
+            sleep = { Thread.sleep(it) },
             now = SystemClock::uptimeMillis,
-        ) {
-            val options = ActivityOptions.makeCustomAnimation(this, 0, 0)
-            startActivity(launchIntent, options.toBundle())
-            finishWithoutAnimation()
+        )
 
-            // Keep the trampoline alive just long enough to let Android settle the relaunch,
-            // then tear down the helper process as well.
-            handler.postDelayed({ killCurrentProcess() }, PROCESS_KILL_DELAY_MS)
-        }
+        val options = ActivityOptions.makeCustomAnimation(this, 0, 0)
+        startActivity(launchIntent, options.toBundle())
+        finishWithoutAnimation()
+
+        // Keep the trampoline alive just long enough to let Android settle the relaunch,
+        // then tear down the helper process as well.
+        Handler(Looper.getMainLooper()).postDelayed({ killCurrentProcess() }, PROCESS_KILL_DELAY_MS)
     }
 
     private fun isProcessRegistered(pid: Int): Boolean {
@@ -85,26 +85,19 @@ class HotUpdaterRestartActivity : Activity() {
         const val EXTRA_TARGET_PID = "hot_updater.target_pid"
 
         /**
-         * Runs [then] once [isAlive] is false, checking again every
-         * [PROCESS_EXIT_POLL_MS] through [post], and at the latest once
+         * Returns once [isAlive] is false, checking every
+         * [PROCESS_EXIT_POLL_MS], and at the latest once
          * [PROCESS_EXIT_TIMEOUT_MS] passed. At once when it is already gone.
          */
         internal fun awaitProcessExit(
             isAlive: () -> Boolean,
-            post: (Long, () -> Unit) -> Unit,
+            sleep: (Long) -> Unit,
             now: () -> Long,
-            then: () -> Unit,
         ) {
             val deadline = now() + PROCESS_EXIT_TIMEOUT_MS
-
-            fun check() {
-                if (!isAlive() || now() >= deadline) {
-                    then()
-                    return
-                }
-                post(PROCESS_EXIT_POLL_MS) { check() }
+            while (isAlive() && now() < deadline) {
+                sleep(PROCESS_EXIT_POLL_MS)
             }
-            check()
         }
     }
 }
