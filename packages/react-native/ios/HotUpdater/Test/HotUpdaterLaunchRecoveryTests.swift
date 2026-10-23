@@ -2205,6 +2205,8 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(!FileManager.default.fileExists(atPath: markerURL.path))
         #expect(sink.bundleIds[HotUpdaterRecoveryCoordinator.mainSlot] == .some(nil))
         #expect(sink.flags[HotUpdaterRecoveryCoordinator.mainSlot] == false)
+        // Nor does a signal: the slot names no marker for the handler to write.
+        #expect(sink.paths[HotUpdaterRecoveryCoordinator.mainSlot] == "")
     }
 
     /// A main registered by its module but never launched in this process

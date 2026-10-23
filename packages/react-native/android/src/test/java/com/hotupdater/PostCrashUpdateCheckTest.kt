@@ -165,7 +165,26 @@ class PostCrashUpdateCheckTest {
     @Test
     fun `a debug build records no crash of main's after its monitoring ended`() {
         val context = InstanceTestContext(temporaryFolder.root)
+        val slots = mutableListOf<String>()
+        HotUpdaterRecoveryManager.nativeRecovery =
+            object : HotUpdaterNativeRecovery {
+                override fun updateSlot(
+                    slot: Int,
+                    crashMarkerPath: String,
+                    bundleId: String?,
+                    shouldRollback: Boolean,
+                    writesWhenVerified: Boolean,
+                ) {
+                    slots += "slot $slot rollback=$shouldRollback writes=$writesWhenVerified"
+                }
+
+                override fun attributeCrash(slot: Int) = Unit
+
+                override fun clearCrashAttribution() = Unit
+            }
         verifiedMainLaunch(context, "main-bundle", recordsCrashesAfterContent = false)
+        // Nor does a signal: main's native slot doesn't write once verified.
+        assertEquals("slot 0 rollback=false writes=false", slots.last())
         val forwarded = mutableListOf<Exception>()
         val error = RuntimeException("RedBox")
 

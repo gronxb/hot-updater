@@ -1290,8 +1290,16 @@ final class HotUpdaterRecoveryCoordinator {
         let flag = launch.crashCountsAgainstLaunch
         slotFlags[slot] = flag
         // Main's slot writes on any signal, and keeps naming its bundle
-        // after its watch ended.
-        sink.updateSlot(slot, markerPath: launch.markerURL.path, bundleId: launch.markerBundleId, shouldRollback: flag)
+        // after its watch ended. A development build's names no marker once
+        // the watch ended, so a signal then records nothing either: an empty
+        // path is a slot the signal handler skips.
+        let recordsNow = !launch.isMain || launch.isMonitoring || launch.recordsAfterWatch
+        sink.updateSlot(
+            slot,
+            markerPath: recordsNow ? launch.markerURL.path : "",
+            bundleId: launch.markerBundleId,
+            shouldRollback: flag
+        )
         if !launch.hasMarkerDirectory {
             try? FileManager.default.createDirectory(
                 at: launch.markerURL.deletingLastPathComponent(),

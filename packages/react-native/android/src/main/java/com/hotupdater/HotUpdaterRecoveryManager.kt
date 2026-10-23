@@ -559,7 +559,9 @@ internal class HotUpdaterRecoveryManager(
             crashMarkerFile.absolutePath,
             launch?.bundleId,
             launch?.unverified == true || (charged && launch?.shouldRollback == true),
-            isMain,
+            // A debug build's main records no crash after its grace period,
+            // a signal included.
+            isMain && recordsCrashesAfterContent,
         )
     }
 
