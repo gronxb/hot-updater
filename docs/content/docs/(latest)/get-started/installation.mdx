@@ -23,9 +23,8 @@ reproduce the installed versions.
 - An existing React Native app using the React Native CLI, Rock or Expo.
 - Run package commands in the app's workspace directory, using its package
   manager and lockfile.
-- The CLI requires Node.js 20.19+. For generated infrastructure/client-key
-  helpers, use Node.js 22.18+ or Node.js 24+; a separate helper runtime can coexist
-  with your app toolchain.
+- The CLI and its generated infrastructure/client-key helpers require
+  Node.js 22.23.4+, 24.22.1+, or 26.12.1+, the releases with the fix for CVE-2026-111497.
 - To complete a device test, have the iOS or Android native toolchain installed.
   OTA testing needs a native Release build with Hot Updater's native module.
 

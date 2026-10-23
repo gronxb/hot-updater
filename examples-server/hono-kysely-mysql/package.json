@@ -2,7 +2,7 @@
   "name": "@examples-server/hono-kysely-mysql",
   "private": true,
   "engines": {
-    "node": ">=20.19.0"
+    "node": "^22.23.4 || ^24.22.1 || >=26.12.1"
   },
   "type": "module",
   "scripts": {
