@@ -1,5 +1,5 @@
 ---
-"@hot-updater/react-native": minor
+"@hot-updater/react-native": patch
 ---
 
 After a crash that doesn't roll back, check for a fix natively, so a bundle that crashes in its own update flow can be replaced (#1619).
