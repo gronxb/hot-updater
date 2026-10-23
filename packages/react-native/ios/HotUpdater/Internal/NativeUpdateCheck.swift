@@ -1607,7 +1607,7 @@ final class NativeUpdateChecker {
     }
 
     /// Header names lowercased, as `new Headers(requestHeaders)` stores them.
-    private static func normalizedHeaders(_ headers: [String: String]) -> [String: String] {
+    static func normalizedHeaders(_ headers: [String: String]) -> [String: String] {
         var normalized = [String: String]()
         for (name, value) in headers {
             normalized[name.lowercased()] = value

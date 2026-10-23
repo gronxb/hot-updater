@@ -110,6 +110,23 @@ struct PostCrashUpdateCheckTests {
         #expect(read.channel == nil)
     }
 
+    /// Two spellings of one header keep the value the request sent.
+    @Test
+    func aNativeRequestKeepsItsHeadersAsSent() throws {
+        let request = NativeCheckRequest(
+            baseURL: "https://updates.example.com/api",
+            updateStrategy: .appVersion,
+            requestHeaders: ["Authorization": "Bearer a", "authorization": "Bearer b", "X-Api-Key": "k"]
+        )
+        let sent = NativeUpdateChecker.normalizedHeaders(request.requestHeaders)
+
+        let json = try #require(HotUpdaterRecoveryCheckConfig.json(for: request))
+        let read = try #require(HotUpdaterRecoveryCheckConfig(json: json)).request
+
+        #expect(read.requestHeaders == sent)
+        #expect(read.requestHeaders.keys.sorted() == ["authorization", "x-api-key"])
+    }
+
     @Test(arguments: [false, true])
     func consumingACrashMarkerWithoutRollbackLeavesTheCheckPending(shouldRollback: Bool) throws {
         let scene = try CheckScene()

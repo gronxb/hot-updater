@@ -63,13 +63,15 @@ struct HotUpdaterRecoveryCheckConfig {
     }
 
     /// The record of `request`, as JavaScript writes it, for a native check of
-    /// main the server answered. Its channel is left out, as JavaScript
-    /// leaves it out: the check after a crash uses the device's own.
+    /// main the server answered: its headers as the request sent them, so two
+    /// spellings of one name keep the value that went out. Its channel is left
+    /// out, as JavaScript leaves it out: the check after a crash uses the
+    /// device's own.
     static func json(for request: NativeCheckRequest) -> String? {
         let object: [String: Any] = [
             "version": version,
             "baseURL": request.baseURL,
-            "requestHeaders": request.requestHeaders,
+            "requestHeaders": NativeUpdateChecker.normalizedHeaders(request.requestHeaders),
             "requestTimeoutMs": request.requestTimeout * 1000,
             "updateStrategy": request.updateStrategy.name,
         ]

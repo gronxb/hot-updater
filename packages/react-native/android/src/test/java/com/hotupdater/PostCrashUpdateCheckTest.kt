@@ -254,6 +254,21 @@ class PostCrashUpdateCheckTest {
     }
 
     @Test
+    fun `a native request keeps its headers as sent`() {
+        val request =
+            NativeCheckRequest(
+                baseURL = BASE_URL,
+                updateStrategy = HotUpdaterUpdateStrategy.APP_VERSION,
+                requestHeaders = linkedMapOf("Authorization" to "Bearer a", "authorization" to "Bearer b", "X-Api-Key" to "k"),
+            )
+
+        val read = RecoveryCheckConfig.parse(RecoveryCheckConfig.of(request).toJson())!!.toRequest()
+
+        // OkHttp's `header` keeps the last value of a name.
+        assertEquals(mapOf("authorization" to "Bearer b", "x-api-key" to "k"), read.requestHeaders)
+    }
+
+    @Test
     fun `main keeps a native request the server answered, a debug build or named instance does not`() {
         val request = NativeCheckRequest(baseURL = BASE_URL, updateStrategy = HotUpdaterUpdateStrategy.APP_VERSION)
         val context = InstanceTestContext(temporaryFolder.newFolder())
