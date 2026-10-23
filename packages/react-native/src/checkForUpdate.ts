@@ -183,12 +183,6 @@ async function checkForReleaseCatalogUpdate(input: {
 }): Promise<CheckForUpdateResult | null> {
   const { options } = input;
   const session = await options.client.createSession();
-  saveRecoveryCheckConfig({
-    baseURL: session.baseURL,
-    requestHeaders: options.requestHeaders,
-    requestTimeout: options.requestTimeout,
-    updateStrategy: options.updateStrategy,
-  });
   const channelKey = encodeChannelKey(input.targetChannel);
   const strategy =
     options.updateStrategy === "appVersion" ? "APP_VERSION" : "FINGERPRINT";
@@ -199,6 +193,13 @@ async function checkForReleaseCatalogUpdate(input: {
   if (strategy === "FINGERPRINT" && !input.fingerprintHash) {
     throw new HotUpdaterError("Fingerprint hash is required");
   }
+  // Only a request this device can make replaces the saved one.
+  saveRecoveryCheckConfig({
+    baseURL: session.baseURL,
+    requestHeaders: options.requestHeaders,
+    requestTimeout: options.requestTimeout,
+    updateStrategy: options.updateStrategy,
+  });
   const expectedScope: ExpectedReleaseCatalogScope =
     strategy === "APP_VERSION"
       ? {

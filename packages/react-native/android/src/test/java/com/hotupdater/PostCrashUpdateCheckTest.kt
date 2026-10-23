@@ -1,5 +1,7 @@
 package com.hotupdater
 
+import android.app.Activity
+import android.app.Application
 import com.facebook.react.bridge.JSExceptionHandler
 import org.json.JSONObject
 import org.junit.After
@@ -224,6 +226,39 @@ class PostCrashUpdateCheckTest {
         // A signal writes main's marker with its bundle, never asking to roll back.
         assertEquals("slot 0 bundle=main-bundle rollback=false writes=true", slots.last())
         assertEquals(0, mainThread.waiting)
+    }
+
+    // The gate of the check: the first launch that shows UI.
+
+    @Test
+    fun `the check's gate counts an activity started before it, without the process lifecycle`() {
+        val application = GateApplication()
+        val attribution = HotUpdaterRecoveryAttribution(isStarted = { true })
+        // Handed over as the context, before the gate followed activities.
+        attribution.noteActivity(Activity())
+        var runs = 0
+
+        HotUpdaterImpl
+            .postCrashUiGate(application, attribution, processLifecycleStarted = { false }, mainThread = FakeMainThread())
+            .runWhenActivityStarted { runs += 1 }
+
+        assertEquals(1, runs)
+    }
+
+    @Test
+    fun `the check's gate waits for an activity when none is started`() {
+        val application = GateApplication()
+        val attribution = HotUpdaterRecoveryAttribution(isStarted = { false })
+        attribution.noteActivity(Activity())
+        var runs = 0
+
+        HotUpdaterImpl
+            .postCrashUiGate(application, attribution, processLifecycleStarted = { false }, mainThread = FakeMainThread())
+            .runWhenActivityStarted { runs += 1 }
+        assertEquals(0, runs)
+
+        application.startActivity()
+        assertEquals(1, runs)
     }
 
     // The flag the next launch's preparation sets.
@@ -526,6 +561,16 @@ class PostCrashUpdateCheckTest {
         // The error hooks' retry and the grace period.
         mainThread.runAll()
         return mainThread
+    }
+
+    private class GateApplication : Application() {
+        private val callbacks = mutableListOf<ActivityLifecycleCallbacks>()
+
+        override fun registerActivityLifecycleCallbacks(callback: ActivityLifecycleCallbacks) {
+            callbacks += callback
+        }
+
+        fun startActivity() = callbacks.forEach { it.onActivityStarted(Activity()) }
     }
 
     private fun storage(

@@ -235,6 +235,7 @@ describe("checkForUpdate Release catalog protocol", () => {
   it("saves the request native checks with after a crash, before checking", async () => {
     const { checkForUpdate } = await import("./checkForUpdate");
     const { client, fetchReleaseCatalog } = createClient();
+    mocks.getFingerprintHash.mockReturnValueOnce("fingerprint-hash");
     mocks.setStorageItem.mockImplementationOnce(() => {
       expect(fetchReleaseCatalog).not.toHaveBeenCalled();
     });
@@ -254,6 +255,25 @@ describe("checkForUpdate Release catalog protocol", () => {
         requestTimeoutMs: 8000,
         updateStrategy: "fingerprint",
       }),
+    );
+  });
+
+  it("keeps the saved recovery request when a check can't be made", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client, fetchReleaseCatalog } = createClient();
+    const onError = vi.fn();
+    // A fingerprint check on a build without a fingerprint never reaches the
+    // server, and neither would native's repeat of it.
+    await checkForUpdate({
+      emit,
+      client,
+      onError,
+      updateStrategy: "fingerprint",
+    }).catch(() => null);
+    expect(fetchReleaseCatalog).not.toHaveBeenCalled();
+    expect(mocks.setStorageItem).not.toHaveBeenCalledWith(
+      "hot-updater/recovery-check-config",
+      expect.anything(),
     );
   });
 

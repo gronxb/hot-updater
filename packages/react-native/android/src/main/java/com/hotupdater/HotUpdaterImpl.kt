@@ -137,15 +137,13 @@ class HotUpdaterImpl {
      * share, once a started activity of any kind shows UI: a headless launch,
      * such as a background push, leaves the check for a launch the user sees.
      * Its gate is created only when a check is due, so a process without one
-     * follows no activities for it.
+     * follows no activities for it ([postCrashUiGate]).
      */
     private fun createPostCrashUpdateCheck(storage: KeyValueStorageService): PostCrashUpdateCheck =
         PostCrashUpdateCheck(
             getItem = storage::getItem,
             setItem = storage::setItem,
-            whenUiShown = { action ->
-                ActivityStartGate(context as? Application, showsReactView = { true }).runWhenActivityStarted(action)
-            },
+            whenUiShown = { action -> postCrashUiGate(context as? Application).runWhenActivityStarted(action) },
             check = { request ->
                 NativeUpdateCheck.checker(context, HotUpdaterInstanceEnvironment.MAIN_NAME) { this }.checkForUpdate(request)
             },
@@ -230,6 +228,26 @@ class HotUpdaterImpl {
                 beforeCheckingViews = HotUpdaterRecoveryManager::resolveHeldContent,
             )
         }
+
+        /**
+         * The gate of the check after a crash: any started activity counts.
+         * Created that late, it misses the start of an activity already
+         * shown, so it also counts the ones the process has seen started;
+         * an app without the ProcessLifecycleOwner initializer would
+         * otherwise wait for another activity to start.
+         */
+        internal fun postCrashUiGate(
+            application: Application?,
+            attribution: HotUpdaterRecoveryAttribution = HotUpdaterRecoveryAttribution.shared,
+            processLifecycleStarted: () -> Boolean = ::hasStartedActivity,
+            mainThread: HotUpdaterMainThread = HotUpdaterMainThread.android,
+        ): ActivityStartGate =
+            ActivityStartGate(
+                application,
+                processHasStartedActivity = { processLifecycleStarted() || attribution.startedActivities().isNotEmpty() },
+                showsReactView = { true },
+                mainThread = mainThread,
+            )
 
         /**
          * The activities already started that a gate created now checks for
