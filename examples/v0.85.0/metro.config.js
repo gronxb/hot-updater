@@ -1,8 +1,7 @@
 const {writeE2eBuildConfig} = require("@examples/e2e-app/build-config");
-const {
-  E2E_APP_DIR,
-  withE2eAppResolveRequest,
-} = require("@examples/e2e-app/metro");
+// makeMetroConfig watches the workspace packages the app depends on, this one
+// included.
+const { withE2eAppResolveRequest } = require("@examples/e2e-app/metro");
 const path = require("path");
 const {makeMetroConfig} = require('@rnx-kit/metro-config');
 const MetroSymlinksResolver = require("@rnx-kit/metro-resolver-symlinks");
@@ -21,7 +20,6 @@ const pinnedRuntimeModules = {
 };
 
 module.exports = makeMetroConfig({
-  watchFolders: [E2E_APP_DIR],
   resolver: {
     extraNodeModules: {
       react: pinnedRuntimeModules.react,

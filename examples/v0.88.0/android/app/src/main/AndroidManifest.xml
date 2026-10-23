@@ -1,7 +1,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- E2E: HeadlessTaskService holds a wake lock while the headless task runs. -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
 
+    <!-- E2E: the Release app talks to the local provider over cleartext HTTP. -->
     <application
       android:name=".MainApplication"
       android:label="@string/app_name"
@@ -9,7 +12,8 @@
       android:roundIcon="@mipmap/ic_launcher_round"
       android:allowBackup="false"
       android:theme="@style/AppTheme"
-      android:usesCleartextTraffic="${usesCleartextTraffic}"
+      android:networkSecurityConfig="@xml/network_security_config"
+      android:usesCleartextTraffic="true"
       android:supportsRtl="true">
       <activity
         android:name=".MainActivity"
@@ -22,6 +26,16 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
+        <!-- E2E: the scenarios drive the app through hotupdaterexample:// links. -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="hotupdaterexample" />
+        </intent-filter>
       </activity>
+      <!-- E2E: a launch without UI, as a data-only push starts one. -->
+      <receiver android:name=".HeadlessTaskReceiver" android:exported="true" />
+      <service android:name=".HeadlessTaskService" android:exported="false" />
     </application>
 </manifest>

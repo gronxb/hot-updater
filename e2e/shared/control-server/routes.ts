@@ -278,7 +278,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
     archiveRequests?: number;
     archiveResumes?: number;
     currentBundleId?: string;
-    fileRequests?: number;
+    fileRequests?: number | "changed-assets";
     filesRequests?: number;
     maxRequestsPerAsset?: number;
     minNetworkAssets?: number;
@@ -288,7 +288,7 @@ app.post("/e2e/assert-bundle-artifact-transfers", async (c) => {
   };
   const counts = [
     payload.archiveRequests,
-    payload.fileRequests,
+    payload.fileRequests === "changed-assets" ? 0 : payload.fileRequests,
     payload.patchRequests,
   ];
   if (
