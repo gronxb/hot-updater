@@ -1449,6 +1449,9 @@ final class HotUpdaterRecoveryHub: NSObject {
     )
     /// The launch each runtime runs, by its module.
     private let runtimeLaunches = HotUpdaterRuntimeLaunches()
+    /// Content that appeared in the background, until the foreground.
+    private let backgroundContent = HotUpdaterBackgroundContent()
+    private var backgroundContentObservers: [NSObjectProtocol] = []
 
     override init() {
         super.init()
@@ -1778,6 +1781,17 @@ final class HotUpdaterRecoveryHub: NSObject {
 
     @objc private func handleContentDidAppear(_ notification: Notification) {
         let view = notification.object as AnyObject?
+        // React Native posts content on the main thread, where UIApplication
+        // is read. Content the app shows in the background verifies nothing
+        // until the app comes to the foreground (`HotUpdaterBackgroundContent`).
+        if Thread.isMainThread, UIApplication.shared.applicationState == .background {
+            holdUntilForeground(view)
+            return
+        }
+        contentAppeared(view)
+    }
+
+    private func contentAppeared(_ view: AnyObject?) {
         let owner = owner(of: view)
         // A view no runtime claims is main's, as it always was, unless a
         // named runtime that has no module yet may have shown it.
@@ -1810,6 +1824,24 @@ final class HotUpdaterRecoveryHub: NSObject {
         manager(named: verified.launch.name)?.contentAppeared(generation: verified.generation)
         if verified.launch.name != mainName {
             releaseHeldContent()
+        }
+    }
+
+    /// Main thread only.
+    private func holdUntilForeground(_ view: AnyObject?) {
+        guard backgroundContent.hold(view) else { return }
+        backgroundContentObservers = [
+            UIApplication.willEnterForegroundNotification,
+            UIApplication.didBecomeActiveNotification,
+        ].map { name in
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                guard let self else { return }
+                self.backgroundContentObservers.forEach { NotificationCenter.default.removeObserver($0) }
+                self.backgroundContentObservers = []
+                for view in self.backgroundContent.takeAll() {
+                    self.contentAppeared(view)
+                }
+            }
         }
     }
 

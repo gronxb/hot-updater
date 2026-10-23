@@ -1586,3 +1586,40 @@ final class HotUpdaterRuntimeLaunches {
     }
 }
 
+/// First content that appeared while the app was in the background, such as
+/// the root view a silent push's launch creates. Nobody sees it, so it
+/// verifies no launch until the app comes to the foreground: the old
+/// architecture posts content for a root view even when the headless App
+/// renders nothing, which would otherwise verify a staged bundle no one saw.
+/// A view torn down before then verifies nothing.
+final class HotUpdaterBackgroundContent {
+    private struct Entry {
+        weak var view: AnyObject?
+        let hasView: Bool
+    }
+
+    private let lock = NSLock()
+    private var entries: [Entry] = []
+
+    /// Holds `view`'s content for the foreground. Returns true for the first
+    /// one held, when the caller starts waiting for the foreground.
+    func hold(_ view: AnyObject?) -> Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        entries.append(Entry(view: view, hasView: view != nil))
+        return entries.count == 1
+    }
+
+    /// The content held, once: the views still alive, and nil for content
+    /// that came without a view.
+    func takeAll() -> [AnyObject?] {
+        lock.lock()
+        let taken = entries
+        entries = []
+        lock.unlock()
+        return taken.compactMap { entry -> AnyObject?? in
+            if !entry.hasView { return .some(nil) }
+            return entry.view.map { .some($0) }
+        }
+    }
+}

@@ -2225,6 +2225,36 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(markers(coordinator).isEmpty)
     }
 
+    // MARK: - Content in the background
+
+    /// Content shown in the background is held for the foreground once, a
+    /// view torn down before then verifies nothing, and content without a
+    /// view is still main's.
+    @Test
+    func backgroundContentIsHeldForTheForegroundOnce() {
+        let content = HotUpdaterBackgroundContent()
+        var kept: NSObject? = NSObject()
+        var torn: NSObject? = NSObject()
+
+        #expect(content.hold(kept))
+        #expect(!content.hold(torn))
+        #expect(!content.hold(nil))
+        torn = nil
+
+        do {
+            let taken = content.takeAll()
+            #expect(taken.count == 2)
+            #expect(taken.first.flatMap { $0 } === kept)
+            #expect(taken.last.map { $0 == nil } == true)
+        }
+        #expect(content.takeAll().isEmpty)
+        // Held again after the foreground took it: the caller waits anew.
+        #expect(content.hold(kept))
+        kept = nil
+        #expect(content.takeAll().isEmpty)
+        _ = torn
+    }
+
     // MARK: - Sweeps
 
     @Test(arguments: ["main", "widget"])
