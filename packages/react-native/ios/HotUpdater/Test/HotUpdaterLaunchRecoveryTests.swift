@@ -2175,6 +2175,38 @@ struct HotUpdaterLaunchRecoveryTests {
         #expect(!FileManager.default.fileExists(atPath: scene.markerURL(Self.widget).path))
     }
 
+    /// A development build records no crash of main's after its watch, as
+    /// before: a RedBox there is no reason to check for a fix. Its slot keeps
+    /// naming no bundle, as when the watch ended.
+    @Test(arguments: SessionCrash.allCases)
+    func aDevelopmentBuildRecordsNoCrashAfterMainsWatch(crash: SessionCrash) throws {
+        let directory = try makeTemporaryDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let markerURL = directory.appendingPathComponent("main.json")
+        let sink = RecordingSlotSink()
+        let coordinator = HotUpdaterRecoveryCoordinator(sink: sink, recordsCrashesAfterWatch: false)
+        coordinator.register(name: Self.main, markerURL: markerURL, storage: NoStorage())
+        let generation = coordinator.startMonitoring(name: Self.main, bundleId: "main-next", shouldRollback: false)
+        #expect(coordinator.contentAppeared(owner: nil) != nil)
+        coordinator.finishMonitoring(name: Self.main, generation: generation)
+
+        switch crash {
+        case .mainFatal:
+            coordinator.chargeFatal(owner: Self.main)
+        case .unattributedFatal:
+            coordinator.chargeFatal(owner: nil)
+        case .uncaughtException:
+            coordinator.chargeUncaughtException()
+        case .uncaughtExceptionAfterMainFatal:
+            coordinator.chargeFatal(owner: Self.main)
+            coordinator.chargeUncaughtException()
+        }
+
+        #expect(!FileManager.default.fileExists(atPath: markerURL.path))
+        #expect(sink.bundleIds[HotUpdaterRecoveryCoordinator.mainSlot] == .some(nil))
+        #expect(sink.flags[HotUpdaterRecoveryCoordinator.mainSlot] == false)
+    }
+
     /// A main registered by its module but never launched in this process
     /// (a development server build beside a named instance) writes nothing.
     @Test

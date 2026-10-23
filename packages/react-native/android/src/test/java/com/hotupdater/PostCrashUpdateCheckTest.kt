@@ -161,6 +161,23 @@ class PostCrashUpdateCheckTest {
     }
 
     @Test
+    fun `a debug build records no crash of main's after its monitoring ended`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        verifiedMainLaunch(context, "main-bundle", recordsCrashesAfterContent = false)
+        val forwarded = mutableListOf<Exception>()
+        val error = RuntimeException("RedBox")
+
+        HotUpdaterRecoveryManager
+            .RecoveryJSExceptionHandler(JSExceptionHandler { forwarded += it }, { MAIN_SOURCE_URL })
+            .handleException(error)
+        HotUpdaterRecoveryManager.chargeUncaughtException(error)
+
+        // React Native still shows its RedBox.
+        assertSame(error, forwarded.single())
+        assertFalse(crashMarker(context, main).exists())
+    }
+
+    @Test
     fun `a named instance's fatal error after main's monitoring ended leaves main's marker alone`() {
         val context = InstanceTestContext(temporaryFolder.root)
         verifiedMainLaunch(context, "main-bundle")
@@ -236,6 +253,23 @@ class PostCrashUpdateCheckTest {
         mainImpl(context).getBundleIdForUpdateCheck()
 
         assertEquals("1", storage(context, main).getItem(PostCrashUpdateCheck.PENDING_KEY))
+    }
+
+    @Test
+    fun `a debug build's launch preparation sets no check flag`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        writeCrashMarker(context, main, "main-bundle", shouldRollback = false)
+        val check = RecordingCheck()
+
+        HotUpdaterImpl(
+            context,
+            main,
+            postCrashUpdateCheck = { storage -> check.create(storage::getItem, storage::setItem) },
+            isDevelopmentBuild = true,
+        ).getJSBundleFile()
+
+        assertFalse(crashMarker(context, main).exists())
+        assertNull(storage(context, main).getItem(PostCrashUpdateCheck.PENDING_KEY))
     }
 
     @Test
@@ -467,15 +501,21 @@ class PostCrashUpdateCheckTest {
         context: InstanceTestContext,
         check: RecordingCheck = RecordingCheck(),
     ): HotUpdaterImpl =
-        HotUpdaterImpl(context, main, postCrashUpdateCheck = { storage -> check.create(storage::getItem, storage::setItem) })
+        HotUpdaterImpl(
+            context,
+            main,
+            postCrashUpdateCheck = { storage -> check.create(storage::getItem, storage::setItem) },
+            isDevelopmentBuild = false,
+        )
 
     /** Main's launch of [bundleId], verified by its first content and past its grace period. */
     private fun verifiedMainLaunch(
         context: InstanceTestContext,
         bundleId: String?,
+        recordsCrashesAfterContent: Boolean = true,
     ): FakeMainThread {
         val mainThread = FakeMainThread()
-        HotUpdaterRecoveryManager(context, main, mainThread).startMonitoring(
+        HotUpdaterRecoveryManager(context, main, mainThread, recordsCrashesAfterContent).startMonitoring(
             bundleId = bundleId,
             shouldRollback = bundleId != null,
             onContentAppeared = {},

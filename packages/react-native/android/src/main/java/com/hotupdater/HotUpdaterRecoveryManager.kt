@@ -38,6 +38,9 @@ internal class HotUpdaterRecoveryManager(
     context: Context,
     environment: HotUpdaterInstanceEnvironment = HotUpdaterInstanceEnvironment.main,
     private val mainThread: HotUpdaterMainThread = HotUpdaterMainThread.android,
+    // Main keeps recording crashes after its grace period ([stopMonitoring]);
+    // a debug build doesn't, as a RedBox is no reason to check for a fix.
+    private val recordsCrashesAfterContent: Boolean = true,
 ) {
     private val appContext = context.applicationContext
     private val name = environment.name
@@ -270,7 +273,7 @@ internal class HotUpdaterRecoveryManager(
             recoveryRestartCallback = null
             runtimeActivityCallback = null
             chargedCallback = null
-            if (isMain && launchState.hasContentAppeared()) {
+            if (isMain && recordsCrashesAfterContent && launchState.hasContentAppeared()) {
                 // The hooks installed on main's host stay, and the native
                 // slot keeps the verified bundle.
                 Log.d(TAG, "Stopping crash monitoring for current launch of $name; later crashes are still recorded")

@@ -150,8 +150,19 @@ private func hotUpdaterGetMinBundleId() -> String {
     private let releaseCatalogCache: ReleaseCatalogCacheService
     private let keyValueStorage: KeyValueStorageService
     /// Main only: the native update check of the first launch with UI after
-    /// a crash.
+    /// a crash. None in a development build.
     private let postCrashUpdateCheck: HotUpdaterPostCrashUpdateCheck?
+
+    /// A development build, where a crash is a RedBox during development,
+    /// never a reason to check for a fix: main records no crash after its
+    /// watch and never checks after one.
+    static let isDevelopmentBuild: Bool = {
+        #if DEBUG
+        return true
+        #else
+        return false
+        #endif
+    }()
     // Read by native update checks on other threads while React Native sets it.
     private let launchSelectionLock = NSLock()
     private var launchSelectionValue: LaunchSelection?
@@ -285,7 +296,7 @@ private func hotUpdaterGetMinBundleId() -> String {
         self.recoveryManager = recoveryManager
         self.releaseCatalogCache = releaseCatalogCache
         self.keyValueStorage = keyValueStorage
-        self.postCrashUpdateCheck = environment.isMain
+        self.postCrashUpdateCheck = environment.isMain && !HotUpdaterImpl.isDevelopmentBuild
             ? HotUpdaterPostCrashUpdateCheck(
                 storage: keyValueStorage,
                 whenShown: HotUpdaterImpl.whenAppIsActive,
@@ -1099,8 +1110,9 @@ private func hotUpdaterGetMinBundleId() -> String {
         return selection
     }
 
-    /// This instance's crash marker; for main, any marker also leaves the
-    /// post-crash update check pending.
+    /// This instance's crash marker; for main outside a development build,
+    /// a marker that doesn't roll back also leaves the post-crash update
+    /// check pending.
     private func consumePendingCrashRecovery() -> PendingCrashRecovery? {
         guard let postCrashUpdateCheck else {
             return recoveryManager.consumePendingCrashRecovery()
@@ -1422,7 +1434,10 @@ private final class HotUpdaterSignalCrashSlots: HotUpdaterCrashSlotSink {
 final class HotUpdaterRecoveryHub: NSObject {
     static let shared = HotUpdaterRecoveryHub()
 
-    let coordinator = HotUpdaterRecoveryCoordinator(sink: HotUpdaterSignalCrashSlots())
+    let coordinator = HotUpdaterRecoveryCoordinator(
+        sink: HotUpdaterSignalCrashSlots(),
+        recordsCrashesAfterWatch: !HotUpdaterImpl.isDevelopmentBuild
+    )
     /// The launch each runtime runs, by its module.
     private let runtimeLaunches = HotUpdaterRuntimeLaunches()
 

@@ -98,7 +98,9 @@ The native check repeats your app's last update check: each check saves its
 server, headers, timeout, and update strategy on the device. A device that
 never checked, for example because the user hasn't accepted your privacy terms
 yet, sends no request. A launch that didn't crash sends
-none either. A launch without UI waits for the next launch that shows UI.
+none either. A launch without UI waits for the next launch that shows UI. A
+debug build never checks: a crash there is a development error, and its update
+checks save nothing.
 
 ## What happens during rollback?
 

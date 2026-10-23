@@ -146,17 +146,21 @@ final class HotUpdaterRecoveryCoordinator {
         /// The directory of `markerURL` was created.
         fileprivate var hasMarkerDirectory = false
 
+        /// Main only, outside development builds: a crash after its watch
+        /// ended still writes its marker (`recordsCrashesAfterWatch`).
+        fileprivate var recordsAfterWatch = false
+
         /// Whether a crash now writes this launch's marker: while it is
         /// watched, and for main for the rest of the process once it
         /// launched, so the next launch knows to check for a fix
         /// (`HotUpdaterPostCrashUpdateCheck`).
         fileprivate var recordsCrashes: Bool {
-            isMonitoring || (isMain && generation > 0)
+            isMonitoring || (recordsAfterWatch && generation > 0)
         }
         /// The bundle a marker of this launch names: main's selected bundle
         /// once its watch ended, which cleared `bundleId`.
         fileprivate var markerBundleId: String? {
-            isMain && !isMonitoring ? selectedBundleId : bundleId
+            recordsAfterWatch && !isMonitoring ? selectedBundleId : bundleId
         }
     }
 
@@ -267,9 +271,18 @@ final class HotUpdaterRecoveryCoordinator {
     /// verified and the next start would roll it back.
     static let heldContentBound: TimeInterval = 10
 
-    init(sink: HotUpdaterCrashSlotSink, now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime }) {
+    /// Main's crashes after its watch ended write its marker. A development
+    /// build turns this off: a RedBox is no reason to check for a fix.
+    private let recordsCrashesAfterWatch: Bool
+
+    init(
+        sink: HotUpdaterCrashSlotSink,
+        now: @escaping () -> TimeInterval = { ProcessInfo.processInfo.systemUptime },
+        recordsCrashesAfterWatch: Bool = true
+    ) {
         self.sink = sink
         self.now = now
+        self.recordsCrashesAfterWatch = recordsCrashesAfterWatch
     }
 
     // MARK: - Instances
@@ -283,6 +296,7 @@ final class HotUpdaterRecoveryCoordinator {
                 return launch
             }
             let launch = Launch(name: name, markerURL: markerURL, storage: storage)
+            launch.recordsAfterWatch = launch.isMain && recordsCrashesAfterWatch
             launches[name] = launch
             return launch
         }

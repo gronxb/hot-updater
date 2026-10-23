@@ -75,6 +75,9 @@ class HotUpdaterImpl {
      * by default one that waits for a started activity showing one of its views
      * @param postCrashUpdateCheck main's check after a crash, over its
      * key-value store; by default one with main's native checker
+     * @param isDevelopmentBuild a debug build, where a crash is a RedBox
+     * during development, never a reason to check for a fix: main records no
+     * crash after its grace period and has no check after a crash
      */
     internal constructor(
         context: Context,
@@ -83,6 +86,7 @@ class HotUpdaterImpl {
         environment: HotUpdaterInstanceEnvironment,
         activityStartGate: ActivityStartGate? = null,
         postCrashUpdateCheck: ((KeyValueStorageService) -> PostCrashUpdateCheck)? = null,
+        isDevelopmentBuild: Boolean = BuildConfig.DEBUG,
     ) {
         this.context = context.applicationContext
         // An activity started before this process followed activities is
@@ -91,14 +95,15 @@ class HotUpdaterImpl {
         this.environment = environment
         this.bundleStorage = bundleStorage
         this.preferences = preferences
-        this.recoveryManager = HotUpdaterRecoveryManager(this.context, environment)
+        this.recoveryManager =
+            HotUpdaterRecoveryManager(this.context, environment, recordsCrashesAfterContent = !isDevelopmentBuild)
         this.activityStartGate = activityStartGate ?: createActivityStartGate(this.context, environment)
         this.releaseCatalogCache =
             ReleaseCatalogCacheService(environment.releaseCatalogCacheDirectory(this.context))
         this.installIdentity = InstallIdentityService.create(this.context)
         this.keyValueStorage = KeyValueStorageService(environment.keyValueStorageFile(this.context))
         this.postCrashUpdateCheck =
-            if (environment.isMain) {
+            if (environment.isMain && !isDevelopmentBuild) {
                 (postCrashUpdateCheck ?: ::createPostCrashUpdateCheck)(keyValueStorage)
             } else {
                 null
@@ -116,6 +121,7 @@ class HotUpdaterImpl {
         environment: HotUpdaterInstanceEnvironment,
         activityStartGate: ActivityStartGate? = null,
         postCrashUpdateCheck: ((KeyValueStorageService) -> PostCrashUpdateCheck)? = null,
+        isDevelopmentBuild: Boolean = BuildConfig.DEBUG,
     ) : this(
         context = context,
         bundleStorage = createBundleStorage(context, environment),
@@ -123,6 +129,7 @@ class HotUpdaterImpl {
         environment = environment,
         activityStartGate = activityStartGate,
         postCrashUpdateCheck = postCrashUpdateCheck,
+        isDevelopmentBuild = isDevelopmentBuild,
     )
 
     /**
