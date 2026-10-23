@@ -23,6 +23,7 @@ import {
   trackOf,
 } from "../shared/targets.ts";
 import { startOwnedAgentDeviceDaemon } from "./agent-device-daemon.ts";
+import { assertAndroidPageSize } from "./android-page-size.ts";
 import { acquireAndroidReverses } from "./android-reverse.ts";
 import { collectAttemptEvidence } from "./attempt.ts";
 import type { MobileContext } from "./context.ts";
@@ -312,6 +313,8 @@ export async function runMobile(
   const reportPath = path.join(internalDir, "runner/report.json");
   try {
     await fs.access(context.appPath);
+    if (platform === "android")
+      await assertAndroidPageSize(options.target, deviceId, childEnv);
     daemon = await startOwnedAgentDeviceDaemon(childEnv, cancellation.signal);
     server = await startControlServer(platform, childEnv, {
       detached: true,

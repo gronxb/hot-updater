@@ -58,6 +58,12 @@ react {
 def enableProguardInReleaseBuilds = false
 
 /**
+ * E2E: `-PHOT_UPDATER_E2E_DEBUGGABLE=true` makes the Release app debuggable, so
+ * the scenarios can read its private files with run-as.
+ */
+def hotUpdaterE2eDebuggable = project.findProperty("HOT_UPDATER_E2E_DEBUGGABLE") == "true"
+
+/**
  * The preferred build flavor of JavaScriptCore (JSC)
  *
  * For example, to use the international variant, you can use:
@@ -99,6 +105,7 @@ android {
             // Caution! In production, you need to generate your own keystore file.
             // see https://reactnative.dev/docs/signed-apk-android.
             signingConfig signingConfigs.debug
+            debuggable hotUpdaterE2eDebuggable
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }

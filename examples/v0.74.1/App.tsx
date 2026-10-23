@@ -1,185 +1,24 @@
-/**
- * Sample React Native App
- * https://github.com/facebook/react-native
- *
- * @format
- */
+import React from "react";
+import { Image } from "react-native";
 
+import { E2eHotUpdaterApp } from "@examples/e2e-app";
 import {
-  HotUpdater,
-  insights,
-  useHotUpdaterStore,
-} from "@hot-updater/react-native";
-import React, { useEffect, useState } from "react";
-import {
-  Alert,
-  Button,
-  Image,
-  Modal,
-  SafeAreaView,
-  Text,
-  View,
-} from "react-native";
-import { proxy, useSnapshot } from "valtio";
+  E2E_SCENARIO_MARKER,
+  loadE2EDeployBundleAssets,
+  maybeCrashForE2E,
+} from "./src/e2eApp/patchSurface";
 
-const notify = proxy<{
-  status?: string;
-  fromBundleId?: string;
-  toBundleId?: string;
-}>({});
-
-export const extractFormatDateFromUUIDv7 = (uuid: string) => {
-  const timestampHex = uuid.split("-").join("").slice(0, 12);
-  const timestamp = Number.parseInt(timestampHex, 16);
-
-  const date = new Date(timestamp);
-  const year = date.getFullYear().toString().slice(2);
-  const month = (date.getMonth() + 1).toString().padStart(2, "0");
-  const day = date.getDate().toString().padStart(2, "0");
-  const hours = date.getHours().toString().padStart(2, "0");
-  const minutes = date.getMinutes().toString().padStart(2, "0");
-  const seconds = date.getSeconds().toString().padStart(2, "0");
-
-  return `${year}/${month}/${day} ${hours}:${minutes}:${seconds}`;
-};
-
-export const hotUpdater = HotUpdater.init({
-  baseURL: "http://localhost:3006/hot-updater",
-  plugins: [insights()],
-  onNotifyAppReady: (result) => {
-    notify.status = result.status;
-    if (result.status !== "UNCHANGED") {
-      notify.fromBundleId = result.fromBundleId;
-      notify.toBundleId = result.toBundleId;
-    }
-  },
-  onError: (error) => {
-    if (error instanceof Error) {
-      Alert.alert("Error", error.message);
-    } else {
-      Alert.alert("Error", "An unknown error occurred");
-    }
-  },
-});
+maybeCrashForE2E();
+loadE2EDeployBundleAssets();
+// Keep the same real image and font in native and OTA outputs for reuse QA.
+Image.resolveAssetSource(require("./src/test/builtin_reuse.ttf"));
+Image.resolveAssetSource(require("./src/test/builtin_reuse.png"));
+// A PNG the Android release build re-encodes (AAPT2 crunch), so its packaged
+// bytes differ from the OTA's while the image is the same.
+Image.resolveAssetSource(require("./src/test/builtin_reuse_uncrunched.png"));
 
 function App(): React.JSX.Element {
-  const state = useSnapshot(notify);
-  const [bundleId, setBundleId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const bundleId = hotUpdater.getBundleId();
-    setBundleId(bundleId);
-  }, []);
-
-  const progress = useHotUpdaterStore((state) => state.progress);
-  return (
-    <SafeAreaView>
-      <Text>Babel {hotUpdater.getBundleId()}</Text>
-      <Text>Channel "{hotUpdater.getChannel()}"</Text>
-      <Text>App Version "{hotUpdater.getAppVersion()}"</Text>
-
-      <Text>{extractFormatDateFromUUIDv7(hotUpdater.getBundleId())}</Text>
-      <Text
-        style={{
-          marginVertical: 20,
-          fontSize: 20,
-          fontWeight: "bold",
-          textAlign: "center",
-        }}
-      >
-        Hot Updater 0
-      </Text>
-
-      <Text
-        style={{
-          marginVertical: 20,
-          fontSize: 20,
-          fontWeight: "bold",
-          textAlign: "center",
-        }}
-      >
-        Update {Math.round(progress * 100)}%
-      </Text>
-      <Text
-        style={{
-          marginVertical: 20,
-          fontSize: 20,
-          fontWeight: "bold",
-          textAlign: "center",
-        }}
-      >
-        BundleId: {bundleId}
-      </Text>
-
-      <Text
-        style={{
-          marginVertical: 20,
-          fontSize: 20,
-          fontWeight: "bold",
-          textAlign: "center",
-        }}
-      >
-        Crash History:
-      </Text>
-      {hotUpdater.getCrashHistory().map((crash) => (
-        <Text
-          key={crash}
-          style={{
-            marginVertical: 20,
-            fontSize: 20,
-            fontWeight: "bold",
-            textAlign: "center",
-          }}
-        >
-          {crash}
-        </Text>
-      ))}
-
-      <Image
-        style={{
-          width: 100,
-          height: 100,
-        }}
-        // source={require("./src/logo.png")}
-        source={require("./src/test/_image.png")}
-      />
-
-      <Text>{JSON.stringify(state, null, 2)}</Text>
-
-      <Button title="Reload" onPress={() => hotUpdater.reload()} />
-      <Button
-        title="Clear Crash History"
-        onPress={() => hotUpdater.clearCrashHistory()}
-      />
-    </SafeAreaView>
-  );
+  return <E2eHotUpdaterApp scenarioMarker={E2E_SCENARIO_MARKER} />;
 }
 
-export default hotUpdater.wrap({
-  updateStrategy: "appVersion",
-  fallbackComponent: ({ progress, status }) => (
-    <Modal transparent visible={true}>
-      <View
-        style={{
-          flex: 1,
-          padding: 20,
-          borderRadius: 10,
-          justifyContent: "center",
-          alignItems: "center",
-          backgroundColor: "rgba(0, 0, 0, 0.5)",
-        }}
-      >
-        {/* You can put a splash image here. */}
-
-        <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-          {status === "UPDATING" ? "Updating..." : "Checking for Update..."}
-        </Text>
-        {progress > 0 ? (
-          <Text style={{ color: "white", fontSize: 20, fontWeight: "bold" }}>
-            {Math.round(progress * 100)}%
-          </Text>
-        ) : null}
-      </View>
-    </Modal>
-  ),
-})(App);
+export default App;

@@ -89,6 +89,22 @@ describe("E2E targets", () => {
       ).toContain(`android:scheme="${E2E_APP.urlScheme}"`);
     });
 
+    it("asks for 4 KB Android pages exactly when React Native predates 16 KB support", () => {
+      const appPackage = JSON.parse(read(`${target.appDir}/package.json`)) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+      const reactNative = {
+        ...appPackage.dependencies,
+        ...appPackage.devDependencies,
+      }["react-native"];
+      // React Native 0.77 is the first release whose native libraries load
+      // on a 16 KB page device without the compatibility dialog.
+      const minor = Number(/^\D*0\.(\d+)\./.exec(reactNative ?? "")?.[1]);
+      expect(minor).toBeGreaterThan(0);
+      expect(target.android.pageSize).toBe(minor < 77 ? 4096 : undefined);
+    });
+
     it("installs an iOS app with the shared bundle ID and URL scheme", () => {
       const projects = filesNamed(target.ios.projectDir, /^project\.pbxproj$/)
         .map(read)
