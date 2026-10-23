@@ -44,7 +44,7 @@ const mocks = vi.hoisted(() => {
     getCohort: vi.fn(() => "123"),
     getCrashHistory: vi.fn(() => []),
     getDefaultChannel: vi.fn(() => CHANNEL),
-    getFingerprintHash: vi.fn(() => null),
+    getFingerprintHash: vi.fn((): string | null => null),
     getInstallId: vi.fn(() => "install-id"),
     getMinBundleId: vi.fn(() => MINIMUM_RELEASE_ID),
     isChannelSwitched: vi.fn(() => false),
