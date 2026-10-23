@@ -215,8 +215,9 @@ async function checkForReleaseCatalogUpdate(input: {
     requestTimeout: options.requestTimeout,
     updateStrategy: options.updateStrategy,
   });
-  // The server answered, even with no catalog yet: only a request that
-  // reaches it replaces the saved one, so one that fails keeps the last.
+  if (catalog !== null) validateCatalog(catalog, expectedScope);
+  // The server answered with a valid catalog, or with none yet: only such a
+  // request replaces the saved one, so one that fails keeps the last.
   saveRecoveryCheckConfig({
     baseURL: session.baseURL,
     requestHeaders: options.requestHeaders,
@@ -225,7 +226,6 @@ async function checkForReleaseCatalogUpdate(input: {
   });
   // The server says this scope has no catalog yet: no update, not a failure.
   if (catalog === null) return null;
-  validateCatalog(catalog, expectedScope);
   const catalogId = catalog.catalogId;
   const scopeKey = catalog.scopeKey;
 

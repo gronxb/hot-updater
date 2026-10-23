@@ -240,13 +240,12 @@ describe("checkForUpdate Release catalog protocol", () => {
     async (_answer, catalog) => {
       const { checkForUpdate } = await import("./checkForUpdate");
       const { client, fetchReleaseCatalog } = createClient(catalog as never);
-      mocks.getFingerprintHash.mockReturnValueOnce("fingerprint-hash");
       await checkForUpdate({
         emit,
         client,
         requestHeaders: { "x-api-key": "key" },
         requestTimeout: 8000,
-        updateStrategy: "fingerprint",
+        updateStrategy: "appVersion",
       }).catch(() => null);
       expect(mocks.setStorageItem).toHaveBeenCalledWith(
         "hot-updater/recovery-check-config",
@@ -255,7 +254,7 @@ describe("checkForUpdate Release catalog protocol", () => {
           baseURL: "https://updates.example.com/api",
           requestHeaders: { "x-api-key": "key" },
           requestTimeoutMs: 8000,
-          updateStrategy: "fingerprint",
+          updateStrategy: "appVersion",
         }),
       );
       // Saved after the server answered.
@@ -278,6 +277,24 @@ describe("checkForUpdate Release catalog protocol", () => {
       updateStrategy: "fingerprint",
     }).catch(() => null);
     expect(fetchReleaseCatalog).not.toHaveBeenCalled();
+    expect(mocks.setStorageItem).not.toHaveBeenCalledWith(
+      "hot-updater/recovery-check-config",
+      expect.anything(),
+    );
+  });
+
+  it("keeps the saved recovery request when the catalog fails validation", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client, fetchReleaseCatalog } = createClient(
+      createCatalog({ scopeKey: "v1:app-version:ios:b3RoZXI" }),
+    );
+    await checkForUpdate({
+      emit,
+      client,
+      onError: vi.fn(),
+      updateStrategy: "appVersion",
+    }).catch(() => null);
+    expect(fetchReleaseCatalog).toHaveBeenCalledOnce();
     expect(mocks.setStorageItem).not.toHaveBeenCalledWith(
       "hot-updater/recovery-check-config",
       expect.anything(),

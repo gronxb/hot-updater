@@ -1238,7 +1238,8 @@ final class NativeUpdateChecker {
             expectedScope: expectedScope,
             options: options
         )
-        // The server answered, even with no catalog yet.
+        // The server answered with a valid catalog (checked as it was read),
+        // or with none yet.
         host.recordRecoveryRequest(options)
         // The server says this scope has no catalog yet: no update, not a failure.
         guard let catalog = answer else {

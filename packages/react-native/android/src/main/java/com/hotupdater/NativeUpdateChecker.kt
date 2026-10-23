@@ -575,13 +575,13 @@ internal class NativeUpdateChecker(
                 requestHeaders = options.requestHeaders,
                 requestTimeoutMillis = options.requestTimeoutMillis,
             )
-        // The server answered, even with no catalog yet.
+        if (answer != null && !ReleaseCatalogs.hasExpectedScope(answer.scopeKey, expectedScope)) {
+            throw InvalidUpdateResponseException("Received an invalid Release catalog")
+        }
+        // The server answered with a valid catalog, or with none yet.
         state.recordRecoveryRequest(options)
         // The server says this scope has no catalog yet: no update, not a failure.
         val catalog = answer ?: return null
-        if (!ReleaseCatalogs.hasExpectedScope(catalog.scopeKey, expectedScope)) {
-            throw InvalidUpdateResponseException("Received an invalid Release catalog")
-        }
         val catalogId = catalog.catalogId
         val scopeKey = catalog.scopeKey
 

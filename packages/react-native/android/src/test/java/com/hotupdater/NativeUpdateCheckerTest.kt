@@ -290,6 +290,18 @@ class NativeUpdateCheckerTest {
         }
 
     @Test
+    fun `a catalog of another scope is not kept for the check after a crash`() =
+        runBlocking {
+            val state = FakeState()
+            val otherScope = catalog(emptyList()).replace(SCOPE_KEY, "v1:app-version:android:b3RoZXI")
+            val transport = FakeTransport { UpdateCheckResponse(200, "", emptyMap(), otherScope) }
+            val checker = NativeUpdateChecker(state, transport)
+
+            assertTrue(runCatching { checker.checkForUpdate(OPTIONS) }.isFailure)
+            assertTrue(state.recoveryRequests.isEmpty())
+        }
+
+    @Test
     fun `no catalog for the scope is no update, reported as unchanged`() =
         runBlocking {
             val state = FakeState()
