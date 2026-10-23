@@ -7,11 +7,11 @@ const repoDir = path.resolve(import.meta.dirname, "../..");
 const appPath = path.join(repoDir, "examples/v0.85.0/App.tsx");
 const e2eAppIndexPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/index.tsx",
+  "examples/e2e-app/src/e2eApp/index.tsx",
 );
 const e2eAppShellPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/app-shell.tsx",
+  "examples/e2e-app/src/e2eApp/app-shell.tsx",
 );
 const e2eAppPatchSurfacePath = path.join(
   repoDir,
@@ -19,35 +19,35 @@ const e2eAppPatchSurfacePath = path.join(
 );
 const e2eAppRoutePathsPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/route-paths.ts",
+  "examples/e2e-app/src/e2eApp/route-paths.ts",
 );
 const e2eAppRoutesPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/routes.tsx",
+  "examples/e2e-app/src/e2eApp/routes.tsx",
 );
 const e2eAppRouteStackPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/route-stack.ts",
+  "examples/e2e-app/src/e2eApp/route-stack.ts",
 );
 const e2eAppNavigationControllerPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/navigation-controller.ts",
+  "examples/e2e-app/src/e2eApp/navigation-controller.ts",
 );
 const e2eAppScreensIndexPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens/index.ts",
+  "examples/e2e-app/src/e2eApp/screens/index.ts",
 );
 const e2eAppTopLevelScreensPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens.tsx",
+  "examples/e2e-app/src/e2eApp/screens.tsx",
 );
 const e2eAppScreensDir = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/screens",
+  "examples/e2e-app/src/e2eApp/screens",
 );
 const e2eAppComponentsPath = path.join(
   repoDir,
-  "examples/v0.85.0/src/e2eApp/components.tsx",
+  "examples/e2e-app/src/e2eApp/components.tsx",
 );
 const androidManifestPath = path.join(
   repoDir,

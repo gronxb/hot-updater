@@ -52,6 +52,29 @@ describe("E2E targets", () => {
       ).toBe(true);
     });
 
+    it("runs @examples/e2e-app, resolving the package's imports from the app", () => {
+      const appPackage = JSON.parse(read(`${target.appDir}/package.json`)) as {
+        dependencies?: Record<string, string>;
+        devDependencies?: Record<string, string>;
+      };
+      expect({
+        ...appPackage.dependencies,
+        ...appPackage.devDependencies,
+      }).toHaveProperty("@examples/e2e-app", "workspace:*");
+      expect(read(`${target.appDir}/index.js`)).toContain("registerE2eApp(");
+      const configs = [
+        ["rspack.config.mjs", "withE2eAppResolve("],
+        ["metro.config.js", "withE2eAppResolveRequest("],
+        ["jest.config.js", "@examples/e2e-app/jest-resolver"],
+      ] as const;
+      for (const [file, helper] of configs) {
+        const relative = `${target.appDir}/${file}`;
+        if (existsSync(path.join(REPOSITORY_ROOT, relative))) {
+          expect(read(relative), relative).toContain(helper);
+        }
+      }
+    });
+
     it("installs an Android app with the shared package and URL scheme", () => {
       const gradle = filesNamed(
         `${target.android.projectDir}/app`,
@@ -84,6 +107,21 @@ describe("E2E targets", () => {
         .join("\n");
       expect(plists).toContain(`<string>${E2E_APP.urlScheme}</string>`);
     });
+  });
+});
+
+describe("@examples/e2e-app", () => {
+  it("takes React, React Native and the SDK from each target app", () => {
+    const manifest = JSON.parse(read("examples/e2e-app/package.json")) as {
+      dependencies?: Record<string, string>;
+      peerDependencies?: Record<string, string>;
+    };
+    // A dependency or peer here would put a copy in the package's
+    // node_modules, which a resolver can pick over the app's.
+    expect(manifest.peerDependencies).toBeUndefined();
+    expect(Object.keys(manifest.dependencies ?? {})).toEqual([
+      "@hot-updater/protocol",
+    ]);
   });
 });
 
