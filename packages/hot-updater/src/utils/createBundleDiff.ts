@@ -12,6 +12,7 @@ import type {
 import {
   createBundleStorageKey,
   getManifestAssetDownloadPath,
+  isContentAddressedAssetFileHash,
   resolveManifestAssetStorageUri,
   rowToBundle,
 } from "@hot-updater/plugin-core";
@@ -27,6 +28,7 @@ type BundleManifest = {
   assets: Record<
     string,
     {
+      byteSize?: unknown;
       downloadByteSize?: unknown;
       downloadFileHash?: unknown;
       fileHash: string;
@@ -52,6 +54,21 @@ export interface CreateBundleDiffOptions {
 
 const HBC_ASSET_PATH_RE = /\.bundle$/;
 const decompressBrotli = promisify(brotliDecompress);
+
+const sha256 = (bytes: Uint8Array) =>
+  crypto.createHash("sha256").update(bytes).digest("hex");
+
+/** Throws unless `bytes` hash to `expectedHash`, the manifest's SHA-256. */
+const verifyAssetBytes = (
+  bytes: Uint8Array,
+  expectedHash: string,
+  storageUri: string,
+) => {
+  if (sha256(bytes) !== expectedHash) {
+    throw new Error(`Storage object does not match its hash: ${storageUri}`);
+  }
+  return bytes;
+};
 
 const isBundleManifest = (value: unknown): value is BundleManifest => {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -205,7 +222,26 @@ async function fetchAssetBytes(
     }
 
     if (compressedBytes) {
-      return new Uint8Array(await decompressBrotli(compressedBytes));
+      // Only the bytes deploy uploaded reach the Brotli decoder.
+      if (!isContentAddressedAssetFileHash(asset.downloadFileHash)) {
+        throw new Error(
+          `Asset ${assetPath} has no download hash for its compressed object`,
+        );
+      }
+      verifyAssetBytes(
+        compressedBytes,
+        asset.downloadFileHash,
+        compressedAssetStorageUri,
+      );
+      const bytes = new Uint8Array(
+        await decompressBrotli(
+          compressedBytes,
+          typeof asset.byteSize === "number"
+            ? { maxOutputLength: Math.max(asset.byteSize, 1) }
+            : {},
+        ),
+      );
+      return verifyAssetBytes(bytes, asset.fileHash, compressedAssetStorageUri);
     }
   }
 
@@ -214,7 +250,11 @@ async function fetchAssetBytes(
     assetPath,
     fileHash: asset.fileHash,
   });
-  return downloadStorageBytes(assetStorageUri, storageAdapter);
+  return verifyAssetBytes(
+    await downloadStorageBytes(assetStorageUri, storageAdapter),
+    asset.fileHash,
+    assetStorageUri,
+  );
 }
 
 function buildNextPatchState({
@@ -308,10 +348,7 @@ export async function createBundleDiff(
   ]);
 
   const patchBytes = await hdiff(baseBytes, targetBytes);
-  const patchFileHash = crypto
-    .createHash("sha256")
-    .update(patchBytes)
-    .digest("hex");
+  const patchFileHash = sha256(patchBytes);
   const patchFilename = `${path.posix.basename(targetAssetPath)}.bsdiff`;
   const previousPatch = getBundlePatch(targetBundle, baseBundle.id);
 

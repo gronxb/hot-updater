@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { brotliCompressSync } from "node:zlib";
 
 import type {
@@ -91,6 +92,57 @@ const createStorageAdapter = (
     put,
   });
 
+const sha256 = (bytes: Uint8Array) =>
+  createHash("sha256").update(bytes).digest("hex");
+
+/** A Hermes bundle asset as deploy uploads it: Brotli-compressed, content-addressed. */
+const createAsset = (bytes: number[]) => {
+  const original = new Uint8Array(bytes);
+  const compressed = new Uint8Array(brotliCompressSync(original));
+  const fileHash = sha256(original);
+  const downloadFileHash = sha256(compressed);
+  return {
+    compressed,
+    compressedPath: `/assets/sha256/${downloadFileHash.slice(0, 2)}/${downloadFileHash}.br`,
+    manifestEntry: {
+      byteSize: original.byteLength,
+      downloadByteSize: compressed.byteLength,
+      downloadFileHash,
+      fileHash,
+    },
+    original,
+    originalPath: `/assets/sha256/${fileHash.slice(0, 2)}/${fileHash}.bundle`,
+  };
+};
+
+type Asset = ReturnType<typeof createAsset>;
+
+/** Answers the manifests and compressed assets of `base` and `target` over fetch. */
+const stubStorageFetch = (
+  entries: { bundle: Bundle; asset: Asset; body?: Uint8Array }[],
+) => {
+  vi.stubGlobal(
+    "fetch",
+    vi.fn(async (input: Request | URL | string) => {
+      const url = String(input);
+      for (const { bundle, asset, body } of entries) {
+        if (url.endsWith(`${bundle.id}/manifest.json`)) {
+          return new Response(
+            JSON.stringify({
+              assets: { "index.ios.bundle": asset.manifestEntry },
+              bundleId: bundle.id,
+            }),
+          );
+        }
+        if (url.endsWith(asset.compressedPath)) {
+          return new Response((body ?? asset.compressed) as BodyInit);
+        }
+      }
+      return new Response("not found", { status: 404 });
+    }),
+  );
+};
+
 describe("createBundleDiff", () => {
   afterEach(() => {
     vi.restoreAllMocks();
@@ -99,8 +151,8 @@ describe("createBundleDiff", () => {
   it("uploads a Hermes patch and stores patch metadata on the target bundle", async () => {
     const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
     const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
-    const baseDownloadFileHash = "a".repeat(64);
-    const targetDownloadFileHash = "b".repeat(64);
+    const baseAsset = createAsset([1, 2, 3]);
+    const targetAsset = createAsset([1, 9, 3]);
     const core = await createCore([baseBundle, targetBundle]);
     const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
       async ({ key, body, contentLength }) => {
@@ -111,60 +163,10 @@ describe("createBundleDiff", () => {
       },
     );
 
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: Request | URL | string) => {
-        const url = String(input);
-
-        if (url.endsWith(`${baseBundle.id}/manifest.json`)) {
-          return new Response(
-            JSON.stringify({
-              assets: {
-                "index.ios.bundle": {
-                  downloadByteSize: 7,
-                  downloadFileHash: baseDownloadFileHash,
-                  fileHash: "hash-old",
-                },
-              },
-              bundleId: baseBundle.id,
-            }),
-          );
-        }
-
-        if (url.endsWith(`${targetBundle.id}/manifest.json`)) {
-          return new Response(
-            JSON.stringify({
-              assets: {
-                "index.ios.bundle": {
-                  downloadByteSize: 7,
-                  downloadFileHash: targetDownloadFileHash,
-                  fileHash: "hash-new",
-                },
-              },
-              bundleId: targetBundle.id,
-            }),
-          );
-        }
-
-        if (url.endsWith(`/assets/sha256/aa/${baseDownloadFileHash}.br`)) {
-          return new Response(brotliCompressSync(new Uint8Array([1, 2, 3])));
-        }
-
-        if (url.endsWith("/assets/sha256/ha/hash-old.bundle")) {
-          return new Response(new Uint8Array([1, 2, 3]));
-        }
-
-        if (url.endsWith(`/assets/sha256/bb/${targetDownloadFileHash}.br`)) {
-          return new Response(brotliCompressSync(new Uint8Array([1, 9, 3])));
-        }
-
-        if (url.endsWith("/assets/sha256/ha/hash-new.bundle")) {
-          return new Response(new Uint8Array([1, 9, 3]));
-        }
-
-        return new Response("not found", { status: 404 });
-      }),
-    );
+    stubStorageFetch([
+      { bundle: baseBundle, asset: baseAsset },
+      { bundle: targetBundle, asset: targetAsset },
+    ]);
 
     try {
       const updatedBundle = await createBundleDiff(
@@ -184,7 +186,7 @@ describe("createBundleDiff", () => {
       });
       const [patch] = updatedBundle.patches ?? [];
       expect(patch?.baseBundleId).toBe(baseBundle.id);
-      expect(patch?.baseFileHash).toBe("hash-old");
+      expect(patch?.baseFileHash).toBe(baseAsset.manifestEntry.fileHash);
       expect(patch?.byteSize).toBe(4);
       expect(patch?.patchFileHash).toMatch(/[a-f0-9]{64}/);
       expect(patch?.patchStorageUri).toContain(
@@ -193,7 +195,7 @@ describe("createBundleDiff", () => {
       expect(updatedBundle.patches).toEqual([
         {
           baseBundleId: baseBundle.id,
-          baseFileHash: "hash-old",
+          baseFileHash: baseAsset.manifestEntry.fileHash,
           byteSize: 4,
           patchFileHash: patch?.patchFileHash,
           patchStorageUri: patch?.patchStorageUri,
@@ -285,29 +287,37 @@ describe("createBundleDiff", () => {
       manifestStorageUri:
         "https://storage.example.com/releases/target/manifest.json",
     });
+    const baseAsset = createAsset([1, 2, 3]);
+    const targetAsset = createAsset([1, 9, 3]);
     const core = await createCore([baseBundle, targetBundle]);
     const responses = new Map<string, string | Uint8Array>([
       [
         baseBundle.manifestStorageUri!,
         JSON.stringify({
-          assets: { "index.ios.bundle": { fileHash: "hash-old" } },
+          assets: {
+            "index.ios.bundle": { fileHash: baseAsset.manifestEntry.fileHash },
+          },
           bundleId: baseBundle.id,
         }),
       ],
       [
         targetBundle.manifestStorageUri!,
         JSON.stringify({
-          assets: { "index.ios.bundle": { fileHash: "hash-new" } },
+          assets: {
+            "index.ios.bundle": {
+              fileHash: targetAsset.manifestEntry.fileHash,
+            },
+          },
           bundleId: targetBundle.id,
         }),
       ],
       [
-        `${baseBundle.assetBaseStorageUri}/sha256/ha/hash-old.bundle`,
-        new Uint8Array([1, 2, 3]),
+        `https://storage.example.com/releases${baseAsset.originalPath}`,
+        baseAsset.original,
       ],
       [
-        `${targetBundle.assetBaseStorageUri}/sha256/ha/hash-new.bundle`,
-        new Uint8Array([1, 9, 3]),
+        `https://storage.example.com/releases${targetAsset.originalPath}`,
+        targetAsset.original,
       ],
     ]);
     const get = vi.fn<NonNullable<StorageAdapter["get"]>>(
@@ -367,6 +377,8 @@ describe("createBundleDiff", () => {
         },
       ],
     });
+    const secondaryAsset = createAsset([1, 2, 3]);
+    const targetAsset = createAsset([1, 4, 3]);
     const core = await createCore([
       primaryBaseBundle,
       secondaryBaseBundle,
@@ -378,56 +390,10 @@ describe("createBundleDiff", () => {
       }),
     );
 
-    vi.stubGlobal(
-      "fetch",
-      vi.fn(async (input: Request | URL | string) => {
-        const url = String(input);
-
-        if (url.endsWith(`${secondaryBaseBundle.id}/manifest.json`)) {
-          return new Response(
-            JSON.stringify({
-              assets: {
-                "index.ios.bundle": {
-                  fileHash: "hash-secondary-old",
-                },
-              },
-              bundleId: secondaryBaseBundle.id,
-            }),
-          );
-        }
-
-        if (url.endsWith(`${targetBundle.id}/manifest.json`)) {
-          return new Response(
-            JSON.stringify({
-              assets: {
-                "index.ios.bundle": {
-                  fileHash: "hash-target-new",
-                },
-              },
-              bundleId: targetBundle.id,
-            }),
-          );
-        }
-
-        if (url.endsWith("/assets/sha256/ha/hash-secondary-old.br")) {
-          return new Response(brotliCompressSync(new Uint8Array([1, 2, 3])));
-        }
-
-        if (url.endsWith("/assets/sha256/ha/hash-secondary-old.bundle")) {
-          return new Response(new Uint8Array([1, 2, 3]));
-        }
-
-        if (url.endsWith("/assets/sha256/ha/hash-target-new.br")) {
-          return new Response(brotliCompressSync(new Uint8Array([1, 4, 3])));
-        }
-
-        if (url.endsWith("/assets/sha256/ha/hash-target-new.bundle")) {
-          return new Response(new Uint8Array([1, 4, 3]));
-        }
-
-        return new Response("not found", { status: 404 });
-      }),
-    );
+    stubStorageFetch([
+      { bundle: secondaryBaseBundle, asset: secondaryAsset },
+      { bundle: targetBundle, asset: targetAsset },
+    ]);
 
     try {
       const updatedBundle = await createBundleDiff(
@@ -453,7 +419,7 @@ describe("createBundleDiff", () => {
         },
         {
           baseBundleId: secondaryBaseBundle.id,
-          baseFileHash: "hash-secondary-old",
+          baseFileHash: secondaryAsset.manifestEntry.fileHash,
           patchFileHash: expect.any(String),
           patchStorageUri: expect.stringContaining(
             `bundles/${targetBundle.id}/patches/${secondaryBaseBundle.id}`,
@@ -463,5 +429,139 @@ describe("createBundleDiff", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+  it("rejects a compressed asset that does not match its download hash before decoding it", async () => {
+    const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
+    const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
+    const baseAsset = createAsset([1, 2, 3]);
+    const targetAsset = createAsset([1, 9, 3]);
+    const core = await createCore([baseBundle, targetBundle]);
+    const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
+      async ({ key }) => ({ storageUri: `s3://test-bucket/${key}` }),
+    );
+    // Not a Brotli stream: decoding it would fail with a different error.
+    stubStorageFetch([
+      { bundle: baseBundle, asset: baseAsset, body: new Uint8Array([0xff]) },
+      { bundle: targetBundle, asset: targetAsset },
+    ]);
+
+    try {
+      await expect(
+        createBundleDiff(
+          { baseBundleId: baseBundle.id, bundleId: targetBundle.id },
+          { core, storageAdapter: createStorageAdapter(upload) },
+        ),
+      ).rejects.toThrow(
+        `Storage object does not match its hash: s3://test-bucket/releases${baseAsset.compressedPath}`,
+      );
+      expect(upload).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("rejects a compressed asset that decodes to bytes other than its file hash", async () => {
+    const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
+    const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
+    const baseAsset = createAsset([1, 2, 3]);
+    const targetAsset = createAsset([1, 9, 3]);
+    const tamperedBase: Asset = {
+      ...baseAsset,
+      manifestEntry: { ...baseAsset.manifestEntry, fileHash: "c".repeat(64) },
+    };
+    const core = await createCore([baseBundle, targetBundle]);
+    const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
+      async ({ key }) => ({ storageUri: `s3://test-bucket/${key}` }),
+    );
+    stubStorageFetch([
+      { bundle: baseBundle, asset: tamperedBase },
+      { bundle: targetBundle, asset: targetAsset },
+    ]);
+
+    try {
+      await expect(
+        createBundleDiff(
+          { baseBundleId: baseBundle.id, bundleId: targetBundle.id },
+          { core, storageAdapter: createStorageAdapter(upload) },
+        ),
+      ).rejects.toThrow(
+        `Storage object does not match its hash: s3://test-bucket/releases${baseAsset.compressedPath}`,
+      );
+      expect(upload).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("rejects an uncompressed asset that does not match its file hash", async () => {
+    const baseBundle = createBundle("00000000-0000-0000-0000-000000000001", {
+      assetBaseStorageUri: "https://storage.example.com/releases/assets",
+      manifestStorageUri:
+        "https://storage.example.com/releases/base/manifest.json",
+    });
+    const targetBundle = createBundle("00000000-0000-0000-0000-000000000002", {
+      assetBaseStorageUri: "https://storage.example.com/releases/assets",
+      manifestStorageUri:
+        "https://storage.example.com/releases/target/manifest.json",
+    });
+    const baseAsset = createAsset([1, 2, 3]);
+    const targetAsset = createAsset([1, 9, 3]);
+    const core = await createCore([baseBundle, targetBundle]);
+    const responses = new Map<string, string | Uint8Array>([
+      [
+        baseBundle.manifestStorageUri!,
+        JSON.stringify({
+          assets: {
+            "index.ios.bundle": { fileHash: baseAsset.manifestEntry.fileHash },
+          },
+          bundleId: baseBundle.id,
+        }),
+      ],
+      [
+        targetBundle.manifestStorageUri!,
+        JSON.stringify({
+          assets: {
+            "index.ios.bundle": {
+              fileHash: targetAsset.manifestEntry.fileHash,
+            },
+          },
+          bundleId: targetBundle.id,
+        }),
+      ],
+      [
+        `https://storage.example.com/releases${baseAsset.originalPath}`,
+        new Uint8Array([9, 9, 9]),
+      ],
+      [
+        `https://storage.example.com/releases${targetAsset.originalPath}`,
+        targetAsset.original,
+      ],
+    ]);
+    const get = vi.fn<NonNullable<StorageAdapter["get"]>>(
+      async ({ storageUri }) => ({
+        response: responses.has(storageUri)
+          ? new Response(responses.get(storageUri) as BodyInit)
+          : null,
+      }),
+    );
+    const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
+      async ({ key }) => ({ storageUri: `https://storage.example.com/${key}` }),
+    );
+
+    await expect(
+      createBundleDiff(
+        { baseBundleId: baseBundle.id, bundleId: targetBundle.id },
+        {
+          core,
+          storageAdapter: createStorageAdapter(upload, {
+            get,
+            protocol: "https",
+          }),
+        },
+      ),
+    ).rejects.toThrow(
+      `Storage object does not match its hash: https://storage.example.com/releases${baseAsset.originalPath}`,
+    );
+    expect(upload).not.toHaveBeenCalled();
   });
 });
