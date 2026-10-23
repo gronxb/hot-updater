@@ -281,6 +281,35 @@ class PostCrashUpdateCheckTest {
     }
 
     @Test
+    fun `a rollback marker clears a check an earlier crash left pending`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        storage(context, main).setItem(PostCrashUpdateCheck.PENDING_KEY, "1")
+        writeCrashMarker(context, main, "main-bundle", shouldRollback = true)
+
+        mainImpl(context).getJSBundleFile()
+
+        assertFalse(crashMarker(context, main).exists())
+        assertNull(storage(context, main).getItem(PostCrashUpdateCheck.PENDING_KEY))
+    }
+
+    @Test
+    fun `a launch without a crash marker keeps a check left pending`() {
+        val context = InstanceTestContext(temporaryFolder.root)
+        storage(context, main).setItem(PostCrashUpdateCheck.PENDING_KEY, "1")
+        val check = RecordingCheck()
+
+        HotUpdaterImpl(
+            context,
+            main,
+            postCrashUpdateCheck = { storage -> check.create(storage::getItem, storage::setItem) },
+            isDevelopmentBuild = false,
+        ).getJSBundleFile()
+
+        // No config, so no request either: the flag waits for one.
+        assertEquals("1", storage(context, main).getItem(PostCrashUpdateCheck.PENDING_KEY))
+    }
+
+    @Test
     fun `main's update check before React Native starts sets the check flag when it consumes a crash marker`() {
         val context = InstanceTestContext(temporaryFolder.root)
         writeCrashMarker(context, main, "main-bundle", shouldRollback = false)

@@ -91,9 +91,18 @@ internal class PostCrashUpdateCheck(
 ) {
     private val started = AtomicBoolean(false)
 
-    /** Main's launch preparation consumed a crash marker, asking to roll back or not. */
+    /** Main's launch preparation consumed a crash marker that doesn't ask to roll back. */
     fun markPending() {
         setItem(PENDING_KEY, PENDING_VALUE)
+    }
+
+    /**
+     * Main's launch preparation consumed a marker that asks to roll back: the
+     * rollback settles that crash locally, and a check an earlier crash left
+     * pending with it.
+     */
+    fun clearPending() {
+        setItem(PENDING_KEY, null)
     }
 
     /**

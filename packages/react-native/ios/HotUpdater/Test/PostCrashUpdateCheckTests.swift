@@ -105,6 +105,25 @@ struct PostCrashUpdateCheckTests {
         #expect(!FileManager.default.fileExists(atPath: markerURL.path))
     }
 
+    /// A rollback also settles a check an earlier crash left pending: the
+    /// restored bundle passed its first content, so no request follows.
+    @Test
+    func aRollbackMarkerClearsACheckLeftPending() throws {
+        let scene = try CheckScene()
+        defer { scene.cleanUp() }
+        let markerURL = scene.directory.appendingPathComponent("bundle-store/recovery-crash-marker.json")
+        let check = scene.makeCheck()
+        _ = scene.storage.setItem(HotUpdaterPostCrashUpdateCheck.pendingKey, value: "1")
+
+        // A launch without a marker keeps it.
+        #expect(check.consumeMarker { HotUpdaterCrashMarker.consume(at: markerURL) } == nil)
+        #expect(scene.storage.getItem(HotUpdaterPostCrashUpdateCheck.pendingKey) == "1")
+
+        HotUpdaterCrashMarker.write(bundleId: "bundle-2", shouldRollback: true, to: markerURL)
+        #expect(check.consumeMarker { HotUpdaterCrashMarker.consume(at: markerURL) }?.shouldRollback == true)
+        #expect(scene.storage.getItem(HotUpdaterPostCrashUpdateCheck.pendingKey) == nil)
+    }
+
     // MARK: - Gating
 
     @Test

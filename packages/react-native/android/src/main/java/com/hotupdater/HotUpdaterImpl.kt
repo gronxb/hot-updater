@@ -694,12 +694,13 @@ class HotUpdaterImpl {
      * doesn't ask to roll back means the bundle that crashed runs again, so
      * main checks for a fix natively once a launch shows UI
      * ([PostCrashUpdateCheck]); recorded before this launch goes on, as the
-     * marker is already gone. One that asks to roll back is settled locally:
-     * the restored bundle passed its own first content.
+     * marker is already gone. One that asks to roll back is settled locally,
+     * with any check an earlier crash left pending: the restored bundle
+     * passed its own first content.
      */
     private fun consumePendingCrashRecovery(): PendingCrashRecovery? =
         recoveryManager.consumePendingCrashRecovery()?.also {
-            if (!it.shouldRollback) postCrashUpdateCheck?.markPending()
+            if (it.shouldRollback) postCrashUpdateCheck?.clearPending() else postCrashUpdateCheck?.markPending()
         }
 
     private fun selectAndMonitorLaunchLocked(): PreparedLaunch {

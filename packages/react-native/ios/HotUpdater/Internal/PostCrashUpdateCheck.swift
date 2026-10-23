@@ -149,10 +149,12 @@ final class HotUpdaterPostCrashUpdateCheck: @unchecked Sendable {
     /// launch runs again, so the next launch with UI checks for a fix. One
     /// that asks for rollback is settled locally: the bundle that crashed
     /// before its first content is gone, and the one restored passed its own.
+    /// It also clears a check an earlier crash left pending, which the
+    /// rollback settled too.
     func consumeMarker(_ consume: () -> PendingCrashRecovery?) -> PendingCrashRecovery? {
         let recovery = consume()
-        if let recovery, !recovery.shouldRollback {
-            storage.setItem(Self.pendingKey, value: Self.pendingValue)
+        if let recovery {
+            storage.setItem(Self.pendingKey, value: recovery.shouldRollback ? nil : Self.pendingValue)
         }
         return recovery
     }
