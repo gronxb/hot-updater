@@ -6,6 +6,9 @@ export default defineConfig([
     format: ["esm", "cjs"],
     outDir: "dist",
     dts: true,
+    // CommonJS stays for consumers that `require` the package, though every
+    // supported Node.js can `require` ESM.
+    checks: { legacyCjs: false },
     failOnWarn: true,
   },
   {
@@ -36,6 +39,7 @@ export default defineConfig([
     format: ["esm", "cjs"],
     dts: true,
     outDir: "dist/init",
+    checks: { legacyCjs: false },
     deps: {
       neverBundle: ["@hot-updater/azure"],
     },
