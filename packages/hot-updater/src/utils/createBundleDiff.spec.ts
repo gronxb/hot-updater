@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
 import { brotliCompressSync } from "node:zlib";
 
 import type {
@@ -22,14 +22,26 @@ import { createReleaseCatalogTestStorage } from "@hot-updater/test-utils";
 
 import { createBundleDiff } from "./createBundleDiff";
 
-const createBundle = (id: string, overrides: Partial<Bundle> = {}): Bundle => ({
+const sha256 = (bytes: Uint8Array | string) =>
+  createHash("sha256").update(bytes).digest("hex");
+
+/** The manifest.json deploy uploads for `bundleId`. */
+const manifestJson = (bundleId: string, assets: Record<string, unknown>) =>
+  JSON.stringify({ assets, bundleId });
+
+/** A bundle whose `manifestFileHash` is the SHA-256 of its manifest with `assets`. */
+const createBundle = (
+  id: string,
+  overrides: Partial<Bundle> = {},
+  assets: Record<string, unknown> = {},
+): Bundle => ({
   gitCommitHash: null,
   id,
   assetBaseStorageUri: "s3://test-bucket/releases/assets",
   manifestStorageUri: `s3://test-bucket/releases/bundles/${id}/manifest.json`,
   metadata: {},
   platform: "ios",
-  manifestFileHash: `${id}-manifest-hash`,
+  manifestFileHash: sha256(manifestJson(id, assets)),
   ...overrides,
 });
 
@@ -92,9 +104,6 @@ const createStorageAdapter = (
     put,
   });
 
-const sha256 = (bytes: Uint8Array) =>
-  createHash("sha256").update(bytes).digest("hex");
-
 /** A Hermes bundle asset as deploy uploads it: Brotli-compressed, content-addressed. */
 const createAsset = (bytes: number[]) => {
   const original = new Uint8Array(bytes);
@@ -117,6 +126,11 @@ const createAsset = (bytes: number[]) => {
 
 type Asset = ReturnType<typeof createAsset>;
 
+/** The manifest assets of a bundle whose only file is `asset`. */
+const hermesAssets = (asset: Pick<Asset, "manifestEntry">) => ({
+  "index.ios.bundle": asset.manifestEntry,
+});
+
 /** Answers the manifests and compressed assets of `base` and `target` over fetch. */
 const stubStorageFetch = (
   entries: { bundle: Bundle; asset: Asset; body?: Uint8Array }[],
@@ -127,12 +141,7 @@ const stubStorageFetch = (
       const url = String(input);
       for (const { bundle, asset, body } of entries) {
         if (url.endsWith(`${bundle.id}/manifest.json`)) {
-          return new Response(
-            JSON.stringify({
-              assets: { "index.ios.bundle": asset.manifestEntry },
-              bundleId: bundle.id,
-            }),
-          );
+          return new Response(manifestJson(bundle.id, hermesAssets(asset)));
         }
         if (url.endsWith(asset.compressedPath)) {
           return new Response((body ?? asset.compressed) as BodyInit);
@@ -149,10 +158,18 @@ describe("createBundleDiff", () => {
   });
 
   it("uploads a Hermes patch and stores patch metadata on the target bundle", async () => {
-    const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
-    const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
     const baseAsset = createAsset([1, 2, 3]);
     const targetAsset = createAsset([1, 9, 3]);
+    const baseBundle = createBundle(
+      "00000000-0000-0000-0000-000000000001",
+      {},
+      hermesAssets(baseAsset),
+    );
+    const targetBundle = createBundle(
+      "00000000-0000-0000-0000-000000000002",
+      {},
+      hermesAssets(targetAsset),
+    );
     const core = await createCore([baseBundle, targetBundle]);
     const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
       async ({ key, body, contentLength }) => {
@@ -207,8 +224,24 @@ describe("createBundleDiff", () => {
   });
 
   it("rejects ambiguous Hermes bundle assets in manifests", async () => {
-    const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
-    const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
+    const baseAssets = {
+      "index.ios.bundle": { fileHash: "hash-old" },
+      "secondary.ios.bundle": { fileHash: "hash-secondary-old" },
+    };
+    const targetAssets = {
+      "index.ios.bundle": { fileHash: "hash-new" },
+      "secondary.ios.bundle": { fileHash: "hash-secondary-new" },
+    };
+    const baseBundle = createBundle(
+      "00000000-0000-0000-0000-000000000001",
+      {},
+      baseAssets,
+    );
+    const targetBundle = createBundle(
+      "00000000-0000-0000-0000-000000000002",
+      {},
+      targetAssets,
+    );
     const core = await createCore([baseBundle, targetBundle]);
     const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
       async ({ key }) => ({
@@ -222,35 +255,11 @@ describe("createBundleDiff", () => {
         const url = String(input);
 
         if (url.endsWith(`${baseBundle.id}/manifest.json`)) {
-          return new Response(
-            JSON.stringify({
-              assets: {
-                "index.ios.bundle": {
-                  fileHash: "hash-old",
-                },
-                "secondary.ios.bundle": {
-                  fileHash: "hash-secondary-old",
-                },
-              },
-              bundleId: baseBundle.id,
-            }),
-          );
+          return new Response(manifestJson(baseBundle.id, baseAssets));
         }
 
         if (url.endsWith(`${targetBundle.id}/manifest.json`)) {
-          return new Response(
-            JSON.stringify({
-              assets: {
-                "index.ios.bundle": {
-                  fileHash: "hash-new",
-                },
-                "secondary.ios.bundle": {
-                  fileHash: "hash-secondary-new",
-                },
-              },
-              bundleId: targetBundle.id,
-            }),
-          );
+          return new Response(manifestJson(targetBundle.id, targetAssets));
         }
 
         return new Response("not found", { status: 404 });
@@ -277,33 +286,35 @@ describe("createBundleDiff", () => {
   });
 
   it("uses a matching HTTPS storage adapter before direct fetch", async () => {
-    const baseBundle = createBundle("00000000-0000-0000-0000-000000000001", {
-      assetBaseStorageUri: "https://storage.example.com/releases/assets",
-      manifestStorageUri:
-        "https://storage.example.com/releases/base/manifest.json",
-    });
-    const targetBundle = createBundle("00000000-0000-0000-0000-000000000002", {
-      assetBaseStorageUri: "https://storage.example.com/releases/assets",
-      manifestStorageUri:
-        "https://storage.example.com/releases/target/manifest.json",
-    });
     const baseAsset = createAsset([1, 2, 3]);
     const targetAsset = createAsset([1, 9, 3]);
+    const baseBundle = createBundle(
+      "00000000-0000-0000-0000-000000000001",
+      {
+        assetBaseStorageUri: "https://storage.example.com/releases/assets",
+        manifestStorageUri:
+          "https://storage.example.com/releases/base/manifest.json",
+      },
+      hermesAssets(baseAsset),
+    );
+    const targetBundle = createBundle(
+      "00000000-0000-0000-0000-000000000002",
+      {
+        assetBaseStorageUri: "https://storage.example.com/releases/assets",
+        manifestStorageUri:
+          "https://storage.example.com/releases/target/manifest.json",
+      },
+      hermesAssets(targetAsset),
+    );
     const core = await createCore([baseBundle, targetBundle]);
     const responses = new Map<string, string | Uint8Array>([
       [
         baseBundle.manifestStorageUri!,
-        JSON.stringify({
-          assets: { "index.ios.bundle": baseAsset.manifestEntry },
-          bundleId: baseBundle.id,
-        }),
+        manifestJson(baseBundle.id, hermesAssets(baseAsset)),
       ],
       [
         targetBundle.manifestStorageUri!,
-        JSON.stringify({
-          assets: { "index.ios.bundle": targetAsset.manifestEntry },
-          bundleId: targetBundle.id,
-        }),
+        manifestJson(targetBundle.id, hermesAssets(targetAsset)),
       ],
       [
         `https://storage.example.com/releases${baseAsset.originalPath}`,
@@ -357,22 +368,28 @@ describe("createBundleDiff", () => {
     const primaryBaseBundle = createBundle(
       "00000000-0000-0000-0000-000000000001",
     );
-    const secondaryBaseBundle = createBundle(
-      "00000000-0000-0000-0000-000000000002",
-    );
-    const targetBundle = createBundle("00000000-0000-0000-0000-000000000003", {
-      patches: [
-        {
-          baseBundleId: primaryBaseBundle.id,
-          baseFileHash: "hash-primary-old",
-          byteSize: 4,
-          patchFileHash: "hash-primary-patch",
-          patchStorageUri: `s3://test-bucket/${primaryBaseBundle.id}/existing.bsdiff`,
-        },
-      ],
-    });
     const secondaryAsset = createAsset([1, 2, 3]);
     const targetAsset = createAsset([1, 4, 3]);
+    const secondaryBaseBundle = createBundle(
+      "00000000-0000-0000-0000-000000000002",
+      {},
+      hermesAssets(secondaryAsset),
+    );
+    const targetBundle = createBundle(
+      "00000000-0000-0000-0000-000000000003",
+      {
+        patches: [
+          {
+            baseBundleId: primaryBaseBundle.id,
+            baseFileHash: "hash-primary-old",
+            byteSize: 4,
+            patchFileHash: "hash-primary-patch",
+            patchStorageUri: `s3://test-bucket/${primaryBaseBundle.id}/existing.bsdiff`,
+          },
+        ],
+      },
+      hermesAssets(targetAsset),
+    );
     const core = await createCore([
       primaryBaseBundle,
       secondaryBaseBundle,
@@ -425,10 +442,18 @@ describe("createBundleDiff", () => {
     }
   });
   it("rejects a compressed asset that does not match its download hash before decoding it", async () => {
-    const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
-    const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
     const baseAsset = createAsset([1, 2, 3]);
     const targetAsset = createAsset([1, 9, 3]);
+    const baseBundle = createBundle(
+      "00000000-0000-0000-0000-000000000001",
+      {},
+      hermesAssets(baseAsset),
+    );
+    const targetBundle = createBundle(
+      "00000000-0000-0000-0000-000000000002",
+      {},
+      hermesAssets(targetAsset),
+    );
     const core = await createCore([baseBundle, targetBundle]);
     const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
       async ({ key }) => ({ storageUri: `s3://test-bucket/${key}` }),
@@ -455,14 +480,22 @@ describe("createBundleDiff", () => {
   });
 
   it("rejects a compressed asset that decodes to bytes other than its file hash", async () => {
-    const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
-    const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
     const baseAsset = createAsset([1, 2, 3]);
     const targetAsset = createAsset([1, 9, 3]);
     const tamperedBase: Asset = {
       ...baseAsset,
       manifestEntry: { ...baseAsset.manifestEntry, fileHash: "c".repeat(64) },
     };
+    const baseBundle = createBundle(
+      "00000000-0000-0000-0000-000000000001",
+      {},
+      hermesAssets(tamperedBase),
+    );
+    const targetBundle = createBundle(
+      "00000000-0000-0000-0000-000000000002",
+      {},
+      hermesAssets(targetAsset),
+    );
     const core = await createCore([baseBundle, targetBundle]);
     const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
       async ({ key }) => ({ storageUri: `s3://test-bucket/${key}` }),
@@ -488,33 +521,35 @@ describe("createBundleDiff", () => {
   });
 
   it("rejects an uncompressed asset that does not match its file hash", async () => {
-    const baseBundle = createBundle("00000000-0000-0000-0000-000000000001", {
-      assetBaseStorageUri: "https://storage.example.com/releases/assets",
-      manifestStorageUri:
-        "https://storage.example.com/releases/base/manifest.json",
-    });
-    const targetBundle = createBundle("00000000-0000-0000-0000-000000000002", {
-      assetBaseStorageUri: "https://storage.example.com/releases/assets",
-      manifestStorageUri:
-        "https://storage.example.com/releases/target/manifest.json",
-    });
     const baseAsset = createAsset([1, 2, 3]);
     const targetAsset = createAsset([1, 9, 3]);
+    const baseBundle = createBundle(
+      "00000000-0000-0000-0000-000000000001",
+      {
+        assetBaseStorageUri: "https://storage.example.com/releases/assets",
+        manifestStorageUri:
+          "https://storage.example.com/releases/base/manifest.json",
+      },
+      hermesAssets(baseAsset),
+    );
+    const targetBundle = createBundle(
+      "00000000-0000-0000-0000-000000000002",
+      {
+        assetBaseStorageUri: "https://storage.example.com/releases/assets",
+        manifestStorageUri:
+          "https://storage.example.com/releases/target/manifest.json",
+      },
+      hermesAssets(targetAsset),
+    );
     const core = await createCore([baseBundle, targetBundle]);
     const responses = new Map<string, string | Uint8Array>([
       [
         baseBundle.manifestStorageUri!,
-        JSON.stringify({
-          assets: { "index.ios.bundle": baseAsset.manifestEntry },
-          bundleId: baseBundle.id,
-        }),
+        manifestJson(baseBundle.id, hermesAssets(baseAsset)),
       ],
       [
         targetBundle.manifestStorageUri!,
-        JSON.stringify({
-          assets: { "index.ios.bundle": targetAsset.manifestEntry },
-          bundleId: targetBundle.id,
-        }),
+        manifestJson(targetBundle.id, hermesAssets(targetAsset)),
       ],
       [
         `https://storage.example.com/releases${baseAsset.originalPath}`,
@@ -553,12 +588,20 @@ describe("createBundleDiff", () => {
     expect(upload).not.toHaveBeenCalled();
   });
   it("rejects a Hermes bundle without a download hash before downloading it", async () => {
-    const baseBundle = createBundle("00000000-0000-0000-0000-000000000001");
-    const targetBundle = createBundle("00000000-0000-0000-0000-000000000002");
     const baseAsset = createAsset([1, 2, 3]);
     const targetAsset = createAsset([1, 9, 3]);
     const { downloadFileHash: _, ...entryWithoutDownloadHash } =
       baseAsset.manifestEntry;
+    const baseBundle = createBundle(
+      "00000000-0000-0000-0000-000000000001",
+      {},
+      { "index.ios.bundle": entryWithoutDownloadHash },
+    );
+    const targetBundle = createBundle(
+      "00000000-0000-0000-0000-000000000002",
+      {},
+      hermesAssets(targetAsset),
+    );
     const core = await createCore([baseBundle, targetBundle]);
     const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
       async ({ key }) => ({ storageUri: `s3://test-bucket/${key}` }),
@@ -593,5 +636,148 @@ describe("createBundleDiff", () => {
     } finally {
       vi.unstubAllGlobals();
     }
+  });
+  it("rejects a manifest that does not match the bundle's manifest hash before reading its assets", async () => {
+    const baseAsset = createAsset([1, 2, 3]);
+    const targetAsset = createAsset([1, 9, 3]);
+    // The database records the manifest deploy uploaded; storage serves another.
+    const baseBundle = createBundle(
+      "00000000-0000-0000-0000-000000000001",
+      {},
+      hermesAssets(createAsset([7, 7, 7])),
+    );
+    const targetBundle = createBundle(
+      "00000000-0000-0000-0000-000000000002",
+      {},
+      hermesAssets(targetAsset),
+    );
+    const core = await createCore([baseBundle, targetBundle]);
+    const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
+      async ({ key }) => ({ storageUri: `s3://test-bucket/${key}` }),
+    );
+    stubStorageFetch([
+      { bundle: baseBundle, asset: baseAsset },
+      { bundle: targetBundle, asset: targetAsset },
+    ]);
+
+    try {
+      await expect(
+        createBundleDiff(
+          { baseBundleId: baseBundle.id, bundleId: targetBundle.id },
+          { core, storageAdapter: createStorageAdapter(upload) },
+        ),
+      ).rejects.toThrow(
+        `Manifest of bundle ${baseBundle.id} does not match its hash`,
+      );
+      const requested = vi
+        .mocked(fetch)
+        .mock.calls.map(([input]) => String(input));
+      expect(
+        requested.some((url) => url.endsWith(baseAsset.compressedPath)),
+      ).toBe(false);
+      expect(upload).not.toHaveBeenCalled();
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  describe("signed manifests", () => {
+    const keyPair = () =>
+      generateKeyPairSync("rsa", {
+        modulusLength: 2048,
+        privateKeyEncoding: { format: "pem", type: "pkcs8" },
+        publicKeyEncoding: { format: "pem", type: "spki" },
+      });
+    const { privateKey, publicKey } = keyPair();
+
+    /** The `sig:` manifest hash deploy records when it signs `manifest`. */
+    const signedManifestHash = (manifest: string, key = privateKey) =>
+      `sig:${sign(
+        "RSA-SHA256",
+        createHash("sha256").update(manifest).digest(),
+        key,
+      ).toString("base64")}`;
+
+    const setup = async (signingKey = privateKey) => {
+      const baseAsset = createAsset([1, 2, 3]);
+      const targetAsset = createAsset([1, 9, 3]);
+      const signed = (id: string, asset: Asset) =>
+        createBundle(id, {
+          manifestFileHash: signedManifestHash(
+            manifestJson(id, hermesAssets(asset)),
+            signingKey,
+          ),
+        });
+      const baseBundle = signed(
+        "00000000-0000-0000-0000-000000000001",
+        baseAsset,
+      );
+      const targetBundle = signed(
+        "00000000-0000-0000-0000-000000000002",
+        targetAsset,
+      );
+      const core = await createCore([baseBundle, targetBundle]);
+      const upload = vi.fn<NonNullable<StorageAdapter["put"]>>(
+        async ({ key }) => ({ storageUri: `s3://test-bucket/${key}` }),
+      );
+      stubStorageFetch([
+        { bundle: baseBundle, asset: baseAsset },
+        { bundle: targetBundle, asset: targetAsset },
+      ]);
+      return { baseBundle, core, targetBundle, upload };
+    };
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+    });
+
+    it("verifies signed manifests with the configured public key", async () => {
+      const { baseBundle, core, targetBundle, upload } = await setup();
+
+      await createBundleDiff(
+        { baseBundleId: baseBundle.id, bundleId: targetBundle.id },
+        {
+          core,
+          signingPublicKey: publicKey,
+          storageAdapter: createStorageAdapter(upload),
+        },
+      );
+
+      expect(upload).toHaveBeenCalledOnce();
+    });
+
+    it("rejects a signed manifest without a public key to verify it", async () => {
+      const { baseBundle, core, targetBundle, upload } = await setup();
+
+      await expect(
+        createBundleDiff(
+          { baseBundleId: baseBundle.id, bundleId: targetBundle.id },
+          { core, storageAdapter: createStorageAdapter(upload) },
+        ),
+      ).rejects.toThrow(
+        `Manifest of bundle ${baseBundle.id} is signed; configure signing to verify it`,
+      );
+      expect(upload).not.toHaveBeenCalled();
+    });
+
+    it("rejects a manifest signed by another key", async () => {
+      const { baseBundle, core, targetBundle, upload } = await setup(
+        keyPair().privateKey,
+      );
+
+      await expect(
+        createBundleDiff(
+          { baseBundleId: baseBundle.id, bundleId: targetBundle.id },
+          {
+            core,
+            signingPublicKey: publicKey,
+            storageAdapter: createStorageAdapter(upload),
+          },
+        ),
+      ).rejects.toThrow(
+        `Manifest of bundle ${baseBundle.id} does not match its signature`,
+      );
+      expect(upload).not.toHaveBeenCalled();
+    });
   });
 });

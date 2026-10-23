@@ -246,6 +246,7 @@ const createAutoPatches = async ({
   core,
   maxBaseBundles,
   platform,
+  signingPublicKey,
   storageAdapter,
   target,
 }: {
@@ -254,6 +255,7 @@ const createAutoPatches = async ({
   core: HotUpdaterCoreApi;
   maxBaseBundles: number;
   platform: Platform;
+  signingPublicKey: string | null;
   storageAdapter: DeployStorageAdapter;
   target: {
     appVersion: string | null;
@@ -280,6 +282,7 @@ const createAutoPatches = async ({
         },
         {
           core,
+          signingPublicKey,
           storageAdapter,
         },
         {
@@ -1181,6 +1184,7 @@ const deployPlatform = async ({
                   core,
                   maxBaseBundles: maxPatchBaseBundles,
                   platform,
+                  signingPublicKey: signingSession?.publicKey ?? null,
                   storageAdapter,
                   target,
                 });
