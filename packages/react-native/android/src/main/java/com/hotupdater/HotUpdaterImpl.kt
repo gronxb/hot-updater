@@ -690,6 +690,17 @@ class HotUpdaterImpl {
             (current.shouldRollbackOnCrash || !next.shouldRollbackOnCrash)
 
     /**
+     * Keeps a native check's request the server answered for main's check
+     * after a crash, as JavaScript's checks do; an app that checks only
+     * natively has no other. Nothing for a named instance or in a debug
+     * build, which have no such check.
+     */
+    internal fun recordRecoveryRequest(request: NativeCheckRequest) {
+        if (postCrashUpdateCheck == null) return
+        keyValueStorage.setItem(RecoveryCheckConfig.KEY, RecoveryCheckConfig.of(request).toJson())
+    }
+
+    /**
      * Reads and deletes the crash marker the previous launch left. One that
      * doesn't ask to roll back means the bundle that crashed runs again, so
      * main checks for a fix natively once a launch shows UI

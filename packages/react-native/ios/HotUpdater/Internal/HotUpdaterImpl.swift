@@ -1110,6 +1110,15 @@ private func hotUpdaterGetMinBundleId() -> String {
         return selection
     }
 
+    /// Keeps a native check's request the server answered for main's check
+    /// after a crash, as JavaScript's checks do; an app that checks only
+    /// natively has no other. Nothing for a named instance or in a
+    /// development build, which have no such check.
+    func recordRecoveryRequest(_ request: NativeCheckRequest) {
+        guard postCrashUpdateCheck != nil, let json = HotUpdaterRecoveryCheckConfig.json(for: request) else { return }
+        keyValueStorage.setItem(HotUpdaterRecoveryCheckConfig.storageKey, value: json)
+    }
+
     /// This instance's crash marker; for main outside a development build,
     /// a marker that doesn't roll back also leaves the post-crash update
     /// check pending.

@@ -87,6 +87,29 @@ struct PostCrashUpdateCheckTests {
     /// A crash marker without rollback leaves the check pending; one that
     /// asks for rollback is settled locally, and a launch without one leaves
     /// the flag alone.
+    /// A native check's request is written as JavaScript writes it, so the
+    /// check after a crash reads it back the same.
+    @Test(arguments: [HotUpdaterUpdateStrategy.appVersion, .fingerprint])
+    func aNativeRequestRoundTripsThroughTheRecord(strategy: HotUpdaterUpdateStrategy) throws {
+        let request = NativeCheckRequest(
+            baseURL: "https://updates.example.com/api",
+            updateStrategy: strategy,
+            requestHeaders: ["x-api-key": "secret"],
+            channel: "beta",
+            requestTimeout: 2.5
+        )
+
+        let json = try #require(HotUpdaterRecoveryCheckConfig.json(for: request))
+        let read = try #require(HotUpdaterRecoveryCheckConfig(json: json)).request
+
+        #expect(read.baseURL == request.baseURL)
+        #expect(read.updateStrategy == strategy)
+        #expect(read.requestHeaders == request.requestHeaders)
+        #expect(read.requestTimeout == 2.5)
+        // The check after a crash uses the device's own channel.
+        #expect(read.channel == nil)
+    }
+
     @Test(arguments: [false, true])
     func consumingACrashMarkerWithoutRollbackLeavesTheCheckPending(shouldRollback: Bool) throws {
         let scene = try CheckScene()

@@ -232,31 +232,38 @@ describe("checkForUpdate Release catalog protocol", () => {
     ]);
   });
 
-  it("saves the request native checks with after a crash, before checking", async () => {
-    const { checkForUpdate } = await import("./checkForUpdate");
-    const { client, fetchReleaseCatalog } = createClient();
-    mocks.getFingerprintHash.mockReturnValueOnce("fingerprint-hash");
-    mocks.setStorageItem.mockImplementationOnce(() => {
-      expect(fetchReleaseCatalog).not.toHaveBeenCalled();
-    });
-    await checkForUpdate({
-      emit,
-      client,
-      requestHeaders: { "x-api-key": "key" },
-      requestTimeout: 8000,
-      updateStrategy: "fingerprint",
-    }).catch(() => null);
-    expect(mocks.setStorageItem).toHaveBeenCalledWith(
-      "hot-updater/recovery-check-config",
-      JSON.stringify({
-        version: 1,
-        baseURL: "https://updates.example.com/api",
+  it.each([
+    ["a catalog", createCatalog()],
+    ["no catalog yet", null],
+  ])(
+    "saves the request native checks with after a crash once the server answers with %s",
+    async (_answer, catalog) => {
+      const { checkForUpdate } = await import("./checkForUpdate");
+      const { client, fetchReleaseCatalog } = createClient(catalog as never);
+      mocks.getFingerprintHash.mockReturnValueOnce("fingerprint-hash");
+      await checkForUpdate({
+        emit,
+        client,
         requestHeaders: { "x-api-key": "key" },
-        requestTimeoutMs: 8000,
+        requestTimeout: 8000,
         updateStrategy: "fingerprint",
-      }),
-    );
-  });
+      }).catch(() => null);
+      expect(mocks.setStorageItem).toHaveBeenCalledWith(
+        "hot-updater/recovery-check-config",
+        JSON.stringify({
+          version: 1,
+          baseURL: "https://updates.example.com/api",
+          requestHeaders: { "x-api-key": "key" },
+          requestTimeoutMs: 8000,
+          updateStrategy: "fingerprint",
+        }),
+      );
+      // Saved after the server answered.
+      expect(mocks.setStorageItem.mock.invocationCallOrder[0]).toBeGreaterThan(
+        fetchReleaseCatalog.mock.invocationCallOrder[0]!,
+      );
+    },
+  );
 
   it("keeps the saved recovery request when a check can't be made", async () => {
     const { checkForUpdate } = await import("./checkForUpdate");
@@ -271,6 +278,27 @@ describe("checkForUpdate Release catalog protocol", () => {
       updateStrategy: "fingerprint",
     }).catch(() => null);
     expect(fetchReleaseCatalog).not.toHaveBeenCalled();
+    expect(mocks.setStorageItem).not.toHaveBeenCalledWith(
+      "hot-updater/recovery-check-config",
+      expect.anything(),
+    );
+  });
+
+  it("keeps the saved recovery request when the server never answers", async () => {
+    const { checkForUpdate } = await import("./checkForUpdate");
+    const { client, fetchReleaseCatalog } = createClient();
+    // A header fetch refuses to send, a timeout, or no network.
+    fetchReleaseCatalog.mockRejectedValueOnce(
+      new TypeError("Invalid header name"),
+    );
+    await checkForUpdate({
+      emit,
+      client,
+      onError: vi.fn(),
+      requestHeaders: { "bad\nname": "value" },
+      updateStrategy: "appVersion",
+    }).catch(() => null);
+    expect(fetchReleaseCatalog).toHaveBeenCalledOnce();
     expect(mocks.setStorageItem).not.toHaveBeenCalledWith(
       "hot-updater/recovery-check-config",
       expect.anything(),

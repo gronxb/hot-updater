@@ -94,10 +94,12 @@ already rendered. To recover devices, deploy a fixed
 bundle, or disable the bad Release so the server rolls them back. A device that
 keeps crashing picks it up within two restarts.
 
-The native check repeats your app's last update check: each check saves its
-server, headers, timeout, and update strategy on the device. A device that
-never checked, for example because the user hasn't accepted your privacy terms
-yet, sends no request. A launch that didn't crash sends
+The native check repeats your app's last update check that reached your
+server: each check the server answers, from JavaScript or from the native
+`checkForUpdate` of a brownfield app, saves its server, headers, timeout, and
+update strategy on the device. A check that fails keeps the one saved before.
+A device that never checked, for example because the user hasn't accepted your
+privacy terms yet, sends no request. A launch that didn't crash sends
 none either. A launch without UI waits for the next launch that shows UI. A
 debug build never runs this check: a crash there is a development error.
 
@@ -161,7 +163,8 @@ async function retryFailedBundle() {
 ```
 
 <Callout type="warn">
-Only clear crash history after fixing the underlying issue. Otherwise the same broken bundle can be applied again.
+  Only clear crash history after fixing the underlying issue. Otherwise the same
+  broken bundle can be applied again.
 </Callout>
 
 ### Crash history blocking

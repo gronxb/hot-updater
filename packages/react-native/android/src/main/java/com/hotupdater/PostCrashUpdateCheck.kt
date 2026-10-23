@@ -27,10 +27,28 @@ internal class RecoveryCheckConfig(
             requestTimeoutMillis = requestTimeoutMillis,
         )
 
+    /** This record as JavaScript writes it, which [parse] reads back. */
+    fun toJson(): String =
+        JSONObject()
+            .put("version", VERSION)
+            .put("baseURL", baseURL)
+            .put("requestHeaders", JSONObject(requestHeaders))
+            .put("requestTimeoutMs", requestTimeoutMillis)
+            .put("updateStrategy", updateStrategy.value)
+            .toString()
+
     companion object {
         const val KEY = "hot-updater/recovery-check-config"
         private const val VERSION = 1
         private const val DEFAULT_TIMEOUT_MS = 5_000L
+
+        /**
+         * The record of a native check of main the server answered. Its
+         * channel is left out, as JavaScript leaves it out: the check after a
+         * crash uses the device's own.
+         */
+        fun of(request: NativeCheckRequest): RecoveryCheckConfig =
+            RecoveryCheckConfig(request.baseURL, request.requestHeaders, request.requestTimeoutMillis, request.updateStrategy)
 
         /**
          * The record [value] holds, or null for a missing, unparsable,

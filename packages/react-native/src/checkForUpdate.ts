@@ -193,13 +193,6 @@ async function checkForReleaseCatalogUpdate(input: {
   if (strategy === "FINGERPRINT" && !input.fingerprintHash) {
     throw new HotUpdaterError("Fingerprint hash is required");
   }
-  // Only a request this device can make replaces the saved one.
-  saveRecoveryCheckConfig({
-    baseURL: session.baseURL,
-    requestHeaders: options.requestHeaders,
-    requestTimeout: options.requestTimeout,
-    updateStrategy: options.updateStrategy,
-  });
   const expectedScope: ExpectedReleaseCatalogScope =
     strategy === "APP_VERSION"
       ? {
@@ -218,6 +211,14 @@ async function checkForReleaseCatalogUpdate(input: {
     channel: input.targetChannel,
     fingerprintHash: input.fingerprintHash,
     platform: input.platform,
+    requestHeaders: options.requestHeaders,
+    requestTimeout: options.requestTimeout,
+    updateStrategy: options.updateStrategy,
+  });
+  // The server answered, even with no catalog yet: only a request that
+  // reaches it replaces the saved one, so one that fails keeps the last.
+  saveRecoveryCheckConfig({
+    baseURL: session.baseURL,
     requestHeaders: options.requestHeaders,
     requestTimeout: options.requestTimeout,
     updateStrategy: options.updateStrategy,

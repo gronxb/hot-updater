@@ -228,6 +228,51 @@ class PostCrashUpdateCheckTest {
         assertEquals(0, mainThread.waiting)
     }
 
+    // A native check's request.
+
+    @Test
+    fun `a native request round-trips through the record JavaScript writes`() {
+        HotUpdaterUpdateStrategy.values().forEach { strategy ->
+            val request =
+                NativeCheckRequest(
+                    baseURL = BASE_URL,
+                    updateStrategy = strategy,
+                    requestHeaders = mapOf("x-api-key" to "secret"),
+                    channel = "beta",
+                    requestTimeoutMillis = 2_500,
+                )
+
+            val read = RecoveryCheckConfig.parse(RecoveryCheckConfig.of(request).toJson())!!.toRequest()
+
+            assertEquals(BASE_URL, read.baseURL)
+            assertEquals(strategy, read.updateStrategy)
+            assertEquals(mapOf("x-api-key" to "secret"), read.requestHeaders)
+            assertEquals(2_500L, read.requestTimeoutMillis)
+            // The check after a crash uses the device's own channel.
+            assertNull(read.channel)
+        }
+    }
+
+    @Test
+    fun `main keeps a native request the server answered, a debug build or named instance does not`() {
+        val request = NativeCheckRequest(baseURL = BASE_URL, updateStrategy = HotUpdaterUpdateStrategy.APP_VERSION)
+        val context = InstanceTestContext(temporaryFolder.newFolder())
+        mainImpl(context).recordRecoveryRequest(request)
+        assertEquals(
+            RecoveryCheckConfig.of(request).toJson(),
+            storage(context, main).getItem(RecoveryCheckConfig.KEY),
+        )
+
+        val debug = InstanceTestContext(temporaryFolder.newFolder())
+        HotUpdaterImpl(debug, main, isDevelopmentBuild = true).recordRecoveryRequest(request)
+        assertNull(storage(debug, main).getItem(RecoveryCheckConfig.KEY))
+
+        val named = InstanceTestContext(temporaryFolder.newFolder())
+        HotUpdaterImpl(named, widget, isDevelopmentBuild = false).recordRecoveryRequest(request)
+        assertNull(storage(named, widget).getItem(RecoveryCheckConfig.KEY))
+        assertNull(storage(named, main).getItem(RecoveryCheckConfig.KEY))
+    }
+
     // The gate of the check: the first launch that shows UI.
 
     @Test

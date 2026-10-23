@@ -34,11 +34,12 @@ const write = (config: RecoveryCheckConfig) => {
 };
 
 /**
- * Saves the request an update check makes, before it makes it: the server it
+ * Saves the request of an update check the server answered: the server it
  * resolved, its headers and timeout, and its update strategy, which only a
- * check knows. Only checks save it, so native always repeats a request the
- * app really made, whichever instance made it last, and a device that never
- * checked sends nothing. The channel is left out on purpose: native checks
+ * check knows. Only answered checks save it, so native always repeats a
+ * request that reached the server, whichever instance made it last, and a
+ * device that never checked sends nothing. Native checks of main save theirs
+ * the same way. The channel is left out on purpose: native checks
  * the device's own channel, the one the crashing bundle came from and its fix
  * is published to. A check of another channel is a one-off until its update
  * is applied, and a crash must not switch the device's channel.

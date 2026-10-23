@@ -62,6 +62,23 @@ struct HotUpdaterRecoveryCheckConfig {
         requestTimeout = timeoutMs / 1000
     }
 
+    /// The record of `request`, as JavaScript writes it, for a native check of
+    /// main the server answered. Its channel is left out, as JavaScript
+    /// leaves it out: the check after a crash uses the device's own.
+    static func json(for request: NativeCheckRequest) -> String? {
+        let object: [String: Any] = [
+            "version": version,
+            "baseURL": request.baseURL,
+            "requestHeaders": request.requestHeaders,
+            "requestTimeoutMs": request.requestTimeout * 1000,
+            "updateStrategy": request.updateStrategy.name,
+        ]
+        guard let data = try? JSONSerialization.data(withJSONObject: object, options: [.sortedKeys]) else {
+            return nil
+        }
+        return String(data: data, encoding: .utf8)
+    }
+
     /// The check of the current channel with these settings.
     var request: NativeCheckRequest {
         NativeCheckRequest(
